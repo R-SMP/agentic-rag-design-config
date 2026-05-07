@@ -1,0 +1,33 @@
+# Canonical list of design-configurator parameter keys.
+#
+# This file is the SINGLE SOURCE OF TRUTH for:
+#   - which keys must appear in parameters.json
+#   - the order they should be written in (canonical JSON ordering)
+#   - which keys must be integers vs floats
+#
+# Format: one line per parameter, optionally with a type annotation.
+#   keyName            # defaults to float
+#   keyName: int       # must be an integer
+#   keyName: float     # must be a float (or int — accepted as float)
+#
+# Blank lines and lines starting with `#` are ignored.
+# Order matters: keys are written to parameters.json in the order
+# they appear here.
+
+bladeCount: int
+impellerRadius: float
+impellerHeight: float
+impellerThickness: float
+innerThickness: float
+innerMaxPos: int
+innerCamber: float
+innerChord: float
+innerAngle: float
+middlePos: float
+middleChord: float
+middleAngle: float
+outerThickness: float
+outerMaxPos: int
+outerCamber: float
+outerChord: float
+outerAngle: float

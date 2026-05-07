@@ -1,0 +1,13 @@
+langchain>=0.3.0
+langchain-openai>=0.3.0
+langchain-anthropic>=0.3.0
+langchain-google-genai>=2.1.0
+langgraph>=0.3.0
+compute-rhino3d>=0.12.0
+rhino3dm>=8.0.0
+DracoPy>=0.4.0
+python-dotenv>=1.0.0
+numpy>=2.0.0
+trimesh>=4.0.0
+pyrender>=0.1.45
+Pillow>=10.0.0
