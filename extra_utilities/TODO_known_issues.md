@@ -320,6 +320,95 @@ There are several open questions about the intended UX:
 
 ---
 
+## Operational checklist (pre-deploy)
+
+Items here are not codebase bugs — they are external admin actions that must
+be done before the cloud deploy goes live. Tracked here so they don't fall
+off the radar between phases.
+
+### OPS1. Set hard monthly spend caps on every LLM provider dashboard
+
+**What.** Configure a hard monthly spend cap on each LLM provider used by the
+v3 stack so that runaway usage (whether from a leaked invite code, a bug, or
+a rogue session) cannot bill more than the cap before the API starts
+returning 429s.
+
+**Where to set them.**
+- OpenAI → platform.openai.com → Settings → Billing → Limits → set a hard
+  monthly budget that returns a 429 when exceeded.
+- Anthropic → console.anthropic.com → Settings → Plans & Billing → Spend
+  limits.
+- Google → at the time `GOOGLE_API_KEY` is generated, set a budget on the
+  linked GCP project.
+
+**Why this is the floor.** v3 ships with invite-code-only auth (per
+`cloud_architecture_notes.md` C3, with the slowapi rate limit dropped per
+OQ1). If the invite code leaks, the spend cap is the only defence between
+"free LLM trial for the internet" and the user's credit card.
+
+**Recommended starting cap.** €50/month per provider for thesis-stage
+usage. Adjust upward only when telemetry shows sustained legitimate burn
+against the cap.
+
+**Status.** Open. Must be done before Phase 7 (first Railway deploy);
+should be done much earlier so that even local dev mistakes can't run away.
+Independent of all code changes.
+
+---
+
+## Future work / planned enhancements
+
+These are not bugs — they are design items deliberately deferred to keep
+v2 scope tight. Cross-referenced from `database_design_notes.md` where
+relevant.
+
+### F1. `dc_parameter_schemas` auto-loader from Grasshopper-side declarations
+
+**Where.** Today: manual `INSERT INTO dc_parameter_schemas` rows whenever
+the propeller (or future DC) parameter inventory changes.
+
+**What to build.** Keep
+`DC_prompt_fragments/dc_config/parameter_keys.txt` and
+`DC_prompt_fragments/dc_config/parameters.md` as the source of truth (or
+add a parallel machine-readable `parameters.json`). Write a small Python
+loader that diffs the file against the current contents of
+`dc_parameter_schemas` and, if anything changed, INSERTs a new
+`schema_version` row-set with the updated `(param_name, min, max, unit,
+description)`. Old `schema_version` rows stay in place so historical
+attempts remain queryable under their own normalisation.
+
+**Why deferred.** Manual INSERTs are fine while there is one DC and
+schema bumps are infrequent. The auto-loader becomes worthwhile when
+either (a) parameter inventories change often, or (b) a second DC is
+added and the surface area doubles.
+
+**Status.** Open. Triggered by either condition above.
+
+### F2. Per-parameter weights for masked-RMSE
+
+**Where.** Today: masked L2 = √(masked SSD), all dims weighted equally.
+
+**What to build.** Run a sensitivity analysis on the propeller DC's 17
+parameters to determine which ones drive design outcome the most, then
+expose per-parameter weights as an optional argument to
+`query_database_quantitative`. Default remains all-equal weights;
+callers can pass `weights={"numBlades": 2.0, "hubDiameter": 0.5, ...}`
+when they want to bias the search.
+
+**Why deferred.** No data on which parameters are dominant yet. Premature
+weighting would inject bias rather than remove it.
+
+**Status.** Open. Blocks on running the sensitivity analysis itself.
+
+### F3. HNSW / IVFFlat upgrade for `chunks.embedding`
+
+**Resolved by going HNSW from day one** in the v2 schema (see
+`database_design_notes.md` D2). This item — historically tracked as
+"add HNSW once corpus reaches ~30k vectors" — is **closed before
+opening**. Do not re-add it.
+
+---
+
 ## Resolved issues
 
 ### R2. Parallel image-loading tool calls produce a malformed message history
