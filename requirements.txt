@@ -11,3 +11,6 @@ numpy>=2.0.0
 trimesh>=4.0.0
 pyrender>=0.1.45
 Pillow>=10.0.0
+# Stage A web UI (Phase 3).  Streamlit is the sole entry point in
+# Stage A — no FastAPI front-door (see cloud_architecture_notes.md C2).
+streamlit>=1.39.0
