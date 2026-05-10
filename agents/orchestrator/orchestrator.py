@@ -154,35 +154,37 @@ class Orchestrator:
         # bytes to strip in practice (it is only ever fed text + paired
         # notes via load_user_inputs_bundle(include_image_bytes=False)),
         # but it owns the hook for symmetry with the bypass path.
+        # All seven chain agents are now BaseChainAgent subclasses
+        # (v3 Phase 1 commits 3-4) and take the (state, session)
+        # signature.  Each one's per-agent state is materialised into
+        # session.agent_states under its own agent_key so subsequent
+        # turns can rebuild the live agent from the snapshot.
+        def _state_for(agent_key: str) -> AgentState:
+            return session.agent_states.setdefault(
+                agent_key, AgentState(agent_key=agent_key),
+            )
+
         self.planner = Planner(
-            session.rag_enabled,
-            keep_images_in_context=session.keep_images_in_context,
-        )
-        # Receptionist: converted in v3 Phase 1 commit 3 to the new
-        # (state, session) signature.  The other six chain agents
-        # below still use the legacy kwargs until their own
-        # conversion commits land.
-        receptionist_state = session.agent_states.setdefault(
-            "receptionist", AgentState(agent_key="receptionist"),
+            state=_state_for("planner"), session=session,
         )
         self.receptionist = Receptionist(
-            state=receptionist_state,
-            session=session,
+            state=_state_for("receptionist"), session=session,
         )
         self.user_input_inspector = UserInputInspector(
-            keep_images_in_context=session.keep_images_in_context,
+            state=_state_for("user_input_inspector"), session=session,
         )
         self.dc_input_creator = DCInputCreator(
-            keep_images_in_context=session.keep_images_in_context,
+            state=_state_for("dc_input_creator"), session=session,
         )
         self.dc_input_inspector = DCInputInspector(
-            keep_images_in_context=session.keep_images_in_context,
+            state=_state_for("dc_input_inspector"), session=session,
         )
         self.dc_output_inspector = DCOutputInspector(
-            keep_images_in_context=session.keep_images_in_context,
-            dcoi_comparison_mode=session.dcoi_comparison_mode,
+            state=_state_for("dc_output_inspector"), session=session,
         )
-        self.tool_caller = ToolCaller(session.mesh_checks)
+        self.tool_caller = ToolCaller(
+            state=_state_for("tool_caller"), session=session,
+        )
         # Context Pruner shares the Orchestrator's LLM (cheaper than
         # spinning up a 9th provider build).  Currently constructed but
         # not invoked by the dispatcher — see KNOWN_ISSUES.

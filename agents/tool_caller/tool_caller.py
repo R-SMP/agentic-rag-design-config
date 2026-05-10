@@ -27,8 +27,9 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.attempts_tool import list_attempts, read_attempt
+from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
-from agents.shared.llm_provider import build_llm, make_system_message
+from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import (
     RENDER_CHECK_LIBRARY_PYVISTA,
@@ -44,10 +45,9 @@ from agents.shared.routing_tools import (
     stuck_escalation,
     tool_call_signature,
 )
+from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_TC_STEPS
 from tools import get_render_library, get_tools
-
-AGENT_KEY = "tool_caller"
 
 logger = logging.getLogger("propeller_agent")
 
@@ -66,11 +66,27 @@ def read_parameters(path: str) -> str:
     return ""  # Actual read is performed by _handle_read_parameters_tool.
 
 
-class ToolCaller:
+class ToolCaller(BaseChainAgent):
     """Stateful agent with read + utility + routing tools."""
 
-    def __init__(self, mesh_checks: bool = True):
-        self.base_llm, self.provider, self.model = build_llm(AGENT_KEY)
+    AGENT_KEY = "tool_caller"
+
+    def __init__(
+        self,
+        state: AgentState | None = None,
+        session: Session | None = None,
+        *,
+        llm_cache=None,
+    ):
+        if session is None:
+            raise TypeError(
+                "ToolCaller now requires a Session.  Construct one "
+                "via Session(...) or Session.create_for_v3(...) and "
+                "pass it in."
+            )
+        if state is None:
+            state = AgentState(agent_key=self.AGENT_KEY)
+        super().__init__(state=state, session=session, llm_cache=llm_cache)
         self._read_tool = read_parameters
         # Utility tools span the design generators (the active render
         # library is picked by ``set_render_library`` before this agent
@@ -78,13 +94,10 @@ class ToolCaller:
         # both are dispatched the same way so they share one map.
         utility_tools = list(get_tools()) + [list_attempts, read_attempt]
         self._extra_utility_tools_by_name = {t.name: t for t in utility_tools}
-        self.mesh_checks = mesh_checks
+        self.mesh_checks = session.mesh_checks
         self.render_library = get_render_library()
-        self.llm = self.base_llm
-        self.messages: list = []
         self._routing_tools_by_name: dict = {}
         self.system_prompt: str = ""
-        self._pending_hop: AgentHop | None = None
 
     # ------------------------------------------------------------------
     # Wiring

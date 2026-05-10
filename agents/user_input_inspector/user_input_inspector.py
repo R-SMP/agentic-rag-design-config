@@ -21,6 +21,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.attempts_tool import list_attempts, read_attempt
+from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
     append_pending_images,
@@ -28,7 +29,7 @@ from agents.shared.file_utils import (
     load_user_inputs_bundle,
     strip_image_blocks_from_messages,
 )
-from agents.shared.llm_provider import build_llm, make_system_message
+from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import (
     PLANNER_FIRST,
@@ -43,14 +44,13 @@ from agents.shared.routing_tools import (
     stuck_escalation,
     tool_call_signature,
 )
+from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
     USER_INPUTS_TOOLS,
     dispatch_user_inputs_tool,
 )
 from agents.step_caps import MAX_UII_STEPS
 from tools.calculate.calculate import calculate
-
-AGENT_KEY = "user_input_inspector"
 
 logger = logging.getLogger("propeller_agent")
 
@@ -86,20 +86,32 @@ def write_extraction(
     return ""  # Actual write is performed by _handle_write_extraction_tool.
 
 
-class UserInputInspector:
+class UserInputInspector(BaseChainAgent):
     """Stateful agent that analyses user input files."""
 
-    def __init__(self, keep_images_in_context: bool = False):
-        self.base_llm, self.provider, self.model = build_llm(AGENT_KEY)
-        self.keep_images_in_context = keep_images_in_context
+    AGENT_KEY = "user_input_inspector"
+
+    def __init__(
+        self,
+        state: AgentState | None = None,
+        session: Session | None = None,
+        *,
+        llm_cache=None,
+    ):
+        if session is None:
+            raise TypeError(
+                "UserInputInspector now requires a Session.  Construct "
+                "one via Session(...) or Session.create_for_v3(...) "
+                "and pass it in."
+            )
+        if state is None:
+            state = AgentState(agent_key=self.AGENT_KEY)
+        super().__init__(state=state, session=session, llm_cache=llm_cache)
         self._read_tool = read_user_inputs
         self._write_tool = write_extraction
-        self.llm = self.base_llm  # re-bound after set_routing_tools
-        self.messages: list = []
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
         self.system_prompt: str = ""
-        self._pending_hop: AgentHop | None = None
 
     # ------------------------------------------------------------------
     # Wiring

@@ -13,6 +13,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.attempts_tool import list_attempts, read_attempt
+from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
     append_pending_images,
@@ -20,7 +21,6 @@ from agents.shared.file_utils import (
     strip_image_blocks_from_messages,
 )
 from agents.shared.llm_provider import (
-    build_llm,
     encode_image,
     make_image_block,
     make_system_message,
@@ -33,6 +33,7 @@ from agents.shared.routing_tools import (
     finalize_unanswered_tool_calls,
     log_tool_call,
 )
+from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
     USER_INPUTS_TOOLS,
     dispatch_user_inputs_tool,
@@ -41,7 +42,6 @@ from agents.step_caps import MAX_DCOI_STEPS
 from config import USER_INPUTS_DIR
 from tools.calculate.calculate import calculate
 
-AGENT_KEY = "dc_output_inspector"
 ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 
 logger = logging.getLogger("propeller_agent")
@@ -213,29 +213,37 @@ def load_render_images(paths: list[str]) -> str:
     return ""  # Actual loading is performed by _handle_load_tool.
 
 
-class DCOutputInspector:
+class DCOutputInspector(BaseChainAgent):
     """Stateful agent with an image-loading tool + routing tools."""
+
+    AGENT_KEY = "dc_output_inspector"
 
     def __init__(
         self,
-        keep_images_in_context: bool = False,
-        dcoi_comparison_mode: int = 3,
+        state: AgentState | None = None,
+        session: Session | None = None,
+        *,
+        llm_cache=None,
     ):
-        self.base_llm, self.provider, self.model = build_llm(AGENT_KEY)
-        self.keep_images_in_context = keep_images_in_context
-        if dcoi_comparison_mode not in {1, 2, 3}:
-            raise ValueError(
-                f"dcoi_comparison_mode must be 1, 2, or 3 (got "
-                f"{dcoi_comparison_mode!r})"
+        if session is None:
+            raise TypeError(
+                "DCOutputInspector now requires a Session.  Construct "
+                "one via Session(...) or Session.create_for_v3(...) "
+                "and pass it in."
             )
-        self.dcoi_comparison_mode = dcoi_comparison_mode
+        if state is None:
+            state = AgentState(agent_key=self.AGENT_KEY)
+        super().__init__(state=state, session=session, llm_cache=llm_cache)
+        if session.dcoi_comparison_mode not in {1, 2, 3}:
+            raise ValueError(
+                f"session.dcoi_comparison_mode must be 1, 2, or 3 "
+                f"(got {session.dcoi_comparison_mode!r})"
+            )
+        self.dcoi_comparison_mode = session.dcoi_comparison_mode
         self._load_tool = load_render_images
-        self.llm = self.base_llm
-        self.messages: list = []
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
         self.system_prompt: str = ""
-        self._pending_hop: AgentHop | None = None
 
     # ------------------------------------------------------------------
     # Wiring

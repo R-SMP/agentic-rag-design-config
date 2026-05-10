@@ -22,12 +22,13 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
+from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
     flush_pending_image_blocks,
     strip_image_blocks_from_messages,
 )
-from agents.shared.llm_provider import build_llm, make_system_message
+from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import (
     PLANNER_FIRST,
@@ -40,6 +41,7 @@ from agents.shared.routing_tools import (
     finalize_unanswered_tool_calls,
     log_tool_call,
 )
+from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
     USER_INPUTS_TOOLS,
     USER_INPUTS_TOOL_NAMES,
@@ -48,8 +50,6 @@ from agents.shared.user_inputs_tool import (
 from agents.step_caps import MAX_PLANNER_STEPS
 from config import INPUT_IMAGES_SUBDIR, LOGS_DIR, USER_INPUTS_DIR
 from tools.calculate.calculate import calculate
-
-AGENT_KEY = "planner"
 
 logger = logging.getLogger("propeller_agent")
 
@@ -152,21 +152,32 @@ def read_user_queries(n: int = 1, from_start: bool = False) -> str:
     return header + "\n\n" + "\n\n".join(selected)
 
 
-class Planner:
+class Planner(BaseChainAgent):
     """Stateful planning agent with persistent message history."""
 
-    def __init__(self, rag_enabled: bool = False, keep_images_in_context: bool = False):
-        self.base_llm, self.provider, self.model = build_llm(AGENT_KEY)
-        self.rag_enabled = rag_enabled
-        self.keep_images_in_context = keep_images_in_context
-        self.messages: list = []
-        self.current_plan: str = ""
-        self.llm = self.base_llm  # bound after set_routing_tools
+    AGENT_KEY = "planner"
+
+    def __init__(
+        self,
+        state: AgentState | None = None,
+        session: Session | None = None,
+        *,
+        llm_cache=None,
+    ):
+        if session is None:
+            raise TypeError(
+                "Planner now requires a Session.  Construct one via "
+                "Session(...) or Session.create_for_v3(...) and pass "
+                "it in."
+            )
+        if state is None:
+            state = AgentState(agent_key=self.AGENT_KEY)
+        super().__init__(state=state, session=session, llm_cache=llm_cache)
+        self.rag_enabled = session.rag_enabled
+        # current_plan is restored by BaseChainAgent from
+        # state.current_plan (default "").
         self._tools_by_name: dict = {}
         self.system_prompt: str = ""
-        # Set by the routing tool inside the run loop; read once the
-        # loop exits so dispatch() knows where to go next.
-        self._pending_hop: AgentHop | None = None
 
     # ------------------------------------------------------------------
     # Wiring (called once after all agents are constructed)
