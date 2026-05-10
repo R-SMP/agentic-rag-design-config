@@ -117,39 +117,31 @@ fail validation because no `ToolMessage` is appended).
 
 When you add new chain agents, ALWAYS expose `self.base_llm`.
 
-## W6. `_freeze_histories` deep-copies messages but NOT other agent state.
+## W6. ~~`_freeze_histories` deep-copies messages but NOT other agent state.~~ **OBSOLETE since v3 Phase 1 commit 6.**
 
-**Where.** `agents/database_handler/database_handler.py:_freeze_histories`.
+The `_freeze_histories` mechanism this warning was about is gone.
+The DH now reads `session.agent_states[agent_key].messages` into a
+local `convo_buffer` and never mutates any live agent attribute,
+so `_pending_hop` / `cycle_start_ts` / `_pending_image_blocks`
+drift is structurally impossible.  See TODO_known_issues.md R3
+for the full resolution.
 
-**Why.** The frozen snapshot only captures `agent.messages`.  Other
-attributes that may carry session-time state (e.g. `_pending_hop`,
-`cycle_start_ts`, `_pending_image_blocks`) are NOT snapshotted.  When
-the DH restores `agent.messages = copy.deepcopy(snapshot)` it leaves
-everything else untouched — the agent's live `_pending_hop` may
-still hold whatever the agent was about to route to.
+This warning is kept (rather than deleted) so a reader following an
+older code-review or commit message that references W6 still finds
+the explanation of what the original concern was.
 
-Today this does not bite because the DH calls `agent.base_llm`
-directly (no routing tools bound, no hop can fire) and never invokes
-the agent's `run()` method.  If a future change makes the DH go
-through `agent.run()`, you must extend `_freeze_histories` to also
-snapshot+restore every per-instance attribute that influences the
-run loop.
+## W7. ~~The DH deepcopy of message objects has a shallow-copy fallback.~~ **OBSOLETE since v3 Phase 1 commit 6.**
 
-## W7. The DH deepcopy of message objects has a shallow-copy fallback.
+The `_freeze_histories` deepcopy fallback this warning was about is
+gone — the method itself was removed in v3 Phase 1 commit 6.  No
+deepcopy of message objects happens during the DH interview anymore
+(the local `convo_buffer` is built with `list(agent_state.messages)`
+which shares message OBJECTS with the AgentState, but the DH never
+mutates message objects in place — it only ever appends new
+HumanMessage / AIMessage instances to its own buffer, so the share
+is safe).
 
-**Where.** `agents/database_handler/database_handler.py:_freeze_histories`,
-`except Exception` branch.
-
-**Why.** `copy.deepcopy` can fail on LangChain message objects that
-hold references to non-pickleable resources (rare — e.g. an open
-httpx response on a streaming reply).  The fallback uses `list(...)`
-which copies the LIST but shares the message OBJECTS with the live
-agent.  If the live agent later mutates one of those message
-objects in-place (it shouldn't — messages are conventionally
-immutable in LangChain), the snapshot mutates with it and freezing
-breaks.  Today this is a tolerated edge case.  Do NOT remove the
-fallback: a hard deepcopy failure mid-`populate_database` would
-abort the entire DH phase and lose every database entry.
+Kept for reference like W6 above.
 
 ## W8. The save-to-database prompt is OPT-IN by default.
 

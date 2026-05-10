@@ -46,7 +46,6 @@ Memory model
   agent in the next conversation.
 """
 
-import copy
 import logging
 import re
 from pathlib import Path
@@ -59,15 +58,15 @@ from agents.database_handler.dh_trace import (
     init_dh_logging,
 )
 from agents.database_handler.token_utils import count_tokens
+from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
-from agents.shared.llm_provider import build_llm, make_system_message
+from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import DH_TEMPLATE
+from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_DH_STEPS, MAX_DH_TURNS_PER_FIELD
 from config import LOGS_DIR
 from workflow_settings import settings as workflow_settings
-
-AGENT_KEY = "database_handler"
 
 # DH events go to a DEDICATED logger that writes to
 # ``logs/database_handler_<ts>.log`` and does NOT propagate to the
@@ -493,15 +492,31 @@ def _parse_dh_decision(text: str) -> tuple[str, str]:
     return "PROTOCOL_ERROR", stripped
 
 
-class DatabaseHandler:
+class DatabaseHandler(BaseChainAgent):
     """Stateful post-session interviewer."""
 
-    def __init__(self):
-        self.base_llm, self.provider, self.model = build_llm(AGENT_KEY)
+    AGENT_KEY = "database_handler"
+
+    def __init__(
+        self,
+        state: AgentState | None = None,
+        session: Session | None = None,
+        *,
+        llm_cache=None,
+    ):
+        if session is None:
+            raise TypeError(
+                "DatabaseHandler now requires a Session.  Construct "
+                "one via Session(...) or Session.create_for_v3(...) "
+                "and pass it in."
+            )
+        if state is None:
+            state = session.agent_states.setdefault(
+                "database_handler", AgentState(agent_key="database_handler"),
+            )
+        super().__init__(state=state, session=session, llm_cache=llm_cache)
         # The DH binds no tools — it only emits plain text.
-        self.llm = self.base_llm
         self.system_prompt: str = DH_TEMPLATE
-        self.messages: list = []
 
         # Cached for SEMANTIC token-cap enforcement.
         self.max_response_tokens: int = int(
@@ -514,10 +529,10 @@ class DatabaseHandler:
 
     def populate_database(
         self,
-        orchestrator,
         session_dir: Path,
-        dc_inspector_enabled: bool,
+        *,
         session_timestamp: str | None = None,
+        orchestrator=None,
     ) -> int:
         """Walk the schedule and write one .txt per (agent, field).
 
@@ -526,6 +541,23 @@ class DatabaseHandler:
         with an ``ERROR`` body instead of being silently dropped —
         the per-session folder structure stays consistent and the
         failure is visible to the future RAG pipeline.
+
+        v3 Phase 1 commit 6 changes how the DH talks to each agent:
+
+        * It reads each agent's session-time messages from
+          ``self.session.agent_states[agent_key].messages`` (read-
+          only — never mutated).  No more freeze/restore pump.
+        * It needs each agent's wired ``system_prompt`` + ``base_llm``
+          to invoke the conversation.  When ``orchestrator`` is
+          supplied (the v4 loader passes its already-built one), the
+          DH reads them from there; otherwise it constructs a fresh
+          one from ``self.session`` and uses that.  The Orchestrator
+          construction is idempotent against the Session — it just
+          re-runs routing wiring to assemble each agent's prompt.
+
+        ``dc_inspector_enabled`` is read from ``self.session``, not a
+        parameter — the Session is the source of truth for session-
+        config.
 
         Opens (and at the end, closes) a dedicated DH log + flow-trace
         pair under ``logs/``.  Both files are picked up by the
@@ -541,6 +573,16 @@ class DatabaseHandler:
         See ``extra_utilities/warnings_developer.md`` (W11).
         """
         session_dir.mkdir(parents=True, exist_ok=True)
+
+        # Build a wired Orchestrator from self.session if the caller
+        # didn't supply one.  Used only to read each agent's
+        # ``system_prompt`` and ``base_llm`` — never mutated, never
+        # invoked.
+        if orchestrator is None:
+            from agents.orchestrator import Orchestrator
+            orchestrator = Orchestrator(session=self.session)
+
+        dc_inspector_enabled = self.session.dc_inspector_enabled
 
         try:
             log_path, trace_path = init_dh_logging(
@@ -561,15 +603,6 @@ class DatabaseHandler:
                 f"embedding={workflow_settings.EMBEDDING_PROVIDER}/"
                 f"{workflow_settings.EMBEDDING_MODEL}@"
                 f"{workflow_settings.EMBEDDING_VECTOR_DIMS}d"
-            )
-
-            # Freeze every agent's history at the moment we enter the
-            # interview phase.  Deep-copy is required because subsequent
-            # conversations append to the agent's live ``self.messages``
-            # list and we need to be able to restore it byte-for-byte.
-            snapshots = self._freeze_histories(orchestrator)
-            logger.info(
-                f"[DH]  froze histories for {len(snapshots)} agents"
             )
 
             written = 0
@@ -606,7 +639,8 @@ class DatabaseHandler:
                     continue
 
                 agent = orchestrator._agents_by_key.get(agent_key)
-                if agent is None:
+                agent_state = self.session.agent_states.get(agent_key)
+                if agent is None or agent_state is None:
                     logger.warning(
                         f"[DH]  unknown agent '{agent_key}' in schedule; "
                         f"skipped"
@@ -617,8 +651,8 @@ class DatabaseHandler:
                         field=field,
                         error_message=(
                             f"agent key '{agent_key}' is not present in "
-                            f"the orchestrator's registry; the DH could "
-                            f"not interview it."
+                            f"the orchestrator's registry / session.agent_"
+                            f"states; the DH could not interview it."
                         ),
                     )
                     continue
@@ -630,8 +664,10 @@ class DatabaseHandler:
                 try:
                     question, answer = self._run_one_conversation(
                         agent_key=agent_key,
-                        agent=agent,
-                        snapshot=snapshots[agent_key],
+                        agent_system_prompt=getattr(agent, "system_prompt", "") or "",
+                        agent_provider=getattr(agent, "provider", self.provider),
+                        agent_base_llm=getattr(agent, "base_llm", None) or agent.llm,
+                        agent_messages=list(agent_state.messages),
                         field=field,
                         description=entry.get("description", ""),
                         field_type=entry.get("type", "Semantic"),
@@ -684,13 +720,15 @@ class DatabaseHandler:
     def _run_one_conversation(
         self,
         agent_key: str,
-        agent,
-        snapshot: list,
+        agent_system_prompt: str,
+        agent_provider: str,
+        agent_base_llm,
+        agent_messages: list,
         field: str,
         description: str,
         field_type: str,
     ) -> tuple[str, str]:
-        """Run one DH-driven conversation about *field* with *agent*.
+        """Run one DH-driven conversation about *field* with the named agent.
 
         Loop:
           1. DH formulates an initial question and the system delivers
@@ -701,17 +739,19 @@ class DatabaseHandler:
              token cap; if over, the DH is asked once for a shorter
              version.
 
-        Each call is its own conversation: Agent A's session-time
-        history is restored from *snapshot* before the FIRST question
-        is sent, so the agent never sees what the DH said in any
-        earlier round (including earlier rounds for the SAME agent on
-        different fields — that is the whole point of the per-field
-        snapshot/restore pump).
+        v3 Phase 1 commit 6: the conversation runs entirely in a local
+        ``convo_buffer`` list seeded from *agent_messages* (a copy of
+        ``session.agent_states[agent_key].messages``).  Neither the
+        live agent (if one even exists at this point) nor the
+        AgentState is mutated.  Each call to this method starts from
+        a fresh seed of session-time messages, so a per-field
+        deepcopy/restore pump is no longer needed — the W6 / O4
+        invariants hold by construction.
         """
-        # Re-load the agent's frozen-in-time history into its live
-        # message list.  Whatever the agent said in any PREVIOUS
-        # conversation with the DH is wiped here.
-        agent.messages = copy.deepcopy(snapshot)
+        # Local conversation buffer.  The DH appends its question and
+        # the agent's reply here; nothing is written back to the
+        # AgentState or to any live agent instance.
+        convo_buffer: list = list(agent_messages)
 
         is_semantic = (field_type or "Semantic").strip().lower() == "semantic"
 
@@ -736,8 +776,11 @@ class DatabaseHandler:
         for round_idx in range(MAX_DH_TURNS_PER_FIELD):
             # ---- Agent A turn -----------------------------------------
             answer = self._ask_agent(
-                agent=agent,
                 agent_key=agent_key,
+                agent_system_prompt=agent_system_prompt,
+                agent_provider=agent_provider,
+                agent_base_llm=agent_base_llm,
+                convo_buffer=convo_buffer,
                 field=field,
                 question=last_question,
             )
@@ -815,27 +858,35 @@ class DatabaseHandler:
 
     def _ask_agent(
         self,
-        agent,
         agent_key: str,
+        agent_system_prompt: str,
+        agent_provider: str,
+        agent_base_llm,
+        convo_buffer: list,
         field: str,
         question: str,
     ) -> str:
-        """Send ONE question to Agent A and return their plain-text reply."""
+        """Send ONE question to Agent A and return their plain-text reply.
+
+        The conversation lives in *convo_buffer* (a local list, not on
+        any agent instance).  The function appends the question + the
+        agent's response to that buffer in place, mirroring the shape
+        the v4 code maintained on ``agent.messages`` — but without
+        touching session.agent_states or any live agent.
+        """
         dh_trace("DH", agent_key, note=f"asks ({field})")
-        agent.messages.append(HumanMessage(content=question))
-        sys_prompt = getattr(agent, "system_prompt", "") or ""
-        provider = getattr(agent, "provider", self.provider)
+        convo_buffer.append(HumanMessage(content=question))
 
         # Use the agent's BASE llm (no tool bindings) so the model is
         # free to reply in plain prose without trying to invoke
-        # routing tools that no longer make sense.
-        base_llm = getattr(agent, "base_llm", None) or agent.llm
+        # routing tools that no longer make sense post-session.
         response = invoke_with_retry(
-            base_llm,
-            [make_system_message(sys_prompt, provider)] + agent.messages,
+            agent_base_llm,
+            [make_system_message(agent_system_prompt, agent_provider)]
+            + convo_buffer,
             f"DH<-{agent_key}",
         )
-        agent.messages.append(response)
+        convo_buffer.append(response)
         answer = ai_text(getattr(response, "content", "")).strip()
         if not answer:
             answer = "(agent produced no text in response)"
@@ -1072,35 +1123,6 @@ class DatabaseHandler:
         return body
 
     # ------------------------------------------------------------------
-    # Snapshots
-    # ------------------------------------------------------------------
-
-    def _freeze_histories(self, orchestrator) -> dict:
-        """Deep-copy every chain agent's history at interview start.
-
-        Snapshots the live ``self.messages`` of every agent in the
-        Orchestrator's registry.  Each conversation with an agent
-        will restore from this dict before sending its FIRST question,
-        so the agent answers from session-time memory only — not from
-        anything the DH said to it in a previous round.
-        """
-        snapshots: dict = {}
-        for key, agent in orchestrator._agents_by_key.items():
-            messages = getattr(agent, "messages", None)
-            if messages is None:
-                snapshots[key] = []
-                continue
-            try:
-                snapshots[key] = copy.deepcopy(messages)
-            except Exception as exc:
-                logger.warning(
-                    f"[DH]  deepcopy of {key} history failed ({exc}); "
-                    f"falling back to shallow copy"
-                )
-                snapshots[key] = list(messages)
-        return snapshots
-
-    # ------------------------------------------------------------------
     # Disk I/O
     # ------------------------------------------------------------------
 
@@ -1165,10 +1187,3 @@ class DatabaseHandler:
         path.write_text("", encoding="utf-8")
         return path
 
-    # ------------------------------------------------------------------
-    # Misc
-    # ------------------------------------------------------------------
-
-    def reset(self) -> None:
-        """Clear DH conversation history."""
-        self.messages.clear()

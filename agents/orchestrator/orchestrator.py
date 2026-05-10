@@ -161,8 +161,12 @@ class Orchestrator(BaseChainAgent):
         # types ``quit`` and confirms saving.  Not part of the
         # dispatch loop, has no routing tools, never speaks to the
         # user.  Held here so the loader can reach it via the
-        # Orchestrator instance.
-        self.database_handler = DatabaseHandler()
+        # Orchestrator instance.  As of v3 Phase 1 commit 6, the DH
+        # is a BaseChainAgent like every other agent, takes
+        # (state, session), and reads from session.agent_states.
+        self.database_handler = DatabaseHandler(
+            state=_state_for("database_handler"), session=session,
+        )
 
         # Orchestrator-specific extras (BaseChainAgent already set
         # self.messages / self._pending_hop / self.llm / self.base_llm).

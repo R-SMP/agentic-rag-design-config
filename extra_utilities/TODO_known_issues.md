@@ -147,46 +147,6 @@ that boundary.
 supports the rephrased "remember everything" behaviour for now.
 Implement before the v2 that fills > 2 fields per agent.
 
-### O4. Database Handler: `_pending_hop` and other per-instance state not snapshotted
-
-**Where.** `agents/database_handler/database_handler.py:_freeze_histories`.
-
-**What.** The DH's freeze/restore pump only deepcopies
-`agent.messages`.  Every chain agent additionally carries
-per-instance state that is independent of the message list:
-
-  * `_pending_hop`: the next-hop record set by routing tools.
-  * `cycle_start_ts` (Receptionist): timestamp marking the start of
-    the current user cycle, used by `format_outgoing` to filter
-    fresh artefacts.
-  * `_pending_image_blocks` / `_pending_image_paths`: buffered
-    image content blocks waiting to be flushed as a trailing
-    HumanMessage.
-
-If any of these still hold session-time values when the DH starts a
-new conversation with the agent, the agent could behave
-inconsistently — e.g. the Receptionist's `_latest_active_attempt`
-filter would still treat the post-quit timestamp as "this cycle".
-
-**Why it does not crash today.** The DH calls `agent.base_llm`
-directly and never invokes `agent.run()`, so the run loop's branches
-that read `_pending_hop` / `_pending_image_blocks` never execute.
-But this is an implicit contract.  Any future change that has the
-DH go through `agent.run()` (e.g. to let the agent use its bound
-tools during the interview) would silently rely on stale state.
-
-**Required mitigation.** Extend `_freeze_histories` to capture a
-named subset of per-agent attributes (start with `_pending_hop`,
-`_pending_image_blocks`, `_pending_image_paths`, `cycle_start_ts`)
-into the snapshot dict alongside `messages`.  In
-`_run_one_conversation`, restore each captured attribute back onto
-the live agent at conversation start.  Provide a default of `None`
-or empty-list when the attribute does not exist on a given agent.
-
-**Status.** Open.  Required before any change that has the DH
-invoke an agent's `run()` method instead of going through
-`base_llm` directly.
-
 ### O6. Database Handler: file-as-is database fields are skipped
 
 **Where.** `agents/database_handler/database_handler.py:SCHEDULE`.
@@ -410,6 +370,30 @@ opening**. Do not re-add it.
 ---
 
 ## Resolved issues
+
+### R3. Database Handler: `_pending_hop` and other per-instance state not snapshotted
+
+**Resolved:** 2026-05-10. Originally tracked as Open issue O4
+(`_freeze_histories` only deepcopied `agent.messages`, leaving
+`_pending_hop` / `_pending_image_blocks` / `_pending_image_paths`
+/ `cycle_start_ts` unsnapshotted; safe today only because the DH
+called `agent.base_llm` directly and never invoked `agent.run()`,
+so the run-loop branches that read those attributes never fired —
+an implicit contract that any future DH change touching `run()`
+would silently violate).
+
+**Resolved by construction in v3 Phase 1 commit 6.** The DH no
+longer freezes / restores anything onto live agent instances.
+`_run_one_conversation` reads `session.agent_states[agent_key].
+messages` (a copy) into a local `convo_buffer` list and runs the
+DH-vs-agent conversation entirely in that buffer.  No live agent
+attribute is ever read or mutated by the DH conversation loop, so
+the unsnapshotted attributes simply do not enter the picture.
+
+The `_freeze_histories` method is removed; the `agent.messages =
+copy.deepcopy(snapshot)` mutation is removed; the W6 invariant
+this issue depended on is also resolved (see warnings_developer.md
+W6 — annotated as obsolete).
 
 ### R2. Parallel image-loading tool calls produce a malformed message history
 

@@ -308,12 +308,9 @@ def _end_session(
                     f"[DH]  populating database under {session_db_dir.resolve()}"
                 )
                 written = dh.populate_database(
-                    orchestrator,
                     session_db_dir,
-                    dc_inspector_enabled=getattr(
-                        orchestrator, "dc_inspector_enabled", False,
-                    ),
                     session_timestamp=_resolve_session_timestamp(),
+                    orchestrator=orchestrator,
                 )
                 logger.info(f"[DH]  wrote {written} entries")
                 print(f"Database entries written: {written} -> {session_db_dir.resolve()}")
