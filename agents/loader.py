@@ -12,11 +12,12 @@ import re
 from datetime import datetime, timezone
 from pathlib import Path
 
+from agents.dispatch import dispatch_turn
 from agents.orchestrator import Orchestrator
 from agents.shared.llm_provider import list_agent_configs
 from agents.shared.routing_tools import AGENT_DISPLAY
 from agents.shared.session import Session
-from agents.shared.trace import close_trace, init_trace, trace as _trace
+from agents.shared.trace import close_trace, init_trace
 from config import (
     ATTEMPTS_DIR,
     DATABASE_DIR,
@@ -36,7 +37,6 @@ from workflow_settings import settings as workflow_settings
 
 _ID_RE = re.compile(r"^ID(\d+)_")
 _LOG_TS_RE = re.compile(r"session_(\d{8}_\d{6})\.log$")
-_RECEPTIONIST_LABEL = "[Incoming from: Receptionist]"
 
 
 def _next_session_id() -> int:
@@ -356,22 +356,6 @@ def _dump_agent_histories(orchestrator, logger) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Input-file helpers
-# ---------------------------------------------------------------------------
-
-
-def _save_user_input(text: str) -> Path:
-    """Append the user's text input to inputs/user_query.txt with a
-    timestamp.  Returns the inputs directory path."""
-    USER_INPUTS_DIR.mkdir(parents=True, exist_ok=True)
-    query_path = USER_INPUTS_DIR / "user_query.txt"
-    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    with open(query_path, "a", encoding="utf-8") as f:
-        f.write(f"\n--- [{timestamp}] ---\n{text}\n")
-    return USER_INPUTS_DIR
-
-
-# ---------------------------------------------------------------------------
 # Startup prompts
 # ---------------------------------------------------------------------------
 
@@ -604,71 +588,17 @@ def run() -> None:
 
             logger.info(f"[USER]  {user_input}")
 
-            # Step 1: Save user input to files
-            input_dir = _save_user_input(user_input)
-            logger.info(f"[INPUT FILES]  saved to {input_dir.resolve()}")
-
-            # Step 2: Receptionist reads the input files and decides, via
-            # its own reasoning, whether to forward into the pipeline
-            # (``forward == True``) or to reply to the user directly.  The
-            # decision is recorded purely by the tool the LLM chose to
-            # invoke — no status codes, no code-words.
-            _trace("User", "Receptionist")
-            validation = orchestrator.receptionist.validate_input(input_dir)
-            logger.info(
-                f"[RECEPTIONIST]  forward={validation['forward']}  "
-                f"message={validation['message']}"
+            # The per-turn body lives in agents/dispatch.py so the v3
+            # Streamlit handler can reuse it (Phase 3).  Loader's role
+            # here is the I/O surface: read user input, print the
+            # reply.  All agent orchestration is inside dispatch_turn.
+            result = dispatch_turn(
+                session=session,
+                user_input=user_input,
+                inputs_dir=USER_INPUTS_DIR,
+                orchestrator=orchestrator,
             )
-
-            if not validation["forward"]:
-                _trace("Receptionist", "User", "direct")
-                print(f"\nAssistant: {validation['message']}\n")
-                logger.info(f"[RECEPTIONIST -> USER]  {validation['message']}")
-                continue
-
-            # Step 3: Orchestrator drives the horizontal dispatch loop.
-            _trace("Receptionist", "Orchestrator", "forwarded")
-            orchestrator.reset_turn()
-            ft_str = ", ".join(validation["file_types"]) if validation["file_types"] else "text"
-            receptionist_summary = (validation.get("message") or "").strip()
-            # The routing tool prepends `[Incoming from: Receptionist]` to the
-            # Receptionist's call_orchestrator message.  The kickoff below
-            # already carries its own top-level `[Incoming from: Receptionist]`
-            # label, so strip the inner duplicate before embedding the
-            # summary under the "--- Receptionist's summary to you ---"
-            # header.
-            if receptionist_summary.startswith(_RECEPTIONIST_LABEL):
-                receptionist_summary = receptionist_summary[
-                    len(_RECEPTIONIST_LABEL):
-                ].lstrip()
-            kickoff_parts = [
-                "[Incoming from: Receptionist]",
-                "",
-                "New user message forwarded by the Receptionist.",
-                "",
-                "--- Receptionist's summary to you ---",
-                receptionist_summary or "(no summary supplied)",
-                "",
-                f"Input file directory: {validation['input_dir']}",
-                f"Available file types: {ft_str}",
-                "",
-                "Decide freely how to proceed.  In most cases this means "
-                "handing off to the Planner with whatever context from the "
-                "Receptionist (goals, strategy caps, specific requirements, "
-                "abstract reasoning, disambiguations) would help the Planner "
-                "do its job well.  Lose no useful context.",
-            ]
-            kickoff = "\n".join(kickoff_parts)
-            outgoing = orchestrator.dispatch(kickoff)
-            if not outgoing or not outgoing.strip():
-                outgoing = (
-                    "(internal error — the system produced no user-facing "
-                    "message; please re-send your last request)"
-                )
-                logger.error("[DISPATCH]  empty user-facing message; substituted fallback")
-            _trace("Receptionist", "User", "delivered")
-            print(f"\nAssistant: {outgoing}\n")
-            logger.info(f"[RECEPTIONIST -> USER]  {outgoing}")
+            print(f"\nAssistant: {result.reply_text}\n")
     except KeyboardInterrupt:
         try:
             logger.info("[SESSION END]  KeyboardInterrupt")
