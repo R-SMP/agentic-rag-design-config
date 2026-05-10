@@ -100,65 +100,93 @@ def dispatch_turn(
     if orchestrator is None:
         orchestrator = Orchestrator(session=session, llm_cache=llm_cache)
 
-    # 1. Save the user's text to user_query.txt.
-    save_user_input(user_input, inputs_dir)
-    logger.info(f"[INPUT FILES]  saved to {inputs_dir.resolve()}")
+    try:
+        # 1. Save the user's text to user_query.txt.
+        save_user_input(user_input, inputs_dir)
+        logger.info(f"[INPUT FILES]  saved to {inputs_dir.resolve()}")
 
-    # 2. Receptionist reads the input files and decides whether to
-    #    forward into the pipeline or reply directly.
-    _trace("User", "Receptionist")
-    validation = orchestrator.receptionist.validate_input(inputs_dir)
-    logger.info(
-        f"[RECEPTIONIST]  forward={validation['forward']}  "
-        f"message={validation['message']}"
-    )
-
-    if not validation["forward"]:
-        _trace("Receptionist", "User", "direct")
-        reply = validation["message"]
-        logger.info(f"[RECEPTIONIST -> USER]  {reply}")
-        return TurnResult(reply_text=reply, forwarded=False)
-
-    # 3. Receptionist forwarded — Orchestrator drives the dispatch loop.
-    _trace("Receptionist", "Orchestrator", "forwarded")
-    orchestrator.reset_turn()
-    receptionist_summary = (validation.get("message") or "").strip()
-    if receptionist_summary.startswith(_RECEPTIONIST_LABEL):
-        receptionist_summary = receptionist_summary[
-            len(_RECEPTIONIST_LABEL):
-        ].lstrip()
-
-    ft_str = (
-        ", ".join(validation["file_types"])
-        if validation["file_types"] else "text"
-    )
-    kickoff_parts = [
-        "[Incoming from: Receptionist]",
-        "",
-        "New user message forwarded by the Receptionist.",
-        "",
-        "--- Receptionist's summary to you ---",
-        receptionist_summary or "(no summary supplied)",
-        "",
-        f"Input file directory: {validation['input_dir']}",
-        f"Available file types: {ft_str}",
-        "",
-        "Decide freely how to proceed.  In most cases this means "
-        "handing off to the Planner with whatever context from the "
-        "Receptionist (goals, strategy caps, specific requirements, "
-        "abstract reasoning, disambiguations) would help the Planner "
-        "do its job well.  Lose no useful context.",
-    ]
-    kickoff = "\n".join(kickoff_parts)
-    outgoing = orchestrator.dispatch(kickoff)
-    if not outgoing or not outgoing.strip():
-        outgoing = (
-            "(internal error — the system produced no user-facing "
-            "message; please re-send your last request)"
+        # 2. Receptionist reads the input files and decides whether to
+        #    forward into the pipeline or reply directly.
+        _trace("User", "Receptionist")
+        validation = orchestrator.receptionist.validate_input(inputs_dir)
+        logger.info(
+            f"[RECEPTIONIST]  forward={validation['forward']}  "
+            f"message={validation['message']}"
         )
-        logger.error(
-            "[DISPATCH]  empty user-facing message; substituted fallback"
+
+        if not validation["forward"]:
+            _trace("Receptionist", "User", "direct")
+            reply = validation["message"]
+            logger.info(f"[RECEPTIONIST -> USER]  {reply}")
+            return TurnResult(reply_text=reply, forwarded=False)
+
+        # 3. Receptionist forwarded — Orchestrator drives the dispatch loop.
+        _trace("Receptionist", "Orchestrator", "forwarded")
+        orchestrator.reset_turn()
+        receptionist_summary = (validation.get("message") or "").strip()
+        if receptionist_summary.startswith(_RECEPTIONIST_LABEL):
+            receptionist_summary = receptionist_summary[
+                len(_RECEPTIONIST_LABEL):
+            ].lstrip()
+
+        ft_str = (
+            ", ".join(validation["file_types"])
+            if validation["file_types"] else "text"
         )
-    _trace("Receptionist", "User", "delivered")
-    logger.info(f"[RECEPTIONIST -> USER]  {outgoing}")
-    return TurnResult(reply_text=outgoing, forwarded=True)
+        kickoff_parts = [
+            "[Incoming from: Receptionist]",
+            "",
+            "New user message forwarded by the Receptionist.",
+            "",
+            "--- Receptionist's summary to you ---",
+            receptionist_summary or "(no summary supplied)",
+            "",
+            f"Input file directory: {validation['input_dir']}",
+            f"Available file types: {ft_str}",
+            "",
+            "Decide freely how to proceed.  In most cases this means "
+            "handing off to the Planner with whatever context from the "
+            "Receptionist (goals, strategy caps, specific requirements, "
+            "abstract reasoning, disambiguations) would help the Planner "
+            "do its job well.  Lose no useful context.",
+        ]
+        kickoff = "\n".join(kickoff_parts)
+        outgoing = orchestrator.dispatch(kickoff)
+        if not outgoing or not outgoing.strip():
+            outgoing = (
+                "(internal error — the system produced no user-facing "
+                "message; please re-send your last request)"
+            )
+            logger.error(
+                "[DISPATCH]  empty user-facing message; substituted fallback"
+            )
+        _trace("Receptionist", "User", "delivered")
+        logger.info(f"[RECEPTIONIST -> USER]  {outgoing}")
+        return TurnResult(reply_text=outgoing, forwarded=True)
+    finally:
+        # Snapshot every live agent's state back into session.agent_
+        # states so that (a) v3 callers who rebuild Orchestrator per
+        # turn pick up where this turn left off, and (b) the DH's
+        # populate_database (which reads session.agent_states) sees
+        # the actual session-time messages — not the empty placeholder
+        # AgentStates created at Orchestrator-construction time.
+        # Runs in a finally so a mid-dispatch crash still persists
+        # whatever progress the agents made before the failure.
+        _snapshot_agents_to_session(orchestrator, session)
+
+
+def _snapshot_agents_to_session(
+    orchestrator: Orchestrator, session: Session,
+) -> None:
+    """Write every live agent's snapshot_state into session.agent_states.
+
+    Covers the seven chain agents + Orchestrator (all of which live in
+    ``orchestrator._agents_by_key``) and the DatabaseHandler (held
+    separately on the Orchestrator).  Each call replaces the existing
+    ``session.agent_states[<key>]`` entry with a fresh AgentState.
+    """
+    for agent_key, agent in orchestrator._agents_by_key.items():
+        session.agent_states[agent_key] = agent.snapshot_state()
+    session.agent_states["database_handler"] = (
+        orchestrator.database_handler.snapshot_state()
+    )
