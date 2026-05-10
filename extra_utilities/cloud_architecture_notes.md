@@ -39,14 +39,26 @@ and the deployment target. Defer this migration until usage justifies
 
 ---
 
-## C2. Frontend: Streamlit served by FastAPI
+## C2. Frontend: Streamlit-only (no FastAPI front-door for MVP)
 
-**Choice.** Frontend is **Streamlit**, served by the same FastAPI
-process that runs the agent loop. No separate frontend host.
+**Choice.** Frontend is **Streamlit**, run as the Railway service's
+sole entry point.  No FastAPI front-door, no reverse proxy.  The
+Streamlit script imports the agent code directly and drives
+`agents/dispatch.py:dispatch_turn` per user turn.
 
 **Why.** All-Python (matches the rest of the stack), 1–2 days to
 prototype, no separate deploy, no JS/CSS knowledge required. Looks
 "internal-tool" but acceptable for thesis-stage demos.
+
+**Reconciliation note (2026-05-10).**  Earlier drafts of this file
+described the frontend as "Streamlit served by FastAPI", paired with
+a `slowapi` per-IP rate limiter on the FastAPI side (see C3 for the
+parallel reconciliation there).  The build spec settled on
+Streamlit-only when the per-IP rate limit was dropped per OQ1 — with
+no rate-limit middleware needed, the FastAPI front-door has no
+remaining purpose.  Streamlit handles HTTP, routing, sessions, and
+the chat UI by itself; auth (C3) is implemented as an in-script
+gate on `st.session_state` rather than as a middleware.
 
 ### Streamlit limitations to watch for
 
@@ -202,6 +214,27 @@ module-level `dict[session_id, Session]`. Redis is used only for the
 3. Option A is simpler to reason about while we are still figuring out
    where every piece of session state actually lives.
 
+### Stage A: single-user-at-a-time on disk paths
+
+Stage A keeps every active session in `st.session_state` (per-browser
+isolation works for UI state), but the **agents and tools still
+read and write the global `config.py` paths** — `USER_INPUTS_DIR`,
+`ATTEMPTS_DIR`, `LOGS_DIR`.  Two browsers hitting the same Streamlit
+pod simultaneously will collide on disk: shared `inputs/user_query.
+txt`, shared `attempts/`, overwritten `logs/agent_histories/`.
+
+The `Session.create_for_v3(...)` factory already constructs the
+right per-session Path objects (`inputs/<session_id>/`, etc.), but
+plumbing them through every agent + tool is a Stage B refactor —
+naturally paired with the introduction of real `user_id` /
+`session_id` identity from the Postgres `sessions` table.
+
+Operational implication for Stage A: share the cloud URL with **one
+invitee at a time**, and document that constraint on the invite-code
+login screen if user-visible wording is needed.  See
+`warnings_developer.md` W13 and `TODO_known_issues.md` O9 for the
+full removal-trigger conditions.
+
 ### Day-one design rule
 
 **Agent state must be plain data — JSON-serialisable from day one.**
@@ -345,13 +378,55 @@ Effort: ~30 min when the trigger fires. Not worth doing in advance.
 
 ---
 
+## C6. UI control labelling discipline (Stage A vs Stage B)
+
+**Choice.** Stage A's Streamlit app exposes exactly one
+end-of-conversation control, labelled **"End Session"**.  Pressing
+it clears `st.session_state` and reloads the page with a fresh
+empty Session.  Nothing is persisted — Stage A has no database
+wired in.
+
+**Stage B introduces a true "Save" button** that triggers the
+Database Handler save flow and writes a single
+`sessions → dc_attempts → dc_attempt_parameters → chunks`
+transaction (per `database_design_notes.md` D9 and D15).  When
+that lands, the Stage A "End Session" control may either remain
+alongside Save (as the explicit "discard, don't save" path) or be
+replaced by a Save / Discard pair — open Stage B UX decision
+tracked under `TODO_known_issues.md` O10.
+
+**Why this matters as an architectural rule, not just UX.**  The
+build-spec invariants W8 (v4 REPL save prompt is opt-in) and W14
+(Stage A button label discipline) prohibit silent saves — every
+DB write has to come from an explicit user action, and every
+button label has to match what the system can actually deliver.
+Labelling the Stage A button anything other than "End Session"
+("Save", "Save & Quit", "Submit", "Archive") would promise
+persistence the system cannot perform.
+
+**Future buttons (planned, NOT in Stage A).**
+
+| Stage | New control | Effect |
+|---|---|---|
+| B | "Save" | Persist Session via DH save flow into Postgres (D9 transaction). |
+| B (TBD) | "Save & Quit" combined, or Save / Discard pair | Open UX call; tracked in O10. |
+| C | (no new buttons) | Stage C wires RAG retrieval into agents — no new user-facing controls. |
+
+Until Stage B lands, do **not** add a "Save" button to the Stage A
+UI even as a placeholder.  A non-functional placeholder is worse
+than its absence: users will press it expecting a save, find the
+session reset, and lose trust in the labelling.  See
+`warnings_developer.md` W14.
+
+---
+
 ## Quick-reference: the v2 stack
 
 | Layer | Choice |
 |---|---|
 | Backend host | Railway (Hobby) |
-| Backend framework | FastAPI |
-| Frontend | Streamlit served by the FastAPI process |
+| Backend framework | None — Streamlit is the entry point (no FastAPI front-door for MVP, see C2) |
+| Frontend | Streamlit, drives `agents/dispatch.py:dispatch_turn` directly |
 | Postgres | Railway Postgres (pgvector ≥ 0.5, HNSW from day one) |
 | Redis | Railway Redis (`session_id` routing only in Option A) |
 | Object storage | Cloudflare R2 |

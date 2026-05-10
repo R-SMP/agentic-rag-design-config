@@ -202,6 +202,39 @@ DDL boot order: `sessions → dc_attempts → dc_attempt_parameters → chunks`
   new ones. A separate `prune_old_embeddings.py` script can delete
   superseded rows when explicitly invoked.
 
+## D15. Save trigger and the user-facing "Save" button
+
+The single-transaction save in D9 is invoked from exactly one user
+action: pressing **"Save"** in the web UI at end-of-session.  This
+button is **not present in Stage A** — Stage A ships a Streamlit
+chat with only an **"End Session"** control that clears
+`st.session_state` and reloads with no DB write.  The "Save"
+button arrives in **Stage B**, alongside Phase 2 (DB schema +
+save flow) and the wiring of the DH into the Streamlit handler.
+
+Implications for the schema:
+
+- **No row in `sessions`, `dc_attempts`, `dc_attempt_parameters`,
+  or `chunks` is ever written by Stage A.**  Stage A traffic
+  produces no DB activity at all.  This is why Phase 6 brings up
+  Postgres locally but the Stage A Streamlit pod has no
+  `DATABASE_URL` requirement — the connection is provisioned but
+  unused.
+- **The Phase 2 save code can assume the user explicitly opted in.**
+  No silent saves on browser close / Ctrl-C / unhandled exception
+  in Stage B either, by analogy with `warnings_developer.md` W8.
+- **One Save click → one D9 transaction.**  Re-clicking Save inside
+  the same session is a no-op (the `sessions.session_id` UNIQUE
+  constraint and the `chunks` UNIQUE on
+  `(session_id, agent_from, field, embedding_model)` would reject
+  duplicates anyway, but the UI should disable the button after
+  the first successful save rather than rely on the DB to fail).
+
+See also: `cloud_architecture_notes.md` C6 (Stage A UI control
+labelling); `TODO_known_issues.md` O10 (open Stage B UX questions
+for the Save button); `warnings_developer.md` W14 (do-not-add-Save
+discipline for Stage A).
+
 ---
 
 ## Quick-reference DDL

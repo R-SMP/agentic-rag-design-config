@@ -244,3 +244,65 @@ by the root logger and end up in the main session log, defeating
 the entire reason for having a dedicated DH log.  If you ever copy
 this pattern to add another dedicated logger, do NOT forget to set
 `propagate = False`.
+
+## W13. Stage A is single-user-at-a-time on disk.
+
+**Where.** Any code path that writes to or reads from
+`config.USER_INPUTS_DIR`, `config.ATTEMPTS_DIR`, `config.LOGS_DIR`,
+or `config.INPUT_IMAGES_DIR` — i.e. essentially every agent and
+tool that touches user inputs, attempts, or logs.
+
+**Why.** Stage A ships a Streamlit app whose `st.session_state`
+isolates per-browser-session UI state, BUT the agents and tools
+still write to the global on-disk paths from `config.py`.  Two
+users hitting the same Streamlit pod simultaneously will collide:
+both will append to the same `inputs/user_query.txt`, both will
+write attempts into the same `attempts/<TS>_<NNN>_<slug>/`, both
+will see each other's renders.  The `Session.create_for_v3` factory
+already exists to namespace per-session paths, but plumbing those
+paths through every agent + tool is a Stage B refactor (it pairs
+naturally with introducing real per-user identity from Postgres).
+
+**Implications for Stage A.**
+  * Treat Stage A as **one-user-at-a-time**.  Document it on the
+    invite-code login screen if user-visible wording is needed.
+  * Do NOT silently rely on `Session.inputs_dir` etc. being set —
+    they are None in v4 REPL and will also be None in Stage A's
+    Streamlit dispatcher.  The caller passes `config.USER_INPUTS_DIR`
+    to `dispatch_turn` directly, same as v4.
+  * If you find yourself reaching for "let's just namespace one
+    path", stop — partial namespacing is worse than none (some
+    users see each other's files, some don't, hard to debug).
+    Either do the whole refactor (Stage B) or accept the single-user
+    invariant.
+
+**Removal trigger.** This warning becomes obsolete the moment Stage
+B lands per-session path namespacing through every agent and tool.
+At that point, replace this entry with a short "obsolete" note
+pointing at the commit that did the threading, like W6/W7 above.
+
+## W14. UI button labels in Stage A must not promise persistence.
+
+**Where.** Any Streamlit-side widget that ends or interrupts a
+conversation in the Stage A web app.
+
+**Why.** Stage A runs without a database.  There is no save flow
+yet — the Database Handler exists in code but is wired only into
+the v4 REPL's end-of-session prompt, not into the Streamlit UI.
+Labelling a Stage A button "Save", "Save & Quit", "Submit",
+"Archive", or anything similar promises persistence the system
+cannot deliver and was a real source of confusion in earlier
+v2 mockups.
+
+**Stage A label.** The single available end-of-conversation
+control is **"End Session"**.  It clears `st.session_state` and
+reloads the page with a fresh empty Session.  Nothing is written
+anywhere.
+
+**Future stages.** Stage B introduces a true **"Save"** button
+(persists Session into Postgres via the DH save flow).  When
+Stage B lands, a Stage A-style "End Session" button MAY remain
+alongside Save (as the explicit "discard, don't save" path) or
+be replaced by a Save / Discard pair — this is a Stage B UX
+decision, not a Stage A one.  Until then, do NOT add a "Save"
+button anywhere in the Stage A UI even as a placeholder.

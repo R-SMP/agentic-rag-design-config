@@ -252,6 +252,85 @@ either:
 
 **Status.** Open, low priority while DCII is on by default.
 
+### O9. Stage A: single-user-at-a-time on disk paths
+
+**Where.** Every agent and tool that reads or writes the global
+paths in `config.py` (`USER_INPUTS_DIR`, `ATTEMPTS_DIR`, `LOGS_DIR`,
+`INPUT_IMAGES_DIR`).  Same surface as `warnings_developer.md` W13.
+
+**What.** Stage A's Streamlit app isolates per-browser-session UI
+state via `st.session_state`, but the agents underneath still
+write to the global on-disk paths.  Two users hitting the same
+pod simultaneously will collide — they will share `inputs/user_
+query.txt`, they will see each other's renders under `attempts/`,
+and their per-agent log files in `logs/agent_histories/` will
+overwrite each other.
+
+**Required behaviour.** Each Streamlit user-session needs its own
+namespaced directory tree under `inputs/<session_id>/`,
+`attempts/<session_id>/`, and `logs/<session_id>/`.  The
+`Session.create_for_v3(...)` factory in `agents/shared/session.py`
+already constructs the right Path objects, but the agents and
+tools currently bypass `session.inputs_dir` / `attempts_dir` /
+`logs_dir` and read straight from `config.*`.  The fix is to
+plumb the per-session paths through:
+
+- every agent that opens a file under one of those paths
+  (Receptionist, UII, Planner, DCIC, DCOI, Tool Caller, DH),
+- every helper in `agents/shared/file_utils.py` and the
+  per-agent `*_tool.py` modules,
+- the `Orchestrator`, which already receives the Session — pass
+  it to each chain agent at construction time and resolve paths
+  from `session.<x>_dir or config.<X>_DIR` (the `or` keeps the v4
+  REPL working when the path fields are None).
+
+**Why deferred to Stage B.** Stage B is when sessions persist to
+Postgres, which means real `user_id` / `session_id` identity flows
+through the system anyway.  Plumbing per-session disk paths is a
+free side-effect of that work.  Doing it in Stage A would touch
+~every agent for an MVP that explicitly accepts single-user
+operation.
+
+**Mitigation in Stage A.** Document the limit on the invite-code
+login screen if user-visible wording is needed, and operationally:
+share the URL with one user at a time during the thesis demos.
+
+**Status.** Open.  Resolved when Stage B's per-session path
+plumbing lands; remove this entry and W13 together at that point.
+
+### O10. Stage A: "End Session" only — no Save button until Stage B
+
+**Where.** Stage A Streamlit UI (`streamlit_app.py` once it lands
+in Phase 3).
+
+**What.** The Stage A app exposes exactly one end-of-conversation
+control, labelled **"End Session"**, which clears
+`st.session_state` and reloads with a fresh Session.  Nothing is
+persisted (no DB in Stage A).
+
+**Required behaviour for Stage B.** Add a true **"Save"** button
+that triggers the Database Handler save flow and persists the
+Session into Postgres.  Open UX questions for that future button:
+
+- Should "End Session" remain alongside "Save" as the explicit
+  "discard, don't save" path, or be replaced by a Save / Discard
+  pair?
+- Should Save show a pre-save preview (number of attempts, agent
+  step counts, expected DH LLM cost) before confirming?  This is
+  the same UX question O5 raises for the v4 REPL's save prompt —
+  resolve once for both surfaces.
+- On the unhandled-exception / browser-close paths, should
+  anything be written?  Stage A says no (consistent with W8 in
+  the v4 REPL).  Stage B should keep that default unless the user
+  explicitly opts in.
+- Per-agent skip ("save UII + Planner only") — same shape as O5,
+  defer until the basic Save button is shipped.
+
+**Status.** Open, blocked on Stage B (DB save flow).  Until Stage
+B lands, the Stage A label discipline in `warnings_developer.md`
+W14 applies: do NOT add a "Save" button to the Stage A UI even
+as a placeholder.
+
 ### O5. Database Handler: end-of-session save-prompt UX
 
 **Where.** `agents/loader.py:run` — the `_ask_yes_no("Save this
