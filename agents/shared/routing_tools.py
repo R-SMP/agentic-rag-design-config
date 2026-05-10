@@ -3,8 +3,9 @@
 Each chain agent is bound to a subset of per-target tools named
 ``call_<target>``.  When an agent's LLM invokes one of these tools:
 
-  1. The exchange (caller, target, message) is appended to a shared
-     ``ChainLog`` and to the agent-flow trace.
+  1. The exchange (caller, target, message, ts) is appended to the
+     session-scoped ``session.chain_log_exchanges`` and to the
+     agent-flow trace.
   2. The intended next hop is recorded on the caller agent's instance
      (``caller._pending_hop``).
   3. The tool returns a brief acknowledgement string so the caller's
@@ -26,10 +27,15 @@ re-enters the Orchestrator's persistent run loop, appending a fresh
 import json
 import logging
 from dataclasses import dataclass
+from datetime import datetime, timezone
+from typing import TYPE_CHECKING
 
 from langchain_core.tools import StructuredTool
 
 from agents.shared.trace import trace as _trace
+
+if TYPE_CHECKING:
+    from agents.shared.session import Session
 
 logger = logging.getLogger("propeller_agent")
 
@@ -120,28 +126,36 @@ ROUTING_TOOL_NAMES: set[str] = {f"call_{k}" for k in AGENT_DISPLAY}
 
 
 # ---------------------------------------------------------------------------
-# Shared chain log
+# Chain-log helpers
 # ---------------------------------------------------------------------------
+#
+# The chain log lives on Session as ``session.chain_log_exchanges`` —
+# a session-scoped list of plain dicts, one per inter-agent hand-off.
+# (Per Q1 of v3 Phase 1's design pass the chain log accumulates across
+# the WHOLE session; the per-turn-only "just exchanges since I last
+# saw" view is reconstructed in Orchestrator.dispatch via a cursor
+# tracked per-dispatch-call rather than by resetting the log.)
+#
+# Each exchange dict has four keys:
+#   - ``from_agent``: caller's display name (e.g. "Planner")
+#   - ``to_agent``:   target's display name (e.g. "Tool Caller")
+#   - ``message``:    the unlabelled hand-off prose
+#   - ``ts``:         ISO-8601 with timezone, recorded at append time
 
-class ChainLog:
-    """In-memory buffer of inter-agent exchanges for the current user turn."""
+def format_chain_exchanges(exchanges: list[dict]) -> str:
+    """Render a list of chain-log exchanges as the prose block agents see.
 
-    def __init__(self) -> None:
-        self.exchanges: list[tuple[str, str, str]] = []
-
-    def append(self, from_agent: str, to_agent: str, message: str) -> None:
-        self.exchanges.append((from_agent, to_agent, message))
-
-    def reset(self) -> None:
-        self.exchanges.clear()
-
-    def format(self) -> str:
-        if not self.exchanges:
-            return ""
-        blocks = [
-            f"[FROM {a}, TO {b}]:\n{m}" for a, b, m in self.exchanges
-        ]
-        return "\n\n---\n\n".join(blocks)
+    Same shape as the previous ``ChainLog.format()`` output (which the
+    Orchestrator-with-chain-access prepends to its incoming message),
+    but reads dicts instead of tuples.
+    """
+    if not exchanges:
+        return ""
+    blocks = [
+        f"[FROM {ex['from_agent']}, TO {ex['to_agent']}]:\n{ex['message']}"
+        for ex in exchanges
+    ]
+    return "\n\n---\n\n".join(blocks)
 
 
 # ---------------------------------------------------------------------------
@@ -196,9 +210,18 @@ def build_routing_tool(
     caller_key: str,
     target_key: str,
     caller_agent,
-    chain_log: ChainLog,
+    session: "Session",
 ):
-    """Build a ``call_<target_key>`` tool for the agent named ``caller_key``."""
+    """Build a ``call_<target_key>`` tool for the agent named ``caller_key``.
+
+    The tool closes over ``session`` so that invoking it appends an
+    exchange dict directly to ``session.chain_log_exchanges`` — same
+    uniform pattern every other piece of agent state uses (no extra
+    wrapper class).  Closing over ``caller_agent`` lets the tool
+    record the next-hop on that exact agent instance, even when agents
+    are rebuilt per turn (the Orchestrator re-runs ``_wire_routing``
+    each construction so each new agent gets fresh closures).
+    """
     caller_display = AGENT_DISPLAY.get(caller_key, caller_key)
     target_display = AGENT_DISPLAY.get(target_key, target_key)
     tool_name = f"call_{target_key}"
@@ -208,7 +231,12 @@ def build_routing_tool(
 
     def _invoke(message: str) -> str:
         if target_key != "orchestrator":
-            chain_log.append(caller_display, target_display, message)
+            session.chain_log_exchanges.append({
+                "from_agent": caller_display,
+                "to_agent": target_display,
+                "message": message,
+                "ts": datetime.now(timezone.utc).isoformat(),
+            })
         _log_inter_agent_message(caller_display, target_display, message)
         # The Receptionist -> Orchestrator hop is traced by the loader
         # with a richer "forwarded" note; skip the routing-tool trace

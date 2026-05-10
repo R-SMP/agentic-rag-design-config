@@ -11,6 +11,7 @@ Run from the project root:
 
 import sys
 import types
+from datetime import datetime, timezone
 from pathlib import Path
 from unittest.mock import patch
 
@@ -38,6 +39,7 @@ sys.modules["langchain_anthropic"] = fake_pkg
 
 
 import agents.shared.llm_provider as lp
+from agents.shared import llm_client_cache
 
 
 def _fake_resolve(_):
@@ -45,8 +47,15 @@ def _fake_resolve(_):
 
 
 with patch.object(lp, "_resolve_config", _fake_resolve):
+    # The cache may have already memoised real LLMs from prior smoke
+    # tests in the same Python process; clear it so this run binds
+    # the mocked Anthropic client.
+    llm_client_cache.reset_for_tests()
     from agents.orchestrator.orchestrator import Orchestrator
-    o = Orchestrator(
+    from agents.shared.session import Session
+    session = Session(
+        session_id="smoke_no_parallel_kwarg",
+        session_ts=datetime.now(timezone.utc),
         mesh_checks=False,
         rag_enabled=False,
         dc_inspector_enabled=True,
@@ -54,6 +63,7 @@ with patch.object(lp, "_resolve_config", _fake_resolve):
         keep_images_in_context=False,
         dcoi_comparison_mode=3,
     )
+    o = Orchestrator(session=session)
     print("Orchestrator + all sub-agents constructed with Anthropic mock.")
     print("Every bind_tools() call passed only the tools list — no kwargs.")
     print("PASS: TODO #1 stop-gap is fully removed.")

@@ -31,16 +31,16 @@ from agents.dc_output_inspector import DCOutputInspector
 from agents.planner import Planner
 from agents.receptionist import Receptionist
 from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
+from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.context_pruner import ContextPruner
 from agents.shared.file_utils import ai_text
 from agents.shared.history_tool import build_read_agent_history_tool
-from agents.shared.llm_provider import build_llm, make_system_message
+from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import ORCHESTRATOR_TEMPLATE, PLANNER_FIRST
 from agents.shared.routing_tools import (
     AGENT_DISPLAY,
     AgentHop,
-    ChainLog,
     DONE,
     ROUTING_TOOL_NAMES,
     build_routing_tool,
@@ -56,8 +56,6 @@ from agents.step_caps import (
 from agents.tool_caller import ToolCaller
 from agents.user_input_inspector import UserInputInspector
 from tools.calculate.calculate import calculate
-
-AGENT_KEY = "orchestrator"
 
 logger = logging.getLogger("propeller_agent")
 
@@ -81,82 +79,52 @@ surfaced to you.  If you need more detail about what happened inside
 the chain, escalate to the Planner with the evidence you do have."""
 
 
-class Orchestrator:
+class Orchestrator(BaseChainAgent):
     """Central orchestrator, wired up as a regular chain agent.
 
-    Each agent (including the Orchestrator) builds its own LLM via
-    ``build_llm(<agent_key>)``.  This means a per-agent ``.env`` file
-    can override which provider / model that one agent uses, without
-    affecting the others (see ``agents/shared/llm_provider.py``).
+    Subclasses ``BaseChainAgent`` so it shares the (state, session,
+    *, llm_cache) construction signature, the snapshot/restore
+    plumbing, and the LLM-cache lookup with every other chain agent.
+    The dispatch loop (``dispatch``) and chain-agent registry
+    (``_agents_by_key``) are Orchestrator-specific.
     """
+
+    AGENT_KEY = "orchestrator"
 
     def __init__(
         self,
-        mesh_checks: bool = False,
-        rag_enabled: bool = False,
-        dc_inspector_enabled: bool = True,
-        chain_access: bool = False,
-        keep_images_in_context: bool = False,
-        dcoi_comparison_mode: int = 3,
-        *,
+        state: AgentState | None = None,
         session: Session | None = None,
+        *,
+        llm_cache=None,
     ):
-        # v3 Phase 1 commit 3: accept a Session.  Backward-compat path
-        # builds a v4-mode Session in-process from the kwargs when none
-        # is supplied (existing call sites: extra_utilities/smoke_test_
-        # no_parallel_kwarg.py).  Loader passes session explicitly.
         if session is None:
-            session = Session(
-                session_id=(
-                    "v4_inproc_"
-                    + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
-                ),
-                session_ts=datetime.now(timezone.utc),
-                mesh_checks=mesh_checks,
-                rag_enabled=rag_enabled,
-                dc_inspector_enabled=dc_inspector_enabled,
-                chain_access=chain_access,
-                keep_images_in_context=keep_images_in_context,
-                dcoi_comparison_mode=dcoi_comparison_mode,
+            raise TypeError(
+                "Orchestrator now requires a Session.  Construct one "
+                "via Session(...) or Session.create_for_v3(...) and "
+                "pass it in."
             )
-        self.session = session
+        if state is None:
+            state = session.agent_states.setdefault(
+                "orchestrator", AgentState(agent_key="orchestrator"),
+            )
+        super().__init__(state=state, session=session, llm_cache=llm_cache)
+
+        # Orchestrator-specific config flags read from session.  Held
+        # on self so existing call sites that read self.* keep working
+        # without touching session.* directly.
         self.rag_enabled = session.rag_enabled
         self.dc_inspector_enabled = session.dc_inspector_enabled
         self.mesh_checks = session.mesh_checks
-        # DCOI comparison source(s) for this session — see
-        # _DCOI_COMPARISON_MODE_* blocks in dc_output_inspector.py.
         self.dcoi_comparison_mode = session.dcoi_comparison_mode
-        # When True, inter-agent messages exchanged while the
-        # Orchestrator was waiting are prepended to its next incoming
-        # message so it can see what the sub-agents said to each other.
-        # When False, the Orchestrator only sees the hand-off text.
-        # The session .log records every exchange in either case.
         self.chain_access = session.chain_access
-        # When True, image content blocks loaded by an agent persist in
-        # that agent's history across hand-offs (alongside paired
-        # ``Loaded image (path: …):`` text blocks).  When False, image
-        # blocks are stripped at every operation hand-off and only the
-        # paired path-text blocks survive.  Forwarded into the
-        # image-loading sub-agents (DCOI, UII, Receptionist).
-        self.keep_images_in_context = session.keep_images_in_context
 
-        # Shared chain log — reset at the start of every user turn
-        self.chain_log = ChainLog()
+        # The chain log lives on session.chain_log_exchanges (per
+        # v3 Phase 1 Q1 — session-scoped, not per-turn).  Routing
+        # tools and dispatch read/write it directly via self.session.
 
-        # The Orchestrator's own LLM
-        self.base_llm, self.provider, self.model = build_llm(AGENT_KEY)
-
-        # Build every sub-agent (each builds its own LLM via build_llm).
-        # All chain agents that can load images (Receptionist, Planner,
-        # UII, DCIC, DCII, DCOI) receive the keep_images_in_context
-        # flag so their on_operation_end hooks know whether to strip
-        # image bytes after each operation.  Receptionist has no image
-        # bytes to strip in practice (it is only ever fed text + paired
-        # notes via load_user_inputs_bundle(include_image_bytes=False)),
-        # but it owns the hook for symmetry with the bypass path.
-        # All seven chain agents are now BaseChainAgent subclasses
-        # (v3 Phase 1 commits 3-4) and take the (state, session)
-        # signature.  Each one's per-agent state is materialised into
+        # Build every chain agent via the (state, session) path.
+        # Each one's per-agent state is materialised into
         # session.agent_states under its own agent_key so subsequent
         # turns can rebuild the live agent from the snapshot.
         def _state_for(agent_key: str) -> AgentState:
@@ -196,17 +164,15 @@ class Orchestrator:
         # Orchestrator instance.
         self.database_handler = DatabaseHandler()
 
-        # Orchestrator's own state
-        self.messages: list = []
+        # Orchestrator-specific extras (BaseChainAgent already set
+        # self.messages / self._pending_hop / self.llm / self.base_llm).
         self._tools_by_name: dict = {}
-        self._pending_hop: AgentHop | None = None
         chain_access_block = (
-            _CHAIN_ACCESS_ON if chain_access else _CHAIN_ACCESS_OFF
+            _CHAIN_ACCESS_ON if session.chain_access else _CHAIN_ACCESS_OFF
         )
         self.system_prompt = ORCHESTRATOR_TEMPLATE.format(
             chain_access_block=chain_access_block,
         )
-        self.llm = self.base_llm  # re-bound in _wire_routing
 
         # Registry for the dispatch driver
         self._agents_by_key: dict = {
@@ -240,7 +206,10 @@ class Orchestrator:
         enabled: when it is, DCIC → DCII → TC; when it is not, DCIC →
         TC directly (and TC's ``prev`` becomes the DCIC).
         """
-        cl = self.chain_log
+        # build_routing_tool now closes over the Session so it can
+        # append exchanges directly to session.chain_log_exchanges
+        # (per v3 Phase 1 commit 5; chain log is session-scoped).
+        cl = self.session
 
         # Shared history-reading tool — bound to this Orchestrator's live
         # history provider.
@@ -490,7 +459,13 @@ class Orchestrator:
         """Run the horizontal dispatch loop and return the user-facing text."""
         current = start_agent_key
         message = kickoff_message
-        orch_chain_log_cursor = 0
+        # Cursor into the SESSION-scoped chain log.  Initialised to the
+        # log's current length so the per-turn chain-access view shows
+        # only exchanges produced during THIS dispatch call, not prior
+        # turns' exchanges (per v3 Phase 1 Q1: chain_log is session-
+        # scoped, but the Orchestrator's "what happened while I was
+        # waiting" feature stays per-turn).
+        orch_chain_log_cursor = len(self.session.chain_log_exchanges)
         orch_visits = 0
         first_orch_entry = True
 
@@ -501,7 +476,7 @@ class Orchestrator:
 
             if current == "orchestrator":
                 if self.chain_access and not first_orch_entry:
-                    new_exchanges = self.chain_log.exchanges[
+                    new_exchanges = self.session.chain_log_exchanges[
                         orch_chain_log_cursor:
                     ]
                     if new_exchanges:
@@ -509,9 +484,10 @@ class Orchestrator:
                             "--- Inter-agent messages recorded while you "
                             "were waiting ---"
                         ]
-                        for fa, ta, msg in new_exchanges:
+                        for ex in new_exchanges:
                             block_lines.append(
-                                f"\n[FROM {fa}, TO {ta}]:\n{msg}"
+                                f"\n[FROM {ex['from_agent']}, "
+                                f"TO {ex['to_agent']}]:\n{ex['message']}"
                             )
                         block_lines.append(
                             "\n--- End of inter-agent messages; hand-off "
@@ -550,7 +526,7 @@ class Orchestrator:
                     )
 
             if current == "orchestrator":
-                orch_chain_log_cursor = len(self.chain_log.exchanges)
+                orch_chain_log_cursor = len(self.session.chain_log_exchanges)
 
             if not isinstance(hop, AgentHop):
                 # Defensive guard — every agent must return AgentHop.
@@ -596,12 +572,14 @@ class Orchestrator:
             "",
         ]
 
-        exchanges = self.chain_log.exchanges
+        exchanges = self.session.chain_log_exchanges
         if exchanges:
             summary_lines.append("Route taken (compact):")
-            for fa, ta, msg in exchanges[-20:]:
-                snippet = _first_line(msg, limit=180)
-                summary_lines.append(f"  - {fa} -> {ta}: {snippet}")
+            for ex in exchanges[-20:]:
+                snippet = _first_line(ex["message"], limit=180)
+                summary_lines.append(
+                    f"  - {ex['from_agent']} -> {ex['to_agent']}: {snippet}"
+                )
             summary_lines.append("")
 
         dcoi_msg = _last_text_message(self.dc_output_inspector)
@@ -650,13 +628,21 @@ class Orchestrator:
     # ------------------------------------------------------------------
 
     def reset_turn(self) -> None:
-        """Reset per-turn state (call at the start of each user turn)."""
-        self.chain_log.reset()
+        """Reset per-turn state (call at the start of each user turn).
+
+        Vestigial in v3: the chain log is session-scoped (per Phase 1
+        Q1) and the per-turn "what happened while I was waiting" view
+        is reconstructed via a cursor inside ``dispatch`` rather than
+        by clearing anything.  Kept as a no-op so the loader's call
+        site stays stable; remove together with the loader call when
+        the v3 loader rewrite lands.
+        """
+        return None
 
     def reset(self) -> None:
         """Clear all agent histories for a fresh start."""
         self.messages.clear()
-        self.chain_log.reset()
+        self.session.chain_log_exchanges.clear()
         self.planner.reset()
         self.receptionist.reset()
         self.user_input_inspector.reset()
