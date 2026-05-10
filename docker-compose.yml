@@ -1,0 +1,56 @@
+# Local-development stack for v3.
+#
+# Phase 2 scope: just Postgres + pgvector so the v3 schema, save
+# function, and retrieval queries can be developed against a real
+# database without an internet round-trip to Railway.
+#
+# Phase 6 will add ``app`` (the Streamlit container) and ``redis``
+# (provisioned but unused in the Option A in-memory session-store
+# MVP — see cloud_architecture_notes.md C4) to this same file.
+#
+# Usage:
+#   docker compose up -d        # bring up Postgres in the background
+#   docker compose logs -f db   # follow Postgres startup logs
+#   docker compose exec db psql -U postgres -d propeller_dev
+#                               # interactive psql shell into the DB
+#   docker compose down         # stop containers, KEEP the named
+#                               # volume (data survives)
+#   docker compose down -v      # stop + DROP the named volume (wipes
+#                               # the database, use only when you want
+#                               # a clean start)
+
+services:
+  db:
+    image: pgvector/pgvector:pg16
+    # Pinned to pg16 because that is what Railway Postgres serves
+    # right now (per the v2 supplement section 1.1) — staying on the
+    # same major version avoids subtle dialect surprises between
+    # local dev and the deployed DB.  The ``pgvector/pgvector`` image
+    # ships pgvector pre-installed; the migration in
+    # db/migrations/001_initial_schema.sql still has to ``CREATE
+    # EXTENSION IF NOT EXISTS vector`` against the database the
+    # first time, but the binary is already on disk.
+    container_name: mt_propeller_db
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER:     postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB:       propeller_dev
+    ports:
+      # Expose Postgres on localhost:5432 so DATABASE_URL in .env can
+      # be ``postgresql://postgres:postgres@localhost:5432/propeller_dev``.
+      # Pinned to 127.0.0.1 (not 0.0.0.0) so the DB is not reachable
+      # from other hosts on the LAN — local-dev only.
+      - "127.0.0.1:5432:5432"
+    volumes:
+      # Named volume so the database survives ``docker compose down``.
+      # Drop with ``docker compose down -v`` when you want a clean DB.
+      - postgres_data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d propeller_dev"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  postgres_data:
