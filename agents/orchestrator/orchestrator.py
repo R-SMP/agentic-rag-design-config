@@ -19,7 +19,7 @@ Python call stack never grows.
 """
 
 import logging
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, ToolMessage
@@ -46,6 +46,7 @@ from agents.shared.routing_tools import (
     build_routing_tool,
     log_tool_call,
 )
+from agents.shared.session import AgentState, Session
 from agents.shared.trace import trace as _trace
 from agents.step_caps import (
     MAX_DISPATCH_HOPS,
@@ -91,32 +92,53 @@ class Orchestrator:
 
     def __init__(
         self,
-        mesh_checks: bool,
-        rag_enabled: bool,
+        mesh_checks: bool = False,
+        rag_enabled: bool = False,
         dc_inspector_enabled: bool = True,
         chain_access: bool = False,
         keep_images_in_context: bool = False,
         dcoi_comparison_mode: int = 3,
+        *,
+        session: Session | None = None,
     ):
-        self.rag_enabled = rag_enabled
-        self.dc_inspector_enabled = dc_inspector_enabled
-        self.mesh_checks = mesh_checks
+        # v3 Phase 1 commit 3: accept a Session.  Backward-compat path
+        # builds a v4-mode Session in-process from the kwargs when none
+        # is supplied (existing call sites: extra_utilities/smoke_test_
+        # no_parallel_kwarg.py).  Loader passes session explicitly.
+        if session is None:
+            session = Session(
+                session_id=(
+                    "v4_inproc_"
+                    + datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S_%f")
+                ),
+                session_ts=datetime.now(timezone.utc),
+                mesh_checks=mesh_checks,
+                rag_enabled=rag_enabled,
+                dc_inspector_enabled=dc_inspector_enabled,
+                chain_access=chain_access,
+                keep_images_in_context=keep_images_in_context,
+                dcoi_comparison_mode=dcoi_comparison_mode,
+            )
+        self.session = session
+        self.rag_enabled = session.rag_enabled
+        self.dc_inspector_enabled = session.dc_inspector_enabled
+        self.mesh_checks = session.mesh_checks
         # DCOI comparison source(s) for this session — see
         # _DCOI_COMPARISON_MODE_* blocks in dc_output_inspector.py.
-        self.dcoi_comparison_mode = dcoi_comparison_mode
+        self.dcoi_comparison_mode = session.dcoi_comparison_mode
         # When True, inter-agent messages exchanged while the
         # Orchestrator was waiting are prepended to its next incoming
         # message so it can see what the sub-agents said to each other.
         # When False, the Orchestrator only sees the hand-off text.
         # The session .log records every exchange in either case.
-        self.chain_access = chain_access
+        self.chain_access = session.chain_access
         # When True, image content blocks loaded by an agent persist in
         # that agent's history across hand-offs (alongside paired
         # ``Loaded image (path: …):`` text blocks).  When False, image
         # blocks are stripped at every operation hand-off and only the
         # paired path-text blocks survive.  Forwarded into the
         # image-loading sub-agents (DCOI, UII, Receptionist).
-        self.keep_images_in_context = keep_images_in_context
+        self.keep_images_in_context = session.keep_images_in_context
 
         # Shared chain log — reset at the start of every user turn
         self.chain_log = ChainLog()
@@ -133,26 +155,34 @@ class Orchestrator:
         # notes via load_user_inputs_bundle(include_image_bytes=False)),
         # but it owns the hook for symmetry with the bypass path.
         self.planner = Planner(
-            rag_enabled,
-            keep_images_in_context=keep_images_in_context,
+            session.rag_enabled,
+            keep_images_in_context=session.keep_images_in_context,
+        )
+        # Receptionist: converted in v3 Phase 1 commit 3 to the new
+        # (state, session) signature.  The other six chain agents
+        # below still use the legacy kwargs until their own
+        # conversion commits land.
+        receptionist_state = session.agent_states.setdefault(
+            "receptionist", AgentState(agent_key="receptionist"),
         )
         self.receptionist = Receptionist(
-            keep_images_in_context=keep_images_in_context,
+            state=receptionist_state,
+            session=session,
         )
         self.user_input_inspector = UserInputInspector(
-            keep_images_in_context=keep_images_in_context,
+            keep_images_in_context=session.keep_images_in_context,
         )
         self.dc_input_creator = DCInputCreator(
-            keep_images_in_context=keep_images_in_context,
+            keep_images_in_context=session.keep_images_in_context,
         )
         self.dc_input_inspector = DCInputInspector(
-            keep_images_in_context=keep_images_in_context,
+            keep_images_in_context=session.keep_images_in_context,
         )
         self.dc_output_inspector = DCOutputInspector(
-            keep_images_in_context=keep_images_in_context,
-            dcoi_comparison_mode=dcoi_comparison_mode,
+            keep_images_in_context=session.keep_images_in_context,
+            dcoi_comparison_mode=session.dcoi_comparison_mode,
         )
-        self.tool_caller = ToolCaller(mesh_checks)
+        self.tool_caller = ToolCaller(session.mesh_checks)
         # Context Pruner shares the Orchestrator's LLM (cheaper than
         # spinning up a 9th provider build).  Currently constructed but
         # not invoked by the dispatcher — see KNOWN_ISSUES.

@@ -24,12 +24,13 @@ from langchain_core.messages import HumanMessage, ToolMessage
 
 from agents.shared.attempts_tool import list_attempts, read_attempt
 from agents.step_caps import MAX_RECEPTIONIST_STEPS
+from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
     load_user_inputs_bundle,
     strip_image_blocks_from_messages,
 )
-from agents.shared.llm_provider import build_llm, make_system_message
+from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import RECEPTIONIST_TEMPLATE
 from agents.shared.routing_tools import (
@@ -38,6 +39,7 @@ from agents.shared.routing_tools import (
     ROUTING_TOOL_NAMES,
     finalize_unanswered_tool_calls,
 )
+from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
     dispatch_user_inputs_tool,
     list_input_files,
@@ -47,29 +49,40 @@ from agents.shared.user_inputs_tool import (
 from config import ATTEMPTS_DIR
 from tools.calculate.calculate import calculate
 
-AGENT_KEY = "receptionist"
-
 logger = logging.getLogger("propeller_agent")
 
 
-class Receptionist:
+class Receptionist(BaseChainAgent):
     """Stateful agent that manages user communication."""
 
-    def __init__(self, keep_images_in_context: bool = False):
-        self.base_llm, self.provider, self.model = build_llm(AGENT_KEY)
-        self.keep_images_in_context = keep_images_in_context
-        self.llm = self.base_llm  # re-bound by set_tools
+    AGENT_KEY = "receptionist"
+
+    def __init__(
+        self,
+        state: AgentState | None = None,
+        session: Session | None = None,
+        *,
+        llm_cache=None,
+    ):
+        if session is None:
+            raise TypeError(
+                "Receptionist now requires a Session.  Construct one "
+                "via Session(...) or Session.create_for_v3(...) and "
+                "pass it in."
+            )
+        if state is None:
+            state = AgentState(agent_key=self.AGENT_KEY)
+        super().__init__(state=state, session=session, llm_cache=llm_cache)
         self.system_prompt: str = RECEPTIONIST_TEMPLATE
         self._tools_by_name: dict = {}
-        self.messages: list = []
-        # Timestamp marking the start of the current user cycle.  Any file
-        # whose mtime is >= this value was (re)written during this cycle;
-        # anything older is stale leftover from a previous run and must
-        # NOT be reported to the user as current output.
-        self.cycle_start_ts: float = time.time()
-        # Set by the ``call_orchestrator`` routing tool when the LLM
-        # chooses to forward.  Consumed by ``validate_input``.
-        self._pending_hop: AgentHop | None = None
+        # Receptionist resets cycle_start_ts at the start of every
+        # validate_input call.  When restoring from a fresh AgentState
+        # (cycle_start_ts is None), seed it to "now" so a
+        # format_outgoing call before any validate_input still has a
+        # well-defined starting point for the freshness filter.
+        # Otherwise honour the snapshot value.
+        if self.cycle_start_ts is None:
+            self.cycle_start_ts = time.time()
 
     # ------------------------------------------------------------------
     # Wiring
@@ -356,6 +369,3 @@ class Receptionist:
                 f"image block(s); paired path-text blocks retained."
             )
 
-    def reset(self) -> None:
-        """Clear conversation history."""
-        self.messages.clear()

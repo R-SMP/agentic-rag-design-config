@@ -9,12 +9,13 @@ the interactive REPL.
 
 import logging
 import re
-from datetime import datetime
+from datetime import datetime, timezone
 from pathlib import Path
 
 from agents.orchestrator import Orchestrator
 from agents.shared.llm_provider import list_agent_configs
 from agents.shared.routing_tools import AGENT_DISPLAY
+from agents.shared.session import Session
 from agents.shared.trace import close_trace, init_trace, trace as _trace
 from config import (
     ATTEMPTS_DIR,
@@ -544,16 +545,27 @@ def run() -> None:
         trace_path = init_trace(LOGS_DIR)
         print(f"Trace file: {trace_path.resolve()}")
 
-        # Build the Orchestrator (which constructs every sub-agent, each
-        # of which builds its own LLM via build_llm(<key>))
-        print("Initialising agents...")
-        orchestrator = Orchestrator(
-            mesh_checks, rag_enabled,
+        # Build the per-conversation Session (v3 Phase 1 commit 3).
+        # In v4-REPL mode the session_id is the same one
+        # ``_resolve_session_name`` will use at archive time, so logs,
+        # archive, and (later) DH save all agree on the identifier.
+        # Path fields stay None — v4 keeps using the global config.*
+        # paths, no Streamlit-style namespacing.
+        session = Session(
+            session_id=_resolve_session_name(),
+            session_ts=datetime.now(timezone.utc),
+            mesh_checks=mesh_checks,
+            rag_enabled=rag_enabled,
             dc_inspector_enabled=dc_inspector_enabled,
             chain_access=chain_access,
             keep_images_in_context=keep_images_in_context,
             dcoi_comparison_mode=dcoi_comparison_mode,
         )
+
+        # Build the Orchestrator (which constructs every sub-agent, each
+        # of which builds its own LLM via build_llm(<key>))
+        print("Initialising agents...")
+        orchestrator = Orchestrator(session=session)
         print("Agents ready.\n")
 
         logger.info("[AGENTS]  Orchestrator and all sub-agents initialised")
