@@ -10,7 +10,17 @@ python-dotenv>=1.0.0
 numpy>=2.0.0
 trimesh>=4.0.0
 pyrender>=0.1.45
+# pyvista is the ALTERNATIVE render backend selected by
+# workflow_settings.RENDER_LIBRARY = "pyvista".  ``tools/__init__.py``
+# imports the pyvista wrapper UNCONDITIONALLY at module load time
+# (line 17, ``from tools.render_mesh.render_mesh_pyvista import ...``),
+# so the container needs pyvista on PYTHONPATH even when the trimesh
+# backend is the active one.  Without it the Streamlit app fails to
+# import.  Lazy-importing the pyvista backend would let us drop this
+# dep when only trimesh is configured — defer that refactor unless
+# image size becomes a real concern (pyvista pulls in VTK, ~100 MB).
 Pillow>=10.0.0
+pyvista>=0.43.0
 # Stage A web UI (Phase 3).  Streamlit is the sole entry point in
 # Stage A — no FastAPI front-door (see cloud_architecture_notes.md C2).
 streamlit>=1.39.0
