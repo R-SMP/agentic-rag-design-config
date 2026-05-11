@@ -55,7 +55,18 @@ WORKDIR /app
 # Dep layer first so source-only changes do not invalidate the
 # (slow) pip install.
 COPY requirements.txt ./
-RUN pip install -r requirements.txt
+RUN pip install -r requirements.txt && \
+    # pyrender 0.1.45 pins ``PyOpenGL==3.1.0`` exactly — a 2014
+    # release whose OSMesa bindings are incomplete and miss
+    # ``OSMesaCreateContextAttribs``, which breaks offscreen
+    # rendering when ``PYOPENGL_PLATFORM=osmesa`` (the env var set
+    # below).  PyOpenGL 3.1.10 has identical surface for everything
+    # pyrender uses, plus the missing OSMesa symbol.  ``--no-deps``
+    # is required because pip's resolver would otherwise honour
+    # pyrender's ``==3.1.0`` pin and refuse the upgrade.  See
+    # requirements.txt comments around the pyrender line for the
+    # full reasoning.
+    pip install --no-deps --upgrade PyOpenGL==3.1.10
 
 # Application code.  .dockerignore filters out .venv, .git,
 # logs/, attempts/, previous_sessions/, database/, inputs/, etc.
