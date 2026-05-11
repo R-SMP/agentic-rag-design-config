@@ -47,7 +47,7 @@ from pathlib import Path
 import streamlit as st
 
 from agents.dispatch import dispatch_turn
-from agents.shared.trace import init_trace
+from agents.shared.trace import close_trace, init_trace
 from agents.shared.session import Session
 from config import LOGS_DIR, USER_INPUTS_DIR
 from tools import set_mesh_checks, set_render_library
@@ -177,8 +177,116 @@ def _ensure_session() -> Session:
 
 
 # ---------------------------------------------------------------------------
+# End-session teardown
+# ---------------------------------------------------------------------------
+
+
+def _detach_session_log_handler(session_log_path: str | None) -> None:
+    """Remove the FileHandler the just-ended session attached to the
+    ``propeller_agent`` logger.
+
+    Idempotent: a missing path or a logger without a matching handler
+    is a no-op.  Leaving the handler attached would leak file handles
+    across sessions AND cause the next session's log lines to ALSO
+    end up in the previous session's log file because the handler
+    is still listening on the same shared logger.
+    """
+    if not session_log_path:
+        return
+    target = Path(session_log_path).resolve()
+    logger = logging.getLogger("propeller_agent")
+    for h in list(logger.handlers):
+        if (
+            isinstance(h, logging.FileHandler)
+            and Path(h.baseFilename).resolve() == target
+        ):
+            try:
+                h.flush()
+                h.close()
+            except Exception:
+                pass
+            logger.removeHandler(h)
+
+
+def end_session() -> None:
+    """Clear the Stage A in-memory session and reload the page.
+
+    Stage A is database-less (warnings_developer.md W14 / cloud_
+    architecture_notes.md C6), so "End Session" has no save flow.
+    The semantics are:
+      1. Close the agent flow trace (module-level global; otherwise
+         the next session's ``init_trace`` would orphan the file
+         handle).
+      2. Detach the per-session FileHandler from the
+         ``propeller_agent`` logger so the file is released and the
+         next session does not double-log into the old file.
+      3. Clear every key from ``st.session_state``.  ``_ensure_
+         session`` will rebuild a fresh ``Session`` on the next
+         script run.
+      4. ``st.rerun()`` so the cleared state is reflected
+         immediately rather than waiting for the next user
+         interaction.
+
+    Stage B will replace this teardown with a Save flow that runs
+    the Database Handler before clearing.  Do NOT pre-empt that
+    plumbing in Stage A — see warnings_developer.md W14.
+    """
+    log_path = st.session_state.get("session_log_path")
+    try:
+        close_trace()
+    except Exception:
+        # close_trace is best-effort; a failure should not block the
+        # session reset.
+        pass
+    _detach_session_log_handler(log_path)
+    logging.getLogger("propeller_agent").info(
+        "[STREAMLIT] end_session — clearing state"
+    )
+    # Iterate over a copy of the keys because clearing mutates the
+    # dict while we iterate.
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+    st.rerun()
+
+
+# ---------------------------------------------------------------------------
 # Rendering
 # ---------------------------------------------------------------------------
+
+
+def render_sidebar(session: Session) -> None:
+    """Sidebar with session metadata + the End Session button.
+
+    The button label is mandated by warnings_developer.md W14 and
+    cloud_architecture_notes.md C6: Stage A may NOT use any label
+    that promises persistence ("Save", "Save & Quit", etc.) because
+    the database is not wired in until Stage B.  The future "Save"
+    button arrives in Stage B alongside the DH save flow — at that
+    point the sidebar grows a second button; see
+    TODO_known_issues.md O10 for the open Stage B UX questions.
+    """
+    with st.sidebar:
+        st.subheader("Session")
+        st.caption(f"ID: `{session.session_id}`")
+        st.caption(
+            f"Started: {session.session_ts.strftime('%Y-%m-%d %H:%M:%S UTC')}"
+        )
+        st.caption(
+            "Stage A — single user at a time, no save (sessions are "
+            "ephemeral)."
+        )
+        st.divider()
+        if st.button(
+            "End Session",
+            type="primary",
+            help=(
+                "Clear this conversation and start a fresh session.  "
+                "Nothing is saved — Stage A has no database yet.  "
+                "The future 'Save' button arrives in Stage B."
+            ),
+            width="stretch",
+        ):
+            end_session()
 
 
 def render_header() -> None:
@@ -311,6 +419,7 @@ def main() -> None:
     """
     configure_page()
     session = _ensure_session()
+    render_sidebar(session)
     render_header()
     render_chat_history()
 
