@@ -10,6 +10,17 @@ python-dotenv>=1.0.0
 numpy>=2.0.0
 trimesh>=4.0.0
 pyrender>=0.1.45
+# pyrender pulls in PyOpenGL as a transitive dep with the constraint
+# ``PyOpenGL~=3.1.0`` — which on a fresh resolver run gives PyOpenGL
+# 3.1.0 (May 2014).  3.1.0's OSMesa bindings are incomplete and miss
+# ``OSMesaCreateContextAttribs``, which the offscreen renderer needs.
+# This breaks rendering in the Stage A Docker container (which sets
+# ``PYOPENGL_PLATFORM=osmesa`` for headless rendering) even though
+# native Windows runs are unaffected — Windows resolves OpenGL via
+# WGL and OSMesa is never invoked.  Pin a newer PyOpenGL so the
+# OSMesa bindings are complete.  ``pyrender~=3.1.0`` still permits
+# anything in 3.1.x.
+PyOpenGL>=3.1.7
 # pyvista is the ALTERNATIVE render backend selected by
 # workflow_settings.RENDER_LIBRARY = "pyvista".  ``tools/__init__.py``
 # imports the pyvista wrapper UNCONDITIONALLY at module load time
