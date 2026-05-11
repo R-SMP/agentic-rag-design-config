@@ -306,3 +306,77 @@ alongside Save (as the explicit "discard, don't save" path) or
 be replaced by a Save / Discard pair — this is a Stage B UX
 decision, not a Stage A one.  Until then, do NOT add a "Save"
 button anywhere in the Stage A UI even as a placeholder.
+
+## W15. The project venv lives at the worktree's PARENT, not in the worktree.
+
+**Where.** `C:\Users\vince\MT Coding\tests\test11_v4_git\.venv\`
+holds the Python 3.13 environment with the project's actual
+dependencies (langchain, langchain-openai, anthropic, trimesh, …)
+installed.  Worktrees under
+`C:\Users\vince\MT Coding\tests\test11_v4_git\.claude\worktrees\<name>\`
+do NOT carry their own venv and inherit nothing automatically —
+running `python` from inside a worktree picks up whatever the
+shell's `PATH` resolves to, which on this machine is the system
+Python 3.8 install that does NOT have the project dependencies.
+
+**Why this matters.** Smoke tests that say "run `python -c ...`"
+will silently use the wrong interpreter and either fail with
+`ModuleNotFoundError: langchain_core` or, worse, succeed against
+a Python 3.8 install whose other packages are different versions
+than what the project was developed against (e.g. numpy 1.24.4
+rather than the requirements-pinned numpy 2.x).
+
+**How to run smoke tests reliably.** Either:
+  * Use the venv's interpreter explicitly:
+    `"<repo>/.venv/Scripts/python.exe" -c "..."` or
+    `"<repo>/.venv/Scripts/python.exe" -m streamlit run ...`
+    where `<repo>` is the worktree's parent (e.g. the literal
+    `C:\Users\vince\MT Coding\tests\test11_v4_git`, not the
+    worktree path).
+  * Or `source` / activate the venv first in the shell:
+    `"<repo>/.venv/Scripts/activate"` (Git Bash) or
+    `"<repo>/.venv/Scripts/Activate.ps1"` (PowerShell).
+
+**Pip installs in agent shells.**  If you `pip install <pkg>`
+from inside a worktree using the bare `python` interpreter, the
+install lands in whatever Python the shell resolves — typically
+NOT the project venv.  Always prefix with the venv's full
+interpreter path:
+`"<repo>/.venv/Scripts/python.exe" -m pip install <pkg>` —
+or activate the venv first.
+
+**Update tracker.** When this convention changes (the user moves
+to per-worktree venvs, or to a tool like `uv`/`hatch` that
+provisions per-checkout environments automatically), update this
+entry rather than letting it rot.
+
+## W16. requirements.txt pins newer numpy than some local Pythons can install.
+
+**Where.** `requirements.txt` line `numpy>=2.0.0`.
+
+**What.** numpy 2.x requires Python 3.9+.  The local Windows
+machine has three Python installs — 3.8 (system), 3.9, and 3.13
+(via py launcher).  Only 3.9+ can install numpy 2.x.  Installing
+streamlit (or any other dep) via `pip install` while running on
+Python 3.8 will downgrade numpy to 1.24.4 to satisfy compatibility
+with 3.8 — and since `python` on this machine resolves to the
+3.8 install (`C:\Program Files\Python38\python.exe`), this is
+easy to do by accident.
+
+**Why this is a footgun.** No runtime check enforces numpy >=
+2.0.0; if the 1.x install ends up on `PYTHONPATH` (e.g. by being
+imported from a 3.8 site-packages directory while the script
+runs in another Python that falls back to it), the project may
+silently behave differently than tested.  In practice this has
+NOT bitten any Phase-1 work — the project venv (W15) uses
+Python 3.13 with numpy 2.x — but the pinning vs. installed-env
+gap is real and worth documenting before someone investigates a
+"my smoke test failed but the venv works" puzzle.
+
+**Status.** Documented, not fixed.  Resolving by either (a)
+pinning a more specific numpy floor that matches what every
+project Python can install, or (b) adding a runtime
+`numpy.__version__` check at startup, or (c) tightening the
+`python_requires` constraint to >= 3.9 in a future `pyproject.
+toml` — is deliberately deferred.  See also W15 for the venv
+convention that mostly papers over this in day-to-day use.
