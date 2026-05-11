@@ -127,16 +127,30 @@ until Streamlit limitations become real friction, not theoretical.
 
 ---
 
-## C3. Auth: shared invite code + per-IP rate limit
+## C3. Auth: shared invite code (no per-IP rate limit)
 
-**Choice.** v2 ships with **(b) shared invite code** as the primary
-gate, plus **(c) per-IP rate limit** (`slowapi` FastAPI middleware) as
-defence-in-depth. Both are implemented in our own code; no external
-auth provider is integrated yet.
+**Choice.** v3 ships with **(b) shared invite code** as the only
+gate.  Implemented as a Streamlit-side gate that reads
+`os.environ["INVITE_CODE"]` and constant-time-compares the user's
+submitted code against it (``hmac.compare_digest``).  No external
+auth provider, no separate FastAPI middleware, no rate limiter.
 
 **Why.** ~2 hours of work, kills 99% of token-drain risk, no external
 dependency, no custom domain required, no user management overhead.
 Sufficient for thesis-stage and small invited groups.
+
+**Reconciliation note (2026-05-11).**  Earlier drafts paired the
+invite code with a ``(c) per-IP rate limit`` implemented as a
+``slowapi`` FastAPI middleware (defence in depth).  Per the settled
+OQ1, the per-IP rate limit was **dropped**: with a small invited
+group and the per-provider hard spend caps (OPS1 in TODO_known_
+issues.md) as the actual cost floor, the rate limiter added
+operational complexity (one of the demo users could trivially lock
+the user out from a NAT they share) without meaningfully changing
+the risk profile.  The decision to drop slowapi is what eliminated
+the only remaining reason to run FastAPI in front of Streamlit, so
+this reconciliation pairs with the C2 reconciliation that made
+Streamlit the sole entry point.
 
 ### Problems with shared invite code
 
@@ -171,7 +185,11 @@ When the limitations above start to bite, these are the upgrade options:
 - **(a) No gate.** Listed for completeness only. Genuinely dangerous
   with billed LLM APIs behind the URL. Do not use.
 - **(b) Shared invite code** — current choice. See above.
-- **(c) Per-IP rate limit** — already wired alongside (b).
+- **(c) Per-IP rate limit** — considered as defence-in-depth in the
+  v2 plan, **dropped per OQ1** (see reconciliation note at the top
+  of this section).  Hard provider-side spend caps (OPS1) are the
+  real cost floor; a per-IP limit was unhelpful with NAT'd invitees
+  and added operational complexity for no security gain.
 - **(d) Cloudflare Access** — free service, puts a Cloudflare-hosted
   login wall in front of the app. Email magic-link, Google/Microsoft
   SSO. Requires a custom domain on Cloudflare DNS. Real auth, real
@@ -437,7 +455,7 @@ session reset, and lose trust in the labelling.  See
 | Mesh backend | Existing Azure Windows VM (Rhino Compute) |
 | LLM APIs | OpenAI + Anthropic + Google, hard monthly spend caps |
 | Embedding model | OpenAI `text-embedding-3-large` @ 1024 dims |
-| Auth | Shared invite code + per-IP rate limit (`slowapi`) |
+| Auth | Shared invite code (no per-IP rate limit; per OQ1, see C3) |
 | Session state | In-process Python dict, serialisation-ready design |
 | Region | EU (closest to ETH and Rhino Compute VM) |
 | Domain | Railway provider subdomain (`*.up.railway.app`) |

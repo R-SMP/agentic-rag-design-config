@@ -39,7 +39,9 @@ line of the file is guarded by ``if __name__ == "__main__"``.
 
 from __future__ import annotations
 
+import hmac
 import logging
+import os
 import uuid
 from datetime import datetime, timezone
 from pathlib import Path
@@ -61,6 +63,12 @@ from workflow_settings import settings as workflow_settings
 PAGE_TITLE = "Propeller Design Configurator"
 PAGE_ICON = ":gear:"
 
+# Environment variable carrying the shared invite code.  Set on
+# Railway as a service env var (per Phase 7); set in a local ``.env``
+# / shell during dev.  Per OQ1 / C3, the invite code is the only
+# gate — no per-IP rate limit, no external auth provider.
+INVITE_CODE_ENV = "INVITE_CODE"
+
 
 def configure_page() -> None:
     """Apply ``st.set_page_config`` exactly once per script run.
@@ -75,6 +83,114 @@ def configure_page() -> None:
         layout="centered",
         initial_sidebar_state="auto",
     )
+
+
+# ---------------------------------------------------------------------------
+# Invite-code gate (Phase 4)
+# ---------------------------------------------------------------------------
+
+
+def _get_invite_code() -> str:
+    """Read the configured invite code from ``os.environ``.
+
+    Returns the empty string when ``INVITE_CODE`` is unset OR set to
+    an empty string.  Both cases are treated as "not configured" by
+    ``render_login_gate`` and the gate refuses everyone (fail-secure).
+    """
+    return os.environ.get(INVITE_CODE_ENV, "").strip()
+
+
+def _check_invite_code(submitted: str) -> bool:
+    """Return True iff ``submitted`` matches the configured invite
+    code, using constant-time comparison.
+
+    ``hmac.compare_digest`` compares byte-for-byte in time independent
+    of the position of the first differing byte, defeating timing
+    attacks.  Returns False when the invite code is not configured
+    (empty configured value) regardless of what ``submitted`` is —
+    fail-secure.
+    """
+    configured = _get_invite_code()
+    if not configured:
+        return False
+    return hmac.compare_digest(submitted.encode("utf-8"),
+                               configured.encode("utf-8"))
+
+
+def render_login_gate() -> bool:
+    """Render the invite-code login gate and return True once the user
+    is authenticated.
+
+    Behaviour:
+      * If ``st.session_state.authenticated`` is True, return True
+        immediately — the user has already passed the gate this
+        session.
+      * If the ``INVITE_CODE`` env var is not configured at all,
+        render an admin error and return False.  This is the
+        fail-secure path; production must always have the env var
+        set before exposing the URL.
+      * Otherwise render a single text input + Submit button.  On
+        submit, validate via ``_check_invite_code`` and either set
+        ``authenticated`` and rerun, or render a "code incorrect"
+        message.
+
+    Authentication state lives in ``st.session_state.authenticated``
+    so it survives Streamlit's script-rerun model.  ``end_session``
+    clears the whole session_state which intentionally LOGS THE USER
+    OUT — matching "End Session = full reset" semantics, see C6 /
+    W14.
+    """
+    if st.session_state.get("authenticated"):
+        return True
+
+    configured = _get_invite_code()
+    if not configured:
+        st.title(PAGE_TITLE)
+        st.error(
+            "**Server misconfigured.**  The ``INVITE_CODE`` environment "
+            "variable is not set on this deployment, so the invite-code "
+            "gate has refused all access.  This is fail-secure — the "
+            "operator must set ``INVITE_CODE`` before this URL accepts "
+            "any traffic."
+        )
+        return False
+
+    st.title(PAGE_TITLE)
+    st.caption(
+        "Invited-only access.  Please enter the invite code shared with "
+        "you to begin.  Stage A runs **one user at a time** — please "
+        "co-ordinate with other invitees so you do not collide on the "
+        "shared file paths (this constraint goes away in Stage B)."
+    )
+
+    with st.form("login_form", clear_on_submit=False):
+        submitted_code = st.text_input(
+            "Invite code",
+            type="password",
+            help=(
+                "Paste the invite code you were given.  Treated as a "
+                "secret — no record is kept of what you submit."
+            ),
+        )
+        submitted = st.form_submit_button("Enter", type="primary")
+
+    if submitted:
+        if _check_invite_code(submitted_code):
+            st.session_state.authenticated = True
+            logging.getLogger("propeller_agent").info(
+                "[STREAMLIT] invite-code accepted; entering chat surface"
+            )
+            st.rerun()
+        else:
+            logging.getLogger("propeller_agent").warning(
+                "[STREAMLIT] invite-code rejected"
+            )
+            st.error(
+                "Invite code did not match.  Try again, or contact the "
+                "operator if you believe you have the right code."
+            )
+
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -416,8 +532,23 @@ def main() -> None:
     so anything stateful must live behind ``st.session_state`` —
     not in module-level variables.  ``_ensure_session`` is the
     single place where per-tab state is created.
+
+    Auth flow: ``render_login_gate`` returns False until the user
+    submits a matching invite code; once authenticated, the
+    Session is bootstrapped lazily on the very next rerun and the
+    chat surface renders.  Keeping the Session-build call AFTER
+    the gate avoids creating per-session log files / trace files
+    for visitors who never authenticated — the gate is also the
+    point at which the deployment first commits to "yes, this is
+    a real session".
     """
     configure_page()
+
+    if not render_login_gate():
+        # User is not yet authenticated.  Gate already rendered the
+        # login form (or an admin error); nothing else should appear.
+        return
+
     session = _ensure_session()
     render_sidebar(session)
     render_header()
