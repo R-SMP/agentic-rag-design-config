@@ -189,15 +189,63 @@ def render_header() -> None:
     )
 
 
+def _render_artefacts(artefact_paths: list[str]) -> None:
+    """Display each fresh artefact path inline in the current chat
+    bubble.  PNGs render as ``st.image``; OBJ files get a small
+    text line with the path (Streamlit cannot preview meshes
+    inline).  Missing files (deleted between turn-end and rerun)
+    are skipped silently with a caption.
+
+    ``st.image`` is wrapped in a try/except because a corrupt or
+    unreadable PNG would otherwise propagate up to ``main()`` and
+    nuke the entire chat replay — every subsequent rerun would
+    re-fire the same exception because the bad path lives in
+    ``chat_history``.  We fall back to a small caption with the
+    error so the rest of the transcript still renders.
+    """
+    for raw in artefact_paths:
+        path = Path(raw)
+        if not path.exists():
+            st.caption(f"_missing artefact: {path.name}_")
+            continue
+        suffix = path.suffix.lower()
+        if suffix == ".png":
+            try:
+                rel = path.relative_to(Path.cwd())
+                caption = str(rel)
+            except ValueError:
+                caption = path.name
+            try:
+                # ``width="stretch"`` replaces the deprecated
+                # ``use_container_width=True`` (removed after
+                # 2025-12-31; we are past that date).
+                st.image(str(path), caption=caption, width="stretch")
+            except Exception as exc:
+                logging.getLogger("propeller_agent").warning(
+                    f"[STREAMLIT] could not render {path}: {exc}"
+                )
+                st.caption(
+                    f"_failed to render `{path.name}`: "
+                    f"{type(exc).__name__}_"
+                )
+        elif suffix == ".obj":
+            st.caption(f"Generated mesh: `{path.name}` ({path})")
+        else:
+            st.caption(f"Artefact: `{path.name}`")
+
+
 def render_chat_history() -> None:
     """Replay every prior turn's chat bubbles from ``st.session_state.
     chat_history``.  Streamlit reruns the whole script on every
     interaction, so this loop runs every time and the transcript
     appears intact even after the LLM call from the most recent
-    turn has long since returned."""
+    turn has long since returned.  Artefact paths stored alongside
+    each assistant message get re-rendered on every replay."""
     for msg in st.session_state.chat_history:
         with st.chat_message(msg["role"]):
             st.write(msg["text"])
+            if msg.get("artefacts"):
+                _render_artefacts(msg["artefacts"])
 
 
 def handle_user_message(session: Session, user_text: str) -> None:
@@ -205,14 +253,17 @@ def handle_user_message(session: Session, user_text: str) -> None:
 
     Appends the user message to history, renders it, dispatches the
     full multi-agent pipeline under a spinner, renders the assistant
-    reply, and appends the reply to history.  Exceptions raised by
-    ``dispatch_turn`` are caught and surfaced as an in-chat error
-    bubble so a single failed turn does not nuke the whole UI.
+    reply (plus any fresh renders / OBJ files produced during the
+    turn), and appends the reply with its artefact paths to history.
+    Exceptions raised by ``dispatch_turn`` are caught and surfaced as
+    an in-chat error bubble so a single failed turn does not nuke
+    the whole UI.
     """
     st.session_state.chat_history.append({"role": "user", "text": user_text})
     with st.chat_message("user"):
         st.write(user_text)
 
+    artefact_paths: list[str] = []
     with st.chat_message("assistant"):
         with st.spinner("Thinking — running the multi-agent pipeline..."):
             try:
@@ -222,6 +273,9 @@ def handle_user_message(session: Session, user_text: str) -> None:
                     inputs_dir=USER_INPUTS_DIR,
                 )
                 reply = result.reply_text
+                # Store as strings so the chat_history stays plain-
+                # data — matches the v3 invariant on Session state.
+                artefact_paths = [str(p) for p in result.new_artefacts_paths]
             except Exception as exc:
                 logging.getLogger("propeller_agent").exception(
                     f"[STREAMLIT] dispatch_turn raised: {exc}"
@@ -232,8 +286,14 @@ def handle_user_message(session: Session, user_text: str) -> None:
                     f"for the full traceback.)"
                 )
         st.write(reply)
+        if artefact_paths:
+            _render_artefacts(artefact_paths)
 
-    st.session_state.chat_history.append({"role": "assistant", "text": reply})
+    st.session_state.chat_history.append({
+        "role": "assistant",
+        "text": reply,
+        "artefacts": artefact_paths,
+    })
 
 
 # ---------------------------------------------------------------------------
