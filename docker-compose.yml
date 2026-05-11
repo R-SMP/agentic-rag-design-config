@@ -1,15 +1,19 @@
 # Local-development stack for v3.
 #
-# Phase 2 scope: just Postgres + pgvector so the v3 schema, save
-# function, and retrieval queries can be developed against a real
-# database without an internet round-trip to Railway.
+# Stage A scope: ``app`` (the Streamlit container) + ``db`` (Postgres
+# + pgvector).  The app does NOT depend on the database in Stage A
+# (no save flow yet — see warnings_developer.md W14, cloud_
+# architecture_notes.md C6).  ``db`` is colocated so Stage B's save
+# work can wire it in without restructuring the compose file.
 #
-# Phase 6 will add ``app`` (the Streamlit container) and ``redis``
-# (provisioned but unused in the Option A in-memory session-store
-# MVP — see cloud_architecture_notes.md C4) to this same file.
+# Redis (mentioned in C4 as a future provisioning concern for
+# Option A vs Option B session storage) is still deferred to its
+# own commit when Stage A/B actually needs it.
 #
 # Usage:
-#   docker compose up -d        # bring up Postgres in the background
+#   docker compose up -d        # bring up app + db in the background
+#   docker compose up -d db     # bring up ONLY Postgres (Phase 2 dev)
+#   docker compose logs -f app  # follow Streamlit logs
 #   docker compose logs -f db   # follow Postgres startup logs
 #   docker compose exec db psql -U postgres -d propeller_dev
 #                               # interactive psql shell into the DB
@@ -18,8 +22,68 @@
 #   docker compose down -v      # stop + DROP the named volume (wipes
 #                               # the database, use only when you want
 #                               # a clean start)
+#
+# Required env (set in a sibling ``.env`` file or your shell):
+#   INVITE_CODE              — gate code for the web app (Phase 4).
+#                              Without it, the gate fails secure and
+#                              refuses everyone.
+#   OPENAI_API_KEY           — required by every chain agent (per
+#                              the per-agent .env resolution in
+#                              llm_provider.py).
+#   ANTHROPIC_API_KEY        — same.  GOOGLE_API_KEY optional.
+#   RHINO_COMPUTE_URL        — http URL for the Rhino Compute server
+#                              (defaults to http://localhost:6500/
+#                              from config.py).  For local dev with
+#                              Rhino Compute running on the Windows
+#                              host, set to
+#                              ``http://host.docker.internal:6500/``
+#                              so the container can reach it.
+#   RHINO_COMPUTE_API_KEY    — optional auth header for above.
 
 services:
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mt_propeller_app
+    restart: unless-stopped
+    ports:
+      # Bind to 127.0.0.1 only so the chat surface is not exposed on
+      # the LAN during local dev — the production deploy on Railway
+      # publishes through Railway's reverse proxy, not via this
+      # mapping.
+      - "127.0.0.1:8501:8501"
+    environment:
+      # Streamlit / app gate.
+      INVITE_CODE: "${INVITE_CODE:-}"
+      # LLM provider keys.  Each is forwarded if set in the host
+      # env / .env file; absent values pass through as empty so the
+      # per-agent .env resolution in llm_provider.py still works.
+      OPENAI_API_KEY:    "${OPENAI_API_KEY:-}"
+      ANTHROPIC_API_KEY: "${ANTHROPIC_API_KEY:-}"
+      GOOGLE_API_KEY:    "${GOOGLE_API_KEY:-}"
+      # Mesh backend.  Default points at the developer's local Rhino
+      # Compute via the Docker-internal host alias.
+      RHINO_COMPUTE_URL:     "${RHINO_COMPUTE_URL:-http://host.docker.internal:6500/}"
+      RHINO_COMPUTE_API_KEY: "${RHINO_COMPUTE_API_KEY:-}"
+    extra_hosts:
+      # Lets the container resolve ``host.docker.internal`` on
+      # Linux daemons (already a no-op on Docker Desktop for
+      # Mac/Windows, where the alias works out of the box).  Needed
+      # for the default RHINO_COMPUTE_URL above to reach a Rhino
+      # Compute server running on the host.
+      - "host.docker.internal:host-gateway"
+    volumes:
+      # Mount the per-session directories so a developer can inspect
+      # the chat-driven outputs from the host filesystem without
+      # ``docker cp`` / ``docker exec``.  In Stage A these are
+      # session-scoped on the developer's machine; per W13 / O9 the
+      # paths are NOT yet namespaced per user, so two simultaneous
+      # browser tabs writing concurrently is still a collision.
+      - ./inputs:/app/inputs
+      - ./attempts:/app/attempts
+      - ./logs:/app/logs
+
   db:
     image: pgvector/pgvector:pg16
     # Pinned to pg16 because that is what Railway Postgres serves
