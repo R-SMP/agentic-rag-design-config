@@ -1,0 +1,58 @@
+# Files and directories excluded from the docker build context.
+# Without this file, ``COPY . ./`` would copy the developer's local
+# .venv (~hundreds of MB), git history, session artefacts, log
+# files, and potentially private user inputs into the image.
+
+# --- Python / venv -------------------------------------------------
+.venv/
+venv/
+env/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# --- Git & editor metadata ----------------------------------------
+.git/
+.gitignore
+.gitattributes
+.github/
+.claude/
+.idea/
+.vscode/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# --- Session-time artefacts (regenerated on every run) ------------
+# These directories exist on the developer's machine but should NOT
+# end up baked into the image — they may contain private user
+# inputs, generated renders from past sessions, or large mesh files.
+logs/
+attempts/
+inputs/
+previous_sessions/
+database/
+
+# --- Local config & secrets ---------------------------------------
+.env
+.env.*
+!.env.example
+
+# --- Docs / development scaffolding -------------------------------
+# Keep extra_utilities/ inside the image — the agents reference
+# files in there at runtime via relative paths.  Strip only the
+# ad-hoc files that should never run server-side.
+prompts_backup_*/
+
+# --- Containerisation metadata ------------------------------------
+# No need to recursively include the Dockerfile / compose file
+# inside the image itself.
+Dockerfile
+docker-compose.yml
+.dockerignore
