@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Propeller Design Configurator</title>
+  <link rel="stylesheet" href="/static/style.css" />
+  <!-- Three.js (no build step) — CDN import map. Needs internet. -->
+  <script type="importmap">
+  {
+    "imports": {
+      "three": "https://unpkg.com/three@0.160.1/build/three.module.js",
+      "three/addons/": "https://unpkg.com/three@0.160.1/examples/jsm/"
+    }
+  }
+  </script>
+</head>
+<body>
+  <header>
+    <div>
+      <h1>Propeller Design Configurator</h1>
+      <span class="subtitle">Multi-agent design assistant — local JS UI</span>
+    </div>
+    <button id="end-btn" class="ghost" hidden>End Session</button>
+  </header>
+
+  <!-- Invite-code gate (shown only when the server requires auth) -->
+  <section id="gate" class="gate" hidden>
+    <h2>Invited-only access</h2>
+    <p>Enter the invite code to begin.</p>
+    <form id="gate-form">
+      <input id="gate-input" type="password" placeholder="Invite code"
+             autocomplete="off" />
+      <button type="submit" class="primary">Enter</button>
+    </form>
+    <p id="gate-error" class="error" hidden></p>
+  </section>
+
+  <!-- Workspace: chat on the left, interactive 3D model on the right -->
+  <div id="workspace" class="workspace" hidden>
+    <main id="chat" class="chat">
+      <div id="messages" class="messages"></div>
+      <form id="composer" class="composer">
+        <textarea id="input" rows="2"
+          placeholder="Describe the propeller you want to design…"></textarea>
+        <button id="send-btn" type="submit" class="primary">Send</button>
+      </form>
+    </main>
+
+    <aside id="viewer-panel" class="viewer-panel">
+      <div class="viewer-toolbar">
+        <span class="viewer-title">3D model</span>
+        <span id="viewer-name" class="viewer-name"></span>
+        <button id="viewer-reset" class="ghost" title="Reset view">Reset view</button>
+      </div>
+      <div id="viewer" class="viewer">
+        <div id="viewer-placeholder" class="viewer-placeholder">
+          No model yet — generate a propeller and it will appear here.
+          <br /><small>Drag to rotate · scroll to zoom</small>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script type="module" src="/static/viewer.js"></script>
+  <script src="/static/app.js"></script>
+</body>
+</html>

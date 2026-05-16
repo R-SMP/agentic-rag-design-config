@@ -1,0 +1,9 @@
+# F4 JavaScript web interface (local / experimental) — the backend
+# bridge for web_app.py.  NOT used by the Stage A Streamlit container
+# (cloud_architecture_notes.md C2 keeps Streamlit as the sole Railway
+# entry point).  Install alongside the main requirements:
+#
+#   pip install -r requirements.txt -r requirements-web.txt
+#
+fastapi>=0.110.0
+uvicorn[standard]>=0.27.0

@@ -1,0 +1,198 @@
+:root {
+  --bg: #0f1117;
+  --panel: #171a21;
+  --panel-2: #1f232c;
+  --text: #e6e8eb;
+  --muted: #9aa1ad;
+  --accent: #4f8cff;
+  --user: #2a3550;
+  --assistant: #1f232c;
+  --error: #ff6b6b;
+  --border: #2a2f3a;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 20px;
+  background: var(--panel);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 auto;
+}
+
+header h1 { font-size: 18px; margin: 0; }
+.subtitle { color: var(--muted); font-size: 12px; }
+
+button {
+  font: inherit;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  padding: 9px 16px;
+  cursor: pointer;
+  background: var(--panel-2);
+  color: var(--text);
+}
+button.primary { background: var(--accent); border-color: var(--accent); color: #fff; }
+button.ghost { background: transparent; }
+button:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.gate {
+  max-width: 420px;
+  margin: 12vh auto;
+  background: var(--panel);
+  padding: 28px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  text-align: center;
+}
+.gate h2 { margin-top: 0; }
+.gate form { display: flex; gap: 8px; margin-top: 16px; }
+.gate input {
+  flex: 1;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+}
+.error { color: var(--error); font-size: 13px; }
+
+/* Workspace: chat | 3D viewer */
+.workspace {
+  flex: 1;
+  display: flex;
+  min-height: 0;
+}
+
+.chat {
+  flex: 1 1 55%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--border);
+}
+
+.messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.bubble {
+  max-width: 80%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  line-height: 1.45;
+}
+.bubble.user { align-self: flex-end; background: var(--user); }
+.bubble.assistant { align-self: flex-start; background: var(--assistant); border: 1px solid var(--border); }
+.bubble.pending { color: var(--muted); font-style: italic; }
+.bubble.error-bubble { border-color: var(--error); }
+
+.bubble img {
+  display: block;
+  max-width: 100%;
+  margin-top: 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+}
+.bubble .artefact-link,
+.bubble .artefact-action {
+  display: inline-block;
+  margin-top: 8px;
+  margin-right: 12px;
+  color: var(--accent);
+  font-size: 13px;
+  background: none;
+  border: none;
+  padding: 0;
+  cursor: pointer;
+}
+.bubble .artefact-action { text-decoration: underline; }
+
+.composer {
+  display: flex;
+  gap: 10px;
+  padding: 14px 20px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex: 0 0 auto;
+}
+.composer textarea {
+  flex: 1;
+  resize: none;
+  padding: 10px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+}
+
+/* 3D viewer panel */
+.viewer-panel {
+  flex: 1 1 45%;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  background: var(--bg);
+}
+.viewer-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+  flex: 0 0 auto;
+}
+.viewer-title { font-weight: 600; font-size: 13px; }
+.viewer-name { color: var(--muted); font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.viewer-toolbar button { padding: 6px 12px; font-size: 12px; }
+
+.viewer {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+.viewer canvas { display: block; }
+.viewer-placeholder {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: var(--muted);
+  font-size: 14px;
+  padding: 24px;
+  pointer-events: none;
+}
+.viewer-placeholder small { font-size: 12px; opacity: 0.7; }
+
+@media (max-width: 900px) {
+  .workspace { flex-direction: column; }
+  .chat { flex: 1 1 auto; border-right: none; border-bottom: 1px solid var(--border); }
+  .viewer-panel { flex: 1 1 auto; min-height: 320px; }
+}

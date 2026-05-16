@@ -48,6 +48,7 @@ from agents.shared.user_inputs_tool import (
 )
 from config import ATTEMPTS_DIR
 from tools.calculate.calculate import calculate
+from tools.visualize_model.visualize_model import visualize_3d_model
 
 logger = logging.getLogger("propeller_agent")
 
@@ -92,8 +93,9 @@ class Receptionist(BaseChainAgent):
         """Bind ``read_agent_history``, ``calculate``, ``list_attempts``,
         ``read_attempt``, the user-inputs inspection tools (listing,
         reading text, reading image notes — but NOT loading image
-        bytes; the Receptionist does not analyse images itself), plus
-        the ``call_orchestrator`` routing tool."""
+        bytes; the Receptionist does not analyse images itself),
+        ``visualize_3d_model`` (push a generated mesh to the web
+        viewer), plus the ``call_orchestrator`` routing tool."""
         all_tools = list(tools) + [
             calculate,
             list_attempts,
@@ -101,6 +103,7 @@ class Receptionist(BaseChainAgent):
             list_input_files,
             read_input_text,
             read_image_notes,
+            visualize_3d_model,
         ]
         self._tools_by_name = {t.name: t for t in all_tools}
         self.llm = self.base_llm.bind_tools(all_tools)
