@@ -261,52 +261,56 @@ class Receptionist(BaseChainAgent):
     def format_outgoing(self, system_result: str) -> str:
         """Compose a user-facing response from the system's technical result.
 
-        When the most recently-touched attempt folder under
-        ``ATTEMPTS_DIR`` was modified during THIS user cycle (its
-        ``parameters.json`` or any ``render_*.png`` has an mtime
-        greater than ``self.cycle_start_ts``), attach those artifacts
-        to the LLM input so the composed user-facing message can list
-        accurate parameter values and render paths.
+        The Orchestrator's hand-off now names the attempt folder(s)
+        this cycle and which to show the user; the Receptionist pulls
+        each one's parameters / render paths itself via its
+        ``read_attempt`` / ``list_attempts`` tools (see prompt).  Only
+        when the hand-off carries NO attempt-folder reference do we
+        fall back to the legacy behaviour of auto-attaching the single
+        most-recently-touched attempt's fresh artifacts, so a summary
+        that never references an attempt path still works.
         """
         self._pending_hop = None
         text = f"System message to relay to the user:\n{system_result}"
 
-        def _is_fresh(path: Path) -> bool:
-            try:
-                return (
-                    path.exists()
-                    and path.stat().st_mtime >= self.cycle_start_ts
-                )
-            except OSError:
-                return False
+        if not self._handoff_names_attempt(system_result):
+            def _is_fresh(path: Path) -> bool:
+                try:
+                    return (
+                        path.exists()
+                        and path.stat().st_mtime >= self.cycle_start_ts
+                    )
+                except OSError:
+                    return False
 
-        latest_attempt = self._latest_active_attempt()
-        if latest_attempt is not None:
-            params_path = latest_attempt / "parameters.json"
-            if _is_fresh(params_path):
-                text += (
-                    f"\n\nDC parameters written this cycle (attempt "
-                    f"folder: {latest_attempt.resolve()}; use these "
-                    f"exact values if listing parameters — do not "
-                    f"invent names or values):\n"
-                    f"{params_path.read_text(encoding='utf-8')}"
-                )
+            latest_attempt = self._latest_active_attempt()
+            if latest_attempt is not None:
+                params_path = latest_attempt / "parameters.json"
+                if _is_fresh(params_path):
+                    text += (
+                        f"\n\nDC parameters written this cycle (attempt "
+                        f"folder: {latest_attempt.resolve()}; use these "
+                        f"exact values if listing parameters — do not "
+                        f"invent names or values):\n"
+                        f"{params_path.read_text(encoding='utf-8')}"
+                    )
 
-            render_names = (
-                "render_isometric.png", "render_top.png", "render_side.png",
-            )
-            render_files = [
-                str((latest_attempt / n).resolve())
-                for n in render_names
-                if _is_fresh(latest_attempt / n)
-            ]
-            if render_files:
-                text += (
-                    "\n\nConfirmed render files produced this cycle "
-                    "(attempt folder: "
-                    f"{latest_attempt.resolve()}):\n"
-                    + "\n".join(render_files)
+                render_names = (
+                    "render_isometric.png", "render_top.png",
+                    "render_side.png",
                 )
+                render_files = [
+                    str((latest_attempt / n).resolve())
+                    for n in render_names
+                    if _is_fresh(latest_attempt / n)
+                ]
+                if render_files:
+                    text += (
+                        "\n\nConfirmed render files produced this cycle "
+                        "(attempt folder: "
+                        f"{latest_attempt.resolve()}):\n"
+                        + "\n".join(render_files)
+                    )
 
         self.messages.append(HumanMessage(content=text))
         composed = self._run_llm_loop()
@@ -345,6 +349,27 @@ class Receptionist(BaseChainAgent):
         if not candidates:
             return None
         return max(candidates, key=lambda x: x[0])[1]
+
+    @staticmethod
+    def _handoff_names_attempt(system_result: str) -> bool:
+        """True if the Orchestrator's hand-off references an attempt
+        folder path.  When so, the Receptionist pulls each attempt's
+        details via its ``read_attempt`` / ``list_attempts`` tools per
+        the prompt, and the legacy single-newest-attempt auto-attach
+        in ``format_outgoing`` is skipped.  Detected by the
+        ATTEMPTS_DIR path appearing in the summary — robust to wording
+        because every absolute attempt path contains the attempts
+        root."""
+        if not system_result:
+            return False
+        try:
+            root = str(ATTEMPTS_DIR.resolve())
+        except OSError:
+            root = str(ATTEMPTS_DIR)
+        return (
+            root.replace("\\", "/").lower()
+            in system_result.replace("\\", "/").lower()
+        )
 
     def run(self, message: str) -> AgentHop:
         """Compose a user-facing message and return a terminal hop."""
