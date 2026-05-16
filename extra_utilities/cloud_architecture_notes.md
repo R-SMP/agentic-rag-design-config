@@ -14,12 +14,22 @@ For open issues and planned enhancements, see `TODO_known_issues.md`.
 ## C1. Backend hosting: Railway
 
 **Choice.** The multi-agent FastAPI process runs on **Railway**
-(Hobby plan, ~$5/mo credit + pay-as-you-go).
+(Pro plan, new workspace — per-seat fee + usage-based billing;
+replaces the original Hobby-plan project).
 
 **Why.** Fastest path to a deployed service; one platform hosts the
 backend, Postgres, and Redis together; GitHub auto-deploy on push to
 `main`; idle cost is genuinely low for an MVP. Railway Postgres
 includes pgvector, which the database design needs.
+
+**Deviation (Stage A).** GitHub auto-deploy is NOT in use for
+Stage A. The repo is org-owned (`R-SMP/agentic-rag-design-config`)
+and the Railway GitHub App is not authorised on the `R-SMP` org
+(needs an org-owner approval outside our control). Stage A deploys
+via the Railway CLI (`railway up`) from the `stage-a-web-deploy`
+worktree instead — no push-to-deploy. See
+`cloud_deploy_runbook.md` §1. GitHub auto-deploy remains the target
+if/when that org approval lands.
 
 **Stack co-locations on Railway.**
 - FastAPI backend (also serves Streamlit — see C2).
@@ -442,7 +452,7 @@ session reset, and lose trust in the labelling.  See
 
 | Layer | Choice |
 |---|---|
-| Backend host | Railway (Hobby) |
+| Backend host | Railway (Pro, new workspace) |
 | Backend framework | None — Streamlit is the entry point (no FastAPI front-door for MVP, see C2) |
 | Frontend | Streamlit, drives `agents/dispatch.py:dispatch_turn` directly |
 | Postgres | Railway Postgres (pgvector ≥ 0.5, HNSW from day one) |

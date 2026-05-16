@@ -6,20 +6,37 @@ only** — single Streamlit pod, no DB writes, no R2 uploads.  Stage B
 will append a "Database wiring" section to this same file; Stage C
 will append "RAG retrieval".
 
-The Railway project is pre-existing per the v2 supplement section 1:
+The Railway project is a **new, empty project in a fresh Pro
+workspace**.  It replaces the earlier Hobby-plan project; that
+project and its ``MT-propeller-v11`` /
+``21efab95-e48d-423f-91a3-622fb10f796b`` identifiers are dead — do
+NOT use them anywhere.
 
-  * Project name: ``MT-propeller-v11``
-  * Project ID:   ``21efab95-e48d-423f-91a3-622fb10f796b``
-  * Region:       EU-West (closest to the existing Azure Rhino
-                  Compute VM target and to ETH).
-  * Postgres:     already provisioned with pgvector; not used in
-                  Stage A but kept warm so Stage B does not need a
-                  separate provisioning step.
-  * R2 bucket:    ``mt-propeller-v11-artefacts`` in EU
-                  jurisdiction; unused in Stage A.
+  * Workspace:    new Pro-plan workspace.
+  * Project name: ``agentic-rag-design-config``
+  * Project ID:   ``644e017b-b027-455a-b1f8-5a86952feae5``.  The
+                  project EXISTS but is empty (no service, region,
+                  or infra yet) — §1 wires it up.  Verify this id
+                  once against Project Settings → General; if it
+                  differs, that value wins and this block,
+                  ``cloud_architecture_notes.md`` and
+                  ``TODO_known_issues.md`` NEXT1 must be updated.
+  * Region:       NOT yet selected.  Choose **EU West (Amsterdam)**
+                  in §1, when the service is created — closest to
+                  the Azure Rhino Compute VM target and to ETH.  On
+                  Pro the region is chosen per service.
+  * Postgres:     NOT provisioned.  Stage A does not use it; Stage B
+                  adds a Railway Postgres service (with pgvector) as
+                  its first step.
+  * R2 bucket:    NOT provisioned.  Cloudflare R2 is separate from
+                  Railway and unused in Stage A; the bucket is
+                  created during Stage B setup.
 
-No new infrastructure is required to ship Stage A — only an
-application service inside the existing project.
+Stage A still needs only a single application service — no Postgres,
+no R2 — but unlike the old project, the project's region and that
+service are created from scratch here.  Plan note: on Pro the
+service runs always-on (there is no Hobby-style auto-sleep); idle
+compute cost is controlled via manual Pause (see §4).
 
 ---
 
@@ -101,24 +118,69 @@ container's own filesystem cannot serve.
 
 ---
 
-## 1. Wire the GitHub repo into Railway
+## 1. Create the Railway environment and deploy via the Railway CLI
 
-Railway can either (a) pull an image from `ghcr.io` or (b) build
-from a GitHub repo on every push.  Stage A uses **(b)** — Railway
-builds the image from the `Dockerfile` at the repo root on every
-push to `main`.
+The workspace and the (empty) project already exist — this section
+stands up the service and its region, then links the local working
+tree for CLI deploy.
 
-1. Open the Railway project ``MT-propeller-v11``.
-2. Click **+ New** → **GitHub Repo**.
-3. Authorise the Railway GitHub app for the repo if not done already.
-4. Select ``R-SMP/agentic-rag-design-config``.
-5. In the resulting service settings → **Source** tab:
-   * Branch: ``main``
-   * Build method: **Dockerfile** (Railway auto-detects from the
-     repo root ``Dockerfile`` — no override needed).
-   * Watch paths: leave default (full repo) — every push to main
-     triggers a rebuild.
-6. Do NOT click "Deploy" yet — env vars are still missing.
+**Why CLI, not GitHub auto-deploy.**  The original design (and
+`cloud_architecture_notes.md` C1) called for Railway to build from
+the `R-SMP/agentic-rag-design-config` GitHub repo on every push to
+`main`.  That path is blocked: `R-SMP` is a GitHub org, the Railway
+GitHub App is not authorised on it, and granting that needs an
+`R-SMP` org-owner approval we do not control.  Stage A therefore
+deploys with **`railway up`**, which uploads the local working tree
+and builds the `Dockerfile` server-side — no GitHub link required.
+
+**Trade-off, understand it.**  There is NO push-to-deploy.  Every
+deploy is a manual `railway up` from the worktree (see §4
+Redeploys).  Acceptable for Stage A's deploy cadence; if the GitHub
+App ever gets `R-SMP` org approval, the original GitHub-build flow
+can replace this section and the rest of the runbook is unaffected.
+
+1. **Be in the right workspace.**  Use the workspace switcher
+   (top-left in the Railway dashboard) and confirm you are in the
+   **new Pro workspace**, NOT the old personal account that held
+   the dead Hobby project.  Creating the service in the wrong
+   workspace is the easiest mistake to make here.
+2. **Open the existing empty project** ``agentic-rag-design-config``
+   in this workspace.  Verify its id against Project Settings →
+   General matches the intro block's
+   ``644e017b-b027-455a-b1f8-5a86952feae5``; if it differs, the
+   dashboard value wins — update the intro block,
+   ``cloud_architecture_notes.md`` and ``TODO_known_issues.md``
+   NEXT1 before continuing.
+3. Inside the project, click **+ Create** → **Empty Service**.
+   Name it ``stage-a``.  An empty service is created first so its
+   region can be set BEFORE the first deploy; ``railway up`` later
+   deploys into this service.
+4. Open the ``stage-a`` service → **Settings** tab → **Regions**,
+   select **EU West (Amsterdam)**.  This is the region decision
+   deferred from the intro block — it must be EU-adjacent so the
+   container stays close to the Azure Rhino Compute VM and to ETH.
+   Set it now; changing region later forces a redeploy.
+5. Install and authenticate the Railway CLI on the deploy machine:
+   ```powershell
+   npm i -g @railway/cli      # or: scoop install railway
+   railway --version          # confirm it runs
+   railway login              # opens a browser; log in to the
+                              # account that owns the new Pro
+                              # workspace
+   ```
+6. Link the local working tree to the project + service.  Run this
+   from the worktree that holds the Stage A ``Dockerfile`` +
+   ``streamlit_app.py`` — i.e. the ``stage-a-web-deploy`` checkout,
+   NOT a ``main`` checkout:
+   ```powershell
+   railway link               # select: workspace → project
+                              # agentic-rag-design-config →
+                              # service stage-a
+   railway status             # confirm it prints the right
+                              # project + service before going on
+   ```
+7. Do NOT run ``railway up`` yet — env vars are still missing.
+   ``railway up`` is the first step of §3, after §2.
 
 ---
 
@@ -155,16 +217,23 @@ Stage A does NOT use these (Stage B / C will):
 | ``R2_ACCOUNT_ID``, ``R2_ACCESS_KEY_ID``, ``R2_SECRET_ACCESS_KEY``, ``R2_BUCKET_NAME`` | Stage B (R2 binary uploads) |
 | ``STORAGE_BACKEND`` | Stage B (the default ``files`` is fine until then) |
 
-After saving, the service auto-restarts.  Wait for the first
-deploy to complete (3–5 min — Docker build + pip install).
+Saving variables on an empty (not-yet-deployed) service produces
+no visible change — there is no running deployment to restart.
+The first deploy happens in §3 via ``railway up``.  (On later
+redeploys, changing a variable in the dashboard DOES restart the
+running service.)
 
 ---
 
 ## 3. First deploy + smoke test
 
-1. **Watch the build log** in Railway → service → Deployments →
-   latest deploy → View logs.  The lines you expect to see in
-   order:
+1. **Deploy and watch the build log.**  From the linked
+   ``stage-a-web-deploy`` worktree, with §2 env vars saved, run
+   ``railway up``.  It uploads the working tree, builds the
+   ``Dockerfile`` server-side (3–5 min — Docker build + pip
+   install), and streams the build log to your terminal; the same
+   log is also at Railway → service → Deployments → latest →
+   View logs.  The lines you expect to see in order:
      * ``Successfully installed`` for every project dep (the long
        line ending in ``streamlit-...``).
      * ``Uvicorn server started on 0.0.0.0:8501`` (Streamlit
@@ -207,11 +276,14 @@ If all five pass, Stage A is live.
 
 ### Redeploys
 
-Push to ``main`` → Railway automatically rebuilds and rolls out
-the new image.  In-flight Streamlit sessions are NOT preserved
-across deploys (Stage A's session state lives in process memory
-— see ``cloud_architecture_notes.md`` C4).  Schedule deploys for
-times when no invitee is actively demoing.
+There is NO push-to-deploy (see §1 — the Railway GitHub App is not
+authorised on the `R-SMP` org).  To redeploy: in the
+``stage-a-web-deploy`` worktree, get the changes you want live
+into the working tree, then re-run ``railway up``.  In-flight
+Streamlit sessions are NOT preserved across deploys (Stage A's
+session state lives in process memory — see
+``cloud_architecture_notes.md`` C4).  Run ``railway up`` only when
+no invitee is actively demoing.
 
 ### Killing a runaway deploy
 
@@ -230,8 +302,10 @@ If costs spike or an invitee reports the URL is leaked:
 ### Pausing / sleeping the service
 
 Railway → service → Settings → Danger Zone → "Pause Service".
-Useful if you are away for the weekend and want zero idle cost
-even on the Hobby plan.  Resume via the same panel.
+On the Pro plan the service runs always-on (there is no Hobby-style
+auto-sleep), so manual Pause is the way to drop idle compute cost to
+zero when you are away for a stretch (the per-seat Pro fee still
+applies regardless).  Resume via the same panel.
 
 ### Reading logs
 

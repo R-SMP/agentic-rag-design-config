@@ -28,15 +28,20 @@ on my machine" and "invited-only cloud URL" is this deploy.
 **Two coupled sub-tasks:**
 
 **(a) Shift all code to Railway.**
-  * Branch `stage-a-web-deploy` is pushed to
-    `origin/stage-a-web-deploy` at the Stage A tip.  Railway
-    auto-deploys from GitHub.
+  * Deploy is via the **Railway CLI (`railway up`)**, NOT GitHub
+    auto-deploy: the Railway GitHub App is not authorised on the
+    `R-SMP` org and that needs an org-owner approval we do not
+    control.  No push-to-deploy; each deploy is a manual
+    `railway up` from the `stage-a-web-deploy` worktree.
   * Follow `extra_utilities/cloud_deploy_runbook.md` end to end:
-    §1 wire the GitHub repo into the existing Railway project
-    `MT-propeller-v11` (id `21efab95-e48d-423f-91a3-622fb10f796b`),
+    §1 open the existing empty (Pro-workspace) Railway project
+    `agentic-rag-design-config`
+    (id `644e017b-b027-455a-b1f8-5a86952feae5`), create the
+    `stage-a` empty service, set its EU-West region, install +
+    `railway login` + `railway link`,
     §2 set service env vars (`INVITE_CODE`, `OPENAI_API_KEY`,
-    `ANTHROPIC_API_KEY`; NOT R2 — Stage B), §3 first deploy + the
-    five smoke checks, §4 operational notes.
+    `ANTHROPIC_API_KEY`; NOT R2 — Stage B), §3 `railway up` +
+    the five smoke checks, §4 operational notes.
   * Decision still open at deploy time: whether `main` gets the
     Stage A merge before or after the first green Railway deploy.
     Recommended: deploy `stage-a-web-deploy` directly (Railway can
