@@ -154,7 +154,10 @@ can replace this section and the rest of the runbook is unaffected.
 3. Inside the project, click **+ Create** → **Empty Service**.
    Name it ``stage-a``.  An empty service is created first so its
    region can be set BEFORE the first deploy; ``railway up`` later
-   deploys into this service.
+   deploys into this service.  NOTE: this step and the next (and
+   the §2 variables) are *staged* dashboard edits — they are NOT
+   live until you apply them (see the **APPLY GATE** at the top of
+   §3).
 4. Open the ``stage-a`` service → **Settings** tab → **Regions**,
    select **EU West (Amsterdam)**.  This is the region decision
    deferred from the intro block — it must be EU-adjacent so the
@@ -168,19 +171,30 @@ can replace this section and the rest of the runbook is unaffected.
                               # account that owns the new Pro
                               # workspace
    ```
-6. Link the local working tree to the project + service.  Run this
-   from the worktree that holds the Stage A ``Dockerfile`` +
-   ``streamlit_app.py`` — i.e. the ``stage-a-web-deploy`` checkout,
-   NOT a ``main`` checkout:
+6. Link the working tree, then SEPARATELY attach the service.
+   Run from the worktree that holds the Stage A ``Dockerfile`` +
+   ``streamlit_app.py`` — the ``stage-a-web-deploy`` checkout, NOT
+   a ``main`` checkout:
    ```powershell
-   railway link               # select: workspace → project
-                              # agentic-rag-design-config →
-                              # service stage-a
-   railway status             # confirm it prints the right
-                              # project + service before going on
+   railway login       # the account MUST be a workspace member
+                       # with deploy rights.  A verbal "OK" from
+                       # the owner is NOT access — they must add
+                       # you under Workspace -> Settings ->
+                       # Members.  railway whoami MUST equal the
+                       # invited email (personal-vs-ETH account
+                       # mismatch is the classic failure mode).
+   railway link        # workspace -> project -> production.
+                       # Links project + environment ONLY; it
+                       # does NOT select a service.
+   railway service     # SEPARATE command — pick stage-a.  Only
+                       # works AFTER the service is applied in the
+                       # dashboard (see the §3 apply gate).
+   railway status      # expect: Service: stage-a.  An undeployed
+                       # service NOT listed under "All resources"
+                       # is normal, not an error.
    ```
-7. Do NOT run ``railway up`` yet — env vars are still missing.
-   ``railway up`` is the first step of §3, after §2.
+7. Do NOT run ``railway up`` yet — finish §2, then clear the §3
+   APPLY GATE first.  ``railway up`` is the deploy step in §3.
 
 ---
 
@@ -201,7 +215,7 @@ Required for Stage A:
 | ``ANTHROPIC_API_KEY`` | NordPass | |
 | ``RHINO_COMPUTE_URL`` | The Azure VM's URL, OR omit entirely | Omit means "no mesh tool will work" — see 0.4. |
 | ``RHINO_COMPUTE_API_KEY`` | NordPass (if the VM enforces an API key) | |
-| ``PORT`` | Auto-injected by Railway | Do NOT set manually; the Dockerfile reads ``${PORT:-8501}``. |
+| ``PORT`` | Auto-injected by Railway | Do NOT set manually; the Dockerfile reads ``${PORT:-8501}``.  Railway commonly injects ``8080``, so the runtime log shows ``0.0.0.0:8080`` — that is correct, not a misconfig. |
 
 Optional but recommended:
 
@@ -227,27 +241,48 @@ running service.)
 
 ## 3. First deploy + smoke test
 
+0. **APPLY GATE — do this first, in the dashboard.**  Everything
+   staged in §1/§2 — the ``stage-a`` service, its region, and the
+   three variables — is NOT live until you click Railway's
+   **"Apply N changes" / Deploy** button in the dashboard.  Until
+   you do: the project shows "No services", the service detail
+   says "There is no active deployment", and the CLI prints
+   ``Service: None`` no matter how many times you re-link.  Click
+   Apply, wait for it to settle, THEN run ``railway service``
+   (§1 step 6) so ``railway status`` shows ``Service: stage-a``.
+   This single gate caused the most confusion in the first real
+   deploy — do not skip it.
+
 1. **Deploy and watch the build log.**  From the linked
-   ``stage-a-web-deploy`` worktree, with §2 env vars saved, run
-   ``railway up``.  It uploads the working tree, builds the
-   ``Dockerfile`` server-side (3–5 min — Docker build + pip
-   install), and streams the build log to your terminal; the same
-   log is also at Railway → service → Deployments → latest →
-   View logs.  The lines you expect to see in order:
+   ``stage-a-web-deploy`` worktree, with §2 env vars saved AND the
+   apply gate cleared, run ``railway up``.  It uploads the working
+   tree, builds the ``Dockerfile`` server-side (3–5 min — Docker
+   build + pip install), and streams the build log to your
+   terminal; the same log is also at Railway → service →
+   Deployments → latest → View logs.  The lines you expect to see
+   in order:
      * ``Successfully installed`` for every project dep (the long
        line ending in ``streamlit-...``).
-     * ``Uvicorn server started on 0.0.0.0:8501`` (Streamlit
-       startup banner).
+     * ``Uvicorn server started on 0.0.0.0:<PORT>`` — ``<PORT>``
+       is whatever Railway injected (commonly ``8080``), NOT
+       necessarily ``8501``.  8080 is correct.
      * ``You can now view your Streamlit app in your browser.``
-     * The Local / Network / External URL lines.
+     * Local / External URL lines.  NOTE: the printed
+       ``External URL: http://<ip>:<port>`` is an
+       internal/ephemeral address — it is NOT your public URL.
+       The public URL comes from step 2 (Generate Domain).
 
    If any of those is missing OR if there is a Python traceback
    above them, fix the underlying issue (env var typo, broken
    requirement, etc.) — do NOT just re-deploy hoping it goes away.
 
-2. **Open the public URL.**  Railway → service → Settings →
-   Networking → "Public Networking" section → copy the
-   ``*.up.railway.app`` domain.
+2. **Expose the service, then open the public URL.**  A fresh
+   service is "Unexposed" — it has no public domain until you
+   create one.  Railway → ``stage-a`` → **Settings → Networking**
+   → **Generate Domain** → copy the resulting
+   ``https://*.up.railway.app`` URL.  (If asked for a port,
+   Railway targets the injected ``PORT`` automatically — accept
+   the default.)
 
 3. **Verify the invite-code gate.**  The page should load showing
    the title, a "one user at a time" caption, and a password-style
