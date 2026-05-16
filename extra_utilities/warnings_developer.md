@@ -380,3 +380,52 @@ project Python can install, or (b) adding a runtime
 `python_requires` constraint to >= 3.9 in a future `pyproject.
 toml` — is deliberately deferred.  See also W15 for the venv
 convention that mostly papers over this in day-to-day use.
+
+## W17. Streamlit is an INTERIM web interface — do not over-invest in it.
+
+**THIS IS A WEB-INTERFACE DEVELOPER NOTE — read before adding
+anything non-trivial to `streamlit_app.py`.**
+
+**Where.** `streamlit_app.py` and anything that grows around it.
+
+**What.** The Stage A web UI is Streamlit purely because it was
+the fastest path to a deployed, invite-gated chat surface that
+reuses `agents/dispatch.py:dispatch_turn` unchanged.  It is
+explicitly a **stop-gap**, not the destination.  The planned
+replacement is a **JavaScript-based web interface** (see
+`TODO_known_issues.md` F4 for the tracked item, and
+`cloud_architecture_notes.md` C2's "Future migration" subsection
+for the architectural sketch — HTMX-or-SPA over a FastAPI/API
+backend).
+
+**Why this is a warning, not just a TODO.** Streamlit's
+whole-script-rerun model tempts developers into Streamlit-specific
+contortions: stuffing live objects into `st.session_state`,
+threading background work around the rerun loop, fighting the
+single-column layout with `st.columns`/`components.v1.html`
+escapes, caching hacks, etc.  Every such hack is **throwaway work**
+— it does not survive the migration to a JS frontend, and worse,
+it entangles agent-level logic with Streamlit's execution model
+and makes the migration harder.
+
+**Rules for anyone extending the web layer:**
+  * Keep all agent / pipeline logic behind `dispatch_turn` and the
+    `Session` plain-data contract.  `streamlit_app.py` must stay a
+    THIN I/O surface (read input, render output, manage the gate +
+    session-state lifecycle) — the same role the v4 REPL loader
+    plays.  A JS frontend should be able to replace
+    `streamlit_app.py` by calling the same `dispatch_turn`.
+  * Do NOT push business rules, parameter validation, artefact
+    resolution, or persistence decisions into the Streamlit layer.
+  * If a feature needs a Streamlit-specific hack to work, that is
+    a signal the feature belongs behind `dispatch_turn` / in the
+    agent layer, OR that it should wait for the JS frontend.
+  * New user-facing controls (e.g. the Stage B "Save" button, see
+    W14) should be specified in terms of *what dispatch/session
+    operation they trigger*, so they port to the JS frontend as a
+    button that hits the same operation.
+
+**Status.** Streamlit is the Stage A + (likely) Stage B/C
+frontend.  The JS migration is post-Stage-C / productionisation
+work (F4).  This warning stays in force until F4 lands; at that
+point replace it with an "obsolete" note like W6/W7.

@@ -16,6 +16,67 @@ note in the commit message).
 
 ---
 
+## ⇒ IMMEDIATE NEXT ACTION (do this before anything else)
+
+### NEXT1. Deploy Stage A to Railway + stand up Rhino Compute on Azure
+
+**Status.** NOT STARTED.  This is the single highest-priority task
+— Stage A code is complete and validated locally (native venv +
+Docker, both with renders working); the only thing between "works
+on my machine" and "invited-only cloud URL" is this deploy.
+
+**Two coupled sub-tasks:**
+
+**(a) Shift all code to Railway.**
+  * Branch `stage-a-web-deploy` is pushed to
+    `origin/stage-a-web-deploy` at the Stage A tip.  Railway
+    auto-deploys from GitHub.
+  * Follow `extra_utilities/cloud_deploy_runbook.md` end to end:
+    §1 wire the GitHub repo into the existing Railway project
+    `MT-propeller-v11` (id `21efab95-e48d-423f-91a3-622fb10f796b`),
+    §2 set service env vars (`INVITE_CODE`, `OPENAI_API_KEY`,
+    `ANTHROPIC_API_KEY`; NOT R2 — Stage B), §3 first deploy + the
+    five smoke checks, §4 operational notes.
+  * Decision still open at deploy time: whether `main` gets the
+    Stage A merge before or after the first green Railway deploy.
+    Recommended: deploy `stage-a-web-deploy` directly (Railway can
+    track any branch), validate the cloud URL, THEN merge to
+    `main`.
+  * Pre-flight gate: OPS1 spend caps must be confirmed set
+    (user reported done — re-verify in the dashboards before the
+    URL is shared).
+
+**(b) Set up and use Rhino Compute on the Azure server.**
+  * Stage A's local validation pointed `RHINO_COMPUTE_URL` at the
+    developer's local Rhino Compute (`localhost:6500` native /
+    `host.docker.internal:6500` in Docker).  Neither is reachable
+    from Railway.
+  * Provision Rhino Compute on the Azure Windows VM (region was
+    still TBD as of the last project-memory note — confirm /
+    finalise the region now).  Expose it on a URL Railway can
+    reach over the network, secured by `RHINO_COMPUTE_API_KEY`.
+  * Set `RHINO_COMPUTE_URL` (and `RHINO_COMPUTE_API_KEY`) as
+    Railway service env vars to that Azure endpoint.
+  * Until (b) is done, the cloud app will boot, gate, and chat,
+    but any propeller-design request fails the moment it reaches
+    Tool Caller → `generate_propeller_mesh` (connection refused).
+    Deploying (a) first and accepting "no mesh tools until (b)"
+    is a valid intermediate state for verifying the deploy path —
+    it is explicitly NOT the Stage A end state.
+
+**Definition of done.** An invited-only `*.up.railway.app` URL
+where a fresh visitor enters the invite code, describes a
+propeller, and gets renders inline — i.e. the Stage A end state
+from the re-staging plan, running in the cloud rather than on the
+developer's laptop.
+
+**Where the detail lives.** `extra_utilities/cloud_deploy_
+runbook.md` (the step-by-step), project memory
+`project_test11_v3.md` (current state + decisions), and
+`cloud_architecture_notes.md` C1/C5 (Railway + domain rationale).
+
+---
+
 ## Open issues
 
 ### O1. Database Handler: handle dangling tool_use in frozen snapshots
@@ -445,6 +506,50 @@ weighting would inject bias rather than remove it.
 `database_design_notes.md` D2). This item — historically tracked as
 "add HNSW once corpus reaches ~30k vectors" — is **closed before
 opening**. Do not re-add it.
+
+### F4. Shift from Streamlit to a JavaScript-based web interface
+
+**Where.** Today: `streamlit_app.py` is the entire web layer
+(Stage A, Phase 3).  Target: a JavaScript-based frontend (SPA or
+HTMX-driven) talking to a thin API that calls the existing
+`agents/dispatch.py:dispatch_turn`.
+
+**What to build.** Replace the Streamlit surface with a real web
+frontend.  The agent layer does not change — `dispatch_turn` +
+the `Session` plain-data contract are already the seam.  The work
+is: (1) a small HTTP API (FastAPI) exposing "start session",
+"submit turn", "end session", "fetch artefacts"; (2) a JS
+frontend (framework TBD — plain HTMX over server-rendered
+fragments is the lowest-effort option per
+`cloud_architecture_notes.md` C2's "Future migration" subsection;
+a React/SPA is the heavier option) that consumes it; (3) porting
+the invite-code gate, the chat transcript, inline render display,
+and the "End Session" / future "Save" controls.
+
+**Why deferred.** Streamlit got Stage A to a deployed, gated,
+working chat UI fast and with zero JS.  A JS frontend is only
+worth the 4–7+ days once Streamlit's limitations start to bite on
+real usage — see the eight enumerated limitations in
+`cloud_architecture_notes.md` C2 (whole-script rerun, multi-user
+concurrency, layout rigidity, no real progress streaming for the
+minutes-long pipeline, "Made with Streamlit" branding, awkward
+auth integration, etc.).  Migrate when **two or more** of those
+bite in practice, or when the app needs to face a non-invited
+audience.
+
+**Hard constraint when this is done.** Do not let the migration
+leak agent logic into the frontend.  `warnings_developer.md` W17
+spells out the rule: the web layer stays a thin I/O surface over
+`dispatch_turn`; the JS frontend should be a drop-in replacement
+for `streamlit_app.py`, not a rewrite of the pipeline.  Settle
+the multi-user-concurrency story (Stage B path-namespacing, O9 /
+W13) before or together with this — a real frontend invites real
+concurrent users.
+
+**Status.** Open, deliberately deferred.  Post-Stage-C /
+productionisation work.  Triggered by the "two or more C2
+limitations bite" condition above, or by a public-audience
+requirement.  Paired warning: `warnings_developer.md` W17.
 
 ---
 
