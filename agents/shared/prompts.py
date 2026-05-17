@@ -204,6 +204,13 @@ AGENT_TOOLS_OVERVIEW_BRIEF = _read_dc_fragment(
     "tools_config/agent_tools_overview_brief.md"
 )
 HARD_CONSTRAINTS_TOOLS = _read_dc_fragment("tools_config/hard_constraints_tools.md")
+# Web-interface-only display tool.  Bound to the Receptionist alone and
+# meaningful only when the DC is driven through the web UI, so its
+# agent-facing description + usage rules live in a tool fragment
+# instead of being hardcoded in the Receptionist prompt body.
+VISUALIZE_3D_MODEL_TOOL = _read_dc_fragment(
+    "tools_config/visualize_3d_model.md"
+)
 
 # Paired render / mesh-check backend fragments — exactly one is
 # spliced into the Tool Caller's prompt per session via the runtime
@@ -302,6 +309,7 @@ _SLOTS: dict[str, str] = {
     "agent_tools_overview": AGENT_TOOLS_OVERVIEW,
     "agent_tools_overview_brief": AGENT_TOOLS_OVERVIEW_BRIEF,
     "hard_constraints_tools": HARD_CONSTRAINTS_TOOLS,
+    "visualize_3d_model_tool": VISUALIZE_3D_MODEL_TOOL,
     # Generic
     "hard_constraints_generic": HARD_CONSTRAINTS_GENERIC,
     # Per-agent routing fragments (Receptionist + Orchestrator only;

@@ -36,30 +36,118 @@
     <p id="gate-error" class="error" hidden></p>
   </section>
 
-  <!-- Workspace: chat on the left, interactive 3D model on the right -->
+  <!-- Workspace: left side menu + the selected interface -->
   <div id="workspace" class="workspace" hidden>
-    <main id="chat" class="chat">
-      <div id="messages" class="messages"></div>
-      <form id="composer" class="composer">
-        <textarea id="input" rows="2"
-          placeholder="Describe the propeller you want to design…"></textarea>
-        <button id="send-btn" type="submit" class="primary">Send</button>
-      </form>
-    </main>
+    <nav id="sidenav" class="sidenav" aria-label="Interfaces">
+      <button class="nav-item active" type="button" data-view="chat">
+        <span class="nav-ico">💬</span><span>Chat</span>
+      </button>
+      <button class="nav-item" type="button" data-view="images">
+        <span class="nav-ico">🖼️</span><span>Image Inputs</span>
+      </button>
+      <button class="nav-item" type="button" data-view="params">
+        <span class="nav-ico">🎚️</span><span>Parameters Inputs</span>
+      </button>
+      <button class="nav-item" type="button" data-view="settings">
+        <span class="nav-ico">⚙️</span><span>Workflow Settings</span>
+      </button>
+    </nav>
 
-    <aside id="viewer-panel" class="viewer-panel">
-      <div class="viewer-toolbar">
-        <span class="viewer-title">3D model</span>
-        <span id="viewer-name" class="viewer-name"></span>
-        <button id="viewer-reset" class="ghost" title="Reset view">Reset view</button>
-      </div>
-      <div id="viewer" class="viewer">
-        <div id="viewer-placeholder" class="viewer-placeholder">
-          No model yet — generate a propeller and it will appear here.
-          <br /><small>Drag to rotate · scroll to zoom</small>
+    <div id="views" class="views">
+      <!-- 1. Chat: the chat + interactive 3D model on its right -->
+      <section class="view chat-view active" data-view="chat">
+        <main id="chat" class="chat">
+          <div id="messages" class="messages"></div>
+          <form id="composer" class="composer">
+            <textarea id="input" rows="2"
+              placeholder="Describe the propeller you want to design…"></textarea>
+            <button id="send-btn" type="submit" class="primary">Send</button>
+          </form>
+        </main>
+
+        <aside id="viewer-panel" class="viewer-panel">
+          <div class="viewer-toolbar">
+            <span class="viewer-title">3D model</span>
+            <span id="viewer-name" class="viewer-name"></span>
+            <button id="viewer-reset" class="ghost" title="Reset view">Reset view</button>
+          </div>
+          <div id="viewer" class="viewer">
+            <div id="viewer-placeholder" class="viewer-placeholder">
+              No model yet — generate a propeller and it will appear here.
+              <br /><small>Drag to rotate · scroll to zoom</small>
+            </div>
+          </div>
+        </aside>
+      </section>
+
+      <!-- 2. Image Inputs: upload reference images + per-image notes -->
+      <section class="view images-view" data-view="images" hidden>
+        <div class="img-list-pane">
+          <div id="img-drop" class="img-drop">
+            <input id="img-file" type="file" accept=".png,.jpg,.jpeg"
+                   multiple hidden />
+            <button id="img-pick" class="primary" type="button">Upload images</button>
+            <p class="img-drop-hint">or drag &amp; drop .png / .jpg here</p>
+          </div>
+          <div id="img-list" class="img-list">
+            <p class="img-empty">No images yet.</p>
+          </div>
         </div>
-      </div>
-    </aside>
+
+        <div class="img-detail-pane">
+          <div id="img-detail-empty" class="img-detail-empty">
+            Select an image to view it and add a description.
+          </div>
+          <div id="img-detail-body" class="img-detail-body" hidden>
+            <div class="img-preview-wrap">
+              <img id="img-preview" class="img-preview" alt="" />
+            </div>
+            <label class="img-note-label" for="img-note">Description</label>
+            <textarea id="img-note" class="img-note" rows="5"
+              placeholder="Describe what this image represents…"></textarea>
+            <div class="img-btn-row">
+              <button id="img-save" class="primary" type="button">Save changes description</button>
+              <button id="img-reset" type="button">Reset description</button>
+              <button id="img-delete" class="danger" type="button">Delete image</button>
+            </div>
+            <span id="img-status" class="img-status" role="status"></span>
+          </div>
+        </div>
+      </section>
+
+      <!-- 3. Parameters Inputs (placeholder — to be implemented later) -->
+      <section class="view placeholder-view" data-view="params" hidden>
+        <div class="placeholder-card">
+          <h2>Parameters Inputs</h2>
+          <p>Pick the design parameters one by one yourself instead of
+            describing them in chat.</p>
+          <p class="placeholder-tag">Coming soon</p>
+        </div>
+      </section>
+
+      <!-- 4. Workflow Settings: live editor over workflow_settings/settings.py -->
+      <section class="view settings-view" data-view="settings" hidden>
+        <div class="settings-scroll">
+          <div class="settings-head">
+            <h2>Workflow Settings</h2>
+            <p class="settings-note">
+              Saved to <code>workflow_settings/settings.py</code>. Changes
+              take effect for the <strong>next session</strong> (start a
+              new session via <em>End Session</em>); the rate-limit
+              constants need a server restart.
+            </p>
+          </div>
+          <div id="settings-root" class="settings-root">
+            <p class="settings-loading">Loading settings…</p>
+          </div>
+          <div class="settings-bar">
+            <button id="settings-save" class="primary" type="button">Save settings</button>
+            <button id="settings-reload" class="ghost" type="button">Reload</button>
+            <span id="settings-status" class="settings-status" role="status"></span>
+          </div>
+        </div>
+      </section>
+    </div>
   </div>
 
   <script type="module" src="/static/viewer.js"></script>

@@ -29,6 +29,7 @@ import json
 import logging
 import os
 import queue
+import re
 import time
 import uuid
 from dataclasses import dataclass
@@ -36,7 +37,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -44,20 +45,29 @@ from pydantic import BaseModel
 
 from agents.dispatch import dispatch_turn
 from agents.loader import _archive_previous_session
+from agents.shared.file_utils import pair_input_images
 from agents.shared.session import Session
 from agents.shared.trace import close_trace, init_trace
 from agents.shared.viz_bus import (
     subscribe as viz_subscribe,
     unsubscribe as viz_unsubscribe,
 )
-from config import ATTEMPTS_DIR, LOGS_DIR, USER_INPUTS_DIR
+from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
 from tools import set_mesh_checks, set_render_library
+from workflow_settings import editor as settings_editor
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
 
 WEB_DIR = Path(__file__).parent / "web"
 INVITE_CODE_ENV = "INVITE_CODE"
+
+# Image Inputs interface — same conventions the pipeline enforces
+# (config.py / agents.shared.file_utils.pair_input_images): images live
+# in inputs/input_images/, the note for ``foo.png`` is ``foo_note.txt``.
+ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
+NOTE_SUFFIX = "_note.txt"
+MAX_IMAGE_BYTES = 25 * 1024 * 1024  # 25 MB per uploaded image
 
 
 # --------------------------------------------------------------------------
@@ -208,6 +218,19 @@ class AuthIn(BaseModel):
     code: str
 
 
+class SettingsIn(BaseModel):
+    values: dict[str, object]
+
+
+class ImageNoteIn(BaseModel):
+    name: str
+    description: str
+
+
+class ImageNameIn(BaseModel):
+    name: str
+
+
 @app.get("/")
 def index() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
@@ -303,6 +326,229 @@ def api_artefact(path: str) -> FileResponse:
 def api_end() -> dict:
     _end_session()
     return {"ok": True}
+
+
+@app.get("/api/settings")
+def api_settings_get() -> dict:
+    """Current workflow_settings/settings.py values + metadata for the
+    Workflow Settings editor.  Thin delegate — no agent/pipeline logic
+    here (W17); the parsing lives in workflow_settings.editor."""
+    _require_auth()
+    return {"settings": settings_editor.read_schema()}
+
+
+@app.post("/api/settings")
+def api_settings_post(body: SettingsIn) -> dict:
+    """Validate + rewrite the touched assignment lines in settings.py.
+    Edits take effect for the NEXT session (settings are read at
+    session build); the rate-limit constants need a server restart."""
+    _require_auth()
+    try:
+        settings_editor.write_updates(dict(body.values))
+    except settings_editor.SettingsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # never 500 the editor
+        logger.exception("[WEB] settings write failed: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not write settings ({type(exc).__name__}: {exc}).",
+        )
+    logger.info("[WEB] settings updated: %s", sorted(body.values))
+    return {"ok": True, "settings": settings_editor.read_schema()}
+
+
+# --------------------------------------------------------------------------
+# Image Inputs — manage inputs/input_images/ from the browser
+# --------------------------------------------------------------------------
+
+def _images_dir() -> Path:
+    INPUT_IMAGES_DIR.mkdir(parents=True, exist_ok=True)
+    return INPUT_IMAGES_DIR
+
+
+def _sanitize_stem(stem: str) -> str:
+    cleaned = re.sub(r"[^A-Za-z0-9._-]", "_", stem).strip("._-")
+    return cleaned or "image"
+
+
+def _note_path_for(image: Path) -> Path:
+    return image.parent / f"{image.stem}{NOTE_SUFFIX}"
+
+
+def _safe_image_path(name: str) -> Path:
+    """Resolve *name* to a file directly inside INPUT_IMAGES_DIR.
+
+    Rejects path traversal, nested paths and disallowed suffixes — the
+    same defensive stance as the /api/artefact guard.
+    """
+    raw = (name or "").strip()
+    if not raw or raw != Path(raw).name:
+        raise HTTPException(status_code=400, detail="Invalid image name.")
+    suffix = Path(raw).suffix.lower()
+    if suffix not in ALLOWED_IMAGE_SUFFIXES:
+        raise HTTPException(status_code=400, detail="Unsupported image type.")
+    root = _images_dir().resolve()
+    target = (root / raw).resolve()
+    if target.parent != root:
+        raise HTTPException(status_code=403, detail="Path outside images dir.")
+    return target
+
+
+def _unique_target(stem: str, suffix: str) -> Path:
+    """A free ``<stem><suffix>`` in the images dir.
+
+    Auto-suffixes ``-1``, ``-2`` … on a same-suffix collision.  Rejects
+    a same-stem-different-format collision (the pipeline allows only one
+    image format per name).
+    """
+    root = _images_dir()
+    existing = {
+        p.stem.lower(): p
+        for p in root.iterdir()
+        if p.is_file() and p.suffix.lower() in ALLOWED_IMAGE_SUFFIXES
+    }
+    candidate = stem
+    n = 0
+    while True:
+        clash = existing.get(candidate.lower())
+        if clash is None:
+            return root / f"{candidate}{suffix}"
+        if clash.suffix.lower() != suffix:
+            raise HTTPException(
+                status_code=400,
+                detail=(
+                    f"An image named '{clash.name}' already exists; the "
+                    f"pipeline allows only one format per name. Rename or "
+                    f"delete it first."
+                ),
+            )
+        n += 1
+        candidate = f"{stem}-{n}"
+
+
+def _image_listing() -> list[dict]:
+    pairing = pair_input_images(INPUT_IMAGES_DIR)
+    out: list[dict] = []
+    for img, note in pairing["pairs"]:
+        try:
+            empty = not note.read_text(encoding="utf-8").strip()
+        except OSError:
+            empty = True
+        out.append({
+            "name": img.name,
+            "url": f"/api/images/file?name={quote(img.name)}",
+            "has_note": True,
+            "note_empty": empty,
+        })
+    for img in pairing["orphan_images"]:
+        out.append({
+            "name": img.name,
+            "url": f"/api/images/file?name={quote(img.name)}",
+            "has_note": False,
+            "note_empty": True,
+        })
+    out.sort(key=lambda e: e["name"].lower())
+    return out
+
+
+@app.get("/api/images")
+def api_images_list() -> dict:
+    _require_auth()
+    return {"images": _image_listing()}
+
+
+@app.post("/api/images")
+async def api_images_upload(files: list[UploadFile] = File(...)) -> dict:
+    _require_auth()
+    saved: list[str] = []
+    errors: list[str] = []
+    for f in files:
+        suffix = Path(f.filename or "").suffix.lower()
+        if suffix not in ALLOWED_IMAGE_SUFFIXES:
+            errors.append(f"{f.filename}: unsupported type "
+                          f"(allowed: .png .jpg .jpeg)")
+            continue
+        data = await f.read()
+        if len(data) > MAX_IMAGE_BYTES:
+            errors.append(f"{f.filename}: exceeds "
+                          f"{MAX_IMAGE_BYTES // (1024 * 1024)} MB limit")
+            continue
+        stem = _sanitize_stem(Path(f.filename or "image").stem)
+        try:
+            target = _unique_target(stem, suffix)
+        except HTTPException as exc:
+            errors.append(f"{f.filename}: {exc.detail}")
+            continue
+        target.write_bytes(data)
+        # Auto-create an empty paired note so pair_input_images stays
+        # valid (an undescribed image would otherwise be an orphan and
+        # the Receptionist would refuse to forward the request).
+        note = _note_path_for(target)
+        if not note.exists():
+            note.write_text("", encoding="utf-8")
+        saved.append(target.name)
+    if saved:
+        logger.info("[WEB] images uploaded: %s", saved)
+    return {"ok": not errors, "saved": saved, "errors": errors,
+            "images": _image_listing()}
+
+
+@app.get("/api/images/file")
+def api_images_file(name: str) -> FileResponse:
+    _require_auth()
+    target = _safe_image_path(name)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    return FileResponse(target)
+
+
+@app.get("/api/images/note")
+def api_images_note_get(name: str) -> dict:
+    _require_auth()
+    image = _safe_image_path(name)
+    note = _note_path_for(image)
+    text = ""
+    if note.is_file():
+        try:
+            text = note.read_text(encoding="utf-8")
+        except OSError as exc:
+            raise HTTPException(status_code=400,
+                                detail=f"Could not read note: {exc}")
+    return {"name": image.name, "description": text}
+
+
+@app.post("/api/images/note")
+def api_images_note_save(body: ImageNoteIn) -> dict:
+    _require_auth()
+    image = _safe_image_path(body.name)
+    if not image.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    _note_path_for(image).write_text(body.description, encoding="utf-8")
+    logger.info("[WEB] note saved for %s", image.name)
+    return {"ok": True}
+
+
+@app.post("/api/images/note/reset")
+def api_images_note_reset(body: ImageNameIn) -> dict:
+    _require_auth()
+    image = _safe_image_path(body.name)
+    # Keep the .txt alive (pairing requires it) but empty its content.
+    _note_path_for(image).write_text("", encoding="utf-8")
+    logger.info("[WEB] note reset for %s", image.name)
+    return {"ok": True}
+
+
+@app.delete("/api/images")
+def api_images_delete(name: str) -> dict:
+    _require_auth()
+    image = _safe_image_path(name)
+    note = _note_path_for(image)
+    if image.exists():
+        image.unlink()
+    if note.exists():
+        note.unlink()
+    logger.info("[WEB] image deleted: %s", image.name)
+    return {"ok": True, "images": _image_listing()}
 
 
 @app.get("/api/events")
