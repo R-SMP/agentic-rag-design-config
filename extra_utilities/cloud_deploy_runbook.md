@@ -2,7 +2,7 @@
 
 This is the step-by-step the operator follows to put a Stage A
 container on Railway behind the invite-code gate.  Scope: **Stage A
-only** — single Streamlit pod, no DB writes, no R2 uploads.  Stage B
+only** — single application pod, no DB writes, no R2 uploads.  Stage B
 will append a "Database wiring" section to this same file; Stage C
 will append "RAG retrieval".
 
@@ -173,7 +173,7 @@ can replace this section and the rest of the runbook is unaffected.
    ```
 6. Link the working tree, then SEPARATELY attach the service.
    Run from the worktree that holds the Stage A ``Dockerfile`` +
-   ``streamlit_app.py`` — the ``stage-a-web-deploy`` checkout, NOT
+   ``web_app.py`` — the ``stage-a-web-deploy`` checkout, NOT
    a ``main`` checkout:
    ```powershell
    railway login       # the account MUST be a workspace member
@@ -261,16 +261,18 @@ running service.)
    terminal; the same log is also at Railway → service →
    Deployments → latest → View logs.  The lines you expect to see
    in order:
-     * ``Successfully installed`` for every project dep (the long
-       line ending in ``streamlit-...``).
-     * ``Uvicorn server started on 0.0.0.0:<PORT>`` — ``<PORT>``
+     * ``Successfully installed`` for every project dep, including
+       the FastAPI/uvicorn stack from ``requirements-web.txt``
+       (``fastapi-…``, ``uvicorn-…``, ``python-multipart-…``).
+     * ``[WEB] startup; auth_required=True`` — ``False`` means
+       ``INVITE_CODE`` is unset; for a real deploy it MUST be True.
+     * ``Uvicorn running on http://0.0.0.0:<PORT>`` — ``<PORT>``
        is whatever Railway injected (commonly ``8080``), NOT
        necessarily ``8501``.  8080 is correct.
-     * ``You can now view your Streamlit app in your browser.``
-     * Local / External URL lines.  NOTE: the printed
-       ``External URL: http://<ip>:<port>`` is an
-       internal/ephemeral address — it is NOT your public URL.
-       The public URL comes from step 2 (Generate Domain).
+     * ``Application startup complete.``  NOTE: uvicorn prints no
+       public URL — the address in the log is the in-container
+       bind, NOT your public URL.  The public URL comes from step 2
+       (Generate Domain).
 
    If any of those is missing OR if there is a Python traceback
    above them, fix the underlying issue (env var typo, broken
@@ -284,12 +286,14 @@ running service.)
    Railway targets the injected ``PORT`` automatically — accept
    the default.)
 
-3. **Verify the invite-code gate.**  The page should load showing
-   the title, a "one user at a time" caption, and a password-style
-   input.  Submit a deliberately WRONG code first: you should see
-   the rejection message.  Then submit the real code: the chat
-   surface should appear with the sidebar showing the new session
-   id and the End Session button.
+3. **Verify the invite-code gate.**  The page loads with the title
+   "Propeller Design Configurator", an "Invited-only access"
+   heading, and a password-style invite-code input.  Submit a
+   deliberately WRONG code first: the gate shows "Invite code did
+   not match."  Then submit the real code: the workspace appears —
+   the left side menu (Chat / Image Inputs / Parameters Inputs /
+   Workflow Settings) and an "End Session" button top-right in the
+   header.
 
 4. **Verify a chat turn (no Rhino Compute required).**  Send a
    message like ``hello`` — the Receptionist should reply directly
@@ -297,11 +301,16 @@ running service.)
      * The assistant bubble renders.
      * The session log file exists in the container.  Use Railway's
        shell (Service → ⋯ menu → "Open shell") and ``ls /app/logs/``
-       — you should see one ``streamlit_<id>.log`` and one
+       — you should see one ``web_<id>.log`` and one
        ``agent_flow_*.txt``.
 
-5. **Verify End Session.**  Click the sidebar button — the page
-   should reset to the gate and re-prompt for the invite code.
+5. **Verify End Session.**  Click "End Session" (top-right in the
+   header).  The conversation clears and the session is archived
+   server-side; the next message starts a fresh empty session.
+   NOTE: unlike the old Streamlit gate, this does NOT re-prompt for
+   the invite code — ``web_app.py`` keeps the browser authed until
+   the service restarts.  To force the gate back, restart/redeploy
+   the service (or rotate ``INVITE_CODE`` per §4).
 
 If all five pass, Stage A is live.
 
@@ -344,13 +353,12 @@ applies regardless).  Resume via the same panel.
 
 ### Reading logs
 
-Railway → service → Deployments → latest → View logs.  Streamlit
-writes to stdout, so every ``[STREAMLIT]`` line from
-``streamlit_app.py`` and every ``[RECEPTIONIST]`` /
-``[DISPATCH]`` line from ``agents/dispatch.py`` appears there in
-real time.  Per-session log files inside the container (``/app/
-logs/streamlit_*.log``) are also accessible via the in-Railway
-shell but do not survive a redeploy.
+Railway → service → Deployments → latest → View logs.  uvicorn
+writes to stdout, so every ``[WEB]`` line from ``web_app.py`` and
+every ``[RECEPTIONIST]`` / ``[DISPATCH]`` line from
+``agents/dispatch.py`` appears there in real time.  Per-session log
+files inside the container (``/app/logs/web_*.log``) are also
+accessible via the in-Railway shell but do not survive a redeploy.
 
 ### Custom domain (deferred)
 

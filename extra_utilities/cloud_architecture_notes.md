@@ -32,7 +32,7 @@ worktree instead — no push-to-deploy. See
 if/when that org approval lands.
 
 **Stack co-locations on Railway.**
-- FastAPI backend (also serves Streamlit — see C2).
+- FastAPI backend serving the JS web app (`web_app:app` — see C2).
 - Railway Postgres (pgvector ≥ 0.5, HNSW from day one).
 - Railway Redis (lightweight `session_id` routing only — see C4).
 - GitHub Container Registry (`ghcr.io`) for Docker images.
@@ -59,6 +59,21 @@ Streamlit script imports the agent code directly and drives
 **Why.** All-Python (matches the rest of the stack), 1–2 days to
 prototype, no separate deploy, no JS/CSS knowledge required. Looks
 "internal-tool" but acceptable for thesis-stage demos.
+
+**Stage A update (2026-05-17): the shipped frontend is now the
+FastAPI + JS app, not Streamlit.**  Stage A deploys `web_app.py`
+(FastAPI serving the `web/` JS frontend) as the Railway service's
+sole entry point: the Dockerfile CMD runs `uvicorn web_app:app` and
+the image installs `requirements-web.txt`.  `streamlit_app.py` stays
+in-tree as a reference implementation but is no longer the deployed
+surface, so the "future migration: HTMX" subsection below is moot
+for the chat surface — a hand-written JS frontend already supersedes
+Streamlit.  Auth (C3) is now the `web_app.py` invite-code gate
+(`POST /api/auth`, `hmac.compare_digest`) rather than a Streamlit
+`st.session_state` gate; the mechanism and threat model are
+unchanged.  The "Streamlit-only" / "Streamlit-side gate" wording in
+C2/C3 below is retained for decision history but is superseded by
+this note and its C3 counterpart.
 
 **Reconciliation note (2026-05-10).**  Earlier drafts of this file
 described the frontend as "Streamlit served by FastAPI", paired with
@@ -453,8 +468,8 @@ session reset, and lose trust in the labelling.  See
 | Layer | Choice |
 |---|---|
 | Backend host | Railway (Pro, new workspace) |
-| Backend framework | None — Streamlit is the entry point (no FastAPI front-door for MVP, see C2) |
-| Frontend | Streamlit, drives `agents/dispatch.py:dispatch_turn` directly |
+| Backend framework | FastAPI via `uvicorn web_app:app` — sole Railway entry point (Stage A update, see C2) |
+| Frontend | Hand-written JS in `web/`, served by FastAPI; drives `agents/dispatch.py:dispatch_turn` (Stage A update, see C2) |
 | Postgres | Railway Postgres (pgvector ≥ 0.5, HNSW from day one) |
 | Redis | Railway Redis (`session_id` routing only in Option A) |
 | Object storage | Cloudflare R2 |

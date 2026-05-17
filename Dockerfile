@@ -11,9 +11,10 @@
 #   4. Project source (filtered by .dockerignore — see that file
 #      for what NEVER goes into the image).
 #
-# CMD: streamlit listens on ${PORT} (Railway sets this) or 8501
-# locally.  Headless mode + gatherUsageStats off keeps the
-# container quiet and contained.
+# CMD: uvicorn serves the FastAPI + JS web app (web_app:app) on
+# ${PORT} (Railway sets this) or 8501 locally.  Single worker only
+# — web_app.py holds in-process session state and an in-process SSE
+# viz bus, so >1 worker would split state and break the live viewer.
 #
 # Stage A scope: no DB, no R2.  The DATABASE_URL / R2 env vars
 # referenced by docker-compose.yml are accepted but unused — they
@@ -53,9 +54,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 WORKDIR /app
 
 # Dep layer first so source-only changes do not invalidate the
-# (slow) pip install.
-COPY requirements.txt ./
-RUN pip install -r requirements.txt && \
+# (slow) pip install.  requirements-web.txt adds the FastAPI/uvicorn
+# stack web_app.py needs — it is the Railway entry point now, so
+# these are no longer "local only" deps.
+COPY requirements.txt requirements-web.txt ./
+RUN pip install -r requirements.txt -r requirements-web.txt && \
     # pyrender 0.1.45 pins ``PyOpenGL==3.1.0`` exactly — a 2014
     # release whose OSMesa bindings are incomplete and miss
     # ``OSMesaCreateContextAttribs``, which breaks offscreen
@@ -72,21 +75,23 @@ RUN pip install -r requirements.txt && \
 # logs/, attempts/, previous_sessions/, database/, inputs/, etc.
 COPY . ./
 
-# Default Streamlit port; Railway overrides via $PORT.
+# Fallback port when $PORT is unset (local `docker run`); Railway
+# injects $PORT (commonly 8080) and the CMD honours it.
 EXPOSE 8501
 
-# Streamlit ships its own ``/_stcore/health`` endpoint.  The
-# healthcheck hits it via curl so the orchestrator (docker compose
-# / Railway) can detect a crashed-but-not-dead container.
+# web_app.py has no dedicated health route, but GET /api/config is a
+# cheap endpoint that never requires auth and always returns 200 JSON
+# — hitting it via curl lets the orchestrator (docker compose /
+# Railway) detect a crashed-but-not-dead container.
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
-    CMD curl -fsS "http://localhost:${PORT:-8501}/_stcore/health" || exit 1
+    CMD curl -fsS "http://localhost:${PORT:-8501}/api/config" || exit 1
 
 # JSON exec form via ``sh -c`` so $PORT expands AND signals propagate
-# correctly to streamlit (``exec`` replaces the shell with the
-# streamlit process so ``docker stop`` / Railway's SIGTERM reach it
-# directly instead of being caught by an intermediate shell).
-# --server.address=0.0.0.0 is required so the container is reachable
-# from the host network; --server.headless=true disables the
-# "open in browser" prompt; --browser.gatherUsageStats=false keeps
-# the container offline-friendly.
-CMD ["sh", "-c", "exec streamlit run streamlit_app.py --server.port=${PORT:-8501} --server.address=0.0.0.0 --server.headless=true --browser.gatherUsageStats=false"]
+# correctly to uvicorn (``exec`` replaces the shell with the uvicorn
+# process so ``docker stop`` / Railway's SIGTERM reach it directly
+# instead of being caught by an intermediate shell).
+# --host 0.0.0.0 is required so the container is reachable from the
+# host network.  No --workers: uvicorn's default single worker is
+# mandatory here (see the header comment — in-process session + SSE
+# bus).  No --reload: that is a local-dev-only convenience.
+CMD ["sh", "-c", "exec uvicorn web_app:app --host 0.0.0.0 --port ${PORT:-8501}"]
