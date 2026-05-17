@@ -33,6 +33,8 @@ prompts_backup_*/
 
 # --- Claude Code (per-user) ---
 .claude/settings.local.json
+# Local-only session bootstrap pointer — must NEVER be uploaded.
+CLAUDE.md
 
 # --- IDE / editor ---
 .vscode/
