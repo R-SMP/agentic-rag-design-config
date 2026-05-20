@@ -264,8 +264,6 @@ running service.)
      * ``Successfully installed`` for every project dep, including
        the FastAPI/uvicorn stack from ``requirements-web.txt``
        (``fastapi-…``, ``uvicorn-…``, ``python-multipart-…``).
-     * ``[WEB] startup; auth_required=True`` — ``False`` means
-       ``INVITE_CODE`` is unset; for a real deploy it MUST be True.
      * ``Uvicorn running on http://0.0.0.0:<PORT>`` — ``<PORT>``
        is whatever Railway injected (commonly ``8080``), NOT
        necessarily ``8501``.  8080 is correct.
@@ -274,9 +272,17 @@ running service.)
        bind, NOT your public URL.  The public URL comes from step 2
        (Generate Domain).
 
-   If any of those is missing OR if there is a Python traceback
-   above them, fix the underlying issue (env var typo, broken
-   requirement, etc.) — do NOT just re-deploy hoping it goes away.
+   Do NOT expect a ``[WEB] startup; auth_required=...`` line here.
+   ``web_app.py``'s ``propeller_agent`` logger only gets a handler
+   attached per session, so that startup INFO line does not reach
+   Railway's stdout — its absence says nothing about auth.  Whether
+   ``INVITE_CODE`` is enforced is verified authoritatively by the
+   gate in step 3, NOT from the build log.
+
+   If ``Application startup complete.`` / ``Uvicorn running`` is
+   missing OR there is a Python traceback above them, fix the
+   underlying issue (env var typo, broken requirement, etc.) — do
+   NOT just re-deploy hoping it goes away.
 
 2. **Expose the service, then open the public URL.**  A fresh
    service is "Unexposed" — it has no public domain until you
