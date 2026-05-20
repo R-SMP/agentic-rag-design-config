@@ -9,6 +9,7 @@ the interactive REPL.
 
 import logging
 import re
+import shutil
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -157,18 +158,22 @@ def _archive_previous_session(session_name: str | None = None) -> None:
     dest = PREVIOUS_SESSIONS_DIR / session_name
     dest.mkdir(parents=True, exist_ok=True)
 
+    # shutil.move instead of Path.rename: on Railway, PREVIOUS_SESSIONS_DIR
+    # is a mounted volume on a separate filesystem from logs/attempts/inputs,
+    # and os.rename across filesystems fails with EXDEV.  shutil.move
+    # falls back to copy+delete in that case.
     for f in log_files:
-        f.rename(dest / f.name)
+        shutil.move(f, dest / f.name)
     for f in trace_files:
-        f.rename(dest / f.name)
+        shutil.move(f, dest / f.name)
     for f in dh_trace_files:
-        f.rename(dest / f.name)
+        shutil.move(f, dest / f.name)
 
     if histories_dir.exists() and any(histories_dir.iterdir()):
         dest_hist = dest / "agent_histories"
         dest_hist.mkdir(exist_ok=True)
         for f in list(histories_dir.iterdir()):
-            f.rename(dest_hist / f.name)
+            shutil.move(f, dest_hist / f.name)
         # Remove the now-empty source dir so logs/ doesn't carry a
         # stale empty folder between sessions.  ``_dump_agent_histories``
         # re-creates it at the next session's end.
@@ -182,23 +187,23 @@ def _archive_previous_session(session_name: str | None = None) -> None:
         dest_attempts = dest / "attempts"
         dest_attempts.mkdir(exist_ok=True)
         for f in list(attempts_dir.iterdir()):
-            f.rename(dest_attempts / f.name)
+            shutil.move(f, dest_attempts / f.name)
 
     if input_images_dir.exists() and any(input_images_dir.iterdir()):
         dest_images = dest / input_images_dir.name
         dest_images.mkdir(exist_ok=True)
         for f in list(input_images_dir.iterdir()):
-            f.rename(dest_images / f.name)
+            shutil.move(f, dest_images / f.name)
 
     # Archive every file at inputs/ root in one sweep.  This covers
     # user_query.txt, extracted_inputs.txt, current_plan.txt-style
     # entries, AND any orphan images / notes the user placed at
     # inputs/ root instead of inside inputs/input_images/.
     for f in inputs_root_files:
-        f.rename(dest / f.name)
+        shutil.move(f, dest / f.name)
 
     if current_plan.exists():
-        current_plan.rename(dest / current_plan.name)
+        shutil.move(current_plan, dest / current_plan.name)
 
 
 def _setup_logger() -> logging.Logger:
