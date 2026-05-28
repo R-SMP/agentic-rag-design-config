@@ -26,6 +26,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import list_attempts, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
@@ -222,6 +223,7 @@ class ToolCaller(BaseChainAgent):
     # read_parameters handler
     # ------------------------------------------------------------------
 
+    @generic_tool("Read parameters")
     def _handle_read_parameters_tool(self, tc: dict) -> None:
         """Read parameters.json at the supplied path."""
         raw_path = tc.get("args", {}).get("path")

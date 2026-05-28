@@ -49,6 +49,23 @@ button.primary { background: var(--accent); border-color: var(--accent); color: 
 button.ghost { background: transparent; }
 button:disabled { opacity: 0.5; cursor: not-allowed; }
 
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+/* Stop button — emergency-halt the running pipeline.  Distinct from
+   the `.danger` styling used by the Image Inputs Delete button
+   (which is muted): the Stop button should READ as "stop now",
+   solid red with white text. */
+#stop-btn.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
+#stop-btn.danger:hover:not(:disabled) { filter: brightness(1.1); }
+
 .gate {
   max-width: 420px;
   margin: 12vh auto;
@@ -522,4 +539,151 @@ button.danger:hover { background: #3a1d1d; }
     border-right: none;
     border-bottom: 1px solid var(--border);
   }
+  .logstatus-view { flex-direction: column; }
+  .flow-pane {
+    flex: 0 0 auto;
+    max-height: 55%;
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+  }
+  .log-pane { flex: 1 1 auto; }
 }
+
+/* ===== LOG and Status view ===== */
+.logstatus-view {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+}
+
+.flow-pane {
+  flex: 1 1 60%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  padding: 16px 18px;
+  border-right: 1px solid var(--border);
+  overflow: auto;
+}
+.flow-head h2 { margin: 0 0 6px; }
+.flow-note {
+  color: var(--muted);
+  font-size: 13px;
+  margin: 0 0 14px;
+  line-height: 1.5;
+}
+.flow-note em { color: #d6dae3; font-style: italic; }
+.flow-wrap {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.flow-svg {
+  width: 100%;
+  max-width: 780px;
+  height: auto;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  font-size: 12px;
+}
+
+/* Flowchart boxes — default styles per category */
+.flow-box rect {
+  fill: #2c6cb7;            /* blue agents */
+  stroke: #1f1f1f;
+  stroke-width: 1.5;
+  transition: fill 0.15s, stroke 0.15s, stroke-width 0.15s,
+              filter 0.15s;
+}
+.flow-box text {
+  fill: #ffffff;
+  font-size: 12px;
+  font-weight: 500;
+  pointer-events: none;
+}
+.flow-box-user rect { fill: #6b6f78; }
+.flow-box-tool rect { fill: #e88c2e; }   /* orange tools */
+.flow-box-tool .tool-prefix {
+  font-weight: 700;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+/* Active state — yellow frame + soft glow */
+.flow-box.active rect {
+  stroke: #ffd23f;
+  stroke-width: 3.5;
+  filter: drop-shadow(0 0 8px rgba(255, 210, 63, 0.85));
+}
+
+/* Per-agent "last tool used" label — sits inside the agent's box,
+   below the agent's name.  Generic tools are typically too fast to
+   see live, so instead of showing the in-flight tool we show the
+   name of the MOST RECENT one the agent invoked, persistently,
+   until the agent runs another tool or the session ends.  Gray
+   italic so it reads as a quiet status note, distinct from the
+   white agent name and from the yellow active border. */
+.flow-box .agent-tool-label {
+  fill: #9aa1ad;
+  font-size: 11px;
+  font-style: italic;
+  font-weight: 500;
+  pointer-events: none;
+}
+
+/* Extra-agents panel — frame is `fill: none`, so the stroke is the
+   only visible part.  On dark mode the previous #1f1f1f stroke was
+   invisible against the page background; match the arrow color so
+   the panel reads clearly. */
+.extra-frame {
+  fill: none;
+  stroke: #e6e8eb;
+  stroke-width: 2;
+}
+.extra-title {
+  fill: #1f1f1f;
+  font-size: 13px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+}
+.logstatus-view .flow-svg .extra-title {
+  /* Render readable against the dark background — the box itself is
+     a thin black frame, so the title needs a colour that contrasts
+     with the page background, not the box fill. */
+  fill: #e6e8eb;
+}
+
+/* Log pane (right side) */
+.log-pane {
+  flex: 1 1 40%;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--panel);
+}
+.log-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 14px 18px 10px;
+  border-bottom: 1px solid var(--border);
+}
+.log-head h2 { margin: 0; font-size: 16px; }
+.log-stream {
+  flex: 1 1 auto;
+  margin: 0;
+  padding: 12px 16px;
+  overflow: auto;
+  background: #0b0d12;
+  color: #cfd3da;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 12px;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.log-empty { color: var(--muted); font-style: italic; }
+

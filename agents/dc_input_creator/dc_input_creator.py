@@ -21,6 +21,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
@@ -277,6 +278,7 @@ class DCInputCreator(BaseChainAgent):
     # read_extracted_inputs handler
     # ------------------------------------------------------------------
 
+    @generic_tool("Read extracted inputs")
     def _handle_read_tool(self, tc: dict) -> None:
         """Read the extraction file the UII pointed us at."""
         raw_path = tc.get("args", {}).get("path")
@@ -329,6 +331,7 @@ class DCInputCreator(BaseChainAgent):
     # write_parameters handler
     # ------------------------------------------------------------------
 
+    @generic_tool("Write parameters")
     def _handle_write_tool(self, tc: dict) -> None:
         """Validate and persist the parameter set to
         ``<attempt_dir>/parameters.json``.

@@ -4,8 +4,11 @@ from typing import Annotated
 
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
+
 
 @tool
+@generic_tool("Calculate")
 def calculate(
     expressions: Annotated[
         list[str],

@@ -12,6 +12,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import list_attempts, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
@@ -390,6 +391,7 @@ class DCOutputInspector(BaseChainAgent):
     # load_render_images handler
     # ------------------------------------------------------------------
 
+    @generic_tool("Load render images")
     def _handle_load_tool(self, tc: dict) -> None:
         """Load the requested images and make them visible to the LLM."""
         paths = tc.get("args", {}).get("paths") or []

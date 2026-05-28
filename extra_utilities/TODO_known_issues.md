@@ -459,6 +459,36 @@ against the cap.
 should be done much earlier so that even local dev mistakes can't run away.
 Independent of all code changes.
 
+### OPS2. Validate the Database Handler on the cloud deployment
+
+**What.** The Database Handler (`agents/database_handler/`) was
+built and locally validated as part of the v5-era work but has
+never been exercised end-to-end against the Railway-deployed
+Stage A. Now that the cloud workflow is live (volume mount,
+Rhino Compute on Azure, GitHub auto-deploy), the DH save flow
+needs to be run on the cloud URL to confirm:
+
+- The per-session `database/<session>/` tree is created on the
+  Railway volume (`/app/previous_sessions/...`) and survives
+  redeploys.
+- The DH's ~16 LLM calls per save complete within the cloud
+  request timeout window without tripping the
+  `InMemoryRateLimiter` or provider 429s differently than
+  locally.
+- The `_run_one_conversation` flow handles the cloud-side agent
+  state shapes correctly (no path assumptions baked against
+  `LOGS_DIR` that only resolve locally).
+- The dangling-tool_use sanitisation gap (O1) does not actually
+  fire on a normal cloud session; if it does, escalate O1.
+
+**Where.** Trigger an End Session save on
+`https://stage-a-production.up.railway.app` after a real
+multi-attempt design request, then inspect the Railway volume
+contents via the runbook §4 commands.
+
+**Status.** Open. Operational validation; no code change
+expected unless a cloud-only failure shows up.
+
 ---
 
 ## Future work / planned enhancements
@@ -555,6 +585,171 @@ concurrent users.
 productionisation work.  Triggered by the "two or more C2
 limitations bite" condition above, or by a public-audience
 requirement.  Paired warning: `warnings_developer.md` W17.
+
+### F5. LOG and Status view: colorise the log and refine its look
+
+**Where.** `web/app.js`, `web/style.css` (LOG and Status view, log
+pane — the `<pre>` / line container that tails the per-session
+log file via the `/api/log/stream` SSE endpoint).
+
+**What.** v1 of the LOG and Status view renders the live log
+tail as plain monospace text — every line the same colour, no
+visual grouping. Hard to skim for errors, agent boundaries, or
+tool-call markers.
+
+**What to build.**
+- Colour-code by log level: ERROR / WARNING / INFO / DEBUG with
+  distinct foreground colours (and maybe a red left-border for
+  ERROR lines).
+- Colour-code by agent name when the line is prefixed with one
+  (`[Orchestrator]`, `[Planner]`, etc.) — pick a stable hue per
+  agent so the eye groups them.
+- Bold or background-tint lines that start a new turn / tool
+  call / agent handoff, so the pane reads as a sequence of
+  "blocks" rather than a wall of text.
+- Refine spacing, font-size, and the empty-state placeholder so
+  the pane looks at home next to the flowchart rather than like
+  a debug dump.
+
+**Why deferred.** v1 prioritises the structural pieces (SSE
+endpoint, live tail, flowchart highlighting). Visual polish is
+worth doing once the data flow is proven and the user has lived
+with the unfiltered stream long enough to know which line types
+matter most.
+
+**Status.** Open. Pick up after the LOG and Status view has had
+real use.
+
+### F6. LOG and Status view: show tool-call payloads on the flowchart
+
+**Where.** `web/app.js` (the LOG and Status view's SVG
+flowchart) and the backend agent-activity events published via
+`agents/shared/viz_bus.py`.
+
+**What.** v1 of the flowchart only highlights the active agent
+box with a yellow frame. The viewer cannot tell, from the chart
+alone, WHAT the active agent is doing — only that it is busy.
+
+**What to build.**
+- Extend the `agent_active` SSE event to carry an optional
+  payload summary: the inbound prompt (first ~100 chars), the
+  tool being called (for Tool Caller), the tool's arguments
+  (truncated), and on completion the outcome / error / result
+  shape.
+- In the SVG view, attach a small floating panel or tooltip
+  next to each box that, when the user hovers (or always for
+  the currently-active box), shows the most recent payload
+  associated with that agent.
+- For Tool Caller specifically: show which TOOL box is active
+  (`Propeller Configurator` vs `Visual Renderings generator`)
+  by highlighting the right downstream orange box AND surfacing
+  the call arguments inline.
+
+**Why deferred.** Payload routing adds non-trivial schema
+considerations (truncation, secrets, multi-line formatting) and
+the SVG layout work for the panels is non-trivial. The yellow
+frame is enough for "what's the system doing right now?" until
+the user wants to debug WHY without leaving the LOG and Status
+view.
+
+**Status.** Open. Pairs with F5 — both are LOG and Status view
+polish that should be sequenced after first real use.
+
+### F8. Split tools into generic vs DC-specific and consolidate under `tools/`
+
+**Where.** Across the codebase:
+- `tools/` currently mixes DC-specific tools
+  (`generate_mesh/`, `render_mesh/`) with generic helpers
+  (`calculate/`, `visualize_model/`).
+- Generic helpers are also scattered under `agents/shared/`
+  (`attempts_tool.py`, `user_inputs_tool.py`, `history_tool.py`) and
+  inside each agent's own file as `@tool` stubs whose actual logic
+  lives in `_handle_*` class methods (UII, DCIC, DCII, Tool Caller,
+  DCOI all do this).
+
+**What.** Reorganise so the distinction between **DC tools**
+(designer-of-this-DC business logic — Propeller Configurator,
+Visual Renderings Generator) and **generic helpers** (read files,
+list attempts, calculate, visualise model, read agent history) is
+explicit in the directory layout.  Suggested target:
+
+```
+tools/
+  dc/
+    generate_mesh/
+    render_mesh/                 # both backends
+  generic/
+    attempts_tool.py
+    user_inputs_tool.py
+    history_tool.py
+    calculate/
+    visualize_model/
+    read_extracted_inputs.py     # moved out of planner / DCIC / DCII
+    read_user_queries.py         # moved out of planner
+    read_parameters.py           # moved out of DCII / Tool Caller
+    write_extraction.py          # moved out of UII
+    write_parameters.py          # moved out of DCIC
+    load_render_images.py        # moved out of DCOI
+```
+
+**Why deferred.** Touches every agent's imports and would conflict
+with active feature work.  Best done as one focused commit when
+no other tool-related changes are in flight.
+
+**Why this matters.** The LOG and Status flowchart's generic-tool
+labelling (the `@generic_tool("…")` decorator from
+`agents/shared/agent_activity.py`) currently has to instrument both
+stub `@tool` decorators AND the per-agent `_handle_*` methods that
+do the real work, because the stubs return ``""`` and the agent
+loops call the handlers directly, bypassing langchain's tool
+dispatch.  Once generic helpers live under `tools/generic/` with
+the real logic in the tool function body, the decorator can be
+applied once at the `@tool` site instead of duplicated on each
+agent's handler method — far less surface area to maintain.
+
+**Status.** Open.  Pairs with F5 / F6 (LOG and Status view
+polish) — sequence after these settle.
+
+### F7. Implement the Context Pruner agent
+
+**Where.** New agent (slot reserved in the LOG and Status
+flowchart's `EXTRA AGENTS` box alongside the Database Handler).
+Will hook into the dispatch / orchestrator path.
+
+**What.** The Context Pruner is one of the two "extra agents"
+displayed in the LOG and Status flowchart as a placeholder.
+It does not exist in code today (no `agents/context_pruner/`
+directory) — only the conceptual slot.
+
+**Why it matters.** Carry-over open item from v7 (project memory
+`project_v8_scope.md` → Open issues #1): the DCOI accumulates
+messages + vision tokens across attempts, and a 3-attempt design
+request with an attached image has hit 894k tokens vs the model's
+272k cap (`OpenAIContextOverflowError` raised in
+`agents/dc_output_inspector/dc_output_inspector.py:306`). The
+current workaround is the `KEEP_IMAGES_IN_CONTEXT=False`
+workflow setting, which is coarse — it drops ALL images
+regardless of whether they were still relevant.
+
+**What to build.** An agent that watches each agent's message
+list as the session progresses and decides what to prune /
+summarise / drop before context becomes a problem. Likely
+candidates: collapse old image blocks into textual summaries,
+fold prior tool-call outputs into the agent's running plan,
+drop superseded attempts' DCOI history once a new attempt has
+landed. Triggered by token-count thresholds (per-agent),
+similar to O3's sketch for the DH's own context pruning.
+
+**Why deferred.** A real design needs more data on which kinds
+of context actually waste tokens in real sessions. The cheap
+workaround (`KEEP_IMAGES_IN_CONTEXT=False`) covers the only
+overflow seen so far. Implement once a non-image-driven
+overflow shows up, or when the multi-attempt flow becomes the
+common case rather than the exception.
+
+**Status.** Open. Slot reserved in the LOG and Status flowchart
+(box is drawn but never lights up until this lands). Paired
+with the v7-carry-over context-overflow item.
 
 ---
 

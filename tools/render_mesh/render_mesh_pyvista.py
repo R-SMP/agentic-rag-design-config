@@ -23,6 +23,7 @@ import pyvista as pv
 import trimesh
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import tool_active
 from config import ATTEMPTS_DIR
 from tools.render_mesh.render_mesh import _render_mesh_views
 
@@ -159,6 +160,7 @@ def _signed_volume(mesh: pv.PolyData) -> float:
 
 
 @tool("render_and_check_mesh")
+@tool_active("Visual Renderings Generator")
 def render_and_check_mesh_pv(mesh_path: str, output_dir: str) -> str:
     """Render the mesh at ``mesh_path`` from three viewpoints (isometric,
     top-down, side) and run geometric quality checks.

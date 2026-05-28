@@ -13,6 +13,8 @@ from typing import Callable, Optional
 
 from langchain_core.tools import StructuredTool
 
+from agents.shared.agent_activity import generic_tool
+
 
 _TOOL_DESCRIPTION = (
     "Read another agent's message history to answer questions from "
@@ -37,6 +39,7 @@ def build_read_agent_history_tool(
 ) -> StructuredTool:
     """Build a ``read_agent_history`` StructuredTool bound to *history_provider*."""
 
+    @generic_tool("Read agent history")
     def _invoke(agent_name: str, last_n: Optional[int] = None) -> str:
         try:
             return history_provider(agent_name, last_n)

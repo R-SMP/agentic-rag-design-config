@@ -25,14 +25,20 @@ Any agent can ESCALATE to the Orchestrator, which calls the Planner for a Proble
 
 ```
 .
-├── main.py                       # entrypoint → agents.loader.run()
+├── main.py                       # entrypoint → agents.loader.run()  (REPL)
+├── web_app.py                    # FastAPI server backing the JS web UI (Stage A)
+├── streamlit_app.py              # legacy Streamlit UI (pre-Stage-A, kept for reference)
+├── web/                          # hand-written JS frontend (index.html, app.js, viewer.js, style.css)
+├── Dockerfile  docker-compose.yml  # container build + local stack (matches Railway)
 ├── config.py                     # paths + RhinoCompute env vars
 ├── requirements.txt
+├── requirements-web.txt          # FastAPI + uvicorn stack (web_app.py only)
 ├── workflow_settings/settings.py # 11 runtime flags (see Configuration)
 ├── agents/
 │   ├── loader.py                 # session lifecycle, REPL, archival, DH invocation
 │   ├── step_caps.py              # single source of truth for every MAX_*
-│   ├── shared/                   # prompt assembly, routing, retry, rate-limit, tools
+│   ├── shared/                   # prompt assembly, routing, retry, rate-limit, tools,
+│   │                             # trace/viz_bus, stop_signal, agent_activity
 │   ├── orchestrator/  receptionist/  planner/  user_input_inspector/
 │   ├── dc_input_creator/  dc_input_inspector/  tool_caller/  dc_output_inspector/
 │   └── database_handler/         # post-session interviewer (opt-in)
@@ -40,9 +46,9 @@ Any agent can ESCALATE to the Orchestrator, which calls the Planner for a Proble
 │   ├── dc_config/                # parameters, structure, capabilities, constraints
 │   └── tools_config/             # tool inventory, render-check library
 ├── tools/
-│   ├── generate_mesh/            # RhinoCompute + Grasshopper definition
-│   ├── render_mesh/              # trimesh + pyvista backends
-│   └── calculate/
+│   ├── generate_mesh/            # RhinoCompute + Grasshopper definition (DC tool)
+│   ├── render_mesh/              # trimesh + pyvista backends (DC tool)
+│   ├── calculate/  visualize_model/
 └── extra_utilities/              # TODO_known_issues.md, warnings_developer.md, smoke tests
 ```
 
@@ -86,6 +92,58 @@ python main.py
 
 A REPL opens. Type a design request (and optionally drop reference images into `inputs/input_images/` paired with `<name>_note.txt` files). Type `quit` to end the session; the system will ask whether to save to the database.
 
+## Web UI
+
+Alongside the REPL, a FastAPI + plain-JS web frontend ships as `web_app.py` + `web/`. The same dispatcher (`agents/dispatch.py:dispatch_turn`) drives both surfaces — no agent logic lives in the web layer (per `extra_utilities/warnings_developer.md` W17).
+
+Run locally with uvicorn:
+
+```powershell
+pip install -r requirements.txt -r requirements-web.txt
+uvicorn web_app:app --reload --port 8000
+```
+
+Or production-faithfully via docker-compose (matches the Railway build):
+
+```powershell
+docker compose up -d --build app
+```
+
+Then open `http://localhost:8000` (uvicorn) or `http://localhost:8501` (compose).
+
+### Side-menu interfaces
+
+The left rail switches between five views:
+
+| View | Purpose |
+|---|---|
+| **Chat** | Conversational interface + inline 3D viewer for generated meshes |
+| **Image Inputs** | Upload reference images, attach a `_note.txt` description per image |
+| **Parameters Inputs** | (placeholder) future direct-edit form for the 17 design params |
+| **LOG and Status** | Live multi-agent flowchart + tailing of the current session log |
+| **Workflow Settings** | Live editor over `workflow_settings/settings.py` (takes effect next session) |
+
+### Stop button
+
+A red **Stop** button appears in the header while a turn is running. Clicking it flags the pipeline for **cooperative cancellation**: the currently-running step (LLM call, tool execution) completes normally, then the Orchestrator polls the shared stop flag (`agents/shared/stop_signal.py`) between hops and returns an interrupted message instead of continuing. The system then waits for the next user input. The flag auto-clears at the start of each new turn.
+
+### LOG and Status view
+
+A split pane: SVG flowchart on the left, live session log on the right (Server-Sent Events from `/api/log/stream`, dumps the full current-session log on open then tails new bytes).
+
+**Live highlighting.** Every agent box lights up yellow ("strict transitions") between the moment another agent hands off to it and the moment it hands off to someone else. The two DC tools (`Propeller Configurator` for mesh generation, `Visual Renderings generator` for the three renders) have their own boxes next to the Tool Caller and light up alongside Tool Caller while in use (Tool Caller is semantically waiting for the tool).
+
+**Generic helpers** — `read_user_inputs`, `write_extraction`, `read_extracted_inputs`, `new_attempt`, `write_parameters`, `read_parameters`, `load_render_images`, `calculate`, `visualize_3d_model`, etc. — complete in milliseconds and are too fast to flash. Each agent box therefore also carries a small **gray-italic line below the agent's name recording the most recent generic tool that agent invoked**. The line persists across handoffs so the chart shows each agent's history at a glance; it wipes on End Session.
+
+**Instrumentation seams.** Activity events flow through `agents/shared/viz_bus.py` (a framework-agnostic pub-sub channel) and reach the browser via `/api/events` SSE:
+
+- `agents/shared/trace.py:trace(from, to)` publishes an `agent_active` event on every routing-tool handoff. Pass `publish=False` for file-only trace lines that should NOT light up the chart (e.g. utility-tool log entries whose `to` is a tool function name, not a real agent).
+- `agents/shared/agent_activity.py` exposes two decorators:
+  - `@tool_active("Display Name")` — for the DC tools that have their own boxes; publishes `agent_active` events on entry/exit so the box stays lit alongside the caller while the tool runs.
+  - `@generic_tool("Display Name")` — for fast generic helpers; publishes a separate `generic_tool` event consumed only by the LOG and Status view's "last tool used" labels, and never affects which agent is highlighted.
+
+**End Session** wipes the chat, the LOG view, all agent highlights and all "last tool used" labels, and reopens a fresh session.
+
 ## Configuration
 
 All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/settings.py):
@@ -113,8 +171,14 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
 
 ## Roadmap
 
-This repo (test11) is the v5 starting point. Near-term direction:
+Near-term direction:
 
-- Move heavy compute (RhinoCompute, mesh gen, rendering) off the local driver onto a server.
-- Build a web interface as the user-facing front-end.
-- Wire `RAG_ENABLED` to consume the database the Database Handler is now producing.
+- Wire `RAG_ENABLED` to consume the database the Database Handler produces.
+- Stage B: persist sessions and embeddings to Postgres, push binary artefacts to R2.
+- Implement the **Context Pruner** agent (slot reserved in the LOG and Status flowchart — see TODO F7).
+- Reorganise tools — split generic helpers from DC-specific tools and consolidate under `tools/` (see TODO F8) — so the `@generic_tool` decorator only needs to live at the `@tool` site instead of being duplicated on each agent's `_handle_*` handler method.
+
+**Done since v7:**
+
+- Move heavy compute off the local driver — RhinoCompute now runs on an Azure VM, the Stage A FastAPI app runs on Railway.
+- Build a web interface as the user-facing front-end — FastAPI + plain JS, see [Web UI](#web-ui) above.

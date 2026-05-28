@@ -97,7 +97,12 @@ def _truncate(obj, limit: int) -> str:
 def log_tool_call(caller_key: str, tool_name: str, args, result) -> None:
     """Record a utility tool invocation to the session log and trace."""
     caller_display = AGENT_DISPLAY.get(caller_key, caller_key)
-    _trace(caller_display, tool_name)
+    # File-only trace line: ``tool_name`` is a langchain tool function
+    # name (snake_case), NOT a real agent.  Publishing this to viz_bus
+    # would inject a bogus ``agent_active`` event into the flowchart —
+    # the frontend would clear every real agent's highlight trying to
+    # activate the unknown id.  See trace() docstring for the contract.
+    _trace(caller_display, tool_name, publish=False)
     args_str = _truncate(args, _TOOL_CALL_ARG_TRUNC)
     result_str = _truncate(result, _TOOL_CALL_RESULT_TRUNC)
     logger.info(

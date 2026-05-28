@@ -35,6 +35,7 @@ from pathlib import Path
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from agents.shared.file_utils import (
     append_pending_images,
     list_files,
@@ -244,6 +245,7 @@ def _format_image_notes() -> str:
 # ---------------------------------------------------------------------------
 
 
+@generic_tool("List input files")
 def _handle_list_input_files(agent, tc: dict, agent_key: str) -> None:
     summary = _format_input_files_listing()
     log_tool_call(agent_key, tc["name"], tc.get("args"), summary)
@@ -254,6 +256,7 @@ def _handle_list_input_files(agent, tc: dict, agent_key: str) -> None:
     ))
 
 
+@generic_tool("Read input text")
 def _handle_read_input_text(agent, tc: dict, agent_key: str) -> None:
     raw_path = (tc.get("args", {}) or {}).get("path")
     if not isinstance(raw_path, str) or not raw_path.strip():
@@ -295,6 +298,7 @@ def _handle_read_input_text(agent, tc: dict, agent_key: str) -> None:
     ))
 
 
+@generic_tool("Read image notes")
 def _handle_read_image_notes(agent, tc: dict, agent_key: str) -> None:
     summary = _format_image_notes()
     log_tool_call(agent_key, tc["name"], tc.get("args"), summary)
@@ -305,6 +309,7 @@ def _handle_read_image_notes(agent, tc: dict, agent_key: str) -> None:
     ))
 
 
+@generic_tool("Load input images")
 def _handle_load_input_images(agent, tc: dict, agent_key: str) -> None:
     raw_paths = (tc.get("args", {}) or {}).get("paths")
     if isinstance(raw_paths, str):

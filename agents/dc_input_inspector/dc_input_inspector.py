@@ -22,6 +22,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import list_attempts, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
@@ -243,6 +244,7 @@ class DCInputInspector(BaseChainAgent):
     # Read handlers
     # ------------------------------------------------------------------
 
+    @generic_tool("Read parameters")
     def _handle_read_parameters_tool(self, tc: dict) -> None:
         """Read parameters.json at the supplied path and feed it to the LLM."""
         summary = _read_file_at_path(
@@ -260,6 +262,7 @@ class DCInputInspector(BaseChainAgent):
             name=tc["name"],
         ))
 
+    @generic_tool("Read extracted inputs")
     def _handle_read_extraction_tool(self, tc: dict) -> None:
         """Read extracted_inputs.txt at the supplied path."""
         summary = _read_file_at_path(

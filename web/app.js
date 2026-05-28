@@ -11,6 +11,7 @@ const composer = $("composer");
 const input = $("input");
 const sendBtn = $("send-btn");
 const endBtn = $("end-btn");
+const stopBtn = $("stop-btn");
 
 let busy = false;
 
@@ -113,6 +114,11 @@ async function sendMessage(text) {
   busy = true;
   sendBtn.disabled = true;
   input.disabled = true;
+  if (stopBtn) {
+    stopBtn.hidden = false;
+    stopBtn.disabled = false;
+    stopBtn.textContent = "Stop";
+  }
 
   addBubble("user", text);
   const pending = addBubble(
@@ -156,8 +162,34 @@ async function sendMessage(text) {
     busy = false;
     sendBtn.disabled = false;
     input.disabled = false;
+    if (stopBtn) {
+      stopBtn.hidden = true;
+      stopBtn.disabled = false;
+      stopBtn.textContent = "Stop";
+    }
     input.focus();
   }
+}
+
+if (stopBtn) {
+  stopBtn.addEventListener("click", async () => {
+    if (!busy) return;
+    // Don't replace the in-flight /api/turn request — let it finish
+    // naturally.  Just tell the server to flag the pipeline for
+    // cooperative cancellation; the orchestrator will bail at the
+    // next hop boundary and /api/turn will resolve with the
+    // "(Session interrupted ...)" reply.
+    stopBtn.disabled = true;
+    stopBtn.textContent = "Stopping…";
+    try {
+      await fetch("/api/stop", { method: "POST" });
+    } catch (_) {
+      // Network error reaching /api/stop is unlikely (same origin) —
+      // re-enable so the user can retry.
+      stopBtn.disabled = false;
+      stopBtn.textContent = "Stop";
+    }
+  });
 }
 
 composer.addEventListener("submit", (e) => {
@@ -191,14 +223,115 @@ endBtn.addEventListener("click", async () => {
   clearImgDetail();
   setImgStatus("", "");
   loadImages();
+  // LOG and Status: the archived session's log file just moved off
+  // the active log path; the flowchart's active highlight and the
+  // per-agent "last tool used" labels belong to a session that no
+  // longer exists.  Wipe them all so the view starts clean for the
+  // next session.
+  clearLogView();
+  _clearActiveBoxes();
+  clearAllToolLabels();
   const cfg = await (await fetch("/api/config")).json().catch(() => ({}));
   if (cfg.auth_required && !cfg.authed) showGate();
   else input.focus();
 });
 
-// Live model pushes: when an agent calls visualize_3d_model the
-// server emits an SSE "visualize" event — load it into the viewer
-// immediately, without waiting for the turn to finish.
+// Live agent / model events.  Two kinds of SSE message arrive on
+// /api/events: "visualize" pushes a freshly-generated 3D model into
+// the viewer; "agent_active" pushes a handoff so the LOG and Status
+// flowchart can light up the currently-active box.  The stream is
+// opened once at app start (independent of which view is shown) so
+// the chart is already up-to-date when the user opens it.
+const FLOW_BOX_BY_NAME = {
+  // User box — lit when it is the user's turn to type.
+  "User":                  "agent-user",
+  // AGENT_DISPLAY entries from agents/shared/routing_tools.py
+  "Receptionist":          "agent-receptionist",
+  "Orchestrator":          "agent-orchestrator",
+  "User Input Inspector":  "agent-user-input-inspector",
+  "Planner":               "agent-planner",
+  "DC Input Creator":      "agent-dc-input-creator",
+  "DC Input Inspector":    "agent-dc-input-inspector",
+  "Tool Caller":           "agent-tool-caller",
+  "DC Output Inspector":   "agent-dc-output-inspector",
+  // Tool boxes (published from tools/*.py via the @tool_active
+  // decorator).  Also listed in TOOL_NAMES below so that "<agent> →
+  // <tool>" transitions keep BOTH the calling agent and the tool
+  // highlighted — the agent is still semantically in flight, waiting
+  // for the tool's return.  The matching tool→agent exit event then
+  // clears the tool box and leaves the caller solo-lit.
+  "Propeller Configurator":      "agent-propeller-configurator",
+  "Visual Renderings Generator": "agent-visual-renderings-generator",
+  // Extra agents — not yet wired into trace(); reserved so they'll
+  // light up automatically once instrumentation lands.
+  "Database Handler":      "agent-database-handler",
+  "Context Pruner":        "agent-context-pruner",
+};
+
+const TOOL_NAMES = new Set([
+  "Propeller Configurator",
+  "Visual Renderings Generator",
+]);
+
+function _clearActiveBoxes() {
+  document.querySelectorAll(".flow-box.active").forEach((el) =>
+    el.classList.remove("active")
+  );
+}
+
+function _activateById(id) {
+  if (!id) return;
+  const node = document.getElementById(id);
+  if (node) node.classList.add("active");
+}
+
+// "Last used tool" label inside each agent box — set when the agent
+// invokes a generic helper (read inputs, list attempts, calculate,
+// ...) and PERSISTS until the agent runs another tool or the
+// session ends.  Because generic tools complete in milliseconds the
+// "currently running" model flashed too fast to read; this is a
+// historical-status display instead, gray-italic below the agent
+// name.  The agent's own highlight (yellow border on .active) is
+// orthogonal — driven by agent_active events from real handoffs.
+function recordToolUsedByActiveAgent(name) {
+  // Find the agent box currently lit (Strict-transitions policy:
+  // exactly one agent box has .active during a turn).  Skip tool
+  // boxes (TOOL: Propeller Configurator etc.) and the User box —
+  // they don't call generic helpers.
+  const active = document.querySelectorAll(
+    ".flow-box.active:not(.flow-box-tool):not(.flow-box-user)"
+  );
+  for (const box of active) {
+    const label = box.querySelector(".agent-tool-label");
+    if (label) label.textContent = name;
+  }
+}
+
+function clearAllToolLabels() {
+  // Used on End Session to wipe every "last tool" annotation.
+  document.querySelectorAll(".agent-tool-label").forEach((el) => {
+    el.textContent = "";
+  });
+}
+
+function applyAgentActive(fromName, toName) {
+  // Two cases:
+  //   * Tool entry (to == one of TOOL_NAMES): keep the calling
+  //     agent lit AND light the tool box.  The matching "tool
+  //     returned" event will fire on tool exit and bring us back
+  //     into the single-active branch below.
+  //   * Anything else (agent → agent, anyone → User, tool → agent):
+  //     single-active.  Clear everything and light just `to`.
+  if (TOOL_NAMES.has(toName)) {
+    _clearActiveBoxes();
+    _activateById(FLOW_BOX_BY_NAME[fromName]);
+    _activateById(FLOW_BOX_BY_NAME[toName]);
+    return;
+  }
+  _clearActiveBoxes();
+  _activateById(FLOW_BOX_BY_NAME[toName]);
+}
+
 function startEventStream() {
   try {
     const es = new EventSource("/api/events");
@@ -207,6 +340,23 @@ function startEventStream() {
         const data = JSON.parse(e.data);
         if (data.type === "visualize" && window.modelViewer) {
           window.modelViewer.load(data.url, data.name);
+        } else if (data.type === "agent_active") {
+          // Real agent handoff — switch which box is highlighted.
+          // We INTENTIONALLY do NOT clear any "last tool" labels
+          // here: those persist across handoffs so each agent box
+          // keeps showing the most recent tool it ran.  The labels
+          // are wiped only on End Session.
+          applyAgentActive(data.from, data.to);
+        } else if (data.type === "generic_tool") {
+          // Generic tools complete in milliseconds, so showing the
+          // "currently running" tool flashed too fast to read.
+          // Instead we record it as the LAST tool used by the
+          // currently-active agent (gray italic under its name).
+          // The `end` event is intentionally ignored — the label
+          // sticks until a newer tool overwrites it.
+          if (data.state === "start") {
+            recordToolUsedByActiveAgent(data.name);
+          }
         }
       } catch (_) {
         /* ignore malformed event */
@@ -219,6 +369,83 @@ function startEventStream() {
     /* SSE unsupported — non-fatal, end-of-turn artefacts still work */
   }
 }
+
+// ---------------------------------------------------------------------------
+// LOG and Status: tail the current session log over SSE while the view
+// is open, close the stream on leaving so the server isn't pushing
+// bytes to a hidden pane.
+// ---------------------------------------------------------------------------
+let logStreamEs = null;
+let logStickToBottom = true;
+
+function logStreamEl() {
+  return document.getElementById("log-stream");
+}
+
+function appendLogText(text) {
+  const el = logStreamEl();
+  if (!el) return;
+  const empty = el.querySelector(".log-empty");
+  if (empty) empty.remove();
+  el.appendChild(document.createTextNode(text));
+  if (logStickToBottom) el.scrollTop = el.scrollHeight;
+}
+
+function attachLogScrollWatcher() {
+  const el = logStreamEl();
+  if (!el || el.dataset.scrollWatcher === "1") return;
+  el.dataset.scrollWatcher = "1";
+  el.addEventListener("scroll", () => {
+    const nearBottom =
+      el.scrollHeight - el.scrollTop - el.clientHeight < 24;
+    logStickToBottom = nearBottom;
+  });
+}
+
+function clearLogView() {
+  const el = logStreamEl();
+  if (!el) return;
+  el.textContent = "";
+  const span = document.createElement("span");
+  span.className = "log-empty";
+  span.textContent = "(view cleared — new lines will appear here)";
+  el.appendChild(span);
+  logStickToBottom = true;
+}
+
+function startLogStream() {
+  if (logStreamEs) return;
+  attachLogScrollWatcher();
+  logStickToBottom = true;
+  try {
+    logStreamEs = new EventSource("/api/log/stream");
+    logStreamEs.onmessage = (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        if (data.type === "log" && typeof data.text === "string") {
+          appendLogText(data.text);
+        }
+      } catch (_) {
+        /* ignore */
+      }
+    };
+    logStreamEs.onerror = () => {
+      /* EventSource reconnects automatically */
+    };
+  } catch (_) {
+    /* SSE unsupported — leave the pane in its empty state */
+  }
+}
+
+function stopLogStream() {
+  if (logStreamEs) {
+    try { logStreamEs.close(); } catch (_) { /* ignore */ }
+    logStreamEs = null;
+  }
+}
+
+const logClearBtn = document.getElementById("log-clear");
+if (logClearBtn) logClearBtn.addEventListener("click", clearLogView);
 
 // ---------------------------------------------------------------------------
 // Left side menu — switch between the interfaces
@@ -239,6 +466,8 @@ function switchView(name) {
   if (name === "settings" && !settingsLoaded) loadSettings();
   if (name === "images") loadImages();
   if (name === "chat" && input) input.focus();
+  if (name === "logstatus") startLogStream();
+  else stopLogStream();
 }
 
 for (const b of navItems) {

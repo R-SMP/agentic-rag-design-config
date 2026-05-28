@@ -47,6 +47,10 @@ from agents.dispatch import dispatch_turn
 from agents.loader import _archive_previous_session
 from agents.shared.file_utils import pair_input_images
 from agents.shared.session import Session
+from agents.shared.stop_signal import (
+    clear_stop as stop_signal_clear,
+    request_stop as stop_signal_request,
+)
 from agents.shared.trace import close_trace, init_trace
 from agents.shared.viz_bus import (
     subscribe as viz_subscribe,
@@ -273,6 +277,9 @@ async def api_turn(body: TurnIn) -> dict:
     if not text:
         raise HTTPException(status_code=400, detail="Empty message.")
     session = _ensure_session()
+    # Clear any stop flag left over from the previous turn — a fresh
+    # /api/turn call always starts un-cancelled.
+    stop_signal_clear()
     try:
         # dispatch_turn is synchronous and slow (the whole multi-agent
         # LLM pipeline). Run it off the event loop so the server stays
@@ -325,6 +332,23 @@ def api_artefact(path: str) -> FileResponse:
 @app.post("/api/end")
 def api_end() -> dict:
     _end_session()
+    return {"ok": True}
+
+
+@app.post("/api/stop")
+def api_stop() -> dict:
+    """User clicked the Stop button — flag the in-flight pipeline
+    for cooperative cancellation.
+
+    The currently-running step (LLM call, tool execution) finishes
+    normally — we don't kill it mid-flight.  The Orchestrator polls
+    the flag at each hop boundary and returns a "session interrupted"
+    message at the next opportunity.  Idempotent: clicking Stop
+    again while already stopping is a no-op.
+    """
+    _require_auth()
+    stop_signal_request()
+    logger.info("[WEB] /api/stop — stop requested by user")
     return {"ok": True}
 
 
@@ -582,8 +606,96 @@ async def api_events() -> StreamingResponse:
                         "name": evt.get("name") or p.name,
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
+                elif evt.get("type") == "agent_active":
+                    payload = {
+                        "type": "agent_active",
+                        "from": evt.get("from", ""),
+                        "to": evt.get("to", ""),
+                        "note": evt.get("note", ""),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                elif evt.get("type") == "generic_tool":
+                    payload = {
+                        "type": "generic_tool",
+                        "name": evt.get("name", ""),
+                        "state": evt.get("state", ""),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
         finally:
             viz_unsubscribe(q)
+
+    return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+@app.get("/api/log/stream")
+async def api_log_stream() -> StreamingResponse:
+    """SSE stream of the current session's log file.
+
+    On connect: sends the file's current contents (capped at the
+    last few MB for safety), then tails newly-appended bytes.  If
+    the active session changes (End Session -> new session), the
+    tail follows the new log file from byte 0.  Heartbeats every
+    10 s keep proxies from closing the stream.
+    """
+    _require_auth()
+    max_initial_bytes = 5 * 1024 * 1024  # cap initial dump at 5 MB
+
+    async def gen():
+        yield ": connected\n\n"
+        tailed_path: Path | None = None
+        offset: int = 0
+        last_ping = time.monotonic()
+
+        while True:
+            current = _BOX.log_path
+            try:
+                if current is not None and current.exists():
+                    # New / changed log file -> dump initial backlog.
+                    if current != tailed_path:
+                        tailed_path = current
+                        size = current.stat().st_size
+                        start = max(0, size - max_initial_bytes)
+                        with open(current, "r", encoding="utf-8",
+                                  errors="replace") as f:
+                            f.seek(start)
+                            initial = f.read()
+                            offset = f.tell()
+                        if initial:
+                            yield (
+                                "data: "
+                                + json.dumps({"type": "log",
+                                              "text": initial})
+                                + "\n\n"
+                            )
+                    else:
+                        size = current.stat().st_size
+                        if size < offset:
+                            # Truncated / rotated mid-session.
+                            offset = 0
+                        if size > offset:
+                            with open(current, "r", encoding="utf-8",
+                                      errors="replace") as f:
+                                f.seek(offset)
+                                new_text = f.read()
+                                offset = f.tell()
+                            if new_text:
+                                yield (
+                                    "data: "
+                                    + json.dumps({"type": "log",
+                                                  "text": new_text})
+                                    + "\n\n"
+                                )
+            except OSError:
+                # Transient FS error (file moved during archival, etc.) —
+                # drop the tailed_path so the next iteration re-detects.
+                tailed_path = None
+                offset = 0
+
+            now = time.monotonic()
+            if now - last_ping > 10:
+                last_ping = now
+                yield ": ping\n\n"
+            await asyncio.sleep(0.4)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
 

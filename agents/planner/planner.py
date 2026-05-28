@@ -21,6 +21,7 @@ from datetime import datetime
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
@@ -89,6 +90,7 @@ def _parse_user_query_entries(text: str) -> list[str]:
 
 
 @tool
+@generic_tool("Read extracted inputs")
 def read_extracted_inputs(path: str) -> str:
     """Read the User Input Inspector's structured extraction.
 
@@ -113,6 +115,7 @@ def read_extracted_inputs(path: str) -> str:
 
 
 @tool
+@generic_tool("Read user queries")
 def read_user_queries(n: int = 1, from_start: bool = False) -> str:
     """Return selected entries from user_query.txt.
 

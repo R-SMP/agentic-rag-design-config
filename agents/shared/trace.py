@@ -36,16 +36,45 @@ def init_trace(log_dir: Path) -> Path:
     return trace_path
 
 
-def trace(from_agent: str, to_agent: str, note: str = "") -> None:
-    """Append one line: ``HH:MM:SS  A --> B  (optional note)``."""
-    if _trace_file is None:
+def trace(from_agent: str, to_agent: str, note: str = "",
+          *, publish: bool = True) -> None:
+    """Append one line: ``HH:MM:SS  A --> B  (optional note)``.
+
+    Side effect (when ``publish=True``, the default): publishes an
+    ``agent_active`` event on ``agents.shared.viz_bus`` so the web
+    UI's LOG and Status flowchart can highlight the currently-
+    active agent box.  The publish is a no-op when nobody is
+    subscribed (REPL / tests).
+
+    Callers that record file-only trace lines for events the
+    flowchart should NOT react to (e.g. utility-tool invocations
+    logged by ``log_tool_call``, where ``to_agent`` is a tool
+    function name rather than a real agent) MUST pass
+    ``publish=False`` — otherwise the frontend receives a bogus
+    ``agent_active`` whose ``to`` is an unknown id, clears every
+    real agent's highlight, and fails to re-activate anything.
+    """
+    if _trace_file is not None:
+        now = datetime.now().strftime("%H:%M:%S")
+        line = f"{now}  {from_agent} --> {to_agent}"
+        if note:
+            line += f"  ({note})"
+        _trace_file.write(line + "\n")
+        _trace_file.flush()
+
+    if not publish:
         return
-    now = datetime.now().strftime("%H:%M:%S")
-    line = f"{now}  {from_agent} --> {to_agent}"
-    if note:
-        line += f"  ({note})"
-    _trace_file.write(line + "\n")
-    _trace_file.flush()
+
+    try:
+        from agents.shared.viz_bus import publish as _publish
+        _publish({
+            "type": "agent_active",
+            "from": from_agent,
+            "to": to_agent,
+            "note": note,
+        })
+    except Exception:
+        pass
 
 
 def close_trace() -> None:

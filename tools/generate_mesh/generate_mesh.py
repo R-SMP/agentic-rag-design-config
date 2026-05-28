@@ -10,6 +10,7 @@ import compute_rhino3d.Grasshopper as gh_compute
 import compute_rhino3d.Util
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import tool_active
 from config import (
     GH_DEFINITION_PATH,
     ATTEMPTS_DIR,
@@ -130,6 +131,7 @@ def _decode_parts_to_obj(
 
 
 @tool
+@tool_active("Propeller Configurator")
 def generate_propeller_mesh(
     output_dir: Annotated[
         str,
@@ -168,7 +170,6 @@ def generate_propeller_mesh(
     Returns the absolute path to the saved mesh file, or an error
     message.
     """
-
     out_path_dir, err = _validate_output_dir(output_dir)
     if err is not None:
         return err

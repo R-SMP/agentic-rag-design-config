@@ -17,11 +17,13 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from agents.shared.viz_bus import publish
 from config import ATTEMPTS_DIR
 
 
 @tool
+@generic_tool("Visualize 3D model")
 def visualize_3d_model(obj_path: str) -> str:
     """Display a generated 3D model (.obj) in the web interface's
     interactive viewer.

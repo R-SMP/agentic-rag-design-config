@@ -8,6 +8,7 @@ import pyrender
 from PIL import Image
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import tool_active
 from config import ATTEMPTS_DIR
 
 # Module-level toggle: when False the deterministic quality checks
@@ -217,6 +218,7 @@ def _render_mesh_views(mesh, output_dir):
 
 
 @tool
+@tool_active("Visual Renderings Generator")
 def render_and_check_mesh(mesh_path: str, output_dir: str) -> str:
     """Render the mesh at ``mesh_path`` from three viewpoints (isometric,
     top-down, side) and run geometric quality checks.

@@ -30,6 +30,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from config import ATTEMPTS_DIR
 
 # Folder names produced by ``new_attempt`` have the form
@@ -100,6 +101,7 @@ def _classify_files(folder: Path) -> tuple[list[str], dict[str, bool]]:
 
 
 @tool
+@generic_tool("List attempts")
 def list_attempts() -> str:
     """List every attempt folder created so far this session.
 
@@ -143,6 +145,7 @@ def list_attempts() -> str:
 
 
 @tool
+@generic_tool("Read attempt")
 def read_attempt(n: int, file: str) -> str:
     """Read a specific file from the n-th attempt folder.
 
@@ -225,6 +228,7 @@ def read_attempt(n: int, file: str) -> str:
 
 
 @tool
+@generic_tool("Generate new design attempt")
 def new_attempt(slug: str = "attempt", description: str = "") -> str:
     """Create a new, empty attempt folder for an upcoming design generation.
 

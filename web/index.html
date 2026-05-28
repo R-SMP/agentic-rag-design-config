@@ -21,7 +21,11 @@
       <h1>Propeller Design Configurator</h1>
       <span class="subtitle">Multi-agent design assistant — local JS UI</span>
     </div>
-    <button id="end-btn" class="ghost" hidden>End Session</button>
+    <div class="header-actions">
+      <button id="stop-btn" class="danger" hidden
+              title="Halt the running pipeline as soon as the current step finishes">Stop</button>
+      <button id="end-btn" class="ghost" hidden>End Session</button>
+    </div>
   </header>
 
   <!-- Invite-code gate (shown only when the server requires auth) -->
@@ -47,6 +51,9 @@
       </button>
       <button class="nav-item" type="button" data-view="params">
         <span class="nav-ico">🎚️</span><span>Parameters Inputs</span>
+      </button>
+      <button class="nav-item" type="button" data-view="logstatus">
+        <span class="nav-ico">📊</span><span>LOG and Status</span>
       </button>
       <button class="nav-item" type="button" data-view="settings">
         <span class="nav-ico">⚙️</span><span>Workflow Settings</span>
@@ -125,7 +132,198 @@
         </div>
       </section>
 
-      <!-- 4. Workflow Settings: live editor over workflow_settings/settings.py -->
+      <!-- 4. LOG and Status: agent-flow visualization + live session log -->
+      <section class="view logstatus-view" data-view="logstatus" hidden>
+        <div class="flow-pane">
+          <div class="flow-head">
+            <h2>Agent flow</h2>
+            <p class="flow-note">
+              Each box is one agent or tool.  The box lights up yellow
+              while that component is producing its response (i.e. the
+              system is waiting for it).  Two extra agents
+              (<em>Database Handler</em>, <em>Context Pruner</em>) are
+              shown in the side panel — they will light up once they
+              are wired into the live flow.
+            </p>
+          </div>
+          <div class="flow-wrap">
+            <svg id="flow-svg" class="flow-svg" viewBox="0 0 760 600"
+                 preserveAspectRatio="xMidYMid meet" role="img"
+                 aria-label="Multi-agent system flowchart">
+              <defs>
+                <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5"
+                        markerWidth="6" markerHeight="6"
+                        orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="#e6e8eb" />
+                </marker>
+              </defs>
+
+              <!-- EXTRA AGENTS panel -->
+              <g class="flow-extra">
+                <rect x="540" y="10" width="210" height="170"
+                      rx="4" ry="4" class="extra-frame" />
+                <text x="645" y="34" class="extra-title"
+                      text-anchor="middle">EXTRA AGENTS</text>
+                <g id="agent-database-handler" class="flow-box flow-box-agent">
+                  <rect x="570" y="60" width="150" height="40" rx="3" ry="3" />
+                  <text x="645" y="85" text-anchor="middle">Database Handler</text>
+                </g>
+                <g id="agent-context-pruner" class="flow-box flow-box-agent">
+                  <rect x="570" y="120" width="150" height="40" rx="3" ry="3" />
+                  <text x="645" y="145" text-anchor="middle">Context Pruner</text>
+                </g>
+              </g>
+
+              <!-- Main flowchart edges (drawn before boxes so they sit behind) -->
+              <!-- User <-> Receptionist -->
+              <line x1="280" y1="50" x2="280" y2="100"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- Receptionist <-> Orchestrator -->
+              <line x1="280" y1="170" x2="280" y2="220"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- Orchestrator <-> User Input Inspector -->
+              <line x1="220" y1="255" x2="160" y2="255"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- Orchestrator <-> DC Output Inspector -->
+              <line x1="340" y1="255" x2="400" y2="255"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- User Input Inspector <-> Planner -->
+              <line x1="100" y1="290" x2="100" y2="360"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- Planner <-> DC Input Creator -->
+              <line x1="100" y1="430" x2="100" y2="500"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- DC Input Creator <-> DC Input Inspector -->
+              <line x1="160" y1="535" x2="220" y2="535"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- DC Input Inspector <-> Tool Caller -->
+              <line x1="340" y1="535" x2="400" y2="535"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- Tool Caller <-> DC Output Inspector (vertical) -->
+              <line x1="460" y1="500" x2="460" y2="290"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- Tool Caller <-> Propeller Configurator -->
+              <line x1="520" y1="535" x2="580" y2="315"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- Tool Caller <-> Visual Renderings Generator -->
+              <line x1="520" y1="535" x2="580" y2="545"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+
+              <!-- User (gray) -->
+              <g id="agent-user" class="flow-box flow-box-user">
+                <rect x="220" y="10" width="120" height="40" rx="3" ry="3" />
+                <text x="280" y="35" text-anchor="middle">User</text>
+              </g>
+
+              <!-- Receptionist -->
+              <g id="agent-receptionist" class="flow-box flow-box-agent">
+                <rect x="220" y="100" width="120" height="70" rx="3" ry="3" />
+                <text x="280" y="130" text-anchor="middle">Receptionist</text>
+                <text x="280" y="158" text-anchor="middle"
+                      class="agent-tool-label"></text>
+              </g>
+
+              <!-- User Input Inspector -->
+              <g id="agent-user-input-inspector" class="flow-box flow-box-agent">
+                <rect x="40" y="220" width="120" height="70" rx="3" ry="3" />
+                <text x="100" y="242" text-anchor="middle">User Input</text>
+                <text x="100" y="260" text-anchor="middle">Inspector</text>
+                <text x="100" y="282" text-anchor="middle"
+                      class="agent-tool-label"></text>
+              </g>
+
+              <!-- Orchestrator -->
+              <g id="agent-orchestrator" class="flow-box flow-box-agent">
+                <rect x="220" y="220" width="120" height="70" rx="3" ry="3" />
+                <text x="280" y="250" text-anchor="middle">Orchestrator</text>
+                <text x="280" y="278" text-anchor="middle"
+                      class="agent-tool-label"></text>
+              </g>
+
+              <!-- Output Inspector (was: DC Output Inspector) -->
+              <g id="agent-dc-output-inspector" class="flow-box flow-box-agent">
+                <rect x="400" y="220" width="120" height="70" rx="3" ry="3" />
+                <text x="460" y="250" text-anchor="middle">Output inspector</text>
+                <text x="460" y="278" text-anchor="middle"
+                      class="agent-tool-label"></text>
+              </g>
+
+              <!-- Planner -->
+              <g id="agent-planner" class="flow-box flow-box-agent">
+                <rect x="40" y="360" width="120" height="70" rx="3" ry="3" />
+                <text x="100" y="390" text-anchor="middle">Planner</text>
+                <text x="100" y="418" text-anchor="middle"
+                      class="agent-tool-label"></text>
+              </g>
+
+              <!-- Input Creator (was: DC Input Creator) -->
+              <g id="agent-dc-input-creator" class="flow-box flow-box-agent">
+                <rect x="40" y="500" width="120" height="70" rx="3" ry="3" />
+                <text x="100" y="530" text-anchor="middle">Input Creator</text>
+                <text x="100" y="558" text-anchor="middle"
+                      class="agent-tool-label"></text>
+              </g>
+
+              <!-- Input inspector (Optional) (was: DC Input Inspector) -->
+              <g id="agent-dc-input-inspector" class="flow-box flow-box-agent">
+                <rect x="220" y="500" width="120" height="70" rx="3" ry="3" />
+                <text x="280" y="522" text-anchor="middle">Input inspector</text>
+                <text x="280" y="540" text-anchor="middle">(Optional)</text>
+                <text x="280" y="562" text-anchor="middle"
+                      class="agent-tool-label"></text>
+              </g>
+
+              <!-- Tool Caller -->
+              <g id="agent-tool-caller" class="flow-box flow-box-agent">
+                <rect x="400" y="500" width="120" height="70" rx="3" ry="3" />
+                <text x="460" y="530" text-anchor="middle">Tool Caller</text>
+                <text x="460" y="558" text-anchor="middle"
+                      class="agent-tool-label"></text>
+              </g>
+
+              <!-- TOOL: Propeller Configurator -->
+              <g id="agent-propeller-configurator" class="flow-box flow-box-tool">
+                <rect x="580" y="280" width="160" height="70" rx="3" ry="3" />
+                <text x="660" y="305" text-anchor="middle" class="tool-prefix">TOOL:</text>
+                <text x="660" y="325" text-anchor="middle">Propeller Configurator</text>
+              </g>
+
+              <!-- TOOL: Visual Renderings Generator -->
+              <g id="agent-visual-renderings-generator" class="flow-box flow-box-tool">
+                <rect x="580" y="510" width="160" height="70" rx="3" ry="3" />
+                <text x="660" y="532" text-anchor="middle" class="tool-prefix">TOOL:</text>
+                <text x="660" y="552" text-anchor="middle">Visual Renderings</text>
+                <text x="660" y="568" text-anchor="middle">generator</text>
+              </g>
+            </svg>
+          </div>
+        </div>
+
+        <aside class="log-pane">
+          <div class="log-head">
+            <h2>Session log</h2>
+            <button id="log-clear" class="ghost" type="button"
+                    title="Clear the visible log (does not affect the file)">
+              Clear view
+            </button>
+          </div>
+          <pre id="log-stream" class="log-stream"
+               aria-live="polite"><span class="log-empty">(log will appear here once a session is active)</span></pre>
+        </aside>
+      </section>
+
+      <!-- 5. Workflow Settings: live editor over workflow_settings/settings.py -->
       <section class="view settings-view" data-view="settings" hidden>
         <div class="settings-scroll">
           <div class="settings-head">

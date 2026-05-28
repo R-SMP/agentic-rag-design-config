@@ -33,6 +33,10 @@ prompts_backup_*/
 
 # --- Claude Code (per-user) ---
 .claude/settings.local.json
+# Local-only launch.json for the Claude Code preview server.  Path
+# entries inside it (Python interpreter, port) are developer-
+# specific, so the file must NEVER be uploaded.
+.claude/launch.json
 # Local-only session bootstrap pointer — must NEVER be uploaded.
 CLAUDE.md
 

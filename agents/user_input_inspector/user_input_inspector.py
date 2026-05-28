@@ -20,6 +20,7 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import list_attempts, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
@@ -266,6 +267,7 @@ class UserInputInspector(BaseChainAgent):
     # read_user_inputs handler
     # ------------------------------------------------------------------
 
+    @generic_tool("Read user inputs")
     def _handle_read_inputs_tool(self, tc: dict) -> None:
         """Load everything in the requested directory and feed it to the LLM."""
         raw_path = tc.get("args", {}).get("path")
@@ -338,6 +340,7 @@ class UserInputInspector(BaseChainAgent):
     # write_extraction handler
     # ------------------------------------------------------------------
 
+    @generic_tool("Write extraction")
     def _handle_write_extraction_tool(self, tc: dict) -> None:
         """Write the three-section extraction to the path the LLM supplied."""
         args = tc.get("args", {}) or {}

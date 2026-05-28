@@ -38,6 +38,7 @@ from agents.shared.history_tool import build_read_agent_history_tool
 from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import ORCHESTRATOR_TEMPLATE, PLANNER_FIRST
+from agents.shared.stop_signal import is_stop_requested
 from agents.shared.routing_tools import (
     AGENT_DISPLAY,
     AgentHop,
@@ -474,6 +475,24 @@ class Orchestrator(BaseChainAgent):
         first_orch_entry = True
 
         for _ in range(MAX_DISPATCH_HOPS):
+            # Cooperative-stop check: the web UI's Stop button sets
+            # the shared flag, and we honour it at each hop boundary
+            # (the currently-running step has already finished by the
+            # time we get back here).  We surface a clear message to
+            # the user and return — the next /api/turn auto-clears
+            # the flag so subsequent turns proceed normally.
+            if is_stop_requested():
+                logger.warning(
+                    "[DISPATCH] Stop requested by user — halting pipeline "
+                    f"at hop into '{current}'"
+                )
+                _trace(current, "User", "stopped by user")
+                return (
+                    "(Session interrupted by Stop button — the pipeline "
+                    "halted after the last completed step.  Send a new "
+                    "message to continue.)"
+                )
+
             agent = self._agents_by_key.get(current)
             if agent is None:
                 return f"Dispatch error: unknown agent key '{current}'."
