@@ -337,6 +337,14 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   padding: 24px;
   text-align: center;
 }
+/* Author display:flex above wins over the UA [hidden] rule, so the
+   plain ``element.hidden = true`` toggle in app.js (selectImage /
+   clearImgDetail) leaves both panes visible at once.  Force display:
+   none with !important when the attribute is set so only one of
+   img-detail-empty / img-detail-body is shown at a time, and the
+   visible one gets the pane's full height (flex:1 of the column). */
+.img-detail-empty[hidden],
+.img-detail-body[hidden] { display: none !important; }
 .img-detail-body {
   flex: 1;
   display: flex;
@@ -357,7 +365,11 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   padding: 12px;
   overflow: hidden;
 }
-.img-preview { max-width: 100%; max-height: 52vh; object-fit: contain; border-radius: 6px; }
+/* max-height: 100% (instead of a viewport-fraction cap) so the
+   preview fills the .img-preview-wrap's available height. object-fit
+   keeps the aspect ratio; the wrapper's flex:1 already bounds the
+   total height so the page doesn't overflow. */
+.img-preview { max-width: 100%; max-height: 100%; min-height: 0; object-fit: contain; border-radius: 6px; }
 .img-note-label { font-size: 13px; color: var(--muted); margin: 16px 0 6px; }
 .img-note {
   resize: vertical;

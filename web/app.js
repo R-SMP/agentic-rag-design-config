@@ -183,6 +183,14 @@ endBtn.addEventListener("click", async () => {
     /* ignore */
   }
   messages.innerHTML = "";
+  // Image Inputs: server-side _archive_previous_session has just moved
+  // input_images/ into the archived session folder, so the new
+  // session's list is empty.  Reset the UI to match — otherwise the
+  // last-selected image stays visible in the detail pane and a stale
+  // "Deleted ..." status lingers below it.
+  clearImgDetail();
+  setImgStatus("", "");
+  loadImages();
   const cfg = await (await fetch("/api/config")).json().catch(() => ({}));
   if (cfg.auth_required && !cfg.authed) showGate();
   else input.focus();
