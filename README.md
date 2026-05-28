@@ -131,18 +131,79 @@ A red **Stop** button appears in the header while a turn is running. Clicking it
 
 A split pane: SVG flowchart on the left, live session log on the right (Server-Sent Events from `/api/log/stream`, dumps the full current-session log on open then tails new bytes).
 
-**Live highlighting.** Every agent box lights up yellow ("strict transitions") between the moment another agent hands off to it and the moment it hands off to someone else. The two DC tools (`Propeller Configurator` for mesh generation, `Visual Renderings generator` for the three renders) have their own boxes next to the Tool Caller and light up alongside Tool Caller while in use (Tool Caller is semantically waiting for the tool).
+**Layout.** The Orchestrator sits in the centre of the chart with open space around it. Each chain agent (UII, Planner, Input Creator, Input inspector, Tool Caller, Output inspector) lives in a fixed column; the two DC tool boxes (`Propeller Configurator`, `Visual Renderings generator`) sit on the right, next to the Tool Caller. Database Handler and Context Pruner live in the EXTRA AGENTS panel — placeholders that will light up once they're wired into the live flow.
 
-**Generic helpers** — `read_user_inputs`, `write_extraction`, `read_extracted_inputs`, `new_attempt`, `write_parameters`, `read_parameters`, `load_render_images`, `calculate`, `visualize_3d_model`, etc. — complete in milliseconds and are too fast to flash. Each agent box therefore also carries a small **gray-italic line below the agent's name recording the most recent generic tool that agent invoked**. The line persists across handoffs so the chart shows each agent's history at a glance; it wipes on End Session.
+**Static black arrows** connect User ↔ Receptionist ↔ Orchestrator (the always-present top of the pipeline), UII → Planner → Input Creator → Input inspector → Tool Caller, and Tool Caller ↔ Output inspector / Propeller Configurator / Visual Renderings generator. These never change.
 
-**Instrumentation seams.** Activity events flow through `agents/shared/viz_bus.py` (a framework-agnostic pub-sub channel) and reach the browser via `/api/events` SSE:
+**Two dynamic gray arrows** around the Orchestrator visualise its most recent transition:
 
-- `agents/shared/trace.py:trace(from, to)` publishes an `agent_active` event on every routing-tool handoff. Pass `publish=False` for file-only trace lines that should NOT light up the chart (e.g. utility-tool log entries whose `to` is a tool function name, not a real agent).
-- `agents/shared/agent_activity.py` exposes two decorators:
-  - `@tool_active("Display Name")` — for the DC tools that have their own boxes; publishes `agent_active` events on entry/exit so the box stays lit alongside the caller while the tool runs.
-  - `@generic_tool("Display Name")` — for fast generic helpers; publishes a separate `generic_tool` event consumed only by the LOG and Status view's "last tool used" labels, and never affects which agent is highlighted.
+- `orch-caller-link` — from whichever non-Receptionist agent most recently called the Orchestrator, into Orch.
+- `orch-callee-link` — from Orch out to whichever non-Receptionist agent it most recently handed off to.
 
-**End Session** wipes the chat, the LOG view, all agent highlights and all "last tool used" labels, and reopens a fresh session.
+Receptionist ↔ Orchestrator always uses the static black arrow, so the dynamic arrows stay hidden whenever Receptionist is the other side. At most one of the two dynamic arrows is visible at a time — the rules are summarised in `web/app.js:applyAgentActive`. *(See TODO F10 — the arrows are wired but the deployed build still needs a debug pass; they may not appear yet end-to-end.)*
+
+**Live highlighting.** Every agent box lights up yellow ("strict transitions") between the moment another agent hands off to it and the moment it hands off to someone else. Utility tool calls do NOT change which agent is lit — the calling agent stays highlighted while it runs `calculate`, `read_extracted_inputs`, etc. The two DC tools (Propeller Configurator, Visual Renderings generator) are the exception: their boxes light up alongside Tool Caller while Tool Caller is waiting on them, because they represent real cross-process work.
+
+**Generic helpers** — `read_user_inputs`, `write_extraction`, `read_extracted_inputs`, `new_attempt`, `write_parameters`, `read_parameters`, `load_render_images`, `calculate`, `visualize_3d_model`, etc. — complete in milliseconds and are too fast to flash. Each agent box therefore also carries a small **gray-italic caption below the box recording the most recent generic tool that agent invoked**. The caption persists across handoffs so the chart shows each agent's history at a glance; it wipes on End Session.
+
+**Session log.** The right-hand pane streams `/api/log/stream` and now shows tool calls from **every** agent, including the Receptionist (`[TOOL CALL] Receptionist -> calculate ...`). The `[RECEPTIONIST] forward=...` line no longer echoes the message body — the full message is logged exactly once, by the routing tool, as `[AGENT MSG] Receptionist -> Orchestrator <message>`.
+
+**End Session** wipes the chat, the LOG view, all agent highlights, all dynamic gray arrows, and all "last tool used" captions, and reopens a fresh session.
+
+### Chat viewer footer
+
+Below the 3D viewer in the Chat view sit two small buttons:
+
+| Button | Behaviour |
+|---|---|
+| **Download geometry** | Disabled until a propeller mesh is loaded. Saves the currently displayed `.obj` via a programmatic `<a download>` click against the `/api/artefact` URL the viewer is already using. |
+| **Copy parameters list** | Fetches `/api/parameters` and writes the response to `navigator.clipboard`. Falls back to a hidden-textarea + `document.execCommand("copy")` path for plain-HTTP contexts so it works on the local Docker URL too. Brief "Copied!" / "Copy failed" feedback. |
+
+The `/api/parameters` endpoint currently serves the canonical 17-parameter reference list (`DC_prompt_fragments/dc_config/parameters.md`) as `{"text": "..."}`. *(See TODO F9 — once a mesh is on screen the endpoint should ideally return that attempt's actual `parameters.json` values instead of the generic reference list.)*
+
+## Architecture: how live activity reaches the browser
+
+The LOG and Status view, the live 3D viewer, and the per-agent "last tool used" captions are all driven by a single in-process pub-sub channel, with two SSE endpoints flushing events out to the browser. No agent code ever reaches into the web layer (per `warnings_developer.md` W17).
+
+### The publish/subscribe seam (`agents/shared/viz_bus.py`)
+
+Framework-agnostic by design — agent code calls `publish(event)`, the web layer calls `subscribe()` to get a per-connection event queue. When no subscriber is listening (REPL / Streamlit / tests), `publish` is a no-op. The bus accepts arbitrary dicts; the convention is a `type` field that the web layer routes on.
+
+Three event types are in use today:
+
+- `{type: "visualize", path, name}` — published by `tools/visualize_model/visualize_model.py:visualize_3d_model`. Tells the viewer to load a new mesh inline as soon as the agent invokes the tool, without waiting for end-of-turn.
+- `{type: "agent_active", from, to, note}` — published from `agents/shared/trace.py:trace()` on every agent-to-agent handoff and (via the `@tool_active` decorator) on DC-tool entry / exit. Drives the highlight class on the flowchart.
+- `{type: "generic_tool", name, state}` — published from `agents/shared/agent_activity.py:generic_tool` on entry/exit. Drives the "last tool used" caption only; never affects which agent is highlighted.
+
+### The decorators (`agents/shared/agent_activity.py`)
+
+Two wrappers, applied beside each tool's existing `@tool` decorator:
+
+- `@tool_active("Display Name")` — for the two DC-specific tools that have their own boxes (Propeller Configurator, Visual Renderings generator). Calls `trace()` on entry **and** exit, so the tool's box stays lit alongside the Tool Caller while the tool runs and unlights cleanly when it returns.
+- `@generic_tool("Display Name")` — for every other utility tool (read_user_inputs, list_attempts, calculate, etc.). Publishes only the lighter-weight `generic_tool` event. Intentionally NOT routed through `trace()` so it doesn't pollute the agent-flow trace file with every tiny internal helper call.
+
+The two decorators between them cover ~17 tool functions across `tools/`, `agents/shared/`, and per-agent files. See TODO F8 for the planned consolidation of generic helpers under `tools/generic/`.
+
+### Trace publish flag (`agents/shared/trace.py:trace`)
+
+`trace(from_agent, to_agent, note="", *, publish=True)` writes one line to the agent-flow file AND publishes an `agent_active` event. Pass `publish=False` from callers that need the file line but NOT the SSE event — specifically `agents/shared/routing_tools.py:log_tool_call`, which logs `[TOOL CALL]` lines whose `to` is a tool function name (not a real agent); without the flag those events would inject bogus `agent_active` messages into the flowchart and wipe the live highlight on the actual calling agent.
+
+### SSE endpoints (`web_app.py`)
+
+Two endpoints flush viz_bus events to the browser:
+
+- `GET /api/events` — long-lived stream that forwards `visualize`, `agent_active`, and `generic_tool` events as Server-Sent Events. The frontend's single EventSource subscribes once at app start and stays connected across view switches.
+- `GET /api/log/stream` — long-lived stream that opens the current-session log file, dumps its full contents on connect, then tails new bytes as they're written. Hot-swaps to a fresh file when End Session triggers a new session.
+
+A few one-shot endpoints round out the surface:
+
+- `POST /api/stop` — sets the cooperative-cancellation flag in `agents/shared/stop_signal.py`. Polled today only at Orchestrator hop boundaries (see TODO F11 for the planned tighter cancellation).
+- `GET /api/parameters` — serves the canonical parameter list for the Copy parameters list button (see above and TODO F9).
+- `GET /api/artefact?path=...` — sandboxed read of any `.png` / `.obj` produced this session, scoped to `ATTEMPTS_DIR`. Used for both inline render display and the Download geometry button.
+
+### Frontend dispatch (`web/app.js`)
+
+A single SSE handler in `startEventStream()` routes incoming events to either the viewer (`visualize`), the flowchart (`agent_active` → `applyAgentActive`), or the per-agent caption (`generic_tool` → `recordToolUsedByActiveAgent`). The strict-transitions highlighting policy lives entirely in `applyAgentActive`: at most one agent box is lit at a time, except during a DC-tool call where both the agent and the tool box are highlighted together.
 
 ## Configuration
 
@@ -166,8 +227,12 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
 
 ## Status & known issues
 
-- [`extra_utilities/TODO_known_issues.md`](extra_utilities/TODO_known_issues.md) — open issues (O1–O8) and carry-forward bugs.
-- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W12) that must not regress.
+- [`extra_utilities/TODO_known_issues.md`](extra_utilities/TODO_known_issues.md) — open issues (O1–O10) and future-work entries (F1–F11), including the LOG-and-Status open items called out in this README:
+  - **F5 / F6** — colorising the log pane and showing tool-call payloads on the flowchart.
+  - **F9** — make Copy parameters list return the selected attempt's actual `parameters.json` instead of the canonical reference list.
+  - **F10** — the dynamic gray arrows around the Orchestrator are wired but need a deployed-build debug pass.
+  - **F11** — tighten the Stop button to cancel at the next tool call / message / LLM call boundary instead of only at Orchestrator hop boundaries; tool calls issued after Stop is pressed should not execute.
+- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W17) that must not regress.
 
 ## Roadmap
 
@@ -177,8 +242,13 @@ Near-term direction:
 - Stage B: persist sessions and embeddings to Postgres, push binary artefacts to R2.
 - Implement the **Context Pruner** agent (slot reserved in the LOG and Status flowchart — see TODO F7).
 - Reorganise tools — split generic helpers from DC-specific tools and consolidate under `tools/` (see TODO F8) — so the `@generic_tool` decorator only needs to live at the `@tool` site instead of being duplicated on each agent's `_handle_*` handler method.
+- Close out the LOG and Status open items above (F5, F6, F9, F10, F11).
 
 **Done since v7:**
 
 - Move heavy compute off the local driver — RhinoCompute now runs on an Azure VM, the Stage A FastAPI app runs on Railway.
 - Build a web interface as the user-facing front-end — FastAPI + plain JS, see [Web UI](#web-ui) above.
+- LOG and Status view live, with strict-transitions highlighting, dynamic Orchestrator caller/callee arrows, per-agent "last tool used" captions, and live session log tailing.
+- Stop button with cooperative pipeline cancellation between hops.
+- Chat viewer footer (Download geometry + Copy parameters list).
+- Receptionist tool calls now appear in the session log alongside every other agent; `[RECEPTIONIST]` no longer duplicates the forwarded message body.
