@@ -30,8 +30,16 @@ function showGate() {
   gateInput.focus();
 }
 
+// Track the most recently loaded mesh so the Download geometry
+// button can save it.  Updated by both the in-bubble mesh load and
+// the live `visualize` SSE event.
+let currentMesh = { url: null, name: null };
+
 function loadMesh(url, name) {
   if (window.modelViewer) window.modelViewer.load(url, name);
+  currentMesh = { url, name: name || "propeller_mesh.obj" };
+  const dlBtn = document.getElementById("download-mesh");
+  if (dlBtn) dlBtn.disabled = !url;
 }
 
 function addBubble(role, text, opts = {}) {
@@ -231,6 +239,8 @@ endBtn.addEventListener("click", async () => {
   clearLogView();
   _clearActiveBoxes();
   clearAllToolLabels();
+  hideOrchCallerLink();
+  hideOrchCalleeLink();
   const cfg = await (await fetch("/api/config")).json().catch(() => ({}));
   if (cfg.auth_required && !cfg.authed) showGate();
   else input.focus();
@@ -314,6 +324,110 @@ function clearAllToolLabels() {
   });
 }
 
+// Dynamic gray arrow from the last non-Receptionist caller of the
+// Orchestrator.  Agents in this set:
+const ORCH_CALLERS = new Set([
+  "User Input Inspector",
+  "Planner",
+  "DC Input Creator",
+  "DC Input Inspector",
+  "Tool Caller",
+  "DC Output Inspector",
+]);
+
+function _readRectAttrs(rectEl) {
+  return {
+    x: parseFloat(rectEl.getAttribute("x")),
+    y: parseFloat(rectEl.getAttribute("y")),
+    w: parseFloat(rectEl.getAttribute("width")),
+    h: parseFloat(rectEl.getAttribute("height")),
+  };
+}
+
+// Closest point on a rectangle's perimeter to an external target,
+// pushed outward by `gap` so the arrow visually doesn't touch the
+// box.  `target` is in SVG user-space coords.
+function _edgePointOutward(rect, target, gap) {
+  let px = Math.max(rect.x, Math.min(target.x, rect.x + rect.w));
+  let py = Math.max(rect.y, Math.min(target.y, rect.y + rect.h));
+  let dx = 0, dy = 0;
+  if (target.x < rect.x)            { px = rect.x;          dx = -1; }
+  else if (target.x > rect.x + rect.w) { px = rect.x + rect.w; dx = 1; }
+  if (target.y < rect.y)            { py = rect.y;          dy = -1; }
+  else if (target.y > rect.y + rect.h) { py = rect.y + rect.h; dy = 1; }
+  return { x: px + dx * gap, y: py + dy * gap };
+}
+
+// Show / hide helpers for SVG <line> elements.  We CANNOT use
+// `link.hidden = true/false` here: the `hidden` IDL property comes
+// from the HTMLOrSVGElement mixin and in some browsers does not
+// reliably reflect into the `hidden` content attribute on SVG
+// elements — which would leave our `.orch-dyn-link[hidden]` CSS
+// rule out of sync with reality.  setAttribute / removeAttribute
+// is the portable, attribute-true path.
+function _showSvgLine(link) { link.removeAttribute("hidden"); }
+function _hideSvgLine(link) { link.setAttribute("hidden", ""); }
+
+// Internal helper: compute "10px outside the box edge closest to
+// `target`" for both rects, and write the endpoints + arrowhead
+// into the given <line>.  Direction is determined by which rect
+// is `src` (line start) vs `dst` (line end / arrowhead end).
+function _drawOrchDynLink(link, srcRect, dstRect) {
+  const s = _readRectAttrs(srcRect);
+  const d = _readRectAttrs(dstRect);
+  const sCenter = { x: s.x + s.w / 2, y: s.y + s.h / 2 };
+  const dCenter = { x: d.x + d.w / 2, y: d.y + d.h / 2 };
+  const sEdge = _edgePointOutward(s, dCenter, 10);
+  const dEdge = _edgePointOutward(d, sCenter, 10);
+  link.setAttribute("x1", String(sEdge.x));
+  link.setAttribute("y1", String(sEdge.y));
+  link.setAttribute("x2", String(dEdge.x));
+  link.setAttribute("y2", String(dEdge.y));
+  link.setAttribute("marker-end", "url(#arrow-gray)");
+  link.removeAttribute("marker-start");
+  _showSvgLine(link);
+}
+
+// Incoming arrow: shown from <callerName> to Orchestrator.
+function showOrchCallerLink(callerName) {
+  const link = document.getElementById("orch-caller-link");
+  if (!link) return;
+  const callerBoxId = FLOW_BOX_BY_NAME[callerName];
+  if (!callerBoxId) { _hideSvgLine(link); return; }
+  const callerBox = document.getElementById(callerBoxId);
+  const orchBox = document.getElementById("agent-orchestrator");
+  if (!callerBox || !orchBox) { _hideSvgLine(link); return; }
+  const callerRectEl = callerBox.querySelector("rect");
+  const orchRectEl = orchBox.querySelector("rect");
+  if (!callerRectEl || !orchRectEl) { _hideSvgLine(link); return; }
+  _drawOrchDynLink(link, callerRectEl, orchRectEl);
+}
+
+function hideOrchCallerLink() {
+  const link = document.getElementById("orch-caller-link");
+  if (link) _hideSvgLine(link);
+}
+
+// Outgoing arrow: shown from Orchestrator to <calleeName>.
+function showOrchCalleeLink(calleeName) {
+  const link = document.getElementById("orch-callee-link");
+  if (!link) return;
+  const calleeBoxId = FLOW_BOX_BY_NAME[calleeName];
+  if (!calleeBoxId) { _hideSvgLine(link); return; }
+  const calleeBox = document.getElementById(calleeBoxId);
+  const orchBox = document.getElementById("agent-orchestrator");
+  if (!calleeBox || !orchBox) { _hideSvgLine(link); return; }
+  const calleeRectEl = calleeBox.querySelector("rect");
+  const orchRectEl = orchBox.querySelector("rect");
+  if (!calleeRectEl || !orchRectEl) { _hideSvgLine(link); return; }
+  _drawOrchDynLink(link, orchRectEl, calleeRectEl);
+}
+
+function hideOrchCalleeLink() {
+  const link = document.getElementById("orch-callee-link");
+  if (link) _hideSvgLine(link);
+}
+
 function applyAgentActive(fromName, toName) {
   // Two cases:
   //   * Tool entry (to == one of TOOL_NAMES): keep the calling
@@ -330,6 +444,33 @@ function applyAgentActive(fromName, toName) {
   }
   _clearActiveBoxes();
   _activateById(FLOW_BOX_BY_NAME[toName]);
+
+  // Dynamic gray arrows around the Orchestrator.  They visualise
+  // which agent most recently called Orch (incoming) and which
+  // agent Orch most recently called (outgoing).  Symmetric show/
+  // hide rules so at most one of each is visible at a time:
+  //
+  //   * to == Orchestrator and from ∈ ORCH_CALLERS  →  show incoming
+  //     (the static black arrow handles Receptionist → Orch, so we
+  //     skip it here).  Also hide the outgoing arrow — Orch is
+  //     receiving a call, the previous outgoing transaction is done.
+  //   * from == Orchestrator and to ∈ ORCH_CALLERS  →  show outgoing.
+  //     Also hide the incoming arrow — Orch is now the source.
+  //   * from == Orchestrator and to == Receptionist  →  hide outgoing
+  //     (the static black arrow handles Orch → Receptionist too).
+  if (toName === "Orchestrator" && ORCH_CALLERS.has(fromName)) {
+    showOrchCallerLink(fromName);
+    hideOrchCalleeLink();
+  } else if (fromName === "Orchestrator") {
+    hideOrchCallerLink();
+    if (ORCH_CALLERS.has(toName)) {
+      showOrchCalleeLink(toName);
+    } else {
+      // Orchestrator → Receptionist (or any non-callee).  The static
+      // arrow handles it; no dynamic outgoing arrow needed.
+      hideOrchCalleeLink();
+    }
+  }
 }
 
 function startEventStream() {
@@ -339,7 +480,7 @@ function startEventStream() {
       try {
         const data = JSON.parse(e.data);
         if (data.type === "visualize" && window.modelViewer) {
-          window.modelViewer.load(data.url, data.name);
+          loadMesh(data.url, data.name);
         } else if (data.type === "agent_active") {
           // Real agent handoff — switch which box is highlighted.
           // We INTENTIONALLY do NOT clear any "last tool" labels
@@ -916,6 +1057,68 @@ if (imgDrop) {
 if (imgSave) imgSave.addEventListener("click", saveNote);
 if (imgReset) imgReset.addEventListener("click", resetNote);
 if (imgDelete) imgDelete.addEventListener("click", deleteImage);
+
+// ---------------------------------------------------------------------------
+// Viewer footer — Download geometry + Copy parameters list
+// ---------------------------------------------------------------------------
+const downloadMeshBtn = document.getElementById("download-mesh");
+const copyParametersBtn = document.getElementById("copy-parameters");
+
+if (downloadMeshBtn) {
+  downloadMeshBtn.addEventListener("click", () => {
+    if (!currentMesh.url) return;
+    // Programmatic-link trick: GET the asset URL with a `download`
+    // attribute so the browser saves rather than navigates.  Works
+    // for cross-origin URLs only because /api/artefact serves the
+    // .obj from the same origin as the app.
+    const a = document.createElement("a");
+    a.href = currentMesh.url;
+    a.download = currentMesh.name || "propeller_mesh.obj";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+  });
+}
+
+if (copyParametersBtn) {
+  copyParametersBtn.addEventListener("click", async () => {
+    const originalLabel = copyParametersBtn.textContent;
+    copyParametersBtn.disabled = true;
+    try {
+      const res = await fetch("/api/parameters");
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const { text } = await res.json();
+      // Modern Clipboard API needs a secure context (HTTPS or
+      // localhost).  Fall back to a hidden textarea + execCommand
+      // for the http:// Railway URL until TLS is in front of it.
+      let ok = false;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        try {
+          await navigator.clipboard.writeText(text);
+          ok = true;
+        } catch (_) { /* fall through to legacy path */ }
+      }
+      if (!ok) {
+        const ta = document.createElement("textarea");
+        ta.value = text;
+        ta.style.position = "fixed";
+        ta.style.left = "-9999px";
+        document.body.appendChild(ta);
+        ta.select();
+        try { ok = document.execCommand("copy"); } catch (_) { ok = false; }
+        ta.remove();
+      }
+      copyParametersBtn.textContent = ok ? "Copied!" : "Copy failed";
+    } catch (_) {
+      copyParametersBtn.textContent = "Copy failed";
+    } finally {
+      setTimeout(() => {
+        copyParametersBtn.textContent = originalLabel;
+        copyParametersBtn.disabled = false;
+      }, 1400);
+    }
+  });
+}
 
 init();
 startEventStream();

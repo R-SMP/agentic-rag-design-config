@@ -38,6 +38,7 @@ from agents.shared.routing_tools import (
     DONE,
     ROUTING_TOOL_NAMES,
     finalize_unanswered_tool_calls,
+    log_tool_call,
 )
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
@@ -150,6 +151,15 @@ class Receptionist(BaseChainAgent):
                         logger.error(
                             f"[RECEPTIONIST TOOL ERROR] {name}: {exc}"
                         )
+                # Record utility tool calls in the session log just
+                # like every other agent does (Planner, UII, DCIC...).
+                # Routing tools (call_orchestrator, ...) are logged
+                # separately by the routing-tool factory; skip them
+                # here so the same hand-off is not written twice.
+                if name not in ROUTING_TOOL_NAMES:
+                    log_tool_call(
+                        "receptionist", name, tc.get("args"), result,
+                    )
                 self.messages.append(ToolMessage(
                     content=str(result),
                     tool_call_id=tc["id"],

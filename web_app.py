@@ -315,6 +315,35 @@ async def api_turn(body: TurnIn) -> dict:
         }
 
 
+_PARAMETERS_MD = (
+    Path(__file__).parent
+    / "DC_prompt_fragments"
+    / "dc_config"
+    / "parameters.md"
+)
+
+
+@app.get("/api/parameters")
+def api_parameters() -> dict:
+    """Return the canonical DC parameter list as plain text.
+
+    Served as JSON ``{"text": "..."}`` so the JS Copy-parameters
+    button can read it once and write it to the clipboard.  The
+    source is ``DC_prompt_fragments/dc_config/parameters.md``,
+    which already formats the 17 parameters as a numbered list
+    grouped by section — perfectly readable when pasted anywhere.
+    """
+    _require_auth()
+    try:
+        text = _PARAMETERS_MD.read_text(encoding="utf-8")
+    except OSError as exc:
+        raise HTTPException(
+            status_code=500,
+            detail=f"Cannot read parameters.md: {exc}",
+        )
+    return {"text": text}
+
+
 @app.get("/api/artefact")
 def api_artefact(path: str) -> FileResponse:
     _require_auth()

@@ -252,6 +252,26 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .viewer-name { color: var(--muted); font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .viewer-toolbar button { padding: 6px 12px; font-size: 12px; }
 
+/* Footer below the 3D viewer: action buttons (Download geometry,
+   Copy parameters list).  Same panel background as the toolbar
+   so it reads as a matching strip across the bottom. */
+.viewer-footer {
+  display: flex;
+  gap: 8px;
+  padding: 10px 16px;
+  border-top: 1px solid var(--border);
+  background: var(--panel);
+  flex: 0 0 auto;
+}
+.viewer-footer button {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+.viewer-footer button:disabled {
+  cursor: not-allowed;
+  opacity: 0.45;
+}
+
 .viewer {
   position: relative;
   flex: 1;
@@ -618,13 +638,13 @@ button.danger:hover { background: #3a1d1d; }
   filter: drop-shadow(0 0 8px rgba(255, 210, 63, 0.85));
 }
 
-/* Per-agent "last tool used" label — sits inside the agent's box,
-   below the agent's name.  Generic tools are typically too fast to
-   see live, so instead of showing the in-flight tool we show the
-   name of the MOST RECENT one the agent invoked, persistently,
-   until the agent runs another tool or the session ends.  Gray
-   italic so it reads as a quiet status note, distinct from the
-   white agent name and from the yellow active border. */
+/* Per-agent "last tool used" label — sits just below the agent's
+   box, in the gap between rows.  Generic tools are typically too
+   fast to see live, so instead of showing the in-flight tool we
+   show the name of the MOST RECENT one the agent invoked,
+   persistently, until the agent runs another tool or the session
+   ends.  Gray italic so it reads as a quiet status note, distinct
+   from the white agent name and from the yellow active border. */
 .flow-box .agent-tool-label {
   fill: #9aa1ad;
   font-size: 11px;
@@ -632,6 +652,17 @@ button.danger:hover { background: #3a1d1d; }
   font-weight: 500;
   pointer-events: none;
 }
+
+/* Dynamic gray arrows around the Orchestrator: one from the
+   latest caller -> Orch (orch-caller-link), one from Orch ->
+   the latest callee (orch-callee-link).  Same stroke; the JS
+   sets each one's endpoints independently. */
+.orch-dyn-link {
+  stroke: #b8b8b8;
+  stroke-width: 2;
+  pointer-events: none;
+}
+.orch-dyn-link[hidden] { display: none; }
 
 /* Extra-agents panel — frame is `fill: none`, so the stroke is the
    only visible part.  On dark mode the previous #1f1f1f stroke was

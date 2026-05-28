@@ -153,9 +153,17 @@ def dispatch_turn(
         #    forward into the pipeline or reply directly.
         _trace("User", "Receptionist")
         validation = orchestrator.receptionist.validate_input(inputs_dir)
+        # Log only the decision flag here.  The message body is already
+        # in the session log:
+        #   * forward=True  →  the [AGENT MSG] Receptionist -> Orchestrator
+        #                       line fired inside validate_input() when
+        #                       the LLM invoked call_orchestrator.
+        #   * forward=False →  the [RECEPTIONIST -> USER] line below
+        #                       logs the direct reply once.
+        # Echoing the message a second time here just produces a
+        # duplicate entry.
         logger.info(
-            f"[RECEPTIONIST]  forward={validation['forward']}  "
-            f"message={validation['message']}"
+            f"[RECEPTIONIST]  forward={validation['forward']}"
         )
 
         if not validation["forward"]:

@@ -751,6 +751,218 @@ common case rather than the exception.
 (box is drawn but never lights up until this lands). Paired
 with the v7-carry-over context-overflow item.
 
+### F9. "Copy parameters list" should return the SELECTED attempt's parameters
+
+**Where.** Backend endpoint `web_app.py:api_parameters()` (currently
+serves `DC_prompt_fragments/dc_config/parameters.md`); frontend
+handler in `web/app.js` (the `copy-parameters` button click).
+
+**What.** Today the **Copy parameters list** button in the chat
+viewer footer copies the canonical 17-parameter REFERENCE list
+(names, units, ranges, descriptions) from `parameters.md`.  That
+is the right content for "what parameters does this DC accept" —
+a template / cheat-sheet — but it is NOT what the user almost
+certainly wants once they have a generated propeller on screen:
+they want the actual numerical values chosen for the propeller
+currently being displayed in the viewer.
+
+**Required behaviour.** When a mesh is shown in the 3D viewer,
+`/api/parameters` should return the `parameters.json` from the
+attempt folder that produced that mesh — specifically, the
+attempt the Receptionist selected for visualisation this turn
+(see `Receptionist.format_outgoing` in
+`agents/receptionist/receptionist.py:271`, which already attaches
+the chosen attempt's `parameters.json` to the user-facing
+message).  Suggested shape: `{"text": "<json contents>", "attempt":
+"<path>"}`.  When NO mesh is loaded yet, fall back to the
+current behaviour (the canonical reference list) so the button
+still produces something useful.
+
+**Implementation sketch.**
+- Track the currently-visualised attempt folder on the server.
+  The Receptionist already knows it via `_latest_active_attempt()`
+  / the per-cycle `cycle_start_ts` filtering; expose that via a
+  small helper, e.g. `_currently_visualised_attempt()` on the
+  Session, or just walk `ATTEMPTS_DIR` for the most recent folder
+  containing a `parameters.json` AND `propeller_mesh.obj`.
+- `api_parameters()` reads that attempt's `parameters.json` and
+  returns it.  Frontend behaviour unchanged (still writes the
+  returned text to the clipboard).
+- Optional: rename the button on the fly to "Copy current
+  parameters" when a mesh is loaded, "Copy parameter list" when
+  not — clearer UX.
+
+**Why deferred.** Wiring the "current attempt" state from the
+agent layer through to a stateless API endpoint touches the
+`Session` shape and the Receptionist's attempt-selection logic.
+The current static-list behaviour is correct for the empty-
+viewer case and is at worst confusing (never wrong) when a
+mesh IS loaded, so this can wait for a focused refactor.
+
+**Status.** Open.  Verify what's expected, then either rewire
+the endpoint or document the current static behaviour as
+intentional.
+
+### F10. LOG and Status view: fix the dynamic gray Orch arrows
+
+**Where.**
+- HTML: the two `<line id="orch-caller-link">` and
+  `<line id="orch-callee-link">` elements in
+  `web/index.html`'s LOG and Status SVG.
+- CSS: `.orch-dyn-link` + `.orch-dyn-link[hidden]` in
+  `web/style.css`.
+- JS: `showOrchCallerLink` / `showOrchCalleeLink` /
+  `hideOrchCallerLink` / `hideOrchCalleeLink` /
+  `_drawOrchDynLink` / `_edgePointOutward` in `web/app.js`,
+  driven from `applyAgentActive` on every `agent_active` SSE
+  event involving the Orchestrator.
+
+**What.** When the Orchestrator hands off to a non-Receptionist
+agent (UII / Planner / Input Creator / Input inspector / Tool
+Caller / Output inspector), or when one of those agents
+escalates back to the Orchestrator, a gray arrow in the
+appropriate direction is supposed to appear in the flowchart
+(`orch-callee-link` for outgoing, `orch-caller-link` for
+incoming).  Receptionist ↔ Orch is handled by the static black
+arrow and the dynamic ones should stay hidden in that case.
+
+In practice the arrows do not appear reliably.  We have:
+- Confirmed the backend publishes the right `agent_active`
+  events (verified via `/api/events` EventStream in DevTools).
+- Confirmed `applyAgentActive` is being called with the right
+  `from` / `to` strings (e.g. `Orchestrator` → `User Input
+  Inspector`).
+- Switched `link.hidden = true/false` to explicit
+  `setAttribute("hidden", "")` / `removeAttribute("hidden")`
+  to dodge the SVG `hidden` IDL-property quirk.
+
+Still not visible at last test.  Open hypotheses (try in order):
+1. **Cache.** Browser caching of the old `app.js` / `index.html`
+   / `style.css`.  Disable cache in DevTools, hard-refresh, and
+   confirm `typeof showOrchCalleeLink === "function"` in the
+   Console.
+2. **Z-order / coverage.** The dynamic lines are drawn before
+   the agent box `<g>` elements (so they sit behind, which is
+   intentional).  Verify the computed endpoints fall in the
+   GAP between Orch and the other agent — e.g. Orch (220, 265,
+   120, 50) ↔ UII (40, 200, 120, 50) should yield endpoints
+   around (210, 255) → (170, 260).  If the line is being drawn
+   inside Orch / UII's rect bounds it will be hidden by the
+   coloured fill.
+3. **Off-screen / negative coords.** `_edgePointOutward`'s
+   10px outward offset can produce negative `x` or `y` for an
+   agent that sits flush against the viewBox edge.  Clamp.
+4. **Marker reference.** `marker-end="url(#arrow-gray)"` needs
+   the `<marker id="arrow-gray">` to be present in `<defs>`.
+   That marker was added; confirm it survived later edits.
+5. **CSS specificity.** `.orch-dyn-link[hidden] { display: none }`
+   must NOT be overridden by any later rule that re-shows
+   `<line>` elements indiscriminately.
+
+**Reproduction.** Open the LOG and Status view, send a turn
+that escalates from any chain agent back to the Orchestrator
+(e.g. ask for a design and let the Planner finish).  Expected:
+gray arrow from Planner → Orch while Orch is processing the
+escalation, then arrow flips direction (Orch → next agent) when
+Orch hands off.  Observed: no arrow.
+
+**Status.** Open.  Debug with the DevTools-based steps under
+"Open hypotheses" above; once the root cause is identified,
+fix and add a smoke check (e.g. a `data-debug` attribute that
+records the most-recent `applyAgentActive` event so we can
+verify from the page directly).
+
+### F11. Stop button: tighten the cancellation granularity
+
+**Where.**
+- Flag module: `agents/shared/stop_signal.py`
+  (`request_stop` / `clear_stop` / `is_stop_requested`).
+- Web endpoint that sets the flag: `web_app.py:api_stop`.
+- Current single check site:
+  `agents/orchestrator/orchestrator.py:dispatch` (top of the
+  hop loop).
+- Frontend Stop button: `web/index.html` (header) +
+  `web/app.js` (`stopBtn` click handler).
+
+**What today.** The Stop button sets a shared flag.  The
+Orchestrator polls it **only** at the top of every hop — i.e.
+once per agent hand-off.  An agent that's mid-run when Stop is
+clicked will finish its ENTIRE turn (every LLM call AND every
+tool execution AND its hand-off) before the Orchestrator
+notices the flag.  That's the "as soon as the next agent
+boundary" cancellation — coarser than what the button name
+suggests to a user clicking it as an emergency stop.
+
+**Required behaviour.** Stop should take effect at the EARLIEST
+of these three checkpoints, regardless of which agent is
+currently running:
+
+1. The current tool call (utility OR routing) returns.
+2. The currently-sent inter-agent message has been delivered
+   (i.e. the routing tool finishes recording the hop).
+3. The currently-running `invoke_with_retry` LLM call returns
+   (the model has finished reasoning for the current step).
+
+And, critically: **if an LLM emits a tool call after Stop has
+been requested but the agent has not yet invoked the tool,
+the tool MUST NOT be executed.**  Instead, the tool result
+appended to the agent's `messages` is a sentinel string —
+something explicit like `"aborted — process manually stopped
+by the user"` — and the agent's loop bails to the Orchestrator
+at the very next iteration with that sentinel as its outbound
+message.  The Orchestrator in turn surfaces the existing
+"(Session interrupted by Stop button…)" reply to the user.
+
+**Implementation sketch.**
+- Add `is_stop_requested()` polls inside every agent's
+  `_run_llm_loop`:
+  - Once at the top of each iteration (before
+    `invoke_with_retry`).
+  - Once after `invoke_with_retry` returns (catches "model
+    reasoned and is about to act").
+  - Once before each `tool_fn.invoke(tc["args"])` (the
+    "tool not executed" branch — substitute the abort
+    sentinel and skip the call).
+  - Once after each tool execution (catches the "tool just
+    returned, drop the next iteration" case).
+- Each early exit appends a `ToolMessage` carrying the abort
+  sentinel for any pending `tool_call_id`s (re-use
+  `finalize_unanswered_tool_calls` to keep the
+  tool_use/tool_result contract intact on both Anthropic and
+  OpenAI), then returns an `AgentHop("orchestrator",
+  "aborted — process manually stopped by the user")`.
+- Routing-tool callsite (`agents/shared/routing_tools.py:245`)
+  also needs a Stop check — same sentinel, same hop.
+- Update `Orchestrator.dispatch`'s existing Stop check to
+  preserve the "(Session interrupted by Stop button…)" reply
+  it already returns; the tighter agent-level checks just
+  cause it to hit that branch sooner.
+
+**Edge cases to handle.**
+- The Receptionist's `validate_input` runs BEFORE the
+  Orchestrator's dispatch loop is entered.  A Stop click
+  during validate_input must also short-circuit — wire the
+  same `_run_llm_loop` polls in `agents/receptionist/
+  receptionist.py:_run_llm_loop`.
+- Database Handler runs at session end (opt-in save).  Stop
+  there should abort the DH cleanly too — its
+  `_run_one_conversation` loop is the relevant site.
+- Tool-side instrumentation (`@tool_active`, `@generic_tool`)
+  must still publish their exit event even when the wrapped
+  function is short-circuited by the abort path, otherwise
+  the flowchart label gets stuck.
+
+**Why deferred.** Touching every agent's `_run_llm_loop` is
+high-blast-radius and easy to break the tool_use/tool_result
+contiguity invariants (see resolved issue R2).  Worth a
+dedicated commit with the smoke tests in
+`extra_utilities/smoke_test_image_buffer.py` re-run to make
+sure the abort path doesn't malform message lists.
+
+**Status.** Open.  Today's coarse hop-boundary check is "good
+enough" for non-emergency cancellation; this entry tracks the
+finer-grained behaviour the Stop button name implies.
+
 ---
 
 ## Resolved issues

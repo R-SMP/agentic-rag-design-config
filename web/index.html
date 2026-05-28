@@ -84,6 +84,16 @@
               <br /><small>Drag to rotate · scroll to zoom</small>
             </div>
           </div>
+          <div class="viewer-footer">
+            <button id="download-mesh" class="ghost" type="button"
+                    disabled title="Save the displayed .obj mesh">
+              Download geometry
+            </button>
+            <button id="copy-parameters" class="ghost" type="button"
+                    title="Copy the canonical 17-parameter list to your clipboard">
+              Copy parameters list
+            </button>
+          </div>
         </aside>
       </section>
 
@@ -156,6 +166,11 @@
                         orient="auto-start-reverse">
                   <path d="M0,0 L10,5 L0,10 z" fill="#e6e8eb" />
                 </marker>
+                <marker id="arrow-gray" viewBox="0 0 10 10" refX="9" refY="5"
+                        markerWidth="6" markerHeight="6"
+                        orient="auto-start-reverse">
+                  <path d="M0,0 L10,5 L0,10 z" fill="#b8b8b8" />
+                </marker>
               </defs>
 
               <!-- EXTRA AGENTS panel -->
@@ -174,51 +189,73 @@
                 </g>
               </g>
 
-              <!-- Main flowchart edges (drawn before boxes so they sit behind) -->
-              <!-- User <-> Receptionist -->
-              <line x1="280" y1="50" x2="280" y2="100"
+              <!-- Main flowchart edges.  Drawn before the boxes so
+                   they sit behind them.  Endpoint gaps: vertical
+                   arrows leave 22px of space on the side that carries
+                   the agent's "last tool used" label (so the label
+                   never overlaps the arrow), 8px on the non-label
+                   side.  Horizontal arrows use 8px each side. -->
+              <!-- User <-> Receptionist (User has no tool label) -->
+              <line x1="280" y1="54" x2="280" y2="96"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- Receptionist <-> Orchestrator -->
-              <line x1="280" y1="150" x2="280" y2="200"
+              <!-- Receptionist <-> Orchestrator (new long vertical
+                   arrow now that Orch sits at y=265 in the centre) -->
+              <line x1="280" y1="172" x2="280" y2="257"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- Orchestrator <-> User Input Inspector -->
-              <line x1="220" y1="225" x2="160" y2="225"
-                    stroke="#e6e8eb" stroke-width="2"
-                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- Orchestrator <-> Output inspector -->
-              <line x1="340" y1="225" x2="400" y2="225"
-                    stroke="#e6e8eb" stroke-width="2"
-                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- (Orchestrator <-> UII / DCOI arrows REMOVED — those
+                   handoffs are now rendered as a dynamic gray arrow
+                   from whoever last called the Orchestrator.) -->
               <!-- User Input Inspector <-> Planner -->
-              <line x1="100" y1="250" x2="100" y2="320"
+              <line x1="100" y1="272" x2="100" y2="312"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Planner <-> Input Creator -->
-              <line x1="100" y1="370" x2="100" y2="440"
+              <line x1="100" y1="392" x2="100" y2="432"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Input Creator <-> Input inspector -->
-              <line x1="160" y1="465" x2="220" y2="465"
+              <line x1="168" y1="465" x2="212" y2="465"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Input inspector <-> Tool Caller -->
-              <line x1="340" y1="465" x2="400" y2="465"
+              <line x1="348" y1="465" x2="392" y2="465"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Tool Caller <-> Output inspector (vertical) -->
-              <line x1="460" y1="440" x2="460" y2="250"
+              <line x1="460" y1="432" x2="460" y2="272"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Tool Caller <-> Propeller Configurator -->
-              <line x1="520" y1="465" x2="580" y2="307"
+              <line x1="528" y1="460" x2="575" y2="312"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Tool Caller <-> Visual Renderings Generator -->
-              <line x1="520" y1="465" x2="580" y2="525"
+              <line x1="528" y1="470" x2="575" y2="520"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
+
+              <!-- Dynamic gray arrows around the Orchestrator.
+                   Hidden by default; JS sets their endpoints based
+                   on the most recent agent_active event involving
+                   the Orchestrator.  Receptionist ↔ Orch always uses
+                   the static black arrow, so the dynamic arrows
+                   never represent that hand-off.
+
+                   * orch-caller-link: from whoever LAST called the
+                     Orchestrator (UII / Planner / Input Creator /
+                     Input inspector / Tool Caller / Output inspector)
+                     to the Orchestrator.  Hidden once the
+                     Orchestrator hands off to someone else.
+                   * orch-callee-link: from the Orchestrator to
+                     whichever of the same six agents the
+                     Orchestrator last handed off to.  Hidden once
+                     someone calls the Orchestrator back. -->
+              <line id="orch-caller-link" class="orch-dyn-link"
+                    x1="0" y1="0" x2="0" y2="0" hidden />
+              <line id="orch-callee-link" class="orch-dyn-link"
+                    x1="0" y1="0" x2="0" y2="0" hidden />
 
               <!-- User (gray) -->
               <g id="agent-user" class="flow-box flow-box-user">
@@ -243,11 +280,14 @@
                       class="agent-tool-label"></text>
               </g>
 
-              <!-- Orchestrator -->
+              <!-- Orchestrator — repositioned to the centre of the
+                   chart (y=265) so it has open space around it for
+                   the dynamic gray arrow that points back to
+                   whoever last called it. -->
               <g id="agent-orchestrator" class="flow-box flow-box-agent">
-                <rect x="220" y="200" width="120" height="50" rx="3" ry="3" />
-                <text x="280" y="230" text-anchor="middle">Orchestrator</text>
-                <text x="280" y="264" text-anchor="middle"
+                <rect x="220" y="265" width="120" height="50" rx="3" ry="3" />
+                <text x="280" y="295" text-anchor="middle">Orchestrator</text>
+                <text x="280" y="329" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
