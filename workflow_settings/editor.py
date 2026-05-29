@@ -43,6 +43,12 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
 # the value, never rewrite.
 DERIVED_READONLY = {"EMBEDDING_API_KEY"}
 
+# Hidden from the flag-list UI and rejected by ``write_updates``.
+# Owned by a dedicated control surface (see workflow_settings/
+# llm_routing.py).  The internal write path ``write_internal`` is the
+# only way to mutate these names.
+HIDDEN_FROM_FLAG_LIST = {"LLM_ROUTING_MODE"}
+
 _FENCE_RE = re.compile(r"^#+\s*=+\s*$")
 
 
@@ -159,6 +165,9 @@ def read_schema() -> list[dict[str, Any]]:
         if group:
             current_group = group
 
+        if name in HIDDEN_FROM_FLAG_LIST:
+            continue
+
         readonly = name in DERIVED_READONLY
         is_lit, value = _literal(node.value)
 
@@ -230,6 +239,9 @@ def _to_literal(type_str: str, value: Any) -> str:
     return json.dumps(str(value))  # double-quoted, escaped
 
 
+_LLM_ROUTING_MODES = {"individual", "openai", "anthropic", "google"}
+
+
 def _validate(merged: dict[str, Any]) -> None:
     """Enforce the same contract agents/loader.py checks up-front."""
     for name, opts in ENUM_OPTIONS.items():
@@ -247,6 +259,12 @@ def _validate(merged: dict[str, Any]) -> None:
     for pos in ("EMBEDDING_VECTOR_DIMS", "EMBEDDING_MAX_RESPONSE_TOKENS"):
         if pos in merged and merged[pos] is not None and merged[pos] <= 0:
             raise SettingsError(f"{pos} must be a positive integer.")
+    mode = merged.get("LLM_ROUTING_MODE")
+    if mode is not None and mode not in _LLM_ROUTING_MODES:
+        raise SettingsError(
+            f"LLM_ROUTING_MODE must be one of "
+            f"{sorted(_LLM_ROUTING_MODES)}, got {mode!r}."
+        )
 
 
 def write_updates(updates: dict[str, Any]) -> None:
@@ -255,7 +273,25 @@ def write_updates(updates: dict[str, Any]) -> None:
 
     Raises :class:`SettingsError` (a ``ValueError``) on any invalid or
     disallowed edit; the file is left untouched in that case.
+
+    Names in :data:`HIDDEN_FROM_FLAG_LIST` are rejected here — they are
+    owned by a dedicated module and must use :func:`write_internal`.
     """
+    _do_write(updates, allow_hidden=False)
+
+
+def write_internal(updates: dict[str, Any]) -> None:
+    """Trusted-caller variant of :func:`write_updates` that may also
+    write names in :data:`HIDDEN_FROM_FLAG_LIST`.
+
+    Intended for use by the routing module
+    (``workflow_settings/llm_routing.py``); never wired to a public
+    HTTP endpoint.
+    """
+    _do_write(updates, allow_hidden=True)
+
+
+def _do_write(updates: dict[str, Any], *, allow_hidden: bool) -> None:
     if not isinstance(updates, dict):
         raise SettingsError("Expected an object of {name: value} edits.")
 
@@ -277,6 +313,10 @@ def write_updates(updates: dict[str, Any]) -> None:
         if name in DERIVED_READONLY:
             raise SettingsError(
                 f"{name} is derived from the environment and is read-only."
+            )
+        if name in HIDDEN_FROM_FLAG_LIST and not allow_hidden:
+            raise SettingsError(
+                f"{name} is not editable via this endpoint."
             )
         type_str = _annotation_type(by_name[name]) or "str"
         value = _coerce(name, type_str, raw)

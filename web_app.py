@@ -39,9 +39,11 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
+
+import importlib
 
 from agents.dispatch import dispatch_turn
 from agents.loader import _archive_previous_session
@@ -58,7 +60,9 @@ from agents.shared.viz_bus import (
 )
 from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
 from tools import set_mesh_checks, set_render_library
+from workflow_settings import dh_schedule as settings_dh_schedule
 from workflow_settings import editor as settings_editor
+from workflow_settings import llm_routing as settings_llm_routing
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
@@ -144,6 +148,16 @@ def _detach_log_handler(log_path: Path | None) -> None:
 
 
 def _build_session() -> Session:
+    # Reload settings.py so any edits saved via /api/settings or
+    # /api/llm-routing since this process started take effect on the
+    # next session build (the README explicitly promises this).
+    # The on-disk file is rewritten by the editor's atomic
+    # tempfile-rename path; this re-import picks up the new values
+    # without a uvicorn restart.
+    importlib.reload(workflow_settings)
+    set_mesh_checks(workflow_settings.MESH_CHECKS)
+    set_render_library(workflow_settings.RENDER_LIBRARY)
+
     session_id = _new_session_id()
     log_path = _setup_session_logger(session_id)
     try:
@@ -173,6 +187,63 @@ def _ensure_session() -> Session:
     if _BOX.session is None:
         return _build_session()
     return _BOX.session
+
+
+def _run_dh_save() -> dict:
+    """Run the Database Handler against the active session.
+
+    Returns ``{"written": <int>, "session_dir": <str>}`` on success,
+    or ``{"error": <str>}`` when the DH could not be invoked.  Called
+    only when the user explicitly confirms "save to database" at End
+    Session; matches the v4 REPL loader's post-session save path
+    (W1 — dump histories before DH, since the DH mutates each agent's
+    live messages).
+    """
+    from agents.loader import (
+        _dump_agent_histories,
+        _resolve_session_name,
+        _resolve_session_timestamp,
+    )
+    from agents.orchestrator import Orchestrator
+    from config import DATABASE_DIR
+
+    session = _BOX.session
+    if session is None:
+        return {"error": "No active session to save."}
+
+    try:
+        session_name = _resolve_session_name()
+    except Exception as exc:
+        logger.exception("[WEB] DH save: resolving session name failed")
+        return {"error": f"Could not resolve session name: {exc}"}
+
+    try:
+        orchestrator = Orchestrator(session=session)
+    except Exception as exc:
+        logger.exception("[WEB] DH save: orchestrator build failed")
+        return {"error": f"Could not build orchestrator: {exc}"}
+
+    # W1 — dump histories BEFORE the DH so the per-agent history files
+    # reflect the actual session (the DH's interview phase mutates each
+    # agent's live messages).
+    try:
+        _dump_agent_histories(orchestrator, logger)
+    except Exception as exc:
+        logger.warning(f"[WEB] DH save: history dump failed: {exc}")
+
+    try:
+        session_db_dir = DATABASE_DIR / session_name
+        logger.info(f"[WEB] DH save: populating {session_db_dir.resolve()}")
+        written = orchestrator.database_handler.populate_database(
+            session_db_dir,
+            session_timestamp=_resolve_session_timestamp(),
+            orchestrator=orchestrator,
+        )
+        logger.info(f"[WEB] DH save: wrote {written} entries")
+        return {"written": int(written), "session_dir": str(session_db_dir)}
+    except Exception as exc:
+        logger.exception("[WEB] DH save: populate_database failed")
+        return {"error": f"{type(exc).__name__}: {exc}"}
 
 
 def _end_session() -> None:
@@ -226,6 +297,12 @@ class SettingsIn(BaseModel):
     values: dict[str, object]
 
 
+class LlmRoutingIn(BaseModel):
+    mode: str
+    shared: dict[str, object]
+    agents: list[dict[str, object]]
+
+
 class ImageNoteIn(BaseModel):
     name: str
     description: str
@@ -245,6 +322,7 @@ def api_config() -> dict:
     return {
         "auth_required": _auth_required(),
         "authed": _BOX.authed or not _auth_required(),
+        "session_active": _BOX.session is not None,
     }
 
 
@@ -264,6 +342,22 @@ def api_auth(body: AuthIn) -> dict:
 def _require_auth() -> None:
     if _auth_required() and not _BOX.authed:
         raise HTTPException(status_code=401, detail="Not authenticated.")
+
+
+def _require_no_session() -> None:
+    """Reject settings writes while a session is active (HTTP 409).
+
+    Pairs with the frontend's locked-view UX: every settings write
+    surface (the flag list + the LLM routing chart) is disabled in the
+    browser while ``session_active`` is true; this is the backend
+    safety net.
+    """
+    if _BOX.session is not None:
+        raise HTTPException(
+            status_code=409,
+            detail="Settings are locked while a session is active. "
+                   "End the session to edit them.",
+        )
 
 
 def _artefact_url(p: Path) -> str:
@@ -358,10 +452,44 @@ def api_artefact(path: str) -> FileResponse:
     return FileResponse(target)
 
 
+class EndIn(BaseModel):
+    # Optional — when ``True`` the Database Handler interviews each
+    # agent (via the same path the v4 REPL loader uses) BEFORE the
+    # session is archived.  Default is ``False`` so old clients posting
+    # an empty body keep the v8 behaviour (archive only).
+    save: bool = False
+
+
 @app.post("/api/end")
-def api_end() -> dict:
+async def api_end(body: EndIn | None = None) -> dict:
+    """End the active session, optionally running the Database Handler
+    first.
+
+    The DH publishes ``agent_active`` and ``generic_tool`` events on
+    the in-process viz bus while it interviews each agent; the
+    frontend's already-open ``/api/events`` EventSource picks those
+    up and animates the LOG-and-Status chart in real time.
+
+    The DH itself is run via :func:`run_in_threadpool` so the FastAPI
+    event loop is not blocked — the SSE stream keeps flushing events
+    to the browser throughout the (potentially several-minute) save.
+    """
+    save_requested = bool(body and body.save)
+    dh_result: dict | None = None
+    if save_requested and _BOX.session is not None:
+        logger.info("[WEB] end_session — save=True, running DH first")
+        dh_result = await run_in_threadpool(_run_dh_save)
+    elif save_requested:
+        # User requested save but no session is active — treat as a
+        # plain End Session.  Surface the fact in the response so the
+        # UI can confirm.
+        dh_result = {"error": "No active session to save."}
+
     _end_session()
-    return {"ok": True}
+    out: dict = {"ok": True, "saved": bool(save_requested)}
+    if dh_result is not None:
+        out["dh"] = dh_result
+    return out
 
 
 @app.post("/api/stop")
@@ -394,8 +522,12 @@ def api_settings_get() -> dict:
 def api_settings_post(body: SettingsIn) -> dict:
     """Validate + rewrite the touched assignment lines in settings.py.
     Edits take effect for the NEXT session (settings are read at
-    session build); the rate-limit constants need a server restart."""
+    session build); the rate-limit constants need a server restart.
+
+    Rejected with HTTP 409 while a session is active.
+    """
     _require_auth()
+    _require_no_session()
     try:
         settings_editor.write_updates(dict(body.values))
     except settings_editor.SettingsError as exc:
@@ -408,6 +540,129 @@ def api_settings_post(body: SettingsIn) -> dict:
         )
     logger.info("[WEB] settings updated: %s", sorted(body.values))
     return {"ok": True, "settings": settings_editor.read_schema()}
+
+
+@app.get("/api/llm-routing")
+def api_llm_routing_get() -> dict:
+    """Current LLM routing state (mode + per-provider key presence +
+    shared default + per-agent overrides).  Thin delegate — parsing
+    lives in workflow_settings.llm_routing."""
+    _require_auth()
+    return settings_llm_routing.read_state()
+
+
+@app.post("/api/llm-routing")
+def api_llm_routing_post(body: LlmRoutingIn) -> dict:
+    """Validate + write the LLM routing payload.  Updates
+    workflow_settings/settings.py:LLM_ROUTING_MODE plus the shared
+    agents/.env and per-agent agents/<agent>/.env files.  Edits take
+    effect for the NEXT session (settings + .env are re-read on
+    session build).
+
+    Rejected with HTTP 409 while a session is active.
+    """
+    _require_auth()
+    _require_no_session()
+    try:
+        settings_llm_routing.write_updates(body.model_dump())
+    except settings_llm_routing.RoutingError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # never 500 the editor
+        logger.exception("[WEB] llm-routing write failed: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not write LLM routing "
+                   f"({type(exc).__name__}: {exc}).",
+        )
+    logger.info("[WEB] llm-routing updated: mode=%s", body.mode)
+    return {"ok": True, "state": settings_llm_routing.read_state()}
+
+
+class DhScheduleIn(BaseModel):
+    # The editor sends the FULL replacement schedule on every Save.
+    version: int = 1
+    questions: list[dict[str, object]]
+
+
+@app.get("/api/dh-schedule")
+def api_dh_schedule_get() -> dict:
+    """Current DH question schedule + agent / scope / type metadata
+    for the 'Questions for Saved Sessions' editor.  Seeded from the
+    hardcoded SCHEDULE on first call (file is created lazily)."""
+    _require_auth()
+    return settings_dh_schedule.read_state()
+
+
+@app.post("/api/dh-schedule")
+def api_dh_schedule_post(body: DhScheduleIn) -> dict:
+    """Validate + write the DH question schedule.  Edits take effect
+    for the NEXT End Session → save (the DH reads the file at save
+    time).
+
+    Rejected with HTTP 409 while a session is active.
+    """
+    _require_auth()
+    _require_no_session()
+    try:
+        settings_dh_schedule.write_updates(body.model_dump())
+    except settings_dh_schedule.ScheduleError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # never 500 the editor
+        logger.exception("[WEB] dh-schedule write failed: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not write DH schedule "
+                   f"({type(exc).__name__}: {exc}).",
+        )
+    logger.info(
+        "[WEB] dh-schedule updated: %d questions",
+        len(body.questions),
+    )
+    return {"ok": True, "state": settings_dh_schedule.read_state()}
+
+
+@app.get("/api/dh-schedule/download")
+def api_dh_schedule_download() -> Response:
+    """Stream the current schedule JSON as a downloadable attachment."""
+    _require_auth()
+    payload = settings_dh_schedule.download_payload()
+    return Response(
+        content=payload,
+        media_type="application/json",
+        headers={
+            "Content-Disposition": (
+                'attachment; filename="dh_schedule.json"'
+            ),
+        },
+    )
+
+
+@app.post("/api/dh-schedule/upload")
+async def api_dh_schedule_upload(file: UploadFile = File(...)) -> dict:
+    """Accept an uploaded JSON, parse + validate, and return the
+    canonical payload for the UI to load into its in-memory table.
+
+    Does NOT write to disk — the user must click Save to persist.
+    Rejected with HTTP 409 while a session is active.
+    """
+    _require_auth()
+    _require_no_session()
+    try:
+        raw = await file.read()
+    except Exception as exc:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not read uploaded file: {exc}",
+        )
+    try:
+        payload = settings_dh_schedule.parse_uploaded(raw)
+    except settings_dh_schedule.ScheduleError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    logger.info(
+        "[WEB] dh-schedule upload parsed: %d questions",
+        len(payload.get("questions") or []),
+    )
+    return {"ok": True, "payload": payload}
 
 
 # --------------------------------------------------------------------------

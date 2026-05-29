@@ -1,7 +1,7 @@
 // Interactive 3D model viewer for the generated propeller mesh.
-// Loaded as an ES module; exposes `window.modelViewer = { load, reset }`
-// so the classic app.js can drive it. Three.js comes from the CDN
-// import map declared in index.html (needs internet).
+// Loaded as an ES module; exposes `window.modelViewer = { load, reset,
+// unload }` so the classic app.js can drive it. Three.js comes from
+// the CDN import map declared in index.html (needs internet).
 
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
@@ -38,6 +38,11 @@ controls.target.set(0, 0, 0);
 
 let currentModel = null;
 let homeCamPos = new THREE.Vector3(1, 1, 1);
+
+// Snapshot the placeholder's initial HTML so unload() can restore the
+// original "No model yet — generate a propeller…" copy even after a
+// failed load() overwrote it with an error message.
+const PLACEHOLDER_HTML = placeholder ? placeholder.innerHTML : "";
 
 function sizeToContainer() {
   const w = container.clientWidth || 1;
@@ -121,6 +126,38 @@ function reset() {
   controls.update();
 }
 
+function unload() {
+  // Drop the current mesh from the scene, free its GPU resources, and
+  // bring the "No model yet…" placeholder back.  Called on End Session
+  // so the viewer starts the next session as if nothing had been
+  // generated.
+  if (currentModel) {
+    scene.remove(currentModel);
+    currentModel.traverse((child) => {
+      if (child.isMesh) {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => m && m.dispose && m.dispose());
+          } else if (child.material.dispose) {
+            child.material.dispose();
+          }
+        }
+      }
+    });
+    currentModel = null;
+  }
+  if (placeholder) {
+    placeholder.innerHTML = PLACEHOLDER_HTML;
+    placeholder.style.display = "";  // revert to stylesheet default
+  }
+  if (nameLabel) nameLabel.textContent = "";
+  homeCamPos = new THREE.Vector3(1, 1, 1);
+  camera.position.copy(homeCamPos);
+  controls.target.set(0, 0, 0);
+  controls.update();
+}
+
 resetBtn && resetBtn.addEventListener("click", reset);
 
 (function animate() {
@@ -129,4 +166,4 @@ resetBtn && resetBtn.addEventListener("click", reset);
   renderer.render(scene, camera);
 })();
 
-window.modelViewer = { load, reset };
+window.modelViewer = { load, reset, unload };

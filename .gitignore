@@ -31,6 +31,12 @@ inputs/extracted_inputs.txt
 # --- Prompt-fragment snapshot backups ---
 prompts_backup_*/
 
+# --- Developer-local DH question schedule (edited via the "Questions
+#     for Saved Sessions" web view).  Seeded from the hardcoded
+#     SCHEDULE on first load; the file represents the developer's
+#     personal customisations and should not be committed. ---
+workflow_settings/dh_schedule.json
+
 # --- Claude Code (per-user) ---
 .claude/settings.local.json
 # Local-only launch.json for the Claude Code preview server.  Path

@@ -46,6 +46,7 @@ Memory model
   agent in the next conversation.
 """
 
+import json
 import logging
 import re
 from pathlib import Path
@@ -92,6 +93,13 @@ logger = logging.getLogger("database_handler")
 #     files into the database folder.  Tracked as TODO entries.
 #   * The two ``(Not yet implemented) User input 2D model files``
 #     rows are SKIPPED for now.
+
+# Max length of the short label shown under the Database Handler's
+# flowchart box while the DH is interviewing.  Beyond this the
+# derived label is ellipsised.  Each SCHEDULE entry may also carry an
+# explicit ``"short_label"`` override; absent that, ``_short_label_for``
+# derives one from ``field``.
+_SHORT_LABEL_MAX = 26
 
 SCHEDULE: list[dict] = [
     # ------------------------------------------------------------------
@@ -458,6 +466,47 @@ def _slugify(text: str, max_len: int = 80) -> str:
     return s or "entry"
 
 
+# Compiled trim patterns for ``_short_label_for``.  Built once at
+# import to keep the per-field hot path cheap.
+_AGENT_SUFFIX_RE = re.compile(r"\s*-\s*(UII|DCIC|DCII|Planner)\s*$")
+_USER_DEFINED_PREFIX_RE = re.compile(r"^User-defined\s+", re.IGNORECASE)
+_RECEPTIONIST_PREFIX_RE = re.compile(r"^Receptionist\s+", re.IGNORECASE)
+_TC_PREFIX_RE = re.compile(r"^Tool Caller\s+")
+
+
+def _short_label_for(entry: dict) -> str:
+    """Return a short caption for the flowchart's per-agent label.
+
+    Used by ``populate_database`` to publish a ``generic_tool`` event
+    while the DH is interviewing — the frontend writes the value into
+    the gray-italic caption under the Database Handler's box, the same
+    UI slot that records the most recent generic tool any other agent
+    called.  Output is capped at :data:`_SHORT_LABEL_MAX` characters;
+    longer derived labels are ellipsised.
+
+    Resolution order: explicit ``entry["short_label"]`` first, then
+    auto-derivation from ``entry["field"]``.
+    """
+    explicit = entry.get("short_label")
+    if explicit:
+        s = str(explicit).strip()
+        return (s[:_SHORT_LABEL_MAX].rstrip() + "…") if len(s) > _SHORT_LABEL_MAX else s
+
+    s = (entry.get("field") or "").strip()
+    s = _LEADING_PAREN_RE.sub("", s)
+    s = _AGENT_SUFFIX_RE.sub("", s)
+    s = _USER_DEFINED_PREFIX_RE.sub("", s)
+    if s and s[0].islower():
+        s = s[0].upper() + s[1:]
+    s = _RECEPTIONIST_PREFIX_RE.sub("", s)
+    if s and s[0].islower():
+        s = s[0].upper() + s[1:]
+    s = _TC_PREFIX_RE.sub("TC ", s)
+    if len(s) > _SHORT_LABEL_MAX:
+        s = s[:_SHORT_LABEL_MAX].rstrip() + "…"
+    return s or (entry.get("field", "field")[:_SHORT_LABEL_MAX])
+
+
 # Indented blank-line-tolerant block formatter for the .log file.  The
 # DH log is a debugging artefact — preserve message bodies exactly,
 # never truncate, but indent every line so lines stay attributable to
@@ -490,6 +539,258 @@ def _parse_dh_decision(text: str) -> tuple[str, str]:
     if stripped.upper().startswith(_SAVE_PREFIX):
         return "SAVE", stripped[len(_SAVE_PREFIX):].lstrip()
     return "PROTOCOL_ERROR", stripped
+
+
+# ---------------------------------------------------------------------------
+# SEMANTIC SAVE body: QUESTION: / ANSWER: headers
+# ---------------------------------------------------------------------------
+#
+# For SEMANTIC fields the DH's SAVE body must itself carry two
+# headers:
+#
+#   QUESTION: <short embedding-friendly question>
+#   ANSWER:   <embedding-friendly final answer>
+#
+# Both blocks may span multiple lines.  The headers are case-
+# insensitive and tolerate whitespace before the colon.  When either
+# header is missing the parser returns ``(None, None)`` and the caller
+# falls back to a defensive behaviour (treat the whole body as the
+# answer; reuse the asked question as the saved question).
+# ---------------------------------------------------------------------------
+
+_SAVE_Q_RE = re.compile(
+    r"^\s*QUESTION\s*:\s*(.*?)(?=^\s*ANSWER\s*:|\Z)",
+    re.IGNORECASE | re.DOTALL | re.MULTILINE,
+)
+_SAVE_A_RE = re.compile(
+    r"^\s*ANSWER\s*:\s*(.*)\Z",
+    re.IGNORECASE | re.DOTALL | re.MULTILINE,
+)
+
+
+def _parse_save_body_semantic(text: str) -> tuple[str | None, str | None]:
+    """Split a SEMANTIC SAVE body into ``(saved_question, saved_answer)``.
+
+    Returns ``(None, None)`` when the expected headers are missing —
+    the caller treats that as a protocol slip and falls back gracefully.
+    """
+    if not text:
+        return None, None
+    q_match = _SAVE_Q_RE.search(text)
+    a_match = _SAVE_A_RE.search(text)
+    if not q_match or not a_match:
+        return None, None
+    return q_match.group(1).strip(), a_match.group(1).strip()
+
+
+# ---------------------------------------------------------------------------
+# Safety-net cleanup for SEMANTIC bodies
+# ---------------------------------------------------------------------------
+#
+# The DH's prompt instructs it to strip these artefacts itself; the
+# helpers below are a defensive backstop for the cases where it slips
+# (which is most of them, in practice — LLMs reliably echo the
+# routing-tool wrapper they see in the agent's reply).  Only SEMANTIC
+# fields are subject to cleanup; QUANTITATIVE bodies pass through
+# verbatim per the user direction.
+# ---------------------------------------------------------------------------
+
+# Routing-tool wrapper extraction.  When an agent ends its turn with
+# call_orchestrator / call_receptionist, langchain renders the
+# ``content`` of the AI message as a JSON-stringified payload that
+# starts with ``{"call_orchestrator":`` (or similar).  We extract the
+# inner string value and use it as the substantive body.
+_ROUTING_TOOL_NAMES = (
+    "call_orchestrator",
+    "call_receptionist",
+    "call_planner",
+    "call_user_input_inspector",
+    "call_dc_input_creator",
+    "call_dc_input_inspector",
+    "call_dc_output_inspector",
+    "call_tool_caller",
+)
+
+# Match a routing-tool JSON literal embedded anywhere in the body —
+# even with text before/after.  Captures the INNER string (group 1)
+# WITHOUT the outer quotes.  The inner may contain real newlines (which
+# is invalid JSON, but is what the LLM actually emits in practice when
+# it mirrors a tool-call shape from its history), so we decode escapes
+# manually instead of round-tripping through ``json.loads``.
+_ROUTING_TOOL_JSON_RE = re.compile(
+    r'\{\s*"(?:' + "|".join(_ROUTING_TOOL_NAMES) + r')"\s*:\s*'
+    r'"((?:[^"\\]|\\.)*)"\s*\}',
+)
+
+_JSON_ESCAPE_MAP = {
+    "n":  "\n",
+    "t":  "\t",
+    "r":  "\r",
+    '"':  '"',
+    "\\": "\\",
+    "/":  "/",
+    "b":  "\b",
+    "f":  "\f",
+}
+
+
+def _decode_json_string_escapes(inner: str) -> str:
+    """Replace ``\\n`` / ``\\t`` / ``\\"`` / ``\\\\`` (etc.) with the
+    real characters.  Unknown escape sequences are passed through
+    untouched so we never silently lose data."""
+    out: list[str] = []
+    i = 0
+    n = len(inner)
+    while i < n:
+        ch = inner[i]
+        if ch == "\\" and i + 1 < n:
+            nxt = inner[i + 1]
+            mapped = _JSON_ESCAPE_MAP.get(nxt)
+            if mapped is not None:
+                out.append(mapped)
+                i += 2
+                continue
+            # Unknown escape — keep literal so we don't lose info.
+            out.append(ch + nxt)
+            i += 2
+            continue
+        out.append(ch)
+        i += 1
+    return "".join(out)
+
+
+def _unwrap_routing_tool_json(body: str) -> str:
+    """Replace every routing-tool JSON wrapper in *body* with its inner
+    string.
+
+    Handles both the "whole body is one JSON object" case AND the
+    common "narration line + JSON tool-call object on a later line"
+    case langchain agents emit when their LLM mirrors its session-time
+    pattern.  Escape sequences inside the captured string are decoded
+    via :func:`_decode_json_string_escapes` (NOT via ``json.loads``,
+    which rejects the real newlines the LLM frequently inserts inside
+    the value).
+    """
+    if not body:
+        return body
+    return _ROUTING_TOOL_JSON_RE.sub(
+        lambda m: _decode_json_string_escapes(m.group(1)),
+        body,
+    )
+
+
+# Strip absolute paths the DH should never embed.  Matches typical
+# Docker / Linux paths under /app/... and the timestamped attempt
+# folder slugs that show up bare in some agent replies.
+_ABS_PATH_RE = re.compile(
+    r"(?:/app/)[\w./\\\-]+",
+)
+_ATTEMPT_SLUG_RE = re.compile(
+    r"\b\d{8}_\d{6}_\d{3}_[\w\-]+\b",
+)
+
+# Common chain-narration leads.  Removed line-wise.
+_CHAIN_NARRATION_RES = [
+    re.compile(r"^\s*I(?:'ll| will) (?:send|forward|hand[\s\-]?off|relay).*$",
+               re.IGNORECASE | re.MULTILINE),
+    re.compile(r"^\s*Handing (?:this )?off to.*$",
+               re.IGNORECASE | re.MULTILINE),
+    re.compile(r"^\s*Forwarding to (?:the )?[A-Z][\w ]+.*$",
+               re.MULTILINE),
+]
+
+
+# ---------------------------------------------------------------------------
+# Attempt identification (parse Q(N)'s raw answer for an attempt id)
+# ---------------------------------------------------------------------------
+#
+# When the user marks a Q(N) row as "attempt"-scoped, the system needs
+# to bind every Q(N).x child to the SAME attempt the parent's reply
+# named.  ``_extract_attempt_id`` tries (in order):
+#
+#   1. A full attempt-folder slug          (e.g. 20260529_091434_001_...)
+#   2. An "attempt NNN" / "attempt #NNN"   (zero-padded integer)
+#   3. An ordinal ("first / second / ..." up to tenth, mapped to 001..010)
+#
+# Returns ``None`` when no candidate is found — the caller then re-asks
+# Q(N) once with an explicit instruction to name the attempt; if that
+# also fails, the children are skipped with an empty-placeholder write.
+# ---------------------------------------------------------------------------
+
+_ATTEMPT_SLUG_FULL_RE = re.compile(
+    r"\b(\d{8}_\d{6}_\d{3}_[\w\-]+)\b",
+)
+_ATTEMPT_NUMBER_RE = re.compile(
+    r"\battempt\s*#?\s*(\d{1,4})\b",
+    re.IGNORECASE,
+)
+_ORDINAL_TO_NUM: dict[str, int] = {
+    "first": 1, "second": 2, "third": 3, "fourth": 4, "fifth": 5,
+    "sixth": 6, "seventh": 7, "eighth": 8, "ninth": 9, "tenth": 10,
+}
+_ATTEMPT_ORDINAL_RE = re.compile(
+    r"\b(" + "|".join(_ORDINAL_TO_NUM) + r")\s+(?:attempt|iteration)\b",
+    re.IGNORECASE,
+)
+
+
+def _extract_attempt_id(raw_text: str) -> str | None:
+    """Return a textual attempt identifier from *raw_text*, or ``None``.
+
+    The returned string is suitable for embedding into a follow-up
+    question's framing — either a full slug, ``attempt NNN`` (zero-
+    padded to 3 digits when possible), or ``None`` when nothing
+    matched.
+    """
+    if not raw_text:
+        return None
+    m = _ATTEMPT_SLUG_FULL_RE.search(raw_text)
+    if m:
+        return m.group(1)
+    m = _ATTEMPT_NUMBER_RE.search(raw_text)
+    if m:
+        return f"attempt {int(m.group(1)):03d}"
+    m = _ATTEMPT_ORDINAL_RE.search(raw_text)
+    if m:
+        idx = _ORDINAL_TO_NUM.get(m.group(1).lower())
+        if idx is not None:
+            return f"attempt {idx:03d}"
+    return None
+
+
+def _clean_semantic_body(body: str) -> str:
+    """Apply the defensive cleanup rules to a SEMANTIC body.
+
+    These rules MIRROR the strip-list in the DH prompt — when the DH
+    obeys, they are no-ops; when the DH slips, they catch the most
+    common leaks (routing-tool JSON, literal ``\\n`` escapes, ``/app/``
+    paths, attempt-folder slugs, mid-chain narration).
+    """
+    if not body:
+        return body
+
+    # 1. Unwrap routing-tool JSON if the whole body is one.
+    body = _unwrap_routing_tool_json(body)
+
+    # 2. Unescape literal \n / \t / \" 2-character sequences left
+    #    over from JSON-stringified content.  Done as a targeted
+    #    replace (NOT json.loads on the whole body) so we don't break
+    #    real backslashes in prose.
+    body = body.replace("\\n", "\n").replace("\\t", "\t").replace('\\"', '"')
+
+    # 3. Strip absolute paths and attempt-folder slugs.
+    body = _ABS_PATH_RE.sub("", body)
+    body = _ATTEMPT_SLUG_RE.sub("", body)
+
+    # 4. Drop chain-narration lines wholesale.
+    for pat in _CHAIN_NARRATION_RES:
+        body = pat.sub("", body)
+
+    # 5. Collapse the whitespace left behind by the substitutions —
+    #    runs of blank lines and trailing spaces.
+    body = re.sub(r"[ \t]+\n", "\n", body)
+    body = re.sub(r"\n{3,}", "\n\n", body)
+    return body.strip()
 
 
 class DatabaseHandler(BaseChainAgent):
@@ -595,6 +896,19 @@ class DatabaseHandler(BaseChainAgent):
             log_path = trace_path = None
             print(f"(warning) could not open DH log files: {exc}")
 
+        # Light up the Database Handler box in the LOG-and-Status
+        # flowchart for the duration of the interview.  ``trace`` writes
+        # the line to the agent-flow file AND publishes an ``agent_
+        # active`` event on the viz bus the web UI listens to.  Failures
+        # to publish must not break the DH run (a tracefile error here
+        # would otherwise abort the save).
+        try:
+            from agents.shared.trace import trace as _viz_trace
+            _viz_trace("User", "Database Handler",
+                       note="DH save started")
+        except Exception:
+            _viz_trace = None  # noqa: F841 — we'll still try later
+
         try:
             logger.info(
                 f"[DH]  populate_database start; session_dir={session_dir.resolve()}; "
@@ -605,10 +919,72 @@ class DatabaseHandler(BaseChainAgent):
                 f"{workflow_settings.EMBEDDING_VECTOR_DIMS}d"
             )
 
+            # Load the schedule the developer set via the "Questions
+            # for Saved Sessions" web view.  Falls back to the
+            # hardcoded SCHEDULE when the file is missing / malformed
+            # so existing deployments without a dh_schedule.json keep
+            # working.
+            try:
+                from workflow_settings import dh_schedule as _dh_schedule
+                schedule_entries = _dh_schedule.read_for_dh()
+                if not schedule_entries:
+                    raise RuntimeError("empty schedule")
+                logger.info(
+                    f"[DH]  loaded {len(schedule_entries)} schedule "
+                    f"entries from dh_schedule.json"
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"[DH]  dh_schedule.json unavailable ({exc}); "
+                    f"falling back to the hardcoded SCHEDULE."
+                )
+                schedule_entries = [
+                    {
+                        "id":          f"hardcoded_{i}",
+                        "agent_key":   e["agent_key"],
+                        "field":       e["field"],
+                        "description": e.get("description", ""),
+                        "type":        e.get("type", "Semantic"),
+                        "scope":       "session",
+                        "parent_id":   None,
+                        "sub_index":   None,
+                        "to_agents":   [],
+                        "requires_dcii_enabled": bool(
+                            e.get("requires_dcii_enabled", False)
+                        ),
+                    }
+                    for i, e in enumerate(SCHEDULE)
+                ]
+
+            # Maps an identifying Q(N)'s ``id`` to the textual attempt
+            # identifier extracted from its raw reply.  ``None`` means
+            # the parent ran but no identifier could be parsed (even
+            # after the re-ask) — children of that parent are skipped
+            # with empty-placeholder writes.
+            attempt_id_by_parent: dict[str, str | None] = {}
+
             written = 0
-            for entry in SCHEDULE:
+            for entry in schedule_entries:
+                # Publish the field's short label so the flowchart's
+                # caption under the DH box updates to the question
+                # currently being asked.  Uses the same ``generic_tool``
+                # convention every other agent uses; the frontend
+                # ignores the ``end`` state, so the label PERSISTS
+                # until the next field overwrites it.
+                try:
+                    from agents.shared.viz_bus import publish as _viz_publish
+                    _viz_publish({
+                        "type": "generic_tool",
+                        "name": _short_label_for(entry),
+                        "state": "start",
+                    })
+                except Exception:
+                    pass
                 agent_key = entry["agent_key"]
                 field = entry["field"]
+                parent_id = entry.get("parent_id")
+                scope = entry.get("scope", "session")
+                to_agents = entry.get("to_agents") or []
 
                 # DCII gating.  When the DCII is disabled this session
                 # we still create the agent folder and write an EMPTY
@@ -630,6 +1006,34 @@ class DatabaseHandler(BaseChainAgent):
                             field=field,
                         )
                         logger.info(f"[DH]  wrote (empty) {path}")
+                        self._write_sidecar_meta(
+                            path, entry=entry, attempt_id=None,
+                        )
+                        written += 1
+                    except OSError as exc:
+                        logger.warning(
+                            f"[DH]  failed to write empty placeholder "
+                            f"for {agent_key}/{field}: {exc}"
+                        )
+                    continue
+
+                # Attempt-specific sub-row (Q(N).x) whose parent had no
+                # parseable attempt id → empty placeholder + skip.
+                if parent_id is not None and attempt_id_by_parent.get(parent_id) is None and parent_id in attempt_id_by_parent:
+                    logger.info(
+                        f"[DH]  parent Q row {parent_id!r} did not "
+                        f"resolve an attempt id; writing empty "
+                        f"placeholder for sub-field '{field}'"
+                    )
+                    try:
+                        path = self._write_empty_entry(
+                            session_dir=session_dir,
+                            agent_key=agent_key,
+                            field=field,
+                        )
+                        self._write_sidecar_meta(
+                            path, entry=entry, attempt_id=None,
+                        )
                         written += 1
                     except OSError as exc:
                         logger.warning(
@@ -645,7 +1049,7 @@ class DatabaseHandler(BaseChainAgent):
                         f"[DH]  unknown agent '{agent_key}' in schedule; "
                         f"skipped"
                     )
-                    self._write_error_entry(
+                    err_path = self._write_error_entry(
                         session_dir=session_dir,
                         agent_key=agent_key,
                         field=field,
@@ -655,28 +1059,49 @@ class DatabaseHandler(BaseChainAgent):
                             f"states; the DH could not interview it."
                         ),
                     )
+                    self._write_sidecar_meta(
+                        err_path, entry=entry, attempt_id=None,
+                    )
                     continue
+
+                # Prefix the description with the attempt anchor for
+                # sub-rows whose parent resolved an id.  The DH's
+                # _formulate_question reads ``description`` verbatim, so
+                # the anchor flows naturally into both the asked and the
+                # saved (embedded) question.
+                effective_description = entry.get("description", "")
+                resolved_for_parent = (
+                    attempt_id_by_parent.get(parent_id)
+                    if parent_id is not None
+                    else None
+                )
+                if parent_id is not None and resolved_for_parent:
+                    effective_description = (
+                        f"For {resolved_for_parent}: "
+                        f"{effective_description}"
+                    )
 
                 logger.info(
                     f"[DH]  starting conversation with {agent_key} "
-                    f"(field='{field}', type={entry.get('type', 'Semantic')})"
+                    f"(field='{field}', type={entry.get('type', 'Semantic')}, "
+                    f"scope={scope}, parent_id={parent_id})"
                 )
                 try:
-                    question, answer = self._run_one_conversation(
+                    question, answer, raw_answer = self._run_one_conversation(
                         agent_key=agent_key,
                         agent_system_prompt=getattr(agent, "system_prompt", "") or "",
                         agent_provider=getattr(agent, "provider", self.provider),
                         agent_base_llm=getattr(agent, "base_llm", None) or agent.llm,
                         agent_messages=list(agent_state.messages),
                         field=field,
-                        description=entry.get("description", ""),
+                        description=effective_description,
                         field_type=entry.get("type", "Semantic"),
                     )
                 except Exception as exc:  # pragma: no cover — defensive
                     logger.warning(
                         f"[DH]  conversation with {agent_key} failed: {exc}"
                     )
-                    self._write_error_entry(
+                    err_path = self._write_error_entry(
                         session_dir=session_dir,
                         agent_key=agent_key,
                         field=field,
@@ -686,7 +1111,70 @@ class DatabaseHandler(BaseChainAgent):
                             f"{type(exc).__name__}: {exc}"
                         ),
                     )
+                    self._write_sidecar_meta(
+                        err_path, entry=entry, attempt_id=None,
+                    )
+                    if scope == "attempt" and parent_id is None:
+                        # Identifying Q failed entirely — mark as
+                        # "unresolved" so its children skip cleanly.
+                        attempt_id_by_parent[entry["id"]] = None
                     continue
+
+                # Attempt-binding for identifying Q(N) rows: parse the
+                # raw reply.  On miss, re-ask the same agent ONCE with
+                # an explicit naming instruction.
+                if scope == "attempt" and parent_id is None:
+                    attempt_id = _extract_attempt_id(raw_answer)
+                    if attempt_id is None:
+                        logger.info(
+                            f"[DH]  no attempt id parsed from "
+                            f"{agent_key}/{field}; re-asking with "
+                            f"explicit instruction."
+                        )
+                        explicit = (
+                            f"{effective_description}\n\n(IMPORTANT: in "
+                            f"your answer, please name the exact attempt "
+                            f"you refer to by its identifier — an "
+                            f"attempt folder slug like "
+                            f"'YYYYMMDD_HHMMSS_NNN_<descriptor>' or an "
+                            f"'attempt NNN' / 'attempt #NNN' phrase — so "
+                            f"the system can bind follow-up questions to "
+                            f"the same attempt.)"
+                        )
+                        try:
+                            (
+                                question_retry,
+                                answer_retry,
+                                raw_answer_retry,
+                            ) = self._run_one_conversation(
+                                agent_key=agent_key,
+                                agent_system_prompt=getattr(agent, "system_prompt", "") or "",
+                                agent_provider=getattr(agent, "provider", self.provider),
+                                agent_base_llm=getattr(agent, "base_llm", None) or agent.llm,
+                                agent_messages=list(agent_state.messages),
+                                field=field,
+                                description=explicit,
+                                field_type=entry.get("type", "Semantic"),
+                            )
+                            attempt_id = _extract_attempt_id(raw_answer_retry)
+                            if attempt_id is not None:
+                                question, answer, raw_answer = (
+                                    question_retry,
+                                    answer_retry,
+                                    raw_answer_retry,
+                                )
+                        except Exception as exc:  # pragma: no cover
+                            logger.warning(
+                                f"[DH]  attempt-id re-ask failed for "
+                                f"{agent_key}/{field}: {exc}"
+                            )
+                    attempt_id_by_parent[entry["id"]] = attempt_id
+                    if attempt_id is None:
+                        logger.warning(
+                            f"[DH]  could not bind attempt id for "
+                            f"{agent_key}/{field}; children of this row "
+                            f"will be skipped with empty placeholders."
+                        )
 
                 try:
                     path = self._write_entry(
@@ -695,6 +1183,14 @@ class DatabaseHandler(BaseChainAgent):
                         field=field,
                         question=question,
                         answer=answer,
+                    )
+                    bound_attempt = (
+                        attempt_id_by_parent.get(entry["id"])
+                        if (scope == "attempt" and parent_id is None)
+                        else resolved_for_parent
+                    )
+                    self._write_sidecar_meta(
+                        path, entry=entry, attempt_id=bound_attempt,
                     )
                     logger.info(
                         f"[DH]  wrote {path}\n"
@@ -711,6 +1207,15 @@ class DatabaseHandler(BaseChainAgent):
             )
             return written
         finally:
+            # Always emit the clearing handoff so the LOG-and-Status
+            # chart stops highlighting the DH box, regardless of
+            # whether the interview finished cleanly or threw.
+            try:
+                from agents.shared.trace import trace as _viz_trace_end
+                _viz_trace_end("Database Handler", "User",
+                               note="DH save done")
+            except Exception:
+                pass
             close_dh_logging()
 
     # ------------------------------------------------------------------
@@ -727,7 +1232,7 @@ class DatabaseHandler(BaseChainAgent):
         field: str,
         description: str,
         field_type: str,
-    ) -> tuple[str, str]:
+    ) -> tuple[str, str, str]:
         """Run one DH-driven conversation about *field* with the named agent.
 
         Loop:
@@ -845,16 +1350,60 @@ class DatabaseHandler(BaseChainAgent):
         if not (final_body or "").strip():
             final_body = "(no usable content was produced for this field this session)"
 
-        # Token-cap enforcement applies ONLY to SEMANTIC fields.
         if is_semantic:
-            final_body = self._enforce_semantic_cap(
+            # New SEMANTIC SAVE shape: the body itself carries
+            # QUESTION: and ANSWER: headers.  Defensive: when the DH
+            # forgets the headers, treat the whole body as the answer
+            # and reuse the asked question as the saved question
+            # (cleaned through the same safety net).
+            saved_q, saved_a = _parse_save_body_semantic(final_body)
+            if saved_q is None or saved_a is None:
+                logger.warning(
+                    f"[DH]  SAVE body for {agent_key}/{field} did not "
+                    f"contain QUESTION:/ANSWER: headers; using asked "
+                    f"question + whole body as fallback."
+                )
+                saved_q = first_question
+                saved_a = final_body
+
+            # Safety-net cleanup BEFORE the cap check so the cap
+            # measures what will actually be written.
+            saved_q = _clean_semantic_body(saved_q) or saved_q
+            saved_a = _clean_semantic_body(saved_a) or saved_a
+
+            saved_q, saved_a = self._enforce_semantic_cap_pair(
                 agent_key=agent_key,
                 field=field,
                 description=description,
-                body=final_body,
+                saved_question=saved_q,
+                saved_answer=saved_a,
             )
+            # Third return value is the RAW last agent answer (before
+            # any cleanup).  populate_database needs it for attempt-id
+            # extraction — the cleaned saved_a has paths and slugs
+            # stripped, which would defeat _extract_attempt_id.
+            return saved_q, saved_a, last_answer
 
-        return first_question, final_body
+        # QUANTITATIVE — legacy single-body path, untouched.
+        return first_question, final_body, last_answer
+
+    # Mechanical tail clause appended to every DH question sent to an
+    # agent.  Reduces the cleanup burden by asking the agent up-front
+    # NOT to surface artefacts the DH would otherwise have to strip.
+    # Independent of the DH's own wording so it cannot be "forgotten":
+    # Option 1 in the user's design notes, layered on top of Option 2
+    # (the SEMANTIC safety net in _clean_semantic_body).
+    _AGENT_FACING_TAIL = (
+        "\n\n[Reminder for your reply, from the Database Handler:\n"
+        "Do not include file paths, directory names, or absolute "
+        "paths of any kind (no /app/... paths, no render PNG paths, "
+        "no parameters.json references, no attempt-folder slugs).  "
+        "Do not enumerate the 17 design parameters as a value list — "
+        "instead, describe the REASONING you applied (which checks, "
+        "which heuristics, which trade-offs).  Do not address any "
+        "other agent or the user; the chain is over and your reply "
+        "is consumed only by me.]"
+    )
 
     def _ask_agent(
         self,
@@ -873,9 +1422,17 @@ class DatabaseHandler(BaseChainAgent):
         agent's response to that buffer in place, mirroring the shape
         the v4 code maintained on ``agent.messages`` — but without
         touching session.agent_states or any live agent.
+
+        The agent-facing tail clause :attr:`_AGENT_FACING_TAIL` is
+        appended to the question text before delivery; the DH's own
+        running history records the question WITHOUT the tail so the
+        DH's prompt does not see the boilerplate echoed back at every
+        round.
         """
         dh_trace("DH", agent_key, note=f"asks ({field})")
-        convo_buffer.append(HumanMessage(content=question))
+        convo_buffer.append(
+            HumanMessage(content=question + self._AGENT_FACING_TAIL)
+        )
 
         # Use the agent's BASE llm (no tool bindings) so the model is
         # free to reply in plain prose without trying to invoke
@@ -915,15 +1472,40 @@ class DatabaseHandler(BaseChainAgent):
         """
         rounds_left = max(0, MAX_DH_TURNS_PER_FIELD - (round_idx + 1))
         is_semantic = (field_type or "Semantic").strip().lower() == "semantic"
-        cap_line = (
-            f"This is a SEMANTIC field — your SAVE: body MUST stay "
-            f"under {self.max_response_tokens} tokens (cl100k_base; "
-            f"prefer <600).  Apply the embedding-friendly rules from "
-            f"your system prompt."
-            if is_semantic
-            else "This is a QUANTITATIVE field — save the data verbatim, "
-            "no token cap, do not paraphrase numbers or units."
-        )
+        if is_semantic:
+            cap_line = (
+                f"This is a SEMANTIC field.  Your SAVE: body MUST "
+                f"contain a ``QUESTION:`` line and an ``ANSWER:`` line "
+                f"(in that order).  Combined QUESTION + ANSWER token "
+                f"count MUST stay under {self.max_response_tokens} "
+                f"(cl100k_base; prefer <600).  Aim for the saved "
+                f"QUESTION under ~80 tokens (roughly one sentence) so "
+                f"most of the budget goes to the ANSWER.  Apply the "
+                f"embedding-friendly rewrite rules from your system "
+                f"prompt to BOTH the QUESTION and the ANSWER — strip "
+                f"file paths, parameter-value dumps, routing-tool JSON "
+                f"wrappers, literal \\n escapes, and mid-chain "
+                f"narration."
+            )
+            shape_line = (
+                "Reply with EXACTLY ONE of:\n"
+                "  ASK: <a follow-up question for the agent>\n"
+                "  SAVE:\n"
+                "  QUESTION: <short embedding-friendly question>\n"
+                "  ANSWER: <embedding-friendly final body>\n"
+            )
+        else:
+            cap_line = (
+                "This is a QUANTITATIVE field — save the data verbatim, "
+                "no token cap, do not paraphrase numbers or units.  The "
+                "SAVE body is a single prose block (no QUESTION:/"
+                "ANSWER: headers)."
+            )
+            shape_line = (
+                "Reply with EXACTLY ONE of:\n"
+                "  ASK: <a follow-up question for the agent>\n"
+                "  SAVE: <the final body to write to the .txt file>\n"
+            )
         instruction = (
             "DECISION TURN.\n\n"
             f"Target agent: {agent_key}\n"
@@ -934,9 +1516,7 @@ class DatabaseHandler(BaseChainAgent):
             f"{agent_key} replied: {last_answer}\n\n"
             f"{cap_line}\n"
             f"Follow-up rounds remaining: {rounds_left}.\n\n"
-            "Reply with EXACTLY ONE of:\n"
-            "  ASK: <a follow-up question for the agent>\n"
-            "  SAVE: <the final body to write to the .txt file>\n"
+            f"{shape_line}"
             "The very first non-whitespace characters of your reply "
             "must be either 'ASK:' or 'SAVE:'."
         )
@@ -1039,48 +1619,62 @@ class DatabaseHandler(BaseChainAgent):
     # SEMANTIC token-cap enforcement
     # ------------------------------------------------------------------
 
-    def _enforce_semantic_cap(
+    def _enforce_semantic_cap_pair(
         self,
         agent_key: str,
         field: str,
         description: str,
-        body: str,
-    ) -> str:
-        """Ensure *body* fits within the SEMANTIC token cap.
+        saved_question: str,
+        saved_answer: str,
+    ) -> tuple[str, str]:
+        """Ensure ``QUESTION + ANSWER`` fits within the SEMANTIC token cap.
 
-        When *body* is over the cap, asks the DH ONCE for a shorter
-        version and accepts whatever comes back.  If the second
-        attempt is still over the cap, logs a warning but saves the
-        shorter of the two — the goal is best-effort compliance, not
-        infinite-loop perfection.
+        Counts ``cl100k_base`` tokens on the combined pair (mirrors how
+        the embedding model sees the .txt file at index time).  When
+        over cap, asks the DH ONCE for a shorter version of EITHER or
+        BOTH components and accepts whatever comes back (subject to
+        the same QUESTION:/ANSWER: parse).  If the second attempt is
+        still over the cap, saves the shorter of the two pairs — the
+        goal is best-effort compliance, not infinite-loop perfection.
+
+        The defensive cleanup (:func:`_clean_semantic_body`) is applied
+        to every replacement body returned by the DH so artefacts the
+        DH adds during shortening are still stripped.
         """
-        n = count_tokens(body)
+        n_q = count_tokens(saved_question)
+        n_a = count_tokens(saved_answer)
+        n = n_q + n_a
         if n <= self.max_response_tokens:
             logger.info(
-                f"[DH]  semantic body within cap for "
-                f"{agent_key}/{field}: {n} <= "
+                f"[DH]  semantic Q+A within cap for "
+                f"{agent_key}/{field}: {n_q}+{n_a}={n} <= "
                 f"{self.max_response_tokens} tokens"
             )
-            return body
+            return saved_question, saved_answer
 
         logger.warning(
-            f"[DH]  semantic body OVER cap for {agent_key}/{field}: "
-            f"{n} > {self.max_response_tokens} tokens; asking for "
-            f"shorter version."
+            f"[DH]  semantic Q+A OVER cap for {agent_key}/{field}: "
+            f"{n_q}+{n_a}={n} > {self.max_response_tokens} tokens; "
+            f"asking for shorter pair."
         )
         instruction = (
             "TOKEN-CAP COMPRESSION TURN.\n\n"
             f"Field: {field}\n"
             f"Field description: {description}\n\n"
-            f"Your last SAVE: body for this field is "
-            f"{n} tokens long under cl100k_base, but the cap is "
-            f"{self.max_response_tokens}.  Rewrite it to fit comfortably "
-            "below the cap (prefer <600) WITHOUT losing the field's "
-            "meaning.  Apply the embedding-friendly rules from your "
-            "system prompt: self-contained, declarative prose, "
-            "domain-faithful, one topic per file, no filler.\n\n"
+            f"Your last SAVE: body for this field used "
+            f"{n_q} QUESTION tokens + {n_a} ANSWER tokens = {n} total "
+            f"under cl100k_base, but the combined cap is "
+            f"{self.max_response_tokens}.  Rewrite the pair to fit "
+            "comfortably below the cap (prefer <600 combined) WITHOUT "
+            "losing the field's meaning.  Shorten QUESTION, ANSWER, or "
+            "both — your choice.  Apply the embedding-friendly rules "
+            "from your system prompt: strip paths, parameter dumps and "
+            "routing-tool wrappers; self-contained declarative prose; "
+            "domain-faithful; one topic per file; no filler.\n\n"
             "Reply with EXACTLY:\n"
-            "  SAVE: <the shorter body>\n"
+            "  SAVE:\n"
+            "  QUESTION: <shorter question>\n"
+            "  ANSWER: <shorter answer>\n"
             "Do not use ASK: this turn — the system will save whatever "
             "you produce."
         )
@@ -1098,29 +1692,37 @@ class DatabaseHandler(BaseChainAgent):
             if not text:
                 continue
             kind, payload = _parse_dh_decision(text)
-            shorter = payload if kind in ("ASK", "SAVE") else text
-            n2 = count_tokens(shorter)
+            payload = payload if kind in ("ASK", "SAVE") else text
+            q2, a2 = _parse_save_body_semantic(payload)
+            if q2 is None or a2 is None:
+                # DH forgot the headers during compression too — fall
+                # back to treating the whole payload as the shorter
+                # answer and keep the existing question.
+                q2 = saved_question
+                a2 = payload
+            q2 = _clean_semantic_body(q2) or q2
+            a2 = _clean_semantic_body(a2) or a2
+            n2_q = count_tokens(q2)
+            n2_a = count_tokens(a2)
+            n2 = n2_q + n2_a
             logger.info(
-                f"[DH]  compressed body for {agent_key}/{field}: "
-                f"{n} -> {n2} tokens\n"
-                f"{_format_block('DH compressed body:', shorter)}"
+                f"[DH]  compressed Q+A for {agent_key}/{field}: "
+                f"{n_q}+{n_a}={n} -> {n2_q}+{n2_a}={n2} tokens"
             )
             if n2 <= self.max_response_tokens:
-                return shorter
-            # Compression didn't reach the cap — keep the shorter of
-            # the two and move on.
+                return q2, a2
             logger.warning(
                 f"[DH]  compression did not reach cap for "
                 f"{agent_key}/{field} ({n2} > "
-                f"{self.max_response_tokens}); saving the shorter body."
+                f"{self.max_response_tokens}); saving the shorter pair."
             )
-            return shorter if n2 < n else body
+            return (q2, a2) if n2 < n else (saved_question, saved_answer)
 
         logger.warning(
             f"[DH]  compression turn produced no output for "
-            f"{agent_key}/{field}; saving original over-cap body."
+            f"{agent_key}/{field}; saving original over-cap pair."
         )
-        return body
+        return saved_question, saved_answer
 
     # ------------------------------------------------------------------
     # Disk I/O
@@ -1145,13 +1747,21 @@ class DatabaseHandler(BaseChainAgent):
         question: str,
         answer: str,
     ) -> Path:
-        """Write one (question, answer) pair to disk and return path."""
+        """Write one ``(question, answer)`` pair to disk and return path.
+
+        For SEMANTIC fields, ``question`` and ``answer`` are the DH's
+        EMBEDDING-FRIENDLY rewrites (combined under the token cap);
+        the original verbose question the DH put to the agent lives
+        only in the DH log file.  For QUANTITATIVE fields, ``question``
+        is the DH's asked question and ``answer`` is Agent A's
+        verbatim reply.
+        """
         path = self._entry_path(session_dir, agent_key, field)
         path.write_text(
             f"--- Field ---\n{field}\n\n"
-            "--- Question (asked by Database Handler) ---\n"
+            "--- Question ---\n"
             f"{question}\n\n"
-            "--- Answer (from agent) ---\n"
+            "--- Answer ---\n"
             f"{answer}\n",
             encoding="utf-8",
         )
@@ -1186,4 +1796,54 @@ class DatabaseHandler(BaseChainAgent):
         path = self._entry_path(session_dir, agent_key, field)
         path.write_text("", encoding="utf-8")
         return path
+
+    def _write_sidecar_meta(
+        self,
+        entry_path: Path,
+        *,
+        entry: dict,
+        attempt_id: str | None,
+    ) -> None:
+        """Write the per-question metadata as a sidecar JSON next to *entry_path*.
+
+        The sidecar carries fields used by the (future) RAG retrieval
+        layer but kept OUT of the embedded ``.txt`` so the embedding
+        vector is not polluted by access-control metadata:
+
+          ``to_agents``  list of agent keys the future RAG layer may
+                         expose this answer to.
+          ``scope``      "session" | "attempt"
+          ``type``       "Semantic" | "Quantitative"
+          ``attempt_id`` resolved attempt identifier (None when not
+                         attempt-bound or when binding failed)
+          ``question_id`` stable id from the schedule (so the sidecar
+                          can be cross-referenced back to the editor
+                          row)
+
+        Filename: ``<field_slug>.meta.json`` (parallel to the .txt).
+        Best-effort: a failure to write the sidecar logs a warning but
+        does not break the save.
+        """
+        try:
+            import json as _json
+            meta_path = entry_path.with_suffix(".meta.json")
+            meta_path.write_text(
+                _json.dumps(
+                    {
+                        "question_id": entry.get("id"),
+                        "scope":       entry.get("scope") or "session",
+                        "type":        entry.get("type") or "Semantic",
+                        "to_agents":   list(entry.get("to_agents") or []),
+                        "attempt_id":  attempt_id,
+                    },
+                    indent=2,
+                    ensure_ascii=False,
+                ) + "\n",
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            logger.warning(
+                f"[DH]  failed to write sidecar meta for "
+                f"{entry_path.name}: {exc}"
+            )
 

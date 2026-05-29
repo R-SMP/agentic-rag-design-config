@@ -55,6 +55,9 @@
       <button class="nav-item" type="button" data-view="logstatus">
         <span class="nav-ico">📊</span><span>LOG and Status</span>
       </button>
+      <button class="nav-item" type="button" data-view="questions">
+        <span class="nav-ico">❓</span><span>Questions for Saved Sessions</span>
+      </button>
       <button class="nav-item" type="button" data-view="settings">
         <span class="nav-ico">⚙️</span><span>Workflow Settings</span>
       </button>
@@ -173,19 +176,29 @@
                 </marker>
               </defs>
 
-              <!-- EXTRA AGENTS panel -->
+              <!-- EXTRA AGENTS panel.  Frame is taller than the
+                   original (200 vs 170) so each box can host an
+                   ``agent-tool-label`` slot below it — the gray-
+                   italic caption used by every other agent to display
+                   the most recent generic tool it called.  The DH
+                   uses the slot to surface the question currently
+                   being asked during the post-session save. -->
               <g class="flow-extra">
-                <rect x="540" y="10" width="210" height="170"
+                <rect x="540" y="10" width="210" height="200"
                       rx="4" ry="4" class="extra-frame" />
                 <text x="645" y="34" class="extra-title"
                       text-anchor="middle">EXTRA AGENTS</text>
                 <g id="agent-database-handler" class="flow-box flow-box-agent">
-                  <rect x="570" y="60" width="150" height="40" rx="3" ry="3" />
-                  <text x="645" y="85" text-anchor="middle">Database Handler</text>
+                  <rect x="570" y="55" width="150" height="40" rx="3" ry="3" />
+                  <text x="645" y="80" text-anchor="middle">Database Handler</text>
+                  <text x="645" y="109" text-anchor="middle"
+                        class="agent-tool-label"></text>
                 </g>
                 <g id="agent-context-pruner" class="flow-box flow-box-agent">
-                  <rect x="570" y="120" width="150" height="40" rx="3" ry="3" />
-                  <text x="645" y="145" text-anchor="middle">Context Pruner</text>
+                  <rect x="570" y="145" width="150" height="40" rx="3" ry="3" />
+                  <text x="645" y="170" text-anchor="middle">Context Pruner</text>
+                  <text x="645" y="199" text-anchor="middle"
+                        class="agent-tool-label"></text>
                 </g>
               </g>
 
@@ -363,9 +376,133 @@
         </aside>
       </section>
 
-      <!-- 5. Workflow Settings: live editor over workflow_settings/settings.py -->
+      <!-- 5. Questions for Saved Sessions: developer-facing editor for
+           the DH question schedule.  Reads/writes
+           workflow_settings/dh_schedule.json.  Locked while a session
+           is active (same backend safety net as Workflow Settings). -->
+      <section class="view questions-view" data-view="questions" hidden>
+        <div class="questions-scroll" id="questions-scroll">
+
+          <!-- Session-active lock banner.  Mirrors the Workflow
+               Settings one so the lock UX is consistent across views. -->
+          <div id="questions-lock-banner" class="settings-lock-banner" hidden>
+            A session is active — the DH schedule is locked.  End the
+            session to edit it.
+          </div>
+
+          <div class="questions-head">
+            <h2>Questions for Saved Sessions</h2>
+            <p class="questions-note">
+              Developer tool — defines the questions the
+              <strong>Database Handler</strong> will ask each agent
+              at End Session → Save.  Edits take effect for the
+              <strong>next save</strong>.  Stored as
+              <code>workflow_settings/dh_schedule.json</code>
+              (gitignored).
+            </p>
+          </div>
+
+          <div class="questions-bar-top">
+            <button id="q-save" class="primary" type="button">Save schedule</button>
+            <button id="q-reload" class="ghost" type="button">Reload</button>
+            <button id="q-download" class="ghost" type="button"
+                    title="Download the current schedule as JSON">
+              ⬇ Download JSON
+            </button>
+            <button id="q-upload-pick" class="ghost" type="button"
+                    title="Upload a JSON schedule to replace the current table">
+              ⬆ Upload JSON
+            </button>
+            <input id="q-upload-file" type="file" accept=".json"
+                   hidden />
+            <span id="q-status" class="settings-status" role="status"></span>
+          </div>
+
+          <div class="q-table-wrap">
+            <table id="q-table" class="q-table">
+              <thead>
+                <tr>
+                  <th class="q-th-grip" aria-label="Reorder"></th>
+                  <th class="q-th-num">#</th>
+                  <th class="q-th-name">Question Name</th>
+                  <th class="q-th-desc">Question Description</th>
+                  <th class="q-th-from">From</th>
+                  <th class="q-th-to">To</th>
+                  <th class="q-th-scope">Scope</th>
+                  <th class="q-th-type">Type</th>
+                  <th class="q-th-actions">Customize</th>
+                </tr>
+              </thead>
+              <tbody id="q-tbody">
+                <tr class="q-loading">
+                  <td colspan="9">Loading schedule…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="q-add-row">
+            <button id="q-add-toplevel" class="ghost" type="button"
+                    title="Add a new top-level question">+ New question</button>
+          </div>
+
+          <!-- Floating popover for the multi-select "To" column.
+               Hidden by default; positioned in JS at the cell that
+               opened it. -->
+          <div id="q-to-popover" class="q-popover" hidden></div>
+        </div>
+      </section>
+
+      <!-- 6. Workflow Settings: LLM routing chart + live editor over
+           workflow_settings/settings.py -->
       <section class="view settings-view" data-view="settings" hidden>
-        <div class="settings-scroll">
+        <div class="settings-scroll" id="settings-scroll">
+
+          <!-- Session-active lock banner (shown while a session is in
+               flight; backend rejects writes with HTTP 409 too). -->
+          <div id="settings-lock-banner" class="settings-lock-banner" hidden>
+            A session is active — settings are locked.  End the session
+            to edit them.
+          </div>
+
+          <!-- LLM routing: duplicate-layout flowchart with a provider
+               dropdown + model input under each agent box.  Filled in
+               by app.js once the user opens the Workflow Settings view. -->
+          <section class="llm-routing" id="llm-routing">
+            <div class="lr-head">
+              <h2>LLM routing</h2>
+              <p class="lr-note">
+                Pick one provider+model for every agent
+                (<strong>Global</strong>), or configure each agent
+                individually.  Changes take effect for the
+                <strong>next session</strong> (start a new session via
+                <em>End Session</em>).
+              </p>
+            </div>
+            <div class="lr-global">
+              <span class="lr-global-label">Global LLM</span>
+              <select id="lr-global-provider">
+                <option value="">Loading…</option>
+              </select>
+              <input id="lr-global-model" type="text"
+                     placeholder="e.g. gpt-5-mini" />
+            </div>
+            <div id="lr-banner" class="lr-banner" hidden></div>
+            <div class="lr-chart-wrap" id="lr-chart-wrap">
+              <svg id="lr-chart" class="lr-chart"
+                   preserveAspectRatio="xMidYMid meet"
+                   role="img"
+                   aria-label="LLM routing chart (one provider+model per agent)">
+              </svg>
+              <div id="lr-overlay" class="lr-overlay"></div>
+            </div>
+            <div class="lr-bar">
+              <button id="lr-save" class="primary" type="button">Save LLM routing</button>
+              <button id="lr-reload" class="ghost" type="button">Reload</button>
+              <span id="lr-status" class="lr-status" role="status"></span>
+            </div>
+          </section>
+
           <div class="settings-head">
             <h2>Workflow Settings</h2>
             <p class="settings-note">

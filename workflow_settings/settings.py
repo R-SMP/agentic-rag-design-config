@@ -257,3 +257,24 @@ EMBEDDING_VECTOR_DIMS: int = 1024
 # Valid values: any positive int (recommended <= 8000, the
 # embedding model's per-input limit)
 EMBEDDING_MAX_RESPONSE_TOKENS: int = 700
+
+
+# ===========================================================
+# 12. LLM routing mode
+# ===========================================================
+# Controlled exclusively via the LLM-routing chart at the top of
+# the Workflow Settings web view.  DO NOT EDIT BY HAND.
+#
+# When the chart's Global LLM dropdown is set to a provider
+# (OpenAI / Anthropic / Google), that provider+model from the
+# shared ``agents/.env`` is forced for every agent and every
+# ``agents/<agent>/.env`` per-agent override is ignored at
+# resolution time (the override files are preserved on disk so
+# flipping back to "individual" restores prior choices).
+#
+# When the dropdown is "Use individual LLMs", each agent's
+# provider+model is resolved via the original mechanism:
+# per-agent ``.env`` first, then shared ``agents/.env``.
+#
+# Valid values: "individual" | "openai" | "anthropic" | "google"
+LLM_ROUTING_MODE: str = "individual"

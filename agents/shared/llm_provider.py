@@ -75,12 +75,11 @@ _RATE_LIMITER: InMemoryRateLimiter | None = (
     else None
 )
 
-# Shared agent .env (read once at import).  Falls back to empty dict if
-# the file is missing.
+# Shared agent .env path.  The file itself is RE-READ at every
+# ``_resolve_config`` call so that mid-process edits made by the web
+# UI's Workflow Settings → LLM-routing chart take effect on the next
+# session build (without a uvicorn restart).
 _SHARED_ENV_PATH = AGENTS_DIR / ".env"
-_SHARED_ENV: dict = (
-    dotenv_values(_SHARED_ENV_PATH) if _SHARED_ENV_PATH.exists() else {}
-)
 
 _API_KEY_ENV_VARS: dict = {
     "openai": "OPENAI_API_KEY",
@@ -89,6 +88,16 @@ _API_KEY_ENV_VARS: dict = {
 }
 
 _DEFAULT_MODEL = "gpt-5-mini"
+
+
+def _read_shared_env() -> dict:
+    """Read ``agents/.env`` fresh; empty dict when missing."""
+    if not _SHARED_ENV_PATH.exists():
+        return {}
+    try:
+        return dotenv_values(_SHARED_ENV_PATH)
+    except OSError:
+        return {}
 
 
 def _read_env_file(agent_name: str) -> dict:
@@ -102,21 +111,55 @@ def _read_env_file(agent_name: str) -> dict:
         return {}
 
 
+def _current_routing_mode() -> str:
+    """Return the live LLM_ROUTING_MODE.
+
+    Read directly off the (already-imported) ``workflow_settings``
+    module so this picks up reloads done by callers such as
+    ``web_app._build_session``.  Defaults to ``"individual"`` if the
+    setting is missing or unrecognised.
+    """
+    mode = (getattr(_workflow_settings, "LLM_ROUTING_MODE", "individual") or "").strip().lower()
+    if mode not in {"individual", "openai", "anthropic", "google"}:
+        return "individual"
+    return mode
+
+
 def _resolve_config(agent_name: str) -> Tuple[str, str, str]:
     """Pick (provider, model, api_key) for ``agent_name``.
 
     Resolution order:
+      0. If ``LLM_ROUTING_MODE`` names a specific provider, force that
+         provider+model from shared ``agents/.env`` (and ignore any
+         per-agent override — the files stay on disk untouched).
       1. The per-agent .env file, if it sets ``LLM_PROVIDER`` and the
          matching API key.
       2. The shared ``agents/.env``.
 
-    Raises ValueError if neither source supplies a usable provider /
-    key combination.
+    Raises ValueError if no source supplies a usable provider / key
+    combination.
     """
-    per_agent = _read_env_file(agent_name)
+    shared = _read_shared_env()
 
     def _from(layer: dict, key: str) -> str:
         return (layer.get(key) or "").strip()
+
+    mode = _current_routing_mode()
+    if mode in {"openai", "anthropic", "google"}:
+        # Global override active — shared file's MODEL_NAME applies to
+        # every agent, per-agent files are deliberately not consulted.
+        provider = mode
+        env_var = _API_KEY_ENV_VARS[provider]
+        api_key = _from(shared, env_var) or os.getenv(env_var, "")
+        if not api_key:
+            raise ValueError(
+                f"LLM_ROUTING_MODE={mode!r} but {env_var} is not set "
+                f"in agents/.env or the process environment."
+            )
+        model = _from(shared, "MODEL_NAME") or _DEFAULT_MODEL
+        return provider, model, api_key
+
+    per_agent = _read_env_file(agent_name)
 
     # Prefer a complete per-agent override.
     provider = _from(per_agent, "LLM_PROVIDER").lower()
@@ -134,14 +177,14 @@ def _resolve_config(agent_name: str) -> Tuple[str, str, str]:
             return provider, model, api_key
 
     # Fall through to the shared default.
-    provider = _from(_SHARED_ENV, "LLM_PROVIDER").lower() or "openai"
+    provider = _from(shared, "LLM_PROVIDER").lower() or "openai"
     env_var = _API_KEY_ENV_VARS.get(provider)
     if env_var is None:
         raise ValueError(
             f"Shared agents/.env has unknown LLM_PROVIDER "
             f"'{provider}'.  Supported: {', '.join(_API_KEY_ENV_VARS)}."
         )
-    api_key = _from(_SHARED_ENV, env_var) or os.getenv(env_var, "")
+    api_key = _from(shared, env_var) or os.getenv(env_var, "")
     if not api_key:
         raise ValueError(
             f"No API key found for agent '{agent_name}'.  Either set "
@@ -149,7 +192,7 @@ def _resolve_config(agent_name: str) -> Tuple[str, str, str]:
             f"agents/{agent_name}/.env with a complete LLM_PROVIDER + "
             f"key + MODEL_NAME triple."
         )
-    model = _from(_SHARED_ENV, "MODEL_NAME") or _DEFAULT_MODEL
+    model = _from(shared, "MODEL_NAME") or _DEFAULT_MODEL
     return provider, model, api_key
 
 
@@ -187,10 +230,23 @@ def list_agent_configs(agent_names: list[str]) -> list[dict]:
     """Resolve provider/model for each agent without constructing the LLM.
 
     Used by the loader to print a per-agent config summary at startup.
-    Returns a list of ``{agent, provider, model, source}`` dicts where
-    ``source`` is ``'per-agent'`` if the per-agent .env supplied the
-    provider+key, otherwise ``'shared'``.
+    Returns a list of ``{agent, provider, model, source}`` dicts.
+
+    ``source`` is one of:
+      * ``'global'``   — ``LLM_ROUTING_MODE`` forces a provider
+      * ``'per-agent'``— the per-agent .env supplied a full override
+      * ``'shared'``   — falls back to ``agents/.env``
     """
+    shared = _read_shared_env()
+    mode = _current_routing_mode()
+    if mode in {"openai", "anthropic", "google"}:
+        shared_model = (shared.get("MODEL_NAME") or _DEFAULT_MODEL).strip()
+        return [
+            {"agent": name, "provider": mode,
+             "model": shared_model, "source": "global"}
+            for name in agent_names
+        ]
+
     out: list[dict] = []
     for name in agent_names:
         per_agent = _read_env_file(name)
@@ -209,10 +265,10 @@ def list_agent_configs(agent_names: list[str]) -> list[dict]:
             source = "per-agent"
         else:
             provider = (
-                _SHARED_ENV.get("LLM_PROVIDER") or "openai"
+                shared.get("LLM_PROVIDER") or "openai"
             ).strip().lower()
             model = (
-                _SHARED_ENV.get("MODEL_NAME") or _DEFAULT_MODEL
+                shared.get("MODEL_NAME") or _DEFAULT_MODEL
             ).strip()
             source = "shared"
         out.append(
