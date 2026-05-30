@@ -237,6 +237,72 @@ The system prompt is rebuilt fresh at every invoke from the untouched `self.syst
 
 While the Pruner runs, the LOG-and-Status chart highlights the **Context Pruner** box in the EXTRA AGENTS panel alongside the calling agent's box (same multi-active pattern as the two DC tools — see `applyAgentActive` and `TOOL_NAMES` in `web/app.js`). The matching exit handoff clears the CP box and leaves the caller solo-lit. Every prune logs a `[CP] <agent_key>: pruned history N -> M messages, ~X -> ~Y tokens` line in the session log.
 
+## DH schedule: three kinds of questions
+
+The DH schedule (edited via the **Questions for Saved Sessions** view, persisted as `workflow_settings/dh_schedule.json`) supports three kinds of rows:
+
+| Kind | How it's flagged | Example | What the DH does |
+|---|---|---|---|
+| **Session-related** | `scope = session` (top-level row) | "What was the user's request?", "Did any agent flag an error?" | Interview Agent A, save Q+A to `.txt`. No attempt context. |
+| **Identifying attempt-specific** | `scope = attempt` + `parent_id = null` (top-level) | "Which attempt best satisfied the user?", "Which attempt led to problems?" | Interview Agent A, **then forced to call `save_attempt_artefacts`** to pin down which attempt. On success, save Q+A AND upload the attempt's artefacts. On failure, drop the whole block (this row + every Q(N).x sub-row). |
+| **Attempt-specific sub-row** | `scope = attempt` + `parent_id = <identifying row's id>` | "Why was that attempt successful?", "What numerical parameters were used?" | Description is auto-prefixed with `"For attempt NNN: "` before the interview, so Agent A knows which attempt to answer about. Saved like any session row. |
+
+The Q-number scheme reflects the structure: `Q1, Q2, Q2.1, Q2.2, Q3` means Q1 and Q3 are session-related, Q2 is identifying, Q2.1 / Q2.2 are sub-rows under Q2.
+
+## Identifying attempt-specific questions — force-tool flow
+
+When the DH reaches an identifying attempt-specific row, the system runs a 5-step protocol that's distinct from the normal ASK/SAVE loop:
+
+1. **DH formulates** the question (e.g. "Which attempt best satisfied the user's request?") and the system delivers it to Agent A.
+2. **Agent A replies** in plain prose.
+3. **Force-tool turn**: the DH's LLM is bound with `tool_choice="save_attempt_artefacts"` for this single turn. The DH MUST call the tool. Allowed inputs:
+   - The attempt number Agent A named — `"002"`, `"2"`, `"attempt 002"`, an ordinal+`"attempt"`/`"iteration"`, or a full slug like `"20260530_142312_002_..."`. The system extracts the 3-digit number via `_normalise_attempt_input`.
+   - The literal string `"none"` (case-insensitive) — when Agent A did NOT identify a specific attempt.
+4. **System processes the tool call**:
+   - On a valid number, `_resolve_attempt_folder` globs `attempts/*_NNN_*` filtered to folders created during this session (`mtime >= session_ts`). Multiple matches → most recent. Zero matches → ToolMessage with an error and the DH retries.
+   - On a successful resolve, `r2_uploader.upload_attempt_artefacts` pushes `parameters.json` / `propeller_mesh.obj` / `render_*.png` / `description.txt` (whichever exist) to R2 under `<prefix>/<session_id>/attempts/<NNN>/<session_id>__<NNN>__<original_name>`. `propeller_mesh_components.obj` is **explicitly excluded**.
+   - On `"none"`, the ToolMessage records `{ok: true, attempt_id: null}` and the system drops the whole block.
+   - The DH gets up to **3 retries** to land a valid call (invalid input, or number that resolved to no folder). After 3, the system synthesises `"none"` and drops the block.
+5. **DH continues normally**: if the tool succeeded with a real attempt, the DH emits SAVE: with QUESTION:/ANSWER: as for any SEMANTIC field; the ToolMessage payload is part of the DH's context so the answer naturally references the resolved attempt. If the tool resolved to "none" or 3-failures, the SAVE step is **skipped entirely** — no .txt is written for this row, no placeholders for its children.
+
+The tool is bound **only** for the force-tool turn — not for the SAVE: emit, not for any other row. The DH's prompt says so explicitly.
+
+### Live feedback for the force-tool flow
+
+The Database Handler box in the LOG-and-Status chart is lit yellow for the entire interview (same as today). The force-tool round-trips don't add chart events — they're internal DH plumbing. The session log captures every step: `[DH] starting conversation … (identifying=True)`, then `[DH] force-tool attempt k SUCCEEDED for <agent>/<field>: attempt NNN; uploaded=[...] missing=[...]`, then `[R2] uploaded …` lines for each artefact.
+
+### User inputs (text + reference images) also land in the database
+
+Right before the R2 mirror runs, the DH copies the session's user-side artefacts into a new `<session_dir>/user_inputs/` branch:
+
+* `queries.txt` — the **complete** turn-by-turn collection of user text inputs. Sourced from `inputs/user_query.txt`, which the dispatcher appends to on every `/api/turn` call with a `--- [YYYY-MM-DD HH:MM:SS] ---` timestamped header, so every user message issued during the session is preserved.
+* `images/<original_name>` — every reference image the user uploaded via the Image Inputs view, plus its matching `<name>_note.txt` description sidecar (original filenames preserved so each image stays paired with its note).
+
+The R2 upload step's suffix whitelist now covers `.txt`, `.png`, `.jpg`, and `.jpeg`, so the user-inputs branch flows through to the bucket alongside the per-agent answer files. Final R2 layout per session:
+
+```
+<R2_KEY_PREFIX>/<session_id>/
+├── receptionist/
+│   ├── user_query_problem.txt
+│   └── ...
+├── orchestrator/session_summary.txt
+├── ... (one folder per agent)
+├── attempts/
+│   └── <NNN>/                              # only when an identifying-Q
+│       ├── <session_id>__<NNN>__parameters.json
+│       ├── <session_id>__<NNN>__propeller_mesh.obj
+│       ├── <session_id>__<NNN>__render_isometric.png
+│       └── <session_id>__<NNN>__description.txt
+└── user_inputs/
+    ├── queries.txt                          # all user turns, chronological
+    └── images/
+        ├── reference_blade.png
+        ├── reference_blade_note.txt
+        └── ...
+```
+
+The local `inputs/` folder is left untouched by this step — End Session's archival sweep moves it into `previous_sessions/<session_id>/inputs/` as before. The copy under `database/<session_id>/user_inputs/` is the database-layout duplicate, intended for the future RAG layer.
+
 ## Configuration
 
 All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/settings.py):

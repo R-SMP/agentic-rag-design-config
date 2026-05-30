@@ -44,7 +44,20 @@ from typing import Any
 _THIS_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _THIS_DIR.parent
 
+# Per-developer / per-deploy runtime file (gitignored).  Holds the
+# user's CURRENT customisations; written by the editor + the
+# upload endpoint.  When absent, the system seeds it from
+# DEFAULT_SCHEDULE_PATH (tracked in the repo as the system's
+# standard set of questions) — see :func:`_seed_default`.
 SCHEDULE_PATH = _THIS_DIR / "dh_schedule.json"
+
+# Tracked default — ships with the repo.  Whenever a deployment has
+# no per-deploy ``dh_schedule.json`` yet (fresh install, deleted
+# runtime file, image rebuild without a volume mount), this file
+# becomes the seed for the editor's initial state.  Treat it as
+# the system's "factory" set of questions; edit it in the repo, not
+# at runtime.
+DEFAULT_SCHEDULE_PATH = _THIS_DIR / "dh_schedule.default.json"
 
 # Mirrors ``llm_routing.AGENT_KEYS`` order so the dropdowns line up
 # across views.  The 10th key (``context_pruner``) is included but
@@ -102,15 +115,57 @@ class ScheduleError(ValueError):
 
 
 # ---------------------------------------------------------------------------
-# Seed from the hardcoded SCHEDULE
+# Seed sources
+# ---------------------------------------------------------------------------
+#
+# The "factory" set of questions ships in
+# ``workflow_settings/dh_schedule.default.json``; ``_seed_default``
+# loads it.  As a defence-in-depth fallback, ``_seed_from_hardcoded``
+# rebuilds an equivalent list from the in-code ``SCHEDULE`` constant
+# in ``agents/database_handler/database_handler.py`` — used only when
+# the default JSON is missing or unparseable on disk.
+#
+# Resolution order in :func:`_seed_and_write`:
+#   1. ``dh_schedule.default.json`` (tracked in repo)
+#   2. hardcoded ``SCHEDULE`` constant
+#   3. empty list (last-resort: at least the read API returns sanely)
 # ---------------------------------------------------------------------------
 
-def _seed_from_hardcoded() -> list[dict]:
-    """Build the initial schedule from the existing hardcoded SCHEDULE.
+def _seed_default() -> list[dict]:
+    """Load the system's factory question set from
+    ``dh_schedule.default.json``.
 
-    Imported lazily so this module can be loaded in environments where
-    the agents package's heavy dependencies (langchain, etc.) are not
-    available — e.g. a future schema migration tool.
+    Returns an empty list if the file is missing or unreadable — the
+    caller then falls back to :func:`_seed_from_hardcoded`.  Light
+    validation only: each entry is normalised through the same
+    ``_normalise_for_write`` path the upload endpoint uses, so a
+    malformed default never reaches disk as the runtime file.
+    """
+    if not _file_exists_and_nonempty(DEFAULT_SCHEDULE_PATH):
+        return []
+    try:
+        raw = json.loads(DEFAULT_SCHEDULE_PATH.read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    if not isinstance(raw, dict):
+        return []
+    questions = raw.get("questions")
+    if not isinstance(questions, list):
+        return []
+    try:
+        return _normalise_for_write(questions)
+    except ScheduleError:
+        return []
+
+
+def _seed_from_hardcoded() -> list[dict]:
+    """Last-resort seed built from the in-code ``SCHEDULE`` constant.
+
+    Used only when ``dh_schedule.default.json`` is missing or
+    unparseable.  Imported lazily so this module can still be loaded
+    in environments where the agents package's heavy dependencies
+    (langchain, etc.) are not available — e.g. a future schema
+    migration tool.
     """
     try:
         from agents.database_handler.database_handler import SCHEDULE as _HARDCODED
@@ -162,8 +217,31 @@ def _load_raw() -> dict[str, Any] | None:
 
 
 def _seed_and_write() -> dict[str, Any]:
-    payload = {"version": 1, "questions": _seed_from_hardcoded()}
+    """Produce the initial runtime ``dh_schedule.json`` from the most
+    authoritative source available.
+
+    Resolution order:
+      1. The tracked ``dh_schedule.default.json`` (factory standard).
+      2. The in-code ``SCHEDULE`` constant (defence in depth).
+      3. An empty list (last resort).
+    """
+    questions = _seed_default()
+    source = "default.json"
+    if not questions:
+        questions = _seed_from_hardcoded()
+        source = "hardcoded SCHEDULE"
+        if not questions:
+            source = "empty (no seed source available)"
+    payload = {"version": 1, "questions": questions}
     _atomic_write(payload)
+    try:
+        import logging as _logging
+        _logging.getLogger("propeller_agent").info(
+            f"[dh_schedule] seeded runtime file with {len(questions)} "
+            f"questions from {source}"
+        )
+    except Exception:
+        pass
     return payload
 
 

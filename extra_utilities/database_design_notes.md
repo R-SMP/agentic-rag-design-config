@@ -11,6 +11,75 @@ runtime invariants that apply regardless of storage layer, see
 
 ---
 
+## D0. Where we are today (v9): file-based mirror, not Postgres yet
+
+The Postgres / pgvector design captured below is the **Stage B target**. As of
+v9 the Database Handler writes to disk and mirrors to Cloudflare R2 rather
+than to Postgres; the rest of this document describes the schema and rules
+the file-based mirror anticipates so the migration is mechanical when Stage
+B lands.
+
+**What the DH does today** (see README §"DH schedule: three kinds of
+questions" and §"Identifying attempt-specific questions — force-tool flow"):
+
+1. Reads the schedule from `workflow_settings/dh_schedule.json` (or falls
+   back to the hardcoded `SCHEDULE` in
+   `agents/database_handler/database_handler.py`). Each row carries the
+   identity fields D4 calls for (`scope`, `parent_id`, `type`, `to_agents`).
+2. Interviews each agent per the per-row protocol. For SEMANTIC fields the
+   saved body has a `QUESTION:` + `ANSWER:` header pair; the embedding
+   token cap (`EMBEDDING_MAX_RESPONSE_TOKENS`) is enforced on the combined
+   pair.
+3. For **identifying attempt-specific** rows
+   (`scope=="attempt"` AND `parent_id is None`), the DH is forced to call
+   `save_attempt_artefacts(attempt_id)`. On success the system uploads the
+   attempt's `parameters.json` / `propeller_mesh.obj` / `render_*.png` /
+   `description.txt` to R2 under
+   `<R2_KEY_PREFIX>/<session_id>/attempts/<NNN>/<session_id>__<NNN>__<original>`.
+   On `"none"` or 3-retry exhaustion, the parent row's `.txt` is NOT
+   written AND every Q(N).x sub-row is silently skipped — the cascade-drop
+   keeps the saved tree internally consistent.
+4. Every `.txt` carries a `--- Session ID ---` and `--- Attempt ID ---`
+   header block at the top (the Attempt ID slot reads `(session-scope)`
+   for session-scoped rows, `(unbound)` for the very rare attempt-row
+   error path that doesn't get cascade-dropped). A sidecar
+   `<field>.meta.json` next to each `.txt` carries the same identifiers
+   plus the `to_agents` access-control list per D12 — kept OUT of the
+   embedded body so the access metadata never pollutes the embedding
+   vector.
+5. Right before the R2 mirror runs, the DH copies the session's
+   user-side artefacts into `<session_dir>/user_inputs/`:
+   * `queries.txt` — the **complete** turn-by-turn collection of user
+     text inputs (sourced from `inputs/user_query.txt`, which is
+     appended to on every `/api/turn` call with timestamped headers).
+   * `images/<original_name>` — every reference image plus its
+     `<name>_note.txt` sidecar. Original filenames are preserved so
+     image/note pairings remain obvious in the bucket. The R2 mirror's
+     suffix whitelist now covers `.txt` / `.png` / `.jpg` / `.jpeg`
+     so this branch makes the trip alongside the per-agent .txt
+     files.
+
+   This complements (not replaces) the End Session archival sweep:
+   `previous_sessions/<session_id>/inputs/` continues to hold the
+   raw `inputs/` tree locally; `database/<session_id>/user_inputs/`
+   holds the database-layout duplicate intended for the (future)
+   RAG layer.
+
+**What still needs to land for Stage B (Postgres):**
+
+* The Postgres schema described below. The DH continues to write `.txt`
+  bodies in the same shape, but a sidecar process ingests them into
+  `chunks` rows with the right `embedding` / `embedding_quant` /
+  `attempt_id` / `agents_to` columns.
+* Per-`agent_from`/`field` `agents_to_for(...)` lookup (D4): today the
+  per-row `to_agents` list comes from `dh_schedule.json` and lands in the
+  sidecar `.meta.json`; the Stage B importer reads it from there.
+* The single-transaction save (D9) does NOT apply to the v9 file mirror —
+  failures land partial trees on disk (cascade-drop is the only "all or
+  nothing" guarantee, scoped to one identifying-Q block).
+
+---
+
 ## D1. Engine and extension
 
 - **Postgres + pgvector** (>= 0.5) regardless of host.

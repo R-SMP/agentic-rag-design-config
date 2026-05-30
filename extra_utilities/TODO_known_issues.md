@@ -866,6 +866,522 @@ finding bugs only when a real session crashes.
 
 **Status.** Open.  Pairs with F7 (implementation).
 
+### F13. Remove the Railway persistent volume once R2 mirror is verified
+
+**Where.**
+- Railway dashboard → `stage-a` service → **Settings** → **Volumes**
+  (currently has one volume mounted at ``/app/previous_sessions/``,
+  set up in v7 / v8).
+- ``agents/loader.py:_archive_previous_session`` — the local sweep
+  that moves ``logs/`` / ``attempts/`` / ``inputs/`` /
+  ``database/`` into ``previous_sessions/<session_id>/`` at End
+  Session.
+- ``agents/shared/r2_uploader.py`` — the R2 path the DH save now
+  takes; currently uploads ONLY ``.txt`` files under
+  ``database/<session_id>/`` (sidecar ``.meta.json`` excluded by
+  the suffix filter, plus everything under ``logs/`` /
+  ``attempts/`` / ``inputs/``).
+- ``docker-compose.yml`` (local dev) — already has the volume
+  block.  Same decision applies locally if the developer wants
+  to retire the host-side ``previous_sessions/`` directory.
+
+**What.**  As of v9 the DH database (the post-session ``.txt``
+files the future RAG layer cares about) is mirrored to a
+Cloudflare R2 bucket.  The Railway-mounted volume at
+``/app/previous_sessions/`` is therefore **redundant for the
+database side** and can be deleted once R2 is verified to be
+working in production for a few real sessions.
+
+**Why it matters.**  The Railway volume isn't free — every GB-
+month is billed by Railway, and ``previous_sessions/`` only
+grows.  R2 storage is materially cheaper per GB and has zero
+egress fees, so the same data costs less to keep there.
+
+**Prerequisite: decide on the NON-database artefacts.**
+``previous_sessions/<session_id>/`` carries FOUR things:
+
+1. ``database/<agent>/<field>.txt`` — DH-saved answers.
+   **Already mirrored to R2** as of v9 ⇒ safe.
+2. ``logs/web_<session_id>.log`` — full session log (every
+   ``[AGENT MSG]``, every tool call, the full DH transcript).
+   Critical for debugging.  **NOT yet mirrored to R2.**
+3. ``attempts/<attempt_id>/`` — ``parameters.json``,
+   ``propeller_mesh.obj``, render PNGs.  Used by the
+   Receptionist's attempt-selection logic AND by the future
+   "Copy parameters list" backend (F9).  **NOT yet mirrored.**
+4. ``inputs/`` — user-query text + reference images.  Useful
+   for replaying a session.  **NOT yet mirrored.**
+
+If the volume is removed without first mirroring (2)/(3)/(4),
+the system LOSES those artefacts on End Session.  Three
+acceptable paths:
+
+* **(a) Mirror everything to R2 before removing.**  Extend
+  ``r2_uploader.upload_directory`` calls in the End Session
+  path (``web_app.py:_end_session`` / ``agents/loader.py:_end_
+  session``) to push the whole ``previous_sessions/<id>/``
+  tree, not just the DH database.  Drop the suffix filter.
+* **(b) Accept losing the non-database artefacts.**  Only the
+  DH database survives; sessions become un-replayable.  Smallest
+  code change, biggest information loss.
+* **(c) Keep the volume but shrink it to only ``logs/`` /
+  ``attempts/`` / ``inputs/``.**  Move the local
+  ``database/<id>/`` write target out of the volume so the
+  cost-savings come from the DH database (the bulk of the
+  growth).  Compromise.
+
+Recommendation: **(a)**, scoped to extending the existing
+``upload_directory`` call.  It's a few lines and removes the
+ongoing Railway cost entirely.
+
+**Verification gate before doing this.**
+
+1. Run at least 5 real End Session → Save flows on Railway.
+2. For each, confirm every expected ``.txt`` lands in R2
+   under ``prod/<session_id>/<agent>/<field>.txt`` (Cloudflare
+   dashboard or ``aws s3 ls`` against the R2 endpoint).
+3. Confirm no ``[R2]`` warnings in any Railway log.
+4. Smoke-test reading at least one ``.txt`` back from R2 (so
+   we know the upload truly succeeded and the file is readable,
+   not just present-but-corrupt).
+5. Only after the above passes consistently: implement (a) (or
+   accept (b)/(c)), then detach + delete the Railway volume in
+   the dashboard.
+
+**Cost-saving rough order.**  Railway volume cost dominates
+for sessions with mesh artefacts (one ``.3dm`` mesh + three
+PNGs per attempt ≈ several MB; multiplied across attempts and
+sessions, the volume grows fast).  R2 with zero egress and
+~$0.015 / GB-month materially undercuts Railway volume pricing
+for the same data.
+
+**Status.** Open.  Blocked on F13's own prerequisites — do
+NOT delete the volume until (a)/(b)/(c) is chosen and the
+five-session verification above is clean.
+
+### F14. Verify the new identifying-attempt force-tool flow on Railway
+
+**Where.**
+- ``agents/database_handler/database_handler.py`` —
+  ``_run_identifying_conversation`` + ``_run_force_tool_phase``.
+- ``agents/database_handler/dh_tools.py`` — the
+  ``save_attempt_artefacts`` langchain tool.
+- ``agents/shared/r2_uploader.py`` —
+  ``upload_attempt_artefacts``.
+- Railway service ``stage-a`` — Variables tab + live container.
+
+**What.**  The v9 force-tool flow for identifying attempt-specific
+questions (see README §"Identifying attempt-specific questions —
+force-tool flow") was verified locally via Docker.  Run the same
+flow on Railway to confirm:
+
+1. The container can call ``self.llm.bind_tools(...,
+   tool_choice="save_attempt_artefacts")`` against whichever
+   provider Railway is configured with.  Each provider has a
+   slightly different tool_choice payload shape; langchain
+   abstracts them but it's worth a live check per provider you
+   intend to support in production.
+2. The DH actually emits a tool call on the force-tool turn (the
+   provider-side tool-choice forcing works as expected).
+3. The retry loop fires correctly when the DH passes an
+   unparseable input or a number that resolves to no folder.
+4. ``upload_attempt_artefacts`` uploads the four whitelisted
+   files (``parameters.json``, ``propeller_mesh.obj``,
+   ``render_*.png``, ``description.txt``) to the live R2 bucket
+   under ``<prefix>/<session_id>/attempts/<NNN>/<session_id>__<NNN>__<original>``.
+5. ``propeller_mesh_components.obj`` is NOT uploaded (whitelist
+   exclusion holds).
+6. On ``"none"`` or 3-retry exhaustion, the parent row's
+   ``.txt`` is NOT written AND every Q(N).x sub-row is silently
+   skipped (no placeholders).
+7. The .txt of a successful identifying row carries the
+   ``--- Session ID ---`` and ``--- Attempt ID ---`` headers
+   with the correct values.
+
+**How.**  Author a schedule with at least one identifying
+attempt-specific row + at least one Q(N).x sub-row, ideally
+covering both the success and the explicit-``"none"`` paths.
+Run an End Session → Save on the live deploy, then inspect:
+* Cloudflare R2 dashboard: ``prod/<session_id>/attempts/<NNN>/``
+  should contain the renamed files.
+* Railway logs: ``[DH]  force-tool attempt k SUCCEEDED`` /
+  ``[R2]  attempt-artefact upload: N uploaded, M missing``
+  lines should appear.
+* Local mount or ``docker compose exec``: ``previous_sessions/
+  <session_id>/database/`` should match the R2 contents (modulo
+  the file renames).
+
+**Why deferred.**  The flow is functioning locally.  Railway-side
+verification depends on the v9 push having reached the
+``stage-a-web-deploy`` branch and at least one real save flowing
+through the deployed container.
+
+**Status.** Open.  Pairs with F13 (volume removal) — F13's
+"5-session verification" gate should cover most of F14's
+checklist if the identifying-Q rows are part of those test
+sessions.
+
+### F15. Tighten DH response handling — safety net + slightly stricter prompt
+
+**Where.**
+- ``agents/database_handler/database_handler.py`` —
+  ``_decide_next`` (DH ASK/SAVE), ``_enforce_semantic_cap_pair``
+  (compression), ``_run_force_tool_phase`` (tool-call parsing).
+- ``agents/database_handler/prompt.md`` — system prompt.
+- ``agents/database_handler/database_handler.py`` —
+  ``_parse_dh_decision`` / ``_parse_save_body_semantic`` /
+  ``_clean_semantic_body``.
+
+**What.**  Add a defensive *response check* the system runs on
+every DH reply before accepting it, AND tighten the prompt by a
+small amount to make malformed replies less likely in the first
+place.
+
+The current DH path already does some checking:
+* ``_parse_dh_decision`` rejects responses missing the
+  ``ASK:`` / ``SAVE:`` prefix.
+* ``_parse_save_body_semantic`` rejects SAVE bodies missing
+  ``QUESTION:`` / ``ANSWER:`` headers.
+* ``_clean_semantic_body`` strips routing-tool JSON wrappers,
+  literal ``\n`` escapes, file paths, attempt-folder slugs,
+  chain-narration leads.
+
+What's missing — the "safety net" — is a tighter post-parse
+audit that flags responses for re-prompting BEFORE they're
+accepted, rather than passing through with a warning.  Concrete
+checklist for what the audit should reject:
+
+1. ``SAVE:`` body present but the saved ``ANSWER`` is suspiciously
+   short (e.g. < N tokens) for a SEMANTIC field — usually means
+   the DH echoed a fragment instead of the cleaned answer.
+2. Saved ``QUESTION`` exceeds the recommended soft cap
+   (~80 cl100k_base tokens) — re-prompt for a tighter version.
+3. ``SAVE:`` body still contains any of the forbidden artefacts
+   AFTER ``_clean_semantic_body`` ran (i.e. the regex helpers
+   missed something) — usually a sign of a new failure mode
+   worth surfacing.
+4. The DH's response on a force-tool turn is anything other
+   than a single tool call — currently logged as a warning, but
+   should also bump the retry counter explicitly so the
+   "3-retries-then-none" budget is enforced.
+5. For QUANTITATIVE fields: confirm the saved body contains at
+   least one number / parameter marker.  An all-prose answer is
+   a sign of the DH wandering off.
+
+The prompt update should be **slightly stricter, not longer**.
+The goal is to remove ambiguity, not add new sections.  Examples
+of "stricter without longer":
+* Replace soft "should" / "prefer" with hard "MUST" / "MUST
+  NOT" wherever the system-side check is actually enforced.
+* Move format requirements (``ASK:``/``SAVE:`` prefix, the
+  ``QUESTION:``/``ANSWER:`` headers, the per-Q token budget)
+  closer to the per-turn instructions instead of one general
+  section the model may skim past.
+* Add a single sentence at the top of the prompt naming the
+  consequence of a malformed response: "*The system will
+  reject and re-prompt on any reply that does not exactly
+  match the protocol below — burning retry budget.*"
+
+**Why it matters.**  The DH is the most failure-tolerant agent
+in the pipeline today (it gets several retries by design), but
+the consequences of a silent acceptance are larger than for any
+chain agent: a malformed SAVE: lands in the database as
+embedding-noise that the future RAG layer can't filter.  An
+audit step that re-prompts is much cheaper than the downstream
+fix.
+
+**Why deferred.**  v9 ships the force-tool path AND the existing
+defensive helpers (``_clean_semantic_body`` etc.).  The audit
+step is a follow-up; do it once real saves are flowing on
+Railway (F14) so we have actual misbehaviour examples to write
+the audit rules against, rather than guessing.
+
+**Status.** Open.  Pairs with F12 (CP verification) and F14
+(Railway identifying-Q verification) — all three are
+"verify-the-DH-works" tasks.
+
+### F16. Verify the multi-answer split + multi-attempt identifying-Q flow
+
+**Where.**
+- ``agents/database_handler/database_handler.py`` —
+  ``_parse_save_body_semantic`` (multi-pair + ``ATTEMPT:`` header
+  parser); ``_enforce_semantic_cap_pairs`` (per-pair cap with
+  retry); ``_run_one_conversation`` /
+  ``_run_identifying_conversation`` (both return triple-lists now);
+  ``_run_force_tool_phase`` (``attempt_ids: list[str]`` API);
+  ``populate_database`` (attempt-major sub-row loop).
+- ``agents/database_handler/dh_tools.py`` — tool signature.
+- ``agents/shared/r2_uploader.py`` —
+  ``upload_attempt_artefacts`` (called per attempt).
+- ``agents/database_handler/prompt.md`` — multi-pair + multi-
+  attempt rules.
+
+**What.**  The v9 force-tool flow grew two orthogonal extensions:
+
+1. **Multi-answer split** (Extension A) — when one agent's reply
+   covers N distinct items the DH may emit N
+   ``QUESTION:``/``ANSWER:`` pairs in a single SAVE; each pair
+   becomes its own ``.txt`` file (single-underscore + index
+   suffix when N≥2).
+2. **Multi-attempt identifying Q** (Extension B) — the
+   ``save_attempt_artefacts`` tool now accepts a LIST of attempt
+   ids.  When the list has N≥2 entries, the identifying Q's
+   answer is split per attempt (one ``ATTEMPT:``/``QUESTION:``/
+   ``ANSWER:`` block per attempt → one ``__<NNN>.txt`` per
+   attempt) AND the system runs every Q(N).x sub-row interview
+   N times (attempt-major: all sub-rows for attempt 1 first,
+   then for attempt 2, and so on).  Each attempt's artefacts
+   land in its own ``<prefix>/<session_id>/attempts/<NNN>/``
+   folder.
+
+Both landed in v9.x and were unit-smoked locally (parser shape +
+filename rules), but neither has been exercised against a real
+multi-attempt session end-to-end.  Need a proper verification.
+
+**What "works properly" means — concrete checklist.**
+
+1. *Multi-answer parse robustness.*  The parser correctly
+   splits N back-to-back ``QUESTION:``/``ANSWER:`` blocks in one
+   SAVE body — at N=1, N=2, N=3, with multi-line answers, with
+   stray blank lines between pairs, and with mixed casing
+   (``Question:`` / ``ANSWER:``).
+2. *ATTEMPT-tag parse robustness.*  ``ATTEMPT: 002`` /
+   ``ATTEMPT: attempt 002`` / ``ATTEMPT: 20260530_142312_002_xxx``
+   all yield the same 3-digit ``"002"`` after
+   ``_normalise_attempt_input``.  Pairs missing an ATTEMPT tag
+   are tolerated and surface as ``None`` in the triple, not
+   dropped.
+3. *Per-pair cap enforcement.*  Each pair's
+   ``count_tokens(Q) + count_tokens(A)`` is checked against
+   ``EMBEDDING_MAX_RESPONSE_TOKENS`` independently.  The
+   one-shot retry asks the DH to shorten WHICHEVER pair(s) are
+   over cap, and the merger keeps the shorter of (new, old)
+   per index when the retry only partially worked.
+4. *Filename matrix.*  Confirm at write time:
+   - single → ``<field>.txt``
+   - multi-answer (item 2) → ``<field>_2.txt``
+   - sub-row attempt 002 → ``<field>__002.txt``
+   - sub-row 002 + multi-answer (item 1) →
+     ``<field>__002_1.txt``
+5. *Force-tool list parsing.*  ``attempt_ids=["002"]`` /
+   ``["002", "005", "007"]`` / ``[]`` / ``["none"]`` /
+   ``["002", "garbage"]`` all behave per spec
+   (single-success / multi-success / drop / drop / retry).
+6. *R2 upload fan-out.*  ``upload_attempt_artefacts`` is called
+   ONCE per resolved attempt; each call lands the whitelisted
+   files under ``<prefix>/<session_id>/attempts/<NNN>/`` with
+   the rename pattern.  No cross-attempt collisions.
+7. *Attempt-major sub-row order.*  In a multi-attempt block
+   ``[Q(N), Q(N).1, Q(N).2]`` with two resolved attempts (``002``
+   and ``005``), the system writes in the order:
+   ``Q(N)__002.txt``, ``Q(N)__005.txt``,
+   then ``Q(N).1__002.txt``, ``Q(N).2__002.txt``,
+   then ``Q(N).1__005.txt``, ``Q(N).2__005.txt``.
+   Verify by inspecting the ``[DH]  wrote sub-row …`` log lines.
+8. *Cascade drop on empty / max-retries.*  When the force-tool
+   ends with no resolved attempts, NEITHER the parent's ``.txt``
+   NOR any Q(N).x sub-row file is written.  No placeholders.
+   No R2 keys.
+9. *Cap on QUANT fields unchanged.*  QUANT rows still emit a
+   single verbatim block (the multi-pair / ATTEMPT path is
+   SEMANTIC-only).
+10. *Provider compatibility for the list-based tool.*  Confirm
+    every provider we wire (OpenAI / Anthropic / Google) accepts
+    the ``attempt_ids: list[str]`` schema via langchain's
+    ``bind_tools(tool_choice="save_attempt_artefacts")``.  The
+    list parameter shape is not exotic, but the per-provider
+    json-mode handling sometimes coerces single-element lists
+    to scalars — the parsing code already handles that, but the
+    behaviour should be verified live per provider.
+
+**Suggested test layout.**
+
+- ``extra_utilities/smoke_test_dh_multi.py`` (new) — pure-helper
+  tests for ``_parse_save_body_semantic`` (the 5 shapes above),
+  ``_normalise_attempt_input`` edge cases, ``_safe_cut_point``
+  if not already covered, and ``_resolve_attempt_folder`` with
+  multi-match.  Runnable inside the container the same way the
+  R2 + LLM-routing smokes are.
+- A manual session: configure two identifying attempt-specific
+  rows — one likely to resolve to N=1 (best attempt), one
+  likely to resolve to N≥2 (non-satisfactory attempts).  Add
+  two sub-rows under each.  Run a 3-attempt session.  Verify
+  the per-attempt R2 subtree, the ``[DH]  wrote …`` ordering,
+  and the cascade-drop case (force the DH to ``"none"`` by
+  asking a question whose answer the agent can't anchor to a
+  specific attempt).
+
+**Why deferred.**  Both extensions landed in v9.x; verification
+is a follow-up so we exercise the per-attempt fan-out and the
+multi-answer split against real LLM behaviour rather than
+synthetic SAVE bodies.
+
+**Status.** Open.  Pairs with F14 (Railway identifying-Q
+verification) and F15 (DH response safety net) — same
+"verify-the-DH-works" cluster.
+
+### F17. Scrap empty / "nothing to specify" DH answers instead of saving canonical negation sentences
+
+**Where.**
+- ``agents/database_handler/prompt.md`` — the "Negation-canonical"
+  rewrite rule (rule 9 of the rewrite-rules section currently says
+  to save a short canonical "No problem occurred this session"
+  sentence; this needs reversing for empty content).
+- ``agents/database_handler/database_handler.py`` — the SAVE
+  protocol parser (``_parse_dh_decision`` /
+  ``_parse_save_body_semantic``); ``populate_database``'s per-row
+  write path (currently always writes a ``.txt`` for non-DCII-
+  gated rows).
+- Sidecar ``.meta.json`` writer.
+
+**What.**  When the agent's answer to the DH is essentially
+"nothing of this kind happened" / "there is nothing to specify"
+(a negation-canonical or empty-content reply), the DH should
+NOT save a ``.txt`` file for that (agent, field) at all.  Drop
+the row entirely — same cascade as when an identifying
+attempt-specific question fails to resolve an attempt id, just
+scoped to one row instead of a whole block.
+
+Currently the DH prompt RULE 9 instructs the opposite: "do not
+leave the body empty, ambiguous, or filled with hedges — save a
+canonical short sentence such as ``No problem occurred during
+this session for the User Input Inspector.``".  That rule was
+right when the goal was a uniform per-session folder layout; the
+v9.x RAG layer benefits more from a sparse layout (every saved
+``.txt`` actually carries information worth embedding).
+
+**Proposal sketch.**
+
+1. **New SAVE-body verb (or extend SAVE).**  Two options:
+
+   * **(a) New prefix ``SKIP:``.**  The DH emits ``SKIP: <one-line
+     rationale>`` instead of ``SAVE:`` when there's nothing
+     embedding-worthy.  ``_parse_dh_decision`` learns the new
+     verb; ``populate_database`` writes nothing for that row.
+     The Part-2 message is logged for the DH trace; no ``.txt``
+     or ``.meta.json`` lands on disk.
+   * **(b) Reserved SAVE body sentinel.**  ``SAVE: <NO_CONTENT>``
+     (or similar) tells the system to skip.  Simpler protocol
+     (no new verb) but easier to misfire on a real answer that
+     happens to start with the sentinel.
+
+   I lean toward (a) — explicit verbs are easier for the model
+   to remember and easier for the system to validate.
+
+2. **Prompt updates.**  Replace rule 9 with: "When the agent's
+   answer says nothing of the kind happened this session (no
+   problem to describe, no clarification was needed, no decision
+   was made), emit ``SKIP:`` instead of ``SAVE:``.  Do NOT
+   fabricate a canonical sentence to fill the file.  The system
+   will drop the row from the saved database."  Cross-reference
+   the new rule from the per-field protocol section.
+
+3. **Identifying attempt-specific Q interaction.**  ``SKIP:`` is
+   ALSO the natural verb for "no attempt to identify" — today
+   the force-tool's ``["none"]`` path achieves the same cascade
+   drop for the whole block.  Leave the force-tool behaviour
+   alone; ``SKIP:`` is only for the SAVE turn that follows a
+   resolved cycle (session-scoped row, sub-row, or identifying
+   Q where the cycle ran but the agent's content is empty).
+
+4. **Sidecar layout.**  Today every ``.txt`` carries a sibling
+   ``.meta.json``.  When ``SKIP:`` fires, neither is written —
+   the future RAG layer detects "no entry" by file absence, the
+   same way it would for a DCII-gated DCII row when DCII is off.
+
+5. **Logging.**  The DH log records the ``SKIP:`` rationale so a
+   reviewer can see WHY a row was dropped; only the disk write
+   is suppressed.
+
+**Why deferred.**  Touches the DH protocol shape (a new verb),
+the parser, the per-row write path, and the prompt.  Worth
+batching with F15 (DH response safety net) since both change the
+DH's response handling and both benefit from real-session
+examples to calibrate against.
+
+**Status.** Open.  Pairs with F15 (DH response safety net) —
+both reshape DH save behaviour around "what content actually
+deserves to land in the database".
+
+### F18. UII / Receptionist: don't treat session-level numeric requests as design parameters
+
+**Where.**
+- ``agents/user_input_inspector/prompt.md`` — extraction logic;
+  the rules that decide which user-stated numbers become
+  ``QUANTITATIVE INPUTS`` entries vs ``DESIGN INTENT`` /
+  session-level metadata.
+- ``agents/receptionist/prompt.md`` — disambiguation logic when
+  the Receptionist annotates the user's raw text before
+  forwarding (the annotation lines starting with
+  ``[Receptionist clarification: ...]``).
+- Possibly ``agents/planner/prompt.md`` — the Planner reads the
+  extraction and may also need to recognise a session-level cap
+  vs a parameter value.
+
+**What.**  When the user's prompt contains a number that is
+OBVIOUSLY a session-level instruction — typically "give me 3
+designs", "try 3 different attempts", "produce 5 variations" —
+that number is NOT a design parameter (e.g. it is NOT
+``bladeCount=3``).  It is a count of design CYCLES the user wants
+the system to perform within this session.
+
+The UII currently risks pattern-matching any user-stated integer
+to one of the configurator's integer parameters
+(``bladeCount``, ``innerMaxPos``, ``outerMaxPos`` — the only
+integer-typed entries in the 17-param schema).  A user asking for
+"3 attempts" should not silently end up with ``bladeCount=3`` in
+``QUANTITATIVE INPUTS``.
+
+**Proposal sketch.**
+
+1. **UII prompt — explicit session-vs-parameter rule.**  Add a
+   short paragraph to the extraction rules: "Numbers attached to
+   phrases describing session structure — 'N designs', 'N
+   attempts', 'N variations', 'N different versions', 'try N
+   <something>' — are SESSION-LEVEL counts.  They belong in
+   ``DESIGN INTENT`` (or a new ``SESSION CONSTRAINTS`` section
+   if you keep the prompt strict), NEVER in ``QUANTITATIVE
+   INPUTS`` as a parameter value.  When in doubt about whether a
+   number is a parameter or a session count, prefer DESIGN
+   INTENT and add a one-line note explaining the ambiguity."
+2. **Receptionist annotation rule.**  When the Receptionist
+   disambiguates the user's text (the ``[Receptionist
+   clarification: ...]`` lines appended to ``user_query.txt``),
+   it should call out session-level counts explicitly so the UII
+   sees them tagged: e.g. ``[Receptionist clarification: 'three
+   designs' is a session-level request for 3 design cycles, not
+   a parameter value]``.
+3. **Planner prompt — read the session count.**  The Planner
+   already has visibility into the extraction; add a one-line
+   rule that any ``SESSION CONSTRAINTS`` / count of cycles it
+   sees there caps the number of recovery iterations it can
+   plan without escalating to the user.
+4. **Schema cross-reference.**  Add a short list at the top of
+   the UII rules naming the legitimate integer-typed parameters
+   (``bladeCount``, ``innerMaxPos``, ``outerMaxPos``) so the
+   model has a quick reference for what an integer in the
+   prompt could plausibly map to — anything else integer-shaped
+   is most likely a session-level count.
+
+**Why it matters.**  Misclassifying "3 designs" as
+``bladeCount=3`` is a quietly destructive failure: the user
+gets a 3-bladed propeller when they asked for three different
+designs.  It is the kind of error the rest of the safety net
+(DCII range checks, DCOI visual comparison) does not catch —
+the parameter passes range checks, the mesh generates, the
+visual matches the (misclassified) extraction.  The user only
+notices when they look at the result.
+
+**Why deferred.**  Prompt-only fix; needs careful wording so
+the UII does not over-correct and ignore genuine parameter
+numbers ("set ``bladeCount`` to 3").  Calibrate against a
+small set of realistic user prompts before rolling out.
+
+**Status.** Open.  Lightweight prompt change but worth a
+focused test pass (a handful of user prompts that include
+session-level integers + a handful that include legitimate
+parameter integers) before landing.
+
 ### F9. "Copy parameters list" should return the SELECTED attempt's parameters
 
 **Where.** Backend endpoint `web_app.py:api_parameters()` (currently

@@ -429,3 +429,61 @@ and makes the migration harder.
 frontend.  The JS migration is post-Stage-C / productionisation
 work (F4).  This warning stays in force until F4 lands; at that
 point replace it with an "obsolete" note like W6/W7.
+
+
+## W18. The DH's `save_attempt_artefacts` tool is bound ONLY during the force-tool turn.
+
+The Database Handler is otherwise tool-less, and its prompt says
+so explicitly.  The single exception is the **force-tool turn**
+that fires once per identifying attempt-specific schedule row
+(``scope="attempt"`` AND ``parent_id is None``).  On that turn,
+``_run_force_tool_phase`` calls
+``self.llm.bind_tools([save_attempt_artefacts],
+tool_choice="save_attempt_artefacts")`` to construct a
+PER-TURN tool-bound LLM; the per-turn binding is then thrown away
+and the next turn uses ``self.llm`` unbound.
+
+### Why this matters
+
+* The DH's prompt is calibrated against a tool-less default.  If
+  ``save_attempt_artefacts`` were bound to ``self.llm`` for every
+  turn (rather than per-force-tool-turn), the model would emit
+  spurious tool calls on session-scoped rows and sub-rows,
+  breaking the ASK:/SAVE: protocol.
+* The force-tool's ``tool_choice="save_attempt_artefacts"``
+  *forces* the LLM to call the named tool on its next response.
+  Using this binding outside the force-tool turn would also force
+  unwanted tool calls.
+* Tool-call IDs round-trip through ``ToolMessage(tool_call_id=...)``
+  — the DH's per-save ``self.messages`` accumulates these
+  ToolMessages, and a follow-up invoke that does NOT have the tool
+  bound is fine with them in history (it sees them as already-
+  closed tool calls).
+
+### Where the binding lives
+
+* ``_run_force_tool_phase`` (in
+  ``agents/database_handler/database_handler.py``) — the only
+  place ``bind_tools`` is called on the DH's LLM.
+* The unbound ``self.llm`` is used by every OTHER DH LLM call:
+  ``_formulate_question`` (first-question turn),
+  ``_decide_next`` (ASK/SAVE), ``_enforce_semantic_cap_pair``
+  (compression).
+
+### If you add another DH tool later
+
+Follow the same pattern:
+
+1. Define the tool in ``agents/database_handler/dh_tools.py``.
+2. Bind it via ``self.llm.bind_tools(...)`` on a per-turn basis
+   from a focused helper method (like ``_run_force_tool_phase``).
+3. Append the ``ToolMessage`` to ``self.messages`` and let later
+   unbound invokes see them as closed.
+4. Add a line in this warning to keep the "tools are
+   per-turn-bound" invariant explicit.
+
+Do NOT bind tools to ``self.llm`` permanently — the DH's prompt
+assumes a tool-less default.
+
+**Status.** In force from v9 onward.  The single tool
+(``save_attempt_artefacts``) is the only one wired today.

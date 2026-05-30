@@ -182,6 +182,88 @@ def upload_file(
         return False
 
 
+# Whitelist of artefact filenames inside an attempt folder that the DH
+# uploads when the user identifies a specific attempt via the
+# ``save_attempt_artefacts`` tool.  ``propeller_mesh_components.obj``
+# is intentionally NOT on the list (the user spec explicitly excludes
+# it).  Files outside this set are ignored even if they exist.
+ATTEMPT_ARTEFACT_WHITELIST: tuple[str, ...] = (
+    "parameters.json",
+    "propeller_mesh.obj",
+    "render_isometric.png",
+    "render_top.png",
+    "render_side.png",
+    "description.txt",
+)
+
+
+def upload_attempt_artefacts(
+    attempt_folder: Path,
+    *,
+    session_id: str,
+    attempt_id: str,
+    whitelist: Iterable[str] = ATTEMPT_ARTEFACT_WHITELIST,
+) -> tuple[list[str], list[str]]:
+    """Upload the whitelisted files from one *attempt_folder* to R2.
+
+    Key layout::
+
+        <R2_KEY_PREFIX>/<session_id>/attempts/<attempt_id>/<filename>
+
+    Filename rename pattern (so the file is self-identifying if a
+    downloader saves them flat)::
+
+        <session_id>__<attempt_id>__<original_name>
+
+    Returns ``(uploaded_names, missing_names)`` — both as lists of the
+    *original* filenames so the caller's ToolMessage to the DH can
+    distinguish "uploaded" from "absent on disk".  When R2 is not
+    configured both lists are empty (with a single log warning) so the
+    DH still sees an unambiguous "nothing was saved" signal and the
+    cascade-drop branch fires.
+    """
+    if not is_enabled():
+        logger.warning(
+            "[R2]  not configured; skipping attempt-artefact upload "
+            "for " + str(attempt_folder.resolve())
+        )
+        return [], list(whitelist)
+
+    if not attempt_folder.exists() or not attempt_folder.is_dir():
+        logger.warning(
+            f"[R2]  attempt folder {attempt_folder.resolve()} is "
+            f"missing or not a directory; nothing uploaded."
+        )
+        return [], list(whitelist)
+
+    bucket = _env("R2_BUCKET_NAME")
+    prefix = _key_prefix()
+    base = f"{prefix}{session_id}/attempts/{attempt_id}/"
+
+    uploaded: list[str] = []
+    missing: list[str] = []
+    for name in whitelist:
+        local = attempt_folder / name
+        if not local.is_file():
+            missing.append(name)
+            continue
+        rename = f"{session_id}__{attempt_id}__{name}"
+        key = base + rename
+        if upload_file(local, key):
+            uploaded.append(name)
+        else:
+            # The upload error path already logs; mark as missing so
+            # the DH sees a coherent ToolMessage payload.
+            missing.append(name)
+
+    logger.info(
+        f"[R2]  attempt-artefact upload: {len(uploaded)} uploaded, "
+        f"{len(missing)} missing → "
+        f"s3://{bucket}/{base}"
+    )
+    return uploaded, missing
+
+
 def upload_directory(
     local_dir: Path,
     remote_prefix: str,

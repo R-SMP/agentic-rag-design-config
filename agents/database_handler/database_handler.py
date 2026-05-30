@@ -51,7 +51,7 @@ import logging
 import re
 from pathlib import Path
 
-from langchain_core.messages import HumanMessage, SystemMessage
+from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
 from agents.database_handler.dh_trace import (
     close_dh_logging,
@@ -66,7 +66,7 @@ from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import DH_TEMPLATE
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_DH_STEPS, MAX_DH_TURNS_PER_FIELD
-from config import LOGS_DIR
+from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
 from workflow_settings import settings as workflow_settings
 
 # DH events go to a DEDICATED logger that writes to
@@ -558,29 +558,114 @@ def _parse_dh_decision(text: str) -> tuple[str, str]:
 # answer; reuse the asked question as the saved question).
 # ---------------------------------------------------------------------------
 
-_SAVE_Q_RE = re.compile(
-    r"^\s*QUESTION\s*:\s*(.*?)(?=^\s*ANSWER\s*:|\Z)",
-    re.IGNORECASE | re.DOTALL | re.MULTILINE,
+# Multi-pair SAVE-body parser.  A SEMANTIC SAVE body may contain N
+# pairs (multi-answer split) and/or ``ATTEMPT: <NNN>`` headers
+# preceding each pair (multi-attempt identifying-Q case).  We walk
+# the body line-by-line and accumulate ``(attempt_id_or_None, Q, A)``
+# triples in order.  Each Q/A pair becomes one ``.txt`` file at
+# write time, with naming controlled by the caller (single-pair vs
+# multi-pair vs multi-attempt — see :meth:`_write_entry`).
+_SAVE_LINE_RE = re.compile(
+    r"^\s*(ATTEMPT|QUESTION|ANSWER)\s*:\s*(.*)$",
+    re.IGNORECASE,
 )
-_SAVE_A_RE = re.compile(
-    r"^\s*ANSWER\s*:\s*(.*)\Z",
-    re.IGNORECASE | re.DOTALL | re.MULTILINE,
-)
 
 
-def _parse_save_body_semantic(text: str) -> tuple[str | None, str | None]:
-    """Split a SEMANTIC SAVE body into ``(saved_question, saved_answer)``.
+def _parse_save_body_semantic(
+    text: str,
+) -> list[tuple[str | None, str, str]]:
+    """Split a SEMANTIC SAVE body into a list of ``(attempt_id, Q, A)``
+    triples in order.
 
-    Returns ``(None, None)`` when the expected headers are missing —
-    the caller treats that as a protocol slip and falls back gracefully.
+    Supported shapes:
+
+    * Single Q/A pair (legacy single-answer)::
+
+          QUESTION: ...
+          ANSWER: ...
+
+      → returns ``[(None, q, a)]``.
+
+    * N Q/A pairs back-to-back (multi-answer split, Extension A)::
+
+          QUESTION: q1
+          ANSWER: a1
+          QUESTION: q2
+          ANSWER: a2
+
+      → returns ``[(None, q1, a1), (None, q2, a2)]``.
+
+    * N attempt-tagged blocks (multi-attempt identifying-Q,
+      Extension B)::
+
+          ATTEMPT: 002
+          QUESTION: q1
+          ANSWER: a1
+          ATTEMPT: 005
+          QUESTION: q2
+          ANSWER: a2
+
+      → returns ``[("002", q1, a1), ("005", q2, a2)]``.  The attempt
+      id is normalised through ``_normalise_attempt_input`` so a
+      slug or "attempt NNN" prefix is also accepted.
+
+    * Mixed (illegal — some pairs have ATTEMPT, others don't) — the
+      parser preserves the per-pair attempt_id (``None`` for pairs
+      lacking the header), letting the caller decide how to handle
+      the inconsistency.
+
+    Returns an empty list when the body has no recognisable QUESTION /
+    ANSWER headers — the caller treats that as a protocol slip and
+    falls back to a single-pair best-effort.
     """
     if not text:
-        return None, None
-    q_match = _SAVE_Q_RE.search(text)
-    a_match = _SAVE_A_RE.search(text)
-    if not q_match or not a_match:
-        return None, None
-    return q_match.group(1).strip(), a_match.group(1).strip()
+        return []
+
+    triples: list[tuple[str | None, str, str]] = []
+    current_attempt: str | None = None
+    current_q: str | None = None
+    current_a_buf: list[str] | None = None
+    in_answer = False
+
+    def _flush() -> None:
+        nonlocal current_q, current_a_buf, current_attempt, in_answer
+        if current_q is not None and current_a_buf is not None:
+            ans = "\n".join(current_a_buf).strip()
+            q = current_q.strip()
+            if q or ans:
+                triples.append((current_attempt, q, ans))
+        current_q = None
+        current_a_buf = None
+        in_answer = False
+
+    for line in text.splitlines():
+        m = _SAVE_LINE_RE.match(line)
+        if m:
+            tag = m.group(1).upper()
+            body = m.group(2).strip()
+            if tag == "ATTEMPT":
+                _flush()
+                # Normalise inline so the caller doesn't have to.
+                norm = _normalise_attempt_input(body)
+                current_attempt = norm if norm is not None else body
+                continue
+            if tag == "QUESTION":
+                _flush()
+                current_q = body
+                in_answer = False
+                continue
+            if tag == "ANSWER":
+                current_a_buf = [body] if body else []
+                in_answer = True
+                continue
+        # Continuation line — append to whichever buffer is active.
+        if in_answer and current_a_buf is not None:
+            current_a_buf.append(line)
+        elif current_q is not None and not in_answer:
+            # multi-line question continuation
+            current_q = (current_q + "\n" + line).rstrip()
+    _flush()
+    return triples
 
 
 # ---------------------------------------------------------------------------
@@ -756,6 +841,89 @@ def _extract_attempt_id(raw_text: str) -> str | None:
         if idx is not None:
             return f"attempt {idx:03d}"
     return None
+
+
+# Used by the force-tool path's input validator.  Accepts:
+#   * "002" / "2" / "  3  "
+#   * "attempt 002" / "attempt #2"
+#   * a full slug like "20260530_142312_002_descriptor"
+# Returns the zero-padded 3-digit number, or ``None`` when the input
+# looks like none of the above.
+_BARE_NUMBER_RE = re.compile(r"^\s*#?\s*(\d{1,4})\s*$")
+
+
+def _normalise_attempt_input(raw: str) -> str | None:
+    """Pick the 3-digit attempt number out of *raw*.
+
+    Returns ``"NNN"`` (zero-padded) or ``None`` when nothing matched.
+    The literal string ``"none"`` (case-insensitive) is a separate
+    sentinel handled by the caller — this helper does NOT recognise
+    it (so a number is unambiguously distinguishable from "no
+    attempt").
+    """
+    if not raw:
+        return None
+    s = raw.strip()
+    m = _BARE_NUMBER_RE.match(s)
+    if m:
+        return f"{int(m.group(1)):03d}"
+    m = _ATTEMPT_NUMBER_RE.search(s)
+    if m:
+        return f"{int(m.group(1)):03d}"
+    m = _ATTEMPT_SLUG_FULL_RE.search(s)
+    if m:
+        slug = m.group(1)
+        # The slug has the shape YYYYMMDD_HHMMSS_NNN_descriptor; the
+        # 3-digit segment is the 3rd underscore-delimited field.
+        parts = slug.split("_")
+        if len(parts) >= 3 and parts[2].isdigit():
+            return f"{int(parts[2]):03d}"
+    m = _ATTEMPT_ORDINAL_RE.search(s)
+    if m:
+        idx = _ORDINAL_TO_NUM.get(m.group(1).lower())
+        if idx is not None:
+            return f"{idx:03d}"
+    return None
+
+
+def _resolve_attempt_folder(
+    attempt_number_nnn: str,
+    attempts_root: Path,
+    session_start_ts: float | None,
+) -> tuple[Path | None, str]:
+    """Locate the local attempt folder matching ``attempt_number_nnn``.
+
+    *attempt_number_nnn* is the zero-padded 3-digit string returned by
+    :func:`_normalise_attempt_input`.  *session_start_ts* (epoch
+    seconds) is used to filter cross-session matches when the same
+    NNN exists in earlier session folders that the End-Session sweep
+    hasn't archived yet.
+
+    Returns ``(folder, status)`` where ``status`` is one of:
+        ``"ok"``           — exactly one match found, returned in folder
+        ``"none-match"``   — zero folders match this NNN
+        ``"multi-match"``  — more than one folder matches; the most
+                              recent (by mtime) is returned, and the
+                              caller may log a warning
+    """
+    if not attempts_root.exists() or not attempts_root.is_dir():
+        return None, "none-match"
+    pattern = f"*_{attempt_number_nnn}_*"
+    candidates = sorted(
+        (p for p in attempts_root.glob(pattern) if p.is_dir()),
+        key=lambda p: p.stat().st_mtime,
+        reverse=True,  # most-recent first
+    )
+    if session_start_ts is not None:
+        candidates = [
+            p for p in candidates
+            if p.stat().st_mtime >= session_start_ts - 1.0  # 1s slack
+        ]
+    if not candidates:
+        return None, "none-match"
+    if len(candidates) == 1:
+        return candidates[0], "ok"
+    return candidates[0], "multi-match"
 
 
 def _clean_semantic_body(body: str) -> str:
@@ -956,26 +1124,40 @@ class DatabaseHandler(BaseChainAgent):
                     for i, e in enumerate(SCHEDULE)
                 ]
 
-            # Maps an identifying Q(N)'s ``id`` to the textual attempt
-            # identifier extracted from its raw reply.  ``None`` means
-            # the parent ran but no identifier could be parsed (even
-            # after the re-ask) — children of that parent are skipped
-            # with empty-placeholder writes.
-            attempt_id_by_parent: dict[str, str | None] = {}
+            # Maps an identifying Q(N)'s ``id`` to the LIST of textual
+            # attempt identifiers the force-tool resolved.  An empty
+            # list means the parent ran but no identifier could be
+            # bound (explicit "none" or 3-retry exhaustion) — children
+            # of that parent are silently skipped (no .txt, no
+            # placeholder).  Multi-attempt parents land here with
+            # ``len(value) >= 2``.
+            attempt_ids_by_parent: dict[str, list[str]] = {}
 
             # Session-id slug embedded in every saved .txt and used
             # as the per-session prefix for the R2 mirror.  Same value
             # the archive sweep uses under previous_sessions/.
             session_id = session_dir.name
 
+            # Epoch seconds at the START of the live session.  Used
+            # by the force-tool path's attempt-folder resolver to
+            # filter out attempt folders left behind by earlier (un-
+            # archived) sessions whose folder names happen to share
+            # the same 3-digit NNN.  Session.session_ts is recorded
+            # at session-build time, so any attempt generated during
+            # this session has mtime >= session_start_ts.
+            try:
+                session_start_ts = self.session.session_ts.timestamp()
+            except Exception:
+                session_start_ts = None  # disables filtering
+
             written = 0
-            for entry in schedule_entries:
+            n_entries = len(schedule_entries)
+            i = 0
+            while i < n_entries:
+                entry = schedule_entries[i]
                 # Publish the field's short label so the flowchart's
                 # caption under the DH box updates to the question
-                # currently being asked.  Uses the same ``generic_tool``
-                # convention every other agent uses; the frontend
-                # ignores the ``end`` state, so the label PERSISTS
-                # until the next field overwrites it.
+                # currently being asked.
                 try:
                     from agents.shared.viz_bus import publish as _viz_publish
                     _viz_publish({
@@ -989,13 +1171,11 @@ class DatabaseHandler(BaseChainAgent):
                 field = entry["field"]
                 parent_id = entry.get("parent_id")
                 scope = entry.get("scope", "session")
-                to_agents = entry.get("to_agents") or []
 
                 # DCII gating.  When the DCII is disabled this session
                 # we still create the agent folder and write an EMPTY
-                # placeholder file for every DCII-bound field, so the
-                # per-session folder layout stays uniform across runs
-                # regardless of the toggle.
+                # placeholder file, so the per-session folder layout
+                # stays uniform across runs regardless of the toggle.
                 if (
                     entry.get("requires_dcii_enabled")
                     and not dc_inspector_enabled
@@ -1020,41 +1200,22 @@ class DatabaseHandler(BaseChainAgent):
                             f"[DH]  failed to write empty placeholder "
                             f"for {agent_key}/{field}: {exc}"
                         )
+                    i += 1
                     continue
 
-                # Attempt-specific sub-row (Q(N).x) whose parent had no
-                # parseable attempt id → empty placeholder + skip.
-                if parent_id is not None and attempt_id_by_parent.get(parent_id) is None and parent_id in attempt_id_by_parent:
+                # Sub-rows reached at the main level mean they survived
+                # the inner attempt-major loop OR their parent failed.
+                # Either way, drop them silently — the parent's block
+                # is the single point of authority for sub-row writes
+                # (whether N=1 or N>=2 attempts).
+                if parent_id is not None:
                     logger.info(
-                        f"[DH]  parent Q row {parent_id!r} did not "
-                        f"resolve an attempt id; writing empty "
-                        f"placeholder for sub-field '{field}'"
+                        f"[DH]  sub-row '{field}' reached the main "
+                        f"loop without being handled by its parent's "
+                        f"block (parent_id={parent_id!r}); skipping."
                     )
-                    try:
-                        path = self._write_empty_entry(
-                            session_dir=session_dir,
-                            agent_key=agent_key,
-                            field=field,
-                        )
-                        self._write_sidecar_meta(
-                            path, entry=entry, attempt_id=None,
-                        )
-                        written += 1
-                    except OSError as exc:
-                        logger.warning(
-                            f"[DH]  failed to write empty placeholder "
-                            f"for {agent_key}/{field}: {exc}"
-                        )
+                    i += 1
                     continue
-
-                # Resolve the parent's attempt id ONCE, up front, so
-                # every branch below (error, success, sidecar) can
-                # reference it without re-computing.
-                resolved_for_parent = (
-                    attempt_id_by_parent.get(parent_id)
-                    if parent_id is not None
-                    else None
-                )
 
                 agent = orchestrator._agents_by_key.get(agent_key)
                 agent_state = self.session.agent_states.get(agent_key)
@@ -1073,32 +1234,260 @@ class DatabaseHandler(BaseChainAgent):
                             f"states; the DH could not interview it."
                         ),
                         session_id=session_id,
-                        attempt_id=resolved_for_parent,
+                        attempt_id=None,
                     )
                     self._write_sidecar_meta(
                         err_path, entry=entry, attempt_id=None,
                     )
+                    i += 1
                     continue
 
-                # Prefix the description with the attempt anchor for
-                # sub-rows whose parent resolved an id.  The DH's
-                # _formulate_question reads ``description`` verbatim, so
-                # the anchor flows naturally into both the asked and the
-                # saved (embedded) question.
+                is_identifying_attempt_q = (
+                    scope == "attempt" and parent_id is None
+                )
                 effective_description = entry.get("description", "")
-                if parent_id is not None and resolved_for_parent:
-                    effective_description = (
-                        f"For {resolved_for_parent}: "
-                        f"{effective_description}"
-                    )
 
                 logger.info(
                     f"[DH]  starting conversation with {agent_key} "
                     f"(field='{field}', type={entry.get('type', 'Semantic')}, "
-                    f"scope={scope}, parent_id={parent_id})"
+                    f"scope={scope}, identifying={is_identifying_attempt_q})"
                 )
+
+                # ----- IDENTIFYING ATTEMPT-SPECIFIC ROW --------------
+                if is_identifying_attempt_q:
+                    try:
+                        triples, raw_answer, resolved_attempt_ids = (
+                            self._run_identifying_conversation(
+                                agent_key=agent_key,
+                                agent_system_prompt=getattr(agent, "system_prompt", "") or "",
+                                agent_provider=getattr(agent, "provider", self.provider),
+                                agent_base_llm=getattr(agent, "base_llm", None) or agent.llm,
+                                agent_messages=list(agent_state.messages),
+                                field=field,
+                                description=effective_description,
+                                field_type=entry.get("type", "Semantic"),
+                                session_id=session_id,
+                                session_start_ts=session_start_ts,
+                            )
+                        )
+                    except Exception as exc:  # pragma: no cover
+                        logger.warning(
+                            f"[DH]  identifying conversation with "
+                            f"{agent_key}/{field} raised "
+                            f"{type(exc).__name__}: {exc}; treating as "
+                            f"'no attempts' (cascade drop)."
+                        )
+                        triples, resolved_attempt_ids = [], []
+
+                    attempt_ids_by_parent[entry["id"]] = list(resolved_attempt_ids)
+
+                    # Locate the contiguous block of sub-rows whose
+                    # parent_id matches this row's id.  The sub-rows
+                    # come right after the parent in the schedule
+                    # order (the validation in dh_schedule enforces
+                    # contiguity).
+                    sub_rows: list[dict] = []
+                    j = i + 1
+                    while j < n_entries and schedule_entries[j].get("parent_id") == entry["id"]:
+                        sub_rows.append(schedule_entries[j])
+                        j += 1
+
+                    if not resolved_attempt_ids:
+                        logger.warning(
+                            f"[DH]  identifying Q '{field}' resolved "
+                            f"NO attempts; DROPPING this row's .txt "
+                            f"AND every Q(N).x sub-row "
+                            f"({len(sub_rows)} children) entirely."
+                        )
+                        i = j
+                        continue
+
+                    n_attempts = len(resolved_attempt_ids)
+                    # Write the identifying Q's .txt file(s).
+                    if n_attempts == 1:
+                        # Single attempt: one .txt for the row.
+                        # Multi-answer split is allowed (rare for
+                        # identifying Qs, but possible).
+                        only_attempt = resolved_attempt_ids[0]
+                        for idx, (_attempt_tag, q, a) in enumerate(triples):
+                            item_index = (
+                                idx + 1 if len(triples) > 1 else None
+                            )
+                            try:
+                                path = self._write_entry(
+                                    session_dir=session_dir,
+                                    agent_key=agent_key,
+                                    field=field,
+                                    question=q,
+                                    answer=a,
+                                    session_id=session_id,
+                                    attempt_id=only_attempt,
+                                    attempt_suffix=None,
+                                    item_index=item_index,
+                                )
+                                self._write_sidecar_meta(
+                                    path, entry=entry,
+                                    attempt_id=only_attempt,
+                                )
+                                logger.info(
+                                    f"[DH]  wrote identifying-Q {path}"
+                                )
+                                written += 1
+                            except OSError as exc:
+                                logger.warning(
+                                    f"[DH]  failed to write identifying-Q "
+                                    f"item {idx} for {agent_key}: {exc}"
+                                )
+                    else:
+                        # Multi-attempt: one .txt per resolved
+                        # attempt.  Each pair in ``triples`` should
+                        # carry an ATTEMPT tag the parser recovered
+                        # from the SAVE body; we honour that order
+                        # but cross-check against the resolved list.
+                        by_attempt: dict[str, tuple[str, str]] = {}
+                        for (attempt_tag, q, a) in triples:
+                            norm = (
+                                _normalise_attempt_input(attempt_tag)
+                                if attempt_tag else None
+                            )
+                            if norm and norm not in by_attempt:
+                                by_attempt[norm] = (q, a)
+                        for attempt_str in resolved_attempt_ids:
+                            norm = _normalise_attempt_input(attempt_str)
+                            if not norm:
+                                continue
+                            q_a = by_attempt.get(norm)
+                            if q_a is None and triples:
+                                # DH didn't tag a pair for this attempt
+                                # — fall back to the first untagged
+                                # pair (best effort).
+                                _t, fq, fa = triples[0]
+                                q_a = (fq, fa)
+                                logger.warning(
+                                    f"[DH]  identifying multi-attempt "
+                                    f"SAVE missing ATTEMPT: {norm}; "
+                                    f"reusing first pair as fallback."
+                                )
+                            if q_a is None:
+                                continue
+                            q, a = q_a
+                            try:
+                                path = self._write_entry(
+                                    session_dir=session_dir,
+                                    agent_key=agent_key,
+                                    field=field,
+                                    question=q,
+                                    answer=a,
+                                    session_id=session_id,
+                                    attempt_id=attempt_str,
+                                    attempt_suffix=norm,
+                                    item_index=None,
+                                )
+                                self._write_sidecar_meta(
+                                    path, entry=entry,
+                                    attempt_id=attempt_str,
+                                )
+                                logger.info(
+                                    f"[DH]  wrote identifying-Q "
+                                    f"{path.name} (attempt {norm})"
+                                )
+                                written += 1
+                            except OSError as exc:
+                                logger.warning(
+                                    f"[DH]  failed to write identifying-Q "
+                                    f"for attempt {norm}: {exc}"
+                                )
+
+                    # ATTEMPT-MAJOR sub-row loop.  For each resolved
+                    # attempt, run every sub-row's interview about THAT
+                    # specific attempt, in schedule order.  Per the v9
+                    # spec, all sub-rows for attempt 1 complete before
+                    # attempt 2's begin.
+                    for attempt_str in resolved_attempt_ids:
+                        norm = _normalise_attempt_input(attempt_str)
+                        if not norm:
+                            continue
+                        for sub_entry in sub_rows:
+                            sub_agent_key = sub_entry["agent_key"]
+                            sub_field = sub_entry["field"]
+                            sub_agent = orchestrator._agents_by_key.get(sub_agent_key)
+                            sub_state = self.session.agent_states.get(sub_agent_key)
+                            if sub_agent is None or sub_state is None:
+                                logger.warning(
+                                    f"[DH]  sub-row agent "
+                                    f"{sub_agent_key!r} not in registry; "
+                                    f"skipping for attempt {norm}."
+                                )
+                                continue
+                            sub_desc = (
+                                f"For {attempt_str}: "
+                                f"{sub_entry.get('description', '')}"
+                            )
+                            try:
+                                sub_triples, _sub_raw = (
+                                    self._run_one_conversation(
+                                        agent_key=sub_agent_key,
+                                        agent_system_prompt=getattr(sub_agent, "system_prompt", "") or "",
+                                        agent_provider=getattr(sub_agent, "provider", self.provider),
+                                        agent_base_llm=getattr(sub_agent, "base_llm", None) or sub_agent.llm,
+                                        agent_messages=list(sub_state.messages),
+                                        field=sub_field,
+                                        description=sub_desc,
+                                        field_type=sub_entry.get("type", "Semantic"),
+                                    )
+                                )
+                            except Exception as exc:  # pragma: no cover
+                                logger.warning(
+                                    f"[DH]  sub-row conversation for "
+                                    f"{sub_agent_key}/{sub_field} "
+                                    f"(attempt {norm}) raised "
+                                    f"{type(exc).__name__}: {exc}; "
+                                    f"skipping."
+                                )
+                                continue
+
+                            # Multi-attempt → always use the __NNN
+                            # suffix on sub-row files so they don't
+                            # collide across attempts.
+                            attempt_suffix = norm if n_attempts >= 2 else None
+                            for idx, (_t, sq, sa) in enumerate(sub_triples):
+                                item_index = (
+                                    idx + 1 if len(sub_triples) > 1 else None
+                                )
+                                try:
+                                    spath = self._write_entry(
+                                        session_dir=session_dir,
+                                        agent_key=sub_agent_key,
+                                        field=sub_field,
+                                        question=sq,
+                                        answer=sa,
+                                        session_id=session_id,
+                                        attempt_id=attempt_str,
+                                        attempt_suffix=attempt_suffix,
+                                        item_index=item_index,
+                                    )
+                                    self._write_sidecar_meta(
+                                        spath, entry=sub_entry,
+                                        attempt_id=attempt_str,
+                                    )
+                                    logger.info(
+                                        f"[DH]  wrote sub-row {spath.name} "
+                                        f"(attempt {norm})"
+                                    )
+                                    written += 1
+                                except OSError as exc:
+                                    logger.warning(
+                                        f"[DH]  failed to write sub-row "
+                                        f"for {sub_agent_key}/{sub_field} "
+                                        f"(attempt {norm}): {exc}"
+                                    )
+
+                    i = j  # skip past the sub-rows the inner loop just handled
+                    continue
+
+                # ----- SESSION-SCOPED ROW (or QUANT) -----------------
                 try:
-                    question, answer, raw_answer = self._run_one_conversation(
+                    triples, raw_answer = self._run_one_conversation(
                         agent_key=agent_key,
                         agent_system_prompt=getattr(agent, "system_prompt", "") or "",
                         agent_provider=getattr(agent, "provider", self.provider),
@@ -1122,118 +1511,80 @@ class DatabaseHandler(BaseChainAgent):
                             f"{type(exc).__name__}: {exc}"
                         ),
                         session_id=session_id,
-                        attempt_id=resolved_for_parent,
+                        attempt_id=None,
                     )
                     self._write_sidecar_meta(
                         err_path, entry=entry, attempt_id=None,
                     )
-                    if scope == "attempt" and parent_id is None:
-                        # Identifying Q failed entirely — mark as
-                        # "unresolved" so its children skip cleanly.
-                        attempt_id_by_parent[entry["id"]] = None
+                    i += 1
                     continue
 
-                # Attempt-binding for identifying Q(N) rows: parse the
-                # raw reply.  On miss, re-ask the same agent ONCE with
-                # an explicit naming instruction.
-                if scope == "attempt" and parent_id is None:
-                    attempt_id = _extract_attempt_id(raw_answer)
-                    if attempt_id is None:
+                for idx, (_t, q, a) in enumerate(triples):
+                    item_index = idx + 1 if len(triples) > 1 else None
+                    try:
+                        path = self._write_entry(
+                            session_dir=session_dir,
+                            agent_key=agent_key,
+                            field=field,
+                            question=q,
+                            answer=a,
+                            session_id=session_id,
+                            attempt_id=None,
+                            attempt_suffix=None,
+                            item_index=item_index,
+                        )
+                        self._write_sidecar_meta(
+                            path, entry=entry, attempt_id=None,
+                        )
                         logger.info(
-                            f"[DH]  no attempt id parsed from "
-                            f"{agent_key}/{field}; re-asking with "
-                            f"explicit instruction."
+                            f"[DH]  wrote {path.name}"
+                            + (f" (item {item_index}/{len(triples)})"
+                               if item_index else "")
                         )
-                        explicit = (
-                            f"{effective_description}\n\n(IMPORTANT: in "
-                            f"your answer, please name the exact attempt "
-                            f"you refer to by its identifier — an "
-                            f"attempt folder slug like "
-                            f"'YYYYMMDD_HHMMSS_NNN_<descriptor>' or an "
-                            f"'attempt NNN' / 'attempt #NNN' phrase — so "
-                            f"the system can bind follow-up questions to "
-                            f"the same attempt.)"
-                        )
-                        try:
-                            (
-                                question_retry,
-                                answer_retry,
-                                raw_answer_retry,
-                            ) = self._run_one_conversation(
-                                agent_key=agent_key,
-                                agent_system_prompt=getattr(agent, "system_prompt", "") or "",
-                                agent_provider=getattr(agent, "provider", self.provider),
-                                agent_base_llm=getattr(agent, "base_llm", None) or agent.llm,
-                                agent_messages=list(agent_state.messages),
-                                field=field,
-                                description=explicit,
-                                field_type=entry.get("type", "Semantic"),
-                            )
-                            attempt_id = _extract_attempt_id(raw_answer_retry)
-                            if attempt_id is not None:
-                                question, answer, raw_answer = (
-                                    question_retry,
-                                    answer_retry,
-                                    raw_answer_retry,
-                                )
-                        except Exception as exc:  # pragma: no cover
-                            logger.warning(
-                                f"[DH]  attempt-id re-ask failed for "
-                                f"{agent_key}/{field}: {exc}"
-                            )
-                    attempt_id_by_parent[entry["id"]] = attempt_id
-                    if attempt_id is None:
+                        written += 1
+                    except OSError as exc:
                         logger.warning(
-                            f"[DH]  could not bind attempt id for "
-                            f"{agent_key}/{field}; children of this row "
-                            f"will be skipped with empty placeholders."
+                            f"[DH]  failed to write entry for "
+                            f"{agent_key}: {exc}"
                         )
-
-                try:
-                    bound_attempt = (
-                        attempt_id_by_parent.get(entry["id"])
-                        if (scope == "attempt" and parent_id is None)
-                        else resolved_for_parent
-                    )
-                    path = self._write_entry(
-                        session_dir=session_dir,
-                        agent_key=agent_key,
-                        field=field,
-                        question=question,
-                        answer=answer,
-                        session_id=session_id,
-                        attempt_id=bound_attempt,
-                    )
-                    self._write_sidecar_meta(
-                        path, entry=entry, attempt_id=bound_attempt,
-                    )
-                    logger.info(
-                        f"[DH]  wrote {path}\n"
-                        f"{_format_block('FINAL saved body:', answer)}"
-                    )
-                    written += 1
-                except OSError as exc:
-                    logger.warning(
-                        f"[DH]  failed to write entry for {agent_key}: {exc}"
-                    )
+                i += 1
 
             logger.info(
                 f"[DH]  populate_database end; entries written={written}"
             )
 
+            # Snapshot the user's text inputs + reference images +
+            # image descriptions into the database tree, so the R2
+            # mirror below picks them up alongside the per-agent
+            # .txt files.  Best-effort: a copy failure logs a
+            # warning but does NOT break the rest of the save.
+            try:
+                n_inputs = self._collect_user_inputs(session_dir)
+                logger.info(
+                    f"[DH]  collected {n_inputs} user-input file(s) "
+                    f"into {session_dir / 'user_inputs'}"
+                )
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.warning(
+                    f"[DH]  user-input collection raised "
+                    f"({type(exc).__name__}: {exc}); save kept locally."
+                )
+
             # Mirror the local session_dir to Cloudflare R2 when
-            # configured.  Best-effort: a failure here logs a warning
-            # but never breaks the local save the user just confirmed.
+            # configured.  Suffix whitelist covers both the DH's .txt
+            # bodies AND the user-input PNG/JPG images collected just
+            # above.  Best-effort: a failure here logs a warning but
+            # never breaks the local save the user just confirmed.
             try:
                 from agents.shared import r2_uploader as _r2
                 if _r2.is_enabled():
                     n_up = _r2.upload_directory(
                         session_dir,
                         remote_prefix=f"{session_id}/",
-                        suffixes=(".txt",),
+                        suffixes=(".txt", ".png", ".jpg", ".jpeg"),
                     )
                     logger.info(
-                        f"[DH]  R2 mirror complete: {n_up} .txt files "
+                        f"[DH]  R2 mirror complete: {n_up} file(s) "
                         f"uploaded under prefix {session_id}/"
                     )
                 else:
@@ -1276,17 +1627,24 @@ class DatabaseHandler(BaseChainAgent):
         field: str,
         description: str,
         field_type: str,
-    ) -> tuple[str, str, str]:
+    ) -> tuple[list[tuple[str | None, str, str]], str]:
         """Run one DH-driven conversation about *field* with the named agent.
+
+        Returns ``(triples, raw_last_answer)`` where ``triples`` is a
+        list of ``(attempt_id, question, answer)`` items in DH-emitted
+        order.  For non-identifying conversations the attempt_id slot
+        is ``None``; the multi-attempt SAVE format only fires from
+        :meth:`_run_identifying_conversation`.  Multi-answer split
+        (Extension A) is supported here: when the DH emits N
+        QUESTION:/ANSWER: pairs, all N show up in the returned list.
 
         Loop:
           1. DH formulates an initial question and the system delivers
              it to Agent A.
           2. Agent A replies.
           3. DH emits ``ASK: ...`` (loop) or ``SAVE: ...`` (terminate).
-          4. For SEMANTIC fields, the saved body is checked against the
-             token cap; if over, the DH is asked once for a shorter
-             version.
+          4. For SEMANTIC fields, EACH pair is checked against the
+             per-pair token cap; pairs over cap get a one-shot retry.
 
         v3 Phase 1 commit 6: the conversation runs entirely in a local
         ``convo_buffer`` list seeded from *agent_messages* (a copy of
@@ -1395,41 +1753,48 @@ class DatabaseHandler(BaseChainAgent):
             final_body = "(no usable content was produced for this field this session)"
 
         if is_semantic:
-            # New SEMANTIC SAVE shape: the body itself carries
-            # QUESTION: and ANSWER: headers.  Defensive: when the DH
-            # forgets the headers, treat the whole body as the answer
-            # and reuse the asked question as the saved question
-            # (cleaned through the same safety net).
-            saved_q, saved_a = _parse_save_body_semantic(final_body)
-            if saved_q is None or saved_a is None:
+            # SEMANTIC SAVE shape (v9.1+): one or more QUESTION:/
+            # ANSWER: pairs back-to-back (multi-answer split is
+            # allowed when the agent's reply covers N distinct
+            # items).  Defensive: when no pairs parse, fall back to
+            # a single pair built from the asked question + the
+            # whole body.
+            triples = _parse_save_body_semantic(final_body)
+            if not triples:
                 logger.warning(
                     f"[DH]  SAVE body for {agent_key}/{field} did not "
                     f"contain QUESTION:/ANSWER: headers; using asked "
-                    f"question + whole body as fallback."
+                    f"question + whole body as a single-pair fallback."
                 )
-                saved_q = first_question
-                saved_a = final_body
+                triples = [(None, first_question, final_body)]
 
             # Safety-net cleanup BEFORE the cap check so the cap
-            # measures what will actually be written.
-            saved_q = _clean_semantic_body(saved_q) or saved_q
-            saved_a = _clean_semantic_body(saved_a) or saved_a
+            # measures what will actually be written.  Strip the
+            # ATTEMPT tag here — non-identifying conversations don't
+            # honour it, but a stray one in the prose shouldn't break
+            # the embedding either.
+            cleaned: list[tuple[str | None, str, str]] = []
+            for (_attempt, q, a) in triples:
+                cq = _clean_semantic_body(q) or q
+                ca = _clean_semantic_body(a) or a
+                cleaned.append((None, cq, ca))
 
-            saved_q, saved_a = self._enforce_semantic_cap_pair(
+            cleaned = self._enforce_semantic_cap_pairs(
                 agent_key=agent_key,
                 field=field,
                 description=description,
-                saved_question=saved_q,
-                saved_answer=saved_a,
+                triples=cleaned,
             )
-            # Third return value is the RAW last agent answer (before
-            # any cleanup).  populate_database needs it for attempt-id
-            # extraction — the cleaned saved_a has paths and slugs
-            # stripped, which would defeat _extract_attempt_id.
-            return saved_q, saved_a, last_answer
+            # Return shape: (triples, raw_last_answer).  The raw last
+            # answer is preserved so any future extension that needs
+            # the un-cleaned reply (none today; identifying-Q used to)
+            # can still reach it.
+            return cleaned, last_answer
 
-        # QUANTITATIVE — legacy single-body path, untouched.
-        return first_question, final_body, last_answer
+        # QUANTITATIVE — single-body path.  Wrap as a one-element
+        # list of triples with attempt_id=None so the caller has a
+        # uniform interface.
+        return [(None, first_question, final_body)], last_answer
 
     # Mechanical tail clause appended to every DH question sent to an
     # agent.  Reduces the cleanup burden by asking the agent up-front
@@ -1448,6 +1813,445 @@ class DatabaseHandler(BaseChainAgent):
         "other agent or the user; the chain is over and your reply "
         "is consumed only by me.]"
     )
+
+    # ------------------------------------------------------------------
+    # Force-tool variant for IDENTIFYING attempt-specific questions
+    # ------------------------------------------------------------------
+    #
+    # Identifying attempt-specific rows are top-level rows with
+    # ``scope="attempt"`` and ``parent_id=None``.  They pin down WHICH
+    # design attempt this block of questions is about.  The DH is
+    # forced to call ``save_attempt_artefacts`` after Agent A's first
+    # reply; the tool's argument is either the attempt number Agent A
+    # named (e.g. ``"002"``, ``"attempt 002"``, a full slug) or the
+    # literal string ``"none"`` when no attempt could be identified.
+    #
+    # Up to ``_MAX_FORCE_TOOL_RETRIES`` retries; after that, the
+    # system synthesises a ``None`` outcome and drops the whole
+    # block (this row's .txt + every Q(N).x sub-row).
+    # ------------------------------------------------------------------
+
+    _MAX_FORCE_TOOL_RETRIES = 3
+
+    def _run_identifying_conversation(
+        self,
+        agent_key: str,
+        agent_system_prompt: str,
+        agent_provider: str,
+        agent_base_llm,
+        agent_messages: list,
+        field: str,
+        description: str,
+        field_type: str,
+        session_id: str,
+        session_start_ts: float | None,
+    ) -> tuple[
+        list[tuple[str | None, str, str]],
+        str,
+        list[str],
+    ]:
+        """Identifying attempt-specific variant of :meth:`_run_one_conversation`.
+
+        Returns ``(triples, raw_last_answer, resolved_attempt_ids)``.
+
+        * ``resolved_attempt_ids`` — list of ``"attempt NNN"`` strings
+          the force-tool resolved (may have multiple entries for the
+          multi-attempt case; empty list on explicit-none / max-retries).
+        * ``triples`` — for SEMANTIC: list of ``(attempt_id, Q, A)``
+          pairs the DH emitted in SAVE: (multi-attempt → one per
+          attempt with ATTEMPT: tag; single-attempt → may still be
+          multi-pair if the DH split the answer).  Empty when the
+          force-tool returned no attempts (cascade drop).
+        * ``raw_last_answer`` — Agent A's final un-cleaned reply, kept
+          for any future extension that needs it.
+        """
+        convo_buffer: list = list(agent_messages)
+        is_semantic = (field_type or "Semantic").strip().lower() == "semantic"
+
+        # Step 1 — DH formulates the question.
+        first_question = self._formulate_question(
+            agent_key=agent_key,
+            field=field,
+            description=description,
+            field_type=field_type,
+        )
+        logger.info(
+            f"[DH]  identifying-Q initial question for {agent_key}/{field}\n"
+            f"{_format_block('DH -> ' + agent_key + ':', first_question)}"
+        )
+
+        # Step 2 — Agent A's first reply.
+        first_answer = self._ask_agent(
+            agent_key=agent_key,
+            agent_system_prompt=agent_system_prompt,
+            agent_provider=agent_provider,
+            agent_base_llm=agent_base_llm,
+            convo_buffer=convo_buffer,
+            field=field,
+            question=first_question,
+        )
+        self.messages.append(
+            HumanMessage(
+                content=(
+                    f"Agent: {agent_key}\nField: {field}\n"
+                    f"Field type: {field_type} (IDENTIFYING attempt-specific)\n"
+                    f"My question to {agent_key}: {first_question}\n"
+                    f"{agent_key}'s reply: {first_answer}"
+                )
+            )
+        )
+
+        # Step 3 — FORCE-TOOL PHASE.  Returns a LIST of resolved ids
+        # (or an empty list on explicit-none / max-retries).
+        resolved_attempt_ids, reason = self._run_force_tool_phase(
+            agent_key=agent_key,
+            field=field,
+            agent_last_answer=first_answer,
+            session_id=session_id,
+            session_start_ts=session_start_ts,
+        )
+        if not resolved_attempt_ids:
+            logger.info(
+                f"[DH]  force-tool resolved 'no attempts' for "
+                f"{agent_key}/{field} (reason={reason}); the whole "
+                f"block will be dropped."
+            )
+            return [], first_answer, []
+
+        # Step 4 — DH decide loop (ASK/SAVE).  The ToolMessages from
+        # the force-tool phase are already in self.messages, so the
+        # DH's SAVE: body naturally references the resolved attempts.
+        last_question = first_question
+        last_answer = first_answer
+        final_body: str | None = None
+        for round_idx in range(MAX_DH_TURNS_PER_FIELD):
+            decision_kind, decision_payload = self._decide_next(
+                agent_key=agent_key,
+                field=field,
+                field_type=field_type,
+                description=description,
+                last_question=last_question,
+                last_answer=last_answer,
+                round_idx=round_idx,
+            )
+            if decision_kind == "SAVE":
+                final_body = decision_payload
+                break
+            if decision_kind == "ASK":
+                last_question = decision_payload
+                last_answer = self._ask_agent(
+                    agent_key=agent_key,
+                    agent_system_prompt=agent_system_prompt,
+                    agent_provider=agent_provider,
+                    agent_base_llm=agent_base_llm,
+                    convo_buffer=convo_buffer,
+                    field=field,
+                    question=last_question,
+                )
+                self.messages.append(
+                    HumanMessage(
+                        content=(
+                            f"Agent: {agent_key}\nField: {field}\n"
+                            f"My follow-up to {agent_key}: {last_question}\n"
+                            f"{agent_key}'s reply: {last_answer}"
+                        )
+                    )
+                )
+                continue
+            logger.warning(
+                f"[DH]  protocol error from DH for {agent_key}/{field} "
+                f"after force-tool; falling back to last agent answer."
+            )
+            final_body = last_answer
+            break
+
+        if final_body is None:
+            final_body = last_answer
+        if not (final_body or "").strip():
+            final_body = "(no usable content was produced for this field this session)"
+
+        if is_semantic:
+            triples = _parse_save_body_semantic(final_body)
+            if not triples:
+                logger.warning(
+                    f"[DH]  identifying SAVE body for {agent_key}/{field} "
+                    f"did not contain QUESTION:/ANSWER: headers; using "
+                    f"asked question + whole body as single-pair fallback."
+                )
+                triples = [(None, first_question, final_body)]
+
+            cleaned: list[tuple[str | None, str, str]] = []
+            for (attempt_tag, q, a) in triples:
+                cq = _clean_semantic_body(q) or q
+                ca = _clean_semantic_body(a) or a
+                cleaned.append((attempt_tag, cq, ca))
+
+            cleaned = self._enforce_semantic_cap_pairs(
+                agent_key=agent_key,
+                field=field,
+                description=description,
+                triples=cleaned,
+            )
+            return cleaned, last_answer, resolved_attempt_ids
+
+        # QUANTITATIVE identifying Q (uncommon; type is usually Semantic
+        # for identifying questions, but we handle it cleanly anyway):
+        # one pair, no attempt tag.
+        return [(None, first_question, final_body)], last_answer, resolved_attempt_ids
+
+    def _run_force_tool_phase(
+        self,
+        *,
+        agent_key: str,
+        field: str,
+        agent_last_answer: str,
+        session_id: str,
+        session_start_ts: float | None,
+    ) -> tuple[list[str], str]:
+        """Force the DH to call save_attempt_artefacts; up to 3 retries.
+
+        Returns ``(resolved_attempt_ids, reason)`` where
+        ``resolved_attempt_ids`` is the list of normalised
+        identifiers (each in ``"attempt NNN"`` form) the DH passed —
+        possibly empty when the DH explicitly chose "no attempt".
+        ``reason`` is one of ``"ok"`` / ``"explicit-none"`` /
+        ``"max-retries"`` / ``"bind-failed"``.
+
+        On a successful resolve for N>=1 attempts, every resolved
+        folder's artefacts are uploaded to R2 BEFORE the ToolMessage
+        is returned, so the DH's next turn sees the uploaded state in
+        its conversation context.
+        """
+        import json as _json
+        from agents.database_handler.dh_tools import (
+            save_attempt_artefacts,
+            SAVE_ATTEMPT_ARTEFACTS_TOOL_NAME,
+        )
+
+        try:
+            dh_with_tool = self.llm.bind_tools(
+                [save_attempt_artefacts],
+                tool_choice=SAVE_ATTEMPT_ARTEFACTS_TOOL_NAME,
+            )
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.warning(
+                f"[DH]  could not bind save_attempt_artefacts to the "
+                f"DH LLM: {type(exc).__name__}: {exc}; treating as "
+                f"empty list."
+            )
+            return [], "bind-failed"
+
+        attempts_root = ATTEMPTS_DIR
+
+        instruction = HumanMessage(
+            content=(
+                "FORCE-TOOL TURN.\n\n"
+                f"Field: {field} (identifying attempt-specific)\n"
+                f"Agent: {agent_key}\n\n"
+                f"{agent_key}'s last reply:\n{agent_last_answer}\n\n"
+                "You MUST now call `save_attempt_artefacts` exactly "
+                "ONCE.  Pass a JSON list of attempt identifiers:\n"
+                "  * One element per attempt the agent identified — "
+                "each element is a number/slug/ordinal (e.g. \"002\", "
+                "\"attempt 002\", or a full slug).  Examples:\n"
+                "      attempt_ids=[\"002\"]            (single attempt)\n"
+                "      attempt_ids=[\"002\", \"005\"]   (two attempts)\n"
+                "  * An empty list [] OR a list containing \"none\" "
+                f"when {agent_key} did NOT identify any specific "
+                "attempt.\n\n"
+                "Do not emit ASK: or SAVE: this turn — the system is "
+                "forcing the tool call and will give you up to "
+                f"{self._MAX_FORCE_TOOL_RETRIES} attempts to land a "
+                "valid call before defaulting to no attempt."
+            )
+        )
+        self.messages.append(instruction)
+
+        for attempt in range(1, self._MAX_FORCE_TOOL_RETRIES + 1):
+            try:
+                response = invoke_with_retry(
+                    dh_with_tool,
+                    [make_system_message(self.system_prompt, self.provider)]
+                    + self.messages,
+                    f"DH-force-tool-{attempt}",
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"[DH]  force-tool attempt {attempt} LLM call "
+                    f"raised {type(exc).__name__}: {exc}; treating as "
+                    f"invalid and continuing."
+                )
+                continue
+            self.messages.append(response)
+
+            tool_calls = getattr(response, "tool_calls", None) or []
+            if not tool_calls:
+                self.messages.append(
+                    HumanMessage(
+                        content=(
+                            f"You did not emit a tool call.  Attempt "
+                            f"{attempt} of {self._MAX_FORCE_TOOL_RETRIES}. "
+                            "Call save_attempt_artefacts now."
+                        )
+                    )
+                )
+                logger.warning(
+                    f"[DH]  force-tool attempt {attempt}: no tool_calls "
+                    f"in DH response; reprompting."
+                )
+                continue
+
+            tc = tool_calls[0]
+            tool_call_id = (
+                tc.get("id") if isinstance(tc, dict)
+                else getattr(tc, "id", None)
+            ) or ""
+            args = (
+                tc.get("args") if isinstance(tc, dict)
+                else getattr(tc, "args", None)
+            ) or {}
+            raw_ids: list[str] = []
+            if isinstance(args, dict):
+                # New API: attempt_ids: list[str].  Tolerate single-
+                # element scalars as well (some providers' JSON-mode
+                # tool-call binding occasionally coerces a 1-element
+                # list to a string).
+                raw = args.get("attempt_ids")
+                if isinstance(raw, list):
+                    raw_ids = [str(x).strip() for x in raw if str(x).strip()]
+                elif isinstance(raw, str) and raw.strip():
+                    raw_ids = [raw.strip()]
+
+            # Treat empty / all-"none" lists as the explicit-no-attempt
+            # path.
+            non_none_ids = [
+                s for s in raw_ids if s.lower() != "none"
+            ]
+            if not non_none_ids:
+                self.messages.append(ToolMessage(
+                    content=_json.dumps({
+                        "ok": True,
+                        "attempt_ids": [],
+                        "note": "no attempt identified; "
+                                "the system will drop this block.",
+                    }),
+                    tool_call_id=tool_call_id,
+                ))
+                logger.info(
+                    f"[DH]  force-tool attempt {attempt}: DH chose "
+                    f"'no attempts' for {agent_key}/{field} "
+                    f"(raw_ids={raw_ids})."
+                )
+                return [], "explicit-none"
+
+            # Normalise each element + look up its folder.  The whole
+            # list must validate cleanly; on any failure, return a
+            # ToolMessage error and let the DH retry with a corrected
+            # list (not a partial accept).
+            normalised: list[str] = []
+            invalid: list[tuple[str, str]] = []  # (raw, reason)
+            for raw in non_none_ids:
+                nnn = _normalise_attempt_input(raw)
+                if nnn is None:
+                    invalid.append((raw, "unparseable"))
+                    continue
+                folder, status = _resolve_attempt_folder(
+                    nnn, attempts_root, session_start_ts,
+                )
+                if folder is None:
+                    invalid.append((raw, f"no folder matched NNN={nnn}"))
+                    continue
+                normalised.append(nnn)
+                if status == "multi-match":
+                    logger.warning(
+                        f"[DH]  force-tool: multiple folders matched "
+                        f"NNN={nnn}; using most-recent {folder.name}."
+                    )
+
+            if invalid:
+                err = _json.dumps({
+                    "ok": False,
+                    "error": (
+                        "one or more attempt ids could not be parsed "
+                        "or resolved; re-emit the FULL list with valid "
+                        "ids only, or pass an empty list / \"none\"."
+                    ),
+                    "invalid": [
+                        {"input": r, "reason": why} for r, why in invalid
+                    ],
+                    "valid_so_far": normalised,
+                    "attempt": attempt,
+                    "max_attempts": self._MAX_FORCE_TOOL_RETRIES,
+                })
+                self.messages.append(ToolMessage(
+                    content=err, tool_call_id=tool_call_id,
+                ))
+                logger.warning(
+                    f"[DH]  force-tool attempt {attempt}: invalid="
+                    f"{invalid}; reprompting."
+                )
+                continue
+
+            # All entries resolved → upload each attempt's artefacts.
+            uploaded_per_attempt: dict[str, dict] = {}
+            try:
+                from agents.shared import r2_uploader as _r2
+                for nnn in normalised:
+                    folder, _ = _resolve_attempt_folder(
+                        nnn, attempts_root, session_start_ts,
+                    )
+                    # folder is guaranteed non-None by the validation
+                    # above; ``status`` ignored here (already logged).
+                    uploaded, missing = _r2.upload_attempt_artefacts(
+                        folder,
+                        session_id=session_id,
+                        attempt_id=nnn,
+                    )
+                    uploaded_per_attempt[nnn] = {
+                        "folder": folder.name,
+                        "uploaded": uploaded,
+                        "missing": missing,
+                    }
+            except Exception as exc:
+                err = _json.dumps({
+                    "ok": False,
+                    "error": (
+                        f"R2 upload raised: "
+                        f"{type(exc).__name__}: {exc}"
+                    ),
+                    "attempt": attempt,
+                    "max_attempts": self._MAX_FORCE_TOOL_RETRIES,
+                })
+                self.messages.append(ToolMessage(
+                    content=err, tool_call_id=tool_call_id,
+                ))
+                logger.warning(
+                    f"[DH]  force-tool attempt {attempt}: upload "
+                    f"raised {type(exc).__name__}: {exc}; reprompting."
+                )
+                continue
+
+            ok_payload = _json.dumps({
+                "ok": True,
+                "attempt_ids": [f"attempt {n}" for n in normalised],
+                "uploads_per_attempt": uploaded_per_attempt,
+            })
+            self.messages.append(ToolMessage(
+                content=ok_payload, tool_call_id=tool_call_id,
+            ))
+            logger.info(
+                f"[DH]  force-tool attempt {attempt} SUCCEEDED for "
+                f"{agent_key}/{field}: {len(normalised)} attempt(s) "
+                f"resolved ({normalised}); per-attempt uploads="
+                f"{uploaded_per_attempt}"
+            )
+            return [f"attempt {n}" for n in normalised], "ok"
+
+        logger.warning(
+            f"[DH]  force-tool exhausted {self._MAX_FORCE_TOOL_RETRIES} "
+            f"retries for {agent_key}/{field}; treating as empty list."
+        )
+        return [], "max-retries"
 
     def _ask_agent(
         self,
@@ -1663,64 +2467,77 @@ class DatabaseHandler(BaseChainAgent):
     # SEMANTIC token-cap enforcement
     # ------------------------------------------------------------------
 
-    def _enforce_semantic_cap_pair(
+    def _enforce_semantic_cap_pairs(
         self,
         agent_key: str,
         field: str,
         description: str,
-        saved_question: str,
-        saved_answer: str,
-    ) -> tuple[str, str]:
-        """Ensure ``QUESTION + ANSWER`` fits within the SEMANTIC token cap.
+        triples: list[tuple[str | None, str, str]],
+    ) -> list[tuple[str | None, str, str]]:
+        """Ensure each ``QUESTION + ANSWER`` pair fits the per-PAIR cap.
 
-        Counts ``cl100k_base`` tokens on the combined pair (mirrors how
-        the embedding model sees the .txt file at index time).  When
-        over cap, asks the DH ONCE for a shorter version of EITHER or
-        BOTH components and accepts whatever comes back (subject to
-        the same QUESTION:/ANSWER: parse).  If the second attempt is
-        still over the cap, saves the shorter of the two pairs — the
-        goal is best-effort compliance, not infinite-loop perfection.
+        Each pair becomes its own ``.txt`` file (one embedding vector
+        per file), so the cap is enforced PER PAIR — not combined.
+        Counts ``cl100k_base`` tokens on each pair; when one or more
+        pairs are over cap, asks the DH ONCE for a shorter version
+        of the FULL list (the DH may shorten only the offending pairs
+        or all of them — its choice).  If the second attempt is still
+        over the cap on some pair, keeps the shorter of the two
+        versions for that pair.
 
         The defensive cleanup (:func:`_clean_semantic_body`) is applied
-        to every replacement body returned by the DH so artefacts the
-        DH adds during shortening are still stripped.
+        to every replacement returned by the DH so artefacts the DH
+        adds during shortening are still stripped.
         """
-        n_q = count_tokens(saved_question)
-        n_a = count_tokens(saved_answer)
-        n = n_q + n_a
-        if n <= self.max_response_tokens:
+        per_pair_caps = [
+            (count_tokens(q) + count_tokens(a), q, a)
+            for (_aid, q, a) in triples
+        ]
+        cap = self.max_response_tokens
+        over = [
+            (i, total) for i, (total, _q, _a) in enumerate(per_pair_caps)
+            if total > cap
+        ]
+        if not over:
             logger.info(
-                f"[DH]  semantic Q+A within cap for "
-                f"{agent_key}/{field}: {n_q}+{n_a}={n} <= "
-                f"{self.max_response_tokens} tokens"
+                f"[DH]  semantic pairs within per-pair cap for "
+                f"{agent_key}/{field}: "
+                f"{[t for (t, _q, _a) in per_pair_caps]} <= {cap} each"
             )
-            return saved_question, saved_answer
+            return triples
 
         logger.warning(
-            f"[DH]  semantic Q+A OVER cap for {agent_key}/{field}: "
-            f"{n_q}+{n_a}={n} > {self.max_response_tokens} tokens; "
-            f"asking for shorter pair."
+            f"[DH]  {len(over)}/{len(triples)} semantic pair(s) OVER "
+            f"the {cap}-token per-pair cap for {agent_key}/{field} "
+            f"(sizes={[t for (t, _q, _a) in per_pair_caps]}); asking "
+            f"for shorter version(s)."
+        )
+        over_summary = ", ".join(
+            f"pair#{i + 1} = {t} tokens" for i, t in over
         )
         instruction = (
             "TOKEN-CAP COMPRESSION TURN.\n\n"
             f"Field: {field}\n"
             f"Field description: {description}\n\n"
-            f"Your last SAVE: body for this field used "
-            f"{n_q} QUESTION tokens + {n_a} ANSWER tokens = {n} total "
-            f"under cl100k_base, but the combined cap is "
-            f"{self.max_response_tokens}.  Rewrite the pair to fit "
-            "comfortably below the cap (prefer <600 combined) WITHOUT "
-            "losing the field's meaning.  Shorten QUESTION, ANSWER, or "
-            "both — your choice.  Apply the embedding-friendly rules "
-            "from your system prompt: strip paths, parameter dumps and "
-            "routing-tool wrappers; self-contained declarative prose; "
-            "domain-faithful; one topic per file; no filler.\n\n"
+            f"Your last SAVE: body for this field produced "
+            f"{len(triples)} QUESTION/ANSWER pair(s).  Each pair "
+            f"becomes its own .txt that the embedding model reads "
+            f"INDEPENDENTLY, so each pair must stay under "
+            f"{cap} cl100k_base tokens on its own (prefer <600).\n\n"
+            f"Pairs over cap: {over_summary}.\n\n"
+            "Re-emit ALL pairs in the same order, shortening the "
+            "over-cap ones (and any others you want to tighten).  "
+            "Apply the embedding-friendly rules from your system "
+            "prompt.  If any pair carries an ATTEMPT: tag, preserve "
+            "it on the corresponding pair in the same position.\n\n"
             "Reply with EXACTLY:\n"
             "  SAVE:\n"
+            "  [ATTEMPT: <NNN>]\n"
             "  QUESTION: <shorter question>\n"
             "  ANSWER: <shorter answer>\n"
-            "Do not use ASK: this turn — the system will save whatever "
-            "you produce."
+            "  ... (repeat the block for every pair)\n"
+            "Do not use ASK: this turn — the system will save "
+            "whatever you produce."
         )
         self.messages.append(HumanMessage(content=instruction))
 
@@ -1737,36 +2554,57 @@ class DatabaseHandler(BaseChainAgent):
                 continue
             kind, payload = _parse_dh_decision(text)
             payload = payload if kind in ("ASK", "SAVE") else text
-            q2, a2 = _parse_save_body_semantic(payload)
-            if q2 is None or a2 is None:
-                # DH forgot the headers during compression too — fall
-                # back to treating the whole payload as the shorter
-                # answer and keep the existing question.
-                q2 = saved_question
-                a2 = payload
-            q2 = _clean_semantic_body(q2) or q2
-            a2 = _clean_semantic_body(a2) or a2
-            n2_q = count_tokens(q2)
-            n2_a = count_tokens(a2)
-            n2 = n2_q + n2_a
-            logger.info(
-                f"[DH]  compressed Q+A for {agent_key}/{field}: "
-                f"{n_q}+{n_a}={n} -> {n2_q}+{n2_a}={n2} tokens"
-            )
-            if n2 <= self.max_response_tokens:
-                return q2, a2
-            logger.warning(
-                f"[DH]  compression did not reach cap for "
-                f"{agent_key}/{field} ({n2} > "
-                f"{self.max_response_tokens}); saving the shorter pair."
-            )
-            return (q2, a2) if n2 < n else (saved_question, saved_answer)
+            new_triples = _parse_save_body_semantic(payload)
+            if not new_triples:
+                # DH forgot the headers — fall back to keeping the
+                # original triples (shorter pair beats no pair).
+                logger.warning(
+                    f"[DH]  compression for {agent_key}/{field} "
+                    f"emitted no parseable pairs; keeping originals."
+                )
+                return triples
+            # Pair-wise post-process: clean each, count again, keep
+            # the shorter of (new, old) per index.
+            merged: list[tuple[str | None, str, str]] = []
+            for i in range(max(len(triples), len(new_triples))):
+                old_attempt, old_q, old_a = (
+                    triples[i] if i < len(triples) else (None, "", "")
+                )
+                if i < len(new_triples):
+                    new_attempt, new_q, new_a = new_triples[i]
+                    new_q = _clean_semantic_body(new_q) or new_q
+                    new_a = _clean_semantic_body(new_a) or new_a
+                else:
+                    new_attempt, new_q, new_a = old_attempt, old_q, old_a
+                # The DH may drop the ATTEMPT tag on a re-emit — keep
+                # the original if the new one is None.
+                attempt_to_use = (
+                    new_attempt if new_attempt is not None else old_attempt
+                )
+                old_tokens = count_tokens(old_q) + count_tokens(old_a)
+                new_tokens = count_tokens(new_q) + count_tokens(new_a)
+                if new_tokens <= cap:
+                    merged.append((attempt_to_use, new_q, new_a))
+                elif new_tokens < old_tokens:
+                    merged.append((attempt_to_use, new_q, new_a))
+                    logger.warning(
+                        f"[DH]  pair#{i + 1} for {agent_key}/{field} "
+                        f"still over cap after compression ({new_tokens} "
+                        f"> {cap}); keeping the shorter version."
+                    )
+                else:
+                    merged.append((attempt_to_use, old_q, old_a))
+                    logger.warning(
+                        f"[DH]  pair#{i + 1} for {agent_key}/{field} "
+                        f"compression made it longer; keeping original."
+                    )
+            return merged
 
         logger.warning(
             f"[DH]  compression turn produced no output for "
-            f"{agent_key}/{field}; saving original over-cap pair."
+            f"{agent_key}/{field}; saving original over-cap pairs."
         )
-        return saved_question, saved_answer
+        return triples
 
     # ------------------------------------------------------------------
     # Disk I/O
@@ -1777,11 +2615,39 @@ class DatabaseHandler(BaseChainAgent):
         session_dir: Path,
         agent_key: str,
         field: str,
+        *,
+        attempt_suffix: str | None = None,
+        item_index: int | None = None,
     ) -> Path:
-        """Return the path for ``<session>/<agent>/<slugified field>.txt``."""
+        """Return the path for one (agent, field) entry's ``.txt``.
+
+        Filename rules (combine cleanly):
+
+        * Base: ``<slugified field>``
+        * Multi-attempt sub-row: append ``__<NNN>`` when *attempt_suffix*
+          is supplied (the 3-digit attempt number — ``"002"``, etc.).
+        * Multi-answer split: append ``_<idx>`` when *item_index* is
+          supplied (1-based).
+
+        Examples:
+
+        =====================  ============================================
+        Scenario               Filename
+        =====================  ============================================
+        single                 ``<field>.txt``
+        N answer-split items   ``<field>_1.txt`` / ``<field>_2.txt`` / ...
+        sub-row, attempt 002   ``<field>__002.txt``
+        sub-row, 002 + split   ``<field>__002_1.txt`` / ``<field>__002_2.txt``
+        =====================  ============================================
+        """
         agent_dir = session_dir / agent_key
         agent_dir.mkdir(parents=True, exist_ok=True)
-        return agent_dir / f"{_slugify(field)}.txt"
+        base = _slugify(field)
+        if attempt_suffix:
+            base = f"{base}__{attempt_suffix}"
+        if item_index is not None:
+            base = f"{base}_{item_index}"
+        return agent_dir / f"{base}.txt"
 
     def _write_entry(
         self,
@@ -1793,24 +2659,38 @@ class DatabaseHandler(BaseChainAgent):
         *,
         session_id: str,
         attempt_id: str | None,
+        attempt_suffix: str | None = None,
+        item_index: int | None = None,
     ) -> Path:
         """Write one ``(question, answer)`` pair to disk and return path.
 
         For SEMANTIC fields, ``question`` and ``answer`` are the DH's
-        EMBEDDING-FRIENDLY rewrites (combined under the token cap);
-        the original verbose question the DH put to the agent lives
-        only in the DH log file.  For QUANTITATIVE fields, ``question``
-        is the DH's asked question and ``answer`` is Agent A's
-        verbatim reply.
+        EMBEDDING-FRIENDLY rewrites (capped per-pair); the original
+        verbose question the DH put to the agent lives only in the DH
+        log file.  For QUANTITATIVE fields, ``question`` is the DH's
+        asked question and ``answer`` is Agent A's verbatim reply.
 
-        The header carries the *session_id* (the
-        ``IDxxx_YYYYMMDD_HHMMSS`` slug shared with
-        ``previous_sessions/`` and the R2 mirror's per-session
-        prefix) and the *attempt_id* this row is bound to
-        ("(session-scope)" for session-scoped rows, "(unbound)" for
-        attempt rows whose parent never resolved an attempt).
+        The header carries:
+
+        * ``--- Session ID ---``   — the ``IDxxx_YYYYMMDD_HHMMSS`` slug
+          shared with ``previous_sessions/`` and the R2 mirror's
+          per-session prefix.
+        * ``--- Attempt ID ---``   — set to ``attempt_id`` when known,
+          ``"(session-scope)"`` for session-scoped rows, or
+          ``"(unbound)"`` for attempt rows that errored.
+        * ``--- Field ---``        — the schedule's human-readable
+          field name (NOT the slug — the slug is the filename).
+
+        *attempt_suffix* and *item_index* are filename-only controls;
+        the body content is unchanged either way.  Callers decide
+        which suffixes apply based on N attempts / N answer-split
+        items.
         """
-        path = self._entry_path(session_dir, agent_key, field)
+        path = self._entry_path(
+            session_dir, agent_key, field,
+            attempt_suffix=attempt_suffix,
+            item_index=item_index,
+        )
         attempt_line = attempt_id if attempt_id else "(session-scope)"
         path.write_text(
             f"--- Session ID ---\n{session_id}\n\n"
@@ -1916,4 +2796,94 @@ class DatabaseHandler(BaseChainAgent):
                 f"[DH]  failed to write sidecar meta for "
                 f"{entry_path.name}: {exc}"
             )
+
+    def _collect_user_inputs(self, session_dir: Path) -> int:
+        """Snapshot the session's user inputs into the database tree.
+
+        Copies into ``<session_dir>/user_inputs/``:
+
+        * ``queries.txt`` — the full turn-by-turn collection of user
+          text inputs.  Source is ``inputs/user_query.txt``, which the
+          dispatcher APPENDS to on every ``/api/turn`` call
+          (``agents/dispatch.py:save_user_input``), so it already
+          carries every turn the user submitted this session with a
+          ``--- [YYYY-MM-DD HH:MM:SS] ---`` header before each entry.
+        * ``images/<original_name>`` — every reference image the user
+          uploaded via the Image Inputs view, plus its matching
+          ``<name>_note.txt`` description sidecar.  Original filenames
+          are preserved so the image / note pairing is obvious.
+
+        The local copies live alongside the per-agent ``.txt`` files
+        the DH already writes; the subsequent R2 mirror picks them
+        up via the suffix whitelist (``.txt`` / ``.png`` / ``.jpg`` /
+        ``.jpeg``).  The original ``inputs/`` directory is left
+        intact — End Session's archival sweep moves it under
+        ``previous_sessions/<session_id>/inputs/`` afterwards.
+
+        Returns the number of files written into
+        ``<session_dir>/user_inputs/``.  Best-effort throughout: each
+        copy is wrapped so a single I/O failure (a corrupt image, a
+        permissions blip) doesn't abort the rest of the collection.
+        """
+        import shutil
+
+        target = session_dir / "user_inputs"
+        target.mkdir(parents=True, exist_ok=True)
+        written = 0
+
+        # 1. The cumulative text-input collection.
+        src_query = USER_INPUTS_DIR / "user_query.txt"
+        if src_query.is_file():
+            try:
+                shutil.copyfile(src_query, target / "queries.txt")
+                written += 1
+                logger.info(
+                    f"[DH]  copied user_query.txt → "
+                    f"{(target / 'queries.txt').name}"
+                )
+            except OSError as exc:
+                logger.warning(
+                    f"[DH]  failed to copy user_query.txt: {exc}"
+                )
+        else:
+            logger.info(
+                f"[DH]  no user_query.txt at {src_query.resolve()}; "
+                f"the user issued no text turns this session."
+            )
+
+        # 2. Every reference image + its _note.txt sidecar.
+        if INPUT_IMAGES_DIR.is_dir():
+            images_target = target / "images"
+            images_target.mkdir(parents=True, exist_ok=True)
+            n_imgs = 0
+            n_notes = 0
+            for entry in sorted(INPUT_IMAGES_DIR.iterdir()):
+                if not entry.is_file():
+                    continue
+                # Skip the .gitkeep marker if present.
+                if entry.name in (".gitkeep",):
+                    continue
+                try:
+                    shutil.copyfile(entry, images_target / entry.name)
+                    written += 1
+                    if entry.suffix.lower() == ".txt":
+                        n_notes += 1
+                    else:
+                        n_imgs += 1
+                except OSError as exc:
+                    logger.warning(
+                        f"[DH]  failed to copy {entry.name}: {exc}"
+                    )
+            logger.info(
+                f"[DH]  copied {n_imgs} image(s) + {n_notes} note "
+                f"file(s) from {INPUT_IMAGES_DIR.name}/ → "
+                f"{(target / 'images').name}/"
+            )
+        else:
+            logger.info(
+                f"[DH]  no images directory at "
+                f"{INPUT_IMAGES_DIR.resolve()}; no images to collect."
+            )
+
+        return written
 
