@@ -65,6 +65,42 @@ questions" and §"Identifying attempt-specific questions — force-tool flow"):
    holds the database-layout duplicate intended for the (future)
    RAG layer.
 
+**The R2 mirror runs via TWO disjoint upload paths.**  Worth being
+explicit about this — debugging an R2 surprise gets a lot easier
+once you know which path produced which key:
+
+* **Path 1 — per-attempt artefacts (during the force-tool turn).**
+  `_run_force_tool_phase` calls
+  `r2_uploader.upload_attempt_artefacts` once per resolved attempt
+  id immediately after the tool succeeds, writing keys under
+  `<R2_KEY_PREFIX>/<session_id>/attempts/<NNN>/`.  No `.txt`
+  files here; this path handles `parameters.json` /
+  `propeller_mesh.obj` / `render_*.png` / `description.txt`.
+* **Path 2 — end-of-save mirror.**  `populate_database`, after
+  the per-row write loop completes, calls
+  `r2_uploader.upload_directory(session_dir, ...)` to walk the
+  LOCAL `database/<session_id>/` tree and upload every file whose
+  suffix is in the whitelist (`.txt` / `.png` / `.jpg` /
+  `.jpeg`).  Keys go to `<R2_KEY_PREFIX>/<session_id>/<agent>/...`
+  and `<R2_KEY_PREFIX>/<session_id>/user_inputs/...`.
+
+The two paths target DISJOINT R2 key prefixes (`<sid>/attempts/`
+vs `<sid>/<agent>/` and `<sid>/user_inputs/`).  This is a
+load-bearing invariant — see `warnings_developer.md` W19.  The
+README "Cloudflare R2 layout" section has the full key matrix.
+
+**Known edges, all flagged for follow-up** (none affect
+correctness in the happy path):
+
+* **F19** — multiple identifying-Q rows resolving to the same
+  attempt id re-upload identical bytes to identical keys
+  (idempotent).
+* **F20** — orphan artefacts possible if
+  `_run_identifying_conversation` raises AFTER Path 1's
+  successful upload but BEFORE Path 2 runs.
+* **F21** — `_client()` builds a fresh boto3 client per
+  `upload_file` call (perf only).
+
 **What still needs to land for Stage B (Postgres):**
 
 * The Postgres schema described below. The DH continues to write `.txt`

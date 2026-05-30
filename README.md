@@ -303,6 +303,61 @@ The R2 upload step's suffix whitelist now covers `.txt`, `.png`, `.jpg`, and `.j
 
 The local `inputs/` folder is left untouched by this step — End Session's archival sweep moves it into `previous_sessions/<session_id>/inputs/` as before. The copy under `database/<session_id>/user_inputs/` is the database-layout duplicate, intended for the future RAG layer.
 
+## Cloudflare R2 layout — how the two upload paths combine
+
+The DH save flow writes to R2 via **two distinct upload paths** that run at different points and target **disjoint** parts of the per-session key space. Understanding which is which makes it easy to reason about what shows up in the bucket and why.
+
+### Path 1 — Per-attempt artefacts (during the force-tool turn)
+
+Site: `agents/database_handler/database_handler.py:_run_force_tool_phase`. Fires once per resolved attempt id, **immediately** when the force-tool's `save_attempt_artefacts` tool call succeeds — long before the DH emits its SAVE: body.
+
+Calls `r2_uploader.upload_attempt_artefacts(folder, session_id=…, attempt_id=NNN)` per resolved NNN. Whitelisted files (from `agents/shared/r2_uploader.py:ATTEMPT_ARTEFACT_WHITELIST`): `parameters.json`, `propeller_mesh.obj`, `render_isometric.png`, `render_top.png`, `render_side.png`, `description.txt`. `propeller_mesh_components.obj` is intentionally excluded.
+
+Keys written:
+
+```
+<R2_KEY_PREFIX>/<session_id>/attempts/<NNN>/<session_id>__<NNN>__<original_filename>
+```
+
+### Path 2 — End-of-save mirror of `database/<session_id>/`
+
+Site: `populate_database` at the end of the per-row write loop, after `_collect_user_inputs` has copied user inputs into `database/<session_id>/user_inputs/`.
+
+Calls `r2_uploader.upload_directory(session_dir, remote_prefix=f"{session_id}/", suffixes=(".txt", ".png", ".jpg", ".jpeg"))`. Walks `database/<session_id>/` and uploads every file whose suffix is in the whitelist.
+
+Keys written:
+
+```
+<R2_KEY_PREFIX>/<session_id>/<agent>/<field>.txt                       (per-agent answer)
+<R2_KEY_PREFIX>/<session_id>/<agent>/<field>__<NNN>.txt                (sub-row, multi-attempt)
+<R2_KEY_PREFIX>/<session_id>/<agent>/<field>_<idx>.txt                 (multi-answer split)
+<R2_KEY_PREFIX>/<session_id>/user_inputs/queries.txt
+<R2_KEY_PREFIX>/<session_id>/user_inputs/images/<name>.png
+<R2_KEY_PREFIX>/<session_id>/user_inputs/images/<name>_note.txt
+```
+
+### Why the two paths can't double-upload
+
+The local `database/<session_id>/` folder **does NOT contain an `attempts/` subtree** — `_collect_user_inputs` only writes `user_inputs/`, and `populate_database` only writes `<agent>/`. So Path 2's `upload_directory` walk cannot accidentally re-walk the artefact files; the two paths target disjoint key prefixes (`<sid>/attempts/<NNN>/…` vs `<sid>/<agent>/…` and `<sid>/user_inputs/…`). This is a load-bearing invariant — see `extra_utilities/warnings_developer.md` W19.
+
+### What is NOT in R2
+
+* **Sidecar `.meta.json` files** next to every `.txt`. The suffix whitelist is `.txt` / `.png` / `.jpg` / `.jpeg` — `.json` is excluded deliberately so the per-question access-control metadata (`to_agents` etc.) doesn't pollute the embedding stream. The sidecars remain local under `database/<session_id>/<agent>/<field>.meta.json` and travel into the End Session archive as part of the rest of the save tree.
+* **Local `attempts/<slug>/` working folder.** The attempt artefacts upload through Path 1 with the rename pattern; the original folder names (`20260530_142312_002_descriptor`) only exist in the local filesystem and the End Session archive.
+* **Per-session logs.** `logs/web_<id>.log`, `logs/agent_flow_*.txt`, `logs/dh_flow_*.txt` are local-only today. F13 in TODO_known_issues calls out the path to mirroring them when the Railway volume removal lands.
+
+### Behaviour when R2 is not configured
+
+Both paths gate on `r2_uploader.is_enabled()` (all four required env vars present: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`). When not configured, both paths log one warning and no-op cleanly. The DH save runs to completion locally; R2 stays untouched. Same shape on save=False (no DH run, no R2 fire either way).
+
+### Known small inconsistencies
+
+Three minor edges flagged for follow-up — none affect correctness in the happy path, but they're documented as TODO items so they don't drift:
+
+* **F19** — Same attempt referenced by N identifying-Q rows triggers N R2 PUTs of identical bytes (idempotent overwrites; wasteful, not incorrect).
+* **F20** — Orphan artefacts possible if `_run_identifying_conversation` raises **after** the force-tool upload but before the SAVE step. R2 would have the artefacts, local `database/<sid>/` would have no `.txt` referencing them.
+* **F21** — `r2_uploader._client()` constructs a fresh `boto3.client("s3", …)` per file. Minor perf overhead (40–60 client constructions per typical save); not a correctness issue.
+
 ## Configuration
 
 All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/settings.py):

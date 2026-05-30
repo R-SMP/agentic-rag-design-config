@@ -487,3 +487,75 @@ assumes a tool-less default.
 
 **Status.** In force from v9 onward.  The single tool
 (``save_attempt_artefacts``) is the only one wired today.
+
+
+## W19. The two R2 upload paths MUST stay disjoint in key space.
+
+The DH save flow writes to R2 via TWO distinct upload paths, each
+operating at a different point in the save lifecycle:
+
+* **Path 1** — ``r2_uploader.upload_attempt_artefacts`` called
+  from ``_run_force_tool_phase`` immediately when the
+  ``save_attempt_artefacts`` tool resolves attempt ids.  Keys
+  written: ``<R2_KEY_PREFIX>/<session_id>/attempts/<NNN>/...``.
+* **Path 2** — ``r2_uploader.upload_directory`` called from
+  ``populate_database`` at the end of the per-row write loop,
+  walking the LOCAL ``database/<session_id>/`` tree.  Keys
+  written: ``<R2_KEY_PREFIX>/<session_id>/<agent>/...`` and
+  ``<R2_KEY_PREFIX>/<session_id>/user_inputs/...``.
+
+These two paths target DISJOINT R2 key prefixes (``<sid>/attempts/``
+vs ``<sid>/<agent>/`` and ``<sid>/user_inputs/``), and the system
+relies on that disjointness to avoid double-uploads.  The
+disjointness is NOT enforced by the upload layer — it is a
+consequence of WHERE the local files live: ``populate_database``
+never writes anything to ``database/<session_id>/attempts/``, so
+Path 2's directory walk never finds the artefact files.
+
+### What this means in practice
+
+If you add a new local writer (e.g. a future ``_collect_attempts``
+helper that mirrors ``attempts/<slug>/`` content into
+``database/<session_id>/attempts/<slug>/`` for the End Session
+archive), Path 2's ``upload_directory`` will pick those files up
+and try to upload them ON TOP of Path 1's already-uploaded
+artefacts.  The result depends on the key shape:
+
+* If the new local files match Path 1's exact rename pattern
+  (``<sid>__<NNN>__<original>``) under
+  ``database/<session_id>/attempts/<NNN>/``, Path 2 would issue
+  identical PUTs — wasteful but idempotent.
+* If the new local files use a different shape (e.g. original
+  filenames preserved under
+  ``database/<session_id>/attempts/<slug>/parameters.json``),
+  Path 2 would write to a DIFFERENT R2 key
+  (``<sid>/attempts/<slug>/parameters.json``) — both
+  representations would end up in the bucket and the future RAG
+  layer would have to disambiguate.  This is the failure mode to
+  avoid.
+
+### How to add a new R2 upload path safely
+
+1. Audit which R2 keys the new path writes.
+2. Confirm those keys do not overlap with the existing two paths.
+3. If overlap is unavoidable (e.g. you want to mirror the
+   artefact files locally too), pick ONE path to own that key
+   prefix and skip it from the other (e.g. add a glob exclusion
+   to ``upload_directory``'s suffix walk).
+4. Add the new path to the README's "Cloudflare R2 layout"
+   section AND update this warning so the invariant stays current.
+
+### Why this matters
+
+R2 PUTs are idempotent at the byte level — overwriting an
+identical-content key is harmless functionally.  But:
+
+* They cost bandwidth and Cloudflare write-operations quota.
+* They confuse the future RAG retrieval layer, which uses the
+  key shape to bucket per-attempt vs per-agent content.
+* They obscure failures: an orphan Path-2 write to an
+  ``attempts/`` key could mask a real Path-1 upload failure
+  (see TODO F20).
+
+**Status.** In force from v9 onward.  Two paths today; any third
+upload path must be checked against this invariant.

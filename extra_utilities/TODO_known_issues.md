@@ -1382,6 +1382,178 @@ focused test pass (a handful of user prompts that include
 session-level integers + a handful that include legitimate
 parameter integers) before landing.
 
+### F19. De-duplicate attempt uploads within a session
+
+**Where.**
+- ``agents/database_handler/database_handler.py`` —
+  ``populate_database`` (the parent ``while`` loop holding the
+  ``attempt_ids_by_parent`` dict) and ``_run_force_tool_phase``
+  (the upload site).
+- ``agents/shared/r2_uploader.py`` —
+  ``upload_attempt_artefacts``.
+
+**What.**  When two identifying-Q rows in a single schedule
+resolve to the SAME attempt id (e.g. "best attempt" → 002 and
+"useful insights" → 002 because the same attempt was both
+best AND informative), the force-tool's upload step runs once
+per row.  Each run re-uploads the same artefact files to the
+same R2 keys:
+
+    PUT <prefix>/<sid>/attempts/002/<sid>__002__parameters.json     (row 1)
+    PUT <prefix>/<sid>/attempts/002/<sid>__002__parameters.json     (row 2, identical bytes)
+    ...
+
+R2 PUTs are idempotent at the byte level (the second write
+overwrites with identical content), so the bucket ends up in the
+right state.  But each PUT consumes bandwidth and a Cloudflare
+write-operations quota slot.  For a 3-attempt session with the
+default schedule's three identifying-Q rows all pointing at
+overlapping attempts, this can produce ~12 redundant PUTs per
+save.
+
+**Proposal sketch.**
+
+1. Add a session-scoped ``set[str]`` of already-uploaded NNN's to
+   ``populate_database``'s local state — e.g.
+   ``uploaded_attempts: set[str] = set()``.
+2. Pass it through to ``_run_force_tool_phase`` (new kwarg).
+3. In the per-NNN upload loop, skip the upload when the NNN is
+   already in the set; STILL push the same ``ok: true``
+   ToolMessage to the DH so its conversation context is
+   unchanged.
+4. After a successful upload, ``add()`` the NNN to the set.
+
+Net effect: per-attempt artefacts are uploaded AT MOST ONCE per
+save, regardless of how many identifying-Q rows reference the
+same attempt.
+
+**Why deferred.**  Correctness is fine today (idempotent).  The
+fix is a small contained change but introduces a piece of
+session-scoped mutable state in ``populate_database`` and a new
+kwarg-passing layer through ``_run_force_tool_phase``.  Worth
+batching with any other DH save-path tightening (F15, F17, F20).
+
+**Status.** Open.  Low priority unless R2 egress / quota
+becomes a measurable cost.
+
+### F20. Compensate orphan artefacts when the identifying conversation raises after a successful force-tool upload
+
+**Where.**
+- ``agents/database_handler/database_handler.py`` —
+  ``_run_identifying_conversation`` (sequence: force-tool
+  upload → DH decide loop → return); ``populate_database``'s
+  ``try``/``except`` block around ``_run_identifying_conversation``.
+- ``agents/shared/r2_uploader.py`` — possibly a new
+  ``delete_attempt_artefacts(session_id, attempt_id)`` helper
+  if path (a) below is chosen.
+
+**What.**  Today's failure mode:
+
+1. Force-tool resolves ``["002"]`` and uploads 002's artefacts
+   to R2 successfully.
+2. The DH's subsequent ASK/SAVE decide loop, or the SEMANTIC
+   cleanup, or the cap-enforcement step raises.
+3. ``populate_database``'s ``except`` clause sets
+   ``resolved_attempt_ids = []`` and the cascade-drop branch
+   fires — neither the parent ``.txt`` nor any sub-row file is
+   written.
+
+End state: R2 has ``<sid>/attempts/002/…`` files (5–6 of them) with
+NO corresponding ``<sid>/<agent>/<field>.txt`` referencing them.
+A future RAG retrieval layer that joins attempt artefacts
+against the answer .txt files would see orphans.
+
+Probability of this firing in a real session is LOW (the DH would
+have to fail mid-conversation after the force-tool succeeded),
+but the partial state is real and persistent (R2 doesn't garbage-
+collect).
+
+**Proposal sketch.**
+
+Two acceptable compensations, pick one:
+
+  * **(a) Delete on failure.**  When ``_run_identifying_conversation``
+    raises after a successful force-tool, the system DELETES the
+    just-uploaded artefacts.  Requires a new
+    ``r2_uploader.delete_attempt_artefacts(session_id,
+    attempt_id)`` helper that issues a ``DeleteObject`` call per
+    whitelisted file under ``<sid>/attempts/<NNN>/``.  Most
+    correct; restores the "all-or-nothing" cascade-drop invariant
+    to the R2 side too.
+  * **(b) Sentinel orphan marker.**  Same scenario, but instead of
+    deleting, write a sentinel ``<sid>/attempts/<NNN>/_orphan.txt``
+    file containing the failure reason and a timestamp.  The
+    future RAG layer can detect & skip orphaned attempt folders.
+    Safer (no delete on a possibly-still-useful file) but leaves
+    junk in the bucket.
+
+Recommendation: **(a)** — keep R2 clean.  The artefacts can
+always be re-uploaded on a successful retry if the user runs the
+same save again.
+
+**Implementation sketch (option a).**
+
+1. Track the per-row "what was uploaded" set inside the ``try``
+   block.  ``populate_database`` already has
+   ``attempt_ids_by_parent``; extend it (or a parallel dict) to
+   hold a per-parent ``list[str]`` of NNN's that were uploaded
+   during the force-tool phase.
+2. On exception, before setting ``resolved_attempt_ids = []``,
+   call ``r2_uploader.delete_attempt_artefacts(session_id, nnn)``
+   for each NNN that was uploaded.
+3. Log the cleanup so the orphan reason is auditable.
+
+**Why deferred.**  Real but low-probability edge case.  Hard to
+test without artificially injecting a failure into the DH's
+decide loop — write a smoke test that monkey-patches
+``_run_one_conversation`` to raise after the force-tool, then
+asserts the R2 keys were deleted.
+
+**Status.** Open.  Pairs with F19 (both reshape the per-session
+R2 upload state-tracking).
+
+### F21. Cache the boto3 client at module level
+
+**Where.**  ``agents/shared/r2_uploader.py`` — the ``_client``
+factory.
+
+**What.**  Today ``_client()`` constructs a fresh
+``boto3.client("s3", ...)`` on every call.  ``upload_file``
+calls ``_client()`` per file; ``upload_directory`` iterates
+files and calls ``upload_file`` per iteration.  A typical
+DH save flow does 40–60 ``_client()`` calls (36 per-agent
+.txt PUTs + ~4–12 attempt artefact PUTs + ~1–10 user-input
+PUTs).
+
+Each construction does some signing-config setup and endpoint
+resolution — minor per-call cost (~milliseconds), but it also
+prevents the underlying urllib3 connection pool from being
+reused across PUTs, which DOES matter for many small writes.
+
+**Proposal sketch.**
+
+1. Add a module-level ``_CLIENT_CACHE: dict[tuple, BotoClient]``
+   keyed by the four env-var values (account id / access key /
+   secret hash / bucket).  Different env values → different
+   client; same env → reuse.
+2. ``_client()`` reads the cache and only constructs when the
+   cache key is missing.
+3. Invalidate the cache when env vars change between calls
+   (rare in practice — Railway / Docker env is fixed for the
+   process lifetime, but a unit test that swaps env vars mid-run
+   would need this).
+
+Net effect: ONE boto3 client across the entire save's worth of
+PUTs, and the urllib3 connection pool is reused — fewer TCP
+handshakes + TLS negotiations.
+
+**Why deferred.**  Pure perf optimisation.  Correct today; just
+not as fast as it could be.  Worth doing once R2 throughput
+becomes a measurable bottleneck (or just folded in opportunistically
+when next touching ``r2_uploader.py``).
+
+**Status.** Open.  Low priority.
+
 ### F9. "Copy parameters list" should return the SELECTED attempt's parameters
 
 **Where.** Backend endpoint `web_app.py:api_parameters()` (currently
