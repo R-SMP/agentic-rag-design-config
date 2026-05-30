@@ -278,3 +278,61 @@ EMBEDDING_MAX_RESPONSE_TOKENS: int = 700
 #
 # Valid values: "individual" | "openai" | "anthropic" | "google"
 LLM_ROUTING_MODE: str = "individual"
+
+
+# ===========================================================
+# 13. Context Pruner — enable
+# ===========================================================
+# Whether each chain agent runs a pre-invoke check against its own
+# accumulated message history and, when over the configured token
+# threshold, asks the Context Pruner to summarise the older portion
+# into a single SystemMessage before invoking its LLM.
+#
+#   True   each of the 8 chain agents (Receptionist, Orchestrator,
+#          UII, Planner, DCIC, DCII, DCOI, Tool Caller) checks its
+#          history before every LLM call.  When over the threshold,
+#          everything but the last KEEP_LAST messages is replaced
+#          with a single SystemMessage summary.  The LOG-and-Status
+#          chart lights up the Context Pruner box while it runs.
+#   False  no pruning; agents accumulate their full message history
+#          until they hit a provider context-window error.
+#
+# The Database Handler is intentionally NOT pruned — it iterates ~28
+# schedule entries in one save and relies on the accumulated state
+# to ask coherent follow-ups.
+#
+# Valid values: True, False
+CONTEXT_PRUNER_ENABLED: bool = True
+
+
+# ===========================================================
+# 14. Context Pruner — token threshold per agent
+# ===========================================================
+# The cl100k_base token count above which the pre-invoke check fires.
+# When the agent's ``self.messages`` count tokens above this number,
+# the Pruner is invoked; otherwise the invoke proceeds as today.
+#
+# Picking a value: stay well below the cheapest provider's window
+# (e.g. ~128k for many tiers) with at least 30-50k headroom for the
+# next-hop reply.  80,000 is a conservative starting point.
+#
+# Valid values: any positive int (token count, cl100k_base)
+CONTEXT_PRUNER_THRESHOLD_TOKENS: int = 80000
+
+
+# ===========================================================
+# 15. Context Pruner — messages kept verbatim from the tail
+# ===========================================================
+# Number of recent messages preserved bit-for-bit when the Pruner
+# fires.  Older messages are summarised into a single SystemMessage
+# at the front of the new history; the last KEEP_LAST messages stay
+# as-is so the agent still has its live working context.
+#
+# The cut point is automatically extended forward to avoid splitting
+# an ``AIMessage(tool_calls=...)`` from its matching ``ToolMessage``
+# — tool-call pairs are never orphaned, even if that means keeping
+# slightly more than ``CONTEXT_PRUNER_KEEP_LAST_MESSAGES`` messages.
+#
+# Valid values: any positive int (recommended 4-12; 6 covers a
+# typical complete turn)
+CONTEXT_PRUNER_KEEP_LAST_MESSAGES: int = 6

@@ -124,6 +124,7 @@ class Receptionist(BaseChainAgent):
         should prefer ``self._pending_hop.message`` in that case.
         """
         for _ in range(MAX_RECEPTIONIST_STEPS):
+            self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
                 [make_system_message(self.system_prompt, self.provider)]

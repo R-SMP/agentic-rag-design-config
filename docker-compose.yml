@@ -66,6 +66,23 @@ services:
       # Compute via the Docker-internal host alias.
       RHINO_COMPUTE_URL:     "${RHINO_COMPUTE_URL:-http://host.docker.internal:6500/}"
       RHINO_COMPUTE_API_KEY: "${RHINO_COMPUTE_API_KEY:-}"
+      # Cloudflare R2 mirror for the post-session database.  When ALL
+      # four are set the DH uploads each saved .txt under
+      # <bucket>/<session_id>/<agent>/<field>.txt; when any one is
+      # missing the upload step is skipped (with a one-line log
+      # warning) and the local save behaves as before.  See
+      # agents/shared/r2_uploader.py and README "Cloudflare R2".
+      R2_ACCOUNT_ID:        "${R2_ACCOUNT_ID:-}"
+      R2_ACCESS_KEY_ID:     "${R2_ACCESS_KEY_ID:-}"
+      R2_SECRET_ACCESS_KEY: "${R2_SECRET_ACCESS_KEY:-}"
+      R2_BUCKET_NAME:       "${R2_BUCKET_NAME:-}"
+      R2_KEY_PREFIX:        "${R2_KEY_PREFIX:-}"
+      # Optional: ``eu`` / ``fedramp`` / empty.  EU-jurisdiction
+      # buckets (shown as ``my-bucket | EU`` in the R2 token
+      # dashboard) are unreachable through the standard endpoint —
+      # they require the ``<account>.eu.r2.cloudflarestorage.com``
+      # URL.  Mismatching this yields ``AccessDenied`` on every call.
+      R2_JURISDICTION:      "${R2_JURISDICTION:-}"
     extra_hosts:
       # Lets the container resolve ``host.docker.internal`` on
       # Linux daemons (already a no-op on Docker Desktop for

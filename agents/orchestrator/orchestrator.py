@@ -155,9 +155,14 @@ class Orchestrator(BaseChainAgent):
             state=_state_for("tool_caller"), session=session,
         )
         # Context Pruner shares the Orchestrator's LLM (cheaper than
-        # spinning up a 9th provider build).  Currently constructed but
-        # not invoked by the dispatcher — see KNOWN_ISSUES.
+        # spinning up a 9th provider build).  Exposed on the Session so
+        # every chain agent's
+        # ``BaseChainAgent.prune_history_if_needed`` can reach it via
+        # ``self.session.context_pruner`` without needing a back-
+        # reference to the Orchestrator.  Pre-invoke pruning is gated
+        # by ``workflow_settings.CONTEXT_PRUNER_ENABLED``.
         self.context_pruner = ContextPruner(self.base_llm)
+        setattr(session, "context_pruner", self.context_pruner)
         # Database Handler — runs ONLY post-session, after the user
         # types ``quit`` and confirms saving.  Not part of the
         # dispatch loop, has no routing tools, never speaks to the
@@ -394,6 +399,7 @@ class Orchestrator(BaseChainAgent):
         self.messages.append(HumanMessage(content=message))
 
         for _ in range(MAX_ORCH_INNER_STEPS):
+            self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
                 [make_system_message(self.system_prompt, self.provider)]

@@ -963,6 +963,11 @@ class DatabaseHandler(BaseChainAgent):
             # with empty-placeholder writes.
             attempt_id_by_parent: dict[str, str | None] = {}
 
+            # Session-id slug embedded in every saved .txt and used
+            # as the per-session prefix for the R2 mirror.  Same value
+            # the archive sweep uses under previous_sessions/.
+            session_id = session_dir.name
+
             written = 0
             for entry in schedule_entries:
                 # Publish the field's short label so the flowchart's
@@ -1042,6 +1047,15 @@ class DatabaseHandler(BaseChainAgent):
                         )
                     continue
 
+                # Resolve the parent's attempt id ONCE, up front, so
+                # every branch below (error, success, sidecar) can
+                # reference it without re-computing.
+                resolved_for_parent = (
+                    attempt_id_by_parent.get(parent_id)
+                    if parent_id is not None
+                    else None
+                )
+
                 agent = orchestrator._agents_by_key.get(agent_key)
                 agent_state = self.session.agent_states.get(agent_key)
                 if agent is None or agent_state is None:
@@ -1058,6 +1072,8 @@ class DatabaseHandler(BaseChainAgent):
                             f"the orchestrator's registry / session.agent_"
                             f"states; the DH could not interview it."
                         ),
+                        session_id=session_id,
+                        attempt_id=resolved_for_parent,
                     )
                     self._write_sidecar_meta(
                         err_path, entry=entry, attempt_id=None,
@@ -1070,11 +1086,6 @@ class DatabaseHandler(BaseChainAgent):
                 # the anchor flows naturally into both the asked and the
                 # saved (embedded) question.
                 effective_description = entry.get("description", "")
-                resolved_for_parent = (
-                    attempt_id_by_parent.get(parent_id)
-                    if parent_id is not None
-                    else None
-                )
                 if parent_id is not None and resolved_for_parent:
                     effective_description = (
                         f"For {resolved_for_parent}: "
@@ -1110,6 +1121,8 @@ class DatabaseHandler(BaseChainAgent):
                             f"raised an exception: "
                             f"{type(exc).__name__}: {exc}"
                         ),
+                        session_id=session_id,
+                        attempt_id=resolved_for_parent,
                     )
                     self._write_sidecar_meta(
                         err_path, entry=entry, attempt_id=None,
@@ -1177,17 +1190,19 @@ class DatabaseHandler(BaseChainAgent):
                         )
 
                 try:
+                    bound_attempt = (
+                        attempt_id_by_parent.get(entry["id"])
+                        if (scope == "attempt" and parent_id is None)
+                        else resolved_for_parent
+                    )
                     path = self._write_entry(
                         session_dir=session_dir,
                         agent_key=agent_key,
                         field=field,
                         question=question,
                         answer=answer,
-                    )
-                    bound_attempt = (
-                        attempt_id_by_parent.get(entry["id"])
-                        if (scope == "attempt" and parent_id is None)
-                        else resolved_for_parent
+                        session_id=session_id,
+                        attempt_id=bound_attempt,
                     )
                     self._write_sidecar_meta(
                         path, entry=entry, attempt_id=bound_attempt,
@@ -1205,6 +1220,35 @@ class DatabaseHandler(BaseChainAgent):
             logger.info(
                 f"[DH]  populate_database end; entries written={written}"
             )
+
+            # Mirror the local session_dir to Cloudflare R2 when
+            # configured.  Best-effort: a failure here logs a warning
+            # but never breaks the local save the user just confirmed.
+            try:
+                from agents.shared import r2_uploader as _r2
+                if _r2.is_enabled():
+                    n_up = _r2.upload_directory(
+                        session_dir,
+                        remote_prefix=f"{session_id}/",
+                        suffixes=(".txt",),
+                    )
+                    logger.info(
+                        f"[DH]  R2 mirror complete: {n_up} .txt files "
+                        f"uploaded under prefix {session_id}/"
+                    )
+                else:
+                    logger.info(
+                        f"[DH]  R2 not configured; skipped mirror of "
+                        f"{session_dir.resolve()} "
+                        f"(set R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / "
+                        f"R2_SECRET_ACCESS_KEY / R2_BUCKET_NAME to enable)."
+                    )
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.warning(
+                    f"[DH]  R2 mirror raised "
+                    f"({type(exc).__name__}: {exc}); save kept locally."
+                )
+
             return written
         finally:
             # Always emit the clearing handoff so the LOG-and-Status
@@ -1746,6 +1790,9 @@ class DatabaseHandler(BaseChainAgent):
         field: str,
         question: str,
         answer: str,
+        *,
+        session_id: str,
+        attempt_id: str | None,
     ) -> Path:
         """Write one ``(question, answer)`` pair to disk and return path.
 
@@ -1755,9 +1802,19 @@ class DatabaseHandler(BaseChainAgent):
         only in the DH log file.  For QUANTITATIVE fields, ``question``
         is the DH's asked question and ``answer`` is Agent A's
         verbatim reply.
+
+        The header carries the *session_id* (the
+        ``IDxxx_YYYYMMDD_HHMMSS`` slug shared with
+        ``previous_sessions/`` and the R2 mirror's per-session
+        prefix) and the *attempt_id* this row is bound to
+        ("(session-scope)" for session-scoped rows, "(unbound)" for
+        attempt rows whose parent never resolved an attempt).
         """
         path = self._entry_path(session_dir, agent_key, field)
+        attempt_line = attempt_id if attempt_id else "(session-scope)"
         path.write_text(
+            f"--- Session ID ---\n{session_id}\n\n"
+            f"--- Attempt ID ---\n{attempt_line}\n\n"
             f"--- Field ---\n{field}\n\n"
             "--- Question ---\n"
             f"{question}\n\n"
@@ -1773,10 +1830,23 @@ class DatabaseHandler(BaseChainAgent):
         agent_key: str,
         field: str,
         error_message: str,
+        *,
+        session_id: str = "",
+        attempt_id: str | None = None,
     ) -> Path:
-        """Write a sentinel ``ERROR:`` entry when the conversation failed."""
+        """Write a sentinel ``ERROR:`` entry when the conversation failed.
+
+        ``session_id`` / ``attempt_id`` mirror :meth:`_write_entry` so
+        the future RAG layer can still bucket failures by session;
+        both are optional with safe defaults to preserve backward
+        compatibility with any external test caller.
+        """
         path = self._entry_path(session_dir, agent_key, field)
+        attempt_line = attempt_id if attempt_id else "(session-scope)"
         path.write_text(
+            f"--- Session ID ---\n{session_id}\n\n"
+            f"--- Attempt ID ---\n{attempt_line}\n\n"
+            f"--- Field ---\n{field}\n\n"
             f"ERROR: {error_message}\n",
             encoding="utf-8",
         )

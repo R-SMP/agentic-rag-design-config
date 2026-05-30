@@ -1,0 +1,238 @@
+"""Cloudflare R2 mirror for the post-session database.
+
+The Database Handler writes per-field ``.txt`` files (plus sidecar
+``.meta.json`` files) under ``database/<session_id>/<agent>/<field>.txt``
+inside the container.  Without an R2 mirror those files live only in
+the container's writable layer and disappear on the next image
+rebuild.  This module pushes them to a Cloudflare R2 bucket whose
+key layout mirrors the local filesystem one-for-one.
+
+R2 is S3-compatible: the standard boto3 S3 client works once the
+``endpoint_url`` is pointed at
+``https://<account_id>.r2.cloudflarestorage.com``.
+
+Required environment
+--------------------
+* ``R2_ACCOUNT_ID``         — your Cloudflare account ID (e.g.
+                              ``a1b2c3d4e5f6...``).  The endpoint
+                              URL is derived from this.
+* ``R2_ACCESS_KEY_ID``      — the R2 API token's access key.
+* ``R2_SECRET_ACCESS_KEY``  — the R2 API token's secret.
+* ``R2_BUCKET_NAME``        — the destination bucket name.
+
+When ANY of the four is missing or empty, :func:`is_enabled` returns
+``False`` and every uploader call becomes a no-op (with a one-line
+log warning).  This is intentional: the DH save path must continue
+to work locally without R2 configured.
+
+Optional environment
+--------------------
+* ``R2_KEY_PREFIX``     — string prepended to every key written to the
+                          bucket (no trailing slash needed; one is added
+                          between the prefix and the per-session prefix).
+                          Useful when several environments share a single
+                          bucket — e.g. ``staging`` vs ``prod``.
+* ``R2_JURISDICTION``   — Cloudflare jurisdiction for the bucket.
+                          Empty / unset → standard endpoint
+                          (``<account>.r2.cloudflarestorage.com``).
+                          ``"eu"`` → EU endpoint
+                          (``<account>.eu.r2.cloudflarestorage.com``).
+                          ``"fedramp"`` → FedRAMP endpoint.  Mismatching
+                          the bucket's actual jurisdiction returns
+                          ``AccessDenied`` on every call — visible in the
+                          R2 dashboard's "Applied to" column for the
+                          token (e.g. ``my-bucket | EU``).
+"""
+
+from __future__ import annotations
+
+import logging
+import mimetypes
+import os
+from pathlib import Path
+from typing import Iterable
+
+logger = logging.getLogger("propeller_agent")
+
+_REQUIRED_ENV_VARS = (
+    "R2_ACCOUNT_ID",
+    "R2_ACCESS_KEY_ID",
+    "R2_SECRET_ACCESS_KEY",
+    "R2_BUCKET_NAME",
+)
+
+
+def _env(name: str) -> str:
+    return (os.environ.get(name) or "").strip()
+
+
+def is_enabled() -> bool:
+    """Return True when every required env var is set and non-empty."""
+    return all(_env(v) for v in _REQUIRED_ENV_VARS)
+
+
+_VALID_JURISDICTIONS = ("", "eu", "fedramp")
+
+
+def _endpoint_url() -> str:
+    """Build the R2 S3 endpoint URL, honouring an optional jurisdiction.
+
+    Cloudflare R2 buckets created in a jurisdiction (EU, FedRAMP) are
+    NOT reachable through the standard endpoint — they require the
+    jurisdiction-specific URL.  The R2 dashboard shows the bucket's
+    jurisdiction next to the token's "Applied to" column
+    (e.g. ``my-bucket | EU``).
+    """
+    account = _env("R2_ACCOUNT_ID")
+    jur = _env("R2_JURISDICTION").lower()
+    if jur and jur not in _VALID_JURISDICTIONS:
+        logger.warning(
+            f"[R2]  R2_JURISDICTION={jur!r} is not one of "
+            f"{_VALID_JURISDICTIONS}; falling back to the standard "
+            f"endpoint."
+        )
+        jur = ""
+    middle = f".{jur}" if jur else ""
+    return f"https://{account}{middle}.r2.cloudflarestorage.com"
+
+
+def _key_prefix() -> str:
+    """Optional ``R2_KEY_PREFIX``, normalised to ``"prefix/"`` or ``""``."""
+    raw = _env("R2_KEY_PREFIX")
+    if not raw:
+        return ""
+    raw = raw.strip("/")
+    return f"{raw}/" if raw else ""
+
+
+def _client():
+    """Build a fresh boto3 S3 client pointed at the R2 endpoint.
+
+    Returns ``None`` (and logs once) when boto3 is not importable or
+    when the env vars are incomplete.  Built on demand so a Stage A
+    deployment without R2 configured does not pay for the client at
+    every startup.
+    """
+    if not is_enabled():
+        return None
+    try:
+        import boto3  # type: ignore
+        from botocore.config import Config  # type: ignore
+    except Exception as exc:  # pragma: no cover - boto3 is a hard dep
+        logger.warning(
+            f"[R2]  boto3 import failed: {exc}; uploads disabled."
+        )
+        return None
+
+    return boto3.client(
+        "s3",
+        endpoint_url=_endpoint_url(),
+        aws_access_key_id=_env("R2_ACCESS_KEY_ID"),
+        aws_secret_access_key=_env("R2_SECRET_ACCESS_KEY"),
+        region_name="auto",   # R2 ignores region but boto3 requires one
+        config=Config(
+            signature_version="s3v4",
+            retries={"max_attempts": 4, "mode": "standard"},
+        ),
+    )
+
+
+# ---------------------------------------------------------------------------
+# Upload helpers
+# ---------------------------------------------------------------------------
+
+def _content_type_for(path: Path) -> str:
+    """Best-guess MIME type for *path*; falls back to ``text/plain``."""
+    ctype, _ = mimetypes.guess_type(path.name)
+    return ctype or "text/plain"
+
+
+def upload_file(
+    local_path: Path,
+    remote_key: str,
+    *,
+    content_type: str | None = None,
+) -> bool:
+    """Upload one local file to R2.  Returns True on success.
+
+    Best-effort: any error logs a warning and returns False so the
+    caller's loop can keep going.
+    """
+    client = _client()
+    if client is None:
+        return False
+    bucket = _env("R2_BUCKET_NAME")
+    key = f"{_key_prefix()}{remote_key.lstrip('/')}"
+    ct = content_type or _content_type_for(local_path)
+    try:
+        with local_path.open("rb") as fh:
+            client.put_object(
+                Bucket=bucket,
+                Key=key,
+                Body=fh.read(),
+                ContentType=ct,
+            )
+        logger.info(f"[R2]  uploaded {key} ({local_path.name})")
+        return True
+    except Exception as exc:
+        logger.warning(
+            f"[R2]  upload failed for {local_path.name} → {key}: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return False
+
+
+def upload_directory(
+    local_dir: Path,
+    remote_prefix: str,
+    *,
+    suffixes: Iterable[str] = (".txt",),
+) -> int:
+    """Upload every file under *local_dir* matching *suffixes* to R2.
+
+    The local relative path is preserved under *remote_prefix* — so
+    ``upload_directory(Path("database/ID007_..."), "ID007_.../")``
+    with suffixes ``(".txt",)`` mirrors the per-agent / per-field
+    layout one-for-one.
+
+    Returns the number of files uploaded.  When R2 is not configured
+    (or boto3 is missing) returns 0 immediately after one warning,
+    without touching the filesystem.
+    """
+    if not is_enabled():
+        logger.warning(
+            "[R2]  not configured (missing one of R2_ACCOUNT_ID / "
+            "R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET_NAME); "
+            "skipping upload of " + str(local_dir.resolve())
+        )
+        return 0
+
+    if not local_dir.exists() or not local_dir.is_dir():
+        logger.warning(
+            f"[R2]  source directory {local_dir.resolve()} is "
+            f"missing or not a directory; nothing to upload."
+        )
+        return 0
+
+    suffixes_lc = tuple(s.lower() for s in suffixes)
+    prefix = remote_prefix.strip("/")
+    if prefix:
+        prefix += "/"
+
+    uploaded = 0
+    for path in sorted(local_dir.rglob("*")):
+        if not path.is_file():
+            continue
+        if suffixes_lc and path.suffix.lower() not in suffixes_lc:
+            continue
+        rel = path.relative_to(local_dir).as_posix()
+        key = f"{prefix}{rel}"
+        if upload_file(path, key):
+            uploaded += 1
+
+    logger.info(
+        f"[R2]  uploaded {uploaded} file(s) from "
+        f"{local_dir.resolve()} → "
+        f"s3://{_env('R2_BUCKET_NAME')}/{_key_prefix()}{prefix}"
+    )
+    return uploaded

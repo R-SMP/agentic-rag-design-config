@@ -240,6 +240,7 @@ class Planner(BaseChainAgent):
         self.messages.append(HumanMessage(content=message))
 
         for _ in range(MAX_PLANNER_STEPS):
+            self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
                 [make_system_message(self.system_prompt, self.provider)]

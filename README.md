@@ -131,7 +131,7 @@ A red **Stop** button appears in the header while a turn is running. Clicking it
 
 A split pane: SVG flowchart on the left, live session log on the right (Server-Sent Events from `/api/log/stream`, dumps the full current-session log on open then tails new bytes).
 
-**Layout.** The Orchestrator sits in the centre of the chart with open space around it. Each chain agent (UII, Planner, Input Creator, Input inspector, Tool Caller, Output inspector) lives in a fixed column; the two DC tool boxes (`Propeller Configurator`, `Visual Renderings generator`) sit on the right, next to the Tool Caller. Database Handler and Context Pruner live in the EXTRA AGENTS panel — placeholders that will light up once they're wired into the live flow.
+**Layout.** The Orchestrator sits in the centre of the chart with open space around it. Each chain agent (UII, Planner, Input Creator, Input inspector, Tool Caller, Output inspector) lives in a fixed column; the two DC tool boxes (`Propeller Configurator`, `Visual Renderings generator`) sit on the right, next to the Tool Caller. The **EXTRA AGENTS** panel holds the **Database Handler** (lights up at End Session → Save while it interviews each agent for the post-session database) and the **Context Pruner** (lights up alongside whichever agent's history just exceeded the token threshold; see [Context Pruner](#context-pruner) below).
 
 **Static black arrows** connect User ↔ Receptionist ↔ Orchestrator (the always-present top of the pipeline), UII → Planner → Input Creator → Input inspector → Tool Caller, and Tool Caller ↔ Output inspector / Propeller Configurator / Visual Renderings generator. These never change.
 
@@ -205,6 +205,38 @@ A few one-shot endpoints round out the surface:
 
 A single SSE handler in `startEventStream()` routes incoming events to either the viewer (`visualize`), the flowchart (`agent_active` → `applyAgentActive`), or the per-agent caption (`generic_tool` → `recordToolUsedByActiveAgent`). The strict-transitions highlighting policy lives entirely in `applyAgentActive`: at most one agent box is lit at a time, except during a DC-tool call where both the agent and the tool box are highlighted together.
 
+## Context Pruner
+
+Long multi-attempt sessions accumulate messages and (with `KEEP_IMAGES_IN_CONTEXT=True`) image content blocks across every agent's history. Once a single agent's history crosses the configured token threshold its next LLM invoke would either be wasteful or, in the worst case, exceed the provider's context window. The **Context Pruner** is a stateless agent (`agents/shared/context_pruner.py`) that condenses the older portion of any chain agent's history into a single SystemMessage block before the next invoke, keeping only the most recent N messages verbatim.
+
+### How it fires
+
+Every chain agent (Receptionist, Orchestrator, UII, Planner, DCIC, DCII, DCOI, Tool Caller) calls `self.prune_history_if_needed()` at the top of its invoke loop, in `agents/shared/base_chain_agent.py`. The check:
+
+1. **Gated by** `CONTEXT_PRUNER_ENABLED` (default `True`).
+2. **Triggered** when `count_tokens(self.messages) > CONTEXT_PRUNER_THRESHOLD_TOKENS` (cl100k_base, default 80,000). Below the threshold nothing happens.
+3. **Cut point** is computed as `len(self.messages) - CONTEXT_PRUNER_KEEP_LAST_MESSAGES` (default 6), then advanced forward via `_safe_cut_point` so a `ToolMessage` is never separated from its matching `AIMessage(tool_calls=...)` — tool-call pairs are always pruned or kept as a unit.
+4. **Prefix is serialised** to plain text (`USER:`/`ASSISTANT:`/`TOOL_RESULT:` lines; image content blocks become `[image: redacted for pruning]` placeholders so they don't waste pruner tokens) and handed to the Pruner's `run()`. The Pruner's system prompt is in `agents/shared/context_pruner.py`; it tells the model what to REMOVE (old render descriptions, superseded user requests, verbose tool outputs), KEEP (current design requirements, decisions, latest assessment, unresolved issues), and SUMMARISE (multi-attempt fix loops, long tool outputs).
+5. **Result replaces** `self.messages` as `[SystemMessage("SUMMARY OF EARLIER CONVERSATION (pruned by the Context Pruner; N older messages condensed into this block): ...")] + tail`. The Database Handler is intentionally NOT pruned — it iterates ~28 schedule entries per save and relies on accumulated state.
+
+### What stays untouched
+
+Each agent's **original system prompt** lives in `self.system_prompt`, NOT in `self.messages`. The invoke pattern is:
+
+```python
+response = invoke_with_retry(
+    self.llm,
+    [make_system_message(self.system_prompt, self.provider)] + self.messages,
+    "Receptionist",
+)
+```
+
+The system prompt is rebuilt fresh at every invoke from the untouched `self.system_prompt` attribute, so pruning has no effect on it. The LLM sees the original system prompt, then the pruner's summary `SystemMessage` (now in `self.messages[0]`), then the kept tail messages. Anthropic / Google concatenate adjacent `SystemMessage` blocks into the single top-level system field of their respective APIs; OpenAI keeps them as separate `role: "system"` messages — all three handle this shape cleanly.
+
+### Live feedback
+
+While the Pruner runs, the LOG-and-Status chart highlights the **Context Pruner** box in the EXTRA AGENTS panel alongside the calling agent's box (same multi-active pattern as the two DC tools — see `applyAgentActive` and `TOOL_NAMES` in `web/app.js`). The matching exit handoff clears the CP box and leaves the caller solo-lit. Every prune logs a `[CP] <agent_key>: pruned history N -> M messages, ~X -> ~Y tokens` line in the session log.
+
 ## Configuration
 
 All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/settings.py):
@@ -224,6 +256,10 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
 | `EMBEDDING_MODEL` | `"text-embedding-3-large"` | for DH-shaped Semantic bodies |
 | `EMBEDDING_VECTOR_DIMS` | `1024` | MRL truncation dim at index time |
 | `EMBEDDING_MAX_RESPONSE_TOKENS` | `700` | DH cap for Semantic bodies |
+| `LLM_ROUTING_MODE` | `"individual"` | `"individual"` honours per-agent `.env` overrides; `"openai"` / `"anthropic"` / `"google"` forces every agent onto that provider. Edit only via the LLM-routing chart at the top of Workflow Settings. |
+| `CONTEXT_PRUNER_ENABLED` | `True` | run the Context Pruner pre-invoke check on each chain agent |
+| `CONTEXT_PRUNER_THRESHOLD_TOKENS` | `80000` | cl100k_base token count above which a chain agent's history is pruned before its next invoke |
+| `CONTEXT_PRUNER_KEEP_LAST_MESSAGES` | `6` | how many recent messages of the calling agent survive the prune verbatim (cut point is extended forward to never split an `AIMessage(tool_calls)` from its `ToolMessage`) |
 
 ## Status & known issues
 
@@ -240,7 +276,6 @@ Near-term direction:
 
 - Wire `RAG_ENABLED` to consume the database the Database Handler produces.
 - Stage B: persist sessions and embeddings to Postgres, push binary artefacts to R2.
-- Implement the **Context Pruner** agent (slot reserved in the LOG and Status flowchart — see TODO F7).
 - Reorganise tools — split generic helpers from DC-specific tools and consolidate under `tools/` (see TODO F8) — so the `@generic_tool` decorator only needs to live at the `@tool` site instead of being duplicated on each agent's `_handle_*` handler method.
 - Close out the LOG and Status open items above (F5, F6, F9, F10, F11).
 
@@ -252,3 +287,4 @@ Near-term direction:
 - Stop button with cooperative pipeline cancellation between hops.
 - Chat viewer footer (Download geometry + Copy parameters list).
 - Receptionist tool calls now appear in the session log alongside every other agent; `[RECEPTIONIST]` no longer duplicates the forwarded message body.
+- **Context Pruner** wired into every chain agent's pre-invoke hook (see [Context Pruner](#context-pruner) below). F7 closed.

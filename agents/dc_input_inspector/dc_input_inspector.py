@@ -147,6 +147,7 @@ class DCInputInspector(BaseChainAgent):
         seen_sigs: set[tuple[str, str]] = set()
 
         for _ in range(MAX_DCII_STEPS):
+            self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
                 [make_system_message(self.system_prompt, self.provider)]

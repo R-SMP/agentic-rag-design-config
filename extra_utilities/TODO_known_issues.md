@@ -747,9 +747,124 @@ overflow seen so far. Implement once a non-image-driven
 overflow shows up, or when the multi-attempt flow becomes the
 common case rather than the exception.
 
-**Status.** Open. Slot reserved in the LOG and Status flowchart
-(box is drawn but never lights up until this lands). Paired
-with the v7-carry-over context-overflow item.
+**Status.** **Implemented (v9).**  The Context Pruner is now wired
+into every chain agent's pre-invoke hook via
+``BaseChainAgent.prune_history_if_needed`` (see the dedicated
+"Context Pruner" section in ``README.md``).  Gated by the new
+``CONTEXT_PRUNER_ENABLED`` / ``CONTEXT_PRUNER_THRESHOLD_TOKENS`` /
+``CONTEXT_PRUNER_KEEP_LAST_MESSAGES`` settings.  The CP box in the
+LOG-and-Status chart lights up alongside whichever agent's history
+is being pruned (multi-active, same pattern as the DC tools).  The
+Database Handler is intentionally NOT pruned — it iterates ~28
+schedule entries in one save and relies on accumulated state.
+
+### F12. Verify the Context Pruner works as intended
+
+**Where.**
+- Pre-invoke hook: ``agents/shared/base_chain_agent.py``
+  (``prune_history_if_needed``, ``_safe_cut_point``,
+  ``_serialise_messages``).
+- Pruner agent: ``agents/shared/context_pruner.py``.
+- Per-agent call sites: one line at the top of each
+  ``for _ in range(MAX_X_STEPS):`` loop in the 8 chain agents
+  (Receptionist, Orchestrator, UII, Planner, DCIC, DCII, DCOI,
+  Tool Caller).
+- Settings: ``workflow_settings/settings.py``
+  (``CONTEXT_PRUNER_ENABLED``,
+  ``CONTEXT_PRUNER_THRESHOLD_TOKENS``,
+  ``CONTEXT_PRUNER_KEEP_LAST_MESSAGES``).
+- Live observability: the ``Context Pruner`` entry in
+  ``TOOL_NAMES`` in ``web/app.js`` and the EXTRA AGENTS panel
+  box in ``web/index.html``.
+
+**What.**  The CP machinery landed end-to-end but has not yet been
+validated against a real, long, multi-attempt session.  Need a
+proper verification pass — both unit tests on the pure helpers
+and an integration smoke that pushes a real chain agent past
+the threshold and confirms the prune fires, succeeds, and leaves
+the agent in a usable state.
+
+**What "works properly" means — concrete checklist.**
+
+1. *Token count accuracy.*  ``count_tokens`` over
+   ``_serialise_messages(self.messages)`` is a reasonable proxy
+   for what the provider sees.  Drift between this estimate and
+   the real provider-side count should be small enough that the
+   ``CONTEXT_PRUNER_THRESHOLD_TOKENS`` default (80k) still leaves
+   ~30-50k headroom for the next-hop reply on any of the three
+   providers we wire.
+2. *No-op when under threshold.*  Sessions that never exceed the
+   threshold behave identically to the pre-v9 baseline — same
+   message order, no extra LLM calls, no log lines, no flowchart
+   events.  Verify by running a single-turn / single-attempt
+   session and diffing the log against a pre-v9 reference.
+3. *Cut point preserves tool-call pairing.*  ``_safe_cut_point``
+   must never leave an ``AIMessage(tool_calls=...)`` in the
+   prefix while its matching ``ToolMessage`` (same
+   ``tool_call_id``) stays in the kept tail.  Unit-test against
+   hand-crafted histories that intentionally place a tool-call /
+   tool-message boundary at the ``len - KEEP_LAST_MESSAGES``
+   index, with one, two, and three tool calls per AIMessage.
+4. *Image content blocks survive the prune in summary form.*
+   Image bytes are replaced by ``[image: redacted for pruning]``
+   in the prefix so they don't waste tokens on encoded data, but
+   the Pruner's system prompt should still surface
+   "what the agent saw" in the summary — verify by running a
+   3-attempt session with reference images and reading the
+   resulting summary SystemMessage at the next invoke.
+5. *Summary SystemMessage shape is provider-compatible.*  The
+   resulting ``[SystemMessage(summary), ...tail]`` pattern works
+   on all three providers we wire — Anthropic concatenates
+   adjacent SystemMessages into a single system field; OpenAI
+   keeps them separate; Google concatenates.  Smoke-test once
+   per provider with ``LLM_ROUTING_MODE`` set to each.
+6. *Settings re-read at next session.*  Edits to the three
+   ``CONTEXT_PRUNER_*`` settings via Workflow Settings take
+   effect on End Session → next session (the same reload path
+   the rest of ``workflow_settings/settings.py`` uses).  Verify
+   by flipping ``CONTEXT_PRUNER_ENABLED`` mid-process.
+7. *Failure modes are non-fatal.*  Token count error, pruner
+   LLM error, empty pruner output, viz_bus publish error — each
+   logs a warning and leaves ``self.messages`` untouched.
+   Verify by monkey-patching ``count_tokens`` / ``pruner.run``
+   to raise.
+8. *Observability events fire correctly.*  Each successful prune
+   publishes ``agent_active(<agent>, "Context Pruner")`` on entry
+   and ``agent_active("Context Pruner", <agent>)`` on exit; the
+   exit event fires even on the error paths so the chart never
+   leaves CP highlighted forever.
+9. *Database Handler is NOT pruned.*  Confirm the DH does not
+   call ``self.prune_history_if_needed()`` — its
+   ``populate_database`` loop sees the full accumulated
+   conversation per field.
+10. *System prompt is untouched.*  After a prune,
+    ``self.system_prompt`` is bit-for-bit identical to the
+    construction-time value, and the next invoke prepends
+    ``make_system_message(self.system_prompt, self.provider)``
+    fresh — confirm with a simple before/after equality check.
+
+**Suggested test layout.**
+
+- ``extra_utilities/smoke_test_context_pruner.py`` (new) — exercises
+  the pure helpers (``_safe_cut_point`` boundary cases,
+  ``_serialise_messages`` round-trip including image blocks,
+  ``prune_history_if_needed`` no-op paths, and the failure
+  modes) without standing up a Session or invoking a real LLM.
+  Mocks ``pruner.run`` to return a fixed summary string.  Should
+  be runnable inside the Docker container the same way
+  ``smoke_test_llm_routing.py`` is.
+- A manual run: take the v7 case that hit 894k tokens (3-attempt
+  design request with one reference image attached) and confirm
+  (a) it no longer raises ``OpenAIContextOverflowError`` and
+  (b) the CP box lights up in the LOG-and-Status view at the
+  right moments.
+
+**Why deferred.**  The machinery landed in v9.  Verification is
+specifically called out as a follow-up so we get systematic
+coverage (every chain agent, every failure mode) instead of
+finding bugs only when a real session crashes.
+
+**Status.** Open.  Pairs with F7 (implementation).
 
 ### F9. "Copy parameters list" should return the SELECTED attempt's parameters
 

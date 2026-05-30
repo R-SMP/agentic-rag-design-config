@@ -339,6 +339,12 @@ const FLOW_BOX_BY_NAME = {
 const TOOL_NAMES = new Set([
   "Propeller Configurator",
   "Visual Renderings Generator",
+  // Context Pruner is treated as a tool-like overlay: when an agent's
+  // history exceeds the configured token threshold its pre-invoke
+  // hook lights up the CP box ALONGSIDE the calling agent (multi-
+  // active), and the matching exit event clears CP while leaving the
+  // caller solo-lit.  Same lifecycle as the two DC tools.
+  "Context Pruner",
 ]);
 
 function _clearActiveBoxes() {

@@ -304,6 +304,7 @@ class DCOutputInspector(BaseChainAgent):
         self.messages.append(HumanMessage(content=text))
 
         for _ in range(MAX_DCOI_STEPS):
+            self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
                 [make_system_message(self.system_prompt, self.provider)]
