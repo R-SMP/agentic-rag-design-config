@@ -1928,6 +1928,33 @@ should NOT start until:
 
 **Status.** Open.  Architecture choice pending.
 
+### F23. Replace the Context Pruner's pre-scan + tier-2 input cap with something less crude
+
+**Where.**
+- ``agents/shared/base_chain_agent.py`` — ``_truncate_oversized_messages`` (the pre-scan helper) and the tier-2 input-cap block inside ``prune_history_if_needed``.
+- ``workflow_settings/settings.py`` — ``CONTEXT_PRUNER_MAX_INDIVIDUAL_MESSAGE_TOKENS``, ``CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS``.
+- ``agents/shared/context_pruner.py`` — three-tier prompts.
+
+**What.**  Both defences shipped on 2026-05-31 in response to the live incident where the Receptionist called ``read_attempt(file="propeller_mesh.obj")``, got a 1.3 MB inline mesh dump (~333k tokens) as a ToolMessage, and the Context Pruner's own tier-2 LLM call then 429-ed with "Request too large for gpt-5.4-mini in organization … TPM Limit 200000, Requested 333109".  They work, but both are **crude band-aids** rather than the right design:
+
+- **Pre-scan** blindly truncates any single message above the cap (default 30 000 tokens) to the first 2 000 characters plus a marker.  Lossy by character count rather than by semantic relevance; cuts mid-sentence; doesn't distinguish "a 50 000-token tool output that was actually useful" from "a 50 000-token tool output that was a mistake".
+- **Tier-2 input cap** truncates the serialised tail by **character ratio**, not by message boundaries.  Can chop the head off the most recent message, lose tool-call closures, or leave the LLM a partial JSON fragment.
+- Both caps are **single global numbers** — they don't adapt to the actual upstream provider's per-request TPM limit (which differs per model/account).
+- Neither defence is **needed in the happy path** — they only matter when a tool returns way too much content, which itself is the upstream bug.
+
+**Proposal sketch** — one of, or a combination of:
+
+1. **Per-tool output caps at the source.**  Extend the pattern already used by ``read_attempt`` (mesh suffixes → path only): every tool that can produce variable-length output declares its own cap and its own degradation strategy (path-only, head + tail with marker, structured stats, etc.).  This eliminates the failure mode at the cause rather than mopping it up downstream.  ``load_render_images``, ``read_extracted_inputs``, the ``read_attempt`` text branch, anything in the future agents add — all should honour a per-tool ``MAX_INLINE_CHARS`` (or per-suffix policy).
+2. **Smarter pre-scan that preserves message tail rather than head.**  For oversized ToolMessages the LAST few lines (e.g. final tool error / final stat block) are usually more useful than the first 2 000 chars.  Head-AND-tail with the middle elided ("[... 320 000 chars elided ...]") would be more honest than head-only.
+3. **Tier-2 should drop OLDEST tail messages first, not truncate by character ratio.**  If the tail is over cap, drop messages from the front of the tail until it fits, with a marker noting how many were dropped (and into a synthetic summary line "[N earlier tail messages dropped — see tier-1 summary for context]").  Preserves message-boundary semantics and keeps the most recent / most relevant turns intact.
+4. **Provider-aware cap on tier-2 input.**  Read the agent's bound provider+model from ``self.provider`` / ``self.model``, look up the per-request input limit from a small ``PROVIDER_INPUT_LIMITS`` table (OpenAI 200k for gpt-4o-mini, Anthropic 200k for haiku, Google ~30k for flash, etc.), and use 0.7× that as the per-call cap.  The current 60 000 default is conservative-or-wasteful depending on the provider.
+5. **Dedicated chunked-summarisation for very large tails.**  When the tail genuinely needs summarising but exceeds the LLM's per-call cap, split it into chunks of ``cap × 0.7`` tokens each, summarise each chunk independently, then summarise the chunk-summaries.  Map-reduce in spirit.  More LLM calls but never truncates the input.
+6. **Telemetry first.**  Log every time the pre-scan / tier-2 cap fires (already done in the commit) and dashboard it.  See which tools actually trigger this in production before deciding which of 1-5 to ship.
+
+**Why deferred.**  The current defences are correctness-safe (the system never gets *worse* than the un-defended state — a truncated ToolMessage is strictly better than a 429-ing prune chain) and they unblock the 2026-05-31 production failure.  The proper fix is a small per-tool design pass plus arguably a provider-aware cap; both want a calm refactor cycle, not the same-day deploy that landed the band-aid.
+
+**Status.**  Open.  Triage suggestion: option 1 (per-tool source caps) is the highest-leverage move because it removes the failure mode entirely for known tools.  Combine with option 4 (provider-aware tier-2 cap) for a complete fix; options 2/3/5 become nice-to-have polish.
+
 ---
 
 ## Resolved issues
