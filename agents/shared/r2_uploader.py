@@ -237,8 +237,10 @@ def upload_attempt_artefacts(
         return [], list(whitelist)
 
     bucket = _env("R2_BUCKET_NAME")
-    prefix = _key_prefix()
-    base = f"{prefix}{session_id}/attempts/{attempt_id}/"
+    # NOTE: `base` is PREFIX-FREE.  ``upload_file`` is the single owner
+    # of ``_key_prefix()`` — passing an already-prefixed key here would
+    # double the prefix (e.g. ``web-v1/web-v1/<sid>/attempts/...``).
+    base = f"{session_id}/attempts/{attempt_id}/"
 
     uploaded: list[str] = []
     missing: list[str] = []
@@ -259,7 +261,7 @@ def upload_attempt_artefacts(
     logger.info(
         f"[R2]  attempt-artefact upload: {len(uploaded)} uploaded, "
         f"{len(missing)} missing → "
-        f"s3://{bucket}/{base}"
+        f"s3://{bucket}/{_key_prefix()}{base}"
     )
     return uploaded, missing
 

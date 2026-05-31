@@ -1766,6 +1766,168 @@ sure the abort path doesn't malform message lists.
 enough" for non-emergency cancellation; this entry tracks the
 finer-grained behaviour the Stop button name implies.
 
+### F22. Support multiple simultaneous users (multi-tenant Stage A)
+
+**Where.**  Cross-cutting.  Touches every module that reads / writes
+shared global state today:
+
+- ``web_app.py`` — the ``_BOX`` singleton holds **one** Session per
+  process.  ``/api/turn``, ``/api/end``, ``/api/images``, etc. all
+  read and mutate it without any user identity scoping.  The viz_bus
+  SSE stream (``/api/events``) is also process-global — every
+  connected browser sees every agent_active event.
+- ``agents/loader.py`` — ``_resolve_session_name`` /
+  ``_resolve_session_timestamp`` mint a single ``IDxxx_<ts>`` per
+  process lifecycle.  The ``IDxxx`` counter reads from
+  ``previous_sessions/`` on disk, which is also a single shared
+  path.
+- ``config.py`` paths — ``LOGS_DIR``, ``ATTEMPTS_DIR``,
+  ``USER_INPUTS_DIR``, ``INPUT_IMAGES_DIR``, ``DATABASE_DIR``,
+  ``PREVIOUS_SESSIONS_DIR`` are all single global directories that
+  every active session shares.
+- ``agents/shared/viz_bus.py`` — the publish/subscribe queue is
+  one global bus.
+- ``agents/database_handler/database_handler.py`` — at End Session
+  the archive sweep moves ``/app/attempts/`` and ``/app/inputs/``
+  out of the live tree; with two concurrent users this would
+  corrupt the other user's in-flight state (this is structurally
+  the same race that produced the 2026-05-30 duplicate-save bug
+  in single-user mode, where one user's two retried saves raced
+  each other — and would be a hard requirement in multi-user mode).
+- Auth: today ``POST /api/auth`` validates a shared invite code and
+  stores no user identity.  Multi-tenancy needs a per-user identity
+  (cookie / JWT) and authorisation on every API endpoint.
+- R2 layout: today the key prefix is per-environment
+  (``R2_KEY_PREFIX``).  Multi-tenant would need either a per-user
+  prefix segment (``<env>/<user_id>/<session_id>/…``) or a
+  per-user bucket.
+
+**What.**  Today Stage A is **single-tenant by construction**.  The
+Railway deployment serves one session at a time, archived under a
+single ``previous_sessions/`` tree, mirrored to a single R2 key
+prefix.  Trying to use it with two browsers simultaneously today
+will:
+
+1. Have both browsers share the same ``_BOX.session`` — turns from
+   user B mutate user A's agent histories.
+2. Have both End Session clicks race on the same shared filesystem
+   (the same race documented in the 2026-05-30 bug, but now
+   structural instead of accidental).
+3. Have both saves write to the same R2 prefix
+   (``<env>/IDxxx_<ts>/...``) — different timestamps, but the
+   ``IDxxx`` counter is shared and the prefix has no user
+   discriminator.
+4. Have the SSE flowchart cross-pollinate: user A sees user B's
+   agent activations and vice versa.
+
+The goal of this work is to make N simultaneous users a supported
+mode: each user gets their own isolated session, own attempts/
+inputs/logs/database namespace, own SSE event stream, own End
+Session lifecycle, and own R2 destination prefix.
+
+**Sub-options for HOW (to be decided).**  This entry is intentionally
+under-specified at the design level — pick one of these before
+implementation work starts.
+
+- **F22.a — In-process multi-tenancy via per-request session lookup.**
+  Replace the ``_BOX`` singleton with a ``dict[user_id, Session]``.
+  Every endpoint takes a cookie / JWT, resolves the user, fetches
+  or creates that user's Session.  Filesystem paths become
+  ``<base>/<user_id>/<session>/…`` (or ``<base>/<session>``
+  where ``<session>`` includes a user-prefixed slug).  R2 key
+  prefix gains a ``<user_id>`` segment.  SSE viz_bus becomes
+  per-user (one queue per user).
+  - Pros: smallest delta from current architecture; reuses the
+    single-worker uvicorn invariant (W1) so the in-process state
+    model still works; no infra changes.
+  - Cons: still bounded by one process — concurrent saves still
+    share CPU, memory, the same LLM rate-limit budget, the
+    same boto3 connection pool.  Crash takes everyone down.
+    A single 5-15 min DH save still blocks the threadpool slot;
+    other users can keep using the app but slot contention is
+    real.
+  - Where: ``web_app.py`` rewrites ``_BOX`` → registry; every
+    endpoint refactored to require ``user_id``; ``agents/loader.py``
+    resolves session under user-scoped roots; ``viz_bus.py``
+    becomes per-user.
+
+- **F22.b — Container-per-user via spawn-on-demand.**
+  Railway's deployment / Docker can run multiple replicas, but
+  not one-per-user out of the box.  This option introduces a
+  thin router that spawns a fresh container per user (or per
+  N users), backed by a small orchestrator (k8s, Nomad, Docker
+  Swarm, or a custom spawn-script).  Each user's container is
+  effectively the current single-tenant build, isolated.
+  - Pros: zero changes to the Stage A app code itself — each
+    container thinks it's single-tenant.  Hard isolation.  Easy
+    to reason about.
+  - Cons: significant infra work; cold-start latency per user
+    (~30s+); per-user cost is the whole container; auth /
+    routing layer needs to be built and operated separately
+    from the app.
+
+- **F22.c — Move state to Postgres + Redis + R2; make Stage A stateless.**
+  Largest rewrite.  Each request reconstitutes the Session
+  from durable storage (Postgres for schedule / settings,
+  Redis for live message histories + viz_bus pub/sub, R2 for
+  artefacts).  No ``_BOX``; no in-memory session at all.  Then
+  N uvicorn workers / replicas can serve any user.
+  - Pros: cloud-native; scales horizontally; survives restarts
+    mid-session (today every Railway redeploy kills any
+    in-flight session); aligns with the Stage B database
+    design notes (``database_design_notes.md``).
+  - Cons: invasive — every agent's ``self.messages`` mutation
+    path has to round-trip through a persistence layer; W1 (the
+    single-worker invariant) goes away; Redis becomes a hard
+    dependency.
+
+- **F22.d — Hybrid: F22.a now, F22.c later.**
+  Adopt F22.a for the first cut (per-user dict + per-user paths
+  + per-user R2 prefix segment + per-user viz_bus), but design
+  the user-id scoping at the data-model boundary so a later
+  move to F22.c (state in Postgres + Redis) is a swap-out of
+  the registry implementation rather than a re-plumb of every
+  endpoint.
+
+**Concrete acceptance criteria (any chosen option must satisfy).**
+
+1. Two browsers can each start a session, run independent turns,
+   click End Session, and produce TWO distinct ``previous_sessions/<sid>/``
+   archives and TWO disjoint R2 prefixes.  Neither save's archive
+   sweep can touch the other user's live ``/app/attempts/`` or
+   ``/app/inputs/`` state.
+2. Two simultaneous DH saves do not race on the schedule, the
+   agent message histories, or the boto3 connection pool.
+3. Each user's SSE ``/api/events`` stream only carries that user's
+   agent activations.
+4. The ``IDxxx`` counter is either per-user (``IDxxx_<user>_<ts>``)
+   or globally monotonic across users; either way two concurrent
+   ``populate_database`` calls do NOT both pick the same
+   ``IDxxx``.
+5. R2 keys for two users never collide on a single prefix —
+   ``<env>/<user_id>/<session>/…`` or equivalent.
+6. ``POST /api/auth`` returns a stable per-user identity (cookie
+   or JWT), and every other endpoint authorises against it.
+7. A crash / OOM in one user's session does NOT corrupt or stop
+   the other user's session.  (F22.c is the only option that
+   gives this for free; F22.a / F22.d need careful try/except
+   discipline.)
+
+**Why deferred.**  This is a fundamental architecture choice with
+significant cost regardless of the option picked, and the current
+single-user mode is sufficient for the v9 milestone.  The work
+should NOT start until:
+
+- The duplicate-save / HTTP-timeout fix (the lock on ``/api/end``,
+  per the 2026-05-30 diagnosis) lands first — every option above
+  depends on having a single well-defined save lifecycle per
+  user.
+- Auth strategy is decided (cookie vs JWT; per-user vs invite-code).
+- A clear answer to: do we expect 2-3 simultaneous users (favor
+  F22.a / F22.d) or 20+ (favor F22.b / F22.c)?
+
+**Status.** Open.  Architecture choice pending.
+
 ---
 
 ## Resolved issues

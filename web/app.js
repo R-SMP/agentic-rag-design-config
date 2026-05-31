@@ -255,19 +255,43 @@ endBtn.addEventListener("click", async () => {
     endBtn.textContent = "Ending…";
   }
 
+  let endResp = null;
   try {
-    await fetch("/api/end", {
+    endResp = await fetch("/api/end", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ save: !!wantSave }),
     });
   } catch (e) {
-    /* ignore */
-  } finally {
-    endBtn.disabled = false;
-    endBtn.textContent = originalEndText || "End Session";
-    if (pendingBubble) pendingBubble.remove();
+    /* network error — fall through; the finally block re-enables the
+       button so the user can retry. */
+    console.warn("[End Session] network error talking to /api/end:", e);
   }
+
+  // HTTP 409 — the server already has a save in flight (typically a
+  // proxy / browser retry that this call duplicates).  Keep the UI in
+  // its locked "Saving…" state: the ORIGINAL /api/end is still
+  // running server-side and will finish on its own; clearing chat /
+  // viewer / images here would lie to the user about what state they
+  // are in.  See web_app.py:api_end for the backend guard and
+  // extra_utilities/TODO_known_issues.md F22 for the diagnosis.
+  if (endResp && endResp.status === 409) {
+    console.warn(
+      "[End Session] /api/end returned HTTP 409 — a previous save is " +
+      "still in progress; this click was ignored by the server.  " +
+      "Leaving the UI in its locked state; the in-flight save will " +
+      "complete on its own."
+    );
+    endBtn.textContent = "Save already in progress…";
+    // Do NOT re-enable the button, remove the pending bubble, or
+    // wipe chat / viewer / images — those steps belong to the
+    // original /api/end that is still running.
+    return;
+  }
+
+  endBtn.disabled = false;
+  endBtn.textContent = originalEndText || "End Session";
+  if (pendingBubble) pendingBubble.remove();
 
   messages.innerHTML = "";
   // 3D viewer (right of the Chat pane): the mesh belongs to the

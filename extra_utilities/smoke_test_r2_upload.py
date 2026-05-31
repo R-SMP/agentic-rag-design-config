@@ -371,6 +371,94 @@ with tempfile.TemporaryDirectory(prefix="r2_smoke_") as td:
 
 
 # ---------------------------------------------------------------------------
+# 7b. r2_uploader.upload_attempt_artefacts — the Path 1 (per-attempt)
+#     call the DH makes inside the force-tool turn.  Regression test
+#     for the doubled-prefix bug: the resulting key MUST contain
+#     ``R2_KEY_PREFIX`` exactly once, even when R2_KEY_PREFIX is set.
+# ---------------------------------------------------------------------------
+_hdr("Step 7b — r2_uploader.upload_attempt_artefacts (Path 1 / regression)")
+
+with tempfile.TemporaryDirectory(prefix="r2_smoke_attempt_") as td:
+    attempt_dir = Path(td)
+    # The whitelist drives which files inside attempt_dir get uploaded.
+    # Drop one file from each side — present and absent — so we cover
+    # both ``uploaded`` and ``missing`` return shapes.
+    (attempt_dir / "description.txt").write_text(
+        "smoke test description\n", encoding="utf-8"
+    )
+    (attempt_dir / "parameters.json").write_text(
+        '{"smoke_test": true}\n', encoding="utf-8"
+    )
+    # Intentionally do NOT create propeller_mesh.obj / render_*.png so
+    # the function reports them as missing.
+
+    smoke_sid = f"_smoke_tests/session_{ts}"
+    smoke_nnn = "999"
+    try:
+        uploaded, missing = r2_uploader.upload_attempt_artefacts(
+            attempt_dir,
+            session_id=smoke_sid,
+            attempt_id=smoke_nnn,
+        )
+    except Exception as exc:
+        _fail("upload_attempt_artefacts raised", exc)
+    else:
+        if set(uploaded) == {"description.txt", "parameters.json"}:
+            _ok(
+                f"upload_attempt_artefacts: 2 uploaded "
+                f"({uploaded}), {len(missing)} missing"
+            )
+        else:
+            _fail(
+                f"upload_attempt_artefacts: uploaded={uploaded!r} "
+                f"(expected description.txt + parameters.json)"
+            )
+
+        # Regression: verify the resulting R2 key has the prefix
+        # exactly once.  We can't list the bucket on object-only
+        # tokens, so we head_object the deterministic key shape
+        # produced by upload_attempt_artefacts.
+        prefix = r2_uploader._key_prefix()
+        expected_key = (
+            f"{prefix}{smoke_sid}/attempts/{smoke_nnn}/"
+            f"{smoke_sid}__{smoke_nnn}__description.txt"
+        )
+        try:
+            client.head_object(Bucket=bucket, Key=expected_key)
+            _ok(
+                f"head_object found the expected key — prefix applied "
+                f"EXACTLY ONCE: {expected_key!r}"
+            )
+        except Exception as exc:
+            _fail(
+                f"head_object on {expected_key!r} failed — Path 1 "
+                f"may be writing to a different key shape "
+                f"(doubled-prefix regression?)",
+                exc,
+            )
+            # Probe the doubled-prefix path explicitly so the failure
+            # message can pinpoint the regression vs. some other issue.
+            if prefix:
+                doubled_key = (
+                    f"{prefix}{prefix}{smoke_sid}/attempts/{smoke_nnn}/"
+                    f"{smoke_sid}__{smoke_nnn}__description.txt"
+                )
+                try:
+                    client.head_object(Bucket=bucket, Key=doubled_key)
+                    print(
+                        f"       → DOUBLED-PREFIX regression confirmed: "
+                        f"key {doubled_key!r} EXISTS.  See "
+                        f"agents/shared/r2_uploader.py:"
+                        f"upload_attempt_artefacts."
+                    )
+                except Exception:
+                    print(
+                        "       → doubled-prefix path also empty; "
+                        "the failure is something else (auth? bucket?)."
+                    )
+
+
+# ---------------------------------------------------------------------------
 # 8. List back what we just uploaded — only if the token permits it.
 #    Object-level R2 tokens get AccessDenied here; that's fine, the
 #    Cloudflare dashboard is the source of truth for those tokens.

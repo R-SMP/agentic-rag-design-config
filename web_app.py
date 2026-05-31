@@ -112,6 +112,20 @@ class _Box:
 _BOX = _Box()
 
 
+# Module-level singleton guard for the End Session lifecycle.  The DH
+# save inside ``/api/end`` can take 5–15 minutes; in the 2026-05-30
+# deployment the Railway/Cloudflare edge severed the HTTP connection
+# at ~5 min and the browser / proxy retried, spawning a SECOND
+# ``populate_database`` thread that raced the first one's archive
+# sweep (see extra_utilities/TODO_known_issues.md F22 + the project's
+# auto-memory ``v9_duplicate_save_bug``).  Holding this lock for the
+# WHOLE ``/api/end`` body (DH save + ``_end_session()`` archive sweep)
+# guarantees only one save lifecycle is in flight at any moment;
+# concurrent retries get HTTP 409 immediately and never spawn a
+# second worker.
+_END_LOCK = asyncio.Lock()
+
+
 def _new_session_id() -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"web_{ts}_{uuid.uuid4().hex[:8]}"
@@ -211,11 +225,28 @@ def _run_dh_save() -> dict:
     if session is None:
         return {"error": "No active session to save."}
 
+    # Resolve session name + timestamp ONCE per session lifecycle and
+    # cache them on the Session.  Any subsequent caller (the archive
+    # sweep in ``_end_session``, a race-induced second ``/api/end``)
+    # reads the same value instead of computing a fresh
+    # ``datetime.now()``-based slug.  Belt-and-suspenders against the
+    # duplicate-save race; the backend lock in ``api_end`` is the
+    # primary defence.
     try:
-        session_name = _resolve_session_name()
+        if session.resolved_session_name is None:
+            session.resolved_session_name = _resolve_session_name()
+        session_name = session.resolved_session_name
     except Exception as exc:
         logger.exception("[WEB] DH save: resolving session name failed")
         return {"error": f"Could not resolve session name: {exc}"}
+
+    try:
+        if session.resolved_session_timestamp is None:
+            session.resolved_session_timestamp = _resolve_session_timestamp()
+        session_timestamp = session.resolved_session_timestamp
+    except Exception as exc:
+        logger.exception("[WEB] DH save: resolving session timestamp failed")
+        return {"error": f"Could not resolve session timestamp: {exc}"}
 
     try:
         orchestrator = Orchestrator(session=session)
@@ -236,7 +267,7 @@ def _run_dh_save() -> dict:
         logger.info(f"[WEB] DH save: populating {session_db_dir.resolve()}")
         written = orchestrator.database_handler.populate_database(
             session_db_dir,
-            session_timestamp=_resolve_session_timestamp(),
+            session_timestamp=session_timestamp,
             orchestrator=orchestrator,
         )
         logger.info(f"[WEB] DH save: wrote {written} entries")
@@ -259,8 +290,17 @@ def _end_session() -> None:
     except Exception:
         pass
     _detach_log_handler(_BOX.log_path)
+    # Re-use whatever name the DH save (if any) already resolved and
+    # cached on the Session — so the archive folder under
+    # ``previous_sessions/`` is named the SAME slug the DH wrote to
+    # under ``database/`` and pushed to R2.  Falls back to a fresh
+    # ``_resolve_session_name()`` (inside ``_archive_previous_session``)
+    # when no save ran.
+    cached_name: str | None = None
+    if _BOX.session is not None:
+        cached_name = _BOX.session.resolved_session_name
     try:
-        _archive_previous_session()
+        _archive_previous_session(session_name=cached_name)
     except Exception as exc:
         # Best-effort: a failed archive must not break the End Session
         # reset (worst case the old attempts remain for next session).
@@ -473,23 +513,54 @@ async def api_end(body: EndIn | None = None) -> dict:
     The DH itself is run via :func:`run_in_threadpool` so the FastAPI
     event loop is not blocked — the SSE stream keeps flushing events
     to the browser throughout the (potentially several-minute) save.
-    """
-    save_requested = bool(body and body.save)
-    dh_result: dict | None = None
-    if save_requested and _BOX.session is not None:
-        logger.info("[WEB] end_session — save=True, running DH first")
-        dh_result = await run_in_threadpool(_run_dh_save)
-    elif save_requested:
-        # User requested save but no session is active — treat as a
-        # plain End Session.  Surface the fact in the response so the
-        # UI can confirm.
-        dh_result = {"error": "No active session to save."}
 
-    _end_session()
-    out: dict = {"ok": True, "saved": bool(save_requested)}
-    if dh_result is not None:
-        out["dh"] = dh_result
-    return out
+    **Singleton.**  A concurrent ``/api/end`` POST while a save is
+    already in flight is rejected with HTTP 409 instead of spawning
+    a second ``populate_database`` thread.  The 2026-05-30 deployment
+    proved that the proxy / browser will retry this endpoint after a
+    ~5-min connection timeout — without this guard, the retried call
+    races the first one's archive sweep and produces orphan partial
+    saves.  See extra_utilities/TODO_known_issues.md F22 and the
+    project's auto-memory ``v9_duplicate_save_bug``.
+    """
+    # Non-blocking check — return 409 instead of queueing the second
+    # call behind ``async with _END_LOCK:`` (which would just delay
+    # the duplicate save instead of suppressing it).  The TOCTOU
+    # window between this check and the ``async with`` is closed by
+    # the single-worker uvicorn invariant (W13/O9): no preemption
+    # between the ``locked()`` read and the ``acquire`` happens
+    # without an explicit ``await`` first.
+    if _END_LOCK.locked():
+        logger.info(
+            "[WEB] /api/end rejected — save already in progress; "
+            "returning HTTP 409 (this is the duplicate-save guard)."
+        )
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "A previous End Session is still saving.  This "
+                "request was ignored to avoid spawning a duplicate "
+                "save; the in-flight save will complete on its own."
+            ),
+        )
+
+    async with _END_LOCK:
+        save_requested = bool(body and body.save)
+        dh_result: dict | None = None
+        if save_requested and _BOX.session is not None:
+            logger.info("[WEB] end_session — save=True, running DH first")
+            dh_result = await run_in_threadpool(_run_dh_save)
+        elif save_requested:
+            # User requested save but no session is active — treat as
+            # a plain End Session.  Surface the fact in the response
+            # so the UI can confirm.
+            dh_result = {"error": "No active session to save."}
+
+        _end_session()
+        out: dict = {"ok": True, "saved": bool(save_requested)}
+        if dh_result is not None:
+            out["dh"] = dh_result
+        return out
 
 
 @app.post("/api/stop")

@@ -135,6 +135,21 @@ class Session:
     planner_first:          bool = _DEFAULT_PLANNER_FIRST
     render_library:         str  = _DEFAULT_RENDER_LIBRARY
 
+    # Cached DH-save identifiers — set on FIRST resolve in
+    # ``web_app._run_dh_save`` and re-used by every subsequent call
+    # in the same lifecycle (including the archive sweep in
+    # ``_end_session``).  Belt-and-suspenders against the duplicate-
+    # save race documented in extra_utilities/TODO_known_issues.md
+    # F22 — even if two ``/api/end`` calls slip past the backend
+    # lock, they will both observe the SAME resolved slug here and
+    # write to the SAME R2 prefix rather than forking.
+    #
+    # Both fields default to None so a freshly-built Session starts
+    # with no cached identity.  Plain strings to keep to_dict /
+    # assert_plain_data happy.
+    resolved_session_name:      str | None = None
+    resolved_session_timestamp: str | None = None
+
     # Inter-agent exchanges accumulated across the WHOLE session
     # (per Q1 of the Phase-1 design pass — ChainLog is session-scoped,
     # not per-turn).  Each exchange is a plain dict with keys
@@ -210,6 +225,8 @@ class Session:
             "dcoi_comparison_mode":   self.dcoi_comparison_mode,
             "planner_first":          self.planner_first,
             "render_library":         self.render_library,
+            "resolved_session_name":      self.resolved_session_name,
+            "resolved_session_timestamp": self.resolved_session_timestamp,
             "chain_log_exchanges":    list(self.chain_log_exchanges),
             "agent_states": {
                 k: asdict(v) for k, v in self.agent_states.items()
@@ -242,6 +259,8 @@ class Session:
             dcoi_comparison_mode=   data.get("dcoi_comparison_mode", _DEFAULT_DCOI_COMPARISON_MODE),
             planner_first=          data.get("planner_first", _DEFAULT_PLANNER_FIRST),
             render_library=         data.get("render_library", _DEFAULT_RENDER_LIBRARY),
+            resolved_session_name=      data.get("resolved_session_name"),
+            resolved_session_timestamp= data.get("resolved_session_timestamp"),
             chain_log_exchanges=    list(data.get("chain_log_exchanges", [])),
             agent_states={
                 k: AgentState(**v) for k, v in data.get("agent_states", {}).items()
