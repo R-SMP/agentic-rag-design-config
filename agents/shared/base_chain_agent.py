@@ -185,6 +185,38 @@ class BaseChainAgent:
         except Exception:
             return  # token util missing — fail open
 
+        # ------------------------------------------------------------------
+        # Pre-scan — replace any single oversized message in-place with a
+        # placeholder.  Runs BEFORE the threshold check so a giant
+        # ToolMessage (e.g. an inline .obj mesh dump that slipped past
+        # the source-side cap in agents/shared/attempts_tool.py) can't
+        # poison the Pruner's own LLM call later in tier 2.  No-op when
+        # no message exceeds the per-message cap.
+        # ------------------------------------------------------------------
+        try:
+            cap_per_msg = int(getattr(
+                _ws, "CONTEXT_PRUNER_MAX_INDIVIDUAL_MESSAGE_TOKENS", 30000
+            ))
+        except Exception:
+            cap_per_msg = 30000
+        if cap_per_msg > 0:
+            try:
+                new_msgs, n_truncated, _, _ = _truncate_oversized_messages(
+                    self.messages, cap_per_msg, count_tokens
+                )
+                if n_truncated > 0:
+                    self.messages = new_msgs
+                    logger.info(
+                        f"[CP]  {self.AGENT_KEY} pre-scan: truncated "
+                        f"{n_truncated} oversized message(s) "
+                        f"(per-message cap = {cap_per_msg} tokens)"
+                    )
+            except Exception as exc:
+                logger.warning(
+                    f"[CP]  pre-scan failed for {self.AGENT_KEY}: "
+                    f"{exc}; continuing with un-scanned history."
+                )
+
         try:
             serialised_full = _serialise_messages(self.messages)
             n_before = count_tokens(serialised_full)
@@ -293,6 +325,40 @@ class BaseChainAgent:
                 n_tail_before = -1
 
             if tail_text is not None and n_tail_before > 0:
+                # Hard-cap the LLM input.  Most providers reject a
+                # single request whose input exceeds 100k–200k tokens
+                # regardless of the model's overall context window
+                # (TPM limit).  This cap protects tier 2 from hitting
+                # an upstream 429 just because the pre-scan placeholder
+                # plus a few "normal" messages still add up to more
+                # than one call can carry.  Truncates by character
+                # ratio (count_tokens is consulted to size it).
+                try:
+                    cap_tier2 = int(getattr(
+                        _ws, "CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS", 60000
+                    ))
+                except Exception:
+                    cap_tier2 = 60000
+                if cap_tier2 > 0 and n_tail_before > cap_tier2:
+                    target_chars = max(
+                        2000,
+                        int(len(tail_text) * cap_tier2 / n_tail_before),
+                    )
+                    tail_text = (
+                        tail_text[:target_chars]
+                        + "\n\n...[tail truncated to honour Context "
+                          "Pruner tier-2 LLM input cap]"
+                    )
+                    try:
+                        n_tail_capped = count_tokens(tail_text)
+                    except Exception:
+                        n_tail_capped = -1
+                    logger.info(
+                        f"[CP]  {self.AGENT_KEY} tier-2 input cap: "
+                        f"tail ~{n_tail_before} -> ~{n_tail_capped} "
+                        f"tokens (cap = {cap_tier2})"
+                    )
+
                 try:
                     summary2 = (pruner.run(tail_text, tier=2) or "").strip()
                 except Exception as exc:
@@ -483,6 +549,106 @@ def _body_text_of(m) -> str:
                 parts.append(f"[{btype}: ...]")
         return " ".join(parts)
     return str(content)
+
+
+def _truncate_oversized_messages(
+    messages,
+    max_per_message_tokens: int,
+    count_tokens_fn,
+    *,
+    head_chars: int = 2000,
+):
+    """Replace any single message whose serialised content exceeds
+    *max_per_message_tokens* with a placeholder of the same message
+    type, preserving ``tool_call_id`` / ``tool_calls`` / ``name``
+    fields so the agent's protocol contract is not broken.
+
+    Returns ``(new_messages, n_truncated, original_tokens_total,
+    new_tokens_total)``.  Caller decides whether to log / proceed.
+
+    Why this exists: one ToolMessage carrying e.g. a 1 MB ``.obj``
+    mesh dump (~333k tokens) is enough to push the Context Pruner's
+    OWN tier-2 LLM call over the provider's per-request token limit,
+    which 429s the whole prune chain and leaves the calling agent
+    with its original oversized history.  Truncating to a bounded
+    placeholder BEFORE any summarisation pass is the only thing that
+    can save us from that.
+
+    Tool-call pairing: a ``ToolMessage`` placeholder still carries
+    its ``tool_call_id``, so a matching ``AIMessage(tool_calls=…)``
+    still closes correctly when the LLM sees the (now compact) pair.
+    """
+    new: list = []
+    n_truncated = 0
+    original_total = 0
+    new_total = 0
+    for m in messages:
+        body = _body_text_of(m)
+        try:
+            n = count_tokens_fn(body)
+        except Exception:
+            n = -1
+        original_total += max(n, 0)
+
+        if n > max_per_message_tokens:
+            head = body[:head_chars]
+            placeholder_content = (
+                f"[content auto-truncated by Context Pruner pre-scan: "
+                f"original was {len(body)} chars (~{n} tokens), too "
+                f"large for the Pruner's own LLM to summarise in one "
+                f"shot.  First {min(len(body), head_chars)} chars "
+                f"shown:]\n\n{head}\n...[truncated]"
+            )
+
+            # Preserve message type + structured fields.
+            try:
+                if isinstance(m, ToolMessage):
+                    nm = ToolMessage(
+                        content=placeholder_content,
+                        tool_call_id=getattr(m, "tool_call_id", ""),
+                    )
+                    name = getattr(m, "name", None)
+                    if name:
+                        nm.name = name
+                elif isinstance(m, AIMessage):
+                    kwargs: dict = {"content": placeholder_content}
+                    if getattr(m, "tool_calls", None):
+                        kwargs["tool_calls"] = m.tool_calls
+                    nm = AIMessage(**kwargs)
+                    name = getattr(m, "name", None)
+                    if name:
+                        nm.name = name
+                elif isinstance(m, HumanMessage):
+                    nm = HumanMessage(content=placeholder_content)
+                    name = getattr(m, "name", None)
+                    if name:
+                        nm.name = name
+                elif isinstance(m, SystemMessage):
+                    nm = SystemMessage(content=placeholder_content)
+                else:
+                    # Unknown subclass — leave it intact rather than
+                    # risk a broken constructor.
+                    new.append(m)
+                    new_total += max(n, 0)
+                    continue
+            except Exception:
+                # If the replacement constructor blows up for any
+                # reason, keep the original so we don't lose data.
+                new.append(m)
+                new_total += max(n, 0)
+                continue
+
+            new.append(nm)
+            try:
+                n_new = count_tokens_fn(_body_text_of(nm))
+            except Exception:
+                n_new = -1
+            new_total += max(n_new, 0)
+            n_truncated += 1
+        else:
+            new.append(m)
+            new_total += max(n, 0)
+    return new, n_truncated, original_total, new_total
 
 
 def _safe_cut_point(messages, desired_cut: int) -> int:

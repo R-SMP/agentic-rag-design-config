@@ -339,3 +339,30 @@ CONTEXT_PRUNER_THRESHOLD_TOKENS: int = 80000
 # Valid values: any positive int (recommended 4-12; 6 covers a
 # typical complete turn)
 CONTEXT_PRUNER_KEEP_LAST_MESSAGES: int = 6
+
+# Per-message hard cap for the Context Pruner's pre-tier-1 scan.  Any
+# single message whose serialised content exceeds this many cl100k_base
+# tokens is replaced in-place with a short placeholder (preserving its
+# tool_call_id / tool_calls / name fields) BEFORE any summarisation
+# pass runs.  Bounded, lossy, but guarantees no tier ever sees a
+# giant message — and protects against the failure mode where one
+# huge ToolMessage (e.g. an inline .obj mesh dump) exceeds the
+# Pruner's own LLM per-call input cap and 429s the whole sequence.
+# See the 2026-05-31 incident in v9_gotchas.md (top trap #6).
+#
+# Valid values: any positive int.  0 disables the pre-scan entirely.
+# Default 30000 leaves comfortable headroom for typical tool outputs
+# while still catching mesh / vertex / image-dump pathologies.
+CONTEXT_PRUNER_MAX_INDIVIDUAL_MESSAGE_TOKENS: int = 30000
+
+# Hard cap for the Context Pruner's TIER-2 LLM input.  When tier 2
+# fires, its input is the serialised latest-N tail of the history.
+# If that text exceeds this many tokens it is HARD-TRUNCATED before
+# being sent to the Pruner's LLM, so the call cannot exceed the
+# upstream provider's per-call TPM limit (most providers cap a
+# single request at 100k–200k input tokens regardless of overall
+# context window).
+#
+# Valid values: any positive int.  0 disables the cap.  Default
+# 60000 leaves headroom for the system prompt + framing on top.
+CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS: int = 60000

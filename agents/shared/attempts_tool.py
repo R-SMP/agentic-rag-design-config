@@ -38,8 +38,18 @@ from config import ATTEMPTS_DIR
 # attempt number.
 _ATTEMPT_RE = re.compile(r"^(\d{8})_(\d{6})_(\d+)_(.+)$")
 
-_TEXT_SUFFIXES = {".txt", ".md", ".json", ".csv", ".log", ".obj"}
+_TEXT_SUFFIXES = {".txt", ".md", ".json", ".csv", ".log"}
 _IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg", ".bmp", ".gif", ".webp"}
+# Mesh files are NEVER returned inline.  Even a moderate propeller mesh
+# is ~1 MB of plain-text vertex / face data — ~300 k tokens — which
+# blows past every chain agent's context window AND the Context
+# Pruner's own per-call LLM input cap (see the 2026-05-31 incident
+# where a Receptionist call to ``read_attempt(file="propeller_mesh.obj")``
+# made the Pruner's tier-2 LLM call 429 with a "Request too large"
+# error).  ``read_attempt`` returns the path + a hint pointing at
+# ``visualize_3d_model`` for the renderer-loaded case, never the
+# inline mesh content.
+_MESH_SUFFIXES = {".obj", ".stl", ".ply"}
 
 _SLUG_SAFE_RE = re.compile(r"[^A-Za-z0-9_.\-]+")
 
@@ -194,14 +204,20 @@ def read_attempt(n: int, file: str) -> str:
     Args:
       n:    1-based attempt number, as shown by ``list_attempts``.
       file: a bare filename inside the attempt folder
-            (e.g. ``'parameters.json'``, ``'render_isometric.png'``,
-            ``'propeller_mesh.obj'``, ``'description.txt'``).  Path
-            separators and ``..`` are rejected.
+            (e.g. ``'parameters.json'``, ``'description.txt'``,
+            ``'render_isometric.png'``, ``'propeller_mesh.obj'``).
+            Path separators and ``..`` are rejected.
 
     For text / JSON files the content is returned inline.  For image
     files the resolved absolute path is returned so the caller can
     hand it to a tool that loads images (e.g.
-    ``load_render_images``).  Returns an explicit error string if
+    ``load_render_images``).  For MESH files (``.obj`` / ``.stl`` /
+    ``.ply``) only the absolute path is returned — never the inline
+    content, because a propeller mesh's text representation is
+    typically hundreds of thousands of tokens and would blow past
+    every agent's context window.  Hand the returned path to
+    ``visualize_3d_model`` to display it, or to a downstream tool
+    that operates on the mesh.  Returns an explicit error string if
     the attempt or file is missing.
     """
     try:
@@ -251,6 +267,22 @@ def read_attempt(n: int, file: str) -> str:
             f"(read_attempt does not return image bytes inline — "
             f"hand this absolute path to a tool that loads images, "
             f"e.g. ``load_render_images``.)"
+        )
+    if suffix in _MESH_SUFFIXES:
+        try:
+            size = target.stat().st_size
+        except OSError:
+            size = -1
+        return (
+            f"Mesh file at: {target.resolve()}\n"
+            f"(read_attempt does NOT return mesh contents inline — "
+            f"the text representation of a propeller mesh is "
+            f"typically hundreds of thousands of tokens and would "
+            f"break every downstream LLM call.  File size on disk: "
+            f"{size if size >= 0 else 'unknown'} bytes.  Hand this "
+            f"absolute path to ``visualize_3d_model`` to display it "
+            f"in the web viewer, or to a downstream tool that "
+            f"operates on the mesh.)"
         )
     if suffix in _TEXT_SUFFIXES or suffix == "":
         try:

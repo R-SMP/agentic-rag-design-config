@@ -239,6 +239,15 @@ Each tier independently validates its output before replacing `self.messages`:
 - **LLM exception** → log a warning, stay at the previous tier.
 - **All three tiers exhausted and the history is still over threshold** → log a warning and proceed with the invoke anyway; the upstream LLM may rate-limit or context-overflow, but the agent doesn't lose its state.
 
+### Pre-scan and tier-2 input cap (defences against giant single messages)
+
+A specific failure mode that the three-tier escalation alone cannot recover from: ONE message in the history is so large that the Pruner's OWN LLM call would exceed the upstream provider's per-request token cap. For example, a `ToolMessage` containing a 1 MB inline `.obj` mesh dump is ~333k tokens — bigger than most providers' single-call input limit of 100k–200k. Sending that one message to the Pruner's LLM returns HTTP 429 ("Request too large for `<model>` in organisation ... TPM limit ...") before the LLM does any work. Tier 1 can't help because the giant message is in the tail (latest-N verbatim); tier 2 can't help because tier 2 IS the thing whose LLM call fails; tier 3 can't help because it merges tier-1 + tier-2 summaries and there's no tier-2 summary to merge. So two extra defences run AHEAD of the three-tier flow:
+
+- **Pre-scan** (runs BEFORE the threshold check). Walks `self.messages` and, for every single message whose serialised content exceeds `CONTEXT_PRUNER_MAX_INDIVIDUAL_MESSAGE_TOKENS` (default 30 000), replaces it in-place with a placeholder of the same message type. `ToolMessage` placeholders preserve `tool_call_id` and `name`; `AIMessage` placeholders preserve `tool_calls`; the agent's protocol contract is not broken. The placeholder body is the first 2 000 characters of the original content with a `[content auto-truncated by Context Pruner pre-scan: original was N chars (~M tokens) ...]` marker. The lost bytes are gone from chat context, but the message structure remains and downstream tool-call pairing still closes.
+- **Tier-2 input cap** (runs inside tier 2). Even after the pre-scan, the SUM of the latest-N tail messages could still exceed the upstream provider's per-call cap. So before invoking `pruner.run(tail_text, tier=2)`, if `count_tokens(tail_text) > CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS` (default 60 000), the text is hard-truncated by character ratio with a `...[tail truncated to honour Context Pruner tier-2 LLM input cap]` marker. The summary won't see the dropped portion but the LLM call SUCCEEDS.
+
+Tools also defend at the source: `read_attempt` no longer returns mesh files (`.obj` / `.stl` / `.ply`) as inline text — it returns the absolute path plus a hint to pass it to `visualize_3d_model`. That stops the most common path that fills chat history with hundreds of thousands of vertex-coordinate tokens.
+
 ### What stays untouched
 
 Each agent's **original system prompt** lives in `self.system_prompt`, NOT in `self.messages`. The invoke pattern is:
@@ -423,7 +432,9 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
 | `LLM_ROUTING_MODE` | `"openai"` | `"individual"` honours per-agent `.env` overrides; `"openai"` / `"anthropic"` / `"google"` forces every agent onto that provider. Edit only via the LLM-routing chart at the top of Workflow Settings. **The chart's read path parses `settings.py` freshly off disk** on every `/api/llm-routing` GET — do not reintroduce `getattr(_settings, "LLM_ROUTING_MODE", …)` in `workflow_settings/llm_routing.py`; that read the cached module attribute frozen at process startup and made saves silently revert in the UI. |
 | `CONTEXT_PRUNER_ENABLED` | `True` | run the Context Pruner pre-invoke check on each chain agent |
 | `CONTEXT_PRUNER_THRESHOLD_TOKENS` | `80000` | cl100k_base token count above which a chain agent's history is pruned before its next invoke |
-| `CONTEXT_PRUNER_KEEP_LAST_MESSAGES` | `6` | how many recent messages of the calling agent survive the prune verbatim (cut point is extended forward to never split an `AIMessage(tool_calls)` from its `ToolMessage`) |
+| `CONTEXT_PRUNER_KEEP_LAST_MESSAGES` | `6` | how many recent messages of the calling agent survive the tier-1 prune verbatim (cut point is extended forward to never split an `AIMessage(tool_calls)` from its `ToolMessage`).  Same N is used to define the tier-2 scope (the "latest window" the fine summary covers). |
+| `CONTEXT_PRUNER_MAX_INDIVIDUAL_MESSAGE_TOKENS` | `30000` | per-message hard cap for the Context Pruner's pre-scan.  Any single message whose serialised content exceeds this many cl100k_base tokens is replaced in-place with a short placeholder of the same message type (`tool_call_id` / `tool_calls` / `name` fields preserved).  Runs BEFORE the threshold check so the rest of the prune pipeline never sees a giant message.  `0` disables the pre-scan. |
+| `CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS` | `60000` | hard cap for the tier-2 LLM input.  When tier 2 fires, if the serialised tail exceeds this many tokens it is hard-truncated by character ratio before being sent to the Pruner's LLM, so the call cannot exceed the upstream provider's per-request TPM limit.  `0` disables the cap. |
 
 ## Status & known issues
 
