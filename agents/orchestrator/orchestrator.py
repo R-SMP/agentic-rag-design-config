@@ -729,6 +729,216 @@ class Orchestrator(BaseChainAgent):
         return _format_agent_history(key, messages, sys_prompt=None)
 
     # ------------------------------------------------------------------
+    # End-of-session feedback distribution (Role 4)
+    # ------------------------------------------------------------------
+
+    def run_feedback_round(
+        self,
+        *,
+        satisfaction: str,
+        what_went_well: str,
+        what_went_wrong: str,
+    ) -> dict:
+        """Drive the Orchestrator through ONE forced ``submit_feedback_dispatch``
+        tool call that decides, per chain agent, whether the user's
+        end-of-session feedback contains material worth forwarding to
+        that agent — and if so, what exact text to forward.
+
+        Side effect on success: for every dispatch with ``send=True``,
+        appends a ``HumanMessage(content=message, name="orchestrator")``
+        to the target's LIVE ``self.messages`` AND mirrors the agent's
+        new ``snapshot_state()`` into ``self.session.agent_states[<key>]``.
+        The Database Handler reads from the session's ``agent_states``
+        when interviewing each agent post-session, so the feedback
+        becomes part of that interview's context.
+
+        This method DOES NOT mutate the Orchestrator's own
+        ``self.messages`` — the feedback round is a separate
+        post-session pass, NOT part of the live design pipeline.  The
+        tool is bound for ONE turn only (W18 / W20 force-tool pattern)
+        and discarded immediately afterwards; the permanent ``orch_tools``
+        binding installed by ``_wire_routing`` is untouched.
+
+        Args:
+            satisfaction:    "yes" / "partially" / "no" — the y/p/n
+                             toggle the user picked in the End Session
+                             modal.
+            what_went_well:  Free-text field, may be empty when the
+                             user didn't elaborate.
+            what_went_wrong: Free-text field, may be empty.
+
+        Returns:
+            ``{"ok": bool, "decisions": [{"agent_key", "send", "message"}, ...],
+               "error": str | None}``.  When the LLM call or tool-call
+            parsing fails, ``ok`` is False and ``decisions`` is empty.
+        """
+        from agents.orchestrator.feedback_tool import (
+            submit_feedback_dispatch,
+            SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME,
+        )
+
+        # Target set: every chain agent in the registry except the
+        # Orchestrator itself (the Orchestrator collects/dispatches,
+        # never receives feedback).  Adapts to ``dc_inspector_enabled``
+        # automatically because DCII is only inserted into
+        # ``_agents_by_key`` when enabled... actually DCII is ALWAYS in
+        # the registry (orchestrator.py:188-197) but its routing tools
+        # are only wired when enabled — so we explicitly drop it from
+        # the feedback target set when disabled to avoid forwarding
+        # feedback to a dormant agent.
+        target_keys: list[str] = []
+        for k in self._agents_by_key.keys():
+            if k == "orchestrator":
+                continue
+            if k == "dc_input_inspector" and not self.dc_inspector_enabled:
+                continue
+            target_keys.append(k)
+
+        # Build the per-turn forced-tool LLM binding.  This is a LOCAL
+        # binding — it does NOT mutate self.llm (which is the
+        # permanently-tool-bound design-pipeline LLM).  W20 mirrors
+        # the DH's W18 invariant: this tool is never on self.llm.
+        try:
+            feedback_llm = self.base_llm.bind_tools(
+                [submit_feedback_dispatch],
+                tool_choice=SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME,
+            )
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.warning(
+                f"[ORCHESTRATOR-FEEDBACK]  could not bind "
+                f"submit_feedback_dispatch: {type(exc).__name__}: "
+                f"{exc}; treating as empty dispatch list."
+            )
+            return {"ok": False, "decisions": [], "error": str(exc)}
+
+        # Compose the instruction message.  This is a TRANSIENT message
+        # list (we do NOT append to self.messages) so the design
+        # pipeline's history stays clean.  The system prompt's Role-4
+        # section explains what the Orchestrator must do; this message
+        # just delivers the user's three fields plus the live target
+        # list.
+        ww = (what_went_well or "").strip() or "(no text supplied)"
+        ww_wrong = (what_went_wrong or "").strip() or "(no text supplied)"
+        targets_md = ", ".join(target_keys)
+
+        instruction = HumanMessage(content=(
+            "END-OF-SESSION FEEDBACK ROUND (Role 4).\n\n"
+            "The user has ended this design session and elected to "
+            "save it.  Their feedback follows.\n\n"
+            f"Satisfaction (y/partial/n): {(satisfaction or '').strip() or '(unset)'}\n"
+            f"What worked well: {ww}\n"
+            f"What did NOT work: {ww_wrong}\n\n"
+            "TASK: emit ONE call to `submit_feedback_dispatch` with a "
+            "list containing exactly one dispatch object per agent in "
+            f"this scope (in any order): {targets_md}.\n\n"
+            "For each agent, decide whether the user's feedback "
+            "contains material relevant to that agent's responsibilities "
+            "(see the 'Agent Capabilities' section of your system "
+            "prompt for the per-agent scope reminders).  When relevant, "
+            "set send=true and put the EXACT user-text portion that "
+            "applies to that agent into `message` — only the parts that "
+            "pertain to this agent, copying the user's own words.  "
+            "When nothing applies, set send=false and pass an empty "
+            "message; that is the correct default for most "
+            "agent-session pairs.\n\n"
+            "Do NOT paraphrase the user.  Do NOT duplicate the same "
+            "line to multiple agents.  Do NOT skip any agent from the "
+            "list — surface a 'send=false' dispatch instead.  Emit the "
+            "tool call now."
+        ))
+
+        try:
+            response = invoke_with_retry(
+                feedback_llm,
+                [make_system_message(self.system_prompt, self.provider)]
+                + [instruction],
+                "Orchestrator-feedback-dispatch",
+            )
+        except Exception as exc:
+            logger.warning(
+                f"[ORCHESTRATOR-FEEDBACK]  LLM call raised "
+                f"{type(exc).__name__}: {exc}; treating as empty "
+                f"dispatch list."
+            )
+            return {"ok": False, "decisions": [], "error": str(exc)}
+
+        tool_calls = getattr(response, "tool_calls", None) or []
+        if not tool_calls:
+            logger.warning(
+                "[ORCHESTRATOR-FEEDBACK]  response carried no tool_calls "
+                "despite tool_choice=submit_feedback_dispatch; "
+                "treating as empty dispatch list."
+            )
+            return {"ok": False, "decisions": [], "error": "no_tool_call"}
+
+        tc = tool_calls[0]
+        args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {})
+        dispatches = (args or {}).get("dispatches") or []
+        if not isinstance(dispatches, list):
+            logger.warning(
+                f"[ORCHESTRATOR-FEEDBACK]  expected `dispatches` to be "
+                f"a list; got {type(dispatches).__name__!r}."
+            )
+            dispatches = []
+
+        applied: list[dict] = []
+        seen_keys: set[str] = set()
+        for d in dispatches:
+            if not isinstance(d, dict):
+                continue
+            ak  = str(d.get("agent_key") or "").strip()
+            snd = bool(d.get("send", False))
+            msg = str(d.get("message") or "").strip()
+            if ak not in target_keys:
+                logger.warning(
+                    f"[ORCHESTRATOR-FEEDBACK]  dispatch agent_key "
+                    f"{ak!r} not in target set; skipping."
+                )
+                continue
+            if ak in seen_keys:
+                logger.warning(
+                    f"[ORCHESTRATOR-FEEDBACK]  duplicate dispatch for "
+                    f"{ak!r}; keeping the first one."
+                )
+                continue
+            seen_keys.add(ak)
+            if not snd or not msg:
+                applied.append({"agent_key": ak, "send": False, "message": ""})
+                continue
+
+            # Append to the LIVE agent so dump_histories sees it, then
+            # mirror via snapshot_state() into session.agent_states so
+            # the DH's per-agent interview sees it too (the DH reads
+            # session.agent_states[<key>].messages, NOT the live agent
+            # instances).
+            target = self._agents_by_key.get(ak)
+            if target is None:  # pragma: no cover — defensive
+                continue
+            try:
+                target.messages.append(
+                    HumanMessage(content=msg, name="orchestrator")
+                )
+                self.session.agent_states[ak] = target.snapshot_state()
+            except Exception as exc:
+                logger.warning(
+                    f"[ORCHESTRATOR-FEEDBACK]  could not append "
+                    f"feedback to {ak!r}: {type(exc).__name__}: {exc}"
+                )
+                applied.append({"agent_key": ak, "send": False, "message": ""})
+                continue
+            applied.append({"agent_key": ak, "send": True, "message": msg})
+
+        # Surface a summary in the session log so the operator can see
+        # which agents received feedback at a glance.
+        sent = [d["agent_key"] for d in applied if d.get("send")]
+        skipped = [d["agent_key"] for d in applied if not d.get("send")]
+        logger.info(
+            f"[ORCHESTRATOR-FEEDBACK]  round complete — "
+            f"sent={sent or '[]'}  skipped={skipped or '[]'}"
+        )
+        return {"ok": True, "decisions": applied, "error": None}
+
+    # ------------------------------------------------------------------
     # Per-agent history dump
     # ------------------------------------------------------------------
 
@@ -843,8 +1053,16 @@ def _format_agent_history(agent_name: str, messages: list, sys_prompt) -> str:
                 lines.append(f"[tool_call] {tc_name}  args={tc_args}")
         tm_name = getattr(msg, "name", None)
         tm_id = getattr(msg, "tool_call_id", None)
-        if tm_name or tm_id:
+        # Disambiguate the label based on the message type:
+        #   * ToolMessage (has tool_call_id) → "[tool_result] name=... id=..."
+        #   * Any other message with name= set (e.g. a HumanMessage
+        #     appended by the Orchestrator at end-of-session feedback
+        #     round) → "[from <name>]" — NOT "[tool_result]", which
+        #     was misleading.
+        if tm_id:
             lines.append(f"[tool_result] name={tm_name}  id={tm_id}")
+        elif tm_name:
+            lines.append(f"[from {tm_name}]")
 
         content = _format_message_content(getattr(msg, "content", ""))
         if content:

@@ -559,3 +559,60 @@ identical-content key is harmless functionally.  But:
 
 **Status.** In force from v9 onward.  Two paths today; any third
 upload path must be checked against this invariant.
+
+
+## W20. The Orchestrator's `submit_feedback_dispatch` tool is bound ONLY during the end-of-session feedback round.
+
+Second consumer of the per-turn force-tool pattern (see W18 for the
+first — the DH's ``save_attempt_artefacts``).  The Orchestrator's
+permanent ``self.llm`` is bound to its routing tools
+(``call_<agent>``, ``calculate``, ``list_attempts`` etc.) at
+``_wire_routing`` time and stays that way for the whole design
+pipeline.
+
+When the user clicks "End Session → Save" in the web UI and
+supplies feedback in the modal, ``web_app._run_end_in_background``
+calls ``Orchestrator.run_feedback_round(...)``, which:
+
+1. Builds a LOCAL ``feedback_llm = self.base_llm.bind_tools(
+   [submit_feedback_dispatch], tool_choice="submit_feedback_dispatch")``
+   — note ``base_llm`` (the unbound LLM held on the agent), NOT
+   ``self.llm`` (the routing-tool-bound LLM).
+2. Invokes ``feedback_llm`` ONCE via ``invoke_with_retry`` against a
+   TRANSIENT message list ``[make_system_message(...) + one
+   HumanMessage]`` — the Orchestrator's ``self.messages`` is NOT
+   touched, so the design-pipeline history is unaffected.
+3. Discards ``feedback_llm`` immediately.  ``self.llm`` is unchanged.
+4. Applies the returned dispatch list by appending
+   ``HumanMessage(name="orchestrator")`` entries to the TARGET
+   agents' message histories.
+
+### Why this invariant matters
+
+* The Orchestrator's Role-1 / Role-2 / Role-3 prompt sections do not
+  describe ``submit_feedback_dispatch``; only the Role-4 section does.
+  Permanently binding the feedback tool would let the Orchestrator
+  accidentally call it during normal dispatch — meaningless and
+  potentially destructive.
+* Prompt-cache invariance: the static system prompt only describes
+  Role 4 as a separate post-session pass.  The LLM should never see
+  ``submit_feedback_dispatch`` listed in its tool schema during the
+  design pipeline.
+
+### Adding a third forced-tool consumer
+
+Same checklist as W18:
+
+1. Define the tool in the agent's own tools file (e.g.
+   ``agents/<agent>/<feature>_tool.py``).  Do NOT pollute another
+   agent's tools file.
+2. Bind via ``self.base_llm.bind_tools([...], tool_choice="...")``
+   on a per-turn basis from a focused helper method.
+3. Append the ``ToolMessage`` to ``self.messages`` (or work entirely
+   in a transient buffer, as ``run_feedback_round`` does).
+4. Add a paired entry here so the per-turn-only invariant stays
+   discoverable.
+
+**Status.** In force from v9 onward.  Two consumers today
+(``save_attempt_artefacts`` on the DH; ``submit_feedback_dispatch``
+on the Orchestrator).

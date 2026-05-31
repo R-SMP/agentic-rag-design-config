@@ -66,6 +66,106 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 }
 #stop-btn.danger:hover:not(:disabled) { filter: brightness(1.1); }
 
+/* Modal overlay used for End Session confirmation + feedback form.
+   Replaces window.confirm() with an in-app dialog.  The
+   ``.modal-overlay`` is a full-viewport dimmed backdrop; the
+   ``.modal-panel`` is the centred card; ``.modal-step`` sections
+   are mutually exclusive (the JS toggles ``hidden`` to swap). */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(8, 11, 18, 0.72);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+.modal-overlay[hidden] { display: none; }
+
+.modal-panel {
+  max-width: 560px;
+  width: calc(100% - 48px);
+  max-height: calc(100vh - 48px);
+  overflow-y: auto;
+  background: var(--panel);
+  padding: 28px 28px 22px 28px;
+  border-radius: 12px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.45);
+}
+.modal-panel h2 { margin: 0 0 12px 0; }
+.modal-panel p  { margin: 0 0 12px 0; color: var(--muted); line-height: 1.5; }
+.modal-step[hidden] { display: none; }
+
+.modal-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  margin-top: 20px;
+}
+
+.feedback-fieldset {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px 14px 14px 14px;
+  margin: 14px 0 6px 0;
+}
+.feedback-fieldset legend {
+  padding: 0 6px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+}
+.required { color: var(--error); font-weight: 700; }
+
+.satisfaction-toggle {
+  display: flex;
+  gap: 8px;
+  margin-top: 6px;
+}
+.sat-btn {
+  flex: 1;
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.sat-btn:hover { filter: brightness(1.15); }
+.sat-btn.selected {
+  background: var(--accent, #5b8def);
+  border-color: var(--accent, #5b8def);
+  color: #fff;
+  font-weight: 600;
+}
+
+.feedback-field {
+  display: block;
+  margin: 12px 0;
+}
+.feedback-label {
+  display: block;
+  font-size: 13px;
+  font-weight: 500;
+  margin-bottom: 6px;
+  color: var(--text);
+}
+.feedback-field textarea {
+  width: 100%;
+  resize: vertical;
+  padding: 8px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  color: var(--text);
+  font-family: inherit;
+  font-size: 13px;
+}
+
 .gate {
   max-width: 420px;
   margin: 12vh auto;
@@ -249,8 +349,34 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
   flex: 0 0 auto;
 }
 .viewer-title { font-weight: 600; font-size: 13px; }
+/* "Attempt NNN" badge in the 3D viewer toolbar.  Sits between
+   the title and the filename label so the viewer header reads
+   "3D model  [Attempt 003]  propeller_mesh.obj  Reset view". */
+.viewer-attempt {
+  display: none;          /* hidden until viewer.js sets textContent */
+  padding: 2px 8px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--bg);
+  background: var(--accent, #9aa7b5);
+  border-radius: 10px;
+  letter-spacing: 0.02em;
+}
+.viewer-attempt.has-attempt { display: inline-block; }
 .viewer-name { color: var(--muted); font-size: 12px; flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .viewer-toolbar button { padding: 6px 12px; font-size: 12px; }
+
+/* "Attempt NNN" heading shown inside an assistant bubble above the
+   image renders / mesh artefacts so the user knows which attempt
+   the renders belong to. */
+.artefact-attempt-heading {
+  margin: 8px 0 2px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+.artefact-attempt-heading:first-child { margin-top: 0; }
 
 /* Footer below the 3D viewer: action buttons (Download geometry,
    Copy parameters list).  Same panel background as the toolbar

@@ -98,6 +98,15 @@ Every row in the schedule is one of three kinds:
    prepends ``"For attempt NNN: "`` to the description these
    sub-rows receive so Agent A knows which attempt to answer about.
 
+   **Do NOT echo the attempt id into the short SAVE: QUESTION or
+   ANSWER you emit.**  Drop the ``"For attempt NNN:"`` lead-in and
+   any other "attempt NNN" / "attempt #NNN" wording — the saved
+   ``.txt`` file already carries the attempt id in TWO places (the
+   filename suffix ``__NNN`` and the ``--- Attempt ID ---`` header)
+   so repeating it inside QUESTION/ANSWER wastes embedding-token
+   budget.  Phrase the short question/answer as if the reader
+   already knows which attempt is being discussed.
+
 ## Identifying attempt-specific questions — the force-tool protocol
 
 When the system marks a row as an identifying attempt-specific

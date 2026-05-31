@@ -205,6 +205,77 @@ def _archive_previous_session(session_name: str | None = None) -> None:
     if current_plan.exists():
         shutil.move(current_plan, dest / current_plan.name)
 
+    # ------------------------------------------------------------------
+    # R2 mirror — Path 3 (session-generic logs + traces + histories).
+    # ------------------------------------------------------------------
+    # Path 1 (upload_attempt_artefacts) covers per-attempt artefacts
+    # under ``<sid>/attempts/<NNN>/...``; Path 2 (upload_directory in
+    # the DH's populate_database) covers the DH's per-agent .txt tree
+    # under ``<sid>/<agent>/...`` and the user inputs under
+    # ``<sid>/user_inputs/...``.  This is the third disjoint path
+    # (see W19 in extra_utilities/warnings_developer.md): it walks the
+    # local logs / traces / agent_histories the move loops above just
+    # archived under ``dest/`` and pushes them to R2 under
+    # ``<sid>/logs/...``.  ``<sid>/logs/`` is disjoint from both
+    # other paths' namespaces, so no key collision is possible.
+    #
+    # Wrapped in try/except so a transient R2 failure cannot break
+    # the archive sweep — same best-effort stance as the DH save's
+    # ``upload_directory`` call.  Logging via ``propeller_agent`` so
+    # the operator sees what landed in R2.
+    try:
+        from agents.shared import r2_uploader as _r2
+        if _r2.is_enabled():
+            _r2_log = logging.getLogger("propeller_agent")
+            _uploaded = 0
+            _skipped  = 0
+            # The three flat-at-root families: log_files (which
+            # already includes database_handler_*.log via the *.log
+            # glob), trace_files (agent_flow_*.txt), dh_trace_files
+            # (dh_flow_*.txt).  ``current_plan.txt`` is intentionally
+            # NOT uploaded here — it is the Planner's working scratch,
+            # not a log artefact.
+            _flat: list[Path] = []
+            _flat.extend(dest / f.name for f in log_files)
+            _flat.extend(dest / f.name for f in trace_files)
+            _flat.extend(dest / f.name for f in dh_trace_files)
+            for p in _flat:
+                if not p.is_file():
+                    _skipped += 1
+                    continue
+                key = f"{session_name}/logs/{p.name}"
+                if _r2.upload_file(p, key):
+                    _uploaded += 1
+                else:
+                    _skipped += 1
+            # agent_histories/*.json — nested one folder deeper to
+            # mirror the local layout (matches what the move loop
+            # above produced under ``dest / "agent_histories"``).
+            dest_hist = dest / "agent_histories"
+            if dest_hist.is_dir():
+                for p in sorted(dest_hist.iterdir()):
+                    if not p.is_file():
+                        continue
+                    key = f"{session_name}/logs/agent_histories/{p.name}"
+                    if _r2.upload_file(p, key):
+                        _uploaded += 1
+                    else:
+                        _skipped += 1
+            _r2_log.info(
+                f"[R2]  session-log mirror: {_uploaded} uploaded, "
+                f"{_skipped} skipped → "
+                f"<prefix>/{session_name}/logs/"
+            )
+    except Exception as _exc:
+        # Best-effort: never let an R2 problem fail the archive sweep.
+        try:
+            logging.getLogger("propeller_agent").warning(
+                f"[R2]  session-log mirror failed: "
+                f"{type(_exc).__name__}: {_exc}"
+            )
+        except Exception:
+            pass
+
 
 def _setup_logger() -> logging.Logger:
     """Create a logger that writes to a timestamped log file.

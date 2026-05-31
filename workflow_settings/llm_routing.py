@@ -29,7 +29,13 @@ from typing import Any
 from dotenv import dotenv_values, set_key, unset_key
 
 from workflow_settings import editor as _editor
-from workflow_settings import settings as _settings
+# NOTE: do NOT import ``workflow_settings.settings`` at module level
+# here.  ``read_state`` must read LLM_ROUTING_MODE freshly off disk
+# (via ``_editor._parse_nodes``) so a save made during a live session
+# is visible the next time the Workflow Settings view fetches state.
+# Importing the module would bind a stale reference to the value
+# frozen at process startup — the exact pattern that caused saved
+# routing modes to silently revert to "individual" in v9.
 
 # ---------------------------------------------------------------------------
 # Topology — the agents that appear as boxes in the routing chart.
@@ -164,9 +170,30 @@ def read_state() -> dict[str, Any]:
     inputs to the override fields so saving never accidentally promotes
     an inherited value into a per-agent override.
     """
-    mode = (getattr(_settings, "LLM_ROUTING_MODE", "individual") or "").strip().lower()
+    # Read LLM_ROUTING_MODE freshly off disk on every call.  Do NOT
+    # use ``getattr(_settings, …)`` here: ``write_updates`` writes the
+    # new value to settings.py via atomic rename, but nothing in this
+    # process ever reloads the ``workflow_settings.settings`` module
+    # outside of ``_build_session`` — and the Workflow Settings view
+    # fetches /api/llm-routing WITHOUT building a session.  Reading the
+    # cached module attribute therefore returns the value frozen at
+    # process startup, which is why saved-mode reverts to the old
+    # value the moment the POST response paints the dropdown.
+    #
+    # Same disk-parse pattern ``editor.read_schema`` uses for the
+    # /api/settings flag list (the flag list does NOT have this bug).
+    mode_raw = ""
+    for _node in _editor._parse_nodes()[1]:
+        if _node.target.id == "LLM_ROUTING_MODE":
+            ok, val = _editor._literal(_node.value)
+            if ok:
+                mode_raw = str(val or "")
+            break
+    mode = mode_raw.strip().lower()
     if mode not in _MODES:
-        mode = "individual"
+        # Fallback when the literal is missing / unrecognised — match
+        # the on-disk default in workflow_settings/settings.py.
+        mode = "openai"
 
     shared_provider, shared_model = _shared_provider_model()
 

@@ -774,6 +774,24 @@ _ATTEMPT_SLUG_RE = re.compile(
     r"\b\d{8}_\d{6}_\d{3}_[\w\-]+\b",
 )
 
+# Narrow strip for the sub-row "For attempt NNN:" lead-in.  Sub-row
+# descriptions are auto-prefixed with ``"For attempt NNN: "`` (see
+# the ``sub_desc = f"For {attempt_str}: {sub_entry.get('description','')}"``
+# line in :meth:`populate_database`) so Agent A knows which attempt
+# the question is scoped to.  Without intervention the DH model
+# parrots the lead-in into the short SAVE: QUESTION (and sometimes
+# the ANSWER), which is redundant — the attempt id is already in
+# the filename suffix (``__NNN``) and in the file body's
+# ``--- Attempt ID ---`` header that ``_write_entry`` writes.
+#
+# Surgically narrow: only the literal lead-in pattern, NOT bare
+# "attempt NNN" elsewhere in the body, so cross-references like
+# "unlike attempt 002, this one ..." survive.
+_ATTEMPT_LEADIN_RE = re.compile(
+    r"^\s*[Ff]or\s+attempt\s*#?\s*\d{1,4}\s*[:\-,]\s*",
+    re.MULTILINE,
+)
+
 # Common chain-narration leads.  Removed line-wise.
 _CHAIN_NARRATION_RES = [
     re.compile(r"^\s*I(?:'ll| will) (?:send|forward|hand[\s\-]?off|relay).*$",
@@ -949,6 +967,17 @@ def _clean_semantic_body(body: str) -> str:
     # 3. Strip absolute paths and attempt-folder slugs.
     body = _ABS_PATH_RE.sub("", body)
     body = _ATTEMPT_SLUG_RE.sub("", body)
+
+    # 3b. Strip the "For attempt NNN:" / "for attempt NNN -"
+    #     scope-anchor lead-in that sub-row descriptions auto-prefix.
+    #     The attempt id is already recorded in the file's filename
+    #     suffix (``__NNN``) and in the ``--- Attempt ID ---`` header,
+    #     so echoing it into the short SAVE: QUESTION/ANSWER wastes
+    #     embedding-token budget.  Narrow on purpose: bare
+    #     "attempt NNN" cross-references elsewhere in the body
+    #     (e.g. "unlike attempt 002, this one was better") are
+    #     legitimate and survive.
+    body = _ATTEMPT_LEADIN_RE.sub("", body)
 
     # 4. Drop chain-narration lines wholesale.
     for pat in _CHAIN_NARRATION_RES:

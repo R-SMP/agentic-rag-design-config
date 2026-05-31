@@ -277,7 +277,10 @@ EMBEDDING_MAX_RESPONSE_TOKENS: int = 700
 # per-agent ``.env`` first, then shared ``agents/.env``.
 #
 # Valid values: "individual" | "openai" | "anthropic" | "google"
-LLM_ROUTING_MODE: str = "individual"
+# Default is OpenAI global override — a fresh checkout (or any
+# session that has never written this value) routes every agent
+# through OpenAI rather than the per-agent .env files.
+LLM_ROUTING_MODE: str = "openai"
 
 
 # ===========================================================

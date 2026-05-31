@@ -10,6 +10,7 @@ import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 const container = document.getElementById("viewer");
 const placeholder = document.getElementById("viewer-placeholder");
 const nameLabel = document.getElementById("viewer-name");
+const attemptLabel = document.getElementById("viewer-attempt");
 const resetBtn = document.getElementById("viewer-reset");
 
 const scene = new THREE.Scene();
@@ -80,7 +81,21 @@ function frameObject(obj) {
   controls.update();
 }
 
-function load(url, name) {
+function setAttemptLabel(text) {
+  if (!attemptLabel) return;
+  const trimmed = (text || "").trim();
+  attemptLabel.textContent = trimmed;
+  // The CSS rule defaults the badge to display:none; the
+  // .has-attempt class flips it to display:inline-block.  This
+  // avoids reserving toolbar space for an empty badge.
+  if (trimmed) {
+    attemptLabel.classList.add("has-attempt");
+  } else {
+    attemptLabel.classList.remove("has-attempt");
+  }
+}
+
+function load(url, name, attempt) {
   const loader = new OBJLoader();
   loader.load(
     url,
@@ -107,6 +122,7 @@ function load(url, name) {
       frameObject(obj);
       if (placeholder) placeholder.style.display = "none";
       if (nameLabel) nameLabel.textContent = name || "";
+      setAttemptLabel(attempt);
     },
     undefined,
     (err) => {
@@ -152,6 +168,7 @@ function unload() {
     placeholder.style.display = "";  // revert to stylesheet default
   }
   if (nameLabel) nameLabel.textContent = "";
+  setAttemptLabel("");
   homeCamPos = new THREE.Vector3(1, 1, 1);
   camera.position.copy(homeCamPos);
   controls.target.set(0, 0, 0);

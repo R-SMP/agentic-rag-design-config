@@ -59,6 +59,48 @@ def _list_attempt_folders() -> list[tuple[int, Path]]:
     return out
 
 
+def attempt_number_for_path(path: Path) -> int | None:
+    """Parse the attempt number from any file inside an attempt folder.
+
+    Attempt folders are named ``YYYYMMDD_HHMMSS_NNN_<slug>``; any
+    file directly inside one (``propeller_mesh.obj`` /
+    ``render_*.png`` / ``description.txt`` / ``parameters.json``)
+    reveals its NNN via the parent folder's name.
+
+    Returns the 1-based attempt number (integer) when the parent
+    folder name matches the canonical pattern, otherwise ``None``.
+    Callers use ``f"{n:03d}"`` to render the zero-padded label
+    that matches the folder slug — see :func:`attempt_label_for_path`.
+    """
+    if path is None:
+        return None
+    try:
+        parent_name = path.parent.name
+    except Exception:
+        return None
+    m = _ATTEMPT_RE.match(parent_name)
+    if not m:
+        return None
+    try:
+        return int(m.group(3))
+    except (TypeError, ValueError):
+        return None
+
+
+def attempt_label_for_path(path: Path) -> str | None:
+    """Return ``"Attempt NNN"`` (zero-padded to 3 digits) for a file
+    inside an attempt folder, or ``None`` when the path is not under
+    a canonical ``YYYYMMDD_HHMMSS_NNN_<slug>`` folder.
+
+    Used by the web layer to caption render bubbles and the 3D
+    viewer toolbar with the attempt the artefact belongs to.
+    """
+    n = attempt_number_for_path(path)
+    if n is None:
+        return None
+    return f"Attempt {n:03d}"
+
+
 def _next_attempt_number() -> int:
     """Return the next 1-based attempt number for a new folder."""
     items = _list_attempt_folders()

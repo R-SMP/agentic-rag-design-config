@@ -18,6 +18,7 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
+from agents.shared.attempts_tool import attempt_label_for_path
 from agents.shared.viz_bus import publish
 from config import ATTEMPTS_DIR
 
@@ -68,10 +69,17 @@ def visualize_3d_model(obj_path: str) -> str:
                 f"attempts directory ({root}); only generated meshes "
                 f"under attempts/ can be shown.")
 
+    # Caption the viewer with the attempt number when the mesh lives
+    # inside a canonical ``YYYYMMDD_HHMMSS_NNN_<slug>`` attempt folder
+    # (the standard layout produced by ``new_attempt``).  ``None`` when
+    # the mesh sits outside such a folder — viewer.js silently hides
+    # the badge then.
+    attempt_label = attempt_label_for_path(target)
     reached = publish({
         "type": "visualize",
         "path": str(target),
         "name": target.name,
+        "attempt_label": attempt_label,
     })
     if reached:
         return (f"visualize_3d_model: OK — sent {target.name} to the "

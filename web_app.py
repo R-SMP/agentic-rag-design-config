@@ -47,6 +47,7 @@ import importlib
 
 from agents.dispatch import dispatch_turn
 from agents.loader import _archive_previous_session
+from agents.shared.attempts_tool import attempt_label_for_path
 from agents.shared.file_utils import pair_input_images
 from agents.shared.session import Session
 from agents.shared.stop_signal import (
@@ -55,6 +56,7 @@ from agents.shared.stop_signal import (
 )
 from agents.shared.trace import close_trace, init_trace
 from agents.shared.viz_bus import (
+    publish as viz_publish,
     subscribe as viz_subscribe,
     unsubscribe as viz_unsubscribe,
 )
@@ -118,12 +120,21 @@ _BOX = _Box()
 # at ~5 min and the browser / proxy retried, spawning a SECOND
 # ``populate_database`` thread that raced the first one's archive
 # sweep (see extra_utilities/TODO_known_issues.md F22 + the project's
-# auto-memory ``v9_duplicate_save_bug``).  Holding this lock for the
-# WHOLE ``/api/end`` body (DH save + ``_end_session()`` archive sweep)
-# guarantees only one save lifecycle is in flight at any moment;
-# concurrent retries get HTTP 409 immediately and never spawn a
-# second worker.
-_END_LOCK = asyncio.Lock()
+# auto-memory ``v9_duplicate_save_bug``).
+#
+# ``api_end`` now returns HTTP 202 immediately and runs the actual
+# save in a background task, so the proxy can't time-out-and-retry
+# in the first place — but a plain bool flag still guards against
+# concurrent ``/api/end`` POSTs that arrive before the background
+# task finishes.  A bool is the right primitive here (not an
+# ``asyncio.Lock``): the lock acquisition would have to span the
+# HTTP handler → background task boundary, and asyncio.Lock's
+# task-owns-the-lock contract makes that awkward.  A bool is atomic
+# in a single-worker async event loop (W13/O9 — no preemption
+# between sync statements), set in the HTTP handler BEFORE the
+# background task is scheduled and cleared by the background task
+# in its ``finally``.
+_END_IN_FLIGHT: bool = False
 
 
 def _new_session_id() -> str:
@@ -133,7 +144,12 @@ def _new_session_id() -> str:
 
 def _setup_session_logger(session_id: str) -> Path:
     LOGS_DIR.mkdir(parents=True, exist_ok=True)
-    log_path = LOGS_DIR / f"web_{session_id}.log"
+    # The session_id minted by ``_new_session_id`` already starts with
+    # ``web_`` (e.g. ``web_20260531_104043_06f39a67``), so the file
+    # name is just ``<session_id>.log``.  Earlier the path prepended
+    # ``web_`` a second time, producing ugly ``web_web_...log``
+    # filenames that propagated into the R2 mirror.
+    log_path = LOGS_DIR / f"{session_id}.log"
     for h in logger.handlers:
         if (isinstance(h, logging.FileHandler)
                 and Path(h.baseFilename).resolve() == log_path.resolve()):
@@ -431,8 +447,21 @@ async def api_turn(body: TurnIn) -> dict:
             sfx = p.suffix.lower()
             kind = "image" if sfx == ".png" else ("mesh" if sfx == ".obj"
                                                   else "file")
-            artefacts.append({"name": p.name, "kind": kind,
-                               "url": _artefact_url(p)})
+            # Annotate the artefact with the attempt number when the
+            # path sits inside a canonical ``YYYYMMDD_HHMMSS_NNN_<slug>``
+            # attempt folder.  The frontend uses ``attempt_label`` to
+            # caption image bubbles and to badge the 3D viewer.  Returns
+            # None for artefacts outside an attempt folder (e.g. an
+            # input image) — addBubble silently skips the label then.
+            label = attempt_label_for_path(p)
+            entry: dict = {
+                "name": p.name,
+                "kind": kind,
+                "url":  _artefact_url(p),
+            }
+            if label is not None:
+                entry["attempt_label"] = label
+            artefacts.append(entry)
         return {
             "reply": result.reply_text,
             "forwarded": result.forwarded,
@@ -492,75 +521,204 @@ def api_artefact(path: str) -> FileResponse:
     return FileResponse(target)
 
 
+class FeedbackIn(BaseModel):
+    # The three fields the End Session modal collects when the user
+    # confirms "save".  Only ``satisfaction`` is required by the
+    # frontend (a y/p/n toggle); the two free-text fields may be
+    # empty strings — the Orchestrator handles "no elaboration"
+    # gracefully (most agents end up with send=false).
+    satisfaction:    str = ""
+    what_went_well:  str = ""
+    what_went_wrong: str = ""
+
+
 class EndIn(BaseModel):
     # Optional — when ``True`` the Database Handler interviews each
     # agent (via the same path the v4 REPL loader uses) BEFORE the
     # session is archived.  Default is ``False`` so old clients posting
     # an empty body keep the v8 behaviour (archive only).
     save: bool = False
+    # Optional — when present AND save=True, an Orchestrator-led
+    # feedback distribution round runs BEFORE the DH save so the DH's
+    # per-agent interview sees the user's feedback in each target
+    # agent's history.  See agents/orchestrator/feedback_tool.py and
+    # the Orchestrator's Role-4 prompt section.
+    feedback: FeedbackIn | None = None
 
 
-@app.post("/api/end")
+def _run_feedback_round_sync(feedback: "FeedbackIn") -> dict:
+    """Run the Orchestrator's end-of-session feedback distribution.
+
+    Mirrors the build-from-session pattern in :func:`_run_dh_save`
+    (so the DH save can run immediately afterwards on the same
+    in-memory Session — message appends to the live agents persist
+    via ``snapshot_state()`` into ``session.agent_states``).
+
+    Best-effort: any error is logged and surfaces in the returned
+    dict; it never breaks the End Session pipeline (the user's
+    saved data is the core promise, the feedback round is an
+    enhancement).
+    """
+    from agents.orchestrator import Orchestrator
+
+    session = _BOX.session
+    if session is None:
+        return {"ok": False, "error": "No active session for feedback."}
+
+    try:
+        orchestrator = Orchestrator(session=session)
+    except Exception as exc:
+        logger.exception("[WEB] feedback round: orchestrator build failed")
+        return {"ok": False, "error": f"orch build: {exc}"}
+
+    try:
+        return orchestrator.run_feedback_round(
+            satisfaction    = (feedback.satisfaction    or "").strip(),
+            what_went_well  = (feedback.what_went_well  or "").strip(),
+            what_went_wrong = (feedback.what_went_wrong or "").strip(),
+        )
+    except Exception as exc:
+        logger.exception("[WEB] feedback round raised")
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
+async def _run_end_in_background(
+    save_requested: bool,
+    session_present: bool,
+    feedback: "FeedbackIn | None" = None,
+) -> None:
+    """Background task: run the feedback round (if any) + DH save (if
+    requested) + archive sweep, then publish a ``session_save_done``
+    viz_bus event.
+
+    Clears ``_END_IN_FLIGHT`` in ``finally`` so the next ``/api/end``
+    POST is accepted (the previous session is gone by the time this
+    finishes, so a follow-up "no active session to save" path is
+    coherent).
+
+    Always publishes EXACTLY ONE ``session_save_done`` event, even
+    on exception, so the frontend's End Session UI is never stuck
+    in a "waiting" state.
+
+    ORDERING INVARIANT: the feedback round MUST run before
+    ``_run_dh_save`` so the per-agent ``HumanMessage(name="orchestrator")``
+    entries it appends are visible to the DH when it interviews each
+    agent.  ``_run_dh_save`` reads ``session.agent_states[<key>].messages``;
+    ``run_feedback_round`` mirrors its appends there via
+    ``snapshot_state()``.
+    """
+    global _END_IN_FLIGHT
+    dh_result: dict | None = None
+    feedback_result: dict | None = None
+    error_str: str | None = None
+    try:
+        if save_requested and session_present:
+            if feedback is not None:
+                logger.info(
+                    "[WEB] end_session — running Orchestrator feedback "
+                    "round (background task) BEFORE DH save"
+                )
+                feedback_result = await run_in_threadpool(
+                    _run_feedback_round_sync, feedback
+                )
+            logger.info(
+                "[WEB] end_session — save=True, running DH (background task)"
+            )
+            dh_result = await run_in_threadpool(_run_dh_save)
+        elif save_requested:
+            # User requested save but no session is active — treat as
+            # a plain End Session.  Surface the fact in the SSE event
+            # so the UI can confirm.
+            dh_result = {"error": "No active session to save."}
+        _end_session()
+    except Exception as exc:
+        logger.exception(
+            "[WEB] background end-session task failed: %s", exc
+        )
+        error_str = f"{type(exc).__name__}: {exc}"
+    finally:
+        # Publish exactly ONE completion event, success OR error.
+        try:
+            viz_publish({
+                "type":     "session_save_done",
+                "ok":       error_str is None,
+                "saved":    bool(save_requested),
+                "dh":       dh_result,
+                "feedback": feedback_result,
+                "error":    error_str,
+            })
+        except Exception:
+            logger.exception("[WEB] failed to publish session_save_done")
+        _END_IN_FLIGHT = False
+
+
+@app.post("/api/end", status_code=202)
 async def api_end(body: EndIn | None = None) -> dict:
     """End the active session, optionally running the Database Handler
     first.
 
-    The DH publishes ``agent_active`` and ``generic_tool`` events on
-    the in-process viz bus while it interviews each agent; the
-    frontend's already-open ``/api/events`` EventSource picks those
-    up and animates the LOG-and-Status chart in real time.
+    **Returns HTTP 202 Accepted immediately**, then runs the actual
+    work in a background asyncio task.  This eliminates the
+    Railway/Cloudflare edge-timeout that caused the 2026-05-30
+    duplicate-save bug (5–15 min DH save → proxy timeout at ~5 min →
+    browser retry → second ``populate_database`` thread).  See
+    extra_utilities/TODO_known_issues.md F22 and the project's
+    auto-memory ``v9_duplicate_save_bug``.
 
-    The DH itself is run via :func:`run_in_threadpool` so the FastAPI
-    event loop is not blocked — the SSE stream keeps flushing events
-    to the browser throughout the (potentially several-minute) save.
+    **Completion event.**  The background task publishes a single
+    ``session_save_done`` event on the viz_bus when it finishes
+    (success or error).  The frontend's already-open ``/api/events``
+    EventSource forwards it; ``web/app.js`` runs the post-save UI
+    cleanup (clear chat / viewer / images / log view) on receipt.
+    Until then the End Session button stays disabled and the UI
+    holds its "Saving…" state.
 
-    **Singleton.**  A concurrent ``/api/end`` POST while a save is
-    already in flight is rejected with HTTP 409 instead of spawning
-    a second ``populate_database`` thread.  The 2026-05-30 deployment
-    proved that the proxy / browser will retry this endpoint after a
-    ~5-min connection timeout — without this guard, the retried call
-    races the first one's archive sweep and produces orphan partial
-    saves.  See extra_utilities/TODO_known_issues.md F22 and the
-    project's auto-memory ``v9_duplicate_save_bug``.
+    **Singleton.**  A concurrent ``/api/end`` POST while another save
+    is already in flight is rejected with HTTP 409 — guarded by the
+    ``_END_IN_FLIGHT`` flag.  The flag is set synchronously in this
+    handler BEFORE the background task is scheduled and cleared by
+    the background task in its ``finally``, so the check-and-set is
+    atomic in the single-worker uvicorn event loop (W13/O9).
     """
-    # Non-blocking check — return 409 instead of queueing the second
-    # call behind ``async with _END_LOCK:`` (which would just delay
-    # the duplicate save instead of suppressing it).  The TOCTOU
-    # window between this check and the ``async with`` is closed by
-    # the single-worker uvicorn invariant (W13/O9): no preemption
-    # between the ``locked()`` read and the ``acquire`` happens
-    # without an explicit ``await`` first.
-    if _END_LOCK.locked():
+    global _END_IN_FLIGHT
+    # Check-and-set is atomic: no ``await`` between the read and the
+    # write, so no other coroutine can race on the same event loop.
+    if _END_IN_FLIGHT:
         logger.info(
             "[WEB] /api/end rejected — save already in progress; "
-            "returning HTTP 409 (this is the duplicate-save guard)."
+            "returning HTTP 409 (duplicate-save guard)."
         )
         raise HTTPException(
             status_code=409,
             detail=(
                 "A previous End Session is still saving.  This "
                 "request was ignored to avoid spawning a duplicate "
-                "save; the in-flight save will complete on its own."
+                "save; the in-flight save will complete on its own "
+                "and emit a session_save_done event on /api/events."
             ),
         )
+    _END_IN_FLIGHT = True
 
-    async with _END_LOCK:
-        save_requested = bool(body and body.save)
-        dh_result: dict | None = None
-        if save_requested and _BOX.session is not None:
-            logger.info("[WEB] end_session — save=True, running DH first")
-            dh_result = await run_in_threadpool(_run_dh_save)
-        elif save_requested:
-            # User requested save but no session is active — treat as
-            # a plain End Session.  Surface the fact in the response
-            # so the UI can confirm.
-            dh_result = {"error": "No active session to save."}
+    save_requested  = bool(body and body.save)
+    session_present = _BOX.session is not None
+    # End-of-session feedback distribution runs ONLY when the user
+    # chose to save AND supplied feedback in the modal.  Absent/null
+    # feedback (legacy clients, or "Save without feedback" path) →
+    # the feedback round is skipped, DH save runs as before.
+    feedback        = body.feedback if (body and save_requested) else None
 
-        _end_session()
-        out: dict = {"ok": True, "saved": bool(save_requested)}
-        if dh_result is not None:
-            out["dh"] = dh_result
-        return out
+    # Schedule the actual work on the running event loop and return.
+    # The task runs INDEPENDENTLY of this HTTP request's lifecycle,
+    # so a proxy / browser disconnect cannot interrupt the DH save.
+    asyncio.create_task(
+        _run_end_in_background(save_requested, session_present, feedback)
+    )
+
+    return {
+        "ok":     True,
+        "status": "started",
+        "saved":  save_requested,
+    }
 
 
 @app.post("/api/stop")
@@ -956,9 +1114,10 @@ async def api_events() -> StreamingResponse:
                 if evt.get("type") == "visualize":
                     p = Path(evt["path"])
                     payload = {
-                        "type": "visualize",
-                        "url": _artefact_url(p),
-                        "name": evt.get("name") or p.name,
+                        "type":          "visualize",
+                        "url":           _artefact_url(p),
+                        "name":          evt.get("name") or p.name,
+                        "attempt_label": evt.get("attempt_label"),
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
                 elif evt.get("type") == "agent_active":
@@ -974,6 +1133,27 @@ async def api_events() -> StreamingResponse:
                         "type": "generic_tool",
                         "name": evt.get("name", ""),
                         "state": evt.get("state", ""),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                elif evt.get("type") == "session_save_done":
+                    # End Session completion signal — emitted by
+                    # ``_run_end_in_background`` exactly once when
+                    # the feedback round + DH save + archive sweep
+                    # finish (success or failure).  The frontend
+                    # uses this to run the post-save UI cleanup
+                    # (clear chat / viewer / images / log view) and
+                    # re-enable the End Session button.  The
+                    # ``feedback`` field surfaces the
+                    # Orchestrator's per-agent dispatch summary so
+                    # the UI can display which agents received user
+                    # feedback at end-of-session.
+                    payload = {
+                        "type":     "session_save_done",
+                        "ok":       bool(evt.get("ok")),
+                        "saved":    bool(evt.get("saved")),
+                        "dh":       evt.get("dh"),
+                        "feedback": evt.get("feedback"),
+                        "error":    evt.get("error"),
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
         finally:

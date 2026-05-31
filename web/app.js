@@ -15,6 +15,18 @@ const stopBtn = $("stop-btn");
 
 let busy = false;
 
+// State carried across the End Session lifecycle: the click handler
+// kicks off ``/api/end`` (which returns HTTP 202 immediately and runs
+// the actual DH save + archive sweep in a background task on the
+// server) and stores the in-flight UI state here.  The SSE handler in
+// ``startEventStream`` picks the state up when the matching
+// ``session_save_done`` event arrives and runs the post-save cleanup
+// (clear chat / viewer / images / log view, re-enable the button).
+// ``null`` means "no End Session in flight".
+let endSessionState = null;
+let endSessionTimeoutId = null;
+const END_SESSION_HARD_TIMEOUT_MS = 25 * 60 * 1000;   // 25 minutes
+
 function showChat() {
   gate.hidden = true;
   workspace.hidden = false;
@@ -35,9 +47,17 @@ function showGate() {
 // the live `visualize` SSE event.
 let currentMesh = { url: null, name: null };
 
-function loadMesh(url, name) {
-  if (window.modelViewer) window.modelViewer.load(url, name);
-  currentMesh = { url, name: name || "propeller_mesh.obj" };
+function loadMesh(url, name, attempt) {
+  // ``attempt`` is the "Attempt NNN" label string (or null/undefined
+  // when the mesh sits outside an attempt folder).  Threaded through
+  // to window.modelViewer.load so the viewer toolbar shows the
+  // attempt badge alongside the filename.
+  if (window.modelViewer) window.modelViewer.load(url, name, attempt);
+  currentMesh = {
+    url,
+    name: name || "propeller_mesh.obj",
+    attempt: attempt || null,
+  };
   const dlBtn = document.getElementById("download-mesh");
   if (dlBtn) dlBtn.disabled = !url;
 }
@@ -49,7 +69,23 @@ function addBubble(role, text, opts = {}) {
     (opts.error ? " error-bubble" : "");
   el.textContent = text;
   if (opts.artefacts) {
+    // Insert an "Attempt NNN" heading before the FIRST artefact of
+    // each distinct attempt — keeps multi-attempt bubbles readable
+    // and avoids duplicating the label per artefact.  Artefacts
+    // without an attempt_label (e.g. input images) reset the
+    // running label to null so they don't accidentally inherit the
+    // previous group's heading.
+    let lastAttemptLabel = null;
     for (const a of opts.artefacts) {
+      const thisLabel = a.attempt_label || null;
+      if (thisLabel && thisLabel !== lastAttemptLabel) {
+        const heading = document.createElement("div");
+        heading.className = "artefact-attempt-heading";
+        heading.textContent = thisLabel;
+        el.appendChild(heading);
+      }
+      lastAttemptLabel = thisLabel;
+
       if (a.kind === "image") {
         const img = document.createElement("img");
         img.src = a.url;
@@ -60,7 +96,7 @@ function addBubble(role, text, opts = {}) {
         view.type = "button";
         view.className = "artefact-action";
         view.textContent = "🧊 View " + a.name + " in 3D";
-        view.addEventListener("click", () => loadMesh(a.url, a.name));
+        view.addEventListener("click", () => loadMesh(a.url, a.name, thisLabel));
         el.appendChild(view);
         const dl = document.createElement("a");
         dl.className = "artefact-link";
@@ -158,7 +194,7 @@ async function sendMessage(text) {
     const meshes = (data.artefacts || []).filter((a) => a.kind === "mesh");
     if (meshes.length) {
       const last = meshes[meshes.length - 1];
-      loadMesh(last.url, last.name);
+      loadMesh(last.url, last.name, last.attempt_label || null);
     }
   } catch (e) {
     pending.remove();
@@ -219,81 +255,35 @@ input.addEventListener("keydown", (e) => {
   }
 });
 
-endBtn.addEventListener("click", async () => {
-  if (busy) return;
-
-  // Ask the user whether to save this session to the database before
-  // archiving.  Yes  → /api/end runs the Database Handler first
-  // (interviews every agent, writes one .txt per field under
-  // database/<session>/); the DH highlights its own box in the LOG-
-  // and-Status flowchart while it runs.  No / Cancel  → archive only.
-  const wantSave = window.confirm(
-    "Do you want this session to be saved for the database?\n\n" +
-    "Yes — the Database Handler will interview every agent before " +
-    "the session is archived.  This can take several minutes; the " +
-    "LOG and Status chart lights up the Database Handler box while " +
-    "it runs.\n\n" +
-    "No (or Cancel) — archive the session without saving."
-  );
-
-  // Disable the button + indicate progress in the UI while /api/end
-  // is in flight.  The DH save can take a long time, so the user
-  // needs to see that the click registered.
-  endBtn.disabled = true;
-  const originalEndText = endBtn.textContent;
-  let pendingBubble = null;
-  if (wantSave) {
-    endBtn.textContent = "Saving to database…";
-    pendingBubble = addBubble(
-      "assistant",
-      "Saving this session to the database.  The Database Handler is " +
-      "interviewing every agent — this can take several minutes.  " +
-      "Open the LOG and Status view to watch its progress.",
-      { pending: true }
-    );
-  } else {
-    endBtn.textContent = "Ending…";
-  }
-
-  let endResp = null;
-  try {
-    endResp = await fetch("/api/end", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ save: !!wantSave }),
-    });
-  } catch (e) {
-    /* network error — fall through; the finally block re-enables the
-       button so the user can retry. */
-    console.warn("[End Session] network error talking to /api/end:", e);
-  }
-
-  // HTTP 409 — the server already has a save in flight (typically a
-  // proxy / browser retry that this call duplicates).  Keep the UI in
-  // its locked "Saving…" state: the ORIGINAL /api/end is still
-  // running server-side and will finish on its own; clearing chat /
-  // viewer / images here would lie to the user about what state they
-  // are in.  See web_app.py:api_end for the backend guard and
-  // extra_utilities/TODO_known_issues.md F22 for the diagnosis.
-  if (endResp && endResp.status === 409) {
-    console.warn(
-      "[End Session] /api/end returned HTTP 409 — a previous save is " +
-      "still in progress; this click was ignored by the server.  " +
-      "Leaving the UI in its locked state; the in-flight save will " +
-      "complete on its own."
-    );
-    endBtn.textContent = "Save already in progress…";
-    // Do NOT re-enable the button, remove the pending bubble, or
-    // wipe chat / viewer / images — those steps belong to the
-    // original /api/end that is still running.
-    return;
+// Run AFTER the server-side End Session work finishes — invoked
+// either by the ``session_save_done`` SSE event or by the hard-
+// timeout safety net.  Wipes chat / viewer / images / log view and
+// re-enables the End Session button.  Idempotent: safe to call
+// twice (the second call sees ``endSessionState === null`` and
+// returns).
+async function finalizeEndSession(evt) {
+  if (endSessionState === null) return;
+  const { originalEndText, pendingBubble } = endSessionState;
+  endSessionState = null;
+  if (endSessionTimeoutId !== null) {
+    clearTimeout(endSessionTimeoutId);
+    endSessionTimeoutId = null;
   }
 
   endBtn.disabled = false;
   endBtn.textContent = originalEndText || "End Session";
   if (pendingBubble) pendingBubble.remove();
 
+  // Wipe the chat ROOM first; THEN add any error bubble so it
+  // survives the wipe.  Existing assistant bubbles belong to the
+  // session that just ended and would only confuse the next one.
   messages.innerHTML = "";
+  if (evt && evt.ok === false && evt.error) {
+    addBubble("assistant", `End Session failed: ${evt.error}`, { error: true });
+  } else if (evt && evt.dh && evt.dh.error) {
+    addBubble("assistant", `Database Handler error: ${evt.dh.error}`, { error: true });
+  }
+
   // 3D viewer (right of the Chat pane): the mesh belongs to the
   // session that just ended.  Drop it and restore the "No model yet…"
   // placeholder so the next session opens with an empty viewer.
@@ -326,6 +316,236 @@ endBtn.addEventListener("click", async () => {
   else input.focus();
   // End Session cleared the in-process session — unlock the settings.
   applySettingsLock(!!cfg.session_active);
+}
+
+
+// --------------------------------------------------------------------
+// End Session modal (replaces window.confirm).
+// --------------------------------------------------------------------
+//
+// Step 1: Save? Yes / No / Cancel.
+// Step 2 (only on Yes): satisfaction toggle (required) + two optional
+// textareas + Submit / Back.
+// The Yes-submit path POSTs /api/end with body.feedback populated; the
+// No-archive path POSTs with feedback=null.
+//
+// Internal state is local to the modal — the post-POST locked-UI
+// state (button disabled, pendingBubble, hard timeout) is handled by
+// performEndSession() below, which is shared between the two paths.
+
+const endModal       = document.getElementById("end-modal");
+const endModalStep1  = document.getElementById("end-modal-step1");
+const endModalStep2  = document.getElementById("end-modal-step2");
+const endModalYes    = document.getElementById("end-modal-yes");
+const endModalNo     = document.getElementById("end-modal-no");
+const endModalCancel = document.getElementById("end-modal-cancel");
+const endModalSubmit = document.getElementById("end-modal-submit");
+const endModalBack   = document.getElementById("end-modal-back");
+const satBtns        = endModalStep2
+  ? endModalStep2.querySelectorAll(".sat-btn")
+  : [];
+const feedbackWell   = document.getElementById("feedback-well");
+const feedbackWrong  = document.getElementById("feedback-wrong");
+
+let selectedSatisfaction = null;   // "yes" | "partially" | "no" | null
+
+function showEndModalStep(which) {
+  if (endModalStep1) endModalStep1.hidden = (which !== 1);
+  if (endModalStep2) endModalStep2.hidden = (which !== 2);
+}
+function openEndModal() {
+  selectedSatisfaction = null;
+  if (feedbackWell)  feedbackWell.value  = "";
+  if (feedbackWrong) feedbackWrong.value = "";
+  satBtns.forEach((b) => b.classList.remove("selected"));
+  if (endModalSubmit) endModalSubmit.disabled = true;
+  showEndModalStep(1);
+  if (endModal) endModal.hidden = false;
+}
+function closeEndModal() {
+  if (endModal) endModal.hidden = true;
+}
+
+// Satisfaction toggle behaviour: clicking a sat-btn picks that value
+// and visually marks it; the Submit button is gated until one is
+// chosen (the two text fields are intentionally optional).
+satBtns.forEach((btn) => {
+  btn.addEventListener("click", () => {
+    selectedSatisfaction = btn.getAttribute("data-value");
+    satBtns.forEach((b) => b.classList.toggle(
+      "selected", b === btn,
+    ));
+    if (endModalSubmit) endModalSubmit.disabled = false;
+  });
+});
+
+if (endModalNo) {
+  endModalNo.addEventListener("click", () => {
+    closeEndModal();
+    performEndSession(false, null);
+  });
+}
+if (endModalCancel) {
+  endModalCancel.addEventListener("click", () => {
+    closeEndModal();
+  });
+}
+if (endModalYes) {
+  endModalYes.addEventListener("click", () => {
+    showEndModalStep(2);
+  });
+}
+if (endModalBack) {
+  endModalBack.addEventListener("click", () => {
+    showEndModalStep(1);
+  });
+}
+if (endModalSubmit) {
+  endModalSubmit.addEventListener("click", () => {
+    if (!selectedSatisfaction) return;   // belt-and-suspenders
+    const feedback = {
+      satisfaction:    selectedSatisfaction,
+      what_went_well:  (feedbackWell  && feedbackWell.value)  || "",
+      what_went_wrong: (feedbackWrong && feedbackWrong.value) || "",
+    };
+    closeEndModal();
+    performEndSession(true, feedback);
+  });
+}
+
+
+// --------------------------------------------------------------------
+// Shared "actually run /api/end" path — used by both the Yes-with-
+// feedback submit and the No-archive button.  Owns the locked-UI
+// state (button disabled, pendingBubble, hard timeout, 409/202
+// branching, etc.) that was previously inline in the click handler.
+// --------------------------------------------------------------------
+async function performEndSession(wantSave, feedback) {
+  endBtn.disabled = true;
+  const originalEndText = endBtn.textContent;
+  let pendingBubble = null;
+  if (wantSave) {
+    endBtn.textContent = "Saving to database…";
+    pendingBubble = addBubble(
+      "assistant",
+      "Saving this session to the database.  The Database Handler is " +
+      "interviewing every agent — this can take several minutes.  " +
+      "Open the LOG and Status view to watch its progress.",
+      { pending: true }
+    );
+  } else {
+    endBtn.textContent = "Ending…";
+  }
+
+  // Park the UI state where the SSE handler can pick it up.  Setting
+  // this BEFORE awaiting the fetch closes the (tiny) window where a
+  // very-fast session_save_done could arrive before the click
+  // handler stored its state.
+  endSessionState = { originalEndText, pendingBubble };
+  // Hard timeout safety net — if the server-side task crashes
+  // without publishing session_save_done (or the SSE stream is
+  // disconnected for the whole window), we still re-enable the
+  // button after 25 minutes so the user is never permanently stuck.
+  endSessionTimeoutId = setTimeout(() => {
+    console.warn(
+      "[End Session] hard timeout (25 min) — no session_save_done " +
+      "received; re-enabling button.  The save may still be running " +
+      "server-side; check /api/log/stream."
+    );
+    finalizeEndSession({
+      ok: false,
+      saved: !!wantSave,
+      error: "Timed out waiting for session_save_done after 25 minutes.",
+    });
+  }, END_SESSION_HARD_TIMEOUT_MS);
+
+  let endResp = null;
+  try {
+    const reqBody = { save: !!wantSave };
+    if (wantSave && feedback) {
+      // Only forward feedback when saving — without a DH save it
+      // would have nowhere to land for future sessions, and the
+      // backend skips the feedback round whenever save=false.
+      reqBody.feedback = feedback;
+    }
+    endResp = await fetch("/api/end", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reqBody),
+    });
+  } catch (e) {
+    /* network error — clear the in-flight state and re-enable the
+       button so the user can retry. */
+    console.warn("[End Session] network error talking to /api/end:", e);
+    if (endSessionTimeoutId !== null) {
+      clearTimeout(endSessionTimeoutId);
+      endSessionTimeoutId = null;
+    }
+    endSessionState = null;
+    endBtn.disabled = false;
+    endBtn.textContent = originalEndText || "End Session";
+    if (pendingBubble) pendingBubble.remove();
+    return;
+  }
+
+  // HTTP 409 — the server already has a save in flight (typically a
+  // proxy / browser retry that this call duplicates).  Keep the UI in
+  // its locked "Saving…" state: the ORIGINAL /api/end is still
+  // running server-side and will publish a session_save_done event
+  // when it finishes; the existing SSE handler will run the cleanup.
+  // We did NOT register a new in-flight state (endSessionState was
+  // already non-null from the original click), so just clear THIS
+  // call's pending bubble and leave the locked state alone.
+  // See web_app.py:api_end for the backend guard and
+  // extra_utilities/TODO_known_issues.md F22 for the diagnosis.
+  if (endResp.status === 409) {
+    console.warn(
+      "[End Session] /api/end returned HTTP 409 — a previous save is " +
+      "still in progress; this click was ignored by the server.  " +
+      "Leaving the UI in its locked state; the in-flight save will " +
+      "complete on its own and trigger cleanup via SSE."
+    );
+    endBtn.textContent = "Save already in progress…";
+    return;
+  }
+
+  // HTTP 202 Accepted — the server has kicked off the End Session
+  // work in a background task and will publish a session_save_done
+  // event on /api/events when it finishes.  The SSE handler in
+  // startEventStream() will pick it up and call finalizeEndSession.
+  // Until then we leave the locked UI state in place.
+  if (endResp.status === 202 || endResp.status === 200) {
+    console.log(
+      "[End Session] /api/end accepted (HTTP " + endResp.status +
+      "); waiting for session_save_done SSE event."
+    );
+    return;
+  }
+
+  // Any other status — treat as failure, clear the in-flight state.
+  console.warn(
+    "[End Session] unexpected /api/end status " + endResp.status +
+    "; falling back to immediate cleanup."
+  );
+  await finalizeEndSession({
+    ok: false,
+    saved: !!wantSave,
+    error: "Unexpected HTTP status " + endResp.status + " from /api/end.",
+  });
+}
+
+
+// The End Session button itself just opens the modal.  All the actual
+// "should we save / get feedback / POST /api/end" logic is in the
+// modal handlers + performEndSession() above.
+endBtn.addEventListener("click", () => {
+  if (busy) return;
+  // A previous End Session is still waiting on its session_save_done
+  // event — ignore clicks while it's in flight.  The button is
+  // already disabled by performEndSession but this is belt-and-
+  // suspenders for keyboard / scripted activation.
+  if (endSessionState !== null) return;
+  openEndModal();
 });
 
 // Live agent / model events.  Two kinds of SSE message arrive on
@@ -568,7 +788,7 @@ function startEventStream() {
       try {
         const data = JSON.parse(e.data);
         if (data.type === "visualize" && window.modelViewer) {
-          loadMesh(data.url, data.name);
+          loadMesh(data.url, data.name, data.attempt_label || null);
         } else if (data.type === "agent_active") {
           // Real agent handoff — switch which box is highlighted.
           // We INTENTIONALLY do NOT clear any "last tool" labels
@@ -586,6 +806,14 @@ function startEventStream() {
           if (data.state === "start") {
             recordToolUsedByActiveAgent(data.name);
           }
+        } else if (data.type === "session_save_done") {
+          // The server-side End Session background task has finished
+          // (success or failure).  Run the post-save UI cleanup that
+          // the click handler deferred when /api/end returned HTTP
+          // 202 — clear chat / viewer / images / log view, re-enable
+          // the End Session button, and surface any error.
+          console.log("[End Session] session_save_done event:", data);
+          finalizeEndSession(data);
         }
       } catch (_) {
         /* ignore malformed event */

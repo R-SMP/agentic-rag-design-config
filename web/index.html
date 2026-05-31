@@ -78,6 +78,7 @@
         <aside id="viewer-panel" class="viewer-panel">
           <div class="viewer-toolbar">
             <span class="viewer-title">3D model</span>
+            <span id="viewer-attempt" class="viewer-attempt"></span>
             <span id="viewer-name" class="viewer-name"></span>
             <button id="viewer-reset" class="ghost" title="Reset view">Reset view</button>
           </div>
@@ -522,6 +523,71 @@
           </div>
         </div>
       </section>
+    </div>
+  </div>
+
+  <!-- End Session modal — replaces window.confirm() with an in-app
+       overlay.  Step 1: Save? (Yes / No / Cancel).  Step 2 (only on
+       Yes): the feedback form (Y/Partial/N satisfaction toggle +
+       two optional free-text fields + Submit).  See web/app.js. -->
+  <div id="end-modal" class="modal-overlay" hidden>
+    <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="end-modal-title">
+
+      <!-- Step 1: Save? -->
+      <section id="end-modal-step1" class="modal-step">
+        <h2 id="end-modal-title">End this session?</h2>
+        <p>
+          Choose whether to save this session for the database before
+          archiving it.  Saving runs the Database Handler over every
+          agent's history — this can take several minutes; the LOG and
+          Status chart lights up the Database Handler box while it runs.
+        </p>
+        <p>
+          "Cancel" closes this dialog and leaves the session running.
+        </p>
+        <div class="modal-actions">
+          <button id="end-modal-yes" type="button" class="primary">Yes, save the session</button>
+          <button id="end-modal-no"  type="button" class="ghost">No — just archive</button>
+          <button id="end-modal-cancel" type="button" class="ghost">Cancel</button>
+        </div>
+      </section>
+
+      <!-- Step 2: Feedback (shown only when Yes was clicked). -->
+      <section id="end-modal-step2" class="modal-step" hidden>
+        <h2>Session feedback</h2>
+        <p>
+          Your feedback is forwarded to the relevant agents by the
+          Orchestrator, so the Database Handler can ask each agent
+          about it during its post-session interview.
+        </p>
+
+        <fieldset class="feedback-fieldset">
+          <legend>Did the output satisfy your expectations? <span class="required">*</span></legend>
+          <div class="satisfaction-toggle" role="radiogroup" aria-label="Satisfaction">
+            <button type="button" class="sat-btn" data-value="yes">Yes</button>
+            <button type="button" class="sat-btn" data-value="partially">Partially</button>
+            <button type="button" class="sat-btn" data-value="no">No</button>
+          </div>
+        </fieldset>
+
+        <label class="feedback-field">
+          <span class="feedback-label">Which parts of the process satisfied your request?</span>
+          <textarea id="feedback-well" rows="3"
+            placeholder="Optional — leave blank if nothing specific to add."></textarea>
+        </label>
+
+        <label class="feedback-field">
+          <span class="feedback-label">Which parts of the process did NOT satisfy your request?</span>
+          <textarea id="feedback-wrong" rows="3"
+            placeholder="Optional — leave blank if nothing specific to add."></textarea>
+        </label>
+
+        <div class="modal-actions">
+          <button id="end-modal-submit" type="button" class="primary" disabled>Save with this feedback</button>
+          <button id="end-modal-back"   type="button" class="ghost">Back</button>
+        </div>
+      </section>
+
     </div>
   </div>
 
