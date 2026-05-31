@@ -113,15 +113,16 @@ Then open `http://localhost:8000` (uvicorn) or `http://localhost:8501` (compose)
 
 ### Side-menu interfaces
 
-The left rail switches between five views:
+The left rail switches between six views:
 
 | View | Purpose |
 |---|---|
-| **Chat** | Conversational interface + inline 3D viewer for generated meshes |
+| **Chat** | Conversational interface + inline 3D viewer for generated meshes.  Image-render bubbles carry an "Attempt NNN" heading and the viewer toolbar shows a matching "Attempt NNN" badge so it's always clear which design is on screen. |
 | **Image Inputs** | Upload reference images, attach a `_note.txt` description per image |
 | **Parameters Inputs** | (placeholder) future direct-edit form for the 17 design params |
 | **LOG and Status** | Live multi-agent flowchart + tailing of the current session log |
-| **Workflow Settings** | Live editor over `workflow_settings/settings.py` (takes effect next session) |
+| **Questions for Saved Sessions** | Editable Database Handler schedule (see "DH schedule: three kinds of questions" below). Locked while a session is active. |
+| **Workflow Settings** | Live editor over `workflow_settings/settings.py` (takes effect next session) + LLM-routing chart on top |
 
 ### Stop button
 
@@ -207,7 +208,7 @@ A single SSE handler in `startEventStream()` routes incoming events to either th
 
 ## Context Pruner
 
-Long multi-attempt sessions accumulate messages and (with `KEEP_IMAGES_IN_CONTEXT=True`) image content blocks across every agent's history. Once a single agent's history crosses the configured token threshold its next LLM invoke would either be wasteful or, in the worst case, exceed the provider's context window. The **Context Pruner** is a stateless agent (`agents/shared/context_pruner.py`) that condenses the older portion of any chain agent's history into a single SystemMessage block before the next invoke, keeping only the most recent N messages verbatim.
+Long multi-attempt sessions accumulate messages and (with `KEEP_IMAGES_IN_CONTEXT=True`) image content blocks across every agent's history. Once a single agent's history crosses the configured token threshold its next LLM invoke would either be wasteful or, in the worst case, exceed the provider's context window. The **Context Pruner** is a stateless agent (`agents/shared/context_pruner.py`) that condenses the older portion of any chain agent's history into a `SystemMessage` block before the next invoke. The Pruner uses a **three-tier escalation** so a single pruning pass that's not enough still gets the agent under threshold without losing essential information.
 
 ### How it fires
 
@@ -216,8 +217,27 @@ Every chain agent (Receptionist, Orchestrator, UII, Planner, DCIC, DCII, DCOI, T
 1. **Gated by** `CONTEXT_PRUNER_ENABLED` (default `True`).
 2. **Triggered** when `count_tokens(self.messages) > CONTEXT_PRUNER_THRESHOLD_TOKENS` (cl100k_base, default 80,000). Below the threshold nothing happens.
 3. **Cut point** is computed as `len(self.messages) - CONTEXT_PRUNER_KEEP_LAST_MESSAGES` (default 6), then advanced forward via `_safe_cut_point` so a `ToolMessage` is never separated from its matching `AIMessage(tool_calls=...)` — tool-call pairs are always pruned or kept as a unit.
-4. **Prefix is serialised** to plain text (`USER:`/`ASSISTANT:`/`TOOL_RESULT:` lines; image content blocks become `[image: redacted for pruning]` placeholders so they don't waste pruner tokens) and handed to the Pruner's `run()`. The Pruner's system prompt is in `agents/shared/context_pruner.py`; it tells the model what to REMOVE (old render descriptions, superseded user requests, verbose tool outputs), KEEP (current design requirements, decisions, latest assessment, unresolved issues), and SUMMARISE (multi-attempt fix loops, long tool outputs).
-5. **Result replaces** `self.messages` as `[SystemMessage("SUMMARY OF EARLIER CONVERSATION (pruned by the Context Pruner; N older messages condensed into this block): ...")] + tail`. The Database Handler is intentionally NOT pruned — it iterates ~28 schedule entries per save and relies on accumulated state.
+
+The Database Handler is intentionally NOT pruned — it iterates ~28 schedule entries per save and relies on accumulated state.
+
+### Three-tier escalation
+
+After the cut is decided, the Pruner runs up to three passes. Each tier RE-CHECKS the token count and only escalates when the previous tier didn't get under threshold.
+
+**Tier 1 — coarse summary** (`COARSE_SUMMARY_PROMPT`). The prefix (everything before the latest `keep_n` messages) is serialised to plain text (`USER:`/`ASSISTANT:`/`TOOL_RESULT:` lines; image content blocks become `[image: redacted for pruning]` placeholders so they don't waste pruner tokens) and handed to `ContextPruner.run(prefix_text, tier=1)`. The prompt tells the model what to REMOVE (old render descriptions, superseded user requests, verbose tool outputs), KEEP (current design requirements, decisions, latest assessment, unresolved issues), and SUMMARISE (multi-attempt fix loops, long tool outputs). Result replaces the prefix: `self.messages = [SystemMessage(summary1)] + tail`. The latest `keep_n` messages survive verbatim. *(If after this the history is under threshold, the Pruner stops here. Most cases stop here.)*
+
+**Tier 2 — fine summary** (`FINE_SUMMARY_PROMPT`). When tier 1's replacement is not enough, the still-verbatim tail (the latest `keep_n` messages) is also summarised — through a SEPARATE, more PRECISE prompt that asks the LLM to retain specific values, attempt numbers, last decisions, and last errors verbatim (only condensing verbose framing). Result: `self.messages = [SystemMessage(summary1), SystemMessage(summary2)]`. No verbatim messages remain. Tool-call pairing is vacuous from here on because there are no `AIMessage` / `ToolMessage` instances left.
+
+**Tier 3 — ultra-compact super-summary** (`ULTRA_COMPACT_SUMMARY_PROMPT`). When tiers 1+2 together still leave the history over threshold, the two summaries are concatenated and merged into ONE super-summary. The prompt strips everything except (1) the current design state, (2) the current task / pending question, (3) the single most-critical decision, (4) the single most-recent unresolved issue. Result: `self.messages = [SystemMessage(super_summary)]` — one terse `SystemMessage` total.
+
+### Safety nets
+
+Each tier independently validates its output before replacing `self.messages`:
+
+- **Empty summary** → log a warning, stay at the previous tier's state.
+- **Summary larger than the input it would replace** (the LLM expanded instead of condensed) → log a warning, REJECT the replacement, stay at the previous tier.
+- **LLM exception** → log a warning, stay at the previous tier.
+- **All three tiers exhausted and the history is still over threshold** → log a warning and proceed with the invoke anyway; the upstream LLM may rate-limit or context-overflow, but the agent doesn't lose its state.
 
 ### What stays untouched
 
@@ -231,11 +251,18 @@ response = invoke_with_retry(
 )
 ```
 
-The system prompt is rebuilt fresh at every invoke from the untouched `self.system_prompt` attribute, so pruning has no effect on it. The LLM sees the original system prompt, then the pruner's summary `SystemMessage` (now in `self.messages[0]`), then the kept tail messages. Anthropic / Google concatenate adjacent `SystemMessage` blocks into the single top-level system field of their respective APIs; OpenAI keeps them as separate `role: "system"` messages — all three handle this shape cleanly.
+The system prompt is rebuilt fresh at every invoke from the untouched `self.system_prompt` attribute, so pruning has no effect on it. The LLM sees the original system prompt, then ONE / TWO / or in tier 3 ONE summary `SystemMessage`(s), then any kept tail messages (tier 1 only). Anthropic / Google concatenate adjacent `SystemMessage` blocks into the single top-level system field of their respective APIs; OpenAI keeps them as separate `role: "system"` messages — all three handle this shape cleanly.
 
 ### Live feedback
 
-While the Pruner runs, the LOG-and-Status chart highlights the **Context Pruner** box in the EXTRA AGENTS panel alongside the calling agent's box (same multi-active pattern as the two DC tools — see `applyAgentActive` and `TOOL_NAMES` in `web/app.js`). The matching exit handoff clears the CP box and leaves the caller solo-lit. Every prune logs a `[CP] <agent_key>: pruned history N -> M messages, ~X -> ~Y tokens` line in the session log.
+While the Pruner runs, the LOG-and-Status chart highlights the **Context Pruner** box in the EXTRA AGENTS panel alongside the calling agent's box (same multi-active pattern as the two DC tools — see `applyAgentActive` and `TOOL_NAMES` in `web/app.js`). The matching exit handoff clears the CP box and leaves the caller solo-lit. The CP box stays lit through the whole escalation chain — entry / exit are published ONCE per `prune_history_if_needed` invocation, not per tier. Each tier emits its own `[CP] <agent_key> tier N: ...` line in the session log, e.g.:
+
+```
+[CP]  planner tier 1: pruned 42 -> 7 messages, ~95000 -> ~72000 tokens
+[CP]  planner tier 2: tail summarised, ~72000 -> ~55000 tokens
+```
+
+…so an operator can watch which tier did the work.
 
 ## DH schedule: three kinds of questions
 
@@ -303,9 +330,9 @@ The R2 upload step's suffix whitelist now covers `.txt`, `.png`, `.jpg`, and `.j
 
 The local `inputs/` folder is left untouched by this step — End Session's archival sweep moves it into `previous_sessions/<session_id>/inputs/` as before. The copy under `database/<session_id>/user_inputs/` is the database-layout duplicate, intended for the future RAG layer.
 
-## Cloudflare R2 layout — how the two upload paths combine
+## Cloudflare R2 layout — how the three upload paths combine
 
-The DH save flow writes to R2 via **two distinct upload paths** that run at different points and target **disjoint** parts of the per-session key space. Understanding which is which makes it easy to reason about what shows up in the bucket and why.
+The save flow writes to R2 via **three distinct upload paths** that run at different points and target **disjoint** parts of the per-session key space. Understanding which is which makes it easy to reason about what shows up in the bucket and why.
 
 ### Path 1 — Per-attempt artefacts (during the force-tool turn)
 
@@ -336,15 +363,31 @@ Keys written:
 <R2_KEY_PREFIX>/<session_id>/user_inputs/images/<name>_note.txt
 ```
 
-### Why the two paths can't double-upload
+### Path 3 — Session-generic logs (during archive sweep)
 
-The local `database/<session_id>/` folder **does NOT contain an `attempts/` subtree** — `_collect_user_inputs` only writes `user_inputs/`, and `populate_database` only writes `<agent>/`. So Path 2's `upload_directory` walk cannot accidentally re-walk the artefact files; the two paths target disjoint key prefixes (`<sid>/attempts/<NNN>/…` vs `<sid>/<agent>/…` and `<sid>/user_inputs/…`). This is a load-bearing invariant — see `extra_utilities/warnings_developer.md` W19.
+Site: `agents/loader.py:_archive_previous_session`, immediately after the three `shutil.move` loops that relocate `*.log`, `agent_flow_*.txt`, and `dh_flow_*.txt` into `previous_sessions/<sid>/`.
+
+Iterates the moved-into-place files and the `agent_histories/<file>.json` siblings, calling `r2_uploader.upload_file(path, key)` for each. Best-effort — an R2 failure logs a warning but never breaks the archive sweep.
+
+Keys written:
+
+```
+<R2_KEY_PREFIX>/<session_id>/logs/<session_id>.log
+<R2_KEY_PREFIX>/<session_id>/logs/database_handler_<ts>.log
+<R2_KEY_PREFIX>/<session_id>/logs/agent_flow_<ts>.txt
+<R2_KEY_PREFIX>/<session_id>/logs/dh_flow_<ts>.txt
+<R2_KEY_PREFIX>/<session_id>/logs/agent_histories/history_<agent>.txt
+```
+
+### Why the three paths can't double-upload
+
+The local `database/<session_id>/` folder **does NOT contain an `attempts/` subtree** — `_collect_user_inputs` only writes `user_inputs/`, and `populate_database` only writes `<agent>/`. Path 3's `<sid>/logs/` prefix is disjoint from both `<sid>/attempts/<NNN>/...` (Path 1) and `<sid>/<agent>/...` + `<sid>/user_inputs/...` (Path 2). So all three target disjoint key prefixes. This is a load-bearing invariant — see `extra_utilities/warnings_developer.md` W19.
 
 ### What is NOT in R2
 
 * **Sidecar `.meta.json` files** next to every `.txt`. The suffix whitelist is `.txt` / `.png` / `.jpg` / `.jpeg` — `.json` is excluded deliberately so the per-question access-control metadata (`to_agents` etc.) doesn't pollute the embedding stream. The sidecars remain local under `database/<session_id>/<agent>/<field>.meta.json` and travel into the End Session archive as part of the rest of the save tree.
 * **Local `attempts/<slug>/` working folder.** The attempt artefacts upload through Path 1 with the rename pattern; the original folder names (`20260530_142312_002_descriptor`) only exist in the local filesystem and the End Session archive.
-* **Per-session logs.** `logs/web_<id>.log`, `logs/agent_flow_*.txt`, `logs/dh_flow_*.txt` are local-only today. F13 in TODO_known_issues calls out the path to mirroring them when the Railway volume removal lands.
+* **`current_plan.txt`.** Not a log — the Planner's working scratch. Travels into the End Session archive but does NOT get mirrored to R2.
 
 ### Behaviour when R2 is not configured
 
@@ -377,7 +420,7 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
 | `EMBEDDING_MODEL` | `"text-embedding-3-large"` | for DH-shaped Semantic bodies |
 | `EMBEDDING_VECTOR_DIMS` | `1024` | MRL truncation dim at index time |
 | `EMBEDDING_MAX_RESPONSE_TOKENS` | `700` | DH cap for Semantic bodies |
-| `LLM_ROUTING_MODE` | `"individual"` | `"individual"` honours per-agent `.env` overrides; `"openai"` / `"anthropic"` / `"google"` forces every agent onto that provider. Edit only via the LLM-routing chart at the top of Workflow Settings. |
+| `LLM_ROUTING_MODE` | `"openai"` | `"individual"` honours per-agent `.env` overrides; `"openai"` / `"anthropic"` / `"google"` forces every agent onto that provider. Edit only via the LLM-routing chart at the top of Workflow Settings. **The chart's read path parses `settings.py` freshly off disk** on every `/api/llm-routing` GET — do not reintroduce `getattr(_settings, "LLM_ROUTING_MODE", …)` in `workflow_settings/llm_routing.py`; that read the cached module attribute frozen at process startup and made saves silently revert in the UI. |
 | `CONTEXT_PRUNER_ENABLED` | `True` | run the Context Pruner pre-invoke check on each chain agent |
 | `CONTEXT_PRUNER_THRESHOLD_TOKENS` | `80000` | cl100k_base token count above which a chain agent's history is pruned before its next invoke |
 | `CONTEXT_PRUNER_KEEP_LAST_MESSAGES` | `6` | how many recent messages of the calling agent survive the prune verbatim (cut point is extended forward to never split an `AIMessage(tool_calls)` from its `ToolMessage`) |
@@ -389,7 +432,7 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
   - **F9** — make Copy parameters list return the selected attempt's actual `parameters.json` instead of the canonical reference list.
   - **F10** — the dynamic gray arrows around the Orchestrator are wired but need a deployed-build debug pass.
   - **F11** — tighten the Stop button to cancel at the next tool call / message / LLM call boundary instead of only at Orchestrator hop boundaries; tool calls issued after Stop is pressed should not execute.
-- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W17) that must not regress.
+- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W20) that must not regress.  W18 + W20 are the per-turn force-tool pattern (DH's `save_attempt_artefacts`; Orchestrator's `submit_feedback_dispatch`).  W19 is the disjoint-R2-key-namespace invariant for the three upload paths.
 
 ## Roadmap
 
@@ -409,3 +452,9 @@ Near-term direction:
 - Chat viewer footer (Download geometry + Copy parameters list).
 - Receptionist tool calls now appear in the session log alongside every other agent; `[RECEPTIONIST]` no longer duplicates the forwarded message body.
 - **Context Pruner** wired into every chain agent's pre-invoke hook (see [Context Pruner](#context-pruner) below). F7 closed.
+- **Database Handler save flow + R2 mirror** (3 disjoint upload paths: per-attempt artefacts, per-agent .txt + user inputs, session-generic logs + agent_histories).
+- **LLM routing chart** at the top of Workflow Settings, with default = `"openai"` (every agent uses OpenAI unless explicitly overridden per-agent).
+- **End Session is async** — `/api/end` returns HTTP 202 immediately, work runs in a background asyncio task, completion fires `session_save_done` on `/api/events` SSE. Eliminates the proxy-timeout duplicate-save race.  Singleton-guarded by a module-level `_END_IN_FLIGHT` bool; second POST while one is in flight gets HTTP 409.
+- **In-app End Session modal** (replaces `window.confirm`).  Step 1: Yes / No / Cancel.  Step 2 (on Yes): Y/Partial/N satisfaction toggle + two optional free-text fields.  Feedback submitted with the save.
+- **Orchestrator Role 4 — end-of-session feedback distribution.**  When the user supplies feedback, the Orchestrator distributes per-agent slices via a forced `submit_feedback_dispatch` tool call.  Each chain agent receives a single `HumanMessage(name="orchestrator")` in its history with only the feedback parts relevant to its scope — visible to the Database Handler when it interviews each agent post-session.
+- **Per-attempt UI labels** — image renders in chat carry an "Attempt NNN" heading; the 3D viewer toolbar shows a matching badge.

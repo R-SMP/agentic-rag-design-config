@@ -246,15 +246,14 @@ class BaseChainAgent:
             _publish_cp_active("Context Pruner", display)
             return
 
-        new_history = [
-            SystemMessage(
-                content=(
-                    f"SUMMARY OF EARLIER CONVERSATION (pruned by the "
-                    f"Context Pruner; {len(prefix)} older messages "
-                    f"condensed into this block):\n\n{summary}"
-                )
-            ),
-        ] + tail
+        coarse_block = SystemMessage(
+            content=(
+                f"SUMMARY OF EARLIER CONVERSATION (Context Pruner tier 1; "
+                f"{len(prefix)} older messages condensed into this "
+                f"block):\n\n{summary}"
+            )
+        )
+        new_history = [coarse_block] + tail
         self.messages = new_history
 
         try:
@@ -263,10 +262,167 @@ class BaseChainAgent:
             n_after = -1
 
         logger.info(
-            f"[CP]  {self.AGENT_KEY}: pruned history "
+            f"[CP]  {self.AGENT_KEY} tier 1: pruned "
             f"{len(prefix) + len(tail)} -> {len(self.messages)} "
             f"messages, ~{n_before} -> ~{n_after} tokens"
         )
+
+        # ------------------------------------------------------------------
+        # Tier 2 — if the history is STILL over threshold after tier 1,
+        # summarise the still-verbatim tail too via FINE_SUMMARY_PROMPT.
+        # Replaces self.messages with TWO SystemMessages (coarse + fine);
+        # no verbatim tail remains.  Tool-call pairing is vacuous after
+        # this because there is no AIMessage / ToolMessage left.
+        # ------------------------------------------------------------------
+        fine_block = None  # set below if tier 2 succeeds; used by tier 3
+        if (
+            n_after is not None
+            and n_after > threshold
+            and len(tail) > 0
+        ):
+            try:
+                tail_text = _serialise_messages(tail)
+                n_tail_before = count_tokens(tail_text)
+            except Exception as exc:
+                logger.warning(
+                    f"[CP]  tier-2 tail serialisation/token-count "
+                    f"failed for {self.AGENT_KEY}: {exc}; staying at "
+                    f"tier 1."
+                )
+                tail_text = None
+                n_tail_before = -1
+
+            if tail_text is not None and n_tail_before > 0:
+                try:
+                    summary2 = (pruner.run(tail_text, tier=2) or "").strip()
+                except Exception as exc:
+                    logger.warning(
+                        f"[CP]  tier-2 pruner.run failed for "
+                        f"{self.AGENT_KEY}: {exc}; staying at tier 1."
+                    )
+                    summary2 = ""
+
+                if summary2:
+                    try:
+                        n_summary2 = count_tokens(summary2)
+                    except Exception:
+                        n_summary2 = -1
+                    # Reject the tier-2 replacement if the summary is
+                    # bigger than the input it would replace — happens
+                    # when the LLM expands instead of condensing.  Stay
+                    # at tier 1 in that case so we never increase token
+                    # count.
+                    if 0 < n_summary2 < n_tail_before:
+                        fine_block = SystemMessage(
+                            content=(
+                                f"FINE SUMMARY OF RECENT TURNS (Context "
+                                f"Pruner tier 2; {len(tail)} most-recent "
+                                f"messages condensed into this block):\n\n"
+                                f"{summary2}"
+                            )
+                        )
+                        self.messages = [coarse_block, fine_block]
+                        try:
+                            n_after_tier2 = count_tokens(
+                                _serialise_messages(self.messages)
+                            )
+                        except Exception:
+                            n_after_tier2 = -1
+                        logger.info(
+                            f"[CP]  {self.AGENT_KEY} tier 2: tail "
+                            f"summarised, ~{n_after} -> ~{n_after_tier2} "
+                            f"tokens"
+                        )
+                        n_after = n_after_tier2
+                    else:
+                        logger.warning(
+                            f"[CP]  tier-2 summary REJECTED for "
+                            f"{self.AGENT_KEY} (n_summary2={n_summary2} >= "
+                            f"n_tail={n_tail_before}); staying at tier 1."
+                        )
+                else:
+                    logger.warning(
+                        f"[CP]  tier-2 empty summary for "
+                        f"{self.AGENT_KEY}; staying at tier 1."
+                    )
+
+        # ------------------------------------------------------------------
+        # Tier 3 — merge tier-1 + tier-2 summaries into ONE ultra-compact
+        # super-summary via ULTRA_COMPACT_SUMMARY_PROMPT.  Only fires when
+        # tier 2 actually succeeded (we have two summaries to merge);
+        # otherwise compressing a single coarse summary further would
+        # mostly destroy information without buying much.
+        # ------------------------------------------------------------------
+        if (
+            n_after is not None
+            and n_after > threshold
+            and fine_block is not None
+        ):
+            combined = (
+                f"{coarse_block.content}\n\n---\n\n{fine_block.content}"
+            )
+            try:
+                n_combined = count_tokens(combined)
+            except Exception:
+                n_combined = -1
+
+            try:
+                super_summary = (pruner.run(combined, tier=3) or "").strip()
+            except Exception as exc:
+                logger.warning(
+                    f"[CP]  tier-3 pruner.run failed for "
+                    f"{self.AGENT_KEY}: {exc}; staying at tier 2."
+                )
+                super_summary = ""
+
+            if super_summary:
+                try:
+                    n_super = count_tokens(super_summary)
+                except Exception:
+                    n_super = -1
+                if 0 < n_super < (n_combined if n_combined > 0 else n_after):
+                    self.messages = [
+                        SystemMessage(
+                            content=(
+                                f"ULTRA-COMPACT SESSION SUMMARY "
+                                f"(Context Pruner tier 3; tier-1 + "
+                                f"tier-2 summaries merged into one):\n\n"
+                                f"{super_summary}"
+                            )
+                        ),
+                    ]
+                    try:
+                        n_after_tier3 = count_tokens(
+                            _serialise_messages(self.messages)
+                        )
+                    except Exception:
+                        n_after_tier3 = -1
+                    logger.info(
+                        f"[CP]  {self.AGENT_KEY} tier 3: merged "
+                        f"summaries, ~{n_after} -> ~{n_after_tier3} "
+                        f"tokens"
+                    )
+                    n_after = n_after_tier3
+                else:
+                    logger.warning(
+                        f"[CP]  tier-3 summary REJECTED for "
+                        f"{self.AGENT_KEY} (n_super={n_super} >= "
+                        f"n_combined={n_combined}); staying at tier 2."
+                    )
+            else:
+                logger.warning(
+                    f"[CP]  tier-3 empty summary for "
+                    f"{self.AGENT_KEY}; staying at tier 2."
+                )
+
+        if n_after is not None and n_after > threshold:
+            logger.warning(
+                f"[CP]  {self.AGENT_KEY}: ALL three tiers exhausted and "
+                f"history is still ~{n_after} tokens (threshold "
+                f"{threshold}).  Proceeding with invoke regardless; the "
+                f"upstream LLM call may rate-limit or context-overflow."
+            )
+
         _publish_cp_active("Context Pruner", display)
 
 
