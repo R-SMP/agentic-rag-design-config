@@ -409,8 +409,141 @@ will refine it.
 
 ## 6. Append-only log (post-discussion decisions)
 
-Once the open questions in §3 get answers, capture them here in
-order so the implementation plan in §4 can be re-numbered with
-confidence.
+All 8 critical pivots + 12 detail-level questions locked
+**2026-06-01**.  Captured here in the order the discussion settled
+them.  This is now the source of truth for implementation;
+§3's open-question text is preserved above for context only.
 
-*(empty — waiting for the discussion to start)*
+### 6.A. Four critical architecture pivots (locked)
+
+| Pivot | Decision |
+|---|---|
+| Mesh format pipeline for `/api/preview_mesh` | **Server-side OBJ + URL load.** Endpoint returns OBJ bytes; params-view viewer uses `OBJLoader` (same code path as chat viewer).  No rhino3dm in the browser.  Cheaper diff, no `MeshFinal` ParamName assumption. |
+| `viewer.js` refactor strategy | **Class wrapper** (`new Viewer(containerEl, {...})`).  Chat does `window.modelViewer = new Viewer(...)` as a one-line compat shim — existing app.js call sites unchanged.  Params view does its own `new Viewer(...)`. |
+| `propose_attempt` mechanism | **LLM-callable tool** modelled on `visualize_3d_model`.  Receptionist invokes it explicitly when proposing a satisfying solution (see 6.E1 below for the precise rule).  Not auto-fired at the loader level. |
+| FIXED block injection point | **Extend `save_user_input(text, inputs_dir, *, fixed_params=None)`** in `agents/dispatch.py`.  Receptionist re-reads `user_query.txt`, so this is the single injection point.  Planner's `read_user_queries` tool and UII parse the same file — they get the FIXED block for free. |
+
+### 6.B. State machine fine print
+
+- **A1.**  Initial slider values on first load = mid-of-range from the reference's `SLIDER_CONFIG` (same as currently shipped in `bf59c4d`).
+- **A2.**  If `propose_attempt` fires again for a parameter the user has NOT fixed in between, BOTH the orange slider position AND the "PROPOSED VALUE: X" text update to the new proposal.  Latest proposal always shown.
+- **A3.**  Race: user is mid-drag on slider S and `propose_attempt` arrives with a value for S → user's drag wins (the proposal's value for S is silently dropped on the slider position), **BUT the "PROPOSED VALUE: X" text alongside S still updates to the proposed value** so no information is lost.  Other params in the same proposal apply normally.
+
+### 6.C. FIXED → VARY transition
+
+- **(from the 4-question batch)**  When the user releases a green FIXED button → slider **keeps its current visible value**, only the colour reverts to gray.  Nothing jumps; the system gains permission to vary but the visible position is informative as a hint.
+
+### 6.D. FIXED-block send semantics
+
+- **B1.**  "Modified since last send" = **names AND values changed.**  Moving a FIXED slider from 70 → 72 will cause the next chat message to re-send the FIXED block (the agents must see the updated value).
+- **B2.**  Empty FIXED list on chat send → **append nothing extra** (no "no parameters fixed" header).
+- **B3.**  Format = prose list **with units** (units from `DC_prompt_fragments/dc_config/parameters.md` — `mm`, `% of chord`, `degrees`, `tenths of chord`, `× impellerRadius`, or empty for `bladeCount`).  Example:
+  ```
+  The user has fixed the following values through the Parameters Inputs interface:
+    - bladeCount: 4
+    - impellerRadius: 72 mm
+    - innerCamber: 5 % of chord
+    - middleAngle: 18 degrees
+    - middlePos: 0.5 × impellerRadius
+  ```
+  This means `PARAM_GROUPS` in `web/app.js` needs a `unit` field per parameter (extracted from the existing label text or added explicitly).
+
+### 6.E. `propose_attempt` rules — REVISED per user clarification
+
+**E1 — DO NOT auto-fire on every attempt visualization.**  The
+Receptionist is NOT forced to call `propose_attempt` whenever it
+calls `visualize_3d_model`.  The tool is reserved for the case
+where the system has decided the attempt is a **satisfying
+proposed solution** to the user's requirements — that judgment
+comes from the **Planner or DCOI** and is communicated to the
+Receptionist via the agent chain.
+
+Concrete rules for the Receptionist prompt:
+
+- **DO call** `propose_attempt(values=<attempt's full 17 params>)`
+  when the Planner or DCOI has indicated the attempt satisfies the
+  user's requirements (i.e. this is the system's actual
+  recommendation to the user).  Pair it with `visualize_3d_model`
+  in the same turn.
+- **DO NOT call** `propose_attempt` when:
+  - The user asks about an attempt for INFORMATIONAL reasons only
+    (e.g. *"show me the worst one"*) — the Parameters Inputs
+    panel must continue showing the most recently proposed
+    satisfying solution.  Call `visualize_3d_model` for the 3D
+    render but not `propose_attempt`.
+  - The system has produced an attempt that does NOT yet satisfy
+    the user's requirements (Planner/DCOI still iterating).
+    Visualizing is OK; updating the panel is not.
+
+Cascade implication: the Planner / DCOI prompts may eventually
+need a small addition so they communicate their "satisfying / not
+satisfying" verdict to the Receptionist in a way the Receptionist's
+LLM can act on.  For v1 of this work, assume the chain already
+carries enough context (the Planner's existing role-3 hand-off
+covers this in many cases); if not, treat it as a follow-up.
+
+### 6.F. Tool payload + UI behaviour
+
+- **C2.**  Tool body payload = **full 17 params** (Receptionist prompt instructs).  UI behaviour:
+  - For each param NOT user-FIXED → mark PROPOSED (orange slider + button + name; slider value moves to proposed; `PROPOSED VALUE: X` text shown alongside name).
+  - For each param the user HAS FIXED → keep slider GREEN at the user's value (the user's FIX wins on the slider position) BUT also show the `PROPOSED VALUE: X` text alongside the name — so the user is reminded of what the system would have proposed even after overriding it.
+- **C3.**  (Same effect as C2's FIXED-overridden case.)  Silently keep the FIXED slider value; still surface the proposed value in the alongside-name text.
+
+### 6.G. Live preview tuning
+
+- **D-debounce.**  300 ms trailing-edge debounce on `input` event (clear/restart `setTimeout` per movement, fire 300 ms after the last input).
+- **D1.**  No ON/OFF toggle in v1 — **added to TODO list** (`extra_utilities/TODO_known_issues.md`).
+- **D2.**  Empty-state placeholder in the params-view viewer reads *"Move any slider to generate a live preview"*.  Removed on the first successful preview load.
+- **D3.**  `functools.lru_cache(maxsize=64)` on the new `render_mesh_obj_text(params)` helper.  Cache key is a sorted tuple of `params.items()`.  Cache invalidated when `Propeller_Raul_V1.2.gh`'s mtime changes (so editing the GH file doesn't serve stale meshes).
+
+### 6.H. `propose_attempt` tool signature
+
+- **C-rationale.**  Tool signature is `values: dict[str, float|int]` ONLY.  No `rationale` arg.  The Receptionist's chat reply already carries the rationale; a separate field would risk fabrication (Receptionist has a "no fabricated observations" hard rule).
+
+### 6.I. State persistence
+
+- **(state-persist).**  FIXED / PROPOSED state persisted via `sessionStorage` (per-tab).  Survives an accidental reload; lost on tab close.  No backend changes.  Format: a single key like `params:fixed_state` holding `{<paramKey>: {state: "VARY"|"FIXED"|"PROPOSED", value: number, proposedValue: number | null}}`.
+
+### 6.J. Scope items
+
+- **F1.**  Keep the 4 reference images at `web/images/{general,inner,middle,outer}-profile.png`.  Same files; just shown inline in the scrolling column rather than per-tab.
+- **F2.**  `tool_caller`'s mesh tool stays exactly as-is.  `render_mesh_obj_text` is factored OUT of `generate_propeller_mesh` as a pure helper; `generate_propeller_mesh` then internally calls the helper.  External behaviour (writes to `attempts/`, agent-activity heartbeats, return-string shape) preserved.
+
+---
+
+## 7. Locked implementation plan (12 steps)
+
+Re-numbered after §6.  Each step ships in its own commit and is
+testable on Railway in isolation.  We pause after each step for the
+user to verify before continuing.
+
+| Step | Scope | Risk | Touches |
+|---|---|---|---|
+| 1 | Refactor `viewer.js` into a `Viewer` class.  Chat keeps working via `window.modelViewer = new Viewer(...)` compat shim.  **No behaviour change.**  Test: chat 3D render still works exactly as before. | Low | `web/viewer.js`, `web/app.js` (shim only) |
+| 2 | Rebuild Parameters Inputs markup as split-pane: `viewer-panel` LEFT (currently empty), scrolling `params-column` RIGHT with all 17 sliders in order + 4 inline section images.  No tabs, no Next/Back.  Test: visual parity vs the user's mock; chat still unaffected. | Low | `web/index.html`, `web/style.css` |
+| 3 | VARY ↔ FIXED button + colour states (gray ↔ green) per slider.  No PROPOSED yet, no propose_attempt yet, no live preview yet.  Test: moving any slider turns its row green; clicking the button toggles back to gray keeping the value. | Low | `web/app.js` |
+| 4 | Instantiate a second `Viewer` in the params view (`new Viewer(paramViewerDiv, ...)`).  Empty placeholder reads "Move any slider to generate a live preview."  Test: two viewers can coexist; chat viewer unaffected. | Low | `web/app.js`, possibly `web/style.css` |
+| 5 | Factor `render_mesh_obj_text(params: dict) -> (str, int)` out of `tools/generate_mesh/generate_mesh.py`'s `generate_propeller_mesh`.  Wrap with `functools.lru_cache(maxsize=64)` + GH-mtime guard.  Test: agent pipeline still generates meshes correctly (existing smoke test passes). | Medium | `tools/generate_mesh/generate_mesh.py` |
+| 6 | New `/api/preview_mesh` route in `web_app.py`.  Validates params against `parameters.md` ranges, calls `render_mesh_obj_text`, returns OBJ bytes.  Auth = same as `/api/turn`.  Test: curl/Postman → 200 OK + valid OBJ. | Low | `web_app.py` |
+| 7 | Wire debounced (300 ms) slider-change → POST `/api/preview_mesh` → `paramsViewer.load(blobUrl)`.  Test: dragging a slider regenerates the mesh in the params-view viewer; chat viewer unaffected. | Medium | `web/app.js` |
+| 8 | Extend `save_user_input(text, inputs_dir, *, fixed_params=None)` to append the FIXED block (with units) under each turn's timestamp header.  Extend `TurnIn` to carry `fixed_params: dict | None`.  Extend `dispatch_turn` to pass through.  Frontend sends FIXED dict on every `/api/turn` (when changed since last send).  Test: send a chat with some FIXED params; verify `user_query.txt` contains the block; Receptionist+UII+Planner see it. | Medium | `web_app.py`, `agents/dispatch.py`, `web/app.js` |
+| 9 | New `propose_attempt(values: dict)` Receptionist tool.  Body validates `values` keys against the canonical param list; publishes `viz_bus` event `{type: "params_proposed", values: ...}`.  Add SSE handler branch in `/api/events`.  Test: invoke from a Python REPL → SSE delivers the event to a connected browser. | Medium | `agents/receptionist/`, `agents/shared/viz_bus.py` (no change needed — just consume), `web_app.py` (SSE branch) |
+| 10 | Frontend SSE handler for `params_proposed`: turn non-FIXED sliders ORANGE, set them to proposed values, add `PROPOSED VALUE: X` text alongside every param name (FIXED ones too).  Persist `PROPOSED VALUE` text even after user re-overrides.  Test: trigger from step 9; verify UI matches §6.F. | Medium | `web/app.js`, `web/style.css` |
+| 11 | Update `agents/receptionist/prompt.md`: add `propose_attempt` to Situation B's allow-list (`prompt.md:319-344`).  Insert it as the third item in the "Reporting attempts" procedure (`prompt.md:431-465`).  Templatize via a new `$propose_attempt_tool` placeholder.  Use the EXACT rules from §6.E1 (DO call when satisfying solution; DO NOT call for informational visualization or unsatisfying attempts). | Low | `agents/receptionist/prompt.md`, `agents/shared/prompts.py` (template wiring) |
+| 12 | Mark F24 resolved in `extra_utilities/TODO_known_issues.md` (its scope IS Steps 5–7).  Add a new TODO for the live-preview ON/OFF toggle (D1) and possibly any other follow-ups discovered during implementation. | Trivial | `extra_utilities/TODO_known_issues.md` |
+
+**Pause points:** after every step, I push, summarise what to test on Railway, wait for user verification.  No bundling.
+
+---
+
+## 8. Notes carried forward to implementation
+
+- The current `web/app.js`'s `PARAM_GROUPS` (added in commit `bf59c4d`) will be rewritten in Step 2 — change its shape to include a `unit` field per parameter:
+  ```js
+  { key: "impellerRadius", label: "Propeller Radius", unit: "mm",
+    min: 60, max: 80, step: 1, value: 71 }
+  ```
+  Use the unit when (a) rendering the slider's min/max/current values in the UI and (b) when formatting the FIXED block in Step 8.
+- The compat shim in Step 1 must export `window.modelViewer` BEFORE any other code reads it — `web/viewer.js` is loaded as a module before `web/app.js`, so the shim runs at module-eval time.  Watch for race conditions where `app.js` reads `window.modelViewer` synchronously at top-level.
+- The `params_proposed` SSE event in Step 9 needs frontend de-dup if the SSE connection reconnects mid-session (so the user doesn't see the panel update twice).  Use a small monotonic `event_id` carried in the publish payload.
+- For Step 11 (Receptionist prompt update), there's a follow-up to consider: do the Planner / DCOI prompts also need an addition so they reliably communicate the "satisfying / not satisfying" verdict to the Receptionist?  If the existing chain already covers this implicitly, we're fine.  Worth verifying when we get to Step 11.
