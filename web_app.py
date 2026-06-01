@@ -356,6 +356,12 @@ class TurnIn(BaseModel):
     # list has CHANGED since the last send (§6.D.B1); on unchanged
     # turns it sends None so save_user_input writes no FIXED block.
     fixed_params: dict[str, str] | None = None
+    # Optional list of parameter names the user has just RELEASED back
+    # to VARY since the previous send (Step 8 follow-up after
+    # 2026-06-01 test feedback).  When present, save_user_input
+    # appends a second block AFTER the FIXED block telling the LLM
+    # the listed parameters are no longer user-constrained.
+    released_params: list[str] | None = None
 
 
 class AuthIn(BaseModel):
@@ -454,6 +460,7 @@ async def api_turn(body: TurnIn) -> dict:
                 user_input=text,
                 inputs_dir=USER_INPUTS_DIR,
                 fixed_params=body.fixed_params,
+                released_params=body.released_params,
             )
         )
         artefacts = []
@@ -1320,6 +1327,21 @@ async def api_events() -> StreamingResponse:
                         "dh":       evt.get("dh"),
                         "feedback": evt.get("feedback"),
                         "error":    evt.get("error"),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                elif evt.get("type") == "params_proposed":
+                    # Step 9 of the Parameters Inputs redesign.
+                    # Receptionist's propose_attempt tool publishes
+                    # this when the system has decided a given attempt
+                    # satisfies the user's requirements (per the rules
+                    # in receptionist/prompt.md — Step 11).  The
+                    # frontend SSE handler turns non-FIXED sliders
+                    # ORANGE, moves them to the proposed value, and
+                    # adds a "PROPOSED VALUE: X" text on every row
+                    # (FIXED ones too, per locked §6.F.C2).
+                    payload = {
+                        "type":   "params_proposed",
+                        "values": evt.get("values", {}),
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
         finally:

@@ -173,18 +173,20 @@ async function sendMessage(text) {
   );
 
   try {
-    // Step 8: include the user's FIXED-parameter dict from the
-    // Parameters Inputs view if it has changed since the last send.
-    // paramsDiffFixedForSend() returns null when nothing FIXED has
-    // changed (or nothing is FIXED) — in that case the request body
-    // carries fixed_params=null and the backend writes no FIXED
-    // block to user_query.txt.
-    const fixedToSend =
+    // Step 8: include the user's FIXED parameter dict + RELEASED key
+    // list from the Parameters Inputs view if they have changed since
+    // the last send.  paramsDiffFixedForSend() returns an object
+    // {fixed_params, released_params} where each is either the
+    // payload value or null.  Either or both may be null when
+    // nothing has changed since the previous send (per locked
+    // decision §6.D.B1).
+    const fixedDiff =
       typeof paramsDiffFixedForSend === "function"
         ? paramsDiffFixedForSend()
-        : null;
+        : { fixed_params: null, released_params: null };
     const reqBody = { message: text };
-    if (fixedToSend) reqBody.fixed_params = fixedToSend;
+    if (fixedDiff.fixed_params) reqBody.fixed_params = fixedDiff.fixed_params;
+    if (fixedDiff.released_params) reqBody.released_params = fixedDiff.released_params;
     const res = await fetch("/api/turn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -826,6 +828,17 @@ function startEventStream() {
           // the End Session button, and surface any error.
           console.log("[End Session] session_save_done event:", data);
           finalizeEndSession(data);
+        } else if (data.type === "params_proposed") {
+          // Step 10 of the Parameters Inputs redesign — the
+          // Receptionist's propose_attempt tool has fired.  Update
+          // the Parameters Inputs view: non-FIXED sliders -> ORANGE
+          // at the proposed value; FIXED rows keep their slider but
+          // also display "PROPOSED VALUE: X" text (per locked
+          // §6.F.C2 / §6.F.C3).  See paramsApplyProposal() for the
+          // exact transition rules.
+          if (typeof paramsApplyProposal === "function") {
+            paramsApplyProposal(data.values || {});
+          }
         }
       } catch (_) {
         /* ignore malformed event */
@@ -3012,6 +3025,16 @@ function paramsBuildRow(spec) {
   lbl.setAttribute("for", `param-${spec.key}`);
   lbl.textContent = spec.label;
   labelRow.appendChild(lbl);
+  // PROPOSED-VALUE text — populated by the SSE handler when the
+  // Receptionist's propose_attempt tool fires (Step 10).  Hidden
+  // until then via the .param-row[data-has-proposal="true"] CSS
+  // rule.  Persists even after the user re-overrides the slider
+  // (locked §6.F.C2) — the user always sees the system's latest
+  // proposal as a reference point.
+  const proposedSpan = document.createElement("span");
+  proposedSpan.className = "param-proposed-text";
+  proposedSpan.id = `param-proposed-${spec.key}`;
+  labelRow.appendChild(proposedSpan);
   body.appendChild(labelRow);
 
   const range = document.createElement("input");
@@ -3185,20 +3208,114 @@ function _paramsFingerprintFixed(dict) {
   return keys.map((k) => `${k}=${dict[k]}`).join("|");
 }
 
+// Snapshot of the FIXED dict at the time of the previous send.
+// Needed (in addition to the fingerprint) so paramsDiffFixedForSend()
+// can compute the SET of parameter keys released since then — the
+// list goes into the "released_params" payload of /api/turn (Step 8
+// follow-up after 2026-06-01 test feedback).
+let _lastSentFixedDict = null;
+
 function paramsDiffFixedForSend() {
-  // Returns:
-  //   - the FIXED dict to send (when non-empty AND changed since
-  //     the previous send), updating the fingerprint snapshot, OR
-  //   - null (when the FIXED list is empty, or unchanged since the
-  //     previous send — per locked decision §6.D.B1 / B2).
-  // The backend treats null and {} identically (no FIXED block
-  // appended); we send null on unchanged to keep the contract clear.
-  const dict = paramsBuildFixedParamsDict();
-  if (Object.keys(dict).length === 0) return null;
-  const fp = _paramsFingerprintFixed(dict);
-  if (fp === _lastSentFixedFingerprint) return null;
-  _lastSentFixedFingerprint = fp;
-  return dict;
+  // Returns { fixed_params, released_params }:
+  //   - fixed_params: the current FIXED dict when it has CHANGED
+  //     since the previous send AND is non-empty; null otherwise.
+  //   - released_params: list of param keys that WERE in the previous
+  //     send's FIXED dict but are NOT in the current FIXED set;
+  //     null when no releases happened.
+  // Both fields together get included in the /api/turn body (Step 8)
+  // so the backend appends the FIXED block AND the "no longer
+  // constraining ..." block to user_query.txt.
+  //
+  // The dedup is by full fingerprint (names + values per §6.D.B1):
+  // if neither set membership nor values changed, we send null/null.
+  // Returns the same shape in both cases so callers don't have to
+  // null-check the function result.
+  const currentDict = paramsBuildFixedParamsDict();
+  const currentFp = _paramsFingerprintFixed(currentDict);
+  const changed = currentFp !== _lastSentFixedFingerprint;
+  if (!changed) {
+    return { fixed_params: null, released_params: null };
+  }
+  // Compute the released set: keys that were FIXED last send but
+  // aren't FIXED now.  Includes the "lastSent was null" first-turn
+  // case (no releases possible before any send).
+  let released = null;
+  if (_lastSentFixedDict) {
+    const list = [];
+    for (const key of Object.keys(_lastSentFixedDict)) {
+      if (!(key in currentDict)) list.push(key);
+    }
+    if (list.length > 0) released = list;
+  }
+  // Update the snapshot regardless of whether fixed/released are
+  // non-empty — the fingerprint changed, so next-send needs to
+  // diff against THIS state.
+  _lastSentFixedDict = { ...currentDict };
+  _lastSentFixedFingerprint = currentFp;
+  const fixed =
+    Object.keys(currentDict).length > 0 ? currentDict : null;
+  return { fixed_params: fixed, released_params: released };
+}
+
+
+// ---------------------------------------------------------------------------
+// Step 10 — Apply a PROPOSED parameter set from the Receptionist's
+// propose_attempt tool.  Called by the SSE handler when a
+// params_proposed event arrives.
+//
+// Rules (web_interface_notes.md §§6.A.A2 / 6.A.A3 / 6.F.C2 / 6.F.C3):
+//   - For each parameter in the proposed dict:
+//       * Always update the "PROPOSED VALUE: X" text alongside the
+//         label (even on FIXED rows — the user always sees the latest
+//         proposal as a reference point, even after over-riding it).
+//       * If the row's state is FIXED, do NOT touch its slider value.
+//         The user's FIX wins (§6.F.C3).
+//       * Otherwise (VARY or already PROPOSED): set state to
+//         PROPOSED (orange), move the slider to the proposed value,
+//         update paramState.
+//   - The proposed-text persists.  Subsequent slider moves by the
+//     user transition the row to FIXED (per the existing input
+//     handler) but the proposed-text stays — provides the
+//     "remember-what-was-proposed" affordance §6.F.C2 requires.
+// ---------------------------------------------------------------------------
+
+function paramsApplyProposal(values) {
+  if (!values || typeof values !== "object") return;
+  for (const key of Object.keys(values)) {
+    const spec = paramSpecByKey[key];
+    if (!spec) continue;       // unknown key — silently skip
+    const proposedValue = Number(values[key]);
+    if (Number.isNaN(proposedValue)) continue;
+
+    // Always update the proposed-text (visible on every row that has
+    // ever received a proposal, regardless of current state).
+    const row = document.querySelector(
+      `.param-row[data-param-key="${key}"]`
+    );
+    if (!row) continue;
+    row.dataset.hasProposal = "true";
+    const proposedSpan = document.getElementById(`param-proposed-${key}`);
+    if (proposedSpan) {
+      proposedSpan.textContent =
+        "PROPOSED VALUE: " + paramsFormatValueWithUnit(spec, proposedValue);
+    }
+
+    // FIXED rows: keep slider value untouched (§6.F.C3).
+    if (paramRowState[key] === "fixed") continue;
+
+    // Otherwise: switch to PROPOSED state, move the slider, update
+    // paramState + visible current value.
+    const range = document.getElementById(`param-${key}`);
+    const curSpan = document.getElementById(`param-cur-${key}`);
+    if (range) {
+      range.value = String(proposedValue);
+    }
+    paramState[key] = proposedValue;
+    if (curSpan) {
+      curSpan.textContent = paramsFormatValueWithUnit(spec, proposedValue);
+    }
+    paramsSetState(key, "proposed");
+  }
 }
 
 async function paramsSubmit() {

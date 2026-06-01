@@ -1560,6 +1560,51 @@ button.danger:hover { background: #3a1d1d; }
   color: #4ade80;
 }
 
+/* PROPOSED state (Step 10) — row is orange-coloured.  Set when the
+   Receptionist's propose_attempt tool fires for a parameter the user
+   has NOT user-FIXED.  Clicking the orange button collapses to FIXED
+   (user takes ownership of the proposed value).  Moving the slider
+   also collapses to FIXED. */
+.param-row[data-state="proposed"] .param-state-btn {
+  background: #3a2510;
+  color: #fb923c;
+  border-color: #7a4a1c;
+  /* NOT pressed (no inset shadow) — visually distinguishes from FIXED
+     where the user has actively committed.  PROPOSED is the system's
+     suggestion the user hasn't acted on yet. */
+}
+.param-row[data-state="proposed"] .param-state-btn:hover {
+  background: #4a2f15;
+}
+.param-row[data-state="proposed"] .param-label {
+  color: #fb923c;
+}
+.param-row[data-state="proposed"] .param-slider {
+  accent-color: #fb923c;
+}
+.param-row[data-state="proposed"] .param-current {
+  color: #fb923c;
+}
+
+/* "PROPOSED VALUE: X" text alongside the label.  Shown on EVERY row
+   (FIXED ones too — per locked decision §6.F.C2 the user always sees
+   the system's most recent proposal as a reference point, even after
+   over-riding it on a FIXED slider).  Hidden by default until the
+   first propose_attempt fires; JS sets data-has-proposal="true" once
+   text is present. */
+.param-proposed-text {
+  font-size: 11px;
+  color: #fb923c;
+  font-style: italic;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+  margin-left: auto;
+  display: none;
+}
+.param-row[data-has-proposal="true"] .param-proposed-text {
+  display: inline;
+}
+
 /* Slider body (label + range + min/current/max). */
 .param-body {
   flex: 1 1 auto;

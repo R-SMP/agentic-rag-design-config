@@ -81,6 +81,7 @@ def save_user_input(
     inputs_dir: Path,
     *,
     fixed_params: dict[str, str] | None = None,
+    released_params: list[str] | None = None,
 ) -> Path:
     """Append the user's text to ``{inputs_dir}/user_query.txt``.
 
@@ -114,6 +115,26 @@ def save_user_input(
     changed since the previous send (per locked decision §6.D.B1),
     so the user_query.txt timeline carries the FIXED block exactly
     at the points where the user's commitment changed.
+
+    ``released_params`` lists parameter names the user has just
+    released from FIXED back to VARY since the previous send (test
+    point 9 feedback, 2026-06-01).  When non-empty, a SECOND block
+    is appended AFTER the FIXED block reading::
+
+        The user is no longer constraining the following parameters
+        (they can now be varied freely by the system):
+          - <key1>
+          - <key2>
+
+    The Receptionist's LLM is expected to read this as "the listed
+    parameters are no longer user-constrained; the system may now
+    vary them freely."  Phrasing is deliberately explicit + matches
+    the prior FIXED block's grammatical pattern so the model's prior-
+    token contexts line up.
+
+    Both ``fixed_params`` and ``released_params`` can fire in the
+    same turn (e.g. user released A and added B as FIXED) — the FIXED
+    block is written first, the RELEASED block immediately after.
     """
     inputs_dir.mkdir(parents=True, exist_ok=True)
     query_path = inputs_dir / "user_query.txt"
@@ -126,6 +147,13 @@ def save_user_input(
         )
         for key, value in fixed_params.items():
             parts.append(f"  - {key}: {value}\n")
+    if released_params:
+        parts.append(
+            "\nThe user is no longer constraining the following "
+            "parameters (they can now be varied freely by the system):\n"
+        )
+        for key in released_params:
+            parts.append(f"  - {key}\n")
     with open(query_path, "a", encoding="utf-8") as f:
         f.write("".join(parts))
     return inputs_dir
@@ -163,6 +191,7 @@ def dispatch_turn(
     orchestrator: Orchestrator | None = None,
     llm_cache=None,
     fixed_params: dict[str, str] | None = None,
+    released_params: list[str] | None = None,
 ) -> TurnResult:
     """Run one user turn against ``session`` and return the reply.
 
@@ -173,12 +202,14 @@ def dispatch_turn(
     default.  Stage B's per-session path threading is the moment to
     start passing ``session.attempts_dir`` explicitly.
 
-    ``fixed_params`` (new in Step 8 of the Parameters Inputs redesign)
-    is the optional pre-formatted FIXED-parameter dict from the
-    Parameters Inputs view (see ``save_user_input``).  Pure
-    pass-through: passed verbatim to ``save_user_input``.  Default
-    ``None`` so non-web callers (the v4 REPL loader, smoke tests)
-    keep their existing behaviour.
+    ``fixed_params`` (Step 8 of the Parameters Inputs redesign) is
+    the optional pre-formatted FIXED-parameter dict from the
+    Parameters Inputs view (see ``save_user_input``).  ``released_params``
+    is the optional list of parameter names the user has just
+    released back to VARY since the previous send.  Both are pure
+    pass-through to ``save_user_input``; default ``None`` so non-web
+    callers (the v4 REPL loader, smoke tests) keep their existing
+    behaviour.
     """
     if orchestrator is None:
         orchestrator = Orchestrator(session=session, llm_cache=llm_cache)
@@ -198,7 +229,12 @@ def dispatch_turn(
         #    from the Parameters Inputs view; when present, a second
         #    block is appended under the same timestamp header (see
         #    save_user_input docstring for the exact format).
-        save_user_input(user_input, inputs_dir, fixed_params=fixed_params)
+        save_user_input(
+            user_input,
+            inputs_dir,
+            fixed_params=fixed_params,
+            released_params=released_params,
+        )
         # Echo the raw user message into the session log so it appears
         # in the web UI's log stream (tailed via /api/log/stream) AND
         # in the R2-archived session log on save.  Mirrors the
