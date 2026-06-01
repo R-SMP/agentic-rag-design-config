@@ -2816,21 +2816,47 @@ function paramsFormatValueWithUnit(spec, value) {
   return spec.unit ? `${formatted} ${spec.unit}` : formatted;
 }
 
+// Per-key live state machine: "vary" (default) | "fixed" | "proposed".
+// Keys are param keys.  Updated in lockstep with the DOM via
+// paramsSetState() so JS callers (paramsSubmit, future propose_attempt
+// handler) and CSS data-state attributes never drift apart.
+const paramRowState = {};
+
+function paramsSetState(key, newState) {
+  // Idempotent.  Updates the row's data-state attribute (which CSS
+  // hooks on to swap colours), updates the button label, and keeps
+  // paramRowState in sync.  Slider VALUE is never touched here —
+  // per locked decision §6.C, FIXED → VARY release preserves the
+  // current slider position.
+  const row = document.querySelector(`.param-row[data-param-key="${key}"]`);
+  if (!row) return;
+  paramRowState[key] = newState;
+  row.dataset.state = newState;
+  const btn = row.querySelector(".param-state-btn");
+  if (btn) {
+    if (newState === "fixed") btn.textContent = "FIXED";
+    else if (newState === "proposed") btn.textContent = "PROPOSED";
+    else btn.textContent = "VARY";
+  }
+}
+
 function paramsBuildRow(spec) {
   paramState[spec.key] = spec.value;
+  paramRowState[spec.key] = "vary";
 
   const row = document.createElement("div");
   row.className = "param-row";
   row.dataset.paramKey = spec.key;
   row.dataset.state = "vary";
 
-  // LEFT: state button (Step 3 will make this interactive).
+  // LEFT: state button (VARY / FIXED).  Click toggles between the
+  // two; the PROPOSED visual is system-driven (Step 10).
   const btn = document.createElement("button");
   btn.type = "button";
   btn.className = "param-state-btn";
   btn.dataset.paramKey = spec.key;
   btn.textContent = "VARY";
-  btn.title = "Move the slider to FIX this parameter (Step 3 wires this)";
+  btn.title = "Click to FIX this parameter (or move the slider).";
   row.appendChild(btn);
 
   // RIGHT: label + slider + min/current/max values.
@@ -2883,12 +2909,32 @@ function paramsBuildRow(spec) {
   body.appendChild(valuesRow);
   row.appendChild(body);
 
-  // Live-update the visible current value while the user drags.
-  // The state-machine transition VARY → FIXED is wired in Step 3.
+  // Slider input: live-update visible value AND transition row to
+  // FIXED (per locked design — moving a slider is the user's intent
+  // signal that this value is now user-imposed).  The first input
+  // event of a session takes the row from VARY → FIXED; subsequent
+  // inputs while already FIXED just update the visible value.
   range.addEventListener("input", () => {
     const v = parseFloat(range.value);
     paramState[spec.key] = v;
     curSpan.textContent = paramsFormatValueWithUnit(spec, v);
+    if (paramRowState[spec.key] !== "fixed") {
+      paramsSetState(spec.key, "fixed");
+    }
+  });
+
+  // Button click: toggle VARY ↔ FIXED.  Slider value is preserved
+  // in both directions per §6.C.
+  btn.addEventListener("click", () => {
+    const cur = paramRowState[spec.key];
+    // PROPOSED rows clicked also collapse to FIXED (the user is
+    // taking ownership of the proposed value).  Same effect as the
+    // user moving the slider to commit to the proposed value.
+    if (cur === "fixed") {
+      paramsSetState(spec.key, "vary");
+    } else {
+      paramsSetState(spec.key, "fixed");
+    }
   });
 
   return row;
@@ -2955,13 +3001,27 @@ function paramsBuildSubmitMessage() {
 }
 
 async function paramsSubmit() {
-  // Manual submit path — kept for testing during Steps 2-7.  Step 8
-  // wires auto-append of the FIXED block to every chat message, at
-  // which point this button can be removed.
+  // PERMANENT submit path (locked 2026-06-01).  Click semantics:
+  //   1. Transform ALL parameter rows to FIXED — including ones the
+  //      user never touched.  This makes the user's intent explicit
+  //      ("I am committing to ALL of these values, not just the ones
+  //      I tweaked") and lines up with Step 8's auto-append flow.
+  //   2. Switch to the Chat view and call sendMessage() with the
+  //      formatted parameter message.
+  //
+  // Step 8 will simplify the message body to a short
+  // "Please consider these parameters" so the agents don't see the
+  // parameter list twice (once here, once in the auto-appended
+  // FIXED block).  Until then, the current full-list message stays.
   const status = document.getElementById("params-status");
   if (status) {
     status.classList.remove("error");
     status.textContent = "Submitting parameters to the chat pipeline…";
+  }
+  // Step 1: lock every row to FIXED (visible BEFORE the view switch
+  // so the user sees the transformation).
+  for (const key of Object.keys(paramState)) {
+    paramsSetState(key, "fixed");
   }
   const message = paramsBuildSubmitMessage();
   try {

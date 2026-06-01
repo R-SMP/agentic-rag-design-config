@@ -1514,10 +1514,9 @@ button.danger:hover { background: #3a1d1d; }
   border-bottom: none;
 }
 
-/* State button (VARY / FIXED / PROPOSED).  Step 2 ships only the
-   VARY visual (gray, unpressed, not interactive — cursor:not-allowed
-   makes that obvious).  Step 3 adds FIXED (green); Step 10 adds
-   PROPOSED (orange). */
+/* State button (VARY / FIXED / PROPOSED).  Step 3 makes it
+   interactive for VARY ↔ FIXED.  Step 10 adds PROPOSED (orange)
+   wiring via the propose_attempt SSE event. */
 .param-state-btn {
   flex: 0 0 auto;
   background: #2a2e35;
@@ -1530,9 +1529,35 @@ button.danger:hover { background: #3a1d1d; }
   letter-spacing: 0.06em;
   min-width: 78px;
   text-align: center;
-  cursor: not-allowed;   /* Step 3 flips this to cursor:pointer */
+  cursor: pointer;
   font-family: inherit;
   margin-top: 18px;       /* visually align with the label baseline */
+  transition: background 120ms, color 120ms, border-color 120ms;
+}
+.param-state-btn:hover {
+  background: #353a42;
+}
+
+/* FIXED state — row is green-coloured.  Slider thumb uses accent-color
+   for the green tint (modern browsers).  The state button is "pressed
+   in" visually via a darker green background + saturated foreground. */
+.param-row[data-state="fixed"] .param-state-btn {
+  background: #1b3520;
+  color: #4ade80;
+  border-color: #2d6a3a;
+  box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.4);   /* "pressed" depth */
+}
+.param-row[data-state="fixed"] .param-state-btn:hover {
+  background: #234227;
+}
+.param-row[data-state="fixed"] .param-label {
+  color: #4ade80;
+}
+.param-row[data-state="fixed"] .param-slider {
+  accent-color: #4ade80;
+}
+.param-row[data-state="fixed"] .param-current {
+  color: #4ade80;
 }
 
 /* Slider body (label + range + min/current/max). */

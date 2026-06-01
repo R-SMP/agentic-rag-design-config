@@ -35,6 +35,24 @@ edited for formatting only):
 > implementation — tabs are preferred to a single long scrolling
 > column.  All other design observations are unchanged.
 
+> **Revision note 2 (2026-06-01):**  Two additions made before
+> Step 3 implementation:
+> 1. The **"Use these parameters"** button is now a PERMANENT
+>    feature (previously planned for removal in Step 8 in favour
+>    of pure auto-append).  When pressed, it (a) transforms ALL
+>    parameter rows to FIXED state — even sliders the user never
+>    touched — and then (b) sends the formatted parameter message
+>    to the chat as today.  The transformation makes the user's
+>    intent explicit ("I am committing to ALL of these values,
+>    not just the ones I tweaked"), and the resulting state lines
+>    up cleanly with the FIXED-block auto-append landing in
+>    Step 8.
+> 2. A **"Download geometry"** button is added below the
+>    Parameters Inputs view's 3D viewer (mirroring the chat
+>    view's button).  Downloads the geometry currently shown in
+>    the params-view viewer.  Disabled until the live preview
+>    (Step 7) puts a mesh there.
+
 ### Tristate VARY / FIXED / PROPOSED button per slider
 
 - To the LEFT of every parameter slider, a button.  Label changes
@@ -434,9 +452,26 @@ them.  This is now the source of truth for implementation;
 - **A2.**  If `propose_attempt` fires again for a parameter the user has NOT fixed in between, BOTH the orange slider position AND the "PROPOSED VALUE: X" text update to the new proposal.  Latest proposal always shown.
 - **A3.**  Race: user is mid-drag on slider S and `propose_attempt` arrives with a value for S → user's drag wins (the proposal's value for S is silently dropped on the slider position), **BUT the "PROPOSED VALUE: X" text alongside S still updates to the proposed value** so no information is lost.  Other params in the same proposal apply normally.
 
-### 6.C. FIXED → VARY transition
+### 6.C. FIXED → VARY transition + "Use these parameters" semantics
 
 - **(from the 4-question batch)**  When the user releases a green FIXED button → slider **keeps its current visible value**, only the colour reverts to gray.  Nothing jumps; the system gains permission to vary but the visible position is informative as a hint.
+
+- **"Use these parameters" button — permanent (revised 2026-06-01).**
+  On click:
+  1. ALL 17 parameter rows transition to FIXED state regardless of
+     prior state (VARY rows become FIXED at their current slider
+     position; FIXED rows stay FIXED; PROPOSED rows become FIXED at
+     their current slider position — the user is taking ownership).
+     The transition is visual + state, identical to what
+     `paramsSetState(key, "fixed")` does row by row.
+  2. The view switches to Chat and `sendMessage()` is called with
+     the formatted parameter message.
+  3. Once Step 8's FIXED-block auto-append lands, the Use-these-
+     parameters message format will be SIMPLIFIED (e.g. a short
+     "Please consider these parameters" message) so the agents
+     don't see the full parameter list twice (once in the message,
+     once in the auto-appended FIXED block).  Until then, the
+     current full-list message stays.
 
 ### 6.D. FIXED-block send semantics
 
@@ -526,12 +561,12 @@ user to verify before continuing.
 |---|---|---|---|
 | 1 | Refactor `viewer.js` into a `Viewer` class.  Chat keeps working via `window.modelViewer = new Viewer(...)` compat shim.  **No behaviour change.**  Test: chat 3D render still works exactly as before. | Low | `web/viewer.js`, `web/app.js` (shim only) |
 | 2 | Rebuild Parameters Inputs markup as split-pane: `viewer-panel` LEFT (currently empty), scrolling `params-column` RIGHT with all 17 sliders in order + 4 inline section images.  No tabs, no Next/Back.  Test: visual parity vs the user's mock; chat still unaffected. | Low | `web/index.html`, `web/style.css` |
-| 3 | VARY ↔ FIXED button + colour states (gray ↔ green) per slider.  No PROPOSED yet, no propose_attempt yet, no live preview yet.  Test: moving any slider turns its row green; clicking the button toggles back to gray keeping the value. | Low | `web/app.js` |
+| 3 | VARY ↔ FIXED button + colour states (gray ↔ green) per slider.  Moving any slider transitions that row to FIXED; clicking a green FIXED button releases back to VARY keeping the value (§6.C).  **"Use these parameters"** click also sets ALL rows to FIXED before sending (§6.C revision 2).  Add the **Download geometry** button below the Parameters Inputs view's 3D viewer — markup only, disabled until Step 7 wires a mesh into the params-view viewer (no handler yet).  No PROPOSED yet, no propose_attempt yet, no live preview yet. | Low | `web/app.js`, `web/style.css`, `web/index.html` |
 | 4 | Instantiate a second `Viewer` in the params view (`new Viewer(paramViewerDiv, ...)`).  Empty placeholder reads "Move any slider to generate a live preview."  Test: two viewers can coexist; chat viewer unaffected. | Low | `web/app.js`, possibly `web/style.css` |
 | 5 | Factor `render_mesh_obj_text(params: dict) -> (str, int)` out of `tools/generate_mesh/generate_mesh.py`'s `generate_propeller_mesh`.  Wrap with `functools.lru_cache(maxsize=64)` + GH-mtime guard.  Test: agent pipeline still generates meshes correctly (existing smoke test passes). | Medium | `tools/generate_mesh/generate_mesh.py` |
 | 6 | New `/api/preview_mesh` route in `web_app.py`.  Validates params against `parameters.md` ranges, calls `render_mesh_obj_text`, returns OBJ bytes.  Auth = same as `/api/turn`.  Test: curl/Postman → 200 OK + valid OBJ. | Low | `web_app.py` |
 | 7 | Wire debounced (300 ms) slider-change → POST `/api/preview_mesh` → `paramsViewer.load(blobUrl)`.  Test: dragging a slider regenerates the mesh in the params-view viewer; chat viewer unaffected. | Medium | `web/app.js` |
-| 8 | Extend `save_user_input(text, inputs_dir, *, fixed_params=None)` to append the FIXED block (with units) under each turn's timestamp header.  Extend `TurnIn` to carry `fixed_params: dict | None`.  Extend `dispatch_turn` to pass through.  Frontend sends FIXED dict on every `/api/turn` (when changed since last send).  Test: send a chat with some FIXED params; verify `user_query.txt` contains the block; Receptionist+UII+Planner see it. | Medium | `web_app.py`, `agents/dispatch.py`, `web/app.js` |
+| 8 | Extend `save_user_input(text, inputs_dir, *, fixed_params=None)` to append the FIXED block (with units) under each turn's timestamp header.  Extend `TurnIn` to carry `fixed_params: dict | None`.  Extend `dispatch_turn` to pass through.  Frontend sends FIXED dict on every `/api/turn` (when changed since last send).  **Also: simplify the "Use these parameters" message format** — instead of inlining the full parameter list in the message body, send a short "Please consider these parameters" so the agents don't see the parameter list twice (once in the message, once in the auto-appended FIXED block).  Test: send a chat with some FIXED params; verify `user_query.txt` contains the block; Receptionist+UII+Planner see it; "Use these parameters" no longer produces a duplicate parameter listing. | Medium | `web_app.py`, `agents/dispatch.py`, `web/app.js` |
 | 9 | New `propose_attempt(values: dict)` Receptionist tool.  Body validates `values` keys against the canonical param list; publishes `viz_bus` event `{type: "params_proposed", values: ...}`.  Add SSE handler branch in `/api/events`.  Test: invoke from a Python REPL → SSE delivers the event to a connected browser. | Medium | `agents/receptionist/`, `agents/shared/viz_bus.py` (no change needed — just consume), `web_app.py` (SSE branch) |
 | 10 | Frontend SSE handler for `params_proposed`: turn non-FIXED sliders ORANGE, set them to proposed values, add `PROPOSED VALUE: X` text alongside every param name (FIXED ones too).  Persist `PROPOSED VALUE` text even after user re-overrides.  Test: trigger from step 9; verify UI matches §6.F. | Medium | `web/app.js`, `web/style.css` |
 | 11 | Update `agents/receptionist/prompt.md`: add `propose_attempt` to Situation B's allow-list (`prompt.md:319-344`).  Insert it as the third item in the "Reporting attempts" procedure (`prompt.md:431-465`).  Templatize via a new `$propose_attempt_tool` placeholder.  Use the EXACT rules from §6.E1 (DO call when satisfying solution; DO NOT call for informational visualization or unsatisfying attempts). | Low | `agents/receptionist/prompt.md`, `agents/shared/prompts.py` (template wiring) |

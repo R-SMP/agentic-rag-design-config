@@ -172,6 +172,18 @@
               <br /><small>(Live preview wired in Step 7)</small>
             </div>
           </div>
+          <!--
+            Footer mirroring the chat viewer's Download geometry button.
+            Disabled until the live-preview pipeline (Step 7) loads a
+            mesh into #params-viewer.  The click handler is wired in
+            Step 7 alongside the live-preview fetch.
+          -->
+          <div class="viewer-footer">
+            <button id="params-download-mesh" class="ghost" type="button"
+                    disabled title="Save the displayed .obj mesh">
+              Download geometry
+            </button>
+          </div>
         </aside>
 
         <!-- RIGHT pane: tabbed parameter column -->
