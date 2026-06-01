@@ -1969,7 +1969,7 @@ should NOT start until:
 
 **Why deferred.**  The Parameters Inputs view ships as sliders + submit in the current commit so the user can pick values and route them through the agent pipeline today.  The live preview is a separable, larger piece of work that needs (a) the backend bridge, (b) the viewport infrastructure, and (c) the .gh decision.  Not blocking the submit path; can land in its own commit when there is time.
 
-**Status.**  Open.  Picked up after the database deployment work resumes (which is currently on hold).
+**Status.**  **RESOLVED** 2026-06-XX (commits ``14bdfa1`` factor ``render_mesh_obj_text`` helper, ``dfc66e5`` ``/api/preview_mesh`` route, ``03ad83b`` debounced slider → preview pipeline + Download geometry handler).  ``.gh`` decision: went with option (a) — preview uses ``Propeller_Raul_V1.2.gh`` so what the user previews is what the agent pipeline produces.
 
 ### F25. Pre-compute the active FIXED parameter set in Python instead of asking the UII to walk user_query.txt
 
@@ -1999,6 +1999,26 @@ should NOT start until:
 **Why open.**  Manual end-to-end testing on a real session for the problematic paths hasn't been done yet (only the happy path verified for commit be0de09).  Without this verification we don't know whether the new prompt rules survive contact with real LLM behaviour under stress.
 
 **Status.**  Open.  Test in a calm session before the next round of prompt edits to the Planner — easier to attribute regressions to specific commits than to debug after several more changes layer on top.
+
+### F27. Live-preview ON / OFF toggle in the Parameters Inputs view
+
+**Where.**  Parameters Inputs view's live-preview pipeline — ``web/app.js`` ``paramsRequestPreviewDebounced`` (currently fires on every slider input with a 300 ms trailing-edge debounce; no opt-out).
+
+**What to build.**  A small toggle (checkbox or button) in the Parameters Inputs view's bottom row (next to Copy parameters / Use these parameters / Download geometry) that turns the live preview ON / OFF.  When OFF, slider input still updates ``paramState`` and the VARY → FIXED transition, but does NOT call ``/api/preview_mesh``; the params viewer holds whatever mesh was last loaded (or stays at the placeholder if none).  Probably want to persist the toggle's state via ``sessionStorage`` so it survives navigation between tabs in the side menu.
+
+**Why deferred.**  Locked decision §6.G.D1 (web_interface_notes.md): *"no toggle in v1, added to TODO list"*.  300 ms debounce is enough headroom for normal slider use, but a power-user dragging many sliders in sequence might want to silence the preview to avoid RhinoCompute round-trips per change.
+
+**Status.**  Open.  Pick up when there is feedback that the always-on preview is annoying; not a behavioural blocker.
+
+### F28. ``sessionStorage`` persistence of Parameters Inputs panel state across page reload
+
+**Where.**  Parameters Inputs view's runtime state — currently in-memory only (``paramState``, ``paramRowState``, ``_lastSentFixedDict``, ``_lastSentFixedFingerprint``, the per-row ``data-has-proposal`` / proposed-text DOM, the latest preview blob URL).  A page reload mid-session wipes all of this and the panel resets to all-gray VARY at defaults.
+
+**What to build.**  Per locked decision §6.I: persist the relevant pieces to ``sessionStorage`` on every change; rehydrate in ``paramsInit()``.  Concrete shape — a single key like ``params:fixed_state`` holding a JSON dict ``{<paramKey>: {state: "vary"|"fixed"|"proposed", value: <number>, proposedValue: <number | null>}}``.  Restore the slider DOM positions + ``data-state`` + proposed-text + dedup-snapshot from the rehydrated dict on init.  No backend changes; per-tab scope (sessionStorage, not localStorage) so closing the tab clears it.
+
+**Why deferred.**  Confirmed low priority on 2026-06-XX.  Mid-session page reload is uncommon and recoverable (the user re-fixes what they want; the live preview re-runs on the first slider change).  The redesign's behavioural goal is reached without persistence.
+
+**Status.**  Open as a polish item — pick up if reload-during-session becomes a real workflow.
 
 ---
 

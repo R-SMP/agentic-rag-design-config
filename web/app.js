@@ -307,6 +307,15 @@ async function finalizeEndSession(evt) {
   currentMesh = { url: null, name: null };
   const dlBtn = document.getElementById("download-mesh");
   if (dlBtn) dlBtn.disabled = true;
+  // Parameters Inputs panel: the FIXED / PROPOSED state + the live-
+  // preview mesh + the FIXED-dispatch dedup snapshot belong to the
+  // session that just ended.  Reset to all-gray VARY at defaults so
+  // the next session starts clean; see paramsResetAll() for the full
+  // list of state it clears (rows, dedup snapshot, blob URL, viewer
+  // mesh, download button, status line).
+  if (typeof paramsResetAll === "function") {
+    paramsResetAll();
+  }
   // Image Inputs: server-side _archive_previous_session has just moved
   // input_images/ into the archived session folder, so the new
   // session's list is empty.  Reset the UI to match — otherwise the
@@ -3377,6 +3386,78 @@ async function paramsCopy() {
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// End-Session reset for the Parameters Inputs view.  Called from the
+// chat-side End Session handler (app.js finalizeEndSession around
+// line 309) so the panel starts the NEXT session clean: all-gray
+// VARY at mid-of-range defaults, no PROPOSED text, no live-preview
+// mesh, dedup snapshot cleared.  Without this, FIXED / PROPOSED
+// state from the previous session would leak into the next one and
+// the FIXED-dispatch dedup would suppress the first send's auto-
+// append block.
+// ---------------------------------------------------------------------------
+function paramsResetAll() {
+  // Walk PARAM_GROUPS rather than the DOM so the reset works even
+  // when the params view hasn't been opened yet this page-load.
+  for (const group of PARAM_GROUPS) {
+    for (const spec of group.params) {
+      paramState[spec.key] = spec.value;
+      paramRowState[spec.key] = "vary";
+      const row = document.querySelector(
+        `.param-row[data-param-key="${spec.key}"]`
+      );
+      if (row) {
+        row.dataset.state = "vary";
+        delete row.dataset.hasProposal;
+        const btn = row.querySelector(".param-state-btn");
+        if (btn) btn.textContent = "VARY";
+        const range = document.getElementById(`param-${spec.key}`);
+        if (range) range.value = String(spec.value);
+        const curSpan = document.getElementById(`param-cur-${spec.key}`);
+        if (curSpan) {
+          curSpan.textContent = paramsFormatValueWithUnit(spec, spec.value);
+        }
+        const proposedSpan = document.getElementById(
+          `param-proposed-${spec.key}`
+        );
+        if (proposedSpan) proposedSpan.textContent = "";
+      }
+    }
+  }
+  // Reset FIXED-dispatch dedup snapshot so the next session's first
+  // chat send doesn't inherit the previous session's fingerprint.
+  // (An empty FIXED list comparing equal to a prior empty list would
+  // cause the very first auto-append of the new session to be
+  // dropped as a no-op.)
+  _lastSentFixedDict = null;
+  _lastSentFixedFingerprint = null;
+  // Live-preview cleanup: revoke the current blob URL, cancel any
+  // pending debounce, unload the params viewer, disable Download.
+  if (paramsPreviewLatestUrl) {
+    URL.revokeObjectURL(paramsPreviewLatestUrl);
+    paramsPreviewLatestUrl = null;
+  }
+  if (paramsPreviewTimer) {
+    clearTimeout(paramsPreviewTimer);
+    paramsPreviewTimer = null;
+  }
+  // In-flight preview requests will resolve naturally; a stale
+  // response loading after reset just paints into the freshly-
+  // unloaded params viewer, which is harmless visual flicker at
+  // worst.
+  if (window.paramsViewer && window.paramsViewer.unload) {
+    window.paramsViewer.unload();
+  }
+  const paramsDlBtn = document.getElementById("params-download-mesh");
+  if (paramsDlBtn) paramsDlBtn.disabled = true;
+  const status = document.getElementById("params-status");
+  if (status) {
+    status.classList.remove("error");
+    status.textContent = "";
+  }
+}
+
 
 function paramsInit() {
   paramsBuildAll();

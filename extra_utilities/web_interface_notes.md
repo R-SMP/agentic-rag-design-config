@@ -557,20 +557,27 @@ Re-numbered after §6.  Each step ships in its own commit and is
 testable on Railway in isolation.  We pause after each step for the
 user to verify before continuing.
 
-| Step | Scope | Risk | Touches |
+| Step | Scope | Status | Commit |
 |---|---|---|---|
-| 1 | Refactor `viewer.js` into a `Viewer` class.  Chat keeps working via `window.modelViewer = new Viewer(...)` compat shim.  **No behaviour change.**  Test: chat 3D render still works exactly as before. | Low | `web/viewer.js`, `web/app.js` (shim only) |
-| 2 | Rebuild Parameters Inputs markup as split-pane: `viewer-panel` LEFT (currently empty), scrolling `params-column` RIGHT with all 17 sliders in order + 4 inline section images.  No tabs, no Next/Back.  Test: visual parity vs the user's mock; chat still unaffected. | Low | `web/index.html`, `web/style.css` |
-| 3 | VARY ↔ FIXED button + colour states (gray ↔ green) per slider.  Moving any slider transitions that row to FIXED; clicking a green FIXED button releases back to VARY keeping the value (§6.C).  **"Use these parameters"** click also sets ALL rows to FIXED before sending (§6.C revision 2).  Add the **Download geometry** button below the Parameters Inputs view's 3D viewer — markup only, disabled until Step 7 wires a mesh into the params-view viewer (no handler yet).  No PROPOSED yet, no propose_attempt yet, no live preview yet. | Low | `web/app.js`, `web/style.css`, `web/index.html` |
-| 4 | Instantiate a second `Viewer` in the params view (`new Viewer(paramViewerDiv, ...)`).  Empty placeholder reads "Move any slider to generate a live preview."  Test: two viewers can coexist; chat viewer unaffected. | Low | `web/app.js`, possibly `web/style.css` |
-| 5 | Factor `render_mesh_obj_text(params: dict) -> (str, int)` out of `tools/generate_mesh/generate_mesh.py`'s `generate_propeller_mesh`.  Wrap with `functools.lru_cache(maxsize=64)` + GH-mtime guard.  Test: agent pipeline still generates meshes correctly (existing smoke test passes). | Medium | `tools/generate_mesh/generate_mesh.py` |
-| 6 | New `/api/preview_mesh` route in `web_app.py`.  Validates params against `parameters.md` ranges, calls `render_mesh_obj_text`, returns OBJ bytes.  Auth = same as `/api/turn`.  Test: curl/Postman → 200 OK + valid OBJ. | Low | `web_app.py` |
-| 7 | Wire debounced (300 ms) slider-change → POST `/api/preview_mesh` → `paramsViewer.load(blobUrl)`.  Test: dragging a slider regenerates the mesh in the params-view viewer; chat viewer unaffected. | Medium | `web/app.js` |
-| 8 | Extend `save_user_input(text, inputs_dir, *, fixed_params=None)` to append the FIXED block (with units) under each turn's timestamp header.  Extend `TurnIn` to carry `fixed_params: dict | None`.  Extend `dispatch_turn` to pass through.  Frontend sends FIXED dict on every `/api/turn` (when changed since last send).  **Also: simplify the "Use these parameters" message format** — instead of inlining the full parameter list in the message body, send a short "Please consider these parameters" so the agents don't see the parameter list twice (once in the message, once in the auto-appended FIXED block).  Test: send a chat with some FIXED params; verify `user_query.txt` contains the block; Receptionist+UII+Planner see it; "Use these parameters" no longer produces a duplicate parameter listing. | Medium | `web_app.py`, `agents/dispatch.py`, `web/app.js` |
-| 9 | New `propose_attempt(values: dict)` Receptionist tool.  Body validates `values` keys against the canonical param list; publishes `viz_bus` event `{type: "params_proposed", values: ...}`.  Add SSE handler branch in `/api/events`.  Test: invoke from a Python REPL → SSE delivers the event to a connected browser. | Medium | `agents/receptionist/`, `agents/shared/viz_bus.py` (no change needed — just consume), `web_app.py` (SSE branch) |
-| 10 | Frontend SSE handler for `params_proposed`: turn non-FIXED sliders ORANGE, set them to proposed values, add `PROPOSED VALUE: X` text alongside every param name (FIXED ones too).  Persist `PROPOSED VALUE` text even after user re-overrides.  Test: trigger from step 9; verify UI matches §6.F. | Medium | `web/app.js`, `web/style.css` |
-| 11 | Update `agents/receptionist/prompt.md`: add `propose_attempt` to Situation B's allow-list (`prompt.md:319-344`).  Insert it as the third item in the "Reporting attempts" procedure (`prompt.md:431-465`).  Templatize via a new `$propose_attempt_tool` placeholder.  Use the EXACT rules from §6.E1 (DO call when satisfying solution; DO NOT call for informational visualization or unsatisfying attempts). | Low | `agents/receptionist/prompt.md`, `agents/shared/prompts.py` (template wiring) |
-| 12 | Mark F24 resolved in `extra_utilities/TODO_known_issues.md` (its scope IS Steps 5–7).  Add a new TODO for the live-preview ON/OFF toggle (D1) and possibly any other follow-ups discovered during implementation. | Trivial | `extra_utilities/TODO_known_issues.md` |
+| 1 | Refactor `viewer.js` into a `Viewer` class with chat compat shim.  No behaviour change. | ✅ Done | `f378ba7` |
+| 2 | Rebuild Parameters Inputs markup as split-pane.  **Revision** (`51491a9`) after the user saw the first cut: tabs restored at the top (General / Inner / Middle / Outer) — one section visible at a time, no scrolling through full list.  All other layout choices preserved. | ✅ Done | `071ce19` + `51491a9` |
+| 3 | VARY ↔ FIXED button + colour states; "Use these parameters" promoted to PERMANENT (sets ALL rows to FIXED before sending); Download geometry button below the params-view 3D viewer (markup only, handler in Step 7). | ✅ Done | `9a81269` |
+| 4 | Second `Viewer` instance attached to `#params-viewer`.  New public `Viewer.resize()` + `switchView("params")` calls it to handle the initially-hidden container. | ✅ Done | `0c8ec14` |
+| 5 | Factor `render_mesh_obj_text(params)` out of `generate_propeller_mesh`.  `lru_cache(maxsize=64)` keyed on sorted-tuple + GH mtime.  Returns `(obj_text, vertex_count, components_text or None)`.  Agent path unchanged. | ✅ Done | `14bdfa1` |
+| 6 | New `POST /api/preview_mesh` route.  Validates 17-key params against hardcoded `_PREVIEW_PARAM_SPEC` ranges (mirrors `parameters.md`); coerces int-typed params; returns OBJ bytes with `Content-Type: model/obj` + `X-Vertex-Count` header.  502 on `MeshGenerationError`. | ✅ Done | `dfc66e5` |
+| 7+8 | Bundled per user request.  Live preview pipeline: 300 ms trailing-edge debounce on slider input, in-flight skip + trailing follow-up, blob-URL load into the params viewer, Download geometry button wired.  Plus FIXED-block auto-append on `/api/turn`: `save_user_input(*, fixed_params)` extended, `TurnIn.fixed_params`, dedup by names-AND-values fingerprint, simplified `paramsSubmit` message ("I am committing to the parameter values…"). | ✅ Done | `03ad83b` |
+| 9+10 | Bundled per user request, plus a Step 8 follow-up.  Step 8 follow-up: `released_params` end-to-end — when the user releases a FIXED slider, the next chat send appends a SECOND block ("The user is no longer constraining…") AFTER the FIXED block so the LLM knows what was just freed.  Step 9: new `propose_attempt` Receptionist tool + viz_bus event + `/api/events` SSE branch.  Step 10: frontend `paramsApplyProposal()` handler; orange PROPOSED CSS state; "PROPOSED VALUE: X" text on every row (FIXED ones included). | ✅ Done | `5881a87` |
+| 11 | Receptionist prompt + spontaneous trigger via Planner's natural-language verdict.  **Deviation from original plan** per user answer (a) 2026-06-01: no fixed marker phrase (`BEST SO FAR:` was rejected).  The Receptionist's LLM interprets the Planner's APPROVE-branch wording — endorsement phrases trigger `propose_attempt`, hedging phrases suppress it.  Templating: new `DC_prompt_fragments/tools_config/propose_attempt.md` + `PROPOSE_ATTEMPT_TOOL` in `prompts.py` + `$propose_attempt_tool` slot at L70 of `receptionist/prompt.md` + Situation B allow-list update + new step 4 in Reporting-attempts procedure.  Planner prompt also gains a clarity paragraph in Role 3 APPROVE.  W22 codifies the natural-language convention. | ✅ Done | `be0de09` |
+| 12 | Wrap-up commit: mark F24 Resolved; add live-preview toggle TODO (F27); add `sessionStorage` persistence TODO (F28); add End-Session reset for the params panel (`paramsResetAll`); update this notes file with delivered state. | ✅ Done | (this commit) |
+
+**Post-locked-plan additions** that arrived during implementation but weren't in the original §7 table:
+
+| Commit | What it added (outside the 12-step plan) |
+|---|---|
+| `a393d2e` | UII prompt fix — deleted the `(unlocked by user)` annotation rule that was the root cause of the stale-extraction bug; added the new `### Temporal scope and Parameters Inputs interface blocks` section codifying current-only extraction + FIXED/RELEASED handling + multi-design support.  New workflow setting `UII_MAY_READ_PREVIOUS_EXTRACTION` (block #18) gated in `load_user_inputs_bundle`.  Added F25 TODO. |
+| `b7f4879` | UII + Planner prompt addition: when to consult prior attempts via `list_attempts` / `read_attempt` on user reference ("use the same parameters as the latest attempt but decrease the bladeCount by 1"). |
+| `40c2951` | Planner prompt refinement — tighter rule: the user-reference case is the UII's job; the Planner only consults prior attempts in exceptional cases (defect-recovery supervision, error interpretation, ambiguous request, additional supervision). |
+| `f92550f` | F26 TODO: verify Planner behaviour in problematic / non-happy-path cases.  Manual end-to-end testing on the new prompt rules under stress hasn't been done yet. |
 
 **Pause points:** after every step, I push, summarise what to test on Railway, wait for user verification.  No bundling.
 
@@ -587,3 +594,176 @@ user to verify before continuing.
 - The compat shim in Step 1 must export `window.modelViewer` BEFORE any other code reads it — `web/viewer.js` is loaded as a module before `web/app.js`, so the shim runs at module-eval time.  Watch for race conditions where `app.js` reads `window.modelViewer` synchronously at top-level.
 - The `params_proposed` SSE event in Step 9 needs frontend de-dup if the SSE connection reconnects mid-session (so the user doesn't see the panel update twice).  Use a small monotonic `event_id` carried in the publish payload.
 - For Step 11 (Receptionist prompt update), there's a follow-up to consider: do the Planner / DCOI prompts also need an addition so they reliably communicate the "satisfying / not satisfying" verdict to the Receptionist?  If the existing chain already covers this implicitly, we're fine.  Worth verifying when we get to Step 11.
+
+---
+
+## 9. Delivered state — what exists today (closing wrap-up)
+
+The redesign is complete as of commit `f92550f` + the closing
+wrap-up commit that adds this section.  Everything below describes
+what the user sees and how the system behaves NOW.
+
+### 9.1 Parameters Inputs view layout
+
+- Split-pane like the Chat view: **LEFT** pane is its own 3D
+  viewer instance (independent from the chat's); **RIGHT** pane is
+  the parameter column.
+- The RIGHT pane has 4 section tabs at the top: **General
+  Parameters / Inner Profile / Middle Profile / Outer Profile**.
+  Click a tab to show only that section's sliders + matching
+  profile image; no scrolling through the full 17 sliders.
+- Each slider row has a **state button** on the LEFT — one of
+  **VARY** (gray, default), **FIXED** (green, pressed-in), or
+  **PROPOSED** (orange, from system).  See §6.A for the full state
+  machine.
+- Each row also has a **PROPOSED VALUE: X** italic-orange text on
+  the right side of its label, populated only when the system has
+  proposed a value for that parameter.  Persists across user
+  edits — the user always sees the most recent proposal as a
+  reference point, even after over-riding a FIXED slider.
+- **Bottom row** (visible regardless of active tab): **Copy
+  parameters** button (clipboard, long-form list with units),
+  **Use these parameters** button (transforms all rows to FIXED
+  and sends a short chat message that triggers the auto-append
+  pipeline), and a **status line** for transient messages.
+
+### 9.2 Live 3D preview pipeline
+
+- Moving any slider triggers a 300 ms trailing-edge debounce; on
+  fire, the frontend POSTs the current 17-param dict to
+  `/api/preview_mesh` and loads the returned OBJ into the params-
+  view viewer.
+- Backend `/api/preview_mesh` validates the params (key set +
+  ranges + integer types for `bladeCount` / `innerMaxPos` /
+  `outerMaxPos`) and calls the pure `render_mesh_obj_text`
+  helper which is memoised via `lru_cache(maxsize=64)` keyed on
+  (sorted params tuple, GH mtime).  Slider wiggling back and
+  forth is essentially free.
+- Below the params-view viewer: **Download geometry** button.
+  Disabled until the first successful preview lands; on click
+  saves the current blob as `propeller_preview.obj`.
+- In-flight skip + trailing follow-up: while one preview is in
+  flight, additional slider movements are coalesced into a single
+  follow-up request that fires on completion.  RhinoCompute never
+  sees more than one concurrent request per session; the user's
+  latest slider position always wins.
+
+### 9.3 FIXED-block + RELEASED-block auto-append on chat
+
+- Every chat message sent to `/api/turn` carries an optional
+  `fixed_params` dict (when the FIXED list has changed since the
+  previous send) and an optional `released_params` list (when the
+  user has just released previously-FIXED parameters).
+- `save_user_input` appends two blocks under each turn's timestamp
+  header when these fields are present:
+  1. `The user has fixed the following values through the
+     Parameters Inputs interface:` — full current FIXED snapshot
+     with units, one bullet per param.
+  2. `The user is no longer constraining the following parameters
+     (they can now be varied freely by the system):` — bullets
+     for keys released since the previous send.
+- Dedup by full fingerprint (names AND values).  An unchanged
+  FIXED list does NOT re-append.  An empty FIXED list appends
+  nothing.
+- All downstream agents that read `user_query.txt` (Receptionist,
+  UII, Planner via `read_user_queries`) see the blocks for free —
+  no per-agent code change.
+
+### 9.4 UII extraction rules (post-redesign)
+
+- The UII no longer writes `(unlocked by user)` annotations.  When
+  a parameter is released, the UII simply OMITS it from
+  QUANTITATIVE INPUTS.  Source: the `### Temporal scope and
+  Parameters Inputs interface blocks` section in
+  `agents/user_input_inspector/prompt.md`.
+- The UII's extraction is a snapshot of the CURRENT request,
+  carried forward only where consistent with the latest user
+  message.  Old contradicted constraints are discarded; explicit
+  "start over" instructions discard all prior context;
+  multi-design requests list every CURRENT design with clear
+  labels.
+- The QUANTITATIVE INPUTS section is **free-form** — the simple
+  `key: value unit` list is one option; multi-design sub-lists
+  and parametric-sweep prose are equally valid.
+- The UII may consult prior attempts via `list_attempts` /
+  `read_attempt` when the user EXPLICITLY references one ("use
+  the same parameters as the latest attempt, but decrease the
+  number of blades by 1").  Generic requests do NOT trigger
+  speculative reads.
+- New workflow setting `UII_MAY_READ_PREVIOUS_EXTRACTION` (block
+  #18, default True) lets the developer filter the prior
+  `extracted_inputs.txt` out of the UII's bundle entirely.
+
+### 9.5 Planner / Receptionist spontaneous PROPOSED loop
+
+- The **Planner**'s Role 3 APPROVE branch now includes a clarity
+  paragraph asking the LLM to phrase the "Show to user:" line
+  clearly about its level of endorsement — endorsement language
+  ("recommend attempt N as the satisfying solution", "best
+  attempt so far", "final pick") vs. hedging language ("showing
+  for context", "intermediate result", "first cut, still
+  revising").  No fixed marker / keyword required.
+- The **Receptionist**'s Reporting-attempts procedure has a new
+  step 4 that interprets the Planner's wording.  Endorsement →
+  call `propose_attempt(values=<that attempt's 17-param dict>)`;
+  hedging → skip `propose_attempt` (panel stays sticky on the
+  most recent endorsed proposal); informational view of a
+  non-recommended attempt ("show me the worst") → also skip.
+- The Planner consults prior attempts only in exceptional cases
+  (defect-recovery supervision, error interpretation, ambiguous
+  user request, additional supervision) — the routine
+  user-reference case is the UII's job and the Planner should
+  trust the extraction.
+- W22 in `extra_utilities/warnings_developer.md` codifies the
+  natural-language convention: future prompt edits that touch the
+  endorsement / hedging vocabularies in the Receptionist prompt,
+  the Planner prompt, or the `propose_attempt.md` tool fragment
+  must keep all three consistent or the spontaneous trigger
+  breaks silently.
+
+### 9.6 End-Session reset
+
+- When the user clicks **End Session** in the chat view, the
+  `paramsResetAll()` cleanup also fires for the Parameters Inputs
+  panel: all rows reset to gray VARY at mid-of-range defaults,
+  all PROPOSED VALUE text cleared, the params viewer unloads
+  its mesh + restores the placeholder, the Download geometry
+  button disables, and the FIXED-dispatch dedup snapshot
+  (`_lastSentFixedDict` / `_lastSentFixedFingerprint`) is
+  cleared so the next session's first chat send carries a fresh
+  FIXED block if applicable.
+
+### 9.7 Open TODOs at redesign close
+
+| ID | What | Status |
+|---|---|---|
+| F24 | Live 3D preview in Parameters Inputs view | ✅ Resolved by Steps 5/6/7 (commits `14bdfa1`, `dfc66e5`, `03ad83b`) |
+| F25 | Pre-compute the active FIXED parameter set in Python instead of the UII's in-prompt walk | Open — exploration only, NOT committed.  Defer until UII errors actually appear. |
+| F26 | Verify the Planner's behaviour in problematic / non-happy-path cases | Open — manual test pass on the new prompt rules.  Do this BEFORE the next round of Planner prompt edits. |
+| F27 | Live-preview ON / OFF toggle in the Parameters Inputs view | Open — polish item.  Pick up if always-on preview is annoying in practice. |
+| F28 | `sessionStorage` persistence of Parameters Inputs panel state across reload | Open — polish item.  Reload-during-session is uncommon and recoverable. |
+
+### 9.8 How to run the full end-to-end flow today
+
+1. Open the web UI, enter the invite code, start a session.
+2. Switch to the **Parameters Inputs** side-menu item.
+3. Move a slider — the row turns green (FIXED), the params-view
+   3D viewer regenerates the propeller from your values (~1-2 s
+   on the first call, instant on a cache hit).
+4. Click the green FIXED button on any row to release back to
+   VARY — slider keeps its visible value but the system can now
+   vary it.
+5. Switch to the **Chat** view, type a message ("make it
+   lighter").  Behind the scenes, the FIXED dict is auto-
+   appended to `user_query.txt` under your message.
+6. The agent pipeline (Receptionist → UII → DCIC → DCII → Tool
+   Caller → DCOI → Planner) runs as before.  When the Planner
+   approves an attempt with endorsement language, the
+   Receptionist also calls `propose_attempt`.  The Parameters
+   Inputs panel updates: non-FIXED sliders turn ORANGE at the
+   proposed values, all rows show "PROPOSED VALUE: X" text.
+7. End the session — chat clears, params panel resets to
+   all-gray defaults, both viewers reset to placeholders.
+
+This is the complete delivered state.  Anything not described
+above is one of the open TODOs (F25-F28) or a known limitation.
