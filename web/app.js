@@ -2719,156 +2719,214 @@ startEventStream();
 
 
 // ---------------------------------------------------------------------------
-// Parameters Inputs view
+// Parameters Inputs view  (Step 2 of the redesign — see
+// extra_utilities/web_interface_notes.md §§1-7)
 // ---------------------------------------------------------------------------
-// Tabbed slider configurator integrated into the v9 left-side menu.
-// The user picks values for the 17 propeller parameters via sliders
-// grouped into 4 profile tabs (General / Inner / Middle / Outer);
-// the Export tab carries the "Use these parameters" submit button
-// which formats the slider state into a chat message and routes it
-// through sendMessage() — i.e. the agent pipeline takes over exactly
-// as if the user had typed the message into the chat.
+// Split-pane layout: 3D viewer LEFT (wired in Step 4), scrolling
+// parameter column RIGHT.  All 17 propeller parameters rendered
+// in order, grouped by section (General / Inner / Middle / Outer)
+// with the matching profile image shown inline above each section.
+// No tabs, no Next/Back navigation.
 //
-// Live 3D preview is NOT wired in this commit — see TODO P3-C in
-// extra_utilities/TODO_known_issues.md.
+// Each slider row carries a left-side state button that will cycle
+// through VARY (gray, unpressed) / FIXED (green, pressed) / PROPOSED
+// (orange, from system).  Step 2 ships the visual shell only: the
+// button renders gray "VARY" but is not yet interactive
+// (Step 3 wires VARY ↔ FIXED on slider modification; Step 10 wires
+// PROPOSED from the propose_attempt SSE event).
 //
-// Slider ranges follow DC_prompt_fragments/dc_config/parameters.md
-// (the canonical source agents validate against).  Defaults are the
-// values the standalone propeller_V3 reference shipped with —
-// pragmatic mid-of-range starting points.
+// Slider ranges are sourced from DC_prompt_fragments/dc_config/parameters.md
+// (the SAME ranges agents validate against).  Defaults are the
+// reference's pragmatic mid-of-range values.  Units (from
+// parameters.md) appear in the min / current / max display and
+// (Step 8) in the auto-appended FIXED block sent to the agents.
 
 const PARAM_GROUPS = [
   {
     key: "general",
     label: "General Parameters",
+    image: "/static/images/general-profile.png",
+    imageAlt: "General profile diagram",
     params: [
-      { key: "impellerRadius",    label: "Propeller Radius (mm)",         min: 60, max: 80,  step: 1,    value: 71 },
-      { key: "impellerHeight",    label: "Propeller Height (mm)",         min: 4,  max: 10,  step: 1,    value: 8  },
-      { key: "impellerThickness", label: "Propeller Thickness (mm)",      min: 1,  max: 5,   step: 1,    value: 2  },
-      { key: "bladeCount",        label: "Blade Count",                   min: 3,  max: 6,   step: 1,    value: 3  },
+      { key: "impellerRadius",    label: "Propeller Radius",     unit: "mm",                 min: 60,  max: 80,  step: 1,    value: 71 },
+      { key: "impellerHeight",    label: "Propeller Height",     unit: "mm",                 min: 4,   max: 10,  step: 1,    value: 8  },
+      { key: "impellerThickness", label: "Propeller Thickness",  unit: "mm",                 min: 1,   max: 5,   step: 1,    value: 2  },
+      { key: "bladeCount",        label: "Blade Count",          unit: "",                   min: 3,   max: 6,   step: 1,    value: 3  },
     ],
   },
   {
     key: "inner",
     label: "Inner Profile",
+    image: "/static/images/inner-profile.png",
+    imageAlt: "Inner profile diagram",
     params: [
-      { key: "innerThickness",    label: "Thickness (% of chord)",        min: 3,  max: 24,  step: 1,    value: 6  },
-      { key: "innerMaxPos",       label: "Max Position (tenths of chord)", min: 2, max: 8,   step: 1,    value: 4  },
-      { key: "innerCamber",       label: "Camber (% of chord)",           min: 0,  max: 9,   step: 1,    value: 4  },
-      { key: "innerChord",        label: "Chord Length (mm)",             min: 3,  max: 11,  step: 1,    value: 11 },
-      { key: "innerAngle",        label: "Angle of Attack (deg)",         min: 2,  max: 25,  step: 1,    value: 25 },
+      { key: "innerThickness",    label: "Thickness",            unit: "% of chord",         min: 3,   max: 24,  step: 1,    value: 6  },
+      { key: "innerMaxPos",       label: "Max Position",         unit: "tenths of chord",    min: 2,   max: 8,   step: 1,    value: 4  },
+      { key: "innerCamber",       label: "Camber",               unit: "% of chord",         min: 0,   max: 9,   step: 1,    value: 4  },
+      { key: "innerChord",        label: "Chord Length",         unit: "mm",                 min: 3,   max: 11,  step: 1,    value: 11 },
+      { key: "innerAngle",        label: "Angle of Attack",      unit: "degrees",            min: 2,   max: 25,  step: 1,    value: 25 },
     ],
   },
   {
     key: "middle",
     label: "Middle Profile",
+    image: "/static/images/middle-profile.png",
+    imageAlt: "Middle profile diagram",
     params: [
-      { key: "middlePos",         label: "Radial Position (× radius)",    min: 0.3, max: 0.7, step: 0.05, value: 0.3 },
-      { key: "middleChord",       label: "Chord Length (mm)",             min: 10,  max: 30,  step: 1,    value: 20 },
-      { key: "middleAngle",       label: "Angle of Attack (deg)",         min: 2,   max: 25,  step: 1,    value: 15 },
+      { key: "middlePos",         label: "Radial Position",      unit: "× impellerRadius",   min: 0.3, max: 0.7, step: 0.05, value: 0.3 },
+      { key: "middleChord",       label: "Chord Length",         unit: "mm",                 min: 10,  max: 30,  step: 1,    value: 20 },
+      { key: "middleAngle",       label: "Angle of Attack",      unit: "degrees",            min: 2,   max: 25,  step: 1,    value: 15 },
     ],
   },
   {
     key: "outer",
     label: "Outer Profile",
+    image: "/static/images/outer-profile.png",
+    imageAlt: "Outer profile diagram",
     params: [
-      { key: "outerThickness",    label: "Thickness (% of chord)",        min: 3,  max: 24,  step: 1,    value: 6  },
-      { key: "outerMaxPos",       label: "Max Position (tenths of chord)", min: 2, max: 8,   step: 1,    value: 4  },
-      { key: "outerCamber",       label: "Camber (% of chord)",           min: 0,  max: 9,   step: 1,    value: 4  },
-      { key: "outerChord",        label: "Chord Length (mm)",             min: 10, max: 30,  step: 1,    value: 15 },
-      { key: "outerAngle",        label: "Angle of Attack (deg)",         min: 2,  max: 25,  step: 1,    value: 10 },
+      { key: "outerThickness",    label: "Thickness",            unit: "% of chord",         min: 3,   max: 24,  step: 1,    value: 6  },
+      { key: "outerMaxPos",       label: "Max Position",         unit: "tenths of chord",    min: 2,   max: 8,   step: 1,    value: 4  },
+      { key: "outerCamber",       label: "Camber",               unit: "% of chord",         min: 0,   max: 9,   step: 1,    value: 4  },
+      { key: "outerChord",        label: "Chord Length",         unit: "mm",                 min: 10,  max: 30,  step: 1,    value: 15 },
+      { key: "outerAngle",        label: "Angle of Attack",      unit: "degrees",            min: 2,   max: 25,  step: 1,    value: 10 },
     ],
   },
 ];
 
-// Tab order including Export (which has no params; submit + copy live there).
-const PARAM_TAB_ORDER = ["general", "inner", "middle", "outer", "export"];
-
 // Per-key live state.  Mirrors slider values in JS so we can read them
-// at submit time without re-querying the DOM.
+// at submit / copy time without re-querying the DOM.
 const paramState = {};
 
-function paramsFormatValue(p) {
+// Lookup table {key -> spec} so formatters / submit-message builder
+// can look up metadata without nested for-loops.
+const paramSpecByKey = {};
+for (const group of PARAM_GROUPS) {
+  for (const p of group.params) paramSpecByKey[p.key] = p;
+}
+
+function paramsFormatValue(spec, value) {
   // Render with a precision matching the step (so 0.05-stepped sliders
   // don't render as "0.30000000000004").
-  const decimals = p.step < 1 ? 2 : 0;
-  return Number(paramState[p.key]).toFixed(decimals);
+  const decimals = spec.step < 1 ? 2 : 0;
+  return Number(value).toFixed(decimals);
 }
 
-function paramsBuildPane(group) {
-  const pane = document.getElementById(`params-pane-${group.key}`);
-  if (!pane) return;
-  pane.innerHTML = "";
-  for (const p of group.params) {
-    paramState[p.key] = p.value;
+function paramsFormatValueWithUnit(spec, value) {
+  const formatted = paramsFormatValue(spec, value);
+  return spec.unit ? `${formatted} ${spec.unit}` : formatted;
+}
 
-    const container = document.createElement("div");
-    container.className = "params-slider-container";
+function paramsBuildRow(spec) {
+  paramState[spec.key] = spec.value;
 
-    const lbl = document.createElement("label");
-    lbl.setAttribute("for", `param-${p.key}`);
-    lbl.textContent = p.label;
-    container.appendChild(lbl);
+  const row = document.createElement("div");
+  row.className = "param-row";
+  row.dataset.paramKey = spec.key;
+  row.dataset.state = "vary";
 
-    const wrap = document.createElement("div");
-    wrap.className = "params-slider-wrapper";
+  // LEFT: state button (Step 3 will make this interactive).
+  const btn = document.createElement("button");
+  btn.type = "button";
+  btn.className = "param-state-btn";
+  btn.dataset.paramKey = spec.key;
+  btn.textContent = "VARY";
+  btn.title = "Move the slider to FIX this parameter (Step 3 wires this)";
+  row.appendChild(btn);
 
-    const range = document.createElement("input");
-    range.type = "range";
-    range.id = `param-${p.key}`;
-    range.dataset.paramKey = p.key;
-    range.min = String(p.min);
-    range.max = String(p.max);
-    range.step = String(p.step);
-    range.value = String(p.value);
-    wrap.appendChild(range);
+  // RIGHT: label + slider + min/current/max values.
+  const body = document.createElement("div");
+  body.className = "param-body";
 
-    const valuesRow = document.createElement("div");
-    valuesRow.className = "params-slider-values";
+  const labelRow = document.createElement("div");
+  labelRow.className = "param-label-row";
+  const lbl = document.createElement("label");
+  lbl.className = "param-label";
+  lbl.setAttribute("for", `param-${spec.key}`);
+  lbl.textContent = spec.label;
+  labelRow.appendChild(lbl);
+  body.appendChild(labelRow);
 
-    const minSpan = document.createElement("span");
-    minSpan.className = "params-slider-min";
-    minSpan.textContent = `min ${p.min}`;
-    valuesRow.appendChild(minSpan);
+  const range = document.createElement("input");
+  range.type = "range";
+  range.id = `param-${spec.key}`;
+  range.className = "param-slider";
+  range.dataset.paramKey = spec.key;
+  range.min = String(spec.min);
+  range.max = String(spec.max);
+  range.step = String(spec.step);
+  range.value = String(spec.value);
+  body.appendChild(range);
 
-    const curSpan = document.createElement("span");
-    curSpan.className = "params-slider-current";
-    curSpan.id = `param-cur-${p.key}`;
-    curSpan.textContent = paramsFormatValue(p);
-    valuesRow.appendChild(curSpan);
+  const valuesRow = document.createElement("div");
+  valuesRow.className = "param-values";
 
-    const maxSpan = document.createElement("span");
-    maxSpan.className = "params-slider-max";
-    maxSpan.textContent = `max ${p.max}`;
-    valuesRow.appendChild(maxSpan);
+  const minSpan = document.createElement("span");
+  minSpan.className = "param-min";
+  minSpan.textContent = spec.unit
+    ? `min ${spec.min} ${spec.unit}`
+    : `min ${spec.min}`;
+  valuesRow.appendChild(minSpan);
 
-    wrap.appendChild(valuesRow);
-    container.appendChild(wrap);
-    pane.appendChild(container);
+  const curSpan = document.createElement("span");
+  curSpan.className = "param-current";
+  curSpan.id = `param-cur-${spec.key}`;
+  curSpan.textContent = paramsFormatValueWithUnit(spec, spec.value);
+  valuesRow.appendChild(curSpan);
 
-    range.addEventListener("input", () => {
-      paramState[p.key] = parseFloat(range.value);
-      curSpan.textContent = paramsFormatValue(p);
-    });
+  const maxSpan = document.createElement("span");
+  maxSpan.className = "param-max";
+  maxSpan.textContent = spec.unit
+    ? `max ${spec.max} ${spec.unit}`
+    : `max ${spec.max}`;
+  valuesRow.appendChild(maxSpan);
+
+  body.appendChild(valuesRow);
+  row.appendChild(body);
+
+  // Live-update the visible current value while the user drags.
+  // The state-machine transition VARY → FIXED is wired in Step 3.
+  range.addEventListener("input", () => {
+    const v = parseFloat(range.value);
+    paramState[spec.key] = v;
+    curSpan.textContent = paramsFormatValueWithUnit(spec, v);
+  });
+
+  return row;
+}
+
+function paramsBuildSection(group) {
+  const section = document.createElement("div");
+  section.className = "param-section";
+  section.dataset.sectionKey = group.key;
+
+  const header = document.createElement("div");
+  header.className = "param-section-header";
+
+  const img = document.createElement("img");
+  img.className = "param-section-img";
+  img.src = group.image;
+  img.alt = group.imageAlt;
+  header.appendChild(img);
+
+  const title = document.createElement("h3");
+  title.className = "param-section-title";
+  title.textContent = group.label;
+  header.appendChild(title);
+
+  section.appendChild(header);
+  return section;
+}
+
+function paramsBuildAll() {
+  const scroll = document.getElementById("params-scroll");
+  if (!scroll) return;
+  scroll.innerHTML = "";
+  for (const group of PARAM_GROUPS) {
+    scroll.appendChild(paramsBuildSection(group));
+    for (const spec of group.params) {
+      scroll.appendChild(paramsBuildRow(spec));
+    }
   }
-}
-
-function paramsSwitchTab(tabKey) {
-  document.querySelectorAll(".params-tab-btn").forEach((b) => {
-    b.classList.toggle("active", b.dataset.paramtab === tabKey);
-  });
-  document.querySelectorAll(".params-image").forEach((img) => {
-    img.classList.toggle("active", img.dataset.paramtab === tabKey);
-  });
-  document.querySelectorAll(".params-pane").forEach((p) => {
-    p.classList.toggle("active", p.dataset.paramtab === tabKey);
-  });
-  // Disable Back at first tab, Next at last tab.
-  const idx = PARAM_TAB_ORDER.indexOf(tabKey);
-  const prevBtn = document.getElementById("params-prev");
-  const nextBtn = document.getElementById("params-next");
-  if (prevBtn) prevBtn.disabled = idx <= 0;
-  if (nextBtn) nextBtn.disabled = idx >= PARAM_TAB_ORDER.length - 1;
 }
 
 function paramsBuildSubmitMessage() {
@@ -2879,8 +2937,8 @@ function paramsBuildSubmitMessage() {
   for (const group of PARAM_GROUPS) {
     lines.push(`${group.label}:`);
     for (const p of group.params) {
-      const val = paramsFormatValue(p);
-      lines.push(`  - ${p.key}: ${val}`);
+      const v = paramsFormatValueWithUnit(p, paramState[p.key]);
+      lines.push(`  - ${p.key}: ${v}`);
     }
     lines.push("");
   }
@@ -2888,6 +2946,9 @@ function paramsBuildSubmitMessage() {
 }
 
 async function paramsSubmit() {
+  // Manual submit path — kept for testing during Steps 2-7.  Step 8
+  // wires auto-append of the FIXED block to every chat message, at
+  // which point this button can be removed.
   const status = document.getElementById("params-status");
   if (status) {
     status.classList.remove("error");
@@ -2928,44 +2989,11 @@ async function paramsCopy() {
 }
 
 function paramsInit() {
-  // Populate every parameter pane with sliders.
-  for (const group of PARAM_GROUPS) {
-    paramsBuildPane(group);
-  }
-  // Wire tab buttons.
-  document.querySelectorAll(".params-tab-btn").forEach((b) => {
-    b.addEventListener("click", () => paramsSwitchTab(b.dataset.paramtab));
-  });
-  // Wire Back / Next bottom navigation.
-  const prevBtn = document.getElementById("params-prev");
-  const nextBtn = document.getElementById("params-next");
-  if (prevBtn) {
-    prevBtn.addEventListener("click", () => {
-      const active = document.querySelector(".params-tab-btn.active");
-      const idx = active
-        ? PARAM_TAB_ORDER.indexOf(active.dataset.paramtab)
-        : 0;
-      if (idx > 0) paramsSwitchTab(PARAM_TAB_ORDER[idx - 1]);
-    });
-  }
-  if (nextBtn) {
-    nextBtn.addEventListener("click", () => {
-      const active = document.querySelector(".params-tab-btn.active");
-      const idx = active
-        ? PARAM_TAB_ORDER.indexOf(active.dataset.paramtab)
-        : 0;
-      if (idx < PARAM_TAB_ORDER.length - 1) {
-        paramsSwitchTab(PARAM_TAB_ORDER[idx + 1]);
-      }
-    });
-  }
-  // Wire Export-pane buttons.
+  paramsBuildAll();
   const submitBtn = document.getElementById("params-submit");
   if (submitBtn) submitBtn.addEventListener("click", paramsSubmit);
   const copyBtn = document.getElementById("params-copy");
   if (copyBtn) copyBtn.addEventListener("click", paramsCopy);
-  // Initial state — Back disabled because we're on the first tab.
-  paramsSwitchTab("general");
 }
 
 paramsInit();

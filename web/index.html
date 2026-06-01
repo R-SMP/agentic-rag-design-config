@@ -137,113 +137,74 @@
       </section>
 
       <!--
-        3. Parameters Inputs
-        -------------------
-        Tabbed parameter configurator inspired by the standalone
-        propeller_V3 reference UI.  The user picks values via
-        sliders (grouped into General / Inner / Middle / Outer / Export
-        tabs) and hits "Use these parameters" on the Export tab; the
-        slider values are formatted into a chat message and posted
-        to /api/turn, after which the normal agent pipeline takes
-        over.
+        3. Parameters Inputs (split-pane redesign — Step 2 of 12).
+        ---------------------------------------------------------
+        LEFT: a dedicated 3D viewer (its own instance, distinct from
+        the chat's — wired up in Step 4 of the redesign).  Placeholder
+        until then.
 
-        Slider ranges are sourced from DC_prompt_fragments/dc_config/
-        parameters.md (the SAME ranges agents validate against).
-        Defaults are pragmatic mid-of-range values.
+        RIGHT: a single scrolling column listing all 17 propeller
+        parameters in order, grouped by section (General / Inner /
+        Middle / Outer) with the matching profile image shown inline
+        above each section.  No tabs, no Back/Next navigation.
 
-        NOTE: a live 3D preview that re-runs mesh generation on each
-        slider tick is NOT implemented in this commit — see TODO
-        P3-C in extra_utilities/TODO_known_issues.md.  The current
-        view is sliders + submit only.
+        Each slider row carries a left-side state button (VARY / FIXED /
+        PROPOSED).  Step 2 ships the visual shell only — the button
+        renders gray "VARY" but is not yet interactive (Step 3 wires
+        VARY ↔ FIXED on slider modification; Step 10 wires PROPOSED
+        from the propose_attempt SSE event).
+
+        Full design: extra_utilities/web_interface_notes.md §§1-7.
       -->
-      <section class="view params-view" data-view="params" hidden>
-        <div class="params-sidebar">
-          <div class="params-header">
+      <section class="view params-split-view" data-view="params" hidden>
+        <!-- LEFT pane: 3D viewer (own instance — Step 4) -->
+        <aside class="viewer-panel params-viewer-panel">
+          <div class="viewer-toolbar">
+            <span class="viewer-title">3D preview</span>
+            <span id="params-viewer-attempt" class="viewer-attempt"></span>
+            <span id="params-viewer-name" class="viewer-name"></span>
+            <button id="params-viewer-reset" class="ghost"
+                    title="Reset view">Reset view</button>
+          </div>
+          <div id="params-viewer" class="viewer">
+            <div id="params-viewer-placeholder" class="viewer-placeholder">
+              Move any slider to generate a live preview.
+              <br /><small>(Live preview wired in Step 7)</small>
+            </div>
+          </div>
+        </aside>
+
+        <!-- RIGHT pane: scrolling parameter column -->
+        <main class="params-column">
+          <div class="params-column-header">
             <h2>Parameters Inputs</h2>
             <p class="params-subhead">
-              Pick parameter values directly, then hit
-              <em>Use these parameters</em> on the Export tab to
-              send them into the chat pipeline.
+              Set any slider to FIX that parameter (the row turns
+              green); gray VARY parameters are free for the system
+              to choose.  FIXED values are sent into the chat
+              pipeline with your next message (auto-append wired in
+              Step 8 — for now use the
+              <em>Use these parameters</em> button below).
             </p>
           </div>
 
-          <!-- Tab navigation -->
-          <div class="params-tabs">
-            <button class="params-tab-btn active" type="button"
-                    data-paramtab="general">General</button>
-            <button class="params-tab-btn" type="button"
-                    data-paramtab="inner">Inner</button>
-            <button class="params-tab-btn" type="button"
-                    data-paramtab="middle">Middle</button>
-            <button class="params-tab-btn" type="button"
-                    data-paramtab="outer">Outer</button>
-            <button class="params-tab-btn" type="button"
-                    data-paramtab="export">Export</button>
-          </div>
+          <!-- All 17 sliders populated by app.js paramsBuildAll().
+               Section dividers (image + title) are injected between
+               groups. -->
+          <div id="params-scroll" class="params-scroll"></div>
 
-          <!-- Profile images (one visible per tab) -->
-          <div class="params-images">
-            <div class="params-image active" data-paramtab="general">
-              <img src="/static/images/general-profile.png"
-                   alt="General profile diagram" />
-            </div>
-            <div class="params-image" data-paramtab="inner">
-              <img src="/static/images/inner-profile.png"
-                   alt="Inner profile diagram" />
-            </div>
-            <div class="params-image" data-paramtab="middle">
-              <img src="/static/images/middle-profile.png"
-                   alt="Middle profile diagram" />
-            </div>
-            <div class="params-image" data-paramtab="outer">
-              <img src="/static/images/outer-profile.png"
-                   alt="Outer profile diagram" />
-            </div>
-            <!-- Export tab has no image — uses descriptive copy. -->
-          </div>
-
-          <!-- Tab panes — populated dynamically by app.js paramsInit() -->
-          <div class="params-pane active" data-paramtab="general"
-               id="params-pane-general"></div>
-          <div class="params-pane" data-paramtab="inner"
-               id="params-pane-inner"></div>
-          <div class="params-pane" data-paramtab="middle"
-               id="params-pane-middle"></div>
-          <div class="params-pane" data-paramtab="outer"
-               id="params-pane-outer"></div>
-
-          <!-- Export pane — submit + copy controls -->
-          <div class="params-pane" data-paramtab="export"
-               id="params-pane-export">
-            <p class="params-export-desc">
-              Review the 17 parameters you have configured, then
-              submit them to the agent pipeline as a chat message.
-              The Receptionist will pick the message up, validate
-              the values, and trigger the downstream agents
-              (UII → DCIC → DCII → Tool Caller → DCOI) exactly as
-              if you had typed them into the chat.
-            </p>
+          <!-- Bottom action row.  The "Use these parameters" button
+               is the manual submit path until Step 8 wires the
+               auto-append on chat send. -->
+          <div class="params-bottom-row">
+            <button id="params-copy" type="button">Copy parameters</button>
             <button id="params-submit" class="primary" type="button">
               Use these parameters
-            </button>
-            <div style="height: 12px;"></div>
-            <p class="params-export-desc">
-              Or copy the parameter list to your clipboard for
-              later use.
-            </p>
-            <button id="params-copy" type="button">
-              Copy parameters
             </button>
             <div id="params-status" class="params-status"
                  role="status"></div>
           </div>
-
-          <!-- Bottom navigation -->
-          <div class="params-bottom-nav">
-            <button id="params-prev" type="button">← Back</button>
-            <button id="params-next" type="button">Next →</button>
-          </div>
-        </div>
+        </main>
       </section>
 
       <!-- 4. LOG and Status: agent-flow visualization + live session log -->

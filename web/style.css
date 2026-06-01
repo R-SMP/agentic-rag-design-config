@@ -1370,165 +1370,185 @@ button.danger:hover { background: #3a1d1d; }
 
 
 /* =====================================================================
-   Parameters Inputs view
-   ---------------------
-   Tabbed slider configurator. Mirrors the layout of the standalone
-   propeller_V3 reference, integrated into the v9 dark-theme web UI.
+   Parameters Inputs view (split-pane — Step 2 of redesign)
+   --------------------------------------------------------
+   LEFT pane = 3D viewer (reuses .viewer-panel / .viewer / .viewer-*
+                          rules already defined for the chat view).
+   RIGHT pane = scrolling parameter column with all 17 sliders in
+                order, grouped by section with inline profile images.
    See web/index.html section "3. Parameters Inputs" for the markup
-   and web/app.js paramsInit() for the JS wiring.
+   and web/app.js paramsBuildAll() for the JS wiring.
+
+   Mirrors the chat view's 55/45 flex split + 900px stacking
+   breakpoint so the two views look and degrade the same way.
    ===================================================================== */
-.params-view {
-  display: block;
-  overflow: auto;
-  padding: 20px 24px;
+.params-split-view {
+  /* The generic .view { flex: 1; min-width/height: 0 } + .view.active
+     { display: flex } rules carry the horizontal split for us — same
+     mechanism the chat view relies on. */
 }
-.params-sidebar {
-  max-width: 720px;
-  margin: 0 auto;
+
+/* LEFT side override: in the chat view .viewer-panel sits on the
+   right (border-left would be redundant since .chat already has
+   border-right).  In the params view it sits on the left, so we
+   give it a right border instead. */
+.params-viewer-panel {
+  border-right: 1px solid var(--border);
+}
+
+/* RIGHT side: scrolling parameter column. */
+.params-column {
+  flex: 1 1 55%;
+  min-width: 0;
+  min-height: 0;
   display: flex;
   flex-direction: column;
-  gap: 16px;
+  background: var(--bg);
 }
-.params-header h2 {
+.params-column-header {
+  flex: 0 0 auto;
+  padding: 16px 22px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.params-column-header h2 {
   margin: 0 0 6px;
-  font-size: 20px;
+  font-size: 18px;
+  color: #fff;
 }
 .params-subhead {
-  color: #aaa;
-  font-size: 13px;
-  line-height: 1.45;
   margin: 0;
+  color: #aaa;
+  font-size: 12px;
+  line-height: 1.45;
 }
 .params-subhead em {
   color: #d0d0d0;
   font-style: italic;
 }
 
-/* Tab navigation */
-.params-tabs {
-  display: flex;
-  gap: 4px;
-  border-bottom: 1px solid #333;
-  padding-bottom: 0;
-}
-.params-tab-btn {
-  background: transparent;
-  border: 1px solid transparent;
-  border-bottom: none;
-  color: #aaa;
-  padding: 8px 14px;
-  cursor: pointer;
-  font-size: 13px;
-  border-radius: 4px 4px 0 0;
-  transition: background 120ms, color 120ms;
-}
-.params-tab-btn:hover {
-  background: #222;
-  color: #e0e0e0;
-}
-.params-tab-btn.active {
-  background: #1a1a1a;
-  color: #fff;
-  border-color: #333;
-  border-bottom-color: #1a1a1a;
-  margin-bottom: -1px;
+/* Scrolling list of all 17 parameters with section dividers. */
+.params-scroll {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  padding: 8px 22px 16px;
 }
 
-/* Profile images — one visible at a time */
-.params-images {
-  display: flex;
-  justify-content: center;
-  background: #1a1a1a;
-  border: 1px solid #333;
+/* Section divider (one per profile group). */
+.param-section {
+  margin: 18px 0 8px;
+  padding-top: 12px;
+  border-top: 1px solid #333;
+}
+.param-section:first-child {
   border-top: none;
-  border-radius: 0 0 6px 6px;
-  padding: 12px;
-  min-height: 120px;
+  margin-top: 4px;
 }
-.params-image {
-  display: none;
+.param-section-header {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 8px;
 }
-.params-image.active {
-  display: block;
-}
-.params-image img {
+.param-section-img {
   max-width: 100%;
-  max-height: 200px;
+  max-height: 160px;
   display: block;
-  margin: 0 auto;
-}
-
-/* Tab panes — one visible at a time */
-.params-pane {
-  display: none;
+  object-fit: contain;
   background: #1a1a1a;
   border: 1px solid #333;
   border-radius: 6px;
-  padding: 16px 18px;
+  padding: 8px;
 }
-.params-pane.active {
-  display: block;
+.param-section-title {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  color: #d0d0d0;
+  letter-spacing: 0.02em;
 }
 
-/* Slider rows inside a pane */
-.params-slider-container {
-  margin-bottom: 14px;
+/* Single slider row: state-button on the left, label + slider on
+   the right. */
+.param-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px 0;
+  border-bottom: 1px solid #1f1f1f;
 }
-.params-slider-container:last-child {
-  margin-bottom: 0;
+.param-row:last-child {
+  border-bottom: none;
 }
-.params-slider-container label {
-  display: block;
-  font-size: 13px;
-  color: #d0d0d0;
-  margin-bottom: 4px;
+
+/* State button (VARY / FIXED / PROPOSED).  Step 2 ships only the
+   VARY visual (gray, unpressed, not interactive — cursor:not-allowed
+   makes that obvious).  Step 3 adds FIXED (green); Step 10 adds
+   PROPOSED (orange). */
+.param-state-btn {
+  flex: 0 0 auto;
+  background: #2a2e35;
+  color: #888;
+  border: 1px solid #3a3e45;
+  padding: 6px 10px;
+  border-radius: 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  min-width: 78px;
+  text-align: center;
+  cursor: not-allowed;   /* Step 3 flips this to cursor:pointer */
+  font-family: inherit;
+  margin-top: 18px;       /* visually align with the label baseline */
 }
-.params-slider-wrapper {
+
+/* Slider body (label + range + min/current/max). */
+.param-body {
+  flex: 1 1 auto;
+  min-width: 0;
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 4px;
 }
-.params-slider-wrapper input[type="range"] {
+.param-label-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+}
+.param-label {
+  font-size: 13px;
+  color: #888;             /* gray for VARY state */
+  font-weight: 500;
+}
+.param-slider {
   width: 100%;
-  accent-color: #4a9eff;
+  accent-color: #888;      /* gray for VARY state */
   cursor: pointer;
 }
-.params-slider-values {
+.param-values {
   display: flex;
   justify-content: space-between;
   font-size: 11px;
-  color: #888;
+  color: #777;
   font-variant-numeric: tabular-nums;
 }
-.params-slider-current {
-  color: #fff;
+.param-current {
+  color: #ccc;
   font-weight: 600;
 }
 
-/* Export pane copy + status */
-.params-export-desc {
-  color: #ccc;
-  font-size: 13px;
-  line-height: 1.5;
-  margin: 0 0 12px;
-}
-.params-status {
-  margin-top: 10px;
-  font-size: 12px;
-  color: #4a9eff;
-  min-height: 16px;
-}
-.params-status.error {
-  color: #ff7070;
-}
-
-/* Bottom navigation */
-.params-bottom-nav {
+/* Bottom action row (Copy + Use these parameters + status). */
+.params-bottom-row {
+  flex: 0 0 auto;
   display: flex;
-  justify-content: space-between;
-  padding-top: 8px;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 22px;
+  border-top: 1px solid var(--border);
+  flex-wrap: wrap;
 }
-.params-bottom-nav button {
+.params-bottom-row button {
   background: #222;
   border: 1px solid #444;
   color: #ddd;
@@ -1537,10 +1557,36 @@ button.danger:hover { background: #3a1d1d; }
   font-size: 13px;
   border-radius: 4px;
 }
-.params-bottom-nav button:hover {
+.params-bottom-row button.primary {
+  background: #2563eb;
+  border-color: #2563eb;
+  color: #fff;
+}
+.params-bottom-row button:hover {
   background: #2a2a2a;
 }
-.params-bottom-nav button:disabled {
-  opacity: 0.4;
-  cursor: not-allowed;
+.params-bottom-row button.primary:hover {
+  background: #1d4ed8;
+}
+.params-status {
+  font-size: 12px;
+  color: #4a9eff;
+  min-height: 16px;
+}
+.params-status.error {
+  color: #ff7070;
+}
+
+/* Responsive: stack vertically below 900px, mirroring the chat view's
+   stacking rules at the same breakpoint. */
+@media (max-width: 900px) {
+  .params-viewer-panel {
+    border-right: none;
+    border-bottom: 1px solid var(--border);
+    min-height: 320px;
+    flex: 1 1 auto;
+  }
+  .params-column {
+    flex: 1 1 auto;
+  }
 }
