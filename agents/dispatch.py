@@ -147,6 +147,12 @@ def dispatch_turn(
     try:
         # 1. Save the user's text to user_query.txt.
         save_user_input(user_input, inputs_dir)
+        # Echo the raw user message into the session log so it appears
+        # in the web UI's log stream (tailed via /api/log/stream) AND
+        # in the R2-archived session log on save.  Mirrors the
+        # [RECEPTIONIST -> USER] line the direct-reply path emits below
+        # — the user side was previously absent from the log.
+        logger.info(f"[USER -> RECEPTIONIST]  {user_input}")
         logger.info(f"[INPUT FILES]  saved to {inputs_dir.resolve()}")
 
         # 2. Receptionist reads the input files and decides whether to
