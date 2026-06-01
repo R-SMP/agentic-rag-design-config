@@ -1,6 +1,31 @@
-"""Design configurator — generates propeller mesh via Grasshopper + RhinoCompute."""
+"""Design configurator — generates propeller mesh via Grasshopper + RhinoCompute.
+
+The module exposes two entry points with different audiences:
+
+1. :func:`render_mesh_obj_text` — PURE helper used by both the agent
+   path AND the new live-preview path (``/api/preview_mesh``, Step 6
+   of the Parameters Inputs redesign).  Returns OBJ text + vertex
+   count + optional components-sidecar OBJ text.  No side effects:
+   does NOT write to disk, does NOT create attempt folders, does NOT
+   emit agent-activity heartbeats.  Memoised via ``lru_cache(maxsize=64)``
+   keyed on (sorted-tuple of params, current GH definition mtime) so
+   slider wiggling in the live preview is cheap on cache hits and
+   editing the .gh file automatically invalidates stale entries.
+
+2. :func:`generate_propeller_mesh` — AGENT path: same LangChain ``@tool``
+   the tool caller has always invoked.  Validates that ``output_dir``
+   is an attempt folder under ``ATTEMPTS_DIR``, delegates the actual
+   mesh generation to :func:`render_mesh_obj_text`, then writes the
+   primary mesh + optional per-component sidecar to disk and returns
+   a status string.  External behaviour identical to pre-Step-5.
+
+Failures inside the pure helper raise :class:`MeshGenerationError`;
+the agent path catches it and returns the error message as the tool's
+result string (preserving the prior contract).
+"""
 
 import base64
+import functools
 from pathlib import Path
 from typing import Annotated
 
@@ -39,6 +64,44 @@ _COMPONENT_OUTPUT_NAMES = (
     "MeshRing",
     "MeshLauncher",
 )
+
+# Canonical 17-parameter set the GH definition expects.  Used by
+# render_mesh_obj_text to validate caller-supplied dicts before
+# building the RhinoCompute payload.
+_CANONICAL_PARAM_NAMES = frozenset({
+    "bladeCount",
+    "impellerRadius",
+    "impellerHeight",
+    "impellerThickness",
+    "innerThickness",
+    "innerMaxPos",
+    "innerCamber",
+    "innerChord",
+    "innerAngle",
+    "middlePos",
+    "middleChord",
+    "middleAngle",
+    "outerThickness",
+    "outerMaxPos",
+    "outerCamber",
+    "outerChord",
+    "outerAngle",
+})
+
+# Cache size for render_mesh_obj_text.  Slider wiggling in the live
+# preview (Step 7) generates lots of identical-or-near-identical
+# requests; 64 entries keeps the hot working set in memory at the cost
+# of maybe a few MB of OBJ text.
+_PREVIEW_CACHE_SIZE = 64
+
+
+class MeshGenerationError(RuntimeError):
+    """Raised by :func:`render_mesh_obj_text` when RhinoCompute fails,
+    returns no usable mesh output, or all mesh parts fail to decode.
+
+    The agent path catches this and converts it back to a status
+    string for the tool's return value; the live-preview HTTP route
+    converts it to a 4xx/5xx response."""
 
 
 def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
@@ -130,6 +193,206 @@ def _decode_parts_to_obj(
     return "\n".join(obj_lines), vertex_offset, decoded_count
 
 
+def _extract_draco_strings(item: dict) -> list[str]:
+    """Extract base64 Draco strings from a RhinoCompute output item's
+    InnerTree.  Strips surrounding quotes/whitespace from each leaf's
+    ``data`` field and skips empty leaves."""
+    strings: list[str] = []
+    for bk in sorted(item.get("InnerTree", {}).keys()):
+        for leaf in item["InnerTree"][bk]:
+            data = leaf.get("data", "")
+            if isinstance(data, str):
+                data = data.strip().strip('"')
+            if data:
+                strings.append(data)
+    return strings
+
+
+# ---------------------------------------------------------------------------
+# Pure helper: RhinoCompute call + Draco decode, no side effects.
+# ---------------------------------------------------------------------------
+
+@functools.lru_cache(maxsize=_PREVIEW_CACHE_SIZE)
+def _render_mesh_obj_text_cached(
+    params_tuple: tuple,
+    gh_mtime_ns: int,
+) -> tuple[str, int, str | None]:
+    """Memoised inner implementation.  See :func:`render_mesh_obj_text`
+    for the public, dict-keyed API.
+
+    ``gh_mtime_ns`` is part of the cache key so editing the .gh file
+    on disk evicts stale entries on the next call.  The value itself
+    is unused inside the function — only its participation in the
+    cache key matters."""
+    del gh_mtime_ns   # cache-key only; not used in computation
+
+    param_values = dict(params_tuple)
+
+    # Build Grasshopper DataTree inputs.
+    # Note: the library's DataTree.Append uses '{}'.format(idx) which
+    # consumes the curly braces, producing key "0" instead of "{0}".
+    # RhinoCompute expects "{0}" path keys, so we build the dicts
+    # manually via an anonymous-class wrapper that exposes a ``data``
+    # attribute (the shape EvaluateDefinition expects).
+    input_trees = []
+    for param_name, value in param_values.items():
+        if isinstance(value, int):
+            dtype = "System.Int32"
+        else:
+            dtype = "System.Double"
+        tree = type("Tree", (), {"data": {
+            "ParamName": param_name,
+            "InnerTree": {
+                "{0}": [{"type": dtype, "data": str(value)}]
+            },
+        }})()
+        input_trees.append(tree)
+
+    # Pass the .gh file path directly — the library reads and encodes it.
+    try:
+        output = gh_compute.EvaluateDefinition(
+            str(GH_DEFINITION_PATH), input_trees
+        )
+    except Exception as exc:
+        raise MeshGenerationError(f"RhinoCompute error: {exc}") from exc
+
+    # The response may be a dict with a "values" key, or a list directly.
+    if isinstance(output, dict):
+        values = output.get("values", [])
+    else:
+        values = output
+
+    # Try MeshFinal first; fall back to individual mesh parts.
+    mesh_parts: list[tuple[str, str]] = []   # (group_name, b64_draco)
+    for item in values:
+        pname = item.get("ParamName", "")
+        if "MeshFinal" in pname:
+            for s in _extract_draco_strings(item):
+                mesh_parts.append(("MeshFinal", s))
+            break
+
+    mesh_final_used = bool(mesh_parts)
+
+    if not mesh_parts:
+        # MeshFinal was empty — combine the individual component meshes.
+        for item in values:
+            pname = item.get("ParamName", "")
+            if pname in _COMPONENT_OUTPUT_NAMES:
+                for s in _extract_draco_strings(item):
+                    mesh_parts.append((pname, s))
+
+    if not mesh_parts:
+        available = [item.get("ParamName", "?") for item in values]
+        raise MeshGenerationError(
+            f"No mesh data found. Available outputs: {available}"
+        )
+
+    # Decode the primary mesh.
+    mesh_text, vertex_count, decoded_count = _decode_parts_to_obj(
+        mesh_parts,
+        header="# Propeller mesh generated via RhinoCompute",
+    )
+    if decoded_count == 0:
+        raise MeshGenerationError(
+            "All mesh parts failed to decode from Draco format."
+        )
+
+    # Components sidecar: only meaningful when MeshFinal was the
+    # primary output (otherwise the components are already present
+    # as ``g`` groups inside the main mesh OBJ).  None signals the
+    # caller "no sidecar to write".
+    components_text: str | None = None
+    if mesh_final_used:
+        component_parts: list[tuple[str, str]] = []
+        for item in values:
+            pname = item.get("ParamName", "")
+            if pname in _COMPONENT_OUTPUT_NAMES:
+                for s in _extract_draco_strings(item):
+                    component_parts.append((pname, s))
+        if component_parts:
+            sidecar_text, _, sidecar_count = _decode_parts_to_obj(
+                component_parts,
+                header="# Per-component meshes (companion to propeller_mesh.obj)",
+            )
+            if sidecar_count > 0:
+                components_text = sidecar_text
+
+    return mesh_text, vertex_count, components_text
+
+
+def render_mesh_obj_text(
+    params: dict[str, int | float],
+) -> tuple[str, int, str | None]:
+    """Pure mesh-generation helper.  Used by both the agent path
+    (:func:`generate_propeller_mesh`) and the live-preview HTTP route
+    ``/api/preview_mesh`` (Step 6 of the Parameters Inputs redesign).
+
+    Args:
+        params: dict mapping the 17 canonical propeller parameter
+            names (see :data:`_CANONICAL_PARAM_NAMES`) to int|float
+            values.  Extra or missing keys raise
+            :class:`MeshGenerationError` BEFORE the RhinoCompute call.
+
+    Returns:
+        ``(mesh_obj_text, vertex_count, components_obj_text)``:
+            - ``mesh_obj_text``: OBJ file contents as a UTF-8 string
+              (suitable to write to disk OR return as an HTTP body).
+            - ``vertex_count``: total decoded vertices (diagnostic).
+            - ``components_obj_text``: per-component sidecar OBJ
+              (4 named groups), or ``None`` when MeshFinal was not
+              the primary output (in which case the components are
+              already present as ``g`` groups inside ``mesh_obj_text``,
+              so no sidecar is needed).
+
+    Raises:
+        MeshGenerationError: on parameter-validation failure,
+            RhinoCompute call failure, missing mesh outputs, or
+            Draco decode failure on every part.
+
+    Side effects: NONE.  Does NOT write to disk, does NOT create
+    attempt folders, does NOT emit agent-activity heartbeats.  Pure.
+
+    Memoisation: results cached via ``functools.lru_cache(maxsize=64)``
+    keyed on ``(sorted-tuple of params.items(), GH-definition mtime_ns)``.
+    Editing ``Propeller_Raul_V1.2.gh`` on disk evicts stale entries
+    automatically.  Only successful results are cached — exceptions
+    are NOT cached, so a transient RhinoCompute failure does not
+    pollute the cache.
+    """
+    # Validate keys against the canonical 17 BEFORE touching RhinoCompute.
+    keys = set(params.keys())
+    missing = _CANONICAL_PARAM_NAMES - keys
+    extra = keys - _CANONICAL_PARAM_NAMES
+    if missing or extra:
+        problems = []
+        if missing:
+            problems.append(f"missing keys: {sorted(missing)}")
+        if extra:
+            problems.append(f"unknown keys: {sorted(extra)}")
+        raise MeshGenerationError(
+            "Invalid parameter dict — " + "; ".join(problems)
+        )
+
+    # Cache key: sorted tuple of (key, value) so dict insertion order
+    # doesn't fragment the cache.
+    params_tuple = tuple(sorted(params.items()))
+
+    # GH-file mtime: included in the cache key so editing the .gh file
+    # invalidates prior entries on the next call.  If the file is
+    # missing, fall through with mtime_ns=0 and let RhinoCompute fail
+    # loudly inside the cached impl.
+    try:
+        gh_mtime_ns = GH_DEFINITION_PATH.stat().st_mtime_ns
+    except OSError:
+        gh_mtime_ns = 0
+
+    return _render_mesh_obj_text_cached(params_tuple, gh_mtime_ns)
+
+
+# ---------------------------------------------------------------------------
+# Agent path: LangChain @tool that the tool caller invokes.
+# ---------------------------------------------------------------------------
+
 @tool
 @tool_active("Propeller Configurator")
 def generate_propeller_mesh(
@@ -169,6 +432,13 @@ def generate_propeller_mesh(
 
     Returns the absolute path to the saved mesh file, or an error
     message.
+
+    Internally delegates the RhinoCompute call + Draco decode to the
+    pure :func:`render_mesh_obj_text` helper (Step 5 of the
+    Parameters Inputs redesign) so the same generation logic is shared
+    with the live-preview HTTP route ``/api/preview_mesh``.  External
+    behaviour preserved exactly — same return-string format, same disk
+    writes, same sidecar emission.
     """
     out_path_dir, err = _validate_output_dir(output_dir)
     if err is not None:
@@ -205,84 +475,38 @@ def generate_propeller_mesh(
         "outerAngle": outerAngle,
     }
 
-    # Build Grasshopper DataTree inputs.
-    # Note: the library's DataTree.Append uses '{}'.format(idx) which
-    # consumes the curly braces, producing key "0" instead of "{0}".
-    # RhinoCompute expects "{0}" path keys, so we build the dicts manually.
-    input_trees = []
-    for param_name, value in param_values.items():
-        if isinstance(value, int):
-            dtype = "System.Int32"
-        else:
-            dtype = "System.Double"
-        tree = type("Tree", (), {"data": {
-            "ParamName": param_name,
-            "InnerTree": {
-                "{0}": [{"type": dtype, "data": str(value)}]
-            },
-        }})()
-        input_trees.append(tree)
-
-    # Pass the .gh file path directly — the library reads and encodes it
+    # Delegate to the pure helper.  Catch MeshGenerationError and
+    # convert back to the tool's status-string contract.
     try:
-        output = gh_compute.EvaluateDefinition(str(GH_DEFINITION_PATH), input_trees)
-    except Exception as exc:
-        return f"RhinoCompute error: {exc}"
+        mesh_text, vertex_count, components_text = render_mesh_obj_text(
+            param_values
+        )
+    except MeshGenerationError as exc:
+        msg = str(exc)
+        # Preserve the prior contract: error strings start with
+        # "Error:" or "RhinoCompute error:" so the agent can pattern-
+        # match.  The pure helper's RhinoCompute messages already
+        # start with "RhinoCompute error:"; everything else gets the
+        # generic "Error:" prefix.
+        if msg.startswith(("Error:", "RhinoCompute error:")):
+            return msg
+        return f"Error: {msg}"
 
-    # The response may be a dict with a "values" key, or a list directly
-    if isinstance(output, dict):
-        values = output.get("values", [])
-    else:
-        values = output
-
-    # Helper: extract base64 Draco strings from an output item's InnerTree
-    def _extract_draco_strings(item: dict) -> list[str]:
-        strings: list[str] = []
-        for bk in sorted(item.get("InnerTree", {}).keys()):
-            for leaf in item["InnerTree"][bk]:
-                data = leaf.get("data", "")
-                if isinstance(data, str):
-                    data = data.strip().strip('"')
-                if data:
-                    strings.append(data)
-        return strings
-
-    # Try MeshFinal first; fall back to individual mesh parts
-    mesh_parts: list[tuple[str, str]] = []  # (group_name, b64_draco)
-
-    for item in values:
-        pname = item.get("ParamName", "")
-        if "MeshFinal" in pname:
-            for s in _extract_draco_strings(item):
-                mesh_parts.append(("MeshFinal", s))
-            break
-
-    mesh_final_used = bool(mesh_parts)
-
-    if not mesh_parts:
-        # MeshFinal was empty — combine the individual component meshes
-        for item in values:
-            pname = item.get("ParamName", "")
-            if pname in _COMPONENT_OUTPUT_NAMES:
-                for s in _extract_draco_strings(item):
-                    mesh_parts.append((pname, s))
-
-    if not mesh_parts:
-        available = [item.get("ParamName", "?") for item in values]
-        return f"Error: No mesh data found. Available outputs: {available}"
-
-    # Decode the main mesh into the live ``propeller_mesh.obj``
-    mesh_text, vertex_offset, decoded_count = _decode_parts_to_obj(
-        mesh_parts,
-        header="# Propeller mesh generated via RhinoCompute",
-    )
-    if decoded_count == 0:
-        return "Error: All mesh parts failed to decode from Draco format."
-
+    # Write the primary mesh.
     output_path = out_path_dir / _MESH_FILENAME
     output_path.write_text(mesh_text, encoding="utf-8")
     file_size = output_path.stat().st_size
-    parts_used = ", ".join(dict.fromkeys(name for name, _ in mesh_parts))
+
+    # Compute the parts-used summary by re-parsing the OBJ for the
+    # ``g <name>`` group lines.  Cheap and avoids threading raw mesh
+    # parts through the helper's return value.
+    parts_used_set: list[str] = []
+    for line in mesh_text.splitlines():
+        if line.startswith("g "):
+            name = line[2:].strip()
+            if name and name not in parts_used_set:
+                parts_used_set.append(name)
+    parts_used = ", ".join(parts_used_set) if parts_used_set else "MeshFinal"
 
     # Sidecar: when MeshFinal was the primary output, also save the
     # four named components to a separate .obj so the offline
@@ -290,23 +514,11 @@ def generate_propeller_mesh(
     # on the fallback path (the four components are already present
     # as ``g`` groups inside ``propeller_mesh.obj``).  Written
     # silently — the live tools never read this file.
-    if mesh_final_used:
-        component_parts: list[tuple[str, str]] = []
-        for item in values:
-            pname = item.get("ParamName", "")
-            if pname in _COMPONENT_OUTPUT_NAMES:
-                for s in _extract_draco_strings(item):
-                    component_parts.append((pname, s))
-        if component_parts:
-            sidecar_text, _, sidecar_count = _decode_parts_to_obj(
-                component_parts,
-                header="# Per-component meshes (companion to propeller_mesh.obj)",
-            )
-            if sidecar_count > 0:
-                sidecar_path = out_path_dir / _COMPONENTS_FILENAME
-                sidecar_path.write_text(sidecar_text, encoding="utf-8")
+    if components_text is not None:
+        sidecar_path = out_path_dir / _COMPONENTS_FILENAME
+        sidecar_path.write_text(components_text, encoding="utf-8")
 
     return (
         f"Mesh saved to {output_path.resolve()} ({file_size} bytes, "
-        f"{vertex_offset} vertices). Parts: {parts_used}."
+        f"{vertex_count} vertices). Parts: {parts_used}."
     )
