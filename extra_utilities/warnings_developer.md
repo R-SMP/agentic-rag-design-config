@@ -658,3 +658,58 @@ When chain agents are added or removed, edit
 every chunks-INSERT call.
 
 **Status.** In force from Phase 3B (DH-Postgres ingest) onward.
+
+## W22. The spontaneous PROPOSED mechanism uses NATURAL-LANGUAGE detection, not a fixed marker.
+
+**Where.** Receptionist's ``propose_attempt`` tool firing rule —
+``agents/receptionist/prompt.md`` "Reporting attempts" step 4
+(spontaneous PROPOSED branch) + the ``$propose_attempt_tool``
+fragment at ``DC_prompt_fragments/tools_config/propose_attempt.md``.
+The Planner emits its verdict in plain prose
+(``agents/planner/prompt.md`` Role 3 APPROVE branch); the
+Receptionist's LLM interprets that prose to decide whether to fire
+``propose_attempt``.
+
+**Why.** An earlier design draft (2026-06-01) proposed a literal
+marker convention like ``BEST SO FAR: attempt N — <reason>`` so
+the Receptionist could regex-match.  The user rejected this:
+*"there is no need to have ALWAYS a 'BEST SO FAR'. But IF there
+is, it should be specified, verbatim, not with a fixed form"*.
+Natural-language phrasing keeps the Planner's voice free and lets
+the system express the full spectrum of confidence (clear
+satisfying pick / interim show-for-context / not satisfying yet)
+without forcing the Planner into a binary tagged outcome.
+
+**The trade-off.**  Pattern-matching prose is fuzzier than
+pattern-matching a literal token.  The Receptionist might
+occasionally misjudge an ambiguous hand-off — fire propose_attempt
+when the Planner meant "still iterating", or skip it when the
+Planner meant "this is the one".  We accept this on the user's
+sign-off; if it becomes a real problem we revisit by either
+(a) tightening the Receptionist's prompt with more examples,
+(b) asking the Planner for stricter phrasing rules, or
+(c) reintroducing an optional explicit marker (e.g. a literal
+``ENDORSED: yes`` line the Planner MAY include for clarity but
+isn't required to use).
+
+**What this means for prompt-edit discipline.**
+
+  * The endorsement / hedging example phrases in the Receptionist
+    prompt (``propose_attempt`` step 4) and the matching example
+    phrases in the Planner prompt (Role 3 APPROVE clarity
+    paragraph) must STAY CONSISTENT.  If you change the
+    "endorsement vocabulary" on one side you must mirror it on
+    the other or the natural-language detection breaks silently.
+  * The same applies to the
+    ``DC_prompt_fragments/tools_config/propose_attempt.md`` tool
+    fragment — it carries the same example phrases as the
+    Receptionist prompt body for the LLM's reference.
+  * NEVER replace this natural-language convention with a
+    regex / literal-marker convention without a paired prompt
+    update on the Planner side AND a user sign-off.  The marker
+    convention was explicitly considered and rejected on
+    2026-06-01; reintroducing it is a real design change, not a
+    cleanup.
+
+**Status.** In force from commit B of the Parameters Inputs
+redesign (2026-06-XX) onward.

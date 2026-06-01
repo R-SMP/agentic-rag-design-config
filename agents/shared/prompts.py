@@ -211,6 +211,15 @@ HARD_CONSTRAINTS_TOOLS = _read_dc_fragment("tools_config/hard_constraints_tools.
 VISUALIZE_3D_MODEL_TOOL = _read_dc_fragment(
     "tools_config/visualize_3d_model.md"
 )
+# Web-interface-only UI-update tool.  Bound to the Receptionist alone
+# (Step 9 of the Parameters Inputs redesign — see
+# extra_utilities/web_interface_notes.md §§3-7).  Fires the
+# params_proposed SSE event that updates the Parameters Inputs view's
+# slider colours / labels.  Same templating idiom as
+# VISUALIZE_3D_MODEL_TOOL above.
+PROPOSE_ATTEMPT_TOOL = _read_dc_fragment(
+    "tools_config/propose_attempt.md"
+)
 
 # Paired render / mesh-check backend fragments — exactly one is
 # spliced into the Tool Caller's prompt per session via the runtime
@@ -310,6 +319,7 @@ _SLOTS: dict[str, str] = {
     "agent_tools_overview_brief": AGENT_TOOLS_OVERVIEW_BRIEF,
     "hard_constraints_tools": HARD_CONSTRAINTS_TOOLS,
     "visualize_3d_model_tool": VISUALIZE_3D_MODEL_TOOL,
+    "propose_attempt_tool": PROPOSE_ATTEMPT_TOOL,
     # Generic
     "hard_constraints_generic": HARD_CONSTRAINTS_GENERIC,
     # Per-agent routing fragments (Receptionist + Orchestrator only;

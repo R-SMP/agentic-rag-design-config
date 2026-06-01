@@ -221,6 +221,22 @@ reached DCOI), even when DCOI cleanly approves.
     Use this when DCOI's verdict aligns with your plan and the
     output reasonably matches the user's request.
 
+    **Phrase the "Show to user" line clearly about your level of
+    endorsement.**  The Receptionist reads it in plain English to
+    decide whether to also update the Parameters Inputs panel via
+    ``propose_attempt``.  When you consider the attempt the
+    system's current best / satisfying recommendation to the user,
+    say so in natural language (e.g. *"recommend attempt N as the
+    satisfying solution because it best matches the user's brief
+    — concise reasoning here"*, *"final pick: attempt N, the best
+    of the cycle for the stated requirements"*).  When you are
+    only surfacing an intermediate / interim result for context
+    while iteration continues, phrase it as such (e.g. *"showing
+    attempt N for context — promising but still revising the
+    rear-rim thickness"*, *"first cut, not satisfying yet"*).
+    No fixed marker or keyword is required; clarity in your own
+    words is what matters.
+
   * **REVISE.**  Produce a normal Role-2 Problem/Solution/Sequence
     recovery plan.  Use this when DCOI missed a defect you can see,
     when the verdict is overconfident, or when the cycle is not
