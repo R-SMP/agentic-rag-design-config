@@ -1981,6 +1981,25 @@ should NOT start until:
 
 **Status.**  Open as a candidate for future exploration — NOT committed to being implemented.  Reassess after a few real sessions exercise the new flow.
 
+### F26. Verify the Planner's behaviour in problematic / non-happy-path cases
+
+**Where.**  Planner prompt updates landed across commits b7f4879 (initial "consult prior attempts on user reference" addition), 40c2951 (tightened to exceptional cases only), and be0de09 (Role 3 APPROVE clarity paragraph for natural-language endorsement vs. hedging — drives the Receptionist's spontaneous ``propose_attempt`` decision).  These changes have been tested only on the happy path so far.
+
+**What to check.**  Exercise the Planner in scenarios that stress the new rules:
+
+- **Multi-cycle defect recovery.**  Trigger a sequence where the DCOI flags the same defect across 2-3 consecutive cycles.  Verify the Planner correctly invokes ``list_attempts()`` / ``read_attempt(n, 'parameters.json')`` only in the recovery context (the "Typical recovery use" bullet in the unified exceptional-cases section), not on the routine user-reference case the UII handles upstream.
+- **Error interpretation.**  Inject a tool failure or a confusing log entry tied to a specific attempt and observe whether the Planner reads that attempt's files to investigate (the "Error interpretation" bullet).
+- **Ambiguous / hard-to-parse user request.**  Send something like *"do something different from before"* without context, or a request that contradicts the UII's extraction.  Verify the Planner reads prior attempts to clarify before planning (the "Ambiguous / hard-to-parse" bullet).
+- **Additional supervision.**  When the UII's extraction or the DCIC's parameter choice looks suspicious, the Planner should be able to verify against on-disk parameters (the "Additional supervision" bullet).
+- **APPROVE-branch endorsement vocabulary.**  Verify the Planner's "Show to user:" line phrases endorsement clearly enough for the Receptionist to decide whether to fire ``propose_attempt``.  Happy path was tested in commit be0de09; need to check:
+  - Cases where the Planner approves an INTERMEDIATE attempt with hedging language ("first cut", "still revising"): the Receptionist should NOT fire ``propose_attempt`` and the Parameters Inputs panel should stay sticky on the last actually-endorsed pick.
+  - Cases where the Planner's wording is ambiguous (neither clearly endorsement nor clearly hedging): does the Receptionist misjudge?  This is the natural-language fuzziness W22 calls out — worth a real-session check.
+- **REVISE / REPLY-DIRECTLY branches.**  Confirm the Planner correctly produces a recovery plan (REVISE) or a user-facing summary (REPLY DIRECTLY) when those branches apply; the natural-language endorsement guidance in APPROVE shouldn't accidentally bleed into the other two.
+
+**Why open.**  Manual end-to-end testing on a real session for the problematic paths hasn't been done yet (only the happy path verified for commit be0de09).  Without this verification we don't know whether the new prompt rules survive contact with real LLM behaviour under stress.
+
+**Status.**  Open.  Test in a calm session before the next round of prompt edits to the Planner — easier to attribute regressions to specific commits than to debug after several more changes layer on top.
+
 ---
 
 ## Resolved issues
