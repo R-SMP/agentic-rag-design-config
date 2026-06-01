@@ -173,10 +173,22 @@ async function sendMessage(text) {
   );
 
   try {
+    // Step 8: include the user's FIXED-parameter dict from the
+    // Parameters Inputs view if it has changed since the last send.
+    // paramsDiffFixedForSend() returns null when nothing FIXED has
+    // changed (or nothing is FIXED) — in that case the request body
+    // carries fixed_params=null and the backend writes no FIXED
+    // block to user_query.txt.
+    const fixedToSend =
+      typeof paramsDiffFixedForSend === "function"
+        ? paramsDiffFixedForSend()
+        : null;
+    const reqBody = { message: text };
+    if (fixedToSend) reqBody.fixed_params = fixedToSend;
     const res = await fetch("/api/turn", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify(reqBody),
     });
     if (res.status === 401) {
       pending.remove();
@@ -2831,6 +2843,127 @@ function paramsFormatValueWithUnit(spec, value) {
 // handler) and CSS data-state attributes never drift apart.
 const paramRowState = {};
 
+
+// ---------------------------------------------------------------------------
+// Step 7 — Live 3D preview pipeline.
+// On every slider input, schedule a debounced POST to /api/preview_mesh
+// (added in Step 6) and load the returned OBJ bytes into the params-view
+// Viewer instance (added in Step 4).  300 ms trailing-edge debounce per
+// locked decision §6.G.D-debounce.  In-flight skip + trailing follow-up
+// so the user's LATEST position always wins without dog-piling RhinoCompute.
+// ---------------------------------------------------------------------------
+
+const PARAMS_PREVIEW_DEBOUNCE_MS = 300;
+let paramsPreviewTimer = null;
+let paramsPreviewInflight = false;
+let paramsPreviewPending = false;
+let paramsPreviewLatestUrl = null;   // blob: URL of the current mesh
+
+function paramsBuildPreviewBody() {
+  // Snapshot the current 17-param values into a plain dict for the
+  // /api/preview_mesh body.  Reads paramState (kept in sync by the
+  // slider input handler).
+  const out = {};
+  for (const key of Object.keys(paramSpecByKey)) {
+    out[key] = paramState[key];
+  }
+  return out;
+}
+
+async function paramsRequestPreviewNow() {
+  if (paramsPreviewInflight) {
+    // Trailing-edge marker: when the in-flight request finishes,
+    // fire ONE more with the latest slider values.
+    paramsPreviewPending = true;
+    return;
+  }
+  paramsPreviewInflight = true;
+  const status = document.getElementById("params-status");
+  if (status) {
+    status.classList.remove("error");
+    status.textContent = "Generating live preview…";
+  }
+  try {
+    const params = paramsBuildPreviewBody();
+    const res = await fetch("/api/preview_mesh", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ params }),
+    });
+    if (res.status === 401) {
+      showGate();
+      return;
+    }
+    if (!res.ok) {
+      let detail = "";
+      try {
+        const data = await res.json();
+        detail = data.detail || JSON.stringify(data);
+      } catch {
+        detail = await res.text();
+      }
+      if (status) {
+        status.classList.add("error");
+        status.textContent =
+          "Preview failed (" + res.status + "): " + String(detail).slice(0, 200);
+      }
+      return;
+    }
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
+    // Free the previous blob URL so the browser can reclaim its
+    // memory (otherwise URLs accumulate while the user drags sliders).
+    if (paramsPreviewLatestUrl) {
+      URL.revokeObjectURL(paramsPreviewLatestUrl);
+    }
+    paramsPreviewLatestUrl = blobUrl;
+    if (window.paramsViewer) {
+      window.paramsViewer.load(blobUrl, "live preview");
+    }
+    // Now that there is a mesh to download, enable the button.
+    const dlBtn = document.getElementById("params-download-mesh");
+    if (dlBtn) dlBtn.disabled = false;
+    if (status) status.textContent = "";
+  } catch (e) {
+    if (status) {
+      status.classList.add("error");
+      status.textContent =
+        "Preview network error: " + (e && e.message ? e.message : e);
+    }
+  } finally {
+    paramsPreviewInflight = false;
+    if (paramsPreviewPending) {
+      paramsPreviewPending = false;
+      // Fire a follow-up using the LATEST slider state — handles
+      // the case where the user kept moving sliders while the in-
+      // flight request was running.
+      paramsRequestPreviewNow();
+    }
+  }
+}
+
+function paramsRequestPreviewDebounced() {
+  if (paramsPreviewTimer) clearTimeout(paramsPreviewTimer);
+  paramsPreviewTimer = setTimeout(() => {
+    paramsPreviewTimer = null;
+    paramsRequestPreviewNow();
+  }, PARAMS_PREVIEW_DEBOUNCE_MS);
+}
+
+function paramsDownloadMesh() {
+  // Same programmatic-link pattern as the chat view's
+  // download-mesh button (app.js around line 2670).  Source is the
+  // blob URL of the most recent successful preview rather than a
+  // server URL.
+  if (!paramsPreviewLatestUrl) return;
+  const a = document.createElement("a");
+  a.href = paramsPreviewLatestUrl;
+  a.download = "propeller_preview.obj";
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
 function paramsSetState(key, newState) {
   // Idempotent.  Updates the row's data-state attribute (which CSS
   // hooks on to swap colours), updates the button label, and keeps
@@ -2922,7 +3055,10 @@ function paramsBuildRow(spec) {
   // FIXED (per locked design — moving a slider is the user's intent
   // signal that this value is now user-imposed).  The first input
   // event of a session takes the row from VARY → FIXED; subsequent
-  // inputs while already FIXED just update the visible value.
+  // inputs while already FIXED just update the visible value.  Also
+  // schedules a debounced live-preview request (Step 7) so the 3D
+  // viewer on the left regenerates the propeller for the new
+  // parameter set.
   range.addEventListener("input", () => {
     const v = parseFloat(range.value);
     paramState[spec.key] = v;
@@ -2930,6 +3066,7 @@ function paramsBuildRow(spec) {
     if (paramRowState[spec.key] !== "fixed") {
       paramsSetState(spec.key, "fixed");
     }
+    paramsRequestPreviewDebounced();
   });
 
   // Button click: toggle VARY ↔ FIXED.  Slider value is preserved
@@ -2994,6 +3131,10 @@ function paramsSwitchTab(tabKey) {
 }
 
 function paramsBuildSubmitMessage() {
+  // Long-form clipboard text — full 17-parameter list with units,
+  // grouped by section.  Used by the Copy parameters button so the
+  // clipboard payload is self-contained (no auto-append context
+  // since clipboard ≠ chat).
   const lines = [
     "I want to generate a propeller with the following parameters:",
     "",
@@ -3009,19 +3150,69 @@ function paramsBuildSubmitMessage() {
   return lines.join("\n").trim();
 }
 
+
+// ---------------------------------------------------------------------------
+// Step 8 — FIXED-block dispatch (see web_interface_notes.md §6.D).
+// sendMessage() reads paramsDiffFixedForSend() to decide whether to
+// include the user's FIXED parameter dict in the /api/turn body for
+// this turn.  Backend (web_app.TurnIn + dispatch.save_user_input)
+// appends a "The user has fixed the following values..." block to
+// user_query.txt when fixed_params is present and non-empty.
+// ---------------------------------------------------------------------------
+
+let _lastSentFixedFingerprint = null;
+
+function paramsBuildFixedParamsDict() {
+  // Build the dict of FIXED parameters with values formatted as
+  // display strings (e.g. "72 mm", "5 % of chord") — the backend
+  // writes them verbatim into the FIXED block of user_query.txt,
+  // so frontend formatting authority means no unit table is needed
+  // in dispatch.py.
+  const out = {};
+  for (const group of PARAM_GROUPS) {
+    for (const spec of group.params) {
+      if (paramRowState[spec.key] === "fixed") {
+        out[spec.key] = paramsFormatValueWithUnit(spec, paramState[spec.key]);
+      }
+    }
+  }
+  return out;
+}
+
+function _paramsFingerprintFixed(dict) {
+  // Deterministic fingerprint independent of dict insertion order.
+  const keys = Object.keys(dict).sort();
+  return keys.map((k) => `${k}=${dict[k]}`).join("|");
+}
+
+function paramsDiffFixedForSend() {
+  // Returns:
+  //   - the FIXED dict to send (when non-empty AND changed since
+  //     the previous send), updating the fingerprint snapshot, OR
+  //   - null (when the FIXED list is empty, or unchanged since the
+  //     previous send — per locked decision §6.D.B1 / B2).
+  // The backend treats null and {} identically (no FIXED block
+  // appended); we send null on unchanged to keep the contract clear.
+  const dict = paramsBuildFixedParamsDict();
+  if (Object.keys(dict).length === 0) return null;
+  const fp = _paramsFingerprintFixed(dict);
+  if (fp === _lastSentFixedFingerprint) return null;
+  _lastSentFixedFingerprint = fp;
+  return dict;
+}
+
 async function paramsSubmit() {
-  // PERMANENT submit path (locked 2026-06-01).  Click semantics:
+  // PERMANENT submit path (locked 2026-06-01).  Click semantics
+  // (web_interface_notes.md §6.C):
   //   1. Transform ALL parameter rows to FIXED — including ones the
   //      user never touched.  This makes the user's intent explicit
   //      ("I am committing to ALL of these values, not just the ones
   //      I tweaked") and lines up with Step 8's auto-append flow.
-  //   2. Switch to the Chat view and call sendMessage() with the
-  //      formatted parameter message.
-  //
-  // Step 8 will simplify the message body to a short
-  // "Please consider these parameters" so the agents don't see the
-  // parameter list twice (once here, once in the auto-appended
-  // FIXED block).  Until then, the current full-list message stays.
+  //   2. Switch to the Chat view and call sendMessage() with a SHORT
+  //      message.  The actual parameter values reach the agents via
+  //      the auto-appended FIXED block on user_query.txt (Step 8) —
+  //      no need to inline the parameter list in the message body,
+  //      which would duplicate the FIXED block.
   const status = document.getElementById("params-status");
   if (status) {
     status.classList.remove("error");
@@ -3032,7 +3223,11 @@ async function paramsSubmit() {
   for (const key of Object.keys(paramState)) {
     paramsSetState(key, "fixed");
   }
-  const message = paramsBuildSubmitMessage();
+  // Step 2: short prompt — the FIXED auto-append from Step 8 carries
+  // the actual values into user_query.txt.
+  const message =
+    "I am committing to the parameter values shown in the Parameters " +
+    "Inputs panel — please use them.";
   try {
     switchView("chat");
     if (typeof sendMessage === "function") {
@@ -3076,6 +3271,12 @@ function paramsInit() {
   if (submitBtn) submitBtn.addEventListener("click", paramsSubmit);
   const copyBtn = document.getElementById("params-copy");
   if (copyBtn) copyBtn.addEventListener("click", paramsCopy);
+  // Step 7: Download geometry button (mirrors the chat's
+  // download-mesh handler around line 2670 — same anchor-click
+  // pattern but sourced from the in-memory blob URL of the latest
+  // preview).
+  const dlBtn = document.getElementById("params-download-mesh");
+  if (dlBtn) dlBtn.addEventListener("click", paramsDownloadMesh);
   // Default to General Parameters on first render.
   paramsSwitchTab("general");
 }

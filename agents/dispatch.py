@@ -76,18 +76,58 @@ class TurnResult:
     new_artefacts_paths: list[Path] = field(default_factory=list)
 
 
-def save_user_input(text: str, inputs_dir: Path) -> Path:
+def save_user_input(
+    text: str,
+    inputs_dir: Path,
+    *,
+    fixed_params: dict[str, str] | None = None,
+) -> Path:
     """Append the user's text to ``{inputs_dir}/user_query.txt``.
 
     Creates ``inputs_dir`` if it does not exist, prefixes the entry
     with a ``--- [YYYY-MM-DD HH:MM:SS] ---`` header, and returns the
     inputs directory unchanged so callers can chain.
+
+    ``fixed_params`` (Step 8 of the Parameters Inputs redesign — see
+    ``extra_utilities/web_interface_notes.md`` §6.D) is the dict of
+    user-FIXED slider values from the Parameters Inputs view, with
+    values pre-formatted as display strings including units
+    (e.g. ``"72 mm"``, ``"5 % of chord"``).  When present and
+    non-empty, this method appends a second block under the same
+    timestamp header reading::
+
+        The user has fixed the following values through the Parameters
+        Inputs interface:
+          - bladeCount: 4
+          - impellerRadius: 72 mm
+          - innerCamber: 5 % of chord
+          - …
+
+    The Receptionist re-reads ``user_query.txt`` from disk on every
+    turn (no args-based path), so this single injection covers all
+    downstream consumers — the Planner's ``read_user_queries`` tool
+    and the UII both parse the same file.
+
+    ``fixed_params=None`` or ``fixed_params={}`` (empty dict) leaves
+    the file structure unchanged — no header line, no block.  The
+    frontend only sends a non-None value when the FIXED list has
+    changed since the previous send (per locked decision §6.D.B1),
+    so the user_query.txt timeline carries the FIXED block exactly
+    at the points where the user's commitment changed.
     """
     inputs_dir.mkdir(parents=True, exist_ok=True)
     query_path = inputs_dir / "user_query.txt"
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    parts = [f"\n--- [{timestamp}] ---\n{text}\n"]
+    if fixed_params:
+        parts.append(
+            "\nThe user has fixed the following values through the "
+            "Parameters Inputs interface:\n"
+        )
+        for key, value in fixed_params.items():
+            parts.append(f"  - {key}: {value}\n")
     with open(query_path, "a", encoding="utf-8") as f:
-        f.write(f"\n--- [{timestamp}] ---\n{text}\n")
+        f.write("".join(parts))
     return inputs_dir
 
 
@@ -122,6 +162,7 @@ def dispatch_turn(
     attempts_dir: Path | None = None,
     orchestrator: Orchestrator | None = None,
     llm_cache=None,
+    fixed_params: dict[str, str] | None = None,
 ) -> TurnResult:
     """Run one user turn against ``session`` and return the reply.
 
@@ -131,6 +172,13 @@ def dispatch_turn(
     (which also uses the global paths per W13/O9) can rely on the
     default.  Stage B's per-session path threading is the moment to
     start passing ``session.attempts_dir`` explicitly.
+
+    ``fixed_params`` (new in Step 8 of the Parameters Inputs redesign)
+    is the optional pre-formatted FIXED-parameter dict from the
+    Parameters Inputs view (see ``save_user_input``).  Pure
+    pass-through: passed verbatim to ``save_user_input``.  Default
+    ``None`` so non-web callers (the v4 REPL loader, smoke tests)
+    keep their existing behaviour.
     """
     if orchestrator is None:
         orchestrator = Orchestrator(session=session, llm_cache=llm_cache)
@@ -145,8 +193,12 @@ def dispatch_turn(
     pre_artefacts = _snapshot_artefact_paths(attempts_dir)
 
     try:
-        # 1. Save the user's text to user_query.txt.
-        save_user_input(user_input, inputs_dir)
+        # 1. Save the user's text to user_query.txt.  The optional
+        #    fixed_params dict carries the user-FIXED slider values
+        #    from the Parameters Inputs view; when present, a second
+        #    block is appended under the same timestamp header (see
+        #    save_user_input docstring for the exact format).
+        save_user_input(user_input, inputs_dir, fixed_params=fixed_params)
         # Echo the raw user message into the session log so it appears
         # in the web UI's log stream (tailed via /api/log/stream) AND
         # in the R2-archived session log on save.  Mirrors the
