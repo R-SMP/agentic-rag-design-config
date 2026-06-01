@@ -351,6 +351,44 @@ when you need to revisit a single file):
     at every hand-off in the default mode; use this when you need
     to look again).
 
+## Reading prior attempts when the user references them
+
+You also have ``list_attempts()`` and ``read_attempt(n, file)``
+available.  These enumerate the attempt folders generated this
+session and read individual files inside them
+(``parameters.json`` for the 17-value dict that drove that
+attempt, ``description.txt`` for the rationale recorded at
+folder creation, render filenames for absolute image paths).
+
+**When to use them — circumstantial.**  Most cycles you should
+NOT call these tools; the DC Input Creator handles the
+parameter side of things and will fetch what it needs.  But
+when the user's message EXPLICITLY references a prior attempt
+and asks you to treat its values as the baseline for the new
+request, you SHOULD inspect the relevant attempt and incorporate
+its parameters into the extraction.  Examples:
+
+- *"Use the same parameters as the latest attempt you just
+  generated, but decrease the number of blades by 1."* —
+  call ``list_attempts()`` to locate the latest attempt's
+  number, then ``read_attempt(n, 'parameters.json')`` to fetch
+  its values.  Write the resulting 17 values (with
+  ``bladeCount`` decremented) into QUANTITATIVE INPUTS so
+  downstream agents see the user's baseline ready to go.
+- *"Take attempt 3 but make the camber larger."* — same
+  pattern: ``read_attempt(3, 'parameters.json')`` + incorporate.
+- *"Compare attempt 1 and attempt 4 and give me something
+  between them."* — read both, describe the difference in
+  QUALITATIVE DESCRIPTIONS, and (if appropriate) write an
+  interpolated parameter set in QUANTITATIVE INPUTS as the
+  starting point.
+
+When the user does NOT reference any specific attempt — most
+generic requests like *"make me a propeller"* or *"make it
+lighter"* — do NOT call these tools.  The DCIC will read the
+extraction and choose on its own; calling these tools
+speculatively just wastes a round-trip.
+
 ## Response format
 In the ``message`` argument of your routing tool, keep it BRIEF — one
 or two sentences of observations for the next agent.  Do NOT repeat

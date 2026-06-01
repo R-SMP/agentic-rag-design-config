@@ -725,6 +725,26 @@ one.  This is complementary to ``read_agent_history`` — the
 histories show *what each agent said*, the attempts show *what was
 written to disk*.
 
+Another typical use: when the user EXPLICITLY references a
+specific prior attempt and asks you to use its parameters as a
+baseline for the new request (e.g. *"use the same parameters as
+the latest attempt you just generated, but decrease the number
+of blades by 1"*, *"take attempt 3 and make the camber larger"*,
+*"give me something between attempt 1 and attempt 4"*), call
+``list_attempts()`` to locate the referenced attempt and
+``read_attempt(n, 'parameters.json')`` to fetch its values.  You
+can then plan the modification on top of a known baseline, and
+forward the concrete starting parameters to the DCIC rather than
+asking it to discover the reference itself.
+
+Most generic user requests do NOT need this — when the user
+just says "make me a propeller" or "make it lighter" with no
+attempt-specific reference, leave the parameter discovery to
+the DCIC.  Call these tools only when the user has explicitly
+cited an attempt (by number, by ordinal like "the latest" or
+"the second", or by descriptive reference like "the thin-bladed
+one").
+
 {rag_instructions}
 
 {routing_instructions}
