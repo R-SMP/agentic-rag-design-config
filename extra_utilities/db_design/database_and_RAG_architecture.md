@@ -479,6 +479,66 @@ knows coverage was reduced.
 > "re-embed mismatched rows on the fly with the current model and
 > include them." See §7 TODO list.
 
+### 4.10 Non-text artefacts — separate two-step retrieval (NOT in `database_search`)
+
+The `database_search` tool **never returns** user-input images or
+attempt-render images. Its XML response is text-only — `<question>`,
+`<answer>`, `<search_meta>`. This is a deliberate design choice, for
+two compounding reasons:
+
+1. **Most agents don't need to see images for most queries.** A
+   query like *"what worked for a thin propeller?"* is answered
+   purely from the textual Q+A in the corpus. Pulling images would
+   inflate the token budget on every single search regardless of
+   whether the images actually help — and the architecture doc §4.5
+   token cap would then evict useful text content to make room for
+   images the agent didn't need.
+
+2. **An opt-in `return_images` flag at search time would still be
+   wasteful, AND it does not lift the burden from the agent.**
+   The agent calling `database_search` does not yet know whether
+   the sessions/attempts about to be returned will actually be
+   useful for its scope. Asking it to pre-commit to image retrieval
+   means it'd either request images speculatively against anchors
+   it's about to ignore, or default to "no" and lose the option
+   without thinking. Neither is good. The decision *"do these
+   images help me?"* can only be made AFTER the agent has read the
+   text content of the retrieved anchors.
+
+Instead, image retrieval is a **separate, second-step** tool the
+agent invokes only AFTER reading the text response and deciding
+that a specific anchor is worth deeper inspection:
+
+1. **Step 1 — text-only search.** Agent calls
+   `database_search(...)` and reads the returned
+   `<question>` / `<answer>` content for each anchor in the XML.
+2. **Step 2 — selective artefact fetch.** If (and only if) the
+   agent decides the text content of a specific anchor is relevant
+   AND that seeing images would help, it calls a **separate**
+   artefact-fetch tool (T15, see §7) naming:
+   - the specific `session_id` (and optionally `attempt_id`)
+   - which artefact kinds to pull:
+     `user_input_images`, `attempt_renders`, both, or neither.
+
+Consequences of this pattern:
+
+- Agents never see images they didn't ask for.
+- Image bandwidth + token cost is paid only when the agent has
+  already triaged the text and committed to looking closer at a
+  specific anchor.
+- An agent whose role does not include looking at images at all
+  (e.g. one whose work is purely numeric/parametric) simply never
+  calls the artefact-fetch tool — no per-query decision to make,
+  no flag to remember.
+- The `database_search` tool signature stays simple: no
+  `return_images` flag, no per-call image-scope dial.
+
+The artefact-fetch tool itself is **not yet built** — see T15 in
+§7 below. The current Phase 3 implementation ships only
+`database_search` (text). When the artefact-fetch tool lands, the
+two-step calling pattern documented here is its contract; agents
+calling it before triaging text are using it wrong.
+
 ---
 
 ## 5. Output format — XML (LOCKED)
@@ -687,6 +747,7 @@ Items deferred to future iterations but recorded so they're not lost:
 | T12 | **R2 safety-folder recovery pipeline** — scan `<session>/safety/` folders, re-attempt the INSERT into `chunks` with corrected inputs (e.g. successfully recompute the embedding), and on success delete the safety file. Handles cascade-failure files too (re-do the identifying-Q first, then the cascaded subsequent Qs). | Out of v1 scope; the safety folder itself ships in v1 so no user data is lost — recovery is a follow-up. | New standalone script in `extra_utilities/` plus integration with the DH. |
 | T13 | **`rag_queries` retention policy** — decide on a TTL (e.g. 90 days), implement a cleanup job to drop rows older than the TTL. | The table itself ships in v1; retention is a scaling concern only relevant once the corpus is large. | Cron / scheduled task; settings on the workflow-settings page. |
 | T14 | **UI wiring for `DATABASE_ENTRY_MAX_RETRIES`** — surface the new variable on the workflow-settings page with the description text from §3.5.1. | Variable definition is locked in §3.5.1; UI implementation is a separate task. | Workflow-settings page (same page as the token-cap setting in T6). |
+| T15 | **Artefact-fetch tool** — separate from `database_search`. Given a specific `(session_id, attempt_id?)` anchor the caller has already triaged via text-only search, returns the requested image artefacts (`kinds=["user_input_images", "attempt_renders"]` or any subset). Reads from R2 since artefacts live there per §3.5 scope note. See §4.10 for the two-step retrieval rationale this tool is built to support. | Out of Phase 3 scope; text-only search ships first. The text response is enough for most agent decisions; image lookups are the long-tail follow-up. | New tool in `agents/database_handler/` or `agents/shared/`. Returns image bytes (or pre-signed R2 URLs) in the tool response. |
 
 ---
 
@@ -742,3 +803,13 @@ lands in the repo.
     Postgres INSERT. Non-Q+A session artefacts (mesh files, renders,
     user-provided images) continue to live on R2 as before — this
     rule applies to Q+A text only. See §3.5.
+13. **`database_search` returns text only — never images.** User-
+    input images and attempt-render PNGs are fetched via a separate
+    artefact-fetch tool (T15) the agent invokes selectively against
+    a specific anchor *after* triaging the text response. There is
+    NO `return_images` flag on `database_search` and NO image content
+    in any `<qa>` block. The two-step pattern (text first, then
+    optional artefacts on triaged anchors) is intentional — see
+    §4.10 for full rationale. Tool authors must not add an image
+    side-channel to `database_search`; agent prompt authors must
+    not instruct agents to expect images in the search response.
