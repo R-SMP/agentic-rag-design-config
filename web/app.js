@@ -930,6 +930,15 @@ function switchView(name) {
   }
   if (name === "images") loadImages();
   if (name === "chat" && input) input.focus();
+  if (name === "params" && window.paramsViewer) {
+    // The params view starts hidden; the params Viewer was
+    // constructed against a 0×0 container.  Force a re-measure each
+    // time the user shows the view so the WebGL canvas matches the
+    // pane (covers both the first-show case AND any window-resize
+    // that happened while the view was hidden — ResizeObserver does
+    // not fire for display:none elements in all browsers).
+    window.paramsViewer.resize();
+  }
   if (name === "logstatus") startLogStream();
   else stopLogStream();
   if (name === "questions") {

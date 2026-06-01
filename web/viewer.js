@@ -215,6 +215,17 @@ export class Viewer {
   }
 
   /**
+   * Force a re-measure of the container + WebGL canvas.  Needed when
+   * the container was display:none at viewer-construction time (the
+   * ResizeObserver records 0×0 in that case and may not re-fire when
+   * display flips to block/flex on some browsers).  Public so callers
+   * like switchView() in app.js can call it on first-show.
+   */
+  resize() {
+    this._sizeToContainer();
+  }
+
+  /**
    * Drop the current mesh from the scene, free its GPU resources, and
    * bring the placeholder back.  Called on End Session so the viewer
    * starts the next session as if nothing had been generated.
@@ -304,5 +315,31 @@ if (chatContainer) {
     nameEl: document.getElementById("viewer-name"),
     attemptEl: document.getElementById("viewer-attempt"),
     resetBtnEl: document.getElementById("viewer-reset"),
+  });
+}
+
+
+// ---------------------------------------------------------------------------
+// Second Viewer for the Parameters Inputs view  (Step 4 of redesign,
+// see extra_utilities/web_interface_notes.md §7).
+//
+// Fully independent of window.modelViewer: its own scene, camera,
+// renderer, controls, ResizeObserver, and requestAnimationFrame loop.
+// No mesh is loaded into this viewer yet — Step 7 wires the live-
+// preview pipeline (slider → /api/preview_mesh → load()).
+//
+// The params view starts hidden (display:none) so the ResizeObserver
+// records 0×0 on construction.  app.js's switchView() calls
+// window.paramsViewer.resize() the first time the user navigates to
+// the Parameters Inputs view, which re-measures the now-visible
+// container.
+// ---------------------------------------------------------------------------
+const paramsContainer = document.getElementById("params-viewer");
+if (paramsContainer) {
+  window.paramsViewer = new Viewer(paramsContainer, {
+    placeholderEl: document.getElementById("params-viewer-placeholder"),
+    nameEl: document.getElementById("params-viewer-name"),
+    attemptEl: document.getElementById("params-viewer-attempt"),
+    resetBtnEl: document.getElementById("params-viewer-reset"),
   });
 }
