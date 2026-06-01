@@ -28,12 +28,12 @@ Any agent can ESCALATE to the Orchestrator, which calls the Planner for a Proble
 ├── main.py                       # entrypoint → agents.loader.run()  (REPL)
 ├── web_app.py                    # FastAPI server backing the JS web UI (Stage A)
 ├── streamlit_app.py              # legacy Streamlit UI (pre-Stage-A, kept for reference)
-├── web/                          # hand-written JS frontend (index.html, app.js, viewer.js, style.css)
+├── web/                          # hand-written JS frontend (index.html, app.js, viewer.js, style.css, images/)
 ├── Dockerfile  docker-compose.yml  # container build + local stack (matches Railway)
 ├── config.py                     # paths + RhinoCompute env vars
 ├── requirements.txt
 ├── requirements-web.txt          # FastAPI + uvicorn stack (web_app.py only)
-├── workflow_settings/settings.py # 11 runtime flags (see Configuration)
+├── workflow_settings/settings.py # 18 runtime flags (see Configuration)
 ├── agents/
 │   ├── loader.py                 # session lifecycle, REPL, archival, DH invocation
 │   ├── step_caps.py              # single source of truth for every MAX_*
@@ -119,7 +119,7 @@ The left rail switches between six views:
 |---|---|
 | **Chat** | Conversational interface + inline 3D viewer for generated meshes.  Image-render bubbles carry an "Attempt NNN" heading and the viewer toolbar shows a matching "Attempt NNN" badge so it's always clear which design is on screen. |
 | **Image Inputs** | Upload reference images, attach a `_note.txt` description per image |
-| **Parameters Inputs** | (placeholder) future direct-edit form for the 17 design params |
+| **Parameters Inputs** | Direct-edit form for the 17 design params with live 3D preview. Split-pane like Chat: independent 3D viewer LEFT, 4-tab parameter column RIGHT (General / Inner / Middle / Outer profile).  Per-slider VARY ↔ FIXED ↔ PROPOSED state machine — moving a slider FIXES it (green); the system can spontaneously PROPOSE values (orange) when the Planner endorses an attempt.  FIXED values auto-append to the next chat message so downstream agents see them.  See **"Parameters Inputs view"** section below + `extra_utilities/web_interface_notes.md` for the full design. |
 | **LOG and Status** | Live multi-agent flowchart + tailing of the current session log |
 | **Questions for Saved Sessions** | Editable Database Handler schedule (see "DH schedule: three kinds of questions" below). Locked while a session is active. |
 | **Workflow Settings** | Live editor over `workflow_settings/settings.py` (takes effect next session) + LLM-routing chart on top |
@@ -162,6 +162,47 @@ Below the 3D viewer in the Chat view sit two small buttons:
 
 The `/api/parameters` endpoint currently serves the canonical 17-parameter reference list (`DC_prompt_fragments/dc_config/parameters.md`) as `{"text": "..."}`. *(See TODO F9 — once a mesh is on screen the endpoint should ideally return that attempt's actual `parameters.json` values instead of the generic reference list.)*
 
+## Parameters Inputs view
+
+Split-pane like the Chat view. **LEFT**: an independent 3D viewer instance (separate from the chat's — `viewer.js` refactored into a `Viewer` class in late v9 so two instances can coexist). **RIGHT**: a parameter column with 4 section tabs at the top — General Parameters / Inner Profile / Middle Profile / Outer Profile. Click a tab to show only that section's sliders + matching profile image; no scrolling through all 17.
+
+**Per-slider state machine** — every slider row has a state button on its left:
+
+| State | Visual | When |
+|---|---|---|
+| **VARY** | gray, "VARY" | default; the system can vary this parameter freely |
+| **FIXED** | green, "FIXED" (pressed-in look) | the user has set it; the system MUST respect it |
+| **PROPOSED** | orange, "PROPOSED" (not pressed) | the system has proposed a value via `propose_attempt`; the slider holds that value until the user accepts (clicks → FIXED) or over-rides (moves it → FIXED at new value) |
+
+Moving any slider takes the row from VARY → FIXED at the slider's current visible value. Clicking a green FIXED button releases back to VARY but **keeps the visible value** as a hint. Every row that has ever received a PROPOSED value carries a small italic `PROPOSED VALUE: X` label on the right side of its name — this **persists even after the user takes ownership** so they always see the system's most recent suggestion as a reference point.
+
+**Live 3D preview pipeline.** Slider input triggers a 300 ms trailing-edge debounce; on fire, the frontend POSTs the current 17-param dict to `/api/preview_mesh` and loads the returned OBJ into the LEFT viewer. The backend route validates the dict (key set + ranges + integer types for `bladeCount` / `innerMaxPos` / `outerMaxPos`) and calls a pure `render_mesh_obj_text(params)` helper — factored out of the agent path's `generate_propeller_mesh` tool and memoised via `functools.lru_cache(maxsize=64)` keyed on (sorted params tuple, GH file mtime). Slider wiggling back and forth is essentially free. Below the LEFT viewer: a **Download geometry** button (disabled until the first successful preview lands; saves the current blob URL as `propeller_preview.obj`).
+
+**FIXED + RELEASED auto-append on chat.** Every `/api/turn` body carries an optional `fixed_params` dict (when the FIXED list has changed since the previous send) and an optional `released_params` list (when the user has just released previously-FIXED parameters). `save_user_input` appends two blocks under each turn's timestamp header in `user_query.txt`:
+
+```
+The user has fixed the following values through the Parameters Inputs interface:
+  - bladeCount: 4
+  - impellerRadius: 72 mm
+  - innerCamber: 5 % of chord
+
+The user is no longer constraining the following parameters (they can now be varied freely by the system):
+  - outerThickness
+```
+
+All downstream agents (Receptionist, UII via `read_user_inputs`, Planner via `read_user_queries`) see both blocks for free — no per-agent code change. Dedup by full fingerprint (names AND values); an unchanged FIXED list does not re-append. Empty FIXED list appends nothing.
+
+**Bottom-row action buttons** (visible regardless of active tab):
+
+- **Copy parameters** — clipboard, long-form list with units, for paste elsewhere.
+- **Use these parameters** — sets ALL rows to FIXED and posts a short chat message (the real parameter dict reaches the agents via the auto-append above).
+
+**Spontaneous PROPOSED.** The Receptionist's `propose_attempt` tool fires automatically when the Planner's APPROVE-branch hand-off endorses the surfaced attempt in plain prose (no fixed marker required — see `extra_utilities/warnings_developer.md` W22 for the natural-language convention rule). Phrases like *"recommend attempt N as the satisfying solution"*, *"best attempt so far"*, *"final pick"* trigger the call; hedging phrases like *"showing for context"*, *"intermediate result"*, *"first cut, still revising"* suppress it. The panel is sticky on the most recent endorsed proposal — informational user requests like *"show me the worst"* update the chat 3D viewer but never touch the Parameters Inputs panel.
+
+**End Session** wipes the Parameters Inputs panel state (`paramsResetAll()` in `web/app.js`) alongside the chat: all rows reset to gray VARY at mid-of-range defaults, PROPOSED text cleared, LEFT viewer unloads, Download geometry disabled, FIXED-dispatch dedup snapshot cleared so the next session's first chat send carries a fresh FIXED block if applicable.
+
+Full design + decisions log: [`extra_utilities/web_interface_notes.md`](extra_utilities/web_interface_notes.md).
+
 ## Architecture: how live activity reaches the browser
 
 The LOG and Status view, the live 3D viewer, and the per-agent "last tool used" captions are all driven by a single in-process pub-sub channel, with two SSE endpoints flushing events out to the browser. No agent code ever reaches into the web layer (per `warnings_developer.md` W17).
@@ -170,11 +211,13 @@ The LOG and Status view, the live 3D viewer, and the per-agent "last tool used" 
 
 Framework-agnostic by design — agent code calls `publish(event)`, the web layer calls `subscribe()` to get a per-connection event queue. When no subscriber is listening (REPL / Streamlit / tests), `publish` is a no-op. The bus accepts arbitrary dicts; the convention is a `type` field that the web layer routes on.
 
-Three event types are in use today:
+Five event types are in use today:
 
 - `{type: "visualize", path, name}` — published by `tools/visualize_model/visualize_model.py:visualize_3d_model`. Tells the viewer to load a new mesh inline as soon as the agent invokes the tool, without waiting for end-of-turn.
 - `{type: "agent_active", from, to, note}` — published from `agents/shared/trace.py:trace()` on every agent-to-agent handoff and (via the `@tool_active` decorator) on DC-tool entry / exit. Drives the highlight class on the flowchart.
 - `{type: "generic_tool", name, state}` — published from `agents/shared/agent_activity.py:generic_tool` on entry/exit. Drives the "last tool used" caption only; never affects which agent is highlighted.
+- `{type: "session_save_done", ok, saved, dh, feedback, error}` — published exactly once when the End Session background task finishes (success or failure). Frontend uses it to run the post-save UI cleanup (clear chat / viewer / images / log view) and re-enable the End Session button.
+- `{type: "params_proposed", values}` — published by `agents/receptionist/propose_attempt_tool.py:propose_attempt` when the Receptionist decides the surfaced attempt is the system's current best / satisfying recommendation (interprets the Planner's APPROVE-branch wording — endorsement vs. hedging). Drives the Parameters Inputs view's PROPOSED state update: non-FIXED sliders turn orange + every row gets a `PROPOSED VALUE: X` text label. See `extra_utilities/warnings_developer.md` W22 for the natural-language convention.
 
 ### The decorators (`agents/shared/agent_activity.py`)
 
@@ -201,6 +244,7 @@ A few one-shot endpoints round out the surface:
 - `POST /api/stop` — sets the cooperative-cancellation flag in `agents/shared/stop_signal.py`. Polled today only at Orchestrator hop boundaries (see TODO F11 for the planned tighter cancellation).
 - `GET /api/parameters` — serves the canonical parameter list for the Copy parameters list button (see above and TODO F9).
 - `GET /api/artefact?path=...` — sandboxed read of any `.png` / `.obj` produced this session, scoped to `ATTEMPTS_DIR`. Used for both inline render display and the Download geometry button.
+- `POST /api/preview_mesh` — generates a propeller mesh on demand from a 17-parameter dict and returns it as OBJ bytes. Used by the Parameters Inputs view's live-preview pipeline (slider input → 300 ms debounce → POST → load into the dedicated params-view 3D viewer). Validates the dict's keys / ranges / integer-typed params; calls the pure `render_mesh_obj_text` helper that's also used internally by the agent path's `generate_propeller_mesh` tool. Bypasses the agent pipeline entirely — slider tweaks do NOT create attempt folders, do NOT trigger any chain agent, do NOT show up in the LOG view. Memoised via `lru_cache(maxsize=64)`; identical parameter dicts return cached OBJ bytes instantly.
 
 ### Frontend dispatch (`web/app.js`)
 
@@ -435,15 +479,22 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
 | `CONTEXT_PRUNER_KEEP_LAST_MESSAGES` | `6` | how many recent messages of the calling agent survive the tier-1 prune verbatim (cut point is extended forward to never split an `AIMessage(tool_calls)` from its `ToolMessage`).  Same N is used to define the tier-2 scope (the "latest window" the fine summary covers). |
 | `CONTEXT_PRUNER_MAX_INDIVIDUAL_MESSAGE_TOKENS` | `30000` | per-message hard cap for the Context Pruner's pre-scan.  Any single message whose serialised content exceeds this many cl100k_base tokens is replaced in-place with a short placeholder of the same message type (`tool_call_id` / `tool_calls` / `name` fields preserved).  Runs BEFORE the threshold check so the rest of the prune pipeline never sees a giant message.  `0` disables the pre-scan. |
 | `CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS` | `60000` | hard cap for the tier-2 LLM input.  When tier 2 fires, if the serialised tail exceeds this many tokens it is hard-truncated by character ratio before being sent to the Pruner's LLM, so the call cannot exceed the upstream provider's per-request TPM limit.  `0` disables the cap. |
+| `DATABASE_ENTRY_MAX_RETRIES` | `3` | maximum attempts the Database Handler makes to INSERT a Q+A row into the Postgres `chunks` table when the insert fails (CHECK constraint violation, embedding-pipeline error, transient DB error).  On exhaustion the Q+A is written to the R2 safety folder for the session and skipped from the database.  See `extra_utilities/db_design/database_and_RAG_architecture.md` §3.5 for the safety-folder layout.  (Postgres backend is currently on hold mid-Phase-3B; this knob ships but is not yet exercised end-to-end.) |
+| `STITCHING_PROVIDER` | `"OpenAI"` | LLM provider for the Database Handler's Option B paragraph-rewrite step (which becomes the input to the embedding model).  Currently OpenAI only; the architecture allows swapping to `"Anthropic"` / `"Google"` when the matching API key is set.  See architecture doc §6.1. |
+| `STITCHING_MODEL` | `"gpt-4o-mini"` | Cheap model name for the rewrite step.  See architecture doc §6.1. |
+| `UII_MAY_READ_PREVIOUS_EXTRACTION` | `True` | Whether the User Input Inspector receives the prior turn's `extracted_inputs.txt` as part of the `read_user_inputs` bundle.  Default `True` preserves historical behaviour; flip to `False` when you suspect the UII is carrying stale state forward despite the prompt's "do not copy lines forward" rule.  Gated in `agents/shared/file_utils.py:load_user_inputs_bundle` via the new `exclude_root_files` kwarg.  See the UII's prompt section "Temporal scope and Parameters Inputs interface blocks" for the full extraction contract. |
 
 ## Status & known issues
 
-- [`extra_utilities/TODO_known_issues.md`](extra_utilities/TODO_known_issues.md) — open issues (O1–O10) and future-work entries (F1–F11), including the LOG-and-Status open items called out in this README:
+- [`extra_utilities/TODO_known_issues.md`](extra_utilities/TODO_known_issues.md) — open issues (O1–O10) and future-work entries (F1–F28), including:
   - **F5 / F6** — colorising the log pane and showing tool-call payloads on the flowchart.
   - **F9** — make Copy parameters list return the selected attempt's actual `parameters.json` instead of the canonical reference list.
   - **F10** — the dynamic gray arrows around the Orchestrator are wired but need a deployed-build debug pass.
   - **F11** — tighten the Stop button to cancel at the next tool call / message / LLM call boundary instead of only at Orchestrator hop boundaries; tool calls issued after Stop is pressed should not execute.
-- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W20) that must not regress.  W18 + W20 are the per-turn force-tool pattern (DH's `save_attempt_artefacts`; Orchestrator's `submit_feedback_dispatch`).  W19 is the disjoint-R2-key-namespace invariant for the three upload paths.
+  - **F24** — RESOLVED.  Live 3D preview in the Parameters Inputs view (Phase 3 of the redesign — see "Parameters Inputs view" above).
+  - **F25 / F26 / F27 / F28** — post-redesign polish items: pre-compute the active FIXED set in Python (instead of UII's in-prompt walk); verify Planner behaviour in non-happy-path cases; live-preview ON/OFF toggle; `sessionStorage` persistence of panel state across reload.  All open as low-priority exploration items, none committed to being implemented.
+- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W22) that must not regress.  W18 + W20 are the per-turn force-tool pattern (DH's `save_attempt_artefacts`; Orchestrator's `submit_feedback_dispatch`).  W19 is the disjoint-R2-key-namespace invariant for the three upload paths.  **W21** is the "empty `to_agents` in the DH schedule means all primary agents, NOT no agents" rule (Postgres ingest contract).  **W22** is the natural-language convention for the spontaneous `propose_attempt` mechanism — Receptionist's LLM interprets the Planner's APPROVE-branch wording; endorsement vocabulary in Receptionist / Planner / `DC_prompt_fragments/tools_config/propose_attempt.md` MUST stay consistent.
+- [`extra_utilities/web_interface_notes.md`](extra_utilities/web_interface_notes.md) — full design + locked-decisions log for the Parameters Inputs redesign (§§1–8) plus a closing wrap-up (§9) describing the delivered state as of 2026-06-02.
 
 ## Roadmap
 
@@ -469,3 +520,4 @@ Near-term direction:
 - **In-app End Session modal** (replaces `window.confirm`).  Step 1: Yes / No / Cancel.  Step 2 (on Yes): Y/Partial/N satisfaction toggle + two optional free-text fields.  Feedback submitted with the save.
 - **Orchestrator Role 4 — end-of-session feedback distribution.**  When the user supplies feedback, the Orchestrator distributes per-agent slices via a forced `submit_feedback_dispatch` tool call.  Each chain agent receives a single `HumanMessage(name="orchestrator")` in its history with only the feedback parts relevant to its scope — visible to the Database Handler when it interviews each agent post-session.
 - **Per-attempt UI labels** — image renders in chat carry an "Attempt NNN" heading; the 3D viewer toolbar shows a matching badge.
+- **Parameters Inputs view redesign** (2026-06 multi-step rollout, commits `f378ba7` → `fcb9ab6`).  Replaces the previous "coming soon" placeholder with a working split-pane view: independent 3D viewer LEFT, tabbed parameter column RIGHT, per-slider VARY ↔ FIXED ↔ PROPOSED state machine, live preview via `/api/preview_mesh`, FIXED/RELEASED block auto-append on every chat send so downstream agents see user constraints without any per-agent code change, and a spontaneous `propose_attempt` mechanism driven by the Planner's natural-language endorsement (no fixed marker phrase required — see W22).  `viewer.js` refactored to a `Viewer` class so the params view can host its own 3D instance alongside the chat's.  UII prompt rewritten to handle the new auto-appended blocks correctly (no more stale `(unlocked by user)` annotations).  Planner and Receptionist prompts gain rules for when to consult prior attempts and when to fire `propose_attempt` spontaneously.  Full design + chronology + delivered-state walkthrough in [`extra_utilities/web_interface_notes.md`](extra_utilities/web_interface_notes.md).
