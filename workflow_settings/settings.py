@@ -366,3 +366,35 @@ CONTEXT_PRUNER_MAX_INDIVIDUAL_MESSAGE_TOKENS: int = 30000
 # Valid values: any positive int.  0 disables the cap.  Default
 # 60000 leaves headroom for the system prompt + framing on top.
 CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS: int = 60000
+
+
+# ===========================================================
+# 16. Database Handler — retry budget for chunks INSERT
+# ===========================================================
+# Maximum number of attempts the Database Handler makes to INSERT a
+# Q+A row into the Postgres ``chunks`` table when the insert fails
+# (CHECK constraint violation, embedding-pipeline error, transient DB
+# error, etc.).  If all attempts are exhausted, the Q+A is written
+# to the R2 safety folder for the session and skipped from the
+# database — no user data is lost.
+#
+# Set higher if you see transient errors frequently; set lower if
+# you want fast failover to safety storage.  UNIQUE violations are
+# treated as "already saved" and do NOT consume a retry — they exit
+# the retry loop immediately and are not counted against this cap.
+#
+# Cascade behaviour: if the failing Q+A is the identifying
+# attempt-related question for an attempt, ALL subsequent attempt-
+# related questions for that same attempt are routed straight to
+# the safety folder (no retries) since the attempt's identity row
+# is not in a consistent state.  See
+# extra_utilities/db_design/database_and_RAG_architecture.md §3.5.
+#
+# Example: a Semantic Q+A is generated but the embedding-API call
+# is rate-limited.  With DATABASE_ENTRY_MAX_RETRIES = 3, the DH
+# retries embed-then-insert up to 3 times.  If still failing on the
+# 3rd retry, the raw Q+A goes to ``<session_id>/safety/.../<filename>.txt``
+# in R2 and the user data is preserved for later recovery.
+#
+# Valid values: any positive int (recommended 3–5)
+DATABASE_ENTRY_MAX_RETRIES: int = 3

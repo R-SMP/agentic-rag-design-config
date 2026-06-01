@@ -50,3 +50,20 @@ DATABASE_DIR = PROJECT_ROOT / "database"
 # RhinoCompute
 RHINO_COMPUTE_URL = os.getenv("RHINO_COMPUTE_URL", "http://localhost:6500/")
 RHINO_COMPUTE_API_KEY = os.getenv("RHINO_COMPUTE_API_KEY", "")
+
+# PostgreSQL — Railway-hosted, pgvector enabled.  Schema lives in
+# ``extra_utilities/db_design/database_PostgreSQL_schema_v4.sql``;
+# architecture notes in ``database_and_RAG_architecture.md``.
+#
+# In production on Railway the service receives DATABASE_URL via
+# reference variable, pointing at the in-cluster internal hostname
+# (postgres.railway.internal:5432).  For local development the
+# repo-root ``.env`` should also set DATABASE_PUBLIC_URL, the
+# Railway TCP-proxy URL (zephyr.proxy.rlwy.net or similar) that
+# resolves from a developer laptop.
+#
+# Both default to empty strings so a checkout without Postgres
+# configured still imports cleanly — ``agents/shared/postgres_pool``
+# treats empty URL as "Postgres disabled" and degrades gracefully.
+DATABASE_URL = os.getenv("DATABASE_URL", "")
+DATABASE_PUBLIC_URL = os.getenv("DATABASE_PUBLIC_URL", "")
