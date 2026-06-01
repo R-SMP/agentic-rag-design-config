@@ -62,6 +62,10 @@ from agents.shared.viz_bus import (
 )
 from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
 from tools import set_mesh_checks, set_render_library
+from tools.generate_mesh.generate_mesh import (
+    MeshGenerationError,
+    render_mesh_obj_text,
+)
 from workflow_settings import dh_schedule as settings_dh_schedule
 from workflow_settings import editor as settings_editor
 from workflow_settings import llm_routing as settings_llm_routing
@@ -505,6 +509,158 @@ def api_parameters() -> dict:
             detail=f"Cannot read parameters.md: {exc}",
         )
     return {"text": text}
+
+
+# ---------------------------------------------------------------------------
+# /api/preview_mesh  (Step 6 of the Parameters Inputs redesign)
+# ---------------------------------------------------------------------------
+
+# Range + type spec for each of the 17 canonical parameters.  Used by
+# /api/preview_mesh to validate the request body BEFORE the RhinoCompute
+# round-trip.  Mirrors DC_prompt_fragments/dc_config/parameters.md;
+# hardcoded rather than parsed from the .md so this validator is robust
+# against future formatting edits in that file.
+#
+# Keep in sync with PROPELLER_DC_PARAMETERS_V1 in
+# extra_utilities/db_design/populate_dc_parameter_schemas.py — both
+# represent the same v1 parameter set, just for different consumers.
+_PREVIEW_PARAM_SPEC: dict[str, dict] = {
+    # General / ring
+    "bladeCount":        {"type": "int",   "min": 3,    "max": 6},
+    "impellerRadius":    {"type": "float", "min": 60,   "max": 80},
+    "impellerHeight":    {"type": "float", "min": 4,    "max": 10},
+    "impellerThickness": {"type": "float", "min": 1,    "max": 5},
+    # Inner blade section
+    "innerThickness":    {"type": "float", "min": 3,    "max": 24},
+    "innerMaxPos":       {"type": "int",   "min": 2,    "max": 8},
+    "innerCamber":       {"type": "float", "min": 0,    "max": 9},
+    "innerChord":        {"type": "float", "min": 3,    "max": 11},
+    "innerAngle":        {"type": "float", "min": 2,    "max": 25},
+    # Middle blade section
+    "middlePos":         {"type": "float", "min": 0.3,  "max": 0.7},
+    "middleChord":       {"type": "float", "min": 10,   "max": 30},
+    "middleAngle":       {"type": "float", "min": 2,    "max": 25},
+    # Outer blade section
+    "outerThickness":    {"type": "float", "min": 3,    "max": 24},
+    "outerMaxPos":       {"type": "int",   "min": 2,    "max": 8},
+    "outerCamber":       {"type": "float", "min": 0,    "max": 9},
+    "outerChord":        {"type": "float", "min": 10,   "max": 30},
+    "outerAngle":        {"type": "float", "min": 2,    "max": 25},
+}
+
+
+class PreviewMeshIn(BaseModel):
+    """POST body for /api/preview_mesh.
+
+    Wrapped in a ``params`` dict so future fields (e.g. an explicit
+    GH-definition selector, or a "skip cache" flag) can be added
+    without breaking the body shape.
+    """
+    params: dict[str, float]
+
+
+@app.post("/api/preview_mesh")
+def api_preview_mesh(body: PreviewMeshIn) -> Response:
+    """Generate a propeller mesh from a 17-parameter dict and return
+    it as OBJ bytes.  Used by the Parameters Inputs view's live-
+    preview pipeline (Step 7 of the redesign).
+
+    This route does NOT go through the agent pipeline — it calls
+    :func:`tools.generate_mesh.generate_mesh.render_mesh_obj_text`
+    directly, bypassing attempts/ folders, agent-activity
+    heartbeats, and tool-caller routing.  Slider tweaks in the
+    Parameters Inputs view do NOT create attempt rows or trigger
+    Receptionist / UII / DCIC / DCII / DCOI.
+
+    The underlying helper is memoised via ``lru_cache(maxsize=64)``
+    (keyed on a sorted params tuple + the GH file's mtime_ns), so
+    repeated identical requests — e.g. the user dragging a slider
+    back and forth — are served from cache without re-running
+    RhinoCompute.
+
+    Auth: same ``_require_auth()`` gate as ``/api/turn``.
+
+    Body shape::
+        {"params": {"bladeCount": 4, "impellerRadius": 71, …}}
+
+    Responses:
+      - **200 OK** — Content-Type ``model/obj``, body is the OBJ
+        text (UTF-8).  Custom header ``X-Vertex-Count`` carries the
+        decoded vertex count (diagnostic).
+      - **400 Bad Request** — params dict missing keys, has unknown
+        keys, out-of-range values, or non-integer values for
+        integer-typed params (bladeCount / innerMaxPos / outerMaxPos).
+        Detail message names the failing param(s).
+      - **502 Bad Gateway** — RhinoCompute failed or returned no
+        usable mesh.  Detail message includes the upstream error.
+    """
+    _require_auth()
+
+    raw_params = body.params
+
+    # ----- Validate keys --------------------------------------------
+    expected_keys = set(_PREVIEW_PARAM_SPEC.keys())
+    received_keys = set(raw_params.keys())
+    missing = expected_keys - received_keys
+    extra = received_keys - expected_keys
+    if missing or extra:
+        problems: list[str] = []
+        if missing:
+            problems.append(f"missing: {sorted(missing)}")
+        if extra:
+            problems.append(f"unknown: {sorted(extra)}")
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid params dict — " + "; ".join(problems),
+        )
+
+    # ----- Validate ranges + coerce integer-typed params ------------
+    coerced: dict[str, int | float] = {}
+    problems = []
+    for name, spec in _PREVIEW_PARAM_SPEC.items():
+        v = raw_params[name]
+        if not (spec["min"] <= v <= spec["max"]):
+            problems.append(
+                f"{name}={v} (allowed: [{spec['min']}, {spec['max']}])"
+            )
+            continue
+        if spec["type"] == "int":
+            # JSON delivers 4 or 4.0 indistinguishably; render_mesh_obj_text
+            # uses ``isinstance(v, int)`` to choose System.Int32 vs Double
+            # for RhinoCompute, so coerce explicitly.  Reject non-integer
+            # floats (e.g. bladeCount=3.5) — those are silent-rounding
+            # foot-guns.
+            if v != int(v):
+                problems.append(f"{name}={v} (must be an integer)")
+                continue
+            coerced[name] = int(v)
+        else:
+            coerced[name] = float(v)
+    if problems:
+        raise HTTPException(
+            status_code=400,
+            detail="Out of range: " + ", ".join(problems),
+        )
+
+    # ----- Delegate to the pure helper (Step 5) ---------------------
+    try:
+        obj_text, vertex_count, _components = render_mesh_obj_text(coerced)
+    except MeshGenerationError as exc:
+        raise HTTPException(
+            status_code=502,
+            detail=f"Mesh generation failed: {exc}",
+        )
+
+    # ----- Return OBJ bytes ----------------------------------------
+    # The frontend (Step 7) fetches this with OBJLoader.load(blobUrl);
+    # the Content-Type is mostly informational (Three.js parses the
+    # body regardless).  X-Vertex-Count exposed for diagnostics —
+    # the frontend can log it but doesn't need it for rendering.
+    return Response(
+        content=obj_text,
+        media_type="model/obj",
+        headers={"X-Vertex-Count": str(vertex_count)},
+    )
 
 
 @app.get("/api/artefact")
