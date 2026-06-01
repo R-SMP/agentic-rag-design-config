@@ -1396,7 +1396,7 @@ button.danger:hover { background: #3a1d1d; }
   border-right: 1px solid var(--border);
 }
 
-/* RIGHT side: scrolling parameter column. */
+/* RIGHT side: tabbed parameter column. */
 .params-column {
   flex: 1 1 55%;
   min-width: 0;
@@ -1407,7 +1407,7 @@ button.danger:hover { background: #3a1d1d; }
 }
 .params-column-header {
   flex: 0 0 auto;
-  padding: 16px 22px 12px;
+  padding: 16px 22px 0;
   border-bottom: 1px solid var(--border);
 }
 .params-column-header h2 {
@@ -1416,7 +1416,7 @@ button.danger:hover { background: #3a1d1d; }
   color: #fff;
 }
 .params-subhead {
-  margin: 0;
+  margin: 0 0 12px;
   color: #aaa;
   font-size: 12px;
   line-height: 1.45;
@@ -1426,23 +1426,56 @@ button.danger:hover { background: #3a1d1d; }
   font-style: italic;
 }
 
-/* Scrolling list of all 17 parameters with section dividers. */
-.params-scroll {
-  flex: 1 1 auto;
-  overflow-y: auto;
-  padding: 8px 22px 16px;
+/* 4 section tab buttons sitting flush with the column header's bottom
+   border.  Active tab "merges" with the pane below by hiding its own
+   bottom border. */
+.params-tabs {
+  display: flex;
+  gap: 2px;
+}
+.params-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  color: #aaa;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 4px 4px 0 0;
+  font-family: inherit;
+  transition: background 120ms, color 120ms;
+  margin-bottom: -1px;       /* sit on top of header border-bottom */
+}
+.params-tab-btn:hover {
+  background: #1a1a1a;
+  color: #e0e0e0;
+}
+.params-tab-btn.active {
+  background: var(--bg);
+  color: #fff;
+  border-color: var(--border);
+  border-bottom-color: var(--bg);    /* visually merges with pane */
 }
 
-/* Section divider (one per profile group). */
-.param-section {
-  margin: 18px 0 8px;
-  padding-top: 12px;
-  border-top: 1px solid #333;
+/* Tab pane container — only one .params-pane.active visible at a time.
+   Per-pane scroll if the section's content overflows the viewport. */
+.params-panes {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;             /* lets the active pane fill the column */
 }
-.param-section:first-child {
-  border-top: none;
-  margin-top: 4px;
+.params-pane {
+  display: none;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 14px 22px 16px;
 }
+.params-pane.active {
+  display: block;
+}
+
+/* Profile image at the TOP of each pane, above the slider rows. */
 .param-section-header {
   display: flex;
   flex-direction: column;

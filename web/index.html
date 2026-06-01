@@ -174,7 +174,7 @@
           </div>
         </aside>
 
-        <!-- RIGHT pane: scrolling parameter column -->
+        <!-- RIGHT pane: tabbed parameter column -->
         <main class="params-column">
           <div class="params-column-header">
             <h2>Parameters Inputs</h2>
@@ -186,16 +186,41 @@
               Step 8 — for now use the
               <em>Use these parameters</em> button below).
             </p>
+
+            <!-- 4 section tabs.  Click to switch which section's
+                 sliders + profile image are visible.  Per the locked
+                 design, no Back/Next navigation. -->
+            <div class="params-tabs">
+              <button class="params-tab-btn active" type="button"
+                      data-paramtab="general">General Parameters</button>
+              <button class="params-tab-btn" type="button"
+                      data-paramtab="inner">Inner Profile</button>
+              <button class="params-tab-btn" type="button"
+                      data-paramtab="middle">Middle Profile</button>
+              <button class="params-tab-btn" type="button"
+                      data-paramtab="outer">Outer Profile</button>
+            </div>
           </div>
 
-          <!-- All 17 sliders populated by app.js paramsBuildAll().
-               Section dividers (image + title) are injected between
-               groups. -->
-          <div id="params-scroll" class="params-scroll"></div>
+          <!-- Tab panes — populated by app.js paramsBuildAll().
+               Only the .active pane is visible at a time.  Each pane
+               contains the matching profile image followed by that
+               section's slider rows. -->
+          <div class="params-panes">
+            <div class="params-pane active" data-paramtab="general"
+                 id="params-pane-general"></div>
+            <div class="params-pane" data-paramtab="inner"
+                 id="params-pane-inner"></div>
+            <div class="params-pane" data-paramtab="middle"
+                 id="params-pane-middle"></div>
+            <div class="params-pane" data-paramtab="outer"
+                 id="params-pane-outer"></div>
+          </div>
 
           <!-- Bottom action row.  The "Use these parameters" button
                is the manual submit path until Step 8 wires the
-               auto-append on chat send. -->
+               auto-append on chat send.  Stays visible regardless of
+               the active tab. -->
           <div class="params-bottom-row">
             <button id="params-copy" type="button">Copy parameters</button>
             <button id="params-submit" class="primary" type="button">

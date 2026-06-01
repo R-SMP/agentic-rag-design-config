@@ -2894,11 +2894,9 @@ function paramsBuildRow(spec) {
   return row;
 }
 
-function paramsBuildSection(group) {
-  const section = document.createElement("div");
-  section.className = "param-section";
-  section.dataset.sectionKey = group.key;
-
+function paramsBuildSectionHeader(group) {
+  // Image + section title shown at the TOP of each pane, above the
+  // slider rows for that section.
   const header = document.createElement("div");
   header.className = "param-section-header";
 
@@ -2913,20 +2911,31 @@ function paramsBuildSection(group) {
   title.textContent = group.label;
   header.appendChild(title);
 
-  section.appendChild(header);
-  return section;
+  return header;
 }
 
 function paramsBuildAll() {
-  const scroll = document.getElementById("params-scroll");
-  if (!scroll) return;
-  scroll.innerHTML = "";
+  // One pane per group (4 total).  Each pane is its own DOM container
+  // and gets the section image + slider rows for that group only.
+  // The .active pane is toggled by paramsSwitchTab().
   for (const group of PARAM_GROUPS) {
-    scroll.appendChild(paramsBuildSection(group));
+    const pane = document.getElementById(`params-pane-${group.key}`);
+    if (!pane) continue;
+    pane.innerHTML = "";
+    pane.appendChild(paramsBuildSectionHeader(group));
     for (const spec of group.params) {
-      scroll.appendChild(paramsBuildRow(spec));
+      pane.appendChild(paramsBuildRow(spec));
     }
   }
+}
+
+function paramsSwitchTab(tabKey) {
+  document.querySelectorAll(".params-tab-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.paramtab === tabKey);
+  });
+  document.querySelectorAll(".params-pane").forEach((p) => {
+    p.classList.toggle("active", p.dataset.paramtab === tabKey);
+  });
 }
 
 function paramsBuildSubmitMessage() {
@@ -2990,10 +2999,16 @@ async function paramsCopy() {
 
 function paramsInit() {
   paramsBuildAll();
+  // Wire tab buttons.
+  document.querySelectorAll(".params-tab-btn").forEach((b) => {
+    b.addEventListener("click", () => paramsSwitchTab(b.dataset.paramtab));
+  });
   const submitBtn = document.getElementById("params-submit");
   if (submitBtn) submitBtn.addEventListener("click", paramsSubmit);
   const copyBtn = document.getElementById("params-copy");
   if (copyBtn) copyBtn.addEventListener("click", paramsCopy);
+  // Default to General Parameters on first render.
+  paramsSwitchTab("general");
 }
 
 paramsInit();

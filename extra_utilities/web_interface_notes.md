@@ -21,14 +21,19 @@ edited for formatting only):
 
 - Interface split into two, just like in the Chat interface.
 - On the LEFT: 3D rendering viewer same as the one of the chat.
-- On the RIGHT: All the design parameters, one after the other, in
-  order.  Before the first parameters, show the first image
-  (general profile).  Before Inner section parameters, show the
-  image of the inner section.  Before Middle section parameters,
-  show the image of the middle section.  Before Outer section
-  parameters, show the image of the outer section.
-- **There should not be a "Next" button.**  All parameters visible
-  at once; user scrolls to see them all.
+- On the RIGHT: All the design parameters, organised into 4 TABS
+  along the top: **General Parameters / Inner Profile / Middle
+  Profile / Outer Profile**.  Clicking a tab shows only that
+  section's contents — no scrolling needed for typical viewport
+  sizes.  Each pane shows the matching profile image at the top
+  followed by that section's slider rows.
+- **There should not be a "Next" button.**  Tab navigation only.
+
+> **Revision note (2026-06-01):** an earlier version of this design
+> said *"all parameters visible at once; user scrolls to see them
+> all"*.  The user revised this after seeing Step 2's first
+> implementation — tabs are preferred to a single long scrolling
+> column.  All other design observations are unchanged.
 
 ### Tristate VARY / FIXED / PROPOSED button per slider
 
