@@ -1,8 +1,8 @@
 # Database and RAG Architecture — Design Decisions
 
 **Status:** design phase. Implementation begins after the user gives the go-ahead.
-**Companion file:** `database_PostgreSQL_schema_v2.sql` (in this folder).
-**Last updated:** 2026-05-31.
+**Companion file:** `database_PostgreSQL_schema_v4.sql` (in this folder). v4 = v3 + all §3 decisions locked 2026-06-01 (CHECK constraint on chunks, partial HNSW index, rag_queries log table). `database_PostgreSQL_schema_v2.sql` and `_v3.sql` kept as historical records.
+**Last updated:** 2026-06-01.
 
 This file captures every architectural decision made during the
 6 March meeting design discussion on the PostgreSQL backend and the
@@ -97,25 +97,247 @@ These need no new columns, just indexes and tool wiring:
 
 ---
 
-## 3. Pending schema decisions (still open)
+## 3. Schema additions and write-reliability behaviour locked 2026-06-01
 
-These were proposed during the discussion but not yet accepted or
-rejected by the user. Listed here so they're not forgotten.
+These four items were "pending" earlier and have now all been
+**accepted**. The schema changes appear in `database_PostgreSQL_schema_v4.sql`;
+the runtime behaviour described in §3.5 is application-layer and does
+not change the SQL itself.
 
-1. **CHECK constraint linking `field_type` ↔ `embedding` / `embedding_model`** —
-   prevents Semantic rows with NULL embedding or Quantitative rows
-   with an embedding.
-2. **Partial HNSW index excluding errors/empties / Quantitative rows** —
-   smaller, faster index.
-3. **End-Session feedback as `chunks` rows** — currently only on
-   `sessions`, so invisible to the RAG. Proposal: also write them as
-   chunks at session-end with `agent_from='User'`.
-4. **`rag_queries` log table** — for debugging and offline retrieval
-   evaluation. Recommended from day one.
+### 3.1 CHECK constraint linking `chunks.field_type` ↔ `embedding` / `embedding_model`
 
-*(The earlier item about `chunks.embedding_input TEXT` has been
-**accepted** as a consequence of locking Option B in §6 — see §2.1
-for the DDL.)*
+```sql
+ALTER TABLE chunks
+  ADD CONSTRAINT chunks_embedding_consistent_with_field_type CHECK (
+    (field_type = 'Quantitative' AND embedding IS NULL AND embedding_model IS NULL)
+    OR
+    (field_type = 'Semantic'     AND embedding IS NOT NULL AND embedding_model IS NOT NULL)
+  );
+```
+
+Prevents three classes of silent data corruption:
+- Semantic rows with NULL embedding — unsearchable orphans inflating
+  the corpus count.
+- Quantitative rows with an embedding set — wasted vector slot, may
+  surface in semantic searches it shouldn't.
+- Semantic rows with embedding but no `embedding_model` — the
+  model-mismatch skip rule at query time (§4.9) cannot be applied
+  because the row's model is unknown.
+
+**Behaviour on violation:** see §3.5 — the Database Handler retries
+the INSERT up to `DATABASE_ENTRY_MAX_RETRIES` times. If still failing,
+the Q+A is saved to the R2 safety folder instead.
+
+### 3.2 Partial HNSW index excluding error / empty / Quantitative rows
+
+```sql
+DROP INDEX IF EXISTS idx_chunks_embedding;
+CREATE INDEX idx_chunks_embedding ON chunks USING hnsw (embedding vector_cosine_ops)
+  WHERE NOT is_error AND NOT is_empty AND field_type = 'Semantic';
+```
+
+Smaller index → less RAM, faster index builds, faster vector queries.
+The index ignores rows that retrieval would never return anyway
+(error / empty / Quantitative).
+
+**REQUIRED query template** — Postgres only uses a partial index when
+the query's `WHERE` clause logically implies the index's `WHERE`.
+Every vector search query MUST include exactly these three predicates:
+
+```sql
+SELECT ...
+FROM chunks
+WHERE NOT is_error
+  AND NOT is_empty
+  AND field_type = 'Semantic'
+  AND ...   -- additional filters: agents_to ACL, embedding_model match, metafilters
+ORDER BY embedding <=> $query_vec
+LIMIT $k;
+```
+
+Forgetting any of the three predicates causes Postgres to fall back to
+a sequential scan — correct but ~1000× slower with no warning. The
+backend implementation locks this prefix into a single helper function
+(see §8 invariant 8).
+
+### 3.3 End-Session feedback as `chunks` rows
+
+When the user submits the End Session modal with feedback, the backend
+writes one or two extra `chunks` rows IN ADDITION TO populating
+`sessions.feedback_what_worked` / `sessions.feedback_what_didnt`:
+
+- If `feedback_what_worked` is non-empty → one chunk row with:
+  - `agent_from = 'User'`
+  - `agents_to = [primary agent set — Receptionist, DH, DCII, DCOI, Planner, ...]`
+  - `field = 'Positive User Comments'`
+  - `field_type = 'Semantic'`
+  - `body = feedback_what_worked` (raw text from the modal)
+  - `embedding_input = ` Option-B stitched paragraph of the feedback
+  - `embedding`, `embedding_model` populated
+- If `feedback_what_didnt` is non-empty → one chunk row, same shape
+  except `field = 'Negative User Comments'` and
+  `body = feedback_what_didnt`.
+
+The text remains in the `sessions` table for analytics; the chunks
+copies are the **retrieval surface**. Agents can semantically retrieve
+real user feedback through the `database_search` tool, e.g. *"what did
+past users say about thin propellers?"* surfaces relevant
+Positive / Negative User Comments rows.
+
+The specific list of agents in `agents_to` for these feedback chunks
+is an implementation detail — recommend including every agent that
+already has access to session-level retrieval.
+
+### 3.4 `rag_queries` log table
+
+Every call to the `database_search` tool is logged for debugging,
+offline evaluation, usage analytics, and cost tracking.
+
+```sql
+CREATE TABLE rag_queries (
+  id                  BIGSERIAL    PRIMARY KEY,
+  ts                  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),
+  session_id          TEXT         REFERENCES sessions(session_id) ON DELETE SET NULL,
+  caller_agent        TEXT         NOT NULL,                          -- which agent called the tool
+  query_text          TEXT,                                            -- the input_key_text
+  query_params        JSONB,                                           -- input_key_parameters_list (TODO T1)
+  n_requested         INTEGER      NOT NULL,
+  attempt_specific    BOOLEAN      NOT NULL,
+  metafilters         JSONB,                                           -- the METAFILTERS dict
+  embedding_model     TEXT,                                            -- model used to embed the query
+  n_returned          INTEGER      NOT NULL,                           -- distinct anchors returned
+  returned_anchor_ids JSONB,                                           -- [{session_id, attempt_id?, score}, ...]
+  skipped_count       INTEGER      NOT NULL DEFAULT 0,                 -- rows skipped due to embedding-model mismatch
+  truncated_anchors   INTEGER      NOT NULL DEFAULT 0,                 -- anchors dropped by token cap
+  latency_ms          INTEGER,
+  error_message       TEXT
+);
+CREATE INDEX idx_rag_queries_ts            ON rag_queries(ts);
+CREATE INDEX idx_rag_queries_session_id    ON rag_queries(session_id);
+CREATE INDEX idx_rag_queries_caller_agent  ON rag_queries(caller_agent);
+```
+
+Notes:
+- `ON DELETE SET NULL` on the session FK so deleting a session leaves
+  its query history intact (useful for cross-session analytics).
+- Retention policy is a follow-up decision — see T13 in §7.
+
+### 3.5 DH retry behaviour and R2 safety fallback
+
+When an INSERT into `chunks` fails (e.g. CHECK constraint violation
+from §3.1, NOT NULL violation, transient DB error, embedding-pipeline
+failure that leaves `embedding_model` NULL on a Semantic row), the
+Database Handler reacts as follows:
+
+#### 3.5.1 New workflow-settings variable: `DATABASE_ENTRY_MAX_RETRIES`
+
+A new variable added to the workflow-settings UI, customisable by the
+developer.
+
+- **Default value:** `3`
+- **Description text (shown next to the setting in the dev UI):**
+
+  > Maximum number of attempts the Database Handler makes to INSERT a
+  > Q+A row into the `chunks` table when the insert fails (CHECK
+  > constraint violation, embedding-pipeline error, transient DB error,
+  > etc.). If all attempts are exhausted, the Q+A is written to the R2
+  > safety folder for the session and skipped from the database. Set
+  > higher if you see transient errors frequently; set lower if you
+  > want fast failover to safety storage.
+
+- **Example:** a Semantic Q+A is generated, but the embedding-API call
+  is rate-limited and returns no vector. With
+  `DATABASE_ENTRY_MAX_RETRIES = 3`, the DH retries the
+  embed-then-insert flow up to 3 times. If still failing on the 3rd
+  retry, the raw Q+A is saved to
+  `<session_id>/safety/.../<filename>.txt` in R2 so no user data is
+  lost.
+
+#### 3.5.2 Retry rules
+
+1. **Retry on:** CHECK violation (after the DH fixes the inputs, e.g.
+   re-runs the embedding), NOT NULL violation, transient DB error,
+   network timeout.
+2. **Do NOT retry on `UNIQUE` violation.** That means a row already
+   exists for `(session_id, agent_from, field, attempt_id, item_index,
+   embedding_model)` — an earlier save succeeded; skip silently.
+3. Backoff strategy between retries (fixed delay, exponential, etc.)
+   is an implementation detail not pinned here.
+
+#### 3.5.3 R2 safety folder — structure (locked from user's choice)
+
+Layout: **Option C — grouped by anchor inside one `safety/`**
+
+```
+<session_id>/
+  safety/
+    session/                          # session-generic failures live here
+      <field>.txt                     # e.g. Plan.txt
+      <field>_M.txt                   # e.g. Plan_2.txt (multi-answer split index 2)
+    attempt_<NNN>/                    # one folder per attempt with at least one failure
+      <field>__<NNN>.txt              # e.g. BadAttempt__001.txt
+      <field>__<NNN>_M.txt            # e.g. BadAttempt__001_2.txt
+```
+
+- **Filename**: same as the DH source filename — exactly matches the
+  v9 DH filename matrix
+  (`<field>.txt` / `<field>_M.txt` / `<field>__NNN.txt` / `<field>__NNN_M.txt`)
+  so a recovery script can pair safety ↔ source trivially.
+- **One file per failed Q (flat).** No bundling, even in the cascade
+  scenario (§3.5.5) — each cascaded Q is its own file.
+
+#### 3.5.4 Safety-file content (locked format)
+
+Each safety file contains a diagnostic header followed by the canonical
+v9 Q+A block:
+
+```
+--- SAFETY-SAVE DIAGNOSTIC ---
+Timestamp:                 2026-06-01T14:30:52Z
+Retry count:               3 of 3
+Last DB error:             chunks_embedding_consistent_with_field_type CHECK violation:
+                           field_type='Semantic' but embedding IS NULL
+Field type:                Semantic
+Attempt ID:                001            (or "session-generic")
+Cascade source:            (none)         (or "identifying-Q for attempt_001 failed -
+                                            see <field>__001.txt in this folder")
+Agents allowed to access this answer:  Receptionist, DH, DCII, DCOI, Planner
+--- Field ---
+<field_name>
+--- Question ---
+<question_text>
+--- Answer ---
+<answer_text>
+```
+
+The `Agents allowed to access this answer:` line preserves the
+`agents_to` ACL so a recovery script (and a human reader) knows who
+could have seen this chunk had it landed in the DB.
+
+#### 3.5.5 Cascade behaviour for identifying-Q failures
+
+If the failed Q+A is an **identifying attempt-related question** (the
+question that establishes an attempt's identity in the dialogue), then
+**all subsequent attempt-related Q+A for that same attempt are also
+routed to the safety folder** — they cannot be safely inserted into
+the DB because their parent attempt's identity row is not in a
+consistent state.
+
+- Each cascaded Q is saved as its own safety file in the same
+  `attempt_<NNN>/` folder (flat layout, per user's choice).
+- The cascaded files' diagnostic header records the original failure
+  as the cause:
+  ```
+  Cascade source: identifying-Q for attempt_001 failed
+                  (see <field>__001.txt in this folder)
+  ```
+
+#### 3.5.6 Recovery
+
+A separate recovery script (out of v1 scope) can later scan
+`<session>/safety/` folders, re-attempt the INSERT with corrected
+inputs (e.g. successfully recompute the embedding), and on success
+delete the safety file. See T12 in §7 TODO list.
 
 ---
 
@@ -364,6 +586,54 @@ quality.
   column, or store a sentinel in `embedding_input`) so it can be
   re-stitched later.
 
+#### 6.1.1 Column mapping — what gets embedded vs what gets displayed
+
+There are two text representations of the same Q+A on a `chunks` row,
+and they serve different purposes:
+
+| Column            | Holds                                                                 | Used for                                  |
+|-------------------|-----------------------------------------------------------------------|-------------------------------------------|
+| `field`           | Raw field name (e.g. `"Bad Attempt"`)                                 | Filter + display                          |
+| `question`        | Raw DH question text                                                  | **Display at retrieval time**             |
+| `body`            | Raw answer text (or JSON for Quantitative)                            | **Display at retrieval time**             |
+| `embedding_input` | LLM-stitched prose paragraph (field + question + answer fused as one) | **What gets embedded** — never displayed  |
+| `embedding`       | vector(1024) of `embedding_input`                                     | ANN similarity search                     |
+| `embedding_model` | e.g. `'openai/text-embedding-3-large/1024'`                           | Model-mismatch filter (§4.9)              |
+
+This separation is deliberate. The user-facing text (`question`,
+`body`) stays exactly as the agent wrote it; the canonical Q/A
+content is never paraphrased on disk. The **embedding** sees a prose
+form that matches `text-embedding-3-large`'s pretraining
+distribution, giving better retrieval recall on natural-language
+queries.
+
+At retrieval time, the calling agent receives `question` + `body` —
+it **never sees** the stitched paragraph. The stitched paragraph
+exists only to produce a good embedding.
+
+#### 6.1.2 The Database Handler owns the stitch + embed + insert pipeline
+
+When the DH receives a **Semantic** Q+A to save, it executes the full
+chain itself:
+
+1. **Receive** `(field, question, answer, field_type='Semantic',
+   agent_from, agents_to, attempt_id?, ...)` from the answering agent.
+2. **Stitch:** call the cheap rewrite LLM with the versioned rewrite
+   prompt → produces `embedding_input` (the prose paragraph).
+3. **Embed:** call the embeddings API
+   (`text-embedding-3-large`, 1024 dim) on `embedding_input` →
+   produces the `embedding` vector and records `embedding_model`.
+4. **INSERT** into `chunks` with all columns populated (`field`,
+   `question`, `body`, `embedding_input`, `embedding`,
+   `embedding_model`, plus the rest).
+5. **On failure:** retry up to `DATABASE_ENTRY_MAX_RETRIES`; if
+   exhausted, write the Q+A to the R2 safety folder for the session
+   (§3.5).
+
+For **Quantitative** Q+A, steps 2 and 3 are skipped — the CHECK
+constraint (§3.1) enforces that `embedding` and `embedding_model`
+are NULL for Quantitative rows.
+
 ### 6.2 Rejected options (with reason)
 
 - **Option A — Dual embeddings + RRF.** Deferred to T11 in the TODO
@@ -399,9 +669,12 @@ Items deferred to future iterations but recorded so they're not lost:
 | T6 | Token cap for `database_search` exposed as a UI-configurable system workflow setting | Ship with a hardcoded default first | System workflow settings page |
 | T7 | Identify properly what to do with the `field` column in the database tables | Usage pattern not yet clear; affects how `field` metafilter is exposed | This file + `database_design_notes.md` |
 | T8 | Reranker (cross-encoder over top-K) | Optional quality boost; defer until corpus growth makes it worthwhile | Backend retrieval pipeline |
-| T9 | `rag_queries` log table — debugging and offline evaluation of retrieval quality | Decision pending (see §3.4) | New table in schema |
+| T9 | *(reserved — was `rag_queries` log table; now locked in §3.4)* | — | — |
 | T10 | Stage B verdict columns (`dcii_verdict`, `dcoi_verdict`, `chosen_for_user`) | User explicitly **rejected** these as metafilters for now | Revisit only if requirements change |
 | T11 | **Option A — Dual embeddings + RRF** for the chunks corpus. Store two vectors per record (one for the question, one for the answer/stitched-paragraph) and fuse the two ANN searches with Reciprocal Rank Fusion at query time. | Locked Option B for v1; Option A is the possible future upgrade if Option B's retrieval quality proves insufficient with real usage data. | Schema: split `chunks.embedding` into `embedding_question` + `embedding_answer`, OR introduce a child table `chunks_embeddings(chunk_id, embedding_kind, embedding)`. Backend: two ANN queries + RRF fusion. |
+| T12 | **R2 safety-folder recovery pipeline** — scan `<session>/safety/` folders, re-attempt the INSERT into `chunks` with corrected inputs (e.g. successfully recompute the embedding), and on success delete the safety file. Handles cascade-failure files too (re-do the identifying-Q first, then the cascaded subsequent Qs). | Out of v1 scope; the safety folder itself ships in v1 so no user data is lost — recovery is a follow-up. | New standalone script in `extra_utilities/` plus integration with the DH. |
+| T13 | **`rag_queries` retention policy** — decide on a TTL (e.g. 90 days), implement a cleanup job to drop rows older than the TTL. | The table itself ships in v1; retention is a scaling concern only relevant once the corpus is large. | Cron / scheduled task; settings on the workflow-settings page. |
+| T14 | **UI wiring for `DATABASE_ENTRY_MAX_RETRIES`** — surface the new variable on the workflow-settings page with the description text from §3.5.1. | Variable definition is locked in §3.5.1; UI implementation is a separate task. | Workflow-settings page (same page as the token-cap setting in T6). |
 
 ---
 
@@ -428,3 +701,25 @@ lands in the repo.
 7. **Schema version is per-attempt** — old attempts query under their
    original `schema_version`'s parameter definitions, not the latest.
    See §1 evolution table.
+8. **Vector search query template is locked** — every query against
+   the chunks table that uses the HNSW index MUST include the prefix
+   `WHERE NOT is_error AND NOT is_empty AND field_type = 'Semantic'`.
+   The partial HNSW index (§3.2) is only used when these three
+   predicates appear in the WHERE clause; forgetting any of them
+   causes Postgres to fall back to a sequential scan with no warning.
+   Implement once as a helper function (e.g. `vector_search_query()`)
+   and call only that — never hand-roll a vector search query.
+9. **DH retries failed `chunks` INSERTs up to
+   `DATABASE_ENTRY_MAX_RETRIES` times** (default 3, UI-configurable).
+   On exhaustion, the Q+A is written to the R2 safety folder for the
+   session — never silently dropped. UNIQUE violations are the
+   exception: they mean "already saved" and are NOT retried. See §3.5.
+10. **End-Session feedback lives in two places** — `sessions.feedback_what_worked`
+    and `sessions.feedback_what_didnt` (for analytics) AND in `chunks`
+    rows under the field names `'Positive User Comments'` and
+    `'Negative User Comments'` (for RAG retrieval). The chunk rows are
+    written at session-end alongside the sessions-table update. See
+    §3.3.
+11. **Every `database_search` call is logged to `rag_queries`** — no
+    silent searches. The log row is written even when the search
+    returns zero anchors or errors. See §3.4.
