@@ -224,6 +224,18 @@ Notes:
 
 ### 3.5 DH retry behaviour and R2 safety fallback
 
+> **R2 is the failure escape hatch, not the primary store.** In the
+> happy path, DH-saved Q+A text lives **only** in the Postgres
+> `chunks` table — there is no R2 mirror for Q+A text in this
+> architecture. This is a deliberate change from earlier v9 R2 dual /
+> 3-path behaviour where Q+A was always mirrored to R2. The R2
+> safety folder described below is exclusively where Q+A goes when
+> `DATABASE_ENTRY_MAX_RETRIES` is exhausted on the Postgres INSERT.
+>
+> Other session artefacts that don't fit in Postgres — mesh files,
+> renders, user-provided input images — continue to live on R2 as
+> before; this scope change applies to Q+A text only.
+
 When an INSERT into `chunks` fails (e.g. CHECK constraint violation
 from §3.1, NOT NULL violation, transient DB error, embedding-pipeline
 failure that leaves `embedding_model` NULL on a Semantic row), the
@@ -723,3 +735,10 @@ lands in the repo.
 11. **Every `database_search` call is logged to `rag_queries`** — no
     silent searches. The log row is written even when the search
     returns zero anchors or errors. See §3.4.
+12. **R2 safety folder is the failure escape hatch, not a happy-path
+    mirror.** DH-saved Q+A text is **never** written to R2 in the
+    happy path — Postgres `chunks` is the sole store. R2 receives
+    Q+A only when `DATABASE_ENTRY_MAX_RETRIES` is exhausted on the
+    Postgres INSERT. Non-Q+A session artefacts (mesh files, renders,
+    user-provided images) continue to live on R2 as before — this
+    rule applies to Q+A text only. See §3.5.

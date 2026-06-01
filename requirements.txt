@@ -37,4 +37,20 @@ streamlit>=1.39.0
 # endpoint URL is pointed at <account_id>.r2.cloudflarestorage.com.
 # See agents/shared/r2_uploader.py for the wiring and
 # README "Cloudflare R2" for the env vars required.
+#
+# Scope note (architecture v4, 2026-06-01): R2 is now the failure
+# escape hatch for the DH (safety folder when DATABASE_ENTRY_MAX_RETRIES
+# is exhausted on a Postgres INSERT) plus the store for mesh / render /
+# user-provided-image artefacts that don't fit in Postgres. Q+A text
+# is NOT mirrored to R2 in the happy path. See
+# extra_utilities/db_design/database_and_RAG_architecture.md §3.5.
 boto3>=1.34.0
+
+# PostgreSQL client (psycopg 3) + pgvector adapter — for the Railway
+# Postgres backend (chunks RAG corpus, sessions, attempts, parameter
+# inventory, rag_queries log). The [binary,pool] extras bundle the
+# precompiled C extension and the built-in AsyncConnectionPool.
+# See extra_utilities/db_design/database_and_RAG_architecture.md for
+# the full schema and retrieval design.
+psycopg[binary,pool]>=3.2
+pgvector>=0.3
