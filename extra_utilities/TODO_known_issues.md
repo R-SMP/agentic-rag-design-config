@@ -1971,6 +1971,16 @@ should NOT start until:
 
 **Status.**  Open.  Picked up after the database deployment work resumes (which is currently on hold).
 
+### F25. Pre-compute the active FIXED parameter set in Python instead of asking the UII to walk user_query.txt
+
+**Where.**  The User Input Inspector's prompt now contains a "Temporal scope and Parameters Inputs interface blocks" section instructing the UII's LLM to walk ``user_query.txt`` forward in time, applying each ``FIXED block`` (full snapshot) and each ``RELEASED`` block (drop listed keys) to compute the active constraint set.  This is in-prompt logic relying on the LLM to do a deterministic file-merge correctly.
+
+**What to explore.**  Replace the in-prompt walk with a Python pre-computation: have ``dispatch.py`` (or wherever the FIXED state is tracked) maintain the active-FIXED dict in memory, and pass it to the UII as a structured hand-off field (e.g. inside the Orchestrator's hand-off message body, or as a new attribute on the inputs bundle returned by ``load_user_inputs_bundle``).  The UII's prompt would then read the pre-computed set directly rather than reconstructing it.
+
+**Why deferred.**  In-prompt walk is fine for now per the user's 2026-06-01 sign-off — the LLM is generally good at this kind of step-by-step merge over a small file, and we want to see if natural-language errors actually appear before adding pre-computation plumbing.  The Python pre-computation is a clean upgrade path if (a) we see UII regressions interpreting FIXED/RELEASED blocks, or (b) ``user_query.txt`` grows long enough that walking it in-prompt becomes wasteful tokens.
+
+**Status.**  Open as a candidate for future exploration — NOT committed to being implemented.  Reassess after a few real sessions exercise the new flow.
+
 ---
 
 ## Resolved issues

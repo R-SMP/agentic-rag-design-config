@@ -37,6 +37,7 @@ from agents.shared.prompts import (
     UII_TEMPLATE,
     routing_instructions,
 )
+from workflow_settings import settings as workflow_settings
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
@@ -289,8 +290,20 @@ class UserInputInspector(BaseChainAgent):
                     f"Do not retry with a guessed path."
                 )
             else:
+                # Workflow setting (block #18) lets the developer
+                # filter the prior extracted_inputs.txt out of the
+                # bundle when they suspect the UII is carrying stale
+                # state forward despite the prompt's "do not copy
+                # forward" rule.  Read disk-fresh per the standard
+                # workflow_settings pattern.
+                exclude_root: tuple[str, ...] = ()
+                if not workflow_settings.UII_MAY_READ_PREVIOUS_EXTRACTION:
+                    exclude_root = ("extracted_inputs.txt",)
                 loaded = load_user_inputs_bundle(
-                    directory, self.provider, include_image_bytes=True,
+                    directory,
+                    self.provider,
+                    include_image_bytes=True,
+                    exclude_root_files=exclude_root,
                 )
                 image_blocks = loaded["image_blocks"]
                 image_paths = loaded["image_paths"]

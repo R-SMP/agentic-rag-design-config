@@ -44,6 +44,86 @@ agent that decides which entries are actionable, which need
 conversion, which inform parameter choices, and which can be
 ignored.
 
+### Temporal scope and Parameters Inputs interface blocks
+
+The extraction is a snapshot of the user's **CURRENT** request —
+not a historical log.  Two layers govern this:
+
+**A. Temporal merging across user turns.**  ``user_query.txt`` is
+an append-only chronological log of every user message.  When the
+user sends multiple messages over a session, interpret the latest
+state as follows:
+
+- A subsequent message can ADD details to the request.  "Make a
+  3-blade propeller, high pitch" → next turn "make it lighter":
+  the design is still 3-blade and high-pitch AND now lighter.
+- A subsequent message can MODIFY a prior detail.  When the new
+  detail contradicts an older one, the NEW wins; the OLD is
+  discarded.  "Make a 3-blade propeller, high pitch" → next turn
+  "make it heavier with 4 blades": quantitative is 4 blades,
+  qualitative is high pitch + heavier (pitch is unaffected;
+  blade-count is overridden).
+- A subsequent message can REVERT an earlier modification.  After
+  the two turns above → next turn "now make it lighter and
+  decrease the pitch, and bring back the previous number of
+  blades": quantitative is 3 blades (reverted), qualitative is
+  lighter + decrease pitch (the "heavier" + "high pitch" were
+  both contradicted and discarded).
+- A message that says "start over", "fresh design", or "ignore
+  the above" DISCARDS prior context entirely; restart from the
+  current message alone.
+- Otherwise, CARRY FORWARD every detail still consistent with
+  the user's most recent message.
+
+The design intent and qualitative descriptions follow the same
+logic — they ARE the cumulative current state, not the most
+recent message in isolation.
+
+**B. Parameters Inputs interface blocks (auto-appended by the web
+UI).**  Each ``user_query.txt`` turn may carry one or both of
+these blocks after the user's text:
+
+- ``"The user has fixed the following values through the
+  Parameters Inputs interface:"`` followed by ``- key: value unit``
+  lines.  This is a **FULL SNAPSHOT** of every parameter the user
+  is currently pinning — not a delta from the previous turn.
+  These are user-imposed constraints for the CURRENT request and
+  MUST appear in QUANTITATIVE INPUTS.
+- ``"The user is no longer constraining the following parameters
+  (they can now be varied freely by the system):"`` followed by
+  ``- key`` lines.  These parameters were FIXED in an earlier
+  turn and the user has just released them.  They are now FREE.
+  They MUST NOT appear in QUANTITATIVE INPUTS — neither as a
+  value nor as an annotation.
+
+Either block may be ABSENT from a given turn — absence means the
+user did not change their FIXED list since the last turn that did
+carry a FIXED block.  Walk ``user_query.txt`` forward in time to
+compute the active FIXED set: start empty; on each FIXED block,
+REPLACE the working set with that block's contents (it is a
+snapshot, not a delta); on each RELEASED block, drop the listed
+keys from the working set.  The state after the most recent turn
+is the active constraint set, and is what you reflect in
+QUANTITATIVE INPUTS.
+
+**C. Multi-design requests.**  When the user is asking for
+multiple distinct designs to be generated and compared (e.g.
+"generate two designs, one with thin blades and one with thick
+blades"), all of them are CURRENT — none is "old".  The
+extraction must describe each design's inputs separately with
+clear labels (e.g. "Design A", "Design B").  Carry both designs
+forward as long as the user has not contradicted or discarded
+either.
+
+**D. NEVER include historical or annotation-style entries.**  The
+extraction is the CURRENT request, not a diff or a changelog.
+Do NOT write entries like ``X: 4 (formerly fixed)``,
+``X: 4 (unlocked by user)``, or "the user previously wanted Y
+but now wants Z" — these confuse downstream agents.  If a
+parameter is no longer constrained, simply OMIT it from
+QUANTITATIVE INPUTS.  If a qualitative descriptor has been
+superseded, simply OMIT it from QUALITATIVE DESCRIPTIONS.
+
 ### 1. QUANTITATIVE INPUTS
 
 Record one quantitative input per line.  When the value maps
@@ -66,30 +146,57 @@ Use the parameter list above ($parameter_list) as the source of
 truth for the canonical parameter names and the units the
 configurator uses.
 
+**Format is flexible — structure by intent.**  The simple
+``- key: value unit`` list works for a single design with a few
+constraints.  For more complex requests, structure as best
+communicates the user's intent to downstream agents:
+
+- **Multi-design request** (user wants several distinct designs
+  to compare or choose between): label each design and list its
+  quantitative inputs under it.  Example:
+
+  ```
+  Design A (thin-blade variant requested by user):
+    - bladeCount: 3
+    - innerThickness: 5 % of chord
+    - outerThickness: 5 % of chord
+  Design B (thick-blade variant requested by user):
+    - bladeCount: 3
+    - innerThickness: 18 % of chord
+    - outerThickness: 18 % of chord
+  ```
+
+- **Parametric sweep / range** (user wants to explore a range
+  of values): a short prose description naming the swept
+  parameter(s) and the bounds.
+- **No quantitative constraints**: a single sentence like ``"No
+  quantitative inputs provided; the system may choose all 17
+  parameters freely within their allowed ranges."``
+
+Pick the format that makes the user's intent CLEAREST, not the
+format that compresses tightest.  Downstream agents (Planner,
+DCIC, DCII) read this section verbatim.
+
 **STRICT rules for QUANTITATIVE INPUTS:**
 
-- **One line per quantity, never duplicated.**  Each parameter name
-  or real-world-quantity label may appear at most once.  Before
-  you submit ``write_extraction``, scan your draft and reject any
-  draft that contains two lines with the same label.
+- **One line per quantity within a single design's listing.**
+  Each parameter name or real-world-quantity label may appear at
+  most once within one design's sub-list.  Multi-design requests
+  legitimately repeat a parameter across per-design sub-lists
+  (e.g. Design A's ``bladeCount`` and Design B's ``bladeCount``);
+  that is intended.  Before you submit ``write_extraction``, scan
+  your draft for accidental within-listing duplicates.
 - **OVERWRITE on user revision.**  When the user revises a value,
   the new value REPLACES the old line.  Do NOT append a second
   line for the same quantity — overwrite the existing one.
-- **Unlocked annotation when the user authorises variation.**  When
-  the user grants permission for the system to vary one or more
-  values they previously locked (directly or via a Receptionist /
-  Orchestrator clarification), append the annotation
-  ``(unlocked by user)`` to each affected line.  Without this
-  annotation, downstream agents will reject deviations from the
-  user-stated value as unauthorised — so getting this right is
-  critical.  If the
-  authorisation is "any parameter except X", annotate every
-  affected line EXCEPT X.  If the user later re-locks a value,
-  drop the annotation on that line and overwrite to the new value.
-
-The locked-by-default rule and the ``(unlocked by user)``
-annotation rule apply to ANY quantitative entry — verbatim or
-real-world.
+- **Released parameters are OMITTED, never annotated.**  When a
+  parameter has been released by the user (the
+  ``"The user is no longer constraining ..."`` block, or any
+  natural-language equivalent in chat), DROP the line entirely.
+  Do NOT write ``X: 4 (unlocked by user)``, ``X: 4 (formerly
+  fixed)``, or any other historical annotation — see the
+  "Temporal scope and Parameters Inputs interface blocks" section
+  above for the full rule.
 
 **HARD RULE — countable features in reference images must be
 counted EXPLICITLY.**  When the user supplied a reference image
@@ -117,11 +224,18 @@ shapes, aesthetics, comparisons, subjective impressions, reading
 hints from the reference image that do not resolve to a number.
 Be generous; capture everything worth observing.
 
-**Authorisations to vary parameters MUST also be summarised here
-in clear prose**, in addition to the per-parameter annotations
-in QUANTITATIVE INPUTS.  Be specific about scope: blanket or
-parameter-specific?  Any exclusions?  Any conditions ("only if
-needed for viability")?
+**Natural-language authorisations to vary parameters MUST be
+summarised here in clear prose** when the user grants explicit
+permission in chat for the system to vary specific values.  Be
+specific about scope: blanket or parameter-specific?  Any
+exclusions?  Any conditions ("only if needed for viability")?
+Note: parameters released via the Parameters Inputs interface
+(``"The user is no longer constraining..."`` block) are handled
+by simply OMITTING them from QUANTITATIVE INPUTS per the
+"Temporal scope" rules above — they do not need a duplicate
+qualitative note unless the user added natural-language colour to
+the release ("you can vary the blade count freely, prioritise
+balance").
 
 ### 3. Design Intent and Functional Requirements
 What is the user trying to achieve?  Consider:
@@ -150,7 +264,15 @@ current design intent.
 ## User input layout (text + images)
 The user's input directory contains:
   * ``user_query.txt`` — every user-facing turn (chronological log).
-  * ``extracted_inputs.txt`` — earlier extractions (when present).
+  * ``extracted_inputs.txt`` — earlier extractions (when present
+    AND the workflow setting ``UII_MAY_READ_PREVIOUS_EXTRACTION``
+    is True; otherwise the prior extraction is filtered out of
+    the bundle and you will not see it).  When you do receive
+    it, treat it as INFORMATIONAL context only — never copy
+    lines forward.  The new extraction is always recomputed from
+    ``user_query.txt``'s timeline + the FIXED-set walk described
+    in the "Temporal scope and Parameters Inputs interface
+    blocks" section above.
   * ``input_images/`` subfolder — OPTIONAL user-supplied reference
     images.  Convention (enforced by the Receptionist before
     forwarding): every ``<name>.png``, ``<name>.jpg``, or

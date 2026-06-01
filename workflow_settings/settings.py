@@ -439,3 +439,32 @@ DATABASE_ENTRY_MAX_RETRIES: int = 3
 #   STITCHING_MODEL    : any model name the chosen provider exposes
 STITCHING_PROVIDER: str = "OpenAI"
 STITCHING_MODEL: str = "gpt-4o-mini"
+
+
+# ===========================================================
+# 18. User Input Inspector — read previous extracted_inputs.txt?
+# ===========================================================
+# Whether the User Input Inspector receives the prior turn's
+# ``extracted_inputs.txt`` as part of the ``read_user_inputs``
+# bundle.
+#
+#   True   (default) UII sees the previous extraction as one of
+#          the files in /app/inputs.  It may consult it for
+#          continuity (e.g. "did anything actually change?"), but
+#          the prompt forbids copying lines forward — the
+#          extraction is always recomputed from ``user_query.txt``
+#          + the FIXED-set walk described in the UII prompt's
+#          "Temporal scope and Parameters Inputs interface blocks"
+#          section.
+#   False  the previous ``extracted_inputs.txt`` is FILTERED OUT
+#          of the bundle by ``load_user_inputs_bundle``.  The UII
+#          never sees it.  Use this when you suspect the UII is
+#          accidentally carrying stale state forward despite the
+#          prompt rules — a stronger guarantee than relying on the
+#          prompt alone.
+#
+# Default is True so the historical behaviour is preserved on
+# upgrade.  Flipping to False is the breaking change.
+#
+# Valid values: True, False
+UII_MAY_READ_PREVIOUS_EXTRACTION: bool = True

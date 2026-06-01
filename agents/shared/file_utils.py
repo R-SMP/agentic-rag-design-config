@@ -271,6 +271,7 @@ def load_user_inputs_bundle(
     provider: str,
     include_image_bytes: bool,
     images_subdir: str = "input_images",
+    exclude_root_files: tuple[str, ...] = (),
 ) -> dict:
     """Load every user-supplied input under *inputs_dir* (text + images).
 
@@ -295,6 +296,13 @@ def load_user_inputs_bundle(
         + ``image_paths``.  When False, return image *paths* and *note
         text* only — used by agents that should know what was uploaded
         without ingesting the image bytes themselves (Receptionist).
+    exclude_root_files
+        Tuple of file basenames (e.g. ``("extracted_inputs.txt",)``)
+        to FILTER OUT of the root-file sweep.  Match is exact on
+        ``Path.name`` (case-sensitive).  Used by the UII when the
+        ``UII_MAY_READ_PREVIOUS_EXTRACTION`` workflow setting is
+        False, to keep the prior extraction from being passed to the
+        LLM as context.
 
     Returns a dict with:
         text_content    : str         -- root text/JSON + paired notes,
@@ -315,7 +323,16 @@ def load_user_inputs_bundle(
         root_files      : list[dict]  -- categorised root file list
         summary         : str         -- one-line human-readable summary
     """
-    root_files = list_files(inputs_dir)
+    excluded = set(exclude_root_files)
+    # Filter the full root-file listing once up-front so the excluded
+    # files are absent from BOTH the loaded text AND from the
+    # ``summary`` / returned ``root_files`` keys (otherwise the caller
+    # would see "the file exists" in the summary even though its
+    # contents were withheld — confusing for the agent reading the
+    # summary).
+    root_files = [
+        f for f in list_files(inputs_dir) if f["name"] not in excluded
+    ]
     text_parts: list[str] = []
     for f in root_files:
         p = Path(f["path"])
