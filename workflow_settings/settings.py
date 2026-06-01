@@ -398,3 +398,44 @@ CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS: int = 60000
 #
 # Valid values: any positive int (recommended 3–5)
 DATABASE_ENTRY_MAX_RETRIES: int = 3
+
+
+# ===========================================================
+# 17. Database Handler — stitching model (Option B embedding input)
+# ===========================================================
+# Cheap LLM the Database Handler calls to rewrite each Q+A into the
+# single coherent prose paragraph that gets fed to the embedding
+# model (``text-embedding-3-large``).  The stitched paragraph lives
+# in ``chunks.embedding_input``; the resulting vector lives in
+# ``chunks.embedding``.  The user-facing text (``chunks.body`` /
+# ``chunks.question``) stays untouched by stitching — see
+# extra_utilities/db_design/database_and_RAG_architecture.md §6.1.
+#
+# The rewrite prompt lives at
+# ``agents/database_handler/stitching_prompt.md`` and is versioned
+# in its own frontmatter.  Treat it like a system prompt.
+#
+# Provider / model are split so the developer can switch one
+# without the other (e.g. keep OpenAI but try a different cheap
+# model).  The provider switch is gated on the matching API key
+# being present in ``.env``:
+#   * OpenAI    → OPENAI_API_KEY
+#   * Anthropic → ANTHROPIC_API_KEY
+#   * Google    → GOOGLE_API_KEY
+# A switch attempt that cannot satisfy the API-key requirement is
+# rejected by the workflow-settings editor with a clear error.
+#
+# Stitching failure (timeout, rate limit, API error) is **not**
+# papered over with a fallback string — it consumes a retry attempt
+# per DATABASE_ENTRY_MAX_RETRIES, and on exhaustion the Q+A is
+# routed to the R2 safety folder.  This keeps the chunks corpus
+# uniform (every row has a real LLM-stitched embedding_input).
+#
+# Cost example: gpt-4o-mini at ~$0.15 / 1M input tokens, ~28 Q+A
+# per session at ~300 input tokens each ≈ $0.0001 per session.
+#
+# Valid values:
+#   STITCHING_PROVIDER ∈ {"OpenAI", "Anthropic", "Google"}
+#   STITCHING_MODEL    : any model name the chosen provider exposes
+STITCHING_PROVIDER: str = "OpenAI"
+STITCHING_MODEL: str = "gpt-4o-mini"

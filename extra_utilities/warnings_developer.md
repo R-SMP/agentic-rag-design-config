@@ -616,3 +616,45 @@ Same checklist as W18:
 **Status.** In force from v9 onward.  Two consumers today
 (``save_attempt_artefacts`` on the DH; ``submit_feedback_dispatch``
 on the Orchestrator).
+
+## W21. Empty `to_agents` in the DH schedule means "all primary agents", NOT "no agents".
+
+**Where.** Database Handler chunks-INSERT path (Phase 3B,
+``agents/database_handler/db_writer.py``), the DH-schedule editor
+UI (``web/app.js`` ``openQPopover`` + ``renderToCellChips``),
+and the `chunks.agents_to TEXT[]` ACL column.
+
+**Why.** The DH-schedule editor lets an operator pick which agents
+can retrieve each Q+A from the RAG (the per-row "To" cell, backed
+by ``to_agents`` in ``dh_schedule.default.json`` and the live
+schedule JSON).  An operator who saves a row without ticking any
+"To" boxes does **not** mean "no agents should see this Q+A".  The
+DH treats that as the permissive default and inserts the chunks
+row with
+``agents_to = [Receptionist, DH, DCII, DCOI, Planner, Orchestrator,
+UII, DCIC, TC]`` — every primary chain agent.
+
+The intent is to avoid the silent-invisibility failure mode where
+an operator forgets the ACL and the resulting chunks become
+unreachable for the RAG without any warning.  See
+``extra_utilities/db_design/database_and_RAG_architecture.md`` §3.6
+for the full design rationale and §8 invariant 14 for the locked
+contract.
+
+**To restrict** visibility, populate ``to_agents`` explicitly per
+row.  The popover in the UI now shows a help line stating the
+empty-default rule, and the empty-state chip in the table cell
+reads ``(all agents — click to restrict)`` rather than the
+previous misleading ``(click to set)``.
+
+**Single source of truth for "primary agents".**  The list of
+agent keys that constitute "all primary agents" lives in ONE
+place: the ``DEFAULT_AGENTS_TO_ACL`` constant in
+``agents/database_handler/db_writer.py``.  Do NOT redefine it in
+``dh_schedule.py``, in the UI's ``Q_AGENTS`` list, or anywhere
+else — those are display-only catalogues, not the ACL default.
+When chain agents are added or removed, edit
+``DEFAULT_AGENTS_TO_ACL`` and that change automatically flows to
+every chunks-INSERT call.
+
+**Status.** In force from Phase 3B (DH-Postgres ingest) onward.

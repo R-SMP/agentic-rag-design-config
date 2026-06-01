@@ -351,6 +351,33 @@ A separate recovery script (out of v1 scope) can later scan
 inputs (e.g. successfully recompute the embedding), and on success
 delete the safety file. See T12 in §7 TODO list.
 
+### 3.6 Default `agents_to` ACL when the schedule omits it
+
+The `chunks.agents_to` column on every inserted row is populated
+from the DH-schedule entry's `to_agents` list.  When that list is
+empty (the default for a freshly-added schedule row, and a common
+state when an operator hasn't restricted access explicitly), the
+DH inserts the row with **`agents_to = [all primary agents]`** —
+i.e. Receptionist, DH, DCII, DCOI, Planner, Orchestrator, UII,
+DCIC, TC (the nine chain agents).
+
+Rationale: a permissive default maximises RAG retrieval utility
+(every agent can find every past Q+A) and avoids the failure mode
+where a row silently becomes invisible to the RAG because the
+operator forgot to set `to_agents`.
+
+To **restrict** visibility, populate `to_agents` explicitly in the
+DH-schedule editor UI (the per-row "To" cell) — the click-to-pick
+popover shows a help line stating that leaving it empty means "all
+agents".  The same rule is mirrored into
+`extra_utilities/warnings_developer.md` (W21).
+
+The canonical list of "primary agents" lives in **one place** — the
+`DEFAULT_AGENTS_TO_ACL` constant in
+`agents/database_handler/db_writer.py` (Phase 3B).  When chain
+agents are added or removed, update that constant; the architecture
+doc's enumeration above is descriptive only.
+
 ---
 
 ## 4. The `database_search` tool — locked design
@@ -650,13 +677,24 @@ quality.
 
 **Implementation notes:**
 - The rewrite prompt itself is a load-bearing piece of the system —
-  treat it like a system prompt and version it.
+  treat it like a system prompt and version it.  Lives at
+  `agents/database_handler/stitching_prompt.md` with a `version:` line
+  in the frontmatter.
 - Use a cheap model for the rewrite (the embedding is what matters,
-  not the rewrite's prose quality).
-- If the rewrite call fails, fall back to Option C labelled
-  concatenation for that chunk and flag it (e.g. a new `is_fallback_embedding`
-  column, or store a sentinel in `embedding_input`) so it can be
-  re-stitched later.
+  not the rewrite's prose quality).  Configured via two new workflow
+  settings introduced in Phase 3B: `STITCHING_PROVIDER` (default
+  `"OpenAI"`) and `STITCHING_MODEL` (default `"gpt-4o-mini"`).  Both
+  are UI-configurable; the provider switch is gated on the matching
+  API key being present in `.env`.
+- **Stitching failure is treated as a chunks-INSERT failure** —
+  there is NO automatic fallback to labelled-concatenation at the
+  per-chunk level.  A failed stitch consumes a retry attempt; once
+  `DATABASE_ENTRY_MAX_RETRIES` is exhausted, the raw Q+A is written
+  to the R2 safety folder (§3.5) just like any other DB-insert
+  failure.  This keeps the corpus uniform — every row in `chunks`
+  has a real stitched-and-embedded paragraph in `embedding_input`,
+  never a mechanical concatenation that an agent would later have
+  to know how to interpret differently.
 
 #### 6.1.1 Column mapping — what gets embedded vs what gets displayed
 
@@ -813,3 +851,11 @@ lands in the repo.
     §4.10 for full rationale. Tool authors must not add an image
     side-channel to `database_search`; agent prompt authors must
     not instruct agents to expect images in the search response.
+14. **Empty `to_agents` in a DH-schedule entry → row is inserted
+    with `agents_to = [all primary agents]`.** The default is
+    permissive on purpose so a forgotten ACL doesn't make a row
+    silently invisible to the RAG. The canonical "all primary
+    agents" list lives in ONE place: the `DEFAULT_AGENTS_TO_ACL`
+    constant in `agents/database_handler/db_writer.py` (Phase 3B).
+    When chain agents are added or removed, edit that constant —
+    do not redefine the list anywhere else. See §3.6.

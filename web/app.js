@@ -1693,6 +1693,20 @@ function openQPopover(row, anchorCell) {
   if (!pop) return;
 
   pop.innerHTML = "";
+
+  // Help text: leaving every checkbox unchecked is NOT "no agents
+  // can see this Q+A" — the Database Handler interprets an empty
+  // to_agents as "all primary agents have access" (the permissive
+  // default).  Tick boxes here only to RESTRICT visibility.  Mirror
+  // of the rule in extra_utilities/db_design/database_and_RAG_architecture.md
+  // §3.6 and W21 in extra_utilities/warnings_developer.md.
+  const help = document.createElement("div");
+  help.className = "q-popover-help";
+  help.textContent =
+    "Tick to restrict visibility. Leaving all unchecked means " +
+    "all primary agents have access (default).";
+  pop.appendChild(help);
+
   const list = document.createElement("ul");
   list.className = "q-popover-list";
   for (const a of Q_AGENTS) {
@@ -1750,7 +1764,11 @@ function renderToCellChips(cell, row) {
   if (!ks.length) {
     const empty = document.createElement("span");
     empty.className = "q-to-empty";
-    empty.textContent = "(click to set)";
+    // Empty to_agents means the DH inserts the chunk with
+    // agents_to = [all primary agents] (architecture doc §3.6 /
+    // warnings_developer.md W21).  Text reflects the permissive
+    // default rather than the previous misleading "(click to set)".
+    empty.textContent = "(all agents — click to restrict)";
     inner.appendChild(empty);
   } else {
     for (const k of ks) {

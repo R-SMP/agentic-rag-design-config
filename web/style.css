@@ -1333,7 +1333,17 @@ button.danger:hover { background: #3a1d1d; }
   padding: 8px 12px;
   z-index: 50;
   box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6);
-  min-width: 180px;
+  min-width: 220px;
+  max-width: 280px;
+}
+.q-popover-help {
+  font-size: 11px;
+  color: #aaa;
+  font-style: italic;
+  padding-bottom: 6px;
+  margin-bottom: 6px;
+  border-bottom: 1px solid #333;
+  line-height: 1.4;
 }
 .q-popover-list {
   list-style: none;
