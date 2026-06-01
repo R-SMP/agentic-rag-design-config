@@ -717,33 +717,45 @@ open new folders:
   description should capture the qualitative intent of this
   attempt in one paragraph.
 
-Typical recovery use: when the DCOI flags a defect for the second or
-third time, call ``list_attempts()`` then ``read_attempt(n,
-'parameters.json')`` for the most recent few to verify which levers
-have actually been moved across attempts before you direct another
-one.  This is complementary to ``read_agent_history`` — the
-histories show *what each agent said*, the attempts show *what was
-written to disk*.
+Use these tools SPARINGLY — only in exceptional cases listed
+below.  The vast majority of cycles do NOT need them:
 
-Another typical use: when the user EXPLICITLY references a
-specific prior attempt and asks you to use its parameters as a
-baseline for the new request (e.g. *"use the same parameters as
-the latest attempt you just generated, but decrease the number
-of blades by 1"*, *"take attempt 3 and make the camber larger"*,
-*"give me something between attempt 1 and attempt 4"*), call
-``list_attempts()`` to locate the referenced attempt and
-``read_attempt(n, 'parameters.json')`` to fetch its values.  You
-can then plan the modification on top of a known baseline, and
-forward the concrete starting parameters to the DCIC rather than
-asking it to discover the reference itself.
+- The **UII handles user-reference baseline lookups upstream**.
+  When the user says things like *"use the same parameters as
+  the latest attempt but decrease the bladeCount by 1"* or
+  *"take attempt 3 and make the camber larger"*, the UII reads
+  the referenced attempt's ``parameters.json`` and folds the
+  baseline into ``extracted_inputs.txt`` BEFORE you receive the
+  hand-off.  Trust the extraction; do NOT re-do that lookup.
+- The **DCIC chooses parameters on its own** from the extraction
+  for any generic or routine request.  Calling
+  ``list_attempts()`` / ``read_attempt()`` here just slows the
+  cycle and risks contradicting the UII or DCIC.
 
-Most generic user requests do NOT need this — when the user
-just says "make me a propeller" or "make it lighter" with no
-attempt-specific reference, leave the parameter discovery to
-the DCIC.  Call these tools only when the user has explicitly
-cited an attempt (by number, by ordinal like "the latest" or
-"the second", or by descriptive reference like "the thin-bladed
-one").
+Exceptional cases where you SHOULD consult prior attempts:
+
+- **Defect-recovery supervision**: when the DCOI flags the same
+  defect for the second or third time, call ``list_attempts()``
+  then ``read_attempt(n, 'parameters.json')`` for the most
+  recent few attempts to verify which levers have ACTUALLY
+  moved across attempts before you direct another revision.
+  Complements ``read_agent_history`` — the histories show
+  *what each agent said*, the attempts show *what was written
+  to disk*.
+- **Error interpretation**: when an upstream tool failure or a
+  confusing log entry points at a specific attempt, read that
+  attempt's files to understand what was actually generated vs.
+  what was meant.
+- **Ambiguous / hard-to-parse user request**: when the UII's
+  extraction leaves you genuinely uncertain about what the user
+  wants and reading the prior attempts would clarify it (e.g.
+  the user says *"do something different from before"* but the
+  extraction does not capture what "before" was, or the
+  extraction itself looks inconsistent with the user's prose).
+- **Additional supervision** when you suspect the UII or DCIC
+  may have made a wrong baseline choice and need to verify
+  against the actual on-disk parameters before approving the
+  next cycle.
 
 {rag_instructions}
 
