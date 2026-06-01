@@ -859,3 +859,192 @@ lands in the repo.
     constant in `agents/database_handler/db_writer.py` (Phase 3B).
     When chain agents are added or removed, edit that constant —
     do not redefine the list anywhere else. See §3.6.
+
+---
+
+## 9. Implementation status — pause as of 2026-06-01
+
+**Important.** The Postgres rollout is paused.  This section
+captures the state at pause so the work can resume with zero
+information loss — pointers to all completed code, all decisions,
+all uncommitted drafts, and the next concrete step.  §1-§8 above
+describe the design; this section is purely "where we are vs that
+design".
+
+### 9.1 Phase 1 — Railway Postgres provisioning  (COMPLETE)
+
+- PostgreSQL service provisioned on Railway.
+- `pgvector 0.8.2` installed and active.
+- Public URL (proxy) and internal URL both reachable.
+- Local `.env` populated with `DATABASE_URL` (internal) and
+  `DATABASE_PUBLIC_URL` (proxy).
+- Wired into the web service via Railway reference variables.
+
+### 9.2 Phase 2 — Schema deployment + parameter seed  (COMPLETE)
+
+- `database_PostgreSQL_schema_v4.sql` applied via
+  `extra_utilities/db_design/apply_schema.py`.
+- All 6 tables created (`chunks`, `dc_attempt_parameters`,
+  `dc_attempts`, `dc_parameter_schemas`, `rag_queries`, `sessions`).
+- All 26 indexes created (HNSW partial vector index, GIN ACL
+  index, metafilter indexes, FK indexes).
+- 17 propeller parameters seeded into `dc_parameter_schemas` at
+  `schema_version = 1` via
+  `extra_utilities/db_design/populate_dc_parameter_schemas.py`.
+- Commit history for this phase: `1406041` (architecture doc + v3/v4
+  SQL + apply_schema.py), `45fdf5d` (populate_dc_parameter_schemas).
+
+### 9.3 Phase 3A — Foundation knobs and connection pool  (COMPLETE)
+
+- `config.DATABASE_URL` and `config.DATABASE_PUBLIC_URL` added.
+- `workflow_settings.DATABASE_ENTRY_MAX_RETRIES = 3` (block #16,
+  UI-configurable).
+- `agents/shared/postgres_pool.py` — lazy, optional
+  `ConnectionPool` (min=1, max=4) with pgvector adapter registered
+  per-connection.  Returns `None` / raises `PostgresDisabledError`
+  cleanly when no URL is set.
+- `extra_utilities/db_design/smoke_test_postgres_pool.py` —
+  end-to-end verifier that runs locally without the full langchain
+  stack (uses `importlib` to bypass `agents/__init__.py`).
+  Verified PASS locally + Railway build clean + UI shows
+  `DATABASE_ENTRY_MAX_RETRIES`.
+- Commit: `b85a7fa` (prep — psycopg/pgvector deps, R2 scope
+  clarification), `8d31e7e` (foundation code).
+
+### 9.4 Phase 3B — DH ingest helper  (PARTIALLY DONE — RESUME POINT)
+
+**Prep DONE and committed (`f99e5da`):**
+
+- `workflow_settings/settings.py` block #17 — `STITCHING_PROVIDER`
+  (default `"OpenAI"`) and `STITCHING_MODEL` (default
+  `"gpt-4o-mini"`), full description with cost example + API-key
+  gate.
+- Architecture doc updates: §6.1 implementation-notes rewritten
+  (stitching failure → retry → safety folder; no fallback
+  concatenation), new §3.6 (default ACL = all primary agents),
+  new §8 invariant 14.
+- UI updates: `web/app.js` + `web/style.css` — popover help text
+  for the To-cell + empty-state chip now reads "(all agents —
+  click to restrict)".
+- `extra_utilities/warnings_developer.md` W21 — empty
+  `to_agents` ≠ no agents; canonical list lives only in
+  `DEFAULT_AGENTS_TO_ACL`.
+
+**Drafted but UNCOMMITTED at pause time:**
+
+- `agents/database_handler/stitching_prompt.md` (v1).  The
+  rewrite prompt for the cheap stitching LLM (Option B).
+  Versioned via frontmatter (`version: 1`, `load_bearing: true`).
+  Was scheduled for user review at the pause point — review
+  before wiring it in when resuming.  See the inline worked
+  examples in the file.
+
+**NOT YET WRITTEN:**
+
+- `agents/database_handler/db_writer.py`, the heart of 3B.  Must
+  expose:
+  - `stitch_for_embedding(field, question, answer) -> str` —
+    calls the LLM selected by `STITCHING_PROVIDER`/`STITCHING_MODEL`
+    using the prompt at `stitching_prompt.md`.
+  - `embed_text(text) -> list[float]` — calls the embedding
+    model selected by `EMBEDDING_PROVIDER`/`EMBEDDING_MODEL` at
+    `EMBEDDING_VECTOR_DIMS` dims.
+  - `upsert_session(...)`, `upsert_attempt(...)`,
+    `upsert_attempt_parameters(...)` — populate the FK targets
+    so chunks INSERTs don't fail on missing parent rows.
+  - `insert_chunk(...)` — the full chain (stitch → embed →
+    INSERT) with `DATABASE_ENTRY_MAX_RETRIES` retry + 1-second
+    fixed-delay backoff + safety-folder fallback on exhaustion.
+    Treats stitching failure as a DB-insert failure (no
+    fallback concatenation).
+  - `save_to_safety_folder(...)` — R2 write per §3.5.3 layout
+    and §3.5.4 file content format, including the
+    `Agents allowed to access this answer:` line.
+  - `DEFAULT_AGENTS_TO_ACL` constant — the canonical list of
+    "primary agents" used when a schedule entry's `to_agents`
+    is empty (per §3.6 + invariant 14).
+- `extra_utilities/db_design/smoke_test_db_writer.py` — end-to-end
+  verifier that exercises stitch + embed + insert with a
+  synthetic `_smoke_test_*` session_id and cleans up after itself.
+
+**4 design decisions locked during 3B prep (re-confirm before
+implementing):**
+
+| Decision | Value |
+|---|---|
+| Stitching model | gpt-4o-mini default; UI-configurable provider+model gated on API key (see block #17 of settings.py) |
+| Stitching failure | Treat as DB-insert failure → consume retry → exhausted → R2 safety folder.  NO labelled-concatenation fallback |
+| Default ACL | All primary agents (canonical list in `DEFAULT_AGENTS_TO_ACL`) |
+| Retry backoff | Fixed 1 s delay between attempts |
+
+**Next concrete step when resuming:**
+
+1. User reviews `stitching_prompt.md` and either approves it
+   verbatim or edits it.  Bump the `version:` frontmatter if any
+   substantive change is made.
+2. Write `db_writer.py` per the contract above, importing the
+   pool from `agents.shared.postgres_pool` and the prompt text
+   from `stitching_prompt.md`.
+3. Write `smoke_test_db_writer.py`.
+4. Run the smoke test locally — confirm a synthetic insert hits
+   the DB and a forced failure routes to R2 safety.
+5. Commit + pause again before 3C.
+
+### 9.5 Phase 3C — Hook DH save flow into Postgres  (NOT STARTED)
+
+- In `populate_database()` (`agents/database_handler/database_handler.py`):
+  - At startup: `db_writer.upsert_session(...)` then walk
+    `config.ATTEMPTS_DIR` and `db_writer.upsert_attempt(...)` +
+    `db_writer.upsert_attempt_parameters(...)` for each attempt
+    (so chunks FKs resolve).
+  - Per-Q+A: after `_write_entry()` succeeds locally, call
+    `db_writer.insert_chunk(...)` (which handles the retry +
+    safety fallback internally).
+- R2 mirror stays active at this stage (belt and braces while we
+  verify Postgres writes work end-to-end).
+
+### 9.6 Phase 3D — Stop R2 Q+A mirror in happy path  (NOT STARTED)
+
+- In `agents/database_handler/database_handler.py` line ~1613,
+  change `_r2.upload_directory(... suffixes=(".txt", ".png",
+  ".jpg", ".jpeg"))` to drop the `.txt` suffix.
+- After this, R2 only sees the failure-case safety folder for
+  Q+A text, plus non-Q+A artefacts (mesh, renders, user-input
+  images).
+
+### 9.7 Phase 4 — `database_search` tool  (NOT STARTED)
+
+- Implement per §4 (signature, ACL via `agents_to`, anchor-based
+  N semantics, token cap with lowest-ranked-anchor trim, XML
+  response, no-results payload, embedding-model mismatch skip,
+  `<search_meta>` header).
+- Implement T15 (artefact-fetch tool) per §4.10 once the text
+  tool is in production and the two-step pattern proves itself.
+
+### 9.8 Commit chronology for the work above
+
+In order:
+
+| Commit | What |
+|---|---|
+| `1406041` | docs + v3/v4 SQL + apply_schema.py |
+| `45fdf5d` | populate_dc_parameter_schemas.py |
+| `b85a7fa` | phase 3 prep (psycopg deps, R2 scope clarification) |
+| `8d31e7e` | phase 3a foundation (config + settings + pool + smoke test) |
+| `3d73261` | web log: include the user message |
+| `25d0348` | docs: text-only-search contract (§4.10) |
+| `f99e5da` | phase 3b prep (settings #17, default-ACL, doc + UI + W21) |
+
+### 9.9 Source-of-truth files
+
+When resuming, the file you re-read first is this one (`database_and_RAG_architecture.md`); §1–§8 are the locked design, §9 is "where we paused".  Then in order of likely need:
+
+- `extra_utilities/db_design/database_PostgreSQL_schema_v4.sql` — the live schema on Railway.
+- `extra_utilities/db_design/apply_schema.py` — re-apply if you need to drop/recreate.
+- `extra_utilities/db_design/populate_dc_parameter_schemas.py` — re-seed parameter schemas; idempotent.
+- `extra_utilities/db_design/smoke_test_postgres_pool.py` — sanity-check the connection.
+- `agents/shared/postgres_pool.py` — pool module.
+- `agents/database_handler/stitching_prompt.md` — Option B rewrite prompt (review first when resuming).
+- `workflow_settings/settings.py` blocks #16 and #17 — `DATABASE_ENTRY_MAX_RETRIES`, `STITCHING_PROVIDER`, `STITCHING_MODEL`.
+- `extra_utilities/warnings_developer.md` W21 — default-ACL rule.
+- `extra_utilities/TODO_known_issues.md` — F24 covers the parameters-view live preview (independent of database).
