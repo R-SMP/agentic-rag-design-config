@@ -136,13 +136,113 @@
         </div>
       </section>
 
-      <!-- 3. Parameters Inputs (placeholder — to be implemented later) -->
-      <section class="view placeholder-view" data-view="params" hidden>
-        <div class="placeholder-card">
-          <h2>Parameters Inputs</h2>
-          <p>Pick the design parameters one by one yourself instead of
-            describing them in chat.</p>
-          <p class="placeholder-tag">Coming soon</p>
+      <!--
+        3. Parameters Inputs
+        -------------------
+        Tabbed parameter configurator inspired by the standalone
+        propeller_V3 reference UI.  The user picks values via
+        sliders (grouped into General / Inner / Middle / Outer / Export
+        tabs) and hits "Use these parameters" on the Export tab; the
+        slider values are formatted into a chat message and posted
+        to /api/turn, after which the normal agent pipeline takes
+        over.
+
+        Slider ranges are sourced from DC_prompt_fragments/dc_config/
+        parameters.md (the SAME ranges agents validate against).
+        Defaults are pragmatic mid-of-range values.
+
+        NOTE: a live 3D preview that re-runs mesh generation on each
+        slider tick is NOT implemented in this commit — see TODO
+        P3-C in extra_utilities/TODO_known_issues.md.  The current
+        view is sliders + submit only.
+      -->
+      <section class="view params-view" data-view="params" hidden>
+        <div class="params-sidebar">
+          <div class="params-header">
+            <h2>Parameters Inputs</h2>
+            <p class="params-subhead">
+              Pick parameter values directly, then hit
+              <em>Use these parameters</em> on the Export tab to
+              send them into the chat pipeline.
+            </p>
+          </div>
+
+          <!-- Tab navigation -->
+          <div class="params-tabs">
+            <button class="params-tab-btn active" type="button"
+                    data-paramtab="general">General</button>
+            <button class="params-tab-btn" type="button"
+                    data-paramtab="inner">Inner</button>
+            <button class="params-tab-btn" type="button"
+                    data-paramtab="middle">Middle</button>
+            <button class="params-tab-btn" type="button"
+                    data-paramtab="outer">Outer</button>
+            <button class="params-tab-btn" type="button"
+                    data-paramtab="export">Export</button>
+          </div>
+
+          <!-- Profile images (one visible per tab) -->
+          <div class="params-images">
+            <div class="params-image active" data-paramtab="general">
+              <img src="/static/images/general-profile.png"
+                   alt="General profile diagram" />
+            </div>
+            <div class="params-image" data-paramtab="inner">
+              <img src="/static/images/inner-profile.png"
+                   alt="Inner profile diagram" />
+            </div>
+            <div class="params-image" data-paramtab="middle">
+              <img src="/static/images/middle-profile.png"
+                   alt="Middle profile diagram" />
+            </div>
+            <div class="params-image" data-paramtab="outer">
+              <img src="/static/images/outer-profile.png"
+                   alt="Outer profile diagram" />
+            </div>
+            <!-- Export tab has no image — uses descriptive copy. -->
+          </div>
+
+          <!-- Tab panes — populated dynamically by app.js paramsInit() -->
+          <div class="params-pane active" data-paramtab="general"
+               id="params-pane-general"></div>
+          <div class="params-pane" data-paramtab="inner"
+               id="params-pane-inner"></div>
+          <div class="params-pane" data-paramtab="middle"
+               id="params-pane-middle"></div>
+          <div class="params-pane" data-paramtab="outer"
+               id="params-pane-outer"></div>
+
+          <!-- Export pane — submit + copy controls -->
+          <div class="params-pane" data-paramtab="export"
+               id="params-pane-export">
+            <p class="params-export-desc">
+              Review the 17 parameters you have configured, then
+              submit them to the agent pipeline as a chat message.
+              The Receptionist will pick the message up, validate
+              the values, and trigger the downstream agents
+              (UII → DCIC → DCII → Tool Caller → DCOI) exactly as
+              if you had typed them into the chat.
+            </p>
+            <button id="params-submit" class="primary" type="button">
+              Use these parameters
+            </button>
+            <div style="height: 12px;"></div>
+            <p class="params-export-desc">
+              Or copy the parameter list to your clipboard for
+              later use.
+            </p>
+            <button id="params-copy" type="button">
+              Copy parameters
+            </button>
+            <div id="params-status" class="params-status"
+                 role="status"></div>
+          </div>
+
+          <!-- Bottom navigation -->
+          <div class="params-bottom-nav">
+            <button id="params-prev" type="button">← Back</button>
+            <button id="params-next" type="button">Next →</button>
+          </div>
         </div>
       </section>
 

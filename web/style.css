@@ -1368,3 +1368,179 @@ button.danger:hover { background: #3a1d1d; }
   color: #888;
 }
 
+
+/* =====================================================================
+   Parameters Inputs view
+   ---------------------
+   Tabbed slider configurator. Mirrors the layout of the standalone
+   propeller_V3 reference, integrated into the v9 dark-theme web UI.
+   See web/index.html section "3. Parameters Inputs" for the markup
+   and web/app.js paramsInit() for the JS wiring.
+   ===================================================================== */
+.params-view {
+  display: block;
+  overflow: auto;
+  padding: 20px 24px;
+}
+.params-sidebar {
+  max-width: 720px;
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.params-header h2 {
+  margin: 0 0 6px;
+  font-size: 20px;
+}
+.params-subhead {
+  color: #aaa;
+  font-size: 13px;
+  line-height: 1.45;
+  margin: 0;
+}
+.params-subhead em {
+  color: #d0d0d0;
+  font-style: italic;
+}
+
+/* Tab navigation */
+.params-tabs {
+  display: flex;
+  gap: 4px;
+  border-bottom: 1px solid #333;
+  padding-bottom: 0;
+}
+.params-tab-btn {
+  background: transparent;
+  border: 1px solid transparent;
+  border-bottom: none;
+  color: #aaa;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 4px 4px 0 0;
+  transition: background 120ms, color 120ms;
+}
+.params-tab-btn:hover {
+  background: #222;
+  color: #e0e0e0;
+}
+.params-tab-btn.active {
+  background: #1a1a1a;
+  color: #fff;
+  border-color: #333;
+  border-bottom-color: #1a1a1a;
+  margin-bottom: -1px;
+}
+
+/* Profile images — one visible at a time */
+.params-images {
+  display: flex;
+  justify-content: center;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-top: none;
+  border-radius: 0 0 6px 6px;
+  padding: 12px;
+  min-height: 120px;
+}
+.params-image {
+  display: none;
+}
+.params-image.active {
+  display: block;
+}
+.params-image img {
+  max-width: 100%;
+  max-height: 200px;
+  display: block;
+  margin: 0 auto;
+}
+
+/* Tab panes — one visible at a time */
+.params-pane {
+  display: none;
+  background: #1a1a1a;
+  border: 1px solid #333;
+  border-radius: 6px;
+  padding: 16px 18px;
+}
+.params-pane.active {
+  display: block;
+}
+
+/* Slider rows inside a pane */
+.params-slider-container {
+  margin-bottom: 14px;
+}
+.params-slider-container:last-child {
+  margin-bottom: 0;
+}
+.params-slider-container label {
+  display: block;
+  font-size: 13px;
+  color: #d0d0d0;
+  margin-bottom: 4px;
+}
+.params-slider-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.params-slider-wrapper input[type="range"] {
+  width: 100%;
+  accent-color: #4a9eff;
+  cursor: pointer;
+}
+.params-slider-values {
+  display: flex;
+  justify-content: space-between;
+  font-size: 11px;
+  color: #888;
+  font-variant-numeric: tabular-nums;
+}
+.params-slider-current {
+  color: #fff;
+  font-weight: 600;
+}
+
+/* Export pane copy + status */
+.params-export-desc {
+  color: #ccc;
+  font-size: 13px;
+  line-height: 1.5;
+  margin: 0 0 12px;
+}
+.params-status {
+  margin-top: 10px;
+  font-size: 12px;
+  color: #4a9eff;
+  min-height: 16px;
+}
+.params-status.error {
+  color: #ff7070;
+}
+
+/* Bottom navigation */
+.params-bottom-nav {
+  display: flex;
+  justify-content: space-between;
+  padding-top: 8px;
+}
+.params-bottom-nav button {
+  background: #222;
+  border: 1px solid #444;
+  color: #ddd;
+  padding: 6px 14px;
+  cursor: pointer;
+  font-size: 13px;
+  border-radius: 4px;
+}
+.params-bottom-nav button:hover {
+  background: #2a2a2a;
+}
+.params-bottom-nav button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}

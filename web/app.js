@@ -2716,3 +2716,256 @@ if (copyParametersBtn) {
 
 init();
 startEventStream();
+
+
+// ---------------------------------------------------------------------------
+// Parameters Inputs view
+// ---------------------------------------------------------------------------
+// Tabbed slider configurator integrated into the v9 left-side menu.
+// The user picks values for the 17 propeller parameters via sliders
+// grouped into 4 profile tabs (General / Inner / Middle / Outer);
+// the Export tab carries the "Use these parameters" submit button
+// which formats the slider state into a chat message and routes it
+// through sendMessage() — i.e. the agent pipeline takes over exactly
+// as if the user had typed the message into the chat.
+//
+// Live 3D preview is NOT wired in this commit — see TODO P3-C in
+// extra_utilities/TODO_known_issues.md.
+//
+// Slider ranges follow DC_prompt_fragments/dc_config/parameters.md
+// (the canonical source agents validate against).  Defaults are the
+// values the standalone propeller_V3 reference shipped with —
+// pragmatic mid-of-range starting points.
+
+const PARAM_GROUPS = [
+  {
+    key: "general",
+    label: "General Parameters",
+    params: [
+      { key: "impellerRadius",    label: "Propeller Radius (mm)",         min: 60, max: 80,  step: 1,    value: 71 },
+      { key: "impellerHeight",    label: "Propeller Height (mm)",         min: 4,  max: 10,  step: 1,    value: 8  },
+      { key: "impellerThickness", label: "Propeller Thickness (mm)",      min: 1,  max: 5,   step: 1,    value: 2  },
+      { key: "bladeCount",        label: "Blade Count",                   min: 3,  max: 6,   step: 1,    value: 3  },
+    ],
+  },
+  {
+    key: "inner",
+    label: "Inner Profile",
+    params: [
+      { key: "innerThickness",    label: "Thickness (% of chord)",        min: 3,  max: 24,  step: 1,    value: 6  },
+      { key: "innerMaxPos",       label: "Max Position (tenths of chord)", min: 2, max: 8,   step: 1,    value: 4  },
+      { key: "innerCamber",       label: "Camber (% of chord)",           min: 0,  max: 9,   step: 1,    value: 4  },
+      { key: "innerChord",        label: "Chord Length (mm)",             min: 3,  max: 11,  step: 1,    value: 11 },
+      { key: "innerAngle",        label: "Angle of Attack (deg)",         min: 2,  max: 25,  step: 1,    value: 25 },
+    ],
+  },
+  {
+    key: "middle",
+    label: "Middle Profile",
+    params: [
+      { key: "middlePos",         label: "Radial Position (× radius)",    min: 0.3, max: 0.7, step: 0.05, value: 0.3 },
+      { key: "middleChord",       label: "Chord Length (mm)",             min: 10,  max: 30,  step: 1,    value: 20 },
+      { key: "middleAngle",       label: "Angle of Attack (deg)",         min: 2,   max: 25,  step: 1,    value: 15 },
+    ],
+  },
+  {
+    key: "outer",
+    label: "Outer Profile",
+    params: [
+      { key: "outerThickness",    label: "Thickness (% of chord)",        min: 3,  max: 24,  step: 1,    value: 6  },
+      { key: "outerMaxPos",       label: "Max Position (tenths of chord)", min: 2, max: 8,   step: 1,    value: 4  },
+      { key: "outerCamber",       label: "Camber (% of chord)",           min: 0,  max: 9,   step: 1,    value: 4  },
+      { key: "outerChord",        label: "Chord Length (mm)",             min: 10, max: 30,  step: 1,    value: 15 },
+      { key: "outerAngle",        label: "Angle of Attack (deg)",         min: 2,  max: 25,  step: 1,    value: 10 },
+    ],
+  },
+];
+
+// Tab order including Export (which has no params; submit + copy live there).
+const PARAM_TAB_ORDER = ["general", "inner", "middle", "outer", "export"];
+
+// Per-key live state.  Mirrors slider values in JS so we can read them
+// at submit time without re-querying the DOM.
+const paramState = {};
+
+function paramsFormatValue(p) {
+  // Render with a precision matching the step (so 0.05-stepped sliders
+  // don't render as "0.30000000000004").
+  const decimals = p.step < 1 ? 2 : 0;
+  return Number(paramState[p.key]).toFixed(decimals);
+}
+
+function paramsBuildPane(group) {
+  const pane = document.getElementById(`params-pane-${group.key}`);
+  if (!pane) return;
+  pane.innerHTML = "";
+  for (const p of group.params) {
+    paramState[p.key] = p.value;
+
+    const container = document.createElement("div");
+    container.className = "params-slider-container";
+
+    const lbl = document.createElement("label");
+    lbl.setAttribute("for", `param-${p.key}`);
+    lbl.textContent = p.label;
+    container.appendChild(lbl);
+
+    const wrap = document.createElement("div");
+    wrap.className = "params-slider-wrapper";
+
+    const range = document.createElement("input");
+    range.type = "range";
+    range.id = `param-${p.key}`;
+    range.dataset.paramKey = p.key;
+    range.min = String(p.min);
+    range.max = String(p.max);
+    range.step = String(p.step);
+    range.value = String(p.value);
+    wrap.appendChild(range);
+
+    const valuesRow = document.createElement("div");
+    valuesRow.className = "params-slider-values";
+
+    const minSpan = document.createElement("span");
+    minSpan.className = "params-slider-min";
+    minSpan.textContent = `min ${p.min}`;
+    valuesRow.appendChild(minSpan);
+
+    const curSpan = document.createElement("span");
+    curSpan.className = "params-slider-current";
+    curSpan.id = `param-cur-${p.key}`;
+    curSpan.textContent = paramsFormatValue(p);
+    valuesRow.appendChild(curSpan);
+
+    const maxSpan = document.createElement("span");
+    maxSpan.className = "params-slider-max";
+    maxSpan.textContent = `max ${p.max}`;
+    valuesRow.appendChild(maxSpan);
+
+    wrap.appendChild(valuesRow);
+    container.appendChild(wrap);
+    pane.appendChild(container);
+
+    range.addEventListener("input", () => {
+      paramState[p.key] = parseFloat(range.value);
+      curSpan.textContent = paramsFormatValue(p);
+    });
+  }
+}
+
+function paramsSwitchTab(tabKey) {
+  document.querySelectorAll(".params-tab-btn").forEach((b) => {
+    b.classList.toggle("active", b.dataset.paramtab === tabKey);
+  });
+  document.querySelectorAll(".params-image").forEach((img) => {
+    img.classList.toggle("active", img.dataset.paramtab === tabKey);
+  });
+  document.querySelectorAll(".params-pane").forEach((p) => {
+    p.classList.toggle("active", p.dataset.paramtab === tabKey);
+  });
+  // Disable Back at first tab, Next at last tab.
+  const idx = PARAM_TAB_ORDER.indexOf(tabKey);
+  const prevBtn = document.getElementById("params-prev");
+  const nextBtn = document.getElementById("params-next");
+  if (prevBtn) prevBtn.disabled = idx <= 0;
+  if (nextBtn) nextBtn.disabled = idx >= PARAM_TAB_ORDER.length - 1;
+}
+
+function paramsBuildSubmitMessage() {
+  const lines = [
+    "I want to generate a propeller with the following parameters:",
+    "",
+  ];
+  for (const group of PARAM_GROUPS) {
+    lines.push(`${group.label}:`);
+    for (const p of group.params) {
+      const val = paramsFormatValue(p);
+      lines.push(`  - ${p.key}: ${val}`);
+    }
+    lines.push("");
+  }
+  return lines.join("\n").trim();
+}
+
+async function paramsSubmit() {
+  const status = document.getElementById("params-status");
+  if (status) {
+    status.classList.remove("error");
+    status.textContent = "Submitting parameters to the chat pipeline…";
+  }
+  const message = paramsBuildSubmitMessage();
+  try {
+    switchView("chat");
+    if (typeof sendMessage === "function") {
+      await sendMessage(message);
+    } else {
+      throw new Error("sendMessage() is not defined");
+    }
+    if (status) status.textContent = "Sent. Switched to the Chat view.";
+  } catch (e) {
+    if (status) {
+      status.classList.add("error");
+      status.textContent = "Submit failed: " + (e && e.message ? e.message : e);
+    }
+  }
+}
+
+async function paramsCopy() {
+  const status = document.getElementById("params-status");
+  const text = paramsBuildSubmitMessage();
+  try {
+    await navigator.clipboard.writeText(text);
+    if (status) {
+      status.classList.remove("error");
+      status.textContent = "Parameters copied to clipboard.";
+    }
+  } catch (e) {
+    if (status) {
+      status.classList.add("error");
+      status.textContent = "Copy failed: " + (e && e.message ? e.message : e);
+    }
+  }
+}
+
+function paramsInit() {
+  // Populate every parameter pane with sliders.
+  for (const group of PARAM_GROUPS) {
+    paramsBuildPane(group);
+  }
+  // Wire tab buttons.
+  document.querySelectorAll(".params-tab-btn").forEach((b) => {
+    b.addEventListener("click", () => paramsSwitchTab(b.dataset.paramtab));
+  });
+  // Wire Back / Next bottom navigation.
+  const prevBtn = document.getElementById("params-prev");
+  const nextBtn = document.getElementById("params-next");
+  if (prevBtn) {
+    prevBtn.addEventListener("click", () => {
+      const active = document.querySelector(".params-tab-btn.active");
+      const idx = active
+        ? PARAM_TAB_ORDER.indexOf(active.dataset.paramtab)
+        : 0;
+      if (idx > 0) paramsSwitchTab(PARAM_TAB_ORDER[idx - 1]);
+    });
+  }
+  if (nextBtn) {
+    nextBtn.addEventListener("click", () => {
+      const active = document.querySelector(".params-tab-btn.active");
+      const idx = active
+        ? PARAM_TAB_ORDER.indexOf(active.dataset.paramtab)
+        : 0;
+      if (idx < PARAM_TAB_ORDER.length - 1) {
+        paramsSwitchTab(PARAM_TAB_ORDER[idx + 1]);
+      }
+    });
+  }
+  // Wire Export-pane buttons.
+  const submitBtn = document.getElementById("params-submit");
+  if (submitBtn) submitBtn.addEventListener("click", paramsSubmit);
+  const copyBtn = document.getElementById("params-copy");
+  if (copyBtn) copyBtn.addEventListener("click", paramsCopy);
+  // Initial state — Back disabled because we're on the first tab.
+  paramsSwitchTab("general");
+}
+
+paramsInit();

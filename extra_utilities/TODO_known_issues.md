@@ -1955,6 +1955,22 @@ should NOT start until:
 
 **Status.**  Open.  Triage suggestion: option 1 (per-tool source caps) is the highest-leverage move because it removes the failure mode entirely for known tools.  Combine with option 4 (provider-aware tier-2 cap) for a complete fix; options 2/3/5 become nice-to-have polish.
 
+### F24. Live 3D preview in the Parameters Inputs view (P3-C)
+
+**Where.**  `web/index.html` Parameters Inputs section (`data-view="params"`) and `web/app.js` PARAM_GROUPS / paramsInit().  Both currently ship the sliders + Use-these-parameters submit but no live preview.  The standalone reference at `C:\Users\vince\MT Coding\web_interface_tests\propeller_V3` shows the target behaviour: the right-hand viewport regenerates a propeller mesh on every slider change (debounced).
+
+**What to build.**  Three coordinated pieces:
+
+1. **Backend preview endpoint** — new `/api/preview_mesh` route in `web_app.py` that takes a JSON body of the 17 parameter values, calls the existing mesh tool (`tools/generate_mesh/generate_mesh.py`) directly (bypassing the agent pipeline), and returns the mesh bytes (`.obj` is fine; `.3dm` if we want to match the reference exactly).  This is the same RhinoCompute round-trip the agent path already does, just exposed without the chain in front of it.  Authentication: same `_require_auth()` gate as `/api/turn`; no session lock required since this is a preview, not a session action.
+
+2. **Frontend slider listener** — add a debounced (~300–500 ms) `input` handler to every slider in PARAM_GROUPS that POSTs the current `paramState` to `/api/preview_mesh` and loads the returned mesh into a Three.js viewport.  Reuse `web/viewer.js` if possible, or instantiate a second viewer scoped to a new `<div>` in the Parameters view (the existing chat-view viewer needs to keep showing the agent-generated propellers, so sharing one DOM node is fragile).
+
+3. **`.gh` file alignment decision** — the reference uses `propeller_V3.3.gh`; the v9 mesh tool uses `Propeller_Raul_V1.2.gh` (`config.GH_DEFINITION_PATH`).  Decide whether (a) the preview uses Raul V1.2 like the rest of v9 (visual continuity between preview and final mesh, but the preview won't look identical to the standalone reference), or (b) we add a second registered `.gh` definition for preview-only and switch on `definition` arg in the request body.  Option (a) is simpler and means "what you preview is what the agents generate" — recommended unless there's a reason to keep the propeller_V3.3.gh visuals.
+
+**Why deferred.**  The Parameters Inputs view ships as sliders + submit in the current commit so the user can pick values and route them through the agent pipeline today.  The live preview is a separable, larger piece of work that needs (a) the backend bridge, (b) the viewport infrastructure, and (c) the .gh decision.  Not blocking the submit path; can land in its own commit when there is time.
+
+**Status.**  Open.  Picked up after the database deployment work resumes (which is currently on hold).
+
 ---
 
 ## Resolved issues
