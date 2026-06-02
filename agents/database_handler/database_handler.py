@@ -1412,6 +1412,13 @@ class DatabaseHandler(BaseChainAgent):
                                 field_type=entry.get("type", "Semantic"),
                                 session_id=session_id,
                                 session_start_ts=session_start_ts,
+                                # Phase 3C — forwarded to _run_force_tool_phase
+                                # via _run_identifying_conversation (which now
+                                # accepts them since the previous regression
+                                # fix).
+                                attempt_id_by_nnn=attempt_id_by_nnn,
+                                cascaded_attempt_nnns=cascaded_attempt_nnns,
+                                db_writer_available=db_writer_available,
                             )
                         )
                     except Exception as exc:  # pragma: no cover
@@ -2101,6 +2108,16 @@ class DatabaseHandler(BaseChainAgent):
         field_type: str,
         session_id: str,
         session_start_ts: float | None,
+        *,
+        # Phase 3C — caches propagated through to
+        # _run_force_tool_phase.  Owned by populate_database; we
+        # only forward them.  Without these in the signature, the
+        # _run_force_tool_phase call below NameError'd because the
+        # kwargs reference names not in this method's scope (see
+        # fix commit after Phase 3C / 10E + 10F).
+        attempt_id_by_nnn: dict[str, int],
+        cascaded_attempt_nnns: set[str],
+        db_writer_available: bool,
     ) -> tuple[
         list[tuple[str | None, str, str]],
         str,
