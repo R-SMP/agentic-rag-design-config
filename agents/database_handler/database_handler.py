@@ -1164,6 +1164,16 @@ class DatabaseHandler(BaseChainAgent):
             # ``len(value) >= 2``.
             attempt_ids_by_parent: dict[str, list[str]] = {}
 
+            # Session-id slug embedded in every saved .txt and used
+            # as the per-session prefix for the R2 mirror.  Same value
+            # the archive sweep uses under previous_sessions/.
+            # Moved UP here (was below the schedule-loading block
+            # before Phase 3C) because the Phase 3C upsert_session +
+            # per-Q+A insert_chunk blocks below all need session_id
+            # — leaving it below them would UnboundLocalError on the
+            # first DB call.
+            session_id = session_dir.name
+
             # Phase 3C caches — live for the duration of THIS
             # populate_database call.
             #   attempt_id_by_nnn: maps each DH-chosen attempt_label
@@ -1249,11 +1259,6 @@ class DatabaseHandler(BaseChainAgent):
                         f"this save (R2 mirror unaffected)."
                     )
                     db_writer_available = False
-
-            # Session-id slug embedded in every saved .txt and used
-            # as the per-session prefix for the R2 mirror.  Same value
-            # the archive sweep uses under previous_sessions/.
-            session_id = session_dir.name
 
             # Epoch seconds at the START of the live session.  Used
             # by the force-tool path's attempt-folder resolver to
