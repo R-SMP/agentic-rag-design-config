@@ -239,7 +239,7 @@ def upload_bytes(
 
 # Whitelist of artefact filenames inside an attempt folder that the DH
 # uploads when the user identifies a specific attempt via the
-# ``save_attempt_artefacts`` tool.  ``propeller_mesh_components.obj``
+# ``save_attempt_data`` tool.  ``propeller_mesh_components.obj``
 # is intentionally NOT on the list (the user spec explicitly excludes
 # it).  Files outside this set are ignored even if they exist.
 ATTEMPT_ARTEFACT_WHITELIST: tuple[str, ...] = (

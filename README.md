@@ -324,7 +324,7 @@ The DH schedule (edited via the **Questions for Saved Sessions** view, persisted
 | Kind | How it's flagged | Example | What the DH does |
 |---|---|---|---|
 | **Session-related** | `scope = session` (top-level row) | "What was the user's request?", "Did any agent flag an error?" | Interview Agent A, save Q+A to `.txt`. No attempt context. |
-| **Identifying attempt-specific** | `scope = attempt` + `parent_id = null` (top-level) | "Which attempt best satisfied the user?", "Which attempt led to problems?" | Interview Agent A, **then forced to call `save_attempt_artefacts`** to pin down which attempt. On success, save Q+A AND upload the attempt's artefacts. On failure, drop the whole block (this row + every Q(N).x sub-row). |
+| **Identifying attempt-specific** | `scope = attempt` + `parent_id = null` (top-level) | "Which attempt best satisfied the user?", "Which attempt led to problems?" | Interview Agent A, **then forced to call `save_attempt_data`** to pin down which attempt. On success, save Q+A AND upload the attempt's artefacts. On failure, drop the whole block (this row + every Q(N).x sub-row). |
 | **Attempt-specific sub-row** | `scope = attempt` + `parent_id = <identifying row's id>` | "Why was that attempt successful?", "What numerical parameters were used?" | Description is auto-prefixed with `"For attempt NNN: "` before the interview, so Agent A knows which attempt to answer about. Saved like any session row. |
 
 The Q-number scheme reflects the structure: `Q1, Q2, Q2.1, Q2.2, Q3` means Q1 and Q3 are session-related, Q2 is identifying, Q2.1 / Q2.2 are sub-rows under Q2.
@@ -335,7 +335,7 @@ When the DH reaches an identifying attempt-specific row, the system runs a 5-ste
 
 1. **DH formulates** the question (e.g. "Which attempt best satisfied the user's request?") and the system delivers it to Agent A.
 2. **Agent A replies** in plain prose.
-3. **Force-tool turn**: the DH's LLM is bound with `tool_choice="save_attempt_artefacts"` for this single turn. The DH MUST call the tool. Allowed inputs:
+3. **Force-tool turn**: the DH's LLM is bound with `tool_choice="save_attempt_data"` for this single turn. The DH MUST call the tool. Allowed inputs:
    - The attempt number Agent A named — `"002"`, `"2"`, `"attempt 002"`, an ordinal+`"attempt"`/`"iteration"`, or a full slug like `"20260530_142312_002_..."`. The system extracts the 3-digit number via `_normalise_attempt_input`.
    - The literal string `"none"` (case-insensitive) — when Agent A did NOT identify a specific attempt.
 4. **System processes the tool call**:
@@ -389,7 +389,7 @@ The save flow writes to R2 via **three distinct upload paths** that run at diffe
 
 ### Path 1 — Per-attempt artefacts (during the force-tool turn)
 
-Site: `agents/database_handler/database_handler.py:_run_force_tool_phase`. Fires once per resolved attempt id, **immediately** when the force-tool's `save_attempt_artefacts` tool call succeeds — long before the DH emits its SAVE: body.
+Site: `agents/database_handler/database_handler.py:_run_force_tool_phase`. Fires once per resolved attempt id, **immediately** when the force-tool's `save_attempt_data` tool call succeeds — long before the DH emits its SAVE: body.
 
 Calls `r2_uploader.upload_attempt_artefacts(folder, session_id=…, attempt_id=NNN)` per resolved NNN. Whitelisted files (from `agents/shared/r2_uploader.py:ATTEMPT_ARTEFACT_WHITELIST`): `parameters.json`, `propeller_mesh.obj`, `render_isometric.png`, `render_top.png`, `render_side.png`, `description.txt`. `propeller_mesh_components.obj` is intentionally excluded.
 
@@ -493,7 +493,7 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
   - **F11** — tighten the Stop button to cancel at the next tool call / message / LLM call boundary instead of only at Orchestrator hop boundaries; tool calls issued after Stop is pressed should not execute.
   - **F24** — RESOLVED.  Live 3D preview in the Parameters Inputs view (Phase 3 of the redesign — see "Parameters Inputs view" above).
   - **F25 / F26 / F27 / F28** — post-redesign polish items: pre-compute the active FIXED set in Python (instead of UII's in-prompt walk); verify Planner behaviour in non-happy-path cases; live-preview ON/OFF toggle; `sessionStorage` persistence of panel state across reload.  All open as low-priority exploration items, none committed to being implemented.
-- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W22) that must not regress.  W18 + W20 are the per-turn force-tool pattern (DH's `save_attempt_artefacts`; Orchestrator's `submit_feedback_dispatch`).  W19 is the disjoint-R2-key-namespace invariant for the three upload paths.  **W21** is the "empty `to_agents` in the DH schedule means all primary agents, NOT no agents" rule (Postgres ingest contract).  **W22** is the natural-language convention for the spontaneous `propose_attempt` mechanism — Receptionist's LLM interprets the Planner's APPROVE-branch wording; endorsement vocabulary in Receptionist / Planner / `DC_prompt_fragments/tools_config/propose_attempt.md` MUST stay consistent.
+- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W22) that must not regress.  W18 + W20 are the per-turn force-tool pattern (DH's `save_attempt_data`; Orchestrator's `submit_feedback_dispatch`).  W19 is the disjoint-R2-key-namespace invariant for the three upload paths.  **W21** is the "empty `to_agents` in the DH schedule means all primary agents, NOT no agents" rule (Postgres ingest contract).  **W22** is the natural-language convention for the spontaneous `propose_attempt` mechanism — Receptionist's LLM interprets the Planner's APPROVE-branch wording; endorsement vocabulary in Receptionist / Planner / `DC_prompt_fragments/tools_config/propose_attempt.md` MUST stay consistent.
 - [`extra_utilities/web_interface_notes.md`](extra_utilities/web_interface_notes.md) — full design + locked-decisions log for the Parameters Inputs redesign (§§1–8) plus a closing wrap-up (§9) describing the delivered state as of 2026-06-02.
 
 ## Roadmap

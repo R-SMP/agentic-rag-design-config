@@ -15,7 +15,7 @@ to that agent's history — so when the Database Handler interviews each
 agent post-session, the relevant user feedback is part of the agent's
 own conversation context.
 
-Like ``save_attempt_artefacts`` in ``agents/database_handler/dh_tools.py``,
+Like ``save_attempt_data`` in ``agents/database_handler/dh_tools.py``,
 the body of this tool is a no-op stub — the real logic lives in the
 Orchestrator's feedback-round helper, where it has live access to
 ``session.agent_states`` and the per-agent registry.

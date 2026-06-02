@@ -32,7 +32,7 @@ questions" and §"Identifying attempt-specific questions — force-tool flow"):
    pair.
 3. For **identifying attempt-specific** rows
    (`scope=="attempt"` AND `parent_id is None`), the DH is forced to call
-   `save_attempt_artefacts(attempt_id)`. On success the system uploads the
+   `save_attempt_data(attempt_id)`. On success the system uploads the
    attempt's `parameters.json` / `propeller_mesh.obj` / `render_*.png` /
    `description.txt` to R2 under
    `<R2_KEY_PREFIX>/<session_id>/attempts/<NNN>/<session_id>__<NNN>__<original>`.

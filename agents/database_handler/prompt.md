@@ -38,7 +38,7 @@ text generally yield better embeddings than long, padded passages.
 
 You have **one** tool bound, and only on specific turns:
 
-* ``save_attempt_artefacts(attempt_id: str)`` — used to record which
+* ``save_attempt_data(attempt_id: str)`` — used to record which
   design attempt an *identifying attempt-specific* question is about.
   See the "Identifying attempt-specific questions" section below for
   when the system forces you to call it.
@@ -87,7 +87,7 @@ Every row in the schedule is one of three kinds:
    ``.``) — about ONE specific design attempt and used to PIN DOWN
    which attempt is being discussed.  Examples: "Which attempt best
    satisfied the user request?", "Which attempt led to problems?".
-   The system FORCES you to call ``save_attempt_artefacts`` after
+   The system FORCES you to call ``save_attempt_data`` after
    Agent A's first reply (see below).
 
 3. **Attempt-specific sub-rows** (e.g. ``Q2.1``, ``Q2.2``, ``Q6.1``)
@@ -115,7 +115,7 @@ question, the per-field interview proceeds like this:
 1. You formulate your question to Agent A (as usual).
 2. Agent A replies.
 3. **FORCE-TOOL TURN** — the system forces you to call
-   ``save_attempt_artefacts(attempt_ids)`` ONCE on your very next
+   ``save_attempt_data(attempt_ids)`` ONCE on your very next
    reply.  You CANNOT emit text on this turn — the tool call is
    mandatory.  ``attempt_ids`` is a JSON LIST of attempt identifiers
    (one entry per attempt Agent A identified).  Pass exactly one of:
@@ -129,8 +129,10 @@ question, the per-field interview proceeds like this:
      ``attempt_ids=["002", "005"]`` (two attempts),
      ``attempt_ids=["002", "005", "007"]`` (three).  The system
      parses out the 3-digit number per entry, finds each matching
-     folder in this session's ``attempts/`` tree, and uploads each
-     attempt's ``parameters.json`` / ``propeller_mesh.obj`` /
+     folder in this session's ``attempts/`` tree, persists per-
+     attempt data to Postgres (``dc_attempts`` +
+     ``dc_attempt_parameters``), and uploads each attempt's
+     ``parameters.json`` / ``propeller_mesh.obj`` /
      ``render_*.png`` / ``description.txt`` (whichever exist) to
      the R2 mirror — renamed with the session and attempt ids —
      pushing a single ToolMessage back with the per-attempt outcome.
@@ -182,7 +184,7 @@ question, the per-field interview proceeds like this:
    in the right scope.  Sub-row .txt filenames acquire the
    ``__<NNN>`` suffix when N≥2 attempts were resolved.
 
-**Important**: do not call ``save_attempt_artefacts`` on any OTHER
+**Important**: do not call ``save_attempt_data`` on any OTHER
 turn.  The tool is only bound for the force-tool turn following an
 identifying attempt-specific question.  Calling it elsewhere will
 fail.

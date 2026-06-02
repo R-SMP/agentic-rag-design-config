@@ -965,7 +965,7 @@ five-session verification above is clean.
 - ``agents/database_handler/database_handler.py`` —
   ``_run_identifying_conversation`` + ``_run_force_tool_phase``.
 - ``agents/database_handler/dh_tools.py`` — the
-  ``save_attempt_artefacts`` langchain tool.
+  ``save_attempt_data`` langchain tool.
 - ``agents/shared/r2_uploader.py`` —
   ``upload_attempt_artefacts``.
 - Railway service ``stage-a`` — Variables tab + live container.
@@ -976,7 +976,7 @@ force-tool flow") was verified locally via Docker.  Run the same
 flow on Railway to confirm:
 
 1. The container can call ``self.llm.bind_tools(...,
-   tool_choice="save_attempt_artefacts")`` against whichever
+   tool_choice="save_attempt_data")`` against whichever
    provider Railway is configured with.  Each provider has a
    slightly different tool_choice payload shape; langchain
    abstracts them but it's worth a live check per provider you
@@ -1124,7 +1124,7 @@ the audit rules against, rather than guessing.
    becomes its own ``.txt`` file (single-underscore + index
    suffix when N≥2).
 2. **Multi-attempt identifying Q** (Extension B) — the
-   ``save_attempt_artefacts`` tool now accepts a LIST of attempt
+   ``save_attempt_data`` tool now accepts a LIST of attempt
    ids.  When the list has N≥2 entries, the identifying Q's
    answer is split per attempt (one ``ATTEMPT:``/``QUESTION:``/
    ``ANSWER:`` block per attempt → one ``__<NNN>.txt`` per
@@ -1188,7 +1188,7 @@ multi-attempt session end-to-end.  Need a proper verification.
 10. *Provider compatibility for the list-based tool.*  Confirm
     every provider we wire (OpenAI / Anthropic / Google) accepts
     the ``attempt_ids: list[str]`` schema via langchain's
-    ``bind_tools(tool_choice="save_attempt_artefacts")``.  The
+    ``bind_tools(tool_choice="save_attempt_data")``.  The
     list parameter shape is not exotic, but the per-provider
     json-mode handling sometimes coerces single-element lists
     to scalars — the parsing code already handles that, but the
