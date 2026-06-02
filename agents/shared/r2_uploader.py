@@ -182,6 +182,61 @@ def upload_file(
         return False
 
 
+def upload_bytes(
+    content: bytes,
+    remote_key: str,
+    *,
+    content_type: str = "text/plain",
+) -> bool:
+    """Upload an in-memory bytes payload to R2.  Returns True on success.
+
+    Used by the Database Handler's safety-folder write path
+    (``agents/database_handler/db_writer.py``), where the safety file
+    has NO local representation — it is written directly to
+    ``<session_id>/safety/...`` on R2 and never touches the local
+    filesystem.  See architecture doc §3.5 and invariant 12.
+
+    Best-effort: any error logs a warning and returns False so the
+    caller can route to its own escalation path (e.g. log the full
+    Q+A body at ERROR level so the data survives in the session log
+    file).  When R2 is not configured (``is_enabled() == False``)
+    this function returns False immediately with a single warning —
+    no boto3 client is built.
+
+    Parameters
+    ----------
+    content:
+        The exact byte payload to PUT.  No transformation is applied.
+    remote_key:
+        Path under the bucket (and the optional ``R2_KEY_PREFIX``).
+        Leading slashes are stripped.  Example::
+            "ID042_20260602_140000/safety/attempt_001/BadAttempt__001.txt"
+    content_type:
+        S3 ``ContentType`` header.  Defaults to ``"text/plain"``
+        (matches the safety-file format which is plain text).
+    """
+    client = _client()
+    if client is None:
+        return False
+    bucket = _env("R2_BUCKET_NAME")
+    key = f"{_key_prefix()}{remote_key.lstrip('/')}"
+    try:
+        client.put_object(
+            Bucket=bucket,
+            Key=key,
+            Body=content,
+            ContentType=content_type,
+        )
+        logger.info(f"[R2]  uploaded {key} ({len(content)} bytes, bytes payload)")
+        return True
+    except Exception as exc:
+        logger.warning(
+            f"[R2]  upload_bytes failed for {key}: "
+            f"{type(exc).__name__}: {exc}"
+        )
+        return False
+
+
 # Whitelist of artefact filenames inside an attempt folder that the DH
 # uploads when the user identifies a specific attempt via the
 # ``save_attempt_artefacts`` tool.  ``propeller_mesh_components.obj``
