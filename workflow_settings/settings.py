@@ -258,6 +258,20 @@ EMBEDDING_VECTOR_DIMS: int = 1024
 # embedding model's per-input limit)
 EMBEDDING_MAX_RESPONSE_TOKENS: int = 700
 
+# Defensive cap (in characters, NOT tokens) on the stitched paragraph
+# fed to the embedding model.  text-embedding-3-large enforces an
+# 8192-token per-call limit; 30000 characters comfortably stays under
+# that limit while leaving headroom.  Over-cap input is truncated at
+# this length and a WARNING is logged — the row is still embedded
+# (lossy) rather than failing the whole chunks INSERT.  See
+# agents/database_handler/db_writer.py.
+#
+# Hidden from the workflow-settings web UI (internal tuning knob;
+# see HIDDEN_FROM_FLAG_LIST in workflow_settings/editor.py).
+#
+# Valid values: any positive int.  Default 30000 ≈ 7500 cl100k tokens.
+EMBEDDING_INPUT_MAX_CHARS: int = 30000
+
 
 # ===========================================================
 # 12. LLM routing mode
@@ -399,6 +413,16 @@ CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS: int = 60000
 # Valid values: any positive int (recommended 3–5)
 DATABASE_ENTRY_MAX_RETRIES: int = 3
 
+# Fixed delay (seconds) between successive chunks-INSERT retry
+# attempts when DATABASE_ENTRY_MAX_RETRIES > 1.  Architecture doc
+# §3.5 locks the backoff strategy as fixed-delay (not exponential).
+#
+# Hidden from the workflow-settings web UI (internal tuning knob;
+# see HIDDEN_FROM_FLAG_LIST in workflow_settings/editor.py).
+#
+# Valid values: any non-negative float (seconds).  Default 1.0.
+DATABASE_ENTRY_RETRY_BACKOFF_SECONDS: float = 1.0
+
 
 # ===========================================================
 # 17. Database Handler — stitching model (Option B embedding input)
@@ -434,11 +458,32 @@ DATABASE_ENTRY_MAX_RETRIES: int = 3
 # Cost example: gpt-4o-mini at ~$0.15 / 1M input tokens, ~28 Q+A
 # per session at ~300 input tokens each ≈ $0.0001 per session.
 #
+# >>> Currently only the OpenAI provider is implemented.  The
+# >>> Anthropic and Google branches are TODO items T16 and T17 in
+# >>> the architecture doc.  Until they ship, STITCHING_PROVIDER is
+# >>> locked to "OpenAI" in the workflow-settings editor (the
+# >>> provider input is rendered as a disabled dropdown — see
+# >>> ENUM_OPTIONS in workflow_settings/editor.py).  STITCHING_MODEL
+# >>> stays editable so the developer can try a different OpenAI
+# >>> model (e.g. gpt-4o-mini → gpt-4o) without code edits.
+#
 # Valid values:
-#   STITCHING_PROVIDER ∈ {"OpenAI", "Anthropic", "Google"}
+#   STITCHING_PROVIDER ∈ {"OpenAI"}  (Anthropic / Google = T16 / T17, deferred)
 #   STITCHING_MODEL    : any model name the chosen provider exposes
 STITCHING_PROVIDER: str = "OpenAI"
 STITCHING_MODEL: str = "gpt-4o-mini"
+
+# Maximum number of output tokens the cheap stitching LLM is allowed
+# to emit per Q+A rewrite.  Architecture doc §6.1 locks the output
+# to "exactly one paragraph and nothing else" — the stitched
+# paragraph should never need more than this.  Set lower to enforce
+# brevity; set higher only if you see truncation in the embedding
+# inputs (a sign that the stitching model is verbose).
+#
+# Visible in the workflow-settings web UI.
+#
+# Valid values: any positive int (recommended 400–1600).  Default 800.
+STITCHING_MAX_OUTPUT_TOKENS: int = 800
 
 
 # ===========================================================

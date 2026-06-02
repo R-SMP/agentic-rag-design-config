@@ -47,7 +47,16 @@ DERIVED_READONLY = {"EMBEDDING_API_KEY"}
 # Owned by a dedicated control surface (see workflow_settings/
 # llm_routing.py).  The internal write path ``write_internal`` is the
 # only way to mutate these names.
-HIDDEN_FROM_FLAG_LIST = {"LLM_ROUTING_MODE"}
+#
+# EMBEDDING_INPUT_MAX_CHARS and DATABASE_ENTRY_RETRY_BACKOFF_SECONDS
+# are internal tuning knobs for db_writer.py — they live in settings.py
+# for easier developer access but are NOT surfaced in the UI.  Change
+# them via a code edit.
+HIDDEN_FROM_FLAG_LIST = {
+    "LLM_ROUTING_MODE",
+    "EMBEDDING_INPUT_MAX_CHARS",
+    "DATABASE_ENTRY_RETRY_BACKOFF_SECONDS",
+}
 
 _FENCE_RE = re.compile(r"^#+\s*=+\s*$")
 
