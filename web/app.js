@@ -2302,8 +2302,61 @@ async function loadQuestions() {
     for (const a of (data.agents || [])) Q_AGENTS.push(a);
     renderQuestions();
     qSetStatus("", "");
+    // Fire-and-forget: load the read-only "Fixed Questions Asked
+    // to the User" table that sits below the editable schedule.
+    // Source: workflow_settings/fixed_feedback_questions.py via
+    // /api/fixed-feedback-questions.  See architecture doc §3.7
+    // and warnings_developer.md W24.
+    loadFixedFeedbackQuestions();
   } catch (e) {
     qSetStatus("Network error: " + e, "err");
+  }
+}
+
+// ---- Fixed feedback questions (read-only table) -------------------------
+async function loadFixedFeedbackQuestions() {
+  const tbody = document.getElementById("q-fixed-tbody");
+  try {
+    const res = await fetch("/api/fixed-feedback-questions");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    renderFixedFeedbackQuestions(data.questions || []);
+  } catch (e) {
+    console.warn("[fixed-feedback-questions] load failed:", e);
+    if (tbody) {
+      tbody.innerHTML =
+        '<tr class="q-loading"><td colspan="9">Could not load.</td></tr>';
+    }
+  }
+}
+
+function renderFixedFeedbackQuestions(questions) {
+  const tbody = document.getElementById("q-fixed-tbody");
+  if (!tbody) return;
+  if (!questions.length) {
+    tbody.innerHTML =
+      '<tr class="q-loading"><td colspan="9">(none defined)</td></tr>';
+    return;
+  }
+  // 9 cells per row to mirror the editable schedule above (Q-6-B3 = β).
+  // No grip / no edit controls — the fixed table is purely
+  // informational; W24 makes the source-of-truth explicit.
+  tbody.innerHTML = "";
+  for (let i = 0; i < questions.length; i++) {
+    const q = questions[i];
+    const tr = document.createElement("tr");
+    tr.className = "q-row q-fixed-row";
+    tr.innerHTML =
+      '<td></td>' +
+      '<td class="q-num">' + (i + 1) + '</td>' +
+      '<td><code>' + escapeHtml(q.field || "") + '</code></td>' +
+      '<td>' + escapeHtml(q.question || "") + '</td>' +
+      '<td>User</td>' +
+      '<td>(all primary agents)</td>' +
+      '<td>session</td>' +
+      '<td>Semantic</td>' +
+      '<td>—</td>';
+    tbody.appendChild(tr);
   }
 }
 

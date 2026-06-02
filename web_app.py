@@ -1090,6 +1090,25 @@ class DhScheduleIn(BaseModel):
     questions: list[dict[str, object]]
 
 
+@app.get("/api/fixed-feedback-questions")
+def api_fixed_feedback_questions_get() -> dict:
+    """Read-only — the two fixed feedback questions asked to the
+    user at End Session.  Source of truth is the
+    ``FIXED_FEEDBACK_QUESTIONS`` constant in
+    ``workflow_settings/fixed_feedback_questions.py`` (see
+    architecture doc §3.3 + §3.7, warnings_developer.md W24).
+
+    Rendered as a read-only table at the bottom of the
+    "Questions for Saved Sessions" web view, beneath the
+    user-editable DH schedule.
+    """
+    _require_auth()
+    from workflow_settings.fixed_feedback_questions import (
+        FIXED_FEEDBACK_QUESTIONS,
+    )
+    return {"questions": [dict(q) for q in FIXED_FEEDBACK_QUESTIONS]}
+
+
 @app.get("/api/dh-schedule")
 def api_dh_schedule_get() -> dict:
     """Current DH question schedule + agent / scope / type metadata

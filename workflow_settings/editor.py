@@ -37,6 +37,12 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
     "RENDER_LIBRARY": ["trimesh", "pyvista"],
     "DCOI_COMPARISON_MODE": [1, 2, 3],
     "EMBEDDING_PROVIDER": ["OpenAI"],
+    # STITCHING_PROVIDER is locked to a single-option dropdown
+    # (matches EMBEDDING_PROVIDER's pattern).  The Anthropic and
+    # Google branches in db_writer.stitch_for_embedding are T16 /
+    # T17 in the architecture doc — add their values here when
+    # those branches land.
+    "STITCHING_PROVIDER": ["OpenAI"],
 }
 
 # Derived from the environment via os.getenv — show read-only, mask
