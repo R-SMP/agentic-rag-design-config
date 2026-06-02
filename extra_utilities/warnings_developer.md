@@ -713,3 +713,122 @@ isn't required to use).
 
 **Status.** In force from commit B of the Parameters Inputs
 redesign (2026-06-XX) onward.
+
+
+## W23. The Phase 3B smoke test lives at `extra_utilities/db_design/smoke_test_db_writer.py` and exercises the live OpenAI API + the live Railway Postgres.
+
+The smoke test is the canonical end-to-end verifier for
+`agents/database_handler/db_writer.py` (Phase 3B).  It runs 14
+numbered checks that together prove:
+
+- the OpenAI stitch + embed endpoints are reachable,
+- `embedding_model` is formatted as the locked
+  `"openai/text-embedding-3-large/1024"` string,
+- the four insert-outcome branches (`INSERTED`, `SKIPPED_UNIQUE`,
+  `SAFETY`, and the v5-relaxed `is_empty=TRUE` Semantic safety
+  net) all behave per the architecture doc §3.5 / §3.1 v5
+  addendum,
+- `save_session_feedback` writes the labelled-block
+  `sessions.feedback` and the per-question `chunks` mirror rows
+  (answered → embedded; unanswered → `is_empty=TRUE`).
+
+How to run::
+
+    python extra_utilities/db_design/smoke_test_db_writer.py
+
+Cost: roughly 8 OpenAI calls (gpt-4o-mini + text-embedding-3-large),
+well under one cent.  Sub-second wall-clock excluding cold starts.
+
+Cleanup: the test always wipes its own `_smoke_test_*` Postgres
+session at exit (CASCADE removes child rows in chunks +
+dc_attempts + dc_attempt_parameters).  Set `SMOKE_NO_CLEANUP=1`
+to leave the synthetic data in place for manual inspection.
+
+**R2 leftover.** The SAFETY-path check uploads exactly one R2
+object (under `<SMOKE_SESSION_ID>/safety/session/_SmokeForceFail.txt`)
+that the smoke test does NOT clean up — a deliberate scope cut
+per design Q-T4.  Remove it via the Cloudflare dashboard if it
+matters, or wait for the future R2-cleanup helper.
+
+When to run: any time `db_writer.py`, `stitching_prompt.md`, the
+`workflow_settings.STITCHING_*` knobs, the v5 schema, or the
+`agents/shared/postgres_pool.py` connection logic change.
+
+For the full per-check expected-output transcript and the
+architecture-doc cross-references for each check, see the module
+docstring at the top of
+`extra_utilities/db_design/smoke_test_db_writer.py`.
+
+**Status.** Introduced 2026-06-02 alongside Phase 3B.
+
+
+## W24. End-Session feedback questions live in code, NOT in `dh_schedule.json`.
+
+The two feedback questions asked to the user at End Session
+("Which parts of the process satisfied your request?" and "Which
+parts of the process did NOT satisfy your request?") are defined
+in code at
+`workflow_settings/fixed_feedback_questions.py` and rendered as
+a **read-only** greyed-out table at the bottom of the "Questions
+for Saved Sessions" web view (`workflow_settings/editor.py` +
+`web/index.html`).  They are NOT part of the user-editable
+`dh_schedule.json`.
+
+Source of truth: `FIXED_FEEDBACK_QUESTIONS` in
+`workflow_settings/fixed_feedback_questions.py`.  Every consumer
+(`db_writer.py`, the editor UI, the End Session modal in
+`web/app.js`, the architecture doc §3.3 / §3.7) reads from this
+single constant.
+
+**Why fixed in code, not the schedule?**  Changing the wording
+through the UI would create a silent mismatch — the modal in
+`web/app.js` shows hardcoded prompt text, while the schedule's
+"question" field would drift.  Code is the single source of truth
+so the modal and the schedule view stay in lockstep.
+
+**Adding a third feedback question.**  Append a new dict to
+`FIXED_FEEDBACK_QUESTIONS` with `id` / `field` / `question` /
+`block_label`, then update the End Session modal in
+`web/app.js` to actually ask the question.  No schema migration
+is required — the `chunks` mirror is open-ended (each question
+= one row distinguished by `field`) and `sessions.feedback`
+just appends another labelled block.
+
+**Editing the wording of an existing question.**  Edit the
+`question` string in `fixed_feedback_questions.py` AND in
+`web/app.js` in the SAME commit.  Past sessions' `chunks` rows
+keep the OLD wording frozen in their `chunks.question` column —
+that is the desired audit-trail behaviour.
+
+**Status.** In force from Phase 3B (2026-06-02) onward.  See
+architecture doc §3.3 + §3.7.
+
+
+## W25. `_slugify_field_for_filename` is duplicated between `db_writer.py` and `database_handler.py`.
+
+`agents/database_handler/db_writer.py` carries a small inline
+`_slugify_field_for_filename(field)` helper used to derive R2
+safety-folder filenames (e.g. `"Positive User Comments"` →
+`"Positive_User_Comments.txt"`).  The Database Handler's
+existing `_entry_path` helper in
+`agents/database_handler/database_handler.py` does a similar
+job for the local `.txt` per-Q+A files.
+
+These are deliberately separate to avoid a circular import
+(`db_writer` is imported by `database_handler.py`; the
+reverse would create a cycle).
+
+**Risk if the two slug conventions diverge.**  R2 safety-folder
+filenames produced by `db_writer` would no longer match the
+canonical DH filenames that a future recovery script (T12 in the
+architecture doc §7) tries to pair them with.  The slug rule is
+currently the same — `re.sub(r"[^A-Za-z0-9_-]+", "_", field)`
+plus a `.txt` suffix — but is enforced ONLY by convention.
+
+**Fix if the duplication becomes a problem.**  Factor the slug
+helper into `agents/shared/file_utils.py` (a leaf module with
+no agent dependencies) and import it from both `db_writer.py`
+and `database_handler.py`.  Until then, any edit to the slug
+convention must be applied to BOTH files in the same commit.
+
+**Status.** In force from Phase 3B (2026-06-02) onward.
