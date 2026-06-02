@@ -1002,3 +1002,53 @@ Mental model: paths 1 + 2 are happy-path mirrors; path 3 is the
 failure escape hatch.
 
 **Status.** In force from Phase 3D (2026-06-02) onward.
+
+
+## W31. `_resolve_session_name` slug format depends on whether Postgres is reachable.
+
+Phase 3E (2026-06-02) moved the IDNNN counter source from a
+filesystem scan of `previous_sessions/` to a Postgres `SEQUENCE`
+named `session_counter`.  This decouples slug generation from the
+local Railway volume (which is being retired) and guarantees
+globally-unique counters across deploys / container rebuilds /
+restarts.
+
+**Happy path** (Postgres reachable, sequence exists):
+```
+ID{nnn:03d}_{YYYYMMDD_HHMMSS}    e.g. ID042_20260602_193015
+```
+- The 3-digit padding holds for `nnn < 1000`; beyond that the
+  slug naturally extends to 4+ digits (`ID1000_...`).
+  Lexicographic sort breaks at the boundary but numeric sort
+  by counter remains correct.
+- The SEQUENCE persists across pg_dump/pg_restore.
+
+**Fallback path** (Postgres unreachable OR nextval raised — per
+design Q-SID-2 = ii: keep DH save alive even with the DB down):
+```
+ID_{YYYYMMDD_HHMMSS}_{microseconds:06d}    e.g. ID_20260602_193015_524873
+```
+- No counter — no ordinal in the slug.
+- Microsecond suffix gives 1-in-a-million uniqueness per
+  second on a single machine.
+- A WARNING is logged on every fallback so the operator sees
+  the slug isn't in canonical form.
+
+**Implications for tooling / log greps:**
+
+- Scripts that filter by `^ID\d+_` (the historical happy-path
+  shape) will MISS fallback-generated session_ids.  Use
+  `^ID(\d+_|_)` to match both, or two separate regexes.
+- Postgres FK queries don't care — the slug is just a TEXT
+  primary key.
+- R2 prefixes mix both shapes if Postgres was down during some
+  saves; navigation by date works either way (timestamp is in
+  both formats).
+
+**Migration on existing v5 deployments.**  Run
+`extra_utilities/db_design/migrations/migrate_v5_to_v6.py` to
+add the SEQUENCE and seed its initial value from existing
+`sessions.session_id` MAX(NNN).  Idempotent.  See architecture
+doc §9.10 + the migration script's docstring.
+
+**Status.** In force from Phase 3E (2026-06-02) onward.

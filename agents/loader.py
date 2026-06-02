@@ -36,22 +36,16 @@ from workflow_settings import settings as workflow_settings
 # ---------------------------------------------------------------------------
 
 
+# Module-level handle to the project's logger.  Resolves to the
+# same singleton ``_setup_logger`` later configures with file
+# handlers — Python's logging.getLogger() caches by name, so the
+# reference here stays valid AND uses whatever handlers the
+# session-time setup attaches.  Needed by _resolve_session_name's
+# Postgres-down fallback (Phase 3E).
+logger = logging.getLogger("propeller_agent")
+
 _ID_RE = re.compile(r"^ID(\d+)_")
 _LOG_TS_RE = re.compile(r"session_(\d{8}_\d{6})\.log$")
-
-
-def _next_session_id() -> int:
-    """Return the next session ID by scanning existing previous_sessions/."""
-    if not PREVIOUS_SESSIONS_DIR.exists():
-        return 1
-    highest = 0
-    for child in PREVIOUS_SESSIONS_DIR.iterdir():
-        if not child.is_dir():
-            continue
-        m = _ID_RE.match(child.name)
-        if m:
-            highest = max(highest, int(m.group(1)))
-    return highest + 1
 
 
 def _session_datetime_slug(log_files: list[Path]) -> str:
@@ -65,17 +59,70 @@ def _session_datetime_slug(log_files: list[Path]) -> str:
 
 
 def _resolve_session_name() -> str:
-    """Return the session folder name (``ID{N:03d}_{date_time}``).
+    """Return the session folder name + DB session_id slug.
 
-    Same naming convention used by ``_archive_previous_session`` for
-    its destination folder under ``previous_sessions/``.  Factored out
-    so the Database Handler can save under the IDENTICAL name in
-    ``database/`` before archival runs.
+    Phase 3E (2026-06-02): the counter source moved from a
+    filesystem scan of ``previous_sessions/`` (the old
+    ``_next_session_id`` helper, since removed per Q-3E-1 = α) to
+    the Postgres ``session_counter`` SEQUENCE.  This decouples
+    slug generation from the local volume (which is being retired)
+    and guarantees globally-unique counters across deploys,
+    container rebuilds, and restarts.
+
+    Two output shapes:
+
+    * **Happy path** — Postgres reachable, ``nextval`` succeeds::
+
+          ID{nnn:03d}_{YYYYMMDD_HHMMSS}    e.g. ID042_20260602_193015
+
+      The 3-digit padding holds for nnn < 1000; beyond that the
+      slug naturally extends to 4+ digits.  See architecture doc
+      §9.10 + the chunks-table NOTE in
+      ``database_PostgreSQL_schema_v6.sql``.
+
+    * **Fallback** — Postgres disabled OR ``nextval`` raised
+      (per Q-SID-2 = ii — keep the DH save flow alive even when
+      the DB is unreachable)::
+
+          ID_{YYYYMMDD_HHMMSS}_{microseconds:06d}
+                                    e.g. ID_20260602_193015_524873
+
+      A WARNING is logged so the operator sees the slug isn't in
+      canonical form.  See warnings_developer.md W31.
+
+    Same naming convention is used by ``_archive_previous_session``
+    for its destination folder under ``previous_sessions/`` —
+    that helper just reads the cached
+    ``Session.resolved_session_name`` and never re-resolves.
     """
     log_files = list(LOGS_DIR.glob("*.log")) if LOGS_DIR.exists() else []
-    session_id = _next_session_id()
     slug = _session_datetime_slug(log_files)
-    return f"ID{session_id:03d}_{slug}"
+
+    # Happy path — try Postgres first.
+    try:
+        from agents.shared import postgres_pool
+        if postgres_pool.is_enabled():
+            with postgres_pool.connection() as conn:
+                with conn.cursor() as cur:
+                    cur.execute("SELECT nextval('session_counter')")
+                    row = cur.fetchone()
+                    if row is None or row[0] is None:
+                        raise RuntimeError(
+                            "nextval('session_counter') returned no row"
+                        )
+                    nnn = int(row[0])
+            return f"ID{nnn:03d}_{slug}"
+    except Exception as exc:
+        logger.warning(
+            f"[loader] session_counter nextval failed "
+            f"({type(exc).__name__}: {exc}); "
+            f"falling back to timestamp-with-microseconds slug "
+            f"per Q-SID-2 = ii (W31)."
+        )
+
+    # Fallback path — Postgres not configured OR sequence call raised.
+    ts = datetime.now()
+    return f"ID_{ts:%Y%m%d_%H%M%S}_{ts.microsecond:06d}"
 
 
 def _resolve_session_timestamp() -> str:

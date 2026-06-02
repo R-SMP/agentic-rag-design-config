@@ -43,6 +43,14 @@ Schema-version evolution rules (from the meeting):
 > is open-ended and `sessions.feedback` is labelled-block text.  See
 > §3.3 + §3.7.
 
+> **`session_counter` SEQUENCE (added in v6, Phase 3E)** — a
+> server-side monotonic counter that drives the IDNNN portion of
+> every `session_id` slug, replacing the filesystem scan in
+> `agents/loader.py::_next_session_id` (since removed).  The
+> SEQUENCE is global to the deploy and persists across container
+> rebuilds / restarts (its `last_value` is part of pg_dump
+> output).  See §9.10 + `warnings_developer.md` W31.
+
 ---
 
 ## 2. Schema changes accepted in this discussion
@@ -897,7 +905,7 @@ Items deferred to future iterations but recorded so they're not lost:
 | T15 | **Artefact-fetch tool** — separate from `database_search`. Given a specific `(session_id, attempt_id?)` anchor the caller has already triaged via text-only search, returns the requested image artefacts (`kinds=["user_input_images", "attempt_renders"]` or any subset). Reads from R2 since artefacts live there per §3.5 scope note. See §4.10 for the two-step retrieval rationale this tool is built to support. | Out of Phase 3 scope; text-only search ships first. The text response is enough for most agent decisions; image lookups are the long-tail follow-up. | New tool in `agents/database_handler/` or `agents/shared/`. Returns image bytes (or pre-signed R2 URLs) in the tool response. |
 | T16 | **Anthropic-provider stitching client.** | Phase 3B locks `db_writer.py`'s stitching path to OpenAI (direct `openai` SDK).  Settings block #17 docstring AND the workflow-settings editor UI both lock `STITCHING_PROVIDER` to "OpenAI" while this is the case.  Anthropic is the next-most-likely cheap-LLM provider to support. | Add an Anthropic branch in `stitch_for_embedding()` in `agents/database_handler/db_writer.py`, gated on `ANTHROPIC_API_KEY`.  Unlock the provider input in `workflow_settings/editor.py` once available (extend `ENUM_OPTIONS["STITCHING_PROVIDER"]` to include `"Anthropic"`). |
 | T17 | **Google-provider stitching client.** | Same rationale as T16; deferred for the same reason. | Same file pattern as T16; mirror the Google branch (`google.generativeai` SDK), gated on `GOOGLE_API_KEY`. |
-| T18 | **Schema migration scripts (v4 → v5, and future v→v+1).** | v5 shipped via drop-and-recreate on 2026-06-02 because the Railway Postgres had no live data worth preserving.  Future schema bumps cannot make the same assumption — at least one production cutover with real session data is expected before v6. | New folder `extra_utilities/db_design/migrations/`.  One idempotent Python script per version bump: `migrate_v4_to_v5.py`, `migrate_v5_to_v6.py`, ….  Each script wraps `ALTER TABLE` + data backfill in a single transaction.  `apply_schema.py` stays the path for fresh-DB deploys; migrations are the path for non-empty DBs. |
+| T18 | **Schema migration scripts (v4 → v5, and future v→v+1).** | v5 shipped via drop-and-recreate on 2026-06-02 because the Railway Postgres had no live data worth preserving.  Future schema bumps cannot make the same assumption — at least one production cutover with real session data is expected before v6.  **First use case landed 2026-06-02 (Phase 3E):** `migrate_v5_to_v6.py` adds the `session_counter` SEQUENCE and seeds its initial value from existing session_ids.  See §9.10. | New folder `extra_utilities/db_design/migrations/`.  One idempotent Python script per version bump: `migrate_v4_to_v5.py`, `migrate_v5_to_v6.py`, ….  Each script wraps `ALTER TABLE` + data backfill in a single transaction.  `apply_schema.py` stays the path for fresh-DB deploys; migrations are the path for non-empty DBs. |
 | T19 | **Schema v6 — text-param long-format mirror.** | v5's `dc_attempt_parameters.raw_value` is `DOUBLE PRECISION NOT NULL`, so non-numeric (text, boolean, etc.) parameter values cannot land in the long-format mirror table.  They ARE preserved verbatim in `dc_attempts.parameters_json` (JSONB) and queryable via Postgres JSONB operators (e.g. `parameters_json->>'material' = 'steel'`).  For future design configurators whose parameters include text values that need range-style filtering or fast indexed lookup like numeric params currently get, the long-format mirror would need extension. | Schema v6 bump: extend `dc_attempt_parameters` with `raw_text TEXT NULL` + a CHECK that exactly one of `raw_value` / `raw_text` is non-NULL.  Extend `dc_parameter_schemas` similarly (text params have no numeric min/max — make those nullable, optionally add `allowed_values TEXT[] NULL` for enumerated text params).  Change `db_writer.upsert_attempt_parameters` signature to `dict[str, float \| str]`.  Update the architecture doc §1 + §3.  Touches T18 (migration script needed). |
 | T20 | **Tighter `user_provided_images` detection.** | Phase 3C's `db_writer.upsert_session` call derives `user_provided_images` by globbing `*.png` / `*.jpg` / `*.jpeg` under `Session.inputs_dir`.  Future image formats (HEIC, WEBP, AVIF) will NOT be detected; multi-file user-input directories with mixed content might mis-classify too.  Acceptable for v9 since the upload pipeline is locked to PNG/JPG/JPEG. | Either (a) widen the glob set as the upload pipeline gains new image-type support — `Session.inputs_dir` is scanned at populate_database start in `agents/database_handler/database_handler.py`, or (b) refactor to a session-level flag set BY the dispatch layer when an image file is uploaded — more authoritative than a post-hoc folder scan. |
 | T21 | **Use `sessions.notes` column for session-level free text.** | The column is reserved on schema v5 for free-text session notes.  Phase 3C wires `upsert_session(notes=None)`; nothing populates it today.  Direct quote from the design discussion: *"if there is the need to add final messages on the session, or to specify why there were some problems, use the notes column"*. | Add the wiring when a feature needs it — e.g. an operator-side "session notes" textarea in the workflow-settings UI, or an automatic *"the DH save was partial because <reason>"* message generated by `populate_database` itself, or a wrap-up note from the End Session flow.  No schema change needed; just pass a non-None string to `db_writer.upsert_session(notes=...)`.  See also `warnings_developer.md` W26. |
@@ -1324,3 +1332,63 @@ When resuming, the file you re-read first is this one (`database_and_RAG_archite
 - `workflow_settings/settings.py` blocks #16 and #17 — `DATABASE_ENTRY_MAX_RETRIES`, `STITCHING_PROVIDER`, `STITCHING_MODEL`.
 - `extra_utilities/warnings_developer.md` W21 — default-ACL rule.
 - `extra_utilities/TODO_known_issues.md` — F24 covers the parameters-view live preview (independent of database).
+
+
+### 9.10 Phase 3E — Decouple session_id slug from the local volume  (DONE 2026-06-02)
+
+**Trigger.**  The original `_resolve_session_name()` in
+`agents/loader.py` computed the IDNNN counter by scanning
+`previous_sessions/` for the highest `IDNNN_*` folder and
+incrementing.  This works while the Railway volume persists.
+Once the volume is retired (the long-term direction documented
+in W29), every new session would restart at `ID001`, instantly
+colliding in Postgres and on R2.
+
+**Design lock (Q-SID-1 / Q-SID-2 / Q-SID-3, 2026-06-02).**
+The IDNNN counter moves to a Postgres `SEQUENCE`:
+
+- New SEQUENCE `session_counter` in schema v6.
+- `_resolve_session_name()` calls `SELECT nextval('session_counter')`
+  at first DH-save time (Q-SID-3 = β: lazy allocation, matching
+  the pre-Phase-3E behaviour).
+- Slug format unchanged on the happy path:
+  `ID{nnn:03d}_{YYYYMMDD_HHMMSS}`.
+- When Postgres is unreachable (Q-SID-2 = ii: keep DH save
+  alive even with the DB down), the loader falls back to
+  `ID_{YYYYMMDD_HHMMSS}_{microseconds:06d}` — no counter, no
+  Postgres call.  A WARNING is logged so the operator notices
+  the slug isn't in canonical form.
+- `_next_session_id()` (the old folder-scan helper) is REMOVED
+  (Q-3E-1 = α): two-tier resolution (Postgres → timestamp) is
+  enough; the folder-scan tier was a Phase-3D-transitional
+  safety net no longer needed.
+- Counter padding stays at `:03d` (Q-3E-2 = α): the slug
+  naturally extends to 4+ digits past 999.
+
+**Migration.**  v5 → v6 via
+`extra_utilities/db_design/migrations/migrate_v5_to_v6.py`:
+
+1. `CREATE SEQUENCE IF NOT EXISTS session_counter ...` (idempotent).
+2. Scan existing `sessions.session_id` values matching
+   `^ID\d+_`; find MAX(NNN).
+3. `setval('session_counter', max_nnn, true)` so next nextval
+   returns max+1.
+
+Idempotent — safe to re-run on a freshly-restored DB or after
+manual sequence resets.
+
+**Files touched.**
+
+- `extra_utilities/db_design/database_PostgreSQL_schema_v6.sql`
+  (NEW; full schema = v5 + the SEQUENCE).
+- `extra_utilities/db_design/migrations/migrate_v5_to_v6.py`
+  (NEW; first concrete use of T18's migrations folder).
+- `agents/loader.py` — `_resolve_session_name` rewritten;
+  `_next_session_id` removed; module-level `logger` added for
+  the fallback WARNING.
+- `extra_utilities/db_design/smoke_test_resolve_session_name.py`
+  (NEW; verifies BOTH happy + fallback paths via monkey-patched
+  `postgres_pool.is_enabled`).
+- `warnings_developer.md` W31 — slug-generation algorithm +
+  fallback semantics + the gotcha that fallback slugs don't
+  carry an ordinal counter.
