@@ -755,6 +755,100 @@ def _run_feedback_round_sync(feedback: "FeedbackIn") -> dict:
         return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
 
 
+def _run_save_session_feedback_sync(feedback: "FeedbackIn") -> dict:
+    """Phase 3C: persist the End Session feedback to Postgres.
+
+    Direct call to ``db_writer.save_session_feedback`` — no LLM in
+    the loop (Q-3C-6 = A).  Maps the modal payload to the
+    ``FIXED_FEEDBACK_QUESTIONS`` ids and translates the satisfaction
+    enum to the SMALLINT 0..10 scale per the
+    ``database_PostgreSQL_schema_v5.sql`` ``sessions.satisfaction``
+    column comment (10=yes, 5=partially, 0=no, NULL=no feedback).
+
+    Best-effort: when Postgres is disabled OR an error occurs, log
+    and return — the rest of ``/api/end`` (archive sweep, SSE
+    event) proceeds.  The R2 mirror still carries the per-Q+A files
+    written by ``populate_database`` earlier.
+
+    MUST be called AFTER ``_run_dh_save`` so the sessions row
+    exists (``save_session_feedback`` UPDATEs an existing row and
+    raises if absent — see N18 guard in db_writer).
+    """
+    session = _BOX.session
+    if session is None:
+        return {"ok": False, "error": "session cleared before feedback persist"}
+
+    try:
+        from agents.shared import postgres_pool as _pp
+    except Exception as exc:
+        return {"ok": False, "error": f"postgres_pool import: {exc}"}
+
+    if not _pp.is_enabled():
+        logger.info(
+            "[WEB] Phase 3C save_session_feedback SKIPPED "
+            "(postgres_pool.is_enabled() == False)"
+        )
+        return {"ok": True, "skipped": True, "reason": "postgres disabled"}
+
+    try:
+        from agents.database_handler import db_writer as _dbw
+    except Exception as exc:
+        return {"ok": False, "error": f"db_writer import: {exc}"}
+
+    # Map modal satisfaction enum → SMALLINT 0..10
+    sat_str = (feedback.satisfaction or "").strip().lower()
+    if sat_str == "yes":
+        sat_int: int | None = 10
+    elif sat_str in ("partially", "partial"):
+        sat_int = 5
+    elif sat_str == "no":
+        sat_int = 0
+    else:
+        sat_int = None
+
+    # Map modal field names → FIXED_FEEDBACK_QUESTIONS ids.  Empty
+    # strings become None (treated as unanswered by
+    # save_session_feedback → is_empty=TRUE safety-net row).
+    pos = (feedback.what_went_well  or "").strip() or None
+    neg = (feedback.what_went_wrong or "").strip() or None
+
+    session_id = session.resolved_session_name or session.session_id
+
+    try:
+        outcomes = _dbw.save_session_feedback(
+            session_id=session_id,
+            dc_name=session.dc_name,
+            satisfaction=sat_int,
+            answers={
+                "fixed_positive": pos,
+                "fixed_negative": neg,
+            },
+        )
+        outcomes_str = ", ".join(
+            f"{k}={v.value}" for k, v in outcomes.items()
+        )
+        logger.info(
+            f"[WEB] Phase 3C save_session_feedback OK "
+            f"session_id={session_id} satisfaction={sat_int} "
+            f"outcomes={{{outcomes_str}}}"
+        )
+        return {
+            "ok": True,
+            "session_id": session_id,
+            "satisfaction": sat_int,
+            "outcomes": {k: v.value for k, v in outcomes.items()},
+        }
+    except Exception as exc:
+        logger.error(
+            f"[WEB] Phase 3C save_session_feedback FAILED "
+            f"session_id={session_id}: "
+            f"{type(exc).__name__}: {exc}.  Sessions row "
+            "satisfaction/feedback NOT updated; chunks mirror "
+            "rows NOT inserted.  Session is otherwise saved."
+        )
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+
 async def _run_end_in_background(
     save_requested: bool,
     session_present: bool,
@@ -798,6 +892,16 @@ async def _run_end_in_background(
                 "[WEB] end_session — save=True, running DH (background task)"
             )
             dh_result = await run_in_threadpool(_run_dh_save)
+            # Phase 3C — persist End Session feedback to Postgres
+            # AFTER the DH save has created the sessions row via
+            # upsert_session.  Skipped when no feedback was
+            # supplied (legacy clients, or "Save without feedback").
+            # Best-effort: errors logged inside the helper; no
+            # change to the session_save_done SSE payload (Q-3C-G3 = A).
+            if feedback is not None:
+                await run_in_threadpool(
+                    _run_save_session_feedback_sync, feedback
+                )
         elif save_requested:
             # User requested save but no session is active — treat as
             # a plain End Session.  Surface the fact in the SSE event
