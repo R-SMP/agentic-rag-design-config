@@ -53,12 +53,14 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
 
+from agents.database_handler import db_writer
 from agents.database_handler.dh_trace import (
     close_dh_logging,
     dh_trace,
     init_dh_logging,
 )
 from agents.database_handler.token_utils import count_tokens
+from agents.shared import postgres_pool
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
 from agents.shared.llm_provider import make_system_message
@@ -1162,6 +1164,92 @@ class DatabaseHandler(BaseChainAgent):
             # ``len(value) >= 2``.
             attempt_ids_by_parent: dict[str, list[str]] = {}
 
+            # Phase 3C caches — live for the duration of THIS
+            # populate_database call.
+            #   attempt_id_by_nnn: maps each DH-chosen attempt_label
+            #     to the BIGSERIAL ``dc_attempts.attempt_id`` returned
+            #     by db_writer.upsert_attempt.  Per-Q+A insert_chunk
+            #     looks up the BIGSERIAL here when an attempt-scoped
+            #     row is about to land.
+            #   cascaded_attempt_nnns: attempt_labels whose
+            #     identifying-Q INSERT returned SAFETY OR whose
+            #     upsert_attempt itself failed.  Every subsequent
+            #     attempt-scoped Q+A for these attempts SKIPS
+            #     insert_chunk and goes straight to the R2 safety
+            #     folder with cascade_source set.  See architecture
+            #     doc §3.5.5 + §9.5.
+            attempt_id_by_nnn: dict[str, int] = {}
+            cascaded_attempt_nnns: set[str] = set()
+
+            # Phase 3C — when Postgres is not configured (local dev
+            # without a DATABASE_URL), the entire DB path is skipped.
+            # No row marked as cascaded; no insert_chunk calls fired.
+            # See Q-3C-B3 = (A).
+            db_writer_available = postgres_pool.is_enabled()
+            if not db_writer_available:
+                logger.info(
+                    "[DH]  Phase 3C: postgres_pool.is_enabled() is "
+                    "False; SKIPPING all Postgres-side writes for "
+                    "this save (R2 mirror unaffected)."
+                )
+
+            # Phase 3C — upsert the sessions row FIRST, before any
+            # schedule processing.  Pre-creates the parent row that
+            # every chunks FK (directly) and every dc_attempts FK
+            # (transitively) needs.  See architecture doc §9.5 + Q-3C-3.
+            #
+            # On failure: log ERROR and DISABLE db_writer for the rest
+            # of this populate_database call (R2 mirror unaffected).
+            # Rationale: if the sessions row cannot land, every
+            # subsequent chunks INSERT would FK-fail and route to
+            # safety anyway; bailing here keeps the log clean.
+            #
+            # ``notes`` is passed as None (T21 — reserved column,
+            # first use case TBD; see warnings_developer.md W26).
+            # ``user_id`` is forwarded from self.session.user_id which
+            # is currently always None (T22 / F22 — reserved column,
+            # frontend wiring TBD; see warnings_developer.md W27).
+            # ``user_provided_images`` is derived by globbing the
+            # session inputs dir for common image suffixes — works
+            # for v9's PNG/JPG/JPEG pipeline but won't catch HEIC /
+            # WEBP / AVIF in the future (T20).
+            if db_writer_available:
+                user_provided_images = False
+                if self.session.inputs_dir is not None:
+                    try:
+                        user_provided_images = any(
+                            p.is_file()
+                            for ext in ("*.png", "*.jpg", "*.jpeg")
+                            for p in self.session.inputs_dir.glob(ext)
+                        )
+                    except OSError:
+                        user_provided_images = False  # defensive
+                try:
+                    db_writer.upsert_session(
+                        session_id=session_id,
+                        session_ts=self.session.session_ts,
+                        dc_name=self.session.dc_name,
+                        schema_version=self.session.schema_version,
+                        dc_inspector_enabled=self.session.dc_inspector_enabled,
+                        user_id=self.session.user_id,
+                        user_provided_images=user_provided_images,
+                        notes=None,
+                    )
+                    logger.info(
+                        f"[DH]  Phase 3C upsert_session OK "
+                        f"session_id={session_id} "
+                        f"user_provided_images={user_provided_images}"
+                    )
+                except Exception as exc:
+                    logger.error(
+                        f"[DH]  Phase 3C upsert_session FAILED "
+                        f"session_id={session_id}: "
+                        f"{type(exc).__name__}: {exc}.  DISABLING "
+                        f"all Postgres writes for the remainder of "
+                        f"this save (R2 mirror unaffected)."
+                    )
+                    db_writer_available = False
+
             # Session-id slug embedded in every saved .txt and used
             # as the per-session prefix for the R2 mirror.  Same value
             # the archive sweep uses under previous_sessions/.
@@ -1253,20 +1341,42 @@ class DatabaseHandler(BaseChainAgent):
                         f"[DH]  unknown agent '{agent_key}' in schedule; "
                         f"skipped"
                     )
+                    error_msg = (
+                        f"agent key '{agent_key}' is not present in "
+                        f"the orchestrator's registry / session.agent_"
+                        f"states; the DH could not interview it."
+                    )
                     err_path = self._write_error_entry(
                         session_dir=session_dir,
                         agent_key=agent_key,
                         field=field,
-                        error_message=(
-                            f"agent key '{agent_key}' is not present in "
-                            f"the orchestrator's registry / session.agent_"
-                            f"states; the DH could not interview it."
-                        ),
+                        error_message=error_msg,
                         session_id=session_id,
                         attempt_id=None,
                     )
                     self._write_sidecar_meta(
                         err_path, entry=entry, attempt_id=None,
+                    )
+                    # Phase 3C — error rows also land in chunks
+                    # (is_error=True).  The DH never resolved an
+                    # attempt here (agent unknown), so this row is
+                    # session-scoped (nnn=None).  See §9.5 + Q-3C-E1.
+                    self._phase_3c_persist_chunk(
+                        session_id=session_id,
+                        nnn=None,
+                        agent_key=agent_key,
+                        agents_to=list(entry.get("to_agents") or []),
+                        field=field,
+                        field_type="Semantic",
+                        question=None,
+                        body=f"ERROR: {error_msg}",
+                        item_index=None,
+                        is_error=True,
+                        is_identifying=False,
+                        safety_filename=err_path.name,
+                        attempt_id_by_nnn=attempt_id_by_nnn,
+                        cascaded_attempt_nnns=cascaded_attempt_nnns,
+                        db_writer_available=db_writer_available,
                     )
                     i += 1
                     continue
@@ -1338,6 +1448,7 @@ class DatabaseHandler(BaseChainAgent):
                         # Multi-answer split is allowed (rare for
                         # identifying Qs, but possible).
                         only_attempt = resolved_attempt_ids[0]
+                        only_nnn = _normalise_attempt_input(only_attempt)
                         for idx, (_attempt_tag, q, a) in enumerate(triples):
                             item_index = (
                                 idx + 1 if len(triples) > 1 else None
@@ -1362,6 +1473,24 @@ class DatabaseHandler(BaseChainAgent):
                                     f"[DH]  wrote identifying-Q {path}"
                                 )
                                 written += 1
+                                # Phase 3C — identifying-Q row, attempt-scoped.
+                                self._phase_3c_persist_chunk(
+                                    session_id=session_id,
+                                    nnn=only_nnn,
+                                    agent_key=agent_key,
+                                    agents_to=list(entry.get("to_agents") or []),
+                                    field=field,
+                                    field_type=entry.get("type", "Semantic"),
+                                    question=q,
+                                    body=a,
+                                    item_index=item_index,
+                                    is_error=False,
+                                    is_identifying=True,
+                                    safety_filename=path.name,
+                                    attempt_id_by_nnn=attempt_id_by_nnn,
+                                    cascaded_attempt_nnns=cascaded_attempt_nnns,
+                                    db_writer_available=db_writer_available,
+                                )
                             except OSError as exc:
                                 logger.warning(
                                     f"[DH]  failed to write identifying-Q "
@@ -1421,6 +1550,25 @@ class DatabaseHandler(BaseChainAgent):
                                     f"{path.name} (attempt {norm})"
                                 )
                                 written += 1
+                                # Phase 3C — identifying-Q row in
+                                # multi-attempt loop, attempt-scoped.
+                                self._phase_3c_persist_chunk(
+                                    session_id=session_id,
+                                    nnn=norm,
+                                    agent_key=agent_key,
+                                    agents_to=list(entry.get("to_agents") or []),
+                                    field=field,
+                                    field_type=entry.get("type", "Semantic"),
+                                    question=q,
+                                    body=a,
+                                    item_index=None,
+                                    is_error=False,
+                                    is_identifying=True,
+                                    safety_filename=path.name,
+                                    attempt_id_by_nnn=attempt_id_by_nnn,
+                                    cascaded_attempt_nnns=cascaded_attempt_nnns,
+                                    db_writer_available=db_writer_available,
+                                )
                             except OSError as exc:
                                 logger.warning(
                                     f"[DH]  failed to write identifying-Q "
@@ -1504,6 +1652,24 @@ class DatabaseHandler(BaseChainAgent):
                                         f"(attempt {norm})"
                                     )
                                     written += 1
+                                    # Phase 3C — sub-row, attempt-scoped.
+                                    self._phase_3c_persist_chunk(
+                                        session_id=session_id,
+                                        nnn=norm,
+                                        agent_key=sub_agent_key,
+                                        agents_to=list(sub_entry.get("to_agents") or []),
+                                        field=sub_field,
+                                        field_type=sub_entry.get("type", "Semantic"),
+                                        question=sq,
+                                        body=sa,
+                                        item_index=item_index,
+                                        is_error=False,
+                                        is_identifying=False,
+                                        safety_filename=spath.name,
+                                        attempt_id_by_nnn=attempt_id_by_nnn,
+                                        cascaded_attempt_nnns=cascaded_attempt_nnns,
+                                        db_writer_available=db_writer_available,
+                                    )
                                 except OSError as exc:
                                     logger.warning(
                                         f"[DH]  failed to write sub-row "
@@ -1530,20 +1696,42 @@ class DatabaseHandler(BaseChainAgent):
                     logger.warning(
                         f"[DH]  conversation with {agent_key} failed: {exc}"
                     )
+                    error_msg = (
+                        f"the DH conversation with {agent_key} "
+                        f"raised an exception: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
                     err_path = self._write_error_entry(
                         session_dir=session_dir,
                         agent_key=agent_key,
                         field=field,
-                        error_message=(
-                            f"the DH conversation with {agent_key} "
-                            f"raised an exception: "
-                            f"{type(exc).__name__}: {exc}"
-                        ),
+                        error_message=error_msg,
                         session_id=session_id,
                         attempt_id=None,
                     )
                     self._write_sidecar_meta(
                         err_path, entry=entry, attempt_id=None,
+                    )
+                    # Phase 3C — error rows also land in chunks
+                    # (is_error=True).  Session-scoped (this branch is
+                    # only reached for non-identifying rows; sub-row
+                    # exceptions land in the sub-row's own try-block).
+                    self._phase_3c_persist_chunk(
+                        session_id=session_id,
+                        nnn=None,
+                        agent_key=agent_key,
+                        agents_to=list(entry.get("to_agents") or []),
+                        field=field,
+                        field_type="Semantic",
+                        question=None,
+                        body=f"ERROR: {error_msg}",
+                        item_index=None,
+                        is_error=True,
+                        is_identifying=False,
+                        safety_filename=err_path.name,
+                        attempt_id_by_nnn=attempt_id_by_nnn,
+                        cascaded_attempt_nnns=cascaded_attempt_nnns,
+                        db_writer_available=db_writer_available,
                     )
                     i += 1
                     continue
@@ -1571,6 +1759,28 @@ class DatabaseHandler(BaseChainAgent):
                                if item_index else "")
                         )
                         written += 1
+                        # Phase 3C — session-scoped row (or Quant).
+                        # item_index stays as-is (None for single-pair):
+                        # the schema's NULL-distinct semantics on
+                        # session-scoped rows is intentional; no
+                        # forcing to 1 (see W28 + chunks table NOTE).
+                        self._phase_3c_persist_chunk(
+                            session_id=session_id,
+                            nnn=None,
+                            agent_key=agent_key,
+                            agents_to=list(entry.get("to_agents") or []),
+                            field=field,
+                            field_type=entry.get("type", "Semantic"),
+                            question=q,
+                            body=a,
+                            item_index=item_index,
+                            is_error=False,
+                            is_identifying=False,
+                            safety_filename=path.name,
+                            attempt_id_by_nnn=attempt_id_by_nnn,
+                            cascaded_attempt_nnns=cascaded_attempt_nnns,
+                            db_writer_available=db_writer_available,
+                        )
                     except OSError as exc:
                         logger.warning(
                             f"[DH]  failed to write entry for "
@@ -1850,7 +2060,7 @@ class DatabaseHandler(BaseChainAgent):
     # Identifying attempt-specific rows are top-level rows with
     # ``scope="attempt"`` and ``parent_id=None``.  They pin down WHICH
     # design attempt this block of questions is about.  The DH is
-    # forced to call ``save_attempt_artefacts`` after Agent A's first
+    # forced to call ``save_attempt_data`` after Agent A's first
     # reply; the tool's argument is either the attempt number Agent A
     # named (e.g. ``"002"``, ``"attempt 002"``, a full slug) or the
     # literal string ``"none"`` when no attempt could be identified.
@@ -1938,6 +2148,9 @@ class DatabaseHandler(BaseChainAgent):
             agent_last_answer=first_answer,
             session_id=session_id,
             session_start_ts=session_start_ts,
+            attempt_id_by_nnn=attempt_id_by_nnn,
+            cascaded_attempt_nnns=cascaded_attempt_nnns,
+            db_writer_available=db_writer_available,
         )
         if not resolved_attempt_ids:
             logger.info(
@@ -2036,8 +2249,11 @@ class DatabaseHandler(BaseChainAgent):
         agent_last_answer: str,
         session_id: str,
         session_start_ts: float | None,
+        attempt_id_by_nnn: dict[str, int],
+        cascaded_attempt_nnns: set[str],
+        db_writer_available: bool,
     ) -> tuple[list[str], str]:
-        """Force the DH to call save_attempt_artefacts; up to 3 retries.
+        """Force the DH to call save_attempt_data; up to 3 retries.
 
         Returns ``(resolved_attempt_ids, reason)`` where
         ``resolved_attempt_ids`` is the list of normalised
@@ -2046,25 +2262,41 @@ class DatabaseHandler(BaseChainAgent):
         ``reason`` is one of ``"ok"`` / ``"explicit-none"`` /
         ``"max-retries"`` / ``"bind-failed"``.
 
-        On a successful resolve for N>=1 attempts, every resolved
-        folder's artefacts are uploaded to R2 BEFORE the ToolMessage
-        is returned, so the DH's next turn sees the uploaded state in
-        its conversation context.
+        On a successful resolve for N>=1 attempts, for each resolved
+        attempt the method:
+
+          1. (Phase 3C) Calls ``db_writer.upsert_attempt`` +
+             ``db_writer.upsert_attempt_parameters`` to persist the
+             attempt's data to Postgres, caching the returned
+             ``BIGSERIAL attempt_id`` in ``attempt_id_by_nnn``.
+             Postgres-side failures log ERROR + add the
+             attempt_label to ``cascaded_attempt_nnns`` (subsequent
+             attempt-scoped Q+A then routes to the R2 safety folder
+             with ``cascade_source`` set).  When
+             ``db_writer_available`` is False, this step is skipped
+             entirely.
+          2. Uploads the 6 whitelisted artefact files to R2
+             (existing behaviour, independent of step 1 per
+             Q-3C-2 = A).
+
+        The ToolMessage carrying both steps' outcomes is returned to
+        the DH so its next turn sees the uploaded / persisted state
+        in conversation context.
         """
         import json as _json
         from agents.database_handler.dh_tools import (
-            save_attempt_artefacts,
-            SAVE_ATTEMPT_ARTEFACTS_TOOL_NAME,
+            save_attempt_data,
+            SAVE_ATTEMPT_DATA_TOOL_NAME,
         )
 
         try:
             dh_with_tool = self.llm.bind_tools(
-                [save_attempt_artefacts],
-                tool_choice=SAVE_ATTEMPT_ARTEFACTS_TOOL_NAME,
+                [save_attempt_data],
+                tool_choice=SAVE_ATTEMPT_DATA_TOOL_NAME,
             )
         except Exception as exc:  # pragma: no cover — defensive
             logger.warning(
-                f"[DH]  could not bind save_attempt_artefacts to the "
+                f"[DH]  could not bind save_attempt_data to the "
                 f"DH LLM: {type(exc).__name__}: {exc}; treating as "
                 f"empty list."
             )
@@ -2078,7 +2310,7 @@ class DatabaseHandler(BaseChainAgent):
                 f"Field: {field} (identifying attempt-specific)\n"
                 f"Agent: {agent_key}\n\n"
                 f"{agent_key}'s last reply:\n{agent_last_answer}\n\n"
-                "You MUST now call `save_attempt_artefacts` exactly "
+                "You MUST now call `save_attempt_data` exactly "
                 "ONCE.  Pass a JSON list of attempt identifiers:\n"
                 "  * One element per attempt the agent identified — "
                 "each element is a number/slug/ordinal (e.g. \"002\", "
@@ -2120,7 +2352,7 @@ class DatabaseHandler(BaseChainAgent):
                         content=(
                             f"You did not emit a tool call.  Attempt "
                             f"{attempt} of {self._MAX_FORCE_TOOL_RETRIES}. "
-                            "Call save_attempt_artefacts now."
+                            "Call save_attempt_data now."
                         )
                     )
                 )
@@ -2220,6 +2452,95 @@ class DatabaseHandler(BaseChainAgent):
                     f"{invalid}; reprompting."
                 )
                 continue
+
+            # ----- Phase 3C: Postgres-side per-attempt persistence ------
+            # Best-effort: a Postgres failure (or any other exception
+            # below) logs an ERROR and marks the attempt as cascaded —
+            # but does NOT abort the R2 upload that follows.  See
+            # architecture doc §9.5 + Q-3C-2 = A.
+            # When db_writer_available is False (no DATABASE_URL set),
+            # this whole block is a no-op — attempts are NOT marked
+            # cascaded, just not persisted.  Q-3C-B3 = A.
+            postgres_upsert_results: dict[str, dict] = {}
+            if db_writer_available:
+                for nnn in normalised:
+                    folder, _ = _resolve_attempt_folder(
+                        nnn, attempts_root, session_start_ts,
+                    )
+                    attempt_label = folder.name
+                    try:
+                        params_path = folder / "parameters.json"
+                        parameters_json = _json.loads(
+                            params_path.read_text(encoding="utf-8")
+                        )
+                        has_geometry = any(folder.glob("*.obj"))
+                        has_renders  = any(folder.glob("render_*.png"))
+                        # Long-format scalar mirror: numeric-only per
+                        # v5 dc_attempt_parameters.raw_value DOUBLE
+                        # PRECISION NOT NULL.  Non-numeric values are
+                        # preserved verbatim on dc_attempts.
+                        # parameters_json (JSONB).  T19 covers the
+                        # future text-param mirror in schema v6.
+                        long_params: dict[str, float] = {}
+                        for k, v in parameters_json.items():
+                            try:
+                                long_params[k] = float(v)
+                            except (TypeError, ValueError):
+                                continue
+                        bigserial_id = db_writer.upsert_attempt(
+                            session_id=session_id,
+                            attempt_label=attempt_label,
+                            schema_version=self.session.schema_version,
+                            parameters_json=parameters_json,
+                            has_geometry=has_geometry,
+                            has_renders=has_renders,
+                        )
+                        db_writer.upsert_attempt_parameters(
+                            attempt_id=bigserial_id,
+                            parameters=long_params,
+                        )
+                        # Cache keyed by NNN (e.g. "001"), NOT by
+                        # folder name — per-Q+A integration sites in
+                        # populate_database have `nnn` available via
+                        # _normalise_attempt_input, not the folder.
+                        attempt_id_by_nnn[nnn] = bigserial_id
+                        postgres_upsert_results[nnn] = {
+                            "ok": True,
+                            "attempt_id": bigserial_id,
+                            "has_geometry": has_geometry,
+                            "has_renders": has_renders,
+                            "n_scalar_params": len(long_params),
+                        }
+                        logger.info(
+                            f"[DH]  Phase 3C upsert_attempt OK "
+                            f"attempt_label={attempt_label} → "
+                            f"attempt_id={bigserial_id}, "
+                            f"has_geometry={has_geometry}, "
+                            f"has_renders={has_renders}, "
+                            f"{len(long_params)} scalar param rows."
+                        )
+                    except Exception as exc:  # broad: any FS/JSON/Postgres failure
+                        logger.error(
+                            f"[DH]  Phase 3C upsert_attempt FAILED "
+                            f"for attempt_label={attempt_label}: "
+                            f"{type(exc).__name__}: {exc}.  Marking "
+                            f"attempt as cascaded — subsequent "
+                            f"attempt-scoped Q+A will route to the "
+                            f"R2 safety folder."
+                        )
+                        # NNN-keyed too (see attempt_id_by_nnn comment
+                        # above).
+                        cascaded_attempt_nnns.add(nnn)
+                        postgres_upsert_results[nnn] = {
+                            "ok": False,
+                            "error": f"{type(exc).__name__}: {exc}",
+                        }
+            else:
+                logger.info(
+                    "[DH]  Phase 3C upsert_attempt SKIPPED for all "
+                    "attempts (postgres_pool.is_enabled() == False)."
+                )
+            # ----- End Phase 3C block; existing R2 upload follows -------
 
             # All entries resolved → upload each attempt's artefacts.
             uploaded_per_attempt: dict[str, dict] = {}
@@ -2825,6 +3146,158 @@ class DatabaseHandler(BaseChainAgent):
                 f"[DH]  failed to write sidecar meta for "
                 f"{entry_path.name}: {exc}"
             )
+
+    def _phase_3c_persist_chunk(
+        self,
+        *,
+        session_id: str,
+        nnn: str | None,
+        agent_key: str,
+        agents_to: list[str],
+        field: str,
+        field_type: str,
+        question: str | None,
+        body: str,
+        item_index: int | None,
+        is_error: bool,
+        is_identifying: bool,
+        safety_filename: str,
+        attempt_id_by_nnn: dict[str, int],
+        cascaded_attempt_nnns: set[str],
+        db_writer_available: bool,
+    ) -> None:
+        """Phase 3C: persist one chunks row, with cascade fast-path.
+
+        Called from every successful ``_write_entry`` /
+        ``_write_error_entry`` call site in ``populate_database`` —
+        IMMEDIATELY AFTER the local ``.txt`` was written.  See
+        architecture doc §9.5.
+
+        Behaviour summary
+        -----------------
+        - When ``db_writer_available`` is False → no-op (Postgres
+          disabled for this session).
+        - Session-scoped row (``nnn is None``) → straight
+          ``insert_chunk`` with ``attempt_id=None``; ``item_index``
+          passed through unchanged (the schema's NULL-distinct
+          semantics on session-scoped single-pair rows is
+          intentional — see chunks table NOTE).
+        - Attempt-scoped row (``nnn`` given):
+            * If ``nnn`` is cascaded OR not in ``attempt_id_by_nnn``
+              → CASCADE FAST-PATH: skip ``insert_chunk`` and call
+              ``db_writer.save_to_safety_folder`` directly with
+              ``cascade_source`` set.  Architecture doc §3.5.5.
+            * Otherwise → ``insert_chunk`` with the cached BIGSERIAL.
+              When ``item_index`` is ``None``, it is PROMOTED to ``1``
+              so the chunks UNIQUE constraint engages (architecture
+              doc §9.5 + warnings_developer.md W28).
+        - SAFETY outcome on an identifying-Q row → add ``nnn`` to
+          ``cascaded_attempt_nnns`` so subsequent sub-rows fast-path
+          (architecture doc §9.5 / §3.5.5).
+        """
+        if not db_writer_available:
+            return
+
+        # ----- Determine FK target + safety scope ---------------
+        if nnn is None:
+            attempt_id_pk: int | None = None
+            safety_scope = "session"
+            attempt_id_label_for_safety = "session-generic"
+            effective_item_index = item_index  # no forcing for session-scoped
+            is_cascaded = False
+        else:
+            safety_scope = f"attempt_{nnn}"
+            attempt_id_label_for_safety = nnn
+            attempt_id_pk = attempt_id_by_nnn.get(nnn)
+            is_cascaded = (
+                nnn in cascaded_attempt_nnns or attempt_id_pk is None
+            )
+            # Promote item_index=None → 1 for attempt-scoped rows so
+            # the chunks UNIQUE constraint engages (W28).
+            effective_item_index = 1 if item_index is None else item_index
+
+        # ----- Cascade fast-path --------------------------------
+        if is_cascaded:
+            effective_agents_to = (
+                list(agents_to) if agents_to
+                else list(db_writer.DEFAULT_AGENTS_TO_ACL)
+            )
+            try:
+                db_writer.save_to_safety_folder(
+                    session_id=session_id,
+                    scope=safety_scope,
+                    filename=safety_filename,
+                    field=field,
+                    question=question or "",
+                    answer=body,
+                    agents_to=effective_agents_to,
+                    field_type=field_type,
+                    attempt_id_label=attempt_id_label_for_safety,
+                    retry_count=0,
+                    max_retries=0,
+                    last_db_error=(
+                        f"(cascade — identifying-Q or upsert_attempt "
+                        f"for attempt_{nnn} failed earlier; this row "
+                        f"routed straight to safety with no retries)"
+                    ),
+                    cascade_source=(
+                        f"identifying-Q or upsert_attempt for "
+                        f"attempt_{nnn} failed (see earlier logs in "
+                        f"this populate_database run)"
+                    ),
+                )
+                logger.warning(
+                    f"[DH]  Phase 3C cascade fast-path: routed "
+                    f"{agent_key}/{field!r} (attempt_{nnn}) to R2 "
+                    f"safety folder."
+                )
+            except Exception as exc:  # pragma: no cover — defensive
+                logger.error(
+                    f"[DH]  Phase 3C cascade fast-path FAILED for "
+                    f"{agent_key}/{field!r} (attempt_{nnn}): "
+                    f"{type(exc).__name__}: {exc}.  Q+A may be lost."
+                )
+            return
+
+        # ----- Normal insert_chunk ------------------------------
+        try:
+            outcome = db_writer.insert_chunk(
+                session_id=session_id,
+                attempt_id=attempt_id_pk,
+                agent_from=agent_key,
+                agents_to=list(agents_to),
+                field=field,
+                field_type=field_type,
+                question=question,
+                body=body,
+                item_index=effective_item_index,
+                is_error=is_error,
+                is_empty=False,
+                dc_name=self.session.dc_name,
+                safety_scope=safety_scope,
+                safety_filename=safety_filename,
+            )
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.error(
+                f"[DH]  Phase 3C insert_chunk raised for "
+                f"{agent_key}/{field!r}: "
+                f"{type(exc).__name__}: {exc}.  Q+A NOT in Postgres."
+            )
+            return
+
+        if outcome == db_writer.InsertOutcome.SAFETY:
+            logger.warning(
+                f"[DH]  Phase 3C insert_chunk returned SAFETY for "
+                f"{agent_key}/{field!r}; data preserved in R2 safety "
+                f"folder, not in Postgres."
+            )
+            if is_identifying and nnn is not None:
+                cascaded_attempt_nnns.add(nnn)
+                logger.warning(
+                    f"[DH]  Phase 3C: identifying-Q for attempt_{nnn} "
+                    f"went to SAFETY; cascading subsequent sub-rows."
+                )
+        # INSERTED / SKIPPED_UNIQUE: db_writer already logged INFO.
 
     def _collect_user_inputs(self, session_dir: Path) -> int:
         """Snapshot the session's user inputs into the database tree.
