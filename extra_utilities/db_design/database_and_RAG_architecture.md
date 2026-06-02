@@ -35,6 +35,14 @@ Schema-version evolution rules (from the meeting):
 | Rename a parameter | New `schema_version` with the renamed entry. Old data stays addressable under its original `schema_version`. |
 | Change a parameter's range (min/max) | New `schema_version` with updated normalisation. Old attempts queryable under their version's normalisation; new attempts use the new one. |
 
+> **End-Session feedback questions are NOT versioned via
+> `schema_version`.**  They live in code
+> (`FIXED_FEEDBACK_QUESTIONS` in `workflow_settings/fixed_feedback_questions.py`)
+> and are mirrored to `chunks` rows.  Adding a feedback question is
+> a code edit; no schema bump is required because the chunks mirror
+> is open-ended and `sessions.feedback` is labelled-block text.  See
+> §3.3 + §3.7.
+
 ---
 
 ## 2. Schema changes accepted in this discussion
@@ -128,6 +136,32 @@ Prevents three classes of silent data corruption:
 the INSERT up to `DATABASE_ENTRY_MAX_RETRIES` times. If still failing,
 the Q+A is saved to the R2 safety folder instead.
 
+> **v5 addendum (2026-06-02).** The constraint was relaxed in schema
+> v5 to allow Semantic rows with `is_empty = TRUE` to carry NULL
+> `embedding` + NULL `embedding_model`.  The constraint now reads as
+> a three-arm disjunction:
+>
+> ```sql
+> CONSTRAINT chunks_embedding_consistent_with_field_type CHECK (
+>     (field_type = 'Quantitative' AND embedding IS NULL     AND embedding_model IS NULL)
+>     OR
+>     (field_type = 'Semantic'     AND is_empty)
+>     OR
+>     (field_type = 'Semantic'     AND embedding IS NOT NULL AND embedding_model IS NOT NULL)
+> );
+> ```
+>
+> The third arm is unchanged from v4 (the original Semantic row
+> shape).  The middle arm is new: it permits the End-Session
+> feedback safety-net rows.  When a user does not answer one of the
+> fixed feedback questions at End Session time, the Database Handler
+> still writes a `chunks` row for that question with `is_empty=TRUE`,
+> `body=""`, `embedding=NULL`, `embedding_model=NULL`.  Rationale:
+> downstream consumers see an explicit "asked but not answered"
+> marker (audit-trail behaviour) rather than missing the row
+> entirely.  The partial HNSW index (§3.2) already excludes
+> `is_empty` rows, so the relaxation does NOT affect retrieval.
+
 ### 3.2 Partial HNSW index excluding error / empty / Quantitative rows
 
 ```sql
@@ -160,33 +194,70 @@ a sequential scan — correct but ~1000× slower with no warning. The
 backend implementation locks this prefix into a single helper function
 (see §8 invariant 8).
 
-### 3.3 End-Session feedback as `chunks` rows
+### 3.3 End-Session feedback — `sessions.feedback` + `chunks` rows
 
-When the user submits the End Session modal with feedback, the backend
-writes one or two extra `chunks` rows IN ADDITION TO populating
-`sessions.feedback_what_worked` / `sessions.feedback_what_didnt`:
+> **Rewritten 2026-06-02** to reflect the v5 collapse of
+> `sessions.feedback_what_worked` + `sessions.feedback_what_didnt`
+> into a single `sessions.feedback TEXT` column (see the v5
+> changelog at the top of
+> `database_PostgreSQL_schema_v5.sql`).  Behaviour for the `chunks`
+> mirror is unchanged from the v4 design.
 
-- If `feedback_what_worked` is non-empty → one chunk row with:
-  - `agent_from = 'User'`
-  - `agents_to = [primary agent set — Receptionist, DH, DCII, DCOI, Planner, ...]`
-  - `field = 'Positive User Comments'`
-  - `field_type = 'Semantic'`
-  - `body = feedback_what_worked` (raw text from the modal)
-  - `embedding_input = ` Option-B stitched paragraph of the feedback
-  - `embedding`, `embedding_model` populated
-- If `feedback_what_didnt` is non-empty → one chunk row, same shape
-  except `field = 'Negative User Comments'` and
-  `body = feedback_what_didnt`.
+When the user submits the End Session modal, the backend writes:
 
-The text remains in the `sessions` table for analytics; the chunks
-copies are the **retrieval surface**. Agents can semantically retrieve
-real user feedback through the `database_search` tool, e.g. *"what did
+1. **ONE row update on `sessions`** populating two columns —
+   `sessions.satisfaction` (the numeric quick-score, 0–10) and
+   `sessions.feedback` (a single `TEXT` column, v5).  When the user
+   answered both feedback questions, the column holds a labelled-
+   block concatenation:
+
+   ```
+   --- Positive ---
+   <answer to "What worked well in this session?">
+
+   --- Negative ---
+   <answer to "What didn't work well?">
+   ```
+
+   When only one question was answered, only that block appears.
+   When neither was answered, the column stays NULL.  The labelled-
+   block format is the same delimiter convention used by the DH's
+   per-Q+A files on disk, so a human reading the column directly
+   sees the structure immediately.  The format is open-ended: a
+   future third feedback question just appends another labelled
+   block (e.g. `--- Suggestion ---`), no schema change required.
+
+2. **UP TO TWO extra rows on `chunks`**, one per answered question.
+   An unanswered question is NOT written (no empty / placeholder
+   row).  When a question is answered, the row is:
+   - `agent_from = 'User'`
+   - `agents_to = DEFAULT_AGENTS_TO_ACL` (the 9 primary chain agents
+     — see §3.6 + invariant 14)
+   - `field = 'Positive User Comments'`  *(for the "what worked"
+     question)*  OR  `field = 'Negative User Comments'`  *(for the
+     "what didn't" question)*
+   - `field_type = 'Semantic'`
+   - `body = <raw answer text from the modal>`
+   - `question = <the exact fixed question wording>`
+   - `embedding_input` = the Option-B stitched paragraph
+   - `embedding`, `embedding_model` populated as usual
+   - `attempt_id = NULL` (session-scoped)
+
+The text remains in the `sessions` table for analytics (quick
+session-level scans, no JSON parsing needed); the chunks copies are
+the **retrieval surface**.  Agents can semantically retrieve real
+user feedback through the `database_search` tool — e.g. *"what did
 past users say about thin propellers?"* surfaces relevant
 Positive / Negative User Comments rows.
 
-The specific list of agents in `agents_to` for these feedback chunks
-is an implementation detail — recommend including every agent that
-already has access to session-level retrieval.
+**Question wording is fixed in code, NOT in the dh_schedule.**  The
+two questions are defined in `FIXED_FEEDBACK_QUESTIONS` in
+`workflow_settings/dh_schedule.py` (a developer constant) and
+rendered as a read-only table at the bottom of the "Questions for
+Saved Sessions" web view — see §3.7.  Adding a third feedback
+question is a code edit (append to the constant); no schema
+migration is required because the `chunks` mirror is open-ended
+and `sessions.feedback` is just appended labelled-block text.
 
 ### 3.4 `rag_queries` log table
 
@@ -377,6 +448,44 @@ The canonical list of "primary agents" lives in **one place** — the
 `agents/database_handler/db_writer.py` (Phase 3B).  When chain
 agents are added or removed, update that constant; the architecture
 doc's enumeration above is descriptive only.
+
+### 3.7 Fixed feedback questions live in code, not in the schedule
+
+The "Questions for Saved Sessions" web view
+(`/workflow-settings` → schedule editor) has TWO zones:
+
+1. **Top table — editable.**  The DH-schedule rows the developer
+   customises through the UI.  Source of truth =
+   `workflow_settings/dh_schedule.json`.  Loaded, edited and saved
+   through `/api/dh_schedule` (GET / POST).
+2. **Bottom table — read-only / greyed-out.**  Lists the two fixed
+   feedback questions asked to the user at End Session.  Source of
+   truth = the `FIXED_FEEDBACK_QUESTIONS` constant in
+   `workflow_settings/fixed_feedback_questions.py` (a dedicated
+   module — placed in its own file rather than inside
+   `dh_schedule.py` so the boundary between user-editable schedule
+   and developer-fixed feedback questions is unambiguous).  Cannot
+   be edited from the UI; the table is informational only.  No
+   "edit", "delete" or "reorder" controls are exposed for these
+   rows.
+
+Editing the fixed questions is a **developer action**, not a user
+action.  When `FIXED_FEEDBACK_QUESTIONS` changes:
+- The chunks rows written by future End-Session events carry the
+  new question text (`chunks.question` reflects the constant at
+  write time).
+- No schema migration is required (the chunks mirror is open-ended
+  and `sessions.feedback` is just labelled-block text — see §3.3).
+- Past sessions' `chunks` rows keep the OLD question text frozen in
+  their `chunks.question` column — that is the desired audit-trail
+  behaviour.
+
+Why fix the wording in code rather than in `dh_schedule.json`?
+Because changing the wording mid-deploy via the UI would create a
+silent mismatch: the modal in `web/app.js` shows hardcoded prompt
+text, while the schedule's "question" field would drift.  Code is
+the single source of truth here so the modal and the schedule view
+stay in lockstep — both are derived from `FIXED_FEEDBACK_QUESTIONS`.
 
 ---
 
@@ -786,6 +895,9 @@ Items deferred to future iterations but recorded so they're not lost:
 | T13 | **`rag_queries` retention policy** — decide on a TTL (e.g. 90 days), implement a cleanup job to drop rows older than the TTL. | The table itself ships in v1; retention is a scaling concern only relevant once the corpus is large. | Cron / scheduled task; settings on the workflow-settings page. |
 | T14 | **UI wiring for `DATABASE_ENTRY_MAX_RETRIES`** — surface the new variable on the workflow-settings page with the description text from §3.5.1. | Variable definition is locked in §3.5.1; UI implementation is a separate task. | Workflow-settings page (same page as the token-cap setting in T6). |
 | T15 | **Artefact-fetch tool** — separate from `database_search`. Given a specific `(session_id, attempt_id?)` anchor the caller has already triaged via text-only search, returns the requested image artefacts (`kinds=["user_input_images", "attempt_renders"]` or any subset). Reads from R2 since artefacts live there per §3.5 scope note. See §4.10 for the two-step retrieval rationale this tool is built to support. | Out of Phase 3 scope; text-only search ships first. The text response is enough for most agent decisions; image lookups are the long-tail follow-up. | New tool in `agents/database_handler/` or `agents/shared/`. Returns image bytes (or pre-signed R2 URLs) in the tool response. |
+| T16 | **Anthropic-provider stitching client.** | Phase 3B locks `db_writer.py`'s stitching path to OpenAI (direct `openai` SDK).  Settings block #17 docstring AND the workflow-settings editor UI both lock `STITCHING_PROVIDER` to "OpenAI" while this is the case.  Anthropic is the next-most-likely cheap-LLM provider to support. | Add an Anthropic branch in `stitch_for_embedding()` in `agents/database_handler/db_writer.py`, gated on `ANTHROPIC_API_KEY`.  Unlock the provider input in `workflow_settings/editor.py` once available (extend `ENUM_OPTIONS["STITCHING_PROVIDER"]` to include `"Anthropic"`). |
+| T17 | **Google-provider stitching client.** | Same rationale as T16; deferred for the same reason. | Same file pattern as T16; mirror the Google branch (`google.generativeai` SDK), gated on `GOOGLE_API_KEY`. |
+| T18 | **Schema migration scripts (v4 → v5, and future v→v+1).** | v5 shipped via drop-and-recreate on 2026-06-02 because the Railway Postgres had no live data worth preserving.  Future schema bumps cannot make the same assumption — at least one production cutover with real session data is expected before v6. | New folder `extra_utilities/db_design/migrations/`.  One idempotent Python script per version bump: `migrate_v4_to_v5.py`, `migrate_v5_to_v6.py`, ….  Each script wraps `ALTER TABLE` + data backfill in a single transaction.  `apply_schema.py` stays the path for fresh-DB deploys; migrations are the path for non-empty DBs. |
 
 ---
 
@@ -911,7 +1023,19 @@ design".
 - Commit: `b85a7fa` (prep — psycopg/pgvector deps, R2 scope
   clarification), `8d31e7e` (foundation code).
 
-### 9.4 Phase 3B — DH ingest helper  (PARTIALLY DONE — RESUME POINT)
+### 9.4 Phase 3B — DH ingest helper  (IN PROGRESS — sprint started 2026-06-02)
+
+> **Resume sprint update (2026-06-02):** the stitching prompt at
+> `agents/database_handler/stitching_prompt.md` was reviewed by the
+> user and approved at `version: 1` (no edits).  Schema v5
+> (`database_PostgreSQL_schema_v5.sql`) committed alongside
+> `drop_all_tables.sql` — collapses
+> `sessions.feedback_what_worked` + `sessions.feedback_what_didnt`
+> into a single `sessions.feedback TEXT` column per §3.3 rewrite.
+> Architecture doc §3.3 / §3.7 / §7 (T16, T17, T18) updated to
+> reflect the resume sprint.  `db_writer.py` + smoke test +
+> `FIXED_FEEDBACK_QUESTIONS` constant + workflow-settings UI
+> changes still pending — see "NOT YET WRITTEN" below.
 
 **Prep DONE and committed (`f99e5da`):**
 
