@@ -545,50 +545,6 @@
                     title="Add a new top-level question">+ New question</button>
           </div>
 
-          <!-- Read-only "Fixed Questions Asked to the User" table.
-               Source of truth: workflow_settings/fixed_feedback_questions.py
-               (constant FIXED_FEEDBACK_QUESTIONS).  Cannot be edited
-               from the UI — editing the wording is a developer
-               action (code edit), not a user action.  See
-               warnings_developer.md W24 + architecture doc §3.7. -->
-          <div class="q-fixed-section">
-            <h3 class="q-fixed-heading">
-              Fixed Questions Asked to the User
-              <span class="q-fixed-tag">read-only · code-defined</span>
-            </h3>
-            <p class="q-fixed-note">
-              Asked at <strong>End Session</strong>.  Defined in
-              <code>workflow_settings/fixed_feedback_questions.py</code>
-              and mirrored into <code>chunks</code> rows under
-              <code>field='Positive User Comments'</code> /
-              <code>field='Negative User Comments'</code>.  Editing
-              the wording is a developer action (code edit), not a
-              user action — see <code>warnings_developer.md</code> W24.
-            </p>
-            <div class="q-table-wrap">
-              <table class="q-table q-fixed-table">
-                <thead>
-                  <tr>
-                    <th class="q-th-grip" aria-label="(read-only)"></th>
-                    <th class="q-th-num">#</th>
-                    <th class="q-th-name">Question Name</th>
-                    <th class="q-th-desc">Question Description</th>
-                    <th class="q-th-from">From</th>
-                    <th class="q-th-to">To</th>
-                    <th class="q-th-scope">Scope</th>
-                    <th class="q-th-type">Type</th>
-                    <th class="q-th-actions">Customize</th>
-                  </tr>
-                </thead>
-                <tbody id="q-fixed-tbody">
-                  <tr class="q-loading">
-                    <td colspan="9">Loading fixed questions…</td>
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-          </div>
-
           <!-- Floating popover for the multi-select "To" column.
                Hidden by default; positioned in JS at the cell that
                opened it. -->

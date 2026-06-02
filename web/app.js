@@ -1654,6 +1654,9 @@ async function saveLrRouting() {
 // ---------------------------------------------------------------------------
 
 const Q_AGENTS = []; // populated by /api/dh-schedule.agents
+const Q_FIXED  = []; // populated by /api/fixed-feedback-questions — rendered
+                     // as the LAST rows of the schedule table, read-only.
+                     // See architecture doc §3.7 + warnings_developer.md W24.
 const Q_SCOPES = ["session", "attempt"];
 const Q_TYPES = ["Semantic", "Quantitative"];
 
@@ -1874,6 +1877,30 @@ function renderQuestions() {
       tbody.appendChild(buildAddSubRowTr(parentId, parentNumber));
     }
   }
+
+  // ---- Fixed feedback questions appended at the end -----------------
+  // Per architecture doc §3.7, the fixed questions live in code
+  // (workflow_settings/fixed_feedback_questions.py) and render as
+  // the LAST rows of this table, read-only and visually greyer.
+  // Editable rows CANNOT be moved past them — the fixed rows have
+  // no DnD listeners, so dropping on them is a no-op.  The
+  // "+ New question" button appends to qState.questions, which is
+  // rendered BEFORE this block, so a new editable row always lands
+  // just above the fixed rows.  See warnings_developer.md W24.
+  if (Q_FIXED.length > 0) {
+    const dividerTr = document.createElement("tr");
+    dividerTr.className = "q-fixed-divider";
+    const dividerTd = document.createElement("td");
+    dividerTd.colSpan = 9;
+    dividerTd.innerHTML =
+      "↓ Fixed questions asked to the user — read-only, defined in " +
+      "<code>workflow_settings/fixed_feedback_questions.py</code>";
+    dividerTr.appendChild(dividerTd);
+    tbody.appendChild(dividerTr);
+    for (let j = 0; j < Q_FIXED.length; j++) {
+      tbody.appendChild(buildFixedRowTr(Q_FIXED[j], "F" + (j + 1)));
+    }
+  }
 }
 
 function buildAddSubRowTr(parentId, parentLabel) {
@@ -2072,6 +2099,105 @@ function buildRowTr(row, qNumberLabel) {
     const srcId = ev.dataTransfer.getData("text/plain");
     if (srcId && srcId !== row.id) moveRow(srcId, row.id);
   });
+
+  return tr;
+}
+
+// Builds a read-only row for Q_FIXED — rendered AT THE END of
+// the schedule table, beneath the editable rows.  Visually greyer
+// (.q-fixed-row), not draggable, no DnD listeners, no
+// insert-above button, no Customize controls.  Uses ``disabled``
+// <input>/<select>/<textarea> so the column widths and vertical
+// alignment match the editable rows above.  See architecture
+// doc §3.7 + warnings_developer.md W24.
+function buildFixedRowTr(q, numLabel) {
+  const tr = document.createElement("tr");
+  tr.className = "q-row q-fixed-row";
+  tr.draggable = false;
+
+  // Grip cell — empty (no drag glyph, no insert-above button).
+  const grip = document.createElement("td");
+  grip.className = "q-grip";
+  tr.appendChild(grip);
+
+  // Number — "F1", "F2", … so the label distinguishes the fixed
+  // rows from numerically-indexed editable rows above.
+  const num = document.createElement("td");
+  num.className = "q-num";
+  num.textContent = numLabel;
+  tr.appendChild(num);
+
+  // Name (the chunks.field value, e.g. "Positive User Comments").
+  const tdName = document.createElement("td");
+  const inputName = document.createElement("input");
+  inputName.type = "text";
+  inputName.className = "q-name-input";
+  inputName.value = q.field || "";
+  inputName.disabled = true;
+  tdName.appendChild(inputName);
+  tr.appendChild(tdName);
+
+  // Description — the exact question text shown to the user.
+  const tdDesc = document.createElement("td");
+  const inputDesc = document.createElement("textarea");
+  inputDesc.className = "q-desc-input";
+  inputDesc.value = q.question || "";
+  inputDesc.rows = 2;
+  inputDesc.disabled = true;
+  tdDesc.appendChild(inputDesc);
+  tr.appendChild(tdDesc);
+
+  // From — fixed feedback rows always come FROM the User.
+  const tdFrom = document.createElement("td");
+  const selFrom = document.createElement("select");
+  selFrom.className = "q-from-select";
+  selFrom.disabled = true;
+  const optFrom = document.createElement("option");
+  optFrom.value = "User";
+  optFrom.textContent = "User";
+  selFrom.appendChild(optFrom);
+  tdFrom.appendChild(selFrom);
+  tr.appendChild(tdFrom);
+
+  // To — "(all primary agents)" rendered as a disabled text input.
+  const tdTo = document.createElement("td");
+  const inputTo = document.createElement("input");
+  inputTo.type = "text";
+  inputTo.className = "q-name-input";
+  inputTo.value = "(all primary agents)";
+  inputTo.disabled = true;
+  tdTo.appendChild(inputTo);
+  tr.appendChild(tdTo);
+
+  // Scope — session.
+  const tdScope = document.createElement("td");
+  const selScope = document.createElement("select");
+  selScope.className = "q-scope-select";
+  selScope.disabled = true;
+  const optScope = document.createElement("option");
+  optScope.value = "session";
+  optScope.textContent = "session";
+  selScope.appendChild(optScope);
+  tdScope.appendChild(selScope);
+  tr.appendChild(tdScope);
+
+  // Type — Semantic.
+  const tdType = document.createElement("td");
+  const selType = document.createElement("select");
+  selType.className = "q-type-select";
+  selType.disabled = true;
+  const optType = document.createElement("option");
+  optType.value = "Semantic";
+  optType.textContent = "Semantic";
+  selType.appendChild(optType);
+  tdType.appendChild(selType);
+  tr.appendChild(tdType);
+
+  // Customize / actions — em dash placeholder.
+  const tdActions = document.createElement("td");
+  tdActions.className = "q-fixed-actions";
+  tdActions.textContent = "—";
+  tr.appendChild(tdActions);
 
   return tr;
 }
@@ -2286,77 +2412,48 @@ function moveRow(srcId, targetId) {
 async function loadQuestions() {
   qSetStatus("Loading…", "");
   try {
-    const res = await fetch("/api/dh-schedule");
-    if (res.status === 401) { showGate(); return; }
-    if (!res.ok) {
-      const data = await res.json().catch(() => ({}));
+    // Fetch the editable schedule and the read-only fixed feedback
+    // questions in parallel.  The fixed questions render as the
+    // LAST rows of the same table (see renderQuestions +
+    // buildFixedRowTr), greyer and not editable.  Source of truth:
+    // workflow_settings/fixed_feedback_questions.py.  See
+    // architecture doc §3.7 + warnings_developer.md W24.
+    const [scheduleRes, fixedRes] = await Promise.all([
+      fetch("/api/dh-schedule"),
+      fetch("/api/fixed-feedback-questions"),
+    ]);
+    if (scheduleRes.status === 401) { showGate(); return; }
+    if (!scheduleRes.ok) {
+      const data = await scheduleRes.json().catch(() => ({}));
       qSetStatus(data.detail || "Could not load schedule.", "err");
       return;
     }
-    const data = await res.json();
+    const data = await scheduleRes.json();
     qState = {
       version: data.version || 1,
       questions: data.questions || [],
     };
     Q_AGENTS.length = 0;
     for (const a of (data.agents || [])) Q_AGENTS.push(a);
+    // Best-effort: editable schedule still renders if this endpoint
+    // fails; the fixed-rows section is just omitted.
+    Q_FIXED.length = 0;
+    if (fixedRes.ok) {
+      try {
+        const fdata = await fixedRes.json();
+        for (const q of (fdata.questions || [])) Q_FIXED.push(q);
+      } catch (e) {
+        console.warn("[fixed-feedback-questions] parse failed:", e);
+      }
+    } else {
+      console.warn(
+        "[fixed-feedback-questions] HTTP " + fixedRes.status
+      );
+    }
     renderQuestions();
     qSetStatus("", "");
-    // Fire-and-forget: load the read-only "Fixed Questions Asked
-    // to the User" table that sits below the editable schedule.
-    // Source: workflow_settings/fixed_feedback_questions.py via
-    // /api/fixed-feedback-questions.  See architecture doc §3.7
-    // and warnings_developer.md W24.
-    loadFixedFeedbackQuestions();
   } catch (e) {
     qSetStatus("Network error: " + e, "err");
-  }
-}
-
-// ---- Fixed feedback questions (read-only table) -------------------------
-async function loadFixedFeedbackQuestions() {
-  const tbody = document.getElementById("q-fixed-tbody");
-  try {
-    const res = await fetch("/api/fixed-feedback-questions");
-    if (!res.ok) throw new Error("HTTP " + res.status);
-    const data = await res.json();
-    renderFixedFeedbackQuestions(data.questions || []);
-  } catch (e) {
-    console.warn("[fixed-feedback-questions] load failed:", e);
-    if (tbody) {
-      tbody.innerHTML =
-        '<tr class="q-loading"><td colspan="9">Could not load.</td></tr>';
-    }
-  }
-}
-
-function renderFixedFeedbackQuestions(questions) {
-  const tbody = document.getElementById("q-fixed-tbody");
-  if (!tbody) return;
-  if (!questions.length) {
-    tbody.innerHTML =
-      '<tr class="q-loading"><td colspan="9">(none defined)</td></tr>';
-    return;
-  }
-  // 9 cells per row to mirror the editable schedule above (Q-6-B3 = β).
-  // No grip / no edit controls — the fixed table is purely
-  // informational; W24 makes the source-of-truth explicit.
-  tbody.innerHTML = "";
-  for (let i = 0; i < questions.length; i++) {
-    const q = questions[i];
-    const tr = document.createElement("tr");
-    tr.className = "q-row q-fixed-row";
-    tr.innerHTML =
-      '<td></td>' +
-      '<td class="q-num">' + (i + 1) + '</td>' +
-      '<td><code>' + escapeHtml(q.field || "") + '</code></td>' +
-      '<td>' + escapeHtml(q.question || "") + '</td>' +
-      '<td>User</td>' +
-      '<td>(all primary agents)</td>' +
-      '<td>session</td>' +
-      '<td>Semantic</td>' +
-      '<td>—</td>';
-    tbody.appendChild(tr);
   }
 }
 

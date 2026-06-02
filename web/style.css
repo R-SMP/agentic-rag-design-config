@@ -1333,69 +1333,71 @@ button.danger:hover { background: #3a1d1d; }
 #q-add-toplevel:hover { background: #222; }
 
 /* ---------------------------------------------------------------
-   Fixed feedback questions block — read-only table at the bottom
-   of the Questions for Saved Sessions view.
-   Source of truth: workflow_settings/fixed_feedback_questions.py
+   Fixed feedback questions — appended as the LAST rows of the
+   Questions for Saved Sessions table.  Visually subdued + not
+   editable + no row-hover highlight + no insert-above affordance.
+   Source of truth: workflow_settings/fixed_feedback_questions.py.
    See architecture doc §3.7 + warnings_developer.md W24.
    --------------------------------------------------------------- */
-.q-fixed-section {
-  margin-top: 28px;
-  padding-top: 18px;
+
+/* Single-cell divider row between editable rows and fixed rows. */
+.q-fixed-divider {
+  background: transparent !important;
+}
+.q-fixed-divider td {
   border-top: 1px dashed #444;
-}
-.q-fixed-heading {
-  margin: 0 0 6px 0;
-  font-size: 1.02em;
-  color: #b8b8b8;
-  font-weight: 600;
-}
-.q-fixed-tag {
-  margin-left: 10px;
-  font-size: 0.72em;
-  font-weight: 400;
-  letter-spacing: 0.02em;
-  padding: 2px 7px;
-  background: #2a2a2a;
-  border: 1px solid #444;
-  border-radius: 3px;
-  color: #9a9a9a;
-  vertical-align: middle;
-}
-.q-fixed-note {
-  margin: 4px 0 12px 0;
+  border-bottom: none;
+  padding: 14px 12px 6px 12px;
   font-size: 0.88em;
   color: #9a9a9a;
-  line-height: 1.45;
+  font-style: italic;
 }
-.q-fixed-note code {
+.q-fixed-divider td code {
   background: #1d1d1d;
   border: 1px solid #2e2e2e;
   border-radius: 3px;
   padding: 1px 5px;
   font-size: 0.95em;
   color: #d0d0d0;
+  font-style: normal;
 }
-/* Visually subdued tbody — distinguished from the editable
-   schedule above.  No row-hover highlight; no insert-above
-   affordance (the JS does not add one). */
-.q-fixed-table tbody tr {
+
+/* Fixed rows — greyer than the editable rows above, no hover
+   highlight, default cursor (not draggable). */
+.q-fixed-row {
   background: #1f1f1f;
   color: #b0b0b0;
   cursor: default;
 }
-.q-fixed-table tbody tr:hover {
-  background: #1f1f1f;   /* no hover highlight */
+.q-fixed-row:hover {
+  background: #1f1f1f;   /* override the editable-row hover state */
 }
-.q-fixed-table tbody td {
+.q-fixed-row td {
   border-bottom: 1px solid #2a2a2a;
 }
-.q-fixed-table tbody td code {
-  background: #181818;
-  border: 1px solid #2a2a2a;
-  border-radius: 3px;
-  padding: 1px 6px;
-  font-size: 0.92em;
-  color: #cfcfcf;
+
+/* Disabled inputs inside fixed rows — render greyer than the
+   editable inputs above, matching the row palette.  ``opacity: 1``
+   overrides the browser's default ~0.7 on :disabled so we
+   control the exact look. */
+.q-fixed-row .q-name-input:disabled,
+.q-fixed-row .q-desc-input:disabled,
+.q-fixed-row .q-from-select:disabled,
+.q-fixed-row .q-scope-select:disabled,
+.q-fixed-row .q-type-select:disabled {
+  background: #1a1a1a;
+  color: #a0a0a0;
+  border-color: #2a2a2a;
+  cursor: not-allowed;
+  opacity: 1;
+}
+
+/* Customize / actions column on fixed rows — em dash placeholder
+   centred and muted. */
+.q-fixed-actions {
+  text-align: center;
+  color: #707070;
+  font-size: 1.1em;
 }
 
 .q-popover {
