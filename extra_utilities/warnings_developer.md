@@ -933,11 +933,14 @@ What this means for tools, scripts, and future maintainers:
   **debug aid**, not a source of truth.  Code that reads it for
   retrieval (e.g. early RAG prototypes) should migrate to
   `database_search` (Phase 4) when that ships.
-- Phase 3D drops the `.txt` suffix from the R2 mirror suffix list
-  — after that, R2 only holds non-Q+A artefacts (mesh / renders /
-  user-input images) plus the safety folder.  The local `.txt`
-  tree still exists on the Railway container's writable layer,
-  but it's no longer mirrored.
+- Phase 3D (2026-06-02) DROPPED the `.txt` suffix from the
+  end-of-`populate_database` R2 mirror suffix list.  R2 now only
+  holds non-Q+A artefacts (mesh / renders / user-input images /
+  per-attempt `description.txt`) plus the safety folder for
+  failed Q+A inserts.  The local `.txt` tree still exists on the
+  Railway container's writable layer but is no longer mirrored
+  via the `upload_directory` whitelist.  See W30 for the three
+  R2 upload paths and which file types each carries.
 - The eventual end state (post-Phase 3D, post-Phase 4): Postgres
   `chunks` is the retrieval surface; R2 holds artefacts +
   safety-folder failures; the local `.txt` files exist only for
@@ -948,5 +951,54 @@ local `.txt` tree (rather than via `database_search` or
 `db_writer`), you are probably writing the wrong thing.
 
 **Status.** Forward-looking note from Phase 3C (2026-06-02)
-onward.  Phase 3D will narrow the R2 mirror.  Beyond that, the
-local `.txt` writes may be removed entirely.
+onward.  Phase 3D narrowed the R2 mirror on the same date.
+Beyond that, the local `.txt` writes may be removed entirely.
+
+
+## W30. Three R2 upload paths — know which one carries which file.
+
+After Phase 3D (2026-06-02), Cloudflare R2 receives session files
+via THREE distinct code paths, each with its own whitelist /
+trigger.  Adding or removing a file type involves deciding which
+path should carry it.
+
+**Path 1 — `r2_uploader.upload_directory(session_dir, suffixes=...)`**
+- Called ONCE at the end of
+  `agents/database_handler/database_handler.py::populate_database`.
+- Walks `<session_dir>` recursively and uploads any file whose
+  suffix matches the whitelist.
+- Phase 3D whitelist: `(".png", ".jpg", ".jpeg")`.
+- What lands here: user-input reference images snapshotted by
+  `_collect_user_inputs` into `<session_dir>/user_inputs/`.
+- What USED TO land here (pre-3D): the DH's per-Q+A `.txt` files
+  too.  Removed because Postgres `chunks` is the sole Q+A store
+  in the happy path now (§3.5 / invariant 12).
+
+**Path 2 — `r2_uploader.upload_attempt_artefacts(folder, ...)`**
+- Called PER RESOLVED ATTEMPT from
+  `_run_force_tool_phase` inside `save_attempt_data`'s tool
+  handler.
+- Uploads a fixed hardcoded whitelist of artefact filenames
+  found in `attempts/<NNN>/`:
+  `parameters.json`, `propeller_mesh.obj`, `render_isometric.png`,
+  `render_top.png`, `render_side.png`, `description.txt`.
+- The `description.txt` here is a per-attempt narrative (e.g.
+  generated alongside the mesh + renders), NOT a DH-saved Q+A.
+  DH Q+A `.txt` files were always written under
+  `<session_dir>/<agent>/<field>.txt`, NEVER under
+  `<session_dir>/attempts/<NNN>/`.
+- Unchanged by Phase 3D.
+
+**Path 3 — `r2_uploader.upload_bytes(content, remote_key)`**
+- Called by `agents/database_handler/db_writer.py::save_to_safety_folder`
+  when `insert_chunk` exhausts retries.
+- No whitelist — the safety file is built in-memory and PUT
+  directly to R2 under
+  `<session_id>/safety/<scope>/<filename>`.
+- The failure-escape-hatch path for Q+A text that couldn't land
+  in Postgres.  Architecture doc §3.5 + invariant 12.
+
+Mental model: paths 1 + 2 are happy-path mirrors; path 3 is the
+failure escape hatch.
+
+**Status.** In force from Phase 3D (2026-06-02) onward.

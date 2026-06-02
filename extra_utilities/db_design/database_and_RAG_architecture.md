@@ -1256,14 +1256,37 @@ answers dict.
   - UI changes (Proposal 6) — separate sequence.
   - Anthropic / Google stitching providers (T16 / T17).
 
-### 9.6 Phase 3D — Stop R2 Q+A mirror in happy path  (NOT STARTED)
+### 9.6 Phase 3D — Stop R2 Q+A mirror in happy path  (DONE 2026-06-02)
 
-- In `agents/database_handler/database_handler.py` line ~1613,
-  change `_r2.upload_directory(... suffixes=(".txt", ".png",
-  ".jpg", ".jpeg"))` to drop the `.txt` suffix.
-- After this, R2 only sees the failure-case safety folder for
-  Q+A text, plus non-Q+A artefacts (mesh, renders, user-input
-  images).
+- In `agents/database_handler/database_handler.py` (the
+  `populate_database` end-of-save mirror call), the `.txt` suffix
+  was dropped from the `_r2.upload_directory(... suffixes=...)`
+  whitelist.  R2 now sees the following for Q+A text:
+    * **Happy path:** NOTHING.  Postgres `chunks` is the sole
+      store.
+    * **Failure path:** safety folder under
+      `<session_id>/safety/<scope>/...` when `insert_chunk`
+      exhausts retries (architecture doc §3.5).
+- Non-Q+A artefacts continue to land on R2 unchanged.  Two
+  separate happy-path code paths exist for R2; only the first
+  is narrowed by Phase 3D:
+    1. `r2_uploader.upload_directory(session_dir, suffixes=...)`
+       — called ONCE at end-of-`populate_database`.  Now
+       whitelists ONLY `.png` / `.jpg` / `.jpeg` (user-input
+       reference images collected into
+       `<session_dir>/user_inputs/`).
+    2. `r2_uploader.upload_attempt_artefacts(folder, ...)` —
+       called PER RESOLVED ATTEMPT from `save_attempt_data`'s
+       force-tool handler.  Whitelist is hardcoded in
+       `agents/shared/r2_uploader.py::ATTEMPT_ARTEFACT_WHITELIST`
+       and includes `parameters.json`, `propeller_mesh.obj`,
+       `render_*.png`, `description.txt`.  **Unchanged by
+       Phase 3D** — the per-attempt artefact upload is orthogonal
+       to the Q+A mirror.  The `description.txt` here is a
+       per-attempt narrative, NOT a DH-saved Q+A.
+- See `warnings_developer.md` W30 for the operator-facing
+  summary of which files land where on R2 (including the third
+  path: `upload_bytes` used by the safety-folder writer).
 
 ### 9.7 Phase 4 — `database_search` tool  (NOT STARTED)
 

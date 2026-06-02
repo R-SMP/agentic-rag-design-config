@@ -1810,17 +1810,29 @@ class DatabaseHandler(BaseChainAgent):
                 )
 
             # Mirror the local session_dir to Cloudflare R2 when
-            # configured.  Suffix whitelist covers both the DH's .txt
-            # bodies AND the user-input PNG/JPG images collected just
-            # above.  Best-effort: a failure here logs a warning but
-            # never breaks the local save the user just confirmed.
+            # configured.  Phase 3D (2026-06-02): the ``.txt`` suffix
+            # was DROPPED from this whitelist — Q+A bodies live in
+            # Postgres ``chunks`` only in the happy path (see
+            # architecture doc §3.5 + §9.6 + invariant 12).  Q+A text
+            # only reaches R2 via the safety folder when
+            # ``insert_chunk`` exhausts its retries (handled inline by
+            # ``db_writer.save_to_safety_folder``).  This mirror now
+            # carries only the user-input PNG/JPG/JPEG reference
+            # images collected into ``<session_dir>/user_inputs/`` by
+            # ``_collect_user_inputs`` just above.  Per-attempt
+            # artefacts (mesh, renders, description.txt) land on R2
+            # via the SEPARATE ``upload_attempt_artefacts`` path
+            # inside ``save_attempt_data``'s force-tool handler —
+            # see warnings_developer.md W30 for the three R2 paths.
+            # Best-effort: a failure here logs a warning but never
+            # breaks the local save the user just confirmed.
             try:
                 from agents.shared import r2_uploader as _r2
                 if _r2.is_enabled():
                     n_up = _r2.upload_directory(
                         session_dir,
                         remote_prefix=f"{session_id}/",
-                        suffixes=(".txt", ".png", ".jpg", ".jpeg"),
+                        suffixes=(".png", ".jpg", ".jpeg"),
                     )
                     logger.info(
                         f"[DH]  R2 mirror complete: {n_up} file(s) "
