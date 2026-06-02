@@ -1392,3 +1392,73 @@ manual sequence resets.
 - `warnings_developer.md` W31 — slug-generation algorithm +
   fallback semantics + the gotcha that fallback slugs don't
   carry an ordinal counter.
+
+
+### 9.11 Phase 4 — `database_search` tool  (NOT STARTED — design walkthrough done 2026-06-02)
+
+**Status.**  The §4 contract is locked (see §4.1–§4.10 + §5 +
+§8 invariants).  Implementation has NOT started.  The
+implementation-choice walkthrough below ran on 2026-06-02 with
+no user overrides yet — defaults are Claude's recommendations
+(per Q-Resume-2 = γ), and any can be flipped in one message
+when implementation work resumes.
+
+**Resume instructions.**  A new Claude Code session resuming
+here should:
+
+1. Re-read §4 of this doc (locked contract — do NOT re-litigate).
+2. Re-read this §9.11 (implementation defaults).
+3. Ask the user: *"§9.11 defaults stand, or do you want to
+   override any of Q-4A-1 through Q-4A-13?"*
+4. If no overrides → jump straight to 4B (write the module).
+5. If overrides → apply, then jump to 4B.
+
+The 5-step sub-cycle plan is:
+
+  * **4A** — design walkthrough (DONE — this §9.11).
+  * **4B** — backend search module: implement the
+    ``database_search(...)`` function (SQL with invariant-8
+    prefix, dedupe by anchor, expand each anchor's Q/A,
+    ACL filter, token cap trim, XML format, log to
+    ``rag_queries``).  ~1 new file.
+  * **4C** — tool binding: wrap as a langchain ``@tool``, bind
+    per-agent via a closure that bakes in ``caller_agent``,
+    update each chain agent's prompt with a one-line pointer.
+  * **4D** — smoke test against the live Railway DB: seed
+    synthetic content, fire queries, verify XML shape + ACL +
+    anchor semantics + token-cap trim + model-mismatch skip +
+    ``rag_queries`` logged.
+  * **4E** — architecture + dev notes updates: mark §4 / §9.7
+    as DONE; W32 documents the invariant-8 helper-function
+    lock.
+
+**Defaults locked under Q-Resume-2 = γ (Claude's recommendations).**
+
+| # | Decision | Default |
+|---|---|---|
+| Q-4A-1  | Module location | `agents/shared/database_search.py` (leaf module — every chain agent calls it). |
+| Q-4A-2  | Caller-agent identity | **Closure per agent.**  Each agent's `bind_tools` baked-in `caller_agent` via Python closure; LLM never sees/passes the kwarg.  Spoof-proof. |
+| Q-4A-3  | Token cap default | **30,000 tokens.**  Hardcoded constant in `database_search.py`.  UI configurability is T6 (deferred). |
+| Q-4A-4  | Anchor over-fetch | **5×N chunks** in a single SQL round-trip.  Dedupe by anchor, take top N.  Log `n_returned < n_requested` to `rag_queries` when the corner case fires. |
+| Q-4A-5  | `skipped_due_to_model_mismatch` count | **Second small COUNT query** with `embedding_model != <current>`, same WHERE otherwise.  One extra cheap round-trip; reports exact count in `<search_meta>`. |
+| Q-4A-6  | Metafilter syntax | **Hybrid.**  `{"k": V}` = exact match (primitive); `{"k": ">=8"}` = comparison (prefixed string); `{"k": [...]}` = `IN` (list).  Tool docstring documents the supported operators (`=`, `>=`, `<=`, `>`, `<`). |
+| Q-4A-7  | XML escaping | **Always escape** via `xml.sax.saxutils.escape` on `field`, `question`, `body` before emitting.  CDATA / markdown fallback deferred. |
+| Q-4A-8  | Top-level XML element | **No wrapper.**  `<search_meta/>` followed by `<session>` siblings.  Matches §5.2 example. |
+| Q-4A-9  | No-results payload | `<search_meta ... n_returned="0"/>` followed by `<no_results>…locked wording per §4.7…</no_results>`. |
+| Q-4A-10 | Error response | **Structured XML.**  `<search_meta error="..." .../>` + `<error>…</error>`.  Agent stays in control; error also logged to `rag_queries.error_message`. |
+| Q-4A-11 | Per-agent prompt updates | **One-line mention** in each agent's prompt.md under "Tools available"; full schema lives in the `@tool` docstring (LLM sees via tool binding). |
+| Q-4A-12 | Token-cap trim algorithm | **Naive loop.**  Build XML, count tokens, if over cap drop the lowest-ranked anchor, rebuild, recount, repeat.  N is small (~5–10 anchors); O(N²) is fine. |
+| Q-4A-13 | DH binding | **Bind to 8 agents** (Receptionist, Orchestrator, Planner, UII, DCIC, DCII, DCOI, TC).  Skip DH — it writes, doesn't search. |
+
+**Deferred — out of scope for Phase 4 v1** (per locked design):
+T1 (param-vector search), T2 (multi-text), T3 (combined text+param),
+T4 (pagination), T5 (re-embed-on-fly), T6 (token cap as UI setting),
+T8 (cross-encoder reranker), T15 (artefact-fetch tool).
+
+**Deferred — user's structural idea for OTHER search tools.**
+On 2026-06-02 the user mentioned they have a "structural idea for
+other search tools" beyond `database_search` itself.  Explicitly
+deferred until `database_search` v1 ships.  When resuming this
+work, ASK THE USER to share that structural idea AFTER Phase 4 is
+green; they expect Claude to react + propose 2 alternatives at
+that point.
