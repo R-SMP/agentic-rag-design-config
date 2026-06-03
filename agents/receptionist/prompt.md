@@ -521,3 +521,6 @@ $hard_constraints_dc
 
 ## Hard constraints — tool-specific
 $hard_constraints_tools
+
+## Searching past saved sessions
+$database_search_tool

@@ -48,6 +48,7 @@ from agents.shared.user_inputs_tool import (
 )
 from agents.step_caps import MAX_DCII_STEPS
 from tools.calculate.calculate import calculate
+from tools.database_search.database_search import make_database_search_tool
 
 logger = logging.getLogger("propeller_agent")
 
@@ -111,10 +112,12 @@ class DCInputInspector(BaseChainAgent):
 
     def set_routing_tools(self, tools: list) -> None:
         """Bind the DC Input Inspector's utility + routing tools."""
+        _database_search = make_database_search_tool("dc_input_inspector")
         self._extra_utility_tools_by_name = {
             calculate.name: calculate,
             list_attempts.name: list_attempts,
             read_attempt.name: read_attempt,
+            _database_search.name: _database_search,
         }
         all_tools = (
             [self._read_params_tool, self._read_extraction_tool]

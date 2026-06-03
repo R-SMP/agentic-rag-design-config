@@ -220,6 +220,15 @@ VISUALIZE_3D_MODEL_TOOL = _read_dc_fragment(
 PROPOSE_ATTEMPT_TOOL = _read_dc_fragment(
     "tools_config/propose_attempt.md"
 )
+# Semantic vector search over past saved sessions' Q+A.  Bound (via
+# the closure factory ``make_database_search_tool``) to the 8 live-
+# session chain agents — Receptionist, Orchestrator, Planner, UII,
+# DCIC, DCII, DCOI, Tool Caller — see Q-4A-13 in
+# extra_utilities/db_design/database_and_RAG_architecture.md §9.11.
+# Skipped for the Database Handler (write-only, post-session).
+DATABASE_SEARCH_TOOL = _read_dc_fragment(
+    "tools_config/database_search.md"
+)
 
 # Paired render / mesh-check backend fragments — exactly one is
 # spliced into the Tool Caller's prompt per session via the runtime
@@ -320,6 +329,7 @@ _SLOTS: dict[str, str] = {
     "hard_constraints_tools": HARD_CONSTRAINTS_TOOLS,
     "visualize_3d_model_tool": VISUALIZE_3D_MODEL_TOOL,
     "propose_attempt_tool": PROPOSE_ATTEMPT_TOOL,
+    "database_search_tool": DATABASE_SEARCH_TOOL,
     # Generic
     "hard_constraints_generic": HARD_CONSTRAINTS_GENERIC,
     # Per-agent routing fragments (Receptionist + Orchestrator only;

@@ -51,6 +51,7 @@ from agents.shared.user_inputs_tool import (
 from agents.step_caps import MAX_PLANNER_STEPS
 from config import INPUT_IMAGES_SUBDIR, LOGS_DIR, USER_INPUTS_DIR
 from tools.calculate.calculate import calculate
+from tools.database_search.database_search import make_database_search_tool
 
 logger = logging.getLogger("propeller_agent")
 
@@ -199,6 +200,7 @@ class Planner(BaseChainAgent):
             + extra_utility
             + attempts_utility
             + list(USER_INPUTS_TOOLS)
+            + [make_database_search_tool("planner")]
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)

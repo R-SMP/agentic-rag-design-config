@@ -50,6 +50,7 @@ from agents.shared.user_inputs_tool import (
 from config import ATTEMPTS_DIR
 from tools.calculate.calculate import calculate
 from tools.visualize_model.visualize_model import visualize_3d_model
+from tools.database_search.database_search import make_database_search_tool
 from agents.receptionist.propose_attempt_tool import propose_attempt
 
 logger = logging.getLogger("propeller_agent")
@@ -114,6 +115,7 @@ class Receptionist(BaseChainAgent):
             # when-to-call / when-NOT-to-call rules.  prompt.md will
             # be updated to match in Step 11.
             propose_attempt,
+            make_database_search_tool("receptionist"),
         ]
         self._tools_by_name = {t.name: t for t in all_tools}
         self.llm = self.base_llm.bind_tools(all_tools)

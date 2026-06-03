@@ -49,6 +49,7 @@ from agents.shared.routing_tools import (
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_TC_STEPS
 from tools import get_render_library, get_tools
+from tools.database_search.database_search import make_database_search_tool
 
 logger = logging.getLogger("propeller_agent")
 
@@ -93,7 +94,7 @@ class ToolCaller(BaseChainAgent):
         # library is picked by ``set_render_library`` before this agent
         # is built) and the session-scoped attempt-inspection helpers;
         # both are dispatched the same way so they share one map.
-        utility_tools = list(get_tools()) + [list_attempts, read_attempt]
+        utility_tools = list(get_tools()) + [list_attempts, read_attempt, make_database_search_tool("tool_caller")]
         self._extra_utility_tools_by_name = {t.name: t for t in utility_tools}
         self.mesh_checks = session.mesh_checks
         self.render_library = get_render_library()

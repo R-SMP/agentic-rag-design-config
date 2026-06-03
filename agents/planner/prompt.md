@@ -773,6 +773,9 @@ Exceptional cases where you SHOULD consult prior attempts:
   against the actual on-disk parameters before approving the
   next cycle.
 
+## Searching past saved sessions
+$database_search_tool
+
 {rag_instructions}
 
 {routing_instructions}

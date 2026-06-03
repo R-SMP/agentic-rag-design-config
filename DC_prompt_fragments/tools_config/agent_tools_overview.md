@@ -1,16 +1,20 @@
-- **Every agent**: ``calculate``, ``list_attempts``, and
-  ``read_attempt(n, file)`` are bound to all eight agents in the
-  system.  Whenever any agent needs a numeric answer — a sum,
-  ratio, range check, unit conversion, or anything else — it MUST
-  invoke ``calculate`` rather than reasoning about numbers in prose.
-  ``calculate`` takes a LIST of expressions
+- **Every agent**: ``calculate``, ``list_attempts``,
+  ``read_attempt(n, file)``, and ``database_search`` are bound to
+  all eight agents in the system.  Whenever any agent needs a
+  numeric answer — a sum, ratio, range check, unit conversion, or
+  anything else — it MUST invoke ``calculate`` rather than reasoning
+  about numbers in prose.  ``calculate`` takes a LIST of expressions
   (``expressions: list[str]``) and returns all results in a single
   tool result; agents MUST batch every expression they currently
   need into one call rather than issuing several single-expression
   calls in the same turn.  ``list_attempts`` and ``read_attempt``
   let any agent inspect the per-attempt folders archived under
   ``logs/attempts/`` (the canonical home for each design-generation
-  cycle's parameters, mesh, and renders).
+  cycle's parameters, mesh, and renders).  ``database_search``
+  performs a semantic vector search over Q+A from past saved
+  sessions (the Database Handler's corpus); see the
+  ``database_search`` section in each agent's prompt for the full
+  signature, metafilter syntax, and usage guidance.
 
 - **Planner**, **Orchestrator**, **DC Input Creator**:
   additionally bound to ``new_attempt(slug, description)``, the
