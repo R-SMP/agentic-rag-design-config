@@ -54,6 +54,7 @@ from agents.step_caps import MAX_DCIC_STEPS
 from config import ATTEMPTS_DIR
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
+from workflow_settings import database_access
 
 logger = logging.getLogger("propeller_agent")
 
@@ -135,14 +136,15 @@ class DCInputCreator(BaseChainAgent):
         next_agent: str,
     ) -> None:
         """Bind the DC Input Creator's allowed routing tools."""
-        _database_search = make_database_search_tool("dc_input_creator")
         self._extra_utility_tools_by_name = {
             list_attempts.name: list_attempts,
             read_attempt.name: read_attempt,
             new_attempt.name: new_attempt,
             calculate.name: calculate,
-            _database_search.name: _database_search,
         }
+        if database_access.is_enabled_for("dc_input_creator"):
+            _database_search = make_database_search_tool("dc_input_creator")
+            self._extra_utility_tools_by_name[_database_search.name] = _database_search
         all_tools = (
             [self._read_tool, self._write_tool]
             + list(self._extra_utility_tools_by_name.values())

@@ -54,6 +54,7 @@ from agents.shared.user_inputs_tool import (
 from agents.step_caps import MAX_UII_STEPS
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
+from workflow_settings import database_access
 
 logger = logging.getLogger("propeller_agent")
 
@@ -126,13 +127,14 @@ class UserInputInspector(BaseChainAgent):
         next_agent: str,
     ) -> None:
         """Bind the UII's utility + routing tools."""
-        _database_search = make_database_search_tool("user_input_inspector")
         self._extra_utility_tools_by_name = {
             calculate.name: calculate,
             list_attempts.name: list_attempts,
             read_attempt.name: read_attempt,
-            _database_search.name: _database_search,
         }
+        if database_access.is_enabled_for("user_input_inspector"):
+            _database_search = make_database_search_tool("user_input_inspector")
+            self._extra_utility_tools_by_name[_database_search.name] = _database_search
         all_tools = (
             [self._read_tool, self._write_tool]
             + list(self._extra_utility_tools_by_name.values())

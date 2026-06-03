@@ -773,9 +773,10 @@ Exceptional cases where you SHOULD consult prior attempts:
   against the actual on-disk parameters before approving the
   next cycle.
 
+<<HAS_DBA>>
 ## Searching past saved sessions
 $database_search_tool
-
+<</HAS_DBA>>
 {rag_instructions}
 
 {routing_instructions}

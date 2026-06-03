@@ -58,6 +58,7 @@ from agents.tool_caller import ToolCaller
 from agents.user_input_inspector import UserInputInspector
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
+from workflow_settings import database_access
 
 logger = logging.getLogger("propeller_agent")
 
@@ -380,8 +381,9 @@ class Orchestrator(BaseChainAgent):
             list_attempts,
             read_attempt,
             new_attempt,
-            make_database_search_tool("orchestrator"),
         ]
+        if database_access.is_enabled_for("orchestrator"):
+            orch_tools.append(make_database_search_tool("orchestrator"))
         if self.dc_inspector_enabled:
             orch_tools.insert(
                 4,

@@ -72,6 +72,12 @@ _DCII_ONLY_RE = re.compile(r"<<DCII_ONLY>>(.*?)<</DCII_ONLY>>", re.DOTALL)
 _DCII_OFF_RE = re.compile(r"<<DCII_OFF>>(.*?)<</DCII_OFF>>", re.DOTALL)
 _PF_ON_RE = re.compile(r"<<PF_ON>>(.*?)<</PF_ON>>", re.DOTALL)
 _PF_OFF_RE = re.compile(r"<<PF_OFF>>(.*?)<</PF_OFF>>", re.DOTALL)
+# Per-agent DBa filter — mirrors the DCII_ONLY pattern but the
+# enabling flag is per-agent (workflow_settings/database_access.py +
+# global RAG_ENABLED master switch).  Stripped at template-build
+# time when the agent does NOT have database access; otherwise
+# unwrapped to expose the inner content.  See ``apply_dba_filter``.
+_HAS_DBA_RE = re.compile(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>", re.DOTALL)
 
 
 def apply_dcii_filter(text: str) -> str:
@@ -104,8 +110,50 @@ def apply_planner_first_filter(text: str) -> str:
     return text
 
 
+def apply_dba_filter(text: str, agent_dir_name: str) -> str:
+    """Resolve ``<<HAS_DBA>>...<</HAS_DBA>>`` conditional regions
+    for one agent's template.
+
+    The enabling condition is per-agent and consults BOTH the
+    global ``RAG_ENABLED`` master switch AND the per-agent flag in
+    ``workflow_settings/database_access.json``.  See
+    :func:`workflow_settings.database_access.is_enabled_for`.
+
+    On (the agent has database access)
+        unwrap the region — keep its inner content verbatim.
+    Off (the agent does NOT have access)
+        strip the region entirely.  Used to remove the
+        ``## Searching past saved sessions`` heading +
+        ``$database_search_tool`` fragment from agents that lack
+        access, so the LLM never sees stale references to a tool
+        it can't call.
+
+    Agents whose ``agent_dir_name`` is not in
+    ``database_access.DEFAULT_AGENTS`` (currently just
+    ``database_handler``) are treated as "no access" — any
+    ``<<HAS_DBA>>`` region in their prompt is stripped.
+    """
+    # Local import to avoid an unconditional dependency in this
+    # module — database_access itself imports workflow_settings,
+    # which is already imported here, so the actual import chain
+    # is fine, but keeping the import inside the function makes
+    # the dependency direction obvious in `import` statements.
+    from workflow_settings import database_access as _database_access
+
+    if _database_access.is_enabled_for(agent_dir_name):
+        text = _HAS_DBA_RE.sub(lambda m: m.group(1), text)
+    else:
+        text = _HAS_DBA_RE.sub("", text)
+    return text
+
+
 def apply_flag_filters(text: str) -> str:
-    """Apply both DCII and PLANNER_FIRST filters in sequence."""
+    """Apply both DCII and PLANNER_FIRST filters in sequence.
+
+    NOTE: per-agent filters (currently :func:`apply_dba_filter`)
+    are applied separately in :func:`_build_template` because they
+    need to know which agent's template is being assembled.
+    """
     return apply_planner_first_filter(apply_dcii_filter(text))
 
 
@@ -365,7 +413,11 @@ def _build_template(agent_dir_name: str) -> str:
     raw = (AGENTS_DIR / agent_dir_name / "prompt.md").read_text(encoding="utf-8")
     once = Template(raw).safe_substitute(_SLOTS)
     twice = Template(once).safe_substitute(_SLOTS)
-    return apply_flag_filters(twice)
+    filtered = apply_flag_filters(twice)
+    # apply_dba_filter is per-agent (consults the per-agent flag in
+    # database_access.json + the RAG_ENABLED master switch), so it
+    # runs separately from the global apply_flag_filters chain.
+    return apply_dba_filter(filtered, agent_dir_name)
 
 
 # ---------------------------------------------------------------------------

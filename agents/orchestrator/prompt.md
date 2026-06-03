@@ -630,6 +630,7 @@ Every response should end with your next tool call.  You may write a
 short reasoning line above the call, but keep it terse.  When the
 cycle is complete (after ``call_receptionist``), produce no further
 tool call — your response text is the answer.
-
+<<HAS_DBA>>
 ## Searching past saved sessions
 $database_search_tool
+<</HAS_DBA>>

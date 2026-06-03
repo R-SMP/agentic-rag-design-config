@@ -52,14 +52,33 @@ RENDER_LIBRARY: str = "trimesh"
 
 
 # ===========================================================
-# 3.  RAG retrieval
+# 3.  RAG retrieval — master switch for the database_search tool
 # ===========================================================
-# Reserved for future RAG (retrieval-augmented generation) over
-# prior sessions.  The flag is currently logged but not yet wired
-# to any retrieval path — leave at False until RAG is implemented.
+# Global gate for the database_search tool that was implemented
+# in Phase 4 (architecture doc §4 + §9.7 + §9.11).
+#
+#   True   the 8 chain agents (Receptionist, Orchestrator, Planner,
+#          UII, DCIC, DCII, DCOI, Tool Caller) get database_search
+#          bound at session start AND the $database_search_tool
+#          fragment in their system prompts — *subject to* each
+#          agent's individual DBa flag in workflow_settings/
+#          database_access.json.  Per-agent default is True so all
+#          8 are enabled by default.
+#
+#   False  NO agent gets database_search, regardless of any
+#          per-agent DBa flag.  Use this as a kill-switch when you
+#          want to run a session without RAG entirely (e.g. for
+#          A/B comparison or to debug retrieval-independent
+#          behaviour).
+#
+# Per-agent DBa flags live in workflow_settings/database_access.json
+# and are edited via the LLM-routing chart's DBa toggle buttons in
+# the Workflow Settings web view.  Changes take effect on the next
+# session (settings + per-agent flags are read fresh at session
+# build, matching the broader "next session" semantics).
 #
 # Valid values: True, False
-RAG_ENABLED: bool = False
+RAG_ENABLED: bool = True
 
 
 # ===========================================================
@@ -294,7 +313,7 @@ EMBEDDING_INPUT_MAX_CHARS: int = 30000
 # Default is OpenAI global override — a fresh checkout (or any
 # session that has never written this value) routes every agent
 # through OpenAI rather than the per-agent .env files.
-LLM_ROUTING_MODE: str = "openai"
+LLM_ROUTING_MODE: str = "individual"
 
 
 # ===========================================================

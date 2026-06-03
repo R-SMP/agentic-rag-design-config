@@ -1185,6 +1185,13 @@ async function saveSettings() {
       "Saved — applies to the next session.",
       "ok"
     );
+    // The flag list may include RAG_ENABLED (the master switch for
+    // database access).  Re-fetch the DBa state immediately and
+    // repaint the chart's banner + button dimming so the visual
+    // master-on/master-off state matches what was just saved,
+    // without needing the operator to refresh the page.
+    await loadDbAccessState();
+    paintDbaBanner();
   } catch (e) {
     setSettingsStatus("Network error: " + e, "err");
   } finally {
@@ -1281,6 +1288,11 @@ function lrEl(id) { return document.getElementById(id); }
 
 // State carried across renders.  Populated by loadLrRouting().
 let lrState = null;  // { mode, providers, shared, agents:[...] }
+// DBa (database access) state — { flags: {agent: bool, ...}, rag_enabled }.
+// Loaded by loadDbAccessState() at the same time as lrState; drives the
+// per-agent DBa toggle button rendered by renderLrOverlay() and the
+// master-off banner painted by paintDbaBanner().
+let dbaState = { flags: {}, rag_enabled: false };
 
 // ---- chart build ---------------------------------------------------------
 
@@ -1454,6 +1466,27 @@ function renderLrOverlay() {
 
     div.appendChild(sel);
     div.appendChild(inp);
+
+    // DBa (database access) toggle button.  Only the 8 chain agents
+    // are eligible (matches database_access.DEFAULT_AGENTS server-
+    // side).  Other roles (e.g. DH if it were on this chart) get no
+    // button.
+    if (dbaState.flags && Object.prototype.hasOwnProperty.call(dbaState.flags, b.key)) {
+      const dbaBtn = document.createElement("button");
+      dbaBtn.className = "lr-dba-btn";
+      dbaBtn.type = "button";
+      dbaBtn.textContent = "DBa";
+      dbaBtn.title =
+        "DBa = Database access.  Toggle whether this agent gets " +
+        "database_search bound + the fragment in its prompt.  " +
+        "Takes effect on the next session.";
+      const initialOn = !!dbaState.flags[b.key];
+      dbaBtn.classList.toggle("dba-on",  initialOn);
+      dbaBtn.classList.toggle("dba-off", !initialOn);
+      dbaBtn.addEventListener("click", () => onDbaToggle(b.key, dbaBtn));
+      div.appendChild(dbaBtn);
+    }
+
     overlay.appendChild(div);
   }
 }
@@ -1572,12 +1605,86 @@ async function loadLrRouting() {
     // Ensure shared.provider has a value the dropdown can match; if
     // missing, the dropdown still falls through to "individual".
     if (!lrState.shared) lrState.shared = { provider: "openai", model: "" };
+    // Also fetch the DBa (database access) state — drives the per-
+    // agent toggle button rendered inside each agent box and the
+    // master-off banner.  Non-blocking: if it fails, we render the
+    // chart anyway with all buttons defaulted to OFF.
+    await loadDbAccessState();
     buildLrChart();
     renderLrGlobal();
     renderLrOverlay();
+    paintDbaBanner();
     setLrStatus("", "");
   } catch (e) {
     setLrStatus("Network error: " + e, "err");
+  }
+}
+
+async function loadDbAccessState() {
+  try {
+    const res = await fetch("/api/database-access");
+    if (!res.ok) return;
+    dbaState = await res.json();
+  } catch (e) {
+    // Non-blocking — leave dbaState as-is (defaults to empty).
+  }
+}
+
+function paintDbaBanner() {
+  const banner = document.getElementById("dba-banner");
+  const overlay = document.getElementById("lr-overlay");
+  // Toggle the master-off class on the overlay so CSS dims every
+  // .lr-dba-btn inside it without us having to touch each button.
+  if (overlay) {
+    overlay.classList.toggle("dba-master-off", !dbaState.rag_enabled);
+  }
+  if (!banner) return;
+  if (dbaState.rag_enabled) {
+    banner.hidden = true;
+    banner.textContent = "";
+  } else {
+    banner.hidden = false;
+    banner.textContent =
+      "Master switch RAG_ENABLED is OFF — no agent has " +
+      "database access this session, regardless of the per-agent " +
+      "DBa toggles below.";
+  }
+}
+
+async function onDbaToggle(agentKey, btn) {
+  // Optimistic toggle — flip locally, send to server, revert on
+  // error.  Same pattern as several other workflow-settings writes.
+  const newState = !btn.classList.contains("dba-on");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/database-access", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ agent: agentKey, enabled: newState }),
+    });
+    if (res.status === 401) { showGate(); return; }
+    if (res.status === 409) {
+      const data = await res.json().catch(() => ({}));
+      setLrStatus(data.detail || "Locked — session is active.", "err");
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setLrStatus(data.detail || "DBa toggle failed.", "err");
+      return;
+    }
+    if (data.flags) dbaState.flags = data.flags;
+    btn.classList.toggle("dba-on",  newState);
+    btn.classList.toggle("dba-off", !newState);
+    setLrStatus(
+      "DBa for " + agentKey + " → " + (newState ? "ON" : "OFF") +
+      ".  Takes effect on the next session.",
+      "ok",
+    );
+  } catch (e) {
+    setLrStatus("Network error: " + e, "err");
+  } finally {
+    if (btn) btn.disabled = false;
   }
 }
 

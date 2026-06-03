@@ -1858,3 +1858,84 @@ button.danger:hover { background: #3a1d1d; }
 .db-lock-again {
   margin: 16px 0 0 0;
 }
+
+/* =========================================================================
+   DBa (database access) per-agent toggle button — rendered by
+   renderLrOverlay() inside each agent box on the LLM-routing chart.
+   Tiny pill-style button, green when ON / gray when OFF.  Lives at
+   the bottom-right of each agent's controls div.
+   ========================================================================= */
+
+.lr-dba-btn {
+  align-self: flex-end;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.lr-dba-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.lr-dba-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.lr-dba-btn.dba-on {
+  background: rgba(46, 160, 67, 0.22);
+  border-color: rgba(46, 160, 67, 0.6);
+  color: #9dffae;
+}
+.lr-dba-btn.dba-off {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border);
+  color: var(--muted, #999);
+}
+
+/* When the global RAG_ENABLED master switch is off, every DBa button
+   inside the overlay visually dims so the operator immediately sees
+   they're inert this session — even though they remain clickable
+   (so per-agent staging still works against the next master flip). */
+.lr-overlay.dba-master-off .lr-dba-btn {
+  opacity: 0.45;
+  border-style: dashed;
+}
+.lr-overlay.dba-master-off .lr-dba-btn:hover:not(:disabled) {
+  opacity: 0.7;
+}
+
+/* DBa master-off banner: shown only when the global RAG_ENABLED is
+   False, sitting right above the LLM-routing chart so the operator
+   immediately understands the per-agent toggles are inert. */
+
+.dba-banner {
+  margin: 8px 0;
+  padding: 8px 12px;
+  border: 1px solid #7a5a2a;
+  border-radius: 6px;
+  background: rgba(122, 90, 42, 0.16);
+  color: #ffd49d;
+  font-size: 0.92rem;
+}
+
+/* Legend below the chart explaining what the DBa button does. */
+
+.dba-legend {
+  margin: 10px 0 12px 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 0.88rem;
+  color: var(--muted, #999);
+  line-height: 1.45;
+}
+.dba-legend code {
+  background: rgba(255, 255, 255, 0.05);
+  padding: 1px 5px;
+  border-radius: 3px;
+}

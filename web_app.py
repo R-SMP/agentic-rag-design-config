@@ -1120,6 +1120,82 @@ def api_llm_routing_post(body: LlmRoutingIn) -> dict:
     return {"ok": True, "state": settings_llm_routing.read_state()}
 
 
+# --------------------------------------------------------------------------
+# Per-agent DBa (database access) toggle — backs the LLM-routing chart's
+# DBa buttons.  Two endpoints:
+#
+#   GET /api/database-access
+#     Returns {flags: {agent: bool, ...}, rag_enabled: bool}.  The
+#     frontend uses ``rag_enabled`` to show / hide the "master switch
+#     is OFF" banner, and ``flags`` to render each agent's button
+#     pressed-state.
+#
+#   POST /api/database-access  body: {agent, enabled}
+#     Updates ONE agent's flag via
+#     ``workflow_settings.database_access.set_one(...)``.  Rejected
+#     with HTTP 409 while a session is active (same lock as the
+#     other settings writes).  Returns {ok, flags, rag_enabled}.
+#
+# Both endpoints take effect on the NEXT session — the per-agent
+# prompt templates and tool bindings are built once at session
+# construction time and read the JSON file then.
+
+from workflow_settings import database_access as _db_access
+
+
+class _DbAccessBody(BaseModel):
+    agent:   str
+    enabled: bool
+
+
+@app.get("/api/database-access")
+def api_database_access_get() -> dict:
+    """Current per-agent DBa state + the global RAG_ENABLED master
+    switch.  Read-only."""
+    _require_auth()
+    # Re-read RAG_ENABLED off disk so the editor can't cache a
+    # stale value from process startup — same idiom as
+    # ``workflow_settings.llm_routing`` uses for LLM_ROUTING_MODE.
+    importlib.reload(workflow_settings)
+    return {
+        "flags":       _db_access.get_all(),
+        "rag_enabled": bool(workflow_settings.RAG_ENABLED),
+    }
+
+
+@app.post("/api/database-access")
+def api_database_access_post(body: _DbAccessBody) -> dict:
+    """Update one agent's DBa flag in
+    ``workflow_settings/database_access.json``.  Edits take effect
+    for the NEXT session.
+
+    Rejected with HTTP 409 while a session is active.
+    """
+    _require_auth()
+    _require_no_session()
+    try:
+        flags_after = _db_access.set_one(body.agent, body.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # never 500 the editor
+        logger.exception("[WEB] database-access write failed: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not write database-access "
+                   f"({type(exc).__name__}: {exc}).",
+        )
+    logger.info(
+        "[WEB] database-access updated: %s -> %s",
+        body.agent, body.enabled,
+    )
+    importlib.reload(workflow_settings)
+    return {
+        "ok":          True,
+        "flags":       flags_after,
+        "rag_enabled": bool(workflow_settings.RAG_ENABLED),
+    }
+
+
 class DhScheduleIn(BaseModel):
     # The editor sends the FULL replacement schedule on every Save.
     version: int = 1

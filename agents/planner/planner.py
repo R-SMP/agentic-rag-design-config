@@ -52,6 +52,7 @@ from agents.step_caps import MAX_PLANNER_STEPS
 from config import INPUT_IMAGES_SUBDIR, LOGS_DIR, USER_INPUTS_DIR
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
+from workflow_settings import database_access
 
 logger = logging.getLogger("propeller_agent")
 
@@ -200,9 +201,10 @@ class Planner(BaseChainAgent):
             + extra_utility
             + attempts_utility
             + list(USER_INPUTS_TOOLS)
-            + [make_database_search_tool("planner")]
             + list(tools)
         )
+        if database_access.is_enabled_for("planner"):
+            all_tools.append(make_database_search_tool("planner"))
         self.llm = self.base_llm.bind_tools(all_tools)
         self._tools_by_name = {t.name: t for t in all_tools}
         rag_block = (

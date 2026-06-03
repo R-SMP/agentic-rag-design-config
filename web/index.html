@@ -590,6 +590,11 @@
                      placeholder="e.g. gpt-5-mini" />
             </div>
             <div id="lr-banner" class="lr-banner" hidden></div>
+            <!-- DBa = Database access.  Shown only when the global
+                 RAG_ENABLED master switch is OFF (no agent gets
+                 database_search this session regardless of per-agent
+                 buttons). -->
+            <div id="dba-banner" class="dba-banner" hidden></div>
             <div class="lr-chart-wrap" id="lr-chart-wrap">
               <svg id="lr-chart" class="lr-chart"
                    preserveAspectRatio="xMidYMid meet"
@@ -597,6 +602,19 @@
                    aria-label="LLM routing chart (one provider+model per agent)">
               </svg>
               <div id="lr-overlay" class="lr-overlay"></div>
+            </div>
+            <!-- DBa legend: explains the small toggle button rendered
+                 in each agent box by renderLrOverlay (web/app.js). -->
+            <div class="dba-legend">
+              <strong>DBa</strong> = <em>Database access</em>.  Each
+              agent's per-box <code>DBa</code> toggle determines whether
+              that agent has the <code>database_search</code> tool bound
+              and the corresponding fragment in its system prompt.
+              Master switch is <code>RAG_ENABLED</code> in the
+              Workflow Settings flag list below — when off, no agent
+              has database access regardless of these per-agent
+              toggles.  Changes take effect on the <strong>next
+              session</strong>.
             </div>
             <div class="lr-bar">
               <button id="lr-save" class="primary" type="button">Save LLM routing</button>
