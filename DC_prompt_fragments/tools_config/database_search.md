@@ -56,14 +56,26 @@ your query.
     *"parameters used for the best attempt in similar past
     sessions"*).
 
-**Metafilter syntax — hybrid string-prefix.**  Pass ``None`` or
-``{}`` to skip filtering.
+<!--
+NOTE for fragment editors: the literal { and } braces below are
+DOUBLED ({{ / }}) on purpose.  This fragment is substituted into
+each agent's prompt.md via ``$database_search_tool``; that prompt
+template is later run through ``str.format(...)`` at agent wiring
+time to fill {chain_access_block}, {routing_instructions}, etc.
+``.format`` interprets single braces as placeholders and crashes
+on a literal ``{}`` with IndexError.  Doubled braces survive both
+stages and reach the LLM as a single ``{`` / ``}``.  See
+v9_gotchas.md "brace-escape rule for .format-templated prompts".
+-->
 
-  * Equality:    ``{"dc_name": "propeller"}``
-  * Comparison:  ``{"satisfaction": ">=7"}``
+**Metafilter syntax — hybrid string-prefix.**  Pass ``None`` or
+``{{}}`` to skip filtering.
+
+  * Equality:    ``{{"dc_name": "propeller"}}``
+  * Comparison:  ``{{"satisfaction": ">=7"}}``
     (ops: ``=``, ``>=``, ``<=``, ``>``, ``<``)
-  * IN-list:     ``{"agent_from": ["DH", "DCII"]}``
-  * Combine:     ``{"has_renders": true, "satisfaction": ">=7"}``
+  * IN-list:     ``{{"agent_from": ["DH", "DCII"]}}``
+  * Combine:     ``{{"has_renders": true, "satisfaction": ">=7"}}``
 
 Supported keys (v1):
 
