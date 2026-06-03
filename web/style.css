@@ -1768,3 +1768,93 @@ button.danger:hover { background: #3a1d1d; }
     flex: 1 1 auto;
   }
 }
+
+/* =========================================================================
+   Database view — password-gated developer console.  Two stacked cards
+   (locked / unlocked) inside a scroll container that matches the
+   Workflow Settings view's body padding so the two views feel consistent.
+   ========================================================================= */
+
+.database-view {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+}
+.db-scroll {
+  flex: 1;
+  overflow: auto;
+  padding: 24px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+.db-card {
+  max-width: 720px;
+  padding: 20px 22px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--panel, #1a1a1a);
+}
+.db-title {
+  margin: 0 0 12px 0;
+  font-size: 1.15rem;
+}
+.db-blurb {
+  margin: 8px 0;
+  line-height: 1.5;
+}
+.db-blurb-keep {
+  margin-top: 16px;
+}
+.db-list {
+  margin: 6px 0 12px 0;
+  padding-left: 22px;
+  line-height: 1.55;
+}
+.db-list code {
+  background: rgba(255,255,255,0.05);
+  padding: 1px 5px;
+  border-radius: 3px;
+}
+.db-warning {
+  margin: 14px 0 12px 0;
+  padding: 10px 12px;
+  border: 1px solid #7a2a2a;
+  border-radius: 6px;
+  background: rgba(122, 42, 42, 0.18);
+  color: #ffb1b1;
+}
+.db-form-row {
+  display: flex;
+  gap: 10px;
+  margin-top: 8px;
+}
+.db-form-row input {
+  flex: 1;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg, #0e0e0e);
+  color: inherit;
+  font-family: inherit;
+  font-size: 0.95rem;
+}
+.db-form-row input:focus {
+  outline: none;
+  border-color: var(--accent);
+}
+.db-status {
+  margin: 12px 0 0 0;
+  min-height: 1.2em;
+  font-size: 0.92rem;
+  color: var(--muted, #999);
+}
+.db-status.error {
+  color: #ff9d9d;
+}
+.db-status.success {
+  color: #9dffae;
+}
+.db-lock-again {
+  margin: 16px 0 0 0;
+}

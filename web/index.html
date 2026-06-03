@@ -61,6 +61,9 @@
       <button class="nav-item" type="button" data-view="settings">
         <span class="nav-ico">⚙️</span><span>Workflow Settings</span>
       </button>
+      <button class="nav-item" type="button" data-view="database">
+        <span class="nav-ico">🗄️</span><span>Database</span>
+      </button>
     </nav>
 
     <div id="views" class="views">
@@ -619,6 +622,77 @@
             <button id="settings-reload" class="ghost" type="button">Reload</button>
             <span id="settings-status" class="settings-status" role="status"></span>
           </div>
+        </div>
+      </section>
+
+      <!-- 7. Database: password-gated developer interface.  Today it
+           exposes only one action — TRUNCATE every data table except
+           dc_parameter_schemas.  Backed by /api/db_admin/auth and
+           /api/db_admin/reset; the password lives in the
+           PASSWORD_DATABASE_WEB_UI environment variable on the server. -->
+      <section class="view database-view" data-view="database" hidden>
+        <div class="db-scroll" id="db-scroll">
+
+          <!-- State 1: locked — password gate. -->
+          <div id="db-locked" class="db-card">
+            <h2 class="db-title">Database — developer console</h2>
+            <p class="db-blurb">
+              This view exposes destructive database operations.
+              Enter the password configured on the server
+              (<code>PASSWORD_DATABASE_WEB_UI</code>) to unlock it.
+              The password is held in browser memory only — refresh
+              the page and you'll need to re-enter it.
+            </p>
+            <div class="db-form-row">
+              <input id="db-password" type="password" autocomplete="off"
+                     placeholder="Password" />
+              <button id="db-unlock" class="primary" type="button">Unlock</button>
+            </div>
+            <p id="db-locked-status" class="db-status" role="status"></p>
+          </div>
+
+          <!-- State 2: unlocked — reset action. -->
+          <div id="db-unlocked" class="db-card" hidden>
+            <h2 class="db-title">Reset the database to a clean state</h2>
+            <p class="db-blurb">
+              Type the phrase <code>reset_database</code> in the box
+              below and press <strong>Enter</strong> or click
+              <strong>Send</strong> to permanently delete:
+            </p>
+            <ul class="db-list">
+              <li>All rows in <code>sessions</code>
+                  (cascades to <code>chunks</code>,
+                  <code>dc_attempts</code>,
+                  <code>dc_attempt_parameters</code>)</li>
+              <li>All rows in <code>rag_queries</code></li>
+            </ul>
+            <p class="db-blurb db-blurb-keep">
+              <strong>Preserved:</strong>
+            </p>
+            <ul class="db-list">
+              <li><code>dc_parameter_schemas</code>
+                  (the 17-parameter schema seed)</li>
+              <li>The <code>session_counter</code> SEQUENCE — the next
+                  session ID continues from the current count, not
+                  reset to 1.  Manually reset via psql
+                  (<code>ALTER SEQUENCE session_counter RESTART WITH 1;</code>)
+                  if you want IDNNN to restart.</li>
+            </ul>
+            <p class="db-warning">
+              This action is <strong>irreversible</strong>.  Make
+              sure you are pointed at the right database.
+            </p>
+            <div class="db-form-row">
+              <input id="db-reset-phrase" type="text" autocomplete="off"
+                     placeholder="reset_database" />
+              <button id="db-reset-send" class="danger" type="button">Send</button>
+            </div>
+            <p id="db-unlocked-status" class="db-status" role="status"></p>
+            <p class="db-lock-again">
+              <button id="db-relock" class="ghost" type="button">Lock again</button>
+            </p>
+          </div>
+
         </div>
       </section>
     </div>

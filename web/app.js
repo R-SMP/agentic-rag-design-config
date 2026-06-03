@@ -979,6 +979,12 @@ function switchView(name) {
     loadQuestions();
     refreshSessionActive();
   }
+  if (name === "database") {
+    // Re-lock the view on every entry — the operator must re-enter
+    // the password for any destructive action.  Clears stale status
+    // messages from the previous visit too.
+    resetDbView();
+  }
 }
 
 for (const b of navItems) {
@@ -3630,3 +3636,147 @@ function paramsInit() {
 }
 
 paramsInit();
+
+
+// ---------------------------------------------------------------------------
+// Database view — password-gated developer console
+// (POST /api/db_admin/auth + POST /api/db_admin/reset)
+// ---------------------------------------------------------------------------
+//
+// State machine:
+//   * Locked   — password input + Unlock button.
+//   * Unlocked — reset-phrase input + Send + Lock again.
+//   * After a successful reset → re-lock automatically after 4s so a
+//     subsequent destructive action requires re-authentication.
+//
+// The password is held in dbPassword (module-local) ONLY.  We never
+// stash it in localStorage / sessionStorage — refreshing the page
+// requires re-entering it.  Switching to any other view + back also
+// re-locks (see the "database" branch of switchView above).
+
+let dbPassword = "";
+
+const dbLocked       = $("db-locked");
+const dbUnlocked     = $("db-unlocked");
+const dbPasswordIn   = $("db-password");
+const dbUnlockBtn    = $("db-unlock");
+const dbLockedStat   = $("db-locked-status");
+const dbResetPhrase  = $("db-reset-phrase");
+const dbResetSendBtn = $("db-reset-send");
+const dbUnlockedStat = $("db-unlocked-status");
+const dbRelockBtn    = $("db-relock");
+
+
+function _dbSetStatus(el, text, kind) {
+  if (!el) return;
+  el.textContent = text || "";
+  el.classList.remove("error", "success");
+  if (kind === "error")   el.classList.add("error");
+  if (kind === "success") el.classList.add("success");
+}
+
+
+function resetDbView() {
+  if (!dbLocked || !dbUnlocked) return;
+  dbPassword = "";
+  if (dbPasswordIn)  dbPasswordIn.value  = "";
+  if (dbResetPhrase) dbResetPhrase.value = "";
+  _dbSetStatus(dbLockedStat,   "");
+  _dbSetStatus(dbUnlockedStat, "");
+  dbLocked.hidden   = false;
+  dbUnlocked.hidden = true;
+}
+
+
+async function dbUnlock() {
+  if (!dbPasswordIn) return;
+  const pw = dbPasswordIn.value;
+  if (!pw) {
+    _dbSetStatus(dbLockedStat, "Please enter a password.", "error");
+    return;
+  }
+  _dbSetStatus(dbLockedStat, "Checking…");
+  if (dbUnlockBtn) dbUnlockBtn.disabled = true;
+  try {
+    const res = await fetch("/api/db_admin/auth", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ password: pw }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (body.ok) {
+      dbPassword = pw;
+      dbLocked.hidden   = true;
+      dbUnlocked.hidden = false;
+      _dbSetStatus(dbUnlockedStat, "");
+      setTimeout(() => { if (dbResetPhrase) dbResetPhrase.focus(); }, 0);
+    } else {
+      _dbSetStatus(dbLockedStat,
+        body.error || "Password rejected.", "error");
+    }
+  } catch (e) {
+    _dbSetStatus(dbLockedStat,
+      "Network error contacting the server.", "error");
+  } finally {
+    if (dbUnlockBtn) dbUnlockBtn.disabled = false;
+  }
+}
+
+
+async function dbResetSend() {
+  if (!dbResetPhrase) return;
+  const phrase = dbResetPhrase.value;
+  if (phrase !== "reset_database") {
+    _dbSetStatus(dbUnlockedStat,
+      "Phrase must be exactly \"reset_database\".  Nothing was deleted.",
+      "error");
+    return;
+  }
+  if (!window.confirm(
+        "This will TRUNCATE every data table except " +
+        "dc_parameter_schemas.  This action is IRREVERSIBLE.  " +
+        "Continue?")) {
+    _dbSetStatus(dbUnlockedStat, "Cancelled.");
+    return;
+  }
+  _dbSetStatus(dbUnlockedStat, "Sending…");
+  if (dbResetSendBtn) dbResetSendBtn.disabled = true;
+  try {
+    const res = await fetch("/api/db_admin/reset", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ password: dbPassword, phrase }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (body.ok) {
+      const counts = Object.entries(body.before_counts || {})
+        .map(([k, v]) => `${k}=${v}`)
+        .join(", ");
+      _dbSetStatus(dbUnlockedStat,
+        "Database reset successfully.  Deleted: " + counts +
+        ".  Re-locking in 4 s…",
+        "success");
+      setTimeout(resetDbView, 4000);
+    } else {
+      _dbSetStatus(dbUnlockedStat,
+        body.error || "Reset failed.", "error");
+    }
+  } catch (e) {
+    _dbSetStatus(dbUnlockedStat,
+      "Network error contacting the server.", "error");
+  } finally {
+    if (dbResetSendBtn) dbResetSendBtn.disabled = false;
+  }
+}
+
+
+if (dbUnlockBtn)   dbUnlockBtn.addEventListener("click", dbUnlock);
+if (dbResetSendBtn) dbResetSendBtn.addEventListener("click", dbResetSend);
+if (dbRelockBtn)   dbRelockBtn.addEventListener("click", resetDbView);
+
+if (dbPasswordIn) dbPasswordIn.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); dbUnlock(); }
+});
+if (dbResetPhrase) dbResetPhrase.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); dbResetSend(); }
+});

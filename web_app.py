@@ -105,6 +105,42 @@ def _check_invite_code(submitted: str) -> bool:
 
 
 # --------------------------------------------------------------------------
+# Database admin view — separate password gate for destructive actions
+# --------------------------------------------------------------------------
+# Drives the "Database" side-menu view.  The password is read from
+# the PASSWORD_DATABASE_WEB_UI environment variable on every check;
+# when unset, the view is hard-disabled (every auth attempt is
+# rejected) so a forgotten env var can never leave the destructive
+# endpoint exposed.
+
+DB_PASSWORD_ENV = "PASSWORD_DATABASE_WEB_UI"
+RESET_PHRASE    = "reset_database"
+# Order is intentional only for the SELECT COUNT(*) snapshot; the
+# TRUNCATE ... CASCADE doesn't care about order.  dc_parameter_schemas
+# is deliberately ABSENT — it holds the 17-parameter schema seed and
+# must be preserved.
+RESET_TABLES = [
+    "chunks",
+    "dc_attempt_parameters",
+    "dc_attempts",
+    "rag_queries",
+    "sessions",
+]
+
+
+def _configured_db_password() -> str:
+    return os.environ.get(DB_PASSWORD_ENV, "").strip()
+
+
+def _check_db_password(submitted: str) -> bool:
+    configured = _configured_db_password()
+    if not configured or not submitted:
+        return False
+    return hmac.compare_digest(submitted.encode("utf-8"),
+                               configured.encode("utf-8"))
+
+
+# --------------------------------------------------------------------------
 # In-process single session (mirrors streamlit_app._ensure_session)
 # --------------------------------------------------------------------------
 
@@ -1188,6 +1224,109 @@ async def api_dh_schedule_upload(file: UploadFile = File(...)) -> dict:
         len(payload.get("questions") or []),
     )
     return {"ok": True, "payload": payload}
+
+
+# --------------------------------------------------------------------------
+# Database admin view — password-gated reset endpoint
+# --------------------------------------------------------------------------
+# Backs the side-menu "Database" view.  Two endpoints:
+#
+#   POST /api/db_admin/auth    body: {password}
+#       Validates the password ONLY (so the UI can unlock its form
+#       with immediate feedback before the operator types the
+#       destructive phrase).  Always returns HTTP 200 with
+#       {ok: bool, error?: str}.
+#
+#   POST /api/db_admin/reset   body: {password, phrase}
+#       Re-validates the password AND the phrase, then TRUNCATEs
+#       the 5 data tables (chunks, dc_attempt_parameters,
+#       dc_attempts, rag_queries, sessions) in one transaction.
+#       dc_parameter_schemas is preserved (intentionally not in
+#       RESET_TABLES) and the session_counter SEQUENCE is left
+#       alone.  Returns row counts that were deleted on success.
+
+
+class _DbAuthBody(BaseModel):
+    password: str
+
+
+class _DbResetBody(BaseModel):
+    password: str
+    phrase:   str
+
+
+@app.post("/api/db_admin/auth")
+async def api_db_admin_auth(body: _DbAuthBody) -> dict:
+    """Validate the Database-view password.  Used by the frontend to
+    unlock the reset form before the operator types the destructive
+    phrase.  Always returns 200; ``ok`` discriminates."""
+    if not _configured_db_password():
+        return {
+            "ok": False,
+            "error": f"{DB_PASSWORD_ENV} is not set in the environment.",
+        }
+    return {"ok": _check_db_password(body.password)}
+
+
+@app.post("/api/db_admin/reset")
+async def api_db_admin_reset(body: _DbResetBody) -> dict:
+    """Destructive: TRUNCATE the 5 data tables (preserves
+    ``dc_parameter_schemas`` and the ``session_counter`` SEQUENCE).
+
+    Re-validates the password AND the literal reset phrase
+    server-side so the endpoint cannot be invoked by anyone who
+    skipped the UI's unlock step.
+    """
+    if not _check_db_password(body.password):
+        return {"ok": False, "error": "Password rejected."}
+    if body.phrase != RESET_PHRASE:
+        return {
+            "ok": False,
+            "error": f"Phrase must be exactly {RESET_PHRASE!r}.",
+        }
+
+    # Local import — only loaded when the destructive endpoint
+    # actually fires, so a Railway deploy without DATABASE_URL set
+    # never tries to open the pool just to serve other views.
+    from agents.shared import postgres_pool
+
+    if not postgres_pool.is_enabled():
+        return {
+            "ok": False,
+            "error": ("Postgres pool is not enabled "
+                      "(DATABASE_URL / DATABASE_PUBLIC_URL not set)."),
+        }
+
+    before: dict[str, int] = {}
+    try:
+        with postgres_pool.connection() as conn:
+            with conn.cursor() as cur:
+                for tbl in RESET_TABLES:
+                    cur.execute(f"SELECT COUNT(*) FROM {tbl}")
+                    before[tbl] = int(cur.fetchone()[0])
+                cur.execute(
+                    "TRUNCATE TABLE "
+                    + ", ".join(RESET_TABLES)
+                    + " RESTART IDENTITY CASCADE"
+                )
+                conn.commit()
+    except Exception as exc:
+        logger.exception("[db_admin] reset failed")
+        return {
+            "ok": False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    logger.warning(
+        "[db_admin] DATABASE RESET via /api/db_admin/reset — "
+        "deleted rows: %s",
+        before,
+    )
+    return {
+        "ok":            True,
+        "before_counts": before,
+        "tables_wiped":  RESET_TABLES,
+    }
 
 
 # --------------------------------------------------------------------------
