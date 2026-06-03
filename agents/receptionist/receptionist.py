@@ -48,9 +48,14 @@ from agents.shared.user_inputs_tool import (
     read_input_text,
 )
 from config import ATTEMPTS_DIR
+from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from tools.calculate.calculate import calculate
 from tools.visualize_model.visualize_model import visualize_3d_model
 from tools.database_search.database_search import make_database_search_tool
+from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
+from tools.retrieve_user_inputs.retrieve_user_inputs import (
+    make_retrieve_user_inputs_tool,
+)
 from workflow_settings import database_access
 from agents.receptionist.propose_attempt_tool import propose_attempt
 
@@ -119,6 +124,8 @@ class Receptionist(BaseChainAgent):
         ]
         if database_access.is_enabled_for("receptionist"):
             all_tools.append(make_database_search_tool("receptionist"))
+            all_tools.append(make_retrieve_user_inputs_tool("receptionist"))
+            all_tools.append(make_retrieve_attempt_tool("receptionist"))
         self._tools_by_name = {t.name: t for t in all_tools}
         self.llm = self.base_llm.bind_tools(all_tools)
 
@@ -153,6 +160,8 @@ class Receptionist(BaseChainAgent):
             for i, tc in enumerate(response.tool_calls):
                 name = tc["name"]
                 if dispatch_user_inputs_tool(self, tc, "receptionist"):
+                    continue
+                if dispatch_retrieve_tool(self, tc, "receptionist"):
                     continue
                 tool_fn = self._tools_by_name.get(name)
                 if tool_fn is None:

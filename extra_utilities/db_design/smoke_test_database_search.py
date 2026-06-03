@@ -429,6 +429,25 @@ def scenario_1_happy_path(run: SmokeRun) -> None:
     _assert(run, "error=" not in response.split("\n", 1)[0],
             "Scenario 1: search_meta has no error attribute")
 
+    # Phase 5D: <available_attempts> block + global_id on matched attempts
+    _assert(run,
+            "<available_attempts>" in response
+                or "<available_attempts/>" in response,
+            "Scenario 1: <available_attempts> block present in response")
+
+    attempt_a_gid = run.seeded_attempt_ids[session_a_id]
+    _assert(run, f'global_id="{attempt_a_gid}"' in response,
+            "Scenario 1: Session A's attempt global_id appears",
+            detail=f"expected global_id={attempt_a_gid}")
+
+    import re as _re_phase5d
+    gid_matches = _re_phase5d.findall(r'global_id="(\d+)"', response)
+    _assert(run,
+            len(gid_matches) > 0
+                and all(int(m) > 0 for m in gid_matches),
+            "Scenario 1: every global_id attribute is a positive integer",
+            detail=f"found {len(gid_matches)} matches: {gid_matches[:5]}")
+
 
 def scenario_2_acl_filter(run: SmokeRun) -> None:
     """Same query run twice — as ``planner`` (positive control;

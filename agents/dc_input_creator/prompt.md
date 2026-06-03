@@ -521,5 +521,11 @@ $hard_constraints_tools
 <<HAS_DBA>>
 ## Searching past saved sessions
 $database_search_tool
+
+$database_search_per_agent
+
+$retrieve_user_inputs_tool
+
+$retrieve_attempt_tool
 <</HAS_DBA>>
 {routing_instructions}

@@ -290,7 +290,18 @@ def _archive_previous_session(session_name: str | None = None) -> None:
                 if not p.is_file():
                     _skipped += 1
                     continue
-                key = f"{session_name}/logs/{p.name}"
+                # Phase 5A: rename the main session log on upload only
+                # to drop the session_id duplication.  Local filename
+                # stays ``<session_name>.log`` (many parts of the system
+                # know that name); the R2 key becomes
+                # ``<session_name>/logs/session.log``.  The three other
+                # log/trace files use timestamp-based filenames so they
+                # pass through unchanged.
+                if p.stem == session_name and p.suffix == ".log":
+                    key_filename = "session.log"
+                else:
+                    key_filename = p.name
+                key = f"{session_name}/logs/{key_filename}"
                 if _r2.upload_file(p, key):
                     _uploaded += 1
                 else:

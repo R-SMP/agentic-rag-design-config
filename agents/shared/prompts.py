@@ -277,6 +277,22 @@ PROPOSE_ATTEMPT_TOOL = _read_dc_fragment(
 DATABASE_SEARCH_TOOL = _read_dc_fragment(
     "tools_config/database_search.md"
 )
+# R2-backed retrieval of past saved sessions' user inputs (Phase 5B).
+# Bound to the same 8 live-session chain agents (closure factory
+# ``make_retrieve_user_inputs_tool``).  The dispatcher in
+# ``agents/shared/retrieve_tool_dispatcher.py`` intercepts the
+# tool call and attaches both the XML response (ToolMessage) and
+# any image bytes (HumanMessage content blocks) for the next turn.
+RETRIEVE_USER_INPUTS_TOOL = _read_dc_fragment(
+    "tools_config/retrieve_user_inputs.md"
+)
+# R2-backed retrieval of past saved attempts' description / parameters /
+# renders (Phase 5C).  Same binding + dispatcher pattern as
+# RETRIEVE_USER_INPUTS_TOOL.  Render-view selection is governed by
+# the three workflow flags in settings.py block #21.
+RETRIEVE_ATTEMPT_TOOL = _read_dc_fragment(
+    "tools_config/retrieve_attempt.md"
+)
 
 # Paired render / mesh-check backend fragments — exactly one is
 # spliced into the Tool Caller's prompt per session via the runtime
@@ -378,6 +394,8 @@ _SLOTS: dict[str, str] = {
     "visualize_3d_model_tool": VISUALIZE_3D_MODEL_TOOL,
     "propose_attempt_tool": PROPOSE_ATTEMPT_TOOL,
     "database_search_tool": DATABASE_SEARCH_TOOL,
+    "retrieve_user_inputs_tool": RETRIEVE_USER_INPUTS_TOOL,
+    "retrieve_attempt_tool": RETRIEVE_ATTEMPT_TOOL,
     # Generic
     "hard_constraints_generic": HARD_CONSTRAINTS_GENERIC,
     # Per-agent routing fragments (Receptionist + Orchestrator only;
@@ -411,8 +429,22 @@ def _build_template(agent_dir_name: str) -> str:
     more passes or a fixed-point loop.
     """
     raw = (AGENTS_DIR / agent_dir_name / "prompt.md").read_text(encoding="utf-8")
-    once = Template(raw).safe_substitute(_SLOTS)
-    twice = Template(once).safe_substitute(_SLOTS)
+    # Per-agent overlay onto the global slot map: load this agent's
+    # ``database_search_<agent_dir_name>.md`` fragment if present and
+    # expose it as ``$database_search_per_agent``.  Agents without a
+    # matching fragment (currently just the Database Handler, which is
+    # write-only post-session and has no <<HAS_DBA>> block in its
+    # prompt) get an empty string — harmless because their prompt.md
+    # does not reference the slot.
+    per_agent_dbs_file = TOOLS_CONFIG_DIR / f"database_search_{agent_dir_name}.md"
+    per_agent_dbs = (
+        per_agent_dbs_file.read_text(encoding="utf-8").rstrip()
+        if per_agent_dbs_file.exists()
+        else ""
+    )
+    slots = {**_SLOTS, "database_search_per_agent": per_agent_dbs}
+    once = Template(raw).safe_substitute(slots)
+    twice = Template(once).safe_substitute(slots)
     filtered = apply_flag_filters(twice)
     # apply_dba_filter is per-agent (consults the per-agent flag in
     # database_access.json + the RAG_ENABLED master switch), so it
@@ -467,6 +499,8 @@ __all__ = [
     "RENDER_CHECK_LIBRARY_TRIMESH",
     "RENDER_CHECK_LIBRARY_PYVISTA",
     "HARD_CONSTRAINTS_GENERIC",
+    "RETRIEVE_USER_INPUTS_TOOL",
+    "RETRIEVE_ATTEMPT_TOOL",
     "ROUTING_RECEPTIONIST",
     "ROUTING_ORCHESTRATOR",
     "PIPELINE_FLOW",

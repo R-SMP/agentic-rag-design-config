@@ -46,10 +46,15 @@ from agents.shared.routing_tools import (
     stuck_escalation,
     tool_call_signature,
 )
+from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_TC_STEPS
 from tools import get_render_library, get_tools
 from tools.database_search.database_search import make_database_search_tool
+from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
+from tools.retrieve_user_inputs.retrieve_user_inputs import (
+    make_retrieve_user_inputs_tool,
+)
 from workflow_settings import database_access
 
 logger = logging.getLogger("propeller_agent")
@@ -98,6 +103,8 @@ class ToolCaller(BaseChainAgent):
         utility_tools = list(get_tools()) + [list_attempts, read_attempt]
         if database_access.is_enabled_for("tool_caller"):
             utility_tools.append(make_database_search_tool("tool_caller"))
+            utility_tools.append(make_retrieve_user_inputs_tool("tool_caller"))
+            utility_tools.append(make_retrieve_attempt_tool("tool_caller"))
         self._extra_utility_tools_by_name = {t.name: t for t in utility_tools}
         self.mesh_checks = session.mesh_checks
         self.render_library = get_render_library()
@@ -183,6 +190,14 @@ class ToolCaller(BaseChainAgent):
                     seen_sigs.add(sig)
                 if name == "read_parameters":
                     self._handle_read_parameters_tool(tc)
+                    continue
+
+                # Phase 5E: retrieve_* tools are dispatcher-handled
+                # (their @tool stubs return "" — the dispatcher does
+                # the real R2 work and appends the ToolMessage +
+                # image content blocks).  Catch them before the
+                # routing/utility lookups so the stub never runs.
+                if dispatch_retrieve_tool(self, tc, "tool_caller"):
                     continue
 
                 if name in self._routing_tools_by_name:

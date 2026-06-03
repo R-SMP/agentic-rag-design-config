@@ -126,6 +126,15 @@ the cycle on the folder you opened so the DCIC writes
 the line only when you deliberately leave the attempt-creation to
 the DCIC.
 
+When your hand-off downstream references reference images the user
+uploaded, mention your sense of how readable each one is.  A simple
+image (one clear feature, well-captured by the User Input Inspector's
+prose) usually doesn't need re-loading downstream; a complex one
+(multiple overlapping cues, technical drawing, photo with mixed
+context) often does.  This is a hint for downstream agents — the DC
+Input Inspector and DC Output Inspector both lean on it — not a
+binding classification.
+
 ## Sketch handling (when the user supplied a sketch)
 $sketch_handling
 
@@ -776,7 +785,12 @@ Exceptional cases where you SHOULD consult prior attempts:
 <<HAS_DBA>>
 ## Searching past saved sessions
 $database_search_tool
+
+$database_search_per_agent
+
+$retrieve_user_inputs_tool
+
+$retrieve_attempt_tool
 <</HAS_DBA>>
-{rag_instructions}
 
 {routing_instructions}

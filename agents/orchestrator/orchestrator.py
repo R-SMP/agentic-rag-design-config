@@ -54,10 +54,15 @@ from agents.step_caps import (
     MAX_ORCH_INNER_STEPS,
     MAX_ORCHESTRATOR_STEPS,
 )
+from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.tool_caller import ToolCaller
 from agents.user_input_inspector import UserInputInspector
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
+from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
+from tools.retrieve_user_inputs.retrieve_user_inputs import (
+    make_retrieve_user_inputs_tool,
+)
 from workflow_settings import database_access
 
 logger = logging.getLogger("propeller_agent")
@@ -384,6 +389,8 @@ class Orchestrator(BaseChainAgent):
         ]
         if database_access.is_enabled_for("orchestrator"):
             orch_tools.append(make_database_search_tool("orchestrator"))
+            orch_tools.append(make_retrieve_user_inputs_tool("orchestrator"))
+            orch_tools.append(make_retrieve_attempt_tool("orchestrator"))
         if self.dc_inspector_enabled:
             orch_tools.insert(
                 4,
@@ -430,6 +437,13 @@ class Orchestrator(BaseChainAgent):
             routed = False
             for tc in response.tool_calls:
                 name = tc["name"]
+                # Phase 5E: retrieve_* tools are dispatcher-handled
+                # (their @tool stubs return "" — the dispatcher does
+                # the real R2 work and appends the ToolMessage +
+                # image content blocks).  Catch them before the
+                # _tools_by_name lookup so the stub never runs.
+                if dispatch_retrieve_tool(self, tc, "orchestrator"):
+                    continue
                 tool_fn = self._tools_by_name.get(name)
                 if tool_fn is None:
                     result = f"Error: unknown tool '{name}'"

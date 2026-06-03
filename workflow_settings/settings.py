@@ -579,3 +579,46 @@ DATABASE_SEARCH_MAX_RESPONSE_TOKENS: int = 30_000
 #
 # Valid values: any positive int (recommended 5–20).  Default 10.
 DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER: int = 10
+
+
+# ===========================================================
+# 21. Retrieve attempt — render views included by default
+# ===========================================================
+# When an agent calls ``retrieve_attempt(attempts_ID_list, images_flag=True)``,
+# the tool consults these three flags to decide which of the saved render
+# PNGs (top / side / isometric) to attach to the response.  Per-view flags
+# rather than a single multi-select because the workflow-settings UI
+# renders booleans cleanly.
+#
+# Default is isometric only — the single most informative single-view
+# render for propeller geometry.  Top and side are off so a default
+# retrieve_attempt call does not balloon the agent's context window with
+# three nearly-redundant renders.
+#
+# Future work: F30 in TODO_known_issues.md tracks the path to letting
+# the calling agent choose views per-call (rather than the developer
+# choosing globally), once the visual-rendering tool design firms up.
+#
+# Valid values: True, False
+RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW: bool = False
+RETRIEVE_ATTEMPT_INCLUDE_SIDE_VIEW: bool = False
+RETRIEVE_ATTEMPT_INCLUDE_ISOMETRIC_VIEW: bool = True
+
+
+# ===========================================================
+# 22. Retrieve tools — response token cap
+# ===========================================================
+# Maximum cl100k_base token count for the XML body returned by
+# ``retrieve_user_inputs`` or ``retrieve_attempt``.  Image bytes are
+# NOT counted in this cap — they attach as separate content blocks
+# and ship as requested via the ``images_flag`` argument.  When the
+# assembled XML text exceeds this cap, the tool drops sessions /
+# attempts from the END of the requested ID list (lowest priority
+# first) and appends a ``<truncated omitted="K"/>`` footer.
+#
+# Same trim strategy as database_search (see settings block #19).
+# Single shared cap covering both retrieve tools is simpler than
+# per-tool caps.
+#
+# Valid values: any positive int (cl100k_base tokens).  Default 30000.
+RETRIEVE_MAX_RESPONSE_TOKENS: int = 30_000

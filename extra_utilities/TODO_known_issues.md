@@ -2235,3 +2235,70 @@ slips through anyway.
 header, persistent 429 exhausting retries, two-shot connection
 error with exponential back-off, non-retryable `ValueError`
 propagating immediately).
+
+### F29. Improve the DCII's extraction-fidelity verification step
+
+**Where.**  `agents/dc_input_inspector/prompt.md` — axis 5
+("Faithfulness of the extraction") in "Your Role" and the
+extraction-fidelity paragraph in "Optional reference: user input
+images" introduce the DCII's responsibility to re-read user inputs
+(text + images) and verify that ``extracted_inputs.txt`` faithfully
+reflects them.  Paired with image-complexity signals authored by the
+User Input Inspector (``agents/user_input_inspector/prompt.md``) and
+the Planner (``agents/planner/prompt.md``) that let the DCII decide
+when a re-read of the image is worthwhile.
+
+**What.**  The current prompt-level instruction frames the
+verification as reactive — fires when the DCII *suspects* an
+extraction problem.  Worth exploring:
+
+  * Trigger heuristics — when does the DCII proactively re-read vs.
+    only react to suspicion?
+  * Structured flag output — when the DCII detects an extraction
+    error, give the message a fixed shape so the Orchestrator /
+    Planner / UII can act on it without prose-parsing.
+  * Cost discipline — cheap textual re-reads first, expensive
+    image re-loads only when needed.
+  * Image-complexity vocabulary — today the UII and Planner are
+    asked to convey complexity in their own prose; the DCII parses
+    it as natural language.  A fixed lexicon (e.g. SIMPLE /
+    MODERATE / COMPLEX) would tighten the contract but lose the
+    open-ended reasoning latitude.
+  * Feedback loop to the UII — today nothing closes the loop so
+    future runs improve.
+
+**Why deferred.**  The prompt-level instructions added in the same
+sprint are a workable starting point.  These refinements want a
+calm design pass.
+
+**Status.**  Open.
+
+### F30. Render-view selection for retrieve_attempt is currently a developer-time choice
+
+**Where.**  `workflow_settings/settings.py` block #21 (three bool
+flags); `tools/retrieve_attempt/retrieve_attempt.py` (consumer,
+Phase 5C).
+
+**What.**  The three workflow flags
+``RETRIEVE_ATTEMPT_INCLUDE_{TOP,SIDE,ISOMETRIC}_VIEW`` decide which
+of the saved render PNGs to attach when an agent calls
+``retrieve_attempt(..., images_flag=True)``.  Today the developer
+flips the booleans before deploy; the calling agent has no say.
+
+Two future improvements worth considering once the visual rendering
+tool design firms up:
+
+  * Per-call view selection — extend the tool signature with a
+    ``views`` parameter (subset of {"top","side","isometric"}) so
+    the agent picks per call.
+  * Tool-level coupling — when the agent uses the visual rendering
+    tool independently, retrieve_attempt's default could adapt to
+    match whatever that tool's chosen render-view convention is.
+
+**Why deferred.**  Locking the choice to the developer for now keeps
+the v1 retrieve_attempt response shape predictable (every call from
+the same deploy returns the same view set), and avoids designing the
+per-call API before the broader visual-rendering tool's contract is
+settled.
+
+**Status.**  Open.

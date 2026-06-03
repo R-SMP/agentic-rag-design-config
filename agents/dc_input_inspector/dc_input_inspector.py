@@ -46,9 +46,14 @@ from agents.shared.user_inputs_tool import (
     USER_INPUTS_TOOLS,
     dispatch_user_inputs_tool,
 )
+from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.step_caps import MAX_DCII_STEPS
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
+from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
+from tools.retrieve_user_inputs.retrieve_user_inputs import (
+    make_retrieve_user_inputs_tool,
+)
 from workflow_settings import database_access
 
 logger = logging.getLogger("propeller_agent")
@@ -121,6 +126,10 @@ class DCInputInspector(BaseChainAgent):
         if database_access.is_enabled_for("dc_input_inspector"):
             _database_search = make_database_search_tool("dc_input_inspector")
             self._extra_utility_tools_by_name[_database_search.name] = _database_search
+            _retrieve_user_inputs = make_retrieve_user_inputs_tool("dc_input_inspector")
+            self._extra_utility_tools_by_name[_retrieve_user_inputs.name] = _retrieve_user_inputs
+            _retrieve_attempt = make_retrieve_attempt_tool("dc_input_inspector")
+            self._extra_utility_tools_by_name[_retrieve_attempt.name] = _retrieve_attempt
         all_tools = (
             [self._read_params_tool, self._read_extraction_tool]
             + list(self._extra_utility_tools_by_name.values())
@@ -190,6 +199,8 @@ class DCInputInspector(BaseChainAgent):
                     self._handle_read_extraction_tool(tc)
                     continue
                 if dispatch_user_inputs_tool(self, tc, "dc_input_inspector"):
+                    continue
+                if dispatch_retrieve_tool(self, tc, "dc_input_inspector"):
                     continue
                 if name in self._extra_utility_tools_by_name:
                     tool_fn = self._extra_utility_tools_by_name[name]

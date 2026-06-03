@@ -39,10 +39,15 @@ from agents.shared.user_inputs_tool import (
     USER_INPUTS_TOOLS,
     dispatch_user_inputs_tool,
 )
+from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.step_caps import MAX_DCOI_STEPS
 from config import USER_INPUTS_DIR
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
+from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
+from tools.retrieve_user_inputs.retrieve_user_inputs import (
+    make_retrieve_user_inputs_tool,
+)
 from workflow_settings import database_access
 
 ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
@@ -262,6 +267,10 @@ class DCOutputInspector(BaseChainAgent):
         if database_access.is_enabled_for("dc_output_inspector"):
             _database_search = make_database_search_tool("dc_output_inspector")
             self._extra_utility_tools_by_name[_database_search.name] = _database_search
+            _retrieve_user_inputs = make_retrieve_user_inputs_tool("dc_output_inspector")
+            self._extra_utility_tools_by_name[_retrieve_user_inputs.name] = _retrieve_user_inputs
+            _retrieve_attempt = make_retrieve_attempt_tool("dc_output_inspector")
+            self._extra_utility_tools_by_name[_retrieve_attempt.name] = _retrieve_attempt
         all_tools = (
             [self._load_tool]
             + list(self._extra_utility_tools_by_name.values())
@@ -336,6 +345,8 @@ class DCOutputInspector(BaseChainAgent):
                     self._handle_load_tool(tc)
                     continue
                 if dispatch_user_inputs_tool(self, tc, "dc_output_inspector"):
+                    continue
+                if dispatch_retrieve_tool(self, tc, "dc_output_inspector"):
                     continue
                 if name in self._extra_utility_tools_by_name:
                     tool_fn = self._extra_utility_tools_by_name[name]

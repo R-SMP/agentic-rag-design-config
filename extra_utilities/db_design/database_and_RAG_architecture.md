@@ -301,6 +301,24 @@ Notes:
   its query history intact (useful for cross-session analytics).
 - Retention policy is a follow-up decision — see T13 in §7.
 
+> **v7 update (Phase 5B, 2026-06-03).** Three column-level additions
+> generalise `rag_queries` from a database_search-only log to a
+> RAG-wide tool log:
+>
+> * `tool_name TEXT NOT NULL DEFAULT 'database_search'` — identifies
+>   which RAG tool produced the row.  Existing rows backfill via the
+>   DEFAULT; `retrieve_user_inputs` and `retrieve_attempt` log with
+>   their own names.
+> * `images_flag BOOLEAN` (nullable) — the retrieve_* `images_flag`
+>   argument; NULL for database_search rows.
+> * `attempt_specific BOOLEAN` RELAXED to nullable — retrieve_*
+>   tools have no attempt_specific concept and pass NULL.
+>
+> New index `idx_rag_queries_tool_name` supports per-tool analytics
+> queries.  Migration:
+> `extra_utilities/db_design/migrations/migrate_v6_to_v7.py` (idempotent
+> ALTER TABLE).  See §9.13 for the full Phase 5 narrative.
+
 ### 3.5 DH retry behaviour and R2 safety fallback
 
 > **R2 is the failure escape hatch, not the primary store.** In the
@@ -711,15 +729,23 @@ XML tags for the response payload. Confirmed compatible with:
 
 ### 5.2 Proposed shape
 
+Phase 5D added the per-session `<available_attempts>` directory
+block + `global_id` attribute on matched `<attempt>` elements; both
+are shown below.
+
 ```xml
 <session id="21000">
+  <available_attempts>
+    <attempt global_id="42" nnn="001"/>
+    <attempt global_id="43" nnn="002"/>
+  </available_attempts>
   <session_generic>
     <qa agent="DH" field="Plan" score="0.91">
       <question>...</question>
       <answer>...</answer>
     </qa>
   </session_generic>
-  <attempt id="001">
+  <attempt id="001" global_id="42">
     <qa agent="DCII" field="Bad Attempt" score="0.87">
       <question>...</question>
       <answer>...</answer>
@@ -1490,6 +1516,14 @@ work, ASK THE USER to share that structural idea AFTER Phase 4 is
 green; they expect Claude to react + propose 2 alternatives at
 that point.
 
+**RESOLVED 2026-06-03.**  The deferred structural idea materialised
+as the **retrieve_user_inputs / retrieve_attempt** tool family —
+two DC-specific R2-backed retrieval tools that complement
+`database_search` by letting agents pull a specific session's user
+inputs or a specific attempt's artefacts (description, parameters,
+renders) after they've used `database_search` to discover candidate
+sessions or attempts.  Phase 5 implementation: §9.13 below.
+
 ---
 
 **Implementation shipped 2026-06-03.**  All 13 Q-4A decisions
@@ -1522,3 +1556,157 @@ Two follow-up tracks deferred to focused commits:
   Decide whether `RAG_ENABLED` becomes a runtime gate for
   `database_search` availability or stays as Planner-only
   planning guidance.
+
+
+### 9.13 Phase 5 — R2 retrieval tools  (DONE 2026-06-03+)
+
+Phase 5 ships the deferred "structural idea for other search
+tools" (§9.11) as two new DC-specific tools:
+``retrieve_user_inputs`` and ``retrieve_attempt``.  Both pull
+artefacts from R2 keyed on identifiers an agent typically gets
+from a prior ``database_search`` call.  Five sub-phases.
+
+**5A — Foundation (R2 key shape + workflow knobs).**
+
+* Three new bool flags in `workflow_settings/settings.py` block
+  #21 (`RETRIEVE_ATTEMPT_INCLUDE_{TOP,SIDE,ISOMETRIC}_VIEW`,
+  default isometric-only) governing which render PNGs
+  `retrieve_attempt` attaches.  See F30 for the per-call
+  selection future-work item.
+* New `RETRIEVE_MAX_RESPONSE_TOKENS` (block #22, default 30000)
+  — single cap shared by both retrieve tools, mirrors the
+  `DATABASE_SEARCH_MAX_RESPONSE_TOKENS` pattern.  Image bytes are
+  NOT counted in the cap; trim drops sessions/attempts from the
+  end of the input list.
+* **R2 attempt key reshape.**  Pre-5A:
+  `<sid>/attempts/<NNN>/<sid>__<NNN>__<file>` (filename
+  duplicates the folder).  Phase 5A:
+  `<sid>/attempts/<NNN>__<global_id>/<original_filename>` —
+  folder carries both per-session NNN and the Postgres BIGSERIAL
+  attempt_id; filenames stay as the originals.  Forward-only
+  (no migration of pre-5A keys); the legacy shape stays in the
+  uploader as a backward-safety hatch.  See W30.
+* **Main session log rename on upload.**  Path 4 in W30:
+  `<sid>/logs/<sid>.log` becomes `<sid>/logs/session.log` on
+  upload only (local filename unchanged).  Eliminates the
+  duplicated session_id in the R2 key.
+
+**5B — `retrieve_user_inputs` + schema v7.**
+
+* New module `tools/retrieve_user_inputs/retrieve_user_inputs.py`:
+  closure factory `make_retrieve_user_inputs_tool(slug)` returns
+  a `@tool` stub returning `""`; the real work lives in
+  `_run_retrieve_user_inputs(...)`.  See W35 for the dispatcher
+  pattern.
+* New dispatcher `agents/shared/retrieve_tool_dispatcher.py`
+  with `dispatch_retrieve_tool(agent, tc, agent_key)` —
+  parallel to `dispatch_user_inputs_tool`.  Catches retrieve_*
+  tool calls before the agent's normal dispatch, calls the real
+  `_run_retrieve_*`, appends the XML ToolMessage, and buffers
+  image content blocks for the next HumanMessage via
+  `append_pending_images`.
+* New prompt fragment
+  `DC_prompt_fragments/tools_config/retrieve_user_inputs.md` +
+  `$retrieve_user_inputs_tool` slot in `agents/shared/prompts.py`.
+* **Schema v7 bump.**  `rag_queries` table gains
+  `tool_name TEXT NOT NULL DEFAULT 'database_search'`,
+  `images_flag BOOLEAN` (nullable), and `attempt_specific`
+  relaxed to nullable.  New index `idx_rag_queries_tool_name`.
+  Migration: `extra_utilities/db_design/migrations/migrate_v6_to_v7.py`
+  (idempotent ALTER TABLE).  See §3.4 v7 update.
+* 7-assertion live smoke test
+  `extra_utilities/db_design/smoke_test_retrieve_user_inputs.py`
+  exercises happy path, images_flag semantics, no-images
+  sessions, R2-missing files, not_found, trim_cap, and the
+  rag_queries log row.
+
+**5C — `retrieve_attempt` + render-view policy.**
+
+* New module `tools/retrieve_attempt/retrieve_attempt.py` —
+  same shape as 5B.  Takes a list of GLOBAL
+  `dc_attempts.attempt_id` integers; Postgres lookup translates
+  each to `(session_id, NNN, has_renders)` and the tool builds
+  the Phase 5A R2 key.  NNN extracted from `attempt_label` via
+  the `^\d+_\d+_(\d+)_` regex.
+* **Render-view policy.**  The three Phase 5A flags AND the
+  `has_renders=TRUE` row attribute AND `images_flag=TRUE` all
+  gate render fetches.  When `has_renders=FALSE` the
+  `<renders>` block is absent entirely (no clutter).  The
+  `<retrieve_attempt_meta>` header carries
+  `render_views_in_scope="isometric,top,side"` (comma-joined,
+  ordered iso first) so the agent knows the active policy.
+* New prompt fragment
+  `DC_prompt_fragments/tools_config/retrieve_attempt.md` +
+  `$retrieve_attempt_tool` slot.
+* 8-assertion live smoke test
+  `smoke_test_retrieve_attempt.py` covers all view-policy
+  branches in addition to the same shape as 5B.
+* F30 tracks the future "per-call view selection" extension.
+
+**5D — `database_search` XML extension.**
+
+* New helper `_run_available_attempts_query(conn, session_ids)`
+  in `tools/database_search/database_search.py`.  Single SELECT
+  against `dc_attempts` per call (4th query after candidate /
+  expansion / mismatch).  Returns `{sid: [(global_id, nnn), …]}`.
+* `_emit_anchor_block` extended to:
+  * Always emit `<available_attempts>` child of `<session>` —
+    self-closing when the session has no saved attempts.  Lists
+    every attempt saved for the session in `dc_attempts`,
+    sorted by global_id ascending.  Agents feed those global_ids
+    into `retrieve_attempt`.
+  * Add `global_id="<n>"` attribute to matched `<attempt>`
+    elements (works in both `attempt_specific` modes via
+    `anchor.attempt_id` / `group_chunks[0].attempt_id`).
+* §5.2 XML example refreshed (see below).
+* 3 new assertions appended to
+  `smoke_test_database_search.py` Scenario 1.
+
+**5E — Agent bindings.**
+
+* All 8 chain agents now bind both retrieve_* tools when
+  `database_access.is_enabled_for(<slug>)` returns True — same
+  gate as `database_search` (locked Q3 of the 5B design round).
+* All 8 chain agents' `prompt.md` files extended with the two
+  new slot references inside their existing `<<HAS_DBA>>`
+  region.
+* All 8 chain agents' run loops gain one
+  `if dispatch_retrieve_tool(self, tc, "<slug>"): continue`
+  line.  Placement varies by agent (after
+  `dispatch_user_inputs_tool` where present; at the top of the
+  tool-call iteration otherwise).  See W35.
+* No new prompt-format crashes — `smoke_test_prompt_format.py`
+  still passes; the two new fragments contain no `{` / `}`
+  literals.
+
+**Cross-cutting docs touched in 5F.**
+
+* W33 — extended to note retrieve_* share the DBa gate.
+* W35 — NEW.  Documents the dispatcher pattern + the
+  empty-stub convention.  See `warnings_developer.md`.
+* README — "Cloudflare R2 layout" Path 1 key example updated
+  in 5A; RAG roadmap subsection mentions the new tools.
+
+**File inventory.**  Phase 5 added/modified:
+
+* Tools: `tools/retrieve_user_inputs/{__init__,retrieve_user_inputs}.py`,
+  `tools/retrieve_attempt/{__init__,retrieve_attempt}.py`,
+  `tools/database_search/database_search.py` (5D additions).
+* Fragments:
+  `DC_prompt_fragments/tools_config/retrieve_{user_inputs,attempt}.md`.
+* Shared: `agents/shared/retrieve_tool_dispatcher.py`,
+  `agents/shared/prompts.py` (2 new slots).
+* Agents: 8 × `<agent>.py` (imports + binding + dispatcher) +
+  8 × `<agent>/prompt.md` (`<<HAS_DBA>>` block extension).
+* Schema: `database_PostgreSQL_schema_v7.sql`,
+  `migrations/migrate_v6_to_v7.py`.
+* R2 layer: `agents/shared/r2_uploader.py` (5A key reshape +
+  global_attempt_id kwarg), `agents/database_handler/database_handler.py`
+  (pass through), `agents/loader.py` (log filename rename on
+  upload).
+* Settings: `workflow_settings/settings.py` blocks #21 + #22.
+* Tests: `extra_utilities/db_design/smoke_test_retrieve_{user_inputs,attempt}.py`,
+  +3 assertions in `smoke_test_database_search.py`.
+* TODO: F30 (render-view per-call selection).
+* Docs: this section, §3.4 v7 update, §5.2 XML refresh, W30 +
+  W33 + W35 in `warnings_developer.md`, README RAG section.

@@ -2613,10 +2613,19 @@ class DatabaseHandler(BaseChainAgent):
                     )
                     # folder is guaranteed non-None by the validation
                     # above; ``status`` ignored here (already logged).
+                    # Phase 5A: pass the Postgres BIGSERIAL attempt_id
+                    # so the R2 key encodes both NNN and the global id
+                    # (folder shape becomes ``attempts/<NNN>__<global_id>/``).
+                    # ``attempt_id_by_nnn.get(nnn)`` returns None for
+                    # cascaded attempts where the upsert failed — the
+                    # uploader falls back to the pre-5A key shape with
+                    # a warning, which is acceptable for the rare
+                    # cascade case.
                     uploaded, missing = _r2.upload_attempt_artefacts(
                         folder,
                         session_id=session_id,
                         attempt_id=nnn,
+                        global_attempt_id=attempt_id_by_nnn.get(nnn),
                     )
                     uploaded_per_attempt[nnn] = {
                         "folder": folder.name,

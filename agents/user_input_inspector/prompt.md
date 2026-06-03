@@ -292,6 +292,16 @@ want to re-load a single image (for example after image bytes were
 stripped from your history at a previous operation hand-off) use
 ``load_input_images`` (see below).
 
+When you write the extraction, also indicate how readable each image
+is — a clean sketch of one obvious feature reads as simple, while a
+technical drawing with multiple overlapping cues, a photo with mixed
+context, or any image where a brief textual description would not
+stand in for the picture itself reads as complex.  Downstream agents
+use this signal to decide whether they can rely on your textual
+treatment or should re-load the image directly.  Phrase it the way
+the rest of the extraction is phrased — a short observation in
+QUALITATIVE DESCRIPTIONS or alongside the image's mention is plenty.
+
 ## Sketch handling (when the user supplied a sketch)
 $sketch_handling
 
@@ -481,5 +491,11 @@ $hard_constraints_tools
 <<HAS_DBA>>
 ## Searching past saved sessions
 $database_search_tool
+
+$database_search_per_agent
+
+$retrieve_user_inputs_tool
+
+$retrieve_attempt_tool
 <</HAS_DBA>>
 {routing_instructions}

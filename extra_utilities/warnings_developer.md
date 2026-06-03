@@ -1000,7 +1000,20 @@ path should carry it.
   DH Q+A `.txt` files were always written under
   `<session_dir>/<agent>/<field>.txt`, NEVER under
   `<session_dir>/attempts/<NNN>/`.
-- Unchanged by Phase 3D.
+- **Phase 5A key shape** (2026-06-03 onward): folder
+  `attempts/<NNN>__<global_id>/` and clean filenames.  Example:
+  `<sid>/attempts/001__42/parameters.json`.  The folder encodes
+  both the per-session NNN (first, for chronological sort within
+  a session) and the Postgres `dc_attempts.attempt_id` (after the
+  `__` separator).  Filenames stay as the originals — no
+  `<sid>__<NNN>__` prefix.  Pre-Phase-5A keys retain the old
+  `attempts/<NNN>/<sid>__<NNN>__<original>` shape; no migration
+  is run.  See `retrieve_attempt` design in architecture doc §4
+  (locked) and the Phase 5A note in §9.
+- Backward-safety hatch: if a direct test caller invokes
+  `upload_attempt_artefacts` without `global_attempt_id`, the
+  uploader logs a warning and falls back to the pre-5A key shape.
+  Production callers (the Database Handler) always pass it.
 
 **Path 3 — `r2_uploader.upload_bytes(content, remote_key)`**
 - Called by `agents/database_handler/db_writer.py::save_to_safety_folder`
@@ -1011,10 +1024,31 @@ path should carry it.
 - The failure-escape-hatch path for Q+A text that couldn't land
   in Postgres.  Architecture doc §3.5 + invariant 12.
 
-Mental model: paths 1 + 2 are happy-path mirrors; path 3 is the
+**Path 4 — `r2_uploader.upload_file(path, key)` from the archive sweep.**
+- Called by `agents/loader.py:_archive_previous_session` for the
+  four session log/trace files plus the per-agent histories.
+- Keys written:
+  - `<sid>/logs/session.log` (the main session log; renamed on
+    upload from the local `<sid>.log` — see the Phase 5A rename
+    rule below)
+  - `<sid>/logs/agent_flow_<ts>.txt`
+  - `<sid>/logs/database_handler_<ts>.log`
+  - `<sid>/logs/dh_flow_<ts>.txt`
+  - `<sid>/logs/agent_histories/history_<agent>.txt`
+- **Phase 5A rename rule** (2026-06-03 onward): the main session
+  log is the only one of these whose local filename
+  (`<sid>.log`) duplicates the folder prefix.  The archive sweep
+  rewrites that one filename to `session.log` on upload so the
+  R2 key becomes `<sid>/logs/session.log` instead of the
+  duplicated `<sid>/logs/<sid>.log`.  The other three log/trace
+  files use timestamp-based names and pass through unchanged.
+  Pre-Phase-5A keys retain the duplicated shape.
+
+Mental model: paths 1, 2, 4 are happy-path mirrors; path 3 is the
 failure escape hatch.
 
-**Status.** In force from Phase 3D (2026-06-02) onward.
+**Status.** In force from Phase 3D (2026-06-02) onward; Phase 5A
+key-shape and filename-rename rules from 2026-06-03 onward.
 
 
 ## W31. `_resolve_session_name` slug format depends on whether Postgres is reachable.
@@ -1188,6 +1222,18 @@ switch.
   unwraps the region when `is_enabled_for(agent_dir_name)` returns
   `True`, strips it entirely otherwise.  No orphaned heading line.
 
+* **Phase 5E extension.**  The two retrieve_* tools shipped in
+  Phase 5B/5C (`retrieve_user_inputs`, `retrieve_attempt`) share
+  the SAME `is_enabled_for(<slug>)` gate as `database_search`.
+  Each chain agent's binding block conditionally appends BOTH
+  retrieve tools alongside `make_database_search_tool(...)`; each
+  `<<HAS_DBA>>...<</HAS_DBA>>` region carries the new
+  `$retrieve_user_inputs_tool` and `$retrieve_attempt_tool` slot
+  references after `$database_search_tool`.  Flipping a DBa flag
+  off strips all three RAG tools from that agent as a unit.  See
+  also W35 for the dispatcher pattern the two retrieve tools rely
+  on for image content-block delivery.
+
 ### Lifecycle
 
 Changes take effect on the NEXT session — same semantics as every
@@ -1300,3 +1346,75 @@ In force from 2026-06-03 onward.  See `web_app.py`'s
 `api_db_admin_auth` / `api_db_admin_reset`, `web/index.html`'s
 `<section class="view database-view">`, and the controllers at
 the bottom of `web/app.js` (Database view section).
+
+
+## W35. retrieve_* tools are dispatcher-handled; their @tool stubs must return "".
+
+The two retrieve tools shipped in Phase 5B/5C
+(`retrieve_user_inputs`, `retrieve_attempt`) are split into THREE
+pieces, mirroring the existing `load_input_images` pattern:
+
+1. A public `@tool`-decorated stub returned by the closure factory
+   (`make_retrieve_user_inputs_tool(slug)` /
+   `make_retrieve_attempt_tool(slug)`).  The stub's body returns
+   `""` (empty string) and exists only to satisfy langchain's
+   `bind_tools(...)` contract.  The LLM sees the docstring +
+   argument schema; calling it directly via
+   `tool_fn.invoke(args)` yields an empty ToolMessage.
+2. A private `_run_retrieve_*` function in the same module that
+   does the real work (Postgres lookup, R2 fetch, XML assembly,
+   image content-block emission, `rag_queries` log).
+3. A central dispatcher
+   `dispatch_retrieve_tool(agent, tc, agent_key)` in
+   `agents/shared/retrieve_tool_dispatcher.py`.  The dispatcher
+   inspects the tool call's name, invokes `_run_retrieve_*` with
+   the agent's provider, appends the XML as a `ToolMessage` to
+   `agent.messages`, and (when image bytes are present) buffers
+   them for the next `HumanMessage` via `append_pending_images`.
+
+### Why the split
+
+Image content blocks have to attach as a separate `HumanMessage`
+(or buffered for it) so the tool_use → tool_result contiguity
+invariant is preserved when the LLM batches the retrieve_* tool
+call with other tool calls.  A plain `@tool` whose body returns
+the XML string can ONLY append a ToolMessage — it cannot inject
+image content blocks for the next message.  The dispatcher
+pattern (mirroring `dispatch_user_inputs_tool` for
+`load_input_images`) lets the same tool call produce two attached
+pieces of evidence (XML text + images) in the agent's next view.
+
+### Each chain agent's run loop calls the dispatcher
+
+Phase 5E added one
+`if dispatch_retrieve_tool(self, tc, "<slug>"): continue` line to
+each of the 8 chain agents' run loops, placed BEFORE the agent's
+normal tool dispatch (`_tools_by_name` /
+`_extra_utility_tools_by_name` / etc.) so retrieve_* names are
+caught first and never fall through to the stub.
+
+If that dispatch line is removed, moved BELOW the stub-finding
+branch, or fails to return early (`continue`), the stub fires and
+the agent receives an empty ToolMessage.  The agent typically
+retries the same call (assuming a transient error), wasting LLM
+turns until step-cap exhaustion.
+
+### Adding a third dispatcher-handled tool later
+
+Same checklist as the existing two:
+
+1. Define the tool in its own module under `tools/<tool>/`:
+   closure factory + `@tool` stub returning `""` + private
+   `_run_*` doing the work.
+2. Add a new handler to
+   `agents/shared/retrieve_tool_dispatcher.py` and register the
+   tool name in `_HANDLERS` (with the matching name added to
+   `RETRIEVE_TOOL_NAMES`).
+3. The chain agents need NO change — the same
+   `dispatch_retrieve_tool(...)` line already catches any name
+   that `_HANDLERS` registers.
+
+### Status
+
+In force from Phase 5B/5C (2026-06-03+) onward.  Two consumers
+today (`retrieve_user_inputs`, `retrieve_attempt`).

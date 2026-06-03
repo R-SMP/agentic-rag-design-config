@@ -18,6 +18,20 @@ relaxation when filters were applied.  When the response would
 exceed the token cap, lowest-ranked anchors are dropped and a
 ``<truncated omitted_anchors="K"/>`` footer is appended.
 
+**Every returned ``<session>`` carries an ``<available_attempts>``
+child block** (always emitted; self-closing when the session has
+no saved attempts) listing every attempt saved for that session in
+the database.  Each entry is
+``<attempt global_id="42" nnn="001"/>``.  Use the ``global_id``
+values as input to the ``retrieve_attempt`` tool when you want to
+read a specific attempt's description, parameters, or renders —
+including attempts that did not directly match your search.
+
+**Matched ``<attempt>`` elements ALSO carry a ``global_id`` attribute**
+(in addition to the per-session NNN ``id`` and the similarity
+``score``).  That's the canonical handle to feed into
+``retrieve_attempt`` for the attempt the search actually matched.
+
 **Reasons to call it** — when you have a question or doubt that
 prior sessions could plausibly answer:
 

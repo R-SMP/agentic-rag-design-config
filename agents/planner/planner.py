@@ -50,23 +50,17 @@ from agents.shared.user_inputs_tool import (
 )
 from agents.step_caps import MAX_PLANNER_STEPS
 from config import INPUT_IMAGES_SUBDIR, LOGS_DIR, USER_INPUTS_DIR
+from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
+from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
+from tools.retrieve_user_inputs.retrieve_user_inputs import (
+    make_retrieve_user_inputs_tool,
+)
 from workflow_settings import database_access
 
 logger = logging.getLogger("propeller_agent")
 
-_RAG_INSTRUCTIONS_ON = """
-## RAG Retrieval (enabled)
-If producing a problem-solving plan, note per agent whether to retrieve
-from the database (Design Intent, Failure Log, etc.).  One line per agent.
-RAG execution is not yet implemented.
-"""
-
-_RAG_INSTRUCTIONS_OFF = """
-## RAG Retrieval (disabled)
-Do not include retrieval steps.
-"""
 
 # ---------------------------------------------------------------------------
 # Utility tool — read user_query.txt entries
@@ -178,7 +172,6 @@ class Planner(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        self.rag_enabled = session.rag_enabled
         # current_plan is restored by BaseChainAgent from
         # state.current_plan (default "").
         self._tools_by_name: dict = {}
@@ -205,11 +198,10 @@ class Planner(BaseChainAgent):
         )
         if database_access.is_enabled_for("planner"):
             all_tools.append(make_database_search_tool("planner"))
+            all_tools.append(make_retrieve_user_inputs_tool("planner"))
+            all_tools.append(make_retrieve_attempt_tool("planner"))
         self.llm = self.base_llm.bind_tools(all_tools)
         self._tools_by_name = {t.name: t for t in all_tools}
-        rag_block = (
-            _RAG_INSTRUCTIONS_ON if self.rag_enabled else _RAG_INSTRUCTIONS_OFF
-        )
         if PLANNER_FIRST:
             routing_block = routing_instructions(
                 agent_name="Planner",
@@ -225,7 +217,6 @@ class Planner(BaseChainAgent):
                 fragment_name="routing_planner_uii_first.md",
             )
         self.system_prompt = PLANNER_TEMPLATE.format(
-            rag_instructions=rag_block,
             routing_instructions=routing_block,
             user_inputs_dir=str(USER_INPUTS_DIR.resolve()),
             input_images_subdir=INPUT_IMAGES_SUBDIR,
@@ -270,6 +261,8 @@ class Planner(BaseChainAgent):
                 name = tc["name"]
                 if name in USER_INPUTS_TOOL_NAMES:
                     dispatch_user_inputs_tool(self, tc, "planner")
+                    continue
+                if dispatch_retrieve_tool(self, tc, "planner"):
                     continue
                 tool_fn = self._tools_by_name.get(name)
                 if tool_fn is None:

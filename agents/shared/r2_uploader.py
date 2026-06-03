@@ -257,18 +257,30 @@ def upload_attempt_artefacts(
     *,
     session_id: str,
     attempt_id: str,
+    global_attempt_id: int | None = None,
     whitelist: Iterable[str] = ATTEMPT_ARTEFACT_WHITELIST,
 ) -> tuple[list[str], list[str]]:
     """Upload the whitelisted files from one *attempt_folder* to R2.
 
-    Key layout::
+    Key layout (Phase 5A, *global_attempt_id* provided)::
 
-        <R2_KEY_PREFIX>/<session_id>/attempts/<attempt_id>/<filename>
+        <R2_KEY_PREFIX>/<session_id>/attempts/<NNN>__<global_id>/<original_filename>
 
-    Filename rename pattern (so the file is self-identifying if a
-    downloader saves them flat)::
+    The ``attempts/`` subfolder encodes BOTH the per-session ``NNN``
+    (first, for chronological sort within a session) and the global
+    Postgres ``dc_attempts.attempt_id`` (after the ``__`` separator).
+    Filenames stay as the originals (``parameters.json``,
+    ``propeller_mesh.obj``, ``render_isometric.png``, …) — no
+    ``<sid>__<NNN>__`` rename, because the folder already disambiguates.
 
-        <session_id>__<attempt_id>__<original_name>
+    Legacy key layout (pre-Phase 5A, *global_attempt_id* omitted)::
+
+        <R2_KEY_PREFIX>/<session_id>/attempts/<NNN>/<session_id>__<NNN>__<original_filename>
+
+    This fallback exists only for direct test callers that have not
+    been updated.  Production callers (the Database Handler) always
+    pass ``global_attempt_id``.  When *global_attempt_id* is omitted
+    a warning is logged.
 
     Returns ``(uploaded_names, missing_names)`` — both as lists of the
     *original* filenames so the caller's ToolMessage to the DH can
@@ -295,7 +307,20 @@ def upload_attempt_artefacts(
     # NOTE: `base` is PREFIX-FREE.  ``upload_file`` is the single owner
     # of ``_key_prefix()`` — passing an already-prefixed key here would
     # double the prefix (e.g. ``web-v1/web-v1/<sid>/attempts/...``).
-    base = f"{session_id}/attempts/{attempt_id}/"
+    #
+    # Phase 5A: when ``global_attempt_id`` is provided the folder
+    # encodes both NNN and the global id, and filenames stay clean.
+    # Otherwise fall back to the pre-5A layout for any unupdated
+    # direct caller.
+    if global_attempt_id is not None:
+        base = f"{session_id}/attempts/{attempt_id}__{global_attempt_id}/"
+    else:
+        logger.warning(
+            "[R2]  upload_attempt_artefacts called without "
+            "global_attempt_id — falling back to pre-5A key shape.  "
+            "Production callers should always pass global_attempt_id."
+        )
+        base = f"{session_id}/attempts/{attempt_id}/"
 
     uploaded: list[str] = []
     missing: list[str] = []
@@ -304,8 +329,10 @@ def upload_attempt_artefacts(
         if not local.is_file():
             missing.append(name)
             continue
-        rename = f"{session_id}__{attempt_id}__{name}"
-        key = base + rename
+        if global_attempt_id is not None:
+            key = base + name  # clean filename — folder disambiguates
+        else:
+            key = base + f"{session_id}__{attempt_id}__{name}"  # legacy
         if upload_file(local, key):
             uploaded.append(name)
         else:

@@ -392,13 +392,15 @@ The save flow writes to R2 via **three distinct upload paths** that run at diffe
 
 Site: `agents/database_handler/database_handler.py:_run_force_tool_phase`. Fires once per resolved attempt id, **immediately** when the force-tool's `save_attempt_data` tool call succeeds — long before the DH emits its SAVE: body.
 
-Calls `r2_uploader.upload_attempt_artefacts(folder, session_id=…, attempt_id=NNN)` per resolved NNN. Whitelisted files (from `agents/shared/r2_uploader.py:ATTEMPT_ARTEFACT_WHITELIST`): `parameters.json`, `propeller_mesh.obj`, `render_isometric.png`, `render_top.png`, `render_side.png`, `description.txt`. `propeller_mesh_components.obj` is intentionally excluded.
+Calls `r2_uploader.upload_attempt_artefacts(folder, session_id=…, attempt_id=NNN, global_attempt_id=<bigserial>)` per resolved NNN. Whitelisted files (from `agents/shared/r2_uploader.py:ATTEMPT_ARTEFACT_WHITELIST`): `parameters.json`, `propeller_mesh.obj`, `render_isometric.png`, `render_top.png`, `render_side.png`, `description.txt`. `propeller_mesh_components.obj` is intentionally excluded.
 
-Keys written:
+Keys written (Phase 5A shape, 2026-06-03 onward):
 
 ```
-<R2_KEY_PREFIX>/<session_id>/attempts/<NNN>/<session_id>__<NNN>__<original_filename>
+<R2_KEY_PREFIX>/<session_id>/attempts/<NNN>__<global_id>/<original_filename>
 ```
+
+The `attempts/` subfolder encodes both the per-session `NNN` (first, for chronological sort within a session) and the Postgres `dc_attempts.attempt_id` (after the `__` separator). Filenames stay as the originals — no `<sid>__<NNN>__` rename, because the folder already disambiguates. Pre-Phase-5A R2 keys retain the old `attempts/<NNN>/<sid>__<NNN>__<original>` shape; no historical migration is run. See W30 + `retrieve_attempt` design in the architecture doc.
 
 ### Path 2 — End-of-save mirror of `database/<session_id>/`
 
@@ -423,15 +425,17 @@ Site: `agents/loader.py:_archive_previous_session`, immediately after the three 
 
 Iterates the moved-into-place files and the `agent_histories/<file>.json` siblings, calling `r2_uploader.upload_file(path, key)` for each. Best-effort — an R2 failure logs a warning but never breaks the archive sweep.
 
-Keys written:
+Keys written (Phase 5A shape, 2026-06-03 onward):
 
 ```
-<R2_KEY_PREFIX>/<session_id>/logs/<session_id>.log
+<R2_KEY_PREFIX>/<session_id>/logs/session.log
 <R2_KEY_PREFIX>/<session_id>/logs/database_handler_<ts>.log
 <R2_KEY_PREFIX>/<session_id>/logs/agent_flow_<ts>.txt
 <R2_KEY_PREFIX>/<session_id>/logs/dh_flow_<ts>.txt
 <R2_KEY_PREFIX>/<session_id>/logs/agent_histories/history_<agent>.txt
 ```
+
+The main session log's local filename is `<session_id>.log` — the archive sweep renames it on upload only (to drop the duplicated `<session_id>` from the key) so the R2 key is `<session_id>/logs/session.log` instead of `<session_id>/logs/<session_id>.log`. The other three log/trace files use timestamp-based names and pass through unchanged. Pre-Phase-5A keys retain the duplicated shape. See W30.
 
 ### Why the three paths can't double-upload
 
@@ -494,7 +498,7 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
   - **F11** — tighten the Stop button to cancel at the next tool call / message / LLM call boundary instead of only at Orchestrator hop boundaries; tool calls issued after Stop is pressed should not execute.
   - **F24** — RESOLVED.  Live 3D preview in the Parameters Inputs view (Phase 3 of the redesign — see "Parameters Inputs view" above).
   - **F25 / F26 / F27 / F28** — post-redesign polish items: pre-compute the active FIXED set in Python (instead of UII's in-prompt walk); verify Planner behaviour in non-happy-path cases; live-preview ON/OFF toggle; `sessionStorage` persistence of panel state across reload.  All open as low-priority exploration items, none committed to being implemented.
-- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W22) that must not regress.  W18 + W20 are the per-turn force-tool pattern (DH's `save_attempt_data`; Orchestrator's `submit_feedback_dispatch`).  W19 is the disjoint-R2-key-namespace invariant for the three upload paths.  **W21** is the "empty `to_agents` in the DH schedule means all primary agents, NOT no agents" rule (Postgres ingest contract).  **W22** is the natural-language convention for the spontaneous `propose_attempt` mechanism — Receptionist's LLM interprets the Planner's APPROVE-branch wording; endorsement vocabulary in Receptionist / Planner / `DC_prompt_fragments/tools_config/propose_attempt.md` MUST stay consistent.
+- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W35) that must not regress.  W18 + W20 are the per-turn force-tool pattern (DH's `save_attempt_data`; Orchestrator's `submit_feedback_dispatch`).  W19 is the disjoint-R2-key-namespace invariant for the upload paths.  **W21** is the "empty `to_agents` in the DH schedule means all primary agents, NOT no agents" rule (Postgres ingest contract).  **W22** is the natural-language convention for the spontaneous `propose_attempt` mechanism — Receptionist's LLM interprets the Planner's APPROVE-branch wording; endorsement vocabulary in Receptionist / Planner / `DC_prompt_fragments/tools_config/propose_attempt.md` MUST stay consistent.  **W30 / W33 / W35** govern the RAG / retrieve_* stack — Phase-5A R2 attempt key shape, per-agent DBa gating, and the dispatcher pattern that lets retrieve_* tool calls deliver both XML and image content blocks.
 - [`extra_utilities/web_interface_notes.md`](extra_utilities/web_interface_notes.md) — full design + locked-decisions log for the Parameters Inputs redesign (§§1–8) plus a closing wrap-up (§9) describing the delivered state as of 2026-06-02.
 
 ## Roadmap
@@ -504,9 +508,7 @@ Near-term direction:
 - Stage B: persist sessions and embeddings to Postgres, push binary artefacts to R2.
 - Reorganise tools — split generic helpers from DC-specific tools and consolidate under `tools/` (see TODO F8) — so the `@generic_tool` decorator only needs to live at the `@tool` site instead of being duplicated on each agent's `_handle_*` handler method.
 - Close out the LOG and Status open items above (F5, F6, F9, F10, F11).
-- Per-agent enrichment of the `database_search` prompt fragment (currently the same generic fragment for all 8 chain agents — operator wants agent-specific WHEN/WHY guidance, see pending task #18 in Claude Code's task list).
-- Refresh stale `_RAG_INSTRUCTIONS_ON/OFF` strings in `agents/planner/planner.py` (they still say "RAG execution is not yet implemented" — no longer true now that Phase 4 shipped).
-- Add a prompt-format smoke test that builds every chain agent's system_prompt and confirms `str.format` succeeds (would have caught both Phase 4 production crashes — the literal `{}` and the `{ and }` in fragment content).
+- F30 — extend `retrieve_attempt` so the calling agent can pick render views per call (today's view set is a developer-time choice via three workflow flags).  See `extra_utilities/TODO_known_issues.md` F30.
 
 **Done since v7:**
 
@@ -528,3 +530,4 @@ Near-term direction:
 - **Per-agent DBa toggle + `RAG_ENABLED` master switch** (2026-06-03).  Each chain-agent box on the LLM-routing chart now has a small "DBa" pill that decides whether that agent has `database_search` bound AND the `$database_search_tool` fragment in its prompt.  Persistent in `workflow_settings/database_access.json`; combined with `RAG_ENABLED` (now also a real master switch, default `True`) via AND semantics.  Conditional inclusion in templates uses a `<<HAS_DBA>>...<</HAS_DBA>>` filter applied per-agent at `_build_template` time.  See W33.
 - **Database admin view** (2026-06-03).  New seventh side-menu view, password-gated by `PASSWORD_DATABASE_WEB_UI`.  Currently exposes one action: `TRUNCATE` every data table EXCEPT `dc_parameter_schemas` (preserves the 17-parameter schema seed; leaves the `session_counter` SEQUENCE alone — manual `ALTER SEQUENCE` via psql if you want IDNNN to restart).  See W34.
 - **User-inputs R2 mirror fix** (2026-06-03).  Phase 3D's whole-`session_dir` upload with `.png/.jpg/.jpeg` whitelist had inadvertently stopped mirroring `queries.txt` and `*_note.txt` files under `<session_dir>/user_inputs/`.  Mirror re-scoped to that subdirectory with the full `.txt/.png/.jpg/.jpeg` whitelist; user text + image notes now reach R2 regardless of whether images were uploaded or any DH attempts were saved.  W30 updated.
+- **Phase 5 — `retrieve_user_inputs` + `retrieve_attempt` tools** (2026-06-03+).  Two new DC-specific R2-backed retrieval tools complement `database_search` by letting agents pull a specific session's user inputs or a specific attempt's artefacts (description, parameters, renders) after `database_search` discovers candidate IDs.  Both tools share the same per-agent DBa gate as `database_search` (W33); image bytes are attached via a dispatcher pattern (`agents/shared/retrieve_tool_dispatcher.py`) mirroring the existing `load_input_images` plumbing — see W35.  Phase 5 also: bumped Postgres schema to v7 (`rag_queries` gains `tool_name` / `images_flag` columns + idempotent migration), reshaped the R2 attempt key to `attempts/<NNN>__<global_id>/<original_filename>` (forward-only — W30), extended `database_search`'s XML response with per-session `<available_attempts>` blocks + `global_id` on matched `<attempt>` elements, and added two new live smoke tests (`smoke_test_retrieve_{user_inputs,attempt}.py`).  Full narrative in architecture doc §9.13.

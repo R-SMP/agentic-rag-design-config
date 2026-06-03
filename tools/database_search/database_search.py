@@ -39,6 +39,7 @@ handling, and ``rag_queries`` logging land in subsequent steps.
 from __future__ import annotations
 
 import logging
+import re
 import time
 from dataclasses import dataclass
 from typing import Annotated, Any
@@ -418,6 +419,56 @@ def _run_mismatch_count_query(
         return int(cur.fetchone()[0])
 
 
+# ----- Query 4.  Available attempts per session (Phase 5D) ---
+
+# attempt_label format is <YYYYMMDD>_<HHMMSS>_<NNN>_<slug>; this regex
+# captures the 3+ digit NNN.  Same convention as the parser in
+# tools/retrieve_attempt/retrieve_attempt.py.
+_ATTEMPT_LABEL_NNN_RE = re.compile(r"^\d+_\d+_(\d+)_")
+
+
+def _run_available_attempts_query(
+    conn,
+    *,
+    session_ids: list[str],
+) -> dict[str, list[tuple[int, str]]]:
+    """Fetch all attempts saved for each of *session_ids*.
+
+    Returns a dict mapping each session_id to a list of
+    ``(global_attempt_id, nnn)`` tuples sorted by global_id ascending.
+    Sessions with no saved attempts (or session_ids not in the
+    sessions table) map to an empty list — never absent from the dict
+    so the caller never has to guard against missing keys.
+
+    Powers the per-session ``<available_attempts>`` block added to
+    every database_search response in Phase 5D.  The block enables
+    agents to discover the global attempt ids they can pass to the
+    ``retrieve_attempt`` tool, including attempts that didn't match
+    the semantic search.
+
+    NNN is extracted from ``attempt_label`` via the
+    ``<TS>_<NNN>_<slug>`` regex; labels that don't match (defensive)
+    are silently skipped.
+    """
+    out: dict[str, list[tuple[int, str]]] = {sid: [] for sid in session_ids}
+    if not session_ids:
+        return out
+    sql = """
+        SELECT session_id, attempt_id, attempt_label
+        FROM dc_attempts
+        WHERE session_id = ANY(%(session_ids)s)
+        ORDER BY attempt_id
+    """
+    with conn.cursor() as cur:
+        cur.execute(sql, {"session_ids": session_ids})
+        for sid, gid, label in cur.fetchall():
+            m = _ATTEMPT_LABEL_NNN_RE.match(label or "")
+            if not m:
+                continue
+            out.setdefault(sid, []).append((int(gid), m.group(1)))
+    return out
+
+
 # ============================================================
 # Section 3.  Metafilter parser (Phase 4B step 4)
 # ============================================================
@@ -711,9 +762,10 @@ def _sort_chunks_for_emission(
 
 
 def _emit_anchor_block(
-    anchor:           AnchorHit,
-    chunks:           list[ExpandedChunk],
-    attempt_specific: bool,
+    anchor:             AnchorHit,
+    chunks:             list[ExpandedChunk],
+    attempt_specific:   bool,
+    available_attempts: list[tuple[int, str]],
 ) -> str:
     """Emit one anchor's ``<session>...</session>`` block.
 
@@ -722,9 +774,29 @@ def _emit_anchor_block(
     to) and matches §5.2's layout.  When attempt_specific=True the
     score lives on the inner ``<attempt>`` element (the actual
     anchor); when False it lives on ``<session>`` directly.
+
+    *available_attempts* (Phase 5D) is the list of
+    ``(global_id, nnn)`` pairs for this session, sorted by global_id
+    ascending.  Always emitted as a ``<available_attempts>`` child of
+    ``<session>``; self-closing when empty so the agent never has to
+    interpret absence.  Matched ``<attempt>`` elements ALSO carry
+    their ``global_id`` attribute (also Phase 5D), so the agent can
+    feed it directly into ``retrieve_attempt``.
     """
     score    = _similarity_score(anchor.dist)
     sid_attr = quoteattr(anchor.session_id)
+
+    # Phase 5D: <available_attempts> block (always emitted)
+    if available_attempts:
+        avail_lines = ["  <available_attempts>"]
+        for gid, nnn in available_attempts:
+            avail_lines.append(
+                f'    <attempt global_id="{gid}" nnn={quoteattr(nnn)}/>'
+            )
+        avail_lines.append("  </available_attempts>")
+        avail_block = "\n".join(avail_lines)
+    else:
+        avail_block = "  <available_attempts/>"
 
     if attempt_specific:
         att_label = anchor.attempt_label or str(anchor.attempt_id or "")
@@ -733,9 +805,15 @@ def _emit_anchor_block(
             _emit_qa(c, best_match=(c.chunk_id == anchor.best_chunk_id))
             for c in sorted_chunks
         )
+        global_id_attr = (
+            f' global_id="{anchor.attempt_id}"'
+            if anchor.attempt_id is not None
+            else ""
+        )
         return (
             f"<session id={sid_attr}>\n"
-            f'  <attempt id={quoteattr(att_label)} score="{score}">\n'
+            f"{avail_block}\n"
+            f'  <attempt id={quoteattr(att_label)}{global_id_attr} score="{score}">\n'
             f"{qa_lines}\n"
             f"  </attempt>\n"
             f"</session>"
@@ -752,6 +830,7 @@ def _emit_anchor_block(
             attempt_groups.setdefault(key, []).append(c)
 
     parts: list[str] = [f'<session id={sid_attr} score="{score}">']
+    parts.append(avail_block)
 
     if generic_chunks:
         parts.append("  <session_generic>")
@@ -763,8 +842,16 @@ def _emit_anchor_block(
         parts.append("  </session_generic>")
 
     for att_label in sorted(attempt_groups):
-        parts.append(f"  <attempt id={quoteattr(att_label)}>")
-        for c in _sort_chunks_for_emission(anchor, attempt_groups[att_label]):
+        group_chunks = attempt_groups[att_label]
+        # Phase 5D: pick global_id from first chunk in the group (all
+        # share the same attempt_id since they're grouped by it).
+        global_id_attr = (
+            f' global_id="{group_chunks[0].attempt_id}"'
+            if group_chunks and group_chunks[0].attempt_id is not None
+            else ""
+        )
+        parts.append(f"  <attempt id={quoteattr(att_label)}{global_id_attr}>")
+        for c in _sort_chunks_for_emission(anchor, group_chunks):
             qa_text = _emit_qa(c, best_match=(c.chunk_id == anchor.best_chunk_id))
             parts.append("\n".join("  " + ln for ln in qa_text.splitlines()))
         parts.append("  </attempt>")
@@ -814,13 +901,14 @@ def _emit_truncated_footer(omitted: int, token_cap: int) -> str:
 
 def _build_response_full(
     *,
-    meta:                SearchMeta,
-    anchors:             list[AnchorHit],
-    chunks_by_anchor:    dict[Any, list[ExpandedChunk]],
-    attempt_specific:    bool,
-    metafilters_applied: bool,
-    omitted:             int,
-    token_cap:           int,
+    meta:                          SearchMeta,
+    anchors:                       list[AnchorHit],
+    chunks_by_anchor:              dict[Any, list[ExpandedChunk]],
+    attempt_specific:              bool,
+    metafilters_applied:           bool,
+    omitted:                       int,
+    token_cap:                     int,
+    available_attempts_by_session: dict[str, list[tuple[int, str]]],
 ) -> str:
     """Assemble the full response string from its parts.  Pure;
     no token counting — the trim loop calls this then counts."""
@@ -830,7 +918,10 @@ def _build_response_full(
     for a in anchors:
         key = a.attempt_id if attempt_specific else a.session_id
         parts.append(
-            _emit_anchor_block(a, chunks_by_anchor.get(key, []), attempt_specific)
+            _emit_anchor_block(
+                a, chunks_by_anchor.get(key, []), attempt_specific,
+                available_attempts_by_session.get(a.session_id, []),
+            )
         )
     if omitted > 0:
         parts.append(_emit_truncated_footer(omitted, token_cap))
@@ -839,15 +930,16 @@ def _build_response_full(
 
 def _trim_to_token_cap(
     *,
-    anchors:             list[AnchorHit],
-    chunks_by_anchor:    dict[Any, list[ExpandedChunk]],
-    attempt_specific:    bool,
-    metafilters_applied: bool,
-    n_requested:         int,
-    embedding_model:     str,
-    metafilters_repr:    str,
-    skipped_due_to_mm:   int,
-    token_cap:           int,
+    anchors:                       list[AnchorHit],
+    chunks_by_anchor:              dict[Any, list[ExpandedChunk]],
+    attempt_specific:              bool,
+    metafilters_applied:           bool,
+    n_requested:                   int,
+    embedding_model:               str,
+    metafilters_repr:              str,
+    skipped_due_to_mm:             int,
+    token_cap:                     int,
+    available_attempts_by_session: dict[str, list[tuple[int, str]]],
 ) -> tuple[str, int]:
     """Naive O(N²) drop-lowest-rebuild trim loop (Q-4A-12).
 
@@ -870,13 +962,14 @@ def _trim_to_token_cap(
             skipped_due_to_model_mismatch = skipped_due_to_mm,
         )
         xml = _build_response_full(
-            meta                = meta,
-            anchors             = kept,
-            chunks_by_anchor    = chunks_by_anchor,
-            attempt_specific    = attempt_specific,
-            metafilters_applied = metafilters_applied,
-            omitted             = omitted,
-            token_cap           = token_cap,
+            meta                          = meta,
+            anchors                       = kept,
+            chunks_by_anchor              = chunks_by_anchor,
+            attempt_specific              = attempt_specific,
+            metafilters_applied           = metafilters_applied,
+            omitted                       = omitted,
+            token_cap                     = token_cap,
+            available_attempts_by_session = available_attempts_by_session,
         )
         if _count_tokens(xml) <= token_cap or not kept:
             return xml, omitted
@@ -993,6 +1086,18 @@ def _run_search_pipeline(
             metafilter_where  = metafilter_where,
             metafilter_params = metafilter_params,
         )
+        # Phase 5D: list ALL attempts saved for each returned session
+        # so each <session> block can advertise the full directory
+        # (input for the retrieve_attempt tool).  Empty dict when no
+        # anchors landed (the no-results path emits no <session>
+        # blocks anyway).
+        if anchors:
+            available_attempts_by_session = _run_available_attempts_query(
+                conn,
+                session_ids = list({a.session_id for a in anchors}),
+            )
+        else:
+            available_attempts_by_session = {}
 
     # 7. Group expanded chunks by anchor key.
     chunks_by_anchor: dict[Any, list[ExpandedChunk]] = {}
@@ -1002,15 +1107,16 @@ def _run_search_pipeline(
 
     # 8. Trim + assemble.
     xml, omitted = _trim_to_token_cap(
-        anchors             = anchors,
-        chunks_by_anchor    = chunks_by_anchor,
-        attempt_specific    = attempt_specific_flag,
-        metafilters_applied = metafilters_applied,
-        n_requested         = n,
-        embedding_model     = embedding_model,
-        metafilters_repr    = metafilters_repr,
-        skipped_due_to_mm   = skipped_count,
-        token_cap           = token_cap,
+        anchors                       = anchors,
+        chunks_by_anchor              = chunks_by_anchor,
+        attempt_specific              = attempt_specific_flag,
+        metafilters_applied           = metafilters_applied,
+        n_requested                   = n,
+        embedding_model               = embedding_model,
+        metafilters_repr              = metafilters_repr,
+        skipped_due_to_mm             = skipped_count,
+        token_cap                     = token_cap,
+        available_attempts_by_session = available_attempts_by_session,
     )
 
     # Build returned_anchor_ids for rag_queries logging.  Trim drops
