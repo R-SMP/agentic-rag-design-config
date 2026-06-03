@@ -1821,39 +1821,66 @@ class DatabaseHandler(BaseChainAgent):
                     f"({type(exc).__name__}: {exc}); save kept locally."
                 )
 
-            # Mirror the local session_dir to Cloudflare R2 when
-            # configured.  Phase 3D (2026-06-02): the ``.txt`` suffix
-            # was DROPPED from this whitelist — Q+A bodies live in
-            # Postgres ``chunks`` only in the happy path (see
-            # architecture doc §3.5 + §9.6 + invariant 12).  Q+A text
-            # only reaches R2 via the safety folder when
-            # ``insert_chunk`` exhausts its retries (handled inline by
-            # ``db_writer.save_to_safety_folder``).  This mirror now
-            # carries only the user-input PNG/JPG/JPEG reference
-            # images collected into ``<session_dir>/user_inputs/`` by
-            # ``_collect_user_inputs`` just above.  Per-attempt
-            # artefacts (mesh, renders, description.txt) land on R2
-            # via the SEPARATE ``upload_attempt_artefacts`` path
-            # inside ``save_attempt_data``'s force-tool handler —
-            # see warnings_developer.md W30 for the three R2 paths.
+            # Mirror <session_dir>/user_inputs/ to Cloudflare R2 when
+            # configured.  Phase 3D (2026-06-02) dropped the ``.txt``
+            # suffix from what used to be a WHOLE-session_dir scan
+            # because per-agent Q+A bodies (under
+            # ``<session_dir>/<agent>/<field>.txt``) live in Postgres
+            # ``chunks`` only in the happy path (architecture doc
+            # §3.5 + §9.6 + invariant 12).  Q+A text only reaches R2
+            # via the safety folder when ``insert_chunk`` exhausts
+            # its retries (handled inline by
+            # ``db_writer.save_to_safety_folder``).
+            #
+            # BUT the user-input files written by
+            # ``_collect_user_inputs`` just above — ``queries.txt``,
+            # ``images/<original>.png|.jpg|.jpeg``, and
+            # ``images/<original>_note.txt`` — are NOT in Postgres
+            # and DO need to reach R2.  Path-scope the mirror to the
+            # ``user_inputs/`` subtree and put the full
+            # ``.txt`` / ``.png`` / ``.jpg`` / ``.jpeg`` whitelist
+            # back.  This both:
+            #
+            #   * keeps per-agent ``<agent>/<field>.txt`` bodies OUT
+            #     of R2 (they live outside ``user_inputs/``); and
+            #   * gets ``queries.txt`` and ``_note.txt`` sidecars
+            #     UP to R2 regardless of whether any images were
+            #     uploaded this session or whether the DH wrote any
+            #     attempts.
+            #
+            # Per-attempt artefacts (mesh, renders, description.txt)
+            # land on R2 via the SEPARATE
+            # ``upload_attempt_artefacts`` path inside
+            # ``save_attempt_data``'s force-tool handler — see
+            # warnings_developer.md W30 for the three R2 paths.
+            #
             # Best-effort: a failure here logs a warning but never
             # breaks the local save the user just confirmed.
             try:
                 from agents.shared import r2_uploader as _r2
                 if _r2.is_enabled():
-                    n_up = _r2.upload_directory(
-                        session_dir,
-                        remote_prefix=f"{session_id}/",
-                        suffixes=(".png", ".jpg", ".jpeg"),
-                    )
-                    logger.info(
-                        f"[DH]  R2 mirror complete: {n_up} file(s) "
-                        f"uploaded under prefix {session_id}/"
-                    )
+                    user_inputs_dir = session_dir / "user_inputs"
+                    if user_inputs_dir.is_dir():
+                        n_up = _r2.upload_directory(
+                            user_inputs_dir,
+                            remote_prefix=f"{session_id}/user_inputs/",
+                            suffixes=(".txt", ".png", ".jpg", ".jpeg"),
+                        )
+                        logger.info(
+                            f"[DH]  R2 mirror complete: {n_up} file(s) "
+                            f"uploaded under prefix "
+                            f"{session_id}/user_inputs/"
+                        )
+                    else:
+                        logger.info(
+                            f"[DH]  no user_inputs/ subdir at "
+                            f"{user_inputs_dir.resolve()}; nothing to "
+                            f"mirror this session."
+                        )
                 else:
                     logger.info(
-                        f"[DH]  R2 not configured; skipped mirror of "
-                        f"{session_dir.resolve()} "
+                        f"[DH]  R2 not configured; skipped user_inputs/ "
+                        f"mirror of {session_dir.resolve()} "
                         f"(set R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / "
                         f"R2_SECRET_ACCESS_KEY / R2_BUCKET_NAME to enable)."
                     )
@@ -3350,10 +3377,15 @@ class DatabaseHandler(BaseChainAgent):
           are preserved so the image / note pairing is obvious.
 
         The local copies live alongside the per-agent ``.txt`` files
-        the DH already writes; the subsequent R2 mirror picks them
-        up via the suffix whitelist (``.txt`` / ``.png`` / ``.jpg`` /
-        ``.jpeg``).  The original ``inputs/`` directory is left
-        intact — End Session's archival sweep moves it under
+        the DH already writes locally.  Per Phase 3D those per-agent
+        files stay in Postgres only and are NOT mirrored to R2;
+        the subsequent R2 mirror in :meth:`populate_database` is
+        scoped narrowly to ``<session_dir>/user_inputs/`` and
+        uploads its contents (``queries.txt`` + reference images +
+        ``_note.txt`` sidecars) via the
+        ``.txt`` / ``.png`` / ``.jpg`` / ``.jpeg`` whitelist.  The
+        original ``inputs/`` directory is left intact — End
+        Session's archival sweep moves it under
         ``previous_sessions/<session_id>/inputs/`` afterwards.
 
         Returns the number of files written into

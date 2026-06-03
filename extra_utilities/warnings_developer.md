@@ -962,17 +962,30 @@ via THREE distinct code paths, each with its own whitelist /
 trigger.  Adding or removing a file type involves deciding which
 path should carry it.
 
-**Path 1 — `r2_uploader.upload_directory(session_dir, suffixes=...)`**
+**Path 1 — `r2_uploader.upload_directory(user_inputs_dir, suffixes=...)`**
 - Called ONCE at the end of
   `agents/database_handler/database_handler.py::populate_database`.
-- Walks `<session_dir>` recursively and uploads any file whose
-  suffix matches the whitelist.
-- Phase 3D whitelist: `(".png", ".jpg", ".jpeg")`.
-- What lands here: user-input reference images snapshotted by
-  `_collect_user_inputs` into `<session_dir>/user_inputs/`.
-- What USED TO land here (pre-3D): the DH's per-Q+A `.txt` files
-  too.  Removed because Postgres `chunks` is the sole Q+A store
-  in the happy path now (§3.5 / invariant 12).
+- Walks `<session_dir>/user_inputs/` (NOT the whole `<session_dir>`)
+  recursively and uploads any file whose suffix matches the
+  whitelist.
+- Current whitelist: `(".txt", ".png", ".jpg", ".jpeg")`.
+- What lands here: every file `_collect_user_inputs` snapshotted
+  under `<session_dir>/user_inputs/`:
+    * `queries.txt` — the user's full turn-by-turn text inputs;
+    * `images/<original>.png|.jpg|.jpeg` — reference images;
+    * `images/<original>_note.txt` — per-image notes.
+- What USED TO be in scope (pre-3D): the WHOLE `<session_dir>`
+  with `.txt` included — that picked up the DH's per-Q+A
+  `<agent>/<field>.txt` files too.  Phase 3D dropped `.txt`
+  from the whitelist (Postgres `chunks` is the sole Q+A store
+  now per §3.5 / invariant 12) but inadvertently also dropped
+  `queries.txt` and `_note.txt`.  The 2026-06-03 fix re-scoped
+  the upload to `user_inputs/` only, restoring `queries.txt`
+  and `_note.txt` mirroring while keeping per-agent Q+A bodies
+  out of R2 (they live under `<agent>/`, outside the scope).
+- The upload runs whether the DH wrote zero attempts or many —
+  `_collect_user_inputs` + this mirror call BOTH execute
+  unconditionally at the end of `populate_database`.
 
 **Path 2 — `r2_uploader.upload_attempt_artefacts(folder, ...)`**
 - Called PER RESOLVED ATTEMPT from
