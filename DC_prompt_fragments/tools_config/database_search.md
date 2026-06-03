@@ -57,15 +57,19 @@ your query.
     sessions"*).
 
 <!--
-NOTE for fragment editors: the literal { and } braces below are
-DOUBLED ({{ / }}) on purpose.  This fragment is substituted into
-each agent's prompt.md via ``$database_search_tool``; that prompt
-template is later run through ``str.format(...)`` at agent wiring
-time to fill {chain_access_block}, {routing_instructions}, etc.
-``.format`` interprets single braces as placeholders and crashes
-on a literal ``{}`` with IndexError.  Doubled braces survive both
-stages and reach the LLM as a single ``{`` / ``}``.  See
-v9_gotchas.md "brace-escape rule for .format-templated prompts".
+NOTE for fragment editors: the curly braces appearing below are
+DOUBLED on purpose.  This fragment is substituted into each
+agent's prompt.md via the ``$database_search_tool`` slot; the
+assembled template is later passed through Python's str.format
+method at agent wiring time so that other named slots (the
+chain-access block, the routing instructions, etc.) get filled.
+str.format interprets single curly braces as placeholders and
+crashes on any literal lone or non-matching pair.  Doubling each
+opening and closing curly survives both stages and reaches the
+LLM as a single brace.  See v9_gotchas.md "brace-escape rule for
+.format-templated prompts".  This comment intentionally contains
+NO literal curly braces and NO slot-shaped tokens so it cannot
+itself trigger the very bug it documents.
 -->
 
 **Metafilter syntax — hybrid string-prefix.**  Pass ``None`` or
