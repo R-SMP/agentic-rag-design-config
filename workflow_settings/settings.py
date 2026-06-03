@@ -513,3 +513,50 @@ STITCHING_MAX_OUTPUT_TOKENS: int = 800
 #
 # Valid values: True, False
 UII_MAY_READ_PREVIOUS_EXTRACTION: bool = True
+
+
+# ===========================================================
+# 19. Database Search — response token cap
+# ===========================================================
+# Maximum size (in cl100k_base tokens) of one database_search XML
+# response.  When the assembled response exceeds this cap, the
+# tool drops anchors from the bottom of the ranking (lowest-
+# similarity first) until the result fits, then appends a
+# <truncated ... omitted_anchors="K" .../> footer so the calling
+# agent knows some content was dropped.  See architecture doc §4.5
+# (invariant 3 — never partial-anchor truncation).
+#
+# Picking a value: 30000 leaves comfortable room for ~5-10 anchors'
+# worth of question/answer prose without dominating the agent's
+# remaining context window.  Lower the cap if a calling agent's
+# downstream context is tight; raise it if you want richer
+# multi-anchor responses at the cost of upstream tokens.
+#
+# Valid values: any positive int (cl100k_base tokens).  Default 30000.
+DATABASE_SEARCH_MAX_RESPONSE_TOKENS: int = 30_000
+
+
+# ===========================================================
+# 20. Database Search — candidate pool magnifier
+# ===========================================================
+# The database_search tool ranks ANCHORS (distinct sessions or
+# attempts), not chunks.  To get N anchors back, it first fetches
+# DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER × N chunk candidates in
+# a single ANN query, then deduplicates by anchor (each anchor's
+# best-matching chunk wins) and returns the top N.
+#
+# Picking a value: 10 is a reasonable balance for our typical corpus
+# shape (~120 chunks per saved session).  Lower it if you want
+# faster queries and accept under-returning the requested N more
+# often when results cluster heavily into one session.  Raise it
+# if heavy clustering is producing too many "n_returned < n_requested"
+# warnings in rag_queries.  Diminishing returns above ~20 because
+# the partial HNSW index is approximate and pulls more nodes when k
+# grows.
+#
+# When the deduplicated anchor count falls short of N (e.g. all
+# candidates clustered into 2 sessions when N=5), the tool returns
+# what it has and records n_returned < n_requested in rag_queries.
+#
+# Valid values: any positive int (recommended 5–20).  Default 10.
+DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER: int = 10
