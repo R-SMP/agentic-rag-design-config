@@ -1029,10 +1029,15 @@ button.danger:hover { background: #3a1d1d; }
   outline-offset: -1px;
 }
 
-/* Global override active — gray out per-agent controls visually so
-   it's obvious the chart's controls are inert until the user flips
-   back to "Use individual LLMs". */
-.lr-chart-wrap.lr-global-active .lr-agent-controls {
+/* Global override active — gray out per-agent provider + model
+   controls so it's obvious those are inert until the user flips
+   back to "Use individual LLMs".  Targets the select + input
+   directly rather than the whole .lr-agent-controls container,
+   because the container also holds the DBa toggle button, which
+   is orthogonal to LLM routing and must stay clickable regardless
+   of the global-override mode. */
+.lr-chart-wrap.lr-global-active .lr-provider-select,
+.lr-chart-wrap.lr-global-active .lr-model-input {
   opacity: 0.4;
   pointer-events: none;
 }
