@@ -1052,3 +1052,79 @@ add the SEQUENCE and seed its initial value from existing
 doc §9.10 + the migration script's docstring.
 
 **Status.** In force from Phase 3E (2026-06-02) onward.
+
+
+## W32. Every vector query against `chunks` MUST use `_invariant_8_where_fragment()`.
+
+The partial HNSW index on `chunks.embedding` (created in schema v4
+and preserved through v6) is restricted to rows that retrieval
+would actually return:
+
+```sql
+CREATE INDEX idx_chunks_embedding ON chunks USING hnsw (embedding vector_cosine_ops)
+  WHERE NOT is_error AND NOT is_empty AND field_type = 'Semantic';
+```
+
+Postgres only consults a partial index when the query's `WHERE`
+clause logically implies the index's `WHERE`.  Every vector search
+MUST include the literal three predicates:
+
+```sql
+WHERE NOT is_error
+  AND NOT is_empty
+  AND field_type = 'Semantic'
+  AND ...   -- additional filters: ACL, embedding_model match, metafilters
+```
+
+Forgetting any one of them causes Postgres to fall back to a
+sequential scan over the full `chunks` table — correct but ~1000×
+slower on a non-trivial corpus, and with no warning emitted at
+query time.
+
+### The lock
+
+The literal predicate prefix lives in exactly ONE place:
+
+```python
+# tools/database_search/database_search.py
+def _invariant_8_where_fragment() -> str:
+    return "NOT is_error AND NOT is_empty AND field_type = 'Semantic'"
+```
+
+Every vector query in `database_search.py` (the candidate
+window-function query, the expansion query, and the
+embedding-model-mismatch COUNT query) builds its `WHERE` clause by
+interpolating the return value of this helper.  No other vector
+query exists today.
+
+### What this means in practice
+
+- **Never** hand-roll a vector query against `chunks`.  Use the
+  helper, even for one-off scripts or smoke tests.
+- When adding a new query that touches `chunks.embedding <=> ...`,
+  build the `WHERE` clause through `_invariant_8_where_fragment()`
+  + your additional filters.  Grep for the helper to see live
+  examples.
+- If you find yourself writing the literal
+  `WHERE NOT is_error AND NOT is_empty AND field_type = 'Semantic'`
+  in a new file, stop and import the helper instead — the
+  duplication is exactly what this invariant prevents.
+- The `<=>` operator needs its right-hand-side parameter cast as
+  `vector` for Postgres to resolve the operator type.  All live
+  query sites do `%(query_vec)s::vector` — preserve that cast
+  when reusing the helper.
+
+### What this is NOT
+
+This invariant covers vector queries only — queries against
+`chunks` that do not use the `<=>` operator (pure COUNT,
+non-vector SELECT, INSERT, etc.) do not need the helper.  The
+mismatch COUNT query happens to use it for symmetry and to honour
+invariant 8's filter scope, not because COUNT requires the partial
+index.
+
+### Status
+
+In force from Phase 4B step 3 (2026-06-03) onward.  Captured as
+architecture doc §8 invariant 8 (locked design) and §9.7 +
+§9.11 (Phase 4 implementation).

@@ -499,6 +499,11 @@ stay in lockstep — both are derived from `FIXED_FEEDBACK_QUESTIONS`.
 
 ## 4. The `database_search` tool — locked design
 
+> **Status (2026-06-03):** IMPLEMENTED in Phase 4B + 4C + 4D.
+> See §9.7 and §9.11 below for the shipped result and the
+> deviations from the γ defaults that were locked during the
+> design walkthrough.
+
 ### 4.1 Signature
 
 ```text
@@ -986,7 +991,7 @@ lands in the repo.
 
 ---
 
-## 9. Implementation status — pause as of 2026-06-01
+## 9. Implementation status — Phase 4 shipped 2026-06-03
 
 **Important.** The Postgres rollout is paused.  This section
 captures the state at pause so the work can resume with zero
@@ -1296,14 +1301,36 @@ answers dict.
   summary of which files land where on R2 (including the third
   path: `upload_bytes` used by the safety-folder writer).
 
-### 9.7 Phase 4 — `database_search` tool  (NOT STARTED)
+### 9.7 Phase 4 — `database_search` tool  (DONE 2026-06-03)
 
-- Implement per §4 (signature, ACL via `agents_to`, anchor-based
-  N semantics, token cap with lowest-ranked-anchor trim, XML
-  response, no-results payload, embedding-model mismatch skip,
-  `<search_meta>` header).
-- Implement T15 (artefact-fetch tool) per §4.10 once the text
-  tool is in production and the two-step pattern proves itself.
+Implementation shipped:
+
+- `tools/database_search/database_search.py` (~1360 lines) —
+  closure factory + `@tool` wrapper + SQL layer (candidate
+  window-function query with invariant-8 prefix, expansion
+  query, mismatch COUNT query) + metafilter parser + XML
+  emission + token-cap trim + error envelope + rag_queries
+  logging.
+- `DC_prompt_fragments/tools_config/database_search.md` —
+  usage-guidance fragment, wired through the
+  `$database_search_tool` `string.Template` slot into each of
+  the 8 chain agents' `prompt.md`.
+- `agents/<8-chain-agents>/<agent>.py` — `set_tools()` /
+  `set_routing_tools()` extended with
+  `make_database_search_tool('<slug>')`.  Database Handler is
+  skipped (write-only, post-session — Q-4A-13).
+- `workflow_settings/settings.py` blocks #19 + #20 — two new
+  constants visible in the editor UI:
+  `DATABASE_SEARCH_MAX_RESPONSE_TOKENS = 30_000` and
+  `DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER = 10`.
+- `extra_utilities/db_design/smoke_test_database_search.py`
+  (~735 lines) — 8 scenarios covering happy path, ACL filter,
+  empty results + metafilters, token-cap trim, model-mismatch
+  skip, attempt_specific, error path, and rag_queries logging.
+  26 assertions; verified PASS against live Railway 2026-06-03.
+
+T15 (artefact-fetch tool) per §4.10 remains deferred — ship
+after the text tool proves itself in production.
 
 ### 9.8 Commit chronology for the work above
 
@@ -1462,3 +1489,36 @@ deferred until `database_search` v1 ships.  When resuming this
 work, ASK THE USER to share that structural idea AFTER Phase 4 is
 green; they expect Claude to react + propose 2 alternatives at
 that point.
+
+---
+
+**Implementation shipped 2026-06-03.**  All 13 Q-4A decisions
+were applied with the following deviations from the γ defaults
+the user overrode during the supervised rollout:
+
+| # | Decision | γ default | Actual |
+|---|---|---|---|
+| Q-4A-1 | Module location | `agents/shared/database_search.py` | `tools/database_search/database_search.py` — matches the existing per-tool subfolder convention (`tools/calculate/`, `tools/render_mesh/`, …). |
+| Q-4A-3 | Token cap | Hardcoded constant in the module | New `DATABASE_SEARCH_MAX_RESPONSE_TOKENS` in `settings.py` block #19, visible in the editor UI.  Inner `_run_search_pipeline` still accepts a private `token_cap` kwarg defaulting to the constant so smoke tests can override. |
+| Q-4A-4 | Anchor dedup | 5×N over-fetch with Python dedup | Window-function dedup in SQL (`ROW_NUMBER() PARTITION BY anchor`) over a `DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER × N` candidate pool (default 10).  The magnifier is a new `settings.py` knob (block #20, visible in UI). |
+| Q-4A-11 | Per-agent prompt updates | One-line mention in each agent's `prompt.md` | Dedicated `DC_prompt_fragments/tools_config/database_search.md` fragment + a bullet in `agent_tools_overview.md` + a `$database_search_tool` placeholder near the end of each of 8 chain agent `prompt.md` files. |
+
+Q-4A-2, Q-4A-5 through Q-4A-10, Q-4A-12, Q-4A-13 all shipped
+with γ defaults verbatim.
+
+The §8 invariant 8 helper-function lock — every vector query
+against `chunks` MUST go through `_invariant_8_where_fragment()`
+in `tools/database_search/database_search.py` — is captured as
+W32 in `extra_utilities/warnings_developer.md` (Phase 4E).
+
+Two follow-up tracks deferred to focused commits:
+
+* **Per-agent enrichment** of the `database_search` fragment with
+  agent-specific WHEN/WHY guidance.  The user will provide this
+  after 4D verified the tool works end-to-end.
+* **Repurpose the stale `_RAG_INSTRUCTIONS_ON/OFF`** strings in
+  `agents/planner/planner.py` (lines 57-68).  They currently say
+  "RAG execution is not yet implemented" — no longer true.
+  Decide whether `RAG_ENABLED` becomes a runtime gate for
+  `database_search` availability or stays as Planner-only
+  planning guidance.
