@@ -1141,3 +1141,162 @@ index.
 In force from Phase 4B step 3 (2026-06-03) onward.  Captured as
 architecture doc §8 invariant 8 (locked design) and §9.7 +
 §9.11 (Phase 4 implementation).
+
+
+## W33. Per-agent DBa toggle + `RAG_ENABLED` master switch — AND semantics, next-session lifecycle.
+
+Whether a chain agent ends up with `database_search` bound at
+session start AND the `$database_search_tool` fragment in its
+system prompt is decided by TWO ANDed checks:
+
+1. **Global master switch** `RAG_ENABLED` in
+   `workflow_settings/settings.py` (bool, default `True`).
+2. **Per-agent flag** in `workflow_settings/database_access.json`
+   (one bool per chain agent, default `True` for all 8).  Edited
+   via the small "DBa" pill button rendered in each agent box on
+   the LLM-routing chart in the Workflow Settings view.
+
+The combined predicate lives in ONE place:
+```python
+# workflow_settings/database_access.py
+def is_enabled_for(agent: str) -> bool:
+    if not bool(getattr(_workflow_settings, "RAG_ENABLED", False)):
+        return False
+    return get(agent)
+```
+
+If you add a new check or shortcut path that decides "does this
+agent get RAG?", route it through `is_enabled_for` — do NOT read
+the per-agent flag directly, because that bypasses the master
+switch.
+
+### Two places the flag affects behaviour
+
+* **Tool binding.**  In each of the 8 chain agents'
+  `set_tools` / `set_routing_tools`:
+  ```python
+  if database_access.is_enabled_for("<slug>"):
+      _tool = make_database_search_tool("<slug>")
+      ... add to the agent's bound tool surface ...
+  ```
+  When off, the `database_search` tool is NOT in `bind_tools(...)`
+  and the LLM never sees it as an option.
+
+* **System prompt.**  Each chain agent's `prompt.md` wraps the
+  database section in `<<HAS_DBA>>...<</HAS_DBA>>` markers.  At
+  template-build time, `agents/shared/prompts.py::apply_dba_filter`
+  unwraps the region when `is_enabled_for(agent_dir_name)` returns
+  `True`, strips it entirely otherwise.  No orphaned heading line.
+
+### Lifecycle
+
+Changes take effect on the NEXT session — same semantics as every
+other workflow-settings edit.  Per-agent templates are built ONCE
+at module-import time (`prompts.py::_build_template`) and tool
+binding happens at agent construction.  Mid-session toggles do not
+affect the currently-running agents.
+
+### Editing surface
+
+* **Master switch** — checkbox for `RAG_ENABLED` in the flag list
+  under the LLM-routing chart; or `workflow_settings/settings.py`
+  directly.
+* **Per-agent** — DBa button in each agent box; or
+  `workflow_settings/database_access.json` directly.  The JSON has
+  one top-level key per chain agent slug (lowercase_snake,
+  matching `database_access.DEFAULT_AGENTS`); missing keys default
+  to `True`.
+* **Endpoints** — `GET /api/database-access` returns
+  `{flags, rag_enabled}`; `POST /api/database-access` body
+  `{agent, enabled}` updates one agent.  Both endpoints reject
+  mid-session writes with HTTP 409 (same lock as `/api/settings`
+  and `/api/llm-routing`).
+
+### UI behaviour the operator should know
+
+* When the master switch is OFF, every DBa button visually dims
+  (`opacity: 0.45`, dashed border) so the inert state is obvious,
+  but the buttons remain clickable for staging the next master-on
+  config.  A yellow banner above the chart explicitly states the
+  master switch is off.
+* When the global LLM override is active (provider dropdown set
+  to anything other than "Use individual LLMs"), the provider +
+  model controls inside each agent box are locked + dimmed, but
+  the DBa button stays solid and clickable — DBa is orthogonal to
+  LLM routing.  The CSS targets the `.lr-provider-select` and
+  `.lr-model-input` directly, NOT the container, exactly so the
+  DBa button isn't caught in the lock.
+
+### Status
+
+In force from 2026-06-03 onward.  Touches
+`workflow_settings/{settings,database_access}.py`,
+`workflow_settings/database_access.json`, `agents/shared/prompts.py`,
+all 8 chain agent `prompt.md` + `<agent>.py` modules, `web_app.py`
+(two new endpoints), and the web frontend (button + banner +
+legend + dimming).
+
+
+## W34. "Database" admin view — password-gated destructive endpoint.
+
+The seventh side-menu view ("Database") is a developer-only
+console gated by the `PASSWORD_DATABASE_WEB_UI` environment
+variable.  When unset, every auth attempt is rejected so a
+forgotten env var can never leave the destructive endpoint
+exposed.
+
+### Single action today: TRUNCATE every data table except
+`dc_parameter_schemas`
+
+Triggered by typing the literal phrase `reset_database` in the
+view's text input and clicking Send (or pressing Enter), after
+the password unlock step succeeds.  The action runs in a single
+transaction:
+
+```sql
+TRUNCATE TABLE chunks, dc_attempt_parameters, dc_attempts,
+               rag_queries, sessions
+  RESTART IDENTITY CASCADE;
+```
+
+* `dc_parameter_schemas` is intentionally absent from the
+  `RESET_TABLES` list in `web_app.py`.  Preserves the 17-parameter
+  schema seed so the system stays usable without re-running
+  `populate_dc_parameter_schemas.py`.
+* The `session_counter` SEQUENCE is left alone.  Next session
+  continues from the current count, not reset to 1.  Operator can
+  manually `ALTER SEQUENCE session_counter RESTART WITH 1;` via
+  psql if a fully-fresh IDNNN run is wanted.
+* Pre-truncate row counts per table are captured and returned in
+  the response so the operator sees what was deleted.
+
+### Two endpoints, both gated
+
+* `POST /api/db_admin/auth`  body `{password}`  →  `{ok, error?}`.
+  Used by the UI for immediate "wrong password" feedback before
+  the operator types the destructive phrase.  Always HTTP 200;
+  `ok` discriminates.  Compares via `hmac.compare_digest`.
+* `POST /api/db_admin/reset`  body `{password, phrase}`  →
+  `{ok, before_counts?, tables_wiped?, error?}`.  Re-validates
+  BOTH the password AND the literal `reset_database` phrase
+  server-side, so the endpoint cannot be invoked by anyone who
+  skipped the UI's unlock step.  Logs at WARNING level on success
+  with the before-counts.
+
+### UI lifecycle
+
+* Locked view = password input.  Successful auth flips to the
+  reset card.  Unsuccessful = inline error.
+* After a successful reset, the view auto-re-locks 4 s later so a
+  subsequent destructive action requires re-authentication.
+* The password is held in a JS module-local variable ONLY.
+  Refreshing the page requires re-entering it.  Never written to
+  `localStorage` / `sessionStorage`.
+* Switching to any other view and back also re-locks.
+
+### Status
+
+In force from 2026-06-03 onward.  See `web_app.py`'s
+`api_db_admin_auth` / `api_db_admin_reset`, `web/index.html`'s
+`<section class="view database-view">`, and the controllers at
+the bottom of `web/app.js` (Database view section).
