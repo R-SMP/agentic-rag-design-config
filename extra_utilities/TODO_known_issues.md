@@ -2302,3 +2302,38 @@ per-call API before the broader visual-rendering tool's contract is
 settled.
 
 **Status.**  Open.
+
+### F31. SSE disconnect-recovery cache for /api/turn + /api/end completion events
+
+**Where.**  `web_app.py:_run_turn_in_background` (publish-side),
+`web_app.py:_run_end_in_background` (publish-side), `web/app.js`
+`_pendingTurns` + `finalizeTurn` (consume-side); same shape on
+the End Session side via `endSessionState` / `finalizeEndSession`.
+
+**What.**  Both `/api/turn` and `/api/end` return HTTP 202 with
+fire-and-forget completion via the `/api/events` SSE stream
+(`turn_done` and `session_save_done` events).  If the browser tab
+is closed between the 202 response and the matching SSE event, or
+the SSE connection drops between event publication and re-connect,
+the completion event is **lost**.  The chat bubble (resp. the End
+Session button) stays stuck in its pending state on next page
+load even though the server-side work succeeded.
+
+**Why deferred.**  The window is narrow in practice (turn = a few
+seconds to ~10 min; End Session = ~5–15 min) and the single-user
+W13/O9 constraint means a stuck UI is recoverable by reloading
+and sending a "what was the result" follow-up message — the
+Receptionist can answer from the live session state.  Shipping the
+minimal 202+SSE fix without the cache keeps the diff small and
+matches the existing `/api/end` behaviour exactly.
+
+**Proper fix.**  A small server-side cache `{turn_id: turn_done
+payload}` (bounded by N most-recent entries, evicted on session
+end) plus a new GET `/api/turns/<turn_id>` endpoint.  Frontend on
+SSE `onerror` or page reload reads any pending `turn_id` from
+`sessionStorage` and polls that endpoint.  Same shape for End
+Session if you want to fully close that loop too.
+
+**Status.**  Open.  Pair this with any future work that broadens
+the chat-turn UX (e.g. multi-turn history restore on reload —
+[[F28]]).

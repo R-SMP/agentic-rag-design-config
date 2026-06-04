@@ -154,6 +154,55 @@ gateForm.addEventListener("submit", async (e) => {
   }
 });
 
+// Map of in-flight chat turns: turn_id -> { pending: <pending bubble> }.
+// Populated when /api/turn returns HTTP 202; drained when the matching
+// turn_done event arrives on /api/events.  See
+// web_app.py:_run_turn_in_background for the server-side publisher.
+const _pendingTurns = new Map();
+
+function _resetComposer() {
+  busy = false;
+  sendBtn.disabled = false;
+  input.disabled = false;
+  if (stopBtn) {
+    stopBtn.hidden = true;
+    stopBtn.disabled = false;
+    stopBtn.textContent = "Stop";
+  }
+  input.focus();
+  // A turn just settled → session is now active (build is lazy on
+  // /api/turn).  Lock the settings view until the next End Session.
+  refreshSessionActive();
+}
+
+function finalizeTurn(data) {
+  const entry = _pendingTurns.get(data.turn_id);
+  if (entry) {
+    _pendingTurns.delete(data.turn_id);
+    entry.pending.remove();
+  } else {
+    // SSE event arrived for an unknown turn_id — likely the browser
+    // tab was closed and reopened mid-turn, or the server restarted
+    // between 202 and turn_done.  Surface the reply anyway so the
+    // user isn't left without a response.
+    console.warn("[chat] turn_done for unknown turn_id:", data.turn_id);
+  }
+  addBubble("assistant", data.reply, {
+    artefacts: data.artefacts,
+    error:
+      data.forwarded === false && /internal error/.test(data.reply || ""),
+  });
+  // Auto-load the most recent mesh produced this turn into the viewer.
+  const meshes = (data.artefacts || []).filter((a) => a.kind === "mesh");
+  if (meshes.length) {
+    const last = meshes[meshes.length - 1];
+    loadMesh(last.url, last.name, last.attempt_label || null);
+  }
+  // Only reset composer state when we owned the pending bubble — a
+  // reload-recovery render has no busy state to clear.
+  if (entry) _resetComposer();
+}
+
 async function sendMessage(text) {
   if (busy || !text.trim()) return;
   busy = true;
@@ -195,21 +244,59 @@ async function sendMessage(text) {
     if (res.status === 401) {
       pending.remove();
       showGate();
+      _resetComposer();
       return;
     }
-    const data = await res.json();
-    pending.remove();
-    addBubble("assistant", data.reply, {
-      artefacts: data.artefacts,
-      error:
-        data.forwarded === false && /internal error/.test(data.reply || ""),
-    });
-    // Auto-load the most recent mesh produced this turn into the viewer.
-    const meshes = (data.artefacts || []).filter((a) => a.kind === "mesh");
-    if (meshes.length) {
-      const last = meshes[meshes.length - 1];
-      loadMesh(last.url, last.name, last.attempt_label || null);
+    if (res.status === 409) {
+      pending.remove();
+      addBubble(
+        "assistant",
+        "(server says a previous turn is still in flight — please wait for it to finish before sending another)",
+        { error: true }
+      );
+      _resetComposer();
+      return;
     }
+    // Expected happy path: HTTP 202 Accepted with {ok, status:
+    // "started", turn_id}.  The actual reply + artefacts land later
+    // as a "turn_done" event on /api/events; see finalizeTurn().
+    // We leave busy=true and the pending bubble alive until then.
+    if (res.status === 202 || res.status === 200) {
+      const data = await res.json();
+      const turnId = data && data.turn_id;
+      if (!turnId) {
+        pending.remove();
+        addBubble(
+          "assistant",
+          "(network error — /api/turn returned HTTP " + res.status +
+            " without a turn_id; reply cannot be tracked)",
+          { error: true }
+        );
+        _resetComposer();
+        return;
+      }
+      _pendingTurns.set(turnId, { pending });
+      // Do NOT reset busy / pending here — finalizeTurn() does that
+      // when the turn_done SSE event arrives.
+      return;
+    }
+    // Any other status (5xx, 400 for empty text, …) — surface as a
+    // chat error and clear the in-flight state.  Tries to use the
+    // FastAPI {detail: "..."} body when present.
+    pending.remove();
+    let detail = "HTTP " + res.status;
+    try {
+      const errBody = await res.json();
+      if (errBody && errBody.detail) detail += " — " + errBody.detail;
+    } catch (_) {
+      /* non-JSON body (e.g. proxy 'upstream error') */
+    }
+    addBubble(
+      "assistant",
+      "(server rejected the turn: " + detail + ")",
+      { error: true }
+    );
+    _resetComposer();
   } catch (e) {
     pending.remove();
     addBubble(
@@ -217,30 +304,19 @@ async function sendMessage(text) {
       "(network error — the request did not complete: " + e + ")",
       { error: true }
     );
-  } finally {
-    busy = false;
-    sendBtn.disabled = false;
-    input.disabled = false;
-    if (stopBtn) {
-      stopBtn.hidden = true;
-      stopBtn.disabled = false;
-      stopBtn.textContent = "Stop";
-    }
-    input.focus();
-    // A turn just landed → session is now active (build is lazy on
-    // /api/turn).  Lock the settings view until the next End Session.
-    refreshSessionActive();
+    _resetComposer();
   }
 }
 
 if (stopBtn) {
   stopBtn.addEventListener("click", async () => {
     if (!busy) return;
-    // Don't replace the in-flight /api/turn request — let it finish
-    // naturally.  Just tell the server to flag the pipeline for
+    // /api/turn was scheduled as a background task — let it finish
+    // naturally.  We just tell the server to flag the pipeline for
     // cooperative cancellation; the orchestrator will bail at the
-    // next hop boundary and /api/turn will resolve with the
-    // "(Session interrupted ...)" reply.
+    // next hop boundary and the background task will publish a
+    // turn_done event carrying the "(Session interrupted ...)"
+    // reply, which finalizeTurn() will render normally.
     stopBtn.disabled = true;
     stopBtn.textContent = "Stopping…";
     try {
@@ -848,6 +924,13 @@ function startEventStream() {
           if (typeof paramsApplyProposal === "function") {
             paramsApplyProposal(data.values || {});
           }
+        } else if (data.type === "turn_done") {
+          // /api/turn background-task completion signal — see
+          // web_app.py:_run_turn_in_background.  finalizeTurn matches
+          // the turn_id to the pending bubble captured at /api/turn
+          // 202 time, renders the assistant reply, auto-loads any
+          // new mesh into the viewer, and clears busy/pending.
+          finalizeTurn(data);
         }
       } catch (_) {
         /* ignore malformed event */

@@ -1434,3 +1434,79 @@ Same checklist as the existing two:
 
 In force from Phase 5B/5C (2026-06-03+) onward.  Two consumers
 today (`retrieve_user_inputs`, `retrieve_attempt`).
+
+## W36. `/api/turn` is async (HTTP 202 + SSE `turn_done`) — do NOT regress it to sync.
+
+**Where.**  `web_app.py:api_turn` + `web_app.py:_run_turn_in_background`
+plus the `turn_done` branch in `api_events`; `web/app.js:sendMessage`,
+`web/app.js:finalizeTurn`, and the `turn_done` branch in
+`startEventStream`'s SSE handler.
+
+**Why this is load-bearing.**  The first complex turn — multi-image
+input flowing through all 8 chain agents — routinely takes 5+
+minutes on the cloud deploy.  Railway's edge proxy (and Cloudflare
+in front of it) gives up on the upstream long before then and
+serves a plain-text `"upstream error"` body to the browser.  The
+browser's `res.json()` then crashes with
+`SyntaxError: Unexpected token 'u', "upstream error" is not valid
+JSON` and the user sees a "(network error …)" chat bubble even
+though the backend successfully finished the turn (2026-06-04
+incident; the user saved the relevant LOG file outside the repo).
+
+The fix mirrors the `/api/end` 202+SSE pattern (same root cause
+that produced the 2026-05-30 duplicate-save bug — see the comment
+above `_END_IN_FLIGHT`).  `/api/turn` now returns HTTP 202 +
+`{turn_id}` immediately; the multi-agent pipeline runs in
+`asyncio.create_task(_run_turn_in_background(...))` decoupled from
+the HTTP request's lifecycle; the reply lands as a single
+`turn_done` SSE event on the already-open `/api/events` stream
+(which pings every 10 s and never trips a proxy idle timeout).
+
+### Do NOT, when editing this code path:
+
+1. **Re-synchronise `/api/turn`.**  Returning the reply on the
+   POST body restores the original timeout bug.  Even a "fast"
+   simple turn that takes 3 s today can grow to 6+ min later —
+   the async shape should hold for any duration.
+2. **Add an `await` between the `_TURN_IN_FLIGHT` check and the
+   `_TURN_IN_FLIGHT = True` write.**  Same single-worker-event-
+   loop atomicity argument as `_END_IN_FLIGHT` (W13/O9): no
+   preemption between sync statements, but an `await` would
+   create a race where two concurrent `/api/turn` POSTs both
+   pass the check.
+3. **Move `viz_publish` out of `_run_turn_in_background`'s
+   `finally`.**  The publish runs in `finally` so EXACTLY ONE
+   `turn_done` event fires per turn — success or exception.  If
+   a future edit moves it into the `try`, the frontend's pending
+   bubble will hang forever on any exception inside
+   `dispatch_turn`.
+4. **Forget to clear `_TURN_IN_FLIGHT` in `finally`.**  Same
+   reasoning — if it's only cleared on the happy path, an
+   exception inside `dispatch_turn` would lock the chat out
+   until the server restarts.
+5. **Change the `turn_done` payload shape without updating
+   `finalizeTurn`.**  The frontend reads `turn_id`, `ok`,
+   `reply`, `forwarded`, `artefacts`, `error` — drop or rename
+   any and the chat bubble fails open (no render, hung pending
+   state).
+6. **Remove the `_pendingTurns.delete(turn_id)` cleanup.**
+   Long-lived sessions would accumulate unbounded entries if
+   `finalizeTurn` skipped that delete.  Today this is bounded by
+   the `_TURN_IN_FLIGHT` singleton (at most one entry at a
+   time), but if the singleton ever relaxes the cleanup becomes
+   load-bearing.
+
+### Regression-catcher
+
+`extra_utilities/smoke_test_async_turn.py` covers the five
+properties above (202 + `turn_id` shape, 400 on empty, 409 on
+concurrent, end-to-end SSE round-trip, flag cleared after
+completion).  Run it from your venv before any commit that
+touches `api_turn`, `_run_turn_in_background`, or the
+`turn_done` SSE branch.
+
+### Status
+
+In force from 2026-06-04 onward.  Sister entry to the (untitled)
+`/api/end` async lesson encoded in `_END_IN_FLIGHT`'s comment
+block in web_app.py.

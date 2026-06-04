@@ -177,6 +177,23 @@ _BOX = _Box()
 _END_IN_FLIGHT: bool = False
 
 
+# Module-level singleton guard for the chat-turn lifecycle.  Same
+# rationale as ``_END_IN_FLIGHT`` above (W13/O9 single-user): the
+# first complex turn — image inputs flowing through all 8 chain
+# agents — can take well over 5 minutes, hitting the Railway/
+# Cloudflare edge timeout in the same way the 2026-05-30 DH save
+# did.  In that state the proxy serves a plain-text ``upstream
+# error`` body and the browser's ``res.json()`` crashes with
+# ``SyntaxError: Unexpected token 'u', "upstream error" is not
+# valid JSON`` even though the backend is still happily finishing
+# the turn.  ``/api/turn`` therefore returns HTTP 202 + a
+# ``turn_id`` immediately and publishes the final reply as a
+# ``turn_done`` event on /api/events.  This bool guards against a
+# second /api/turn POST arriving while the background task is
+# still running.
+_TURN_IN_FLIGHT: bool = False
+
+
 def _new_session_id() -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"web_{ts}_{uuid.uuid4().hex[:8]}"
@@ -475,31 +492,40 @@ def _artefact_url(p: Path) -> str:
     return f"/api/artefact?path={quote(str(p))}"
 
 
-@app.post("/api/turn")
-async def api_turn(body: TurnIn) -> dict:
-    _require_auth()
-    text = (body.message or "").strip()
-    if not text:
-        raise HTTPException(status_code=400, detail="Empty message.")
-    session = _ensure_session()
-    # Clear any stop flag left over from the previous turn — a fresh
-    # /api/turn call always starts un-cancelled.
-    stop_signal_clear()
+async def _run_turn_in_background(
+    turn_id:         str,
+    text:            str,
+    fixed_params:    dict | None,
+    released_params: list[str] | None,
+) -> None:
+    """Background task: run the multi-agent pipeline for a chat turn,
+    then publish exactly one ``turn_done`` viz_bus event with the
+    reply + artefacts.
+
+    Clears ``_TURN_IN_FLIGHT`` in ``finally`` so the next /api/turn
+    POST is accepted.  Always publishes EXACTLY ONE ``turn_done``
+    event (success OR exception) so the frontend's chat bubble is
+    never stuck in a pending state.
+    """
+    global _TURN_IN_FLIGHT
+    reply:      str  = ""
+    forwarded:  bool = False
+    artefacts:  list = []
+    error_str:  str | None = None
     try:
-        # dispatch_turn is synchronous and slow (the whole multi-agent
-        # LLM pipeline). Run it off the event loop so the server stays
-        # responsive.
+        session = _ensure_session()
         result = await run_in_threadpool(
             functools.partial(
                 dispatch_turn,
                 session=session,
                 user_input=text,
                 inputs_dir=USER_INPUTS_DIR,
-                fixed_params=body.fixed_params,
-                released_params=body.released_params,
+                fixed_params=fixed_params,
+                released_params=released_params,
             )
         )
-        artefacts = []
+        reply     = result.reply_text
+        forwarded = result.forwarded
         for p in result.new_artefacts_paths:
             sfx = p.suffix.lower()
             kind = "image" if sfx == ".png" else ("mesh" if sfx == ".obj"
@@ -519,20 +545,78 @@ async def api_turn(body: TurnIn) -> dict:
             if label is not None:
                 entry["attempt_label"] = label
             artefacts.append(entry)
-        return {
-            "reply": result.reply_text,
-            "forwarded": result.forwarded,
-            "artefacts": artefacts,
-        }
-    except Exception as exc:  # surface as a chat bubble, never 500 the UI
-        logger.exception("[WEB] dispatch_turn raised: %s", exc)
-        return {
-            "reply": (f"(internal error during this turn — "
-                      f"{type(exc).__name__}: {exc}. Check the session log "
-                      f"for the full traceback.)"),
-            "forwarded": False,
-            "artefacts": [],
-        }
+    except Exception as exc:
+        logger.exception("[WEB] background turn task raised: %s", exc)
+        reply = (
+            f"(internal error during this turn — "
+            f"{type(exc).__name__}: {exc}. Check the session log "
+            f"for the full traceback.)"
+        )
+        forwarded = False
+        artefacts = []
+        error_str = f"{type(exc).__name__}: {exc}"
+    finally:
+        try:
+            viz_publish({
+                "type":      "turn_done",
+                "turn_id":   turn_id,
+                "ok":        error_str is None,
+                "reply":     reply,
+                "forwarded": forwarded,
+                "artefacts": artefacts,
+                "error":     error_str,
+            })
+        except Exception:
+            logger.exception("[WEB] failed to publish turn_done")
+        _TURN_IN_FLIGHT = False
+
+
+@app.post("/api/turn", status_code=202)
+async def api_turn(body: TurnIn) -> dict:
+    """Schedule a chat turn and return HTTP 202 immediately.
+
+    The real work (the full multi-agent pipeline inside
+    ``dispatch_turn``) runs in a background asyncio task; the reply
+    + artefacts are published as a single ``turn_done`` event on
+    the already-open ``/api/events`` SSE stream, keyed by
+    ``turn_id``.
+
+    Mirrors the ``/api/end`` 202+SSE design (see the comment above
+    ``_END_IN_FLIGHT``) and fixes the Railway/Cloudflare edge
+    timeout that produced the 2026-06-04 ``"upstream error"`` chat
+    bubble for the first image-heavy turn.
+    """
+    global _TURN_IN_FLIGHT
+    _require_auth()
+    text = (body.message or "").strip()
+    if not text:
+        raise HTTPException(status_code=400, detail="Empty message.")
+    # Check-and-set is atomic: no ``await`` between the read and
+    # the write, so no other coroutine can race on the
+    # single-worker uvicorn event loop (W13/O9).
+    if _TURN_IN_FLIGHT:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                "A previous turn is still in flight.  This request "
+                "was ignored; the in-flight turn will complete on "
+                "its own and emit a turn_done event on /api/events."
+            ),
+        )
+    _TURN_IN_FLIGHT = True
+    # Clear any stop flag left over from the previous turn — a
+    # fresh /api/turn call always starts un-cancelled.
+    stop_signal_clear()
+    turn_id = uuid.uuid4().hex[:12]
+    asyncio.create_task(
+        _run_turn_in_background(
+            turn_id,
+            text,
+            body.fixed_params,
+            body.released_params,
+        )
+    )
+    return {"ok": True, "status": "started", "turn_id": turn_id}
 
 
 _PARAMETERS_MD = (
@@ -1665,6 +1749,25 @@ async def api_events() -> StreamingResponse:
                         "dh":       evt.get("dh"),
                         "feedback": evt.get("feedback"),
                         "error":    evt.get("error"),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                elif evt.get("type") == "turn_done":
+                    # /api/turn background-task completion signal —
+                    # emitted by ``_run_turn_in_background`` exactly
+                    # once per chat turn.  The frontend matches the
+                    # ``turn_id`` against the pending bubble it
+                    # captured at /api/turn 202 time, then renders
+                    # the assistant reply, auto-loads any new mesh
+                    # into the viewer, and runs the post-turn UI
+                    # cleanup (clear busy / refocus input).
+                    payload = {
+                        "type":      "turn_done",
+                        "turn_id":   evt.get("turn_id", ""),
+                        "ok":        bool(evt.get("ok")),
+                        "reply":     evt.get("reply", ""),
+                        "forwarded": bool(evt.get("forwarded")),
+                        "artefacts": evt.get("artefacts", []),
+                        "error":     evt.get("error"),
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
                 elif evt.get("type") == "params_proposed":
