@@ -1,6 +1,6 @@
 {
   "dc_input_creator": true,
-  "dc_input_inspector": false,
+  "dc_input_inspector": true,
   "dc_output_inspector": true,
   "orchestrator": false,
   "planner": true,

@@ -319,9 +319,13 @@ EMBEDDING_INPUT_MAX_CHARS: int = 30000
 # per-agent ``.env`` first, then shared ``agents/.env``.
 #
 # Valid values: "individual" | "openai" | "anthropic" | "google"
-# Default is OpenAI global override — a fresh checkout (or any
-# session that has never written this value) routes every agent
-# through OpenAI rather than the per-agent .env files.
+# Default is "individual" — a fresh checkout (or any session
+# that has never written this value) honours per-agent .env
+# overrides AND the per-agent baked-in defaults in
+# ``workflow_settings/llm_defaults.py``.  Switch to a specific
+# provider name to force ALL agents through that provider's
+# shared default (ignoring per-agent .env files and the per-agent
+# baked-in defaults).
 LLM_ROUTING_MODE: str = "individual"
 
 

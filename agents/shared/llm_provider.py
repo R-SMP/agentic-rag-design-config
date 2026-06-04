@@ -36,6 +36,7 @@ from langchain_core.messages import SystemMessage
 from langchain_core.rate_limiters import InMemoryRateLimiter
 
 from workflow_settings import settings as _workflow_settings
+from workflow_settings.llm_defaults import model_for as _default_model_for
 
 # Resolve the agents directory relative to this file (agents/shared/llm_provider.py).
 AGENTS_DIR = Path(__file__).resolve().parent.parent
@@ -173,7 +174,7 @@ def _resolve_config(agent_name: str) -> Tuple[str, str, str]:
             )
         api_key = _from(per_agent, env_var) or os.getenv(env_var, "")
         if api_key:
-            model = _from(per_agent, "MODEL_NAME") or _DEFAULT_MODEL
+            model = _from(per_agent, "MODEL_NAME") or _default_model_for(agent_name)
             return provider, model, api_key
 
     # Fall through to the shared default.
@@ -192,7 +193,7 @@ def _resolve_config(agent_name: str) -> Tuple[str, str, str]:
             f"agents/{agent_name}/.env with a complete LLM_PROVIDER + "
             f"key + MODEL_NAME triple."
         )
-    model = _from(shared, "MODEL_NAME") or _DEFAULT_MODEL
+    model = _from(shared, "MODEL_NAME") or _default_model_for(agent_name)
     return provider, model, api_key
 
 
@@ -261,14 +262,14 @@ def list_agent_configs(agent_names: list[str]) -> list[dict]:
         )
         if per_provider and per_key_var and per_has_key:
             provider = per_provider
-            model = (per_agent.get("MODEL_NAME") or "").strip() or _DEFAULT_MODEL
+            model = (per_agent.get("MODEL_NAME") or "").strip() or _default_model_for(name)
             source = "per-agent"
         else:
             provider = (
                 shared.get("LLM_PROVIDER") or "openai"
             ).strip().lower()
             model = (
-                shared.get("MODEL_NAME") or _DEFAULT_MODEL
+                shared.get("MODEL_NAME") or _default_model_for(name)
             ).strip()
             source = "shared"
         out.append(

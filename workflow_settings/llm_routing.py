@@ -29,6 +29,7 @@ from typing import Any
 from dotenv import dotenv_values, set_key, unset_key
 
 from workflow_settings import editor as _editor
+from workflow_settings.llm_defaults import model_for as _default_model_for
 # NOTE: do NOT import ``workflow_settings.settings`` at module level
 # here.  ``read_state`` must read LLM_ROUTING_MODE freshly off disk
 # (via ``_editor._parse_nodes``) so a save made during a live session
@@ -197,6 +198,15 @@ def read_state() -> dict[str, Any]:
 
     shared_provider, shared_model = _shared_provider_model()
 
+    # Read the shared file once more, this time WITHOUT the
+    # ``_DEFAULT_MODEL`` fallback, so the per-agent loop below can
+    # distinguish "shared file explicitly set MODEL_NAME" (use that
+    # for every agent) from "shared file has no MODEL_NAME at all"
+    # (fall back to the per-agent baked-in default in
+    # ``workflow_settings/llm_defaults.py``).
+    shared_data = _read_env(SHARED_ENV_PATH)
+    shared_model_in_file = (shared_data.get("MODEL_NAME") or "").strip()
+
     providers_out: list[dict[str, Any]] = []
     for p in PROVIDERS:
         providers_out.append({
@@ -217,8 +227,14 @@ def read_state() -> dict[str, Any]:
             effective_model = override_model
             source = "per-agent"
         else:
+            # Provider falls back to shared file's value, else to
+            # the generic default.  Model prefers the shared file's
+            # value (explicit user choice in agents/.env) and falls
+            # back to the per-agent baked-in default so a fresh
+            # deploy with no .env files shows the configured
+            # per-agent model in the chart.
             effective_provider = shared_provider
-            effective_model = shared_model
+            effective_model = shared_model_in_file or _default_model_for(key)
             source = "shared"
             # Surface a partial override as "still inherits" but keep
             # the override fields populated so the UI can show what
