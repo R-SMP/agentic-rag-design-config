@@ -199,9 +199,15 @@ def _archive_previous_session(session_name: str | None = None) -> None:
         return
 
     if session_name is None:
-        session_id = _next_session_id()
-        slug = _session_datetime_slug(log_files)
-        session_name = f"ID{session_id:03d}_{slug}"
+        # Phase 3E: ``_next_session_id`` was removed (W31).  Use the
+        # same ``_resolve_session_name()`` the DH save uses so the
+        # discard path produces a name in the same shape as a saved
+        # session.  This fix closes the regression where End Session
+        # → No raised NameError inside this function, caught silently
+        # by ``_end_session``'s try/except, leaving inputs/ +
+        # input_images/ + attempts/ NOT archived — so the next session
+        # inherited the previous user's leftovers.
+        session_name = _resolve_session_name()
     dest = PREVIOUS_SESSIONS_DIR / session_name
     dest.mkdir(parents=True, exist_ok=True)
 
