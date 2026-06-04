@@ -1098,6 +1098,22 @@ add the SEQUENCE and seed its initial value from existing
 `sessions.session_id` MAX(NNN).  Idempotent.  See architecture
 doc §9.10 + the migration script's docstring.
 
+**Regression risk — never roll your own session-name fallback.**
+The removed `_next_session_id()` left behind a latent regression:
+any code path that branched on "`session_name is None`" and
+re-computed via the deleted helper raised `NameError` at runtime.
+The archive sweep (`_archive_previous_session(session_name=None)`
+in `agents/loader.py`) was one such site — fixed 2026-06-04 by
+routing through `_resolve_session_name()` instead.  The bug hid
+for ~2 days because the DH save (the common archive caller) always
+pre-populates `_BOX.session.resolved_session_name` before archive
+runs, so it only surfaced on the End Session "No" (don't-save)
+path where DH is skipped.  **When adding code that needs a fresh
+session name, ALWAYS use `_resolve_session_name()`.**  Don't
+re-implement a name computation, even as a fallback — the
+microsecond-timestamp fallback semantics live inside
+`_resolve_session_name()` already.
+
 **Status.** In force from Phase 3E (2026-06-02) onward.
 
 
