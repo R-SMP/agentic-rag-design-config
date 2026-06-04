@@ -118,16 +118,25 @@ CHAIN_ACCESS: bool = True
 # 6.  Keep loaded images in agent context
 # ===========================================================
 # What happens to image bytes loaded via load_render_images /
-# load_input_images at the end of each agent operation.
+# load_input_images / retrieve_user_inputs / retrieve_attempt
+# AT THE MOMENT THE AGENT HANDS OFF to another agent (= when
+# its LLM invokes a routing tool).  This is the only point at
+# which the strip runs — NOT after the LLM reads the image once.
+# Within a single agent's run, an image loaded on the first LLM
+# call stays available for every subsequent LLM call and every
+# subsequent tool call inside that agent's run, all the way
+# until the routing tool fires.
 #
 #   True   image content blocks persist across hand-offs (along
-#          with their absolute-path text labels); the agent can
-#          reason about the same images on subsequent turns
-#          without reloading them
-#   False  image bytes are stripped at every operation end and
-#          only their absolute-path labels remain in history;
-#          much cheaper but agents must re-load images they want
-#          to re-inspect
+#          with their absolute-path text labels); the agent that
+#          receives the hand-off sees the same images without
+#          reloading them; downstream agents inherit them too
+#   False  image bytes are stripped the moment the agent hands
+#          off (the agent's ``on_operation_end`` hook); only
+#          their absolute-path labels remain in history.  Within
+#          one agent's run the image stays loaded for every LLM
+#          call; cheaper across hand-offs but downstream agents
+#          must re-load any image they want to inspect
 #
 # Valid values: True, False
 KEEP_IMAGES_IN_CONTEXT: bool = False
