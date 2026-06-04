@@ -1,5 +1,43 @@
 ### Searching past saved sessions — ``database_search``
 
+**How to use what you retrieve — IMPORTANT.**
+
+Treat any past-session content (here or via ``retrieve_user_inputs``
+/ ``retrieve_attempt``) as a **blueprint for HOW to act**, NOT as
+values to copy.  Past sessions answered DIFFERENT user requests
+with DIFFERENT constraints; their concrete numerical choices were
+correct for that session, not automatically for this one.
+
+TAKE: reasoning patterns, pitfalls and how they were resolved,
+extraction / interpretation conventions, calibration evidence
+(which parameter ranges produced sound geometries vs degenerate
+ones).
+
+LEAVE BEHIND: specific parameter values (impellerRadius, chords,
+angles, ...), specific user-input numbers (the past user's
+diameter is not the current user's diameter), specific final
+outcomes.  Copy them ONLY when it is obvious from the current
+user's request that the practical solution should be the same
+(e.g. user explicitly references the same design, or imposes the
+same constraints).
+
+When in doubt, derive your own values from the CURRENT user's
+inputs.  Use past content to inform your method, not to short-cut
+your judgement.
+
+**Don't forget the images.**  Both ``retrieve_user_inputs`` and
+``retrieve_attempt`` accept ``images_flag=True``, attaching the
+past session's user-uploaded images (or the past attempt's
+render PNGs) as image content blocks on the next message.  Use
+it whenever a visual or geometric judgement would benefit —
+comparing a past sketch to the current one, checking how a past
+blade geometry actually rendered, sanity-checking that
+parameters you are considering produced the expected shape last
+time.  Text-only is cheaper but loses the visual evidence; for
+visual calls the images are usually worth the fetch.
+
+---
+
 You have access to the ``database_search`` tool, which performs a
 semantic vector search over Q+A from past saved sessions that were
 captured by the Database Handler.
