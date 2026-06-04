@@ -1574,6 +1574,56 @@ function renderLrOverlay() {
   }
 }
 
+// ---- Workflow presets (Proposed OpenAI / Anthropic / …) ------------------
+
+function renderLrPresets() {
+  // Rendered into the .lr-global row's #lr-presets container.  One
+  // button per entry in lrState.proposed_workflows (sourced from
+  // workflow_settings/llm_defaults.py PROPOSED_WORKFLOWS).  Click
+  // populates every per-agent override field with the workflow's
+  // (provider, model); the user reviews and hits the existing
+  // "Save LLM routing" button to commit.  DBa is untouched.
+  const host = lrEl("lr-presets");
+  if (!host || !lrState) return;
+  host.innerHTML = "";
+  const workflows = Array.isArray(lrState.proposed_workflows)
+    ? lrState.proposed_workflows : [];
+  for (const wf of workflows) {
+    if (!wf || !wf.id || !wf.provider || !wf.models) continue;
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "ghost lr-preset-btn";
+    btn.textContent = wf.label || wf.id;
+    btn.title =
+      "Populate every per-agent provider+model in the chart with the " +
+      (wf.label || wf.id) + " configuration.  Does NOT save — click " +
+      "Save LLM routing to commit.  DBa toggles are not touched.";
+    btn.addEventListener("click", () => applyLrPreset(wf));
+    host.appendChild(btn);
+  }
+}
+
+function applyLrPreset(wf) {
+  if (!lrState || !wf || !wf.provider || !wf.models) return;
+  let touched = 0;
+  for (const a of lrState.agents) {
+    const proposed = wf.models[a.key];
+    if (!proposed) continue;  // workflow doesn't list this agent
+    a.override_provider = wf.provider;
+    a.override_model = proposed;
+    touched += 1;
+  }
+  // Re-render the per-agent overlay so the input fields show the new
+  // values; DBa state + Global LLM dropdown are untouched.
+  renderLrOverlay();
+  setLrStatus(
+    "Populated " + touched + " agent row(s) with " +
+    (wf.label || wf.id) + ".  Click Save LLM routing to commit.",
+    "ok",
+  );
+}
+
+
 // ---- Global LLM controls + banner ----------------------------------------
 
 function renderLrGlobal() {
@@ -1695,6 +1745,7 @@ async function loadLrRouting() {
     await loadDbAccessState();
     buildLrChart();
     renderLrGlobal();
+    renderLrPresets();
     renderLrOverlay();
     paintDbaBanner();
     setLrStatus("", "");

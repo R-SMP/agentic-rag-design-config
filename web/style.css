@@ -917,6 +917,20 @@ button.danger:hover { background: #3a1d1d; }
   min-width: 220px;
 }
 
+/* Workflow preset buttons (Proposed OpenAI / Anthropic / …) — sit at
+   the end of the Global LLM row and populate every per-agent
+   override field in one click.  Buttons are rendered dynamically
+   from lrState.proposed_workflows; one per entry. */
+.lr-presets {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: 12px;
+  flex-wrap: wrap;
+}
+.lr-preset-btn {
+  white-space: nowrap;
+}
+
 /* Status banner shown when a global override is active */
 .lr-banner {
   margin: 0 0 12px;

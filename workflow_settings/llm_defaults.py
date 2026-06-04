@@ -62,3 +62,55 @@ def model_for(agent_key: str) -> str:
     :data:`FALLBACK_MODEL`.
     """
     return DEFAULT_PER_AGENT_MODELS.get(agent_key, FALLBACK_MODEL)
+
+
+# ---------------------------------------------------------------------
+# Proposed-workflow presets — surfaced as buttons in the Workflow
+# Settings LLM-routing chart's Global LLM row.  Click populates every
+# per-agent override field with the listed (provider, model) pair so
+# the user can swap whole workflows in one click instead of editing
+# 10 rows.  Click does NOT trigger a save — the user reviews the
+# chart and hits the existing "Save LLM routing" button to commit.
+# DBa toggles are NOT touched by these presets.
+#
+# Adding a third preset: append a new dict to the list.  The frontend
+# renders one button per entry from the /api/llm-routing response, no
+# JS / HTML change needed.
+# ---------------------------------------------------------------------
+
+PROPOSED_WORKFLOWS: list[dict] = [
+    {
+        "id":       "openai",
+        "label":    "Proposed OpenAI Workflow",
+        "provider": "openai",
+        "models": {
+            "receptionist":         "gpt-5.4",
+            "orchestrator":         "gpt-5.4-mini",
+            "user_input_inspector": "gpt-5.4",
+            "planner":              "gpt-5-mini",
+            "dc_input_creator":     "gpt-5.4-mini",
+            "dc_input_inspector":   "gpt-5.5",
+            "dc_output_inspector":  "gpt-5.4",
+            "tool_caller":          "gpt-5.4-mini",
+            "database_handler":     "gpt-5-mini",
+            "context_pruner":       "gpt-5.4",
+        },
+    },
+    {
+        "id":       "anthropic",
+        "label":    "Proposed Anthropic Workflow",
+        "provider": "anthropic",
+        "models": {
+            "receptionist":         "claude-haiku-4-5",
+            "orchestrator":         "claude-haiku-4-5",
+            "user_input_inspector": "claude-opus-4-7",
+            "planner":              "claude-sonnet-4-6",
+            "dc_input_creator":     "claude-haiku-4-5",
+            "dc_input_inspector":   "claude-opus-4-8",
+            "dc_output_inspector":  "claude-sonnet-4-5",
+            "tool_caller":          "claude-haiku-4-5",
+            "database_handler":     "claude-haiku-4-5",
+            "context_pruner":       "claude-opus-4-7",
+        },
+    },
+]

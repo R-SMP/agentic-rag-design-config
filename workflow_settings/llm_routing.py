@@ -29,7 +29,10 @@ from typing import Any
 from dotenv import dotenv_values, set_key, unset_key
 
 from workflow_settings import editor as _editor
-from workflow_settings.llm_defaults import model_for as _default_model_for
+from workflow_settings.llm_defaults import (
+    model_for as _default_model_for,
+    PROPOSED_WORKFLOWS as _PROPOSED_WORKFLOWS,
+)
 # NOTE: do NOT import ``workflow_settings.settings`` at module level
 # here.  ``read_state`` must read LLM_ROUTING_MODE freshly off disk
 # (via ``_editor._parse_nodes``) so a save made during a live session
@@ -255,6 +258,11 @@ def read_state() -> dict[str, Any]:
         "providers": providers_out,
         "shared": {"provider": shared_provider, "model": shared_model},
         "agents": agents_out,
+        # Surfaced to the UI as buttons in the Global LLM row.  See
+        # workflow_settings.llm_defaults.PROPOSED_WORKFLOWS for the
+        # source of truth and the frontend ``renderLrPresets`` /
+        # ``applyLrPreset`` in web/app.js for the consumer.
+        "proposed_workflows": _PROPOSED_WORKFLOWS,
     }
 
 
