@@ -191,6 +191,102 @@ async def test_flag_cleared_allows_followup(client: httpx.AsyncClient) -> None:
     await _wait_for_flag_clear()
 
 
+async def test_stop_button_cancels_in_flight_turn(client: httpx.AsyncClient) -> None:
+    """L2: POST /api/turn (slow), then /api/stop → turn_done arrives
+    with the interrupted reply within ~2 s (the asyncio task cancel
+    publishes immediately from the CancelledError handler; we are
+    NOT waiting for the orphan threadpool thread to bail)."""
+    import time as _time
+
+    # Slow dispatch_turn so the stop has time to fire mid-flight.
+    # Using time.sleep keeps the call inside the threadpool worker
+    # uninterruptible by asyncio — exactly the scenario L2 is
+    # designed to free the UI from.
+    def _slow_dispatch_turn(*, session, user_input, inputs_dir,
+                           fixed_params=None, released_params=None):
+        _time.sleep(3.0)
+        return SimpleNamespace(
+            reply_text=f"fake slow reply to: {user_input}",
+            forwarded=True,
+            new_artefacts_paths=[],
+        )
+
+    original_dispatch = web_app.dispatch_turn
+    web_app.dispatch_turn = _slow_dispatch_turn
+    try:
+        received: list[dict] = []
+        sse_open = asyncio.Event()
+        seen_turn_done = asyncio.Event()
+
+        async def consume_sse() -> None:
+            async with client.stream("GET", "/api/events", timeout=5.0) as r:
+                assert r.status_code == 200
+                first = True
+                async for chunk in r.aiter_text():
+                    if first:
+                        sse_open.set()
+                        first = False
+                    for line in chunk.split("\n"):
+                        if line.startswith("data: "):
+                            evt = json.loads(line[len("data: "):])
+                            received.append(evt)
+                            if evt.get("type") == "turn_done":
+                                seen_turn_done.set()
+                                return
+
+        consumer = asyncio.create_task(consume_sse())
+        await asyncio.wait_for(sse_open.wait(), timeout=2.0)
+
+        # Start the slow turn.
+        res = await client.post("/api/turn", json={"message": "stop me"})
+        assert res.status_code == 202
+        turn_id = res.json()["turn_id"]
+
+        # Yield once so the background task has a chance to start
+        # awaiting run_in_threadpool before we cancel it.
+        await asyncio.sleep(0.1)
+
+        # Click Stop.  Expected behaviour: stop_signal_request() sets
+        # the L1 flag (irrelevant here — the stub doesn't poll) AND
+        # _current_turn_task.cancel() raises CancelledError into the
+        # awaiting run_in_threadpool call → the except handler in
+        # _run_turn_in_background publishes turn_done immediately.
+        stop_res = await client.post("/api/stop")
+        assert stop_res.status_code == 200, \
+            f"/api/stop returned {stop_res.status_code}: {stop_res.text}"
+
+        try:
+            await asyncio.wait_for(seen_turn_done.wait(), timeout=2.0)
+        finally:
+            consumer.cancel()
+            try:
+                await consumer
+            except (asyncio.CancelledError, Exception):
+                pass
+
+        turn_done = next(e for e in received if e.get("type") == "turn_done")
+        assert turn_done["turn_id"] == turn_id, \
+            f"turn_id mismatch: {turn_done['turn_id']!r} vs {turn_id!r}"
+        # User-initiated cancellation is not an error → ok=True
+        assert turn_done["ok"] is True, f"ok mismatch: {turn_done!r}"
+        assert "Stop button" in turn_done["reply"], \
+            f"expected interrupted reply, got: {turn_done['reply']!r}"
+        assert turn_done["forwarded"] is False
+        assert turn_done["error"] is None
+
+        # _TURN_IN_FLIGHT should have cleared via the finally clause
+        # already; the orphan threadpool worker is still sleeping but
+        # that doesn't touch the flag.
+        await _wait_for_flag_clear(timeout=2.0)
+    finally:
+        web_app.dispatch_turn = original_dispatch
+        # Wait for the orphan thread to actually finish before the
+        # next test runs, so the next test's threadpool worker isn't
+        # competing with a stale sleep.  Slightly longer than the
+        # 3 s sleep to be safe.
+        await asyncio.sleep(3.5)
+
+
 # ---------------------------------------------------------------------
 # Runner
 # ---------------------------------------------------------------------
@@ -204,6 +300,7 @@ async def _main() -> int:
         test_concurrent_turn_409,
         test_sse_round_trip,
         test_flag_cleared_allows_followup,
+        test_stop_button_cancels_in_flight_turn,
     ]
     transport = httpx.ASGITransport(app=web_app.app)
     async with httpx.AsyncClient(

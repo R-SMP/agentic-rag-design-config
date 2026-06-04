@@ -51,6 +51,7 @@ from agents.shared.user_inputs_tool import (
 from agents.step_caps import MAX_PLANNER_STEPS
 from config import INPUT_IMAGES_SUBDIR, LOGS_DIR, USER_INPUTS_DIR
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
+from agents.shared.stop_signal import check_stop_or_raise
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
 from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
@@ -235,6 +236,7 @@ class Planner(BaseChainAgent):
         self.messages.append(HumanMessage(content=message))
 
         for _ in range(MAX_PLANNER_STEPS):
+            check_stop_or_raise()
             self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
@@ -258,6 +260,7 @@ class Planner(BaseChainAgent):
 
             routed = False
             for i, tc in enumerate(response.tool_calls):
+                check_stop_or_raise()
                 name = tc["name"]
                 if name in USER_INPUTS_TOOL_NAMES:
                     dispatch_user_inputs_tool(self, tc, "planner")

@@ -40,6 +40,7 @@ from agents.shared.user_inputs_tool import (
     dispatch_user_inputs_tool,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
+from agents.shared.stop_signal import check_stop_or_raise
 from agents.step_caps import MAX_DCOI_STEPS
 from config import USER_INPUTS_DIR
 from tools.calculate.calculate import calculate
@@ -318,6 +319,7 @@ class DCOutputInspector(BaseChainAgent):
         self.messages.append(HumanMessage(content=text))
 
         for _ in range(MAX_DCOI_STEPS):
+            check_stop_or_raise()
             self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
@@ -340,6 +342,7 @@ class DCOutputInspector(BaseChainAgent):
 
             routed = False
             for i, tc in enumerate(response.tool_calls):
+                check_stop_or_raise()
                 name = tc["name"]
                 if name == "load_render_images":
                     self._handle_load_tool(tc)

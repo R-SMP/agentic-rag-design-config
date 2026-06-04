@@ -55,6 +55,7 @@ from agents.step_caps import (
     MAX_ORCHESTRATOR_STEPS,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
+from agents.shared.stop_signal import check_stop_or_raise
 from agents.tool_caller import ToolCaller
 from agents.user_input_inspector import UserInputInspector
 from tools.calculate.calculate import calculate
@@ -410,6 +411,7 @@ class Orchestrator(BaseChainAgent):
         self.messages.append(HumanMessage(content=message))
 
         for _ in range(MAX_ORCH_INNER_STEPS):
+            check_stop_or_raise()
             self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
@@ -436,6 +438,7 @@ class Orchestrator(BaseChainAgent):
 
             routed = False
             for tc in response.tool_calls:
+                check_stop_or_raise()
                 name = tc["name"]
                 # Phase 5E: retrieve_* tools are dispatcher-handled
                 # (their @tool stubs return "" — the dispatcher does

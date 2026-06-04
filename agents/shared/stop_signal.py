@@ -50,3 +50,35 @@ def is_stop_requested() -> bool:
     has not yet been cleared.  The Orchestrator polls this between
     hops and bails when it returns True."""
     return _stop_requested
+
+
+class StopRequestedError(RuntimeError):
+    """Raised by chain agents (and the dispatcher) when the user
+    clicks Stop mid-pipeline.  ``dispatch_turn`` catches this and
+    surfaces the user-facing "(Session interrupted...)" reply.
+
+    Chain agents call :func:`check_stop_or_raise` at the top of
+    each iteration of their outer ``for _ in range(MAX_<X>_STEPS)``
+    loop AND the inner ``for i, tc in enumerate(response.tool_calls)``
+    loop, so a Stop click is honoured within ~one inner step
+    rather than ~one full hop boundary.  See W36 (and the upcoming
+    W-entry for the L1+L2 stop fix) for the no-regression rules.
+    """
+
+
+def check_stop_or_raise() -> None:
+    """Poll the stop signal and raise :class:`StopRequestedError`
+    if set.
+
+    Cheap (a single global-bool read); safe to call in tight
+    loops.  Equivalent in effect to the Orchestrator's existing
+    hop-boundary check at ``orchestrator.dispatch`` but at a much
+    finer granularity, so a stop click during a slow LLM call or
+    a slow tool (e.g. generate_propeller_mesh) is honoured BEFORE
+    the next step starts rather than after the current full hop
+    completes.
+    """
+    if _stop_requested:
+        raise StopRequestedError(
+            "User clicked Stop; pipeline halted at next checkpoint."
+        )

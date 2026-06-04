@@ -194,6 +194,20 @@ _END_IN_FLIGHT: bool = False
 _TURN_IN_FLIGHT: bool = False
 
 
+# Reference to the currently-in-flight ``_run_turn_in_background``
+# asyncio Task.  Set by ``api_turn`` immediately after scheduling
+# the background task; cleared by the task's ``finally`` (success,
+# exception, or cancellation).  ``api_stop`` consults this to call
+# ``.cancel()`` on the task so the UI's pending bubble unblocks
+# IMMEDIATELY rather than waiting for the chain agents' L1 stop
+# polls to bubble up through the orchestrator.  The orphan thread
+# inside ``run_in_threadpool`` keeps running until its next L1
+# poll catches the stop signal (typically <10 s) but its return
+# value is discarded since nothing is awaiting it.  See W36 for
+# the no-regression rules.
+_current_turn_task: asyncio.Task | None = None
+
+
 def _new_session_id() -> str:
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
     return f"web_{ts}_{uuid.uuid4().hex[:8]}"
@@ -507,11 +521,12 @@ async def _run_turn_in_background(
     event (success OR exception) so the frontend's chat bubble is
     never stuck in a pending state.
     """
-    global _TURN_IN_FLIGHT
+    global _TURN_IN_FLIGHT, _current_turn_task
     reply:      str  = ""
     forwarded:  bool = False
     artefacts:  list = []
     error_str:  str | None = None
+    cancelled:  bool = False
     try:
         session = _ensure_session()
         result = await run_in_threadpool(
@@ -545,6 +560,23 @@ async def _run_turn_in_background(
             if label is not None:
                 entry["attempt_label"] = label
             artefacts.append(entry)
+    except asyncio.CancelledError:
+        # L2 — ``api_stop`` called ``.cancel()`` on this task.  The
+        # threadpool thread running ``dispatch_turn`` keeps running
+        # until its next L1 poll catches the stop signal; its return
+        # value is discarded (no one is awaiting it).  We publish a
+        # ``turn_done`` immediately so the UI's pending bubble
+        # unblocks within ~1 s instead of waiting for the orphan
+        # thread to bail.
+        cancelled = True
+        reply = (
+            "(Session interrupted by Stop button — UI freed "
+            "immediately; the background pipeline is halting at "
+            "its next checkpoint.)"
+        )
+        forwarded = False
+        artefacts = []
+        error_str = None  # user-initiated, not a backend error
     except Exception as exc:
         logger.exception("[WEB] background turn task raised: %s", exc)
         reply = (
@@ -569,6 +601,12 @@ async def _run_turn_in_background(
         except Exception:
             logger.exception("[WEB] failed to publish turn_done")
         _TURN_IN_FLIGHT = False
+        _current_turn_task = None
+        if cancelled:
+            # Re-raise so the asyncio Task is marked CANCELLED
+            # (cosmetic — nothing awaits this Task, but a Task that
+            # swallows CancelledError logs a warning at gc time).
+            raise asyncio.CancelledError()
 
 
 @app.post("/api/turn", status_code=202)
@@ -586,7 +624,7 @@ async def api_turn(body: TurnIn) -> dict:
     timeout that produced the 2026-06-04 ``"upstream error"`` chat
     bubble for the first image-heavy turn.
     """
-    global _TURN_IN_FLIGHT
+    global _TURN_IN_FLIGHT, _current_turn_task
     _require_auth()
     text = (body.message or "").strip()
     if not text:
@@ -608,7 +646,7 @@ async def api_turn(body: TurnIn) -> dict:
     # fresh /api/turn call always starts un-cancelled.
     stop_signal_clear()
     turn_id = uuid.uuid4().hex[:12]
-    asyncio.create_task(
+    _current_turn_task = asyncio.create_task(
         _run_turn_in_background(
             turn_id,
             text,
@@ -1121,17 +1159,48 @@ async def api_end(body: EndIn | None = None) -> dict:
 @app.post("/api/stop")
 def api_stop() -> dict:
     """User clicked the Stop button — flag the in-flight pipeline
-    for cooperative cancellation.
+    for cooperative cancellation AND cancel its asyncio task.
 
-    The currently-running step (LLM call, tool execution) finishes
-    normally — we don't kill it mid-flight.  The Orchestrator polls
-    the flag at each hop boundary and returns a "session interrupted"
-    message at the next opportunity.  Idempotent: clicking Stop
-    again while already stopping is a no-op.
+    Two-layer stop (see W36 / the L1+L2 lesson):
+
+    L1 (the cooperative side).  ``stop_signal_request()`` sets the
+    shared bool that every chain agent's run loop polls — once at
+    the top of the outer ``for _ in range(MAX_<X>_STEPS)`` loop
+    and once at the top of the inner ``for tc in
+    response.tool_calls`` loop.  This actually stops the work:
+    the next agent step raises ``StopRequestedError``, which
+    propagates to ``dispatch_turn`` and turns into the
+    "(Session interrupted...)" reply.  Typical latency 3-10 s,
+    worst case 30 s if mid-vision-LLM-call.
+
+    L2 (the UI-responsiveness side).  We also cancel the asyncio
+    Task running ``_run_turn_in_background``.  The
+    ``await run_in_threadpool(dispatch_turn)`` raises
+    CancelledError; the task's ``except`` publishes a ``turn_done``
+    SSE event immediately, the frontend renders it and unblocks
+    the composer within ~1 s.  The threadpool thread keeps
+    running but its return value is discarded — it bails on its
+    next L1 poll and exits naturally.
+
+    Idempotent: clicking Stop again while already stopping is a
+    no-op (cancel on an already-cancelled task is harmless;
+    setting the flag twice is a no-op).
     """
     _require_auth()
     stop_signal_request()
-    logger.info("[WEB] /api/stop — stop requested by user")
+    task = _current_turn_task
+    if task is not None and not task.done():
+        task.cancel()
+        logger.info(
+            "[WEB] /api/stop — stop requested AND in-flight turn "
+            "task cancelled (UI will unblock on the turn_done SSE "
+            "event the cancel handler publishes)"
+        )
+    else:
+        logger.info(
+            "[WEB] /api/stop — stop requested by user (no "
+            "in-flight turn task to cancel)"
+        )
     return {"ok": True}
 
 

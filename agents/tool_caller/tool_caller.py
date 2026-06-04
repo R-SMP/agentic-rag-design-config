@@ -47,6 +47,7 @@ from agents.shared.routing_tools import (
     tool_call_signature,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
+from agents.shared.stop_signal import check_stop_or_raise
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_TC_STEPS
 from tools import get_render_library, get_tools
@@ -157,6 +158,7 @@ class ToolCaller(BaseChainAgent):
         seen_sigs: set[tuple[str, str]] = set()
 
         for _ in range(MAX_TC_STEPS):
+            check_stop_or_raise()
             self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
@@ -179,6 +181,7 @@ class ToolCaller(BaseChainAgent):
 
             routed = False
             for i, tc in enumerate(response.tool_calls):
+                check_stop_or_raise()
                 name = tc["name"]
                 if name not in self._routing_tools_by_name:
                     sig = tool_call_signature(tc)

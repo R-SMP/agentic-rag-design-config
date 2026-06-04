@@ -52,6 +52,7 @@ from agents.shared.user_inputs_tool import (
     dispatch_user_inputs_tool,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
+from agents.shared.stop_signal import check_stop_or_raise
 from agents.step_caps import MAX_UII_STEPS
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
@@ -185,6 +186,7 @@ class UserInputInspector(BaseChainAgent):
         seen_sigs: set[tuple[str, str]] = set()
 
         for _ in range(MAX_UII_STEPS):
+            check_stop_or_raise()
             self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
@@ -207,6 +209,7 @@ class UserInputInspector(BaseChainAgent):
 
             routed = False
             for i, tc in enumerate(response.tool_calls):
+                check_stop_or_raise()
                 name = tc["name"]
                 if name not in self._routing_tools_by_name:
                     sig = tool_call_signature(tc)

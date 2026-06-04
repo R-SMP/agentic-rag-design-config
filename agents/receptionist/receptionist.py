@@ -49,6 +49,7 @@ from agents.shared.user_inputs_tool import (
 )
 from config import ATTEMPTS_DIR
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
+from agents.shared.stop_signal import check_stop_or_raise
 from tools.calculate.calculate import calculate
 from tools.visualize_model.visualize_model import visualize_3d_model
 from tools.database_search.database_search import make_database_search_tool
@@ -144,6 +145,7 @@ class Receptionist(BaseChainAgent):
         should prefer ``self._pending_hop.message`` in that case.
         """
         for _ in range(MAX_RECEPTIONIST_STEPS):
+            check_stop_or_raise()
             self.prune_history_if_needed()
             response = invoke_with_retry(
                 self.llm,
@@ -158,6 +160,7 @@ class Receptionist(BaseChainAgent):
 
             routed = False
             for i, tc in enumerate(response.tool_calls):
+                check_stop_or_raise()
                 name = tc["name"]
                 if dispatch_user_inputs_tool(self, tc, "receptionist"):
                     continue

@@ -1510,3 +1510,118 @@ touches `api_turn`, `_run_turn_in_background`, or the
 In force from 2026-06-04 onward.  Sister entry to the (untitled)
 `/api/end` async lesson encoded in `_END_IN_FLIGHT`'s comment
 block in web_app.py.
+
+## W37. The Stop button is two layers — L1 (in-loop polls) AND L2 (asyncio task cancel) — don't drop either.
+
+**Where.**  `agents/shared/stop_signal.py` (the `StopRequestedError`
+exception + `check_stop_or_raise()` helper); `agents/dispatch.py`
+(the `except StopRequestedError` catch site in `dispatch_turn`);
+each of the 7 chain agents' run loops plus the Orchestrator's
+inner-step loop (one `check_stop_or_raise()` at the top of the
+outer `for _ in range(MAX_<X>_STEPS)` loop AND one at the top of
+the inner `for [i, ]tc in ... response.tool_calls` loop);
+`web_app.py` (the `_current_turn_task` module-level ref, its
+assignment in `api_turn`, its `.cancel()` in `api_stop`, and the
+`except asyncio.CancelledError` handler in
+`_run_turn_in_background`).
+
+**Why this is load-bearing.**  Before the L1+L2 sprint the Stop
+button polled `is_stop_requested()` only at the Orchestrator's
+hop boundaries (`orchestrator.py:508`).  Worst-case latency was
+~30-60 s: the currently-running LLM call AND the currently-
+running tool call BOTH had to finish before the next hop check
+caught the stop.  Image-heavy turns could keep the UI "busy" for
+a full minute after the user clicked Stop.
+
+Two complementary fixes ship together:
+
+  * **L1 — fine-grained polls inside the chain agents' loops.**
+    Each iteration of the outer + inner run-loop calls
+    `check_stop_or_raise()` which raises `StopRequestedError` when
+    the flag is set.  `dispatch_turn`'s catch site turns that
+    into the existing "(Session interrupted by Stop button...)"
+    reply.  This actually stops the work — the next agent step
+    bails before another LLM call or tool call fires.  Typical
+    latency drops to ~3-10 s, worst case ~30 s if mid-vision-LLM-
+    call (the LLM call itself isn't interrupted).
+  * **L2 — `/api/stop` also `.cancel()`s the asyncio Task.**
+    `_run_turn_in_background`'s `await run_in_threadpool(...)`
+    raises `CancelledError`; the new `except` handler publishes
+    `turn_done` immediately with the interrupted reply; the
+    frontend's `finalizeTurn` renders it and unblocks the
+    composer within ~1 s.  The threadpool thread keeps running
+    until its next L1 poll catches the stop, then bails
+    naturally; its return value is discarded since nothing is
+    awaiting it.
+
+### Do NOT, when editing this code path:
+
+1. **Remove `check_stop_or_raise()` from any chain agent's outer
+   OR inner loop.**  Dropping the outer poll restores the old
+   ~30-60 s latency.  Dropping the inner poll lets a stop click
+   right before a 30 s `generate_propeller_mesh` call wait for
+   the full mesh to render.
+2. **Remove the `except StopRequestedError` catch in
+   `dispatch_turn`.**  Without it, a stop mid-pipeline propagates
+   as an unhandled exception out of `_run_turn_in_background`,
+   which logs it as "background turn task raised" and surfaces
+   it to the user as a confusing "(internal error...)" bubble.
+3. **Move the `viz_publish` call OUT of
+   `_run_turn_in_background`'s `finally`.**  The CancelledError
+   path depends on the `finally` running to publish `turn_done`
+   before the task is marked CANCELLED.  Moving the publish into
+   the `try` would skip it on CancelledError and the UI would
+   hang.
+4. **Forget the `raise asyncio.CancelledError()` re-raise at the
+   end of `_run_turn_in_background`'s `finally`.**  A coroutine
+   that swallows CancelledError logs a warning at GC time
+   ("coroutine raised StopIteration") and confuses asyncio's
+   task-state machine.  Re-raise so the task is properly marked
+   CANCELLED.
+5. **Forget to set OR forget to clear `_current_turn_task`.**
+   Set it in `api_turn` immediately after `asyncio.create_task`;
+   clear it in `_run_turn_in_background`'s `finally`.  A stale
+   non-None reference would let a Stop click cancel the NEXT
+   turn's task.  A missing assignment in `api_turn` would make
+   Stop a no-op for the UI (only L1 would fire).
+6. **Add an `await` between the `_TURN_IN_FLIGHT = True` write
+   and the `_current_turn_task = asyncio.create_task(...)`
+   assignment in `api_turn`.**  Same atomicity argument as W36
+   #2 — an `await` in between would create a race where Stop
+   fires AFTER the singleton is reserved but BEFORE the task ref
+   is set, so the cancel is a no-op and the UI hangs.
+
+### Acknowledged caveats (documented, NOT bugs to fix)
+
+  * The threadpool thread inside `run_in_threadpool` cannot be
+    truly killed — Python threads have no preemptive abort.  It
+    bails cooperatively on its next L1 poll, which is usually
+    <10 s but can be ~30 s if mid-vision-LLM-call.  During that
+    window it might still append a few lines to
+    `session.chain_log_exchanges` (the only shared mutable state
+    a bailing agent touches before unwinding); ordering may
+    interleave with a new turn but no semantic corruption.  If
+    you ever observe a real corruption, escalate to L4 (subprocess
+    isolation — see TODO F-item the original /api/turn ticket
+    flagged).
+  * The Database Handler's run loops in
+    `agents/database_handler/database_handler.py` are NOT
+    polled.  DH runs only at End Session (`/api/end`), a separate
+    flow that has its own background task and its own Stop story
+    (today: none — End Session cannot be interrupted).  If End
+    Session ever needs a Stop, it gets its own design pass.
+
+### Regression-catcher
+
+`extra_utilities/smoke_test_async_turn.py` (extended on the
+L1+L2 ship) covers the stop path: open SSE, POST /api/turn, POST
+/api/stop, assert the matching `turn_done` arrives carrying the
+"(Session interrupted...)" reply within 2 s.  Run it from your
+venv before any commit that touches `api_stop`,
+`_run_turn_in_background`'s cancellation handler, or any chain
+agent's run-loop poll.
+
+### Status
+
+In force from 2026-06-04 onward.  Companion entry to W36
+(`/api/turn` async-by-design).

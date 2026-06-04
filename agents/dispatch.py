@@ -41,6 +41,7 @@ from pathlib import Path
 
 from agents.orchestrator import Orchestrator
 from agents.shared.session import Session
+from agents.shared.stop_signal import StopRequestedError
 from agents.shared.trace import trace as _trace
 from config import ATTEMPTS_DIR as _CONFIG_ATTEMPTS_DIR
 
@@ -317,6 +318,26 @@ def dispatch_turn(
         return TurnResult(
             reply_text=outgoing,
             forwarded=True,
+            new_artefacts_paths=_compute_new_artefacts(
+                pre_artefacts, attempts_dir,
+            ),
+        )
+    except StopRequestedError:
+        # L1 — any chain agent raised StopRequestedError from its
+        # outer / inner run-loop poll (or the Receptionist's run loop
+        # inside validate_input).  Surface the same user-facing
+        # interrupted reply the Orchestrator's hop-boundary check
+        # produces, so the user sees consistent wording regardless of
+        # WHERE the stop was caught.
+        interrupted_reply = (
+            "(Session interrupted by Stop button — the pipeline "
+            "halted after the last completed step.  Send a new "
+            "message to continue.)"
+        )
+        logger.info(f"[RECEPTIONIST -> USER]  {interrupted_reply}")
+        return TurnResult(
+            reply_text=interrupted_reply,
+            forwarded=False,
             new_artefacts_paths=_compute_new_artefacts(
                 pre_artefacts, attempts_dir,
             ),
