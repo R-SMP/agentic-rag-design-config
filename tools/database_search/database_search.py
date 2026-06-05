@@ -233,7 +233,7 @@ def _run_candidate_query(
     except Exception:
         _ignored_sids = []
     if _ignored_sids:
-        extra_where += " AND session_id <> ALL(%(_db_search_ignore)s)"
+        extra_where += " AND c.session_id <> ALL(%(_db_search_ignore)s)"
         metafilter_params = {**metafilter_params, "_db_search_ignore": _ignored_sids}
 
     sql = f"""
@@ -425,7 +425,7 @@ def _run_mismatch_count_query(
     except Exception:
         _ignored_sids = []
     if _ignored_sids:
-        extra_where += " AND session_id <> ALL(%(_db_search_ignore)s)"
+        extra_where += " AND c.session_id <> ALL(%(_db_search_ignore)s)"
         metafilter_params = {**metafilter_params, "_db_search_ignore": _ignored_sids}
     sql = f"""
         SELECT COUNT(*)
