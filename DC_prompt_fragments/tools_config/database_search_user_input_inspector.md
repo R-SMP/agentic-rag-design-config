@@ -25,35 +25,50 @@ Required pattern when this rule applies:
      BEFORE ``write_extraction``.  Phrase the query around what
      you are extracting ("blade count from hand-drawn propeller
      sketch", "thickness calibration from blade sections").
-  2. **Strong suggestion when extracting from a sketch AND
-     ``database_search`` returned in-scope past sessions:**
-     call ``retrieve_user_inputs(session_ids=[<sid>],
-     images_flag=True)`` to fetch the past user's sketches and
-     visually compare them with the current one.  Past sketches
-     are the highest-leverage calibration evidence for visual
-     extraction; text from ``database_search`` alone is usually
-     too thin to anchor a numerical extraction.
+  2. **Retrieve past user images:**
 
-     At least one fetch is a good measure when relevant past
-     sketches surface from the search; fetch more sessions if
-     genuinely useful, but only for the MOST useful sessions.
-     Be mindful of your token window and your own visual-
-     reasoning capability — a strong vision-capable model may
-     need just one well-chosen past sketch to calibrate; a
-     weaker model might benefit from two.  Each attached image
-     consumes real tokens (typically ~1-1.5 k per image), so
-     over-fetching erodes the budget you have left for
-     reasoning about the current sketch.  Skip image-fetching
-     for sessions whose textual content already covers what you
-     need.  If a chosen session has no user images, the
-     response carries ``<missing/>`` markers — note that in
-     your hand-off and move on.
-  3. (Optional) ``retrieve_attempt(attempts_ID_list=[<global_id>,
-     ...], images_flag=True)`` to fetch past attempts' renders
-     when ``database_search``'s ``<available_attempts>`` block
-     lists attempts that could show how comparable extractions
-     led to viable parameter sets.  Same token-budget awareness
-     applies — only fetch renders that genuinely help.
+     **(a) HARD when the user explicitly demanded past-image
+     / past-experience / database use.**  When the user's
+     message (or the Orchestrator's hand-off relaying it)
+     mandates that you consult past experience, look at past
+     sketches, learn from previous extractions, or any
+     equivalent directive, you MUST call
+     ``retrieve_user_inputs(session_ids=[<sid>], images_flag=True)``
+     on at least one in-scope past session BEFORE
+     ``write_extraction``.  Skipping this when the user
+     explicitly demanded it is a HARD failure.
+
+     **(b) Strong suggestion otherwise** (no explicit demand,
+     but you ARE extracting from a sketch AND
+     ``database_search`` returned in-scope past sessions):
+     call ``retrieve_user_inputs(images_flag=True)`` to fetch
+     the past user's sketches and visually compare them with
+     the current one.  Past sketches are the highest-leverage
+     calibration evidence for visual extraction; text from
+     ``database_search`` alone is usually too thin to anchor a
+     numerical extraction.
+
+     **(c) How many to fetch.**  At least one is a good
+     measure when relevant past sketches surface; fetch more
+     only for the MOST useful sessions.  Be mindful of your
+     token window and your own visual-reasoning capability —
+     a strong vision-capable model may need just one
+     well-chosen past sketch; a weaker model might benefit
+     from two.  Each attached image consumes ~1-1.5 k tokens;
+     over-fetching erodes the budget for reasoning about the
+     current sketch.  Skip image-fetching for sessions whose
+     textual content already covers what you need.  If a
+     chosen session has no user images, the response carries
+     ``<missing/>`` markers — note that in your hand-off and
+     move on.
+  3. **Strong suggestion when ``database_search``'s
+     ``<available_attempts>`` block lists relevant attempts:**
+     ``retrieve_attempt(attempts_ID_list=[<global_id>, ...],
+     images_flag=True)`` to fetch past attempts' renders.
+     Past renders show how comparable extractions led to
+     viable parameter sets — useful calibration when your
+     extraction needs to map to parameter ranges.  Same
+     token-budget awareness as Step 2(c).
   4. In your hand-off to the next agent, name what you searched
      for, what you found, which sessions / attempts you
      retrieved with images (if any), what the visual comparison
