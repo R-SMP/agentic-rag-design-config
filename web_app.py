@@ -1568,6 +1568,62 @@ async def api_db_admin_reset(body: _DbResetBody) -> dict:
 
 
 # --------------------------------------------------------------------------
+# Database admin — session ignore list (database_search +
+# retrieve_user_inputs + retrieve_attempt all skip listed sessions).
+# Persistent storage in workflow_settings/db_search_ignore_list.json;
+# read fresh by the tools on every call so a UI write takes effect
+# immediately, no session restart needed.  Strict server-side
+# validation of each session_id against the canonical regex
+# ``^ID\d+_\d{8}_\d{6}$`` (W31 happy-path shape).
+# --------------------------------------------------------------------------
+
+
+class _DbIgnoreReadBody(BaseModel):
+    password: str
+
+
+class _DbIgnoreWriteBody(BaseModel):
+    password: str
+    sessions: list[str]
+
+
+@app.post("/api/db_admin/ignore_list/read")
+def api_db_admin_ignore_read(body: _DbIgnoreReadBody) -> dict:
+    """Return the current session ignore list.  Password-gated via
+    the same DB-admin password as the reset endpoint."""
+    if not _check_db_password(body.password):
+        return {"ok": False, "error": "Password rejected."}
+    from workflow_settings import db_search_ignore_list as _il
+    return {"ok": True, "sessions": _il.get_ignore_list()}
+
+
+@app.post("/api/db_admin/ignore_list/write")
+def api_db_admin_ignore_write(body: _DbIgnoreWriteBody) -> dict:
+    """Replace the session ignore list.  Validates each session_id
+    against ``^ID\\d+_\\d{8}_\\d{6}$``; rejects the whole payload
+    when any element is malformed (no partial writes)."""
+    if not _check_db_password(body.password):
+        return {"ok": False, "error": "Password rejected."}
+    from workflow_settings import db_search_ignore_list as _il
+    cleaned = [(s or "").strip() for s in body.sessions]
+    invalid = [s for s in cleaned if s and not _il.SESSION_ID_PATTERN.match(s)]
+    if invalid:
+        return {
+            "ok": False,
+            "error": (
+                f"{len(invalid)} session_id(s) do not match the "
+                f"expected shape ^ID\\d+_\\d{{8}}_\\d{{6}}$: "
+                f"{invalid!r}"
+            ),
+        }
+    stored = _il.set_ignore_list(cleaned)
+    logger.info(
+        "[db_admin] ignore list updated: %d session(s)", len(stored)
+    )
+    return {"ok": True, "sessions": stored}
+
+
+# --------------------------------------------------------------------------
 # Image Inputs — manage inputs/input_images/ from the browser
 # --------------------------------------------------------------------------
 

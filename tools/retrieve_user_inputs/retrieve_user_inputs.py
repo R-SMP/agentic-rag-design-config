@@ -304,6 +304,14 @@ def _build_xml(
                 f"<session id={_attr(r['session_id'])} status=\"not_found\"/>"
             )
             continue
+        if r.get("ignored"):
+            # Session on the system-managed ignore list — see the
+            # Database admin view.  Self-closing marker, no R2 /
+            # Postgres fetch was performed.
+            parts.append(
+                f"<session id={_attr(r['session_id'])} status=\"ignored\"/>"
+            )
+            continue
         parts.append(_build_session_block(
             r["session_id"],
             r["queries_text"],
@@ -343,9 +351,9 @@ def _trim_to_cap(
     # trimmed until we fit.
     trimmed = 0
     for r in reversed(session_records):
-        if r.get("not_found"):
-            # not_found markers are single self-closing tags;
-            # trimming them yields negligible savings.  Skip.
+        if r.get("not_found") or r.get("ignored"):
+            # not_found / ignored markers are single self-closing
+            # tags; trimming them yields negligible savings.  Skip.
             continue
         r["trimmed"] = True
         trimmed += 1
@@ -441,7 +449,26 @@ def _run_retrieve_user_inputs(
         existence = _validate_sessions_in_postgres(session_ids)
         bucket, client = _r2_bucket_and_client()
 
+        # System-managed session ignore list — read fresh on every
+        # tool call so a Database admin UI edit takes effect
+        # immediately.  Sessions on the list are skipped without
+        # hitting Postgres or R2 — they emit a self-closing
+        # <session id="..." status="ignored"/> marker.
+        try:
+            from workflow_settings.db_search_ignore_list import (
+                get_ignore_list as _get_il,
+            )
+            _ignored_set = set(_get_il())
+        except Exception:
+            _ignored_set = set()
+
         for sid in session_ids:
+            if sid in _ignored_set:
+                session_records.append({
+                    "session_id": sid,
+                    "ignored": True,
+                })
+                continue
             has_images = existence.get(sid, None)
             if has_images is None and not postgres_pool.is_enabled():
                 # Postgres is down; we cannot validate.  Best-effort:

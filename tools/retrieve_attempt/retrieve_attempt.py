@@ -280,6 +280,14 @@ def _build_xml(
                 f"<attempt id={_attr(r['global_id'])} status=\"not_found\"/>"
             )
             continue
+        if r.get("ignored"):
+            # Session on the system-managed ignore list — see the
+            # Database admin view.  Self-closing marker, no R2 /
+            # Postgres fetch was performed.
+            parts.append(
+                f"<attempt id={_attr(r['global_id'])} status=\"ignored\"/>"
+            )
+            continue
         parts.append(_build_attempt_block(
             r["global_id"],
             r["nnn"],
@@ -316,7 +324,9 @@ def _trim_to_cap(
         return xml, 0
     trimmed = 0
     for r in reversed(attempt_records):
-        if r.get("not_found"):
+        if r.get("not_found") or r.get("ignored"):
+            # Self-closing markers — trimming them yields negligible
+            # savings.  Skip.
             continue
         r["trimmed"] = True
         trimmed += 1
@@ -410,6 +420,18 @@ def _run_retrieve_attempt(
         resolved = _resolve_global_attempt_ids(global_attempt_ids)
         bucket, client = _r2_bucket_and_client()
 
+        # System-managed session ignore list — read fresh on every
+        # tool call.  Attempts whose session_id is on the list are
+        # skipped without hitting R2 — they emit a self-closing
+        # <attempt id="..." status="ignored"/> marker.
+        try:
+            from workflow_settings.db_search_ignore_list import (
+                get_ignore_list as _get_il,
+            )
+            _ignored_set = set(_get_il())
+        except Exception:
+            _ignored_set = set()
+
         for gid in global_attempt_ids:
             info = resolved.get(gid)
             if info is None:
@@ -422,6 +444,19 @@ def _run_retrieve_attempt(
             session_id = info["session_id"]
             nnn = info["nnn"]
             has_renders = info["has_renders"]
+
+            if session_id in _ignored_set:
+                # Session on the ignore list — skip R2 + parameter
+                # fetch and emit a self-closing
+                # <attempt id="..." status="ignored"/> marker.
+                attempt_records.append({
+                    "global_id": gid,
+                    "not_found": False,
+                    "ignored": True,
+                    "nnn": nnn,
+                    "session_id": session_id,
+                })
+                continue
 
             description_text: str | None = None
             parameters_text: str | None = None

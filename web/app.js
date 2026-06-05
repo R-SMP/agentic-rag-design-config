@@ -3926,6 +3926,11 @@ function resetDbView() {
   _dbSetStatus(dbUnlockedStat, "");
   dbLocked.hidden   = false;
   dbUnlocked.hidden = true;
+  // Hide + clear the ignore-list card too (re-revealed on next unlock).
+  const ignoreCard = $("db-ignore-card");
+  if (ignoreCard) ignoreCard.hidden = true;
+  dbIgnoreState = [];
+  _dbSetStatus($("db-ignore-status"), "");
 }
 
 
@@ -3950,6 +3955,10 @@ async function dbUnlock() {
       dbLocked.hidden   = true;
       dbUnlocked.hidden = false;
       _dbSetStatus(dbUnlockedStat, "");
+      // Reveal the session-ignore-list card too and load its current state.
+      const ignoreCard = $("db-ignore-card");
+      if (ignoreCard) ignoreCard.hidden = false;
+      loadDbIgnoreList();
       setTimeout(() => { if (dbResetPhrase) dbResetPhrase.focus(); }, 0);
     } else {
       _dbSetStatus(dbLockedStat,
@@ -4020,4 +4029,161 @@ if (dbPasswordIn) dbPasswordIn.addEventListener("keydown", (e) => {
 });
 if (dbResetPhrase) dbResetPhrase.addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); dbResetSend(); }
+});
+
+
+// ---------------------------------------------------------------------------
+// Database admin — session ignore list editor (co-resides with the
+// reset card in State 2 of the database view).  Backed by
+// POST /api/db_admin/ignore_list/{read,write}.  Uses dbPassword (the
+// same in-memory password that the rest of the db_admin endpoints
+// use).
+// ---------------------------------------------------------------------------
+
+const _SESSION_ID_RE = /^ID\d+_\d{8}_\d{6}$/;
+
+// In-memory mirror of the persisted ignore list (string[]).  Loaded
+// from /api/db_admin/ignore_list/read on unlock; mutated by add /
+// remove; flushed back to the server by Save.
+let dbIgnoreState = [];
+
+
+async function loadDbIgnoreList() {
+  const statusEl = $("db-ignore-status");
+  _dbSetStatus(statusEl, "Loading…");
+  try {
+    const res = await fetch("/api/db_admin/ignore_list/read", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ password: dbPassword }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (body.ok) {
+      dbIgnoreState = Array.isArray(body.sessions) ? body.sessions.slice() : [];
+      renderDbIgnoreList();
+      _dbSetStatus(statusEl,
+        `Loaded ${dbIgnoreState.length} session(s).`, "success");
+    } else {
+      _dbSetStatus(statusEl,
+        body.error || "Could not load ignore list.", "error");
+    }
+  } catch (e) {
+    _dbSetStatus(statusEl,
+      "Network error contacting the server.", "error");
+  }
+}
+
+
+function renderDbIgnoreList() {
+  const ul = $("db-ignore-list");
+  if (!ul) return;
+  ul.innerHTML = "";
+  if (!dbIgnoreState.length) {
+    const li = document.createElement("li");
+    li.className = "db-ignore-empty";
+    li.innerHTML = "<em>(empty — no sessions ignored)</em>";
+    ul.appendChild(li);
+    return;
+  }
+  for (const sid of dbIgnoreState) {
+    const li = document.createElement("li");
+    li.className = "db-ignore-row";
+    const code = document.createElement("code");
+    code.textContent = sid;
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "ghost db-ignore-del";
+    del.textContent = "Remove";
+    del.addEventListener("click", () => removeDbIgnoreId(sid));
+    li.appendChild(code);
+    li.appendChild(del);
+    ul.appendChild(li);
+  }
+}
+
+
+function addDbIgnoreId() {
+  const inp = $("db-ignore-input");
+  const statusEl = $("db-ignore-status");
+  if (!inp) return;
+  const raw = (inp.value || "").trim();
+  if (!raw) {
+    _dbSetStatus(statusEl, "Enter a session_id first.", "error");
+    return;
+  }
+  if (!_SESSION_ID_RE.test(raw)) {
+    _dbSetStatus(statusEl,
+      `"${raw}" does not match ^ID\\d+_\\d{8}_\\d{6}$ — example: ID042_20260602_140000.`,
+      "error");
+    return;
+  }
+  if (dbIgnoreState.includes(raw)) {
+    _dbSetStatus(statusEl, `${raw} is already on the list.`, "error");
+    return;
+  }
+  dbIgnoreState.push(raw);
+  dbIgnoreState.sort();
+  renderDbIgnoreList();
+  inp.value = "";
+  _dbSetStatus(statusEl,
+    `Added ${raw}.  Click Save to persist.`, "success");
+}
+
+
+function removeDbIgnoreId(sid) {
+  const statusEl = $("db-ignore-status");
+  const idx = dbIgnoreState.indexOf(sid);
+  if (idx < 0) return;
+  dbIgnoreState.splice(idx, 1);
+  renderDbIgnoreList();
+  _dbSetStatus(statusEl,
+    `Removed ${sid}.  Click Save to persist.`, "success");
+}
+
+
+async function saveDbIgnoreList() {
+  const statusEl = $("db-ignore-status");
+  const saveBtn = $("db-ignore-save");
+  if (saveBtn) saveBtn.disabled = true;
+  _dbSetStatus(statusEl, "Saving…");
+  try {
+    const res = await fetch("/api/db_admin/ignore_list/write", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({
+        password: dbPassword,
+        sessions: dbIgnoreState,
+      }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (body.ok) {
+      dbIgnoreState = Array.isArray(body.sessions)
+        ? body.sessions.slice() : [];
+      renderDbIgnoreList();
+      _dbSetStatus(statusEl,
+        `Saved.  ${dbIgnoreState.length} session(s) on the ignore list.`,
+        "success");
+    } else {
+      _dbSetStatus(statusEl,
+        body.error || "Save failed.", "error");
+    }
+  } catch (e) {
+    _dbSetStatus(statusEl,
+      "Network error contacting the server.", "error");
+  } finally {
+    if (saveBtn) saveBtn.disabled = false;
+  }
+}
+
+
+const dbIgnoreAddBtn    = $("db-ignore-add");
+const dbIgnoreSaveBtn   = $("db-ignore-save");
+const dbIgnoreReloadBtn = $("db-ignore-reload");
+const dbIgnoreInput     = $("db-ignore-input");
+
+if (dbIgnoreAddBtn)    dbIgnoreAddBtn.addEventListener("click", addDbIgnoreId);
+if (dbIgnoreSaveBtn)   dbIgnoreSaveBtn.addEventListener("click", saveDbIgnoreList);
+if (dbIgnoreReloadBtn) dbIgnoreReloadBtn.addEventListener("click", loadDbIgnoreList);
+if (dbIgnoreInput) dbIgnoreInput.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); addDbIgnoreId(); }
 });

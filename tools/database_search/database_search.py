@@ -221,6 +221,20 @@ def _run_candidate_query(
         attempt_clause = ""
 
     extra_where = f" AND {metafilter_where}" if metafilter_where else ""
+    # System-managed session ignore list
+    # (workflow_settings/db_search_ignore_list.json) — applied as an
+    # extra AND clause alongside any LLM-supplied metafilters.  Read
+    # fresh on every call so a UI edit takes effect immediately.
+    # Best-effort: a missing / malformed list silently degrades to
+    # "no filter".  See the Database admin view (password-gated).
+    try:
+        from workflow_settings.db_search_ignore_list import get_ignore_list as _get_il
+        _ignored_sids = _get_il()
+    except Exception:
+        _ignored_sids = []
+    if _ignored_sids:
+        extra_where += " AND session_id <> ALL(%(_db_search_ignore)s)"
+        metafilter_params = {**metafilter_params, "_db_search_ignore": _ignored_sids}
 
     sql = f"""
         WITH candidates AS (
@@ -399,6 +413,20 @@ def _run_mismatch_count_query(
     change in workflow_settings.
     """
     extra_where = f" AND {metafilter_where}" if metafilter_where else ""
+    # System-managed session ignore list
+    # (workflow_settings/db_search_ignore_list.json) — applied as an
+    # extra AND clause alongside any LLM-supplied metafilters.  Read
+    # fresh on every call so a UI edit takes effect immediately.
+    # Best-effort: a missing / malformed list silently degrades to
+    # "no filter".  See the Database admin view (password-gated).
+    try:
+        from workflow_settings.db_search_ignore_list import get_ignore_list as _get_il
+        _ignored_sids = _get_il()
+    except Exception:
+        _ignored_sids = []
+    if _ignored_sids:
+        extra_where += " AND session_id <> ALL(%(_db_search_ignore)s)"
+        metafilter_params = {**metafilter_params, "_db_search_ignore": _ignored_sids}
     sql = f"""
         SELECT COUNT(*)
         FROM chunks c

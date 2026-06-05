@@ -712,6 +712,43 @@
             </p>
           </div>
 
+          <!-- State 2b: session ignore list editor (also revealed
+               when authenticated; co-resides with State 2 above
+               inside the unlocked area of the panel).  Backed by
+               POST /api/db_admin/ignore_list/{read,write}. -->
+          <div id="db-ignore-card" class="db-card" hidden>
+            <h2 class="db-title">Session ignore list</h2>
+            <p class="db-blurb">
+              Session IDs listed here are EXCLUDED from
+              <code>database_search</code> results and skipped (with a
+              <code>status="ignored"</code> marker) by
+              <code>retrieve_user_inputs</code> and
+              <code>retrieve_attempt</code>.  Useful when you want
+              the next sessions to neglect content from specific
+              previous sessions during retrieval.  Effect is
+              immediate: the list is read fresh on every retrieval
+              call.
+            </p>
+            <p class="db-blurb">
+              Valid session_id shape:
+              <code>ID042_20260602_140000</code>
+              (regex <code>^ID\d+_\d{8}_\d{6}$</code>).
+            </p>
+            <ul id="db-ignore-list" class="db-list">
+              <li class="db-ignore-empty"><em>(empty — no sessions ignored)</em></li>
+            </ul>
+            <div class="db-form-row">
+              <input id="db-ignore-input" type="text" autocomplete="off"
+                     placeholder="ID042_20260602_140000" />
+              <button id="db-ignore-add" class="primary" type="button">Add</button>
+            </div>
+            <div class="db-form-row">
+              <button id="db-ignore-save" class="primary" type="button">Save</button>
+              <button id="db-ignore-reload" class="ghost" type="button">Reload</button>
+            </div>
+            <p id="db-ignore-status" class="db-status" role="status"></p>
+          </div>
+
         </div>
       </section>
     </div>
