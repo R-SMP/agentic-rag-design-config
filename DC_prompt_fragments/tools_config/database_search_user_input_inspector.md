@@ -25,16 +25,42 @@ Required pattern when this rule applies:
      BEFORE ``write_extraction``.  Phrase the query around what
      you are extracting ("blade count from hand-drawn propeller
      sketch", "thickness calibration from blade sections").
-  2. (Optional, when promising past sessions surface)
-     ``retrieve_user_inputs(session_ids=[<sid>], images_flag=True)``
-     to compare past sketches with the current one before
-     applying any literal claim — per the "Same words, different
-     case" rule in the database_search fragment above.
-  3. In your hand-off to the next agent, name what you searched
-     for, what you found, and how (if at all) the past content
-     informed your extraction.  If past content did NOT change
-     your conclusion, say so explicitly so the Orchestrator and
-     the user know you considered it.
+  2. **Strong suggestion when extracting from a sketch AND
+     ``database_search`` returned in-scope past sessions:**
+     call ``retrieve_user_inputs(session_ids=[<sid>],
+     images_flag=True)`` to fetch the past user's sketches and
+     visually compare them with the current one.  Past sketches
+     are the highest-leverage calibration evidence for visual
+     extraction; text from ``database_search`` alone is usually
+     too thin to anchor a numerical extraction.
+
+     At least one fetch is a good measure when relevant past
+     sketches surface from the search; fetch more sessions if
+     genuinely useful, but only for the MOST useful sessions.
+     Be mindful of your token window and your own visual-
+     reasoning capability — a strong vision-capable model may
+     need just one well-chosen past sketch to calibrate; a
+     weaker model might benefit from two.  Each attached image
+     consumes real tokens (typically ~1-1.5 k per image), so
+     over-fetching erodes the budget you have left for
+     reasoning about the current sketch.  Skip image-fetching
+     for sessions whose textual content already covers what you
+     need.  If a chosen session has no user images, the
+     response carries ``<missing/>`` markers — note that in
+     your hand-off and move on.
+  3. (Optional) ``retrieve_attempt(attempts_ID_list=[<global_id>,
+     ...], images_flag=True)`` to fetch past attempts' renders
+     when ``database_search``'s ``<available_attempts>`` block
+     lists attempts that could show how comparable extractions
+     led to viable parameter sets.  Same token-budget awareness
+     applies — only fetch renders that genuinely help.
+  4. In your hand-off to the next agent, name what you searched
+     for, what you found, which sessions / attempts you
+     retrieved with images (if any), what the visual comparison
+     showed, and how (if at all) the past content informed your
+     extraction.  If past content did NOT change your
+     conclusion, say so explicitly so the Orchestrator and the
+     user know you considered it.
 
 A skipped database call when this rule applies is a HARD
 failure — the user explicitly asked for past experience to be
