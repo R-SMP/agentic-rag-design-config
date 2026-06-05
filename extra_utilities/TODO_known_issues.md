@@ -2395,3 +2395,75 @@ evidence).  A proper fix needs:
 extraction-fidelity verification): F29 checks how faithful the
 extraction is to the image; F32 makes the extraction more
 capable in the first place.
+
+### F33. Reduce DH LLM cost by batching multiple questions per agent into one call
+
+**Where.**  `agents/database_handler/database_handler.py` — the
+DH's interview loop that walks `dh_schedule.json` entries one
+at a time and issues one `llm.invoke(messages)` per schedule
+entry against the target chain agent.
+
+**What.**  The DH currently asks each schedule question as a
+SEPARATE LLM call to the target agent.  The DH iterates ~28
+schedule entries per save (per the architecture doc), which
+means ~28 LLM calls per session save.  Many of those entries
+ask the SAME agent multiple distinct questions about different
+facets of its session work (e.g. the UII gets asked about its
+extraction, its image-handling, its database use, its hand-off
+prose).  Each call re-sends the agent's full context (system
+prompt + history) and pays the per-call overhead.
+
+A natural optimisation is to GROUP schedule entries by target
+agent and send all questions for that agent in a single LLM
+call — the agent answers each question in a structured response
+(one labelled section per question); the DH parses the response
+back into per-question chunks and runs the same `insert_chunk`
+flow per chunk as today.
+
+Estimated saving: if the average grouping factor is ~3 (28
+entries / 9 agents ≈ 3 questions per agent on average), the DH
+save's LLM cost drops by roughly 60-65 %.  Savings come from
+(a) fewer system-prompt resends, (b) fewer round-trip
+latencies, (c) better prompt-cache utilisation since the
+agent's context is loaded once per batched call.
+
+**Why deferred.**  Several real risks need handling:
+
+  1. **Output-token quality.**  A single response with many
+     answers may produce shorter or less thoughtful per-
+     question content than separate calls.  Needs empirical
+     calibration per agent.
+  2. **Schedule-order semantics.**  Some entries depend on
+     prior answers from the same agent (rare but exists).  The
+     batched prompt must preserve that ordering OR identify
+     the sequential entries and keep them separate.
+  3. **Parsing brittleness.**  Structured-response parsing
+     needs either strict JSON / XML output with format
+     validation, or per-question stop-marker delimiters with
+     a graceful fallback.
+  4. **Per-agent context size.**  Some agents accumulate a lot
+     of history (Tool Caller, DCOI with images) and a batched
+     call could exceed the agent's effective working budget.
+     The DH already integrates with the Context Pruner (W7);
+     would need to verify batching doesn't push pruning
+     thresholds.
+
+**Proper fix.**  Three components:
+
+  1. Group `dh_schedule.json` entries by target agent at DH
+     startup; preserve original order WITHIN each group and
+     identify any explicit ordering constraints across groups.
+  2. Build a single batched prompt per group: agent-specific
+     framing + N numbered questions + a strict structured-
+     response template (JSON or XML with one entry per
+     question, plus a field for any "I can't answer" notes
+     so a single bad question doesn't poison the whole batch).
+  3. Parse the batched response back into per-question chunks;
+     run `insert_chunk` on each chunk individually (same
+     downstream path as today, so retry / safety folder /
+     embedding flow are unchanged).
+
+**Status.**  Open.  Cost optimisation only — no behavioural
+change visible to the user.  Best landed alongside any future
+work on `dh_schedule.json` schema (so the batched-group
+metadata can ride in on a coordinated schema bump).
