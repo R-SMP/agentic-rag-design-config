@@ -91,6 +91,25 @@ _API_KEY_ENV_VARS: dict = {
 _DEFAULT_MODEL = "gpt-5-mini"
 
 
+# HTTP timeout (in seconds) passed to every provider client at
+# construction time.  Without this, the underlying SDKs fall back
+# to long read timeouts — Anthropic's SDK defaults to 600 s
+# (10 min) per request, so a single stuck connection can hang the
+# dispatcher for up to ~50 min once ``invoke_with_retry`` cycles
+# through MAX_ATTEMPTS=5 attempts (one observed 2026-06-05 DH save
+# stalled mid-interview for ~10 min before the SDK timed out and
+# the retry path recovered).
+#
+# 180 s is long enough for vision-heavy generations and Context
+# Pruner summarisation passes (Anthropic Opus with 4 images
+# typically responds in 30-60 s; outliers up to ~90 s observed)
+# and short enough that a true hang surfaces in ~15 min worst
+# case (5 retries × 180 s) instead of ~50 min.  Bump only if you
+# observe spurious connection-error retry log lines on legitimate
+# slow generations.
+_LLM_REQUEST_TIMEOUT_S: float = 180.0
+
+
 def _read_shared_env() -> dict:
     """Read ``agents/.env`` fresh; empty dict when missing."""
     if not _SHARED_ENV_PATH.exists():
@@ -209,15 +228,28 @@ def build_llm(agent_name: str) -> Tuple[object, str, str]:
 
     if provider == "openai":
         from langchain_openai import ChatOpenAI
-        llm = ChatOpenAI(model=model, api_key=api_key, rate_limiter=_RATE_LIMITER)
+        llm = ChatOpenAI(
+            model=model,
+            api_key=api_key,
+            rate_limiter=_RATE_LIMITER,
+            timeout=_LLM_REQUEST_TIMEOUT_S,
+        )
     elif provider == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI
         llm = ChatGoogleGenerativeAI(
-            model=model, google_api_key=api_key, rate_limiter=_RATE_LIMITER
+            model=model,
+            google_api_key=api_key,
+            rate_limiter=_RATE_LIMITER,
+            timeout=_LLM_REQUEST_TIMEOUT_S,
         )
     elif provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
-        llm = ChatAnthropic(model=model, api_key=api_key, rate_limiter=_RATE_LIMITER)
+        llm = ChatAnthropic(
+            model=model,
+            api_key=api_key,
+            rate_limiter=_RATE_LIMITER,
+            timeout=_LLM_REQUEST_TIMEOUT_S,
+        )
     else:
         # Defensive — _resolve_config already validated, but keep this
         # path so a future provider key omitted from the dispatch table
