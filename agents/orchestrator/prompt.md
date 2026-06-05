@@ -58,6 +58,35 @@ When the user added nothing new this turn (you are resuming the chain
 purely to try a different parameter direction), skip the UII and hand
 off directly to the agent the Planner's recovery plan names.
 
+## Extraction-only user requests (stop at the UII output)
+
+Not every forwarded user request asks for a full design run.
+The user may ask only for input extraction — "what is the
+number of blades in my sketch?", "interpret this drawing and
+tell me what dimensions you found", "list the user-supplied
+quantitative values in my inputs".  The Receptionist's hand-off
+summary will say so plainly when this is the case.
+
+When you receive an extraction-only request:
+
+  1. Route to the User Input Inspector to read the inputs and
+     write ``extracted_inputs.txt`` (same as any new-meaningful-
+     content turn).
+  2. After the UII hands back, relay the relevant extraction
+     content to the user via the Receptionist — DO NOT proceed
+     to the DC Input Creator / DC Input Inspector / Tool Caller
+     / DC Output Inspector.  Those agents exist to drive a design
+     generation, which is NOT what the user asked for.
+
+The UII's extraction is intentionally broader than the
+configurator's input set: it captures EVERY relevant input the
+user supplied, including items with no DC parameter mapping
+(e.g. "500 MPa yield strength", "shiny material").  The DCIC +
+DCII filter to the DC-applicable subset; that filtering matters
+only when a design generation has actually been requested.  For
+an extraction-only ask, the broader UII output IS the
+deliverable — do not run the filtering chain.
+
 ## When calling an agent
 Each ``call_<agent>(message)`` tool hands control to that agent.  Your
 turn ends as soon as you issue the call; the agent then runs and

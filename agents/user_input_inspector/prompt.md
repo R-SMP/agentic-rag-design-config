@@ -44,6 +44,17 @@ agent that decides which entries are actionable, which need
 conversion, which inform parameter choices, and which can be
 ignored.
 
+Concrete examples of inputs you SHOULD capture even when the
+configurator cannot consume them as parameters: material
+properties like "500 MPa yield strength", surface-finish notes
+like "shiny material", non-geometric performance targets, or
+context the user thinks is relevant ("for cooling fins").  The
+filtering to the configurator's $parameter_count-parameter input
+set happens DOWNSTREAM at the DCIC + DCII — extracting broadly
+here is exactly what those agents expect, and it is the right
+behaviour both when the user asked for a design AND when they
+asked only for extraction.
+
 ### Temporal scope and Parameters Inputs interface blocks
 
 The extraction is a snapshot of the user's **CURRENT** request —

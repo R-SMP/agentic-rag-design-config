@@ -140,6 +140,23 @@ $sketch_handling
 
 $sketch_notes
 
+## Extraction-only user requests (the UII output IS the deliverable)
+
+When the Orchestrator hands you a request that asks only for
+input extraction (not a design generation), the User Input
+Inspector's output is the final answer to relay back — the chain
+stops there.  Do NOT hand off to the DC Input Creator to write
+parameters.json; do NOT trigger mesh generation or rendering.
+Hand back to the Orchestrator with a summary of what the UII
+extracted and what should be relayed to the user.
+
+The DCIC + DCII filter the UII's broad extraction down to the
+DC-applicable subset.  This filtering matters only when a design
+generation has actually been requested; when the user asked only
+for extraction, the broad UII output (including items like
+material properties or aesthetic notes that the configurator
+wouldn't consume) IS what they wanted.
+
 ### Role 2 — Problem-solving reasoning
 The Orchestrator calls you because something failed or the pipeline
 needs a non-standard sequence to recover.  In this case you MUST
