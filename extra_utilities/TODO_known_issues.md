@@ -2337,3 +2337,61 @@ Session if you want to fully close that loop too.
 **Status.**  Open.  Pair this with any future work that broadens
 the chat-turn UX (e.g. multi-turn history restore on reload —
 [[F28]]).
+
+### F32. Estimate parameters from visual proportions in user-supplied images
+
+**Where.**  `agents/user_input_inspector/` (UII — the agent that
+extracts user inputs from sketches / reference images) and its
+prompt fragments under `DC_prompt_fragments/user_input_inspector/`.
+Downstream interpretation may also need adjustment in the DCIC
+(which writes parameters.json) and the Planner (which sets the
+strategy).
+
+**What.**  Today the UII extracts EXPLICIT numerical annotations
+the user wrote on their sketch (chord mm, angle degrees, ring
+thickness mm).  It does NOT estimate parameter values from the
+VISUAL PROPORTIONS shown in the drawing when those values are
+absent.  Several parameters could plausibly be estimated from
+proportional reasoning over the image alone:
+
+  * `innerThickness` / `outerThickness`: from the section
+    views' thickness-to-chord ratio.
+  * `innerCamber` / `outerCamber`: from the curvature of the
+    section sketch's mean-line.
+  * Relative chord widths across sections: from the planform
+    view.
+  * `innerMaxPos` / `outerMaxPos`: from where the maximum
+    thickness sits along the chord in the section sketch.
+  * `middlePos`: from where the broadest chord sits radially in
+    the planform.
+  * Ring proportions (`impellerHeight` vs `impellerRadius`) from
+    a side or isometric view.
+
+The 2026-06-04 propeller-from-sketches run is a clean example:
+the user supplied a thin-small-thin geometry intent but no
+numbers for inner/outer thickness or camber.  The UII
+extracted only the explicit annotations and left section-shape
+parameters to the DCIC's defaults; a proportional-estimation
+pass would have lifted thickness/camber/max-pos estimates
+directly from the section sketches.
+
+**Why deferred.**  The current happy path works when the user
+writes explicit numbers; the failure mode is silent when they
+don't (downstream picks defaults that ignore the visual
+evidence).  A proper fix needs:
+
+  1. UII prompt-fragment guidance telling the agent to MEASURE
+     proportionally (pixel-ratio style reasoning over the
+     image) and to record an estimate + a confidence note.
+  2. A per-parameter heuristic table mapping visual ratios to
+     parameter ranges (e.g. "blade chord-to-thickness ratio
+     ~8:1 → thickness ~12 % of chord → map to innerThickness
+     within the configurator's allowed range").
+  3. A way for DCIC / Planner to distinguish "explicit user
+     value" from "proportional estimate" when weighing inputs
+     against each other.
+
+**Status.**  Open.  Logically pairs with [[F29]] (DCII
+extraction-fidelity verification): F29 checks how faithful the
+extraction is to the image; F32 makes the extraction more
+capable in the first place.
