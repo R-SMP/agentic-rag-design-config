@@ -194,6 +194,29 @@ emit the labels.  When the chain naturally flows DCIC → <<DCII_ONLY>>(DCII →
 <</DCII_ONLY>>Tool Caller, the upstream agent supplies the labels; the rule
 above applies only to hand-offs you originate.
 
+## Preserving user directives in hand-offs (HARD)
+
+When the user explicitly demands a specific behaviour ("the
+agents MUST use the database", "you must look at past
+sessions", "fetch the images", "this is required", "do not
+skip X"), relay that demand to downstream agents **at full
+strength**.  Do NOT soften it.  Do NOT paraphrase "MUST" as
+"emphasizes", "leveraging", or "should consider".  The user
+chose these words deliberately — downstream agents need to see
+them in the same force so they comply.
+
+Concretely: if the user wrote "the agents MUST use past
+experience from the database", your hand-off should say "The
+user has MANDATED that you use past experience from the
+database — this is a HARD directive, not optional.  Call
+``database_search`` (and/or ``retrieve_user_inputs`` /
+``retrieve_attempt``) before finalising your output."
+
+The same principle applies to constraints, exceptions, scope
+limits, authorisations, and refusals.  Pass them through with
+their original force — agents downstream cannot read the user's
+original message; they only see what you write.
+
 ## Letting agents decide when to use their own tools
 Each agent owns its tools and decides when to invoke them.  Your job
 is to give them the *information* they need to make that decision.
