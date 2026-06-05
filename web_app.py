@@ -364,13 +364,20 @@ def _run_dh_save() -> dict:
         return {"error": f"{type(exc).__name__}: {exc}"}
 
 
-def _end_session() -> None:
+def _end_session(was_saved: bool = False) -> None:
     # Close the trace + detach the per-session log handler FIRST so
     # those files are unlocked (Windows holds open files), THEN sweep
     # everything session-specific (attempts/, logs, trace, inputs)
     # into previous_sessions/<id>/ — the SAME end-of-session archival
     # the v4 REPL loader runs, so attempts stop piling up shared
     # across web sessions.
+    #
+    # ``was_saved`` is threaded through to ``_archive_previous_session``
+    # so the R2 mirror block there can honour
+    # ``workflow_settings.SAVE_LOGS_FOR_UNSAVED_SESSIONS`` (settings
+    # block #23).  Default ``False`` — a caller that does not know
+    # the save state is treated as "not saved" (safer default; the
+    # R2 upload then runs only when the setting allows it).
     logger.info("[WEB] end_session — archiving session, clearing state")
     try:
         close_trace()
@@ -387,7 +394,9 @@ def _end_session() -> None:
     if _BOX.session is not None:
         cached_name = _BOX.session.resolved_session_name
     try:
-        _archive_previous_session(session_name=cached_name)
+        _archive_previous_session(
+            session_name=cached_name, was_saved=was_saved,
+        )
     except Exception as exc:
         # Best-effort: a failed archive must not break the End Session
         # reset (worst case the old attempts remain for next session).
@@ -1065,7 +1074,7 @@ async def _run_end_in_background(
             # a plain End Session.  Surface the fact in the SSE event
             # so the UI can confirm.
             dh_result = {"error": "No active session to save."}
-        _end_session()
+        _end_session(was_saved=save_requested)
     except Exception as exc:
         logger.exception(
             "[WEB] background end-session task failed: %s", exc

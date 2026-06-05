@@ -635,3 +635,32 @@ RETRIEVE_ATTEMPT_INCLUDE_ISOMETRIC_VIEW: bool = True
 #
 # Valid values: any positive int (cl100k_base tokens).  Default 30000.
 RETRIEVE_MAX_RESPONSE_TOKENS: int = 30_000
+
+
+# ===========================================================
+# 23. Save logs + agent-flow of UNSAVED sessions to R2
+# ===========================================================
+# What happens to the session log (logs/<session>.log), the
+# agent-flow trace (logs/agent_flow_<ts>.txt), the DH flow trace
+# (logs/dh_flow_<ts>.txt), and the per-agent history dumps
+# (logs/agent_histories/) at end of session when the user clicked
+# "No save" at the End Session dialog.
+#
+# Local archival to ``previous_sessions/<session>/`` happens
+# regardless (the worktree must be cleared for the next session);
+# this setting only controls whether those files are ALSO
+# mirrored to R2 under ``<session>/logs/`` in the unsaved case.
+# Saved sessions (the user clicked "Save") always upload — this
+# setting does not affect them.
+#
+#   True   logs + agent-flow + per-agent histories are pushed to
+#          R2 even when the user chose not to save the session.
+#          Useful for diagnostics — every session is recoverable
+#          from R2 regardless of save state.
+#   False  unsaved sessions stay LOCAL ONLY (under
+#          previous_sessions/) and never reach R2.  Saves R2
+#          storage cost for throwaway sessions and prevents test
+#          sessions from polluting the production R2 bucket.
+#
+# Valid values: True, False
+SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False

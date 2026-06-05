@@ -138,13 +138,25 @@ def _resolve_session_timestamp() -> str:
     return _session_datetime_slug(log_files)
 
 
-def _archive_previous_session(session_name: str | None = None) -> None:
+def _archive_previous_session(
+    session_name: str | None = None,
+    was_saved: bool = False,
+) -> None:
     """Move the previous session's artefacts into
     ``previous_sessions/{session_name}/``.
 
     *session_name* defaults to the result of ``_resolve_session_name``
     when not supplied.  The Database Handler resolves it once at end
     of session so DH and archival agree on the folder name.
+
+    *was_saved* tells the function whether the user clicked "Save"
+    or "No save" at End Session.  Local archival to
+    ``previous_sessions/`` runs regardless; the R2 mirror at the
+    bottom is gated on ``was_saved=True OR
+    workflow_settings.SAVE_LOGS_FOR_UNSAVED_SESSIONS`` (see settings
+    block #23).  Default ``False`` means: a caller that does not
+    know save state is treated as "not saved", and the R2 upload
+    only happens when the setting allows it.
 
     Anything the user dropped at ``inputs/`` root (images, notes,
     user_query.txt, extracted_inputs.txt, …) is archived as one
@@ -272,10 +284,36 @@ def _archive_previous_session(session_name: str | None = None) -> None:
     # ``<sid>/logs/...``.  ``<sid>/logs/`` is disjoint from both
     # other paths' namespaces, so no key collision is possible.
     #
+    # Gated by SAVE_LOGS_FOR_UNSAVED_SESSIONS (settings block #23)
+    # for the not-saved path: when the user clicked "No save" AND
+    # the setting is False, this block is skipped entirely and the
+    # session lives only in ``previous_sessions/<sid>/`` locally.
+    # Saved sessions (was_saved=True) always upload regardless of
+    # the setting.
+    #
     # Wrapped in try/except so a transient R2 failure cannot break
     # the archive sweep — same best-effort stance as the DH save's
     # ``upload_directory`` call.  Logging via ``propeller_agent`` so
     # the operator sees what landed in R2.
+    if not was_saved:
+        try:
+            from workflow_settings import settings as _ws
+        except Exception:
+            _ws = None
+        _allow = bool(
+            _ws is not None
+            and getattr(_ws, "SAVE_LOGS_FOR_UNSAVED_SESSIONS", False)
+        )
+        if not _allow:
+            try:
+                logging.getLogger("propeller_agent").info(
+                    f"[R2]  skipped session-log mirror for "
+                    f"{session_name} (was_saved=False AND "
+                    f"SAVE_LOGS_FOR_UNSAVED_SESSIONS=False)"
+                )
+            except Exception:
+                pass
+            return
     try:
         from agents.shared import r2_uploader as _r2
         if _r2.is_enabled():
@@ -469,7 +507,9 @@ def _end_session(
     # session_*.log file is held open and Windows refuses the move.
     _close_logger(logger)
     try:
-        _archive_previous_session(session_name=session_name)
+        _archive_previous_session(
+            session_name=session_name, was_saved=save_database,
+        )
     except Exception:
         # Logger is already closed — nothing left to record this on.
         pass
