@@ -25,6 +25,29 @@ When in doubt, derive your own values from the CURRENT user's
 inputs.  Use past content to inform your method, not to short-cut
 your judgement.
 
+**Same words, different case.**  A past session's language can
+read like it applies to your situation, yet the underlying
+context (template, conventions, reference values) may not
+match — the same phrase that was exact under that context can
+be silently wrong under yours.  Example: the past user
+sketched on a template with dimension circles and fill-in
+fields specific to it ("the inner dashed circle marks 120 mm
+diameter"); the current user is using a DIFFERENT template
+with similar layout but different conventions.
+
+Treat past claims as transferable LITERALLY only after you have
+visual proof the contexts are the same.  When the past session
+involved images, pull them via
+``retrieve_user_inputs(session_ids=[<sid>], images_flag=True)``,
+compare them to the current user's images, and confirm
+concretely: same template layout, same labelled fields, same
+conventions.  When the contexts differ at all, drop the literal
+content and keep only the PRINCIPLE — what the past agent
+checked, what defects they watched for, why they made each
+verification.  The essence of past reasoning (what to look for
+and why) usually transfers; specific tokens pinned to a
+different context do not.
+
 **Don't forget the images.**  Both ``retrieve_user_inputs`` and
 ``retrieve_attempt`` accept ``images_flag=True``, attaching the
 past session's user-uploaded images (or the past attempt's
