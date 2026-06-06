@@ -8,15 +8,9 @@
       "from_agent": "user_input_inspector",
       "to_agents": [
         "receptionist",
-        "orchestrator",
         "user_input_inspector",
         "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -31,15 +25,11 @@
       "from_agent": "user_input_inspector",
       "to_agents": [
         "receptionist",
-        "orchestrator",
         "user_input_inspector",
         "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -54,15 +44,11 @@
       "from_agent": "user_input_inspector",
       "to_agents": [
         "receptionist",
-        "orchestrator",
         "user_input_inspector",
         "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -77,15 +63,9 @@
       "from_agent": "user_input_inspector",
       "to_agents": [
         "receptionist",
-        "orchestrator",
         "user_input_inspector",
         "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -100,15 +80,9 @@
       "from_agent": "user_input_inspector",
       "to_agents": [
         "receptionist",
-        "orchestrator",
         "user_input_inspector",
         "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -122,16 +96,10 @@
       "description": "The qualitative inputs the user provided this session (adjectives, target use case, stylistic constraints, etc.), as you extracted them.",
       "from_agent": "user_input_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
         "user_input_inspector",
         "planner",
         "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -145,16 +113,9 @@
       "description": "Your description of any images the user provided this session (what they show, what they imply for the design).  If no images were provided, say so explicitly.",
       "from_agent": "user_input_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
         "user_input_inspector",
         "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -169,15 +130,9 @@
       "from_agent": "user_input_inspector",
       "to_agents": [
         "receptionist",
-        "orchestrator",
         "user_input_inspector",
         "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -191,16 +146,8 @@
       "description": "Description of a problem encountered in the workflow during this session.  If no problem occurred, say so explicitly.",
       "from_agent": "planner",
       "to_agents": [
-        "receptionist",
         "orchestrator",
-        "user_input_inspector",
-        "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "planner"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -214,16 +161,8 @@
       "description": "The plan you followed to solve the problem(s) encountered during this session.  If no plan beyond the natural pipeline was needed, say so explicitly.",
       "from_agent": "planner",
       "to_agents": [
-        "receptionist",
         "orchestrator",
-        "user_input_inspector",
-        "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "planner"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -237,16 +176,8 @@
       "description": "Description of how the problem(s) you faced were solved this session.  If none were solved (e.g. the session ended unresolved, or none arose), say so explicitly.",
       "from_agent": "planner",
       "to_agents": [
-        "receptionist",
         "orchestrator",
-        "user_input_inspector",
-        "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "planner"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -260,16 +191,8 @@
       "description": "Useful learning gathered this session (what worked, what did not, what to avoid next time).",
       "from_agent": "planner",
       "to_agents": [
-        "receptionist",
         "orchestrator",
-        "user_input_inspector",
-        "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "planner"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -283,16 +206,9 @@
       "description": "Problem(s) encountered when creating the input parameters for the Design Configurator this session.  If none, say so explicitly.",
       "from_agent": "dc_input_creator",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
         "planner",
         "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -306,16 +222,9 @@
       "description": "Explanation of any invalid change(s) you applied when trying to solve a problem this session.  If none, say so explicitly.",
       "from_agent": "dc_input_creator",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
         "planner",
         "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -329,16 +238,9 @@
       "description": "Explanation of any valid change(s) you applied to solve the problem(s) this session.  If none, say so explicitly.",
       "from_agent": "dc_input_creator",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
         "planner",
         "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -352,16 +254,9 @@
       "description": "Problem(s) encountered when analyzing the input parameters created for the Design Configurator this session.  If none, say so explicitly.",
       "from_agent": "dc_input_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
         "planner",
         "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -375,16 +270,9 @@
       "description": "Reason(s) why a set of parameters was VALIDATED this session.  Mainly interested in the REASON WHY, and examples can be provided. If no set was validated, say so explicitly.",
       "from_agent": "dc_input_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
         "planner",
         "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -398,16 +286,9 @@
       "description": "Reason(s) why a set of parameters was REJECTED this session. Mainly interested in the REASON WHY, and examples can be provided. If no set was rejected, say so explicitly.",
       "from_agent": "dc_input_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
         "planner",
         "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_input_inspector"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -421,16 +302,9 @@
       "description": "Description of any problem you encountered this session (e.g. a tool error, a missing input, a geometry-generation failure).  If none, say so explicitly.",
       "from_agent": "tool_caller",
       "to_agents": [
-        "receptionist",
         "orchestrator",
-        "user_input_inspector",
         "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "tool_caller"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -444,16 +318,9 @@
       "description": "Description of what was done to solve the problem(s) you encountered this session.  If none arose, say so explicitly.",
       "from_agent": "tool_caller",
       "to_agents": [
-        "receptionist",
         "orchestrator",
-        "user_input_inspector",
         "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "tool_caller"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -467,16 +334,9 @@
       "description": "Identify which was the final design output produced this session, that was considered the best match with the user request or that was eventually provided as final design output to the user.",
       "from_agent": "planner",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -490,16 +350,9 @@
       "description": "A general description of the final design output produced this session — not the feedback, not whether it is correct, just describe the design in general.",
       "from_agent": "dc_output_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -513,16 +366,9 @@
       "description": "Where the final design output did well: how it satisfied the design intent and the functional requirements, and the absence of problems.",
       "from_agent": "dc_output_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -536,16 +382,9 @@
       "description": "The main problems of the final design output: visible problems, and/or design intent / functional requirements that were not respected.",
       "from_agent": "dc_output_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -559,16 +398,9 @@
       "description": "Identify which was/were the worst design attempt(s) that provided a solution not matching the user requirements. If none, say so explicitly.",
       "from_agent": "dc_output_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -582,16 +414,9 @@
       "description": "Description of the unsuccessful design attempt — not the feedback, not whether it is correct, just describe the design in general.",
       "from_agent": "dc_output_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -605,16 +430,9 @@
       "description": "Reasons why the attempt was deemed as unsuccessful — visible problems, failures, and/or design intent / functional requirements that were not respected.",
       "from_agent": "dc_output_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -628,16 +446,9 @@
       "description": "What solution improved the unsuccessful design, following the user requirements and previous attempts.",
       "from_agent": "planner",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -651,16 +462,9 @@
       "description": "Identify which was the design attempt(s) that provided a useful insight / learning / piece of information / unexpected result",
       "from_agent": "dc_output_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -674,16 +478,9 @@
       "description": "A general description of the useful design attempt — not the feedback, not whether it is correct, just describe the design in general.",
       "from_agent": "dc_output_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -697,16 +494,9 @@
       "description": "Observations regarding the design attempt that can be useful to know for similar design attempts.",
       "from_agent": "dc_output_inspector",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -720,16 +510,9 @@
       "description": "Observations regarding the design attempt that can be useful to know when planning the steps or searching a solution to a problem, based on user requirement and expectations.",
       "from_agent": "planner",
       "to_agents": [
-        "receptionist",
-        "orchestrator",
-        "user_input_inspector",
-        "planner",
         "dc_input_creator",
         "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "dc_output_inspector"
       ],
       "scope": "attempt",
       "type": "Semantic",
@@ -743,16 +526,8 @@
       "description": "A brief description of what you did this session — how you coordinated the chain, what particular hand-offs you made (that follow non-standard agent chain), any escalations you handled.",
       "from_agent": "orchestrator",
       "to_agents": [
-        "receptionist",
         "orchestrator",
-        "user_input_inspector",
-        "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "planner"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -767,15 +542,8 @@
       "from_agent": "receptionist",
       "to_agents": [
         "receptionist",
-        "orchestrator",
         "user_input_inspector",
-        "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "planner"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -790,15 +558,8 @@
       "from_agent": "receptionist",
       "to_agents": [
         "receptionist",
-        "orchestrator",
         "user_input_inspector",
-        "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "planner"
       ],
       "scope": "session",
       "type": "Semantic",
@@ -813,15 +574,8 @@
       "from_agent": "receptionist",
       "to_agents": [
         "receptionist",
-        "orchestrator",
         "user_input_inspector",
-        "planner",
-        "dc_input_creator",
-        "dc_input_inspector",
-        "dc_output_inspector",
-        "tool_caller",
-        "database_handler",
-        "context_pruner"
+        "planner"
       ],
       "scope": "session",
       "type": "Semantic",
