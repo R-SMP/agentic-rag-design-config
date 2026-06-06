@@ -729,7 +729,7 @@ button.danger:hover { background: #3a1d1d; }
 }
 .flow-svg {
   width: 100%;
-  max-width: 780px;
+  max-width: 1100px;
   height: auto;
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
   font-size: 12px;
@@ -749,12 +749,38 @@ button.danger:hover { background: #3a1d1d; }
   font-weight: 500;
   pointer-events: none;
 }
-.flow-box-user rect { fill: #6b6f78; }
-.flow-box-tool rect { fill: #e88c2e; }   /* orange tools */
 .flow-box-tool .tool-prefix {
   font-weight: 700;
   font-size: 11px;
   letter-spacing: 0.04em;
+}
+
+/* Per-box colors for the new LOG and Status layout.  The default
+   .flow-box rect fill (#2c6cb7 blue) above is overridden per-ID so
+   each agent gets its own palette tile.  Boxes with light fills
+   (User, Receptionist, the two tool boxes, DH, CP) also override
+   the white default text fill to dark for contrast. */
+#agent-user rect                        { fill: #b8bcc4; }
+#agent-receptionist rect                { fill: #b8bcc4; }
+#agent-user-input-inspector rect        { fill: #c83d3d; }
+#agent-orchestrator rect                { fill: #b15db5; }
+#agent-dc-output-inspector rect         { fill: #b08a3a; }
+#agent-planner rect                     { fill: #1a8db5; }
+#agent-dc-input-creator rect            { fill: #2e9c5a; }
+#agent-dc-input-inspector rect          { fill: #2e9c5a; }
+#agent-tool-caller rect                 { fill: #2e9c5a; }
+#agent-propeller-configurator rect      { fill: #c8e6c9; }
+#agent-visual-renderings-generator rect { fill: #c8e6c9; }
+#agent-database-handler rect            { fill: #cfe2f3; }
+#agent-context-pruner rect              { fill: #cfe2f3; }
+
+#agent-user text,
+#agent-receptionist text,
+#agent-propeller-configurator text,
+#agent-visual-renderings-generator text,
+#agent-database-handler text,
+#agent-context-pruner text {
+  fill: #1f1f1f;
 }
 
 /* Active state — yellow frame + soft glow */
@@ -779,38 +805,17 @@ button.danger:hover { background: #3a1d1d; }
   pointer-events: none;
 }
 
-/* Dynamic gray arrows around the Orchestrator: one from the
-   latest caller -> Orch (orch-caller-link), one from Orch ->
-   the latest callee (orch-callee-link).  Same stroke; the JS
-   sets each one's endpoints independently. */
+/* Dynamic gray arrows.  Six fixed <line> elements (one per
+   dynamic connection: Orch ↔ Planner / DIC / DII / TC, plus
+   Tool Caller ↔ each of the two DC tools).  Each one is hidden
+   by default and toggled by applyDynamicArrow() in web/app.js
+   based on the most recent agent_active event. */
 .orch-dyn-link {
   stroke: #b8b8b8;
   stroke-width: 2;
   pointer-events: none;
 }
 .orch-dyn-link[hidden] { display: none; }
-
-/* Extra-agents panel — frame is `fill: none`, so the stroke is the
-   only visible part.  On dark mode the previous #1f1f1f stroke was
-   invisible against the page background; match the arrow color so
-   the panel reads clearly. */
-.extra-frame {
-  fill: none;
-  stroke: #e6e8eb;
-  stroke-width: 2;
-}
-.extra-title {
-  fill: #1f1f1f;
-  font-size: 13px;
-  font-weight: 700;
-  letter-spacing: 0.05em;
-}
-.logstatus-view .flow-svg .extra-title {
-  /* Render readable against the dark background — the box itself is
-     a thin black frame, so the title needs a colour that contrasts
-     with the page background, not the box fill. */
-  fill: #e6e8eb;
-}
 
 /* Log pane (right side) */
 .log-pane {

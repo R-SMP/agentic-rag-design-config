@@ -262,7 +262,7 @@
             </p>
           </div>
           <div class="flow-wrap">
-            <svg id="flow-svg" class="flow-svg" viewBox="0 0 760 580"
+            <svg id="flow-svg" class="flow-svg" viewBox="0 0 1200 700"
                  preserveAspectRatio="xMidYMid meet" role="img"
                  aria-label="Multi-agent system flowchart">
               <defs>
@@ -278,188 +278,173 @@
                 </marker>
               </defs>
 
-              <!-- EXTRA AGENTS panel.  Frame is taller than the
-                   original (200 vs 170) so each box can host an
-                   ``agent-tool-label`` slot below it — the gray-
-                   italic caption used by every other agent to display
-                   the most recent generic tool it called.  The DH
-                   uses the slot to surface the question currently
-                   being asked during the post-session save. -->
-              <g class="flow-extra">
-                <rect x="540" y="10" width="210" height="200"
-                      rx="4" ry="4" class="extra-frame" />
-                <text x="645" y="34" class="extra-title"
-                      text-anchor="middle">EXTRA AGENTS</text>
-                <g id="agent-database-handler" class="flow-box flow-box-agent">
-                  <rect x="570" y="55" width="150" height="40" rx="3" ry="3" />
-                  <text x="645" y="80" text-anchor="middle">Database Handler</text>
-                  <text x="645" y="109" text-anchor="middle"
-                        class="agent-tool-label"></text>
-                </g>
-                <g id="agent-context-pruner" class="flow-box flow-box-agent">
-                  <rect x="570" y="145" width="150" height="40" rx="3" ry="3" />
-                  <text x="645" y="170" text-anchor="middle">Context Pruner</text>
-                  <text x="645" y="199" text-anchor="middle"
-                        class="agent-tool-label"></text>
-                </g>
-              </g>
-
-              <!-- Main flowchart edges.  Drawn before the boxes so
-                   they sit behind them.  Endpoint gaps: vertical
-                   arrows leave 22px of space on the side that carries
-                   the agent's "last tool used" label (so the label
-                   never overlaps the arrow), 8px on the non-label
-                   side.  Horizontal arrows use 8px each side. -->
-              <!-- User <-> Receptionist (User has no tool label) -->
-              <line x1="280" y1="54" x2="280" y2="96"
+              <!-- Static arrows (BLACK, always visible).  Drawn before
+                   the boxes so they sit behind them.  Endpoint gaps
+                   of ~8px keep the arrowheads from touching box
+                   edges. -->
+              <!-- User <-> Receptionist -->
+              <line x1="600" y1="62" x2="600" y2="102"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- Receptionist <-> Orchestrator (new long vertical
-                   arrow now that Orch sits at y=265 in the centre) -->
-              <line x1="280" y1="172" x2="280" y2="257"
+              <!-- Receptionist <-> Orchestrator -->
+              <line x1="600" y1="182" x2="600" y2="262"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- (Orchestrator <-> UII / DCOI arrows REMOVED — those
-                   handoffs are now rendered as a dynamic gray arrow
-                   from whoever last called the Orchestrator.) -->
+              <!-- User Input Inspector <-> Orchestrator -->
+              <line x1="275" y1="255" x2="475" y2="290"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
+              <!-- Design Output Inspector <-> Orchestrator -->
+              <line x1="728" y1="290" x2="912" y2="254"
+                    stroke="#e6e8eb" stroke-width="2"
+                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- User Input Inspector <-> Planner -->
-              <line x1="100" y1="272" x2="100" y2="312"
+              <line x1="150" y1="278" x2="170" y2="332"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- Planner <-> Input Creator -->
-              <line x1="100" y1="392" x2="100" y2="432"
+              <!-- Planner <-> Design Input Creator -->
+              <line x1="235" y1="412" x2="370" y2="455"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- Input Creator <-> Input inspector -->
-              <line x1="168" y1="465" x2="212" y2="465"
+              <!-- Design Input Creator <-> Design Input Inspector -->
+              <line x1="518" y1="492" x2="562" y2="492"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- Input inspector <-> Tool Caller -->
-              <line x1="348" y1="465" x2="392" y2="465"
+              <!-- Design Input Inspector <-> Tool Caller -->
+              <line x1="785" y1="455" x2="825" y2="412"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- Tool Caller <-> Output inspector (vertical) -->
-              <line x1="460" y1="432" x2="460" y2="272"
-                    stroke="#e6e8eb" stroke-width="2"
-                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- Tool Caller <-> Propeller Configurator -->
-              <line x1="528" y1="460" x2="575" y2="312"
-                    stroke="#e6e8eb" stroke-width="2"
-                    marker-start="url(#arrow)" marker-end="url(#arrow)" />
-              <!-- Tool Caller <-> Visual Renderings Generator -->
-              <line x1="528" y1="470" x2="575" y2="520"
+              <!-- Design Output Inspector <-> Tool Caller -->
+              <line x1="1040" y1="278" x2="905" y2="332"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
 
-              <!-- Dynamic gray arrows around the Orchestrator.
-                   Hidden by default; JS sets their endpoints based
-                   on the most recent agent_active event involving
-                   the Orchestrator.  Receptionist ↔ Orch always uses
-                   the static black arrow, so the dynamic arrows
-                   never represent that hand-off.
+              <!-- Dynamic arrows (LIGHT GRAY, hidden by default).
+                   Each one represents a specific connection and is
+                   only shown while that handoff is the most recent
+                   agent_active event.  Toggled by
+                   applyDynamicArrow() in web/app.js.  Class
+                   .orch-dyn-link kept for CSS reuse (light-gray
+                   stroke + display:none when hidden). -->
+              <line id="dyn-orch-planner" class="orch-dyn-link"
+                    x1="475" y1="329" x2="275" y2="356"
+                    marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
+              <line id="dyn-orch-dic" class="orch-dyn-link"
+                    x1="555" y1="358" x2="435" y2="452"
+                    marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
+              <line id="dyn-orch-dii" class="orch-dyn-link"
+                    x1="620" y1="358" x2="665" y2="452"
+                    marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
+              <line id="dyn-orch-tc" class="orch-dyn-link"
+                    x1="725" y1="336" x2="815" y2="353"
+                    marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
+              <line id="dyn-tc-propeller" class="orch-dyn-link"
+                    x1="995" y1="361" x2="1025" y2="358"
+                    marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
+              <line id="dyn-tc-vr" class="orch-dyn-link"
+                    x1="967" y1="412" x2="1047" y2="437"
+                    marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
 
-                   * orch-caller-link: from whoever LAST called the
-                     Orchestrator (UII / Planner / Input Creator /
-                     Input inspector / Tool Caller / Output inspector)
-                     to the Orchestrator.  Hidden once the
-                     Orchestrator hands off to someone else.
-                   * orch-callee-link: from the Orchestrator to
-                     whichever of the same six agents the
-                     Orchestrator last handed off to.  Hidden once
-                     someone calls the Orchestrator back. -->
-              <line id="orch-caller-link" class="orch-dyn-link"
-                    x1="0" y1="0" x2="0" y2="0" hidden />
-              <line id="orch-callee-link" class="orch-dyn-link"
-                    x1="0" y1="0" x2="0" y2="0" hidden />
-
-              <!-- User (gray) -->
+              <!-- User -->
               <g id="agent-user" class="flow-box flow-box-user">
-                <rect x="220" y="10" width="120" height="40" rx="3" ry="3" />
-                <text x="280" y="35" text-anchor="middle">User</text>
+                <rect x="540" y="10" width="120" height="44" rx="3" ry="3" />
+                <text x="600" y="37" text-anchor="middle">User</text>
               </g>
 
               <!-- Receptionist -->
               <g id="agent-receptionist" class="flow-box flow-box-agent">
-                <rect x="220" y="100" width="120" height="50" rx="3" ry="3" />
-                <text x="280" y="130" text-anchor="middle">Receptionist</text>
-                <text x="280" y="164" text-anchor="middle"
+                <rect x="480" y="110" width="240" height="64" rx="3" ry="3" />
+                <text x="600" y="147" text-anchor="middle">Receptionist</text>
+                <text x="600" y="188" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- User Input Inspector -->
               <g id="agent-user-input-inspector" class="flow-box flow-box-agent">
-                <rect x="40" y="200" width="120" height="50" rx="3" ry="3" />
-                <text x="100" y="222" text-anchor="middle">User Input</text>
-                <text x="100" y="240" text-anchor="middle">Inspector</text>
-                <text x="100" y="264" text-anchor="middle"
+                <rect x="30" y="190" width="240" height="80" rx="3" ry="3" />
+                <text x="150" y="220" text-anchor="middle">User Input</text>
+                <text x="150" y="240" text-anchor="middle">Inspector</text>
+                <text x="150" y="285" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
-              <!-- Orchestrator — repositioned to the centre of the
-                   chart (y=265) so it has open space around it for
-                   the dynamic gray arrow that points back to
-                   whoever last called it. -->
+              <!-- Orchestrator -->
               <g id="agent-orchestrator" class="flow-box flow-box-agent">
-                <rect x="220" y="265" width="120" height="50" rx="3" ry="3" />
-                <text x="280" y="295" text-anchor="middle">Orchestrator</text>
-                <text x="280" y="329" text-anchor="middle"
+                <rect x="480" y="270" width="240" height="80" rx="3" ry="3" />
+                <text x="600" y="316" text-anchor="middle">Orchestrator</text>
+                <text x="600" y="365" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
-              <!-- Output inspector (was: DC Output Inspector) -->
+              <!-- Design Output Inspector -->
               <g id="agent-dc-output-inspector" class="flow-box flow-box-agent">
-                <rect x="400" y="200" width="120" height="50" rx="3" ry="3" />
-                <text x="460" y="230" text-anchor="middle">Output inspector</text>
-                <text x="460" y="264" text-anchor="middle"
+                <rect x="920" y="190" width="240" height="80" rx="3" ry="3" />
+                <text x="1040" y="222" text-anchor="middle">Design Output</text>
+                <text x="1040" y="242" text-anchor="middle">Inspector</text>
+                <text x="1040" y="285" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- Planner -->
               <g id="agent-planner" class="flow-box flow-box-agent">
-                <rect x="40" y="320" width="120" height="50" rx="3" ry="3" />
-                <text x="100" y="350" text-anchor="middle">Planner</text>
-                <text x="100" y="384" text-anchor="middle"
-                      class="agent-tool-label"></text>
-              </g>
-
-              <!-- Input Creator (was: DC Input Creator) -->
-              <g id="agent-dc-input-creator" class="flow-box flow-box-agent">
-                <rect x="40" y="440" width="120" height="50" rx="3" ry="3" />
-                <text x="100" y="470" text-anchor="middle">Input Creator</text>
-                <text x="100" y="504" text-anchor="middle"
-                      class="agent-tool-label"></text>
-              </g>
-
-              <!-- Input inspector (Optional) (was: DC Input Inspector) -->
-              <g id="agent-dc-input-inspector" class="flow-box flow-box-agent">
-                <rect x="220" y="440" width="120" height="50" rx="3" ry="3" />
-                <text x="280" y="462" text-anchor="middle">Input inspector</text>
-                <text x="280" y="480" text-anchor="middle">(Optional)</text>
-                <text x="280" y="504" text-anchor="middle"
+                <rect x="70" y="340" width="200" height="64" rx="3" ry="3" />
+                <text x="170" y="377" text-anchor="middle">Planner</text>
+                <text x="170" y="418" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- Tool Caller -->
               <g id="agent-tool-caller" class="flow-box flow-box-agent">
-                <rect x="400" y="440" width="120" height="50" rx="3" ry="3" />
-                <text x="460" y="470" text-anchor="middle">Tool Caller</text>
-                <text x="460" y="504" text-anchor="middle"
+                <rect x="820" y="340" width="170" height="64" rx="3" ry="3" />
+                <text x="905" y="377" text-anchor="middle">Tool Caller</text>
+                <text x="905" y="418" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
-              <!-- TOOL: Propeller Configurator -->
-              <g id="agent-propeller-configurator" class="flow-box flow-box-tool">
-                <rect x="580" y="280" width="160" height="55" rx="3" ry="3" />
-                <text x="660" y="300" text-anchor="middle" class="tool-prefix">TOOL:</text>
-                <text x="660" y="320" text-anchor="middle">Propeller Configurator</text>
+              <!-- Design Input Creator -->
+              <g id="agent-dc-input-creator" class="flow-box flow-box-agent">
+                <rect x="290" y="460" width="220" height="64" rx="3" ry="3" />
+                <text x="400" y="497" text-anchor="middle">Design Input Creator</text>
+                <text x="400" y="538" text-anchor="middle"
+                      class="agent-tool-label"></text>
               </g>
 
-              <!-- TOOL: Visual Renderings Generator -->
+              <!-- Design Input Inspector -->
+              <g id="agent-dc-input-inspector" class="flow-box flow-box-agent">
+                <rect x="570" y="460" width="220" height="64" rx="3" ry="3" />
+                <text x="680" y="497" text-anchor="middle">Design Input Inspector</text>
+                <text x="680" y="538" text-anchor="middle"
+                      class="agent-tool-label"></text>
+              </g>
+
+              <!-- TOOL: Propeller Generator -->
+              <g id="agent-propeller-configurator" class="flow-box flow-box-tool">
+                <rect x="1030" y="315" width="160" height="64" rx="3" ry="3" />
+                <text x="1110" y="338" text-anchor="middle" class="tool-prefix">TOOL:</text>
+                <text x="1110" y="362" text-anchor="middle">Propeller Generator</text>
+              </g>
+
+              <!-- TOOL: Visual Renders -->
               <g id="agent-visual-renderings-generator" class="flow-box flow-box-tool">
-                <rect x="580" y="500" width="160" height="65" rx="3" ry="3" />
-                <text x="660" y="520" text-anchor="middle" class="tool-prefix">TOOL:</text>
-                <text x="660" y="540" text-anchor="middle">Visual Renderings</text>
-                <text x="660" y="556" text-anchor="middle">generator</text>
+                <rect x="1030" y="445" width="160" height="64" rx="3" ry="3" />
+                <text x="1110" y="468" text-anchor="middle" class="tool-prefix">TOOL:</text>
+                <text x="1110" y="492" text-anchor="middle">Visual Renders</text>
+              </g>
+
+              <!-- Database Handler (floating, no arrows) -->
+              <g id="agent-database-handler" class="flow-box flow-box-agent">
+                <rect x="400" y="610" width="210" height="64" rx="3" ry="3" />
+                <text x="505" y="647" text-anchor="middle">Database Handler</text>
+                <text x="505" y="688" text-anchor="middle"
+                      class="agent-tool-label"></text>
+              </g>
+
+              <!-- Context Pruner (floating, no arrows) -->
+              <g id="agent-context-pruner" class="flow-box flow-box-agent">
+                <rect x="670" y="610" width="210" height="64" rx="3" ry="3" />
+                <text x="775" y="647" text-anchor="middle">Context Pruner</text>
+                <text x="775" y="688" text-anchor="middle"
+                      class="agent-tool-label"></text>
               </g>
             </svg>
           </div>
