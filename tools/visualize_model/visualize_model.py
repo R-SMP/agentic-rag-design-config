@@ -19,7 +19,7 @@ from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import attempt_label_for_path
-from agents.shared.viz_bus import publish
+from agents.shared.viz_bus import publish, set_last_visualized_attempt_dir
 from config import ATTEMPTS_DIR
 
 
@@ -81,6 +81,13 @@ def visualize_3d_model(obj_path: str) -> str:
         "name": target.name,
         "attempt_label": attempt_label,
     })
+    # Record the currently-visualised attempt so /api/parameters can
+    # serve its parameters.json to the Copy parameters list button in
+    # the chat viewer footer (otherwise that button returns the
+    # canonical reference list).  Done unconditionally on a validated
+    # path — REPL / Streamlit have no SSE subscriber but the cache is
+    # still meaningful for any direct /api/parameters reader.
+    set_last_visualized_attempt_dir(target.parent)
     if reached:
         return (f"visualize_3d_model: OK — sent {target.name} to the "
                 f"web interface's 3D viewer.")

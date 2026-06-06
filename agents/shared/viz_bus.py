@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import queue
 import threading
+from pathlib import Path
 
 _subscribers: list[queue.Queue] = []
 _lock = threading.Lock()
@@ -55,3 +56,30 @@ def publish(event: dict) -> int:
         except queue.Full:
             pass
     return delivered
+
+
+# Last-visualised attempt folder — Stage A single-tenant cache.
+# Written by tools/visualize_model/visualize_model.py when it accepts
+# an obj_path; read by web_app.py's /api/parameters endpoint so the
+# Copy parameters list button can serve the actual attempt's
+# parameters.json instead of the canonical reference list.  W13/O9
+# lock Stage A to single-user-at-a-time on disk, so a single
+# module-level Path is sufficient.  None when no mesh has been
+# visualised yet this process.
+_last_visualized_attempt_dir: "Path | None" = None
+_last_lock = threading.Lock()
+
+
+def set_last_visualized_attempt_dir(folder: "Path | None") -> None:
+    """Record the attempt folder of the most recently visualised mesh
+    (or ``None`` to clear).  See module-level comment above."""
+    global _last_visualized_attempt_dir
+    with _last_lock:
+        _last_visualized_attempt_dir = folder
+
+
+def get_last_visualized_attempt_dir() -> "Path | None":
+    """Return the attempt folder of the most recently visualised mesh,
+    or ``None`` if nothing has been visualised yet."""
+    with _last_lock:
+        return _last_visualized_attempt_dir

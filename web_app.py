@@ -59,6 +59,8 @@ from agents.shared.viz_bus import (
     publish as viz_publish,
     subscribe as viz_subscribe,
     unsubscribe as viz_unsubscribe,
+    get_last_visualized_attempt_dir as viz_get_last_attempt_dir,
+    set_last_visualized_attempt_dir as viz_set_last_attempt_dir,
 )
 from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
 from tools import set_mesh_checks, set_render_library
@@ -676,15 +678,35 @@ _PARAMETERS_MD = (
 
 @app.get("/api/parameters")
 def api_parameters() -> dict:
-    """Return the canonical DC parameter list as plain text.
+    """Return parameters for the Copy parameters list button.
 
-    Served as JSON ``{"text": "..."}`` so the JS Copy-parameters
-    button can read it once and write it to the clipboard.  The
-    source is ``DC_prompt_fragments/dc_config/parameters.md``,
-    which already formats the 17 parameters as a numbered list
-    grouped by section — perfectly readable when pasted anywhere.
+    When a mesh is currently shown in the chat-view 3D viewer (i.e.
+    ``visualize_3d_model`` has been called by the Receptionist this
+    process), serve the matching attempt's ``parameters.json`` so
+    the user gets the ACTUAL design values they are looking at.
+
+    When no mesh has been visualised yet (cold start, or after End
+    Session resets the cache), fall back to the canonical
+    17-parameter REFERENCE list at
+    ``DC_prompt_fragments/dc_config/parameters.md``.
+
+    The "currently-visualised attempt" is tracked server-side via the
+    viz_bus cache that ``visualize_3d_model`` writes every time it
+    accepts an obj_path.  Cleared on End Session in
+    ``_run_end_in_background``.
     """
     _require_auth()
+    folder = viz_get_last_attempt_dir()
+    if folder is not None:
+        params_path = folder / "parameters.json"
+        try:
+            text = params_path.read_text(encoding="utf-8")
+            return {"text": text, "attempt": str(folder)}
+        except OSError:
+            # Fall through to the canonical list when parameters.json
+            # is missing for any reason (folder pruned, write error,
+            # etc.).
+            pass
     try:
         text = _PARAMETERS_MD.read_text(encoding="utf-8")
     except OSError as exc:
@@ -1093,6 +1115,13 @@ async def _run_end_in_background(
             })
         except Exception:
             logger.exception("[WEB] failed to publish session_save_done")
+        # Clear the "currently-visualised attempt" cache so the next
+        # session's Copy parameters list button falls back to the
+        # canonical reference list until a new mesh is visualised.
+        try:
+            viz_set_last_attempt_dir(None)
+        except Exception:
+            logger.exception("[WEB] failed to clear viz_bus attempt cache")
         _END_IN_FLIGHT = False
 
 

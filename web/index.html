@@ -43,27 +43,31 @@
   <!-- Workspace: left side menu + the selected interface -->
   <div id="workspace" class="workspace" hidden>
     <nav id="sidenav" class="sidenav" aria-label="Interfaces">
-      <button class="nav-item active" type="button" data-view="chat">
-        <span class="nav-ico">💬</span><span>Chat</span>
-      </button>
-      <button class="nav-item" type="button" data-view="images">
-        <span class="nav-ico">🖼️</span><span>Image Inputs</span>
-      </button>
-      <button class="nav-item" type="button" data-view="params">
-        <span class="nav-ico">🎚️</span><span>Parameters Inputs</span>
-      </button>
-      <button class="nav-item" type="button" data-view="logstatus">
-        <span class="nav-ico">📊</span><span>LOG and Status</span>
-      </button>
-      <button class="nav-item" type="button" data-view="questions">
-        <span class="nav-ico">❓</span><span>Questions for Saved Sessions</span>
-      </button>
-      <button class="nav-item" type="button" data-view="settings">
-        <span class="nav-ico">⚙️</span><span>Workflow Settings</span>
-      </button>
-      <button class="nav-item" type="button" data-view="database">
-        <span class="nav-ico">🗄️</span><span>Database</span>
-      </button>
+      <div class="nav-group">
+        <button class="nav-item active" type="button" data-view="chat">
+          <span class="nav-ico">💬</span><span>Chat</span>
+        </button>
+        <button class="nav-item" type="button" data-view="images">
+          <span class="nav-ico">🖼️</span><span>Image Inputs</span>
+        </button>
+        <button class="nav-item" type="button" data-view="params">
+          <span class="nav-ico">🎚️</span><span>Parameters Inputs</span>
+        </button>
+      </div>
+      <div class="nav-group">
+        <button class="nav-item" type="button" data-view="logstatus">
+          <span class="nav-ico">📊</span><span>LOG and Status</span>
+        </button>
+        <button class="nav-item" type="button" data-view="questions">
+          <span class="nav-ico">❓</span><span>Questions for Saved Sessions</span>
+        </button>
+        <button class="nav-item" type="button" data-view="settings">
+          <span class="nav-ico">⚙️</span><span>Workflow Settings</span>
+        </button>
+        <button class="nav-item" type="button" data-view="database">
+          <span class="nav-ico">🗄️</span><span>Database</span>
+        </button>
+      </div>
     </nav>
 
     <div id="views" class="views">
@@ -172,7 +176,6 @@
           <div id="params-viewer" class="viewer">
             <div id="params-viewer-placeholder" class="viewer-placeholder">
               Move any slider to generate a live preview.
-              <br /><small>(Live preview wired in Step 7)</small>
             </div>
           </div>
           <!--
@@ -197,9 +200,7 @@
               Set any slider to FIX that parameter (the row turns
               green); gray VARY parameters are free for the system
               to choose.  FIXED values are sent into the chat
-              pipeline with your next message (auto-append wired in
-              Step 8 — for now use the
-              <em>Use these parameters</em> button below).
+              pipeline with your next message.
             </p>
 
             <!-- 4 section tabs.  Click to switch which section's
@@ -279,43 +280,45 @@
               </defs>
 
               <!-- Static arrows (BLACK, always visible).  Drawn before
-                   the boxes so they sit behind them.  Endpoint gaps
-                   of ~8px keep the arrowheads from touching box
-                   edges. -->
+                   the boxes so they sit behind them.  For boxes that
+                   carry an agent-tool-label below them, downward-
+                   exiting arrows start ~20px below the box bottom so
+                   the label sits clearly between the box and the
+                   arrow. -->
               <!-- User <-> Receptionist -->
-              <line x1="600" y1="62" x2="600" y2="102"
+              <line x1="600" y1="55" x2="600" y2="75"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Receptionist <-> Orchestrator -->
-              <line x1="600" y1="182" x2="600" y2="262"
+              <line x1="600" y1="155" x2="600" y2="267"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- User Input Inspector <-> Orchestrator -->
-              <line x1="275" y1="255" x2="475" y2="290"
+              <line x1="318" y1="214" x2="502" y2="306"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Design Output Inspector <-> Orchestrator -->
-              <line x1="728" y1="290" x2="912" y2="254"
+              <line x1="882" y1="214" x2="698" y2="306"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- User Input Inspector <-> Planner -->
-              <line x1="150" y1="278" x2="170" y2="332"
+              <line x1="240" y1="265" x2="267" y2="337"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Planner <-> Design Input Creator -->
-              <line x1="235" y1="412" x2="370" y2="455"
+              <line x1="359" y1="420" x2="412" y2="452"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Design Input Creator <-> Design Input Inspector -->
-              <line x1="518" y1="492" x2="562" y2="492"
+              <line x1="568" y1="487" x2="632" y2="487"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Design Input Inspector <-> Tool Caller -->
-              <line x1="785" y1="455" x2="825" y2="412"
+              <line x1="788" y1="452" x2="841" y2="420"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
               <!-- Design Output Inspector <-> Tool Caller -->
-              <line x1="1040" y1="278" x2="905" y2="332"
+              <line x1="960" y1="265" x2="933" y2="337"
                     stroke="#e6e8eb" stroke-width="2"
                     marker-start="url(#arrow)" marker-end="url(#arrow)" />
 
@@ -327,123 +330,123 @@
                    .orch-dyn-link kept for CSS reuse (light-gray
                    stroke + display:none when hidden). -->
               <line id="dyn-orch-planner" class="orch-dyn-link"
-                    x1="475" y1="329" x2="275" y2="356"
+                    x1="502" y1="329" x2="363" y2="356"
                     marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
               <line id="dyn-orch-dic" class="orch-dyn-link"
-                    x1="555" y1="358" x2="435" y2="452"
+                    x1="560" y1="365" x2="496" y2="452"
                     marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
               <line id="dyn-orch-dii" class="orch-dyn-link"
-                    x1="620" y1="358" x2="665" y2="452"
+                    x1="640" y1="365" x2="704" y2="452"
                     marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
               <line id="dyn-orch-tc" class="orch-dyn-link"
-                    x1="725" y1="336" x2="815" y2="353"
+                    x1="698" y1="329" x2="837" y2="356"
                     marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
               <line id="dyn-tc-propeller" class="orch-dyn-link"
-                    x1="995" y1="361" x2="1025" y2="358"
+                    x1="1003" y1="365" x2="1012" y2="364"
                     marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
               <line id="dyn-tc-vr" class="orch-dyn-link"
-                    x1="967" y1="412" x2="1047" y2="437"
+                    x1="999" y1="420" x2="1035" y2="442"
                     marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
 
               <!-- User -->
               <g id="agent-user" class="flow-box flow-box-user">
-                <rect x="540" y="10" width="120" height="44" rx="3" ry="3" />
-                <text x="600" y="37" text-anchor="middle">User</text>
+                <rect x="540" y="10" width="120" height="40" rx="3" ry="3" />
+                <text x="600" y="35" text-anchor="middle">User</text>
               </g>
 
               <!-- Receptionist -->
               <g id="agent-receptionist" class="flow-box flow-box-agent">
-                <rect x="480" y="110" width="240" height="64" rx="3" ry="3" />
-                <text x="600" y="147" text-anchor="middle">Receptionist</text>
-                <text x="600" y="188" text-anchor="middle"
+                <rect x="510" y="80" width="180" height="55" rx="3" ry="3" />
+                <text x="600" y="113" text-anchor="middle">Receptionist</text>
+                <text x="600" y="149" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- User Input Inspector -->
               <g id="agent-user-input-inspector" class="flow-box flow-box-agent">
-                <rect x="30" y="190" width="240" height="80" rx="3" ry="3" />
-                <text x="150" y="220" text-anchor="middle">User Input</text>
-                <text x="150" y="240" text-anchor="middle">Inspector</text>
-                <text x="150" y="285" text-anchor="middle"
+                <rect x="130" y="175" width="180" height="70" rx="3" ry="3" />
+                <text x="220" y="207" text-anchor="middle">User Input</text>
+                <text x="220" y="227" text-anchor="middle">Inspector</text>
+                <text x="220" y="259" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- Orchestrator -->
               <g id="agent-orchestrator" class="flow-box flow-box-agent">
-                <rect x="480" y="270" width="240" height="80" rx="3" ry="3" />
-                <text x="600" y="316" text-anchor="middle">Orchestrator</text>
-                <text x="600" y="365" text-anchor="middle"
+                <rect x="510" y="275" width="180" height="70" rx="3" ry="3" />
+                <text x="600" y="315" text-anchor="middle">Orchestrator</text>
+                <text x="600" y="359" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- Design Output Inspector -->
               <g id="agent-dc-output-inspector" class="flow-box flow-box-agent">
-                <rect x="920" y="190" width="240" height="80" rx="3" ry="3" />
-                <text x="1040" y="222" text-anchor="middle">Design Output</text>
-                <text x="1040" y="242" text-anchor="middle">Inspector</text>
-                <text x="1040" y="285" text-anchor="middle"
+                <rect x="890" y="175" width="180" height="70" rx="3" ry="3" />
+                <text x="980" y="207" text-anchor="middle">Design Output</text>
+                <text x="980" y="227" text-anchor="middle">Inspector</text>
+                <text x="980" y="259" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- Planner -->
               <g id="agent-planner" class="flow-box flow-box-agent">
-                <rect x="70" y="340" width="200" height="64" rx="3" ry="3" />
-                <text x="170" y="377" text-anchor="middle">Planner</text>
-                <text x="170" y="418" text-anchor="middle"
+                <rect x="205" y="345" width="150" height="55" rx="3" ry="3" />
+                <text x="280" y="377" text-anchor="middle">Planner</text>
+                <text x="280" y="414" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- Tool Caller -->
               <g id="agent-tool-caller" class="flow-box flow-box-agent">
-                <rect x="820" y="340" width="170" height="64" rx="3" ry="3" />
-                <text x="905" y="377" text-anchor="middle">Tool Caller</text>
-                <text x="905" y="418" text-anchor="middle"
+                <rect x="845" y="345" width="150" height="55" rx="3" ry="3" />
+                <text x="920" y="377" text-anchor="middle">Tool Caller</text>
+                <text x="920" y="414" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- Design Input Creator -->
               <g id="agent-dc-input-creator" class="flow-box flow-box-agent">
-                <rect x="290" y="460" width="220" height="64" rx="3" ry="3" />
-                <text x="400" y="497" text-anchor="middle">Design Input Creator</text>
-                <text x="400" y="538" text-anchor="middle"
+                <rect x="380" y="460" width="180" height="55" rx="3" ry="3" />
+                <text x="470" y="492" text-anchor="middle">Design Input Creator</text>
+                <text x="470" y="529" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- Design Input Inspector -->
               <g id="agent-dc-input-inspector" class="flow-box flow-box-agent">
-                <rect x="570" y="460" width="220" height="64" rx="3" ry="3" />
-                <text x="680" y="497" text-anchor="middle">Design Input Inspector</text>
-                <text x="680" y="538" text-anchor="middle"
+                <rect x="640" y="460" width="180" height="55" rx="3" ry="3" />
+                <text x="730" y="492" text-anchor="middle">Design Input Inspector</text>
+                <text x="730" y="529" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- TOOL: Propeller Generator -->
               <g id="agent-propeller-configurator" class="flow-box flow-box-tool">
-                <rect x="1030" y="315" width="160" height="64" rx="3" ry="3" />
-                <text x="1110" y="338" text-anchor="middle" class="tool-prefix">TOOL:</text>
-                <text x="1110" y="362" text-anchor="middle">Propeller Generator</text>
+                <rect x="1020" y="325" width="160" height="64" rx="3" ry="3" />
+                <text x="1100" y="350" text-anchor="middle" class="tool-prefix">TOOL:</text>
+                <text x="1100" y="372" text-anchor="middle">Propeller Generator</text>
               </g>
 
               <!-- TOOL: Visual Renders -->
               <g id="agent-visual-renderings-generator" class="flow-box flow-box-tool">
-                <rect x="1030" y="445" width="160" height="64" rx="3" ry="3" />
-                <text x="1110" y="468" text-anchor="middle" class="tool-prefix">TOOL:</text>
-                <text x="1110" y="492" text-anchor="middle">Visual Renders</text>
+                <rect x="1020" y="450" width="160" height="64" rx="3" ry="3" />
+                <text x="1100" y="475" text-anchor="middle" class="tool-prefix">TOOL:</text>
+                <text x="1100" y="497" text-anchor="middle">Visual Renders</text>
               </g>
 
               <!-- Database Handler (floating, no arrows) -->
               <g id="agent-database-handler" class="flow-box flow-box-agent">
-                <rect x="400" y="610" width="210" height="64" rx="3" ry="3" />
-                <text x="505" y="647" text-anchor="middle">Database Handler</text>
-                <text x="505" y="688" text-anchor="middle"
+                <rect x="380" y="600" width="180" height="55" rx="3" ry="3" />
+                <text x="470" y="632" text-anchor="middle">Database Handler</text>
+                <text x="470" y="669" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
 
               <!-- Context Pruner (floating, no arrows) -->
               <g id="agent-context-pruner" class="flow-box flow-box-agent">
-                <rect x="670" y="610" width="210" height="64" rx="3" ry="3" />
-                <text x="775" y="647" text-anchor="middle">Context Pruner</text>
-                <text x="775" y="688" text-anchor="middle"
+                <rect x="640" y="600" width="180" height="55" rx="3" ry="3" />
+                <text x="730" y="632" text-anchor="middle">Context Pruner</text>
+                <text x="730" y="669" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
             </svg>
