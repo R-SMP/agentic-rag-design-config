@@ -2614,3 +2614,131 @@ landed as a focused multi-commit sprint (helper → settings →
 ingest → LLM-pass → retrieval → smoke test).  Pairs with F32
 (visual-proportion parameter estimation) — both improvements
 make the UII's effective image budget go further.
+
+
+### F35. Re-audit the Context Pruner — does it act on the Database Handler or not?
+
+**Where.**
+
+  * `agents/shared/base_chain_agent.py::prune_history_if_needed`
+    — the pre-invoke hook every chain agent calls at the top
+    of its run loop.
+  * `agents/shared/context_pruner.py` — the three-tier
+    escalation Pruner agent itself.
+  * `agents/database_handler/database_handler.py` —
+    `populate_database`, `_run_one_conversation`,
+    `_formulate_question`, `_decide_next`,
+    `_enforce_semantic_cap_pair`, `_run_force_tool_phase`.
+    The DH's own LLM invokes (the ones formulating questions /
+    parsing ASK / SAVE responses) AND the
+    `invoke_with_retry(agent.base_llm, ...)` calls against
+    each interviewed chain agent's bare LLM.
+  * Workflow settings: `CONTEXT_PRUNER_ENABLED`,
+    `CONTEXT_PRUNER_THRESHOLD_TOKENS` (default 80 000),
+    `CONTEXT_PRUNER_KEEP_LAST_MESSAGES` (default 6),
+    `CONTEXT_PRUNER_MAX_INDIVIDUAL_MESSAGE_TOKENS`,
+    `CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS`.
+  * Cross-refs: README's "Context Pruner" section, F7 (status
+    note), F12 (10-item verification checklist), O3 (DH
+    context-window pressure, still open).
+
+**What.**  The Context Pruner shipped in v9 and is documented
+as **intentionally NOT applied to the Database Handler** (per
+the README CP section + F12 item 9 + F7 status note).  The
+stated rationale: the DH iterates ~28 schedule entries in one
+save and relies on accumulated state — pruning would lose
+context the DH needs to formulate later questions accurately.
+
+But this design decision has never been validated end-to-end
+against a real long DH save, and there are four specific
+questions the audit should answer:
+
+  1. **Is the design intent actually implemented?**  Walk the
+     DH code paths and confirm no inherited / indirect call
+     site triggers `prune_history_if_needed` on the DH's own
+     `self.messages` buffer.  The DH does NOT subclass
+     `BaseChainAgent` (it has its own base), but a subtle
+     copy-paste or future refactor could introduce a hook
+     accidentally.
+  2. **What is the DH's real context size on long saves?**
+     Sessions with 40+ chunks (e.g. ID057, ID059 from the
+     2026-06-04 sprint) iterate dozens of Q+A interviews.
+     Each appends ASK + SAVE turns to `self.messages`.  Need
+     real measurements: at the END of a long DH save, how
+     many tokens are in `self.messages`?  Is it close to the
+     provider's per-call budget?  This is the empirical
+     ground for whether O3 (still open) is a real risk or a
+     theoretical one.
+  3. **Are the interviewed chain agents pruned mid-interview?**
+     When the DH calls
+     `invoke_with_retry(agent.base_llm, [system_msg] + convo_buffer)`,
+     it bypasses `BaseChainAgent`'s run loop entirely — so
+     `prune_history_if_needed` is NOT called.  But the agent's
+     OWN `self.messages` is still the source of `convo_buffer`.
+     If the agent's history was already pruned during the live
+     session, the DH sees the pruned form (likely fine).  If
+     not, the DH sees the full history — possibly large.
+     Confirm: does the DH ever construct a `convo_buffer`
+     large enough to hit the upstream provider's per-call
+     limit?  (Especially for DCOI with image-heavy attempts,
+     before F34's compression lands.)
+  4. **Is "DH NOT pruned" still the right design?**  Alternative
+     designs worth weighing if the audit turns up real
+     pressure:
+       a. **Per-agent eviction** (O3's sketch) — at each
+          `_formulate_question`, walk `self.messages` backwards
+          and truncate to the boundary where the CURRENT
+          agent's section began.  Earlier agents' interviews
+          stay archived on disk under
+          `database/<sid>/<agent>/`; the DH doesn't need them
+          in live context.
+       b. **Custom CP for the DH** with a more aggressive
+          threshold and a tailored prompt that knows about
+          the DH's ASK / SAVE protocol.
+       c. **Keep "no pruning" but cap the schedule** — if the
+          real bottleneck is too many entries per save, bound
+          the per-save count and require multiple End Session
+          rounds for very long sessions.
+       d. **Status quo** — if the audit shows actual budgets
+          comfortable, no change needed; close O3.
+
+The F12 checklist already lists "DB Handler not pruned" as
+item 9 but does not exercise the EMPIRICAL question 2 above.
+F35 is the focused follow-up: a single empirical run plus a
+code audit.
+
+**Why deferred.**  F12 as a whole is open; F35 is the subset
+that matters most for stability since the DH save is the
+only place a single LLM call routinely processes a giant
+accumulated state.  Lower than the live-session items but
+worth scheduling before the corpus grows much larger (more
+chunks per save → more DH context pressure).
+
+**Proper fix.**  Three components:
+
+  1. **Code audit.**  Read `database_handler.py` end-to-end,
+     confirm no path calls `prune_history_if_needed` on the
+     DH's own buffer.  Document the finding inline in the
+     DH file as a comment so future refactors don't quietly
+     re-introduce the hook.
+  2. **Empirical run.**  Take the longest real saved session
+     (ID057 or ID059, 40 chunks each).  Add instrumentation to
+     log `count_tokens(self.messages)` at the start of every
+     `_formulate_question` AND the size of every `convo_buffer`
+     handed to an interviewed agent's `base_llm`.  Run a fresh
+     DH save (or replay against the existing chunks if
+     possible).  Capture the curve.
+  3. **Decision.**  Based on (2):
+       * Tokens stay <50 % of provider limit → close O3 as
+         "no action needed", document in README.
+       * Tokens hit 50–80 % → adopt per-agent eviction
+         (option a) as a lightweight protective measure.
+       * Tokens hit > 80 % → either custom DH CP (option b)
+         or schedule capping (option c), based on which
+         dominates.
+
+**Status.**  Open.  Pairs with F12 (broader CP verification)
+and O3 (DH context-window pressure, currently still labelled
+"open, low priority while no refactor planned" — F35's
+empirical step would either close O3 or escalate its
+priority).
