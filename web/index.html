@@ -658,6 +658,13 @@
             <p id="db-locked-status" class="db-status" role="status"></p>
           </div>
 
+          <!-- States 2 + 2c: two destructive cards in a flex row.
+               Red = reset Postgres tables (existing).  Blue = clear
+               the local previous_sessions/ folder on the Railway
+               volume (new).  Side-by-side when there's room; stacks
+               vertically below ~900 px. -->
+          <div class="db-action-row">
+
           <!-- State 2: unlocked — reset action. -->
           <div id="db-unlocked" class="db-card" hidden>
             <h2 class="db-title">Reset the database to a clean state</h2>
@@ -699,6 +706,69 @@
               <button id="db-relock" class="ghost" type="button">Lock again</button>
             </p>
           </div>
+
+          <!-- State 2c: clear the previous_sessions/ folder on the
+               Railway volume.  Same password unlock as the red box;
+               destructive phrase is "clear_previous_sessions".
+               Backed by POST /api/db_admin/clear_previous_sessions. -->
+          <div id="db-clear-sessions" class="db-card db-card-blue" hidden>
+            <h2 class="db-title">Clear previous-sessions folder</h2>
+            <p class="db-blurb">
+              Type the phrase <code>clear_previous_sessions</code> in
+              the box below and press <strong>Enter</strong> or click
+              <strong>Send</strong> to permanently delete every
+              subdirectory inside the Railway volume's
+              <code>previous_sessions/</code> folder.  This removes
+              the on-disk cache of past-session artefacts that
+              <code>retrieve_attempt</code> /
+              <code>retrieve_user_inputs</code> fall back to when the
+              canonical store is unreachable.
+            </p>
+            <p class="db-blurb db-blurb-keep">
+              <strong>What gets wiped:</strong>
+            </p>
+            <ul class="db-list">
+              <li>Every <code>ID&lt;NNN&gt;_YYYYMMDD_HHMMSS/</code>
+                  directory directly inside
+                  <code>previous_sessions/</code> on the currently-
+                  running container's volume</li>
+              <li>All per-attempt artefacts inside those directories
+                  (renders, meshes, <code>description.txt</code>,
+                  per-agent histories)</li>
+            </ul>
+            <p class="db-blurb db-blurb-keep">
+              <strong>What is preserved:</strong>
+            </p>
+            <ul class="db-list">
+              <li>The Postgres database
+                  (<code>sessions</code>, <code>chunks</code>,
+                  <code>dc_attempts</code>, …) — use the red
+                  <em>Reset the database</em> box for that</li>
+              <li>The R2 bucket — past-session artefacts archived to
+                  R2 are untouched</li>
+              <li>The <code>previous_sessions/</code> folder itself
+                  (only its children are removed)</li>
+              <li>The current in-flight session (if any) — only
+                  sessions already archived to
+                  <code>previous_sessions/</code> are affected</li>
+            </ul>
+            <p class="db-warning db-warning-blue">
+              This action is <strong>irreversible</strong> on the
+              container's local volume.  If you need any of these
+              files, re-download them from R2 first (canonical
+              archive) before running this.  Scope is the current
+              Railway container only — other deploys / local
+              checkouts are untouched.
+            </p>
+            <div class="db-form-row">
+              <input id="db-clear-phrase" type="text" autocomplete="off"
+                     placeholder="clear_previous_sessions" />
+              <button id="db-clear-send" class="primary blue" type="button">Send</button>
+            </div>
+            <p id="db-clear-status" class="db-status" role="status"></p>
+          </div>
+
+          </div>  <!-- /.db-action-row -->
 
           <!-- State 2b: session ignore list editor (also revealed
                when authenticated; co-resides with State 2 above

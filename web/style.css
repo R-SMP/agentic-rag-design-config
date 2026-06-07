@@ -1892,6 +1892,83 @@ button.danger:hover { background: #3a1d1d; }
   margin: 16px 0 0 0;
 }
 
+/* -------------------------------------------------------------------------
+   Side-by-side row holding the two destructive cards (red reset_database
+   + blue clear_previous_sessions).  Wraps to stacked layout under
+   ~900 px so a narrow viewport still gets two readable cards. */
+.db-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 24px;
+}
+.db-action-row > .db-card {
+  flex: 1 1 360px;
+  max-width: none;
+}
+
+/* -------------------------------------------------------------------------
+   Blue variant of the developer-console card.  Used by the
+   "Clear previous-sessions folder" box so the operator can immediately
+   tell it apart from the red "Reset the database" box.  Same skeleton
+   as .db-card — only the accents change.  Reuses the existing
+   --accent (#4f8cff) hue throughout. */
+
+:root {
+  /* Blue counterpart to the implicit red used by .db-warning.
+     Slightly darker than --accent so the warning panel reads
+     informational/cautionary rather than pure highlight. */
+  --accent-blue-border: #2a4a7a;
+}
+
+.db-card-blue {
+  border-color: rgba(79, 140, 255, 0.55);
+  background: linear-gradient(
+    180deg,
+    rgba(79, 140, 255, 0.07) 0%,
+    var(--panel, #1a1a1a) 70%
+  );
+}
+.db-card-blue .db-title {
+  color: #b8d0ff;
+}
+.db-card-blue code {
+  background: rgba(79, 140, 255, 0.12);
+}
+
+/* Blue-tinted "warning" panel — same shape as .db-warning but the
+   colour reads informational/cautionary rather than dangerous. */
+.db-warning-blue {
+  border-color: var(--accent-blue-border);
+  background: rgba(79, 140, 255, 0.14);
+  color: #cfe0ff;
+}
+
+/* Phrase input inside the blue card: blue idle border + brighter
+   blue focus ring so it visually belongs to this card. */
+.db-card-blue .db-form-row input {
+  border-color: rgba(79, 140, 255, 0.35);
+}
+.db-card-blue .db-form-row input:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(79, 140, 255, 0.25);
+}
+
+/* Blue Send button — pinned to --accent regardless of theme so it
+   never gets re-tinted by future changes to .primary. */
+.db-card-blue button.primary.blue {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #ffffff;
+}
+.db-card-blue button.primary.blue:hover:not(:disabled) {
+  background: #6a9eff;
+  border-color: #6a9eff;
+}
+.db-card-blue button.primary.blue:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+
 /* =========================================================================
    DBa (database access) per-agent toggle button — rendered by
    renderLrOverlay() inside each agent box on the LLM-routing chart.

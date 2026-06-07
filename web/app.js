@@ -3830,6 +3830,14 @@ const dbResetSendBtn = $("db-reset-send");
 const dbUnlockedStat = $("db-unlocked-status");
 const dbRelockBtn    = $("db-relock");
 
+// State 2c — clear previous_sessions folder (blue card, sits beside
+// the red reset card inside .db-action-row).  Same dbPassword unlock
+// as the red card.
+const dbClearCard    = $("db-clear-sessions");
+const dbClearPhrase  = $("db-clear-phrase");
+const dbClearSendBtn = $("db-clear-send");
+const dbClearStat    = $("db-clear-status");
+
 
 function _dbSetStatus(el, text, kind) {
   if (!el) return;
@@ -3845,10 +3853,13 @@ function resetDbView() {
   dbPassword = "";
   if (dbPasswordIn)  dbPasswordIn.value  = "";
   if (dbResetPhrase) dbResetPhrase.value = "";
+  if (dbClearPhrase) dbClearPhrase.value = "";
   _dbSetStatus(dbLockedStat,   "");
   _dbSetStatus(dbUnlockedStat, "");
+  _dbSetStatus(dbClearStat,    "");
   dbLocked.hidden   = false;
   dbUnlocked.hidden = true;
+  if (dbClearCard) dbClearCard.hidden = true;
   // Hide + clear the ignore-list card too (re-revealed on next unlock).
   const ignoreCard = $("db-ignore-card");
   if (ignoreCard) ignoreCard.hidden = true;
@@ -3877,7 +3888,10 @@ async function dbUnlock() {
       dbPassword = pw;
       dbLocked.hidden   = true;
       dbUnlocked.hidden = false;
+      // Reveal the blue clear_previous_sessions card alongside the red one.
+      if (dbClearCard) dbClearCard.hidden = false;
       _dbSetStatus(dbUnlockedStat, "");
+      _dbSetStatus(dbClearStat,    "");
       // Reveal the session-ignore-list card too and load its current state.
       const ignoreCard = $("db-ignore-card");
       if (ignoreCard) ignoreCard.hidden = false;
@@ -3943,8 +3957,59 @@ async function dbResetSend() {
 }
 
 
+async function dbClearSend() {
+  if (!dbClearPhrase) return;
+  const phrase = dbClearPhrase.value;
+  if (phrase !== "clear_previous_sessions") {
+    _dbSetStatus(dbClearStat,
+      "Phrase must be exactly \"clear_previous_sessions\".  Nothing was deleted.",
+      "error");
+    return;
+  }
+  if (!window.confirm(
+        "This will permanently delete every subdirectory inside " +
+        "previous_sessions/ on the current container.  The R2 archive " +
+        "and the Postgres database are NOT affected.  This action is " +
+        "IRREVERSIBLE on the local volume.  Continue?")) {
+    _dbSetStatus(dbClearStat, "Cancelled.");
+    return;
+  }
+  _dbSetStatus(dbClearStat, "Sending…");
+  if (dbClearSendBtn) dbClearSendBtn.disabled = true;
+  try {
+    const res = await fetch("/api/db_admin/clear_previous_sessions", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ password: dbPassword, phrase }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (body.ok) {
+      const n     = body.entries_removed;
+      const bytes = body.bytes_freed;
+      const summary = (n != null && bytes != null)
+        ? `Removed ${n} entr${n === 1 ? "y" : "ies"}, freed ${bytes} byte(s).`
+        : "previous_sessions/ cleared.";
+      const note = body.note ? "  " + body.note : "";
+      _dbSetStatus(dbClearStat,
+        summary + note + "  Re-locking in 4 s…",
+        "success");
+      setTimeout(resetDbView, 4000);
+    } else {
+      _dbSetStatus(dbClearStat,
+        body.error || "Clear failed.", "error");
+    }
+  } catch (e) {
+    _dbSetStatus(dbClearStat,
+      "Network error contacting the server.", "error");
+  } finally {
+    if (dbClearSendBtn) dbClearSendBtn.disabled = false;
+  }
+}
+
+
 if (dbUnlockBtn)   dbUnlockBtn.addEventListener("click", dbUnlock);
 if (dbResetSendBtn) dbResetSendBtn.addEventListener("click", dbResetSend);
+if (dbClearSendBtn) dbClearSendBtn.addEventListener("click", dbClearSend);
 if (dbRelockBtn)   dbRelockBtn.addEventListener("click", resetDbView);
 
 if (dbPasswordIn) dbPasswordIn.addEventListener("keydown", (e) => {
@@ -3952,6 +4017,9 @@ if (dbPasswordIn) dbPasswordIn.addEventListener("keydown", (e) => {
 });
 if (dbResetPhrase) dbResetPhrase.addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); dbResetSend(); }
+});
+if (dbClearPhrase) dbClearPhrase.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); dbClearSend(); }
 });
 
 
