@@ -115,8 +115,9 @@ def _check_invite_code(submitted: str) -> bool:
 # rejected) so a forgotten env var can never leave the destructive
 # endpoint exposed.
 
-DB_PASSWORD_ENV = "PASSWORD_DATABASE_WEB_UI"
-RESET_PHRASE    = "reset_database"
+DB_PASSWORD_ENV            = "PASSWORD_DATABASE_WEB_UI"
+RESET_PHRASE               = "reset_database"
+CLEAR_PREV_SESSIONS_PHRASE = "clear_previous_sessions"
 # Order is intentional only for the SELECT COUNT(*) snapshot; the
 # TRUNCATE ... CASCADE doesn't care about order.  dc_parameter_schemas
 # is deliberately ABSENT — it holds the 17-parameter schema seed and
@@ -1593,6 +1594,96 @@ async def api_db_admin_reset(body: _DbResetBody) -> dict:
         "ok":            True,
         "before_counts": before,
         "tables_wiped":  RESET_TABLES,
+    }
+
+
+# --------------------------------------------------------------------------
+# Database admin — clear PREVIOUS_SESSIONS_DIR (Railway-mounted volume)
+# --------------------------------------------------------------------------
+# Mirrors the reset endpoint pattern (same password + literal phrase
+# confirmation).  Designed for one-shot wipes before detaching the
+# Railway-mounted volume; the DH save itself does NOT read from
+# previous_sessions/ (see warnings_developer.md W1 + W30 — the archive
+# sweep happens AFTER the DH save, and R2 mirror runs against the moved
+# files), so wiping is safe between sessions even with the volume
+# attached.
+
+class _DbClearPrevSessionsBody(BaseModel):
+    password: str
+    phrase:   str
+
+
+@app.post("/api/db_admin/clear_previous_sessions")
+async def api_db_admin_clear_previous_sessions(
+    body: _DbClearPrevSessionsBody,
+) -> dict:
+    """Destructive: remove every entry under PREVIOUS_SESSIONS_DIR and
+    leave the folder itself intact so the volume mount target survives.
+
+    Same password+phrase gate as :func:`api_db_admin_reset`.  Returns
+    ``entries_removed`` + ``bytes_freed`` for verification.
+    """
+    if not _check_db_password(body.password):
+        return {"ok": False, "error": "Password rejected."}
+    if body.phrase != CLEAR_PREV_SESSIONS_PHRASE:
+        return {
+            "ok": False,
+            "error": f"Phrase must be exactly {CLEAR_PREV_SESSIONS_PHRASE!r}.",
+        }
+
+    import shutil
+    from config import PREVIOUS_SESSIONS_DIR
+
+    if not PREVIOUS_SESSIONS_DIR.exists():
+        return {
+            "ok":              True,
+            "entries_removed": 0,
+            "bytes_freed":     0,
+            "note":            "Directory did not exist; nothing to do.",
+        }
+
+    # Snapshot count + total bytes BEFORE deletion so the response
+    # tells the operator exactly how much was freed.
+    entries     = list(PREVIOUS_SESSIONS_DIR.iterdir())
+    n_entries   = len(entries)
+    total_bytes = 0
+    for entry in entries:
+        if entry.is_file():
+            try:
+                total_bytes += entry.stat().st_size
+            except OSError:
+                pass
+        elif entry.is_dir():
+            for f in entry.rglob("*"):
+                if f.is_file():
+                    try:
+                        total_bytes += f.stat().st_size
+                    except OSError:
+                        pass
+
+    try:
+        for entry in entries:
+            if entry.is_dir():
+                shutil.rmtree(entry)
+            else:
+                entry.unlink()
+    except Exception as exc:
+        logger.exception("[db_admin] clear_previous_sessions failed")
+        return {
+            "ok":    False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    logger.warning(
+        "[db_admin] PREVIOUS_SESSIONS_DIR WIPED via "
+        "/api/db_admin/clear_previous_sessions — removed %d entries, "
+        "%d bytes",
+        n_entries, total_bytes,
+    )
+    return {
+        "ok":              True,
+        "entries_removed": n_entries,
+        "bytes_freed":     total_bytes,
     }
 
 
