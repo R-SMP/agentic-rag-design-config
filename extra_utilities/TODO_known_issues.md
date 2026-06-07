@@ -2467,3 +2467,150 @@ agent's context is loaded once per batched call.
 change visible to the user.  Best landed alongside any future
 work on `dh_schedule.json` schema (so the batched-group
 metadata can ride in on a coordinated schema bump).
+
+
+### F34. Compress user-input images before save / retrieval / LLM-pass
+
+**Where.**  Image flow touches multiple surfaces; the proper
+fix instruments three of them:
+
+  * `web_app.py` `_save_uploaded_image` (and any sibling on the
+    upload endpoint) — INGEST path from the web UI's Image
+    Inputs view into `inputs/input_images/`.
+  * `agents/shared/llm_provider.py::make_image_block` —
+    LLM-PASS encode site for outgoing image content blocks.
+  * `tools/retrieve_user_inputs/retrieve_user_inputs.py::_run_retrieve_user_inputs`
+    and `tools/retrieve_attempt/retrieve_attempt.py` —
+    R2-side RETRIEVAL paths that re-attach image bytes to
+    tool responses for past saved sessions.
+
+Adjacent supporting sites (read for context, not necessarily
+modified):
+
+  * `agents/shared/file_utils.py::load_user_inputs_bundle` /
+    `load_input_images` — agent-side load from disk.
+  * `agents/database_handler/database_handler.py::_collect_user_inputs`
+    — DH copy from `inputs/input_images/` into
+    `database/<sid>/user_inputs/images/` ahead of the R2 mirror.
+  * `agents/shared/r2_uploader.py::upload_directory` /
+    `upload_attempt_artefacts` — R2 PUT site.
+
+**What.**  User-uploaded reference images flow through the
+system at their original resolution and encoding today.  A
+modern phone-camera PNG or JPEG is easily 3–6 MB, which:
+
+  1. **Fills the LLM context window.**  Providers count
+     base64-encoded image bytes against the per-call input
+     budget.  A 4 MB image consumes ~5.3 MB of token-equivalent
+     space; multi-image turns push UII / DCII / DCOI close to
+     or past per-call limits, contribute to Anthropic 429
+     rate-limit hits during image-heavy turns (already a
+     recurring operational gotcha — see the 2026-06-04 →
+     2026-06-05 sprint notes), and cost real money on input
+     tokens.
+  2. **Bloats R2 storage and bandwidth.**  Each saved session
+     mirrors its reference images to R2; later
+     `retrieve_user_inputs(images_flag=True)` calls re-fetch
+     them.  Both pay R2 bandwidth + storage and re-pay the
+     context cost on the retrieving side.
+  3. **Slows every image-touching pass.**  Encode / decode /
+     network round-trip / LLM input parsing all scale with
+     image size, and there are 3–5 LLM passes per session that
+     touch the images (UII initial read, optional UII
+     re-read with retrieve_*, DCII, DCOI per attempt).
+
+A single Pillow-based compression pass (resize the longest
+side to N pixels + re-encode as JPEG at quality Q) typically
+delivers a 10–30× reduction with no human-visible loss for the
+kind of sketches and references our users upload.
+
+The compression can apply at any of THREE distinct points,
+and the right design likely combines them:
+
+  * **At INGEST** — compress once at upload time; everything
+    downstream (LLM calls, DH save, R2 mirror, future
+    retrievals) inherits the smaller bytes.  Cheapest if we
+    trust the compression budget for the use case.
+  * **At LLM-PASS** — keep the original on disk / R2;
+    compress in-memory only when handing bytes to an LLM.
+    Preserves the canonical asset but pays the compression
+    cost on every LLM read.
+  * **At RETRIEVAL** — keep originals everywhere; compress
+    only when `retrieve_user_inputs` / `retrieve_attempt`
+    packs bytes into a tool response.  Required for legacy
+    images already on R2 from sessions saved before this
+    feature shipped.
+
+A typical configuration would be ingest-time by default plus
+retrieval-time for legacy R2 content, with LLM-pass as a
+safety-net guard against any path that bypassed both.
+
+**Why deferred.**  Three real concerns to settle before
+shipping:
+
+  1. **Quality loss for image-as-blueprint use cases.**  When
+     a user uploads a hand-drawn sketch annotated with
+     numerical parameters (small text, thin lines), aggressive
+     compression can destroy annotation legibility.  The UII
+     relies on reading those annotations.  Compression budgets
+     need empirical calibration per use case — likely two
+     tiers (gentle for annotated sketches, aggressive for
+     photo references) with a heuristic or a per-image
+     metadata hint to pick.
+  2. **In-place vs canonical-preservation.**  Compressing at
+     ingest is destructive — the canonical original is lost.
+     We may want the original archived to R2 under a separate
+     key shape and only the compressed version flowing through
+     the agent chain + retrieval surface.  Adds R2 key shape
+     complexity.
+  3. **EXIF / orientation handling.**  Phone images carry
+     EXIF orientation metadata; a naive resize without
+     honouring it produces sideways thumbnails.  The
+     compression helper must rotate-bake before resize.
+
+**Proper fix.**  Five components:
+
+  1. **New helper** at `agents/shared/image_utils.py`:
+     `compress_image_bytes(data, *, max_dim, quality, format='JPEG')`.
+     Pillow-backed.  Honours EXIF orientation, preserves
+     aspect ratio, returns `(compressed_bytes, mime_type)`.
+     Handles PNG-with-transparency by detecting alpha and
+     either keeping PNG with palette quantisation or
+     flattening on white background.
+  2. **New workflow-settings block** (next free number, likely
+     #24) with four knobs:
+       * `IMAGE_COMPRESSION_ENABLED` (bool, default `True`)
+       * `IMAGE_COMPRESSION_MAX_DIMENSION_PX` (int, default
+         `1280`)
+       * `IMAGE_COMPRESSION_JPEG_QUALITY` (int 1–95, default
+         `85`)
+       * `IMAGE_COMPRESSION_APPLY_AT` (enum: `"ingest"`,
+         `"llm-pass"`, `"retrieval"`, `"all"`; default
+         `"ingest"`).
+  3. **Call site 1 — INGEST.**  `web_app.py::_save_uploaded_image`
+     runs the helper before writing to
+     `inputs/input_images/`.  The on-disk file is the
+     compressed form.  Gated on the settings block.
+  4. **Call site 2 — LLM-PASS.**  `make_image_block` runs the
+     helper on raw bytes when `APPLY_AT in {"llm-pass", "all"}`.
+     Cheap insurance against any path that bypassed ingest
+     (programmatic image adds, legacy on-disk content).
+  5. **Call site 3 — RETRIEVAL.**  Both retrieve_* tools run
+     the helper on R2-fetched bytes before building the image
+     content blocks when `APPLY_AT in {"retrieval", "all"}`.
+     This is the critical path for legacy R2 content that
+     landed before ingest-time compression existed.
+
+Pairs naturally with a small smoke test that verifies the
+default compression budget preserves blade-count + annotation
+visibility on a representative sketch corpus while delivering
+the expected size reduction.
+
+**Status.**  Open.  **High priority** — directly impacts
+per-turn LLM input cost, the frequency of Anthropic 429
+rate-limit hits on image-heavy turns, and the effective
+context window the chain agents have to work against.  Best
+landed as a focused multi-commit sprint (helper → settings →
+ingest → LLM-pass → retrieval → smoke test).  Pairs with F32
+(visual-proportion parameter estimation) — both improvements
+make the UII's effective image budget go further.
