@@ -1260,7 +1260,7 @@ const LR_BOXES = [
   { key: "database_handler",      role: "agent", x: 615, y: 45,  w: 170, h: 95,
     label: "Database Handler" },
   { key: "context_pruner",        role: "agent", x: 615, y: 150, w: 170, h: 95,
-    label: "Context Pruner", notWired: true },
+    label: "Context Pruner" },
 ];
 const LR_AGENT_KEYS = LR_BOXES
   .filter((b) => b.role === "agent")
