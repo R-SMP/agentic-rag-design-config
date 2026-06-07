@@ -400,6 +400,12 @@ def _setup_logger() -> logging.Logger:
     fh.setFormatter(logging.Formatter("%(asctime)s  %(message)s"))
     logger.addHandler(fh)
 
+    # Emit the session-config banner FIRST so every saved log starts
+    # with the full settings + LLM routing + DBa snapshot (REPL path —
+    # matches the web entry point's behaviour).
+    from workflow_settings.session_banner import write_to_logger as _write_banner
+    _write_banner(logger)
+
     print(f"Log file: {log_path.resolve()}")
     return logger
 

@@ -12,6 +12,7 @@ const input = $("input");
 const sendBtn = $("send-btn");
 const endBtn = $("end-btn");
 const stopBtn = $("stop-btn");
+const saveLogBtn = $("save-log-btn");
 
 let busy = false;
 
@@ -31,12 +32,14 @@ function showChat() {
   gate.hidden = true;
   workspace.hidden = false;
   endBtn.hidden = false;
+  if (saveLogBtn) saveLogBtn.hidden = false;
   input.focus();
 }
 
 function showGate() {
   workspace.hidden = true;
   endBtn.hidden = true;
+  if (saveLogBtn) saveLogBtn.hidden = true;
   gate.hidden = false;
   gateInput.value = "";
   gateInput.focus();
@@ -645,6 +648,55 @@ endBtn.addEventListener("click", () => {
   if (endSessionState !== null) return;
   openEndModal();
 });
+
+
+// Save LOG — snapshot the current session log to R2 without ending
+// the session.  Posts to /api/save_log which writes
+// <resolved_session_name>/logs/snapshot_<UTC>.log via r2_uploader.
+// Brief Saving... / Saved! / Save failed feedback for 1.4 s, same
+// pattern as the Copy parameters list button in the chat viewer.
+//
+// 60 s AbortController timeout so a dead connection (proxy hold,
+// network drop mid-response) doesn't leave the button stuck on
+// "Saving…" forever — fetch on its own has no built-in timeout.
+const _SAVE_LOG_TIMEOUT_MS = 60_000;
+
+if (saveLogBtn) {
+  saveLogBtn.addEventListener("click", async () => {
+    if (saveLogBtn.disabled) return;
+    const originalLabel = saveLogBtn.textContent;
+    saveLogBtn.disabled = true;
+    saveLogBtn.textContent = "Saving…";
+    const controller = new AbortController();
+    const timeoutId = setTimeout(
+      () => controller.abort(),
+      _SAVE_LOG_TIMEOUT_MS,
+    );
+    try {
+      const res = await fetch("/api/save_log", {
+        method: "POST",
+        signal: controller.signal,
+      });
+      const body = await res.json().catch(() => ({}));
+      if (body.ok) {
+        saveLogBtn.textContent = "Saved!";
+      } else {
+        saveLogBtn.textContent = "Save failed";
+        console.warn("[save-log] failed:", body.error || res.statusText);
+      }
+    } catch (e) {
+      saveLogBtn.textContent = (e && e.name === "AbortError")
+        ? "Timed out"
+        : "Save failed";
+    } finally {
+      clearTimeout(timeoutId);
+      setTimeout(() => {
+        saveLogBtn.textContent = originalLabel;
+        saveLogBtn.disabled = false;
+      }, 1400);
+    }
+  });
+}
 
 // Live agent / model events.  Two kinds of SSE message arrive on
 // /api/events: "visualize" pushes a freshly-generated 3D model into

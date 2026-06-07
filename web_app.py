@@ -233,6 +233,12 @@ def _setup_session_logger(session_id: str) -> Path:
     fh.setFormatter(logging.Formatter("%(asctime)s  %(message)s"))
     logger.setLevel(logging.DEBUG)
     logger.addHandler(fh)
+
+    # Emit the session-config banner FIRST so every saved log starts
+    # with the full settings + LLM routing + DBa snapshot.  Sensitive
+    # values are filtered server-side by session_banner._is_sensitive_name.
+    from workflow_settings.session_banner import write_to_logger as _write_banner
+    _write_banner(logger)
     return log_path
 
 
@@ -1192,6 +1198,104 @@ async def api_end(body: EndIn | None = None) -> dict:
         "ok":     True,
         "status": "started",
         "saved":  save_requested,
+    }
+
+
+@app.post("/api/save_log")
+async def api_save_log() -> dict:
+    """Snapshot the current session log to R2 without ending the session.
+
+    Writes the live ``_BOX.log_path`` file to
+    ``<resolved_session_name>/logs/snapshot_<UTC-YYYYMMDDTHHMMSSZ>.log``
+    on R2.  Does NOT touch the SQL database, the in-flight session
+    state, the DH save flow, or any other R2 namespace.  Safe to call
+    repeatedly mid-session — each call creates a new timestamped key
+    so concurrent / repeated snapshots never collide with each other
+    or with the end-of-session ``session.log`` archive that
+    ``_archive_previous_session`` writes.
+
+    Returns ``{ok: bool, key?, session?, error?}``.
+    """
+    _require_auth()
+
+    # Need both a session AND a log file path to snapshot.
+    if _BOX.session is None or _BOX.log_path is None:
+        return {"ok": False, "error": "No active session to snapshot."}
+
+    log_path = _BOX.log_path
+    if not log_path.exists():
+        return {
+            "ok":    False,
+            "error": f"Log file not found at {log_path}.",
+        }
+
+    # R2 must be configured for this to do anything useful.
+    from agents.shared import r2_uploader as _r2
+    if not _r2.is_enabled():
+        return {
+            "ok": False,
+            "error": (
+                "R2 is not configured on this deploy "
+                "(R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / "
+                "R2_BUCKET_NAME missing)."
+            ),
+        }
+
+    # Force-resolve the canonical session_name so the snapshot lands in
+    # the same R2 namespace the end-of-session archive will use.  The
+    # caching contract (Session.resolved_session_name set once, reused
+    # by every subsequent caller) matches what _run_dh_save already
+    # does for the regular save flow.
+    if _BOX.session.resolved_session_name is None:
+        try:
+            from agents.loader import _resolve_session_name
+            _BOX.session.resolved_session_name = _resolve_session_name()
+        except Exception as exc:
+            logger.exception("[WEB] /api/save_log could not resolve session name")
+            return {
+                "ok":    False,
+                "error": f"{type(exc).__name__}: {exc}",
+            }
+
+    session_name = _BOX.session.resolved_session_name
+    if not session_name:
+        return {
+            "ok":    False,
+            "error": "No canonical session name available after resolve.",
+        }
+
+    # UTC ISO-style timestamp with Zulu suffix.  Lexicographically
+    # sortable, matches Session.session_ts (also UTC), and avoids
+    # local-time ambiguity when reading the bucket months later.
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    remote_key = f"{session_name}/logs/snapshot_{ts}.log"
+
+    try:
+        ok = _r2.upload_file(log_path, remote_key)
+    except Exception as exc:
+        logger.exception("[WEB] /api/save_log upload failed")
+        return {
+            "ok":    False,
+            "error": f"{type(exc).__name__}: {exc}",
+        }
+
+    if not ok:
+        return {
+            "ok":    False,
+            "error": (
+                "R2 upload returned False (see server log for the "
+                "underlying error)."
+            ),
+        }
+
+    # Best-effort: log the snapshot key INTO the same log that was just
+    # shipped, so a subsequent snapshot from the same session captures
+    # this trail too.
+    logger.info(f"[WEB] /api/save_log uploaded snapshot -> {remote_key}")
+    return {
+        "ok":      True,
+        "key":     remote_key,
+        "session": session_name,
     }
 
 
