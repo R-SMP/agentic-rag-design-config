@@ -34,7 +34,7 @@ from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import (
     PLANNER_FIRST,
-    UII_TEMPLATE,
+    _build_template,
     routing_instructions,
 )
 from workflow_settings import settings as workflow_settings
@@ -169,7 +169,10 @@ class UserInputInspector(BaseChainAgent):
                 fragment_name=
                     "routing_user_input_inspector_uii_first.md",
             )
-        self.system_prompt = UII_TEMPLATE.format(
+        # Built fresh at construction time so live edits to .md
+        # fragments via the System Prompts UI take effect on the
+        # NEXT session without a Python restart.
+        self.system_prompt = _build_template("user_input_inspector").format(
             routing_instructions=routing_block,
         )
 

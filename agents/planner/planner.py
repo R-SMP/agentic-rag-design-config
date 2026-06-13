@@ -33,7 +33,7 @@ from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import (
     PLANNER_FIRST,
-    PLANNER_TEMPLATE,
+    _build_template,
     routing_instructions,
 )
 from agents.shared.routing_tools import (
@@ -217,7 +217,10 @@ class Planner(BaseChainAgent):
                 prev_agent="User Input Inspector",
                 fragment_name="routing_planner_uii_first.md",
             )
-        self.system_prompt = PLANNER_TEMPLATE.format(
+        # Built fresh at construction time so live edits to .md
+        # fragments via the System Prompts UI take effect on the
+        # NEXT session without a Python restart.
+        self.system_prompt = _build_template("planner").format(
             routing_instructions=routing_block,
             user_inputs_dir=str(USER_INPUTS_DIR.resolve()),
             input_images_subdir=INPUT_IMAGES_SUBDIR,

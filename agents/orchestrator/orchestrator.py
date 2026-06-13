@@ -37,7 +37,7 @@ from agents.shared.file_utils import ai_text
 from agents.shared.history_tool import build_read_agent_history_tool
 from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
-from agents.shared.prompts import ORCHESTRATOR_TEMPLATE, PLANNER_FIRST
+from agents.shared.prompts import _build_template, PLANNER_FIRST
 from agents.shared.stop_signal import is_stop_requested
 from agents.shared.routing_tools import (
     AGENT_DISPLAY,
@@ -188,7 +188,10 @@ class Orchestrator(BaseChainAgent):
         chain_access_block = (
             _CHAIN_ACCESS_ON if session.chain_access else _CHAIN_ACCESS_OFF
         )
-        self.system_prompt = ORCHESTRATOR_TEMPLATE.format(
+        # Built fresh at construction time so live edits to .md
+        # fragments via the System Prompts UI take effect on the
+        # NEXT session without a Python restart.
+        self.system_prompt = _build_template("orchestrator").format(
             chain_access_block=chain_access_block,
         )
 

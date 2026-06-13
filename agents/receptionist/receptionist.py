@@ -32,7 +32,7 @@ from agents.shared.file_utils import (
 )
 from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
-from agents.shared.prompts import RECEPTIONIST_TEMPLATE
+from agents.shared.prompts import _build_template
 from agents.shared.routing_tools import (
     AgentHop,
     DONE,
@@ -84,7 +84,10 @@ class Receptionist(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        self.system_prompt: str = RECEPTIONIST_TEMPLATE
+        # Built fresh at construction time so live edits to .md
+        # fragments via the System Prompts UI take effect on the
+        # NEXT session without a Python restart.
+        self.system_prompt: str = _build_template("receptionist")
         self._tools_by_name: dict = {}
         # Receptionist resets cycle_start_ts at the start of every
         # validate_input call.  When restoring from a fresh AgentState

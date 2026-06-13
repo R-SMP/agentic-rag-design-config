@@ -35,7 +35,7 @@ from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import (
     RENDER_CHECK_LIBRARY_PYVISTA,
     RENDER_CHECK_LIBRARY_TRIMESH,
-    TOOL_CALLER_TEMPLATE,
+    _build_template,
     routing_instructions,
 )
 from agents.shared.routing_tools import (
@@ -140,7 +140,10 @@ class ToolCaller(BaseChainAgent):
             if self.render_library == "pyvista"
             else RENDER_CHECK_LIBRARY_TRIMESH
         )
-        self.system_prompt = TOOL_CALLER_TEMPLATE.format(
+        # Built fresh at construction time so live edits to .md
+        # fragments via the System Prompts UI take effect on the
+        # NEXT session without a Python restart.
+        self.system_prompt = _build_template("tool_caller").format(
             routing_instructions=routing_block,
             render_check_library_block=render_check_block,
         )

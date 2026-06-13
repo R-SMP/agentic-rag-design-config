@@ -362,55 +362,74 @@ EMBEDDING_MAX_RESPONSE_TOKENS = str(
 )
 
 
-# Common slot map fed into ``string.Template.safe_substitute``.  Every
-# per-agent template has access to every slot; templates that don't
-# need a slot simply don't reference it.
-_SLOTS: dict[str, str] = {
-    # DC-specific
-    "dc_name": DC_NAME,
-    "domain_description": DOMAIN_DESCRIPTION,
-    "parameter_count": PARAMETER_COUNT,
-    "dc_structure": DC_STRUCTURE,
-    "parameter_list": PARAMETER_LIST,
-    "modelling_notes": MODELLING_NOTES,
-    "qualitative_examples": QUALITATIVE_TRANSLATION_EXAMPLES,
-    "visual_inspection_guide": VISUAL_INSPECTION_GUIDE,
-    "capabilities_can": CAPABILITIES_CAN,
-    "capabilities_cannot": CAPABILITIES_CANNOT,
-    "output_file_locations": OUTPUT_FILE_LOCATIONS,
-    "geometry_modification_rule": GEOMETRY_MODIFICATION_RULE,
-    "invalid_parameter_examples": INVALID_PARAMETER_EXAMPLES,
-    "hard_constraints_dc": HARD_CONSTRAINTS_DC,
-    # User-input-type fragments (one pair per accepted type)
-    "sketch_handling": SKETCH_HANDLING,
-    "sketch_notes": SKETCH_NOTES,
-    # Tool-specific
-    "tool_inventory": TOOL_INVENTORY,
-    "tool_caller_instructions": TOOL_CALLER_INSTRUCTIONS,
-    "tool_caller_capabilities": TOOL_CALLER_CAPABILITIES,
-    "agent_tools_overview": AGENT_TOOLS_OVERVIEW,
-    "agent_tools_overview_brief": AGENT_TOOLS_OVERVIEW_BRIEF,
-    "hard_constraints_tools": HARD_CONSTRAINTS_TOOLS,
-    "visualize_3d_model_tool": VISUALIZE_3D_MODEL_TOOL,
-    "propose_attempt_tool": PROPOSE_ATTEMPT_TOOL,
-    "database_search_tool": DATABASE_SEARCH_TOOL,
-    "retrieve_user_inputs_tool": RETRIEVE_USER_INPUTS_TOOL,
-    "retrieve_attempt_tool": RETRIEVE_ATTEMPT_TOOL,
-    # Generic
-    "hard_constraints_generic": HARD_CONSTRAINTS_GENERIC,
-    # Per-agent routing fragments (Receptionist + Orchestrator only;
-    # the six chain agents load theirs via routing_instructions())
-    "routing_receptionist": ROUTING_RECEPTIONIST,
-    "routing_orchestrator": ROUTING_ORCHESTRATOR,
-    # Cross-agent organisational fragments (Planner + Orchestrator)
-    "pipeline_flow": PIPELINE_FLOW,
-    "available_agents": AVAILABLE_AGENTS,
-    # Embedding (DH only) — see workflow_settings/settings.py
-    "embedding_provider": EMBEDDING_PROVIDER,
-    "embedding_model": EMBEDDING_MODEL,
-    "embedding_vector_dims": EMBEDDING_VECTOR_DIMS,
-    "embedding_max_response_tokens": EMBEDDING_MAX_RESPONSE_TOKENS,
-}
+# ---------------------------------------------------------------------------
+# Slot-map builder
+#
+# Hoisted from the former module-level ``_SLOTS`` dict so the System
+# Prompts UI's save endpoint can take effect on the NEXT session's
+# agent construction without a Python restart.  Every call re-reads
+# the ~30 fragment files from disk; cost is negligible relative to a
+# single LLM round-trip.
+#
+# Module-level constants above (DC_NAME, PARAMETER_LIST, ...) stay
+# captured at import time for back-compat with any caller that does
+# ``from agents.shared.prompts import DC_NAME`` — they are NOT used by
+# ``_build_template`` any more.
+#
+# Per-agent overlays (``database_search_<agent_dir>.md``) are NOT in
+# this dict — they are merged in by :func:`_build_template` because
+# the choice of overlay depends on which agent is being assembled.
+# ---------------------------------------------------------------------------
+
+
+def _build_slots() -> dict[str, str]:
+    """Re-read every fragment from disk and assemble the $-slot map."""
+    return {
+        # DC-specific
+        "dc_name": _read_dc_fragment("dc_config/name.txt").strip(),
+        "domain_description": _read_dc_fragment("dc_config/domain_description.txt").strip(),
+        "parameter_count": _read_dc_fragment("dc_config/parameter_count.txt").strip(),
+        "dc_structure": _read_dc_fragment("dc_config/structure.md"),
+        "parameter_list": _read_dc_fragment("dc_config/parameters.md"),
+        "modelling_notes": _read_dc_fragment("dc_config/modelling_notes.md"),
+        "qualitative_examples": _read_dc_fragment("dc_config/qualitative_examples.md"),
+        "visual_inspection_guide": _read_dc_fragment("dc_config/visual_inspection_guide.md"),
+        "capabilities_can": _read_dc_fragment("dc_config/capabilities_can.md"),
+        "capabilities_cannot": _read_dc_fragment("dc_config/capabilities_cannot.md"),
+        "output_file_locations": _read_dc_fragment("dc_config/output_file_locations.md"),
+        "geometry_modification_rule": _read_dc_fragment("dc_config/geometry_modification_rule.md"),
+        "invalid_parameter_examples": _read_dc_fragment("dc_config/invalid_parameter_examples.md"),
+        "hard_constraints_dc": _read_dc_fragment("dc_config/hard_constraints_dc.md"),
+        # User-input-type fragments (one pair per accepted type)
+        "sketch_handling": _read_dc_fragment("dc_config/user_input_types/sketch_handling.md"),
+        "sketch_notes": _read_dc_fragment("dc_config/user_input_types/sketch_notes.md"),
+        # Tool-specific
+        "tool_inventory": _read_dc_fragment("tools_config/tool_inventory.md"),
+        "tool_caller_instructions": _read_dc_fragment("tools_config/tool_caller_instructions.md"),
+        "tool_caller_capabilities": _read_dc_fragment("tools_config/tool_caller_capabilities.md"),
+        "agent_tools_overview": _read_dc_fragment("tools_config/agent_tools_overview.md"),
+        "agent_tools_overview_brief": _read_dc_fragment("tools_config/agent_tools_overview_brief.md"),
+        "hard_constraints_tools": _read_dc_fragment("tools_config/hard_constraints_tools.md"),
+        "visualize_3d_model_tool": _read_dc_fragment("tools_config/visualize_3d_model.md"),
+        "propose_attempt_tool": _read_dc_fragment("tools_config/propose_attempt.md"),
+        "database_search_tool": _read_dc_fragment("tools_config/database_search.md"),
+        "retrieve_user_inputs_tool": _read_dc_fragment("tools_config/retrieve_user_inputs.md"),
+        "retrieve_attempt_tool": _read_dc_fragment("tools_config/retrieve_attempt.md"),
+        # Generic
+        "hard_constraints_generic": _read_generic_fragment("generic_constraints.md"),
+        # Per-agent routing fragments (Receptionist + Orchestrator only;
+        # the six chain agents load theirs via routing_instructions())
+        "routing_receptionist": _read_generic_fragment("routing_receptionist.md"),
+        "routing_orchestrator": _read_generic_fragment("routing_orchestrator.md"),
+        # Cross-agent organisational fragments (Planner + Orchestrator)
+        "pipeline_flow": _read_generic_fragment(_PIPELINE_FLOW_FRAGMENT_NAME),
+        "available_agents": _read_generic_fragment("available_agents.md"),
+        # Embedding (DH only) — settings.py values, captured at import time
+        "embedding_provider": EMBEDDING_PROVIDER,
+        "embedding_model": EMBEDDING_MODEL,
+        "embedding_vector_dims": EMBEDDING_VECTOR_DIMS,
+        "embedding_max_response_tokens": EMBEDDING_MAX_RESPONSE_TOKENS,
+    }
 
 
 def _build_template(agent_dir_name: str) -> str:
@@ -427,6 +446,11 @@ def _build_template(agent_dir_name: str) -> str:
     ``$parameter_count`` and ``$tool_inventory``).  One level of
     nesting is enough for current usage; deeper nesting would require
     more passes or a fixed-point loop.
+
+    The slot map is rebuilt fresh on every call (via
+    :func:`_build_slots`) so live edits to .md fragments via the
+    System Prompts UI take effect on the next session's agent
+    construction without a Python restart.
     """
     raw = (AGENTS_DIR / agent_dir_name / "prompt.md").read_text(encoding="utf-8")
     # Per-agent overlay onto the global slot map: load this agent's
@@ -442,7 +466,7 @@ def _build_template(agent_dir_name: str) -> str:
         if per_agent_dbs_file.exists()
         else ""
     )
-    slots = {**_SLOTS, "database_search_per_agent": per_agent_dbs}
+    slots = {**_build_slots(), "database_search_per_agent": per_agent_dbs}
     once = Template(raw).safe_substitute(slots)
     twice = Template(once).safe_substitute(slots)
     filtered = apply_flag_filters(twice)

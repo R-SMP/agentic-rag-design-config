@@ -65,7 +65,7 @@ from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
 from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
-from agents.shared.prompts import DH_TEMPLATE
+from agents.shared.prompts import _build_template
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_DH_STEPS, MAX_DH_TURNS_PER_FIELD
 from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
@@ -1016,7 +1016,10 @@ class DatabaseHandler(BaseChainAgent):
             )
         super().__init__(state=state, session=session, llm_cache=llm_cache)
         # The DH binds no tools — it only emits plain text.
-        self.system_prompt: str = DH_TEMPLATE
+        # Built fresh at construction time so live edits to .md
+        # fragments via the System Prompts UI take effect on the
+        # NEXT session without a Python restart.
+        self.system_prompt: str = _build_template("database_handler")
 
         # Cached for SEMANTIC token-cap enforcement.
         self.max_response_tokens: int = int(

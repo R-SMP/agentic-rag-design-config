@@ -27,7 +27,7 @@ from agents.shared.llm_provider import (
     make_system_message,
 )
 from agents.shared.llm_retry import invoke_with_retry
-from agents.shared.prompts import DCOI_TEMPLATE, routing_instructions
+from agents.shared.prompts import _build_template, routing_instructions
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
@@ -302,7 +302,10 @@ class DCOutputInspector(BaseChainAgent):
             extracted_inputs_path,
             user_query_path,
         )
-        self.system_prompt = DCOI_TEMPLATE.format(
+        # Built fresh at construction time so live edits to .md
+        # fragments via the System Prompts UI take effect on the
+        # NEXT session without a Python restart.
+        self.system_prompt = _build_template("dc_output_inspector").format(
             routing_instructions=routing_block,
             image_persistence_block=image_persistence_block,
             comparison_mode_block=comparison_mode_block,

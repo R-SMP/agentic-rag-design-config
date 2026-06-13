@@ -32,7 +32,7 @@ from agents.shared.file_utils import (
 )
 from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
-from agents.shared.prompts import DCII_TEMPLATE, routing_instructions
+from agents.shared.prompts import _build_template, routing_instructions
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
@@ -145,7 +145,10 @@ class DCInputInspector(BaseChainAgent):
             prev_agent="DC Input Creator",
             fragment_name="routing_dc_input_inspector.md",
         )
-        self.system_prompt = DCII_TEMPLATE.format(
+        # Built fresh at construction time so live edits to .md
+        # fragments via the System Prompts UI take effect on the
+        # NEXT session without a Python restart.
+        self.system_prompt = _build_template("dc_input_inspector").format(
             routing_instructions=routing_block,
         )
 
