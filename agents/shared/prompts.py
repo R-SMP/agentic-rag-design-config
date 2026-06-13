@@ -363,6 +363,95 @@ EMBEDDING_MAX_RESPONSE_TOKENS = str(
 
 
 # ---------------------------------------------------------------------------
+# Reverse indices for the System Prompts UI
+#
+# Source-of-truth that the editor in workflow_settings/prompts_admin.py
+# consults when computing "this fragment is used by N agents" badges
+# and when validating $-slot references in edited fragments.  Lives
+# here (not in prompts_admin.py) so a future edit to _build_slots
+# below has the matching reverse-index entry one screen away — if you
+# add a new $slot, add the FRAGMENT_TO_SLOT entry in the same commit.
+# ---------------------------------------------------------------------------
+
+# Path → $-slot name.  Paths are RELATIVE to the repo root.  Every
+# fragment that _build_slots reads is listed here, .md or .txt.  The
+# tree-builder filters by .md extension; the .txt entries exist so
+# any caller (including future validation) can reverse-resolve them.
+FRAGMENT_TO_SLOT: dict[str, str] = {
+    # DC-config fragments
+    "DC_prompt_fragments/dc_config/name.txt":                      "dc_name",
+    "DC_prompt_fragments/dc_config/domain_description.txt":        "domain_description",
+    "DC_prompt_fragments/dc_config/parameter_count.txt":           "parameter_count",
+    "DC_prompt_fragments/dc_config/structure.md":                  "dc_structure",
+    "DC_prompt_fragments/dc_config/parameters.md":                 "parameter_list",
+    "DC_prompt_fragments/dc_config/modelling_notes.md":            "modelling_notes",
+    "DC_prompt_fragments/dc_config/qualitative_examples.md":       "qualitative_examples",
+    "DC_prompt_fragments/dc_config/visual_inspection_guide.md":    "visual_inspection_guide",
+    "DC_prompt_fragments/dc_config/capabilities_can.md":           "capabilities_can",
+    "DC_prompt_fragments/dc_config/capabilities_cannot.md":        "capabilities_cannot",
+    "DC_prompt_fragments/dc_config/output_file_locations.md":      "output_file_locations",
+    "DC_prompt_fragments/dc_config/geometry_modification_rule.md": "geometry_modification_rule",
+    "DC_prompt_fragments/dc_config/invalid_parameter_examples.md": "invalid_parameter_examples",
+    "DC_prompt_fragments/dc_config/hard_constraints_dc.md":        "hard_constraints_dc",
+    # User-input-type fragments
+    "DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md": "sketch_handling",
+    "DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md":    "sketch_notes",
+    # Tools-config fragments
+    "DC_prompt_fragments/tools_config/tool_inventory.md":             "tool_inventory",
+    "DC_prompt_fragments/tools_config/tool_caller_instructions.md":   "tool_caller_instructions",
+    "DC_prompt_fragments/tools_config/tool_caller_capabilities.md":   "tool_caller_capabilities",
+    "DC_prompt_fragments/tools_config/agent_tools_overview.md":       "agent_tools_overview",
+    "DC_prompt_fragments/tools_config/agent_tools_overview_brief.md": "agent_tools_overview_brief",
+    "DC_prompt_fragments/tools_config/hard_constraints_tools.md":     "hard_constraints_tools",
+    "DC_prompt_fragments/tools_config/visualize_3d_model.md":         "visualize_3d_model_tool",
+    "DC_prompt_fragments/tools_config/propose_attempt.md":            "propose_attempt_tool",
+    "DC_prompt_fragments/tools_config/database_search.md":            "database_search_tool",
+    "DC_prompt_fragments/tools_config/retrieve_user_inputs.md":       "retrieve_user_inputs_tool",
+    "DC_prompt_fragments/tools_config/retrieve_attempt.md":           "retrieve_attempt_tool",
+    # Generic fragments
+    "agents/shared/prompt_fragments/generic_constraints.md":  "hard_constraints_generic",
+    "agents/shared/prompt_fragments/routing_receptionist.md": "routing_receptionist",
+    "agents/shared/prompt_fragments/routing_orchestrator.md": "routing_orchestrator",
+    "agents/shared/prompt_fragments/available_agents.md":     "available_agents",
+    # $pipeline_flow has TWO source files; only the file matching the
+    # current PLANNER_FIRST flag is read by _build_slots.  Both are
+    # listed so the System Prompts UI surfaces them as contributing
+    # to the same set of agents.
+    "agents/shared/prompt_fragments/pipeline_flow_planner_first.md": "pipeline_flow",
+    "agents/shared/prompt_fragments/pipeline_flow_uii_first.md":     "pipeline_flow",
+}
+
+
+# Per-agent allow-list of runtime ``{slot}`` names that may appear
+# inside ``agents/<agent>/prompt.md``.  MUST mirror the kwargs passed
+# to ``_build_template(<agent>).format(...)`` in each agent's
+# ``__init__``.  Used by the System Prompts UI's validator (rule "c")
+# to flag any ``{x}`` in a prompt.md whose ``x`` is not allowed for
+# that agent — at runtime ``str.format`` would raise KeyError.
+#
+# If you add a new format kwarg in an agent's ``__init__``, ADD the
+# same name to this set in the same commit.
+PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
+    "receptionist":         frozenset(),
+    "orchestrator":         frozenset({"chain_access_block"}),
+    "planner":              frozenset({
+        "routing_instructions", "user_inputs_dir",
+        "input_images_subdir", "extraction_output_file",
+    }),
+    "user_input_inspector": frozenset({"routing_instructions"}),
+    "dc_input_creator":     frozenset({"routing_instructions"}),
+    "dc_input_inspector":   frozenset({"routing_instructions"}),
+    "tool_caller":          frozenset({
+        "routing_instructions", "render_check_library_block",
+    }),
+    "dc_output_inspector":  frozenset({
+        "routing_instructions", "image_persistence_block", "comparison_mode_block",
+    }),
+    "database_handler":     frozenset(),
+}
+
+
+# ---------------------------------------------------------------------------
 # Slot-map builder
 #
 # Hoisted from the former module-level ``_SLOTS`` dict so the System
@@ -542,4 +631,6 @@ __all__ = [
     "TOOL_CALLER_TEMPLATE",
     "DCOI_TEMPLATE",
     "DH_TEMPLATE",
+    "FRAGMENT_TO_SLOT",
+    "PROMPT_MD_RUNTIME_SLOTS",
 ]

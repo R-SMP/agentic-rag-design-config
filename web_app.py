@@ -1848,6 +1848,77 @@ def api_db_admin_ignore_write(body: _DbIgnoreWriteBody) -> dict:
 
 
 # --------------------------------------------------------------------------
+# System Prompts editor — read / write the .md fragment sources via the
+# "System prompts" side-window.  See workflow_settings/prompts_admin.py.
+# Reads are gated by the session cookie (_require_auth); writes also
+# require the same DB-admin password as the destructive endpoints AND
+# fail with 409 while a session is active.
+# --------------------------------------------------------------------------
+
+
+class _PromptsSaveBody(BaseModel):
+    password: str
+    files:    list[dict]
+
+
+@app.get("/api/prompts/tree")
+def api_prompts_tree() -> dict:
+    """Return the System Prompts tree (4 named groups + nested .md
+    files + per-file 'used_by' list) plus ``session_locked`` so the
+    frontend can show / hide its lock banner without a second call."""
+    _require_auth()
+    from workflow_settings import prompts_admin as _pa
+    return {
+        **_pa.build_tree(),
+        "session_locked": _BOX.session is not None,
+    }
+
+
+@app.get("/api/prompts/file")
+def api_prompts_file(path: str) -> dict:
+    """Return one file's content + a ``has_conditional_regions`` flag
+    that the right-pane uses to decide whether to show the flag-values
+    badge in its header."""
+    _require_auth()
+    from workflow_settings import prompts_admin as _pa
+    try:
+        return _pa.read_file(path)
+    except _pa.PromptsAdminError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+
+@app.post("/api/prompts/save")
+def api_prompts_save(body: _PromptsSaveBody) -> dict:
+    """Atomic-write a batch of edited .md fragments.  Password-gated;
+    rejected with HTTP 409 while a session is active.  Validation
+    warnings (unknown $slot / unbalanced <<…>> / unescaped { in
+    prompt.md / empty file) are surfaced in the response but do NOT
+    block the write — the frontend pops a 'Save anyway / Cancel' modal
+    before POSTing when validation produces warnings (round 6 Q21)."""
+    _require_auth()
+    _require_no_session()
+    if not _check_db_password(body.password):
+        raise HTTPException(status_code=401, detail="Password rejected.")
+    from workflow_settings import prompts_admin as _pa
+    try:
+        result = _pa.save_files(body.files)
+    except _pa.PromptsAdminError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:
+        logger.exception("[WEB] prompts/save failed: %s", exc)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Could not save prompts ({type(exc).__name__}: {exc}).",
+        )
+    logger.info(
+        "[WEB] prompts saved: %d files, %d warnings",
+        len(result.get("files_written", [])),
+        len(result.get("warnings", [])),
+    )
+    return result
+
+
+# --------------------------------------------------------------------------
 # Image Inputs — manage inputs/input_images/ from the browser
 # --------------------------------------------------------------------------
 
