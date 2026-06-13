@@ -1865,12 +1865,25 @@ class _PromptsSaveBody(BaseModel):
 def api_prompts_tree() -> dict:
     """Return the System Prompts tree (4 named groups + nested .md
     files + per-file 'used_by' list) plus ``session_locked`` so the
-    frontend can show / hide its lock banner without a second call."""
+    frontend can show / hide its lock banner without a second call.
+
+    Also returns the data the frontend needs for client-side pre-save
+    validation (round 4 Q13 + round 6 Q21):
+      * ``known_slots``  — every $-slot name the assembler recognises.
+      * ``marker_pairs`` — the <<…>> conditional region tag pairs.
+      * ``runtime_slots`` — per-agent allow-list of ``{…}`` runtime
+        slots that may appear in that agent's prompt.md.
+    Source-of-truth for all three lives in ``agents/shared/prompts.py``.
+    """
     _require_auth()
     from workflow_settings import prompts_admin as _pa
+    from agents.shared import prompts as _p
     return {
         **_pa.build_tree(),
         "session_locked": _BOX.session is not None,
+        "known_slots":    sorted(_pa._known_slot_names()),
+        "marker_pairs":   [list(p) for p in _pa._MARKER_PAIRS],
+        "runtime_slots":  {a: sorted(s) for a, s in _p.PROMPT_MD_RUNTIME_SLOTS.items()},
     }
 
 

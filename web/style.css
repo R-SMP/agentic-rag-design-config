@@ -2049,3 +2049,349 @@ button.danger:hover { background: #3a1d1d; }
   padding: 1px 5px;
   border-radius: 3px;
 }
+
+
+/* ===========================================================
+   System Prompts editor view
+   =========================================================== */
+
+.prompts-view {
+  /* The view container is flexed by the outer .views grid; we drive
+     our own vertical flow inside .prompts-scroll. */
+  display: block;
+}
+.prompts-scroll {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+  padding: 16px 20px;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.prompts-head h2 { margin: 0 0 4px 0; }
+.prompts-note {
+  margin: 0 0 12px 0;
+  color: var(--muted);
+  line-height: 1.5;
+  font-size: 13px;
+}
+
+.prompts-main {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 12px;
+  margin-bottom: 10px;
+}
+
+/* === Tree pane =========================================== */
+
+.prompts-tree-pane {
+  flex: 0 0 320px;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  overflow: hidden;
+}
+
+.prompts-tree-search {
+  padding: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.prompts-tree-search input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 6px 8px;
+  font-size: 13px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.prompts-tree {
+  flex: 1;
+  overflow-y: auto;
+  font-size: 13px;
+  padding: 4px 0;
+}
+.prompts-tree-loading {
+  margin: 0;
+  padding: 16px;
+  text-align: center;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.prompts-tree-group { padding: 4px 0; }
+.prompts-tree-group-header {
+  display: flex;
+  align-items: center;
+  padding: 6px 10px;
+  cursor: pointer;
+  user-select: none;
+  font-weight: 600;
+}
+.prompts-tree-group-header:hover { background: rgba(255, 255, 255, 0.04); }
+.prompts-tree-disclosure {
+  display: inline-block;
+  width: 12px;
+  color: var(--muted);
+  font-family: monospace;
+}
+.prompts-tree-group-label { flex: 1; }
+.prompts-tree-group-subtitle {
+  color: var(--muted);
+  font-size: 11px;
+  font-family: monospace;
+  padding: 0 10px 4px 22px;
+}
+
+.prompts-tree-folder { padding-left: 14px; }
+.prompts-tree-folder-header {
+  display: flex;
+  align-items: center;
+  padding: 4px 10px;
+  cursor: pointer;
+  user-select: none;
+  color: var(--muted);
+}
+.prompts-tree-folder-header:hover { background: rgba(255, 255, 255, 0.04); }
+
+.prompts-tree-folder-children[hidden] { display: none; }
+.prompts-tree-group-children[hidden]  { display: none; }
+
+.prompts-tree-file {
+  display: flex;
+  align-items: center;
+  padding: 4px 12px;
+  margin: 0 4px;
+  cursor: pointer;
+  user-select: none;
+  border-radius: 3px;
+}
+.prompts-tree-file:hover { background: rgba(255, 255, 255, 0.06); }
+.prompts-tree-file.selected { background: rgba(80, 130, 250, 0.20); }
+
+.prompts-tree-file-name {
+  flex: 1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.prompts-tree-file-dirty {
+  display: inline-block;
+  width: 10px;
+  color: #f3b542;
+  font-weight: 700;
+  margin-right: 2px;
+}
+.prompts-tree-file-badge {
+  color: var(--muted);
+  font-size: 11px;
+  margin-left: 6px;
+  flex-shrink: 0;
+}
+
+.prompts-tree-file[data-filtered="hidden"],
+.prompts-tree-folder[data-filtered="hidden"],
+.prompts-tree-group[data-filtered="hidden"] { display: none; }
+
+/* === Editor pane ========================================= */
+
+.prompts-editor-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--panel);
+  overflow: hidden;
+  min-width: 0;
+}
+
+.prompts-editor-header {
+  padding: 8px 12px;
+  border-bottom: 1px solid var(--border);
+  background: rgba(255, 255, 255, 0.02);
+  font-size: 12px;
+}
+.prompts-editor-header[hidden] { display: none; }
+.prompts-editor-path {
+  font-family: monospace;
+  color: var(--fg);
+}
+.prompts-editor-usedby {
+  color: var(--muted);
+  margin-top: 3px;
+}
+.prompts-editor-flags {
+  color: var(--muted);
+  margin-top: 3px;
+  font-family: monospace;
+  font-size: 11px;
+}
+.prompts-editor-flags[hidden] { display: none; }
+
+/* The container holds the overlay <pre> + the textarea, both
+   absolute-positioned so they overlap pixel-for-pixel.  The textarea
+   text is set transparent so the overlay's text (with <<...>> regions
+   wrapped in <span class="prompts-cond-region">) is what the user
+   sees; only the caret comes from the textarea itself. */
+.prompts-editor-container {
+  position: relative;
+  flex: 1;
+  overflow: hidden;
+}
+.prompts-editor-container[hidden] { display: none; }
+
+.prompts-editor-overlay,
+.prompts-editor {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  padding: 12px;
+  box-sizing: border-box;
+  font-family: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  font-size: 13px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+  tab-size: 4;
+}
+
+.prompts-editor-overlay {
+  color: var(--fg);
+  background: var(--bg);
+  overflow: auto;
+  pointer-events: none;
+}
+.prompts-cond-region {
+  background-color: rgba(243, 181, 66, 0.18);
+  border-radius: 2px;
+}
+
+.prompts-editor {
+  background: transparent;
+  color: transparent;
+  caret-color: var(--fg);
+  border: none;
+  outline: none;
+  resize: none;
+  overflow: auto;
+}
+.prompts-editor::selection { background: rgba(80, 130, 250, 0.30); }
+
+.prompts-editor-placeholder {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  color: var(--muted);
+  font-style: italic;
+}
+.prompts-editor-placeholder[hidden] { display: none; }
+
+/* === Bottom action row =================================== */
+
+.prompts-bottom {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.prompts-bottom button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.prompts-auth-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+}
+.prompts-auth-row[hidden] { display: none; }
+.prompts-auth-row input[type="password"] {
+  font-size: 13px;
+  padding: 6px 8px;
+  min-width: 160px;
+  background: var(--bg);
+  color: var(--fg);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+
+.prompts-status {
+  margin: 0;
+  flex-basis: 100%;
+  font-size: 13px;
+  color: var(--muted);
+  white-space: pre-wrap;
+}
+.prompts-status.ok  { color: #4caf78; }
+.prompts-status.err { color: var(--error); }
+
+/* Locked state when a session is active — disable interactive bits;
+   the lock banner already explains why. */
+.prompts-view.locked .prompts-editor,
+.prompts-view.locked .prompts-tree-search input,
+.prompts-view.locked .prompts-save,
+.prompts-view.locked .prompts-discard,
+.prompts-view.locked .prompts-auth-row input,
+.prompts-view.locked .prompts-auth-row button {
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+/* === Warning modal list ================================== */
+
+.prompts-warning-list {
+  list-style: none;
+  margin: 8px 0 16px 0;
+  padding: 0;
+  max-height: 40vh;
+  overflow-y: auto;
+  font-size: 13px;
+}
+.prompts-warning-list li {
+  padding: 8px 10px;
+  margin-bottom: 4px;
+  background: rgba(255, 200, 50, 0.05);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+}
+.prompts-warning-list .pw-kind {
+  display: inline-block;
+  margin-right: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  text-transform: uppercase;
+  color: var(--error);
+}
+.prompts-warning-list .pw-path {
+  font-family: monospace;
+  font-size: 12px;
+  color: var(--muted);
+}
+.prompts-warning-list .pw-line {
+  margin-left: 6px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.prompts-warning-list .pw-detail {
+  display: block;
+  margin-top: 4px;
+  white-space: pre-wrap;
+}

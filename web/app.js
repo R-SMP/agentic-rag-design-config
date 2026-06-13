@@ -1004,6 +1004,23 @@ const views = Array.from(document.querySelectorAll(".view"));
 let settingsLoaded = false;
 
 function switchView(name) {
+  // System Prompts view: warn before leaving with unsaved edits
+  // (round 4 Q16 — in-app prompt on view-switch).  ``confirm()`` is
+  // synchronous; if the user chooses "Cancel" we abort the switch
+  // before mutating any nav state.
+  if (
+    name !== "prompts"
+    && typeof promptsState !== "undefined"
+    && promptsState.loaded
+    && promptsDirtyCount() > 0
+  ) {
+    const ok = confirm(
+      `You have ${promptsDirtyCount()} unsaved system-prompt file(s). `
+      + "Switch view and discard them?"
+    );
+    if (!ok) return;
+    promptsDiscardAllBuffers();
+  }
   for (const b of navItems) {
     b.classList.toggle("active", b.dataset.view === name);
   }
@@ -1042,6 +1059,12 @@ function switchView(name) {
     // the password for any destructive action.  Clears stale status
     // messages from the previous visit too.
     resetDbView();
+  }
+  if (name === "prompts") {
+    if (typeof promptsState !== "undefined") {
+      if (!promptsState.loaded) loadPromptsTree();
+      else refreshSessionActive();
+    }
   }
 }
 
@@ -4229,4 +4252,662 @@ if (dbIgnoreSaveBtn)   dbIgnoreSaveBtn.addEventListener("click", saveDbIgnoreLis
 if (dbIgnoreReloadBtn) dbIgnoreReloadBtn.addEventListener("click", loadDbIgnoreList);
 if (dbIgnoreInput) dbIgnoreInput.addEventListener("keydown", (e) => {
   if (e.key === "Enter") { e.preventDefault(); addDbIgnoreId(); }
+});
+
+
+// ===========================================================
+// System Prompts editor — read / write the .md fragment sources
+// =============================================================
+
+const promptsState = {
+  groups:         [],
+  buffers:        {},          // {path: {original, current, hasMarkers}}
+  selected:       null,
+  password:       null,
+  knownSlots:     new Set(),
+  markerPairs:    [],
+  runtimeSlots:   {},
+  loaded:         false,
+  sessionLocked:  false,
+};
+
+const promptsRoot              = document.querySelector(".prompts-view");
+const promptsLockBanner        = $("prompts-lock-banner");
+const promptsSearch            = $("prompts-search");
+const promptsTree              = $("prompts-tree");
+const promptsEditorHeader      = $("prompts-editor-header");
+const promptsEditorPath        = $("prompts-editor-path");
+const promptsEditorUsedby      = $("prompts-editor-usedby");
+const promptsEditorFlags       = $("prompts-editor-flags");
+const promptsEditorContainer   = $("prompts-editor-container");
+const promptsEditorOverlay     = $("prompts-editor-overlay");
+const promptsEditor            = $("prompts-editor");
+const promptsEditorPlaceholder = $("prompts-editor-placeholder");
+const promptsSave              = $("prompts-save");
+const promptsDiscard           = $("prompts-discard");
+const promptsAuthRow           = $("prompts-auth-row");
+const promptsPassword          = $("prompts-password");
+const promptsUnlock            = $("prompts-unlock");
+const promptsAuthCancel        = $("prompts-auth-cancel");
+const promptsStatus            = $("prompts-status");
+const promptsWarningModal      = $("prompts-warning-modal");
+const promptsWarningList       = $("prompts-warning-list");
+const promptsWarningSave       = $("prompts-warning-save");
+const promptsWarningCancel     = $("prompts-warning-cancel");
+const promptsDiscardModal      = $("prompts-discard-modal");
+const promptsDiscardCount      = $("prompts-discard-count");
+const promptsDiscardConfirm    = $("prompts-discard-confirm");
+const promptsDiscardCancel     = $("prompts-discard-cancel");
+
+// ----- Helpers --------------------------------------------------
+
+function promptsEscapeHtml(s) {
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
+    ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"})[c]);
+}
+
+function promptsCountSubstring(haystack, needle) {
+  if (!needle) return 0;
+  let n = 0, i = 0;
+  while ((i = haystack.indexOf(needle, i)) !== -1) { n++; i += needle.length; }
+  return n;
+}
+
+function promptsDirtyEntries() {
+  return Object.entries(promptsState.buffers)
+    .filter(([, b]) => b.current !== b.original);
+}
+
+function promptsDirtyCount() { return promptsDirtyEntries().length; }
+
+function promptsDirtyFiles() {
+  return promptsDirtyEntries().map(([path, b]) => ({ path, content: b.current }));
+}
+
+function promptsDiscardAllBuffers() {
+  for (const [path, buf] of Object.entries(promptsState.buffers)) {
+    if (buf.current !== buf.original) {
+      buf.current = buf.original;
+      promptsMarkFileDirty(path, false);
+    }
+  }
+  // Refresh editor if a dirty file is currently visible
+  if (promptsState.selected) {
+    const buf = promptsState.buffers[promptsState.selected];
+    if (buf) {
+      promptsEditor.value = buf.current;
+      promptsUpdateOverlay(buf);
+    }
+  }
+  promptsRefreshActionButtons();
+}
+
+function promptsSetStatus(msg, kind) {
+  if (!promptsStatus) return;
+  promptsStatus.textContent = msg;
+  promptsStatus.classList.remove("ok", "err");
+  if (kind === "ok")  promptsStatus.classList.add("ok");
+  if (kind === "err") promptsStatus.classList.add("err");
+}
+
+function promptsApplyLockState() {
+  if (!promptsRoot || !promptsLockBanner) return;
+  promptsLockBanner.hidden = !promptsState.sessionLocked;
+  promptsRoot.classList.toggle("locked", promptsState.sessionLocked);
+  promptsRefreshActionButtons();
+}
+
+function promptsRefreshActionButtons() {
+  const anyDirty = promptsDirtyCount() > 0;
+  const locked   = promptsState.sessionLocked;
+  if (promptsSave)    promptsSave.disabled    = !anyDirty || locked;
+  if (promptsDiscard) promptsDiscard.disabled = !anyDirty || locked;
+}
+
+// ----- Tree load & render ---------------------------------------
+
+async function loadPromptsTree() {
+  if (!promptsTree) return;
+  try {
+    const res = await fetch("/api/prompts/tree");
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const body = await res.json();
+    promptsState.groups        = body.groups || [];
+    promptsState.sessionLocked = !!body.session_locked;
+    promptsState.knownSlots    = new Set(body.known_slots || []);
+    promptsState.markerPairs   = body.marker_pairs || [];
+    promptsState.runtimeSlots  = body.runtime_slots || {};
+    promptsState.loaded        = true;
+    promptsApplyLockState();
+    promptsRenderTree();
+  } catch (e) {
+    promptsTree.innerHTML =
+      `<p class="prompts-tree-loading">Failed to load: ` +
+      `${promptsEscapeHtml(e.message)}</p>`;
+  }
+}
+
+function promptsRenderTree() {
+  promptsTree.innerHTML = "";
+  for (const group of promptsState.groups) {
+    promptsTree.appendChild(promptsRenderGroup(group));
+  }
+  promptsApplySearchFilter();
+  promptsHighlightSelected();
+}
+
+function promptsMakeDisclosure(children) {
+  const wrap = document.createElement("span");
+  wrap.className = "prompts-tree-disclosure";
+  wrap.textContent = "▸";
+  const handler = () => {
+    const collapsed = !children.hidden;
+    children.hidden = collapsed;
+    wrap.textContent = collapsed ? "▸" : "▾";
+  };
+  return { wrap, handler };
+}
+
+function promptsRenderGroup(group) {
+  const root = document.createElement("div");
+  root.className = "prompts-tree-group";
+  root.dataset.groupId = group.id;
+
+  const children = document.createElement("div");
+  children.className = "prompts-tree-group-children";
+  children.hidden = true;
+  for (const child of group.children) children.appendChild(promptsRenderNode(child));
+
+  const { wrap: disc, handler } = promptsMakeDisclosure(children);
+  const header = document.createElement("div");
+  header.className = "prompts-tree-group-header";
+  header.appendChild(disc);
+  const label = document.createElement("span");
+  label.className = "prompts-tree-group-label";
+  label.textContent = group.label;
+  header.appendChild(label);
+  header.addEventListener("click", handler);
+
+  const subtitle = document.createElement("div");
+  subtitle.className = "prompts-tree-group-subtitle";
+  subtitle.textContent = group.path_subtitle || "";
+
+  root.appendChild(header);
+  root.appendChild(subtitle);
+  root.appendChild(children);
+  return root;
+}
+
+function promptsRenderNode(node) {
+  if (node.kind === "folder") return promptsRenderFolder(node);
+  if (node.kind === "file")   return promptsRenderFile(node);
+  return document.createElement("span");
+}
+
+function promptsRenderFolder(folder) {
+  const root = document.createElement("div");
+  root.className = "prompts-tree-folder";
+
+  const children = document.createElement("div");
+  children.className = "prompts-tree-folder-children";
+  children.hidden = true;
+  for (const child of folder.children) children.appendChild(promptsRenderNode(child));
+
+  const { wrap: disc, handler } = promptsMakeDisclosure(children);
+  const header = document.createElement("div");
+  header.className = "prompts-tree-folder-header";
+  header.appendChild(disc);
+  const name = document.createElement("span");
+  name.textContent = folder.display;
+  header.appendChild(name);
+  header.addEventListener("click", handler);
+
+  root.appendChild(header);
+  root.appendChild(children);
+  return root;
+}
+
+function promptsRenderFile(file) {
+  const root = document.createElement("div");
+  root.className = "prompts-tree-file";
+  root.dataset.path = file.path;
+  root.dataset.display = file.display;
+  root.dataset.usedBy  = JSON.stringify(file.used_by || []);
+
+  const dirty = document.createElement("span");
+  dirty.className = "prompts-tree-file-dirty";
+  dirty.textContent = "";
+  const name = document.createElement("span");
+  name.className = "prompts-tree-file-name";
+  name.textContent = file.display;
+  root.appendChild(dirty);
+  root.appendChild(name);
+
+  if (file.used_by && file.used_by.length) {
+    const badge = document.createElement("span");
+    badge.className = "prompts-tree-file-badge";
+    badge.textContent = `· ${file.used_by.length}`;
+    badge.title = `used by: ${file.used_by.join(", ")}`;
+    root.appendChild(badge);
+  }
+
+  root.addEventListener("click", () => promptsSelectFile(file.path));
+  return root;
+}
+
+function promptsFindFileNode(path) {
+  // Plain attribute selector — our paths only contain `/`, dots,
+  // letters, digits, underscores, all safe in CSS attribute values.
+  return promptsTree.querySelector(`[data-path="${path}"]`);
+}
+
+function promptsMarkFileDirty(path, dirty) {
+  const node = promptsFindFileNode(path);
+  if (!node) return;
+  const marker = node.querySelector(".prompts-tree-file-dirty");
+  if (marker) marker.textContent = dirty ? "*" : "";
+}
+
+function promptsHighlightSelected() {
+  promptsTree.querySelectorAll(".prompts-tree-file").forEach((el) => {
+    el.classList.toggle("selected", el.dataset.path === promptsState.selected);
+  });
+}
+
+// ----- Search filter --------------------------------------------
+
+function promptsApplySearchFilter() {
+  const q = (promptsSearch?.value || "").toLowerCase().trim();
+  promptsTree.querySelectorAll(".prompts-tree-file").forEach((el) => {
+    const name = (el.dataset.display || "").toLowerCase();
+    el.dataset.filtered = !q || name.includes(q) ? "" : "hidden";
+  });
+  promptsTree.querySelectorAll(".prompts-tree-folder").forEach((el) => {
+    const anyVisible = Array.from(el.querySelectorAll(".prompts-tree-file"))
+      .some((f) => f.dataset.filtered !== "hidden");
+    el.dataset.filtered = !q || anyVisible ? "" : "hidden";
+  });
+  promptsTree.querySelectorAll(".prompts-tree-group").forEach((el) => {
+    const anyVisible = Array.from(el.querySelectorAll(".prompts-tree-file"))
+      .some((f) => f.dataset.filtered !== "hidden");
+    el.dataset.filtered = !q || anyVisible ? "" : "hidden";
+  });
+}
+
+// ----- File select / show ---------------------------------------
+
+async function promptsSelectFile(path) {
+  if (promptsState.selected === path && promptsState.buffers[path]) return;
+  promptsState.selected = path;
+  promptsHighlightSelected();
+
+  let buf = promptsState.buffers[path];
+  if (!buf) {
+    try {
+      const res = await fetch(`/api/prompts/file?path=${encodeURIComponent(path)}`);
+      if (!res.ok) {
+        const detail = (await res.json().catch(() => null))?.detail || res.statusText;
+        promptsSetStatus(`Failed to load ${path}: ${detail}`, "err");
+        return;
+      }
+      const body = await res.json();
+      buf = {
+        original:   body.content,
+        current:    body.content,
+        hasMarkers: !!body.has_conditional_regions,
+      };
+      promptsState.buffers[path] = buf;
+    } catch (e) {
+      promptsSetStatus(`Network error: ${e.message}`, "err");
+      return;
+    }
+  }
+  promptsShowFileInEditor(path, buf);
+}
+
+function promptsShowFileInEditor(path, buf) {
+  promptsEditorPlaceholder.hidden = true;
+  promptsEditorContainer.hidden   = false;
+  promptsEditorHeader.hidden      = false;
+
+  promptsEditorPath.textContent = path;
+  const node = promptsFindFileNode(path);
+  const usedBy = node ? JSON.parse(node.dataset.usedBy || "[]") : [];
+  promptsEditorUsedby.textContent = usedBy.length
+    ? `Used by: ${usedBy.join(", ")}`
+    : "Used by: (doc / README — not consumed by any agent)";
+
+  if (buf.hasMarkers) {
+    promptsEditorFlags.hidden = false;
+    promptsEditorFlags.textContent =
+      "Contains <<…>> conditional regions — resolved per current "
+      + "PLANNER_FIRST / DC_INSPECTOR_ENABLED / RAG_ENABLED + per-agent "
+      + "DBa flags (see Workflow Settings + Database views).";
+  } else {
+    promptsEditorFlags.hidden = true;
+    promptsEditorFlags.textContent = "";
+  }
+
+  promptsEditor.value = buf.current;
+  promptsUpdateOverlay(buf);
+  promptsEditor.scrollTop = 0;
+  promptsEditorOverlay.scrollTop = 0;
+}
+
+function promptsUpdateOverlay(buf) {
+  if (!buf.hasMarkers) {
+    promptsEditorOverlay.innerHTML = "";
+    promptsEditor.style.color = "var(--fg)";
+    return;
+  }
+  promptsEditor.style.color = "transparent";
+  promptsEditorOverlay.innerHTML = promptsRenderOverlay(buf.current);
+}
+
+function promptsRegexEscape(s) {
+  return s.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function promptsRenderOverlay(content) {
+  let html = promptsEscapeHtml(content);
+  for (const [open_, close_] of promptsState.markerPairs) {
+    const re = new RegExp(
+      promptsRegexEscape(promptsEscapeHtml(open_))
+      + "([\\s\\S]*?)"
+      + promptsRegexEscape(promptsEscapeHtml(close_)),
+      "g"
+    );
+    html = html.replace(re, (full) =>
+      `<span class="prompts-cond-region">${full}</span>`);
+  }
+  // Trailing newline so a final `\n` in the textarea doesn't get
+  // clipped by the overlay's last line.
+  return html + "\n";
+}
+
+// ----- Editor input / scroll ------------------------------------
+
+function promptsOnEditorInput() {
+  const path = promptsState.selected;
+  if (!path) return;
+  const buf = promptsState.buffers[path];
+  if (!buf) return;
+  buf.current = promptsEditor.value;
+  if (buf.hasMarkers) promptsUpdateOverlay(buf);
+  promptsMarkFileDirty(path, buf.current !== buf.original);
+  promptsRefreshActionButtons();
+}
+
+function promptsOnEditorScroll() {
+  promptsEditorOverlay.scrollTop  = promptsEditor.scrollTop;
+  promptsEditorOverlay.scrollLeft = promptsEditor.scrollLeft;
+}
+
+// ----- Client-side validation (mirrors prompts_admin.validate_one) -----
+
+function promptsValidateAll(files) {
+  const out = [];
+  for (const f of files) out.push(...promptsValidateOne(f.path, f.content));
+  return out;
+}
+
+function promptsValidateOne(path, content) {
+  const out = [];
+  const lines = content.split("\n");
+
+  // Rule (a) — unknown $slot
+  for (let i = 0; i < lines.length; i++) {
+    const re = /\$([a-z_][a-z0-9_]*)/g;
+    let m;
+    while ((m = re.exec(lines[i])) !== null) {
+      const name = m[1];
+      if (!promptsState.knownSlots.has(name)
+          && name !== "database_search_per_agent") {
+        out.push({
+          path, line: i + 1, kind: "unknown_slot",
+          detail: `$${name} — not in known $-slot list.`,
+        });
+      }
+    }
+  }
+
+  // Rule (b) — unbalanced <<…>> markers
+  for (const [open_, close_] of promptsState.markerPairs) {
+    const nOpen  = promptsCountSubstring(content, open_);
+    const nClose = promptsCountSubstring(content, close_);
+    if (nOpen !== nClose) {
+      let row = 1;
+      for (let i = 0; i < lines.length; i++) {
+        if (lines[i].includes(open_) || lines[i].includes(close_)) {
+          row = i + 1; break;
+        }
+      }
+      out.push({
+        path, line: row, kind: "unbalanced_marker",
+        detail: `${open_} opens=${nOpen}, closes=${nClose} — region mismatch will swallow content.`,
+      });
+    }
+  }
+
+  // Rule (c) — unescaped {x} in a prompt.md
+  const agentMatch = path.match(/^agents\/([^/]+)\/prompt\.md$/);
+  if (agentMatch) {
+    const agent   = agentMatch[1];
+    const allowed = new Set(promptsState.runtimeSlots[agent] || []);
+    const braceRe = /(?<!\{)\{([a-zA-Z_][a-zA-Z0-9_]*)\}(?!\})/g;
+    for (let i = 0; i < lines.length; i++) {
+      let m;
+      braceRe.lastIndex = 0;
+      while ((m = braceRe.exec(lines[i])) !== null) {
+        const name = m[1];
+        if (!allowed.has(name)) {
+          const list = Array.from(allowed).sort().join(", ") || "(none)";
+          out.push({
+            path, line: i + 1, kind: "brace_escape",
+            detail: `{${name}} would crash .format() at runtime.  Allowed for ${agent}: ${list}.`,
+          });
+        }
+      }
+    }
+  }
+
+  // Empty file
+  if (!content.trim()) {
+    out.push({
+      path, line: 1, kind: "empty_file",
+      detail: "File is empty after edits.",
+    });
+  }
+  return out;
+}
+
+// ----- Save flow ------------------------------------------------
+
+let promptsPendingSave = null;   // callback held while warning modal is open
+
+async function promptsSaveClicked() {
+  const files = promptsDirtyFiles();
+  if (!files.length) { promptsSetStatus("Nothing to save.", "ok"); return; }
+  const warnings = promptsValidateAll(files);
+  if (warnings.length) {
+    promptsShowWarningModal(warnings, () => promptsActuallySave(files));
+    return;
+  }
+  await promptsActuallySave(files);
+}
+
+async function promptsActuallySave(files) {
+  if (!promptsState.password) {
+    promptsAuthRow.hidden = false;
+    promptsPassword.focus();
+    return;
+  }
+  promptsSetStatus("Saving…", "");
+  try {
+    const res = await fetch("/api/prompts/save", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password: promptsState.password, files }),
+    });
+    if (res.status === 401) {
+      promptsState.password = null;
+      promptsSetStatus("Password rejected.  Re-enter and try again.", "err");
+      promptsAuthRow.hidden = false;
+      promptsPassword.focus();
+      return;
+    }
+    if (res.status === 409) {
+      promptsSetStatus(
+        "Save rejected — a session is active.  End the session and try again.",
+        "err");
+      return;
+    }
+    if (!res.ok) {
+      const detail = (await res.json().catch(() => null))?.detail || res.statusText;
+      promptsSetStatus(`Save failed: ${detail}`, "err");
+      return;
+    }
+    const body = await res.json();
+    for (const entry of body.files_written || []) {
+      const buf = promptsState.buffers[entry.path];
+      if (buf) buf.original = buf.current;
+      promptsMarkFileDirty(entry.path, false);
+    }
+    promptsRefreshActionButtons();
+    promptsSetStatus(promptsFormatSaveStatus(body), "ok");
+  } catch (e) {
+    promptsSetStatus(`Network error: ${e.message}`, "err");
+  }
+}
+
+function promptsFormatSaveStatus(body) {
+  const written  = body.files_written || [];
+  const warnings = body.warnings || [];
+  const affected = new Set();
+  for (const w of written) (w.affected_agents || []).forEach((a) => affected.add(a));
+  const lines = [];
+  lines.push(`Saved ${written.length} file(s).`);
+  for (const w of written) {
+    const ag = (w.affected_agents || []);
+    lines.push(`  ${w.path}  →  ${ag.length ? ag.join(", ") : "(doc only — no live consumer)"}`);
+  }
+  if (affected.size) {
+    lines.push(
+      `${affected.size} agent(s) will rebuild fresh on next session: `
+      + Array.from(affected).sort().join(", "));
+  }
+  if (warnings.length) {
+    lines.push(`${warnings.length} warning(s):`);
+    for (const w of warnings) {
+      lines.push(`  • [${w.kind}] ${w.path}:${w.line} — ${w.detail}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+// ----- Inline auth row ------------------------------------------
+
+async function promptsOnUnlock() {
+  const pwd = promptsPassword.value;
+  if (!pwd) return;
+  promptsState.password = pwd;
+  promptsAuthRow.hidden = true;
+  promptsPassword.value = "";
+  const files = promptsDirtyFiles();
+  if (!files.length) return;
+  const warnings = promptsValidateAll(files);
+  if (warnings.length) {
+    promptsShowWarningModal(warnings, () => promptsActuallySave(files));
+  } else {
+    promptsActuallySave(files);
+  }
+}
+
+function promptsOnAuthCancel() {
+  promptsAuthRow.hidden = true;
+  promptsPassword.value = "";
+}
+
+// ----- Discard modal --------------------------------------------
+
+function promptsDiscardClicked() {
+  const n = promptsDirtyCount();
+  if (!n) return;
+  promptsDiscardCount.innerHTML =
+    `Discard <strong>${n}</strong> unsaved file(s)?  This cannot be undone.`;
+  promptsDiscardModal.hidden = false;
+}
+
+function promptsDiscardConfirmed() {
+  promptsDiscardAllBuffers();
+  promptsDiscardModal.hidden = true;
+  promptsSetStatus("Discarded all unsaved changes.", "ok");
+}
+
+// ----- Warning modal --------------------------------------------
+
+function promptsShowWarningModal(warnings, onContinue) {
+  promptsWarningList.innerHTML = "";
+  for (const w of warnings) {
+    const li = document.createElement("li");
+    const kind  = document.createElement("span");
+    kind.className = "pw-kind";
+    kind.textContent = w.kind;
+    const path  = document.createElement("span");
+    path.className = "pw-path";
+    path.textContent = w.path;
+    const line  = document.createElement("span");
+    line.className = "pw-line";
+    line.textContent = `line ${w.line}`;
+    const det   = document.createElement("span");
+    det.className = "pw-detail";
+    det.textContent = w.detail;
+    li.appendChild(kind);
+    li.appendChild(path);
+    li.appendChild(line);
+    li.appendChild(det);
+    promptsWarningList.appendChild(li);
+  }
+  promptsPendingSave = onContinue;
+  promptsWarningModal.hidden = false;
+}
+
+function promptsOnWarningSaveAnyway() {
+  promptsWarningModal.hidden = true;
+  const fn = promptsPendingSave;
+  promptsPendingSave = null;
+  if (fn) fn();
+}
+
+function promptsOnWarningCancel() {
+  promptsWarningModal.hidden = true;
+  promptsPendingSave = null;
+}
+
+// ----- Wire up --------------------------------------------------
+
+if (promptsSearch)         promptsSearch.addEventListener("input", promptsApplySearchFilter);
+if (promptsEditor)         promptsEditor.addEventListener("input", promptsOnEditorInput);
+if (promptsEditor)         promptsEditor.addEventListener("scroll", promptsOnEditorScroll);
+if (promptsSave)           promptsSave.addEventListener("click", promptsSaveClicked);
+if (promptsDiscard)        promptsDiscard.addEventListener("click", promptsDiscardClicked);
+if (promptsUnlock)         promptsUnlock.addEventListener("click", promptsOnUnlock);
+if (promptsPassword)       promptsPassword.addEventListener("keydown", (e) => {
+  if (e.key === "Enter") { e.preventDefault(); promptsOnUnlock(); }
+});
+if (promptsAuthCancel)     promptsAuthCancel.addEventListener("click", promptsOnAuthCancel);
+if (promptsWarningSave)    promptsWarningSave.addEventListener("click", promptsOnWarningSaveAnyway);
+if (promptsWarningCancel)  promptsWarningCancel.addEventListener("click", promptsOnWarningCancel);
+if (promptsDiscardConfirm) promptsDiscardConfirm.addEventListener("click", promptsDiscardConfirmed);
+if (promptsDiscardCancel)  promptsDiscardCancel.addEventListener("click", () => {
+  promptsDiscardModal.hidden = true;
+});
+
+// Browser-native warning on page close/refresh with dirty buffers
+// (round 4 Q16).  The view-switch in-app prompt is in switchView above.
+window.addEventListener("beforeunload", (e) => {
+  if (typeof promptsState !== "undefined" && promptsDirtyCount() > 0) {
+    e.preventDefault();
+    e.returnValue = "";
+  }
 });

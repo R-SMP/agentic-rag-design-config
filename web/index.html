@@ -600,8 +600,20 @@
                 <div id="prompts-editor-flags"
                      class="prompts-editor-flags" hidden></div>
               </div>
-              <textarea id="prompts-editor" class="prompts-editor"
-                        spellcheck="false" hidden></textarea>
+              <!-- Overlay-hack wrapper.  The <pre> overlay sits
+                   behind a transparent-text textarea so that
+                   <<…>> conditional regions can be tinted by JS
+                   without abandoning the plain-textarea editor
+                   (round 4 Q13).  When no conditional regions are
+                   present the overlay is left empty and ignored. -->
+              <div id="prompts-editor-container"
+                   class="prompts-editor-container" hidden>
+                <pre id="prompts-editor-overlay"
+                     class="prompts-editor-overlay"
+                     aria-hidden="true"></pre>
+                <textarea id="prompts-editor" class="prompts-editor"
+                          spellcheck="false"></textarea>
+              </div>
               <div id="prompts-editor-placeholder"
                    class="prompts-editor-placeholder">
                 Select a file from the tree to view or edit its content.
