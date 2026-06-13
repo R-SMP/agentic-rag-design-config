@@ -8,3 +8,10 @@
 fastapi>=0.110.0
 uvicorn[standard]>=0.27.0
 python-multipart>=0.0.9
+
+# Voyage AI multimodal embedding SDK — used ONLY by the
+# extra_utilities/embedding_tests/ harness (the "Embedding tests"
+# side-menu view).  Self-contained: no chain agent imports it.
+# Requires VOYAGE_API_KEY in the environment when the operator
+# clicks "Rebuild index" or runs a search through that view.
+voyageai>=0.2.3

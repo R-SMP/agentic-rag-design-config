@@ -1066,6 +1066,7 @@ function switchView(name) {
       else refreshSessionActive();
     }
   }
+  if (name === "embed_tests") loadEmbedTests();
 }
 
 for (const b of navItems) {
@@ -4910,4 +4911,550 @@ window.addEventListener("beforeunload", (e) => {
     e.preventDefault();
     e.returnValue = "";
   }
+});
+// =============================================================================
+// Embedding tests — view handlers, search calls, log panel, lightbox
+// -----------------------------------------------------------------------------
+// Backed by extra_utilities/embedding_tests/ via /api/embedding_tests/*.
+// All state is local to this section; no globals leaked elsewhere.
+// =============================================================================
+
+let embLoaded = false;
+let embManifest = null;
+let embCurrentUpload = null;       // File object after the user picked one
+let embRebuildInFlight = false;
+// Shared guard so a picked-image search and an upload search can't
+// race each other into the same #emb-image-results / #emb-image-captions
+// areas (last response would otherwise win and disagree with the log).
+let embImageSearchInFlight = false;
+
+const EMB_METHODS = [
+  { key: "voyage",
+    title: "Voyage",
+    sub:   "joint multimodal" },
+  { key: "caption_visual",
+    title: "Caption — visual",
+    sub:   "VLM caption + OpenAI text-emb" },
+  { key: "caption_semantic",
+    title: "Caption — semantic",
+    sub:   "VLM caption + OpenAI text-emb" },
+];
+
+function embEsc(s) {
+  return String(s == null ? "" : s)
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+function embFmtScore(score) {
+  if (typeof score !== "number") return String(score);
+  return score.toFixed(4);
+}
+
+function embImgUrl(name) {
+  return "/api/embedding_tests/image/" + encodeURIComponent(name);
+}
+
+function embUploadUrl(refName) {
+  return "/api/embedding_tests/upload/" + encodeURIComponent(refName);
+}
+
+// ----- Lightbox -----
+
+function embOpenLightbox(src, caption) {
+  const overlay = document.getElementById("emb-lightbox");
+  const img     = document.getElementById("emb-lightbox-img");
+  const cap     = document.getElementById("emb-lightbox-caption");
+  if (!overlay || !img) return;
+  img.src = src;
+  img.alt = caption || "";
+  if (cap) cap.textContent = caption || "";
+  overlay.hidden = false;
+}
+
+function embCloseLightbox() {
+  const overlay = document.getElementById("emb-lightbox");
+  const img     = document.getElementById("emb-lightbox-img");
+  if (!overlay) return;
+  overlay.hidden = true;
+  if (img) img.src = "";
+}
+
+document.addEventListener("keydown", (e) => {
+  const overlay = document.getElementById("emb-lightbox");
+  if (overlay && !overlay.hidden && e.key === "Escape") embCloseLightbox();
+});
+
+// ----- Manifest + reference table -----
+
+async function loadEmbedTests() {
+  if (embLoaded) {
+    // Always refresh the log on view-open so newly-arrived entries show up.
+    refreshEmbLog();
+    return;
+  }
+  const [manifestOk] = await Promise.all([
+    fetchEmbManifest(),
+    refreshEmbLog(),
+  ]);
+  // Only flip the "already loaded" flag when the manifest actually
+  // succeeded — otherwise a transient first-load failure (server
+  // restart, network blip) would lock the view into the error state
+  // until the operator hard-reloaded the page.
+  if (manifestOk) embLoaded = true;
+}
+
+async function fetchEmbManifest() {
+  const tbody  = document.getElementById("emb-ref-tbody");
+  const meta   = document.getElementById("emb-meta");
+  const select = document.getElementById("emb-image-select");
+  try {
+    const res = await fetch("/api/embedding_tests/manifest");
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    const data = await res.json();
+    embManifest = data;
+    if (tbody) {
+      tbody.innerHTML = "";
+      for (const r of (data.images || [])) {
+        const tr = document.createElement("tr");
+        const tdIdx = document.createElement("td");
+        tdIdx.textContent = r.index;
+        const tdName = document.createElement("td");
+        tdName.className = "emb-td-name";
+        tdName.textContent = r.name;
+        const tdThumb = document.createElement("td");
+        const img = document.createElement("img");
+        img.src = embImgUrl(r.name);
+        img.alt = r.name;
+        img.className = "emb-thumb emb-thumb-ref";
+        img.addEventListener("click", () => embOpenLightbox(img.src, r.name));
+        tdThumb.appendChild(img);
+        const tdVis = document.createElement("td");
+        tdVis.className = "emb-td-desc";
+        tdVis.textContent = r.visual_description || "(empty)";
+        const tdSem = document.createElement("td");
+        tdSem.className = "emb-td-desc";
+        tdSem.textContent = r.semantic_description || "(empty)";
+        tr.appendChild(tdIdx);
+        tr.appendChild(tdName);
+        tr.appendChild(tdThumb);
+        tr.appendChild(tdVis);
+        tr.appendChild(tdSem);
+        tbody.appendChild(tr);
+      }
+    }
+    if (select) {
+      while (select.options.length > 1) select.remove(1);
+      for (const r of (data.images || [])) {
+        const opt = document.createElement("option");
+        opt.value = r.name;
+        opt.textContent = r.index + ". " + r.name;
+        select.appendChild(opt);
+      }
+    }
+    if (meta) {
+      const mv = data.model_versions || {};
+      const gen = data.generated_at;
+      const hasVecs = (data.images || []).some(r =>
+        r.has_voyage_vector || r.has_visual_caption_vector || r.has_semantic_caption_vector);
+      let html =
+        "<strong>Models:</strong> " +
+        "voyage = " + embEsc(mv.voyage || "—") + " · " +
+        "caption_vlm = " + embEsc(mv.caption_vlm || "—") + " · " +
+        "caption_text_embedder = " + embEsc(mv.caption_text_embedder || "—") +
+        " &nbsp;|&nbsp; <strong>Generated:</strong> " + embEsc(gen || "—");
+      if (!hasVecs) {
+        html += "<br><span class=\"emb-warn\">⚠ No vectors stored yet. " +
+          "Descriptions are baked in but you need to click <strong>" +
+          "Rebuild index</strong> below to populate the Voyage / caption " +
+          "vectors before searches will return matches.</span>";
+      }
+      meta.innerHTML = html;
+    }
+    return true;
+  } catch (e) {
+    // Clear ALL three regions back to an error state so the operator
+    // never sees a stale dropdown / meta line alongside the failed
+    // table after a refetch (which would otherwise misrepresent
+    // current server state).
+    if (tbody) tbody.innerHTML =
+      "<tr><td colspan=\"5\" class=\"emb-error\">" +
+      "Failed to load manifest: " + embEsc(e.message || e) + "</td></tr>";
+    if (select) {
+      while (select.options.length > 1) select.remove(1);
+    }
+    if (meta) meta.innerHTML =
+      "<span class=\"emb-warn\">Manifest load failed: " +
+      embEsc(e.message || e) + "</span>";
+    embManifest = null;
+    return false;
+  }
+}
+
+// ----- Result rendering -----
+
+function renderEmbResults(containerId, methodsObj, errorsObj) {
+  const container = document.getElementById(containerId);
+  if (!container) return;
+  container.classList.remove("emb-results-empty");
+  container.innerHTML = "";
+
+  const methods = methodsObj || {};
+  const errors  = errorsObj  || {};
+
+  for (const m of EMB_METHODS) {
+    const col = document.createElement("div");
+    col.className = "emb-method-col";
+
+    const h = document.createElement("div");
+    h.className = "emb-method-title";
+    h.innerHTML = embEsc(m.title) +
+      " <span class=\"emb-method-sub\">" + embEsc(m.sub) + "</span>";
+    col.appendChild(h);
+
+    const err = errors[m.key];
+    const list = methods[m.key];
+    if (err) {
+      const e = document.createElement("div");
+      e.className = "emb-method-error";
+      e.textContent = err;
+      col.appendChild(e);
+    } else if (!list || !list.length) {
+      const empty = document.createElement("em");
+      empty.className = "emb-empty";
+      empty.textContent = "(no results — vectors may be empty)";
+      col.appendChild(empty);
+    } else {
+      const ol = document.createElement("ol");
+      ol.className = "emb-result-list";
+      for (const r of list) {
+        const li = document.createElement("li");
+        li.className = "emb-result-item";
+        const img = document.createElement("img");
+        img.src = embImgUrl(r.name);
+        img.alt = r.name;
+        img.className = "emb-thumb";
+        img.addEventListener("click", () => embOpenLightbox(img.src, r.name));
+        li.appendChild(img);
+        const nm = document.createElement("div");
+        nm.className = "emb-result-name";
+        nm.textContent = r.name;
+        li.appendChild(nm);
+        const sc = document.createElement("div");
+        sc.className = "emb-result-score";
+        sc.textContent = "score " + embFmtScore(r.score);
+        li.appendChild(sc);
+        ol.appendChild(li);
+      }
+      col.appendChild(ol);
+    }
+    container.appendChild(col);
+  }
+}
+
+// ----- Text search -----
+
+const embTextForm  = document.getElementById("emb-text-form");
+const embTextInput = document.getElementById("emb-text-input");
+const embTextBtn   = document.getElementById("emb-text-btn");
+
+if (embTextForm) embTextForm.addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const text = (embTextInput && embTextInput.value || "").trim();
+  if (!text) return;
+  if (embTextBtn) embTextBtn.disabled = true;
+  try {
+    const res = await fetch("/api/embedding_tests/search_text", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ text }),
+    });
+    const data = await res.json();
+    if (!data.ok) {
+      renderEmbResults("emb-text-results",
+        {}, { voyage: data.error, caption_visual: data.error, caption_semantic: data.error });
+    } else {
+      renderEmbResults("emb-text-results", data.methods, data.errors);
+      if (data.log_entry) prependEmbLogEntry(data.log_entry);
+    }
+  } catch (err) {
+    renderEmbResults("emb-text-results",
+      {}, { voyage: String(err), caption_visual: String(err), caption_semantic: String(err) });
+  } finally {
+    if (embTextBtn) embTextBtn.disabled = false;
+  }
+});
+
+// ----- Image search (picked from set) -----
+
+const embImageSelect       = document.getElementById("emb-image-select");
+const embImageSearchPicked = document.getElementById("emb-image-search-picked");
+
+if (embImageSelect) embImageSelect.addEventListener("change", () => {
+  if (embImageSearchPicked)
+    embImageSearchPicked.disabled = !embImageSelect.value;
+});
+
+function _embStartImageSearch() {
+  embImageSearchInFlight = true;
+  if (embImageSearchPicked) embImageSearchPicked.disabled = true;
+  if (embImageSearchUpload) embImageSearchUpload.disabled = true;
+}
+
+function _embEndImageSearch() {
+  embImageSearchInFlight = false;
+  if (embImageSearchPicked)
+    embImageSearchPicked.disabled = !(embImageSelect && embImageSelect.value);
+  if (embImageSearchUpload)
+    embImageSearchUpload.disabled = !embCurrentUpload;
+}
+
+if (embImageSearchPicked) embImageSearchPicked.addEventListener("click",
+  async () => {
+    if (embImageSearchInFlight) return;
+    if (!embImageSelect || !embImageSelect.value) return;
+    _embStartImageSearch();
+    try {
+      const res = await fetch("/api/embedding_tests/search_image_picked", {
+        method:  "POST",
+        headers: { "Content-Type": "application/json" },
+        body:    JSON.stringify({ image_name: embImageSelect.value }),
+      });
+      const data = await res.json();
+      handleEmbImageResponse(data);
+    } catch (err) {
+      renderEmbResults("emb-image-results",
+        {}, { voyage: String(err), caption_visual: String(err), caption_semantic: String(err) });
+    } finally {
+      _embEndImageSearch();
+    }
+  });
+
+// ----- Image search (uploaded) -----
+
+const embImageFile         = document.getElementById("emb-image-file");
+const embImagePickFile     = document.getElementById("emb-image-pick-file");
+const embImageFilename     = document.getElementById("emb-image-filename");
+const embImageSearchUpload = document.getElementById("emb-image-search-upload");
+
+if (embImagePickFile) embImagePickFile.addEventListener("click", () => {
+  if (embImageFile) embImageFile.click();
+});
+
+if (embImageFile) embImageFile.addEventListener("change", () => {
+  const f = embImageFile.files && embImageFile.files[0];
+  embCurrentUpload = f || null;
+  if (embImageFilename) {
+    embImageFilename.textContent = f ? f.name : "";
+  }
+  if (embImageSearchUpload) embImageSearchUpload.disabled = !f;
+});
+
+if (embImageSearchUpload) embImageSearchUpload.addEventListener("click",
+  async () => {
+    if (embImageSearchInFlight) return;
+    if (!embCurrentUpload) return;
+    _embStartImageSearch();
+    try {
+      const fd = new FormData();
+      fd.append("file", embCurrentUpload);
+      const res = await fetch("/api/embedding_tests/search_image_upload", {
+        method: "POST",
+        body:   fd,
+      });
+      const data = await res.json();
+      handleEmbImageResponse(data);
+    } catch (err) {
+      renderEmbResults("emb-image-results",
+        {}, { voyage: String(err), caption_visual: String(err), caption_semantic: String(err) });
+    } finally {
+      _embEndImageSearch();
+    }
+  });
+
+function handleEmbImageResponse(data) {
+  const captionsBox = document.getElementById("emb-image-captions");
+  const visPre      = document.getElementById("emb-image-caption-visual");
+  const semPre      = document.getElementById("emb-image-caption-semantic");
+  if (!data.ok) {
+    if (captionsBox) captionsBox.hidden = true;
+    renderEmbResults("emb-image-results",
+      {}, { voyage: data.error, caption_visual: data.error, caption_semantic: data.error });
+    return;
+  }
+  renderEmbResults("emb-image-results", data.methods, data.errors);
+  const captions = data.captions_used || {};
+  if (visPre) visPre.textContent = captions.visual   || "(empty)";
+  if (semPre) semPre.textContent = captions.semantic || "(empty)";
+  if (captionsBox) captionsBox.hidden = false;
+  if (data.log_entry) prependEmbLogEntry(data.log_entry);
+}
+
+// ----- Rebuild -----
+
+const embRebuildBtn    = document.getElementById("emb-rebuild-btn");
+const embRebuildStatus = document.getElementById("emb-rebuild-status");
+
+if (embRebuildBtn) embRebuildBtn.addEventListener("click", async () => {
+  if (embRebuildInFlight) return;
+  const msg =
+    "Rebuild the embedding index?\n\n" +
+    "This re-embeds every sketch via Voyage multimodal-3 AND " +
+    "re-embeds the two caption-based vectors via OpenAI text-embedding-3-large.\n\n" +
+    "Existing baked-in descriptions are PRESERVED " +
+    "(no VLM re-caption unless empty).\n\n" +
+    "Takes 1-3 minutes. Don" + "’" + "t close the tab while it runs.";
+  if (!window.confirm(msg)) return;
+  embRebuildInFlight = true;
+  embRebuildBtn.disabled = true;
+  if (embRebuildStatus) {
+    embRebuildStatus.classList.remove("error", "success");
+    embRebuildStatus.textContent = "Rebuilding… (1-3 min)";
+  }
+  try {
+    const res = await fetch("/api/embedding_tests/rebuild_index", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ preserve_descriptions: true }),
+    });
+    const data = await res.json();
+    if (data.ok) {
+      const dur = data.duration_seconds != null
+        ? " in " + data.duration_seconds + " s" : "";
+      const errLine = (data.errors && data.errors.length)
+        ? " (with " + data.errors.length + " step error(s))" : "";
+      if (embRebuildStatus) {
+        embRebuildStatus.classList.add("success");
+        embRebuildStatus.textContent =
+          "Rebuilt " + data.n_images + " image(s)" + dur + errLine + ".";
+      }
+      embLoaded = false;
+      await fetchEmbManifest();
+      embLoaded = true;
+    } else {
+      if (embRebuildStatus) {
+        embRebuildStatus.classList.add("error");
+        embRebuildStatus.textContent =
+          "Rebuild failed: " + (data.error || JSON.stringify(data));
+      }
+    }
+  } catch (err) {
+    if (embRebuildStatus) {
+      embRebuildStatus.classList.add("error");
+      embRebuildStatus.textContent = "Rebuild failed: " + (err.message || err);
+    }
+  } finally {
+    embRebuildInFlight = false;
+    embRebuildBtn.disabled = false;
+  }
+});
+
+// ----- Log panel -----
+
+const embLogRefresh = document.getElementById("emb-log-refresh");
+if (embLogRefresh) embLogRefresh.addEventListener("click", refreshEmbLog);
+
+async function refreshEmbLog() {
+  try {
+    const res = await fetch("/api/embedding_tests/log?limit=50");
+    if (!res.ok) return;
+    const data = await res.json();
+    renderEmbLog(data.entries || []);
+  } catch (_) { /* ignore */ }
+}
+
+function renderEmbLog(entries) {
+  const stream = document.getElementById("emb-log-stream");
+  if (!stream) return;
+  stream.innerHTML = "";
+  if (!entries.length) {
+    const em = document.createElement("em");
+    em.className = "emb-empty";
+    em.textContent = "(no searches yet)";
+    stream.appendChild(em);
+    return;
+  }
+  // Newest at top.
+  for (const e of entries.slice().reverse()) {
+    stream.appendChild(buildEmbLogEntry(e));
+  }
+}
+
+function prependEmbLogEntry(entry) {
+  const stream = document.getElementById("emb-log-stream");
+  if (!stream) return;
+  const placeholder = stream.querySelector(".emb-empty");
+  if (placeholder) placeholder.remove();
+  stream.insertBefore(buildEmbLogEntry(entry), stream.firstChild);
+}
+
+function buildEmbLogEntry(e) {
+  const card = document.createElement("div");
+  card.className = "emb-log-entry";
+
+  const ts = document.createElement("div");
+  ts.className = "emb-log-ts";
+  ts.textContent = e.ts || "";
+  card.appendChild(ts);
+
+  if (e.query_type === "text") {
+    const q = document.createElement("div");
+    q.className = "emb-log-q-text";
+    const text = e.query || "";
+    q.textContent = "“" + (text.length > 120 ? text.slice(0, 120) + "…" : text) + "”";
+    card.appendChild(q);
+  } else if (e.query_type === "image_picked" || e.query_type === "image_upload") {
+    const qrow = document.createElement("div");
+    qrow.className = "emb-log-qrow";
+    const qimg = document.createElement("img");
+    qimg.className = "emb-log-q-thumb";
+    qimg.src = (e.query_type === "image_upload")
+      ? embUploadUrl(e.query_image)
+      : embImgUrl(e.query_image);
+    qimg.alt = e.query_image || "";
+    qimg.addEventListener("click",
+      () => embOpenLightbox(qimg.src, e.filename || e.query_image));
+    qrow.appendChild(qimg);
+    const qname = document.createElement("div");
+    qname.className = "emb-log-q-name";
+    qname.textContent = (e.query_type === "image_upload")
+      ? "upload: " + (e.filename || e.query_image || "")
+      : "picked: "  + (e.query_image || "");
+    qrow.appendChild(qname);
+    card.appendChild(qrow);
+  }
+
+  const labels = { voyage: "V", caption_visual: "CV", caption_semantic: "CS" };
+  for (const m of EMB_METHODS) {
+    const res = e.results && e.results[m.key];
+    if (res && res.length) {
+      const row = document.createElement("div");
+      row.className = "emb-log-method";
+      const names = res.map(r => r.name).join(", ");
+      row.innerHTML =
+        "<span class=\"emb-log-mlabel\">" + labels[m.key] + ":</span> " +
+        embEsc(names);
+      card.appendChild(row);
+    }
+    const err = e.errors && e.errors[m.key];
+    if (err) {
+      const row = document.createElement("div");
+      row.className = "emb-log-method emb-log-method-err";
+      row.innerHTML =
+        "<span class=\"emb-log-mlabel\">" + labels[m.key] + ":</span> " +
+        embEsc(err);
+      card.appendChild(row);
+    }
+  }
+
+  return card;
+}
+
+// Lightbox close button + overlay click
+const embLightboxClose = document.getElementById("emb-lightbox-close");
+if (embLightboxClose) embLightboxClose.addEventListener("click", embCloseLightbox);
+const embLightboxOverlay = document.getElementById("emb-lightbox");
+if (embLightboxOverlay) embLightboxOverlay.addEventListener("click", (e) => {
+  if (e.target === embLightboxOverlay) embCloseLightbox();
 });

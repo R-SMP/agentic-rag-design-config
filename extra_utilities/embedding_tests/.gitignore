@@ -1,0 +1,10 @@
+# Embedding tests — runtime artefacts that must not be committed.
+#
+# Source files (.py, README.md, sketches/, embeddings.json with baked
+# descriptions) ARE tracked.  Anything generated at runtime — search
+# log, uploaded query images, Python bytecode — stays local.
+
+__pycache__/
+*.pyc
+searches.jsonl
+uploads/

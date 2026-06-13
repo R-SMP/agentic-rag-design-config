@@ -41,7 +41,7 @@ from fastapi import FastAPI, File, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
 import importlib
 
@@ -2304,6 +2304,276 @@ async def api_log_stream() -> StreamingResponse:
             await asyncio.sleep(0.4)
 
     return StreamingResponse(gen(), media_type="text/event-stream")
+
+
+# --------------------------------------------------------------------------
+# Embedding tests view — sketch-embedding empirical comparison harness
+# --------------------------------------------------------------------------
+# Backs the side-menu "Embedding tests" view.  Everything happens inside
+# ``extra_utilities/embedding_tests/`` — a sandboxed module that imports
+# NOTHING from ``agents/`` or ``workflow_settings/``.  These endpoints
+# are thin shims: validate input, offload blocking work via
+# ``run_in_threadpool``, return JSON.
+#
+# Endpoints
+#   GET  /api/embedding_tests/manifest             — reference-table data + model versions
+#   GET  /api/embedding_tests/image/<name>         — serve a test sketch file
+#   GET  /api/embedding_tests/upload/<name>        — serve a previously-uploaded query image (for the log panel)
+#   POST /api/embedding_tests/search_text          — body: {text}; top-3 per method
+#   POST /api/embedding_tests/search_image_picked  — body: {image_name}; pick from the test set
+#   POST /api/embedding_tests/search_image_upload  — multipart {file}; user-uploaded query image
+#   POST /api/embedding_tests/rebuild_index        — body: {preserve_descriptions?: bool}; regenerate vectors (+ captions)
+#   GET  /api/embedding_tests/log?limit=50         — recent search log entries
+#
+# NOT password-gated (operator's explicit preference — the model costs
+# incurred by these endpoints are accepted).  Auth still applies if
+# INVITE_CODE is set (the global gate covers everything).
+
+
+# Per-request cap on the text query.  Voyage AI + OpenAI charge by
+# token; without a limit a single megabyte POST is qualitatively
+# different from interactive use.  2 000 chars is a comfortable
+# ceiling for any natural search string the operator would type.
+_EMB_TEXT_MAX_LEN = 2000
+
+
+class _EmbTestsSearchText(BaseModel):
+    text: str = Field(..., max_length=_EMB_TEXT_MAX_LEN)
+
+
+class _EmbTestsSearchImagePicked(BaseModel):
+    image_name: str = Field(..., max_length=256)
+
+
+class _EmbTestsRebuild(BaseModel):
+    preserve_descriptions: bool = True
+
+
+# Module-level guard mirroring ``_TURN_IN_FLIGHT`` (W13/O9 — single
+# worker, single async loop → bool assignment is atomic with respect
+# to other coroutines).  Rebuilds take 1-3 min and burn paid API
+# calls per pass, so a second concurrent click — from any tab or
+# direct curl call — returns 409 immediately rather than starting a
+# second wasteful pass that would race the JSON-write at the end.
+_EMB_REBUILD_IN_FLIGHT: bool = False
+
+
+def _emb_module():
+    """Lazy import: ``embedding_tests`` pulls in voyageai / anthropic /
+    openai lazily, but the import itself is cheap and not held at
+    server start (only when the operator opens the view)."""
+    from extra_utilities.embedding_tests import embedding_tests as _mod
+    return _mod
+
+
+def _emb_stamp_ts() -> str:
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime())
+
+
+@app.get("/api/embedding_tests/manifest")
+async def api_emb_manifest() -> dict:
+    _require_auth()
+    mod = _emb_module()
+    return await run_in_threadpool(mod.get_manifest)
+
+
+@app.get("/api/embedding_tests/image/{name}")
+async def api_emb_image(name: str):
+    _require_auth()
+    mod = _emb_module()
+    path = mod.get_sketch_path(name)
+    if path is None:
+        raise HTTPException(404, f"Sketch not found: {name!r}")
+    suffix = path.suffix.lower()
+    media_type = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+    return FileResponse(path, media_type=media_type)
+
+
+@app.get("/api/embedding_tests/upload/{name}")
+async def api_emb_upload_image(name: str):
+    """Serve a query image the user previously uploaded.  Powers the
+    log-panel thumbnail for image-upload searches."""
+    _require_auth()
+    mod = _emb_module()
+    uploads_dir = mod.THIS_DIR / "uploads"
+    if not name or "/" in name or "\\" in name or name.startswith("."):
+        raise HTTPException(404)
+    p = uploads_dir / name
+    try:
+        p.resolve().relative_to(uploads_dir.resolve())
+    except (ValueError, OSError):
+        raise HTTPException(404)
+    if not p.is_file():
+        raise HTTPException(404)
+    suffix = p.suffix.lower()
+    media_type = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+    return FileResponse(p, media_type=media_type)
+
+
+@app.post("/api/embedding_tests/search_text")
+async def api_emb_search_text(body: _EmbTestsSearchText) -> dict:
+    _require_auth()
+    text = (body.text or "").strip()
+    if not text:
+        return {"ok": False, "error": "Empty query."}
+    mod = _emb_module()
+    try:
+        result = await run_in_threadpool(mod.search_text, text)
+    except Exception as exc:
+        logger.exception("[emb_tests] search_text failed")
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    log_entry = {
+        "query_type": "text",
+        "query":      text[:500],
+        "results":    result.get("methods", {}),
+        "errors":     result.get("errors", {}),
+    }
+    await run_in_threadpool(mod.append_search_log, log_entry)
+    return {"ok": True, **result, "log_entry": {**log_entry, "ts": _emb_stamp_ts()}}
+
+
+@app.post("/api/embedding_tests/search_image_picked")
+async def api_emb_search_image_picked(body: _EmbTestsSearchImagePicked) -> dict:
+    _require_auth()
+    mod = _emb_module()
+    name = (body.image_name or "").strip()
+    if not name:
+        return {"ok": False, "error": "No image_name."}
+    path = mod.get_sketch_path(name)
+    if path is None:
+        return {"ok": False, "error": f"Sketch not found: {name!r}"}
+    try:
+        result = await run_in_threadpool(mod.search_image, path)
+    except Exception as exc:
+        logger.exception("[emb_tests] search_image_picked failed")
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    log_entry = {
+        "query_type":  "image_picked",
+        "query_image": name,
+        "captions":    result.get("captions_used", {}),
+        "results":     result.get("methods", {}),
+        "errors":      result.get("errors", {}),
+    }
+    await run_in_threadpool(mod.append_search_log, log_entry)
+    return {"ok": True, **result, "log_entry": {**log_entry, "ts": _emb_stamp_ts()}}
+
+
+@app.post("/api/embedding_tests/search_image_upload")
+async def api_emb_search_image_upload(file: UploadFile = File(...)) -> dict:
+    _require_auth()
+    mod = _emb_module()
+    suffix = Path(file.filename or "").suffix.lower()
+    if suffix not in (".png", ".jpg", ".jpeg"):
+        return {"ok": False, "error": f"Unsupported file type: {suffix!r}"}
+    data = await file.read()
+    if not data:
+        return {"ok": False, "error": "Empty upload."}
+    if len(data) > MAX_IMAGE_BYTES:
+        return {"ok": False,
+                "error": f"Image too large ({len(data)} bytes; "
+                         f"max {MAX_IMAGE_BYTES})."}
+
+    import tempfile
+    uploads_dir = mod.THIS_DIR / "uploads"
+    uploads_dir.mkdir(exist_ok=True)
+
+    # ``mkstemp`` creates the file on disk BEFORE we own any handle to
+    # it; from this point on every return path must either commit
+    # (``keep_tmp = True``) or unlink the tempfile in the ``finally``
+    # below.  The 50-file cap ALSO runs in ``finally`` so a burst of
+    # failing uploads cannot accumulate residual files past the cap.
+    fd, tmp_path = tempfile.mkstemp(prefix="upl_", suffix=suffix,
+                                    dir=uploads_dir)
+    keep_tmp = False
+    try:
+        try:
+            with os.fdopen(fd, "wb") as f:
+                f.write(data)
+        except Exception as exc:
+            logger.exception("[emb_tests] failed to save upload")
+            return {"ok": False, "error": f"Failed to save upload: {exc}"}
+
+        try:
+            result = await run_in_threadpool(mod.search_image, Path(tmp_path))
+        except Exception as exc:
+            logger.exception("[emb_tests] search_image_upload failed")
+            return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+
+        # Successful search — keep the tempfile so the log panel's
+        # thumbnail can find it via /api/embedding_tests/upload/<name>.
+        keep_tmp = True
+        upl_name = Path(tmp_path).name
+        log_entry = {
+            "query_type":  "image_upload",
+            "query_image": upl_name,
+            "filename":    file.filename or "<unnamed>",
+            "captions":    result.get("captions_used", {}),
+            "results":     result.get("methods", {}),
+            "errors":      result.get("errors", {}),
+        }
+        await run_in_threadpool(mod.append_search_log, log_entry)
+        return {
+            "ok":         True,
+            **result,
+            "upload_ref": upl_name,
+            "log_entry":  {**log_entry, "ts": _emb_stamp_ts()},
+        }
+    finally:
+        if not keep_tmp:
+            try:
+                Path(tmp_path).unlink()
+            except OSError:
+                pass
+        # Cap uploads dir at 50 most-recent files.  Always runs, so a
+        # stream of failures still trims the dir back to the bound.
+        try:
+            files_sorted = sorted(uploads_dir.iterdir(),
+                                  key=lambda p: p.stat().st_mtime)
+            for old in files_sorted[:-50]:
+                try:
+                    old.unlink()
+                except OSError:
+                    pass
+        except OSError:
+            pass
+
+
+@app.post("/api/embedding_tests/rebuild_index")
+async def api_emb_rebuild(body: _EmbTestsRebuild) -> dict:
+    _require_auth()
+    global _EMB_REBUILD_IN_FLIGHT
+    if _EMB_REBUILD_IN_FLIGHT:
+        # Match the /api/turn 409 shape — clients can detect this and
+        # show a friendly "already running" message.
+        raise HTTPException(
+            status_code=409,
+            detail="Rebuild already in progress.",
+        )
+    _EMB_REBUILD_IN_FLIGHT = True
+    try:
+        mod = _emb_module()
+        # Can take 1-3 minutes — offloaded to threadpool to keep the
+        # event loop responsive (other clicks, the live log panel).
+        result = await run_in_threadpool(
+            mod.rebuild_index,
+            regenerate_captions=True,
+            preserve_existing_captions=body.preserve_descriptions,
+        )
+        return result
+    except Exception as exc:
+        logger.exception("[emb_tests] rebuild_index crashed")
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    finally:
+        _EMB_REBUILD_IN_FLIGHT = False
+
+
+@app.get("/api/embedding_tests/log")
+async def api_emb_log(limit: int = 50) -> dict:
+    _require_auth()
+    mod = _emb_module()
+    limit = max(1, min(int(limit), 500))
+    entries = await run_in_threadpool(mod.read_search_log, limit)
+    return {"entries": entries}
 
 
 # Mounted last so it does not shadow the explicit routes above.
