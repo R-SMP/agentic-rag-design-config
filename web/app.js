@@ -4913,73 +4913,89 @@ window.addEventListener("beforeunload", (e) => {
   }
 });
 // =============================================================================
-// Embedding tests — view handlers, search calls, log panel, lightbox
+// Embedding tests — complete rebuild
 // -----------------------------------------------------------------------------
-// Backed by extra_utilities/embedding_tests/ via /api/embedding_tests/*.
-// All state is local to this section; no globals leaked elsewhere.
+// Layout: top toolbar (status + view-mode toggle + rebuild), compact search row
+// (text + image), single results panel (3x3 grid + captions, last-query wins),
+// scroll-bounded reference table (Compact / Full / Grid), wider Recent-searches
+// rail with rich 3x3 mini-grid entries (click to re-run).
 // =============================================================================
 
 let embLoaded = false;
 let embManifest = null;
-let embCurrentUpload = null;       // File object after the user picked one
+let embCurrentUpload = null;
 let embRebuildInFlight = false;
-// Shared guard so a picked-image search and an upload search can't
-// race each other into the same #emb-image-results / #emb-image-captions
-// areas (last response would otherwise win and disagree with the log).
 let embImageSearchInFlight = false;
+let embTableMode = "compact";
+let embSelectedSketchName = null;
+const EMB_LS_MODE_KEY = "emb-tests:table-mode";
 
 const EMB_METHODS = [
-  { key: "voyage",
-    title: "Voyage",
-    sub:   "joint multimodal" },
-  { key: "caption_visual",
-    title: "Caption — visual",
-    sub:   "VLM caption + OpenAI text-emb" },
-  { key: "caption_semantic",
-    title: "Caption — semantic",
-    sub:   "VLM caption + OpenAI text-emb" },
+  { key: "voyage",           title: "Voyage",           sub: "joint multimodal" },
+  { key: "caption_visual",   title: "Caption visual",   sub: "VLM + OpenAI text-emb" },
+  { key: "caption_semantic", title: "Caption semantic", sub: "VLM + OpenAI text-emb" },
 ];
+const EMB_METHOD_LABEL = {
+  voyage: "V", caption_visual: "CV", caption_semantic: "CS",
+};
+// Word -> integer for the blade-count parser.
+const EMB_NUM = {
+  one:1, two:2, three:3, four:4, five:5, six:6, seven:7, eight:8,
+  nine:9, ten:10, eleven:11, twelve:12,
+};
 
 function embEsc(s) {
   return String(s == null ? "" : s)
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function embFmtScore(s) {
+  return typeof s === "number" ? s.toFixed(3) : String(s);
+}
+function embImgUrl(name)   { return "/api/embedding_tests/image/"  + encodeURIComponent(name); }
+function embThumbUrl(name, w) { return embImgUrl(name) + "?w=" + encodeURIComponent(w); }
+function embUploadUrl(name){ return "/api/embedding_tests/upload/" + encodeURIComponent(name); }
+
+// Parse blade count from a semantic description ("Blade count: 3",
+// "5 blades", "Blade count = 4", "six blades", etc.).  Returns null
+// if no count is identifiable.
+function embExtractBladeCount(text) {
+  if (!text) return null;
+  const patterns = [
+    /[Bb]lade\s*count[:\s=]+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)/,
+    /(\d+|three|four|five|six|seven|eight|nine|ten|eleven|twelve)\s+blades?/i,
+  ];
+  for (const p of patterns) {
+    const m = text.match(p);
+    if (m) {
+      const raw = String(m[1]).toLowerCase();
+      const n = EMB_NUM[raw] || parseInt(raw, 10);
+      if (!isNaN(n) && n > 0 && n < 50) return n;
+    }
+  }
+  return null;
 }
 
-function embFmtScore(score) {
-  if (typeof score !== "number") return String(score);
-  return score.toFixed(4);
-}
+// ----- Lightbox (dialog with focus trap + return) -----
 
-function embImgUrl(name) {
-  return "/api/embedding_tests/image/" + encodeURIComponent(name);
-}
-
-function embThumbUrl(name, w) {
-  // Server-side resized JPEG.  ``w`` is the box side in pixels;
-  // backend resizes to fit inside w×w preserving aspect ratio.  Used
-  // for every place the original would be visually shrunk anyway
-  // (reference table, search result tiles, log-panel thumbs) so the
-  // raw 7 MB sketch isn't shipped just to be CSS-shrunk to 80 px.
-  return embImgUrl(name) + "?w=" + encodeURIComponent(w);
-}
-
-function embUploadUrl(refName) {
-  return "/api/embedding_tests/upload/" + encodeURIComponent(refName);
-}
-
-// ----- Lightbox -----
+let _embLightboxOpener = null;   // element that had focus when we opened
 
 function embOpenLightbox(src, caption) {
   const overlay = document.getElementById("emb-lightbox");
   const img     = document.getElementById("emb-lightbox-img");
   const cap     = document.getElementById("emb-lightbox-caption");
+  const close   = document.getElementById("emb-lightbox-close");
   if (!overlay || !img) return;
+  _embLightboxOpener = document.activeElement;
   img.src = src;
-  img.alt = caption || "";
+  // Fall back to a generic phrase so screen readers always get
+  // SOMETHING when alt is rendered, even if caption is empty.
+  img.alt = caption || "Enlarged sketch preview";
   if (cap) cap.textContent = caption || "";
   overlay.hidden = false;
+  // Move keyboard focus into the modal so Tab is trapped here.
+  if (close) {
+    try { close.focus(); } catch (_) { /* ignore */ }
+  }
 }
 
 function embCloseLightbox() {
@@ -4988,18 +5004,100 @@ function embCloseLightbox() {
   if (!overlay) return;
   overlay.hidden = true;
   if (img) img.src = "";
+  // Restore focus to whatever opened the lightbox.
+  if (_embLightboxOpener && typeof _embLightboxOpener.focus === "function") {
+    try { _embLightboxOpener.focus(); } catch (_) { /* ignore */ }
+  }
+  _embLightboxOpener = null;
 }
 
+// Keyboard handling for the lightbox: Esc closes; Tab and Shift+Tab
+// are trapped inside the modal (only the close button is focusable,
+// so we just keep focus on it).
 document.addEventListener("keydown", (e) => {
   const overlay = document.getElementById("emb-lightbox");
-  if (overlay && !overlay.hidden && e.key === "Escape") embCloseLightbox();
+  if (!overlay || overlay.hidden) return;
+  if (e.key === "Escape") {
+    embCloseLightbox();
+    return;
+  }
+  if (e.key === "Tab") {
+    const close = document.getElementById("emb-lightbox-close");
+    if (close) {
+      e.preventDefault();
+      close.focus();
+    }
+  }
 });
+
+// ----- Status badge (top toolbar) -----
+
+let _embStatusWarnTimer = null;   // auto-clear handle
+
+function embSetStatusBadge(text, kind) {
+  const el = document.getElementById("emb-status-badge");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.remove("warn", "busy", "ok");
+  if (kind) el.classList.add(kind);
+  el.title = text;
+  // Auto-clear warn states so a stale "Cannot re-run upload" message
+  // can't sit there forever.  Cleared by the next badge update too.
+  if (_embStatusWarnTimer) {
+    clearTimeout(_embStatusWarnTimer);
+    _embStatusWarnTimer = null;
+  }
+  if (kind === "warn") {
+    _embStatusWarnTimer = setTimeout(() => {
+      // Refetch the manifest to re-paint the proper "vectors ready /
+      // not ready" message rather than just blanking the badge.
+      _embStatusWarnTimer = null;
+      try { fetchEmbManifest(); } catch (_) { /* ignore */ }
+    }, 6000);
+  }
+}
+
+// ----- Reference-table view modes (Compact / Full / Grid) -----
+
+function setEmbTableMode(mode) {
+  if (!["compact", "full", "grid"].includes(mode)) mode = "compact";
+  embTableMode = mode;
+  try { localStorage.setItem(EMB_LS_MODE_KEY, mode); } catch (_) { /* ignore */ }
+  const table = document.getElementById("emb-ref-table");
+  const grid  = document.getElementById("emb-ref-grid");
+  if (table) table.dataset.viewMode = mode;
+  if (grid) {
+    grid.dataset.active = (mode === "grid") ? "1" : "0";
+    // Keep the `hidden` attribute in sync with CSS so any UA / a11y
+    // tool that consults the attribute sees consistent state.
+    grid.hidden = (mode !== "grid");
+  }
+  for (const b of document.querySelectorAll(".emb-mode-btn")) {
+    const on = b.dataset.mode === mode;
+    b.classList.toggle("active", on);
+    // role="group" + aria-pressed is the correct pattern for a
+    // mutually-exclusive group of toggle buttons (we dropped the
+    // tablist role since we don't implement arrow-key navigation).
+    b.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+}
+
+for (const b of document.querySelectorAll(".emb-mode-btn")) {
+  b.addEventListener("click", () => setEmbTableMode(b.dataset.mode));
+}
 
 // ----- Manifest + reference table -----
 
 async function loadEmbedTests() {
+  // Apply persisted view mode (default: compact).
+  let savedMode = "compact";
+  try {
+    const s = localStorage.getItem(EMB_LS_MODE_KEY);
+    if (["compact", "full", "grid"].includes(s)) savedMode = s;
+  } catch (_) { /* ignore */ }
+  setEmbTableMode(savedMode);
+
   if (embLoaded) {
-    // Always refresh the log on view-open so newly-arrived entries show up.
     refreshEmbLog();
     return;
   }
@@ -5007,10 +5105,6 @@ async function loadEmbedTests() {
     fetchEmbManifest(),
     refreshEmbLog(),
   ]);
-  // Only flip the "already loaded" flag when the manifest actually
-  // succeeded — otherwise a transient first-load failure (server
-  // restart, network blip) would lock the view into the error state
-  // until the operator hard-reloaded the page.
   if (manifestOk) embLoaded = true;
 }
 
@@ -5034,12 +5128,14 @@ function buildEmbDescCell(text, kind, sketchName) {
   const actions = document.createElement("div");
   actions.className = "emb-desc-actions";
 
-  // Copy to clipboard
+  // Copy to clipboard.  e.stopPropagation so the description-cell
+  // buttons don't also fire the row-click selectRefRow handler.
   const copyBtn = document.createElement("button");
   copyBtn.type = "button";
   copyBtn.textContent = "Copy";
   copyBtn.title = "Copy this " + kind + " description to clipboard";
-  copyBtn.addEventListener("click", async () => {
+  copyBtn.addEventListener("click", async (e) => {
+    e.stopPropagation();
     try {
       await navigator.clipboard.writeText(txt);
       copyBtn.textContent = "✓ Copied";
@@ -5054,13 +5150,14 @@ function buildEmbDescCell(text, kind, sketchName) {
   });
   actions.appendChild(copyBtn);
 
-  // → Search: paste into the Text → Images box and submit
+  // → Search: paste into the Text → Images box and submit.
   const searchBtn = document.createElement("button");
   searchBtn.type = "button";
   searchBtn.className = "primary";
   searchBtn.textContent = "→ Search";
   searchBtn.title = "Paste this " + kind + " description into the search box and run it";
-  searchBtn.addEventListener("click", () => {
+  searchBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
     const input = document.getElementById("emb-text-input");
     const form  = document.getElementById("emb-text-form");
     if (!input || !form) return;
@@ -5072,11 +5169,12 @@ function buildEmbDescCell(text, kind, sketchName) {
   });
   actions.appendChild(searchBtn);
 
-  // Show more / less — toggles the 4-line clamp
+  // Show more / less — toggles the 4-line clamp.
   const moreBtn = document.createElement("button");
   moreBtn.type = "button";
   moreBtn.textContent = "Show more";
-  moreBtn.addEventListener("click", () => {
+  moreBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
     const expanded = textEl.classList.toggle("expanded");
     moreBtn.textContent = expanded ? "Show less" : "Show more";
   });
@@ -5091,47 +5189,20 @@ async function fetchEmbManifest() {
   const tbody  = document.getElementById("emb-ref-tbody");
   const meta   = document.getElementById("emb-meta");
   const select = document.getElementById("emb-image-select");
+  const grid   = document.getElementById("emb-ref-grid");
   try {
     const res = await fetch("/api/embedding_tests/manifest");
     if (!res.ok) throw new Error("HTTP " + res.status);
     const data = await res.json();
     embManifest = data;
+
     if (tbody) {
       tbody.innerHTML = "";
-      for (const r of (data.images || [])) {
-        const tr = document.createElement("tr");
-        const tdIdx = document.createElement("td");
-        tdIdx.textContent = r.index;
-        const tdName = document.createElement("td");
-        tdName.className = "emb-td-name";
-        tdName.textContent = r.name;
-        const tdThumb = document.createElement("td");
-        const img = document.createElement("img");
-        // Reference-table thumbs are displayed at 80 px; 200 px source
-        // gives crisp retina detail without shipping the full sketch.
-        img.src = embThumbUrl(r.name, 200);
-        img.alt = r.name;
-        img.className = "emb-thumb emb-thumb-ref";
-        // Lightbox always opens the FULL-size original so click-to-
-        // enlarge still shows everything.
-        img.addEventListener("click",
-          () => embOpenLightbox(embImgUrl(r.name), r.name));
-        tdThumb.appendChild(img);
-        const tdVis = document.createElement("td");
-        tdVis.className = "emb-td-desc";
-        tdVis.appendChild(
-          buildEmbDescCell(r.visual_description, "visual", r.name));
-        const tdSem = document.createElement("td");
-        tdSem.className = "emb-td-desc";
-        tdSem.appendChild(
-          buildEmbDescCell(r.semantic_description, "semantic", r.name));
-        tr.appendChild(tdIdx);
-        tr.appendChild(tdName);
-        tr.appendChild(tdThumb);
-        tr.appendChild(tdVis);
-        tr.appendChild(tdSem);
-        tbody.appendChild(tr);
-      }
+      for (const r of (data.images || [])) tbody.appendChild(buildRefTableRow(r));
+    }
+    if (grid) {
+      grid.innerHTML = "";
+      for (const r of (data.images || [])) grid.appendChild(buildRefGridCard(r));
     }
     if (select) {
       while (select.options.length > 1) select.remove(1);
@@ -5142,107 +5213,396 @@ async function fetchEmbManifest() {
         select.appendChild(opt);
       }
     }
+
+    const mv  = data.model_versions || {};
+    const gen = data.generated_at;
+    const hasVecs = (data.images || []).some(r =>
+      r.has_voyage_vector || r.has_visual_caption_vector ||
+      r.has_semantic_caption_vector);
     if (meta) {
-      const mv = data.model_versions || {};
-      const gen = data.generated_at;
-      const hasVecs = (data.images || []).some(r =>
-        r.has_voyage_vector || r.has_visual_caption_vector || r.has_semantic_caption_vector);
-      let html =
-        "<strong>Models:</strong> " +
-        "voyage = " + embEsc(mv.voyage || "—") + " · " +
-        "caption_vlm = " + embEsc(mv.caption_vlm || "—") + " · " +
-        "caption_text_embedder = " + embEsc(mv.caption_text_embedder || "—") +
-        " &nbsp;|&nbsp; <strong>Generated:</strong> " + embEsc(gen || "—");
+      meta.innerHTML =
+        "voyage=" + embEsc(mv.voyage || "—") +
+        " · cap_vlm=" + embEsc(mv.caption_vlm || "—") +
+        " · text-emb=" + embEsc(mv.caption_text_embedder || "—") +
+        " · generated " + embEsc(gen || "—");
       if (!hasVecs) {
-        html += "<br><span class=\"emb-warn\">⚠ No vectors stored yet. " +
-          "Descriptions are baked in but you need to click <strong>" +
-          "Rebuild index</strong> below to populate the Voyage / caption " +
-          "vectors before searches will return matches.</span>";
+        meta.innerHTML =
+          "<span class=\"emb-warn\">⚠ no vectors — click Rebuild</span> · " +
+          meta.innerHTML;
       }
-      meta.innerHTML = html;
     }
+    embSetStatusBadge(
+      hasVecs ? ("Vectors ready · " + (gen || "—"))
+              : "⚠ No vectors — click Rebuild index",
+      hasVecs ? "ok" : "warn"
+    );
     return true;
   } catch (e) {
-    // Clear ALL three regions back to an error state so the operator
-    // never sees a stale dropdown / meta line alongside the failed
-    // table after a refetch (which would otherwise misrepresent
-    // current server state).
     if (tbody) tbody.innerHTML =
-      "<tr><td colspan=\"5\" class=\"emb-error\">" +
+      "<tr class=\"emb-error\"><td colspan=\"6\">" +
       "Failed to load manifest: " + embEsc(e.message || e) + "</td></tr>";
-    if (select) {
-      while (select.options.length > 1) select.remove(1);
-    }
+    if (grid) grid.innerHTML = "";
+    if (select) { while (select.options.length > 1) select.remove(1); }
     if (meta) meta.innerHTML =
       "<span class=\"emb-warn\">Manifest load failed: " +
       embEsc(e.message || e) + "</span>";
+    embSetStatusBadge("Manifest load failed", "warn");
     embManifest = null;
     return false;
   }
 }
 
-// ----- Result rendering -----
+// Build one <tr> for the reference table (works for both Compact and
+// Full modes; the Full-only description cells get the
+// .emb-mode-full-only class so CSS hides them in Compact).
+function buildRefTableRow(r) {
+  const tr = document.createElement("tr");
+  tr.dataset.name = r.name;
+  // Keyboard reachability: the row IS a button (it selects the sketch
+  // for image-query use).  Tab to focus, Enter / Space to activate.
+  tr.tabIndex = 0;
+  tr.setAttribute("role", "button");
+  tr.setAttribute(
+    "aria-label",
+    "Sketch " + r.name + " — press Enter to select as image query");
 
-function renderEmbResults(containerId, methodsObj, errorsObj) {
-  const container = document.getElementById(containerId);
-  if (!container) return;
-  container.classList.remove("emb-results-empty");
-  container.innerHTML = "";
+  const tdIdx = document.createElement("td");
+  tdIdx.textContent = r.index;
+  tdIdx.style.textAlign = "center";
 
-  const methods = methodsObj || {};
-  const errors  = errorsObj  || {};
+  const tdName = document.createElement("td");
+  tdName.className = "emb-td-name";
+  tdName.textContent = r.name;
+
+  const tdThumb = document.createElement("td");
+  tdThumb.style.textAlign = "center";
+  const img = document.createElement("img");
+  img.src = embThumbUrl(r.name, 140);
+  img.alt = r.name;
+  img.className = "emb-thumb-ref";
+  img.addEventListener("click", (e) => {
+    e.stopPropagation();
+    embOpenLightbox(embImgUrl(r.name), r.name);
+  });
+  tdThumb.appendChild(img);
+
+  const tdBlades = document.createElement("td");
+  tdBlades.className = "emb-td-blades";
+  tdBlades.appendChild(buildBladeBadge(r.semantic_description));
+
+  const tdVis = document.createElement("td");
+  tdVis.className = "emb-td-desc emb-mode-full-only";
+  tdVis.appendChild(buildEmbDescCell(r.visual_description, "visual", r.name));
+
+  const tdSem = document.createElement("td");
+  tdSem.className = "emb-td-desc emb-mode-full-only";
+  tdSem.appendChild(buildEmbDescCell(r.semantic_description, "semantic", r.name));
+
+  tr.appendChild(tdIdx);
+  tr.appendChild(tdName);
+  tr.appendChild(tdThumb);
+  tr.appendChild(tdBlades);
+  tr.appendChild(tdVis);
+  tr.appendChild(tdSem);
+
+  tr.addEventListener("click", () => {
+    // Description-cell buttons + image thumbnail call e.stopPropagation
+    // — this fires only for "background" row clicks.
+    selectRefRow(r.name);
+  });
+  tr.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      selectRefRow(r.name);
+    }
+  });
+  return tr;
+}
+
+function buildRefGridCard(r) {
+  const card = document.createElement("div");
+  card.className = "emb-ref-grid-card";
+  card.dataset.name = r.name;
+  // Same keyboard reachability as the table-row equivalent above.
+  card.tabIndex = 0;
+  card.setAttribute("role", "button");
+  card.setAttribute(
+    "aria-label",
+    "Sketch " + r.name + " — press Enter to select as image query");
+
+  const img = document.createElement("img");
+  img.src = embThumbUrl(r.name, 300);
+  img.alt = r.name;
+  img.addEventListener("click", (e) => {
+    e.stopPropagation();
+    embOpenLightbox(embImgUrl(r.name), r.name);
+  });
+  card.appendChild(img);
+
+  const meta = document.createElement("div");
+  meta.className = "emb-ref-grid-card-meta";
+  const name = document.createElement("span");
+  name.className = "emb-ref-grid-card-name";
+  name.textContent = r.name;
+  meta.appendChild(name);
+  meta.appendChild(buildBladeBadge(r.semantic_description));
+  card.appendChild(meta);
+
+  card.addEventListener("click", () => selectRefRow(r.name));
+  card.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      selectRefRow(r.name);
+    }
+  });
+  return card;
+}
+
+function buildBladeBadge(text) {
+  const n = embExtractBladeCount(text);
+  const b = document.createElement("span");
+  if (n) {
+    b.className = "emb-blade-badge";
+    b.textContent = n + (n === 1 ? " blade" : " blades");
+  } else {
+    b.className = "emb-blade-badge empty";
+    b.textContent = "—";
+  }
+  return b;
+}
+
+// Row / card selection: highlights + exposes "→ image query" affordance
+// next to the selected sketch's name.
+function selectRefRow(name) {
+  embSelectedSketchName = name;
+  for (const tr of document.querySelectorAll(".emb-ref-table tbody tr")) {
+    tr.classList.toggle("selected", tr.dataset.name === name);
+  }
+  for (const c of document.querySelectorAll(".emb-ref-grid-card")) {
+    c.classList.toggle("selected", c.dataset.name === name);
+  }
+  // Sync the image-search dropdown so picked-search uses this sketch.
+  const sel = document.getElementById("emb-image-select");
+  if (sel) {
+    sel.value = name;
+    sel.dispatchEvent(new Event("change"));
+  }
+  attachRowActionButton(name);
+}
+
+function attachRowActionButton(name) {
+  for (const b of document.querySelectorAll(".emb-row-action-btn")) b.remove();
+  if (!name) return;
+  const make = () => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "emb-row-action-btn";
+    btn.textContent = "→ image query";
+    btn.title = "Use this sketch as the image query and search";
+    btn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const picked = document.getElementById("emb-image-search-picked");
+      if (picked && !picked.disabled) picked.click();
+    });
+    return btn;
+  };
+  const tr = document.querySelector(
+    ".emb-ref-table tbody tr[data-name=\"" + CSS.escape(name) + "\"]");
+  if (tr) {
+    const cell = tr.querySelector(".emb-td-name");
+    if (cell) cell.appendChild(make());
+  }
+  const card = document.querySelector(
+    ".emb-ref-grid-card[data-name=\"" + CSS.escape(name) + "\"]");
+  if (card) {
+    const btn = make();
+    btn.style.marginLeft = "0";
+    card.appendChild(btn);
+  }
+}
+
+// Scroll-highlight a sketch in the reference table when a result tile
+// is clicked.  Flashes the row briefly so the eye finds it.
+function scrollHighlightInTable(name) {
+  if (!name) return;
+  const tr = document.querySelector(
+    ".emb-ref-table tbody tr[data-name=\"" + CSS.escape(name) + "\"]");
+  if (tr && tr.offsetParent !== null) {
+    tr.scrollIntoView({ behavior: "smooth", block: "center" });
+    tr.classList.remove("flash");
+    void tr.offsetWidth;          // restart the animation
+    tr.classList.add("flash");
+    return;
+  }
+  const card = document.querySelector(
+    ".emb-ref-grid-card[data-name=\"" + CSS.escape(name) + "\"]");
+  if (card) {
+    card.scrollIntoView({ behavior: "smooth", block: "center" });
+    card.classList.add("selected");
+    setTimeout(() => card.classList.remove("selected"), 1500);
+  }
+}
+
+// ----- Results panel (3x3 grid: methods × rank) -----
+
+function renderResultsPanel(opts) {
+  const { query_kind, query_text, query_image, methods, errors, captions } = opts;
+  const badgeEl = document.getElementById("emb-results-badge");
+  const grid    = document.getElementById("emb-results-grid");
+  const capWrap = document.getElementById("emb-image-captions");
+  const capVis  = document.getElementById("emb-image-caption-visual");
+  const capSem  = document.getElementById("emb-image-caption-semantic");
+  if (!grid) return;
+
+  // Header badge: "Text query: 'foo'" or "Image query: [thumb] name"
+  if (badgeEl) {
+    badgeEl.innerHTML = "";
+    const kind = document.createElement("span");
+    kind.className = "emb-results-badge-kind";
+    kind.textContent = query_kind === "text" ? "Text query" : "Image query";
+    badgeEl.appendChild(kind);
+    if (query_kind === "text") {
+      const t = document.createElement("span");
+      const s = (query_text || "");
+      t.textContent = "“" + (s.length > 110 ? s.slice(0, 110) + "…" : s) + "”";
+      badgeEl.appendChild(t);
+    } else if (query_image) {
+      if (query_image.thumb) {
+        const img = document.createElement("img");
+        img.src = query_image.thumb;
+        img.className = "emb-results-badge-thumb";
+        img.alt = query_image.label || "";
+        badgeEl.appendChild(img);
+      }
+      const lbl = document.createElement("span");
+      lbl.textContent = query_image.label || query_image.name || "";
+      badgeEl.appendChild(lbl);
+    }
+  }
+
+  // 3x3 grid: row 0 = rank headers; rows 1..3 = methods.
+  grid.classList.remove("emb-results-empty");
+  grid.innerHTML = "";
+
+  const spacer = document.createElement("div");
+  spacer.className = "emb-grid-row-label";
+  grid.appendChild(spacer);
+  for (let i = 1; i <= 3; i++) {
+    const h = document.createElement("div");
+    h.className = "emb-grid-rank-header";
+    h.textContent = "# " + i;
+    grid.appendChild(h);
+  }
 
   for (const m of EMB_METHODS) {
-    const col = document.createElement("div");
-    col.className = "emb-method-col";
+    const lbl = document.createElement("div");
+    lbl.className = "emb-grid-row-label " + m.key;
+    const main = document.createElement("span");
+    main.textContent = m.title;
+    lbl.appendChild(main);
+    const sub = document.createElement("span");
+    sub.className = "emb-grid-row-sub";
+    sub.textContent = m.sub;
+    lbl.appendChild(sub);
+    grid.appendChild(lbl);
 
-    const h = document.createElement("div");
-    h.className = "emb-method-title";
-    h.innerHTML = embEsc(m.title) +
-      " <span class=\"emb-method-sub\">" + embEsc(m.sub) + "</span>";
-    col.appendChild(h);
-
-    const err = errors[m.key];
-    const list = methods[m.key];
+    const list = (methods || {})[m.key] || [];
+    const err  = (errors  || {})[m.key];
     if (err) {
-      const e = document.createElement("div");
-      e.className = "emb-method-error";
-      e.textContent = err;
-      col.appendChild(e);
-    } else if (!list || !list.length) {
-      const empty = document.createElement("em");
-      empty.className = "emb-empty";
-      empty.textContent = "(no results — vectors may be empty)";
-      col.appendChild(empty);
+      const errRow = document.createElement("div");
+      errRow.className = "emb-method-error-row";
+      errRow.textContent = err;
+      grid.appendChild(errRow);
     } else {
-      const ol = document.createElement("ol");
-      ol.className = "emb-result-list";
-      for (const r of list) {
-        const li = document.createElement("li");
-        li.className = "emb-result-item";
-        const img = document.createElement("img");
-        // Result tiles render up to 160 px; 400 px source covers
-        // retina + any future width tweak without re-fetching.
-        img.src = embThumbUrl(r.name, 400);
-        img.alt = r.name;
-        img.className = "emb-thumb";
-        img.addEventListener("click",
-          () => embOpenLightbox(embImgUrl(r.name), r.name));
-        li.appendChild(img);
-        const nm = document.createElement("div");
-        nm.className = "emb-result-name";
-        nm.textContent = r.name;
-        li.appendChild(nm);
-        const sc = document.createElement("div");
-        sc.className = "emb-result-score";
-        sc.textContent = "score " + embFmtScore(r.score);
-        li.appendChild(sc);
-        ol.appendChild(li);
+      for (let i = 0; i < 3; i++) {
+        if (list[i]) {
+          grid.appendChild(buildResultTile(m.key, list[i]));
+        } else {
+          const ph = document.createElement("div");
+          ph.className = "emb-result-tile " + m.key;
+          ph.style.opacity = "0.25";
+          const e = document.createElement("em");
+          e.className = "emb-empty";
+          e.textContent = "(empty)";
+          ph.appendChild(e);
+          grid.appendChild(ph);
+        }
       }
-      col.appendChild(ol);
     }
-    container.appendChild(col);
   }
+
+  if (capWrap && capVis && capSem) {
+    if (captions && (captions.visual || captions.semantic)) {
+      capVis.textContent = captions.visual   || "(empty)";
+      capSem.textContent = captions.semantic || "(empty)";
+      capWrap.hidden = false;
+    } else {
+      capWrap.hidden = true;
+    }
+  }
+}
+
+function buildResultTile(methodKey, r) {
+  const methodTitle = (EMB_METHODS.find(m => m.key === methodKey) || {}).title
+                      || methodKey;
+  const tile = document.createElement("div");
+  tile.className = "emb-result-tile " + methodKey;
+  tile.dataset.name = r.name;
+  tile.title = methodTitle + " — " + r.name + " · score " + embFmtScore(r.score);
+  // Keyboard reachability: each result tile is effectively a button
+  // that opens the lightbox and scroll-highlights the reference row.
+  tile.tabIndex = 0;
+  tile.setAttribute("role", "button");
+  tile.setAttribute(
+    "aria-label",
+    methodTitle + " result — " + r.name +
+    ", score " + embFmtScore(r.score) +
+    ", press Enter to preview");
+
+  const img = document.createElement("img");
+  img.src = embThumbUrl(r.name, 240);
+  img.alt = r.name;
+  img.className = "emb-result-thumb";
+  tile.appendChild(img);
+
+  const name = document.createElement("div");
+  name.className = "emb-result-name";
+  name.textContent = r.name;
+  tile.appendChild(name);
+
+  const scoreRow = document.createElement("div");
+  scoreRow.className = "emb-result-score-row";
+  const score = document.createElement("span");
+  score.className = "emb-result-score";
+  score.textContent = embFmtScore(r.score);
+  const bar = document.createElement("div");
+  bar.className = "emb-result-bar";
+  const fill = document.createElement("div");
+  fill.className = "emb-result-bar-fill";
+  const pct = Math.max(0, Math.min(1, +r.score || 0)) * 100;
+  fill.style.width = pct.toFixed(1) + "%";
+  bar.appendChild(fill);
+  scoreRow.appendChild(score);
+  scoreRow.appendChild(bar);
+  tile.appendChild(scoreRow);
+
+  // Click tile (anywhere) → lightbox + scroll-highlight in reference table.
+  tile.addEventListener("click", () => {
+    embOpenLightbox(embImgUrl(r.name), r.name);
+    scrollHighlightInTable(r.name);
+  });
+  tile.addEventListener("keydown", (e) => {
+    if (e.key === "Enter" || e.key === " ") {
+      e.preventDefault();
+      embOpenLightbox(embImgUrl(r.name), r.name);
+      scrollHighlightInTable(r.name);
+    }
+  });
+  return tile;
+}
+
+function _embErrorTriple(msg) {
+  return { voyage: msg, caption_visual: msg, caption_semantic: msg };
 }
 
 // ----- Text search -----
@@ -5264,15 +5624,22 @@ if (embTextForm) embTextForm.addEventListener("submit", async (e) => {
     });
     const data = await res.json();
     if (!data.ok) {
-      renderEmbResults("emb-text-results",
-        {}, { voyage: data.error, caption_visual: data.error, caption_semantic: data.error });
+      renderResultsPanel({
+        query_kind: "text", query_text: text,
+        methods: {}, errors: _embErrorTriple(data.error || "Search failed."),
+      });
     } else {
-      renderEmbResults("emb-text-results", data.methods, data.errors);
+      renderResultsPanel({
+        query_kind: "text", query_text: text,
+        methods: data.methods, errors: data.errors,
+      });
       if (data.log_entry) prependEmbLogEntry(data.log_entry);
     }
   } catch (err) {
-    renderEmbResults("emb-text-results",
-      {}, { voyage: String(err), caption_visual: String(err), caption_semantic: String(err) });
+    renderResultsPanel({
+      query_kind: "text", query_text: text,
+      methods: {}, errors: _embErrorTriple(String(err)),
+    });
   } finally {
     if (embTextBtn) embTextBtn.disabled = false;
   }
@@ -5284,7 +5651,11 @@ const embImageSelect       = document.getElementById("emb-image-select");
 const embImageSearchPicked = document.getElementById("emb-image-search-picked");
 
 if (embImageSelect) embImageSelect.addEventListener("change", () => {
-  if (embImageSearchPicked)
+  // Don't re-enable the button mid-flight — selectRefRow and
+  // rerunEmbLogEntry both dispatch a synthetic change event that
+  // would otherwise overwrite the disabled-by-_embStartImageSearch
+  // state and produce a UI flicker on the button.
+  if (embImageSearchPicked && !embImageSearchInFlight)
     embImageSearchPicked.disabled = !embImageSelect.value;
 });
 
@@ -5306,18 +5677,22 @@ if (embImageSearchPicked) embImageSearchPicked.addEventListener("click",
   async () => {
     if (embImageSearchInFlight) return;
     if (!embImageSelect || !embImageSelect.value) return;
+    const name = embImageSelect.value;
+    const qmeta = { name, label: "picked: " + name, thumb: embThumbUrl(name, 80) };
     _embStartImageSearch();
     try {
       const res = await fetch("/api/embedding_tests/search_image_picked", {
         method:  "POST",
         headers: { "Content-Type": "application/json" },
-        body:    JSON.stringify({ image_name: embImageSelect.value }),
+        body:    JSON.stringify({ image_name: name }),
       });
       const data = await res.json();
-      handleEmbImageResponse(data);
+      handleEmbImageResponse(data, "image_picked", qmeta);
     } catch (err) {
-      renderEmbResults("emb-image-results",
-        {}, { voyage: String(err), caption_visual: String(err), caption_semantic: String(err) });
+      renderResultsPanel({
+        query_kind: "image_picked", query_image: qmeta,
+        methods: {}, errors: _embErrorTriple(String(err)),
+      });
     } finally {
       _embEndImageSearch();
     }
@@ -5340,103 +5715,118 @@ if (embImageFile) embImageFile.addEventListener("change", () => {
   if (embImageFilename) {
     embImageFilename.textContent = f ? f.name : "";
   }
-  if (embImageSearchUpload) embImageSearchUpload.disabled = !f;
+  // Same in-flight guard as the picked-dropdown change handler so
+  // picking a new file mid-flight doesn't flicker the upload button.
+  if (embImageSearchUpload && !embImageSearchInFlight)
+    embImageSearchUpload.disabled = !f;
 });
 
 if (embImageSearchUpload) embImageSearchUpload.addEventListener("click",
   async () => {
     if (embImageSearchInFlight) return;
     if (!embCurrentUpload) return;
+    const uploadName = embCurrentUpload.name || "uploaded image";
     _embStartImageSearch();
     try {
       const fd = new FormData();
       fd.append("file", embCurrentUpload);
       const res = await fetch("/api/embedding_tests/search_image_upload", {
-        method: "POST",
-        body:   fd,
+        method: "POST", body: fd,
       });
       const data = await res.json();
-      handleEmbImageResponse(data);
+      const qmeta = {
+        label: "upload: " + uploadName,
+        thumb: data.upload_ref ? embUploadUrl(data.upload_ref) : undefined,
+        name:  data.upload_ref || "",
+      };
+      handleEmbImageResponse(data, "image_upload", qmeta);
     } catch (err) {
-      renderEmbResults("emb-image-results",
-        {}, { voyage: String(err), caption_visual: String(err), caption_semantic: String(err) });
+      renderResultsPanel({
+        query_kind: "image_upload",
+        query_image: { label: "upload: " + uploadName },
+        methods: {}, errors: _embErrorTriple(String(err)),
+      });
     } finally {
       _embEndImageSearch();
     }
   });
 
-function handleEmbImageResponse(data) {
-  const captionsBox = document.getElementById("emb-image-captions");
-  const visPre      = document.getElementById("emb-image-caption-visual");
-  const semPre      = document.getElementById("emb-image-caption-semantic");
+function handleEmbImageResponse(data, kind, qmeta) {
   if (!data.ok) {
-    if (captionsBox) captionsBox.hidden = true;
-    renderEmbResults("emb-image-results",
-      {}, { voyage: data.error, caption_visual: data.error, caption_semantic: data.error });
+    renderResultsPanel({
+      query_kind: kind, query_image: qmeta,
+      methods: {}, errors: _embErrorTriple(data.error || "Search failed."),
+    });
     return;
   }
-  renderEmbResults("emb-image-results", data.methods, data.errors);
-  const captions = data.captions_used || {};
-  if (visPre) visPre.textContent = captions.visual   || "(empty)";
-  if (semPre) semPre.textContent = captions.semantic || "(empty)";
-  if (captionsBox) captionsBox.hidden = false;
+  renderResultsPanel({
+    query_kind: kind, query_image: qmeta,
+    methods: data.methods, errors: data.errors,
+    captions: data.captions_used,
+  });
   if (data.log_entry) prependEmbLogEntry(data.log_entry);
 }
 
-// ----- Rebuild -----
+// ----- Rebuild (status feedback flows through the top-bar badge) -----
 
-const embRebuildBtn    = document.getElementById("emb-rebuild-btn");
-const embRebuildStatus = document.getElementById("emb-rebuild-status");
+const embRebuildBtn = document.getElementById("emb-rebuild-btn");
 
 if (embRebuildBtn) embRebuildBtn.addEventListener("click", async () => {
   if (embRebuildInFlight) return;
   const msg =
     "Rebuild the embedding index?\n\n" +
-    "This re-embeds every sketch via Voyage multimodal-3 AND " +
+    "Re-embeds every sketch via Voyage multimodal-3 AND " +
     "re-embeds the two caption-based vectors via OpenAI text-embedding-3-large.\n\n" +
-    "Existing baked-in descriptions are PRESERVED " +
-    "(no VLM re-caption unless empty).\n\n" +
-    "Takes 1-3 minutes. Don" + "’" + "t close the tab while it runs.";
+    "Existing baked-in descriptions are PRESERVED.\n\n" +
+    "Takes 1-3 minutes. Do not close the tab while it runs.";
   if (!window.confirm(msg)) return;
+
   embRebuildInFlight = true;
   embRebuildBtn.disabled = true;
-  if (embRebuildStatus) {
-    embRebuildStatus.classList.remove("error", "success");
-    embRebuildStatus.textContent = "Rebuilding… (1-3 min)";
-  }
+  const t0 = Date.now();
+  let tick = null;
+  embSetStatusBadge("Rebuilding… 0 s", "busy");
   try {
+    tick = setInterval(() => {
+      const sec = Math.floor((Date.now() - t0) / 1000);
+      embSetStatusBadge("Rebuilding… " + sec + " s", "busy");
+    }, 1000);
     const res = await fetch("/api/embedding_tests/rebuild_index", {
       method:  "POST",
       headers: { "Content-Type": "application/json" },
       body:    JSON.stringify({ preserve_descriptions: true }),
     });
+    if (res.status === 409) {
+      embSetStatusBadge("Rebuild already in progress", "warn");
+      return;
+    }
     const data = await res.json();
     if (data.ok) {
       const dur = data.duration_seconds != null
         ? " in " + data.duration_seconds + " s" : "";
       const errLine = (data.errors && data.errors.length)
-        ? " (with " + data.errors.length + " step error(s))" : "";
-      if (embRebuildStatus) {
-        embRebuildStatus.classList.add("success");
-        embRebuildStatus.textContent =
-          "Rebuilt " + data.n_images + " image(s)" + dur + errLine + ".";
-      }
+        ? " (" + data.errors.length + " step errors)" : "";
+      embSetStatusBadge(
+        "Rebuilt " + data.n_images + " images" + dur + errLine,
+        "ok"
+      );
+      // Refetch the manifest after a successful rebuild.  If THAT
+      // call fails (transient HTTP / JSON), embLoaded must stay false
+      // so the next view-open retries the manifest — otherwise the
+      // table/dropdown/grid would stay empty until a hard reload.
       embLoaded = false;
-      await fetchEmbManifest();
-      embLoaded = true;
+      const refetched = await fetchEmbManifest();
+      embLoaded = !!refetched;
     } else {
-      if (embRebuildStatus) {
-        embRebuildStatus.classList.add("error");
-        embRebuildStatus.textContent =
-          "Rebuild failed: " + (data.error || JSON.stringify(data));
-      }
+      embSetStatusBadge(
+        "Rebuild failed: " + (data.error || "unknown error"),
+        "warn"
+      );
     }
   } catch (err) {
-    if (embRebuildStatus) {
-      embRebuildStatus.classList.add("error");
-      embRebuildStatus.textContent = "Rebuild failed: " + (err.message || err);
-    }
+    embSetStatusBadge("Rebuild failed: " + (err.message || err), "warn");
   } finally {
+    if (tick) clearInterval(tick);
     embRebuildInFlight = false;
     embRebuildBtn.disabled = false;
   }
@@ -5484,70 +5874,161 @@ function prependEmbLogEntry(entry) {
 function buildEmbLogEntry(e) {
   const card = document.createElement("div");
   card.className = "emb-log-entry";
+  card.tabIndex = 0;
+  card.title = "Click to re-run this search";
 
-  const ts = document.createElement("div");
+  // Head: timestamp + kind tag
+  const head = document.createElement("div");
+  head.className = "emb-log-entry-head";
+  const ts = document.createElement("span");
   ts.className = "emb-log-ts";
-  ts.textContent = e.ts || "";
-  card.appendChild(ts);
+  ts.textContent = (e.ts || "").replace("T", " ").replace("Z", "");
+  head.appendChild(ts);
+  const kind = document.createElement("span");
+  kind.className = "emb-log-kind-tag" + (e.query_type === "text" ? "" : " image");
+  kind.textContent = e.query_type === "text" ? "TEXT" :
+                     e.query_type === "image_upload" ? "UPL" : "PICK";
+  head.appendChild(kind);
+  card.appendChild(head);
 
+  // Query area
+  const q = document.createElement("div");
+  q.className = "emb-log-query";
   if (e.query_type === "text") {
-    const q = document.createElement("div");
-    q.className = "emb-log-q-text";
+    const t = document.createElement("div");
+    t.className = "emb-log-q-text";
     const text = e.query || "";
-    q.textContent = "“" + (text.length > 120 ? text.slice(0, 120) + "…" : text) + "”";
-    card.appendChild(q);
+    t.textContent = "“" +
+      (text.length > 130 ? text.slice(0, 130) + "…" : text) + "”";
+    q.appendChild(t);
   } else if (e.query_type === "image_picked" || e.query_type === "image_upload") {
     const qrow = document.createElement("div");
     qrow.className = "emb-log-qrow";
     const qimg = document.createElement("img");
     qimg.className = "emb-log-q-thumb";
-    // Log thumbs render at 36 px; 100 px source is plenty.  Uploaded
-    // query images are already small so served as-is.
-    qimg.src = (e.query_type === "image_upload")
-      ? embUploadUrl(e.query_image)
-      : embThumbUrl(e.query_image, 100);
+    qimg.src = e.query_type === "image_upload"
+      ? embUploadUrl(e.query_image || "")
+      : embThumbUrl(e.query_image || "", 100);
     qimg.alt = e.query_image || "";
-    // Lightbox always opens the FULL-size original.
-    qimg.addEventListener("click",
-      () => embOpenLightbox(
-        (e.query_type === "image_upload")
-          ? embUploadUrl(e.query_image)
-          : embImgUrl(e.query_image),
-        e.filename || e.query_image));
+    qimg.addEventListener("click", (ev) => {
+      ev.stopPropagation();
+      const src = e.query_type === "image_upload"
+        ? embUploadUrl(e.query_image || "")
+        : embImgUrl(e.query_image || "");
+      embOpenLightbox(src, e.filename || e.query_image);
+    });
     qrow.appendChild(qimg);
     const qname = document.createElement("div");
     qname.className = "emb-log-q-name";
-    qname.textContent = (e.query_type === "image_upload")
-      ? "upload: " + (e.filename || e.query_image || "")
-      : "picked: "  + (e.query_image || "");
+    qname.textContent = e.query_type === "image_upload"
+      ? (e.filename || e.query_image || "")
+      : (e.query_image || "");
     qrow.appendChild(qname);
-    card.appendChild(qrow);
+    q.appendChild(qrow);
   }
+  card.appendChild(q);
 
-  const labels = { voyage: "V", caption_visual: "CV", caption_semantic: "CS" };
+  // Mini 3x3 grid: rows = methods, cols = #1/#2/#3
+  const grid = document.createElement("div");
+  grid.className = "emb-log-mini-grid";
+  const spacer = document.createElement("div");
+  spacer.className = "emb-log-mini-row-label";
+  grid.appendChild(spacer);
+  for (let i = 1; i <= 3; i++) {
+    const h = document.createElement("div");
+    h.className = "emb-log-mini-row-label";
+    h.style.textAlign = "center";
+    h.style.color = "var(--muted)";
+    h.style.fontSize = "9px";
+    h.textContent = "#" + i;
+    grid.appendChild(h);
+  }
   for (const m of EMB_METHODS) {
-    const res = e.results && e.results[m.key];
-    if (res && res.length) {
-      const row = document.createElement("div");
-      row.className = "emb-log-method";
-      const names = res.map(r => r.name).join(", ");
-      row.innerHTML =
-        "<span class=\"emb-log-mlabel\">" + labels[m.key] + ":</span> " +
-        embEsc(names);
-      card.appendChild(row);
-    }
-    const err = e.errors && e.errors[m.key];
+    const lbl = document.createElement("div");
+    lbl.className = "emb-log-mini-row-label " + m.key;
+    lbl.textContent = EMB_METHOD_LABEL[m.key];
+    // Color alone is not enough to identify the method for a
+    // color-blind user; the full method name is exposed via title
+    // (mouse) and aria-label (screen reader).
+    lbl.title = m.title;
+    lbl.setAttribute("aria-label", m.title);
+    grid.appendChild(lbl);
+    const list = ((e.results || {})[m.key]) || [];
+    const err  = ((e.errors  || {})[m.key]);
     if (err) {
-      const row = document.createElement("div");
-      row.className = "emb-log-method emb-log-method-err";
-      row.innerHTML =
-        "<span class=\"emb-log-mlabel\">" + labels[m.key] + ":</span> " +
-        embEsc(err);
-      card.appendChild(row);
+      const errBox = document.createElement("div");
+      errBox.className = "emb-log-mini-err";
+      errBox.textContent = String(err).slice(0, 80);
+      errBox.title = m.title + " error: " + String(err);
+      grid.appendChild(errBox);
+      continue;
+    }
+    for (let i = 0; i < 3; i++) {
+      const tile = document.createElement("div");
+      tile.className = "emb-log-mini-tile " + m.key;
+      if (list[i]) {
+        const img = document.createElement("img");
+        img.src = embThumbUrl(list[i].name, 80);
+        // Alt text is the method + image name so the row's method is
+        // discoverable from the image itself (color is duplicated).
+        img.alt = m.title + " · " + list[i].name;
+        img.className = "emb-log-mini-thumb";
+        img.title = m.title + " — " + list[i].name +
+                    " · score " + embFmtScore(list[i].score);
+        tile.appendChild(img);
+        const bar = document.createElement("div");
+        bar.className = "emb-log-mini-bar";
+        const fill = document.createElement("div");
+        fill.className = "emb-log-mini-bar-fill";
+        fill.style.width =
+          (Math.max(0, Math.min(1, +list[i].score || 0)) * 100).toFixed(1) + "%";
+        bar.appendChild(fill);
+        tile.appendChild(bar);
+      } else {
+        tile.style.opacity = "0.25";
+      }
+      grid.appendChild(tile);
     }
   }
+  card.appendChild(grid);
+
+  // Click anywhere on the card → re-run.  Use stopPropagation on the
+  // child query-thumbnail click so the lightbox-click isn't taken as
+  // an entry click.
+  const fire = () => rerunEmbLogEntry(e);
+  card.addEventListener("click", fire);
+  card.addEventListener("keydown", (ev) => {
+    if (ev.key === "Enter" || ev.key === " ") { ev.preventDefault(); fire(); }
+  });
 
   return card;
+}
+
+// Click-to-re-run: text and picked queries reload deterministically;
+// upload queries cannot be re-run (the original file is no longer in
+// the browser).  We surface a warn-tone status badge in that case.
+function rerunEmbLogEntry(e) {
+  if (e.query_type === "text") {
+    const input = document.getElementById("emb-text-input");
+    const form  = document.getElementById("emb-text-form");
+    if (input && form) {
+      input.value = e.query || "";
+      if (typeof form.requestSubmit === "function") form.requestSubmit();
+      else form.dispatchEvent(new Event("submit", { cancelable: true }));
+    }
+  } else if (e.query_type === "image_picked") {
+    const sel = document.getElementById("emb-image-select");
+    if (sel) {
+      sel.value = e.query_image || "";
+      sel.dispatchEvent(new Event("change"));
+      const btn = document.getElementById("emb-image-search-picked");
+      if (btn) btn.click();
+    }
+  } else if (e.query_type === "image_upload") {
+    embSetStatusBadge(
+      "Cannot re-run upload (file expired). Upload it again to retry.",
+      "warn");
+  }
 }
 
 // Lightbox close button + overlay click
