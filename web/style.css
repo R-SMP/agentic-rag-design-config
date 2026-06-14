@@ -2633,30 +2633,36 @@ button.danger:hover { background: #3a1d1d; }
 .emb-ref-table td {
   text-align: left;
   vertical-align: top;
-  padding: 8px 10px;
-  border-bottom: 1px solid var(--border);
+  padding: 6px 8px;
+  /* Full border on every cell so the grid is clearly visible
+     against the dark panel — bottom-only previously left columns
+     visually merging into each other. */
+  border: 1px solid var(--border);
 }
 .emb-ref-table thead th {
   background: var(--panel-2);
   font-weight: 600;
+  font-size: 11.5px;
   position: sticky;
   top: 0;
   z-index: 1;
 }
-.emb-th-idx   { width: 44px; }
-.emb-th-name  { width: 120px; }
-.emb-th-thumb { width: 104px; }
+.emb-th-idx   { width: 36px; }
+.emb-th-name  { width: 110px; }
+.emb-th-thumb { width: 96px; }
 .emb-th-desc  { width: auto; }   /* desc cols share the remainder 50/50 */
 .emb-td-name {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11.5px;
+  font-size: 10.5px;
   word-break: break-all;
   overflow-wrap: anywhere;
 }
+/* Description cells: noticeably smaller character size + tighter
+   line-height so the long captions don't drown the table. */
 .emb-td-desc {
   color: var(--muted);
-  line-height: 1.45;
-  font-size: 12px;
+  line-height: 1.4;
+  font-size: 10px;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
