@@ -2992,12 +2992,16 @@ button.danger:hover { background: #3a1d1d; }
 }
 
 /* ------ Top-level layout ------ */
+/* overflow: hidden is THE key rule: without it, internal overflow
+   cascades up to the workspace and the side-menu scrolls along with
+   the table.  Same trick the Workflow Settings view uses. */
 .embed-tests-view {
   display: flex;
   flex-direction: row;
   min-width: 0;
   min-height: 0;
   flex: 1 1 auto;
+  overflow: hidden;
 }
 .emb-main-col {
   flex: 1 1 auto;
@@ -3006,6 +3010,7 @@ button.danger:hover { background: #3a1d1d; }
   display: flex;
   flex-direction: column;
   background: var(--bg);
+  overflow: hidden;
 }
 
 /* ------ Toolbar ------ */
@@ -3424,16 +3429,19 @@ button.danger:hover { background: #3a1d1d; }
 .emb-ref-table thead th {
   background: var(--panel-2);
   font-weight: 600;
-  font-size: 10.5px;
+  font-size: 9.5px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--muted);
   position: sticky;
   top: 0;
   z-index: 2;
-  padding: 6px 6px;
+  padding: 5px 6px;
 }
-.emb-th-idx    { width: 28px; text-align: center; }
+.emb-th-idx    { width: 24px; text-align: center; }
 .emb-th-name   { width: 96px; }
-.emb-th-thumb  { width: 64px; text-align: center; }
-.emb-th-blades { width: 78px; text-align: center; }
+.emb-th-thumb  { width: 88px; text-align: center; }
+.emb-th-blades { width: 60px; text-align: center; }
 .emb-th-desc   { width: auto; }
 
 /* Row interaction */
@@ -3458,21 +3466,22 @@ button.danger:hover { background: #3a1d1d; }
 /* Cells */
 .emb-td-name {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 9.5px;
+  font-size: 8.5px;
   word-break: break-all;
   color: var(--text);
 }
 .emb-td-blades { text-align: center; }
 .emb-blade-badge {
   display: inline-block;
-  font-size: 9.5px;
+  font-size: 8.5px;
   font-weight: 600;
   color: var(--accent);
-  background: rgba(79, 140, 255, 0.12);
-  border: 1px solid rgba(79, 140, 255, 0.35);
-  border-radius: 10px;
-  padding: 1px 8px;
+  background: rgba(79, 140, 255, 0.14);
+  border: 1px solid rgba(79, 140, 255, 0.4);
+  border-radius: 9px;
+  padding: 0 7px;
   white-space: nowrap;
+  line-height: 1.5;
 }
 .emb-blade-badge.empty {
   color: var(--muted);
@@ -3480,18 +3489,27 @@ button.danger:hover { background: #3a1d1d; }
   border-color: var(--border);
 }
 
-/* Reference-table thumbnails */
+/* Reference-table thumbnails: bumped from 56 to 76 px with a soft
+   shadow and a thin border so they read as actual sketch tiles
+   against the dark panel rather than tiny pasted clips. */
 .emb-thumb-ref {
-  width: 56px;
-  height: 56px;
-  max-width: 56px;
-  max-height: 56px;
+  width: 76px;
+  height: 76px;
+  max-width: 76px;
+  max-height: 76px;
   object-fit: contain;
-  background: #fff;
-  border-radius: 3px;
+  background: #fdfdfd;
+  border-radius: 4px;
   cursor: zoom-in;
   display: block;
   margin: 0 auto;
+  border: 1px solid var(--border);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.4);
+  transition: transform 0.1s, box-shadow 0.1s;
+}
+.emb-thumb-ref:hover {
+  transform: scale(1.05);
+  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.55);
 }
 
 /* Mode switching: hide Full-only columns in Compact / Grid; hide the
@@ -3509,20 +3527,21 @@ button.danger:hover { background: #3a1d1d; }
   gap: 10px;
 }
 
-/* Description cells (Full mode) */
+/* Description cells (Full mode) — heavily shrunk per operator's
+   "I would like the text inside of the table to be SMALLER" feedback. */
 .emb-td-desc {
-  font-size: 9px;
+  font-size: 7.5px;
   color: var(--muted);
-  line-height: 1.4;
+  line-height: 1.35;
   white-space: pre-wrap;
   word-break: break-word;
   overflow-wrap: anywhere;
-  padding: 5px 7px;
+  padding: 4px 6px;
 }
 .emb-desc-wrap {
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: 3px;
 }
 .emb-desc-text {
   display: -webkit-box;
@@ -3547,7 +3566,7 @@ button.danger:hover { background: #3a1d1d; }
   background: var(--panel-2);
   border: 1px solid var(--border);
   color: var(--muted);
-  font-size: 8.5px;
+  font-size: 7.5px;
   padding: 1px 6px;
   border-radius: 3px;
   cursor: pointer;
@@ -3643,8 +3662,8 @@ button.danger:hover { background: #3a1d1d; }
 
 /* ------ Right rail: Recent searches ------ */
 .emb-log-panel {
-  flex: 0 0 420px;
-  width: 420px;
+  flex: 0 0 560px;
+  width: 560px;
   border-left: 1px solid var(--border);
   background: var(--panel);
   display: flex;
@@ -3844,8 +3863,11 @@ button.danger:hover { background: #3a1d1d; }
 .emb-lightbox-close:hover { background: rgba(0, 0, 0, 0.85); }
 
 /* ------ Narrow viewports ------ */
+@media (max-width: 1400px) {
+  .emb-log-panel { flex: 0 0 460px; width: 460px; }
+}
 @media (max-width: 1180px) {
-  .emb-log-panel { flex: 0 0 360px; width: 360px; }
+  .emb-log-panel { flex: 0 0 380px; width: 380px; }
 }
 @media (max-width: 980px) {
   .embed-tests-view { flex-direction: column; }
