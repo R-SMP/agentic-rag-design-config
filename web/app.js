@@ -5014,6 +5014,79 @@ async function loadEmbedTests() {
   if (manifestOk) embLoaded = true;
 }
 
+// Build a reference-table description cell: 4-line clamp by default,
+// with [Copy] / [→ Search] / [Show more] action buttons.  Clamping
+// keeps each row to ~150 px tall instead of ~1500 px; the action row
+// turns "copy + paste into the search box" into one click.
+function buildEmbDescCell(text, kind, sketchName) {
+  const wrap = document.createElement("div");
+  wrap.className = "emb-desc-wrap";
+
+  const txt = (text || "").trim();
+
+  const textEl = document.createElement("div");
+  textEl.className = "emb-desc-text";
+  textEl.textContent = txt || "(empty)";
+  wrap.appendChild(textEl);
+
+  if (!txt) return wrap;
+
+  const actions = document.createElement("div");
+  actions.className = "emb-desc-actions";
+
+  // Copy to clipboard
+  const copyBtn = document.createElement("button");
+  copyBtn.type = "button";
+  copyBtn.textContent = "Copy";
+  copyBtn.title = "Copy this " + kind + " description to clipboard";
+  copyBtn.addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(txt);
+      copyBtn.textContent = "✓ Copied";
+      copyBtn.classList.add("success");
+    } catch (_) {
+      copyBtn.textContent = "Copy failed";
+    }
+    setTimeout(() => {
+      copyBtn.textContent = "Copy";
+      copyBtn.classList.remove("success");
+    }, 1400);
+  });
+  actions.appendChild(copyBtn);
+
+  // → Search: paste into the Text → Images box and submit
+  const searchBtn = document.createElement("button");
+  searchBtn.type = "button";
+  searchBtn.className = "primary";
+  searchBtn.textContent = "→ Search";
+  searchBtn.title = "Paste this " + kind + " description into the search box and run it";
+  searchBtn.addEventListener("click", () => {
+    const input = document.getElementById("emb-text-input");
+    const form  = document.getElementById("emb-text-form");
+    if (!input || !form) return;
+    input.value = txt;
+    input.scrollIntoView({ behavior: "smooth", block: "center" });
+    input.focus();
+    if (typeof form.requestSubmit === "function") form.requestSubmit();
+    else form.dispatchEvent(new Event("submit", { cancelable: true }));
+  });
+  actions.appendChild(searchBtn);
+
+  // Show more / less — toggles the 4-line clamp
+  const moreBtn = document.createElement("button");
+  moreBtn.type = "button";
+  moreBtn.textContent = "Show more";
+  moreBtn.addEventListener("click", () => {
+    const expanded = textEl.classList.toggle("expanded");
+    moreBtn.textContent = expanded ? "Show less" : "Show more";
+  });
+  actions.appendChild(moreBtn);
+
+  wrap.appendChild(actions);
+  return wrap;
+}
+
+
 async function fetchEmbManifest() {
   const tbody  = document.getElementById("emb-ref-tbody");
   const meta   = document.getElementById("emb-meta");
@@ -5046,10 +5119,12 @@ async function fetchEmbManifest() {
         tdThumb.appendChild(img);
         const tdVis = document.createElement("td");
         tdVis.className = "emb-td-desc";
-        tdVis.textContent = r.visual_description || "(empty)";
+        tdVis.appendChild(
+          buildEmbDescCell(r.visual_description, "visual", r.name));
         const tdSem = document.createElement("td");
         tdSem.className = "emb-td-desc";
-        tdSem.textContent = r.semantic_description || "(empty)";
+        tdSem.appendChild(
+          buildEmbDescCell(r.semantic_description, "semantic", r.name));
         tr.appendChild(tdIdx);
         tr.appendChild(tdName);
         tr.appendChild(tdThumb);

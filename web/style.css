@@ -2854,3 +2854,105 @@ button.danger:hover { background: #3a1d1d; }
   }
   .emb-results { grid-template-columns: 1fr; }
 }
+
+
+/* ===========================================================================
+   Embedding tests — usability round 2: description clamping + cell actions
+   + visual polish (section accents, row hover, prettier empty states).
+   =========================================================================== */
+
+/* Description cell — clamped to 4 lines by default, with an action
+   row below.  Cuts row height from ~1500 px (full text) to ~150 px
+   while keeping a Show more / Copy / -> Search escape hatch. */
+.emb-desc-wrap {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+.emb-desc-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: normal;
+}
+.emb-desc-text.expanded {
+  display: block;
+  -webkit-line-clamp: unset;
+  line-clamp: unset;
+  overflow: visible;
+}
+
+.emb-desc-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 2px;
+}
+.emb-desc-actions button {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--muted);
+  font-size: 9.5px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: pointer;
+  line-height: 1.3;
+  font-family: inherit;
+  letter-spacing: 0.02em;
+  transition: color 0.1s, background 0.1s, border-color 0.1s;
+}
+.emb-desc-actions button:hover {
+  color: var(--text);
+  border-color: var(--accent);
+  background: var(--panel);
+}
+.emb-desc-actions button.primary {
+  color: var(--accent);
+  border-color: var(--accent);
+}
+.emb-desc-actions button.primary:hover {
+  background: var(--accent);
+  color: #fff;
+}
+.emb-desc-actions button.success {
+  color: #6bcf6b;
+  border-color: #6bcf6b;
+}
+
+/* Row hover: subtle accent so it's clear which row you are reading. */
+.emb-ref-table tbody tr {
+  transition: background 0.1s;
+}
+.emb-ref-table tbody tr:hover {
+  background: rgba(79, 140, 255, 0.05);
+}
+
+/* Section-header accent underline — quick visual hierarchy
+   improvement so the three sections feel like distinct cards
+   instead of a wall of text. */
+.emb-section-head h2 {
+  display: inline-block;
+  padding-bottom: 4px;
+  margin-bottom: 8px;
+  border-bottom: 2px solid var(--accent);
+}
+
+/* Prettier empty-state placeholder for the two result panels. */
+.emb-results-empty {
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 28px 18px;
+  text-align: center;
+  background: rgba(255, 255, 255, 0.012);
+}
+.emb-results-empty .emb-empty {
+  font-size: 12px;
+}
+
+/* Tighter overall gap between the three top-level sections — keeps
+   more on screen at once. */
+.emb-main { gap: 14px; }
+.emb-section { padding: 14px 16px; }
