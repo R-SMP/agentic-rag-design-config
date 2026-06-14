@@ -2601,9 +2601,17 @@ button.danger:hover { background: #3a1d1d; }
   cursor: zoom-in;
   border: 1px solid var(--border);
 }
+/* Reference-table thumbnails: HARD-cap the rendered box and let
+   object-fit handle the aspect ratio so wide and tall sketches both
+   stay inside the same 80×80 frame.  This stops large source PNGs
+   from blowing the column wide and squashing the description cells. */
 .emb-thumb-ref {
-  max-width: 120px;
-  max-height: 110px;
+  width:      80px;
+  height:     80px;
+  max-width:  80px;
+  max-height: 80px;
+  object-fit: contain;
+  background: #fff;
 }
 
 /* Reference table */
@@ -2616,6 +2624,10 @@ button.danger:hover { background: #3a1d1d; }
   width: 100%;
   border-collapse: collapse;
   font-size: 12.5px;
+  /* Fixed layout: column widths come from the <th> rules below, not
+     from cell content.  Without this, an oversized image would
+     stretch the thumb column and squash the description columns. */
+  table-layout: fixed;
 }
 .emb-ref-table th,
 .emb-ref-table td {
@@ -2631,20 +2643,23 @@ button.danger:hover { background: #3a1d1d; }
   top: 0;
   z-index: 1;
 }
-.emb-th-idx { width: 36px; }
-.emb-th-name { width: 130px; }
-.emb-th-thumb { width: 130px; }
-.emb-th-desc { width: auto; }
+.emb-th-idx   { width: 44px; }
+.emb-th-name  { width: 120px; }
+.emb-th-thumb { width: 104px; }
+.emb-th-desc  { width: auto; }   /* desc cols share the remainder 50/50 */
 .emb-td-name {
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
   font-size: 11.5px;
   word-break: break-all;
+  overflow-wrap: anywhere;
 }
 .emb-td-desc {
   color: var(--muted);
   line-height: 1.45;
   font-size: 12px;
   white-space: pre-wrap;
+  word-break: break-word;
+  overflow-wrap: anywhere;
 }
 .emb-ref-loading td {
   text-align: center;

@@ -2377,16 +2377,65 @@ async def api_emb_manifest() -> dict:
     return await run_in_threadpool(mod.get_manifest)
 
 
+def _emb_resize_to_jpeg(path: Path, max_side: int) -> bytes:
+    """Server-side thumbnail: load with PIL, fit inside ``max_side ×
+    max_side`` preserving aspect ratio, encode as quality-82 JPEG.
+
+    Used by the ``/api/embedding_tests/image/{name}?w=N`` thumbnail
+    path so the reference table doesn't ship 7 MB of raw sketches
+    every page load.
+    """
+    from PIL import Image  # lazy — PIL is heavy
+    import io
+    with Image.open(path) as im:
+        if im.mode != "RGB":
+            im = im.convert("RGB")
+        if im.width > max_side or im.height > max_side:
+            im.thumbnail((max_side, max_side), Image.LANCZOS)
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=82, optimize=True,
+                progressive=True)
+        return buf.getvalue()
+
+
 @app.get("/api/embedding_tests/image/{name}")
-async def api_emb_image(name: str):
+async def api_emb_image(name: str, w: int | None = None):
+    """Serve a test sketch.
+
+    Without ``?w=`` returns the original file (used by the lightbox).
+    With ``?w=N`` (1..2048) returns a server-side-resized JPEG fitted
+    inside an N×N box — used by the reference table, the search
+    result thumbnails, and the log-panel thumbs to avoid sending the
+    full 7 MB sketch when CSS will shrink it to 80 px anyway.
+    """
     _require_auth()
     mod = _emb_module()
     path = mod.get_sketch_path(name)
     if path is None:
         raise HTTPException(404, f"Sketch not found: {name!r}")
     suffix = path.suffix.lower()
-    media_type = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
-    return FileResponse(path, media_type=media_type)
+
+    if w is None:
+        media_type = "image/jpeg" if suffix in (".jpg", ".jpeg") else "image/png"
+        return FileResponse(path, media_type=media_type)
+
+    if w <= 0 or w > 2048:
+        raise HTTPException(400, "w must be between 1 and 2048")
+
+    try:
+        data = await run_in_threadpool(_emb_resize_to_jpeg, path, w)
+    except Exception as exc:
+        logger.exception("[emb_tests] thumbnail resize failed")
+        raise HTTPException(500, f"Resize failed: {exc}")
+
+    return Response(
+        content=data,
+        media_type="image/jpeg",
+        # 1-hour browser cache — sketch contents don't change between
+        # rebuilds, and the file mtime would only force a refetch on
+        # an actual rebuild_index pass.
+        headers={"Cache-Control": "public, max-age=3600"},
+    )
 
 
 @app.get("/api/embedding_tests/upload/{name}")

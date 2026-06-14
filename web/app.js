@@ -4956,6 +4956,15 @@ function embImgUrl(name) {
   return "/api/embedding_tests/image/" + encodeURIComponent(name);
 }
 
+function embThumbUrl(name, w) {
+  // Server-side resized JPEG.  ``w`` is the box side in pixels;
+  // backend resizes to fit inside w×w preserving aspect ratio.  Used
+  // for every place the original would be visually shrunk anyway
+  // (reference table, search result tiles, log-panel thumbs) so the
+  // raw 7 MB sketch isn't shipped just to be CSS-shrunk to 80 px.
+  return embImgUrl(name) + "?w=" + encodeURIComponent(w);
+}
+
 function embUploadUrl(refName) {
   return "/api/embedding_tests/upload/" + encodeURIComponent(refName);
 }
@@ -5025,10 +5034,15 @@ async function fetchEmbManifest() {
         tdName.textContent = r.name;
         const tdThumb = document.createElement("td");
         const img = document.createElement("img");
-        img.src = embImgUrl(r.name);
+        // Reference-table thumbs are displayed at 80 px; 200 px source
+        // gives crisp retina detail without shipping the full sketch.
+        img.src = embThumbUrl(r.name, 200);
         img.alt = r.name;
         img.className = "emb-thumb emb-thumb-ref";
-        img.addEventListener("click", () => embOpenLightbox(img.src, r.name));
+        // Lightbox always opens the FULL-size original so click-to-
+        // enlarge still shows everything.
+        img.addEventListener("click",
+          () => embOpenLightbox(embImgUrl(r.name), r.name));
         tdThumb.appendChild(img);
         const tdVis = document.createElement("td");
         tdVis.className = "emb-td-desc";
@@ -5132,10 +5146,13 @@ function renderEmbResults(containerId, methodsObj, errorsObj) {
         const li = document.createElement("li");
         li.className = "emb-result-item";
         const img = document.createElement("img");
-        img.src = embImgUrl(r.name);
+        // Result tiles render up to 160 px; 400 px source covers
+        // retina + any future width tweak without re-fetching.
+        img.src = embThumbUrl(r.name, 400);
         img.alt = r.name;
         img.className = "emb-thumb";
-        img.addEventListener("click", () => embOpenLightbox(img.src, r.name));
+        img.addEventListener("click",
+          () => embOpenLightbox(embImgUrl(r.name), r.name));
         li.appendChild(img);
         const nm = document.createElement("div");
         nm.className = "emb-result-name";
@@ -5409,12 +5426,19 @@ function buildEmbLogEntry(e) {
     qrow.className = "emb-log-qrow";
     const qimg = document.createElement("img");
     qimg.className = "emb-log-q-thumb";
+    // Log thumbs render at 36 px; 100 px source is plenty.  Uploaded
+    // query images are already small so served as-is.
     qimg.src = (e.query_type === "image_upload")
       ? embUploadUrl(e.query_image)
-      : embImgUrl(e.query_image);
+      : embThumbUrl(e.query_image, 100);
     qimg.alt = e.query_image || "";
+    // Lightbox always opens the FULL-size original.
     qimg.addEventListener("click",
-      () => embOpenLightbox(qimg.src, e.filename || e.query_image));
+      () => embOpenLightbox(
+        (e.query_type === "image_upload")
+          ? embUploadUrl(e.query_image)
+          : embImgUrl(e.query_image),
+        e.filename || e.query_image));
     qrow.appendChild(qimg);
     const qname = document.createElement("div");
     qname.className = "emb-log-q-name";
