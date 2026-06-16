@@ -906,6 +906,13 @@ function startEventStream() {
           // 202 time, renders the assistant reply, auto-loads any
           // new mesh into the viewer, and clears busy/pending.
           finalizeTurn(data);
+        } else if (data.type === "backfill_log") {
+          // Live progress line from the chunks_mm backfill (Database
+          // options panel) — append to the panel's log box.
+          dbOptAppendLog(data.message || "");
+        } else if (data.type === "backfill_done") {
+          // Terminal backfill signal — re-enable the button + summarise.
+          dbOptFinalizeBackfill(data);
         }
       } catch (_) {
         /* ignore malformed event */
@@ -1067,11 +1074,224 @@ function switchView(name) {
     }
   }
   if (name === "embed_tests") loadEmbedTests();
+  if (name === "db_options") loadDbOptions();
 }
 
 for (const b of navItems) {
   b.addEventListener("click", () => switchView(b.dataset.view));
 }
+
+// ---------------------------------------------------------------------------
+// Database options panel — 3-way DB mode toggle + multimodal chunks_mm
+// backfill (architecture doc §6.3).  The mode just RECORDS the choice for
+// now; the backfill button streams progress over /api/events
+// (backfill_log / backfill_done, handled in startEventStream).
+// ---------------------------------------------------------------------------
+let dbOptBackfillInFlight = false;
+
+function dbOptEsc(s) {
+  return String(s == null ? "" : s).replace(
+    /[&<>]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]));
+}
+
+function setDbOptStatus(msg, kind) {
+  const el = document.getElementById("db-opt-status");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "db-opt-status" + (kind ? " " + kind : "");
+}
+
+function setDbOptBackfillStatus(msg, kind) {
+  const el = document.getElementById("db-opt-backfill-status");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "db-opt-badge" + (kind ? " " + kind : "");
+}
+
+function dbOptAppendLog(line) {
+  const el = document.getElementById("db-opt-log");
+  if (!el) return;
+  el.textContent += (el.textContent ? "\n" : "") + line;
+  el.scrollTop = el.scrollHeight;
+}
+
+function dbOptRow(parent, label, value) {
+  const row = document.createElement("div");
+  row.className = "db-opt-row";
+  const a = document.createElement("span");
+  a.className = "db-opt-key";
+  a.textContent = label;
+  const b = document.createElement("span");
+  b.className = "db-opt-val";
+  b.textContent = value == null || value === "" ? "—" : String(value);
+  row.appendChild(a);
+  row.appendChild(b);
+  parent.appendChild(row);
+}
+
+function dbOptShowMode(mode) {
+  for (const b of document.querySelectorAll(".db-opt-mode")) {
+    b.classList.toggle("active", b.dataset.mode === mode);
+  }
+  for (const s of document.querySelectorAll(".db-opt-section")) {
+    s.hidden = s.dataset.section !== mode;
+  }
+}
+
+async function loadDbOptions() {
+  try {
+    const res = await fetch("/api/db_options");
+    const data = await res.json();
+    dbOptShowMode(data.mode);
+
+    const t = data.text_only || {};
+    const tEl = document.getElementById("db-opt-text-params");
+    if (tEl) {
+      tEl.innerHTML = "";
+      dbOptRow(tEl, "Embedding provider", t.embedding_provider);
+      dbOptRow(tEl, "Embedding model", t.embedding_model);
+      dbOptRow(tEl, "Vector dimension", t.output_dimension);
+      dbOptRow(tEl, "Images embedded", "None (text only)");
+    }
+
+    const m = data.multimodal || {};
+    const mEl = document.getElementById("db-opt-mm-params");
+    if (mEl) {
+      mEl.innerHTML = "";
+      dbOptRow(mEl, "Embedding model", m.embedding_model);
+      dbOptRow(mEl, "Vector dimension", m.output_dimension);
+      dbOptRow(mEl, "Max image side (px)", m.max_image_side_px);
+      dbOptRow(mEl, "Input type", m.input_type);
+      dbOptRow(mEl, "Image + text fusion", m.image_text_fusion ? "On" : "Off");
+      dbOptRow(mEl, "Images embedded", m.images_embedded);
+      dbOptRow(mEl, "Call mode", m.call_mode);
+      dbOptRow(mEl, "embedding_model tag", m.embedding_model_string);
+      dbOptRow(mEl, "Visible to agents", m.agents_to);
+    }
+
+    const fmEl = document.getElementById("db-opt-mm-fieldmap");
+    if (fmEl) {
+      fmEl.innerHTML = "";
+      for (const f of m.field_mapping || []) {
+        const row = document.createElement("div");
+        row.className = "db-opt-row";
+        row.innerHTML =
+          "<span class=\"db-opt-key\">" + dbOptEsc(f.kind) + "</span>" +
+          "<span class=\"db-opt-val\">agent_from=<code>" + dbOptEsc(f.agent_from) +
+          "</code>, field=<code>" + dbOptEsc(f.field) +
+          "</code>, fused with " + dbOptEsc(f.fused_text) + "</span>";
+        fmEl.appendChild(row);
+      }
+    }
+
+    dbOptBackfillInFlight = !!data.backfill_in_flight;
+    const btn = document.getElementById("db-opt-backfill-btn");
+    if (btn) btn.disabled = dbOptBackfillInFlight;
+    setDbOptBackfillStatus(
+      dbOptBackfillInFlight ? "Running…" : "",
+      dbOptBackfillInFlight ? "busy" : "");
+    setDbOptStatus("", "");
+  } catch (e) {
+    setDbOptStatus("Could not load database options: " + (e.message || e), "err");
+  }
+}
+
+async function onDbOptModeClick(mode) {
+  try {
+    const res = await fetch("/api/db_options", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ mode }),
+    });
+    const data = await res.json();
+    if (!res.ok) {
+      setDbOptStatus(data.detail || "Could not save the choice.", "err");
+      return;
+    }
+    dbOptShowMode(data.mode);
+    setDbOptStatus(
+      "Saved — recorded choice: " + data.mode +
+      " (no routing change yet; both databases are still written).", "ok");
+  } catch (e) {
+    setDbOptStatus("Could not save the choice: " + (e.message || e), "err");
+  }
+}
+
+function dbOptFinalizeBackfill(data) {
+  dbOptBackfillInFlight = false;
+  const btn = document.getElementById("db-opt-backfill-btn");
+  if (btn) btn.disabled = false;
+  if (data.ok) {
+    const line =
+      "Done: " + data.done + " embedded, " + data.skipped + " skipped, " +
+      data.errors + " errors, " + data.rows_inserted + " rows (" +
+      data.sessions + " sessions).";
+    setDbOptBackfillStatus(line, "ok");
+    dbOptAppendLog("==== Backfill complete — " + line + " ====");
+  } else {
+    setDbOptBackfillStatus("Failed: " + (data.error || "unknown error"), "err");
+    dbOptAppendLog("==== Backfill FAILED: " + (data.error || "unknown") + " ====");
+  }
+}
+
+async function onDbOptRunBackfill() {
+  if (dbOptBackfillInFlight) return;
+  const force = !!(document.getElementById("db-opt-force") || {}).checked;
+  const ok = confirm(force
+    ? "Force re-embed ALL sessions into the multimodal database? This "
+      + "re-embeds everything and can take several minutes."
+    : "Run the multimodal backfill? Sessions already embedded at the "
+      + "current model are skipped. This can take several minutes.");
+  if (!ok) return;
+
+  dbOptBackfillInFlight = true;
+  const btn = document.getElementById("db-opt-backfill-btn");
+  if (btn) btn.disabled = true;
+  const logEl = document.getElementById("db-opt-log");
+  if (logEl) logEl.textContent = "";
+  setDbOptBackfillStatus("Starting…", "busy");
+
+  try {
+    const res = await fetch("/api/db_options/backfill", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ force }),
+    });
+    if (res.status === 409) {
+      setDbOptBackfillStatus("Already running", "busy");
+      return;  // leave button disabled; the running task will finalise
+    }
+    const data = await res.json();
+    if (data.ok) {
+      setDbOptBackfillStatus("Running…", "busy");
+      dbOptAppendLog(
+        "Backfill started" + (force ? " (force re-embed all)" : "") +
+        " — streaming progress…");
+    } else {
+      dbOptBackfillInFlight = false;
+      if (btn) btn.disabled = false;
+      setDbOptBackfillStatus("Could not start: " + (data.error || "unknown"), "err");
+    }
+  } catch (e) {
+    dbOptBackfillInFlight = false;
+    if (btn) btn.disabled = false;
+    setDbOptBackfillStatus("Could not start: " + (e.message || e), "err");
+  }
+}
+
+// Delegated wiring — robust whether or not the panel DOM exists at load.
+document.addEventListener("click", (ev) => {
+  const t = ev.target;
+  if (!t || !t.closest) return;
+  const modeBtn = t.closest(".db-opt-mode");
+  if (modeBtn && !modeBtn.disabled) {
+    onDbOptModeClick(modeBtn.dataset.mode);
+    return;
+  }
+  if (t.closest("#db-opt-backfill-btn")) {
+    onDbOptRunBackfill();
+  }
+});
 
 // ---------------------------------------------------------------------------
 // Workflow Settings — live editor over workflow_settings/settings.py

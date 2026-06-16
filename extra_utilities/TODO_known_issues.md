@@ -2742,3 +2742,57 @@ and O3 (DH context-window pressure, currently still labelled
 "open, low priority while no refactor planned" — F35's
 empirical step would either close O3 or escalate its
 priority).
+
+
+### F37. Evaluate VLM-enriched text for user-image multimodal embeddings
+
+**Where.**  `agents/database_handler/db_writer_mm.py` (the
+multimodal mirror writer — the image-embedding site, which fuses
+each image with its associated text via voyage-multimodal-3.5)
+and the `chunks_mm` table created by
+`extra_utilities/db_design/migrations/migrate_v7_to_v8.py`.
+Evaluation would lean on the F36 embedding-tests mini-eval
+harness once that exists.
+
+**What.**  In the multimodal `chunks_mm` table, each USER-INPUT
+image is embedded with voyage-multimodal-3.5 fused with ONLY the
+user-written `<name>_note.txt`.  We deliberately do NOT add a
+VLM-generated description of the image to the fused text.
+
+The bias argument: fusing a VLM caption would pull the vector
+toward what the VLM *saw and chose to describe*, risking
+(a) losing genuine visual similarity between sketches
+("similar sketches retrieved"), and (b) suppressing retrieval of
+details the VLM failed to notice ("details not spotted by the
+VLM").  The user-written note is the lower-risk signal: it
+reflects the user's own stated intent and is smaller / more
+faithful.  The expected LOSS from joining the user-written note
+is minimal; adding a VLM-generated description is the riskier
+move.
+
+**Scope note — RENDERS are handled differently and are NOT part
+of this concern.**  Each attempt render is fused with the
+chain-authored attempt `description.txt` (the design narrative
+the chain already produced), NOT a VLM caption of the render
+pixels.  The bias risk above does not apply to renders — their
+fused text is an existing chain artefact, not a fresh
+image-derived description.
+
+**Why deferred / TODO.**  Once the multimodal index is populated
+and the F36 mini-eval harness exists, empirically compare on the
+eval query set, cut by image family (sketches / renders /
+photos):
+
+  * `image-only`,
+  * `image + user-note` (current default),
+  * `image + user-note + VLM-caption`,
+  * `image + VLM-caption-only`.
+
+Decide per-family whether a VLM caption helps or hurts.  Keep
+**image + user-note** as the default until measured.
+
+**Status.**  Open.  Deferred until the multimodal index is
+populated + the eval harness exists (pairs with F36).  Design
+rationale also recorded in
+`extra_utilities/db_design/database_and_RAG_architecture.md`
+§6.3.

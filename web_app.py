@@ -1074,6 +1074,7 @@ async def _run_end_in_background(
     dh_result: dict | None = None
     feedback_result: dict | None = None
     error_str: str | None = None
+    mm_session_id: str | None = None  # captured for the post-save mm mirror
     try:
         if save_requested and session_present:
             if feedback is not None:
@@ -1098,6 +1099,17 @@ async def _run_end_in_background(
                 await run_in_threadpool(
                     _run_save_session_feedback_sync, feedback
                 )
+            # Capture the resolved session id NOW — before _end_session
+            # archives + clears the active session — so the post-publish
+            # multimodal mirror can find this session's chunks + R2
+            # artefacts.  Same id idiom as _run_save_session_feedback_sync.
+            try:
+                _sess = _BOX.session
+                if _sess is not None:
+                    mm_session_id = (
+                        _sess.resolved_session_name or _sess.session_id)
+            except Exception:
+                mm_session_id = None
         elif save_requested:
             # User requested save but no session is active — treat as
             # a plain End Session.  Surface the fact in the SSE event
@@ -1130,6 +1142,33 @@ async def _run_end_in_background(
         except Exception:
             logger.exception("[WEB] failed to clear viz_bus attempt cache")
         _END_IN_FLIGHT = False
+
+    # ---- Live dual-write (best-effort, non-blocking) -------------------
+    # AFTER session_save_done has been published (the user already sees
+    # "saved"), mirror the just-saved session into the multimodal
+    # chunks_mm table.  Voyage/R2 latency here never delays the
+    # user-facing save, and ANY failure is logged only — the primary
+    # chunks + R2 save remains authoritative.  Skipped unless a save
+    # actually succeeded.  R2_KEY_PREFIX comes from the environment
+    # (web-v1 on Railway), so images resolve correctly.  The mirror is
+    # resumable/idempotent, so a crash mid-mirror is harmless.  See
+    # architecture doc §6.3 and warnings_developer.md W38.
+    if mm_session_id and error_str is None:
+        try:
+            from agents.database_handler import db_writer_mm as _mm_writer
+            await run_in_threadpool(
+                functools.partial(
+                    _mm_writer.mirror_session_to_mm,
+                    mm_session_id,
+                    force=False,
+                    log=lambda m: logger.info("[WEB] mm-mirror %s", m),
+                )
+            )
+        except Exception:
+            logger.exception(
+                "[WEB] multimodal mirror failed for %s (best-effort; "
+                "primary save unaffected)", mm_session_id,
+            )
 
 
 @app.post("/api/end", status_code=202)
@@ -1490,6 +1529,143 @@ def api_database_access_post(body: _DbAccessBody) -> dict:
         "flags":       flags_after,
         "rag_enabled": bool(workflow_settings.RAG_ENABLED),
     }
+
+
+# ============================================================
+# Database options panel — 3-way mode toggle + multimodal
+# chunks_mm backfill (architecture doc §6.3).  The mode just
+# RECORDS the operator's choice for now (the chain does not route
+# reads/writes through it yet — the multimodal table is dual-written
+# regardless).  Embedding parameters are locked in code
+# (agents/shared/voyage_mm.py + warnings_developer.md W38) and are
+# surfaced READ-ONLY in the panel.
+# ============================================================
+from workflow_settings import db_options_config as _db_options  # noqa: E402
+
+_BACKFILL_IN_FLIGHT: bool = False
+
+
+class _DbOptionsModeIn(BaseModel):
+    mode: str
+
+
+class _BackfillIn(BaseModel):
+    force: bool = False
+
+
+def _multimodal_params_readonly() -> dict:
+    """The locked, currently-non-modifiable multimodal embedding
+    parameters + the image-row field mapping, surfaced read-only in the
+    panel (W38 / §6.3)."""
+    from agents.shared import voyage_mm as _vmm
+    from agents.database_handler import db_writer_mm as _mm
+    return {
+        "embedding_model":        _vmm.VOYAGE_MM_MODEL,
+        "output_dimension":       _vmm.VOYAGE_MM_DIMS,
+        "max_image_side_px":      _vmm.MAX_IMAGE_SIDE,
+        "input_type":             "document",
+        "image_text_fusion":      True,
+        "images_embedded":        "user images + attempt renders",
+        "call_mode":              "single-item",
+        "embedding_model_string": _vmm.embedding_model_string(),
+        "agents_to":              ", ".join(_mm._acl_list()),  # noqa: SLF001
+        "field_mapping": [
+            {"kind": "User images",     "agent_from": _mm.AGENT_USER_IMAGE,
+             "field": _mm.FIELD_USER_IMAGE, "fused_text": "user-written <name>_note.txt"},
+            {"kind": "Attempt renders", "agent_from": _mm.AGENT_RENDER,
+             "field": _mm.FIELD_RENDER,     "fused_text": "attempt description.txt"},
+        ],
+    }
+
+
+@app.get("/api/db_options")
+def api_db_options_get() -> dict:
+    """DB-options panel state: persisted 3-way mode + read-only
+    text-only + multimodal params + whether a backfill is running."""
+    _require_auth()
+    importlib.reload(workflow_settings)  # disk-fresh embedding settings
+    return {
+        "mode":  _db_options.get_mode(),
+        "modes": list(_db_options.VALID_MODES),
+        "text_only": {
+            "embedding_provider": getattr(workflow_settings, "EMBEDDING_PROVIDER", None),
+            "embedding_model":    getattr(workflow_settings, "EMBEDDING_MODEL", None),
+            "output_dimension":   getattr(workflow_settings, "EMBEDDING_VECTOR_DIMS", None),
+        },
+        "multimodal":         _multimodal_params_readonly(),
+        "backfill_in_flight": _BACKFILL_IN_FLIGHT,
+    }
+
+
+@app.post("/api/db_options")
+def api_db_options_post(body: _DbOptionsModeIn) -> dict:
+    """Persist the 3-way mode choice.  Records the choice only — no
+    read/write routing is wired to it yet (§6.3)."""
+    _require_auth()
+    try:
+        mode = _db_options.set_mode(body.mode)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # never 500 the editor
+        logger.exception("[WEB] db_options write failed: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not write db_options "
+                   f"({type(exc).__name__}: {exc}).",
+        )
+    logger.info("[WEB] db_options mode -> %s", mode)
+    return {"ok": True, "mode": mode}
+
+
+async def _run_backfill_in_background(force: bool) -> None:
+    """Background task: mirror every session into chunks_mm, streaming
+    per-line progress as ``backfill_log`` viz_bus events plus exactly
+    one terminal ``backfill_done``.  Clears ``_BACKFILL_IN_FLIGHT`` in
+    finally so a later run is accepted.  Resumable: a restart mid-run
+    just re-skips the sessions already done at the current model."""
+    global _BACKFILL_IN_FLIGHT
+
+    def _log(msg: str) -> None:
+        viz_publish({"type": "backfill_log", "message": msg})
+
+    try:
+        from agents.database_handler import db_writer_mm as _mm
+        summary = await run_in_threadpool(
+            functools.partial(_mm.backfill_all_sessions, force=force, log=_log)
+        )
+        viz_publish({
+            "type":          "backfill_done",
+            "ok":            True,
+            "sessions":      summary.get("sessions"),
+            "done":          summary.get("done"),
+            "skipped":       summary.get("skipped"),
+            "errors":        summary.get("errors"),
+            "rows_inserted": summary.get("rows_inserted"),
+        })
+    except Exception as exc:  # noqa: BLE001 — always emit a terminal event
+        logger.exception("[WEB] backfill crashed")
+        viz_publish({
+            "type":  "backfill_done",
+            "ok":    False,
+            "error": f"{type(exc).__name__}: {exc}",
+        })
+    finally:
+        _BACKFILL_IN_FLIGHT = False
+
+
+@app.post("/api/db_options/backfill")
+async def api_db_options_backfill(body: _BackfillIn) -> dict:
+    """Start the chunks_mm backfill as a fire-and-forget background task.
+    Progress streams over /api/events (``backfill_log`` lines +
+    ``backfill_done``).  Rejected with 409 if one is already running."""
+    _require_auth()
+    global _BACKFILL_IN_FLIGHT
+    if _BACKFILL_IN_FLIGHT:
+        raise HTTPException(
+            status_code=409, detail="Backfill already in progress.")
+    _BACKFILL_IN_FLIGHT = True
+    asyncio.create_task(_run_backfill_in_background(bool(body.force)))
+    return {"ok": True, "status": "started"}
 
 
 class DhScheduleIn(BaseModel):
@@ -2225,6 +2401,27 @@ async def api_events() -> StreamingResponse:
                     payload = {
                         "type":   "params_proposed",
                         "values": evt.get("values", {}),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                elif evt.get("type") == "backfill_log":
+                    # Live progress line from the chunks_mm backfill
+                    # background task (Database options panel).
+                    payload = {
+                        "type":    "backfill_log",
+                        "message": evt.get("message", ""),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                elif evt.get("type") == "backfill_done":
+                    # Terminal backfill signal — exactly one per run.
+                    payload = {
+                        "type":          "backfill_done",
+                        "ok":            bool(evt.get("ok")),
+                        "sessions":      evt.get("sessions"),
+                        "done":          evt.get("done"),
+                        "skipped":       evt.get("skipped"),
+                        "errors":        evt.get("errors"),
+                        "rows_inserted": evt.get("rows_inserted"),
+                        "error":         evt.get("error"),
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
         finally:

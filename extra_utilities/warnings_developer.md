@@ -307,48 +307,46 @@ be replaced by a Save / Discard pair — this is a Stage B UX
 decision, not a Stage A one.  Until then, do NOT add a "Save"
 button anywhere in the Stage A UI even as a placeholder.
 
-## W15. The project venv lives at the worktree's PARENT, not in the worktree.
+## W15. The project Python is a SHARED interpreter, NOT a venv in the worktree.
 
-**Where.** `C:\Users\vince\MT Coding\tests\test11_v4_git\.venv\`
-holds the Python 3.13 environment with the project's actual
-dependencies (langchain, langchain-openai, anthropic, trimesh, …)
-installed.  Worktrees under
-`C:\Users\vince\MT Coding\tests\test11_v4_git\.claude\worktrees\<name>\`
-do NOT carry their own venv and inherit nothing automatically —
-running `python` from inside a worktree picks up whatever the
-shell's `PATH` resolves to, which on this machine is the system
-Python 3.8 install that does NOT have the project dependencies.
+**Where (v9, updated 2026-06-15).**  This repo
+(`C:\Users\vince\MT Coding\tests\test11_v9_git`) does NOT contain a
+`.venv`, and neither do its worktrees under
+`...\.claude\worktrees\<name>\`.  The interpreter that has the
+project's dependencies (langchain, psycopg, pgvector, Pillow,
+voyageai, …) is the **conda base env**:
+`C:\Users\vince\miniconda3\python.exe`.  Running a bare `python`
+from inside a worktree picks up whatever `PATH` resolves to — on
+this machine the system Python 3.8, which does NOT have the project
+dependencies.
 
-**Why this matters.** Smoke tests that say "run `python -c ...`"
-will silently use the wrong interpreter and either fail with
-`ModuleNotFoundError: langchain_core` or, worse, succeed against
-a Python 3.8 install whose other packages are different versions
-than what the project was developed against (e.g. numpy 1.24.4
-rather than the requirements-pinned numpy 2.x).
+(Historical note: earlier entries pointed at
+`...\test11_v4_git\.venv` (Python 3.13).  That venv still exists but
+belongs to the v4 checkout, is not v9-specific, and lacks
+`voyageai`.  Use the conda interpreter for v9 work.)
 
-**How to run smoke tests reliably.** Either:
-  * Use the venv's interpreter explicitly:
-    `"<repo>/.venv/Scripts/python.exe" -c "..."` or
-    `"<repo>/.venv/Scripts/python.exe" -m streamlit run ...`
-    where `<repo>` is the worktree's parent (e.g. the literal
-    `C:\Users\vince\MT Coding\tests\test11_v4_git`, not the
-    worktree path).
-  * Or `source` / activate the venv first in the shell:
-    `"<repo>/.venv/Scripts/activate"` (Git Bash) or
-    `"<repo>/.venv/Scripts/Activate.ps1"` (PowerShell).
+**Why this matters.** Smoke tests / migration scripts that say
+"run `python ...`" will silently use the wrong interpreter and
+either fail with `ModuleNotFoundError` or, worse, succeed against a
+Python whose package versions differ from what the project expects.
 
-**Pip installs in agent shells.**  If you `pip install <pkg>`
-from inside a worktree using the bare `python` interpreter, the
-install lands in whatever Python the shell resolves — typically
-NOT the project venv.  Always prefix with the venv's full
-interpreter path:
-`"<repo>/.venv/Scripts/python.exe" -m pip install <pkg>` —
-or activate the venv first.
+**How to run scripts reliably (v9).** Use the conda interpreter
+explicitly:
+  * `"C:\Users\vince\miniconda3\python.exe" <script.py>`
 
-**Update tracker.** When this convention changes (the user moves
-to per-worktree venvs, or to a tool like `uv`/`hatch` that
-provisions per-checkout environments automatically), update this
-entry rather than letting it rot.
+Each worktree also needs its OWN `.env` — worktrees do NOT inherit
+the main checkout's untracked `.env`.  Copy it in once:
+  * `Copy-Item "C:\Users\vince\MT Coding\tests\test11_v9_git\.env" ".env"`
+    — `.env` is gitignored, so it cannot be committed from the
+    worktree.
+
+**Pip installs.** Always target the conda interpreter explicitly:
+`"C:\Users\vince\miniconda3\python.exe" -m pip install <pkg>` —
+a bare `pip` from a worktree lands in the wrong Python.
+
+**Update tracker.** When this convention changes (per-worktree
+venvs, or a tool like `uv`/`hatch` that provisions per-checkout
+environments), update this entry rather than letting it rot.
 
 ## W16. requirements.txt pins newer numpy than some local Pythons can install.
 
@@ -1625,3 +1623,43 @@ agent's run-loop poll.
 
 In force from 2026-06-04 onward.  Companion entry to W36
 (`/api/turn` async-by-design).
+
+## W38. Multimodal `chunks_mm` embedding parameters are LOCKED in code (currently non-modifiable in the UI).
+
+**Where.** `agents/shared/voyage_mm.py` (the dedicated Voyage client
+for the DB layer) + `agents/database_handler/db_writer_mm.py` (the
+mirror writer) + the `chunks_mm` table (schema v8).  Surfaced
+READ-ONLY in the web UI's "Database options" panel (Single-vector
+multimodal section).
+
+**What.** The multimodal index uses ONE fixed parameter set, recorded
+here so a future session does not have to re-derive it (and so the
+UI's read-only display and the code stay in sync):
+
+  * embedding model   = `voyage-multimodal-3.5`
+  * output dimension  = `2048` (Voyage's max; stored `vector(2048)`,
+    HNSW indexed via a `halfvec(2048)` cast — pgvector's float
+    `vector` HNSW caps at 2000 dims)
+  * max image side    = `1536` px (resize-before-send; preserves fine
+    hand-drawn-sketch annotations better than the harness's 1024 px
+    while bounding pixel-token cost)
+  * input_type        = `document` for all stored rows (`query`
+    reserved for read time — not wired yet)
+  * call mode         = single-item (one input per request; per-item
+    error isolation for the one-time backfill)
+  * image+text fusion = ON.  User image fused with its `_note.txt`;
+    render fused with the attempt's `description.txt`.  Image-only
+    fallback when the associated text is missing.
+  * embedding_model string = `voyage/voyage-multimodal-3.5/2048`
+
+**Why "currently non-modifiable".** At this phase the Database
+options panel DISPLAYS these values but does not let the operator
+edit them (the boxes are not wired to change behaviour yet).  Making
+them live tunables is a later phase.
+
+**Cross-refs.** Architecture doc §6.3 (canonical design rationale,
+incl. the no-VLM-caption decision), TODO_known_issues.md F37
+(re-evaluate VLM-enriched user-image text), F36 (mini-eval harness).
+
+**Update tracker.** If any value above changes, update this entry,
+§6.3, and the UI panel's read-only display together.

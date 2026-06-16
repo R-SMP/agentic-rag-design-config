@@ -911,6 +911,69 @@ are NULL for Quantitative rows.
 - Instruction-prefixed — `text-embedding-3-large` was not trained
   with prefixes; wastes tokens.
 
+### 6.3 Multimodal embedding — image + text fusion (`chunks_mm`, voyage-multimodal-3.5)  (added 2026-06-15, in progress)
+
+A parallel table **`chunks_mm`** (a full mirror of `chunks` plus
+image rows) re-embeds every text entry with **voyage-multimodal-3.5**
+(2048-dim) and adds rows for the session's IMAGES, so images become
+retrievable in the same vector space as text.  `chunks_mm` is
+dual-written alongside `chunks` on every save (best-effort,
+non-blocking) and backfilled for past sessions.  The DB-options
+toggle that selects it is a recorded preference only for now — no
+read/write routing is wired yet.
+
+**How each image row is embedded — image + text fused into ONE
+vector** (Voyage's interleaved `[text, image]` input):
+
+- **User-input images** — fused with the user-written
+  `<name>_note.txt` only.  Row mapping: `agent_from = 'User'`,
+  `field = 'User Image Input'`, `field_type = 'Semantic'`,
+  `agents_to = DEFAULT_AGENTS_TO_ACL`, `body` = the image's R2
+  name, `embedding_input` = the note text.
+- **Attempt renders** — one row per render view (isometric / top /
+  side), each fused with the attempt's chain-authored
+  `description.txt`.  Row mapping: `agent_from = 'tool_caller'`,
+  `field = 'Attempt Visual Render'`, `field_type = 'Semantic'`,
+  `agents_to = DEFAULT_AGENTS_TO_ACL`, `attempt_id` = the attempt,
+  `body` = the image's R2 name, `embedding_input` = the description
+  text.
+
+**Why NOT a VLM-generated caption (user images).**  We deliberately
+fuse the USER-written note, not a VLM description of the image.
+Fusing a VLM caption would bias the vector toward what the VLM saw
+and chose to say, risking (a) losing genuine sketch-to-sketch
+visual similarity, and (b) suppressing retrieval of details the VLM
+failed to spot.  The user-written note is a smaller, more faithful
+signal; the loss from joining it is expected to be minimal, whereas
+adding a VLM-generated description is the riskier move.  Recorded as
+a TODO to re-evaluate empirically once the index is populated and
+the mini-eval harness exists — see `TODO_known_issues.md` F37 (and
+F36 for the harness).
+
+**Why this does NOT apply to renders.**  A render's fused text is
+the chain-authored attempt `description.txt` — an artefact the chain
+already produced as the design narrative — not a VLM caption of the
+render pixels.  The bias concern above is specific to generating a
+fresh image-derived description, so renders are unaffected.
+
+**Locked embedding parameters (v8; currently non-modifiable in the
+UI — displayed read-only in the Database options panel).**
+
+- embedding model: `voyage-multimodal-3.5`
+- output dimension: 2048 (stored `vector(2048)`; HNSW via a
+  `halfvec(2048)` cast — pgvector's float `vector` HNSW caps at 2000)
+- max image side: **1536 px** (resize-before-send — preserves fine
+  hand-drawn-sketch annotations better than the harness's 1024 px
+  while bounding pixel-token cost)
+- input_type: `document` for all stored rows (`query` reserved for
+  read time, not wired yet)
+- call mode: single-item (per-item error isolation for the backfill)
+- image+text fusion: ON, with image-only fallback when the associated
+  text is missing
+- `embedding_model` written to each row: `voyage/voyage-multimodal-3.5/2048`
+
+Also mirrored in the developer notes (`warnings_developer.md` W38).
+
 ---
 
 ## 7. TODO list
@@ -1710,3 +1773,80 @@ from a prior ``database_search`` call.  Five sub-phases.
 * TODO: F30 (render-view per-call selection).
 * Docs: this section, §3.4 v7 update, §5.2 XML refresh, W30 +
   W33 + W35 in `warnings_developer.md`, README RAG section.
+
+
+### 9.14 Multimodal `chunks_mm` extension  (DONE 2026-06-15→16; not yet committed/deployed)
+
+A parallel multimodal copy of `chunks` so user-attached IMAGES
+become retrievable.  Design rationale + the no-VLM-caption
+decision live in §6.3; this is the implementation status.
+
+**Schema v8.**  New table `chunks_mm` — structurally identical to
+`chunks` except `embedding vector(2048)` (voyage-multimodal-3.5)
+and an HNSW index built on a `halfvec(2048)` cast (pgvector's
+float-`vector` HNSW caps at 2000 dims; Railway pgvector is 0.8.2).
+FK-reuses the existing `sessions`/`dc_attempts` (no metadata
+duplicated).  `migrations/migrate_v7_to_v8.py` (additive,
+idempotent — already RUN on Railway) +
+`database_PostgreSQL_schema_v8.sql` (fresh-deploy parity).
+
+**Voyage client.**  `agents/shared/voyage_mm.py` — dedicated
+client (`embed_text` / `embed_image` / `embed_fused`), separate
+from the embedding-tests harness client.  Locked params (W38):
+model `voyage-multimodal-3.5`, 2048-dim, 1536 px max side,
+`input_type="document"`, single-item calls.  `voyageai>=0.4.0`.
+
+**Mirror writer.**  `agents/database_handler/db_writer_mm.py` —
+`mirror_session_to_mm(...)` (the core, reused everywhere) +
+`backfill_all_sessions(...)`.  Full mirror: Semantic text
+re-embedded from the stored `embedding_input`; Quantitative/empty
+copied verbatim; image rows fuse image+text (user image + its
+`_note.txt`; each `render_*.png` + the attempt `description.txt`).
+Per-session delete-then-insert; resume = skip unless the existing
+rows' embedding model differs from the current model, or `force`.
+Image-row column mapping per §6.3.  Feedback rows ride along
+(ordinary Semantic chunks).
+
+**Backfill + dual-write.**
+* One-time backfill RAN against the production DB + R2: 13
+  sessions → 422 rows, 0 errors (incl. 23 user-image + 21 render
+  rows).
+* Web button `POST /api/db_options/backfill` (async background
+  task) streams `backfill_log` / `backfill_done` over the shared
+  `/api/events` SSE bus into a live log window.
+* LIVE dual-write: `_run_end_in_background` mirrors the just-saved
+  session into `chunks_mm` AFTER publishing `session_save_done`
+  (best-effort, non-blocking; failures logged only).
+
+**Database options panel.**  New top-level web view `db_options`:
+3-way mode toggle (Text-only / single-vector multimodal /
+late-interaction[disabled]) persisted to `db_options.json` via
+`db_options_config.py` + `/api/db_options` GET/POST.  The mode
+RECORDS the choice only — no read/write routing is wired to it
+yet.  Read-only displays of the locked params + image
+field-mapping + the backfill button/log.
+
+**Operational facts (also in memory `v9_multimodal_chunks_mm.md`).**
+* Production `R2_KEY_PREFIX=web-v1` (the repo `.env` has `test11`,
+  which holds older legacy-layout sessions NOT in this Postgres).
+  Backfill + dual-write read the prefix from the env, so it is
+  correct on Railway; local runs against production data need
+  `R2_KEY_PREFIX=web-v1`.
+* `sessions.user_provided_images` is unreliable (FALSE for all 13
+  sessions despite 12 having images in R2) — the backfill lists
+  R2 directly instead of trusting the flag.
+
+**File inventory.**  New: `database_PostgreSQL_schema_v8.sql`,
+`migrations/migrate_v7_to_v8.py`, `agents/shared/voyage_mm.py`,
+`agents/database_handler/db_writer_mm.py`,
+`workflow_settings/{db_options_config.py,db_options.json}`,
+`smoke_test_voyage_mm.py`, `smoke_test_db_writer_mm.py`.  Edited:
+`web_app.py` (db_options endpoints + backfill task + SSE events +
+live dual-write hook), `web/{index.html,app.js,style.css}` (the
+panel), `requirements-web.txt` (voyageai>=0.4.0), §6.3 + F37 +
+W15 + W38.
+
+**Not done:** code is not committed; `railway up` is needed for
+the panel + live dual-write to work in production (the DB data is
+already live).  Late-interaction multimodal mode is a UI
+placeholder.

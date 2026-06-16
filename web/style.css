@@ -3882,3 +3882,140 @@ button.danger:hover { background: #3a1d1d; }
   .emb-results-grid { grid-template-columns: 64px repeat(3, 1fr); }
   .emb-captions { grid-template-columns: 1fr; }
 }
+
+/* ============================================================
+   Database options panel (architecture doc §6.3) — 3-way DB mode
+   toggle + read-only multimodal params + chunks_mm backfill button
+   with a live SSE log window.
+   ============================================================ */
+.db-opt-scroll {
+  padding: 20px 24px 40px;
+  max-width: 880px;
+  margin: 0 auto;
+  overflow-y: auto;
+  height: 100%;
+}
+.db-opt-header h1 {
+  margin: 0 0 6px;
+  font-size: 1.4rem;
+  color: var(--text);
+}
+.db-opt-sub {
+  margin: 0 0 18px;
+  color: var(--muted);
+  font-size: 0.92rem;
+  line-height: 1.5;
+}
+.db-opt-toggle {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.db-opt-mode {
+  flex: 1 1 0;
+  min-width: 160px;
+  padding: 12px 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 0.95rem;
+  cursor: pointer;
+  transition: background 0.15s, border-color 0.15s;
+}
+.db-opt-mode:hover:not(:disabled) { background: var(--panel-2); }
+.db-opt-mode.active {
+  border-color: var(--accent);
+  background: var(--panel-2);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.db-opt-mode:disabled { opacity: 0.5; cursor: not-allowed; }
+.db-opt-status {
+  min-height: 1.2em;
+  margin: 4px 0 16px;
+  font-size: 0.88rem;
+  color: var(--muted);
+}
+.db-opt-status.ok { color: #5ac57d; }
+.db-opt-status.err { color: var(--error); }
+.db-opt-section {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--panel);
+  padding: 16px 18px;
+  margin-top: 8px;
+}
+.db-opt-section h2 { margin: 0 0 8px; font-size: 1.1rem; color: var(--text); }
+.db-opt-section h3 { margin: 18px 0 8px; font-size: 0.98rem; color: var(--text); }
+.db-opt-tag {
+  font-size: 0.7rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--accent);
+  border: 1px solid var(--accent);
+  border-radius: 6px;
+  padding: 1px 6px;
+  margin-left: 6px;
+  vertical-align: middle;
+}
+.db-opt-note {
+  margin: 0 0 12px;
+  color: var(--muted);
+  font-size: 0.88rem;
+  line-height: 1.5;
+}
+.db-opt-disabled-note { font-style: italic; }
+.db-opt-params { margin: 6px 0 4px; }
+.db-opt-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 6px 0;
+  border-bottom: 1px solid var(--border);
+  font-size: 0.88rem;
+}
+.db-opt-row:last-child { border-bottom: none; }
+.db-opt-key { color: var(--muted); flex: 0 0 auto; }
+.db-opt-val { color: var(--text); text-align: right; word-break: break-word; }
+.db-opt-val code {
+  background: var(--panel-2);
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 0.85em;
+}
+.db-opt-force {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0 12px;
+  color: var(--text);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.db-opt-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.db-opt-badge { font-size: 0.85rem; color: var(--muted); }
+.db-opt-badge.busy { color: var(--accent); }
+.db-opt-badge.ok { color: #5ac57d; }
+.db-opt-badge.err { color: var(--error); }
+.db-opt-log {
+  margin: 0;
+  padding: 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  color: var(--muted);
+  font-family: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.8rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 320px;
+  overflow-y: auto;
+}
