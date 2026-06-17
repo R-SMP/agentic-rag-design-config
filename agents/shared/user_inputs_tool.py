@@ -45,6 +45,7 @@ from agents.shared.file_utils import (
 from agents.shared.llm_provider import encode_image, make_image_block
 from agents.shared.routing_tools import log_tool_call
 from config import INPUT_IMAGES_DIR, INPUT_IMAGES_SUBDIR, USER_INPUTS_DIR
+from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
 
@@ -91,7 +92,7 @@ def read_image_notes() -> str:
 
 
 @tool
-def load_input_images(paths: list[str]) -> str:
+def load_input_images(paths: list[str], extract_text: bool = True) -> str:
     """Load one or more user-supplied images so you can see them.
 
     ``paths`` MUST be a list of absolute paths obtained from
@@ -100,7 +101,14 @@ def load_input_images(paths: list[str]) -> str:
     ``inputs/input_images/``.  Loaded images are attached in the next
     user message, each preceded by its absolute path so the path
     remains in your history even if image bytes are later stripped.
-    Do NOT call this tool with guessed or fabricated paths."""
+    Do NOT call this tool with guessed or fabricated paths.
+
+    When OCR is enabled, the tool also READS any text written on each
+    image (dimension callouts, annotations) and includes it — grouped
+    into labelled regions — in this tool's text result, so you get a
+    clean, quotable reading alongside the image.  The OCR text is
+    machine-read: verify it against the image.  Set
+    ``extract_text=False`` to skip the reading for a given call."""
     return ""  # handled by dispatch_user_inputs_tool
 
 
@@ -309,6 +317,58 @@ def _handle_read_image_notes(agent, tc: dict, agent_key: str) -> None:
     ))
 
 
+def _run_ocr_on_images(paths: list[str]) -> list[str]:
+    """Run the configured OCR engine on each loaded image and return
+    formatted summary lines (one block per image) to append to the
+    ``load_input_images`` ToolMessage.
+
+    Non-fatal: a config / request / import error yields a single
+    explanatory line instead of raising, so OCR can never break an
+    image load.  Gated by the caller (OCR_ENABLED + extract_text).
+    """
+    try:
+        from agents.shared.ocr import (
+            OCRConfigError,
+            OCRRequestError,
+            detect_text,
+        )
+    except Exception as exc:  # noqa: BLE001 — degrade gracefully
+        return [f"OCR unavailable (engine import failed: {exc})."]
+
+    cap = int(getattr(workflow_settings, "OCR_MAX_TEXT_CHARS", 2000))
+    out: list[str] = []
+    for p in paths:
+        name = Path(p).name
+        try:
+            result = detect_text(p, language_hints=["en"])
+        except OCRConfigError as exc:
+            out.append(f"OCR for {name}: unavailable ({exc}).")
+            continue
+        except OCRRequestError as exc:
+            out.append(f"OCR for {name}: failed ({exc}).")
+            continue
+        except Exception as exc:  # noqa: BLE001 — never break image load
+            out.append(
+                f"OCR for {name}: error ({type(exc).__name__}: {exc})."
+            )
+            continue
+        regions = result.get("regions") or []
+        if not regions:
+            out.append(f"OCR for {name}: no text detected.")
+            continue
+        lines = [
+            f"OCR text detected on {name} "
+            f"(machine-read — verify against the image):"
+        ]
+        for r in regions:
+            lines.append(f"  [region {r['id']}] {r['text']}")
+        block = "\n".join(lines)
+        if len(block) > cap:
+            block = block[:cap] + "\n  ...(OCR text truncated)"
+        out.append(block)
+    return out
+
+
 @generic_tool("Load input images")
 def _handle_load_input_images(agent, tc: dict, agent_key: str) -> None:
     raw_paths = (tc.get("args", {}) or {}).get("paths")
@@ -367,6 +427,23 @@ def _handle_load_input_images(agent, tc: dict, agent_key: str) -> None:
         )
     else:
         parts.append("No images were loaded.  Do not retry with guessed paths.")
+
+    # OCR pass (gated): read any text written on the loaded images and
+    # append it to THIS ToolMessage (no new plumbing — rides the text
+    # the tool already returns).  Non-fatal: a failure adds a one-line
+    # note and never breaks the image load.  Default of the per-call
+    # ``extract_text`` flag follows OCR_WHOLE_IMAGE_DEFAULT.  See
+    # extra_utilities/OCR_technology_notes.md.
+    args = tc.get("args", {}) or {}
+    extract_text = bool(
+        args.get(
+            "extract_text",
+            getattr(workflow_settings, "OCR_WHOLE_IMAGE_DEFAULT", True),
+        )
+    )
+    if loaded and extract_text and getattr(workflow_settings, "OCR_ENABLED", False):
+        parts.extend(_run_ocr_on_images(loaded))
+
     summary = "\n".join(parts)
 
     log_tool_call(agent_key, tc["name"], tc.get("args"), summary)

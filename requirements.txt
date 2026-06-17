@@ -54,3 +54,10 @@ boto3>=1.34.0
 # the full schema and retrieval design.
 psycopg[binary,pool]>=3.2
 pgvector>=0.3
+
+# HTTP client for the Google Cloud Vision OCR engine
+# (agents/shared/ocr/google_vision.py — a plain REST call to
+# images:annotate, authenticated with GOOGLE_CLOUD_VISION_API_KEY).
+# Transitively present today via other deps; declared explicitly
+# because the OCR engine imports it directly.
+requests>=2.31.0

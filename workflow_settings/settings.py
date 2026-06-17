@@ -664,3 +664,40 @@ RETRIEVE_MAX_RESPONSE_TOKENS: int = 30_000
 #
 # Valid values: True, False
 SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
+
+
+# ===========================================================
+# 24. OCR — read text written on user-supplied images
+# ===========================================================
+# When ON, ``load_input_images`` additionally runs OCR (Google
+# Cloud Vision text detection) on each loaded image and appends the
+# detected text — grouped into callout regions — to the tool's text
+# result, so the agent gets a clean, quotable reading of any
+# dimension callouts / annotations alongside the image itself.  See
+# extra_utilities/OCR_technology_notes.md for the full design.
+#
+# Requires GOOGLE_CLOUD_VISION_API_KEY in the environment (Railway
+# dashboard Variables / local .env).
+#
+#   OCR_ENABLED              master switch.  False = the OCR pass
+#                            never runs and load_input_images behaves
+#                            exactly as before.  Default False until
+#                            the feature is validated in the deployed
+#                            app; flip to True once confirmed.
+#   OCR_ENGINE               which engine backs OCR.  Only
+#                            "google_vision" exists today; the value
+#                            selects the swappable engine module so a
+#                            different one can slot in later.
+#   OCR_WHOLE_IMAGE_DEFAULT  default of load_input_images' per-call
+#                            ``extract_text`` flag — whether the agent
+#                            gets OCR text unless it opts out on a
+#                            given call.
+#   OCR_MAX_TEXT_CHARS       cap on the OCR text appended per image so
+#                            a dense image cannot blow up context.
+#
+# Valid values: OCR_ENABLED / OCR_WHOLE_IMAGE_DEFAULT True|False;
+# OCR_ENGINE a string; OCR_MAX_TEXT_CHARS a positive int.
+OCR_ENABLED: bool = False
+OCR_ENGINE: str = "google_vision"
+OCR_WHOLE_IMAGE_DEFAULT: bool = True
+OCR_MAX_TEXT_CHARS: int = 2000

@@ -1,9 +1,20 @@
 # OCR for text recognition in user images — design notes
 
-**Status.** Design discussion in progress.  Captured 2026-06-15.  No
-code written yet.  Implementation will follow step-by-step
-(propose-then-apply) once the open questions below are locked.  This
-file is the running source of truth for the OCR feature decisions.
+**Status.** Implementation in progress (as of 2026-06-17).
+
+- **Engine + grouping — SHIPPED.**  `agents/shared/ocr/` + smoke tests,
+  committed `9e00d19` on `stage-a-web-deploy`.
+- **Settings gate + `load_input_images` integration (Decision 2) —
+  BUILT, gated OFF.**  `settings.py` block 24 (`OCR_ENABLED` /
+  `OCR_ENGINE` / `OCR_WHOLE_IMAGE_DEFAULT` / `OCR_MAX_TEXT_CHARS`);
+  `load_input_images` now appends an OCR section to its ToolMessage
+  when enabled.  `OCR_ENABLED=False` by default pending validation in
+  the deployed app (flip to True to test).
+- **Remaining:** the `ocr_region` escalation tool (Decision 3 / §4) and
+  per-agent UI gating (deferred to coordinate with the parallel
+  settings-UI session).
+
+This file is the running source of truth for the OCR feature decisions.
 
 ---
 
