@@ -103,12 +103,13 @@ def load_input_images(paths: list[str], extract_text: bool = True) -> str:
     remains in your history even if image bytes are later stripped.
     Do NOT call this tool with guessed or fabricated paths.
 
-    When OCR is enabled, the tool also READS any text written on each
-    image (dimension callouts, annotations) and includes it — grouped
-    into labelled regions — in this tool's text result, so you get a
-    clean, quotable reading alongside the image.  The OCR text is
-    machine-read: verify it against the image.  Set
-    ``extract_text=False`` to skip the reading for a given call."""
+    If OCR is enabled, each loaded image is also passed through an OCR
+    engine that recognises any text written on the image — dimension
+    callouts, labels, annotations — and that recognised text is
+    returned to you here, one entry per detected text region.  Treat it
+    as the image's text, read for you by OCR: it is machine-recognised,
+    so check it against the image before you rely on a value.  Pass
+    ``extract_text=False`` to skip OCR for a given call."""
     return ""  # handled by dispatch_user_inputs_tool
 
 
