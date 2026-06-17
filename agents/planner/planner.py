@@ -44,8 +44,8 @@ from agents.shared.routing_tools import (
 )
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
-    USER_INPUTS_TOOLS,
     USER_INPUTS_TOOL_NAMES,
+    build_user_inputs_tools,
     dispatch_user_inputs_tool,
 )
 from agents.step_caps import MAX_PLANNER_STEPS
@@ -194,7 +194,7 @@ class Planner(BaseChainAgent):
             [read_user_queries, read_extracted_inputs, calculate]
             + extra_utility
             + attempts_utility
-            + list(USER_INPUTS_TOOLS)
+            + build_user_inputs_tools()
             + list(tools)
         )
         if database_access.is_enabled_for("planner"):

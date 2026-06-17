@@ -50,6 +50,7 @@ from psycopg.types.json import Json
 from agents.shared import postgres_pool
 from agents.shared.agent_activity import generic_tool
 from agents.shared.llm_provider import make_image_block
+from agents.shared.ocr import ocr_enabled, ocr_summary_if_enabled
 from agents.shared import r2_uploader
 from workflow_settings import settings as workflow_settings
 
@@ -430,6 +431,7 @@ def _run_retrieve_user_inputs(
     session_ids: list[str],
     images_flag: bool,
     provider: str = "openai",
+    extract_text: bool = False,
 ) -> tuple[str, list[dict], list[str]]:
     """Real retrieval logic.  Called by the dispatcher.
 
@@ -444,6 +446,7 @@ def _run_retrieve_user_inputs(
     error_message: str | None = None
     image_blocks: list[dict] = []
     image_paths: list[str] = []
+    ocr_items: list[tuple[str, bytes]] = []
     session_records: list[dict] = []
     try:
         existence = _validate_sessions_in_postgres(session_ids)
@@ -538,6 +541,8 @@ def _run_retrieve_user_inputs(
                             )
                             image_paths.append(full_key)
                             image_refs.append((stem, full_key))
+                            if extract_text:
+                                ocr_items.append((full_key, data))
 
             session_records.append({
                 "session_id": sid,
@@ -554,6 +559,19 @@ def _run_retrieve_user_inputs(
             images_included=images_flag,
             cap_tokens=_MAX_RESPONSE_TOKENS,
         )
+
+        # OCR (gated, opt-in for this tool): read the text on the fetched
+        # past-session images via the shared OCR entry point and append it
+        # as a trailing <ocr_text> element.  Returns [] (no-op) when OCR
+        # is disabled or extract_text is False; non-fatal on engine error.
+        ocr_lines = ocr_summary_if_enabled(ocr_items, extract_text)
+        if ocr_lines:
+            xml = (
+                xml
+                + "\n<ocr_text>\n"
+                + _wrap_cdata("\n\n".join(ocr_lines))
+                + "\n</ocr_text>"
+            )
 
         # rag_queries log
         returned_sids = [
@@ -629,34 +647,76 @@ def make_retrieve_user_inputs_tool(caller_agent: str):
     # layer) can hook in here.
     _caller = caller_agent
 
-    @tool
-    @generic_tool("Retrieve user inputs")
-    def retrieve_user_inputs(
-        sessions_ID_list: list[str],
-        images_flag: bool = False,
-    ) -> str:
-        """Retrieve text and (optionally) image artefacts for past saved sessions.
+    # The ``extract_text`` OCR flag is present ONLY when OCR is enabled,
+    # so the agent never sees it when OCR is off.  For this tool it
+    # defaults to False (past-session image text was usually already
+    # captured when that session ran).
+    if ocr_enabled():
+        @tool
+        @generic_tool("Retrieve user inputs")
+        def retrieve_user_inputs(
+            sessions_ID_list: list[str],
+            images_flag: bool = False,
+            extract_text: bool = False,
+        ) -> str:
+            """Retrieve text and (optionally) image artefacts for past saved sessions.
 
-        Use AFTER ``database_search`` has surfaced a session_id that
-        looks worth a deeper read.  Returns the session's user-supplied
-        text (``user_query.txt``) and per-image notes.  When
-        ``images_flag=True`` it also attaches the user-provided image
-        bytes as content blocks on the next message.
+            Use AFTER ``database_search`` has surfaced a session_id that
+            looks worth a deeper read.  Returns the session's user-supplied
+            text (``user_query.txt``) and per-image notes.  When
+            ``images_flag=True`` it also attaches the user-provided image
+            bytes as content blocks on the next message.
 
-        Args:
-            sessions_ID_list: list of session_id strings to retrieve
-                (e.g. from a database_search response's
-                ``<session id="..."/>`` elements).
-            images_flag: when True, attach image bytes; when False,
-                only the text content (image notes are always
-                included if any images exist for that session).
+            Args:
+                sessions_ID_list: list of session_id strings to retrieve
+                    (e.g. from a database_search response's
+                    ``<session id="..."/>`` elements).
+                images_flag: when True, attach image bytes; when False,
+                    only the text content (image notes are always
+                    included if any images exist for that session).
+                extract_text: when True (and images_flag=True), the text
+                    written on the fetched past-session images is ALSO
+                    read for you by OCR and returned in the response —
+                    machine-recognised, so verify against the image.
+                    Defaults to False: opt in only when you specifically
+                    need to re-read a past image's text.
 
-        Returns text-only XML.  Image bytes, when requested, attach
-        separately as content blocks on the next message.
-        """
-        # Real work happens in the dispatcher (it has access to the
-        # agent's messages buffer + provider info).  This stub just
-        # satisfies langchain's @tool contract.
-        return ""
+            Returns text-only XML.  Image bytes, when requested, attach
+            separately as content blocks on the next message.
+            """
+            # Real work happens in the dispatcher (it has access to the
+            # agent's messages buffer + provider info).  This stub just
+            # satisfies langchain's @tool contract.
+            return ""
+    else:
+        @tool
+        @generic_tool("Retrieve user inputs")
+        def retrieve_user_inputs(
+            sessions_ID_list: list[str],
+            images_flag: bool = False,
+        ) -> str:
+            """Retrieve text and (optionally) image artefacts for past saved sessions.
+
+            Use AFTER ``database_search`` has surfaced a session_id that
+            looks worth a deeper read.  Returns the session's user-supplied
+            text (``user_query.txt``) and per-image notes.  When
+            ``images_flag=True`` it also attaches the user-provided image
+            bytes as content blocks on the next message.
+
+            Args:
+                sessions_ID_list: list of session_id strings to retrieve
+                    (e.g. from a database_search response's
+                    ``<session id="..."/>`` elements).
+                images_flag: when True, attach image bytes; when False,
+                    only the text content (image notes are always
+                    included if any images exist for that session).
+
+            Returns text-only XML.  Image bytes, when requested, attach
+            separately as content blocks on the next message.
+            """
+            # Real work happens in the dispatcher (it has access to the
+            # agent's messages buffer + provider info).  This stub just
+            # satisfies langchain's @tool contract.
+            return ""
 
     return retrieve_user_inputs

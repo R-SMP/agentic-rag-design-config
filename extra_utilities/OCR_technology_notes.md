@@ -4,12 +4,21 @@
 
 - **Engine + grouping — SHIPPED.**  `agents/shared/ocr/` + smoke tests,
   committed `9e00d19` on `stage-a-web-deploy`.
-- **Settings gate + `load_input_images` integration (Decision 2) —
-  BUILT, gated OFF.**  `settings.py` block 24 (`OCR_ENABLED` /
-  `OCR_ENGINE` / `OCR_WHOLE_IMAGE_DEFAULT` / `OCR_MAX_TEXT_CHARS`);
-  `load_input_images` now appends an OCR section to its ToolMessage
-  when enabled.  `OCR_ENABLED=False` by default pending validation in
-  the deployed app (flip to True to test).
+- **Settings gate + 3-tool integration (Decision 2) — BUILT, gated
+  OFF.**  `settings.py` block 24 (`OCR_ENABLED` / `OCR_ENGINE` /
+  `OCR_WHOLE_IMAGE_DEFAULT` / `OCR_MAX_TEXT_CHARS`).  A single shared
+  entry point — `agents/shared/ocr/feature.py:ocr_summary_if_enabled`
+  — is called by **all three** image tools: `load_input_images`,
+  `read_user_inputs` (UII), and `retrieve_user_inputs`.  Each appends
+  an OCR section to its result when enabled.  The agent-facing
+  `extract_text` flag is built **dynamically per session** (via
+  `build_user_inputs_tools()` / the `read_user_inputs` +
+  `retrieve_user_inputs` factories) and is **invisible when
+  `OCR_ENABLED=False`**.  Default of the flag: **ON** for
+  `load_input_images` / `read_user_inputs`, **OFF** for
+  `retrieve_user_inputs` (past-session images were usually already
+  captured).  `OCR_ENABLED=False` by default pending validation in the
+  deployed app (flip to True to test).
 - **Remaining:** the `ocr_region` escalation tool (Decision 3 / §4) and
   per-agent UI gating (deferred to coordinate with the parallel
   settings-UI session).

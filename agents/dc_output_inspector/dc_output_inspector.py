@@ -36,7 +36,7 @@ from agents.shared.routing_tools import (
 )
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
-    USER_INPUTS_TOOLS,
+    build_user_inputs_tools,
     dispatch_user_inputs_tool,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
@@ -275,7 +275,7 @@ class DCOutputInspector(BaseChainAgent):
         all_tools = (
             [self._load_tool]
             + list(self._extra_utility_tools_by_name.values())
-            + list(USER_INPUTS_TOOLS)
+            + build_user_inputs_tools()
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)

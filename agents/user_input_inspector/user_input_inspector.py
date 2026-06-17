@@ -46,9 +46,10 @@ from agents.shared.routing_tools import (
     stuck_escalation,
     tool_call_signature,
 )
+from agents.shared.ocr import ocr_enabled, ocr_summary_if_enabled
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
-    USER_INPUTS_TOOLS,
+    build_user_inputs_tools,
     dispatch_user_inputs_tool,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
@@ -69,17 +70,43 @@ logger = logging.getLogger("propeller_agent")
 # Utility tool schemas (actual I/O handled by UserInputInspector)
 # ---------------------------------------------------------------------------
 
-@tool
-def read_user_inputs(path: str) -> str:
-    """Read every file in a user-inputs directory (text, JSON, images).
+_READ_INPUTS_BASE_DOC = (
+    "Read every file in a user-inputs directory (text, JSON, images).\n\n"
+    "Pass the absolute path of the inputs directory supplied by the "
+    "Planner under the ``Input directory:`` label.  The tool's text "
+    "output is a summary plus the concatenated contents of all text/JSON "
+    "files.  Any images found are attached as a separate user message so "
+    "you can see them directly.  Do NOT call this tool with a guessed "
+    "path."
+)
 
-    Pass the absolute path of the inputs directory supplied by the
-    Planner under the ``Input directory:`` label.  The tool's text
-    output is a summary plus the concatenated contents of all text/JSON
-    files.  Any images found are attached as a separate user message so
-    you can see them directly.  Do NOT call this tool with a guessed
-    path."""
-    return ""  # Actual loading is performed by _handle_read_inputs_tool.
+_READ_INPUTS_OCR_DOC = _READ_INPUTS_BASE_DOC + (
+    "\n\nIf OCR is enabled, each loaded image is also passed through an "
+    "OCR engine that recognises any text written on the image — "
+    "dimension callouts, labels, annotations — and that recognised text "
+    "is returned to you here, one entry per detected text region.  Treat "
+    "it as the image's text, read for you by OCR: it is machine-recognised, "
+    "so check it against the image before you rely on a value.  Pass "
+    "``extract_text=False`` to skip OCR for a given call."
+)
+
+
+def _build_read_user_inputs(ocr_on: bool):
+    """Build the ``read_user_inputs`` tool.
+
+    The ``extract_text`` OCR flag is present ONLY when *ocr_on* — so
+    when OCR is globally disabled the agent never sees it.  The real
+    work happens in ``_handle_read_inputs_tool``.
+    """
+    if ocr_on:
+        def _impl(path: str, extract_text: bool = True) -> str:
+            return ""  # handled by _handle_read_inputs_tool
+        _impl.__doc__ = _READ_INPUTS_OCR_DOC
+    else:
+        def _impl(path: str) -> str:
+            return ""  # handled by _handle_read_inputs_tool
+        _impl.__doc__ = _READ_INPUTS_BASE_DOC
+    return tool("read_user_inputs")(_impl)
 
 
 @tool
@@ -117,7 +144,7 @@ class UserInputInspector(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        self._read_tool = read_user_inputs
+        self._read_tool = _build_read_user_inputs(ocr_enabled())
         self._write_tool = write_extraction
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
@@ -148,7 +175,7 @@ class UserInputInspector(BaseChainAgent):
         all_tools = (
             [self._read_tool, self._write_tool]
             + list(self._extra_utility_tools_by_name.values())
-            + list(USER_INPUTS_TOOLS)
+            + build_user_inputs_tools()
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)
@@ -354,6 +381,24 @@ class UserInputInspector(BaseChainAgent):
                         f"path so the path remains in history even if "
                         f"image bytes are later stripped."
                     )
+                # OCR pass (gated): read any text written on the loaded
+                # images and append it via the shared OCR entry point.
+                # No-ops when OCR is disabled or extract_text is False;
+                # non-fatal.  Per-call flag default follows
+                # OCR_WHOLE_IMAGE_DEFAULT.
+                extract_text = bool(
+                    (tc.get("args", {}) or {}).get(
+                        "extract_text",
+                        getattr(
+                            workflow_settings, "OCR_WHOLE_IMAGE_DEFAULT", True
+                        ),
+                    )
+                )
+                summary_parts.extend(
+                    ocr_summary_if_enabled(
+                        [(p, p) for p in image_paths], extract_text
+                    )
+                )
                 summary = "\n\n".join(summary_parts)
 
         log_tool_call(
