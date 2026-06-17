@@ -1663,3 +1663,38 @@ incl. the no-VLM-caption decision), TODO_known_issues.md F37
 
 **Update tracker.** If any value above changes, update this entry,
 §6.3, and the UI panel's read-only display together.
+
+## W39. Adding a new database_search backend (embedding model / chunks table) — the single extension point.
+
+**Where.** `tools/database_search/database_search.py::_resolve_search_backend`.
+
+**What.** `database_search` routes to a backend (table + cosine-distance
+SQL expr + embed function) chosen by the Database-options mode
+(`workflow_settings/db_options_config.py`).  Today: `text-only` ->
+`chunks` (OpenAI, `::vector`); `single-vector-multimodal` -> `chunks_mm`
+(Voyage voyage-multimodal-3.5, `::halfvec(2048)`); `late-interaction-
+multimodal` -> text-only placeholder.
+
+To add a NEW embedding model with its own chunks table (a new mode),
+edit these FOUR places — nothing else:
+  1. `_resolve_search_backend` — add a branch returning the table name,
+     the cosine-distance SQL expr (with the right cast for that table's
+     index), and `is_multimodal`.
+  2. `db_options_config.VALID_MODES` (+ a `MODE_*` constant).
+  3. The embed step in `_run_search_pipeline` — wire the new model's
+     QUERY embedding (only if it is neither OpenAI nor the existing
+     Voyage path).
+  4. The web "Database options" panel (a new column) + its read-only
+     param display.
+
+`<search_meta>` reports `mode=` (the selected mode) and `db=` (the
+resolved table) VERBATIM, so the emitter / meta code needs NO change
+for a new backend.  The 3 SQL builders already take `table` +
+`dist_expr` params, so they need no change either.
+
+**Why this entry exists.** So a future model addition doesn't miss one
+of the four spots (especially the embed step) or hand-edit the meta
+emitter.  See architecture doc §4.11 + §9.15; the read-routing TODO is
+F39.
+
+**Status.** In force from 2026-06-16 (the read-routing build).

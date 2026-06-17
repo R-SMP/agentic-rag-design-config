@@ -93,6 +93,22 @@ including attempts that did not directly match your search.
 ``score``).  That's the canonical handle to feed into
 ``retrieve_attempt`` for the attempt the search actually matched.
 
+**Image references (multimodal database).**  When the workflow's
+Database-options mode is the single-vector multimodal database, a
+matched anchor may ALSO include ``<image_ref>`` elements — a past
+USER IMAGE or attempt RENDER whose visual content matched your query.
+Each carries ``kind`` (``user_input`` or ``render``), an ``r2_key``,
+the ``field``, a similarity ``score``, and a ``<caption>`` (the
+image's note / description).  An ``<image_ref>`` means that image's
+session/attempt is relevant — to SEE the actual pixels, call
+``retrieve_user_inputs(session_ids=[<sid>], images_flag=True)`` for a
+``user_input`` hit, or
+``retrieve_attempt(attempt_ids=[<global_id>], images_flag=True)`` for
+a ``render`` hit.  The ``<search_meta db="..."/>`` attribute tells you
+which table answered (``chunks`` text-only vs ``chunks_mm``
+multimodal); a ``fallback="..."`` attribute means a multimodal query
+degraded to text-only (the images would not appear in that response).
+
 **Reasons to call it** — when you have a question or doubt that
 prior sessions could plausibly answer:
 
@@ -166,7 +182,9 @@ Supported keys (v1):
 
 Parameter-value filters (e.g. ``bladeCount>=5``) are NOT in v1.
 
-**Text-only.**  ``database_search`` returns no images, no mesh
-files.  After reading the text response, if a specific anchor's
-images would actually help, a future artefact-fetch tool will let
-you request that one anchor's user-input images / attempt renders.
+**No bytes inline.**  ``database_search`` returns text + image
+REFERENCES (see "Image references" above), never image bytes or mesh
+files.  After reading the response, fetch a specific anchor's actual
+images with ``retrieve_user_inputs`` (past user images) or
+``retrieve_attempt`` (attempt renders, via the ``global_id``), both
+with ``images_flag=True``.

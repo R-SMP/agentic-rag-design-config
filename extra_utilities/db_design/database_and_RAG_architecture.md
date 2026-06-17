@@ -706,6 +706,55 @@ The artefact-fetch tool itself is **not yet built** — see T15 in
 two-step calling pattern documented here is its contract; agents
 calling it before triaging text are using it wrong.
 
+### 4.11 Multimodal read-routing — `database_search` against `chunks_mm`  (designed 2026-06-16)
+
+When the "Database options" mode (§6.3 / `db_options.json`) is
+`single-vector-multimodal`, `database_search` queries the multimodal
+`chunks_mm` table instead of `chunks`.  Locked design:
+
+- **Mode is frozen at session build.**  `make_database_search_tool(...)`
+  runs per-agent at session construction; it reads
+  `db_options_config.get_mode()` there and bakes the choice into the
+  tool closure, so flipping the toggle affects only the NEXT session.
+  `text-only` → `chunks` / OpenAI (current behaviour);
+  `single-vector-multimodal` → `chunks_mm` / Voyage;
+  `late-interaction-multimodal` → behaves as `text-only` (placeholder).
+- **Query embedding.**  Multimodal mode embeds the query with
+  `voyage_mm.embed_text(query, as_query=True)` (voyage-multimodal-3.5,
+  2048-dim, `input_type="query"`).
+- **Vector query.**  Queries `chunks_mm` with BOTH sides cast to
+  `halfvec(2048)` (`embedding::halfvec(2048) <=> $q::halfvec(2048)`) so
+  the partial HNSW index is used.  ACL / metafilters / ignore-list /
+  the invariant-8 prefix / anchor+expansion / token-trim /
+  `<available_attempts>` are all unchanged (identical column shape).
+- **Image rows rank like any chunk.**  An image-row match can drive its
+  session/attempt into the results (true image retrievability).  Image
+  hits are returned as REFERENCES, not bytes: a dedicated
+  `<image_ref kind="user_input|render" r2_key="..." field="..." score="0.83"><caption>fused note/description</caption></image_ref>`
+  element inside its `<session>` / `<attempt>`.  The agent calls
+  `retrieve_user_inputs` / `retrieve_attempt` to fetch the actual image.
+  User images (attempt_id NULL) surface in session-level searches only
+  (consistent with the existing attempt clause — no special-casing).
+- **Graceful fallback (LOGGED — operator requirement).**  If
+  `VOYAGE_API_KEY` is missing or the Voyage embed errors,
+  `database_search` falls back to the text-only `chunks` path AND emits
+  a `logger.error(...)` with the reason (the fallback is never silent),
+  adds a fallback note to `<search_meta>`, and records the reason in
+  `rag_queries.error_message`.
+- **`rag_queries` logging is identical + automatic** — the INSERT is
+  downstream of, and independent of, which table was queried.
+  `embedding_model` records `voyage/voyage-multimodal-3.5/2048` so
+  multimodal queries stay distinguishable; `tool_name` stays
+  `'database_search'`.
+- **Agent prompts updated.**  The `database_search` prompt fragment(s)
+  note that results may include `<image_ref>` hits and that the agent
+  should `retrieve_*` them to see the pixels.
+- `retrieve_user_inputs` / `retrieve_attempt` are UNCHANGED (they fetch
+  by id from R2 — no vector query).
+
+This is an EITHER/OR table switch (one DB per session), not a blended /
+RRF hybrid.  Implementation status: §9.15.
+
 ---
 
 ## 5. Output format — XML (LOCKED)
@@ -1850,3 +1899,42 @@ W15 + W38.
 the panel + live dual-write to work in production (the DB data is
 already live).  Late-interaction multimodal mode is a UI
 placeholder.
+
+
+### 9.15 Multimodal read-routing — `database_search` → `chunks_mm`  (BUILT + verified 2026-06-16; uncommitted)
+
+Routes `database_search` to query `chunks_mm` (Voyage, 2048-dim,
+halfvec index) when the Database-options mode is
+`single-vector-multimodal`.  Full locked design in §4.11.
+
+Build steps:
+1. `make_database_search_tool(...)` reads `db_options_config.get_mode()`
+   at bind time (frozen at session build) + selects the embed function
+   (OpenAI `db_writer.embed_text` vs `voyage_mm.embed_text`).
+2. Table + `halfvec(2048)` swap across the candidate / expansion /
+   mismatch-count queries.
+3. `<image_ref>` emission for image-row hits in the XML.
+4. Graceful fallback to text-only + `logger.error` + `<search_meta>`
+   note + `rag_queries.error_message`.
+5. `database_search` prompt-fragment note (image references +
+   `retrieve_*`).
+6. Smoke test of the multimodal search path.
+7. Docs/memory.
+
+Reuses `agents/shared/voyage_mm.py` +
+`workflow_settings/db_options_config.py` (no new deps).  No schema
+change (`chunks_mm` already exists + is populated).  See TODO F39.
+
+**Status.**  BUILT + smoke-tested 2026-06-16 (all in
+`tools/database_search/database_search.py`): the
+`_resolve_search_backend` helper + the mode-aware embed-with-fallback
+in `_run_search_pipeline` + `table`/`dist_expr` params on the 3 SQL
+builders + `<image_ref>` emission + the `mode`/`db`/`fallback`
+`<search_meta>` attrs.  `db_mode` is read in the
+`make_database_search_tool` factory (frozen at session build) and
+defaults to `text-only` so existing callers are unchanged.  Verified by
+`extra_utilities/db_design/smoke_test_database_search_mm.py` (11/11 —
+routing to `chunks_mm`, `<image_ref>` hits, logged text-only fallback)
+plus the existing `smoke_test_database_search.py` (no text-only
+regression).  Extension point for future backends: W39.  NOT yet
+committed / deployed.

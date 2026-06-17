@@ -53,7 +53,9 @@ from langchain_core.tools import tool
 from agents.shared import postgres_pool
 from agents.shared.agent_activity import generic_tool
 from agents.database_handler import db_writer
+from agents.shared import voyage_mm
 from workflow_settings import settings as workflow_settings
+from workflow_settings import db_options_config
 
 logger = logging.getLogger("propeller_agent")
 
@@ -143,7 +145,53 @@ class ExpandedChunk:
     question:      str | None
     body:          str
     item_index:    int | None
+    embedding_input: str | None       # stitched paragraph (text rows) / fused note+description caption (image rows)
     dist:          float | None
+
+
+# ----- Search backend (mode -> table / vector op / embed) ---
+#
+# SINGLE EXTENSION POINT for adding a new embedding model + its own
+# chunks table (a new "Database options" mode).  To add one:
+#   1. add a branch in _resolve_search_backend (table name + the
+#      cosine-distance SQL expr + is_multimodal),
+#   2. add the mode to workflow_settings/db_options_config.VALID_MODES,
+#   3. wire its embed call in _run_search_pipeline's embed step,
+#   4. expose it in the web "Database options" panel.
+# <search_meta> reports backend.table + the selected mode VERBATIM, so
+# no emitter / meta code needs touching for a new option.  See
+# architecture doc §4.11 + warnings_developer.md W39.
+
+@dataclass(frozen=True)
+class _SearchBackend:
+    mode:          str    # the db_options mode that selected this backend
+    table:         str    # "chunks" | "chunks_mm" | (future)
+    dist_expr:     str    # cosine-distance SQL fragment: "<col> <=> %(query_vec)s::<type>"
+    is_multimodal: bool
+
+
+def _resolve_search_backend(db_mode: str) -> _SearchBackend:
+    """Map a Database-options mode to its query backend.
+
+    ``single-vector-multimodal`` -> the Voyage ``chunks_mm`` table
+    (2048-dim, queried through a ``halfvec(2048)`` cast so the partial
+    HNSW index is used).  Everything else -- ``text-only`` AND the
+    not-yet-built ``late-interaction-multimodal`` placeholder -- uses
+    the original text ``chunks`` table.  See architecture doc §4.11.
+    """
+    if db_mode == db_options_config.MODE_SINGLE_VECTOR:
+        return _SearchBackend(
+            mode          = db_mode,
+            table         = "chunks_mm",
+            dist_expr     = "c.embedding::halfvec(2048) <=> %(query_vec)s::halfvec(2048)",
+            is_multimodal = True,
+        )
+    return _SearchBackend(
+        mode          = db_mode,
+        table         = "chunks",
+        dist_expr     = "c.embedding <=> %(query_vec)s::vector",
+        is_multimodal = False,
+    )
 
 
 # ----- Query 1.  Candidate pool + window-function dedup -----
@@ -159,6 +207,8 @@ def _run_candidate_query(
     metafilter_where:    str,
     metafilter_params:   dict[str, Any],
     candidate_pool_size: int,
+    table:               str,
+    dist_expr:           str,
 ) -> list[AnchorHit]:
     """Run the locked candidate-pool window-function query and
     return up to ``n`` distinct anchors ranked by their
@@ -243,8 +293,8 @@ def _run_candidate_query(
                 c.session_id    AS session_id,
                 c.attempt_id    AS attempt_id,
                 a.attempt_label AS attempt_label,
-                c.embedding <=> %(query_vec)s::vector AS dist
-            FROM chunks c
+                {dist_expr} AS dist
+            FROM {table} c
             JOIN sessions s         ON s.session_id = c.session_id
             LEFT JOIN dc_attempts a ON a.attempt_id = c.attempt_id
             WHERE {_invariant_8_where_fragment()}
@@ -252,7 +302,7 @@ def _run_candidate_query(
               AND c.embedding_model = %(embedding_model)s
               {attempt_clause}
               {extra_where}
-            ORDER BY c.embedding <=> %(query_vec)s::vector
+            ORDER BY {dist_expr}
             LIMIT %(candidate_pool_size)s
         ),
         ranked AS (
@@ -300,6 +350,7 @@ def _run_expansion_query(
     caller_agent:     str,
     embedding_model:  str,
     attempt_specific: bool,
+    table:            str,
 ) -> list[ExpandedChunk]:
     """Fetch every Q+A pair the caller can see within the anchor
     set, respecting ACL + embedding-model filter.  Per §4.4:
@@ -359,8 +410,9 @@ def _run_expansion_query(
             c.field_type,
             c.question,
             c.body,
-            c.item_index
-        FROM chunks c
+            c.item_index,
+            c.embedding_input
+        FROM {table} c
         LEFT JOIN dc_attempts a ON a.attempt_id = c.attempt_id
         WHERE {_invariant_8_where_fragment()}
           AND %(caller_agent)s = ANY(c.agents_to)
@@ -386,6 +438,7 @@ def _run_expansion_query(
                 question      = row[7],
                 body          = row[8],
                 item_index    = row[9],
+                embedding_input = row[10],
                 dist          = None,
             )
             for row in cur.fetchall()
@@ -401,6 +454,7 @@ def _run_mismatch_count_query(
     embedding_model:   str,
     metafilter_where:  str,
     metafilter_params: dict[str, Any],
+    table:             str,
 ) -> int:
     """Return the number of chunks the caller could otherwise see
     (same ACL + metafilters + invariant-8 prefix) whose
@@ -429,7 +483,7 @@ def _run_mismatch_count_query(
         metafilter_params = {**metafilter_params, "_db_search_ignore": _ignored_sids}
     sql = f"""
         SELECT COUNT(*)
-        FROM chunks c
+        FROM {table} c
         JOIN sessions s         ON s.session_id = c.session_id
         LEFT JOIN dc_attempts a ON a.attempt_id = c.attempt_id
         WHERE {_invariant_8_where_fragment()}
@@ -715,6 +769,9 @@ class SearchMeta:
     metafilters_repr:              str    # raw repr() of the dict; escaped at emit time
     embedding_model:               str
     skipped_due_to_model_mismatch: int
+    selected_mode:                 str = "text-only"   # Database-options mode requested (verbatim)
+    db_table:                      str = "chunks"        # table actually queried (verbatim)
+    fallback_note:                 str | None = None     # set when multimodal fell back to text-only
 
 
 # Lazy module-level tiktoken encoding cache.  cl100k_base matches
@@ -768,6 +825,44 @@ def _emit_qa(chunk: ExpandedChunk, *, best_match: bool) -> str:
         f"      <answer>{a}</answer>\n"
         f"    </qa>"
     )
+
+
+# Image-row fields (chunks_mm) — these chunks carry an R2 image key in
+# ``body`` + the fused note/description caption in ``embedding_input``.
+# In multimodal mode they rank like any chunk and surface as
+# <image_ref> references; the agent fetches the bytes via retrieve_*
+# (retrieve_user_inputs / retrieve_attempt).  See architecture doc §4.11.
+_IMAGE_FIELD_KINDS = {
+    "User Image Input":      "user_input",
+    "Attempt Visual Render": "render",
+}
+
+
+def _emit_image_ref(chunk: ExpandedChunk, *, kind: str, best_match: bool) -> str:
+    """Emit one ``<image_ref>`` block for an image-row hit (chunks_mm)."""
+    attrs = (
+        f"kind={quoteattr(kind)} "
+        f"r2_key={quoteattr(chunk.body)} "
+        f"field={quoteattr(chunk.field)} "
+        f"agent={quoteattr(chunk.agent_from)}"
+    )
+    if best_match:
+        attrs += ' best_match="true"'
+    caption = escape(chunk.embedding_input or "")
+    return (
+        f"    <image_ref {attrs}>\n"
+        f"      <caption>{caption}</caption>\n"
+        f"    </image_ref>"
+    )
+
+
+def _emit_chunk(chunk: ExpandedChunk, *, best_match: bool) -> str:
+    """Render one expanded chunk — an ``<image_ref>`` for image-row
+    fields (chunks_mm), otherwise the normal ``<qa>``."""
+    kind = _IMAGE_FIELD_KINDS.get(chunk.field)
+    if kind is not None:
+        return _emit_image_ref(chunk, kind=kind, best_match=best_match)
+    return _emit_qa(chunk, best_match=best_match)
 
 
 # ----- Per-anchor emission ----------------------------------
@@ -830,7 +925,7 @@ def _emit_anchor_block(
         att_label = anchor.attempt_label or str(anchor.attempt_id or "")
         sorted_chunks = _sort_chunks_for_emission(anchor, chunks)
         qa_lines = "\n".join(
-            _emit_qa(c, best_match=(c.chunk_id == anchor.best_chunk_id))
+            _emit_chunk(c, best_match=(c.chunk_id == anchor.best_chunk_id))
             for c in sorted_chunks
         )
         global_id_attr = (
@@ -863,7 +958,7 @@ def _emit_anchor_block(
     if generic_chunks:
         parts.append("  <session_generic>")
         for c in _sort_chunks_for_emission(anchor, generic_chunks):
-            qa_text = _emit_qa(c, best_match=(c.chunk_id == anchor.best_chunk_id))
+            qa_text = _emit_chunk(c, best_match=(c.chunk_id == anchor.best_chunk_id))
             # Indent the whole <qa> block by 2 extra spaces so it
             # nests under <session_generic>.
             parts.append("\n".join("  " + ln for ln in qa_text.splitlines()))
@@ -880,7 +975,7 @@ def _emit_anchor_block(
         )
         parts.append(f"  <attempt id={quoteattr(att_label)}{global_id_attr}>")
         for c in _sort_chunks_for_emission(anchor, group_chunks):
-            qa_text = _emit_qa(c, best_match=(c.chunk_id == anchor.best_chunk_id))
+            qa_text = _emit_chunk(c, best_match=(c.chunk_id == anchor.best_chunk_id))
             parts.append("\n".join("  " + ln for ln in qa_text.splitlines()))
         parts.append("  </attempt>")
 
@@ -891,7 +986,16 @@ def _emit_anchor_block(
 # ----- Top-level header / footer / no-results ---------------
 
 def _emit_search_meta(meta: SearchMeta) -> str:
-    """The ``<search_meta .../>`` opener.  Always present per §4.6."""
+    """The ``<search_meta .../>`` opener.  Always present per §4.6.
+
+    ``mode`` (the Database-options mode requested) and ``db`` (the table
+    actually queried) are reported VERBATIM so a future DB option needs
+    no change here.  ``fallback`` appears only when a multimodal query
+    degraded to the text-only ``chunks`` table.
+    """
+    fallback_attr = (
+        f'fallback={quoteattr(meta.fallback_note)} ' if meta.fallback_note else ""
+    )
     return (
         f'<search_meta '
         f'n_requested="{meta.n_requested}" '
@@ -899,6 +1003,9 @@ def _emit_search_meta(meta: SearchMeta) -> str:
         f'attempt_specific={quoteattr("true" if meta.attempt_specific else "false")} '
         f'metafilters={quoteattr(meta.metafilters_repr)} '
         f'embedding_model={quoteattr(meta.embedding_model)} '
+        f'mode={quoteattr(meta.selected_mode)} '
+        f'db={quoteattr(meta.db_table)} '
+        f'{fallback_attr}'
         f'skipped_due_to_model_mismatch="{meta.skipped_due_to_model_mismatch}"'
         f'/>'
     )
@@ -968,6 +1075,9 @@ def _trim_to_token_cap(
     skipped_due_to_mm:             int,
     token_cap:                     int,
     available_attempts_by_session: dict[str, list[tuple[int, str]]],
+    selected_mode:                 str,
+    db_table:                      str,
+    fallback_note:                 str | None,
 ) -> tuple[str, int]:
     """Naive O(N²) drop-lowest-rebuild trim loop (Q-4A-12).
 
@@ -988,6 +1098,9 @@ def _trim_to_token_cap(
             metafilters_repr              = metafilters_repr,
             embedding_model               = embedding_model,
             skipped_due_to_model_mismatch = skipped_due_to_mm,
+            selected_mode                 = selected_mode,
+            db_table                      = db_table,
+            fallback_note                 = fallback_note,
         )
         xml = _build_response_full(
             meta                          = meta,
@@ -1043,6 +1156,7 @@ class _SearchOutcome:
     returned_anchor_ids:           list[dict[str, Any]]
                                                    # [{session_id, attempt_id, score}, ...]
     embedding_model:               str             # the model used to embed the query
+    fallback_note:                 str | None = None  # set when multimodal fell back to text-only
 
 
 def _run_search_pipeline(
@@ -1052,6 +1166,7 @@ def _run_search_pipeline(
     n:                     int,
     attempt_specific_flag: bool,
     metafilters:           dict[str, Any] | None,
+    db_mode:               str = db_options_config.MODE_TEXT_ONLY,
     token_cap:             int = _MAX_RESPONSE_TOKENS,
 ) -> _SearchOutcome:
     """Run the full search pipeline and return a :class:`_SearchOutcome`.
@@ -1080,8 +1195,33 @@ def _run_search_pipeline(
     metafilters_applied = bool(metafilter_where)
     metafilters_repr    = repr(metafilters or {})
 
-    # 2. Embed query.
-    query_vec, embedding_model = db_writer.embed_text(query)
+    # 2. Resolve the search backend from the (frozen-at-bind) mode, then
+    #    embed the query with that backend's model.  On a multimodal
+    #    embed failure (missing VOYAGE_API_KEY / Voyage API error) fall
+    #    back to the text-only 'chunks' backend AND log an ERROR so the
+    #    degradation is never silent (operator requirement, §4.11).
+    backend = _resolve_search_backend(db_mode)
+    fallback_note: str | None = None
+    try:
+        if backend.is_multimodal:
+            query_vec       = voyage_mm.embed_text(query, as_query=True)
+            embedding_model = voyage_mm.embedding_model_string()
+        else:
+            query_vec, embedding_model = db_writer.embed_text(query)
+    except Exception as exc:  # noqa: BLE001 — fall back rather than break RAG
+        if not backend.is_multimodal:
+            raise
+        logger.error(
+            "[database_search] multimodal embed FAILED for caller_agent=%s "
+            "(%s: %s) — falling back to text-only 'chunks'.",
+            caller_agent, type(exc).__name__, exc,
+        )
+        fallback_note = (
+            f"multimodal embed failed ({type(exc).__name__}); "
+            f"served text-only results from 'chunks'"
+        )
+        backend = _resolve_search_backend(db_options_config.MODE_TEXT_ONLY)
+        query_vec, embedding_model = db_writer.embed_text(query)
 
     # 3-6. Open one connection, run the three queries.
     candidate_pool_size = _CANDIDATE_POOL_MAGNIFIER * n
@@ -1096,6 +1236,8 @@ def _run_search_pipeline(
             metafilter_where    = metafilter_where,
             metafilter_params   = metafilter_params,
             candidate_pool_size = candidate_pool_size,
+            table               = backend.table,
+            dist_expr           = backend.dist_expr,
         )
         if anchors:
             chunks = _run_expansion_query(
@@ -1104,6 +1246,7 @@ def _run_search_pipeline(
                 caller_agent     = caller_agent,
                 embedding_model  = embedding_model,
                 attempt_specific = attempt_specific_flag,
+                table            = backend.table,
             )
         else:
             chunks = []
@@ -1113,6 +1256,7 @@ def _run_search_pipeline(
             embedding_model   = embedding_model,
             metafilter_where  = metafilter_where,
             metafilter_params = metafilter_params,
+            table             = backend.table,
         )
         # Phase 5D: list ALL attempts saved for each returned session
         # so each <session> block can advertise the full directory
@@ -1145,6 +1289,9 @@ def _run_search_pipeline(
         skipped_due_to_mm             = skipped_count,
         token_cap                     = token_cap,
         available_attempts_by_session = available_attempts_by_session,
+        selected_mode                 = db_mode,
+        db_table                      = backend.table,
+        fallback_note                 = fallback_note,
     )
 
     # Build returned_anchor_ids for rag_queries logging.  Trim drops
@@ -1167,6 +1314,7 @@ def _run_search_pipeline(
         truncated_anchors             = omitted,
         returned_anchor_ids           = returned_anchor_ids,
         embedding_model               = embedding_model,
+        fallback_note                 = fallback_note,
     )
 
 
@@ -1279,6 +1427,7 @@ def _database_search_impl(
     n:                     int,
     attempt_specific_flag: bool,
     metafilters:           dict[str, Any] | None,
+    db_mode:               str = db_options_config.MODE_TEXT_ONLY,
     token_cap:             int = _MAX_RESPONSE_TOKENS,
 ) -> str:
     """Public-facing implementation: error envelope +
@@ -1307,6 +1456,7 @@ def _database_search_impl(
             n                     = n,
             attempt_specific_flag = attempt_specific_flag,
             metafilters           = metafilters,
+            db_mode               = db_mode,
             token_cap             = token_cap,
         )
         xml = outcome.xml
@@ -1365,7 +1515,11 @@ def _database_search_impl(
         skipped_count       = outcome.skipped_due_to_model_mismatch if outcome else 0,
         truncated_anchors   = outcome.truncated_anchors   if outcome else 0,
         latency_ms          = latency_ms,
-        error_message       = error_message,
+        # On a successful multimodal->text fallback there is no error,
+        # but record the reason here too so the degradation is queryable
+        # in rag_queries (it's also a logger.error + a <search_meta>
+        # fallback note).
+        error_message       = error_message or (outcome.fallback_note if outcome else None),
     )
 
     return xml
@@ -1422,6 +1576,11 @@ def make_database_search_tool(caller_agent: str):
             f"({sorted(valid_slugs)}).  Spelling matters — the SQL ACL "
             f"pre-filter compares verbatim against chunks.agents_to."
         )
+
+    # Read the Database-options mode ONCE, here at bind time (session
+    # build), and freeze it into the closure — flipping the toggle in
+    # the panel affects only the NEXT session.  See architecture §4.11.
+    _db_mode = db_options_config.get_mode()
 
     @tool
     @generic_tool("Database Search")
@@ -1495,6 +1654,7 @@ def make_database_search_tool(caller_agent: str):
             n                     = n,
             attempt_specific_flag = attempt_specific_flag,
             metafilters           = metafilters,
+            db_mode               = _db_mode,
         )
 
     return database_search

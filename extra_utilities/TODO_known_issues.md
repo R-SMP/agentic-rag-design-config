@@ -2855,3 +2855,40 @@ is most fragile precisely on the inputs the feature exists to serve.
 **Status.**  Open — design assumption, recorded ahead of
 implementation.  Resolve as part of building the region re-OCR
 escalation tool (OCR_technology_notes.md §4).
+
+
+### F39. database_search read-routing to chunks_mm (multimodal) — SCOPED, build in progress
+
+> **F36/F37/F38 are taken.**  F36 = embedding-tests mini-eval
+> (`silly-black` branch); F37 = VLM-enriched user-image embeddings;
+> F38 = OCR region re-read (above).  This entry is therefore **F39**.
+
+**Where.**  `tools/database_search/database_search.py` (the
+`make_database_search_tool` factory + the search impl) +
+`DC_prompt_fragments/tools_config/database_search*.md`.  Reuses
+`agents/shared/voyage_mm.py` + `workflow_settings/db_options_config.py`
+(no new deps; no schema change — `chunks_mm` already exists + is
+populated).
+
+**What.**  Route `database_search` to query the multimodal `chunks_mm`
+table (Voyage voyage-multimodal-3.5, 2048-dim, halfvec HNSW) instead of
+`chunks` when the Database-options mode is `single-vector-multimodal`.
+Mode is FROZEN at session build (read in the tool factory).  Image rows
+rank like any chunk and surface as `<image_ref>` REFERENCES (the agent
+fetches bytes via `retrieve_*`); user images appear in session-level
+searches only.  Graceful + LOGGED fallback to the text-only `chunks`
+path if Voyage is unavailable (`logger.error` + `<search_meta>` note +
+`rag_queries.error_message`).  `rag_queries` logging is otherwise
+unchanged (`embedding_model` records the Voyage model).
+
+**Full design + build steps:** architecture doc §4.11 (locked design)
++ §9.15 (the 7 build steps).  This entry is the durable SCOPE marker —
+mark DONE / remove when the read-routing ships.
+
+**Status.**  BUILT + verified 2026-06-16 — `_resolve_search_backend`
+routing + mode-aware embed-with-fallback + `<image_ref>` emission +
+generic `<search_meta>` `mode`/`db`/`fallback` attrs, all in
+`database_search.py`; the single extension point for future backends is
+documented in **W39**.  Smoke test
+`smoke_test_database_search_mm.py` (11/11).  NOT yet committed/deployed
+— mark this entry DONE once it ships.
