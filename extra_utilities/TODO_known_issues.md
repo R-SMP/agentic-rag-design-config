@@ -2743,7 +2743,6 @@ and O3 (DH context-window pressure, currently still labelled
 empirical step would either close O3 or escalate its
 priority).
 
-
 ### F37. Evaluate VLM-enriched text for user-image multimodal embeddings
 
 **Where.**  `agents/database_handler/db_writer_mm.py` (the
@@ -2796,3 +2795,63 @@ populated + the eval harness exists (pairs with F36).  Design
 rationale also recorded in
 `extra_utilities/db_design/database_and_RAG_architecture.md`
 §6.3.
+
+### F38. OCR region re-read relies on the detector spotting every text region
+
+> **F36 and F37 are taken on sibling branches.**  F36 is the
+> embedding-tests mini-eval (the `eb24c7c` doc commit on the
+> `silly-black` branch); F37 is "Evaluate VLM-enriched text for
+> user-image multimodal embeddings" (the parallel DB session, already
+> on `stage-a-web-deploy`).  This entry is therefore **F38**.
+
+**Where.**  The not-yet-built OCR feature — see
+`extra_utilities/OCR_technology_notes.md` (the region / crop re-OCR
+escalation tier, §3 Decision 3 + §4).  No code exists yet; this
+records a design assumption to validate before / during build.
+
+**What.**  The region re-OCR escalation tool does **not** let the
+agent free-crop the image.  Instead, the whole-image OCR pass runs
+text **detection** and returns a list of detected text regions, each
+with an **ID**; when the agent wants a higher-quality re-read it
+specifies a **region ID**, not a bounding box.  This is deliberate:
+VLMs are poor at the spatial reasoning needed to say *where* to crop,
+so handing them a menu of detector-found regions to pick from is more
+reliable than trusting agent-supplied coordinates.
+
+**The assumption this rests on.**  The mechanism only works if the
+text-detection pass spots **every** region that actually contains
+text.  A region the detector misses has **no ID**, so the agent has
+no way to escalate a high-quality re-OCR onto it — the missed text is
+invisible to the precision path even if the agent can faintly see it
+in the raw image.  In other words, the escalation tier inherits the
+**recall** of the whole-image detector: low detection recall silently
+caps what the agent can ever re-read, and the failure is silent (no
+ID simply looks like "no text there").
+
+**Why it matters here specifically.**  The target images are
+hand-drawn engineering sketches and annotated renders where callouts
+can be faint, rotated, overlapping the drawing, or in unusual places
+(red arrow labels, tiny chord annotations).  These are exactly the
+conditions where a detector's recall is weakest — so the assumption
+is most fragile precisely on the inputs the feature exists to serve.
+
+**What "validate / mitigate" looks like.**
+
+  1. Measure detection **recall** on the few annotated test images we
+     have (`renderwinfo_test1_image.png`,
+     `renderwinfo_test2_image.png`) — does the detector find all
+     callouts, including faint / rotated / arrow-attached ones?
+  2. If recall is the bottleneck, consider escape hatches so a missed
+     region is not permanently unreachable, e.g.: a coarse fallback
+     where the agent can still name an approximate area (grid cell)
+     when it sees text the detector didn't flag; or running detection
+     at higher resolution / with rotation handling; or letting the
+     whole-image OCR text itself (not just detected boxes) be the
+     menu the agent re-reads from.
+  3. Surface the detector's miss honestly — if the agent reports text
+     it sees that has no matching region ID, log it rather than
+     letting it vanish.
+
+**Status.**  Open — design assumption, recorded ahead of
+implementation.  Resolve as part of building the region re-OCR
+escalation tool (OCR_technology_notes.md §4).
