@@ -28,9 +28,17 @@
   upscales ~3×, re-reads with Vision, and returns the re-read text **+
   the zoomed crop image**.  Verified end-to-end (region 3 of
   `renderwinfo_test1` → "Diameter 136 mm").
-- **Remaining:** per-agent UI gating (#3b, deferred to coordinate with
-  the parallel settings-UI session).  Optional later: extend
-  `ocr_region` to past-session (retrieve) images (needs R2 re-fetch).
+- **Per-agent gating (#3b) — BUILT.**  `workflow_settings/ocr_access.py`
+  (+ `ocr_access.json`) mirrors the DBa pattern: per-agent flags for the
+  5 image agents, gated by `OCR_ENABLED` (master AND per-agent).
+  Threaded into all 3 tool builders (`build_user_inputs_tools(agent_key)`
+  / the `read_user_inputs` + `retrieve_user_inputs` factories);
+  `GET/POST /api/ocr-access` endpoints; a per-agent **"OCR" toggle
+  button** in the Workflow Settings LLM-routing chart (blue accent, next
+  to the green DBa button).
+- **Remaining:** nothing required — OCR feature is complete.  Optional
+  later: extend `ocr_region` to past-session (retrieve) images (needs R2
+  re-fetch).
 
 This file is the running source of truth for the OCR feature decisions.
 
