@@ -1,6 +1,8 @@
 # OCR for text recognition in user images — design notes
 
-**Status.** Implementation in progress (as of 2026-06-17).
+**Status.** LIVE as of 2026-06-17 — validated in the deployed app
+(UII whole-image OCR + `ocr_region` zoom-in confirmed working).
+`OCR_ENABLED` now defaults **True**.
 
 - **Engine + grouping — SHIPPED.**  `agents/shared/ocr/` + smoke tests,
   committed `9e00d19` on `stage-a-web-deploy`.
@@ -17,9 +19,9 @@
   `OCR_ENABLED=False`**.  Default of the flag: **ON** for
   `load_input_images` / `read_user_inputs`, **OFF** for
   `retrieve_user_inputs` (past-session images were usually already
-  captured).  `OCR_ENABLED=False` by default pending validation in the
-  deployed app (flip to True to test).
-- **`ocr_region` zoom-in tool (Decision 3 / §4) — BUILT, gated OFF.**
+  captured).  `OCR_ENABLED` now defaults **True** (validated; set False
+  to disable OCR everywhere).
+- **`ocr_region` zoom-in tool (Decision 3 / §4) — BUILT.**
   A separate `ocr_region(image_path, region_id)` tool (current
   user-input images; present only when OCR on) re-runs detection
   (stateless — deterministic ids), crops region N (padded ~20%),

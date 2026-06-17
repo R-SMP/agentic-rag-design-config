@@ -669,21 +669,26 @@ SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
 # ===========================================================
 # 24. OCR — read text written on user-supplied images
 # ===========================================================
-# When ON, ``load_input_images`` additionally runs OCR (Google
-# Cloud Vision text detection) on each loaded image and appends the
-# detected text — grouped into callout regions — to the tool's text
-# result, so the agent gets a clean, quotable reading of any
-# dimension callouts / annotations alongside the image itself.  See
+# When ON, the image tools (``load_input_images``, ``read_user_inputs``,
+# ``retrieve_user_inputs``) additionally run OCR (Google Cloud Vision
+# text detection) on each loaded image and append the detected text —
+# grouped into callout regions — to the tool's result, so the agent
+# gets a clean, quotable reading of any dimension callouts /
+# annotations alongside the image itself.  Also exposes the
+# ``ocr_region`` zoom-in tool.  See
 # extra_utilities/OCR_technology_notes.md for the full design.
 #
 # Requires GOOGLE_CLOUD_VISION_API_KEY in the environment (Railway
 # dashboard Variables / local .env).
 #
 #   OCR_ENABLED              master switch.  False = the OCR pass
-#                            never runs and load_input_images behaves
-#                            exactly as before.  Default False until
-#                            the feature is validated in the deployed
-#                            app; flip to True once confirmed.
+#                            never runs, the per-call ``extract_text``
+#                            flag + ``ocr_region`` tool are hidden, and
+#                            the image tools behave exactly as before.
+#                            Validated 2026-06-17 (UII whole-image OCR
+#                            + ocr_region zoom-in confirmed) → now
+#                            default True; set False to disable OCR
+#                            everywhere.
 #   OCR_ENGINE               which engine backs OCR.  Only
 #                            "google_vision" exists today; the value
 #                            selects the swappable engine module so a
@@ -697,7 +702,7 @@ SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
 #
 # Valid values: OCR_ENABLED / OCR_WHOLE_IMAGE_DEFAULT True|False;
 # OCR_ENGINE a string; OCR_MAX_TEXT_CHARS a positive int.
-OCR_ENABLED: bool = False
+OCR_ENABLED: bool = True
 OCR_ENGINE: str = "google_vision"
 OCR_WHOLE_IMAGE_DEFAULT: bool = True
 OCR_MAX_TEXT_CHARS: int = 2000
