@@ -2019,6 +2019,49 @@ button.danger:hover { background: #3a1d1d; }
   opacity: 0.7;
 }
 
+/* OCR per-agent toggle — mirrors .lr-dba-btn but with a blue accent
+   when ON, so it is visually distinct from the green DBa button. */
+.lr-ocr-btn {
+  align-self: flex-end;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.lr-ocr-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.lr-ocr-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.lr-ocr-btn.ocr-on {
+  background: rgba(56, 139, 253, 0.20);
+  border-color: rgba(56, 139, 253, 0.6);
+  color: #a9d1ff;
+}
+.lr-ocr-btn.ocr-off {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border);
+  color: var(--muted, #999);
+}
+/* When the global OCR_ENABLED master switch is off, every OCR button
+   inside the overlay dims (still clickable, so per-agent staging works
+   against the next master flip). */
+.lr-overlay.ocr-master-off .lr-ocr-btn {
+  opacity: 0.45;
+  border-style: dashed;
+}
+.lr-overlay.ocr-master-off .lr-ocr-btn:hover:not(:disabled) {
+  opacity: 0.7;
+}
+
 /* DBa master-off banner: shown only when the global RAG_ENABLED is
    False, sitting right above the LLM-routing chart so the operator
    immediately understands the per-agent toggles are inert. */

@@ -1609,6 +1609,7 @@ let lrState = null;  // { mode, providers, shared, agents:[...] }
 // per-agent DBa toggle button rendered by renderLrOverlay() and the
 // master-off banner painted by paintDbaBanner().
 let dbaState = { flags: {}, rag_enabled: false };
+let ocrState = { flags: {}, ocr_enabled: false };
 
 // ---- chart build ---------------------------------------------------------
 
@@ -1803,6 +1804,25 @@ function renderLrOverlay() {
       div.appendChild(dbaBtn);
     }
 
+    // OCR (per-agent OCR access) toggle button.  Only the 5 image
+    // agents are eligible (matches ocr_access.DEFAULT_AGENTS server-
+    // side).  Mirrors the DBa button above; distinct blue accent.
+    if (ocrState.flags && Object.prototype.hasOwnProperty.call(ocrState.flags, b.key)) {
+      const ocrBtn = document.createElement("button");
+      ocrBtn.className = "lr-ocr-btn";
+      ocrBtn.type = "button";
+      ocrBtn.textContent = "OCR";
+      ocrBtn.title =
+        "OCR = read text on user images.  Toggle whether this agent's " +
+        "image tools run OCR (the extract_text flag + the ocr_region " +
+        "tool).  Takes effect on the next session.";
+      const ocrOn = !!ocrState.flags[b.key];
+      ocrBtn.classList.toggle("ocr-on",  ocrOn);
+      ocrBtn.classList.toggle("ocr-off", !ocrOn);
+      ocrBtn.addEventListener("click", () => onOcrToggle(b.key, ocrBtn));
+      div.appendChild(ocrBtn);
+    }
+
     overlay.appendChild(div);
   }
 }
@@ -1976,11 +1996,14 @@ async function loadLrRouting() {
     // master-off banner.  Non-blocking: if it fails, we render the
     // chart anyway with all buttons defaulted to OFF.
     await loadDbAccessState();
+    await loadOcrAccessState();
     buildLrChart();
     renderLrGlobal();
     renderLrPresets();
     renderLrOverlay();
     paintDbaBanner();
+    const _ocrOv = document.getElementById("lr-overlay");
+    if (_ocrOv) _ocrOv.classList.toggle("ocr-master-off", !ocrState.ocr_enabled);
     setLrStatus("", "");
   } catch (e) {
     setLrStatus("Network error: " + e, "err");
@@ -1994,6 +2017,16 @@ async function loadDbAccessState() {
     dbaState = await res.json();
   } catch (e) {
     // Non-blocking — leave dbaState as-is (defaults to empty).
+  }
+}
+
+async function loadOcrAccessState() {
+  try {
+    const res = await fetch("/api/ocr-access");
+    if (!res.ok) return;
+    ocrState = await res.json();
+  } catch (e) {
+    // Non-blocking — leave ocrState as-is (defaults to empty).
   }
 }
 
@@ -2045,6 +2078,42 @@ async function onDbaToggle(agentKey, btn) {
     btn.classList.toggle("dba-off", !newState);
     setLrStatus(
       "DBa for " + agentKey + " → " + (newState ? "ON" : "OFF") +
+      ".  Takes effect on the next session.",
+      "ok",
+    );
+  } catch (e) {
+    setLrStatus("Network error: " + e, "err");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function onOcrToggle(agentKey, btn) {
+  // Optimistic toggle — mirror of onDbaToggle for the OCR per-agent flag.
+  const newState = !btn.classList.contains("ocr-on");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/ocr-access", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ agent: agentKey, enabled: newState }),
+    });
+    if (res.status === 401) { showGate(); return; }
+    if (res.status === 409) {
+      const data = await res.json().catch(() => ({}));
+      setLrStatus(data.detail || "Locked — session is active.", "err");
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setLrStatus(data.detail || "OCR toggle failed.", "err");
+      return;
+    }
+    if (data.flags) ocrState.flags = data.flags;
+    btn.classList.toggle("ocr-on",  newState);
+    btn.classList.toggle("ocr-off", !newState);
+    setLrStatus(
+      "OCR for " + agentKey + " → " + (newState ? "ON" : "OFF") +
       ".  Takes effect on the next session.",
       "ok",
     );
