@@ -16,7 +16,11 @@ Public contract
 (the ``ocr_region`` menu) and each **word** is the raw per-word box it
 was grouped from.  All coordinates are source-image pixels.
 """
-from agents.shared.ocr.feature import ocr_enabled, ocr_summary_if_enabled
+from agents.shared.ocr.feature import (
+    ocr_enabled,
+    ocr_region_reread,
+    ocr_summary_if_enabled,
+)
 from agents.shared.ocr.google_vision import (
     OCRConfigError,
     OCRRequestError,
@@ -28,6 +32,7 @@ __all__ = [
     "detect_text",
     "group_words_into_regions",
     "ocr_enabled",
+    "ocr_region_reread",
     "ocr_summary_if_enabled",
     "OCRConfigError",
     "OCRRequestError",

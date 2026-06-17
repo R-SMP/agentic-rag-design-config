@@ -19,9 +19,16 @@
   `retrieve_user_inputs` (past-session images were usually already
   captured).  `OCR_ENABLED=False` by default pending validation in the
   deployed app (flip to True to test).
-- **Remaining:** the `ocr_region` escalation tool (Decision 3 / §4) and
-  per-agent UI gating (deferred to coordinate with the parallel
-  settings-UI session).
+- **`ocr_region` zoom-in tool (Decision 3 / §4) — BUILT, gated OFF.**
+  A separate `ocr_region(image_path, region_id)` tool (current
+  user-input images; present only when OCR on) re-runs detection
+  (stateless — deterministic ids), crops region N (padded ~20%),
+  upscales ~3×, re-reads with Vision, and returns the re-read text **+
+  the zoomed crop image**.  Verified end-to-end (region 3 of
+  `renderwinfo_test1` → "Diameter 136 mm").
+- **Remaining:** per-agent UI gating (#3b, deferred to coordinate with
+  the parallel settings-UI session).  Optional later: extend
+  `ocr_region` to past-session (retrieve) images (needs R2 re-fetch).
 
 This file is the running source of truth for the OCR feature decisions.
 
@@ -198,7 +205,7 @@ menu.  Clean semantics, its own log line, and independent per-agent
 gating — and it keeps the `load_input_images` buffered-image plumbing
 unchanged.
 
-### Region mechanism — summary of the locked flow
+### Region mechanism — summary of the flow  *(BUILT 2026-06-17)*
 
 1. Agent calls `load_input_images` → whole-image OCR + text
    **detection** runs → the ToolMessage carries the OCR text **and** a
