@@ -50,8 +50,9 @@ from psycopg.types.json import Json
 from agents.shared import postgres_pool
 from agents.shared.agent_activity import generic_tool
 from agents.shared.llm_provider import make_image_block
-from agents.shared.ocr import ocr_enabled, ocr_summary_if_enabled
+from agents.shared.ocr import ocr_summary_if_enabled
 from agents.shared import r2_uploader
+from workflow_settings import ocr_access
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
@@ -651,7 +652,7 @@ def make_retrieve_user_inputs_tool(caller_agent: str):
     # so the agent never sees it when OCR is off.  For this tool it
     # defaults to False (past-session image text was usually already
     # captured when that session ran).
-    if ocr_enabled():
+    if ocr_access.is_enabled_for(caller_agent):
         @tool
         @generic_tool("Retrieve user inputs")
         def retrieve_user_inputs(

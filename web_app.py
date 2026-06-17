@@ -1531,6 +1531,63 @@ def api_database_access_post(body: _DbAccessBody) -> dict:
     }
 
 
+# ------------------------------------------------------------------
+# Per-agent OCR access — GET/POST /api/ocr-access (mirrors the DBa
+# endpoints above).  GET returns {flags: {agent: bool}, ocr_enabled}.
+# POST {agent, enabled} updates one agent's flag via
+# workflow_settings.ocr_access.set_one(...).  Both take effect on the
+# NEXT session; POST is rejected with 409 while a session is active.
+
+from workflow_settings import ocr_access as _ocr_access
+
+
+class _OcrAccessBody(BaseModel):
+    agent:   str
+    enabled: bool
+
+
+@app.get("/api/ocr-access")
+def api_ocr_access_get() -> dict:
+    """Current per-agent OCR state + the global OCR_ENABLED master
+    switch.  Read-only."""
+    _require_auth()
+    importlib.reload(workflow_settings)
+    return {
+        "flags":       _ocr_access.get_all(),
+        "ocr_enabled": bool(getattr(workflow_settings, "OCR_ENABLED", False)),
+    }
+
+
+@app.post("/api/ocr-access")
+def api_ocr_access_post(body: _OcrAccessBody) -> dict:
+    """Update one agent's OCR flag in
+    ``workflow_settings/ocr_access.json``.  Edits take effect for the
+    NEXT session.  Rejected with HTTP 409 while a session is active.
+    """
+    _require_auth()
+    _require_no_session()
+    try:
+        flags_after = _ocr_access.set_one(body.agent, body.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # never 500 the editor
+        logger.exception("[WEB] ocr-access write failed: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not write ocr-access "
+                   f"({type(exc).__name__}: {exc}).",
+        )
+    logger.info(
+        "[WEB] ocr-access updated: %s -> %s", body.agent, body.enabled,
+    )
+    importlib.reload(workflow_settings)
+    return {
+        "ok":          True,
+        "flags":       flags_after,
+        "ocr_enabled": bool(getattr(workflow_settings, "OCR_ENABLED", False)),
+    }
+
+
 # ============================================================
 # Database options panel — 3-way mode toggle + multimodal
 # chunks_mm backfill (architecture doc §6.3).  The mode just

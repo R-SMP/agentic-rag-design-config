@@ -46,7 +46,7 @@ from agents.shared.routing_tools import (
     stuck_escalation,
     tool_call_signature,
 )
-from agents.shared.ocr import ocr_enabled, ocr_summary_if_enabled
+from agents.shared.ocr import ocr_summary_if_enabled
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
     build_user_inputs_tools,
@@ -62,6 +62,7 @@ from tools.retrieve_user_inputs.retrieve_user_inputs import (
     make_retrieve_user_inputs_tool,
 )
 from workflow_settings import database_access
+from workflow_settings import ocr_access
 
 logger = logging.getLogger("propeller_agent")
 
@@ -144,7 +145,9 @@ class UserInputInspector(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        self._read_tool = _build_read_user_inputs(ocr_enabled())
+        self._read_tool = _build_read_user_inputs(
+            ocr_access.is_enabled_for(self.AGENT_KEY)
+        )
         self._write_tool = write_extraction
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
@@ -175,7 +178,7 @@ class UserInputInspector(BaseChainAgent):
         all_tools = (
             [self._read_tool, self._write_tool]
             + list(self._extra_utility_tools_by_name.values())
-            + build_user_inputs_tools()
+            + build_user_inputs_tools(self.AGENT_KEY)
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)

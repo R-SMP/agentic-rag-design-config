@@ -194,7 +194,7 @@ class Planner(BaseChainAgent):
             [read_user_queries, read_extracted_inputs, calculate]
             + extra_utility
             + attempts_utility
-            + build_user_inputs_tools()
+            + build_user_inputs_tools(self.AGENT_KEY)
             + list(tools)
         )
         if database_access.is_enabled_for("planner"):

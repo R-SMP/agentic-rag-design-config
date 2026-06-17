@@ -45,12 +45,9 @@ from agents.shared.file_utils import (
 )
 from agents.shared.llm_provider import encode_image, make_image_block
 from agents.shared.routing_tools import log_tool_call
-from agents.shared.ocr import (
-    ocr_enabled,
-    ocr_region_reread,
-    ocr_summary_if_enabled,
-)
+from agents.shared.ocr import ocr_region_reread, ocr_summary_if_enabled
 from config import INPUT_IMAGES_DIR, INPUT_IMAGES_SUBDIR, USER_INPUTS_DIR
+from workflow_settings import ocr_access
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
@@ -170,18 +167,19 @@ USER_INPUTS_TOOL_NAMES = {
 }
 
 
-def build_user_inputs_tools() -> list:
-    """Return the user-inputs tool objects to bind to an agent.
+def build_user_inputs_tools(agent_key: str) -> list:
+    """Return the user-inputs tool objects to bind to *agent_key*.
 
     Built fresh (not a static list) so the OCR-dependent tools/flags
-    appear ONLY when OCR is enabled — when OCR is off the agent never
-    sees the ``extract_text`` flag NOR the ``ocr_region`` tool.  Call
-    this from each agent's ``set_routing_tools`` so it reflects
-    ``OCR_ENABLED`` as of that session's build.  ``list_input_files`` /
-    ``read_input_text`` / ``read_image_notes`` are static (OCR does not
-    touch them).
+    appear ONLY when OCR is enabled **for this agent** — when OCR is off
+    (globally OR for this agent via the per-agent toggle) the agent
+    never sees the ``extract_text`` flag NOR the ``ocr_region`` tool.
+    The gate is ``ocr_access.is_enabled_for(agent_key)`` (master
+    ``OCR_ENABLED`` AND the per-agent flag), read as of that session's
+    build.  ``list_input_files`` / ``read_input_text`` /
+    ``read_image_notes`` are static (OCR does not touch them).
     """
-    on = ocr_enabled()
+    on = ocr_access.is_enabled_for(agent_key)
     tools = [
         list_input_files,
         read_input_text,
