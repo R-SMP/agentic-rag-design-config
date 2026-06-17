@@ -1130,11 +1130,11 @@ function dbOptRow(parent, label, value) {
 }
 
 function dbOptShowMode(mode) {
-  for (const b of document.querySelectorAll(".db-opt-mode")) {
-    b.classList.toggle("active", b.dataset.mode === mode);
-  }
-  for (const s of document.querySelectorAll(".db-opt-section")) {
-    s.hidden = s.dataset.section !== mode;
+  // Mark the selected column; the non-selected columns get the dimming
+  // veil via CSS (.db-opt-col:not(.selected)::after).  All columns stay
+  // fully visible — only the veil changes.
+  for (const col of document.querySelectorAll(".db-opt-col")) {
+    col.classList.toggle("selected", col.dataset.mode === mode);
   }
 }
 
@@ -1283,14 +1283,28 @@ async function onDbOptRunBackfill() {
 document.addEventListener("click", (ev) => {
   const t = ev.target;
   if (!t || !t.closest) return;
-  const modeBtn = t.closest(".db-opt-mode");
-  if (modeBtn && !modeBtn.disabled) {
-    onDbOptModeClick(modeBtn.dataset.mode);
-    return;
-  }
+  // Backfill button — run it; don't also treat the click as a select.
   if (t.closest("#db-opt-backfill-btn")) {
     onDbOptRunBackfill();
+    return;
   }
+  // Leave the column's interactive controls (force checkbox, log box) to
+  // their own behaviour — clicking them must not change the selection.
+  if (t.closest("#db-opt-force") || t.closest("#db-opt-log")) return;
+  // Clicking anywhere else in a selectable column selects that option.
+  const col = t.closest(".db-opt-col");
+  if (col && !col.classList.contains("db-opt-col-soon")) {
+    onDbOptModeClick(col.dataset.mode);
+  }
+});
+// Keyboard a11y: Enter / Space on a focused selectable column selects it.
+document.addEventListener("keydown", (ev) => {
+  if (ev.key !== "Enter" && ev.key !== " ") return;
+  const t = ev.target;
+  if (!t || !t.classList || !t.classList.contains("db-opt-col")) return;
+  if (t.classList.contains("db-opt-col-soon")) return;
+  ev.preventDefault();
+  onDbOptModeClick(t.dataset.mode);
 });
 
 // ---------------------------------------------------------------------------

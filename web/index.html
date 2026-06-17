@@ -1095,65 +1095,69 @@
             </p>
           </header>
 
-          <div class="db-opt-toggle" role="radiogroup" aria-label="Database option">
-            <button type="button" class="db-opt-mode" data-mode="text-only">Text-only</button>
-            <button type="button" class="db-opt-mode" data-mode="single-vector-multimodal">Single-vector multimodal</button>
-            <button type="button" class="db-opt-mode" data-mode="late-interaction-multimodal" disabled
-                    title="Not implemented yet">Late-interaction multimodal</button>
-          </div>
           <div id="db-opt-status" class="db-opt-status" role="status"></div>
 
-          <!-- Text-only section -->
-          <section class="db-opt-section" data-section="text-only" hidden>
-            <h2>Text-only database <span class="db-opt-tag">current default</span></h2>
-            <p class="db-opt-note">
-              The original text-embedding database.  Q+A entries are
-              stitched and embedded with the configured text model.  No
-              images are embedded.
-            </p>
-            <div class="db-opt-params" id="db-opt-text-params"></div>
-          </section>
+          <!-- Three columns, one per option, each showing its full
+               details.  Clicking a (selectable) column selects it; the
+               others get a dimming veil.  See web/app.js dbOptShowMode. -->
+          <div class="db-opt-columns">
 
-          <!-- Single-vector multimodal section -->
-          <section class="db-opt-section" data-section="single-vector-multimodal" hidden>
-            <h2>Single-vector multimodal database</h2>
-            <p class="db-opt-note">
-              Re-embeds every text entry and embeds the session's images
-              (user images + attempt renders) with a single-vector
-              multimodal model.  Parameters below are fixed in this phase
-              (shown read-only — not editable yet).
-            </p>
-            <div class="db-opt-params" id="db-opt-mm-params"></div>
-
-            <h3>Image row mapping</h3>
-            <div class="db-opt-fieldmap" id="db-opt-mm-fieldmap"></div>
-
-            <h3>Backfill past sessions</h3>
-            <p class="db-opt-note">
-              Embed every past session into the multimodal table.
-              Sessions already embedded at the current model are skipped
-              unless you force a re-embed.  Progress streams below; the
-              run continues server-side even if you leave this view.
-            </p>
-            <label class="db-opt-force">
-              <input type="checkbox" id="db-opt-force" />
-              Force re-embed all sessions
-            </label>
-            <div class="db-opt-actions">
-              <button type="button" id="db-opt-backfill-btn" class="primary">Run backfill</button>
-              <span id="db-opt-backfill-status" class="db-opt-badge"></span>
+            <!-- Text-only column -->
+            <div class="db-opt-col" data-mode="text-only" role="button" tabindex="0"
+                 aria-label="Select the Text-only database">
+              <h2 class="db-opt-col-title">Text-only <span class="db-opt-tag">default</span></h2>
+              <p class="db-opt-note">
+                The original text-embedding database.  Q+A entries are
+                stitched and embedded with the configured text model.
+                No images are embedded.
+              </p>
+              <div class="db-opt-params" id="db-opt-text-params"></div>
             </div>
-            <pre id="db-opt-log" class="db-opt-log" aria-live="polite"></pre>
-          </section>
 
-          <!-- Late-interaction section (placeholder) -->
-          <section class="db-opt-section" data-section="late-interaction-multimodal" hidden>
-            <h2>Late-interaction multimodal database</h2>
-            <p class="db-opt-note db-opt-disabled-note">
-              Not implemented yet.  Reserved for a future late-interaction
-              (multi-vector) multimodal index.
-            </p>
-          </section>
+            <!-- Single-vector multimodal column -->
+            <div class="db-opt-col" data-mode="single-vector-multimodal" role="button" tabindex="0"
+                 aria-label="Select the single-vector multimodal database">
+              <h2 class="db-opt-col-title">Single-vector multimodal</h2>
+              <p class="db-opt-note">
+                Re-embeds every text entry and embeds the session's images
+                (user images + attempt renders) fused image+text.
+                Parameters are fixed this phase (read-only).
+              </p>
+              <div class="db-opt-params" id="db-opt-mm-params"></div>
+
+              <h3 class="db-opt-subhead">Image row mapping</h3>
+              <div class="db-opt-fieldmap" id="db-opt-mm-fieldmap"></div>
+
+              <h3 class="db-opt-subhead">Backfill past sessions</h3>
+              <p class="db-opt-note">
+                Embed every past session into the multimodal table.
+                Sessions already embedded at the current model are skipped
+                unless you force a re-embed.  Progress streams below; the
+                run continues server-side even if you leave this view.
+              </p>
+              <label class="db-opt-force">
+                <input type="checkbox" id="db-opt-force" />
+                Force re-embed all sessions
+              </label>
+              <div class="db-opt-actions">
+                <button type="button" id="db-opt-backfill-btn" class="primary">Run backfill</button>
+                <span id="db-opt-backfill-status" class="db-opt-badge"></span>
+              </div>
+              <pre id="db-opt-log" class="db-opt-log" aria-live="polite"></pre>
+            </div>
+
+            <!-- Late-interaction column (placeholder — not selectable yet) -->
+            <div class="db-opt-col db-opt-col-soon" data-mode="late-interaction-multimodal"
+                 aria-disabled="true">
+              <h2 class="db-opt-col-title">Late-interaction multimodal</h2>
+              <p class="db-opt-soon">Coming soon</p>
+              <p class="db-opt-note">
+                Reserved for a future late-interaction (multi-vector)
+                multimodal index.  Not implemented yet.
+              </p>
+            </div>
+
+          </div>
         </div>
       </section>
     </div>
