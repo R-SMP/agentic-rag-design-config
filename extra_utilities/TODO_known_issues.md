@@ -2892,3 +2892,48 @@ generic `<search_meta>` `mode`/`db`/`fallback` attrs, all in
 documented in **W39**.  Smoke test
 `smoke_test_database_search_mm.py` (11/11).  NOT yet committed/deployed
 — mark this entry DONE once it ships.
+
+
+### F40. Planner: use the blade-sections creator tool when sections must be observed
+
+**Status.** NOT STARTED.  Prompt / logic enhancement (Planner).  Relates to
+the `render_blade_sections` tool (gated by `BLADE_SECTIONS_VISUALIZER_ENABLED`;
+`tools/render_blade_sections/` + `DC_prompt_fragments/tools_config/blade_sections_visualizer*.md`).
+
+> Let the Planner know that, if there are sections to be observed as well, to use the blade sections creator tool
+
+
+### F41. Planner: "maximum precision possible" means multiple refinement attempts
+
+**Status.** NOT STARTED.  Prompt / logic enhancement (Planner).
+
+> Let the planner know that it is very important that if the user specifies they want maximum precision possible, it means performing multiple attempts trying to refine the geometry as much as possible (within a reasonable error)
+
+
+### F42. Make the Planner and DCOI processes faster / more focused
+
+**Status.** NOT STARTED.  Prompt / logic enhancement (Planner + DC Output Inspector).
+
+> Try to make the planner and the DCOI make their processes faster. e.g. when the DCOI observes the blade sections, many iterations may be required, so the feedback is to be given clearly and precisely and don't waste time on useless feedback. It all depends on the user request
+
+
+### F43. Treat the Blade-sections renderer as a full new capability (sections-first fast path)
+
+**Status.** NOT STARTED — to be optimized in the very soon future.  Prompt +
+functioning + logic.
+
+> Let the system understand that, if the Blade section rendering tool is ON, that is a FULL NEW CAPABILITY that the system can use. If the user provides drawings of blade sections, or specific details about the blade sections, the system can first run the blade section renderer, check this, and then decide whether to generate a 3D geometry or not, because generating the blade sections only is much faster. This is just a suggestion, but still it can be done depending on the circumstance. This is to be optimized in the funcitoning, logic, and prompt wording for the soon future (very soon)
+
+
+### F44. Check whether the Context Pruner and Database Handler have / need blade-sections-tool info
+
+**Status.** NOT STARTED.
+
+> Check if the CP and DH have info about the blade sections tool, and if they need such info at all
+
+Note (partly known already, 2026-06-18): the **DH does** carry the brief
+blade-sections awareness fragment — it was one of the 9 agents given the
+`<<BSV_ON>>/<<BSV_OFF>>` block (`agents/database_handler/prompt.md`).  The
+**Context Pruner** is NOT one of the prompted chain agents
+(`agents/shared/context_pruner.py`, no `prompt.md`), so it has no
+blade-sections info today — open question whether it needs any.
