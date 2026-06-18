@@ -3844,6 +3844,16 @@ function paramsBuildAll() {
   }
 }
 
+// Maps a parameter tab to the FEG section outline highlighted green in the
+// params viewer (general tab → none, so all three stay blue).  See
+// Viewer.setActiveProfile().
+const TAB_TO_PROFILE = {
+  general: null,
+  inner: "InnerProfile",
+  middle: "MiddleProfile",
+  outer: "OuterProfile",
+};
+
 function paramsSwitchTab(tabKey) {
   document.querySelectorAll(".params-tab-btn").forEach((b) => {
     b.classList.toggle("active", b.dataset.paramtab === tabKey);
@@ -3851,6 +3861,10 @@ function paramsSwitchTab(tabKey) {
   document.querySelectorAll(".params-pane").forEach((p) => {
     p.classList.toggle("active", p.dataset.paramtab === tabKey);
   });
+  // Recolour the matching 3D section outline green (instant; no rebuild).
+  if (window.paramsViewer && window.paramsViewer.setActiveProfile) {
+    window.paramsViewer.setActiveProfile(TAB_TO_PROFILE[tabKey] || null);
+  }
 }
 
 function paramsBuildSubmitMessage() {
@@ -4140,6 +4154,9 @@ function paramsResetAll() {
   }
   const paramsDlBtn = document.getElementById("params-download-mesh");
   if (paramsDlBtn) paramsDlBtn.disabled = true;
+  // Reset the active tab to General so the next session starts there with
+  // all section outlines blue.
+  paramsSwitchTab("general");
   const status = document.getElementById("params-status");
   if (status) {
     status.classList.remove("error");

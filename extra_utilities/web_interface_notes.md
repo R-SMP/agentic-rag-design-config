@@ -826,3 +826,33 @@ into the browser.  Two geometries are now distinguished:
 - The **blade-section (2D cross-section) views** from the reference
   (`curves.js` / per-section canvases) are intentionally **not** ported
   yet — that is the next piece of work.
+
+### 10.1 — 3D section outlines, reference axis, hold-still camera (2026-06-18)
+
+Three follow-on additions to the params-view FEG preview:
+
+1. **Section outlines (#1).**  `web/feg/propeller.js:buildProfileLines()`
+   adds a closed `THREE.Line` for each section (Inner/Middle/Outer) to the
+   FEG group, drawn over the mesh (`depthTest:false`, `renderOrder:2`),
+   default blue `0x2196f3`.  The Viewer recolours the **tab-active** section
+   green `0x42a832` via `setActiveProfile()` / `_applyActiveProfile()`,
+   driven by `app.js:paramsSwitchTab()` (`TAB_TO_PROFILE`; General → all
+   blue).  Recolour is in-place (no rebuild); `loadFromParams()` re-applies
+   the stored active section after every rebuild.  Params-view only (the chat
+   view loads OBJ and never calls `buildPropellerGroup`).  Mirrors the
+   reference's `core.js:rebuildProfileLines` / `updateProfileVisibility`.
+   NOTE: these are the **3D overlay curves** — distinct from the still-
+   deferred 2D canvas panel above.
+
+2. **Reference axis (#2).**  The `Viewer` constructor adds a persistent
+   `THREE.AxesHelper(50)` rotated −90° X (propeller frame: blue Z = spin
+   axis, red X = radial), hidden until a model loads.  Shown on **both**
+   viewers (chat + params), standard RGB.
+
+3. **Hold-still camera (#3).**  `loadFromParams()` no longer re-centres the
+   group or calls `_frameObject` per rebuild.  It anchors the propeller at
+   the origin and frames **once** via the new `_frameForPreview()` (guarded
+   by `_fegFramed`, reset on `unload()`), so a radius (or any) change visibly
+   grows/shrinks the propeller about the fixed spin axis instead of the view
+   re-normalising.  Reset view returns to the locked home.  Chat's `load()`
+   keeps its per-load auto-fit (different attempts need it).

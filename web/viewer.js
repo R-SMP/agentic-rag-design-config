@@ -89,6 +89,19 @@ export class Viewer {
     this.currentModel = null;
     this.homeCamPos = new THREE.Vector3(1, 1, 1);
     this._running = true;
+    // FEG-preview state (params view only; the chat view never sets these).
+    this._activeProfile = null;   // section name shown green, or null = all blue
+    this._fegFramed = false;      // true once loadFromParams() has framed (then locked)
+
+    // ---- Reference axis -------------------------------------------
+    // RGB axis indicator aligned to the propeller's frame (the model is
+    // built Z-up and rotated −90° X into this Y-up viewer, so the helper
+    // gets the same rotation: blue Z = spin axis, red X = radial).  Hidden
+    // until a model is present; shown by load() / loadFromParams().
+    this._axes = new THREE.AxesHelper(50);
+    this._axes.rotation.x = -Math.PI / 2;
+    this._axes.visible = false;
+    this.scene.add(this._axes);
 
     // ---- Resize observer (per-container) --------------------------
     this._resizeObserver = new ResizeObserver(() => this._sizeToContainer());
@@ -192,6 +205,7 @@ export class Viewer {
         this.currentModel = obj;
         this.scene.add(obj);
         this._frameObject(obj);
+        if (this._axes) this._axes.visible = true;
         if (this.placeholderEl) this.placeholderEl.style.display = "none";
         if (this.nameEl) this.nameEl.textContent = name || "";
         this._setAttemptLabel(attempt);
@@ -216,6 +230,13 @@ export class Viewer {
    * the Parameters Inputs view's live-preview pipeline: the FEG is a fast,
    * disposable approximation of the propeller; the precise RhinoCompute
    * geometry (RCG) is fetched separately by the Download geometry button.
+   *
+   * The propeller is anchored at the origin (NOT re-centred) and the camera
+   * is framed only ONCE — on the first build after the view opens — then
+   * left alone, so changing the radius (or any parameter) shows the
+   * propeller visibly grow/shrink about the fixed spin axis instead of the
+   * view re-normalising every rebuild.  `unload()` resets the frame latch so
+   * each new session re-frames once.
    *
    * @param {object} params  the 17 canonical parameters (raw geom units).
    * @param {string} [name]  optional label for the viewer toolbar.
@@ -251,27 +272,92 @@ export class Viewer {
 
     // FEG is built Z-up (Rhino convention); the viewer is Y-up.  Match the
     // load() path's rotation so the FEG preview and the RCG look identical.
+    // NO re-centring: the propeller's spin axis stays on the origin so a
+    // radius change grows/shrinks the ring symmetrically about it.
     group.rotation.x = -Math.PI / 2;
     this.currentModel = group;
     this.scene.add(group);
-    this._frameObject(group);
+
+    // Frame ONCE, then hold the camera still across rebuilds.
+    if (!this._fegFramed) {
+      this._frameForPreview(group);
+      this._fegFramed = true;
+    }
+
+    // Colour the tab-active section outline (green) per the stored state.
+    this._applyActiveProfile();
+
+    if (this._axes) this._axes.visible = true;
     if (this.placeholderEl) this.placeholderEl.style.display = "none";
     if (this.nameEl) this.nameEl.textContent = name || "";
     this._setAttemptLabel("");
     return true;
   }
 
-  /** Dispose every mesh geometry + material under an object3D. */
+  /**
+   * Frame the camera to fit `obj` and lock that as the home position,
+   * WITHOUT moving the object (it stays anchored at the origin).  Targets
+   * the origin so the propeller's spin axis is the orbit pivot.  Used by the
+   * params-view FEG preview (called once); the chat view uses _frameObject
+   * (which re-centres + re-fits on every load).
+   */
+  _frameForPreview(obj) {
+    const box = new THREE.Box3().setFromObject(obj);
+    if (box.isEmpty()) return;
+    const size = box.getSize(new THREE.Vector3());
+    const radius = Math.max(size.x, size.y, size.z, 1e-3) * 0.5;
+    const fov = (this.camera.fov * Math.PI) / 180;
+    const dist = (radius / Math.sin(fov / 2)) * 1.6;
+
+    const dir = new THREE.Vector3(1, 0.7, 1).normalize();
+    this.homeCamPos = dir.multiplyScalar(dist);
+    this.camera.position.copy(this.homeCamPos);
+    this.camera.near = radius / 100;
+    this.camera.far = radius * 100;
+    this.camera.updateProjectionMatrix();
+
+    this.controls.target.set(0, 0, 0);
+    this.controls.minDistance = radius * 0.15;
+    this.controls.maxDistance = radius * 25;
+    this.controls.update();
+  }
+
+  /**
+   * Set which blade section's outline is highlighted (green) in the params
+   * preview; the others stay blue.  `null` / unknown → all blue.  Persists
+   * across rebuilds (loadFromParams re-applies it) and recolours in place
+   * without rebuilding, so tab switches are instant.
+   *
+   * @param {string|null} profileName  "InnerProfile" | "MiddleProfile" |
+   *   "OuterProfile" | null.
+   */
+  setActiveProfile(profileName) {
+    this._activeProfile = profileName || null;
+    this._applyActiveProfile();
+  }
+
+  /** Recolour the section outline lines from the stored active profile. */
+  _applyActiveProfile() {
+    if (!this.currentModel) return;
+    this.currentModel.traverse((child) => {
+      if (child.userData && child.userData.isProfileLine && child.material) {
+        const isActive = child.name === this._activeProfile;
+        child.material.color.set(isActive ? 0x42a832 : 0x2196f3);
+        child.material.needsUpdate = true;
+      }
+    });
+  }
+
+  /** Dispose every geometry + material under an object3D (meshes + lines). */
   _disposeObject(obj) {
     obj.traverse((child) => {
-      if (child.isMesh) {
-        if (child.geometry) child.geometry.dispose();
-        if (child.material) {
-          if (Array.isArray(child.material)) {
-            child.material.forEach((m) => m && m.dispose && m.dispose());
-          } else if (child.material.dispose) {
-            child.material.dispose();
-          }
+      if (child.geometry) child.geometry.dispose();
+      const mat = child.material;
+      if (mat) {
+        if (Array.isArray(mat)) {
+          mat.forEach((m) => m && m.dispose && m.dispose());
+        } else if (mat.dispose) {
+          mat.dispose();
         }
       }
     });
@@ -303,20 +389,14 @@ export class Viewer {
   unload() {
     if (this.currentModel) {
       this.scene.remove(this.currentModel);
-      this.currentModel.traverse((child) => {
-        if (child.isMesh) {
-          if (child.geometry) child.geometry.dispose();
-          if (child.material) {
-            if (Array.isArray(child.material)) {
-              child.material.forEach((m) => m && m.dispose && m.dispose());
-            } else if (child.material.dispose) {
-              child.material.dispose();
-            }
-          }
-        }
-      });
+      this._disposeObject(this.currentModel);   // meshes AND outline lines
       this.currentModel = null;
     }
+    // Hide the reference axis + reset FEG-preview latches so the next
+    // session re-frames once and starts with all-blue section outlines.
+    if (this._axes) this._axes.visible = false;
+    this._fegFramed = false;
+    this._activeProfile = null;
     if (this.placeholderEl) {
       this.placeholderEl.innerHTML = this._placeholderHtml;
       this.placeholderEl.style.display = "";   // revert to stylesheet default
