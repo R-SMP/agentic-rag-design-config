@@ -56,7 +56,8 @@ from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
 from tools.retrieve_user_inputs.retrieve_user_inputs import (
     make_retrieve_user_inputs_tool,
 )
-from workflow_settings import database_access
+from tools.render_blade_sections.render_blade_sections import render_blade_sections
+from workflow_settings import blade_sections_access, database_access
 
 logger = logging.getLogger("propeller_agent")
 
@@ -106,6 +107,10 @@ class ToolCaller(BaseChainAgent):
             utility_tools.append(make_database_search_tool("tool_caller"))
             utility_tools.append(make_retrieve_user_inputs_tool("tool_caller"))
             utility_tools.append(make_retrieve_attempt_tool("tool_caller"))
+        # Blade-sections visualizer (global toggle, Tool Caller only).  Read
+        # fresh so a Workflow-Settings edit takes effect next session.
+        if blade_sections_access.is_enabled():
+            utility_tools.append(render_blade_sections)
         self._extra_utility_tools_by_name = {t.name: t for t in utility_tools}
         self.mesh_checks = session.mesh_checks
         self.render_library = get_render_library()

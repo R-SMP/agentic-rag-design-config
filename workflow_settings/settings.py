@@ -706,3 +706,32 @@ OCR_ENABLED: bool = True
 OCR_ENGINE: str = "google_vision"
 OCR_WHOLE_IMAGE_DEFAULT: bool = True
 OCR_MAX_TEXT_CHARS: int = 2000
+
+
+# ===========================================================
+# 25. Blade sections visualizer tool
+# ===========================================================
+# When ON, the Tool Caller gets the ``render_blade_sections`` tool: it
+# takes the path to a parameters JSON file and renders a PNG of the
+# three blade cross-sections (Inner / Middle / Outer) stacked
+# vertically — the same airfoils the in-browser Parameters Inputs
+# "Blade sections" view draws — written under the attempt folder so it
+# auto-displays in chat and can be read back by ``load_render_images``.
+# The tool also takes a ``grid`` flag (default False): when True a light
+# 1 mm × 1 mm grid is drawn behind the sections.
+#
+# The whole workflow is told (briefly) that this capability exists, so
+# agents can decide to use it; the Tool Caller is the only agent that
+# can call it.  This is a NEW capability — turning it OFF makes the
+# system behave exactly as before, and the agents are told only that
+# the capability exists but is currently OFF (minimal mention).
+#
+#   BLADE_SECTIONS_VISUALIZER_ENABLED
+#       master switch.  True  = the tool is bound to the Tool Caller and
+#                               the full prompt fragments are included.
+#                       False = the tool is NOT bound; the system works
+#                               exactly like before and the prompts carry
+#                               only the minimal "exists but OFF" note.
+#
+# Valid values: True, False
+BLADE_SECTIONS_VISUALIZER_ENABLED: bool = True
