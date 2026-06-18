@@ -856,3 +856,27 @@ Three follow-on additions to the params-view FEG preview:
    grows/shrinks the propeller about the fixed spin axis instead of the view
    re-normalising.  Reset view returns to the locked home.  Chat's `load()`
    keeps its per-load auto-fit (different attempts need it).
+
+### 10.2 — White background, 2D cross-sections, tighter rows (2026-06-18)
+
+- **Near-white background + tuned shading.**  Both viewers' `scene.background`
+  is now `0xf5f5f5`.  Lights softened and the surface switched to a light
+  matte gray via the shared `Viewer._makeSurfaceMaterial()` (used by `load()`
+  and `loadFromParams()`).  `.viewer-placeholder` text darkened to `#555` so
+  it reads on the light canvas.
+- **Reference axis always-on + in front.**  The `AxesHelper` is now always
+  visible (no show/hide toggle) and drawn over the geometry
+  (`material.depthTest = false`, `renderOrder = 999`), so the propeller never
+  hides it.
+- **2D section cross-sections.**  Ported the reference's `curves.js`
+  (`drawProfile2D`) to `web/feg/curves.js`, exposed as `window.fegDrawProfile2D`
+  from `viewer.js`.  `app.js:paramsBuildSectionHeader()` now puts a live
+  `<canvas data-section>` beside the parameter image (a `.param-section-media`
+  row) for Inner/Middle/Outer — General gets the image only.  Drawn green
+  ("active") to match the 3D outline, redrawn from `paramsRedrawSections()`
+  inside `paramsUpdatePreview()` (open / slider / proposal).  These are the 2D
+  canvas shapes the §10 wrap-up had parked as deferred.
+- **Layout trims.**  `.param-section-img` shrunk (`max-height` 220→150/140),
+  and each slider row's vertical whitespace cut ~⅓ (`.param-row` padding
+  10→6, `.param-body` gap 4→3, state-button `margin-top` 18→12, `.params-pane`
+  padding trimmed) — fonts / slider / button sizes unchanged.

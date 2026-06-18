@@ -1057,8 +1057,9 @@ function switchView(name) {
     // Auto-build the FEG preview on open so the viewer is never empty
     // and Download geometry is enabled from the start.  Builds the
     // default propeller on first open; reflects the current slider /
-    // proposed values on subsequent opens.
-    paramsRenderFEG();
+    // proposed values on subsequent opens.  Also draws the 2D section
+    // cross-sections.
+    paramsUpdatePreview();
   }
   if (name === "logstatus") startLogStream();
   else stopLogStream();
@@ -3608,14 +3609,41 @@ function paramsRenderFEG() {
   if (dlBtn) dlBtn.disabled = false;
 }
 
+// Redraw the per-section 2D cross-section canvases (Inner/Middle/Outer) from
+// the current paramState.  Independent of the 3D viewer — needs only
+// window.fegDrawProfile2D (set by viewer.js) and the canvases.  Each tab
+// shows only its own section, so all are drawn "active" (green), matching the
+// 3D active outline.
+function paramsRedrawSections() {
+  if (!window.fegDrawProfile2D) return;
+  const params = paramsBuildPreviewBody();
+  document
+    .querySelectorAll(".param-section-canvas[data-section]")
+    .forEach((canvas) => {
+      const kind = canvas.getAttribute("data-section");
+      try {
+        window.fegDrawProfile2D(canvas, kind, params, { active: true });
+      } catch (e) {
+        // Degenerate params can throw in the morph math; skip this canvas.
+      }
+    });
+}
+
+// Refresh both previews from the current paramState: the 3D FEG and the 2D
+// section cross-sections.
+function paramsUpdatePreview() {
+  paramsRenderFEG();
+  paramsRedrawSections();
+}
+
 function paramsRequestFEG() {
   // Coalesce rapid slider input into at most one rebuild per frame.
-  // paramsRenderFEG() reads paramState fresh, so the frame always uses the
-  // latest slider positions.
+  // paramsUpdatePreview() reads paramState fresh, so the frame always uses
+  // the latest slider positions.
   if (paramsFegRafId !== null) return;
   paramsFegRafId = requestAnimationFrame(() => {
     paramsFegRafId = null;
-    paramsRenderFEG();
+    paramsUpdatePreview();
   });
 }
 
@@ -3810,16 +3838,34 @@ function paramsBuildRow(spec) {
 }
 
 function paramsBuildSectionHeader(group) {
-  // Image + section title shown at the TOP of each pane, above the
-  // slider rows for that section.
+  // Per-pane header: a media row (parameter image + live 2D cross-section
+  // for the airfoil sections) above the section title.
   const header = document.createElement("div");
   header.className = "param-section-header";
+
+  const media = document.createElement("div");
+  media.className = "param-section-media";
 
   const img = document.createElement("img");
   img.className = "param-section-img";
   img.src = group.image;
   img.alt = group.imageAlt;
-  header.appendChild(img);
+  media.appendChild(img);
+
+  // The three airfoil sections get a live 2D cross-section canvas alongside
+  // the parameter image; General (ring/impeller params) gets the image only.
+  const kind = group.key === "general" ? null : group.key;  // inner|middle|outer
+  if (kind) {
+    const canvas = document.createElement("canvas");
+    canvas.className = "param-section-canvas";
+    canvas.dataset.section = kind;
+    canvas.width = 360;     // drawing buffer (CSS scales the display size)
+    canvas.height = 180;
+    media.appendChild(canvas);
+    header.classList.add("has-canvas");
+  }
+
+  header.appendChild(media);
 
   const title = document.createElement("h3");
   title.className = "param-section-title";

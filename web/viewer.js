@@ -21,6 +21,13 @@ import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { buildPropellerGroup } from "./feg/propeller.js";
+import { drawProfile2D } from "./feg/curves.js";
+
+// Expose the 2D section drawer to the classic (non-module) app.js, which
+// renders the per-section cross-section canvases in the Parameters Inputs
+// view.  app.js only calls it from event handlers (after this module has
+// evaluated), so the global is always set by the time it's used.
+window.fegDrawProfile2D = drawProfile2D;
 
 
 export class Viewer {
@@ -58,7 +65,7 @@ export class Viewer {
 
     // ---- Scene -----------------------------------------------------
     this.scene = new THREE.Scene();
-    this.scene.background = new THREE.Color(0x0f1117);
+    this.scene.background = new THREE.Color(0xf5f5f5);   // near-white
 
     // ---- Camera ----------------------------------------------------
     this.camera = new THREE.PerspectiveCamera(45, 1, 0.01, 100000);
@@ -69,13 +76,15 @@ export class Viewer {
     this.container.appendChild(this.renderer.domElement);
 
     // ---- Lights ----------------------------------------------------
-    // Hemisphere fill + directional key + faint ambient so surface
-    // curvature reads clearly while orbiting.
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x444455, 1.0));
-    const key = new THREE.DirectionalLight(0xffffff, 1.4);
+    // Tuned for the near-white background: a softer hemisphere fill (light
+    // ground so undersides don't go muddy on white), a moderate directional
+    // key for form, and a faint ambient lift.  Pairs with the light matte
+    // surface material from _makeSurfaceMaterial().
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x9a9a9a, 0.65));
+    const key = new THREE.DirectionalLight(0xffffff, 0.85);
     key.position.set(1, 1.5, 1);
     this.scene.add(key);
-    this.scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+    this.scene.add(new THREE.AmbientLight(0xffffff, 0.30));
 
     // ---- Controls --------------------------------------------------
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -96,11 +105,15 @@ export class Viewer {
     // ---- Reference axis -------------------------------------------
     // RGB axis indicator aligned to the propeller's frame (the model is
     // built Z-up and rotated −90° X into this Y-up viewer, so the helper
-    // gets the same rotation: blue Z = spin axis, red X = radial).  Hidden
-    // until a model is present; shown by load() / loadFromParams().
+    // gets the same rotation: blue Z = spin axis, red X = radial).  Always
+    // visible and drawn IN FRONT of the geometry (depthTest off + a high
+    // renderOrder) so it's never hidden by the propeller.
     this._axes = new THREE.AxesHelper(50);
     this._axes.rotation.x = -Math.PI / 2;
-    this._axes.visible = false;
+    this._axes.renderOrder = 999;
+    this._axes.material.depthTest = false;
+    this._axes.material.depthWrite = false;
+    this._axes.material.transparent = true;
     this.scene.add(this._axes);
 
     // ---- Resize observer (per-container) --------------------------
@@ -175,6 +188,21 @@ export class Viewer {
   }
 
   /**
+   * Light matte surface material for the propeller, tuned to read on the
+   * near-white background (a slightly cool light gray, low metalness, high
+   * roughness — matte 3D-print-stock look).  Shared by load() and
+   * loadFromParams() so both surfaces match.
+   */
+  _makeSurfaceMaterial() {
+    return new THREE.MeshStandardMaterial({
+      color: 0xb9c0c8,
+      metalness: 0.05,
+      roughness: 0.72,
+      side: THREE.DoubleSide,
+    });
+  }
+
+  /**
    * Load an OBJ mesh from ``url`` into the viewer, replacing any
    * current model.  Updates the name / attempt label widgets and
    * hides the placeholder on success.  On failure the placeholder is
@@ -191,12 +219,7 @@ export class Viewer {
             if (!child.geometry.attributes.normal) {
               child.geometry.computeVertexNormals();
             }
-            child.material = new THREE.MeshStandardMaterial({
-              color: 0x9aa7b5,
-              metalness: 0.15,
-              roughness: 0.65,
-              side: THREE.DoubleSide,
-            });
+            child.material = this._makeSurfaceMaterial();
           }
         });
         // Rhino is Z-up; the viewer is Y-up. Rotate so the propeller's
@@ -205,7 +228,6 @@ export class Viewer {
         this.currentModel = obj;
         this.scene.add(obj);
         this._frameObject(obj);
-        if (this._axes) this._axes.visible = true;
         if (this.placeholderEl) this.placeholderEl.style.display = "none";
         if (this.nameEl) this.nameEl.textContent = name || "";
         this._setAttemptLabel(attempt);
@@ -248,12 +270,7 @@ export class Viewer {
       // A fresh material per build so it disposes cleanly alongside the
       // group on the next swap / unload (matches load()'s per-load
       // material pattern).  Blade, ring and hub share this one instance.
-      const material = new THREE.MeshStandardMaterial({
-        color: 0x9aa7b5,
-        metalness: 0.15,
-        roughness: 0.65,
-        side: THREE.DoubleSide,
-      });
+      const material = this._makeSurfaceMaterial();
       group = buildPropellerGroup(params, material);
     } catch (err) {
       // Degenerate parameter combos can throw inside the loft/morph math.
@@ -287,7 +304,6 @@ export class Viewer {
     // Colour the tab-active section outline (green) per the stored state.
     this._applyActiveProfile();
 
-    if (this._axes) this._axes.visible = true;
     if (this.placeholderEl) this.placeholderEl.style.display = "none";
     if (this.nameEl) this.nameEl.textContent = name || "";
     this._setAttemptLabel("");
@@ -392,9 +408,9 @@ export class Viewer {
       this._disposeObject(this.currentModel);   // meshes AND outline lines
       this.currentModel = null;
     }
-    // Hide the reference axis + reset FEG-preview latches so the next
-    // session re-frames once and starts with all-blue section outlines.
-    if (this._axes) this._axes.visible = false;
+    // Reset FEG-preview latches so the next session re-frames once and
+    // starts with all-blue section outlines.  (The reference axis stays
+    // visible — it is always shown.)
     this._fegFramed = false;
     this._activeProfile = null;
     if (this.placeholderEl) {
