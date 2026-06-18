@@ -3629,11 +3629,55 @@ function paramsRedrawSections() {
     });
 }
 
-// Refresh both previews from the current paramState: the 3D FEG and the 2D
-// section cross-sections.
+// Left-pane preview mode: "3d" (FEG WebGL) or "sections" (2D blade-sections).
+let paramsViewMode = "3d";
+
+// Redraw the Blade-sections 2D view (Inner/Middle/Outer airfoils on a 1mm
+// grid + a corner angle-of-attack protractor) from the current paramState.
+function paramsRedrawBladeSections() {
+  const canvas = document.getElementById("params-sections-canvas");
+  if (!canvas || !window.fegDrawBladeSections) return;
+  window.fegDrawBladeSections(canvas, paramsBuildPreviewBody());
+}
+
+// Refresh the previews from the current paramState.  The left pane shows
+// either the 3D FEG or the 2D blade-sections (whichever mode is active); the
+// per-tab section cross-sections in the right column always redraw.
 function paramsUpdatePreview() {
-  paramsRenderFEG();
+  if (paramsViewMode === "sections") {
+    paramsRedrawBladeSections();
+  } else {
+    paramsRenderFEG();
+  }
   paramsRedrawSections();
+}
+
+// Switch the left pane between the 3D FEG preview and the 2D Blade-sections
+// view.  refresh=false only sets the UI/visibility (used by End-Session reset,
+// which must NOT rebuild into the just-unloaded viewer).
+function paramsSetViewMode(mode, { refresh = true } = {}) {
+  paramsViewMode = mode === "sections" ? "sections" : "3d";
+  const showSections = paramsViewMode === "sections";
+  document.querySelectorAll(".params-viewmode-toggle button").forEach((b) => {
+    b.classList.toggle("active", b.dataset.pmode === paramsViewMode);
+  });
+  const viewer3d = document.getElementById("params-viewer");
+  const sections = document.getElementById("params-sections");
+  const resetBtn = document.getElementById("params-viewer-reset");
+  if (viewer3d) viewer3d.hidden = showSections;
+  if (sections) sections.hidden = !showSections;
+  if (resetBtn) resetBtn.disabled = showSections;   // Reset view is 3D-only
+  if (!refresh) return;
+  if (showSections) {
+    paramsRedrawBladeSections();
+  } else {
+    // The WebGL canvas was display:none; re-measure for the now-visible
+    // container, then rebuild (frame-once keeps the camera).
+    if (window.paramsViewer && window.paramsViewer.resize) {
+      window.paramsViewer.resize();
+    }
+    paramsRenderFEG();
+  }
 }
 
 function paramsRequestFEG() {
@@ -4203,6 +4247,9 @@ function paramsResetAll() {
   // Reset the active tab to General so the next session starts there with
   // all section outlines blue.
   paramsSwitchTab("general");
+  // Return the left pane to 3D mode (refresh:false — don't rebuild into the
+  // just-unloaded viewer; the next view-open auto-builds).
+  paramsSetViewMode("3d", { refresh: false });
   const status = document.getElementById("params-status");
   if (status) {
     status.classList.remove("error");
@@ -4227,6 +4274,17 @@ function paramsInit() {
   // preview).
   const dlBtn = document.getElementById("params-download-mesh");
   if (dlBtn) dlBtn.addEventListener("click", paramsDownloadMesh);
+  // Wire the "3D view / Blade sections" left-pane toggle.
+  document.querySelectorAll(".params-viewmode-toggle button").forEach((b) => {
+    b.addEventListener("click", () => paramsSetViewMode(b.dataset.pmode));
+  });
+  // Refit the Blade-sections canvas when its pane resizes (fit-to-pane scale).
+  const sectionsEl = document.getElementById("params-sections");
+  if (sectionsEl && typeof ResizeObserver !== "undefined") {
+    new ResizeObserver(() => {
+      if (paramsViewMode === "sections") paramsRedrawBladeSections();
+    }).observe(sectionsEl);
+  }
   // Default to General Parameters on first render.
   paramsSwitchTab("general");
 }

@@ -178,8 +178,12 @@
         <!-- LEFT pane: 3D viewer (own instance — Step 4) -->
         <aside class="viewer-panel params-viewer-panel">
           <div class="viewer-toolbar">
-            <span class="viewer-title"
-                  title="Fast in-browser preview (FEG). Use Download geometry for the precise RhinoCompute mesh.">3D preview (approximate)</span>
+            <div class="params-viewmode-toggle" role="group" aria-label="Preview mode">
+              <button type="button" data-pmode="3d" class="active"
+                      title="Fast in-browser preview (FEG). Use Download geometry for the precise RhinoCompute mesh.">3D view</button>
+              <button type="button" data-pmode="sections"
+                      title="Show the three blade-section airfoils (Inner/Middle/Outer) on a 1&nbsp;mm grid">Blade sections</button>
+            </div>
             <span id="params-viewer-attempt" class="viewer-attempt"></span>
             <span id="params-viewer-name" class="viewer-name"></span>
             <button id="params-viewer-reset" class="ghost"
@@ -189,6 +193,11 @@
             <div id="params-viewer-placeholder" class="viewer-placeholder">
               Preview (approximate). Move any slider to update.
             </div>
+          </div>
+          <!-- Blade-sections 2D view; shown when the toggle is on
+               "Blade sections" (handler: paramsSetViewMode in app.js). -->
+          <div id="params-sections" class="viewer params-sections" hidden>
+            <canvas id="params-sections-canvas"></canvas>
           </div>
           <!--
             Footer mirroring the chat viewer's Download geometry button.

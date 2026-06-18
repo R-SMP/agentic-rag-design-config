@@ -69,7 +69,9 @@ function sectionParams(kind, params) {
 }
 
 // Build the 2D world-space points (TE-on-left coord, then rotated by angle).
-function buildSectionPoints(kind, params) {
+// Exported so the Blade-sections view (feg/sections_view.js) can reuse the
+// exact airfoil math instead of duplicating it.
+export function buildSectionPoints(kind, params) {
   const { thickness, highPt, camber, chord, angleDeg } = sectionParams(kind, params);
 
   const sym = buildSymmetricProfile(CONSTANTS.countI, thickness);

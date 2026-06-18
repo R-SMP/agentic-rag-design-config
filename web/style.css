@@ -1504,6 +1504,42 @@ button.danger:hover { background: #3a1d1d; }
   border-right: 1px solid var(--border);
 }
 
+/* "3D view / Blade sections" segmented toggle in the params viewer toolbar. */
+.params-viewmode-toggle {
+  display: inline-flex;
+  margin-right: auto;          /* push the rest of the toolbar (Reset) right */
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.params-viewmode-toggle button {
+  background: #222;
+  color: #aaa;
+  border: none;
+  padding: 5px 12px;
+  font-size: 12px;
+  font-weight: 600;
+  font-family: inherit;
+  cursor: pointer;
+  transition: background 120ms, color 120ms;
+}
+.params-viewmode-toggle button + button {
+  border-left: 1px solid var(--border);
+}
+.params-viewmode-toggle button:hover { background: #2c2c2c; color: #ddd; }
+.params-viewmode-toggle button.active {
+  background: var(--accent, #9aa7b5);
+  color: #15171c;
+}
+
+/* Blade-sections 2D view fills the viewer area; its canvas fills it. */
+.params-sections { background: #f7f7f7; }
+.params-sections canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+
 /* RIGHT side: tabbed parameter column. */
 .params-column {
   flex: 1 1 42%;

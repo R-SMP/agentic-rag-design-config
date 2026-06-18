@@ -22,12 +22,15 @@ import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
 import { buildPropellerGroup } from "./feg/propeller.js";
 import { drawProfile2D } from "./feg/curves.js";
+import { drawBladeSections } from "./feg/sections_view.js";
 
-// Expose the 2D section drawer to the classic (non-module) app.js, which
-// renders the per-section cross-section canvases in the Parameters Inputs
-// view.  app.js only calls it from event handlers (after this module has
-// evaluated), so the global is always set by the time it's used.
+// Expose the 2D drawers to the classic (non-module) app.js, which renders the
+// per-section cross-section canvases and the Blade-sections view in the
+// Parameters Inputs view.  app.js only calls these from event handlers (after
+// this module has evaluated), so the globals are always set by the time
+// they're used.
 window.fegDrawProfile2D = drawProfile2D;
+window.fegDrawBladeSections = drawBladeSections;
 
 
 export class Viewer {

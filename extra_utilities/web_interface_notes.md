@@ -880,3 +880,25 @@ Three follow-on additions to the params-view FEG preview:
   and each slider row's vertical whitespace cut ~⅓ (`.param-row` padding
   10→6, `.param-body` gap 4→3, state-button `margin-top` 18→12, `.params-pane`
   padding trimmed) — fonts / slider / button sizes unchanged.
+
+### 10.3 — "Blade sections" 2D view toggle (2026-06-18)
+
+A segmented **`3D view | Blade sections`** toggle in the params left-pane
+toolbar (default 3D; replaces the old static "3D preview" title).
+
+- **3D view** — the FEG preview as before.
+- **Blade sections** — a 2D view (`web/feg/sections_view.js:drawBladeSections`,
+  exposed as `window.fegDrawBladeSections`) showing the three section airfoils
+  stacked **Inner → Middle → Outer** on a light-gray **1 mm grid** (5 mm major
+  lines) at a single **fit-to-pane** scale (so the sections' real sizes stay
+  comparable).  Each airfoil is colour-coded — **Inner blue, Middle green,
+  Outer red** — filled translucent + stroked, with a name label.  A
+  **bottom-right protractor** (0–25°) draws three colour-matched rays at each
+  section's angle of attack.  Reuses `curves.js:buildSectionPoints` (now
+  exported).
+- **Wiring** (`web/app.js`): `paramsViewMode` + `paramsSetViewMode()` swap the
+  two left-pane children (`#params-viewer` / `#params-sections`), disabling
+  Reset view in sections mode (3D-only).  `paramsUpdatePreview()` redraws the
+  active left-pane view plus the per-tab cross-sections; a `ResizeObserver`
+  refits the sections canvas on pane resize; End-Session reset returns to 3D
+  (`refresh:false` so it doesn't rebuild into the unloaded viewer).
