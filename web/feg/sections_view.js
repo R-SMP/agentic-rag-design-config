@@ -88,66 +88,79 @@ function drawGrid(ctx, w, h, pxPerMm) {
 function drawProtractor(ctx, w, h, secs) {
   const pad = 10;
   const R = Math.max(64, Math.min(140, Math.min(w, h) * 0.26));
-  const vx = w - pad;            // vertex at the bottom-right corner
+  const maxDeg = PROTRACTOR_MAX_DEG;
+  // Vertex at the bottom-LEFT of the footprint: the 0° baseline points RIGHT
+  // and the angles open COUNTERCLOCKWISE (up-right).
+  const vx = w - pad - R;
   const vy = h - pad;
+  const topY = vy - R * Math.sin((maxDeg * Math.PI) / 180);  // highest ray tip
 
-  // Faint backdrop panel so the protractor reads over the grid / shapes.
-  ctx.fillStyle = 'rgba(255, 255, 255, 0.80)';
+  // Backdrop panel hugging the 0..MAX wedge (no wasted vertical space) with a
+  // centred title just above it.
+  const panelLeft = vx - 8;
+  const panelRight = vx + R + 34;
+  const panelTop = topY - 24;
+  const panelBottom = vy + 6;
+  ctx.fillStyle = 'rgba(255, 255, 255, 0.85)';
   ctx.strokeStyle = '#d0d0d0';
   ctx.lineWidth = 1;
-  roundRect(ctx, vx - R - pad - 6, vy - R - pad - 14, R + pad + 6, R + pad + 14, 8);
+  roundRect(ctx, panelLeft, panelTop, panelRight - panelLeft, panelBottom - panelTop, 8);
   ctx.fill();
   ctx.stroke();
 
-  // Title.
-  ctx.fillStyle = '#666';
-  ctx.font = '600 11px system-ui, sans-serif';
-  ctx.textAlign = 'right';
+  // Title — larger, centred over the panel, just above the wedge.
+  ctx.fillStyle = '#5a5a5a';
+  ctx.font = '600 13px system-ui, sans-serif';
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'top';
-  ctx.fillText('Angle of attack', vx - 4, vy - R - pad - 12);
+  ctx.fillText('Angle of attack', (panelLeft + panelRight) / 2, panelTop + 3);
 
-  // Arc baseline (0°, horizontal) + the 0..MAX arc.
+  // Baseline (0°, horizontal-right) + the 0..MAX arc (as a polyline, opening
+  // up-right).
   ctx.strokeStyle = '#9a9a9a';
   ctx.lineWidth = 1.25;
   ctx.beginPath();
   ctx.moveTo(vx, vy);
-  ctx.lineTo(vx - R, vy);
+  ctx.lineTo(vx + R, vy);
   ctx.stroke();
   ctx.beginPath();
-  ctx.arc(vx, vy, R, Math.PI, Math.PI + (PROTRACTOR_MAX_DEG * Math.PI) / 180, false);
+  for (let d = 0; d <= maxDeg; d++) {
+    const a = (d * Math.PI) / 180;
+    const x = vx + R * Math.cos(a), y = vy - R * Math.sin(a);
+    if (d === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
   ctx.stroke();
 
   // 5° ticks.
   ctx.strokeStyle = '#b0b0b0';
-  ctx.fillStyle = '#888';
   ctx.lineWidth = 1;
-  ctx.font = '10px system-ui, sans-serif';
-  for (let d = 0; d <= PROTRACTOR_MAX_DEG; d += 5) {
+  for (let d = 0; d <= maxDeg; d += 5) {
     const a = (d * Math.PI) / 180;
     const c = Math.cos(a), s = Math.sin(a);
     ctx.beginPath();
-    ctx.moveTo(vx - (R - 5) * c, vy - (R - 5) * s);
-    ctx.lineTo(vx - R * c, vy - R * s);
+    ctx.moveTo(vx + (R - 5) * c, vy - (R - 5) * s);
+    ctx.lineTo(vx + R * c, vy - R * s);
     ctx.stroke();
   }
 
-  // One ray per section at its angle of attack, in the section colour.
+  // One ray per section at its angle of attack, in the section colour, with
+  // its degree value just past the tip.
   for (const sec of secs) {
-    const a = (Math.max(0, Math.min(PROTRACTOR_MAX_DEG, sec.angle)) * Math.PI) / 180;
+    const a = (Math.max(0, Math.min(maxDeg, sec.angle)) * Math.PI) / 180;
     const c = Math.cos(a), s = Math.sin(a);
-    const ex = vx - R * c, ey = vy - R * s;
+    const ex = vx + R * c, ey = vy - R * s;
     ctx.strokeStyle = sec.color;
     ctx.lineWidth = 2;
     ctx.beginPath();
     ctx.moveTo(vx, vy);
     ctx.lineTo(ex, ey);
     ctx.stroke();
-    // degree label just past the ray tip
     ctx.fillStyle = sec.color;
     ctx.font = '600 11px system-ui, sans-serif';
-    ctx.textAlign = 'right';
+    ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
-    ctx.fillText(`${Math.round(sec.angle)}°`, ex - 4, ey - 4);
+    ctx.fillText(`${Math.round(sec.angle)}°`, vx + (R + 4) * c, vy - (R + 4) * s);
   }
 }
 
@@ -192,13 +205,16 @@ export function drawBladeSections(canvas, params) {
   const maxW = Math.max(1e-3, ...valid.map((s) => s.box.w));
   const maxH = Math.max(1e-3, ...valid.map((s) => s.box.h));
   const bandH = h / 3;
-  let pxPerMm = Math.min((w * 0.82) / maxW, (bandH * 0.72) / maxH);
+  // Reserve a left gutter for the Inner/Middle/Outer labels so they never
+  // overlap the airfoils; the sections are centred in the remaining width.
+  const GUTTER = Math.min(72, w * 0.22);
+  let pxPerMm = Math.min(((w - GUTTER) * 0.86) / maxW, (bandH * 0.72) / maxH);
   if (!isFinite(pxPerMm) || pxPerMm <= 0) pxPerMm = 4;
 
   drawGrid(ctx, w, h, pxPerMm);
 
-  // Airfoils, centred in their band, plus a section-name label.
-  const cx = w / 2;
+  // Airfoils, centred in their band (to the right of the label gutter).
+  const cx = GUTTER + (w - GUTTER) / 2;
   secs.forEach((s, k) => {
     if (!s.box) return;
     const cy = bandH * (k + 0.5);
@@ -217,10 +233,10 @@ export function drawBladeSections(canvas, params) {
     ctx.stroke();
 
     ctx.fillStyle = s.color;
-    ctx.font = '600 13px system-ui, sans-serif';
+    ctx.font = '600 15px system-ui, sans-serif';
     ctx.textAlign = 'left';
-    ctx.textBaseline = 'top';
-    ctx.fillText(s.label, 8, bandH * k + 6);
+    ctx.textBaseline = 'middle';   // vertically centre on the section's centre
+    ctx.fillText(s.label, 8, cy);
   });
 
   drawProtractor(ctx, w, h, secs);

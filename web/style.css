@@ -1504,14 +1504,33 @@ button.danger:hover { background: #3a1d1d; }
   border-right: 1px solid var(--border);
 }
 
-/* "3D view / Blade sections" segmented toggle in the params viewer toolbar. */
+/* The two params left-pane views share this positioning context so the
+   view-mode toggle can float centred over the top of the visualization. */
+.params-viewer-stack {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+/* "3D view / Blade sections" segmented toggle — floats ON TOP of the
+   visualization, horizontally centred near the top (not a separate row). */
 .params-viewmode-toggle {
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
   display: inline-flex;
-  margin-right: auto;          /* push the rest of the toolbar (Reset) right */
   border: 1px solid var(--border);
   border-radius: 6px;
   overflow: hidden;
+  box-shadow: 0 1px 6px rgba(0, 0, 0, 0.28);
 }
+
+/* The params toolbar now holds only the Reset button — keep it right-aligned. */
+.params-viewer-panel .viewer-toolbar { justify-content: flex-end; }
 .params-viewmode-toggle button {
   background: #222;
   color: #aaa;
