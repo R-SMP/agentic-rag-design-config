@@ -78,6 +78,12 @@ _PF_OFF_RE = re.compile(r"<<PF_OFF>>(.*?)<</PF_OFF>>", re.DOTALL)
 # time when the agent does NOT have database access; otherwise
 # unwrapped to expose the inner content.  See ``apply_dba_filter``.
 _HAS_DBA_RE = re.compile(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>", re.DOTALL)
+# Global Blade-sections-visualizer filter — mirrors the DCII_ONLY pattern,
+# gated by the ``BLADE_SECTIONS_VISUALIZER_ENABLED`` master switch (read fresh
+# via ``workflow_settings.blade_sections_access`` so a Workflow-Settings edit
+# takes effect next session).  See ``apply_bsv_filter``.
+_BSV_ON_RE = re.compile(r"<<BSV_ON>>(.*?)<</BSV_ON>>", re.DOTALL)
+_BSV_OFF_RE = re.compile(r"<<BSV_OFF>>(.*?)<</BSV_OFF>>", re.DOTALL)
 
 
 def apply_dcii_filter(text: str) -> str:
@@ -107,6 +113,31 @@ def apply_planner_first_filter(text: str) -> str:
     else:
         text = _PF_ON_RE.sub("", text)
         text = _PF_OFF_RE.sub(lambda m: m.group(1), text)
+    return text
+
+
+def apply_bsv_filter(text: str) -> str:
+    """Resolve ``<<BSV_ON>>`` / ``<<BSV_OFF>>`` regions for the Blade-sections
+    visualizer tool.
+
+    Gated by the global ``BLADE_SECTIONS_VISUALIZER_ENABLED`` switch, read
+    fresh (``web_app._build_session`` reloads ``workflow_settings`` before
+    building the agents) so a toggle saved in the Workflow Settings editor
+    takes effect on the next session — the same contract as the DBa / OCR
+    toggles.
+
+    On  = strip the OFF blocks, unwrap the ON blocks (full / brief fragments).
+    Off = strip the ON blocks, unwrap the OFF blocks (the minimal
+          "exists but currently OFF" note).
+    """
+    from workflow_settings import blade_sections_access
+
+    if blade_sections_access.is_enabled():
+        text = _BSV_OFF_RE.sub("", text)
+        text = _BSV_ON_RE.sub(lambda m: m.group(1), text)
+    else:
+        text = _BSV_ON_RE.sub("", text)
+        text = _BSV_OFF_RE.sub(lambda m: m.group(1), text)
     return text
 
 
@@ -154,7 +185,9 @@ def apply_flag_filters(text: str) -> str:
     are applied separately in :func:`_build_template` because they
     need to know which agent's template is being assembled.
     """
-    return apply_planner_first_filter(apply_dcii_filter(text))
+    return apply_bsv_filter(
+        apply_planner_first_filter(apply_dcii_filter(text))
+    )
 
 
 def _read_dc_fragment(rel_path: str) -> str:
@@ -504,6 +537,12 @@ def _build_slots() -> dict[str, str]:
         "database_search_tool": _read_dc_fragment("tools_config/database_search.md"),
         "retrieve_user_inputs_tool": _read_dc_fragment("tools_config/retrieve_user_inputs.md"),
         "retrieve_attempt_tool": _read_dc_fragment("tools_config/retrieve_attempt.md"),
+        # Blade-sections visualizer — shared brief awareness (all agents) +
+        # the minimal "OFF" note; gated by <<BSV_ON>>/<<BSV_OFF>> regions.  The
+        # per-agent overlay ($blade_sections_visualizer_per_agent) is loaded in
+        # _build_template, like $database_search_per_agent.
+        "blade_sections_visualizer": _read_dc_fragment("tools_config/blade_sections_visualizer.md"),
+        "blade_sections_visualizer_off": _read_dc_fragment("tools_config/blade_sections_visualizer_off.md"),
         # Generic
         "hard_constraints_generic": _read_generic_fragment("generic_constraints.md"),
         # Per-agent routing fragments (Receptionist + Orchestrator only;
@@ -555,7 +594,22 @@ def _build_template(agent_dir_name: str) -> str:
         if per_agent_dbs_file.exists()
         else ""
     )
-    slots = {**_build_slots(), "database_search_per_agent": per_agent_dbs}
+    # Per-agent Blade-sections-visualizer overlay (Tool Caller = full tool
+    # usage, DC Output Inspector = read-by-path; others have no file → empty,
+    # so only the shared brief awareness shows).  Same idiom as the DBa overlay.
+    per_agent_bsv_file = (
+        TOOLS_CONFIG_DIR / f"blade_sections_visualizer_{agent_dir_name}.md"
+    )
+    per_agent_bsv = (
+        per_agent_bsv_file.read_text(encoding="utf-8").rstrip()
+        if per_agent_bsv_file.exists()
+        else ""
+    )
+    slots = {
+        **_build_slots(),
+        "database_search_per_agent": per_agent_dbs,
+        "blade_sections_visualizer_per_agent": per_agent_bsv,
+    }
     once = Template(raw).safe_substitute(slots)
     twice = Template(once).safe_substitute(slots)
     filtered = apply_flag_filters(twice)

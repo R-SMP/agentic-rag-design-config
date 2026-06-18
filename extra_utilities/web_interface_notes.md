@@ -902,3 +902,28 @@ toolbar (default 3D; replaces the old static "3D preview" title).
   active left-pane view plus the per-tab cross-sections; a `ResizeObserver`
   refits the sections canvas on pane resize; End-Session reset returns to 3D
   (`refresh:false` so it doesn't rebuild into the unloaded viewer).
+
+### 10.4 — Server-side `render_blade_sections` tool (2026-06-18)
+
+The browser "Blade sections" view now has a **server-side counterpart for the
+agents**: a `render_blade_sections` Tool-Caller tool
+(`tools/render_blade_sections/`) that renders the SAME three stacked airfoils
+(Inner / Middle / Outer, rotated by angle of attack, colour-coded, with the
+0-25° angle protractor) as a **PNG** from a parameters JSON, with an optional
+1 mm grid (`grid=True`).  The airfoil math is a pure-Python port of
+`web/feg/{naca,curves}.js` (`sections_geom.py`); the PIL drawing (`draw.py`) is
+langchain-free so it's unit-testable
+(`extra_utilities/smoke_test_render_blade_sections.py`).
+
+- Written into the attempt folder as `render_blade_sections[_grid].png` →
+  **auto-displays in chat** (the `render_*.png` artefact pattern) and is
+  readable by `load_render_images([path])` (e.g. the DC Output Inspector).
+- Gated by the `BLADE_SECTIONS_VISUALIZER_ENABLED` workflow toggle (default
+  True; `workflow_settings/blade_sections_access.py`).  All 9 agents get a
+  brief awareness fragment when ON / a minimal "exists but OFF" note when OFF,
+  via new `<<BSV_ON>>/<<BSV_OFF>>` regions + `apply_bsv_filter` in
+  `agents/shared/prompts.py` and the
+  `DC_prompt_fragments/tools_config/blade_sections_visualizer*.md` fragments.
+- **TODO (deferred):** auto-display is the interim path; later, give the
+  Receptionist a tool to show *any* image by path (a 2D-PNG analog of
+  `visualize_3d_model`) so it controls when the user sees the image.

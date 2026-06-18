@@ -19,6 +19,12 @@ session.
 ### Tools used across the system (high-level only, for context)
 $agent_tools_overview_brief
 
+<<BSV_ON>>
+$blade_sections_visualizer
+
+$blade_sections_visualizer_per_agent
+<</BSV_ON>><<BSV_OFF>>$blade_sections_visualizer_off<</BSV_OFF>>
+
 ### The embedding model that will read SEMANTIC answers
 The text you save into a SEMANTIC field's ``.txt`` file will later be
 turned into an embedding vector by:
