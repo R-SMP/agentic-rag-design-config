@@ -767,3 +767,62 @@ what the user sees and how the system behaves NOW.
 
 This is the complete delivered state.  Anything not described
 above is one of the open TODOs (F25-F28) or a known limitation.
+
+---
+
+## 10. Front-end geometry (FEG) preview — 2026-06-18
+
+The Parameters Inputs **live preview** was moved off RhinoCompute and
+into the browser.  Two geometries are now distinguished:
+
+- **FEG (front-end geometry)** — built entirely in three.js from the
+  current 17-param dict.  This is what the params-view LEFT viewer
+  shows.  No server round-trip; auto-builds on view-open and rebuilds
+  live while dragging (coalesced with `requestAnimationFrame`).  A fast,
+  disposable *approximation* — the toolbar reads "3D preview
+  (approximate)".
+- **RCG (RhinoCompute geometry)** — the precise mesh from
+  `/api/preview_mesh`.  Produced **only** when the user clicks
+  **Download geometry** (fetch-on-click + "Generating…" status →
+  `propeller.obj`).  The **chat view is unchanged** — it shows the RCG
+  end-to-end as before.
+
+### What changed
+
+| Surface | Before | After |
+|---|---|---|
+| Params viewer live preview | `POST /api/preview_mesh` (RhinoCompute OBJ) | in-browser FEG via `Viewer.loadFromParams()` |
+| Params "Download geometry" | downloaded the cached preview OBJ blob | `POST /api/preview_mesh` → RCG → `propeller.obj` |
+| Chat viewer | RCG | RCG (unchanged) |
+
+### Code
+
+- **`web/feg/`** — the ported geometry builder (faithful copy of the
+  standalone `propeller-browser` reference's `geom/` + its `CONSTANTS`):
+  `constants.js`, `naca.js`, `placement.js`, `profiles.js`, `blade.js`,
+  `ring.js`, `hub.js`, and `propeller.js`
+  (`buildPropellerGroup(params, material) → THREE.Group`: blade
+  `InstancedMesh` ×`bladeCount` + swept-ellipse ring + placeholder hub).
+  Built in Rhino Z-up convention; the viewer applies the same −90° X
+  rotation it already uses for loaded RhinoCompute OBJs.
+- **`web/viewer.js`** — new `Viewer.loadFromParams(params, name)` +
+  `Viewer._disposeObject()` (disposes the previous group's geometry on
+  every rebuild so rapid dragging doesn't leak GPU buffers).
+- **`web/app.js`** — `paramsRenderFEG()` / `paramsRequestFEG()` replace
+  the old debounced `/api/preview_mesh` fetch; `paramsDownloadMesh()`
+  rewritten to fetch the RCG; auto-build wired into `switchView("params")`
+  and into `paramsApplyProposal()` (a system PROPOSED set rebuilds the
+  preview to match).
+- **`web_app.py`** — unchanged; `/api/preview_mesh` simply changed
+  consumers (live-preview → download).
+
+### Notes / decisions
+
+- Fidelity bar is the *example*, not a pixel-match to the RCG (the FEG is
+  explicitly a quick approximation).
+- The Ring Height (`impellerHeight`) slider stays a normal slider; the FEG
+  ring auto-fits to the blade, so it often has no visible effect (the
+  standalone reference hides it for this reason — not ported).
+- The **blade-section (2D cross-section) views** from the reference
+  (`curves.js` / per-section canvases) are intentionally **not** ported
+  yet — that is the next piece of work.

@@ -20,6 +20,7 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
+import { buildPropellerGroup } from "./feg/propeller.js";
 
 
 export class Viewer {
@@ -205,6 +206,75 @@ export class Viewer {
         }
       }
     );
+  }
+
+  /**
+   * Build the in-browser front-end geometry (FEG) propeller from a
+   * 17-parameter dict and show it, replacing any current model.
+   *
+   * Synchronous — unlike load(), there is NO server round-trip.  Used by
+   * the Parameters Inputs view's live-preview pipeline: the FEG is a fast,
+   * disposable approximation of the propeller; the precise RhinoCompute
+   * geometry (RCG) is fetched separately by the Download geometry button.
+   *
+   * @param {object} params  the 17 canonical parameters (raw geom units).
+   * @param {string} [name]  optional label for the viewer toolbar.
+   * @returns {boolean} true if a model was built and shown, false on error.
+   */
+  loadFromParams(params, name) {
+    let group;
+    try {
+      // A fresh material per build so it disposes cleanly alongside the
+      // group on the next swap / unload (matches load()'s per-load
+      // material pattern).  Blade, ring and hub share this one instance.
+      const material = new THREE.MeshStandardMaterial({
+        color: 0x9aa7b5,
+        metalness: 0.15,
+        roughness: 0.65,
+        side: THREE.DoubleSide,
+      });
+      group = buildPropellerGroup(params, material);
+    } catch (err) {
+      // Degenerate parameter combos can throw inside the loft/morph math.
+      // Keep the previous model on screen rather than blanking the viewer.
+      console.error("FEG build failed:", err);
+      return false;
+    }
+
+    // Dispose the previous model first so rapid slider dragging doesn't
+    // leak GPU buffers (a new group is built on every rebuild).
+    if (this.currentModel) {
+      this.scene.remove(this.currentModel);
+      this._disposeObject(this.currentModel);
+      this.currentModel = null;
+    }
+
+    // FEG is built Z-up (Rhino convention); the viewer is Y-up.  Match the
+    // load() path's rotation so the FEG preview and the RCG look identical.
+    group.rotation.x = -Math.PI / 2;
+    this.currentModel = group;
+    this.scene.add(group);
+    this._frameObject(group);
+    if (this.placeholderEl) this.placeholderEl.style.display = "none";
+    if (this.nameEl) this.nameEl.textContent = name || "";
+    this._setAttemptLabel("");
+    return true;
+  }
+
+  /** Dispose every mesh geometry + material under an object3D. */
+  _disposeObject(obj) {
+    obj.traverse((child) => {
+      if (child.isMesh) {
+        if (child.geometry) child.geometry.dispose();
+        if (child.material) {
+          if (Array.isArray(child.material)) {
+            child.material.forEach((m) => m && m.dispose && m.dispose());
+          } else if (child.material.dispose) {
+            child.material.dispose();
+          }
+        }
+      }
+    });
   }
 
   /** Return the camera to the auto-framed home position. */

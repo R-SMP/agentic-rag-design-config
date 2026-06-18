@@ -1054,6 +1054,11 @@ function switchView(name) {
     // that happened while the view was hidden — ResizeObserver does
     // not fire for display:none elements in all browsers).
     window.paramsViewer.resize();
+    // Auto-build the FEG preview on open so the viewer is never empty
+    // and Download geometry is enabled from the start.  Builds the
+    // default propeller on first open; reflects the current slider /
+    // proposed values on subsequent opens.
+    paramsRenderFEG();
   }
   if (name === "logstatus") startLogStream();
   else stopLogStream();
@@ -3566,24 +3571,23 @@ const paramRowState = {};
 
 
 // ---------------------------------------------------------------------------
-// Step 7 — Live 3D preview pipeline.
-// On every slider input, schedule a debounced POST to /api/preview_mesh
-// (added in Step 6) and load the returned OBJ bytes into the params-view
-// Viewer instance (added in Step 4).  300 ms trailing-edge debounce per
-// locked decision §6.G.D-debounce.  In-flight skip + trailing follow-up
-// so the user's LATEST position always wins without dog-piling RhinoCompute.
+// Live 3D preview pipeline — front-end geometry (FEG).
+//
+// On every slider input we rebuild the propeller IN THE BROWSER (three.js,
+// web/feg/*) and show it in the params-view Viewer instance — no server
+// round-trip.  The precise RhinoCompute geometry (RCG) is fetched only when
+// the user clicks Download geometry (see paramsDownloadMesh).
+//
+// Rebuilds are coalesced with requestAnimationFrame so a fast drag rebuilds
+// at most once per frame (the FEG geometry is small, so this feels instant).
 // ---------------------------------------------------------------------------
 
-const PARAMS_PREVIEW_DEBOUNCE_MS = 300;
-let paramsPreviewTimer = null;
-let paramsPreviewInflight = false;
-let paramsPreviewPending = false;
-let paramsPreviewLatestUrl = null;   // blob: URL of the current mesh
+let paramsFegRafId = null;          // pending rAF handle (null = none queued)
 
 function paramsBuildPreviewBody() {
-  // Snapshot the current 17-param values into a plain dict for the
-  // /api/preview_mesh body.  Reads paramState (kept in sync by the
-  // slider input handler).
+  // Snapshot the current 17-param values into a plain dict.  Reads
+  // paramState (kept in sync by the slider input handler).  Used by both
+  // the FEG build and the RCG download (/api/preview_mesh body).
   const out = {};
   for (const key of Object.keys(paramSpecByKey)) {
     out[key] = paramState[key];
@@ -3591,25 +3595,48 @@ function paramsBuildPreviewBody() {
   return out;
 }
 
-async function paramsRequestPreviewNow() {
-  if (paramsPreviewInflight) {
-    // Trailing-edge marker: when the in-flight request finishes,
-    // fire ONE more with the latest slider values.
-    paramsPreviewPending = true;
-    return;
-  }
-  paramsPreviewInflight = true;
+function paramsRenderFEG() {
+  // Build + show the FEG from the current paramState.  Synchronous —
+  // delegates to Viewer.loadFromParams (web/feg/*).  No-op if the params
+  // viewer isn't available.
+  if (!window.paramsViewer || !window.paramsViewer.loadFromParams) return;
+  const ok = window.paramsViewer.loadFromParams(paramsBuildPreviewBody(), "");
+  if (!ok) return;
+  // There is now a parameter set worth sending to RhinoCompute, so the
+  // Download geometry (RCG) button becomes meaningful.
+  const dlBtn = document.getElementById("params-download-mesh");
+  if (dlBtn) dlBtn.disabled = false;
+}
+
+function paramsRequestFEG() {
+  // Coalesce rapid slider input into at most one rebuild per frame.
+  // paramsRenderFEG() reads paramState fresh, so the frame always uses the
+  // latest slider positions.
+  if (paramsFegRafId !== null) return;
+  paramsFegRafId = requestAnimationFrame(() => {
+    paramsFegRafId = null;
+    paramsRenderFEG();
+  });
+}
+
+async function paramsDownloadMesh() {
+  // Download the PRECISE RhinoCompute geometry (RCG) for the current
+  // parameter set.  Unlike the live preview (FEG, built in-browser), this
+  // does a server round-trip to /api/preview_mesh — the same mesh the agent
+  // pipeline would generate — and saves it as propeller.obj.  Fetch-on-click
+  // with a brief "Generating…" status (the round-trip is ~1-2 s).
   const status = document.getElementById("params-status");
+  const dlBtn = document.getElementById("params-download-mesh");
   if (status) {
     status.classList.remove("error");
-    status.textContent = "Generating live preview…";
+    status.textContent = "Generating geometry…";
   }
+  if (dlBtn) dlBtn.disabled = true;
   try {
-    const params = paramsBuildPreviewBody();
     const res = await fetch("/api/preview_mesh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ params }),
+      body: JSON.stringify({ params: paramsBuildPreviewBody() }),
     });
     if (res.status === 401) {
       showGate();
@@ -3626,63 +3653,29 @@ async function paramsRequestPreviewNow() {
       if (status) {
         status.classList.add("error");
         status.textContent =
-          "Preview failed (" + res.status + "): " + String(detail).slice(0, 200);
+          "Download failed (" + res.status + "): " + String(detail).slice(0, 200);
       }
       return;
     }
     const blob = await res.blob();
-    const blobUrl = URL.createObjectURL(blob);
-    // Free the previous blob URL so the browser can reclaim its
-    // memory (otherwise URLs accumulate while the user drags sliders).
-    if (paramsPreviewLatestUrl) {
-      URL.revokeObjectURL(paramsPreviewLatestUrl);
-    }
-    paramsPreviewLatestUrl = blobUrl;
-    if (window.paramsViewer) {
-      window.paramsViewer.load(blobUrl, "live preview");
-    }
-    // Now that there is a mesh to download, enable the button.
-    const dlBtn = document.getElementById("params-download-mesh");
-    if (dlBtn) dlBtn.disabled = false;
-    if (status) status.textContent = "";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "propeller.obj";
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+    if (status) status.textContent = "Geometry downloaded.";
   } catch (e) {
     if (status) {
       status.classList.add("error");
       status.textContent =
-        "Preview network error: " + (e && e.message ? e.message : e);
+        "Download network error: " + (e && e.message ? e.message : e);
     }
   } finally {
-    paramsPreviewInflight = false;
-    if (paramsPreviewPending) {
-      paramsPreviewPending = false;
-      // Fire a follow-up using the LATEST slider state — handles
-      // the case where the user kept moving sliders while the in-
-      // flight request was running.
-      paramsRequestPreviewNow();
-    }
+    if (dlBtn) dlBtn.disabled = false;
   }
-}
-
-function paramsRequestPreviewDebounced() {
-  if (paramsPreviewTimer) clearTimeout(paramsPreviewTimer);
-  paramsPreviewTimer = setTimeout(() => {
-    paramsPreviewTimer = null;
-    paramsRequestPreviewNow();
-  }, PARAMS_PREVIEW_DEBOUNCE_MS);
-}
-
-function paramsDownloadMesh() {
-  // Same programmatic-link pattern as the chat view's
-  // download-mesh button (app.js around line 2670).  Source is the
-  // blob URL of the most recent successful preview rather than a
-  // server URL.
-  if (!paramsPreviewLatestUrl) return;
-  const a = document.createElement("a");
-  a.href = paramsPreviewLatestUrl;
-  a.download = "propeller_preview.obj";
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
 }
 
 function paramsSetState(key, newState) {
@@ -3787,9 +3780,8 @@ function paramsBuildRow(spec) {
   // signal that this value is now user-imposed).  The first input
   // event of a session takes the row from VARY → FIXED; subsequent
   // inputs while already FIXED just update the visible value.  Also
-  // schedules a debounced live-preview request (Step 7) so the 3D
-  // viewer on the left regenerates the propeller for the new
-  // parameter set.
+  // schedules a live FEG rebuild so the 3D viewer on the left
+  // regenerates the propeller for the new parameter set.
   range.addEventListener("input", () => {
     const v = parseFloat(range.value);
     paramState[spec.key] = v;
@@ -3797,7 +3789,7 @@ function paramsBuildRow(spec) {
     if (paramRowState[spec.key] !== "fixed") {
       paramsSetState(spec.key, "fixed");
     }
-    paramsRequestPreviewDebounced();
+    paramsRequestFEG();
   });
 
   // Button click: toggle VARY ↔ FIXED.  Slider value is preserved
@@ -4024,6 +4016,10 @@ function paramsApplyProposal(values) {
     }
     paramsSetState(key, "proposed");
   }
+
+  // Rebuild the FEG preview so it reflects the proposed propeller the user
+  // is now looking at (non-FIXED sliders moved to their proposed values).
+  paramsRequestFEG();
 }
 
 async function paramsSubmit() {
@@ -4131,20 +4127,14 @@ function paramsResetAll() {
   // dropped as a no-op.)
   _lastSentFixedDict = null;
   _lastSentFixedFingerprint = null;
-  // Live-preview cleanup: revoke the current blob URL, cancel any
-  // pending debounce, unload the params viewer, disable Download.
-  if (paramsPreviewLatestUrl) {
-    URL.revokeObjectURL(paramsPreviewLatestUrl);
-    paramsPreviewLatestUrl = null;
+  // Live-preview cleanup: cancel any pending FEG rebuild, unload the
+  // params viewer, disable Download.  The default propeller re-builds
+  // automatically the next time the user opens the Parameters Inputs view
+  // (switchView → paramsRenderFEG).
+  if (paramsFegRafId !== null) {
+    cancelAnimationFrame(paramsFegRafId);
+    paramsFegRafId = null;
   }
-  if (paramsPreviewTimer) {
-    clearTimeout(paramsPreviewTimer);
-    paramsPreviewTimer = null;
-  }
-  // In-flight preview requests will resolve naturally; a stale
-  // response loading after reset just paints into the freshly-
-  // unloaded params viewer, which is harmless visual flicker at
-  // worst.
   if (window.paramsViewer && window.paramsViewer.unload) {
     window.paramsViewer.unload();
   }

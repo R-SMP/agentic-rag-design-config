@@ -178,7 +178,8 @@
         <!-- LEFT pane: 3D viewer (own instance — Step 4) -->
         <aside class="viewer-panel params-viewer-panel">
           <div class="viewer-toolbar">
-            <span class="viewer-title">3D preview</span>
+            <span class="viewer-title"
+                  title="Fast in-browser preview (FEG). Use Download geometry for the precise RhinoCompute mesh.">3D preview (approximate)</span>
             <span id="params-viewer-attempt" class="viewer-attempt"></span>
             <span id="params-viewer-name" class="viewer-name"></span>
             <button id="params-viewer-reset" class="ghost"
@@ -186,18 +187,19 @@
           </div>
           <div id="params-viewer" class="viewer">
             <div id="params-viewer-placeholder" class="viewer-placeholder">
-              Move any slider to generate a live preview.
+              Preview (approximate). Move any slider to update.
             </div>
           </div>
           <!--
             Footer mirroring the chat viewer's Download geometry button.
-            Disabled until the live-preview pipeline (Step 7) loads a
-            mesh into #params-viewer.  The click handler is wired in
-            Step 7 alongside the live-preview fetch.
+            The live preview above is the fast in-browser FEG; this button
+            fetches the PRECISE RhinoCompute geometry (RCG) for the current
+            parameters and downloads it (handler: paramsDownloadMesh).
           -->
           <div class="viewer-footer">
             <button id="params-download-mesh" class="ghost" type="button"
-                    disabled title="Save the displayed .obj mesh">
+                    disabled
+                    title="Generate and download the precise RhinoCompute geometry (.obj)">
               Download geometry
             </button>
           </div>
