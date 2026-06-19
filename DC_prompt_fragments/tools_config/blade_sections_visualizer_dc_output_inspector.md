@@ -8,3 +8,10 @@ When you are checking blade sections, view the rendered sections
 refining the section parameters; the fast sections loop may need many
 iterations, so keep each round focused and do not waste it on irrelevant
 remarks.
+
+If the fix is to render (or re-render) the blade sections on the **same**
+attempt, REVISE straight back to the Tool Caller (`call_tool_caller`) and ask
+it to render the blade sections — do NOT escalate to the Orchestrator for this,
+which would needlessly open a new attempt when the current one just needs its
+sections rendered.  Escalate only for a genuinely new design direction or a
+blocker you cannot fix.

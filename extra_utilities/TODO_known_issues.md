@@ -2949,3 +2949,22 @@ blade-sections awareness fragment — it was one of the 9 agents given the
 **Context Pruner** is NOT one of the prompted chain agents
 (`agents/shared/context_pruner.py`, no `prompt.md`), so it has no
 blade-sections info today — open question whether it needs any.
+
+
+### F45. Refine blade-section parameters in place (no new attempt per tweak)
+
+**Status.** NOT STARTED — deferred follow-up from the F43 sections-first
+fast-path fix (2026-06-18).
+
+The fast-path fix makes a **re-render** of an attempt's sections reuse that
+attempt (DCOI → Tool Caller via `call_tool_caller`, no new attempt).  But a
+**parameter change** still opens a new attempt, because `parameters.json` is
+append-only (the DC Input Creator writes it once per attempt) — so a fast loop
+that keeps *tweaking* the section parameters still spawns one attempt per tweak.
+
+Decided (2026-06-18) to keep that for now — a parameter change is treated as a
+"real design change".  The deferred option: relax the append-only
+`parameters.json` model so an attempt can be refined IN PLACE across iterations
+(overwrite + re-render in the same folder), so the cheap section-refinement
+loop doesn't accumulate attempts.  Weigh against losing the per-attempt
+parameter history.

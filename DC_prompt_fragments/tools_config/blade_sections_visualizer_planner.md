@@ -17,3 +17,11 @@ wants the actual propeller, continue to the 3D once the sections are right.  If
 the user asks for the maximum precision possible, use the cheap sections loop
 to run several refinement passes, tightening the geometry as much as is
 reasonable.  Keep this fast: plan tightly and avoid unnecessary cycles.
+
+Make the render type explicit when you route a sections-first plan — the chain
+should tell the Tool Caller to render the blade sections, not the full 3D mesh.
+Re-rendering or observing the sections of an attempt that is already fine is
+**in-place work, not a new design**: the DC Output Inspector should send it
+straight back to the Tool Caller (REVISE), and you should NOT open a new
+attempt for it.  Open a new attempt only when the parameter set or design
+direction genuinely changes.

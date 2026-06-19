@@ -13,8 +13,12 @@ is to match a user's drawing whose own grid squares are not 1 mm each — the tw
 scales would not correspond, so the grid would confuse rather than help.  When
 in doubt, leave the grid off.
 
-Sections-first fast path: when the plan calls for it (a section-centric
-request), use this tool to render and iterate on the sections quickly instead
-of generating the full 3D mesh — `render_blade_sections` skips RhinoCompute, so
-it is much faster.  Only call the full mesh generator once the 3D propeller is
-actually wanted.
+Sections-first fast path: your incoming hand-off may ask you to render the
+blade sections instead of the full 3D propeller (a section-centric request, or
+the DC Output Inspector asking for the sections of the current attempt).  When
+it does, call `render_blade_sections` with the `Parameters file:` path and the
+`Current attempt:` folder — and do NOT call the mesh-generation tool this
+cycle.  This skips RhinoCompute, so it is much faster.  Only generate the full
+mesh once the hand-off asks for the actual 3D propeller.  Re-rendering the
+sections of an attempt you have already built reuses that same attempt — you do
+not need a new one.

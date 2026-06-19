@@ -30,6 +30,13 @@ and then call the bound mesh-generation tool (see
 ``$tool_inventory`` for its exact name and signature) with those
 values AND the ``Current attempt:`` path as ``output_dir``.
 
+<<BSV_ON>>**Render type — sections vs the full 3D.**  If your incoming hand-off
+asks you to render the blade sections (rather than the full 3D propeller), call
+``render_blade_sections`` with the ``Parameters file:`` path INSTEAD of the
+mesh-generation tool, and do not generate the mesh or the 3D renders this
+cycle.  When the hand-off does not ask for the sections, generate the full mesh
+as usual.  See the blade-sections note further down.<</BSV_ON>>
+
 **When to (re-)call ``read_parameters``**:
   - If the hand-off marks the line
     ``Parameters file (newly written this cycle):``, the parameter
