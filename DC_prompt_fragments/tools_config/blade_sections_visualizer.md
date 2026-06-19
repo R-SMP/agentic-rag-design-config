@@ -11,3 +11,11 @@ behind the sections as a measurement reference.
 Reach for this when only the cross-section shapes matter — inspecting or
 comparing the airfoils, or showing the user the sections — rather than the
 whole propeller.
+
+Because it skips the (slow) full 3D mesh generation, rendering the sections is
+**much faster** than producing the whole propeller.  So when a request centres
+on the blade sections — e.g. the user gives drawings of sections or specific
+section details — the system can render the sections first, check them, and
+refine cheaply, then decide whether the full 3D propeller is needed at all; the
+sections image can even be the final result when that is all the user asked
+for.

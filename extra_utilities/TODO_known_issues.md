@@ -2896,31 +2896,43 @@ documented in **W39**.  Smoke test
 
 ### F40. Planner: use the blade-sections creator tool when sections must be observed
 
-**Status.** NOT STARTED.  Prompt / logic enhancement (Planner).  Relates to
-the `render_blade_sections` tool (gated by `BLADE_SECTIONS_VISUALIZER_ENABLED`;
-`tools/render_blade_sections/` + `DC_prompt_fragments/tools_config/blade_sections_visualizer*.md`).
+**Status.** ADDRESSED (prompt-first, 2026-06-18) — the Planner blade-sections
+overlay (`DC_prompt_fragments/tools_config/blade_sections_visualizer_planner.md`)
+tells it to prefer a sections-first plan when sections must be observed.  Part
+of the BSV fast-path fragments alongside `render_blade_sections`
+(`tools/render_blade_sections/`).
 
 > Let the Planner know that, if there are sections to be observed as well, to use the blade sections creator tool
 
 
 ### F41. Planner: "maximum precision possible" means multiple refinement attempts
 
-**Status.** NOT STARTED.  Prompt / logic enhancement (Planner).
+**Status.** PARTIALLY ADDRESSED (2026-06-18) — the Planner blade-sections
+overlay covers the sections-context case (max precision ⇒ several cheap
+section-refinement passes); the general directive (any geometry, not just
+sections) is still open.
 
 > Let the planner know that it is very important that if the user specifies they want maximum precision possible, it means performing multiple attempts trying to refine the geometry as much as possible (within a reasonable error)
 
 
 ### F42. Make the Planner and DCOI processes faster / more focused
 
-**Status.** NOT STARTED.  Prompt / logic enhancement (Planner + DC Output Inspector).
+**Status.** PARTIALLY ADDRESSED (2026-06-18) — the sections-context "clear,
+precise, non-wasteful feedback" guidance is in the DCOI + Planner blade-sections
+overlays; the general Planner/DCOI efficiency (beyond blade sections) is
+deferred to a later step (user decision).
 
 > Try to make the planner and the DCOI make their processes faster. e.g. when the DCOI observes the blade sections, many iterations may be required, so the feedback is to be given clearly and precisely and don't waste time on useless feedback. It all depends on the user request
 
 
 ### F43. Treat the Blade-sections renderer as a full new capability (sections-first fast path)
 
-**Status.** NOT STARTED — to be optimized in the very soon future.  Prompt +
-functioning + logic.
+**Status.** ADDRESSED (prompt-first, BSV fragments, 2026-06-18) — the
+sections-first fast path is now in the Planner / Tool-Caller / DCOI / UII
+blade-sections overlays + the shared brief; the system can render + check
+sections first and may stop at the sections (chat image as the deliverable; no
+downstream code change this pass).  Deeper workflow / logic optimization
+remains a later step.
 
 > Let the system understand that, if the Blade section rendering tool is ON, that is a FULL NEW CAPABILITY that the system can use. If the user provides drawings of blade sections, or specific details about the blade sections, the system can first run the blade section renderer, check this, and then decide whether to generate a 3D geometry or not, because generating the blade sections only is much faster. This is just a suggestion, but still it can be done depending on the circumstance. This is to be optimized in the funcitoning, logic, and prompt wording for the soon future (very soon)
 
