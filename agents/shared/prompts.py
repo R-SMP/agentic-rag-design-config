@@ -84,6 +84,12 @@ _HAS_DBA_RE = re.compile(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>", re.DOTALL)
 # takes effect next session).  See ``apply_bsv_filter``.
 _BSV_ON_RE = re.compile(r"<<BSV_ON>>(.*?)<</BSV_ON>>", re.DOTALL)
 _BSV_OFF_RE = re.compile(r"<<BSV_OFF>>(.*?)<</BSV_OFF>>", re.DOTALL)
+# Per-agent chain-only filter — strips ``<<CHAIN_ONLY>>`` regions from the
+# two user-facing agents (Receptionist, Orchestrator), which compose prose
+# for the user and are not links in the forward chain, and unwraps them for
+# the six chain agents.  See ``apply_chain_only_filter``.
+_CHAIN_ONLY_RE = re.compile(r"<<CHAIN_ONLY>>(.*?)<</CHAIN_ONLY>>", re.DOTALL)
+_USER_FACING_AGENTS = frozenset({"receptionist", "orchestrator"})
 
 
 def apply_dcii_filter(text: str) -> str:
@@ -178,12 +184,31 @@ def apply_dba_filter(text: str, agent_dir_name: str) -> str:
     return text
 
 
+def apply_chain_only_filter(text: str, agent_dir_name: str) -> str:
+    """Resolve ``<<CHAIN_ONLY>>...<</CHAIN_ONLY>>`` conditional regions.
+
+    The Receptionist and Orchestrator are user-facing agents that compose
+    prose for the user and are not links in the forward chain, so
+    chain-only constraints (FORWARD-to-next, escalate-to-Orchestrator,
+    permission-routing, blind-retry, don't-script-user-wording) are
+    stripped from their prompts.  The six chain agents keep them; the
+    Database Handler has no such regions, so unwrapping is a no-op there.
+
+    Like :func:`apply_dba_filter`, this is per-agent and therefore runs in
+    :func:`_build_template` rather than in :func:`apply_flag_filters`.
+    """
+    if agent_dir_name in _USER_FACING_AGENTS:
+        return _CHAIN_ONLY_RE.sub("", text)
+    return _CHAIN_ONLY_RE.sub(lambda m: m.group(1), text)
+
+
 def apply_flag_filters(text: str) -> str:
     """Apply both DCII and PLANNER_FIRST filters in sequence.
 
-    NOTE: per-agent filters (currently :func:`apply_dba_filter`)
-    are applied separately in :func:`_build_template` because they
-    need to know which agent's template is being assembled.
+    NOTE: per-agent filters (:func:`apply_dba_filter`,
+    :func:`apply_chain_only_filter`) are applied separately in
+    :func:`_build_template` because they need to know which agent's
+    template is being assembled.
     """
     return apply_bsv_filter(
         apply_planner_first_filter(apply_dcii_filter(text))
@@ -443,6 +468,8 @@ FRAGMENT_TO_SLOT: dict[str, str] = {
     "DC_prompt_fragments/tools_config/retrieve_attempt.md":           "retrieve_attempt_tool",
     # Generic fragments
     "agents/shared/prompt_fragments/generic_constraints.md":  "hard_constraints_generic",
+    "agents/shared/prompt_fragments/eos_feedback_intro.md":   "eos_feedback_intro",
+    "agents/shared/prompt_fragments/eos_feedback_outro.md":   "eos_feedback_outro",
     "agents/shared/prompt_fragments/routing_receptionist.md": "routing_receptionist",
     "agents/shared/prompt_fragments/routing_orchestrator.md": "routing_orchestrator",
     "agents/shared/prompt_fragments/available_agents.md":     "available_agents",
@@ -545,6 +572,8 @@ def _build_slots() -> dict[str, str]:
         "blade_sections_visualizer_off": _read_dc_fragment("tools_config/blade_sections_visualizer_off.md"),
         # Generic
         "hard_constraints_generic": _read_generic_fragment("generic_constraints.md"),
+        "eos_feedback_intro": _read_generic_fragment("eos_feedback_intro.md"),
+        "eos_feedback_outro": _read_generic_fragment("eos_feedback_outro.md"),
         # Per-agent routing fragments (Receptionist + Orchestrator only;
         # the six chain agents load theirs via routing_instructions())
         "routing_receptionist": _read_generic_fragment("routing_receptionist.md"),
@@ -613,10 +642,13 @@ def _build_template(agent_dir_name: str) -> str:
     once = Template(raw).safe_substitute(slots)
     twice = Template(once).safe_substitute(slots)
     filtered = apply_flag_filters(twice)
-    # apply_dba_filter is per-agent (consults the per-agent flag in
-    # database_access.json + the RAG_ENABLED master switch), so it
-    # runs separately from the global apply_flag_filters chain.
-    return apply_dba_filter(filtered, agent_dir_name)
+    # apply_dba_filter and apply_chain_only_filter are per-agent — they
+    # consult, respectively, the per-agent DBa flag in database_access.json
+    # (+ the RAG_ENABLED master switch) and the user-facing-vs-chain agent
+    # classification — so they run separately from the global
+    # apply_flag_filters chain.
+    filtered = apply_dba_filter(filtered, agent_dir_name)
+    return apply_chain_only_filter(filtered, agent_dir_name)
 
 
 # ---------------------------------------------------------------------------

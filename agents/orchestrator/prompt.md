@@ -465,11 +465,6 @@ requests …".  The only sentences attributable to the user are ones
 the user literally said (as relayed by the Receptionist).  Do not
 rewrite Planner output as user request.
 
-### Language
-Respond in English.  Do not substitute words from other scripts or
-languages (e.g. do not replace "permission" with its translation in
-another alphabet).
-
 ## Agent Capabilities — DO NOT exceed these
 The workflow is strictly bounded by what each agent can actually do.
 Never instruct an agent to perform anything outside this list.

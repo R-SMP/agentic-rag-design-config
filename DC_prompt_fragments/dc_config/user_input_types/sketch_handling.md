@@ -1,104 +1,88 @@
-A "sketch" — for the purposes of this system — is a USER-SUPPLIED
-reference image whose value is QUALITATIVE: it conveys overall
-intent (layout, structural elements, gross proportions, counts of
-repeated features), NOT precise dimensions or exact geometry.
-Sketches are deliberately imperfect — hand-drawn, freehand, often
-asymmetric, often missing details — and they communicate what the
-user broadly wants without dictating every measurement.
+A "sketch" here is a USER-SUPPLIED reference image that conveys design
+intent.  Its PRECISION varies by case — do NOT assume it is rough.
+Judge where each reference image falls on the spectrum from a rough,
+freehand doodle to a precise, measured drawing, and match it
+accordingly.
 
-### When to treat a user image as a sketch
+### Judging a sketch's precision
+Weigh, per image:
+  * **What the user says** — "rough" / "approximate" / "just an idea"
+    points to a qualitative sketch; "to scale" / "precise" / "accurate" /
+    "match exactly" points to a precise one.
+  * **Line quality** — wobbly, uneven, freehand lines usually mean a
+    rougher sketch; crisp, controlled lines mean a more precise one.
+  * **Image character** — dimensions, a scale bar, gridlines, or clean
+    CAD-like geometry point to precise; no dimensioning, freehand wobble,
+    and asymmetry between elements meant to be identical point to rough.
+  * **View type** — a whole-propeller doodle is usually rough; a
+    dedicated blade top-view or a blade-section (airfoil) profile often
+    carries precise proportions (chord, camber, thickness, angle) the
+    user means for you to reproduce.
 
-Treat a user-supplied reference image as a sketch when ANY of the
-following is true:
+A single input can be MIXED — e.g. a precise blade-section profile
+alongside a rough overall-layout doodle.  Assess each image, and each
+feature within it, on its own.
 
-  * The user (in ``user_query.txt`` or in the paired
-    ``_note.txt``) calls it a sketch / drawing / doodle / rough
-    draft / rough idea / approximate / freehand / "just an
-    example" or any equivalent phrasing.
-  * The visual character of the image is clearly hand-drawn:
-    uneven line widths, freehand wobble, visible asymmetries
-    between elements that ought to be identical (e.g. blades of
-    different lengths in what is clearly meant to be a symmetric
-    propeller), missing or rough hub / connection details, no
-    dimensioning, no axes / rulers / scale.
-  * The user's design intent prose explicitly asks the system to
-    "match qualitatively", "replicate the look", "follow the
-    rough shape", or similar non-literal phrasings.
+### Matching a ROUGH sketch — qualitative
+  * Imperfections are drawing artifacts, not design intent: asymmetry
+    between elements that should match, line wobble, off-centre features,
+    and small distortions are NOISE.  The configurator produces clean,
+    symmetric geometry, and THAT is the intended outcome.
+  * Do NOT seek a pixel- or proportion-perfect match.  "Matches the
+    sketch" means same layout, same structural elements, same broad
+    proportions and shape character — not identical line positions.
+  * Do NOT revise merely because rendered curvature differs from a
+    freehand line, the hub is more cylindrical than a wobbly drawing, or
+    the ring is more perfectly circular.
+  * Recovery loops must NOT chase sketch imperfections.  If the only
+    remaining "mismatch" is sketch-quality (irregular curvature, slight
+    asymmetry, hand-drawn imprecision), the design is CONVERGED — do not
+    order another cycle.
 
-When in doubt, DEFAULT TO sketch — slightly relaxed matching is a
-much milder failure mode than chasing imperfections forever.
+### Matching a PRECISE sketch — faithful within the parameters
+  * Read the drawn proportions and reproduce them as closely as the 17
+    parameters allow — e.g. a measured blade-section's thickness, camber,
+    high-point, chord, and angle, or the middle section's radial
+    position.
+  * A real deviation from a deliberately-precise proportion IS a defect
+    worth a revision — unlike hand-drawn wobble, it is not noise.
+  * You are still bounded by the 17 parameters: reproduce what they can
+    express; when the drawing implies geometry outside their reach, match
+    as closely as possible and say what could not be captured.
 
-### Rules that apply when the user input is a sketch
+### Always true, regardless of precision
+  * **Counts of repeated features are ALWAYS precise** — discrete counts
+    (blades, struts, holes, arms) are a digital attribute the user
+    clearly expressed; count them in the appropriate view and treat the
+    count as authoritative.
+  * Honor the user's INTENDED geometry, never literal pixels: even a
+    precise drawing has some hand tremor — reproduce the proportions it
+    specifies, not the tremor.
+  * Communicate honestly: say whether you matched qualitatively or
+    reproduced precise proportions, name the features that agree, and
+    when a feature cannot be brought closer (parameter limits, or a rough
+    source) say so plainly — don't imply more iterations would close the
+    gap.
 
-  1. **Imperfections are drawing artifacts, NOT design intent.**
-     Asymmetries between elements that should be identical, line
-     wobble, off-centre features, missing details, and small
-     distortions are NOISE — not requirements to replicate.  The
-     configurator produces clean, symmetric geometry; THAT is the
-     intended outcome.
+### UII responsibility — record the sketch's precision in the extraction
+The User Input Inspector decides whether a reference image is a sketch
+and how precise it is, and states that in the DESIGN INTENT section of
+``extracted_inputs.txt`` so downstream agents (including DCOI comparison
+modes that don't load the image, and the DC Input Creator that authors
+the parameters) match with the right strictness.  Make the assessment
+explicit — for example, for a rough image:
 
-  2. **DO NOT seek a 1-to-1 / pixel-perfect / proportion-perfect
-     match.**  A sketch communicates intent, not specification.
-     "Matches the sketch" means: same overall layout, same
-     structural elements, same counts of repeated features, same
-     broad proportions and shape character — NOT identical line
-     positions, proportions to within sketch precision, or
-     replicated imperfections.
+    Reference image is a ROUGH SKETCH — match qualitatively; treat
+    asymmetry / wobble / imperfections as drawing artifacts, not
+    requirements; counts of repeated features are still precise.
 
-  3. **Counts of repeated features ARE precise — count them
-     carefully.**  Even though the sketch is qualitative overall,
-     discrete counts (number of blades, struts, holes, arms, etc.)
-     are a digital attribute the user clearly expressed.  Count
-     them in the appropriate view and treat the count as
-     authoritative, just like any other quantitative input.
-     Imperfections in shape / curvature / spacing do NOT bleed
-     into the count.
+or, for a precise one:
 
-  4. **Comparison against a sketch is QUALITATIVE.**  Approve a
-     design when the rendered geometry agrees with the sketch's
-     STRUCTURAL intent — counts, presence/absence of major
-     features, overall layout, broad proportions.  Do NOT trigger
-     a revision because the rendered curvature differs from a
-     freehand line, the rendered hub is more cylindrical than a
-     wobbly drawn hub, or the rendered ring is more perfectly
-     circular than the drawn one.  Those differences are EXPECTED
-     — the configurator's output is supposed to be cleaner than
-     the sketch.
+    Reference image is a PRECISE SKETCH (measured blade sections) —
+    reproduce the drawn section proportions (thickness / camber /
+    high-point / chord / angle) as closely as the parameters allow;
+    counts are precise; ignore only genuine hand tremor.
 
-  5. **Recovery loops must NOT chase sketch imperfections.**  If
-     the only remaining "mismatch" between renders and sketch is
-     sketch-quality (irregular curvature, slight asymmetry,
-     hand-drawn imprecision, exact proportions slightly off),
-     the design is CONVERGED — do not order another DCIC → ...
-     → DCOI cycle.  Recovery cycles exist to resolve real
-     geometry problems, not to re-roll random parameter changes
-     hoping to coincidentally hand-draw the user's wobble.
-
-  6. **Communicate the limit to the user honestly.**  When you
-     report a finished design, do NOT claim "the design exactly
-     matches your sketch".  Say it matches the sketch's
-     QUALITATIVE intent, and name the structural features that
-     specifically agree (counts, layout, presence of major
-     features).  When a feature cannot be replicated more
-     closely without violating the sketch's qualitative intent
-     (or without exceeding parameter ranges), say so plainly —
-     don't pretend further iterations would close the gap.
-
-### UII responsibility — stamp sketch character into the extraction
-
-The User Input Inspector is the agent that decides whether the
-user supplied a sketch and that records that decision in
-``extracted_inputs.txt``.  When the input qualifies as a sketch
-under the criteria above, the UII MUST include in the extraction's
-DESIGN INTENT section an explicit line of the form:
-
-    Reference image is a SKETCH — match qualitatively only;
-    treat asymmetries / wobble / imperfections as drawing
-    artifacts, not design requirements; counts of repeated
-    features are still precise.
-
-That line is what propagates the sketch character to every
-downstream agent — including DCOI comparison modes that don't
-load the user image directly.  Without it, downstream agents
-will default to literal matching and waste recovery cycles
-chasing unmeetable proportions.
+Without this, downstream agents default to a single strictness and
+either chase unmeetable proportions on a rough sketch or discard real
+proportions on a precise one.

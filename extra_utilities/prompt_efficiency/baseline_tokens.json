@@ -1,0 +1,11 @@
+{
+  "database_handler": 7469,
+  "dc_input_creator": 25019,
+  "dc_input_inspector": 24092,
+  "dc_output_inspector": 23610,
+  "orchestrator": 15354,
+  "planner": 30389,
+  "receptionist": 22618,
+  "tool_caller": 11215,
+  "user_input_inspector": 25314
+}

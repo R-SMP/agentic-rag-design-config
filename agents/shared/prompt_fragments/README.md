@@ -23,16 +23,25 @@ to the prompt-fragment library** (rather than to any single
 | `routing_dc_input_creator_planner_first.md` / `routing_dc_input_creator_uii_first.md` | DCIC's "Available routing tools" subsection, dual-variant on `PLANNER_FIRST`. | (loaded by `routing.py`) |
 | `available_agents.md` | Directory of every agent in the system with role descriptions (used by the Planner). May reference other `$`-slots (e.g. `$parameter_count`, `$tool_inventory`); `_build_template` runs a second pass to resolve them. | `$available_agents` |
 
-**Conditional regions inside fragments and prompts.** Two flags
+**Conditional regions inside fragments and prompts.** Several flags
 gate optional content:
 
 - `<<DCII_ONLY>>…<</DCII_ONLY>>` and `<<DCII_OFF>>…<</DCII_OFF>>` —
   resolved against `DC_INSPECTOR_ENABLED`.
 - `<<PF_ON>>…<</PF_ON>>` and `<<PF_OFF>>…<</PF_OFF>>` — resolved
   against `PLANNER_FIRST`.
+- `<<BSV_ON>>…<</BSV_ON>>` / `<<BSV_OFF>>…<</BSV_OFF>>` — resolved
+  against `BLADE_SECTIONS_VISUALIZER_ENABLED`.
+- `<<HAS_DBA>>…<</HAS_DBA>>` — **per-agent**, kept only for agents that
+  have `database_search` access.
+- `<<CHAIN_ONLY>>…<</CHAIN_ONLY>>` — **per-agent**, stripped for the two
+  user-facing agents (Receptionist, Orchestrator) and kept for the six
+  chain agents.
 
-`apply_flag_filters(text)` in `agents/shared/prompts.py` runs both
-passes after every `$`-slot substitution.
+`apply_flag_filters(text)` in `agents/shared/prompts.py` runs the global
+(DCII / PF / BSV) passes; the per-agent `<<HAS_DBA>>` and `<<CHAIN_ONLY>>`
+filters run in `_build_template` (they need the agent identity). All run
+after every `$`-slot substitution.
 
 The chain agents' routing fragments are pulled in at wiring time by
 `agents/shared/routing.py:routing_instructions(...)`, which composes
