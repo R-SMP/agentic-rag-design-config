@@ -158,7 +158,7 @@ class DCInputCreator(BaseChainAgent):
         all_tools = (
             [self._read_tool, self._write_tool]
             + list(self._extra_utility_tools_by_name.values())
-            + build_user_inputs_tools(self.AGENT_KEY)
+            + build_user_inputs_tools(self.AGENT_KEY, include_image_tools=False)
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)
@@ -494,11 +494,13 @@ class DCInputCreator(BaseChainAgent):
     def on_operation_end(self) -> None:
         """End-of-operation hook called by the dispatcher.
 
-        With ``keep_images_in_context=False`` strip every image content
-        block from this agent's history (the DCIC may load user input
-        images via ``load_input_images`` to inform parameter
-        creation), leaving the paired ``Loaded image (path: …):``
-        text blocks behind.  No-op when ``keep_images_in_context=True``.
+        The DCIC no longer loads user images (it works from
+        ``extracted_inputs.txt``), so there are normally no image blocks
+        to strip — this remains a no-op safety net that, with
+        ``keep_images_in_context=False``, would strip any stray image
+        content block from history (leaving paired ``Loaded image
+        (path: …):`` text behind).  No-op when
+        ``keep_images_in_context=True``.
         """
         if self.keep_images_in_context:
             return

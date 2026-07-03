@@ -167,7 +167,9 @@ USER_INPUTS_TOOL_NAMES = {
 }
 
 
-def build_user_inputs_tools(agent_key: str) -> list:
+def build_user_inputs_tools(
+    agent_key: str, include_image_tools: bool = True
+) -> list:
     """Return the user-inputs tool objects to bind to *agent_key*.
 
     Built fresh (not a static list) so the OCR-dependent tools/flags
@@ -178,17 +180,21 @@ def build_user_inputs_tools(agent_key: str) -> list:
     ``OCR_ENABLED`` AND the per-agent flag), read as of that session's
     build.  ``list_input_files`` / ``read_input_text`` /
     ``read_image_notes`` are static (OCR does not touch them).
+
+    When *include_image_tools* is False the agent gets ONLY the text-file
+    tools (``list_input_files`` / ``read_input_text``); the image-viewing
+    tools (``read_image_notes`` / ``load_input_images`` / ``ocr_region``)
+    are withheld.  The DC Input Creator uses this — it works from
+    ``extracted_inputs.txt`` and does not view raw images.
     """
-    on = ocr_access.is_enabled_for(agent_key)
-    tools = [
-        list_input_files,
-        read_input_text,
-        read_image_notes,
-        _build_load_input_images(on),
-    ]
-    if on:
-        # The region zoom-in tool exists only when OCR is enabled.
-        tools.append(_build_ocr_region())
+    tools = [list_input_files, read_input_text]
+    if include_image_tools:
+        on = ocr_access.is_enabled_for(agent_key)
+        tools.append(read_image_notes)
+        tools.append(_build_load_input_images(on))
+        if on:
+            # The region zoom-in tool exists only when OCR is enabled.
+            tools.append(_build_ocr_region())
     return tools
 
 
