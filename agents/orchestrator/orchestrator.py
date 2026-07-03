@@ -69,6 +69,20 @@ from workflow_settings import database_access
 logger = logging.getLogger("propeller_agent")
 
 
+_ROLE4_INSTRUCTIONS_PATH = Path(__file__).parent / "role4_feedback_instructions.md"
+
+
+def _load_role4_instructions() -> str:
+    """Role-4 (end-of-session feedback distribution) instructions.
+
+    Held in a sibling ``.md`` and injected into the feedback-round trigger
+    message ONLY when that pass runs (see ``run_feedback_round``) — so the
+    ~100-line block no longer ships in the Orchestrator's live-pipeline
+    system prompt on every turn.
+    """
+    return _ROLE4_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
+
+
 _CHAIN_ACCESS_ON = """\
 ## Inter-agent communication visibility (ENABLED)
 Whenever control returns to you (a new incoming message from the
@@ -837,39 +851,27 @@ class Orchestrator(BaseChainAgent):
 
         # Compose the instruction message.  This is a TRANSIENT message
         # list (we do NOT append to self.messages) so the design
-        # pipeline's history stays clean.  The system prompt's Role-4
-        # section explains what the Orchestrator must do; this message
-        # just delivers the user's three fields plus the live target
-        # list.
+        # pipeline's history stays clean.  The Role-4 instructions live in
+        # a sibling .md (injected here by CONCATENATION — not str.format —
+        # so its literal JSON braces survive) rather than in the live
+        # system prompt; prepend them, then add the user's three fields
+        # plus the live target list.
         ww = (what_went_well or "").strip() or "(no text supplied)"
         ww_wrong = (what_went_wrong or "").strip() or "(no text supplied)"
         targets_md = ", ".join(target_keys)
 
-        instruction = HumanMessage(content=(
-            "END-OF-SESSION FEEDBACK ROUND (Role 4).\n\n"
-            "The user has ended this design session and elected to "
-            "save it.  Their feedback follows.\n\n"
+        live_data = (
+            "--- THIS SESSION'S FEEDBACK ---\n\n"
             f"Satisfaction (y/partial/n): {(satisfaction or '').strip() or '(unset)'}\n"
             f"What worked well: {ww}\n"
             f"What did NOT work: {ww_wrong}\n\n"
-            "TASK: emit ONE call to `submit_feedback_dispatch` with a "
-            "list containing exactly one dispatch object per agent in "
-            f"this scope (in any order): {targets_md}.\n\n"
-            "For each agent, decide whether the user's feedback "
-            "contains material relevant to that agent's responsibilities "
-            "(see the 'Agent Capabilities' section of your system "
-            "prompt for the per-agent scope reminders).  When relevant, "
-            "set send=true and put the EXACT user-text portion that "
-            "applies to that agent into `message` — only the parts that "
-            "pertain to this agent, copying the user's own words.  "
-            "When nothing applies, set send=false and pass an empty "
-            "message; that is the correct default for most "
-            "agent-session pairs.\n\n"
-            "Do NOT paraphrase the user.  Do NOT duplicate the same "
-            "line to multiple agents.  Do NOT skip any agent from the "
-            "list — surface a 'send=false' dispatch instead.  Emit the "
-            "tool call now."
-        ))
+            "Target agents (emit exactly one dispatch each, any order): "
+            f"{targets_md}\n\n"
+            "Emit the submit_feedback_dispatch call now."
+        )
+        instruction = HumanMessage(
+            content=_load_role4_instructions() + "\n\n" + live_data
+        )
 
         try:
             response = invoke_with_retry(
