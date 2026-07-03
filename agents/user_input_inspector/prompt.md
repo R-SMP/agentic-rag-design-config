@@ -200,14 +200,10 @@ DCIC, DCII) read this section verbatim.
 - **OVERWRITE on user revision.**  When the user revises a value,
   the new value REPLACES the old line.  Do NOT append a second
   line for the same quantity — overwrite the existing one.
-- **Released parameters are OMITTED, never annotated.**  When a
-  parameter has been released by the user (the
-  ``"The user is no longer constraining ..."`` block, or any
-  natural-language equivalent in chat), DROP the line entirely.
-  Do NOT write ``X: 4 (unlocked by user)``, ``X: 4 (formerly
-  fixed)``, or any other historical annotation — see the
-  "Temporal scope and Parameters Inputs interface blocks" section
-  above for the full rule.
+- **Released parameters are OMITTED, never annotated.**  When the
+  user releases a parameter, DROP its line entirely — no
+  ``(unlocked by user)`` / ``(formerly fixed)`` annotation (see the
+  "Temporal scope" section above for the full rule).
 
 **HARD RULE — countable features in reference images must be
 counted EXPLICITLY.**  When the user supplied a reference image
@@ -240,13 +236,10 @@ summarised here in clear prose** when the user grants explicit
 permission in chat for the system to vary specific values.  Be
 specific about scope: blanket or parameter-specific?  Any
 exclusions?  Any conditions ("only if needed for viability")?
-Note: parameters released via the Parameters Inputs interface
-(``"The user is no longer constraining..."`` block) are handled
-by simply OMITTING them from QUANTITATIVE INPUTS per the
-"Temporal scope" rules above — they do not need a duplicate
-qualitative note unless the user added natural-language colour to
-the release ("you can vary the blade count freely, prioritise
-balance").
+Note: a released parameter is simply OMITTED (per "Temporal scope"
+above); it needs no qualitative note unless the user added
+natural-language colour to the release ("vary the blade count
+freely, prioritise balance").
 
 ### 3. Design Intent and Functional Requirements
 What is the user trying to achieve?  Consider:
@@ -389,20 +382,14 @@ and asks you to treat its values as the baseline for the new
 request, you SHOULD inspect the relevant attempt and incorporate
 its parameters into the extraction.  Examples:
 
-- *"Use the same parameters as the latest attempt you just
-  generated, but decrease the number of blades by 1."* —
-  call ``list_attempts()`` to locate the latest attempt's
-  number, then ``read_attempt(n, 'parameters.json')`` to fetch
-  its values.  Write the resulting 17 values (with
-  ``bladeCount`` decremented) into QUANTITATIVE INPUTS so
-  downstream agents see the user's baseline ready to go.
-- *"Take attempt 3 but make the camber larger."* — same
-  pattern: ``read_attempt(3, 'parameters.json')`` + incorporate.
-- *"Compare attempt 1 and attempt 4 and give me something
-  between them."* — read both, describe the difference in
-  QUALITATIVE DESCRIPTIONS, and (if appropriate) write an
-  interpolated parameter set in QUANTITATIVE INPUTS as the
-  starting point.
+- *"Use the same parameters as the latest attempt, but decrease the
+  blades by 1."* — ``list_attempts()`` to find the latest attempt,
+  ``read_attempt(n, 'parameters.json')`` to fetch its values, then
+  write the resulting 17 values (with ``bladeCount`` decremented) into
+  QUANTITATIVE INPUTS so downstream agents see the baseline.  Same
+  pattern for "take attempt 3 but …".  For "compare attempt 1 and 4,
+  give me something between", read both, note the difference in
+  QUALITATIVE DESCRIPTIONS, and if useful write an interpolated set.
 
 When the user does NOT reference any specific attempt — most
 generic requests like *"make me a propeller"* or *"make it
