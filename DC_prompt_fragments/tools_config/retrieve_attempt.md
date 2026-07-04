@@ -13,16 +13,16 @@ its rendered geometry for a visual judgement, or to compare its
 parameters against the current attempt's.
 
 **When NOT to call it** — without a concrete GLOBAL attempt id (use
-``database_search`` first); for the user's original inputs (that is
+``database_search`` first; the global ids appear in its
+``<available_attempts>`` block), for the user's original inputs (that is
 ``retrieve_user_inputs``'s job — raw inputs are session-scoped, not
-attempt-scoped); or in a loop (one call with all relevant ids).
+attempt-scoped), or in a loop (one call with all relevant ids).
 
 **Reading the response.**  The meta header's ``render_views_in_scope``
 lists which of isometric / top / side the deployed policy admits; with
-``images_flag=True`` only those views' PNG bytes attach (as content
-blocks on the next message, each preceded by its R2 key), and an attempt
-with no renders yields no ``<renders>`` block.  An id missing from
-``dc_attempts`` renders as ``status="not_found"``; a failed R2 fetch
-leaves ``<missing path="..."/>`` markers; over the token cap, whole
-attempts drop from the END with a ``<truncated omitted_attempts="K"/>``
-footer (image bytes are not counted toward the cap).
+``images_flag=True`` only those views' PNG bytes attach (each preceded by
+its R2 key), and an attempt with no renders yields no ``<renders>`` block.
+The ``status="not_found"`` / ``<missing path="..."/>`` /
+``<truncated omitted_attempts="K"/>`` conventions — and image bytes not
+counting toward the token cap — are the same as ``retrieve_user_inputs``
+above.

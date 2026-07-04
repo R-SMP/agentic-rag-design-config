@@ -23,30 +23,22 @@ answered DIFFERENT requests under DIFFERENT constraints.
     user's inputs; use past content to inform your method, not to
     short-cut your judgement.
 
-**Same words, different case.**  A past session's language can read as if
-it applies to you while its underlying context (template, conventions,
-reference values) does not — the same phrase can be silently wrong under
-your context.  Treat past claims as transferable LITERALLY only after you
-have visual proof the contexts match: when the past session involved
-images, pull them (``retrieve_user_inputs(session_ids=[<sid>],
-images_flag=True)``), compare, and confirm the layout / labelled fields /
-conventions are the same.  When the contexts differ at all, keep only the
-PRINCIPLE — what the past agent checked, what defects they watched for,
-why — and drop the literal values.
-
-**Use the images.**  For any visual or geometric judgement — comparing a
-past sketch to the current one, checking how a past blade actually
-rendered, confirming that parameters you are considering produced the
-expected shape last time — fetch the pixels with ``retrieve_user_inputs``
-(past user images) or ``retrieve_attempt`` (attempt renders), both with
-``images_flag=True``.  ``database_search`` itself returns TEXT ONLY: each
-matched ``<session>`` carries an ``<available_attempts>`` list of
-``global_id`` values you can feed to ``retrieve_attempt`` (including
-attempts that did not directly match your query).  In the multimodal
-Database-options mode a match may also carry ``<image_ref>`` elements (a
-past user image or render whose visual content matched) — fetch the
-actual pixels the same way.  Text-only is cheaper but loses the visual
-evidence; for visual calls the fetch is usually worth it.
+**Verify context before trusting past content — and use the images.**  A
+past session's language can read as if it applies to you while its
+underlying context (template, conventions, reference values) differs — the
+same phrase can be silently wrong.  Treat a past claim as literally
+transferable only after you have visual proof the contexts match; when they
+differ at all, keep only the PRINCIPLE (what the past agent checked, which
+defects they watched for, why) and drop the literal values.  For any visual
+or geometric judgement — a past sketch vs the current one, how a past blade
+rendered, whether a parameter set produced the expected shape — fetch the
+pixels: ``retrieve_user_inputs(session_ids=[...], images_flag=True)`` for
+past user images, ``retrieve_attempt(..., images_flag=True)`` for attempt
+renders (usually worth it for a visual call; text-only is cheaper).
+``database_search`` itself returns TEXT ONLY — each ``<session>`` lists
+``<available_attempts>`` global_ids you can feed to ``retrieve_attempt``,
+and in multimodal mode a match may also carry ``<image_ref>`` elements to
+fetch the same way.
 
 **When to call it** — when a question or doubt could plausibly be
 answered by prior sessions: an obstacle you have hit, background on what
