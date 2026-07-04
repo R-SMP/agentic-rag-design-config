@@ -52,9 +52,8 @@ plan format below is for recovery reasoning.
     ``Current attempt: <absolute path>``<<PF_ON>> and ask the UII to carry it
     through to the DCIC<</PF_ON>>; omit it only when you deliberately leave
     attempt-creation to the DCIC.  When the hand-off references user
-    images, add your sense of how readable each is (a simple one rarely
-    needs re-loading downstream; a complex one often does) — a hint for
-    the DCII / DCOI, not a binding classification.
+    images, add your sense of how readable each is — a hint for the DCII /
+    DCOI on whether to re-load, not a binding classification.
 <<PF_OFF>>  * **CLARIFY back to the UII** (``call_user_input_inspector``) — ONLY
     when the extraction you received is missing required information or
     carries an inconsistency that only the UII can resolve.  That is
@@ -355,9 +354,8 @@ The user's input directory ({user_inputs_dir}) contains:
     input — read it via ``read_extracted_inputs(<path>)`` before
     consulting the raw files.<</PF_OFF>>
   * ``{input_images_subdir}/`` subfolder — OPTIONAL user reference
-    images, each paired with a ``<name>_note.txt`` describing it
-    (case-insensitive stem match; the Receptionist enforces pairing
-    before forwarding).
+    images, each paired with a ``<name>_note.txt`` describing it (the
+    Receptionist enforces the pairing, so any image present has its note).
 
 On-demand tools: ``list_input_files()`` (categorised listing incl.
 pairing status), ``read_input_text(path)`` (one text file, e.g. a

@@ -273,14 +273,11 @@ The user's input directory contains:
     in the "Temporal scope and Parameters Inputs interface
     blocks" section above.
   * ``input_images/`` subfolder — OPTIONAL user-supplied reference
-    images.  Convention (enforced by the Receptionist before
-    forwarding): every ``<name>.png``, ``<name>.jpg``, or
-    ``<name>.jpeg`` is paired with a ``<name>_note.txt`` in the same
-    folder describing the image.  Stem matching is case-insensitive
-    (``Image1.JPG`` ↔ ``image1_note.txt``).  The note files are first-class user
-    intent, NOT optional commentary — when an image is present, the
-    user uploaded it AND wrote a description of what it shows;
-    integrate the image AND its note into the extraction.
+    images, each paired with a ``<name>_note.txt`` describing it (the
+    Receptionist enforces the pairing before forwarding, so any image
+    present is guaranteed to have its note).  The notes are first-class
+    user intent, NOT optional commentary — integrate BOTH the image and
+    its note into the extraction.
 
 When images are part of the user's inputs you MUST inspect them
 together with their notes.  ``read_user_inputs`` (below) walks both
@@ -382,9 +379,12 @@ that path.  When your incoming hand-off carried a ``Current attempt:``,
 copy it through<<PF_OFF>> (the Planner relays it to the DCIC)<</PF_OFF>>; otherwise omit
 it.  A minimal forward is just those lines after a short note.
 
-**Extraction-only request → ``call_orchestrator``** with a brief summary
-of what you extracted.  The Orchestrator relays it to the user via the
-Receptionist; no design-generation steps run.
+**Extraction-only request** (read / report the inputs, not a design
+generation)<<PF_OFF>> — forward it to the Planner exactly as above; the Planner
+recognises the extraction-only ask and returns the answer, so you do not
+route it specially.<</PF_OFF>><<PF_ON>> → ``call_orchestrator`` with a brief summary of
+what you extracted; the Orchestrator relays it to the user via the
+Receptionist (the Planner already ran, so no further chain steps run).<</PF_ON>>
 
 **ESCALATE → ``call_orchestrator``** when the request is out of scope,
 asks for something not in the user's files, or you hit an error you
