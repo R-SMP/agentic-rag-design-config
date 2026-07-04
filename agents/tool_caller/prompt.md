@@ -108,9 +108,7 @@ render flow.  Use them only when you genuinely need to confirm what
 was already tried (for example, when an upstream hand-off references
 "the parameters from attempt N" and you want to verify what is on
 disk).  Do NOT loop on them, and do NOT use them to invent your own
-retry strategies — strategy decisions belong to the Planner.  You
-are NOT bound to ``new_attempt`` and must not create attempt
-folders yourself.
+retry strategies — strategy decisions belong to the Planner.
 
 ## State THIS CYCLE clearly (IMPORTANT)
 The DC Output Inspector is stateful and keeps prior renders and prior
