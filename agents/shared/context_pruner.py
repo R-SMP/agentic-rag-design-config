@@ -48,130 +48,64 @@ ask coherent follow-ups.  All other chain agents are pruned.
 
 from langchain_core.messages import HumanMessage, SystemMessage
 
-# Tier 1 — broad-strokes summary of the older portion of the history.
-# The latest N messages survive verbatim, so this summary can afford
-# to be aggressive: it covers everything BEFORE the most-recent
-# window, and the LLM will see the verbatim window right after it.
-COARSE_SUMMARY_PROMPT = """\
+# ---------------------------------------------------------------------------
+# Pruning prompts — a shared base + a short per-tier delta.  Only ONE tier
+# fires per prune (they are never concatenated), so composing them from one
+# base keeps the keep/drop philosophy DRY.
+# ---------------------------------------------------------------------------
+
+_PRUNER_BASE = """\
 You are the Context Pruner for a propeller design configurator system.
+Your output REPLACES the history you are given, so it must be self-
+contained: a reader seeing only it must be able to make the next correct
+agent decision.
 
-## Your Role
-When an agent's message history grows too long, prune it to keep only
-the essential information.  Your output replaces the agent's history.
+KEEP the signal — current design state (latest parameters, mesh / render,
+assessment), specific values + attempt ids, key decisions and their
+reasoning, the most recent error / unresolved issue, and the pending
+instruction driving the next turn.  DROP or CONDENSE the noise —
+boilerplate and restated instructions, verbose tool arguments / raw
+outputs (keep only key metrics + warnings), file paths, superseded
+attempts, and resolved exchanges.
 
-## What to REMOVE
-- Old image render descriptions that have been superseded by newer ones.
-- User messages referring to requests that are no longer being pursued.
-- Verbose tool-call arguments and raw tool outputs (keep only key findings).
-- Redundant back-and-forth that has been resolved.
-- Repetitive error messages from the same root cause.
+Output: keep chronological order; a numbered list of
+``<role>: <condensed content>`` works well."""
 
-## What to KEEP
-- The current design requirements and parameters.
-- Important decisions and their reasoning.
-- The most recent error messages and lessons learned.
-- The current state of the design (latest parameters, latest assessment).
-- Any unresolved issues or pending questions.
+# Tier 1 — broad-strokes summary of the older portion; the latest window
+# survives verbatim, so this pass can be aggressive.
+COARSE_SUMMARY_PROMPT = _PRUNER_BASE + """
 
-## What to SUMMARISE (replace verbose content with a brief summary)
-- Multiple attempts at fixing a design → "Attempted N fixes; main issue
-  was X; resolution was Y."
-- Old visual-render descriptions → one-line summary of findings.
-- Long tool outputs → key metrics and warnings only.
+## This pass — COARSE (tier 1)
+Summarise the OLDER portion — everything before the most-recent window,
+which the reader sees verbatim right after you.  Be aggressive; broad
+strokes are fine (e.g. "attempted N fixes; the issue was X; resolution Y")."""
 
-## Output Format
-Return a condensed version of the conversation as a numbered list of
-concise messages.  Each entry should state:
-  <role>: <condensed content>
+# Tier 2 — fine summary of the most-recent window; fires when tier 1 was
+# not enough.  This window drives the imminent decision, so stay precise.
+FINE_SUMMARY_PROMPT = _PRUNER_BASE + """
 
-Preserve chronological order.  The result must be self-contained —
-someone reading only your output should understand the full context.
-"""
+## This pass — FINE (tier 2)
+The older history is already coarsely summarised; you get only the MOST
+RECENT window, which drives the imminent decision.  Be PRECISE — keep
+specific values, attempt ids, the last decision, and the last error
+VERBATIM; condense only boilerplate.  When unsure about a value, KEEP it."""
 
-# Tier 2 — fine summary of the MOST RECENT window.  Fires only when
-# Tier 1 was not enough.  Because this window is small (the last
-# ``CONTEXT_PRUNER_KEEP_LAST_MESSAGES`` messages) and immediately
-# precedes the next agent decision, the summary should be more
-# PRECISE than the coarse one — keep specific values, attempt
-# numbers, last decisions, last errors verbatim where possible.
-# Condense only the verbose framing (handshakes, restated
-# instructions, tool-call boilerplate).
-FINE_SUMMARY_PROMPT = """\
-You are the Context Pruner for a propeller design configurator system.
+# Tier 3 — ultra-compact super-summary; fires when tiers 1+2 together
+# still overflow.  Input is the two prior summaries concatenated.
+ULTRA_COMPACT_SUMMARY_PROMPT = _PRUNER_BASE + """
 
-## Your Role (TIER 2 — fine summary)
-You are being called as a SECOND PASS, after a coarse summary already
-condensed the older portion of the conversation.  Your input is the
-MOST RECENT window of the conversation only.  Your output replaces
-those latest messages with a precise summary — the reader will see
-this immediately before producing the next agent turn, so the
-window's contents drive the imminent decision.
-
-## What to PRESERVE VERBATIM
-- Specific numeric values, attempt numbers (e.g. "attempt 003"),
-  parameter names and their values.
-- The LAST decision the conversation reached.
-- The LAST reported error / failure / unresolved issue.
-- Any unresolved tool-call result that the next turn must act on.
-- The most recent user / orchestrator instruction (it almost
-  certainly drives the next reply).
-
-## What to CONDENSE (but do NOT drop)
-- Handshakes, restated instructions, courteous boilerplate.
-- Tool-call ARGUMENT echoes that have already been answered.
-- Repeated framing the agent has already acknowledged.
-
-## What you may DROP
-- Restated old context that the coarse summary already covered.
-- Polite acknowledgements with no informational content.
-
-## Output Format
-Return a numbered list of concise messages preserving chronological
-order.  Each entry should state:
-  <role>: <condensed content>
-
-Be MORE PRECISE than a coarse summary: when in doubt about whether
-to keep a specific value or attempt id, KEEP IT.
-"""
-
-# Tier 3 — ultra-compact super-summary.  Fires only when Tiers 1+2
-# together still left the history above threshold.  Input is the
-# concatenation of the two prior summaries (coarse + fine).  Output
-# is ONE merged summary, terse, keeping only the absolute essentials.
-ULTRA_COMPACT_SUMMARY_PROMPT = """\
-You are the Context Pruner for a propeller design configurator system.
-
-## Your Role (TIER 3 — ultra-compact super-summary)
-You are being called as a THIRD AND FINAL PASS.  Two prior summaries
-of the same conversation have already condensed it once at a coarse
-level and once at a fine level.  Both together STILL exceeded the
-agent's context budget.  Your input is those two summaries
-concatenated.  Produce ONE merged ultra-compact summary that
-replaces both.
-
-## What to KEEP (and ONLY these)
-1. Current design state — latest parameter set, latest mesh /
-   render, latest assessment.
-2. The current task or pending question that the next agent turn
-   must answer.
-3. The single most-critical decision made during the session.
-4. The single most-recent unresolved issue or error.
-
-## What to DROP
-Everything else.  This includes earlier design attempts, prior
-errors that have been resolved, intermediate decisions that have
-been superseded, and any narrative or framing.
-
-## Output Format
-Terse paragraphs or a short numbered list.  The reader has very
-little context budget left — this summary must be brief but
-self-contained: someone reading only your output should still be
-able to make the next correct agent decision for the current task.
-"""
+## This pass — ULTRA-COMPACT (tier 3, final)
+Two prior summaries (coarse + fine) together STILL overflow; your input is
+both concatenated.  Merge them into ONE ultra-compact summary keeping
+ONLY: (1) current design state, (2) the pending task / question, (3) the
+single most-critical decision, (4) the single most-recent unresolved
+issue.  Drop everything else — earlier attempts, resolved errors,
+superseded decisions, all narrative.  Output terse short paragraphs (your
+input is summaries, not a role-tagged transcript)."""
 
 
-# Public alias retained for any external caller that imported the
-# previous single-prompt name.  Equivalent to the coarse prompt.
+# Public alias retained for any external caller that imported the previous
+# single-prompt name.  Equivalent to the coarse prompt.
 SYSTEM_PROMPT = COARSE_SUMMARY_PROMPT
 
 
