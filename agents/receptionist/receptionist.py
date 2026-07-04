@@ -43,8 +43,6 @@ from agents.shared.routing_tools import (
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
     dispatch_user_inputs_tool,
-    list_input_files,
-    read_image_notes,
     read_input_text,
 )
 from config import ATTEMPTS_DIR
@@ -104,18 +102,15 @@ class Receptionist(BaseChainAgent):
 
     def set_tools(self, tools: list) -> None:
         """Bind ``read_agent_history``, ``calculate``, ``list_attempts``,
-        ``read_attempt``, the user-inputs inspection tools (listing,
-        reading text, reading image notes — but NOT loading image
-        bytes; the Receptionist does not analyse images itself),
-        ``visualize_3d_model`` (push a generated mesh to the web
-        viewer), plus the ``call_orchestrator`` routing tool."""
+        ``read_attempt``, ``read_input_text`` (re-read a specific input
+        note; the Receptionist does not load image bytes or analyse
+        images itself), ``visualize_3d_model`` (push a generated mesh to
+        the web viewer), plus the ``call_orchestrator`` routing tool."""
         all_tools = list(tools) + [
             calculate,
             list_attempts,
             read_attempt,
-            list_input_files,
             read_input_text,
-            read_image_notes,
             visualize_3d_model,
             # Step 9 of the Parameters Inputs redesign — UI-update
             # side-effect tool.  Receptionist calls this to surface a
