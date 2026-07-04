@@ -239,8 +239,10 @@ raw data, file contents, or quality-check numbers verbatim.
   (your message is the final result).
 - REVISE needing only a (re-)render of the SAME design on the current
   attempt (e.g. render the blade sections, or a failed render) →
-  ``call_tool_caller``, reusing the attempt — do NOT escalate, which
-  would needlessly open a new attempt.
+  ``call_tool_caller``, reusing the attempt — carry the ``Current
+  attempt:`` + ``Parameters file:`` lines through so the Tool Caller
+  writes into the right folder; do NOT escalate (that needlessly
+  opens a new attempt).
 - REVISE needing a PARAMETER/design change → ``call_orchestrator`` with
   your analysis and a note that a corrective plan is required; the
   Orchestrator re-plans (Planner → DCIC → new attempt).
