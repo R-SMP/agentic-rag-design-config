@@ -150,6 +150,35 @@
               <button id="img-delete" class="danger" type="button">Delete image</button>
             </div>
             <span id="img-status" class="img-status" role="status"></span>
+
+            <div id="img-compress" class="img-compress">
+              <div class="img-compress-head">
+                Compression — lowers resolution to cut the vision tokens an
+                agent pays for this image. The original file is never changed.
+              </div>
+              <div class="img-compare">
+                <figure class="img-compare-side">
+                  <img id="cmp-orig" class="cmp-img" alt="original" />
+                  <figcaption>Original</figcaption>
+                </figure>
+                <figure class="img-compare-side">
+                  <img id="cmp-out" class="cmp-img" alt="compressed" />
+                  <figcaption id="cmp-out-cap">Compressed</figcaption>
+                </figure>
+              </div>
+              <div class="img-compress-controls">
+                <input id="cmp-slider" class="cmp-slider" type="range"
+                       min="0" max="100" step="1" value="0" />
+                <input id="cmp-number" class="cmp-number" type="number"
+                       min="0" max="100" step="1" value="0" />
+                <span class="cmp-unit">% compression</span>
+              </div>
+              <div id="cmp-stats" class="cmp-stats"></div>
+              <div class="img-btn-row">
+                <button id="cmp-save" class="primary" type="button">Save compression</button>
+                <span id="cmp-status" class="img-status" role="status"></span>
+              </div>
+            </div>
           </div>
         </div>
       </section>

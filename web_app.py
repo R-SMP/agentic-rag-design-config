@@ -27,6 +27,7 @@ import functools
 import hmac
 import json
 import logging
+import base64
 import os
 import queue
 import re
@@ -49,6 +50,14 @@ from agents.dispatch import dispatch_turn
 from agents.loader import _archive_previous_session
 from agents.shared.attempts_tool import attempt_label_for_path
 from agents.shared.file_utils import pair_input_images
+from agents.shared.image_compression import (
+    compress_for_model,
+    estimate_image_tokens,
+    read_degree,
+    sniff_media_type,
+    suggested_degree,
+    write_degree,
+)
 from agents.shared.session import Session
 from agents.shared.stop_signal import (
     clear_stop as stop_signal_clear,
@@ -470,6 +479,11 @@ class ImageNoteIn(BaseModel):
 
 class ImageNameIn(BaseModel):
     name: str
+
+
+class ImageCompressionIn(BaseModel):
+    name: str
+    degree: int
 
 
 @app.get("/")
@@ -2356,6 +2370,83 @@ def api_images_delete(name: str) -> dict:
         note.unlink()
     logger.info("[WEB] image deleted: %s", image.name)
     return {"ok": True, "images": _image_listing()}
+
+
+# --------------------------------------------------------------------------
+# Per-image compression tuning (resolution "degree" 0-100)
+# --------------------------------------------------------------------------
+def _image_wh(raw: bytes) -> tuple[int, int]:
+    from io import BytesIO
+    from PIL import Image as _Image
+    with _Image.open(BytesIO(raw)) as _im:
+        return _im.size
+
+
+def _image_tokens(w: int, h: int) -> dict:
+    return {
+        "anthropic": estimate_image_tokens(w, h, "anthropic"),
+        "openai": estimate_image_tokens(w, h, "openai"),
+    }
+
+
+@app.get("/api/images/compression")
+def api_images_compression_get(name: str) -> dict:
+    """Current degree for an image (None = untuned) + the size-based
+    suggested default + original dimensions/bytes."""
+    _require_auth()
+    image = _safe_image_path(name)
+    if not image.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    raw = image.read_bytes()
+    w, h = _image_wh(raw)
+    return {
+        "name": image.name,
+        "degree": read_degree(image),          # None => untuned (auto-default)
+        "suggested": suggested_degree(w, h),
+        "width": w, "height": h, "bytes": len(raw),
+    }
+
+
+@app.get("/api/images/compression/preview")
+def api_images_compression_preview(name: str, degree: int) -> dict:
+    """Compress *image* at exactly *degree* and return the preview (data-URI)
+    plus before/after dimensions, per-provider token estimates and bytes."""
+    _require_auth()
+    image = _safe_image_path(name)
+    if not image.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    raw = image.read_bytes()
+    w, h = _image_wh(raw)
+    out = compress_for_model(raw, degree)
+    ow, oh = _image_wh(out)
+    if out == raw:
+        # Unchanged (0% or already <= floor) — reuse the served original rather
+        # than shipping the whole image back as a (possibly multi-MB) data-URI.
+        preview = "/api/images/file?name=" + quote(image.name) + "&_c=0"
+    else:
+        preview = "data:" + sniff_media_type(out) + ";base64," + \
+            base64.b64encode(out).decode()
+    return {
+        "name": image.name,
+        "degree": max(0, min(100, int(degree))),
+        "orig": {"width": w, "height": h, "bytes": len(raw), "tokens": _image_tokens(w, h)},
+        "compressed": {"width": ow, "height": oh, "bytes": len(out), "tokens": _image_tokens(ow, oh)},
+        "preview": preview,
+    }
+
+
+@app.post("/api/images/compression")
+def api_images_compression_save(body: ImageCompressionIn) -> dict:
+    """Persist the chosen degree in the image's sidecar (agents apply it on
+    load; the original file is never modified)."""
+    _require_auth()
+    image = _safe_image_path(body.name)
+    if not image.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    degree = max(0, min(100, int(body.degree)))
+    write_degree(image, degree)
+    logger.info("[WEB] compression degree %d%% saved for %s", degree, image.name)
+    return {"ok": True, "degree": degree}
 
 
 @app.get("/api/events")

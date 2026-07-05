@@ -1867,7 +1867,9 @@ class DatabaseHandler(BaseChainAgent):
                         n_up = _r2.upload_directory(
                             user_inputs_dir,
                             remote_prefix=f"{session_id}/user_inputs/",
-                            suffixes=(".txt", ".png", ".jpg", ".jpeg"),
+                            # .json = the per-image <stem>.compression.json
+                            # degree sidecar (user_inputs/ holds no other json).
+                            suffixes=(".txt", ".png", ".jpg", ".jpeg", ".json"),
                         )
                         logger.info(
                             f"[DH]  R2 mirror complete: {n_up} file(s) "

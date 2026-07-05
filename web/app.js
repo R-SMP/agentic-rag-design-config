@@ -3194,6 +3194,109 @@ function clearImgDetail() {
   imgDetailEmpty.hidden = false;
 }
 
+// --- Per-image compression tuning ---
+const cmpOrig = $("cmp-orig");
+const cmpOut = $("cmp-out");
+const cmpSlider = $("cmp-slider");
+const cmpNumber = $("cmp-number");
+const cmpStats = $("cmp-stats");
+const cmpSave = $("cmp-save");
+const cmpStatusEl = $("cmp-status");
+const cmpOutCap = $("cmp-out-cap");
+let cmpPreviewTimer = null;
+let cmpSuggested = 0;
+
+function setCmpStatus(msg, kind) {
+  if (!cmpStatusEl) return;
+  cmpStatusEl.textContent = msg || "";
+  cmpStatusEl.className = "img-status" + (kind ? " " + kind : "");
+}
+
+function cmpKB(n) { return Math.max(1, Math.round(n / 1024)); }
+
+async function loadCompression(name) {
+  if (!cmpSlider) return;
+  cmpOut.removeAttribute("src");
+  cmpStats.textContent = "";
+  setCmpStatus("", "");
+  cmpOrig.src = "/api/images/file?name=" + encodeURIComponent(name) +
+    "&_=" + Date.now();
+  try {
+    const res = await fetch(
+      "/api/images/compression?name=" + encodeURIComponent(name)
+    );
+    if (!res.ok) return;
+    const d = await res.json();
+    cmpSuggested = d.suggested || 0;
+    const deg = (d.degree === null || d.degree === undefined)
+      ? cmpSuggested : d.degree;
+    cmpSlider.value = deg;
+    cmpNumber.value = deg;
+    updateCompressionPreview();
+  } catch (e) { /* non-fatal */ }
+}
+
+function cmpSync(el) {
+  const v = Math.max(0, Math.min(100, parseInt(el.value, 10) || 0));
+  cmpSlider.value = v;
+  cmpNumber.value = v;
+  clearTimeout(cmpPreviewTimer);
+  cmpPreviewTimer = setTimeout(updateCompressionPreview, 220);
+}
+
+async function updateCompressionPreview() {
+  if (!imgSelected || !cmpSlider) return;
+  const deg = parseInt(cmpSlider.value, 10) || 0;
+  cmpStats.textContent = "…";
+  try {
+    const res = await fetch(
+      "/api/images/compression/preview?name=" +
+        encodeURIComponent(imgSelected) + "&degree=" + deg
+    );
+    if (!res.ok) { cmpStats.textContent = ""; return; }
+    const d = await res.json();
+    cmpOut.src = d.preview;
+    const o = d.orig, c = d.compressed;
+    cmpOutCap.textContent = deg === 0
+      ? "Compressed (0% — no change)"
+      : "Compressed (" + deg + "%)";
+    cmpStats.innerHTML =
+      "<b>" + o.width + "×" + o.height + "</b> → <b>" +
+        c.width + "×" + c.height + "</b> px" +
+      " &nbsp;·&nbsp; Anthropic " + o.tokens.anthropic + " → " +
+        c.tokens.anthropic + " tok" +
+      " &nbsp;·&nbsp; OpenAI " + o.tokens.openai + " → " +
+        c.tokens.openai + " tok" +
+      " &nbsp;·&nbsp; " + cmpKB(o.bytes) + " → " + cmpKB(c.bytes) + " KB";
+  } catch (e) { cmpStats.textContent = ""; }
+}
+
+async function saveCompression() {
+  if (!imgSelected) return;
+  const deg = parseInt(cmpSlider.value, 10) || 0;
+  cmpSave.disabled = true;
+  try {
+    const res = await fetch("/api/images/compression", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name: imgSelected, degree: deg }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { setCmpStatus(d.detail || "Save failed.", "err"); return; }
+    setCmpStatus("Compression saved (" + deg + "%).", "ok");
+  } catch (e) {
+    setCmpStatus("Save failed: " + e, "err");
+  } finally {
+    cmpSave.disabled = false;
+  }
+}
+
+if (cmpSlider) {
+  cmpSlider.addEventListener("input", () => cmpSync(cmpSlider));
+  cmpNumber.addEventListener("input", () => cmpSync(cmpNumber));
+  cmpSave.addEventListener("click", saveCompression);
+}
+
 function renderImageList(images) {
   imgListEl.innerHTML = "";
   if (!images.length) {
@@ -3274,6 +3377,7 @@ async function selectImage(name, url) {
   } catch (e) {
     setImgStatus("Could not load description: " + e, "err");
   }
+  loadCompression(name);
 }
 
 async function uploadFiles(fileList) {

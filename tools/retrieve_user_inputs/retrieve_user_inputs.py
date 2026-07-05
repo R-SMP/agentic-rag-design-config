@@ -49,6 +49,7 @@ from psycopg.types.json import Json
 
 from agents.shared import postgres_pool
 from agents.shared.agent_activity import generic_tool
+from agents.shared.image_compression import degree_from_json_text
 from agents.shared.llm_provider import encode_image_bytes, make_image_block
 from agents.shared.ocr import ocr_summary_if_enabled
 from agents.shared import r2_uploader
@@ -536,9 +537,17 @@ def _run_retrieve_user_inputs(
                             if data is None:
                                 fetch_failures.append(key)
                                 continue
-                            # Model sees the downscaled copy; OCR (below) still
-                            # reads the full-resolution ``data`` bytes.
-                            b64 = encode_image_bytes(data)
+                            # Re-apply the degree its author saved (auto-default
+                            # if no sidecar); the model sees the downscaled copy
+                            # while OCR (below) still reads full-res ``data``.
+                            _istem = img_name.rsplit(".", 1)[0]
+                            _sc = _r2_get_text(
+                                client, bucket,
+                                _r2_key(sid, "user_inputs", "images",
+                                        _istem + ".compression.json"),
+                            )
+                            _deg = degree_from_json_text(_sc) if _sc else None
+                            b64 = encode_image_bytes(data, _deg)
                             image_blocks.append(
                                 make_image_block(b64, provider)
                             )
