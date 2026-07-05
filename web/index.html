@@ -180,12 +180,25 @@
         <div id="cmp-lightbox" class="cmp-lightbox" hidden>
           <button id="cmp-lb-close" class="cmp-lb-close" type="button"
                   aria-label="Close">×</button>
-          <img id="cmp-lb-img" class="cmp-lb-img" alt="enlarged preview" />
+          <div id="cmp-lb-stage" class="cmp-lb-stage">
+            <img id="cmp-lb-img" class="cmp-lb-img" alt="enlarged preview"
+                 draggable="false" />
+          </div>
           <div class="cmp-lb-bar">
+            <div class="cmp-lb-zoom">
+              <button id="cmp-lb-zoomout" class="cmp-lb-btn" type="button"
+                      aria-label="Zoom out">−</button>
+              <span id="cmp-lb-zoomlvl" class="cmp-lb-zoomlvl">1.0×</span>
+              <button id="cmp-lb-zoomin" class="cmp-lb-btn" type="button"
+                      aria-label="Zoom in">+</button>
+              <button id="cmp-lb-reset" class="cmp-lb-btn" type="button">Fit</button>
+            </div>
+            <button id="cmp-lb-compare" class="cmp-compare" type="button">Hold to compare original</button>
             <span id="cmp-lb-label" class="cmp-lb-label">Compression: 0%</span>
             <input id="cmp-lb-slider" class="cmp-lb-slider" type="range"
                    min="0" max="100" step="1" value="0" />
           </div>
+          <div class="cmp-lb-hint">Wheel or +/− to zoom · drag or arrow keys to pan</div>
         </div>
       </section>
 

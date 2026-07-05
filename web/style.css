@@ -601,39 +601,64 @@ button.danger:hover { background: #3a1d1d; }
   position: fixed;
   inset: 0;
   z-index: 1000;
-  background: rgba(0, 0, 0, 0.85);
+  background: rgba(0, 0, 0, 0.9);
+  display: flex;
+  flex-direction: column;
+}
+.cmp-lb-stage {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
   justify-content: center;
+  position: relative;
 }
 .cmp-lb-img {
-  max-width: 92vw;
-  max-height: 78vh;
+  max-width: 100%;
+  max-height: 100%;
   object-fit: contain;
-  border-radius: 6px;
+  transform-origin: center center;
+  will-change: transform;
+  user-select: none;
+  -webkit-user-drag: none;
 }
 .cmp-lb-bar {
-  position: fixed;
-  left: 0;
-  right: 0;
-  bottom: 0;
   display: flex;
   align-items: center;
-  gap: 18px;
-  padding: 16px 24px;
-  background: rgba(0, 0, 0, 0.62);
+  gap: 14px;
+  padding: 14px 22px;
+  background: rgba(0, 0, 0, 0.72);
+  flex-wrap: wrap;
 }
-.cmp-lb-slider { flex: 1; min-width: 0; }
+.cmp-lb-zoom { display: flex; align-items: center; gap: 8px; }
+.cmp-lb-btn { min-width: 34px; padding: 4px 10px; font-size: 15px; line-height: 1.2; }
+.cmp-lb-zoomlvl {
+  color: #fff;
+  font-size: 13px;
+  min-width: 48px;
+  text-align: center;
+}
+.cmp-lb-slider { flex: 1; min-width: 140px; }
 .cmp-lb-label {
   color: #fff;
   font-size: 14px;
   white-space: nowrap;
   min-width: 150px;
 }
+.cmp-lb-hint {
+  position: fixed;
+  top: 16px;
+  left: 20px;
+  color: rgba(255, 255, 255, 0.55);
+  font-size: 12px;
+  pointer-events: none;
+}
 .cmp-lb-close {
   position: fixed;
   top: 14px;
   right: 18px;
+  z-index: 1;
   font-size: 28px;
   line-height: 1;
   padding: 2px 12px;
