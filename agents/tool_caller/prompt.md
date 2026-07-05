@@ -51,9 +51,6 @@ Do NOT call ``read_parameters`` with a guessed path.  If no
 
 {render_check_library_block}
 
-## Instructions
-$tool_caller_instructions
-
 ## HARD LIMITS — Do NOT
 - You have EXACTLY the utility tools listed above (plus the read
   and routing tools).  You cannot edit meshes, perform boolean unions,
