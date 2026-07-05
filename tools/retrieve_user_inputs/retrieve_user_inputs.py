@@ -49,7 +49,7 @@ from psycopg.types.json import Json
 
 from agents.shared import postgres_pool
 from agents.shared.agent_activity import generic_tool
-from agents.shared.llm_provider import make_image_block
+from agents.shared.llm_provider import encode_image_bytes, make_image_block
 from agents.shared.ocr import ocr_summary_if_enabled
 from agents.shared import r2_uploader
 from workflow_settings import ocr_access
@@ -536,7 +536,9 @@ def _run_retrieve_user_inputs(
                             if data is None:
                                 fetch_failures.append(key)
                                 continue
-                            b64 = base64.b64encode(data).decode()
+                            # Model sees the downscaled copy; OCR (below) still
+                            # reads the full-resolution ``data`` bytes.
+                            b64 = encode_image_bytes(data)
                             image_blocks.append(
                                 make_image_block(b64, provider)
                             )

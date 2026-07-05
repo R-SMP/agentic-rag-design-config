@@ -26,7 +26,7 @@ When it applies:
      usually too thin to anchor a numeric extraction.  Likewise
      ``retrieve_attempt(..., images_flag=True)`` when ``<available_attempts>``
      lists relevant past attempts.  Fetch only the most useful one or two
-     (each image is ~1-1.5k tokens).
+     (each image is auto-compressed on load to ~0.6-1k tokens).
   3. In your hand-off, say what you searched for, what you retrieved with
      images, what the comparison showed, and how (if at all) it changed your
      extraction — including "it did not change my conclusion", so the chain

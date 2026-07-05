@@ -51,7 +51,7 @@ from psycopg.types.json import Json
 
 from agents.shared import postgres_pool, r2_uploader
 from agents.shared.agent_activity import generic_tool
-from agents.shared.llm_provider import make_image_block
+from agents.shared.llm_provider import encode_image_bytes, make_image_block
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
@@ -490,7 +490,9 @@ def _run_retrieve_attempt(
                             # per-file <missing/> marker
                             fetch_failures.append(key)
                             continue
-                        b64 = base64.b64encode(data).decode()
+                        # Renders reach the model downscaled (is_render honours
+                        # the renders toggle); ``data`` stays full-res for R2.
+                        b64 = encode_image_bytes(data, is_render=True)
                         image_blocks.append(
                             make_image_block(b64, provider)
                         )

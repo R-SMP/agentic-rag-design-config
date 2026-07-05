@@ -438,7 +438,7 @@ class DCOutputInspector(BaseChainAgent):
                 and path.suffix.lower() in ALLOWED_IMAGE_SUFFIXES
             ):
                 try:
-                    b64 = encode_image(path)
+                    b64 = encode_image(path, is_render=True)
                     image_blocks.append(make_image_block(b64, self.provider))
                     image_paths.append(str(path.resolve()))
                     loaded.append(str(path))

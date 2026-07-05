@@ -735,3 +735,44 @@ OCR_MAX_TEXT_CHARS: int = 2000
 #
 # Valid values: True, False
 BLADE_SECTIONS_VISUALIZER_ENABLED: bool = True
+
+
+# ===========================================================
+# 26. Image compression (model-facing images)
+# ===========================================================
+# Images are billed to the LLM by PIXEL COUNT, not file size, so the only
+# lever that lightens an agent's token window is downscaling an image's
+# resolution before a model sees it.  The full-resolution original is
+# always kept and is what OCR + the embedding pipeline read; only the copy
+# sent to a model is downscaled.  The per-image amount is a 0-100
+# "compression degree" the user tunes in the Image Inputs view (0 = original
+# resolution, 100 = the floor below), stored in a <name>.compression.json
+# sidecar beside the image and re-applied when a past image is retrieved.
+#
+#   IMAGE_COMPRESSION_ENABLED       master switch.  False = images reach
+#                                   models at full resolution exactly as
+#                                   before (the choke-point passes bytes
+#                                   through untouched).
+#   IMAGE_COMPRESSION_MIN_LONG_EDGE the long edge (px) reached at 100%
+#                                   ("max compression").  Slider floor;
+#                                   never upscales.
+#   IMAGE_COMPRESSION_DEFAULT_CAP   size-based auto-default: an untuned
+#                                   image whose long edge exceeds this is
+#                                   compressed down to it; images already
+#                                   under it default to 0%.
+#   IMAGE_COMPRESSION_COMPRESS_RENDERS
+#                                   whether software-generated renders (3D
+#                                   views, blade-section diagrams) are also
+#                                   downscaled when an agent reads them.
+#                                   True = treat them like any image (most
+#                                   are already <= the cap); False = renders
+#                                   always reach the model at full resolution.
+#                                   Only the agent-facing copy is affected;
+#                                   the saved render file is always full-res.
+#
+# Valid values: IMAGE_COMPRESSION_ENABLED / _COMPRESS_RENDERS True|False; the
+# two sizes positive ints (px) with MIN_LONG_EDGE <= DEFAULT_CAP.
+IMAGE_COMPRESSION_ENABLED: bool = True
+IMAGE_COMPRESSION_MIN_LONG_EDGE: int = 512
+IMAGE_COMPRESSION_DEFAULT_CAP: int = 1024
+IMAGE_COMPRESSION_COMPRESS_RENDERS: bool = True

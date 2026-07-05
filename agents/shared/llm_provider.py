@@ -35,6 +35,11 @@ from dotenv import dotenv_values
 from langchain_core.messages import SystemMessage
 from langchain_core.rate_limiters import InMemoryRateLimiter
 
+from agents.shared.image_compression import (
+    compress_for_model,
+    read_degree,
+    sniff_media_type,
+)
 from workflow_settings import settings as _workflow_settings
 from workflow_settings.llm_defaults import model_for as _default_model_for
 
@@ -315,31 +320,57 @@ def list_agent_configs(agent_names: list[str]) -> list[dict]:
     return out
 
 
-def make_image_block(b64_data: str, provider: str) -> dict:
+def make_image_block(b64_data: str, provider: str, media_type: str = None) -> dict:
     """Build a provider-appropriate image content block.
 
     ``provider`` is the lowercase tag returned by ``build_llm``.  Any
     non-Anthropic provider gets the OpenAI-style ``image_url`` block,
-    which both OpenAI and Google accept.
+    which both OpenAI and Google accept.  ``media_type`` is auto-detected
+    from the image bytes when not given, so JPEG (and other formats) are
+    labelled correctly rather than always as ``image/png``.
     """
+    if media_type is None:
+        try:
+            media_type = sniff_media_type(base64.b64decode(b64_data[:16]))
+        except Exception:
+            media_type = "image/png"
     if provider == "anthropic":
         return {
             "type": "image",
             "source": {
                 "type": "base64",
-                "media_type": "image/png",
+                "media_type": media_type,
                 "data": b64_data,
             },
         }
     return {
         "type": "image_url",
-        "image_url": {"url": f"data:image/png;base64,{b64_data}"},
+        "image_url": {"url": f"data:{media_type};base64,{b64_data}"},
     }
 
 
-def encode_image(image_path: Path) -> str:
-    """Read an image file and return its base64 encoding."""
-    return base64.b64encode(Path(image_path).read_bytes()).decode()
+def encode_image(image_path: Path, is_render: bool = False) -> str:
+    """Read an image and return the base64 of its MODEL-facing copy.
+
+    The copy is downscaled per the image's stored compression degree
+    (size-based auto-default when untuned); the on-disk original is never
+    modified — OCR / embeddings read it directly.  ``is_render`` marks a
+    software-generated render so the renders toggle applies.
+    """
+    p = Path(image_path)
+    raw = compress_for_model(p.read_bytes(), read_degree(p), is_render=is_render)
+    return base64.b64encode(raw).decode()
+
+
+def encode_image_bytes(raw: bytes, degree_pct=None, is_render: bool = False) -> str:
+    """Base64 of the MODEL-facing (downscaled) copy of in-memory image bytes.
+
+    For images fetched from R2; the caller keeps the untouched original bytes
+    for OCR.  ``degree_pct`` None => size-based auto-default.
+    """
+    return base64.b64encode(
+        compress_for_model(raw, degree_pct, is_render=is_render)
+    ).decode()
 
 
 def make_system_message(prompt: str, provider: str) -> SystemMessage:
