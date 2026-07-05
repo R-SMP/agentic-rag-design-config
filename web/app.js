@@ -3194,32 +3194,44 @@ function clearImgDetail() {
   imgDetailEmpty.hidden = false;
 }
 
-// --- Per-image compression tuning ---
-const cmpOrig = $("cmp-orig");
-const cmpOut = $("cmp-out");
+// --- Per-image compression tuning (single preview + compare + lightbox) ---
 const cmpSlider = $("cmp-slider");
 const cmpNumber = $("cmp-number");
 const cmpStats = $("cmp-stats");
 const cmpSave = $("cmp-save");
 const cmpStatusEl = $("cmp-status");
-const cmpOutCap = $("cmp-out-cap");
+const cmpCompare = $("cmp-compare");
+const cmpLightbox = $("cmp-lightbox");
+const cmpLbImg = $("cmp-lb-img");
+const cmpLbSlider = $("cmp-lb-slider");
+const cmpLbLabel = $("cmp-lb-label");
+const cmpLbClose = $("cmp-lb-close");
 let cmpPreviewTimer = null;
 let cmpSuggested = 0;
+let cmpCurrentSrc = "";   // current compressed-preview src (compare + lightbox)
+let cmpOrigUrl = "";      // original-image file URL for the selected image
 
 function setCmpStatus(msg, kind) {
   if (!cmpStatusEl) return;
   cmpStatusEl.textContent = msg || "";
   cmpStatusEl.className = "img-status" + (kind ? " " + kind : "");
 }
-
 function cmpKB(n) { return Math.max(1, Math.round(n / 1024)); }
+
+// Keep the panel slider, number box and lightbox slider/label in lockstep.
+function applyDegreeUI(v) {
+  v = Math.max(0, Math.min(100, v || 0));
+  if (cmpSlider) cmpSlider.value = v;
+  if (cmpNumber) cmpNumber.value = v;
+  if (cmpLbSlider) cmpLbSlider.value = v;
+  if (cmpLbLabel) cmpLbLabel.textContent = "Compression: " + v + "%";
+}
 
 async function loadCompression(name) {
   if (!cmpSlider) return;
-  cmpOut.removeAttribute("src");
   cmpStats.textContent = "";
   setCmpStatus("", "");
-  cmpOrig.src = "/api/images/file?name=" + encodeURIComponent(name) +
+  cmpOrigUrl = "/api/images/file?name=" + encodeURIComponent(name) +
     "&_=" + Date.now();
   try {
     const res = await fetch(
@@ -3230,16 +3242,13 @@ async function loadCompression(name) {
     cmpSuggested = d.suggested || 0;
     const deg = (d.degree === null || d.degree === undefined)
       ? cmpSuggested : d.degree;
-    cmpSlider.value = deg;
-    cmpNumber.value = deg;
+    applyDegreeUI(deg);
     updateCompressionPreview();
   } catch (e) { /* non-fatal */ }
 }
 
 function cmpSync(el) {
-  const v = Math.max(0, Math.min(100, parseInt(el.value, 10) || 0));
-  cmpSlider.value = v;
-  cmpNumber.value = v;
+  applyDegreeUI(parseInt(el.value, 10) || 0);
   clearTimeout(cmpPreviewTimer);
   cmpPreviewTimer = setTimeout(updateCompressionPreview, 220);
 }
@@ -3255,11 +3264,10 @@ async function updateCompressionPreview() {
     );
     if (!res.ok) { cmpStats.textContent = ""; return; }
     const d = await res.json();
-    cmpOut.src = d.preview;
+    cmpCurrentSrc = d.preview;
+    if (imgPreview) imgPreview.src = d.preview;      // the single preview IS the compressed one
+    if (cmpLbImg && cmpLightbox && !cmpLightbox.hidden) cmpLbImg.src = d.preview;
     const o = d.orig, c = d.compressed;
-    cmpOutCap.textContent = deg === 0
-      ? "Compressed (0% — no change)"
-      : "Compressed (" + deg + "%)";
     cmpStats.innerHTML =
       "<b>" + o.width + "×" + o.height + "</b> → <b>" +
         c.width + "×" + c.height + "</b> px" +
@@ -3291,10 +3299,42 @@ async function saveCompression() {
   }
 }
 
+// Hold-to-compare: show the original while pressed, compressed on release.
+function cmpShowOriginal() { if (cmpOrigUrl && imgPreview) imgPreview.src = cmpOrigUrl; }
+function cmpShowCompressed() { if (cmpCurrentSrc && imgPreview) imgPreview.src = cmpCurrentSrc; }
+
+// Full-screen enlarge with a live slider at the bottom.
+function openLightbox() {
+  if (!cmpLightbox || !imgSelected) return;
+  cmpLbImg.src = cmpCurrentSrc || cmpOrigUrl;
+  applyDegreeUI(parseInt(cmpSlider.value, 10) || 0);
+  cmpLightbox.hidden = false;
+}
+function closeLightbox() { if (cmpLightbox) cmpLightbox.hidden = true; }
+
 if (cmpSlider) {
   cmpSlider.addEventListener("input", () => cmpSync(cmpSlider));
   cmpNumber.addEventListener("input", () => cmpSync(cmpNumber));
   cmpSave.addEventListener("click", saveCompression);
+}
+if (cmpCompare) {
+  cmpCompare.addEventListener("mousedown", cmpShowOriginal);
+  cmpCompare.addEventListener("mouseup", cmpShowCompressed);
+  cmpCompare.addEventListener("mouseleave", cmpShowCompressed);
+  cmpCompare.addEventListener("touchstart",
+    (e) => { e.preventDefault(); cmpShowOriginal(); }, { passive: false });
+  cmpCompare.addEventListener("touchend", cmpShowCompressed);
+}
+if (imgPreview) {
+  imgPreview.addEventListener("click", openLightbox);
+}
+if (cmpLightbox) {
+  cmpLbSlider.addEventListener("input", () => cmpSync(cmpLbSlider));
+  cmpLbClose.addEventListener("click", closeLightbox);
+  cmpLightbox.addEventListener("click",
+    (e) => { if (e.target === cmpLightbox) closeLightbox(); });
+  document.addEventListener("keydown",
+    (e) => { if (e.key === "Escape" && !cmpLightbox.hidden) closeLightbox(); });
 }
 
 function renderImageList(images) {
