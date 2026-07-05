@@ -62,7 +62,8 @@ def render_blade_sections(parameters_path: str, grid: bool = False) -> str:
             sections.  Default False.  Only enable it when a true-millimetre
             grid genuinely helps and will not mislead — e.g. do NOT enable it
             when matching a user's drawing whose own grid squares are not
-            1 mm, because the scales would not correspond.
+            1 mm, because the scales would not correspond.  When in doubt,
+            leave it off.
 
     Returns:
         A short message stating the written PNG path (and its size), or
