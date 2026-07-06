@@ -57,3 +57,6 @@ CLAUDE.md
 .DS_Store
 Thumbs.db
 desktop.ini
+node_modules/
+package-lock.json
+render_try/

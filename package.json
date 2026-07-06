@@ -1,0 +1,9 @@
+{
+  "name": "propeller-feg-node",
+  "private": true,
+  "type": "module",
+  "description": "Headless Node runner for the browser FEG geometry (web/feg/*). Reused by the Python agent geometry tool to export an OBJ so the render pipeline renders the SAME geometry the browser 3D preview shows (zero port-drift). Browser uses three@0.160.1 via CDN import map; pinned here to match.",
+  "dependencies": {
+    "three": "^0.160.1"
+  }
+}
