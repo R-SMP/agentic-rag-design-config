@@ -1149,6 +1149,22 @@ button.danger:hover { background: #3a1d1d; }
   gap: 3px;
   padding: 2px 0;
 }
+/* DBa / OCR / Crops toggle badges: one horizontal row at the bottom of
+   the box (not stacked), so up to three fit within the box footprint
+   instead of spilling onto the box below and overlapping it. */
+.lr-agent-badges {
+  display: flex;
+  flex-direction: row;
+  flex-wrap: wrap;      /* graceful fallback on a very narrow box */
+  justify-content: flex-end;
+  align-items: center;
+  gap: 2px;
+}
+.lr-agent-badges > button {
+  align-self: center;   /* override the stacked-layout align-self: flex-end */
+  margin-top: 0;        /* override the per-button stacked top margin */
+  padding: 2px 5px;     /* tighter so three badges fit on one line (~118px) */
+}
 .lr-provider-select,
 .lr-model-input {
   width: 100%;

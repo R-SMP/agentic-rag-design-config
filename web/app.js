@@ -1791,6 +1791,13 @@ function renderLrOverlay() {
     div.appendChild(sel);
     div.appendChild(inp);
 
+    // Per-agent toggle badges (DBa / OCR / Crops) share ONE horizontal
+    // row at the bottom of the box, so up to three fit within the box
+    // footprint instead of stacking and spilling onto the box below.
+    const badges = document.createElement("div");
+    badges.className = "lr-agent-badges";
+    div.appendChild(badges);
+
     // DBa (database access) toggle button.  Only the 8 chain agents
     // are eligible (matches database_access.DEFAULT_AGENTS server-
     // side).  Other roles (e.g. DH if it were on this chart) get no
@@ -1808,7 +1815,7 @@ function renderLrOverlay() {
       dbaBtn.classList.toggle("dba-on",  initialOn);
       dbaBtn.classList.toggle("dba-off", !initialOn);
       dbaBtn.addEventListener("click", () => onDbaToggle(b.key, dbaBtn));
-      div.appendChild(dbaBtn);
+      badges.appendChild(dbaBtn);
     }
 
     // OCR (per-agent OCR access) toggle button.  Only the 5 image
@@ -1827,7 +1834,7 @@ function renderLrOverlay() {
       ocrBtn.classList.toggle("ocr-on",  ocrOn);
       ocrBtn.classList.toggle("ocr-off", !ocrOn);
       ocrBtn.addEventListener("click", () => onOcrToggle(b.key, ocrBtn));
-      div.appendChild(ocrBtn);
+      badges.appendChild(ocrBtn);
     }
 
     // Crops (per-agent OCR-region crop attachment) toggle.  Only the 3
@@ -1854,7 +1861,7 @@ function renderLrOverlay() {
                      !!(cropsState.ocr_flags && cropsState.ocr_flags[b.key]);
       cropsBtn.classList.toggle("crops-inert", !ocrEff);
       cropsBtn.addEventListener("click", () => onCropsToggle(b.key, cropsBtn));
-      div.appendChild(cropsBtn);
+      badges.appendChild(cropsBtn);
     }
 
     overlay.appendChild(div);
