@@ -2852,9 +2852,16 @@ is most fragile precisely on the inputs the feature exists to serve.
      it sees that has no matching region ID, log it rather than
      letting it vanish.
 
-**Status.**  Open — design assumption, recorded ahead of
-implementation.  Resolve as part of building the region re-OCR
-escalation tool (OCR_technology_notes.md §4).
+**Status.**  Open — the assumption still holds.  The escalation tool
+shipped (2026-06-17) and became **multi-region + crop-gated** on
+2026-07-06 as `ocr_regions(image_path, region_ids)` — but batching
+region re-reads into one call does **not** change detector recall, so the
+core F38 risk (a missed region has no ID to escalate) is unchanged.
+Partial mitigation only: an **out-of-range** region id is now non-fatal
+and reported inline (per-region), and the smoke test measures recall on
+the annotated test images — but a genuine detector **miss** still yields
+no id at all.  Resolve via the escape hatches above
+(OCR_technology_notes.md §4).
 
 
 ### F39. database_search read-routing to chunks_mm (multimodal) — SCOPED, build in progress

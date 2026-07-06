@@ -10,6 +10,10 @@ Vision detected (full text + per-word boxes), to confirm two things:
      callout on a hand-annotated render?  Misses here are the F37 risk
      (a region with no detection has no id to escalate to), surfaced
      early on actual data rather than discovered later.
+  3. **The feature-layer batch re-read** (``ocr_regions_reread``) against
+     the real engine — detect-once + per-region crop + re-OCR — and the
+     per-agent crop-attachment gate (``ocr_region_crops_access``) loading
+     with its default-OFF flags.
 
 Usage (run from anywhere in the repo / worktree)::
 
@@ -86,7 +90,7 @@ def main() -> int:
     print("\n--- FULL TEXT ---")
     print(full_text if full_text.strip() else "(none detected)")
 
-    print(f"\n--- CALLOUT REGIONS ({len(regions)})  [the ocr_region menu] ---")
+    print(f"\n--- CALLOUT REGIONS ({len(regions)})  [the ocr_regions menu] ---")
     for r in regions:
         b = r["box"]
         print(
@@ -125,8 +129,74 @@ def main() -> int:
         else:
             print("\nAll known callouts detected. Connectivity + recall good.")
 
+    # Exercise the NEW feature-layer batch re-read (against the same real
+    # engine) + the per-agent crop-attachment gate.  Both are non-fatal:
+    # a failure here prints but does not fail the connectivity check.
+    if regions:
+        _smoke_batch_reread(img, [r["id"] for r in regions[:3]])
+    _smoke_crop_gate()
+
     print("\nConnectivity OK (HTTP 200 from Vision).")
     return exit_code
+
+
+def _smoke_batch_reread(img: Path, region_ids: list) -> None:
+    """Exercise ``ocr_regions_reread`` on real regions.  Loads feature.py
+    by file path and points its internal ``from agents...google_vision
+    import detect_text`` at the already-loaded REAL engine, so no agents /
+    langchain stack is needed (mirrors the engine import above)."""
+    print(f"\n--- BATCH RE-READ (ocr_regions_reread {region_ids}) ---")
+    import types as _types
+    try:
+        for name in ("agents", "agents.shared", "agents.shared.ocr"):
+            if name not in sys.modules:
+                mod = _types.ModuleType(name)
+                mod.__path__ = []  # mark as a package
+                sys.modules[name] = mod
+        sys.modules["agents.shared.ocr.google_vision"] = _engine
+        feat_path = _REPO_ROOT / "agents" / "shared" / "ocr" / "feature.py"
+        spec = importlib.util.spec_from_file_location(
+            "agents.shared.ocr.feature", feat_path)
+        feat = importlib.util.module_from_spec(spec)
+        sys.modules["agents.shared.ocr.feature"] = feat
+        spec.loader.exec_module(feat)  # type: ignore[union-attr]
+        batch = feat.ocr_regions_reread(str(img), region_ids)
+    except Exception as exc:  # noqa: BLE001 — non-fatal for the smoke test
+        print(f"  (skipped — {type(exc).__name__}: {exc})")
+        return
+    if not batch.get("ok"):
+        print(f"  batch FAILED (whole-call): {batch.get('error')}")
+        return
+    print(
+        f"  detect-once on {batch['n_regions']} region(s); re-read "
+        f"{len(batch['results'])}, invalid {len(batch['invalid'])}"
+    )
+    for r in batch["results"]:
+        status = "ok" if r["ok"] else f"ERR {r['error']}"
+        print(
+            f"    [region {r['region_id']}] {status}: {r['reread_text']!r} "
+            f"(was {r['original_text']!r})  "
+            f"crop_png={'yes' if r['crop_png'] else 'no'}"
+        )
+    for inv in batch["invalid"]:
+        print(f"    [region {inv['region_id']}] INVALID: {inv['error']}")
+
+
+def _smoke_crop_gate() -> None:
+    """Sanity-check the per-agent crop-attachment gate (pure settings; no
+    network).  Confirms the module loads and every eligible agent defaults
+    to crops OFF."""
+    print("\n--- CROP GATE (ocr_region_crops_access) ---")
+    try:
+        from workflow_settings import ocr_region_crops_access as crops
+    except Exception as exc:  # noqa: BLE001
+        print(f"  (skipped — could not import: {type(exc).__name__}: {exc})")
+        return
+    flags = crops.get_all()
+    all_off = not any(flags.values())
+    print(f"  eligible agents: {list(crops.DEFAULT_AGENTS)}")
+    print(f"  per-agent crop flags: {flags}")
+    print(f"  all default OFF: {'OK' if all_off else 'UNEXPECTED (should be OFF)'}")
 
 
 if __name__ == "__main__":

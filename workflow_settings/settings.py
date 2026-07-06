@@ -675,7 +675,7 @@ SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
 # grouped into callout regions — to the tool's result, so the agent
 # gets a clean, quotable reading of any dimension callouts /
 # annotations alongside the image itself.  Also exposes the
-# ``ocr_region`` zoom-in tool.  See
+# ``ocr_regions`` zoom-in tool.  See
 # extra_utilities/OCR_technology_notes.md for the full design.
 #
 # Requires GOOGLE_CLOUD_VISION_API_KEY in the environment (Railway
@@ -683,10 +683,10 @@ SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
 #
 #   OCR_ENABLED              master switch.  False = the OCR pass
 #                            never runs, the per-call ``extract_text``
-#                            flag + ``ocr_region`` tool are hidden, and
+#                            flag + ``ocr_regions`` tool are hidden, and
 #                            the image tools behave exactly as before.
 #                            Validated 2026-06-17 (UII whole-image OCR
-#                            + ocr_region zoom-in confirmed) → now
+#                            + ocr_regions zoom-in confirmed) → now
 #                            default True; set False to disable OCR
 #                            everywhere.
 #   OCR_ENGINE               which engine backs OCR.  Only

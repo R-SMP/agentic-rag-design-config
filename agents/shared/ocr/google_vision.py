@@ -121,7 +121,7 @@ def group_words_into_regions(
     1-based ``id`` assigned top-to-bottom, left-to-right.  Word text
     within a region is concatenated in reading order (banded
     top-to-bottom, then left-to-right).  These ids are the menu the
-    agent picks from for ``ocr_region`` (see F37).
+    agent picks from for ``ocr_regions`` (see F37).
 
     Complexity is O(n^2) in the word count — fine for sparse sketch
     callouts (TEXT_DETECTION on a drawing yields tens of words), which
@@ -216,7 +216,7 @@ def detect_text(
         ``{"id": int, "text": str, "box": {x0,y0,x1,y1},
         "word_ids": [int]}`` in source-image pixel coordinates.  The
         1-based ``id`` is the menu the agent picks from for
-        ``ocr_region`` (see F37).
+        ``ocr_regions`` (see F37).
       * ``words``     — the raw **per-word** boxes the regions were built
         from: ``{"id": int, "text": str, "box": {x0,y0,x1,y1}}``.
       * ``raw``       — the raw first-response dict (for debugging).

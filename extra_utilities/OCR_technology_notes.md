@@ -1,8 +1,9 @@
 # OCR for text recognition in user images — design notes
 
 **Status.** LIVE as of 2026-06-17 — validated in the deployed app
-(UII whole-image OCR + `ocr_region` zoom-in confirmed working).
-`OCR_ENABLED` now defaults **True**.
+(UII whole-image OCR + `ocr_regions` zoom-in confirmed working).
+`OCR_ENABLED` now defaults **True**.  The region zoom-in tool became
+multi-region + crop-gated on 2026-07-06 (see the `ocr_regions` bullet).
 
 - **Engine + grouping — SHIPPED.**  `agents/shared/ocr/` + smoke tests,
   committed `9e00d19` on `stage-a-web-deploy`.
@@ -21,13 +22,20 @@
   `retrieve_user_inputs` (past-session images were usually already
   captured).  `OCR_ENABLED` now defaults **True** (validated; set False
   to disable OCR everywhere).
-- **`ocr_region` zoom-in tool (Decision 3 / §4) — BUILT.**
-  A separate `ocr_region(image_path, region_id)` tool (current
-  user-input images; present only when OCR on) re-runs detection
-  (stateless — deterministic ids), crops region N (padded ~20%),
-  upscales ~3×, re-reads with Vision, and returns the re-read text **+
-  the zoomed crop image**.  Verified end-to-end (region 3 of
-  `renderwinfo_test1` → "Diameter 136 mm").
+- **`ocr_regions` zoom-in tool (Decision 3 / §4) — BUILT single-region,
+  extended to multi-region 2026-07-06.**  `ocr_regions(image_path,
+  region_ids)` (current user-input images; present only when OCR on)
+  re-reads a **list** of regions in ONE call: it re-runs detection
+  **once** (stateless — deterministic ids), then for each requested id
+  (deduped, input order kept) crops region N (padded ~20%), upscales
+  ~3×, and re-reads with Vision.  Invalid ids are non-fatal (listed
+  inline; valid ones still processed).  It always returns the re-read
+  **text**; whether it ALSO attaches the **zoomed crop image(s)** is a
+  per-agent toggle (see below), default OFF = text only.  Was originally
+  single-region `ocr_region(image_path, region_id)` returning text + one
+  crop; renamed + batched + crop-gated 2026-07-06.  (The §3/§4 design
+  sections below use the original `ocr_region` working name.)  Verified
+  end-to-end (region 3 of `renderwinfo_test1` → "Diameter 136 mm").
 - **Per-agent gating (#3b) — BUILT.**  `workflow_settings/ocr_access.py`
   (+ `ocr_access.json`) mirrors the DBa pattern: per-agent flags for the
   5 image agents, gated by `OCR_ENABLED` (master AND per-agent).
@@ -36,8 +44,18 @@
   `GET/POST /api/ocr-access` endpoints; a per-agent **"OCR" toggle
   button** in the Workflow Settings LLM-routing chart (blue accent, next
   to the green DBa button).
+- **Per-agent crop-attachment toggle (#3c) — BUILT 2026-07-06.**
+  `workflow_settings/ocr_region_crops_access.py` (+ `.json`) mirrors
+  `ocr_access.py`: per-agent flags for the **3** agents that bind
+  `ocr_regions` (UII / DCII / DCOI), **default OFF** (re-read TEXT only —
+  cheaper on vision tokens), gated `is_enabled_for = ocr_access.is_enabled_for
+  AND the crop flag` (crops require OCR; no separate master).  `GET/POST
+  /api/ocr-region-crops`; a per-agent **"Crops" toggle button** in the
+  LLM-routing chart (purple accent, next to the OCR button, dimmed while
+  OCR is off for that agent).  ON = one zoomed crop image per re-read
+  region; OFF still does the upscaled re-read, just no image.
 - **Remaining:** nothing required — OCR feature is complete.  Optional
-  later: extend `ocr_region` to past-session (retrieve) images (needs R2
+  later: extend `ocr_regions` to past-session (retrieve) images (needs R2
   re-fetch).
 
 This file is the running source of truth for the OCR feature decisions.

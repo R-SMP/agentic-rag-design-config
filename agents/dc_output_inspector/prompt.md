@@ -82,6 +82,9 @@ block above):
   * ``read_image_notes()`` — read every ``_note.txt`` at once.
   * ``load_input_images(paths)`` — load one or more user reference
     images so you can see them.
+  * ``ocr_regions(image_path, region_ids)`` — re-read small/faint/garbled
+    OCR callouts at higher resolution; pass every region you want in ONE
+    call, not one call each.
 
 Whichever sources you consult, judge whether the rendered design
 matches the user's intent (proportions, structural-element counts,

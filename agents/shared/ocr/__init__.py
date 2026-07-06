@@ -13,12 +13,13 @@ Public contract
 ``detect_text(image) -> {"full_text": str, "regions": [...],
 "words": [...], "raw": ...}`` where each **region** is callout-level
 ``{"id": int, "text": str, "box": {x0,y0,x1,y1}, "word_ids": [int]}``
-(the ``ocr_region`` menu) and each **word** is the raw per-word box it
+(the ``ocr_regions`` menu) and each **word** is the raw per-word box it
 was grouped from.  All coordinates are source-image pixels.
 """
 from agents.shared.ocr.feature import (
     ocr_enabled,
     ocr_region_reread,
+    ocr_regions_reread,
     ocr_summary_if_enabled,
 )
 from agents.shared.ocr.google_vision import (
@@ -33,6 +34,7 @@ __all__ = [
     "group_words_into_regions",
     "ocr_enabled",
     "ocr_region_reread",
+    "ocr_regions_reread",
     "ocr_summary_if_enabled",
     "OCRConfigError",
     "OCRRequestError",

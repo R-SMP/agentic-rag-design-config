@@ -1616,6 +1616,7 @@ let lrState = null;  // { mode, providers, shared, agents:[...] }
 // master-off banner painted by paintDbaBanner().
 let dbaState = { flags: {}, rag_enabled: false };
 let ocrState = { flags: {}, ocr_enabled: false };
+let cropsState = { flags: {}, ocr_flags: {}, ocr_enabled: false };
 
 // ---- chart build ---------------------------------------------------------
 
@@ -1820,13 +1821,40 @@ function renderLrOverlay() {
       ocrBtn.textContent = "OCR";
       ocrBtn.title =
         "OCR = read text on user images.  Toggle whether this agent's " +
-        "image tools run OCR (the extract_text flag + the ocr_region " +
+        "image tools run OCR (the extract_text flag + the ocr_regions " +
         "tool).  Takes effect on the next session.";
       const ocrOn = !!ocrState.flags[b.key];
       ocrBtn.classList.toggle("ocr-on",  ocrOn);
       ocrBtn.classList.toggle("ocr-off", !ocrOn);
       ocrBtn.addEventListener("click", () => onOcrToggle(b.key, ocrBtn));
       div.appendChild(ocrBtn);
+    }
+
+    // Crops (per-agent OCR-region crop attachment) toggle.  Only the 3
+    // agents that bind the ocr_regions tool are eligible (matches
+    // ocr_region_crops_access.DEFAULT_AGENTS server-side).  Controls
+    // whether ocr_regions attaches the zoomed crop image(s) it re-reads
+    // (default OFF = re-read text only).  Dimmed ("inert") while OCR is
+    // off for this agent, since crops require OCR.  Distinct purple
+    // accent vs. green DBa / blue OCR.
+    if (cropsState.flags && Object.prototype.hasOwnProperty.call(cropsState.flags, b.key)) {
+      const cropsBtn = document.createElement("button");
+      cropsBtn.className = "lr-crops-btn";
+      cropsBtn.type = "button";
+      cropsBtn.textContent = "Crops";
+      cropsBtn.title =
+        "Crops = attach the zoomed crop image(s) the ocr_regions tool " +
+        "re-reads.  OFF (default) = re-read TEXT only (cheaper on vision " +
+        "tokens).  Requires OCR on for this agent.  Takes effect on the " +
+        "next session.";
+      const cropsOn = !!cropsState.flags[b.key];
+      cropsBtn.classList.toggle("crops-on",  cropsOn);
+      cropsBtn.classList.toggle("crops-off", !cropsOn);
+      const ocrEff = !!cropsState.ocr_enabled &&
+                     !!(cropsState.ocr_flags && cropsState.ocr_flags[b.key]);
+      cropsBtn.classList.toggle("crops-inert", !ocrEff);
+      cropsBtn.addEventListener("click", () => onCropsToggle(b.key, cropsBtn));
+      div.appendChild(cropsBtn);
     }
 
     overlay.appendChild(div);
@@ -2003,6 +2031,7 @@ async function loadLrRouting() {
     // chart anyway with all buttons defaulted to OFF.
     await loadDbAccessState();
     await loadOcrAccessState();
+    await loadCropsAccessState();
     buildLrChart();
     renderLrGlobal();
     renderLrPresets();
@@ -2033,6 +2062,16 @@ async function loadOcrAccessState() {
     ocrState = await res.json();
   } catch (e) {
     // Non-blocking — leave ocrState as-is (defaults to empty).
+  }
+}
+
+async function loadCropsAccessState() {
+  try {
+    const res = await fetch("/api/ocr-region-crops");
+    if (!res.ok) return;
+    cropsState = await res.json();
+  } catch (e) {
+    // Non-blocking — leave cropsState as-is (defaults to empty).
   }
 }
 
@@ -2118,8 +2157,55 @@ async function onOcrToggle(agentKey, btn) {
     if (data.flags) ocrState.flags = data.flags;
     btn.classList.toggle("ocr-on",  newState);
     btn.classList.toggle("ocr-off", !newState);
+    // Keep the sibling Crops button's inert hint in sync — crops require
+    // OCR, so turning this agent's OCR off should dim its Crops button.
+    if (cropsState.ocr_flags) cropsState.ocr_flags[agentKey] = newState;
+    const _cropsSib = btn.parentElement &&
+      btn.parentElement.querySelector(".lr-crops-btn");
+    if (_cropsSib) {
+      const _ocrEff = !!cropsState.ocr_enabled && newState;
+      _cropsSib.classList.toggle("crops-inert", !_ocrEff);
+    }
     setLrStatus(
       "OCR for " + agentKey + " → " + (newState ? "ON" : "OFF") +
+      ".  Takes effect on the next session.",
+      "ok",
+    );
+  } catch (e) {
+    setLrStatus("Network error: " + e, "err");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+async function onCropsToggle(agentKey, btn) {
+  // Optimistic toggle — mirror of onOcrToggle for the per-agent crop
+  // flag.  The flag is stored regardless of OCR state; it only takes
+  // effect while OCR is also on for the agent (the server ANDs them).
+  const newState = !btn.classList.contains("crops-on");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/ocr-region-crops", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ agent: agentKey, enabled: newState }),
+    });
+    if (res.status === 401) { showGate(); return; }
+    if (res.status === 409) {
+      const data = await res.json().catch(() => ({}));
+      setLrStatus(data.detail || "Locked — session is active.", "err");
+      return;
+    }
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) {
+      setLrStatus(data.detail || "Crops toggle failed.", "err");
+      return;
+    }
+    if (data.flags) cropsState.flags = data.flags;
+    btn.classList.toggle("crops-on",  newState);
+    btn.classList.toggle("crops-off", !newState);
+    setLrStatus(
+      "Crops for " + agentKey + " → " + (newState ? "ON" : "OFF") +
       ".  Takes effect on the next session.",
       "ok",
     );

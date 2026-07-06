@@ -98,38 +98,43 @@ def ocr_summary_if_enabled(
     return out
 
 
-def ocr_region_reread(
+def ocr_regions_reread(
     image_source: "bytes | str",
-    region_id: int,
+    region_ids: "list[int]",
     *,
     pad_frac: float = 0.2,
     upscale: float = 3.0,
 ) -> dict:
-    """Re-OCR a single detected region of an image at higher resolution.
+    """Re-OCR one or more detected regions of an image at higher resolution.
 
-    **Stateless** (the box was computed in an earlier tool call): re-runs
-    whole-image detection — grouping is deterministic, so the region ids
-    match the earlier pass — locates *region_id*, crops its box (padded
-    by *pad_frac* on each side, clamped to the image), upscales the crop
-    by *upscale*, and re-runs the engine on the crop.
+    **Stateless** (the boxes were computed in an earlier tool call): runs
+    whole-image detection **once** — grouping is deterministic, so the
+    region ids match the earlier pass — then, for each requested id
+    (deduplicated, input order preserved), crops its box (padded by
+    *pad_frac* on each side, clamped to the image), upscales the crop by
+    *upscale*, and re-runs the engine on the crop.  The single whole-image
+    detection (the expensive call) is shared across all regions, so N
+    regions cost 1 detection + N small crop re-OCRs — not N detections.
 
-    **Non-fatal**: returns a dict with ``ok=False`` + ``error`` on any
-    problem (engine/PIL import, bad image, region id out of range — the
-    F38 case) rather than raising.
+    **Non-fatal**: whole-call problems (engine/PIL import, bad image,
+    detection failure) return ``ok=False`` + ``error``.  A per-region
+    problem never aborts the call — an out-of-range id (the F38 case)
+    lands in ``invalid``; a per-region crop/re-OCR failure lands in that
+    region's own result with ``ok=False`` + ``error``.
 
     Returns dict with keys:
-      * ``ok`` (bool), ``error`` (str | None)
+      * ``ok`` (bool), ``error`` (str | None) — whole-call status
       * ``n_regions`` (int) — regions detected on the full image
-      * ``original_text`` (str) — the region's text from the full pass
-      * ``reread_text`` (str) — text read from the upscaled crop
-      * ``crop_png`` (bytes | None) — the zoomed crop, PNG, for attaching
-      * ``box`` (dict | None) — the padded crop box (source-image pixels)
+      * ``results`` (list) — one entry per VALID requested id, each a dict
+        ``{region_id, ok, error, original_text, reread_text, crop_png, box}``
+        in the same order the ids were requested
+      * ``invalid`` (list) — ``{region_id, error}`` for ids not detected
 
     *image_source* is a file path or raw image bytes.
     """
     fail = {
         "ok": False, "error": None, "n_regions": 0,
-        "original_text": "", "reread_text": "", "crop_png": None, "box": None,
+        "results": [], "invalid": [],
     }
 
     try:
@@ -141,25 +146,24 @@ def ocr_region_reread(
     except Exception as exc:  # noqa: BLE001 — degrade gracefully
         return {**fail, "error": f"OCR/PIL import failed: {exc}"}
 
-    # 1) Detect on the full image to recover region *region_id*'s box.
+    # Deduplicate ids, preserving first-seen order.
+    seen: set = set()
+    ordered_ids: list = []
+    for rid in region_ids:
+        if rid not in seen:
+            seen.add(rid)
+            ordered_ids.append(rid)
+
+    # 1) Detect on the full image ONCE to recover every region's box.
     try:
         full = detect_text(image_source, language_hints=["en"])
     except Exception as exc:  # noqa: BLE001
         return {**fail, "error": f"detection failed: {exc}"}
     regions = full.get("regions") or []
     n = len(regions)
-    match = next((r for r in regions if r.get("id") == region_id), None)
-    if match is None:
-        return {
-            **fail,
-            "n_regions": n,
-            "error": (
-                f"region {region_id} not found — {n} region(s) detected "
-                f"(valid ids 1..{n})" if n else "no text regions detected"
-            ),
-        }
+    by_id = {r.get("id"): r for r in regions}
 
-    # 2) Open image + compute the padded, clamped crop box.
+    # 2) Open the image ONCE (shared across all crops).
     try:
         if isinstance(image_source, (bytes, bytearray)):
             im = Image.open(io.BytesIO(bytes(image_source)))
@@ -169,6 +173,45 @@ def ocr_region_reread(
     except Exception as exc:  # noqa: BLE001
         return {**fail, "n_regions": n, "error": f"could not open image: {exc}"}
 
+    # 3) Crop + upscale + re-OCR each requested region.
+    results: list = []
+    invalid: list = []
+    for region_id in ordered_ids:
+        match = by_id.get(region_id)
+        if match is None:
+            invalid.append({
+                "region_id": region_id,
+                "error": (
+                    f"region {region_id} not found — {n} region(s) detected "
+                    f"(valid ids 1..{n})" if n else "no text regions detected"
+                ),
+            })
+            continue
+        results.append(_reread_one_region(
+            im, match, region_id, detect_text,
+            pad_frac=pad_frac, upscale=upscale,
+        ))
+
+    return {
+        "ok": True, "error": None, "n_regions": n,
+        "results": results, "invalid": invalid,
+    }
+
+
+def _reread_one_region(im, match, region_id, detect_text, *, pad_frac, upscale):
+    """Crop + upscale + re-OCR a single already-located region on an open
+    image.  **Non-fatal**: returns a per-region result dict (never raises).
+    Keys: ``region_id, ok, error, original_text, reread_text, crop_png, box``.
+    """
+    import io
+
+    base = {
+        "region_id": region_id, "ok": False, "error": None,
+        "original_text": match.get("text", ""),
+        "reread_text": "", "crop_png": None, "box": None,
+    }
+
+    # Padded, clamped crop box.
     w, h = im.size
     b = match["box"]
     bw = max(0, b["x1"] - b["x0"])
@@ -180,10 +223,10 @@ def ocr_region_reread(
     x1 = min(w, b["x1"] + px)
     y1 = min(h, b["y1"] + py)
     if x1 <= x0 or y1 <= y0:
-        return {**fail, "n_regions": n, "error": "degenerate crop box"}
+        return {**base, "error": "degenerate crop box"}
     padded_box = {"x0": x0, "y0": y0, "x1": x1, "y1": y1}
 
-    # 3) Crop + upscale + encode.
+    # Crop + upscale + encode.
     try:
         crop = im.crop((x0, y0, x1, y1))
         if upscale and upscale != 1.0:
@@ -195,21 +238,52 @@ def ocr_region_reread(
         crop.save(buf, format="PNG")
         crop_png = buf.getvalue()
     except Exception as exc:  # noqa: BLE001
-        return {**fail, "n_regions": n, "error": f"crop/upscale failed: {exc}"}
+        return {**base, "box": padded_box,
+                "error": f"crop/upscale failed: {exc}"}
 
-    # 4) Re-OCR the upscaled crop.
+    # Re-OCR the upscaled crop.
     try:
         reread = detect_text(crop_png, language_hints=["en"])
     except Exception as exc:  # noqa: BLE001
-        return {
-            "ok": False, "error": f"re-OCR failed: {exc}", "n_regions": n,
-            "original_text": match.get("text", ""), "reread_text": "",
-            "crop_png": crop_png, "box": padded_box,
-        }
+        return {**base, "box": padded_box, "crop_png": crop_png,
+                "error": f"re-OCR failed: {exc}"}
 
-    return {
-        "ok": True, "error": None, "n_regions": n,
-        "original_text": match.get("text", ""),
-        "reread_text": reread.get("full_text", ""),
-        "crop_png": crop_png, "box": padded_box,
+    return {**base, "ok": True, "box": padded_box, "crop_png": crop_png,
+            "reread_text": reread.get("full_text", "")}
+
+
+def ocr_region_reread(
+    image_source: "bytes | str",
+    region_id: int,
+    *,
+    pad_frac: float = 0.2,
+    upscale: float = 3.0,
+) -> dict:
+    """Single-region convenience wrapper over :func:`ocr_regions_reread`.
+
+    Returns the legacy flat dict (``ok`` / ``error`` / ``n_regions`` /
+    ``original_text`` / ``reread_text`` / ``crop_png`` / ``box``) for the
+    one region, so existing callers + the smoke test keep working.
+    """
+    batch = ocr_regions_reread(
+        image_source, [region_id], pad_frac=pad_frac, upscale=upscale,
+    )
+    legacy = {
+        "ok": False, "error": batch.get("error"),
+        "n_regions": batch.get("n_regions", 0),
+        "original_text": "", "reread_text": "", "crop_png": None, "box": None,
     }
+    if not batch.get("ok"):
+        return legacy
+    if batch["results"]:
+        r = batch["results"][0]
+        return {
+            "ok": r["ok"], "error": r["error"],
+            "n_regions": batch["n_regions"],
+            "original_text": r["original_text"],
+            "reread_text": r["reread_text"],
+            "crop_png": r["crop_png"], "box": r["box"],
+        }
+    if batch["invalid"]:
+        return {**legacy, "error": batch["invalid"][0]["error"]}
+    return legacy

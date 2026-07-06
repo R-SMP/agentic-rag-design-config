@@ -324,6 +324,10 @@ see, by path (from the ``read_user_inputs`` listing).  Each loaded image
 is attached with its OCR text (dimension callouts, labels); also use it
 to re-load an image after bytes were stripped at a hand-off.
 
+**``ocr_regions(image_path, region_ids)``** — to confirm small/faint/
+garbled OCR callouts, re-read them at higher resolution; pass every
+region number you want in ONE call, not one call each.
+
 On demand (for revisiting one file): ``list_input_files`` (listing +
 pairing status), ``read_input_text(path)`` (one text file, e.g. a
 specific ``_note.txt``), ``read_image_notes`` (all notes at once).

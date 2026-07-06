@@ -6,10 +6,10 @@ toggle).  Each eligible agent gets one boolean:
 
 * ``True``  — when OCR is globally enabled, that agent's image tools
   (``load_input_images`` / ``read_user_inputs`` / ``retrieve_user_inputs``)
-  carry the ``extract_text`` flag and the ``ocr_region`` tool, and run
+  carry the ``extract_text`` flag and the ``ocr_regions`` tool, and run
   OCR on loaded images;
 * ``False`` — that agent's image tools behave as if OCR were off (no
-  ``extract_text`` flag, no ``ocr_region`` tool, no OCR pass) even when
+  ``extract_text`` flag, no ``ocr_regions`` tool, no OCR pass) even when
   the global switch is on.
 
 A global master switch ``workflow_settings.settings.OCR_ENABLED``
@@ -129,7 +129,7 @@ def get(agent: str) -> bool:
 
 def is_enabled_for(agent: str) -> bool:
     """True iff *agent* should get OCR (the ``extract_text`` flag +
-    ``ocr_region`` tool + the OCR pass) for the NEXT session.
+    ``ocr_regions`` tool + the OCR pass) for the NEXT session.
 
     Combines the global ``OCR_ENABLED`` master switch and the
     per-agent flag with AND semantics:

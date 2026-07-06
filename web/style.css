@@ -2262,6 +2262,52 @@ button.danger:hover { background: #3a1d1d; }
   opacity: 0.7;
 }
 
+/* Crops per-agent toggle — mirrors .lr-ocr-btn but with a purple accent
+   when ON, distinct from the green DBa and blue OCR buttons.  Attaches
+   the zoomed crops the ocr_regions tool re-reads (default OFF). */
+.lr-crops-btn {
+  align-self: flex-end;
+  margin-top: 4px;
+  padding: 2px 8px;
+  font-size: 0.78rem;
+  font-weight: 600;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  transition: background 0.12s, border-color 0.12s, color 0.12s;
+}
+.lr-crops-btn:hover:not(:disabled) {
+  filter: brightness(1.1);
+}
+.lr-crops-btn:disabled {
+  opacity: 0.6;
+  cursor: progress;
+}
+.lr-crops-btn.crops-on {
+  background: rgba(163, 113, 247, 0.20);
+  border-color: rgba(163, 113, 247, 0.6);
+  color: #d6bcff;
+}
+.lr-crops-btn.crops-off {
+  background: rgba(255, 255, 255, 0.03);
+  border-color: var(--border);
+  color: var(--muted, #999);
+}
+/* Crops need OCR: dim (but keep clickable, so the preference can be
+   staged) whenever OCR is off for this agent — set per-button as
+   .crops-inert, and also whenever the OCR_ENABLED master is off. */
+.lr-crops-btn.crops-inert,
+.lr-overlay.ocr-master-off .lr-crops-btn {
+  opacity: 0.45;
+  border-style: dashed;
+}
+.lr-crops-btn.crops-inert:hover:not(:disabled),
+.lr-overlay.ocr-master-off .lr-crops-btn:hover:not(:disabled) {
+  opacity: 0.7;
+}
+
 /* DBa master-off banner: shown only when the global RAG_ENABLED is
    False, sitting right above the LLM-routing chart so the operator
    immediately understands the per-agent toggles are inert. */

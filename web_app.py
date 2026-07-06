@@ -1602,6 +1602,56 @@ def api_ocr_access_post(body: _OcrAccessBody) -> dict:
     }
 
 
+# Per-agent OCR-region CROP attachment — GET/POST /api/ocr-region-crops
+# (mirrors the OCR endpoints above).  Controls whether an agent's
+# ``ocr_regions`` tool attaches the zoomed crop image(s) it re-reads, or
+# returns the higher-res re-read text only (default).  GET also returns
+# the per-agent OCR flags + OCR_ENABLED so the editor can dim a Crops
+# button where OCR is off for that agent (crops require OCR).  POST
+# {agent, enabled} updates one flag; both take effect on the NEXT
+# session; POST is rejected with 409 while a session is active.
+
+from workflow_settings import ocr_region_crops_access as _ocr_region_crops
+
+
+@app.get("/api/ocr-region-crops")
+def api_ocr_region_crops_get() -> dict:
+    """Current per-agent crop-attachment state + the OCR state it depends
+    on (per-agent OCR flags + the OCR_ENABLED master).  Read-only."""
+    _require_auth()
+    importlib.reload(workflow_settings)
+    return {
+        "flags":       _ocr_region_crops.get_all(),
+        "ocr_flags":   _ocr_access.get_all(),
+        "ocr_enabled": bool(getattr(workflow_settings, "OCR_ENABLED", False)),
+    }
+
+
+@app.post("/api/ocr-region-crops")
+def api_ocr_region_crops_post(body: _OcrAccessBody) -> dict:
+    """Update one agent's crop-attachment flag in
+    ``workflow_settings/ocr_region_crops_access.json``.  Edits take
+    effect for the NEXT session.  Rejected with HTTP 409 while a session
+    is active."""
+    _require_auth()
+    _require_no_session()
+    try:
+        flags_after = _ocr_region_crops.set_one(body.agent, body.enabled)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except Exception as exc:  # never 500 the editor
+        logger.exception("[WEB] ocr-region-crops write failed: %s", exc)
+        raise HTTPException(
+            status_code=400,
+            detail=f"Could not write ocr-region-crops "
+                   f"({type(exc).__name__}: {exc}).",
+        )
+    logger.info(
+        "[WEB] ocr-region-crops updated: %s -> %s", body.agent, body.enabled,
+    )
+    return {"ok": True, "flags": flags_after}
+
+
 # ============================================================
 # Database options panel — 3-way mode toggle + multimodal
 # chunks_mm backfill (architecture doc §6.3).  The mode just
