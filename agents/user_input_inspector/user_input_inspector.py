@@ -25,7 +25,6 @@ from agents.shared.attempts_tool import list_attempts, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
-    append_pending_images,
     flush_pending_image_blocks,
     load_user_inputs_bundle,
     strip_image_blocks_from_messages,
@@ -46,7 +45,6 @@ from agents.shared.routing_tools import (
     stuck_escalation,
     tool_call_signature,
 )
-from agents.shared.ocr import ocr_summary_if_enabled
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
     build_user_inputs_tools,
@@ -62,7 +60,6 @@ from tools.retrieve_user_inputs.retrieve_user_inputs import (
     make_retrieve_user_inputs_tool,
 )
 from workflow_settings import database_access
-from workflow_settings import ocr_access
 
 logger = logging.getLogger("propeller_agent")
 
@@ -71,42 +68,29 @@ logger = logging.getLogger("propeller_agent")
 # Utility tool schemas (actual I/O handled by UserInputInspector)
 # ---------------------------------------------------------------------------
 
-_READ_INPUTS_BASE_DOC = (
-    "Read every file in a user-inputs directory (text, JSON, images).\n\n"
-    "Pass the absolute path of the inputs directory supplied by the "
-    "Planner under the ``Input directory:`` label.  The tool's text "
-    "output is a summary plus the concatenated contents of all text/JSON "
-    "files.  Any images found are attached as a separate user message so "
-    "you can see them directly.  Do NOT call this tool with a guessed "
-    "path."
-)
-
-_READ_INPUTS_OCR_DOC = _READ_INPUTS_BASE_DOC + (
-    "\n\nIf OCR is enabled, each loaded image is also passed through an "
-    "OCR engine that recognises any text written on the image — "
-    "dimension callouts, labels, annotations — and that recognised text "
-    "is returned to you here, one entry per detected text region.  Treat "
-    "it as the image's text, read for you by OCR: it is machine-recognised, "
-    "so check it against the image before you rely on a value.  Pass "
-    "``extract_text=False`` to skip OCR for a given call."
+_READ_INPUTS_DOC = (
+    "Read a user-inputs directory: TEXT plus a LIST of its images (it does "
+    "NOT load the images themselves).\n\n"
+    "Pass the absolute path of the inputs directory supplied by the Planner "
+    "under the ``Input directory:`` label (do NOT guess).  The output is a "
+    "summary plus the concatenated contents of all text/JSON files — "
+    "including every image's ``_note.txt`` — followed by a list of the "
+    "reference images present with their paths.  To actually SEE an image "
+    "(and get its OCR-recognised text: dimension callouts, labels), call "
+    "``load_input_images`` with the path(s) you need."
 )
 
 
-def _build_read_user_inputs(ocr_on: bool):
+def _build_read_user_inputs():
     """Build the ``read_user_inputs`` tool.
 
-    The ``extract_text`` OCR flag is present ONLY when *ocr_on* — so
-    when OCR is globally disabled the agent never sees it.  The real
-    work happens in ``_handle_read_inputs_tool``.
+    Returns text + an image LIST only; the real work happens in
+    ``_handle_read_inputs_tool``.  Images (and their OCR) are loaded on
+    demand via ``load_input_images``.
     """
-    if ocr_on:
-        def _impl(path: str, extract_text: bool = True) -> str:
-            return ""  # handled by _handle_read_inputs_tool
-        _impl.__doc__ = _READ_INPUTS_OCR_DOC
-    else:
-        def _impl(path: str) -> str:
-            return ""  # handled by _handle_read_inputs_tool
-        _impl.__doc__ = _READ_INPUTS_BASE_DOC
+    def _impl(path: str) -> str:
+        return ""  # handled by _handle_read_inputs_tool
+    _impl.__doc__ = _READ_INPUTS_DOC
     return tool("read_user_inputs")(_impl)
 
 
@@ -145,9 +129,7 @@ class UserInputInspector(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        self._read_tool = _build_read_user_inputs(
-            ocr_access.is_enabled_for(self.AGENT_KEY)
-        )
+        self._read_tool = _build_read_user_inputs()
         self._write_tool = write_extraction
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
@@ -326,7 +308,6 @@ class UserInputInspector(BaseChainAgent):
         """Load everything in the requested directory and feed it to the LLM."""
         raw_path = tc.get("args", {}).get("path")
         summary_parts: list[str] = []
-        image_blocks: list[dict] = []
         image_paths: list[str] = []
 
         if not raw_path or not isinstance(raw_path, str):
@@ -351,13 +332,16 @@ class UserInputInspector(BaseChainAgent):
                 exclude_root: tuple[str, ...] = ()
                 if not workflow_settings.UII_MAY_READ_PREVIOUS_EXTRACTION:
                     exclude_root = ("extracted_inputs.txt",)
+                # Images are NOT loaded here — the UII loads the specific
+                # image(s) it needs on demand via load_input_images (which
+                # also runs OCR per image).  read_user_inputs stays cheap:
+                # text + notes + a list of the images present.
                 loaded = load_user_inputs_bundle(
                     directory,
                     self.provider,
-                    include_image_bytes=True,
+                    include_image_bytes=False,
                     exclude_root_files=exclude_root,
                 )
-                image_blocks = loaded["image_blocks"]
                 image_paths = loaded["image_paths"]
                 pairing = loaded["pairing"]
                 summary_parts.append(
@@ -377,31 +361,18 @@ class UserInputInspector(BaseChainAgent):
                     )
                 else:
                     summary_parts.append("(no text or JSON files found)")
-                if image_blocks:
+                if image_paths:
+                    listing = "\n".join(
+                        f"  - {Path(p).name}   (path: {p})"
+                        for p in image_paths
+                    )
                     summary_parts.append(
-                        f"{len(image_blocks)} image(s) attached in the "
-                        f"next user message, each preceded by its absolute "
-                        f"path so the path remains in history even if "
-                        f"image bytes are later stripped."
+                        f"{len(image_paths)} reference image(s) are available "
+                        f"but NOT loaded here (their notes are in the file "
+                        f"contents above).  To SEE an image and get its OCR "
+                        f"text, call load_input_images with the path(s) you "
+                        f"need:\n" + listing
                     )
-                # OCR pass (gated): read any text written on the loaded
-                # images and append it via the shared OCR entry point.
-                # No-ops when OCR is disabled or extract_text is False;
-                # non-fatal.  Per-call flag default follows
-                # OCR_WHOLE_IMAGE_DEFAULT.
-                extract_text = bool(
-                    (tc.get("args", {}) or {}).get(
-                        "extract_text",
-                        getattr(
-                            workflow_settings, "OCR_WHOLE_IMAGE_DEFAULT", True
-                        ),
-                    )
-                )
-                summary_parts.extend(
-                    ocr_summary_if_enabled(
-                        [(p, p) for p in image_paths], extract_text
-                    )
-                )
                 summary = "\n\n".join(summary_parts)
 
         log_tool_call(
@@ -413,12 +384,6 @@ class UserInputInspector(BaseChainAgent):
             tool_call_id=tc["id"],
             name=tc["name"],
         ))
-        if image_blocks:
-            # Buffer instead of appending HumanMessage immediately, so
-            # that any other tool_calls in the same AIMessage have
-            # their ToolMessages appended contiguously before this
-            # image-bytes HumanMessage.  See file_utils for details.
-            append_pending_images(self, image_blocks, image_paths)
 
     # ------------------------------------------------------------------
     # write_extraction handler

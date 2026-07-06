@@ -280,13 +280,14 @@ The user's input directory contains:
     its note into the extraction.
 
 When images are part of the user's inputs you MUST inspect them
-together with their notes.  ``read_user_inputs`` (below) walks both
-the inputs root and the ``input_images/`` subfolder in one call,
-attaching every paired image and embedding every note's text in the
-ToolMessage — that single call is normally sufficient.  When you
-want to re-load a single image (for example after image bytes were
-stripped from your history at a previous operation hand-off) use
-``load_input_images`` (see below).
+together with their notes.  ``read_user_inputs`` (below) gives you all
+the text — including every image's ``_note.txt`` — and LISTS the images
+present, but does NOT load the images themselves.  Read the notes first,
+then load the image(s) you actually need to see with
+``load_input_images`` (see below), which attaches the picture and its
+OCR text.  Load every image whose content you must judge (to count
+features, read geometry, or resolve anything a note leaves ambiguous);
+skip loading only an image its note already fully describes.
 
 When you write the extraction, also indicate how readable each image
 is — a clean sketch of one obvious feature reads as simple, while a
@@ -308,8 +309,9 @@ $sketch_notes
 **``read_user_inputs(path)``** (primary read) — call it ONCE with the
 ``Input directory:`` path from your hand-off (verbatim; don't guess,
 don't loop).  It returns the root text files PLUS every paired
-``_note.txt``, and attaches any paired images (each preceded by its
-absolute path).  That single call is normally all you need.
+``_note.txt``, and LISTS the reference images with their paths — it does
+NOT load the images.  Load the image(s) you need to see with
+``load_input_images``.
 
 **``write_extraction(path, quantitative, qualitative, intent)``**
 (mandatory) — persist your extraction to the ``Extraction output file:``
@@ -317,11 +319,14 @@ path from your hand-off (verbatim; downstream reads that exact file, so
 skipping this loses the extraction).  Put "None specified." in any empty
 section; the tool adds the headers, so you do not.
 
-On demand (mostly redundant with ``read_user_inputs``, for revisiting one
-file): ``list_input_files`` (listing + pairing status),
-``read_input_text(path)`` (one text file, e.g. a specific ``_note.txt``),
-``read_image_notes`` (all notes at once), ``load_input_images(paths)``
-(re-load images after they were stripped from your history at a hand-off).
+**``load_input_images(paths)``** — load the actual image(s) you need to
+see, by path (from the ``read_user_inputs`` listing).  Each loaded image
+is attached with its OCR text (dimension callouts, labels); also use it
+to re-load an image after bytes were stripped at a hand-off.
+
+On demand (for revisiting one file): ``list_input_files`` (listing +
+pairing status), ``read_input_text(path)`` (one text file, e.g. a
+specific ``_note.txt``), ``read_image_notes`` (all notes at once).
 
 ## Reading prior attempts when the user references them
 
