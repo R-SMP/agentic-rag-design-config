@@ -81,8 +81,11 @@ export function buildRingGeometry(impellerRadius, impellerThickness, finalHeight
       const v1 = j  * M + i2;
       const v2 = j2 * M + i2;
       const v3 = j2 * M + i;
-      indices[k++] = v0; indices[k++] = v1; indices[k++] = v2;
-      indices[k++] = v0; indices[k++] = v2; indices[k++] = v3;
+      // Wound so computeVertexNormals() yields OUTWARD normals (matches blade +
+      // hub). Inward winding renders fine in the DoubleSide browser preview but
+      // shades dull/inverted in the single-normal render_mesh (pyrender) pass.
+      indices[k++] = v0; indices[k++] = v2; indices[k++] = v1;
+      indices[k++] = v0; indices[k++] = v3; indices[k++] = v2;
     }
   }
 
