@@ -364,6 +364,12 @@ specific ``_note.txt``), ``read_image_notes()`` (every note at once),
 judgement actually changes your plan; image analysis is the UII's job,
 and comparing output against a reference is the DCOI's).
 
+When a user reference image is a filled-in FORM/TEMPLATE, only the user's
+own marks are inputs — the pre-printed guides, reference circles, min/max
+callouts, scales, grids and fixed labels are scaffolding (what to specify
+and the allowed ranges), NOT choices.  Read the handwritten/drawn marks and
+treat printed values as context only.
+
 ## Utility tool: read_user_queries(n, from_start=False)
 You have access to ``user_query.txt``, a file that logs every user-
 facing turn (each entry delimited by a ``--- [timestamp] ---`` header).

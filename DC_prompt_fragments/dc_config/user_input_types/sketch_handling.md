@@ -3,6 +3,28 @@ intent.  Its PRECISION varies — do NOT assume it is rough.  Judge where
 each reference image falls on the spectrum from a rough freehand doodle to
 a precise, measured drawing, and match it accordingly.
 
+### Filled-in templates and forms
+Some reference images are a PRE-PRINTED FORM the user drew on, not a
+freehand sketch.  The form's own printed content — faint/typeset guide
+lines, reference circles, min/max callouts, measurement scales (e.g. an
+angle protractor), grids, and fixed labels (part names, section titles) —
+is SCAFFOLDING: it shows WHAT to specify and the guides/ranges/units to
+draw against; it is NOT a user choice.  The user's actual inputs are ONLY
+the marks added on top — darker handwritten numbers and hand-drawn
+shapes/lines.  Read the answer from those marks; treat the printed content
+as context only — never read a printed guide value or a printed min/max as
+the user's value, and do not enforce a printed range as a limit.  E.g. a
+form prints "Ø160 / Ø120" guide circles and "5 mm max / 1 mm min", but the
+user drew an outline labelled "Ø140" and a ring reading ~3 mm → diameter
+140, ring 3, never 160/120 or 5/1.
+
+If you have a BLANK copy of the same form (the user supplied one, or with
+RAG on you retrieved a match from a past session), compare filled against
+blank — what matches the blank is scaffolding, only what was added is
+input.  Otherwise separate them by character: printed elements are faint,
+uniform and typeset in fixed guide positions; the user's marks are darker,
+handwritten and irregular.
+
 ### Judging a sketch's precision
 Weigh, per image:
   * **What the user says** — "rough" / "approximate" / "just an idea" points
