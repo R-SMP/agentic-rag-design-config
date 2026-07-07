@@ -36,7 +36,7 @@ DEFAULT_OUT = ROOT / "extra_utilities" / "feg_render_examples"
 
 # A representative in-range sample (matches the Task-3 sketch's section dims).
 DEFAULT_PARAMS = {
-    "bladeCount": 5, "impellerRadius": 70, "impellerHeight": 8,
+    "bladeCount": 5, "impellerRadius": 70,
     "impellerThickness": 3,
     "innerThickness": 12, "innerMaxPos": 4, "innerCamber": 4,
     "innerChord": 10, "innerAngle": 23,

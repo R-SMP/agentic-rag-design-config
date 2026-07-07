@@ -1,5 +1,5 @@
 """Receptionist tool: ``propose_attempt`` — signal the Parameters
-Inputs view that a set of 17 parameter values represents the system's
+Inputs view that a set of 16 parameter values represents the system's
 PROPOSED SATISFYING SOLUTION.
 
 Step 9 of the Parameters Inputs redesign — see
@@ -8,7 +8,7 @@ and §7 step 9 (implementation plan).
 
 What this tool does
 -------------------
-- Validates the 17-key parameter dict.
+- Validates the 16-key parameter dict.
 - Publishes a ``{type: "params_proposed", values: ...}`` event on
   ``agents.shared.viz_bus``.
 - Returns a short status string for the Receptionist's LLM.
@@ -56,8 +56,8 @@ from langchain_core.tools import tool
 from agents.shared.viz_bus import publish
 
 
-# Canonical 17-parameter set the propeller DC's GH definition
-# expects.  Duplicated from
+# Canonical 16-parameter INPUT set (impellerHeight removed — the ring
+# height is derived, not proposed).  Duplicated from
 # ``tools/generate_mesh/generate_mesh.py::_CANONICAL_PARAM_NAMES``
 # rather than imported to keep this tool module independent of the
 # mesh-tool's import chain (this tool only signals the UI; it does
@@ -65,7 +65,6 @@ from agents.shared.viz_bus import publish
 _CANONICAL_PARAM_NAMES = frozenset({
     "bladeCount",
     "impellerRadius",
-    "impellerHeight",
     "impellerThickness",
     "innerThickness",
     "innerMaxPos",
@@ -87,22 +86,23 @@ _CANONICAL_PARAM_NAMES = frozenset({
 def propose_attempt(
     values: Annotated[
         dict[str, float],
-        "Dict mapping ALL 17 canonical propeller parameter names "
-        "(bladeCount / impellerRadius / impellerHeight / "
-        "impellerThickness / innerThickness / innerMaxPos / "
-        "innerCamber / innerChord / innerAngle / middlePos / "
-        "middleChord / middleAngle / outerThickness / outerMaxPos / "
-        "outerCamber / outerChord / outerAngle) to their proposed "
-        "numeric values.  All 17 keys MUST be present.",
+        "Dict mapping ALL 16 canonical propeller parameter names "
+        "(bladeCount / impellerRadius / impellerThickness / "
+        "innerThickness / innerMaxPos / innerCamber / innerChord / "
+        "innerAngle / middlePos / middleChord / middleAngle / "
+        "outerThickness / outerMaxPos / outerCamber / outerChord / "
+        "outerAngle) to their proposed numeric values.  All 16 keys "
+        "MUST be present.  The outer-ring height is DERIVED, not an "
+        "input — do not include it.",
     ],
 ) -> str:
-    """Surface a set of 17 propeller parameter values in the
+    """Surface a set of 16 propeller parameter values in the
     Parameters Inputs view as the system's PROPOSED SATISFYING
     SOLUTION.
 
     Call this AFTER ``visualize_3d_model`` when you have decided
     (or have been told by Planner / DCOI) that a given attempt
-    satisfies the user's requirements.  Pass the FULL 17-parameter
+    satisfies the user's requirements.  Pass the FULL 16-parameter
     dict — the frontend marks ``PROPOSED`` on every parameter the
     user has not user-FIXED, and shows "PROPOSED VALUE: X" text on
     every row (including FIXED rows) so the user always sees the
@@ -122,8 +122,13 @@ def propose_attempt(
     if not isinstance(values, dict):
         return (
             f"Error: propose_attempt received non-dict values "
-            f"({type(values).__name__}); expected a 17-key dict."
+            f"({type(values).__name__}); expected a 16-key dict."
         )
+
+    # Lenient read: impellerHeight was removed as an input (ring height is
+    # derived).  Drop a stray one rather than rejecting the proposal.
+    if "impellerHeight" in values:
+        values = {k: v for k, v in values.items() if k != "impellerHeight"}
 
     received = set(values.keys())
     missing = _CANONICAL_PARAM_NAMES - received

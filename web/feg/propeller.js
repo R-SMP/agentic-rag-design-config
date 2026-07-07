@@ -141,13 +141,10 @@ export function buildPropellerGroup(params, material) {
   group.add(bladeMesh);
 
   // Outer ring sized from the projected outer section.
-  const ringDims = computeRingDimensions(
-    outerSection, params.impellerHeight,
-    CONSTANTS.clearance, CONSTANTS.safetyMargin,
-  );
+  const ringDims = computeRingDimensions(outerSection, CONSTANTS.clearance);
   const ringGeom = buildRingGeometry(
     params.impellerRadius, params.impellerThickness,
-    ringDims.finalHeight, ringDims.centerZ,
+    ringDims.fittedHeight, ringDims.centerZ,
     Math.max(24, CONSTANTS.countI * 2), CONSTANTS.ringAngularSegments,
   );
   group.add(new THREE.Mesh(ringGeom, material));

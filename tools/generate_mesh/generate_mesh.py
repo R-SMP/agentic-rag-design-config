@@ -26,6 +26,7 @@ result string (preserving the prior contract).
 
 import base64
 import functools
+import logging
 from pathlib import Path
 from typing import Annotated
 
@@ -42,11 +43,14 @@ from config import (
     RHINO_COMPUTE_URL,
     RHINO_COMPUTE_API_KEY,
 )
+from tools.generate_mesh.ring_height import fitted_ring_height
 
 # Configure RhinoCompute connection
 compute_rhino3d.Util.url = RHINO_COMPUTE_URL
 if RHINO_COMPUTE_API_KEY:
     compute_rhino3d.Util.apiKey = RHINO_COMPUTE_API_KEY
+
+logger = logging.getLogger("propeller_agent")
 
 
 _MESH_FILENAME = "propeller_mesh.obj"
@@ -65,13 +69,14 @@ _COMPONENT_OUTPUT_NAMES = (
     "MeshLauncher",
 )
 
-# Canonical 17-parameter set the GH definition expects.  Used by
-# render_mesh_obj_text to validate caller-supplied dicts before
-# building the RhinoCompute payload.
+# Canonical 16-parameter INPUT set.  The ring height is NOT an input: it
+# is DERIVED (ring_height.fitted_ring_height) and injected as the .gh's
+# ``impellerHeight`` port inside _render_mesh_obj_text_cached, so the
+# RhinoCompute geometry's ring matches the FEG 3D preview.  Used by
+# render_mesh_obj_text to validate caller-supplied dicts.
 _CANONICAL_PARAM_NAMES = frozenset({
     "bladeCount",
     "impellerRadius",
-    "impellerHeight",
     "impellerThickness",
     "innerThickness",
     "innerMaxPos",
@@ -227,6 +232,11 @@ def _render_mesh_obj_text_cached(
     del gh_mtime_ns   # cache-key only; not used in computation
 
     param_values = dict(params_tuple)
+    # Ring height is DERIVED, not an input: inject the fitted height into the
+    # .gh's ``impellerHeight`` port so the RhinoCompute geometry's ring
+    # matches the FEG 3D preview exactly.  ring_height.fitted_ring_height is
+    # a port of web/feg verified bit-for-bit by smoke_test_ring_height.py.
+    param_values["impellerHeight"] = fitted_ring_height(param_values)
 
     # Build Grasshopper DataTree inputs.
     # Note: the library's DataTree.Append uses '{}'.format(idx) which
@@ -359,7 +369,18 @@ def render_mesh_obj_text(
     are NOT cached, so a transient RhinoCompute failure does not
     pollute the cache.
     """
-    # Validate keys against the canonical 17 BEFORE touching RhinoCompute.
+    # Lenient read: ``impellerHeight`` was removed as an input — the ring
+    # height is now derived (injected below).  Drop a stray impellerHeight
+    # from legacy 17-key callers / old parameters.json rather than rejecting
+    # the whole request.
+    if "impellerHeight" in params:
+        logger.warning(
+            "render_mesh_obj_text: ignoring legacy 'impellerHeight' key "
+            "(ring height is now derived from the outer section)."
+        )
+        params = {k: v for k, v in params.items() if k != "impellerHeight"}
+
+    # Validate keys against the canonical 16 BEFORE touching RhinoCompute.
     keys = set(params.keys())
     missing = _CANONICAL_PARAM_NAMES - keys
     extra = keys - _CANONICAL_PARAM_NAMES
@@ -405,7 +426,6 @@ def generate_propeller_mesh(
     ],
     bladeCount: Annotated[int, "Number of blades (positive integer)"],
     impellerRadius: Annotated[float, "Outer radius of the impeller ring (mm)"],
-    impellerHeight: Annotated[float, "Height of the outer ring (mm)"],
     impellerThickness: Annotated[float, "Thickness of the outer ring (mm)"],
     innerThickness: Annotated[float, "Inner-section profile thickness (% of chord)"],
     innerMaxPos: Annotated[int, "Inner-section max-thickness position (integer, tenths of chord)"],
@@ -421,9 +441,11 @@ def generate_propeller_mesh(
     outerChord: Annotated[float, "Outer-section chord length (mm)"],
     outerAngle: Annotated[float, "Outer-section angle of attack (degrees)"],
 ) -> str:
-    """Send the 17 propeller design parameters to the Grasshopper definition
+    """Send the 16 propeller design parameters to the Grasshopper definition
     via RhinoCompute, retrieve the generated mesh, and save it to
-    ``<output_dir>/propeller_mesh.obj``.
+    ``<output_dir>/propeller_mesh.obj``.  (The outer-ring height is NOT a
+    parameter — it is derived from the outer blade section and injected
+    automatically so the mesh matches the 3D preview.)
 
     ``output_dir`` MUST be the absolute path of an attempt folder
     (created earlier by ``new_attempt``).  This tool does NOT write
@@ -451,14 +473,15 @@ def generate_propeller_mesh(
     # them, and RhinoCompute matches them by ParamName against the
     # .gh definition's input ports — no translation layer anywhere.
     #
-    # IMPORTANT: this contract requires the .gh definition's 17 input
-    # parameters to be named exactly as below.  If they ever drift,
-    # either the .gh side must rename to match, or this dict must
-    # become a translation again.
+    # IMPORTANT: this contract requires the .gh definition's input
+    # parameters to be named exactly as below.  The .gh's 17th port,
+    # ``impellerHeight``, is NOT sent from here — render_mesh_obj_text
+    # derives it (the ring auto-fits the outer section) and injects it.
+    # If the names ever drift, either the .gh side must rename to match,
+    # or this dict must become a translation again.
     param_values: dict[str, int | float] = {
         "bladeCount": bladeCount,
         "impellerRadius": impellerRadius,
-        "impellerHeight": impellerHeight,
         "impellerThickness": impellerThickness,
         "innerThickness": innerThickness,
         "innerMaxPos": innerMaxPos,

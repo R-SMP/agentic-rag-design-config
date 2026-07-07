@@ -9,7 +9,6 @@
 export const CONSTANTS = {
   countI:               25,    // NACA + camber sample count
   clearance:            1.0,   // ring_height_based_on _outer.cs
-  safetyMargin:         5.0,   // ring.cs
   innerRadiusFixed:     4.0,   // inner_profile.cs translates to (4, 0, 0)
   bladeRingSteps:       32,    // loft rings along radial direction
   ringAngularSegments:  96,    // ring sweep resolution around Z

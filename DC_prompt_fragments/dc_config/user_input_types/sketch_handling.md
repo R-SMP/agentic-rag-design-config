@@ -62,7 +62,7 @@ feature within it, on its own.
     high-point, chord, and angle, or the middle section's radial position.
   * A real deviation from a deliberately-precise proportion IS a defect
     worth a revision — unlike hand-drawn wobble, it is not noise.
-  * You remain bounded by the 17 parameters: reproduce what they can
+  * You remain bounded by the 16 parameters: reproduce what they can
     express; when the drawing implies geometry outside their reach, match
     as closely as possible and say what could not be captured.
 

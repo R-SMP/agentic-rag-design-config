@@ -3815,7 +3815,6 @@ const PARAM_GROUPS = [
     imageAlt: "General profile diagram",
     params: [
       { key: "impellerRadius",    label: "Propeller Radius",     unit: "mm",                 min: 60,  max: 80,  step: 1,    value: 71 },
-      { key: "impellerHeight",    label: "Propeller Height",     unit: "mm",                 min: 4,   max: 10,  step: 1,    value: 8  },
       { key: "impellerThickness", label: "Propeller Thickness",  unit: "mm",                 min: 1,   max: 5,   step: 1,    value: 2  },
       { key: "bladeCount",        label: "Blade Count",          unit: "",                   min: 3,   max: 6,   step: 1,    value: 3  },
     ],

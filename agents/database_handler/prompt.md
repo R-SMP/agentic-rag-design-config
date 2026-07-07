@@ -317,7 +317,7 @@ Apply these to BOTH the saved QUESTION and the saved ANSWER:
    entirely — there is no chain at save time.
 
 5. **Replace parameter-value dumps with reasoning.**  When the agent
-   listed all 17 parameter values (often in the form
+   listed all $parameter_count parameter values (often in the form
    ``bladeCount = 6 — [3,6]``, etc.), do NOT save the value list.
    Save the REASONING the agent applied: which checks they ran, which
    coherence heuristics applied, which trade-offs they weighed, what

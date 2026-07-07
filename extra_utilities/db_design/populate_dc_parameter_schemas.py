@@ -1,7 +1,9 @@
 """Populate dc_parameter_schemas with the current propeller DC parameter set.
 
 This script is the source-of-truth Python representation of the
-propeller DC parameter inventory at ``schema_version = 1``. It mirrors
+propeller DC parameter inventory: ``schema_version = 1`` (17 params —
+history) and ``schema_version = 2`` (16 params — ``impellerHeight``
+removed, the CURRENT set new sessions use).  It mirrors
 ``DC_prompt_fragments/dc_config/parameters.md`` and
 ``DC_prompt_fragments/dc_config/parameter_keys.txt`` exactly — keep
 the three in sync if any change here lands.
@@ -42,11 +44,10 @@ load_dotenv(REPO_ROOT / ".env")
 
 
 # ------------------------------------------------------------------
-# Source of truth: schema_version = 1
-# Mirrors DC_prompt_fragments/dc_config/parameters.md
+# Immutable per-version parameter sets.  Each schema_version is history:
+# rows are only ever APPENDED (INSERT ... ON CONFLICT DO NOTHING), never
+# overwritten or deleted.  Mirrors DC_prompt_fragments/dc_config/parameters.md.
 # ------------------------------------------------------------------
-SCHEMA_VERSION = 1
-
 PROPELLER_DC_PARAMETERS_V1 = [
     # Global / ring
     {"param_name": "bladeCount",        "min_value": 3,    "max_value": 6,    "unit": "count",            "description": "Number of blades"},
@@ -76,6 +77,29 @@ assert len(PROPELLER_DC_PARAMETERS_V1) == 17, (
     "Cross-check against DC_prompt_fragments/dc_config/parameters.md."
 )
 
+# schema_version = 2 — impellerHeight REMOVED (the outer-ring height is now
+# DERIVED from the outer blade section, not an input; see
+# tools/generate_mesh/ring_height.py).  The CURRENT set new sessions use
+# (agents/shared/session.py schema_version default = 2).  APPENDED alongside
+# V1; V1's rows (including its impellerHeight row) are left untouched as
+# history.  Derived from V1 as independent dict copies so the 16 shared
+# params stay identical to V1's.
+PROPELLER_DC_PARAMETERS_V2 = [
+    dict(row) for row in PROPELLER_DC_PARAMETERS_V1
+    if row["param_name"] != "impellerHeight"
+]
+
+assert len(PROPELLER_DC_PARAMETERS_V2) == 16, (
+    f"Expected exactly 16 V2 propeller parameters (V1 minus impellerHeight), "
+    f"got {len(PROPELLER_DC_PARAMETERS_V2)}."
+)
+
+# Every schema version to (idempotently, append-only) populate.
+_SCHEMA_SETS: dict[int, list] = {
+    1: PROPELLER_DC_PARAMETERS_V1,
+    2: PROPELLER_DC_PARAMETERS_V2,
+}
+
 
 def main() -> int:
     url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
@@ -97,63 +121,63 @@ def main() -> int:
     except IndexError:
         host_db = "<unparseable url>"
 
-    rows = PROPELLER_DC_PARAMETERS_V1
     print(f"Using connection URL from {url_source}.")
     print(f"Populating dc_parameter_schemas at {host_db}")
-    print(f"  schema_version = {SCHEMA_VERSION}")
-    print(f"  parameter count = {len(rows)}")
+    print(f"  schema versions: {sorted(_SCHEMA_SETS)}  (APPEND-only)")
     print()
 
-    inserted = 0
-    skipped = 0
+    # APPEND each version's rows.  ON CONFLICT DO NOTHING never overwrites an
+    # existing row, so re-running is safe and prior versions stay immutable.
     with psycopg.connect(url, autocommit=True) as conn:
         with conn.cursor() as cur:
-            for row in rows:
-                cur.execute(
-                    """
-                    INSERT INTO dc_parameter_schemas
-                        (schema_version, param_name, min_value, max_value, unit, description)
-                    VALUES (%s, %s, %s, %s, %s, %s)
-                    ON CONFLICT (schema_version, param_name) DO NOTHING
-                    """,
-                    (
-                        SCHEMA_VERSION,
-                        row["param_name"],
-                        row["min_value"],
-                        row["max_value"],
-                        row["unit"],
-                        row["description"],
-                    ),
-                )
-                if cur.rowcount == 1:
-                    inserted += 1
-                else:
-                    skipped += 1
+            for version, rows in sorted(_SCHEMA_SETS.items()):
+                inserted = skipped = 0
+                for row in rows:
+                    cur.execute(
+                        """
+                        INSERT INTO dc_parameter_schemas
+                            (schema_version, param_name, min_value, max_value, unit, description)
+                        VALUES (%s, %s, %s, %s, %s, %s)
+                        ON CONFLICT (schema_version, param_name) DO NOTHING
+                        """,
+                        (
+                            version,
+                            row["param_name"],
+                            row["min_value"],
+                            row["max_value"],
+                            row["unit"],
+                            row["description"],
+                        ),
+                    )
+                    if cur.rowcount == 1:
+                        inserted += 1
+                    else:
+                        skipped += 1
+                print(f"  schema_version {version}: {len(rows)} params — "
+                      f"inserted {inserted}, skipped {skipped} (already present)")
 
-    print(f"Inserted: {inserted}")
-    print(f"Skipped (already present, due to ON CONFLICT DO NOTHING): {skipped}")
     print()
-
-    # Verification: read everything back at this schema_version.
-    print(f"Current rows in dc_parameter_schemas WHERE schema_version = {SCHEMA_VERSION}:")
-    print()
-    print(f"  {'param_name':22s} {'min':>8s}   {'max':>8s}   {'unit':<22s} description")
-    print(f"  {'-'*22} {'-'*8}   {'-'*8}   {'-'*22} {'-'*40}")
+    # Verification: read back each version.
     with psycopg.connect(url) as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                """
-                SELECT param_name, min_value, max_value, unit, description, retired_at
-                FROM dc_parameter_schemas
-                WHERE schema_version = %s
-                ORDER BY param_name
-                """,
-                (SCHEMA_VERSION,),
-            )
-            for name, mn, mx, unit, desc, retired in cur.fetchall():
-                marker = "  (retired)" if retired is not None else ""
-                desc_short = (desc or "")[:40]
-                print(f"  {name:22s} {mn:>8}   {mx:>8}   {(unit or ''):22s} {desc_short}{marker}")
+            for version in sorted(_SCHEMA_SETS):
+                print(f"Rows WHERE schema_version = {version}:")
+                print(f"  {'param_name':22s} {'min':>8s}   {'max':>8s}   {'unit':<22s} description")
+                print(f"  {'-'*22} {'-'*8}   {'-'*8}   {'-'*22} {'-'*40}")
+                cur.execute(
+                    """
+                    SELECT param_name, min_value, max_value, unit, description, retired_at
+                    FROM dc_parameter_schemas
+                    WHERE schema_version = %s
+                    ORDER BY param_name
+                    """,
+                    (version,),
+                )
+                for name, mn, mx, unit, desc, retired in cur.fetchall():
+                    marker = "  (retired)" if retired is not None else ""
+                    desc_short = (desc or "")[:40]
+                    print(f"  {name:22s} {mn:>8}   {mx:>8}   {(unit or ''):22s} {desc_short}{marker}")
+                print()
 
     return 0
 

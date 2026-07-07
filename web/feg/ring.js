@@ -2,7 +2,7 @@
 //   ring_height_based_on _outer.cs  (Z-bounds from the cylinder-projected outer profile)
 //   ring.cs                          (ellipse swept around impeller circle)
 //
-// Geometry: a meridional ellipse with semi-axes (impellerThickness/2, finalHeight/2)
+// Geometry: a meridional ellipse with semi-axes (impellerThickness/2, fittedHeight/2)
 // centered at (impellerRadius, 0, centerZ), revolved around the Z axis.
 //
 // Ported verbatim from the propeller-browser reference (geom/ring.js) for
@@ -10,13 +10,15 @@
 
 import * as THREE from 'three';
 
-// Compute ring height and Z-center from the outer profile's Z extent.
-//   ringBottomZ = zMin - clearance
-//   ringTopZ    = zMax + clearance
+// Compute the ring height and Z-center from the outer profile's Z extent.
+// The ring AUTO-FITS the outer blade section: its height (fittedHeight) is
+// derived from the geometry, not an input.  (The former impellerHeight
+// override — use the input when it exceeded fittedHeight by safetyMargin —
+// was removed when impellerHeight was dropped as a parameter.)
+//   ringBottomZ  = zMin - clearance
+//   ringTopZ     = zMax + clearance
 //   fittedHeight = (zMax - zMin) + 2·clearance
-// finalHeight uses the input impellerHeight only if it exceeds fittedHeight
-// by at least safetyMargin; otherwise fall back to fittedHeight.
-export function computeRingDimensions(outerProfilePts3D, impellerHeight, clearance, safetyMargin) {
+export function computeRingDimensions(outerProfilePts3D, clearance) {
   let zMin = Infinity, zMax = -Infinity;
   for (const p of outerProfilePts3D) {
     if (p.z < zMin) zMin = p.z;
@@ -25,24 +27,17 @@ export function computeRingDimensions(outerProfilePts3D, impellerHeight, clearan
   const ringBottomZ = zMin - clearance;
   const ringTopZ    = zMax + clearance;
   const fittedHeight = (zMax - zMin) + 2 * clearance;
-
-  const useInput = impellerHeight >= fittedHeight + safetyMargin;
-  const finalHeight = useInput ? impellerHeight : fittedHeight;
   const centerZ = 0.5 * (ringTopZ + ringBottomZ);
 
-  return {
-    ringBottomZ, ringTopZ,
-    fittedHeight, finalHeight, centerZ,
-    usedInputHeight: useInput,
-  };
+  return { ringBottomZ, ringTopZ, fittedHeight, centerZ };
 }
 
 // Build the swept-ellipse ring as a BufferGeometry.
 //   M = points around the meridional ellipse
 //   N = angular subdivisions around Z
-export function buildRingGeometry(impellerRadius, impellerThickness, finalHeight, centerZ, M, N) {
+export function buildRingGeometry(impellerRadius, impellerThickness, fittedHeight, centerZ, M, N) {
   const aRad = impellerThickness * 0.5;   // radial semi-axis (X)
-  const bAxi = finalHeight       * 0.5;   // axial semi-axis  (Z)
+  const bAxi = fittedHeight      * 0.5;   // axial semi-axis  (Z)
 
   // Meridional ellipse in the XZ plane at azimuth 0.
   const cross = new Array(M);

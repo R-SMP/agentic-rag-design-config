@@ -1,5 +1,5 @@
 **Tool Caller**: calls exactly three design-tool actions and nothing
-else: ``generate_propeller_mesh`` (17 parameters + an attempt-folder
+else: ``generate_propeller_mesh`` (16 parameters + an attempt-folder
 path → mesh out, written into that folder; returns the mesh path),
 ``render_and_check_mesh`` (mesh path + attempt-folder path → three
 PNGs in the same folder, plus QC numbers), ``calculate`` (arithmetic

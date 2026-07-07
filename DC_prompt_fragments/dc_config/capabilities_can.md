@@ -1,4 +1,4 @@
-- Generate a 3D propeller mesh (.obj) from the 17 design parameters
+- Generate a 3D propeller mesh (.obj) from the 16 design parameters
   using Grasshopper / RhinoCompute.
 - Render the generated mesh from three fixed viewpoints (isometric,
   top, side) as PNG images.

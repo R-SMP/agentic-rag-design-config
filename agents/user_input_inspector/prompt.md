@@ -181,7 +181,7 @@ communicates the user's intent to downstream agents:
   of values): a short prose description naming the swept
   parameter(s) and the bounds.
 - **No quantitative constraints**: a single sentence like ``"No
-  quantitative inputs provided; the system may choose all 17
+  quantitative inputs provided; the system may choose all $parameter_count
   parameters freely within their allowed ranges."``
 
 Pick the format that makes the user's intent CLEAREST, not the
@@ -337,7 +337,7 @@ specific ``_note.txt``), ``read_image_notes`` (all notes at once).
 You also have ``list_attempts()`` and ``read_attempt(n, file)``
 available.  These enumerate the attempt folders generated this
 session and read individual files inside them
-(``parameters.json`` for the 17-value dict that drove that
+(``parameters.json`` for the $parameter_count-value dict that drove that
 attempt, ``description.txt`` for the rationale recorded at
 folder creation, render filenames for absolute image paths).
 
@@ -352,7 +352,7 @@ its parameters into the extraction.  Examples:
 - *"Use the same parameters as the latest attempt, but decrease the
   blades by 1."* — ``list_attempts()`` to find the latest attempt,
   ``read_attempt(n, 'parameters.json')`` to fetch its values, then
-  write the resulting 17 values (with ``bladeCount`` decremented) into
+  write the resulting $parameter_count values (with ``bladeCount`` decremented) into
   QUANTITATIVE INPUTS so downstream agents see the baseline.  Same
   pattern for "take attempt 3 but …".  For "compare attempt 1 and 4,
   give me something between", read both, note the difference in

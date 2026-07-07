@@ -748,14 +748,14 @@ def api_parameters() -> dict:
 # hardcoded rather than parsed from the .md so this validator is robust
 # against future formatting edits in that file.
 #
-# Keep in sync with PROPELLER_DC_PARAMETERS_V1 in
+# Keep in sync with PROPELLER_DC_PARAMETERS_V2 (the 16-param INPUT set —
+# impellerHeight removed, ring height derived) in
 # extra_utilities/db_design/populate_dc_parameter_schemas.py — both
-# represent the same v1 parameter set, just for different consumers.
+# represent the same parameter set, just for different consumers.
 _PREVIEW_PARAM_SPEC: dict[str, dict] = {
     # General / ring
     "bladeCount":        {"type": "int",   "min": 3,    "max": 6},
     "impellerRadius":    {"type": "float", "min": 60,   "max": 80},
-    "impellerHeight":    {"type": "float", "min": 4,    "max": 10},
     "impellerThickness": {"type": "float", "min": 1,    "max": 5},
     # Inner blade section
     "innerThickness":    {"type": "float", "min": 3,    "max": 24},
@@ -788,9 +788,10 @@ class PreviewMeshIn(BaseModel):
 
 @app.post("/api/preview_mesh")
 def api_preview_mesh(body: PreviewMeshIn) -> Response:
-    """Generate a propeller mesh from a 17-parameter dict and return
+    """Generate a propeller mesh from the 16-parameter dict and return
     it as OBJ bytes.  Used by the Parameters Inputs view's live-
-    preview pipeline (Step 7 of the redesign).
+    preview pipeline (Step 7 of the redesign).  (The outer-ring height is
+    NOT a param — render_mesh_obj_text derives + injects it.)
 
     This route does NOT go through the agent pipeline — it calls
     :func:`tools.generate_mesh.generate_mesh.render_mesh_obj_text`
@@ -823,7 +824,12 @@ def api_preview_mesh(body: PreviewMeshIn) -> Response:
     """
     _require_auth()
 
-    raw_params = body.params
+    raw_params = dict(body.params)
+
+    # Lenient read: impellerHeight was removed as an input (the ring height
+    # is derived inside render_mesh_obj_text).  Drop a stray one from a
+    # stale browser / old payload rather than 400-ing the whole request.
+    raw_params.pop("impellerHeight", None)
 
     # ----- Validate keys --------------------------------------------
     expected_keys = set(_PREVIEW_PARAM_SPEC.keys())

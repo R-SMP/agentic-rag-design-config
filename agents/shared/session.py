@@ -122,7 +122,10 @@ class Session:
 
     # DC-side identity (matches sessions table columns).
     dc_name: str = "propeller"
-    schema_version: int = 1
+    # New sessions use schema_version 2 — the 16-param set (impellerHeight
+    # removed, ring height derived).  Old sessions persisted with 1 keep it,
+    # so their attempts still resolve against the V1 (17-param) schema.
+    schema_version: int = 2
 
     # Session-config flags (defaults baked from workflow_settings.py
     # so v4 Sessions match v4 behaviour with no overrides needed).

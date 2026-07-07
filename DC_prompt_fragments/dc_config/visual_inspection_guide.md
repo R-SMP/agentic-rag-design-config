@@ -3,7 +3,7 @@ A propeller with correct geometry should show:
 - The requested number of evenly spaced blades connecting the centre hub
   to the outer ring.
 - Smooth blade surfaces without holes, spikes, or self-intersections.
-- Proportions consistent with the input parameters (impellerRadius, impellerHeight, etc.).
+- Proportions consistent with the input parameters (impellerRadius, impellerThickness, etc.).  The outer-ring HEIGHT auto-fits the outer blade section (derived, not an input).
 
 ### What you can typically check visually for this DC
 

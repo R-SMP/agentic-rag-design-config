@@ -1,5 +1,5 @@
 1. **generate_propeller_mesh** — write ``propeller_mesh.obj`` into the
-   attempt folder from the 17 parameters (pass them plus ``output_dir``);
+   attempt folder from the 16 parameters (pass them plus ``output_dir``);
    returns the saved mesh path.
 2. **render_and_check_mesh** — render the three views (isometric / top /
    side) and, when mesh checks are enabled, the quality metrics; pass it the

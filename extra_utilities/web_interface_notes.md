@@ -820,9 +820,12 @@ into the browser.  Two geometries are now distinguished:
 
 - Fidelity bar is the *example*, not a pixel-match to the RCG (the FEG is
   explicitly a quick approximation).
-- The Ring Height (`impellerHeight`) slider stays a normal slider; the FEG
-  ring auto-fits to the blade, so it often has no visible effect (the
-  standalone reference hides it for this reason — not ported).
+- The Ring Height (`impellerHeight`) slider was REMOVED (2026-07-07): the
+  FEG ring auto-fits the outer blade section, so the input often had no
+  visible effect (the standalone reference hid it for the same reason).
+  The height is now DERIVED (`tools/generate_mesh/ring_height.py`, a
+  verified port of `web/feg`) and injected into RhinoCompute, so preview +
+  download match.  The parameter set dropped 17 → 16 (schema V2).
 - The **blade-section (2D cross-section) views** from the reference
   (`curves.js` / per-section canvases) are intentionally **not** ported
   yet — that is the next piece of work.

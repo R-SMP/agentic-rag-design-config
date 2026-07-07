@@ -2364,8 +2364,9 @@ proportional reasoning over the image alone:
     thickness sits along the chord in the section sketch.
   * `middlePos`: from where the broadest chord sits radially in
     the planform.
-  * Ring proportions (`impellerHeight` vs `impellerRadius`) from
-    a side or isometric view.
+  * Ring proportions (`impellerThickness` vs `impellerRadius`) from
+    a side or isometric view.  (Ring HEIGHT is derived — it auto-fits
+    the outer section — so it is not read from the sketch.)
 
 The 2026-06-04 propeller-from-sketches run is a clean example:
 the user supplied a thin-small-thin geometry intent but no
@@ -2975,3 +2976,35 @@ Decided (2026-06-18) to keep that for now — a parameter change is treated as a
 (overwrite + re-render in the same folder), so the cheap section-refinement
 loop doesn't accumulate attempts.  Weigh against losing the per-attempt
 parameter history.
+
+
+### F46. Cross-schema-version session search after impellerHeight removal
+
+**Where.** `tools/database_search/database_search.py` (RAG over prior
+sessions / attempts) + `agents/database_handler`, now that
+`dc_parameter_schemas` has TWO versions: `schema_version = 1` (17 params,
+includes `impellerHeight`) and `schema_version = 2` (16 params —
+`impellerHeight` removed, ring height DERIVED).  New sessions default to V2
+(`agents/shared/session.py`); old sessions stay V1.
+
+**What.** Searching previous sessions must work ACROSS the two parameter
+sets:
+  * `impellerHeight` exists only on V1 rows / attempts — any metafilter or
+    similarity that references it silently matches only old sessions.
+  * The 16 shared params search fine across both versions; prefer them.
+  * V1 attempts carry a 17-key `parameters.json`; re-render is safe
+    (`render_mesh_obj_text` lenient-drops the stray key), BUT a V1 ring
+    height was a USER input in [4, 10] whereas a V2 ring height is DERIVED
+    (auto-fit, can fall outside [4, 10]).  So ring height is NOT comparable
+    across versions and must not be used as a match / ranking signal.
+
+**What to do.** Decide + implement the retrieval policy: (a) restrict
+param search to the 16 shared keys (ignore `impellerHeight`); (b) optionally
+filter/boost by `schema_version` so a V2 session preferentially retrieves V2
+attempts; (c) ensure any "closest prior attempt" / param-diff logic excludes
+`impellerHeight` and treats ring height as derived.  Make the search path
+`schema_version`-aware so V1 + V2 sessions coexist cleanly.
+
+**Status.** Open — recorded 2026-07-07 when `impellerHeight` was removed as
+an input.  The geometry / tool / UI / DB-schema side is done; the
+prior-session SEARCH side is not yet updated.

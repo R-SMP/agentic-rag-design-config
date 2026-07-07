@@ -16,7 +16,6 @@
 
 bladeCount: int
 impellerRadius: float
-impellerHeight: float
 impellerThickness: float
 innerThickness: float
 innerMaxPos: int

@@ -55,7 +55,6 @@ from tools.generate_mesh.generate_mesh import generate_propeller_mesh
 SAMPLE_PARAMS: dict[str, int | float] = {
     "bladeCount":         3,
     "impellerRadius":     60.0,
-    "impellerHeight":     4.0,
     "impellerThickness":  1.0,
     "innerThickness":     6.0,
     "innerMaxPos":        4,

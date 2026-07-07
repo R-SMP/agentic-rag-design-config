@@ -38,7 +38,7 @@ from tools.render_blade_sections.sections_geom import (  # noqa: E402
 )
 
 DEFAULT = {
-    "bladeCount": 3, "impellerRadius": 71, "impellerHeight": 8,
+    "bladeCount": 3, "impellerRadius": 71,
     "impellerThickness": 2,
     "innerThickness": 6, "innerMaxPos": 4, "innerCamber": 4, "innerChord": 11,
     "innerAngle": 25,

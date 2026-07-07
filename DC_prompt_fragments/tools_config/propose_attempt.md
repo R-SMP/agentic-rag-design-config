@@ -1,7 +1,7 @@
 ### Surfacing a proposed solution — ``propose_attempt``
 
 ``propose_attempt(values)``'s mechanics — that it pushes the full
-17-parameter dict to the Parameters Inputs view as the system's PROPOSED
+16-parameter dict to the Parameters Inputs view as the system's PROPOSED
 SATISFYING SOLUTION, what the user sees (non-FIXED rows move to the proposed
 value and every row, FIXED included, gets a "PROPOSED VALUE: X" label), and
 that FIXED rows are never overwritten — are documented on the tool itself.
@@ -15,7 +15,7 @@ of the hand-off you are answering: phrasings such as *"recommend attempt N
 because it best matches the brief"*, *"the satisfying result of the cycle"*,
 *"the best attempt so far"*, *"final pick"*, *"proposed solution"* endorse
 the attempt as the system's CURRENT BEST — call ``propose_attempt`` with that
-attempt's full 17-param dict.  A direct user request ("propose these as your
+attempt's full 16-param dict.  A direct user request ("propose these as your
 recommendation", "make this the proposed solution") is an unambiguous trigger
 too.
 

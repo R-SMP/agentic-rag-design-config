@@ -3,11 +3,12 @@
 Verifies that:
 1. ``generate_mesh.py`` imports cleanly.
 2. The dict keys passed to RhinoCompute use the camelCase GH-internal
-   names (bladeCount, impellerRadius, impellerHeight, ...) — i.e. they
-   are an identity mapping with the @tool's keyword arguments, no
-   translation layer.
-3. Every key in ``parameter_keys.txt`` (PARAMETER_NAMES) matches what
-   the dict sends, in both directions.
+   names (bladeCount, impellerRadius, ...) — an identity mapping with the
+   @tool's keyword arguments, no translation layer.  The tool takes 16
+   inputs; the ring-height port ``impellerHeight`` is DERIVED and injected
+   by render_mesh_obj_text, so 17 ParamNames reach the .gh.
+3. Every key in ``parameter_keys.txt`` (PARAMETER_NAMES — the 16 inputs)
+   is sent, PLUS the derived ``impellerHeight`` — i.e. the .gh's 17 ports.
 4. None of the OLD snake_case names (amount_of_blades, thickness_i, ...)
    leak into the dict the tool sends to RhinoCompute.
 
@@ -51,6 +52,10 @@ for k in canonical:
     print(f"  - {k}")
 print()
 
+# The .gh has 17 input ports: the 16 canonical INPUTS plus the ring-height
+# port ``impellerHeight``, which the tool DERIVES + injects (not a tool arg).
+gh_ports = set(canonical) | {"impellerHeight"}
+
 
 # ---------------------------------------------------------------------
 # Capture the dict that the tool builds by intercepting EvaluateDefinition
@@ -68,7 +73,6 @@ sample_args = dict(
     output_dir="C:\\does\\not\\exist\\so_we_short_circuit_validation",
     bladeCount=3,
     impellerRadius=68.0,
-    impellerHeight=5.0,
     impellerThickness=3.5,
     innerThickness=11.0,
     innerMaxPos=3,
@@ -106,17 +110,17 @@ for n in captured_param_names:
 print()
 
 assert len(captured_param_names) == 17, (
-    f"Expected 17 param names, got {len(captured_param_names)}"
+    f"Expected 17 ParamNames sent to the .gh (16 inputs + the derived "
+    f"impellerHeight), got {len(captured_param_names)}"
 )
 
-set_canonical = set(canonical)
 set_captured = set(captured_param_names)
 
-missing = set_canonical - set_captured
-extra = set_captured - set_canonical
+missing = gh_ports - set_captured
+extra = set_captured - gh_ports
 
-assert not missing, f"BAD: canonical names not sent to GH: {sorted(missing)}"
-assert not extra, f"BAD: extra names sent to GH: {sorted(extra)}"
+assert not missing, f"BAD: .gh port names not sent: {sorted(missing)}"
+assert not extra, f"BAD: unexpected names sent to GH: {sorted(extra)}"
 
 print("PASS — every dict key sent to RhinoCompute is a canonical name,")
 print("       and every canonical name appears exactly once.")
@@ -139,7 +143,8 @@ print()
 
 
 # ---------------------------------------------------------------------
-# Verify the camelCase names ARE present
+# Verify the camelCase names ARE present (the .gh's 17 ports = the 16
+# inputs + the DERIVED impellerHeight).
 # ---------------------------------------------------------------------
 expected_camel = {
     "bladeCount", "impellerRadius", "impellerHeight", "impellerThickness",
