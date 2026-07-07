@@ -3273,6 +3273,7 @@ const imgSave = $("img-save");
 const imgReset = $("img-reset");
 const imgDelete = $("img-delete");
 const imgStatusEl = $("img-status");
+const imgBadge = $("img-badge");
 
 let imgSelected = null;
 
@@ -3285,14 +3286,20 @@ function clearImgDetail() {
   imgSelected = null;
   imgDetailBody.hidden = true;
   imgDetailEmpty.hidden = false;
+  setBadge(imgBadge, "");
+  setBadge(cmpBadge, "");
 }
 
 // --- Per-image compression tuning (single preview + compare + lightbox) ---
-const cmpSlider = $("cmp-slider");
+const cmpSlider = $("cmp-vslider");   // the vertical rail slider = canonical range
 const cmpNumber = $("cmp-number");
 const cmpStats = $("cmp-stats");
 const cmpSave = $("cmp-save");
 const cmpStatusEl = $("cmp-status");
+const cmpBadge = $("cmp-badge");
+const cmpRailPanel = $("cmp-rail-panel");
+const cmpRailToggle = $("cmp-rail-toggle");
+const cmpRailReadout = $("cmp-rail-readout");
 const cmpCompare = $("cmp-compare");
 const cmpLightbox = $("cmp-lightbox");
 const cmpLbImg = $("cmp-lb-img");
@@ -3310,6 +3317,36 @@ let cmpSuggested = 0;
 let cmpCurrentSrc = "";   // current compressed-preview src (compare + lightbox)
 let cmpOrigUrl = "";      // original-image file URL for the selected image
 
+// --- Persistent Saved / Modified badges (per image, in-session) -------------
+// *Buf holds the current (possibly-unsaved) edit; *Saved holds the last value
+// persisted to the server.  Both survive image/view navigation and reset only
+// on a full page reload.  degSaved[name] === null means "never saved".
+const noteBuf = {}, noteSaved = {};
+const degBuf = {}, degSaved = {};
+
+function setBadge(el, state) {
+  if (!el) return;
+  const label = { saved: "Saved", modified: "Modified, not saved",
+                  unsaved: "Not saved" }[state] || "";
+  el.textContent = label;
+  el.className = "save-badge" + (state ? " " + state : "");
+}
+function refreshNoteBadge() {
+  if (!imgSelected) { setBadge(imgBadge, ""); return; }
+  setBadge(imgBadge,
+    imgNote.value === (noteSaved[imgSelected] || "") ? "saved" : "modified");
+}
+function refreshCmpBadge() {
+  if (!imgSelected) { setBadge(cmpBadge, ""); return; }
+  const cur = parseInt(cmpSlider.value, 10) || 0;
+  const saved = degSaved[imgSelected];
+  if (saved === null || saved === undefined) {
+    setBadge(cmpBadge, cur === cmpSuggested ? "unsaved" : "modified");
+  } else {
+    setBadge(cmpBadge, cur === saved ? "saved" : "modified");
+  }
+}
+
 function setCmpStatus(msg, kind) {
   if (!cmpStatusEl) return;
   cmpStatusEl.textContent = msg || "";
@@ -3324,6 +3361,7 @@ function applyDegreeUI(v) {
   if (cmpNumber) cmpNumber.value = v;
   if (cmpLbSlider) cmpLbSlider.value = v;
   if (cmpLbLabel) cmpLbLabel.textContent = "Compression: " + v + "%";
+  if (cmpRailReadout) cmpRailReadout.textContent = v + "%";
 }
 
 async function loadCompression(name) {
@@ -3332,22 +3370,38 @@ async function loadCompression(name) {
   setCmpStatus("", "");
   cmpOrigUrl = "/api/images/file?name=" + encodeURIComponent(name) +
     "&_=" + Date.now();
+  let ok = false, suggested = 0;
   try {
     const res = await fetch(
       "/api/images/compression?name=" + encodeURIComponent(name)
     );
-    if (!res.ok) return;
-    const d = await res.json();
-    cmpSuggested = d.suggested || 0;
-    const deg = (d.degree === null || d.degree === undefined)
-      ? cmpSuggested : d.degree;
-    applyDegreeUI(deg);
-    updateCompressionPreview();
+    if (res.ok) {
+      const d = await res.json();
+      suggested = d.suggested || 0;
+      degSaved[name] = (d.degree === null || d.degree === undefined)
+        ? null : d.degree;
+      ok = true;
+    }
   } catch (e) { /* non-fatal */ }
+  if (imgSelected !== name) return;   // a newer selection superseded this one
+  // Assign the shared cmpSuggested only AFTER the staleness guard so a late,
+  // superseded response can't clobber the displayed image's baseline. Reset
+  // the UI coherently even when the fetch failed, so the new image never
+  // inherits the previous image's slider value or badge.
+  cmpSuggested = ok ? suggested : 0;
+  const base = (degSaved[name] === null || degSaved[name] === undefined)
+    ? cmpSuggested : degSaved[name];
+  const deg = (name in degBuf) ? degBuf[name] : base;
+  applyDegreeUI(deg);
+  refreshCmpBadge();
+  if (ok) updateCompressionPreview();
 }
 
 function cmpSync(el) {
-  applyDegreeUI(parseInt(el.value, 10) || 0);
+  const v = parseInt(el.value, 10) || 0;
+  applyDegreeUI(v);
+  if (imgSelected) degBuf[imgSelected] = v;
+  refreshCmpBadge();
   clearTimeout(cmpPreviewTimer);
   cmpPreviewTimer = setTimeout(updateCompressionPreview, 220);
 }
@@ -3390,7 +3444,10 @@ async function saveCompression() {
     });
     const d = await res.json().catch(() => ({}));
     if (!res.ok) { setCmpStatus(d.detail || "Save failed.", "err"); return; }
+    degSaved[imgSelected] = deg;
+    degBuf[imgSelected] = deg;
     setCmpStatus("Compression saved (" + deg + "%).", "ok");
+    refreshCmpBadge();
   } catch (e) {
     setCmpStatus("Save failed: " + e, "err");
   } finally {
@@ -3444,6 +3501,18 @@ if (cmpSlider) {
   cmpSlider.addEventListener("input", () => cmpSync(cmpSlider));
   cmpNumber.addEventListener("input", () => cmpSync(cmpNumber));
   cmpSave.addEventListener("click", saveCompression);
+}
+// Reveal / hide the vertical compression slider on the right rail.
+if (cmpRailToggle) {
+  cmpRailToggle.addEventListener("click", () => {
+    const show = cmpRailPanel.hidden;
+    cmpRailPanel.hidden = !show;
+    cmpRailToggle.setAttribute("aria-expanded", show ? "true" : "false");
+    const lbl = show ? "Hide compression slider" : "Show compression slider";
+    cmpRailToggle.setAttribute("aria-label", lbl);
+    cmpRailToggle.title = lbl;
+    cmpRailToggle.textContent = show ? "›" : "‹";  // › open, ‹ closed
+  });
 }
 if (cmpCompare) {
   cmpCompare.addEventListener("mousedown", cmpShowOriginal);
@@ -3580,16 +3649,31 @@ async function selectImage(name, url) {
   imgPreview.alt = name;
   imgNote.value = "";
   setImgStatus("", "");
+  let noteOk = false;
   try {
     const res = await fetch(
       "/api/images/note?name=" + encodeURIComponent(name)
     );
     if (res.ok) {
       const data = await res.json();
-      imgNote.value = data.description || "";
+      noteSaved[name] = data.description || "";
+      noteOk = true;
     }
   } catch (e) {
     setImgStatus("Could not load description: " + e, "err");
+  }
+  if (imgSelected !== name) return;   // a newer selection superseded this one
+  // Restore an in-session edit if present; else the saved note when known;
+  // else leave it blank with no badge (the description couldn't be loaded).
+  if (name in noteBuf) {
+    imgNote.value = noteBuf[name];
+    refreshNoteBadge();
+  } else if (noteOk) {
+    imgNote.value = noteSaved[name] || "";
+    refreshNoteBadge();
+  } else {
+    imgNote.value = "";
+    setBadge(imgBadge, "");
   }
   loadCompression(name);
 }
@@ -3639,7 +3723,10 @@ async function saveNote() {
       setImgStatus(data.detail || "Save failed.", "err");
       return;
     }
+    noteSaved[imgSelected] = imgNote.value;
+    noteBuf[imgSelected] = imgNote.value;
     setImgStatus("Description saved.", "ok");
+    refreshNoteBadge();
     loadImages();
   } catch (e) {
     setImgStatus("Network error: " + e, "err");
@@ -3662,7 +3749,10 @@ async function resetNote() {
       return;
     }
     imgNote.value = "";
+    noteSaved[imgSelected] = "";
+    noteBuf[imgSelected] = "";
     setImgStatus("Description cleared.", "ok");
+    refreshNoteBadge();
     loadImages();
   } catch (e) {
     setImgStatus("Network error: " + e, "err");
@@ -3683,6 +3773,8 @@ async function deleteImage() {
       setImgStatus(data.detail || "Delete failed.", "err");
       return;
     }
+    delete noteBuf[name]; delete noteSaved[name];
+    delete degBuf[name]; delete degSaved[name];
     clearImgDetail();
     renderImageList(data.images || []);
     setImgStatus('Deleted "' + name + '".', "ok");
@@ -3717,6 +3809,10 @@ if (imgDrop) {
 if (imgSave) imgSave.addEventListener("click", saveNote);
 if (imgReset) imgReset.addEventListener("click", resetNote);
 if (imgDelete) imgDelete.addEventListener("click", deleteImage);
+if (imgNote) imgNote.addEventListener("input", () => {
+  if (imgSelected) noteBuf[imgSelected] = imgNote.value;
+  refreshNoteBadge();
+});
 
 // ---------------------------------------------------------------------------
 // Viewer footer — Download geometry + Copy parameters list

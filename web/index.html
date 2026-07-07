@@ -138,42 +138,58 @@
             Select an image to view it and add a description.
           </div>
           <div id="img-detail-body" class="img-detail-body" hidden>
-            <div class="img-preview-wrap">
-              <img id="img-preview" class="img-preview cmp-clickable" alt=""
-                   title="Click to enlarge" />
-            </div>
+            <div class="img-detail-main">
+              <div class="img-preview-wrap">
+                <img id="img-preview" class="img-preview cmp-clickable" alt=""
+                     title="Click to enlarge" />
+              </div>
 
-            <div id="img-compress" class="img-compress">
-              <div class="img-compress-head">
-                Compression — lowers this image's resolution to cut the vision
-                tokens an agent pays for it. Drag to preview live (0% = the
-                original); the saved original file is never changed. Click the
-                image to enlarge.
+              <div id="img-compress" class="img-compress">
+                <div class="img-compress-head">
+                  Compression — lowers this image's resolution to cut the vision
+                  tokens an agent pays for it. Edit the % here or drag the side
+                  slider to preview live (0% = the original); the saved original
+                  file is never changed. Click the image to enlarge.
+                </div>
+                <div class="img-compress-controls">
+                  <input id="cmp-number" class="cmp-number" type="number"
+                         min="0" max="100" step="1" value="0" />
+                  <span class="cmp-unit">%</span>
+                  <button id="cmp-compare" class="cmp-compare" type="button">Hold to compare original</button>
+                </div>
+                <div id="cmp-stats" class="cmp-stats"></div>
+                <div class="img-btn-row">
+                  <button id="cmp-save" class="primary" type="button">Save compression</button>
+                  <span id="cmp-badge" class="save-badge" role="status"></span>
+                  <span id="cmp-status" class="img-status" role="status"></span>
+                </div>
               </div>
-              <div class="img-compress-controls">
-                <input id="cmp-slider" class="cmp-slider" type="range"
-                       min="0" max="100" step="1" value="0" />
-                <input id="cmp-number" class="cmp-number" type="number"
-                       min="0" max="100" step="1" value="0" />
-                <span class="cmp-unit">%</span>
-                <button id="cmp-compare" class="cmp-compare" type="button">Hold to compare original</button>
-              </div>
-              <div id="cmp-stats" class="cmp-stats"></div>
+
+              <label class="img-note-label" for="img-note">Description</label>
+              <textarea id="img-note" class="img-note" rows="5"
+                placeholder="Describe what this image represents…"></textarea>
               <div class="img-btn-row">
-                <button id="cmp-save" class="primary" type="button">Save compression</button>
-                <span id="cmp-status" class="img-status" role="status"></span>
+                <button id="img-save" class="primary" type="button">Save changes description</button>
+                <span id="img-badge" class="save-badge" role="status"></span>
+                <button id="img-reset" type="button">Reset description</button>
+                <button id="img-delete" class="danger" type="button">Delete image</button>
               </div>
+              <span id="img-status" class="img-status" role="status"></span>
             </div>
 
-            <label class="img-note-label" for="img-note">Description</label>
-            <textarea id="img-note" class="img-note" rows="5"
-              placeholder="Describe what this image represents…"></textarea>
-            <div class="img-btn-row">
-              <button id="img-save" class="primary" type="button">Save changes description</button>
-              <button id="img-reset" type="button">Reset description</button>
-              <button id="img-delete" class="danger" type="button">Delete image</button>
+            <div class="cmp-rail">
+              <button id="cmp-rail-toggle" class="cmp-rail-toggle" type="button"
+                      aria-expanded="false" aria-label="Show compression slider"
+                      title="Show compression slider">&lsaquo;</button>
+              <div id="cmp-rail-panel" class="cmp-rail-panel" hidden>
+                <span class="cmp-rail-cap">100%</span>
+                <input id="cmp-vslider" class="cmp-vslider" type="range"
+                       min="0" max="100" step="1" value="0"
+                       aria-label="Compression percent" />
+                <span class="cmp-rail-cap">0%</span>
+                <span id="cmp-rail-readout" class="cmp-rail-readout">0%</span>
+              </div>
             </div>
-            <span id="img-status" class="img-status" role="status"></span>
           </div>
         </div>
 

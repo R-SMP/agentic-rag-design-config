@@ -518,9 +518,20 @@ button:disabled { opacity: 0.5; cursor: not-allowed; }
 .img-detail-body {
   flex: 1;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;      /* main column + right compression rail */
   min-height: 0;
   padding: 18px 22px;
+  gap: 14px;
+  overflow: hidden;
+}
+/* The main column owns the vertical scroll so the rail (and its slider)
+   stay pinned to the pane's right edge regardless of image size. */
+.img-detail-main {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
   overflow-y: auto;
 }
 .img-preview-wrap {
@@ -557,6 +568,25 @@ button.danger:hover { background: #3a1d1d; }
 .img-status.ok { color: #4caf78; }
 .img-status.err { color: var(--error); }
 
+/* Persistent Saved / Modified badges next to the Save buttons. Hidden
+   (no state class) until an image is selected. */
+.save-badge {
+  display: none;
+  align-items: center;
+  gap: 5px;
+  font-size: 12px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  white-space: nowrap;
+  align-self: center;
+}
+.save-badge.saved,
+.save-badge.modified,
+.save-badge.unsaved { display: inline-flex; }
+.save-badge.saved { background: rgba(76, 175, 120, 0.16); color: #4caf78; }
+.save-badge.modified { background: rgba(224, 168, 60, 0.18); color: #e0a83c; }
+.save-badge.unsaved { background: var(--panel-2); color: var(--muted); border: 1px solid var(--border); }
+
 /* Per-image compression tuning */
 .img-compress {
   margin-top: 18px;
@@ -577,7 +607,52 @@ button.danger:hover { background: #3a1d1d; }
   margin-top: 14px;
   flex-wrap: wrap;
 }
-.cmp-slider { flex: 1; min-width: 120px; }
+/* Right-edge compression rail: a toggle arrow that reveals a vertical
+   slider (0% bottom, 100% top). Hidden by default; pinned to the pane
+   edge so it doesn't shift with the image. */
+.cmp-rail {
+  flex: none;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  border-left: 1px solid var(--border);
+  /* On a short pane the expanded slider can exceed the (clipped) body
+     height; scroll the rail itself so the 0% cap + readout stay reachable. */
+  min-height: 0;
+  overflow-y: auto;
+}
+.cmp-rail-toggle {
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  font-size: 20px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 6px;
+}
+.cmp-rail-panel[hidden] { display: none !important; }
+.cmp-rail-panel {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 0 2px;
+}
+.cmp-vslider {
+  writing-mode: vertical-lr;
+  direction: rtl;
+  width: 8px;
+  flex: 1;
+  min-height: 140px;
+}
+.cmp-rail-cap { font-size: 11px; color: var(--muted); }
+.cmp-rail-readout { font-size: 13px; font-weight: 600; color: var(--text); }
 .cmp-number {
   width: 64px;
   padding: 6px 8px;
