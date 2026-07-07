@@ -2978,33 +2978,37 @@ loop doesn't accumulate attempts.  Weigh against losing the per-attempt
 parameter history.
 
 
-### F46. Cross-schema-version session search after impellerHeight removal
+### F46. Cross-schema-version session search — DEFERRED, blocked on T1
 
-**Where.** `tools/database_search/database_search.py` (RAG over prior
-sessions / attempts) + `agents/database_handler`, now that
-`dc_parameter_schemas` has TWO versions: `schema_version = 1` (17 params,
-includes `impellerHeight`) and `schema_version = 2` (16 params —
-`impellerHeight` removed, ring height DERIVED).  New sessions default to V2
-(`agents/shared/session.py`); old sessions stay V1.
+**Status.** DEFERRED — recorded 2026-07-07 at `impellerHeight` removal,
+rescoped the same day after checking `database_search`.  NOT real work now;
+becomes real only when **T1** (parameter-value filtering) is built.
 
-**What.** Searching previous sessions must work ACROSS the two parameter
-sets:
-  * `impellerHeight` exists only on V1 rows / attempts — any metafilter or
-    similarity that references it silently matches only old sessions.
-  * The 16 shared params search fine across both versions; prefer them.
-  * V1 attempts carry a 17-key `parameters.json`; re-render is safe
-    (`render_mesh_obj_text` lenient-drops the stray key), BUT a V1 ring
-    height was a USER input in [4, 10] whereas a V2 ring height is DERIVED
-    (auto-fit, can fall outside [4, 10]).  So ring height is NOT comparable
-    across versions and must not be used as a match / ranking signal.
+**Finding (why deferred).** `database_search` does NOT search, filter, or
+rank by any design parameter today.  It is pure semantic / vector-embedding
+similarity (pgvector cosine distance over the RAG corpus); its filters are a
+closed set of 11 metadata metafilters (`_METAFILTER_SPEC`, ~L581-596) on
+sessions / dc_attempts / chunks columns — **none is a design parameter**.
+Parameters are STORED (`dc_attempts.parameters_json` + the
+`dc_attempt_parameters` table) but not embedded, not filtered, not ranked.
+Parameter-value filters (e.g. `bladeCount>=5`) are the deferred **T1**
+feature (`database_search.py` docstring ~L569: "the dc_attempt_parameters
+JOIN is not built").
 
-**What to do.** Decide + implement the retrieval policy: (a) restrict
-param search to the 16 shared keys (ignore `impellerHeight`); (b) optionally
-filter/boost by `schema_version` so a V2 session preferentially retrieves V2
-attempts; (c) ensure any "closest prior attempt" / param-diff logic excludes
-`impellerHeight` and treats ring height as derived.  Make the search path
-`schema_version`-aware so V1 + V2 sessions coexist cleanly.
+So the `impellerHeight` removal causes **no search problem today**: a V1
+(17-param) vs V2 (16-param) attempt is invisible to the ranking path — no
+code path throws or mis-ranks on the param-count difference.  The one
+genuinely cross-version feature, the **`schema_version` metafilter**
+(~L586, supports `=`/`>=`/… so an agent can scope a search to V1-only or
+V2-only), already works for both versions with NO change.
 
-**Status.** Open — recorded 2026-07-07 when `impellerHeight` was removed as
-an input.  The geometry / tool / UI / DB-schema side is done; the
-prior-session SEARCH side is not yet updated.
+**What to do WHEN T1 is built (not before).** Make parameter-value
+filtering over `dc_attempt_parameters` schema_version-aware: (a) query old
+attempts under their OWN schema's parameter set (design invariant 7,
+per-attempt schema); (b) a filter on `impellerHeight` must gracefully
+exclude / NULL-handle V2 attempts that lack it; (c) treat ring height as
+DERIVED, NOT comparable across versions (V1 = user input in [4,10]; V2 =
+auto-fit, can exceed 10) — never a match / ranking signal.
+
+**Dependency.** Blocked on T1 (`database_search.py` ~L569).  Do not
+schedule standalone.
