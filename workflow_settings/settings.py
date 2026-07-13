@@ -52,6 +52,29 @@ RENDER_LIBRARY: str = "trimesh"
 
 
 # ===========================================================
+# 2b. Geometry backend — RhinoCompute vs headless FEG
+# ===========================================================
+# Which engine the AGENT workflow uses to generate the propeller
+# mesh it renders and inspects each attempt:
+#
+#   "feg"    headless Node running the SAME web/feg/* modules the
+#            browser 3D preview uses — local, fast, no external
+#            server; a visually-faithful sub-mm approximation of
+#            the Grasshopper geometry.
+#   "rhino"  RhinoCompute + the Grasshopper definition — the exact
+#            geometry, but depends on an external server that can be
+#            unreachable.
+#
+# Whichever is chosen, the workflow AUTOMATICALLY falls back to the
+# other backend if the first fails, so a RhinoCompute outage no
+# longer blocks a run.  The downloadable deliverable is regenerated
+# via RhinoCompute regardless of this setting.
+#
+# Valid values: "feg", "rhino"
+GEOMETRY_BACKEND: str = "feg"
+
+
+# ===========================================================
 # 3.  RAG retrieval — master switch for the database_search tool
 # ===========================================================
 # Global gate for the database_search tool that was implemented

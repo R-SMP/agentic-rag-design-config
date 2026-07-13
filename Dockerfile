@@ -40,6 +40,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 #     the active backend.
 #   * libgomp1 — runtime for numpy/trimesh's OpenMP loops.
 #   * curl — used by the HEALTHCHECK below.
+#   * nodejs / npm — Node runtime for the headless FEG geometry backend
+#     (tools/generate_mesh/feg_export.mjs runs web/feg/* via Node + three,
+#     when GEOMETRY_BACKEND="feg" or as the RhinoCompute fallback).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 \
         libglu1-mesa \
@@ -49,6 +52,8 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libxrender1 \
         libgomp1 \
         curl \
+        nodejs \
+        npm \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
@@ -71,7 +76,15 @@ RUN pip install -r requirements.txt -r requirements-web.txt && \
     # full reasoning.
     pip install --no-deps --upgrade PyOpenGL==3.1.10
 
-# Application code.  .dockerignore filters out .venv, .git,
+# Node dependency layer: the FEG geometry backend's only npm dep is
+# ``three`` (pinned in package.json to match the browser CDN import map).
+# Copied before the app source so it caches independently of code changes;
+# node_modules is dockerignored, so THIS install — not the developer's
+# local tree — is what ships in the image.
+COPY package.json ./
+RUN npm install --omit=dev && npm cache clean --force
+
+# Application code.  .dockerignore filters out .venv, .git, node_modules,
 # logs/, attempts/, previous_sessions/, database/, inputs/, etc.
 COPY . ./
 

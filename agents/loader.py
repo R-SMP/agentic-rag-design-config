@@ -27,7 +27,7 @@ from config import (
     PREVIOUS_SESSIONS_DIR,
     USER_INPUTS_DIR,
 )
-from tools import set_mesh_checks, set_render_library
+from tools import set_mesh_checks, set_render_library, set_geometry_backend
 from workflow_settings import settings as workflow_settings
 
 
@@ -641,6 +641,7 @@ def run() -> None:
         # re-typing the same answers every session.
         mesh_checks = workflow_settings.MESH_CHECKS
         render_library = workflow_settings.RENDER_LIBRARY
+        geometry_backend = workflow_settings.GEOMETRY_BACKEND
         rag_enabled = workflow_settings.RAG_ENABLED
         dc_inspector_enabled = workflow_settings.DC_INSPECTOR_ENABLED
         chain_access = workflow_settings.CHAIN_ACCESS
@@ -658,6 +659,12 @@ def run() -> None:
                 f"'pyvista', got {render_library!r}.  Edit "
                 f"workflow_settings/settings.py."
             )
+        if geometry_backend not in ("feg", "rhino"):
+            raise ValueError(
+                f"workflow_settings.GEOMETRY_BACKEND must be 'feg' or "
+                f"'rhino', got {geometry_backend!r}.  Edit "
+                f"workflow_settings/settings.py."
+            )
         if dcoi_comparison_mode not in (1, 2, 3):
             raise ValueError(
                 f"workflow_settings.DCOI_COMPARISON_MODE must be 1, 2, "
@@ -673,6 +680,7 @@ def run() -> None:
 
         set_mesh_checks(mesh_checks)
         set_render_library(render_library)
+        set_geometry_backend(geometry_backend)
 
         settings_path = (
             Path(workflow_settings.__file__).resolve()

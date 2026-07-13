@@ -35,6 +35,7 @@ SETTINGS_PATH = Path(__file__).parent / "settings.py"
 # enforced up-front in agents/loader.py.
 ENUM_OPTIONS: dict[str, list[Any]] = {
     "RENDER_LIBRARY": ["trimesh", "pyvista"],
+    "GEOMETRY_BACKEND": ["feg", "rhino"],
     "DCOI_COMPARISON_MODE": [1, 2, 3],
     "EMBEDDING_PROVIDER": ["OpenAI"],
     # STITCHING_PROVIDER is locked to a single-option dropdown

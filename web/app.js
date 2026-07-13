@@ -3823,12 +3823,24 @@ const copyParametersBtn = document.getElementById("copy-parameters");
 if (downloadMeshBtn) {
   downloadMeshBtn.addEventListener("click", () => {
     if (!currentMesh.url) return;
-    // Programmatic-link trick: GET the asset URL with a `download`
-    // attribute so the browser saves rather than navigates.  Works
-    // for cross-origin URLs only because /api/artefact serves the
-    // .obj from the same origin as the app.
+    // Prefer the Rhino-regenerated deliverable: /api/download_geometry
+    // rebuilds the exact Grasshopper geometry from the attempt's
+    // parameters.json (falling back server-side to the saved mesh file if
+    // RhinoCompute is down).  Fall back to the raw saved-file URL when the
+    // mesh path can't be extracted (e.g. a non-attempt preview mesh).
+    let href = currentMesh.url;
+    try {
+      const meshPath = new URL(currentMesh.url, location.origin)
+        .searchParams.get("path");
+      if (meshPath) {
+        href = "/api/download_geometry?path=" + encodeURIComponent(meshPath);
+      }
+    } catch (_) { /* keep the direct saved-file URL */ }
+    // Programmatic-link trick: GET the URL with a `download` attribute so
+    // the browser saves rather than navigates.  The endpoint sets
+    // Content-Disposition: attachment either way.
     const a = document.createElement("a");
-    a.href = currentMesh.url;
+    a.href = href;
     a.download = currentMesh.name || "propeller_mesh.obj";
     document.body.appendChild(a);
     a.click();

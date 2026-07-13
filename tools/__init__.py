@@ -18,7 +18,11 @@ from tools.render_mesh.render_mesh_pyvista import (
     render_and_check_mesh_pv as _render_pyvista,
     set_mesh_checks as _set_mesh_checks_pyvista,
 )
-from tools.generate_mesh.generate_mesh import generate_propeller_mesh
+from tools.generate_mesh.generate_mesh import (
+    generate_propeller_mesh,
+    set_geometry_backend,
+    get_geometry_backend,
+)
 
 # Valid choices.
 RENDER_LIBRARIES: tuple[str, ...] = ("trimesh", "pyvista")

@@ -72,7 +72,7 @@ from agents.shared.viz_bus import (
     set_last_visualized_attempt_dir as viz_set_last_attempt_dir,
 )
 from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
-from tools import set_mesh_checks, set_render_library
+from tools import set_mesh_checks, set_render_library, set_geometry_backend
 from tools.generate_mesh.generate_mesh import (
     MeshGenerationError,
     render_mesh_obj_text,
@@ -276,6 +276,7 @@ def _build_session() -> Session:
     importlib.reload(workflow_settings)
     set_mesh_checks(workflow_settings.MESH_CHECKS)
     set_render_library(workflow_settings.RENDER_LIBRARY)
+    set_geometry_backend(workflow_settings.GEOMETRY_BACKEND)
 
     session_id = _new_session_id()
     log_path = _setup_session_logger(session_id)
@@ -436,6 +437,7 @@ def _startup() -> None:
     # start so the render & mesh tools see the right configuration.
     set_mesh_checks(workflow_settings.MESH_CHECKS)
     set_render_library(workflow_settings.RENDER_LIBRARY)
+    set_geometry_backend(workflow_settings.GEOMETRY_BACKEND)
     logger.info("[WEB] startup; auth_required=%s", _auth_required())
 
 
@@ -574,6 +576,13 @@ async def _run_turn_in_background(
         reply     = result.reply_text
         forwarded = result.forwarded
         for p in result.new_artefacts_paths:
+            # The per-component diagnostic sidecar is not a user-facing mesh
+            # (only offline diagnostics read it; the live tools never do).
+            # Skip it so the primary propeller_mesh.obj is what the 3D viewer
+            # auto-loads and the Download-geometry button targets — otherwise
+            # the later-written sidecar sorts last and becomes currentMesh.
+            if p.name == "propeller_mesh_components.obj":
+                continue
             sfx = p.suffix.lower()
             kind = "image" if sfx == ".png" else ("mesh" if sfx == ".obj"
                                                   else "file")
@@ -786,6 +795,58 @@ class PreviewMeshIn(BaseModel):
     params: dict[str, float]
 
 
+def _coerce_preview_params(raw_params: dict) -> dict[str, int | float]:
+    """Validate + coerce a raw 16-param dict against ``_PREVIEW_PARAM_SPEC``.
+
+    Drops a stray legacy ``impellerHeight`` key.  Raises :class:`ValueError`
+    (message names the failing param(s)) on missing/unknown keys, out-of-range
+    values, non-numeric values, or non-integer values for integer-typed params.
+    Shared by ``/api/preview_mesh`` and ``/api/download_geometry``.
+    """
+    raw = dict(raw_params)
+    raw.pop("impellerHeight", None)
+
+    expected_keys = set(_PREVIEW_PARAM_SPEC.keys())
+    received_keys = set(raw.keys())
+    missing = expected_keys - received_keys
+    extra = received_keys - expected_keys
+    if missing or extra:
+        problems: list[str] = []
+        if missing:
+            problems.append(f"missing: {sorted(missing)}")
+        if extra:
+            problems.append(f"unknown: {sorted(extra)}")
+        raise ValueError("Invalid params dict — " + "; ".join(problems))
+
+    coerced: dict[str, int | float] = {}
+    problems = []
+    for name, spec in _PREVIEW_PARAM_SPEC.items():
+        v = raw[name]
+        if not isinstance(v, (int, float)) or isinstance(v, bool):
+            problems.append(f"{name}={v!r} (must be a number)")
+            continue
+        if not (spec["min"] <= v <= spec["max"]):
+            problems.append(
+                f"{name}={v} (allowed: [{spec['min']}, {spec['max']}])"
+            )
+            continue
+        if spec["type"] == "int":
+            # JSON delivers 4 or 4.0 indistinguishably; render_mesh_obj_text
+            # uses ``isinstance(v, int)`` to choose System.Int32 vs Double
+            # for RhinoCompute, so coerce explicitly.  Reject non-integer
+            # floats (e.g. bladeCount=3.5) — those are silent-rounding
+            # foot-guns.
+            if v != int(v):
+                problems.append(f"{name}={v} (must be an integer)")
+                continue
+            coerced[name] = int(v)
+        else:
+            coerced[name] = float(v)
+    if problems:
+        raise ValueError("Out of range: " + ", ".join(problems))
+    return coerced
+
+
 @app.post("/api/preview_mesh")
 def api_preview_mesh(body: PreviewMeshIn) -> Response:
     """Generate a propeller mesh from the 16-parameter dict and return
@@ -824,56 +885,10 @@ def api_preview_mesh(body: PreviewMeshIn) -> Response:
     """
     _require_auth()
 
-    raw_params = dict(body.params)
-
-    # Lenient read: impellerHeight was removed as an input (the ring height
-    # is derived inside render_mesh_obj_text).  Drop a stray one from a
-    # stale browser / old payload rather than 400-ing the whole request.
-    raw_params.pop("impellerHeight", None)
-
-    # ----- Validate keys --------------------------------------------
-    expected_keys = set(_PREVIEW_PARAM_SPEC.keys())
-    received_keys = set(raw_params.keys())
-    missing = expected_keys - received_keys
-    extra = received_keys - expected_keys
-    if missing or extra:
-        problems: list[str] = []
-        if missing:
-            problems.append(f"missing: {sorted(missing)}")
-        if extra:
-            problems.append(f"unknown: {sorted(extra)}")
-        raise HTTPException(
-            status_code=400,
-            detail="Invalid params dict — " + "; ".join(problems),
-        )
-
-    # ----- Validate ranges + coerce integer-typed params ------------
-    coerced: dict[str, int | float] = {}
-    problems = []
-    for name, spec in _PREVIEW_PARAM_SPEC.items():
-        v = raw_params[name]
-        if not (spec["min"] <= v <= spec["max"]):
-            problems.append(
-                f"{name}={v} (allowed: [{spec['min']}, {spec['max']}])"
-            )
-            continue
-        if spec["type"] == "int":
-            # JSON delivers 4 or 4.0 indistinguishably; render_mesh_obj_text
-            # uses ``isinstance(v, int)`` to choose System.Int32 vs Double
-            # for RhinoCompute, so coerce explicitly.  Reject non-integer
-            # floats (e.g. bladeCount=3.5) — those are silent-rounding
-            # foot-guns.
-            if v != int(v):
-                problems.append(f"{name}={v} (must be an integer)")
-                continue
-            coerced[name] = int(v)
-        else:
-            coerced[name] = float(v)
-    if problems:
-        raise HTTPException(
-            status_code=400,
-            detail="Out of range: " + ", ".join(problems),
-        )
+    try:
+        coerced = _coerce_preview_params(body.params)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
     # ----- Delegate to the pure helper (Step 5) ---------------------
     try:
@@ -908,6 +923,69 @@ def api_artefact(path: str) -> FileResponse:
     if not target.is_file():
         raise HTTPException(status_code=404, detail="Artefact not found.")
     return FileResponse(target)
+
+
+@app.get("/api/download_geometry")
+def api_download_geometry(path: str) -> Response:
+    """Download an attempt's geometry as a RhinoCompute-regenerated OBJ.
+
+    The agent workflow may have built the on-disk mesh with either backend
+    (see ``GEOMETRY_BACKEND``), but the deliverable download should be the
+    exact Grasshopper geometry.  So this regenerates via RhinoCompute from the
+    attempt's ``parameters.json`` and streams that.  If RhinoCompute is
+    unavailable — or the params can't be read/regenerated — it falls back to
+    serving the saved mesh file (which may be an FEG mesh), so the user always
+    gets a download.  ``path`` is the saved ``propeller_mesh.obj`` path (the
+    same value ``/api/artefact`` serves).
+    """
+    _require_auth()
+    mesh_name = "propeller_mesh.obj"
+    root = ATTEMPTS_DIR.resolve()
+    target = Path(path).resolve()
+    if root != target and root not in target.parents:
+        raise HTTPException(status_code=403, detail="Path outside attempts dir.")
+    if target.name != mesh_name:
+        raise HTTPException(status_code=403, detail="Unsupported download target.")
+
+    def _serve_saved(reason: str) -> Response:
+        if not target.is_file():
+            raise HTTPException(status_code=404, detail="Mesh not found.")
+        logger.info(
+            "[WEB] download_geometry serving saved file (%s): %s", reason, target
+        )
+        return FileResponse(
+            target, media_type="model/obj", filename=mesh_name,
+            headers={"X-Geometry-Source": "saved-file"},
+        )
+
+    params_path = target.parent / "parameters.json"
+    if not params_path.is_file():
+        return _serve_saved("no parameters.json")
+    try:
+        raw = json.loads(params_path.read_text(encoding="utf-8"))
+        coerced = _coerce_preview_params(raw)
+    except Exception as exc:  # noqa: BLE001 — any read/parse/validate issue
+        logger.warning(
+            "[WEB] download_geometry: params unusable (%s) — serving saved file.",
+            exc,
+        )
+        return _serve_saved("params unusable")
+    try:
+        obj_text, _vc, _components = render_mesh_obj_text(coerced)
+    except MeshGenerationError as exc:
+        logger.warning(
+            "[WEB] download_geometry: RhinoCompute regen failed (%s) — "
+            "serving saved file.", exc,
+        )
+        return _serve_saved("RhinoCompute unavailable")
+    return Response(
+        content=obj_text,
+        media_type="model/obj",
+        headers={
+            "Content-Disposition": f'attachment; filename="{mesh_name}"',
+            "X-Geometry-Source": "rhino",
+        },
+    )
 
 
 class FeedbackIn(BaseModel):

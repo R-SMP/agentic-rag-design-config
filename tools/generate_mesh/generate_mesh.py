@@ -26,7 +26,9 @@ result string (preserving the prior contract).
 
 import base64
 import functools
+import json
 import logging
+import subprocess
 from pathlib import Path
 from typing import Annotated
 
@@ -98,6 +100,47 @@ _CANONICAL_PARAM_NAMES = frozenset({
 # requests; 64 entries keeps the hot working set in memory at the cost
 # of maybe a few MB of OBJ text.
 _PREVIEW_CACHE_SIZE = 64
+
+
+# ---------------------------------------------------------------------------
+# Geometry backend selection (agent path only).
+# ---------------------------------------------------------------------------
+# ``generate_propeller_mesh`` can build the mesh two ways:
+#   "rhino"  RhinoCompute + Grasshopper (the .gh definition) — the source of
+#            truth for the downloadable deliverable, but depends on an external
+#            server that can be unreachable.
+#   "feg"    headless Node running the SAME web/feg/* modules the browser 3D
+#            preview uses (feg_export.mjs) — local, fast, no external server; a
+#            visually-faithful sub-mm approximation of the .gh.
+# Whichever is selected, the OTHER is used as an automatic fallback when the
+# first fails (bidirectional).  The live-preview / RCG-download helper
+# ``render_mesh_obj_text`` ALWAYS uses RhinoCompute, independent of this.
+GEOMETRY_BACKENDS: tuple[str, ...] = ("feg", "rhino")
+_geometry_backend: str = "feg"
+
+# Headless FEG exporter + its source tree (used for cache invalidation).
+_FEG_EXPORTER = Path(__file__).resolve().parent / "feg_export.mjs"
+_FEG_SOURCE_DIR = Path(__file__).resolve().parents[2] / "web" / "feg"
+
+
+def set_geometry_backend(backend: str) -> None:
+    """Pick the agent-path geometry backend ("feg" or "rhino").
+
+    Called by loader.py at session build (mirrors ``set_render_library``).
+    Raises on an unknown choice so a typo fails loudly at startup.
+    """
+    global _geometry_backend
+    if backend not in GEOMETRY_BACKENDS:
+        raise ValueError(
+            f"Unknown geometry backend {backend!r}; expected one of "
+            f"{GEOMETRY_BACKENDS}."
+        )
+    _geometry_backend = backend
+
+
+def get_geometry_backend() -> str:
+    """Return the currently selected agent-path geometry backend."""
+    return _geometry_backend
 
 
 class MeshGenerationError(RuntimeError):
@@ -330,6 +373,34 @@ def _render_mesh_obj_text_cached(
     return mesh_text, vertex_count, components_text
 
 
+def _normalize_params(
+    params: dict[str, int | float],
+) -> dict[str, int | float]:
+    """Drop a legacy ``impellerHeight`` key (ring height is derived now) and
+    validate the canonical 16 keys.  Shared by both geometry backends.
+    Raises :class:`MeshGenerationError` on a missing/unknown key."""
+    if "impellerHeight" in params:
+        logger.warning(
+            "generate_mesh: ignoring legacy 'impellerHeight' key "
+            "(ring height is now derived from the outer section)."
+        )
+        params = {k: v for k, v in params.items() if k != "impellerHeight"}
+
+    keys = set(params.keys())
+    missing = _CANONICAL_PARAM_NAMES - keys
+    extra = keys - _CANONICAL_PARAM_NAMES
+    if missing or extra:
+        problems = []
+        if missing:
+            problems.append(f"missing keys: {sorted(missing)}")
+        if extra:
+            problems.append(f"unknown keys: {sorted(extra)}")
+        raise MeshGenerationError(
+            "Invalid parameter dict — " + "; ".join(problems)
+        )
+    return params
+
+
 def render_mesh_obj_text(
     params: dict[str, int | float],
 ) -> tuple[str, int, str | None]:
@@ -369,30 +440,9 @@ def render_mesh_obj_text(
     are NOT cached, so a transient RhinoCompute failure does not
     pollute the cache.
     """
-    # Lenient read: ``impellerHeight`` was removed as an input — the ring
-    # height is now derived (injected below).  Drop a stray impellerHeight
-    # from legacy 17-key callers / old parameters.json rather than rejecting
-    # the whole request.
-    if "impellerHeight" in params:
-        logger.warning(
-            "render_mesh_obj_text: ignoring legacy 'impellerHeight' key "
-            "(ring height is now derived from the outer section)."
-        )
-        params = {k: v for k, v in params.items() if k != "impellerHeight"}
-
-    # Validate keys against the canonical 16 BEFORE touching RhinoCompute.
-    keys = set(params.keys())
-    missing = _CANONICAL_PARAM_NAMES - keys
-    extra = keys - _CANONICAL_PARAM_NAMES
-    if missing or extra:
-        problems = []
-        if missing:
-            problems.append(f"missing keys: {sorted(missing)}")
-        if extra:
-            problems.append(f"unknown keys: {sorted(extra)}")
-        raise MeshGenerationError(
-            "Invalid parameter dict — " + "; ".join(problems)
-        )
+    # Normalise + validate (drops a legacy impellerHeight key, checks the 16)
+    # BEFORE touching RhinoCompute.
+    params = _normalize_params(params)
 
     # Cache key: sorted tuple of (key, value) so dict insertion order
     # doesn't fragment the cache.
@@ -408,6 +458,125 @@ def render_mesh_obj_text(
         gh_mtime_ns = 0
 
     return _render_mesh_obj_text_cached(params_tuple, gh_mtime_ns)
+
+
+# ---------------------------------------------------------------------------
+# FEG geometry backend: headless Node running web/feg/* (feg_export.mjs).
+# ---------------------------------------------------------------------------
+
+def _feg_sources_mtime_ns() -> int:
+    """Newest mtime across the FEG exporter + web/feg/*.js — part of the FEG
+    cache key so editing the geometry code evicts stale entries."""
+    paths = [_FEG_EXPORTER, *_FEG_SOURCE_DIR.glob("*.js")]
+    try:
+        return max((p.stat().st_mtime_ns for p in paths), default=0)
+    except OSError:
+        return 0
+
+
+@functools.lru_cache(maxsize=_PREVIEW_CACHE_SIZE)
+def _feg_render_mesh_obj_text_cached(
+    params_tuple: tuple,
+    feg_mtime_ns: int,
+) -> tuple[str, int, None]:
+    """Memoised FEG mesh generation.  See :func:`_feg_render_mesh_obj_text`.
+
+    ``feg_mtime_ns`` is cache-key only (evicts on a web/feg edit)."""
+    del feg_mtime_ns
+    params = dict(params_tuple)
+    try:
+        proc = subprocess.run(
+            ["node", str(_FEG_EXPORTER), json.dumps(params)],
+            capture_output=True, text=True, timeout=120,
+        )
+    except FileNotFoundError as exc:
+        raise MeshGenerationError(
+            f"FEG error: Node runtime not found ({exc})."
+        ) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise MeshGenerationError(
+            f"FEG error: exporter timed out ({exc})."
+        ) from exc
+    except Exception as exc:  # noqa: BLE001 — surface any launch failure
+        raise MeshGenerationError(f"FEG error: {exc}") from exc
+
+    if proc.returncode != 0:
+        detail = (proc.stderr or "").strip()[-500:]
+        raise MeshGenerationError(
+            f"FEG error: exporter exited {proc.returncode}: {detail}"
+        )
+
+    mesh_text = proc.stdout
+    vertex_count = sum(
+        1 for ln in mesh_text.splitlines() if ln.startswith("v ")
+    )
+    if vertex_count == 0:
+        raise MeshGenerationError("FEG error: exporter produced no vertices.")
+    # FEG bakes everything into a single mesh — no per-component sidecar.
+    return mesh_text, vertex_count, None
+
+
+def _feg_render_mesh_obj_text(
+    params: dict[str, int | float],
+) -> tuple[str, int, str | None]:
+    """FEG counterpart of :func:`render_mesh_obj_text`: build the mesh via the
+    headless-Node FEG exporter (web/feg/*), returning
+    ``(obj_text, vertex_count, None)``.  Pure; memoised; raises
+    :class:`MeshGenerationError` (message prefixed ``FEG error:``)."""
+    params = _normalize_params(params)
+    params_tuple = tuple(sorted(params.items()))
+    return _feg_render_mesh_obj_text_cached(
+        params_tuple, _feg_sources_mtime_ns()
+    )
+
+
+# ---------------------------------------------------------------------------
+# Agent-path dispatcher: selected backend + bidirectional fallback.
+# ---------------------------------------------------------------------------
+
+def render_agent_mesh_obj_text(
+    params: dict[str, int | float],
+) -> tuple[str, int, str | None, str]:
+    """Generate the mesh for the AGENT path, honouring the selected geometry
+    backend and falling back to the OTHER backend on failure.
+
+    Returns ``(obj_text, vertex_count, components_obj_text, backend_used)``
+    where ``backend_used`` is "feg" or "rhino".  Raises
+    :class:`MeshGenerationError` (combining both errors) only if BOTH
+    backends fail.
+    """
+    primary = _geometry_backend
+    order = [primary] + [b for b in GEOMETRY_BACKENDS if b != primary]
+    errors: list[str] = []
+    for backend in order:
+        try:
+            if backend == "feg":
+                text, vcount, comps = _feg_render_mesh_obj_text(params)
+            else:
+                text, vcount, comps = render_mesh_obj_text(params)
+        except MeshGenerationError as exc:
+            logger.warning("Geometry backend %r failed: %s", backend, exc)
+            errors.append(f"{backend}: {exc}")
+            continue
+        if errors:
+            logger.warning(
+                "Geometry backend %r failed; used %r as fallback.",
+                primary, backend,
+            )
+        return text, vcount, comps, backend
+    raise MeshGenerationError(
+        "All geometry backends failed — " + " | ".join(errors)
+    )
+
+
+def _backend_label(backend_used: str) -> str:
+    """Human label for the tool result, noting when a fallback was used."""
+    names = {"feg": "FEG", "rhino": "RhinoCompute"}
+    used = names.get(backend_used, backend_used)
+    if backend_used != _geometry_backend:
+        other = names.get(_geometry_backend, _geometry_backend)
+        return f"{used} (fallback — {other} unavailable)"
+    return used
 
 
 # ---------------------------------------------------------------------------
@@ -441,26 +610,28 @@ def generate_propeller_mesh(
     outerChord: Annotated[float, "Outer-section chord length (mm)"],
     outerAngle: Annotated[float, "Outer-section angle of attack (degrees)"],
 ) -> str:
-    """Send the 16 propeller design parameters to the Grasshopper definition
-    via RhinoCompute, retrieve the generated mesh, and save it to
+    """Generate the propeller mesh for the 16 design parameters and save it to
     ``<output_dir>/propeller_mesh.obj``.  (The outer-ring height is NOT a
     parameter — it is derived from the outer blade section and injected
     automatically so the mesh matches the 3D preview.)
 
-    ``output_dir`` MUST be the absolute path of an attempt folder
-    (created earlier by ``new_attempt``).  This tool does NOT write
-    anywhere else: the .obj is the only file it produces, and it
-    refuses to run if that file already exists in the target folder.
+    Geometry backend: chosen by the ``GEOMETRY_BACKEND`` workflow setting —
+    either RhinoCompute + the Grasshopper definition (the exact geometry) or a
+    headless-Node FEG export of the same ``web/feg`` modules the 3D preview
+    uses (a fast, local, visually-faithful sub-mm approximation).  If the
+    selected backend fails, the tool AUTOMATICALLY falls back to the other, so
+    a RhinoCompute outage no longer blocks a run.  The return string names the
+    backend actually used (and flags a fallback).  Regardless of which backend
+    built the working mesh here, the user's downloadable deliverable is
+    regenerated via RhinoCompute.
 
-    Returns the absolute path to the saved mesh file, or an error
-    message.
+    ``output_dir`` MUST be the absolute path of an attempt folder (created
+    earlier by ``new_attempt``).  This tool refuses to run if
+    ``propeller_mesh.obj`` already exists in the target folder.
 
-    Internally delegates the RhinoCompute call + Draco decode to the
-    pure :func:`render_mesh_obj_text` helper (Step 5 of the
-    Parameters Inputs redesign) so the same generation logic is shared
-    with the live-preview HTTP route ``/api/preview_mesh``.  External
-    behaviour preserved exactly — same return-string format, same disk
-    writes, same sidecar emission.
+    Returns a status string (saved mesh path, vertex count, parts, and the
+    geometry backend used), or an error message — prefixed ``Error:`` /
+    ``RhinoCompute error:`` / ``FEG error:`` — when both backends fail.
     """
     out_path_dir, err = _validate_output_dir(output_dir)
     if err is not None:
@@ -498,20 +669,20 @@ def generate_propeller_mesh(
         "outerAngle": outerAngle,
     }
 
-    # Delegate to the pure helper.  Catch MeshGenerationError and
-    # convert back to the tool's status-string contract.
+    # Delegate to the backend dispatcher (selected backend + bidirectional
+    # fallback).  Catch MeshGenerationError and convert back to the tool's
+    # status-string contract.
     try:
-        mesh_text, vertex_count, components_text = render_mesh_obj_text(
-            param_values
+        mesh_text, vertex_count, components_text, backend_used = (
+            render_agent_mesh_obj_text(param_values)
         )
     except MeshGenerationError as exc:
         msg = str(exc)
-        # Preserve the prior contract: error strings start with
-        # "Error:" or "RhinoCompute error:" so the agent can pattern-
-        # match.  The pure helper's RhinoCompute messages already
-        # start with "RhinoCompute error:"; everything else gets the
-        # generic "Error:" prefix.
-        if msg.startswith(("Error:", "RhinoCompute error:")):
+        # Preserve the prior contract: error strings start with "Error:",
+        # "RhinoCompute error:" or "FEG error:" so the agent can pattern-
+        # match; a combined both-backends-failed message and everything
+        # else gets the generic "Error:" prefix.
+        if msg.startswith(("Error:", "RhinoCompute error:", "FEG error:")):
             return msg
         return f"Error: {msg}"
 
@@ -543,5 +714,6 @@ def generate_propeller_mesh(
 
     return (
         f"Mesh saved to {output_path.resolve()} ({file_size} bytes, "
-        f"{vertex_count} vertices). Parts: {parts_used}."
+        f"{vertex_count} vertices). Parts: {parts_used}. "
+        f"Geometry backend: {_backend_label(backend_used)}."
     )

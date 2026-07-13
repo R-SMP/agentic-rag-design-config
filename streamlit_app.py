@@ -52,7 +52,7 @@ from agents.dispatch import dispatch_turn
 from agents.shared.trace import close_trace, init_trace
 from agents.shared.session import Session
 from config import LOGS_DIR, USER_INPUTS_DIR
-from tools import set_mesh_checks, set_render_library
+from tools import set_mesh_checks, set_render_library, set_geometry_backend
 from workflow_settings import settings as workflow_settings
 
 
@@ -260,6 +260,7 @@ def _ensure_session() -> Session:
     # tools see the right configuration.
     set_mesh_checks(workflow_settings.MESH_CHECKS)
     set_render_library(workflow_settings.RENDER_LIBRARY)
+    set_geometry_backend(workflow_settings.GEOMETRY_BACKEND)
 
     session_id = _new_session_id()
     log_path = _setup_session_logger(session_id)

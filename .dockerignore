@@ -16,6 +16,13 @@ __pycache__/
 .mypy_cache/
 .ruff_cache/
 
+# --- Node --------------------------------------------------------------
+# The FEG geometry backend's npm deps are installed reproducibly inside
+# the image (Dockerfile ``npm install`` against package.json).  Keep the
+# developer's local node_modules OUT of the build context so it can't
+# overlay the image's install or bloat the context.
+node_modules/
+
 # --- Git & editor metadata ----------------------------------------
 .git/
 .gitignore
