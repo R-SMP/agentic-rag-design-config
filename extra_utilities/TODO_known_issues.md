@@ -2961,8 +2961,12 @@ blade-sections info today — open question whether it needs any.
 
 ### F45. Refine blade-section parameters in place (no new attempt per tweak)
 
-**Status.** NOT STARTED — deferred follow-up from the F43 sections-first
-fast-path fix (2026-06-18).
+**Status.** PARTIALLY ADDRESSED — the RENDER-reuse half is now done for BOTH
+tools (`render_and_check_mesh` reuses existing renders in place as of
+2026-07-13, commit `cf4b900` — see F48; the sections re-render already did via
+F43).  The remaining DEFERRED part is only relaxing the append-only
+`parameters.json` (a parameter tweak still opens a new attempt).  Deferred
+follow-up from the F43 sections-first fast-path fix (2026-06-18).
 
 The fast-path fix makes a **re-render** of an attempt's sections reuse that
 attempt (DCOI → Tool Caller via `call_tool_caller`, no new attempt).  But a
@@ -3012,3 +3016,48 @@ auto-fit, can exceed 10) — never a match / ranking signal.
 
 **Dependency.** Blocked on T1 (`database_search.py` ~L569).  Do not
 schedule standalone.
+
+
+### F47. Attempt-creation ownership: DCIC is the sole default creator
+
+**Status.** FIXED (2026-07-13, commit `cf4b900` → stage-a) — pending a prod
+(py3.13) validation run.
+
+**Bug (from `LOG_problem_2.txt`).** Both the Planner and the DCIC held
+`new_attempt`, so on one generation the Planner opened attempt 1 and the DCIC
+opened attempt 2 and wrote params there — attempt 1 was orphaned
+(`description.txt` only, no `parameters.json`).
+
+**Fix.** Removed `new_attempt` from the Planner entirely — its tool binding
+(`agents/planner/planner.py`) AND every system-prompt/doc reference
+(planner/prompt.md incl. the hot-path Role-1 FORWARD move; orchestrator/prompt.md
+incl. the "MUST carry Current attempt" rule; dc_input_creator prompt +
+`write_parameters` docstring; routing_orchestrator.md; agent_tools_overview{,_brief}.md;
+output_file_locations.md; attempts_tool.py docstring; step_caps.py).  The DCIC is
+now the sole default creator (opens exactly ONE attempt per generation and ALWAYS
+writes `parameters.json` into it); the Planner DIRECTS it via a slug + intent.  The
+Orchestrator KEEPS `new_attempt` but ONLY as a special-case fallback for when the
+DCIC cannot create the folder.  Prompt-driven (no hard code guardrail) — the prod
+validation should confirm a fresh design yields ONE populated attempt, no empty
+folder.  Adversarial review caught 12 stale-prompt leftovers (all fixed).
+
+
+### F48. render_and_check_mesh reuses existing renders (no new attempt to re-render)
+
+**Status.** FIXED (2026-07-13, commit `cf4b900` → stage-a) — pending a prod
+validation run.  Completes the render-reuse half of F45.
+
+**Bug (from `LOG_problem_2.txt`).** `render_and_check_mesh` was append-only on
+renders: if the three `render_*.png` existed it ERRORED ("Attempt folders are
+append-only … Create a NEW attempt").  So a QC re-run on an already-rendered
+attempt spawned a whole new attempt with the SAME params + a full mesh
+REGENERATION + re-render (byte-identical output) — pure waste.
+
+**Fix.** Both backends (`tools/render_mesh/render_mesh.py` +
+`render_mesh_pyvista.py`): `_validate_output_dir` no longer errors on existing
+renders; the render step REUSES all three PNGs in place when they exist (still
+runs QC on the mesh), else renders.  Scoped to **renders/QC only** —
+`parameters.json` + the mesh stay append-only (`generate_propeller_mesh` still
+refuses to overwrite a mesh).  All "append-only renders" prompt text reconciled.
+This does NOT relax the append-only `parameters.json`, so a parameter TWEAK still
+opens a new attempt — that remaining piece is F45's deferred scope.
