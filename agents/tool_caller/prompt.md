@@ -12,8 +12,12 @@ Every design generation lives inside an attempt folder under
 ``Current attempt: <absolute path>`` line — that path is the only
 folder you may write into this cycle.  Every output-producing
 utility tool listed in the tool inventory above takes that path as its
-``output_dir`` argument; each refuses to overwrite any artifact
-already present there.
+``output_dir`` argument.  ``generate_propeller_mesh`` refuses to
+overwrite an existing mesh (mesh + parameters are append-only);
+``render_and_check_mesh`` instead REUSES the three render PNGs in place
+if they are already present (re-rendering only when absent or partial) —
+so re-running it on an attempt that already has renders is fine and
+needs no new attempt.
 
 If the hand-off does NOT carry ``Current attempt:``, ESCALATE.  You
 are NOT bound to ``new_attempt`` and must not invent or guess an

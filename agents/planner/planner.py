@@ -22,7 +22,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
-from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
+from agents.shared.attempts_tool import list_attempts, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
@@ -189,7 +189,7 @@ class Planner(BaseChainAgent):
     ) -> None:
         """Bind this Planner's utility + routing tools."""
         extra_utility = [history_tool] if history_tool is not None else []
-        attempts_utility = [list_attempts, read_attempt, new_attempt]
+        attempts_utility = [list_attempts, read_attempt]
         all_tools = (
             [read_user_queries, read_extracted_inputs, calculate]
             + extra_utility

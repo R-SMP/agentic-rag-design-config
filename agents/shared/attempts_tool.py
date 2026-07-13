@@ -5,8 +5,9 @@ process: it may carry the DC inputs (``parameters.json``), the DC
 output (``propeller_mesh.obj``), the analysis renders
 (``render_*.png``), an optional ``description.txt``, and any further
 metrics produced for the same set of inputs.  Folders are created
-explicitly by the agents that own the next design generation
-(Planner / Orchestrator / DCIC) — nothing creates them implicitly.
+explicitly by the DC Input Creator (the default owner of attempt
+creation; the Orchestrator may open one only as a fallback) — nothing
+creates them implicitly.
 
 Three tools are defined here:
 
@@ -20,8 +21,10 @@ Three tools are defined here:
 - ``new_attempt(slug, description)`` — create a new, empty attempt
   folder and return its absolute path.
 
-Files inside an attempt folder are append-only: every write tool that
-targets an attempt refuses to overwrite an existing file.
+``parameters.json`` and the mesh are append-only: their write tools
+refuse to overwrite an existing file.  The render/QC tool
+(``render_and_check_mesh``) instead reuses the three ``render_*.png``
+files in place when they already exist rather than refusing.
 """
 
 import re

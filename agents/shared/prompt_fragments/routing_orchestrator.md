@@ -24,5 +24,6 @@ dispatcher delivers their eventual report back to you in your next
 turn) or reply to you directly.
 
 You also have ``new_attempt(slug, description)`` to allocate a fresh
-attempt folder when starting a new design cycle outside of a normal
-chain kickoff (most cycles open their attempt via the DCIC instead).
+attempt folder, but ONLY as a special-case fallback for when the DCIC
+cannot open its own attempt (it blocks, loops, or errors on creation).
+Normally the DCIC opens the attempt itself — do not pre-open one.

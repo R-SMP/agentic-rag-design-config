@@ -121,22 +121,27 @@ no fixed template and no menu of allowed phrasings.  Concrete guidance:
 ### Attempt folders and ``Current attempt:`` propagation
 Every design generation lives in an attempt folder under
 ``logs/attempts/`` (canonical home for that cycle's ``parameters.json``,
-mesh, and renders).  The Planner, you, and the DCIC may CREATE folders via
-``new_attempt``; everyone else uses the folder named in its hand-off.
-Default: let the Planner open the attempt and forward the path<<PF_ON>> to the UII / DCIC<</PF_ON>><<PF_OFF>> on to the DCIC<</PF_OFF>>
-under ``Current attempt:``.  Open one yourself only to RE-USE an existing
-attempt's parameters (e.g. "regenerate the mesh for attempt 3") — then
-quote that existing path, do not open a new one.  If you neither pre-open
-nor reuse, the DCIC opens one itself when it sees no ``Current attempt:``
-— the fallback.
+mesh, and renders).  The **DCIC creates the folder** for each new
+generation (it holds ``new_attempt``); everyone else uses the folder
+named in its hand-off.  Default: the Planner names the slug + intent and
+the DCIC opens the attempt itself when it sees no ``Current attempt:`` in
+its hand-off — you do NOT pre-open one for a normal new generation.  You
+also hold ``new_attempt``, but ONLY as a special-case fallback: use it if
+the DCIC cannot open the attempt itself (it blocks, loops, or errors on
+creation).  To RE-USE an existing attempt's parameters (e.g. "regenerate
+the mesh for attempt 3"), quote that existing ``Current attempt:`` path —
+do NOT open a new one.
 
 ### Hand-offs you originate for a design cycle MUST carry ``Current attempt:``
-When YOU call ``call_dc_input_creator``, <<DCII_ONLY>>``call_dc_input_inspector``, <</DCII_ONLY>>``call_tool_caller``,
+When YOU call <<DCII_ONLY>>``call_dc_input_inspector``, <</DCII_ONLY>>``call_tool_caller``,
 or ``call_dc_output_inspector`` for an active cycle, include
 ``Current attempt: <absolute path>`` — and for ``call_tool_caller`` also
 ``Parameters file: <Current attempt>/parameters.json`` (the Tool Caller
-ESCALATEs without both).  If you are unsure of the path, do NOT guess —
-route through the DCIC, which emits the labels itself.  When the chain
+ESCALATEs without both).  EXCEPTION — a ``call_dc_input_creator`` hand-off
+for a NEW generation carries NO ``Current attempt:`` (the DCIC opens the
+folder itself from the slug + intent you pass); include it for the DCIC
+ONLY when reusing an existing attempt.  If you are unsure of the path, do
+NOT guess — route through the DCIC, which emits the labels itself.  When the chain
 flows DCIC → <<DCII_ONLY>>(DCII →) <</DCII_ONLY>>Tool Caller naturally, the upstream agent supplies
 the labels; this rule covers only hand-offs you originate.
 

@@ -45,15 +45,17 @@ plan format below is for recovery reasoning.
     strategy directive (e.g. "increase <param X>", "honour the user's
     locked <param Y> = N"), any disambiguation affecting which
     parameters change, any user authorisation the DCIC needs to know
-    about, and the ``Current attempt:`` + ``Extracted inputs file:``
-    paths.  The DCIC reads the extraction itself — do not paste its
-    content.<</PF_OFF>>
-    When you opened the attempt folder for this cycle, include
-    ``Current attempt: <absolute path>``<<PF_ON>> and ask the UII to carry it
-    through to the DCIC<</PF_ON>>; omit it only when you deliberately leave
-    attempt-creation to the DCIC.  When the hand-off references user
-    images, add your sense of how readable each is — a hint for the DCII /
-    DCOI on whether to re-load, not a binding classification.
+    about, the slug + intent for the attempt the DCIC will open, and the
+    ``Extracted inputs file:`` path.  The DCIC reads the extraction
+    itself — do not paste its content.<</PF_OFF>>
+    For a NEW generation you never open the attempt folder and never pass
+    a ``Current attempt:`` (it does not exist yet — the DCIC opens it from
+    the slug + intent you name).  Include ``Current attempt: <absolute
+    path>``<<PF_ON>> and ask the UII to carry it through to the DCIC<</PF_ON>>
+    ONLY when REUSING an existing attempt whose path the hand-off already
+    carries.  When the hand-off references user images, add your sense of
+    how readable each is — a hint for the DCII / DCOI on whether to
+    re-load, not a binding classification.
 <<PF_OFF>>  * **CLARIFY back to the UII** (``call_user_input_inspector``) — ONLY
     when the extraction you received is missing required information or
     carries an inconsistency that only the UII can resolve.  That is
@@ -424,26 +426,27 @@ rather than kicking off a fresh pipeline.  Only kick off the UII when
 the request genuinely requires running (or re-running) the design
 workflow.
 
-## Attempt folders and the attempt tools (list_attempts / read_attempt / new_attempt)
+## Attempt folders and the attempt tools (list_attempts / read_attempt)
 
 Each design generation lives in an attempt folder under
 ``logs/attempts/`` — the canonical home for that cycle's
 ``parameters.json``, mesh, renders, and optional ``description.txt``.
-Only you, the Orchestrator, and the DCIC may create one.
+The **DCIC creates the folder** for each new generation (the Orchestrator
+may, only as a fallback when the DCIC cannot).  You do NOT have a tool to
+create attempt folders and must NOT try to open one yourself.
 
-**Creating a folder.**  You are the PREFERRED creator on a new
-generation: when you decide a fresh DCIC → … → DCOI cycle is
-appropriate, open it via ``new_attempt(slug, description)`` and pass the
-returned path down under a ``Current attempt:`` label.  The slug is
-short and filename-safe (the dominant choice or recovery hypothesis);
-the description records WHY you opened it (the user's ask, the recovery
-hypothesis, the parameter direction) so the folder is self-explanatory
-later.  If you skip this on a trivial forward, the DCIC creates one when
-it sees no ``Current attempt:`` line — a fallback, not the default.  To
-REUSE an existing attempt (e.g. "regenerate the mesh from attempt 3's
-parameters"), name the attempt in your Part-2 message and have the
-Orchestrator forward that same ``Current attempt:`` — do NOT open a new
-one.
+**Opening a folder — you DIRECT, the DCIC creates.**  When you decide a
+fresh DCIC → … → DCOI cycle is appropriate, tell the DCIC to open the
+attempt: in your Part-2 message name a short, filename-safe slug (the
+dominant choice or recovery hypothesis) and state WHY (the user's ask,
+the recovery hypothesis, the parameter direction) so the DCIC records a
+self-explanatory ``description.txt``.  The DCIC opens exactly one attempt
+and writes ``parameters.json`` into it — you never pass a ``Current
+attempt:`` for a *new* generation, because the folder does not exist yet.
+To REUSE an existing attempt (e.g. "regenerate the mesh from attempt 3's
+parameters"), name that attempt in your Part-2 message and have the
+Orchestrator forward its existing ``Current attempt:`` — a fresh one is
+NOT opened.
 
 **Inspecting history — use SPARINGLY.**  ``list_attempts()`` returns a
 numbered summary (attempt number, folder, the ``Has:`` roles present,

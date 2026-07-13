@@ -180,8 +180,8 @@ you have exactly TWO valid responses:
 Each generation cycle is anchored on an attempt folder under
 ``logs/attempts/`` — the canonical home for that cycle's
 ``parameters.json``, mesh, and renders (filenames: ``$output_file_locations``).
-Folders are append-only: once a file is written, no one (including you)
-overwrites it.
+``parameters.json`` and the mesh are append-only: once written, no one
+(including you) overwrites them; existing renders are reused in place.
 
 **Forbidden: a no-op write.**  You may NOT write a ``parameters.json``
 byte-identical to a previous cycle's this session.  You are stateful —
@@ -190,14 +190,22 @@ draft repeats one, either pick different values or skip the write and
 ESCALATE.  A no-op tells the pipeline you "did something" when you did
 not and wastes a downstream cycle.
 
-**Which folder to write into:**
-  (A) The hand-off carries ``Current attempt: <path>`` → write into it.
-  (B) No such label → call ``new_attempt`` (short descriptive slug +
-      one-line intent) first, then write into the path it returns.
-If the folder already holds a ``parameters.json``, ``write_parameters``
-refuses it (those belong to a previous cycle) — open a fresh
-``new_attempt`` and write there.  Never guess a path around the refusal,
-and never write outside an attempt folder.
+**Which folder to write into — you OWN attempt creation:**
+  (A) The hand-off carries ``Current attempt: <path>`` (rare — an empty
+      folder the Orchestrator pre-opened for you as a fallback when you
+      could not open one) → write into that folder.
+  (B) No such label (a NEW generation — the normal case; the Planner
+      names the slug + intent but does NOT open the folder) → call
+      ``new_attempt`` (short descriptive slug + one-line intent) ONCE,
+      then write ``parameters.json`` into the path it returns.
+Open **exactly one** attempt per generation and ALWAYS write into the
+folder you open — never call ``new_attempt`` a second time, and never
+leave a freshly-opened attempt empty (an attempt with no
+``parameters.json`` is a dead folder).  If the folder already holds a
+``parameters.json``, ``write_parameters`` refuses it (those belong to a
+previous cycle) — open ONE fresh ``new_attempt`` and write there.  Never
+guess a path around the refusal, and never write outside an attempt
+folder.
 
 **Reuse the session's history.**  ``list_attempts`` / ``read_attempt``
 inspect prior cycles.  When a directive resembles one you handled before,

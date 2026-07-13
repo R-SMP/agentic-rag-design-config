@@ -23,7 +23,7 @@ is loaded but unused for the session.
 1. Implement the new tool under ``tools/render_mesh/`` so that it
    exports the SAME LangChain tool name (``render_and_check_mesh``)
    and matches the trimesh backend's argument signature, return-text
-   shape, and append-only attempt-folder rules.
+   shape, and render-reuse attempt-folder behavior.
 2. Register it in ``tools/__init__.py`` (extend ``RENDER_LIBRARIES``,
    add a branch in ``get_render_tool``, sync ``set_mesh_checks``).
 3. Drop a new ``<library>.md`` fragment alongside ``trimesh.md`` /

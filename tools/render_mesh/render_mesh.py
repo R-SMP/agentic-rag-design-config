@@ -29,9 +29,10 @@ _RENDER_NAMES = ("render_isometric.png", "render_top.png", "render_side.png")
 def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
     """Resolve and validate an attempt folder for writing renders.
 
-    The folder must exist (created by ``new_attempt``), live under
-    ``logs/attempts/``, and not already contain any of the three
-    render PNGs this tool produces.
+    The folder must exist (created by ``new_attempt``) and live under
+    ``logs/attempts/``.  Pre-existing render PNGs are NOT an error — the
+    caller reuses them in place (identical parameters give identical
+    geometry, so re-running this tool needs no new attempt).
     """
     if not isinstance(raw, str) or not raw.strip():
         return None, (
@@ -56,14 +57,6 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
             f"Error: '{path}' is not an attempt folder under "
             f"{attempts_root}.  ``render_and_check_mesh`` only writes "
             f"inside an attempt folder."
-        )
-    existing = [n for n in _RENDER_NAMES if (path / n).exists()]
-    if existing:
-        return None, (
-            f"Error: render file(s) {existing} already exist in "
-            f"{path}.  Attempt folders are append-only — renders "
-            f"cannot be overwritten.  Create a NEW attempt via "
-            f"``new_attempt`` if these parameters need re-rendering."
         )
     return path, None
 
@@ -232,8 +225,10 @@ def render_and_check_mesh(mesh_path: str, output_dir: str) -> str:
       three render PNGs should be written.  Pass the same attempt
       folder that holds the mesh (the path the hand-off carries
       under ``Current attempt:``).  The folder must already exist
-      (created by ``new_attempt``) and must NOT already contain any
-      of the three render files — attempt folders are append-only.
+      (created by ``new_attempt``).  If the three render files are
+      already present they are REUSED (not re-rendered) — identical
+      parameters give identical geometry, so re-running this tool needs
+      no new attempt.
 
     Returns an analysis report listing the saved render paths plus
     any warnings or issues detected.
@@ -306,15 +301,28 @@ def render_and_check_mesh(mesh_path: str, output_dir: str) -> str:
     else:
         findings.append("(Deterministic quality checks skipped)")
 
-    # --- Render from multiple viewpoints (always performed) ---
-    render_paths: list[Path] = []
-    try:
-        render_paths = _render_mesh_views(mesh, out_dir)
-        findings.append("Renders saved:")
-        for p in render_paths:
+    # --- Renders: reuse if already present, else render fresh ---
+    # Identical parameters produce identical geometry, so when all three
+    # render PNGs already exist we REUSE them (no re-render, no need for a
+    # new attempt).  Only the render files are handled this way — the mesh
+    # and parameters stay immutable.
+    existing_renders = [out_dir / n for n in _RENDER_NAMES
+                        if (out_dir / n).is_file()]
+    if len(existing_renders) == len(_RENDER_NAMES):
+        findings.append(
+            "Renders already present — reused in place (identical "
+            "parameters give identical geometry; not re-rendered):"
+        )
+        for p in existing_renders:
             findings.append(f"  {p.resolve()}")
-    except Exception as exc:
-        findings.append(f"Rendering skipped (error: {exc})")
+    else:
+        try:
+            render_paths = _render_mesh_views(mesh, out_dir)
+            findings.append("Renders saved:")
+            for p in render_paths:
+                findings.append(f"  {p.resolve()}")
+        except Exception as exc:
+            findings.append(f"Rendering skipped (error: {exc})")
 
     findings.append(f"Attempt folder: {out_dir.resolve()}")
 

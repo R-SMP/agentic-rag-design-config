@@ -92,9 +92,9 @@ def write_parameters(parameters: dict, attempt_dir: str) -> str:
     - ``attempt_dir``: absolute path of the attempt folder this
       parameter set belongs to.  This is either the path the
       hand-off carries under ``Current attempt:`` (when the
-      Orchestrator / Planner created the folder for you), or the
-      path you obtained by calling ``new_attempt`` yourself when no
-      attempt was assigned.  The folder must already exist; the
+      Orchestrator created the folder for you as a fallback), or the
+      path you obtained by calling ``new_attempt`` yourself — the
+      normal case, since you own attempt creation.  The folder must already exist; the
       write refuses if it already contains a ``parameters.json``
       (attempt folders are append-only — start a new attempt if
       this set of parameters needs to differ from the existing one).

@@ -46,7 +46,7 @@ Extra slack covers the post-image-loading user-input tools
 
 MAX_DCIC_STEPS = 50
 """DC Input Creator's ``run()``.  Standard flow is
-``read_extracted_inputs`` → optional ``new_attempt`` →
+``read_extracted_inputs`` → ``new_attempt`` (for a new generation) →
 ``write_parameters`` → routing call (3-4 turns).  Reference-matching
 runs may additionally invoke ``list_input_files`` /
 ``read_image_notes`` / ``load_input_images``, which can push the
