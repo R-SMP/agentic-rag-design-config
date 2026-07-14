@@ -1564,6 +1564,7 @@ async function loadRenderCompression() {
     setRcValue("cross", d.cross_degree || 0);
     setRcValue("geo", d.geo_degree || 0);
     setRcStatus("", "");
+    updateGeoGenButton();
     for (const kind of RC_KINDS) rcRefreshSamples(kind);
   } catch (e) { /* non-fatal */ }
 }
@@ -1644,10 +1645,42 @@ async function saveRenderCompression() {
   }
 }
 
+function updateGeoGenButton() {
+  const btn = $("rc-geo-generate");
+  if (btn) btn.textContent = rcAvail.geo ? "Regenerate 3D samples" : "Generate 3D samples";
+}
+
+// Run gen_render_samples.py --geo server-side (needs Node + pyrender, both in
+// the app container).  Ephemeral — a redeploy wipes the samples, re-run then.
+async function generateGeoSamples() {
+  const btn = $("rc-geo-generate");
+  const st = $("rc-geo-gen-status");
+  const setGen = (msg, kind) => {
+    if (st) { st.textContent = msg || ""; st.className = "rc-gen-status" + (kind ? " " + kind : ""); }
+  };
+  if (btn) btn.disabled = true;
+  setGen("Generating… (~30s, don't leave the page)", "");
+  try {
+    const res = await fetch("/api/render_compression/generate_geo", { method: "POST" });
+    const d = await res.json().catch(() => ({}));
+    if (res.status === 409) { setGen("Locked — end the session first.", "err"); return; }
+    if (!res.ok) { setGen(d.detail || "Generation failed.", "err"); return; }
+    rcAvail.geo = true;
+    updateGeoGenButton();
+    setGen("Generated.", "ok");
+    rcRefreshSamples("geo");
+  } catch (e) {
+    setGen("Network error: " + e, "err");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 for (const kind of RC_KINDS) {
   const s = $("rc-" + kind + "-slider");
   if (s) s.addEventListener("input", () => rcSync(kind));
 }
+if ($("rc-geo-generate")) $("rc-geo-generate").addEventListener("click", generateGeoSamples);
 if ($("rc-save")) $("rc-save").addEventListener("click", saveRenderCompression);
 if ($("rc-reload")) {
   $("rc-reload").addEventListener("click", () => {

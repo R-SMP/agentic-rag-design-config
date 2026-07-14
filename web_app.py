@@ -2675,6 +2675,43 @@ def api_render_compression_save(body: RenderCompressionIn) -> dict:
     return {"ok": True, "cross_degree": cross, "geo_degree": geo}
 
 
+@app.post("/api/render_compression/generate_geo")
+async def api_render_compression_generate_geo() -> dict:
+    """(Re)generate the 3D isometric sample renders (``web/render_samples/geo_*.png``)
+    by running ``gen_render_samples.py --geo`` as an ISOLATED subprocess (so its
+    import-sidestep tricks never touch the running app).  Needs Node + the
+    pyrender stack — both present in the app container.  The output is ephemeral
+    (a redeploy wipes it), so this endpoint repopulates the samples on demand."""
+    import subprocess
+    import sys
+    _require_auth()
+    _require_no_session()
+    script = Path(__file__).resolve().parent / "extra_utilities" / "gen_render_samples.py"
+
+    def _run() -> "subprocess.CompletedProcess":
+        return subprocess.run(
+            [sys.executable, str(script), "--geo"],
+            capture_output=True, text=True, timeout=240,
+        )
+
+    try:
+        proc = await run_in_threadpool(_run)
+    except subprocess.TimeoutExpired:
+        raise HTTPException(status_code=504, detail="Sample generation timed out.")
+    except Exception as exc:  # noqa: BLE001 — surface any launch failure
+        raise HTTPException(status_code=500, detail=f"Could not start generation: {exc}")
+
+    geo_ok = all(_render_sample_path("geo", s).is_file() for s in _RENDER_SAMPLE_SIZES)
+    if proc.returncode != 0 or not geo_ok:
+        tail = ((proc.stderr or proc.stdout) or "").strip()[-600:]
+        logger.warning("[WEB] geo sample generation failed (rc=%s): %s",
+                       proc.returncode, tail)
+        raise HTTPException(status_code=500,
+                            detail="Generation failed: " + (tail or "no output"))
+    logger.info("[WEB] geo render samples generated")
+    return {"ok": True, "geo_available": True}
+
+
 @app.get("/api/events")
 async def api_events() -> StreamingResponse:
     """Server-Sent Events stream. Pushes a "visualize" event the

@@ -884,6 +884,10 @@ button.danger:hover { background: #3a1d1d; }
 .rc-status.ok { color: #4caf78; }
 .rc-status.err { color: var(--error); }
 .rc-status.warn { color: #e0a83c; }
+.rc-geo-actions { display: flex; align-items: center; gap: 10px; margin: 0 0 12px; flex-wrap: wrap; }
+.rc-gen-status { font-size: 12px; color: var(--muted); }
+.rc-gen-status.ok { color: #4caf78; }
+.rc-gen-status.err { color: var(--error); }
 
 @media (max-width: 900px) {
   .workspace { flex-direction: column; }
