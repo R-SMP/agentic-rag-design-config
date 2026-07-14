@@ -15,7 +15,7 @@ What this tool does
 
 What this tool does NOT do
 --------------------------
-- Generate a mesh (use the agent path's ``generate_propeller_mesh``
+- Generate a mesh (use the agent path's ``generate_and_render_propeller``
   for that, OR the live preview's ``/api/preview_mesh`` route).
 - Create an attempt folder.
 - Modify any agent state or trigger downstream agents.

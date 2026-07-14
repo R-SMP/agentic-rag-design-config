@@ -19,12 +19,12 @@
   values are in range, internally consistent, and match the user's
   intent.  Can send corrections back to the DC Input Creator.
 <</DCII_ONLY>>- **Tool Caller (TC)**: reads parameters.json from disk, calls the
-  bound mesh-generation tool to produce the mesh file, then the
-  rendering / quality-check tool to produce the renders and (if
-  enabled) the quality-check numbers — see ``$tool_inventory`` for
-  the exact tool names and behaviours.  Also has a ``calculate``
-  tool for arithmetic.  Reports the produced file paths for the
-  DC Output Inspector.
+  bound merged generate-and-render tool once — it produces the mesh
+  file AND, as its built-in final step, the renders and (if enabled)
+  the quality-check numbers — see ``$tool_inventory`` for the exact
+  tool name and behaviour.  Also has a ``calculate`` tool for
+  arithmetic.  Reports the produced file paths for the DC Output
+  Inspector.
 - **DC Output Inspector (DOI)**: loads the rendered PNGs using the
   paths supplied by the Tool Caller and performs a qualitative visual
   analysis.  Approves the design (FORWARD to Orchestrator) or flags

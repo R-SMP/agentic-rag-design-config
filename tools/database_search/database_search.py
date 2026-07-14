@@ -1583,7 +1583,7 @@ def make_database_search_tool(caller_agent: str):
     _db_mode = db_options_config.get_mode()
 
     @tool
-    @generic_tool("Database Search")
+    @generic_tool("Database search")
     def database_search(
         query: Annotated[
             str,

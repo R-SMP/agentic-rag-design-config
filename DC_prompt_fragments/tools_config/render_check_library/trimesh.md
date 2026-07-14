@@ -1,10 +1,10 @@
 ## Active render / mesh-check backend: trimesh + pyrender
 
-For this session the bound ``render_and_check_mesh`` tool runs on the
-**trimesh + pyrender** backend.  The contract is identical regardless
-of backend (same arguments, same three render filenames, same
-metrics), but a few specifics are worth keeping in mind so you read
-the tool's return text correctly:
+For this session the render+check step of ``generate_and_render_propeller``
+runs on the **trimesh + pyrender** backend.  The contract is identical
+regardless of backend (same three render filenames, same metrics), but a
+few specifics are worth keeping in mind so you read the tool's return
+text correctly:
 
 - The mesh is loaded with ``trimesh.load``.  When the .obj contains
   multiple geometry groups, trimesh returns a Scene which is

@@ -25,9 +25,9 @@ you never call their tools yourself, so this is awareness, not HOW):
   into the attempt folder (the only way to author parameter values).
 <<DCII_ONLY>>- **DC Input Inspector**: reads the parameters + extraction and inspects
   them; does not write.
-<</DCII_ONLY>>- **Tool Caller**: reads the parameters, generates the mesh, and runs
-  render-and-check — producing the mesh file + renders in the attempt
-  folder.
+<</DCII_ONLY>>- **Tool Caller**: reads the parameters and calls the one merged
+  generate-and-render tool, which builds the mesh AND renders + checks it —
+  producing the mesh file + renders in the attempt folder.
 - **DC Output Inspector**: loads the renders the Tool Caller listed
   (``load_render_images``) and inspects them; can pull a prior cycle's
   renders in for comparison.

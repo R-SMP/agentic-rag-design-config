@@ -490,7 +490,7 @@ def _handle_load_input_images(agent, tc: dict, agent_key: str) -> None:
         append_pending_images(agent, image_blocks, image_paths)
 
 
-@generic_tool("OCR regions")
+@generic_tool("Read text regions (OCR)")
 def _handle_ocr_regions(agent, tc: dict, agent_key: str) -> None:
     """Re-OCR one or more regions of a user image at higher resolution in
     a single call.  Validates the path + region_ids, delegates the shared

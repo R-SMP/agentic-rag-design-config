@@ -22,9 +22,9 @@ does not appear in your prompt.
 <<DCII_ONLY>>- **DC Input Inspector (DCII)**: validates the parameter set against
   ranges, internal consistency, and the user's intent.  Can send
   corrections back to the DCIC.
-<</DCII_ONLY>>- **Tool Caller (TC)**: invokes the mesh-generation and
-  render-and-check tools, producing the mesh file and renders for
-  the current attempt.
+<</DCII_ONLY>>- **Tool Caller (TC)**: invokes the one merged generate-and-render
+  tool (mesh generation + renders + QC in a single call), producing the
+  mesh file and renders for the current attempt.
 - **DC Output Inspector (DCOI)**: visually inspects the renders and
   approves or escalates.
 

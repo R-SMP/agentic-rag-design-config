@@ -21,9 +21,10 @@ Each view is reported twice: as written in the .obj (no welding) and
 again after merging coincident vertices.  The diff between the two
 isolates "missing weld" defects from genuine geometry defects.
 
-The metrics + threshold match the live ``render_and_check_mesh``
-tools so this script's "watertight / degenerate" numbers are directly
-comparable to the QC line the Tool Caller emits during a session.
+The metrics + threshold match the render+check step of the live
+``generate_and_render_propeller`` tool so this script's "watertight /
+degenerate" numbers are directly comparable to the QC line the Tool
+Caller emits during a session.
 
 Why per-component?
 ------------------
@@ -234,7 +235,7 @@ def main(argv: list[str]) -> int:
     rc = analyze_file(path, "PRIMARY MESH")
 
     # Auto-discover the per-component sidecar written by
-    # generate_propeller_mesh when MeshFinal was the primary output.
+    # generate_and_render_propeller when MeshFinal was the primary output.
     sidecar_name = "propeller_mesh_components.obj"
     sidecar = path.parent / sidecar_name
     if sidecar.is_file() and sidecar.resolve() != path.resolve():

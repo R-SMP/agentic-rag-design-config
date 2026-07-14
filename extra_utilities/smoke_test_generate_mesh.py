@@ -1,9 +1,10 @@
-"""Smoke test for the ``generate_propeller_mesh`` tool.
+"""Smoke test for the ``generate_and_render_propeller`` tool.
 
 Runs the tool end-to-end against whatever RhinoCompute server
 ``RHINO_COMPUTE_URL`` points at (per the loaded .env), with a
 hard-coded sample parameter set.  Creates a fresh timestamped attempt
-folder under ``ATTEMPTS_DIR`` and writes ``propeller_mesh.obj`` there.
+folder under ``ATTEMPTS_DIR`` and writes ``propeller_mesh.obj`` there
+(plus its render PNGs — rendering is the tool's built-in final step).
 
 How to run
 ----------
@@ -47,7 +48,7 @@ if str(_REPO_ROOT) not in sys.path:
 # Importing config.py triggers ``load_dotenv``; this is what populates
 # RHINO_COMPUTE_URL / RHINO_COMPUTE_API_KEY from the .env file.
 from config import ATTEMPTS_DIR, RHINO_COMPUTE_URL, RHINO_COMPUTE_API_KEY
-from tools.generate_mesh.generate_mesh import generate_propeller_mesh
+from tools.generate_mesh.generate_mesh import generate_and_render_propeller
 
 
 # Sample parameter set — sensible defaults for a 4-bladed propeller.
@@ -103,13 +104,13 @@ def main() -> int:
     _print_env_summary()
     folder = _make_attempt_dir()
 
-    print("Calling generate_propeller_mesh ...")
+    print("Calling generate_and_render_propeller ...")
     args = {"output_dir": str(folder.resolve()), **SAMPLE_PARAMS}
     try:
         # The @tool decorator's ``.invoke({...})`` is the standard call
         # path; it forwards the dict as keyword arguments to the
         # wrapped function.
-        result = generate_propeller_mesh.invoke(args)
+        result = generate_and_render_propeller.invoke(args)
     except Exception as exc:
         print(f"\nUNEXPECTED EXCEPTION: {type(exc).__name__}: {exc}")
         return 2

@@ -998,14 +998,14 @@ button.danger:hover { background: #3a1d1d; }
 #agent-dc-input-inspector rect          { fill: #2e9c5a; }
 #agent-tool-caller rect                 { fill: #2e9c5a; }
 #agent-propeller-configurator rect      { fill: #c8e6c9; }
-#agent-visual-renderings-generator rect { fill: #c8e6c9; }
+#agent-blade-sections rect              { fill: #c8e6c9; }
 #agent-database-handler rect            { fill: #cfe2f3; }
 #agent-context-pruner rect              { fill: #cfe2f3; }
 
 #agent-user text:not(.agent-tool-label),
 #agent-receptionist text:not(.agent-tool-label),
 #agent-propeller-configurator text:not(.agent-tool-label),
-#agent-visual-renderings-generator text:not(.agent-tool-label),
+#agent-blade-sections text:not(.agent-tool-label),
 #agent-database-handler text:not(.agent-tool-label),
 #agent-context-pruner text:not(.agent-tool-label) {
   fill: #1f1f1f;

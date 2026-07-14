@@ -102,7 +102,7 @@ not yet confirmed.  Two choices for the first Stage A deploy:
     end-to-end (Receptionist + Orchestrator + Planner + UII
     extraction + DCIC parameter assembly + DCOI critique on
     placeholder data), but the moment any agent calls the
-    ``generate_propeller_mesh`` tool the request will fail because
+    ``generate_and_render_propeller`` tool the request will fail because
     the container cannot reach a Rhino Compute server.  Acceptable
     for an end-to-end UI smoke test; not acceptable for an actual
     propeller demo.

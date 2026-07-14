@@ -1557,7 +1557,7 @@ Two complementary fixes ship together:
 1. **Remove `check_stop_or_raise()` from any chain agent's outer
    OR inner loop.**  Dropping the outer poll restores the old
    ~30-60 s latency.  Dropping the inner poll lets a stop click
-   right before a 30 s `generate_propeller_mesh` call wait for
+   right before a 30 s `generate_and_render_propeller` call wait for
    the full mesh to render.
 2. **Remove the `except StopRequestedError` catch in
    `dispatch_turn`.**  Without it, a stop mid-pipeline propagates

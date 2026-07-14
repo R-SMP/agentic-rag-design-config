@@ -20,7 +20,13 @@ from pathlib import Path
 
 _subscribers: list[queue.Queue] = []
 _lock = threading.Lock()
-_MAX_QUEUED = 32
+# Generous per-subscriber buffer: box-switch (``agent_active``) and
+# ``generic_tool`` events arrive in bursts during a busy turn, and a
+# dropped box-switch is what mis-attributes a tool subtext to the wrong
+# agent box.  Kept bounded so a dead/slow SSE client can never grow it
+# without limit; on overflow ``publish`` evicts the OLDEST event so the
+# freshest state wins (see below).
+_MAX_QUEUED = 256
 
 
 def subscribe() -> queue.Queue:
@@ -54,7 +60,19 @@ def publish(event: dict) -> int:
             q.put_nowait(event)
             delivered += 1
         except queue.Full:
-            pass
+            # Evict the OLDEST queued event and retry: for a "current
+            # state" display the newest box-switch matters more than a
+            # stale one.  Still non-blocking — never stalls the agent
+            # pipeline.
+            try:
+                q.get_nowait()
+            except queue.Empty:
+                pass
+            try:
+                q.put_nowait(event)
+                delivered += 1
+            except queue.Full:
+                pass
     return delivered
 
 

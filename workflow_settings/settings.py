@@ -20,7 +20,7 @@ import os
 # ===========================================================
 # 1.  Deterministic mesh quality checks
 # ===========================================================
-# Whether the bound ``render_and_check_mesh`` tool runs the
+# Whether the render step of ``generate_and_render_propeller`` runs the
 # watertight / volume / degenerate-face checks on every generated
 # mesh.
 #
@@ -36,8 +36,8 @@ MESH_CHECKS: bool = False
 # ===========================================================
 # 2.  Mesh-check / rendering library
 # ===========================================================
-# Which library powers the bound ``render_and_check_mesh`` tool's
-# metric computations.  Both backends report the same metrics
+# Which library powers the render step of ``generate_and_render_propeller``
+# (its metric computations).  Both backends report the same metrics
 # (watertight / volume / degenerate-face count); rendering goes
 # through the shared pyrender pipeline either way so the three PNG
 # outputs are visually identical.

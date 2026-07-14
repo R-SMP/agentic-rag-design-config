@@ -21,10 +21,48 @@ from pathlib import Path
 
 _trace_file = None
 
+# ---------------------------------------------------------------------------
+# Current-agent tracker (for generic-tool subtext attribution)
+# ---------------------------------------------------------------------------
+#
+# The LOG-and-Status flowchart shows a "last used tool" subtext under
+# each agent box.  It must be bound to the agent that ACTUALLY ran the
+# tool — never to whatever box happens to be highlighted, which can go
+# stale if a box-switch (``agent_active``) event was dropped by the viz
+# bus.  We keep an authoritative, in-process record of which real agent
+# is currently in flight here (updated synchronously on every handoff,
+# not through the lossy event queue) and stamp it onto every
+# ``generic_tool`` event; the frontend then targets that exact box.
+#
+# The set is ``AGENT_DISPLAY.values()`` from ``routing_tools.py`` (the
+# 8 chain agents) PLUS "Database Handler" — a real flowchart agent box
+# (``agent-database-handler`` in web/app.js) that runs post-session and
+# is not in the routing table.  It is duplicated here (not imported)
+# because ``routing_tools`` imports THIS module — importing it back
+# would be a circular import.  Tool boxes (Propeller Configurator, Blade
+# Sections, Context Pruner) are deliberately excluded: a generic
+# helper's subtext belongs to the agent that ran it, never a tool box.
+_AGENT_DISPLAY_NAMES = frozenset({
+    "Receptionist", "Orchestrator", "User Input Inspector", "Planner",
+    "DC Input Creator", "DC Input Inspector", "Tool Caller",
+    "DC Output Inspector", "Database Handler",
+})
+_current_agent = None
+
+
+def get_current_agent():
+    """Return the display name of the real agent currently in flight
+    (the most recent handoff target that was a known agent), or
+    ``None`` before the first handoff.  Used to attribute generic-tool
+    subtexts to the correct flowchart box even when the box-switch
+    event was dropped downstream."""
+    return _current_agent
+
 
 def init_trace(log_dir: Path) -> Path:
     """Create a new trace file.  Returns the path."""
-    global _trace_file
+    global _trace_file, _current_agent
+    _current_agent = None
     log_dir.mkdir(parents=True, exist_ok=True)
     start = datetime.now()
     timestamp = start.strftime("%Y%m%d_%H%M%S")
@@ -61,6 +99,14 @@ def trace(from_agent: str, to_agent: str, note: str = "",
             line += f"  ({note})"
         _trace_file.write(line + "\n")
         _trace_file.flush()
+
+    # Track which real agent is now in flight so generic-tool subtexts
+    # can be bound to the correct box even if the box-switch event is
+    # dropped downstream.  Only real agents update it — never tool
+    # boxes or synthetic targets ("Error, Escalated to …").
+    if to_agent in _AGENT_DISPLAY_NAMES:
+        global _current_agent
+        _current_agent = to_agent
 
     if not publish:
         return

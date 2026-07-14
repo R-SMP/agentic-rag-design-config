@@ -722,8 +722,12 @@ const FLOW_BOX_BY_NAME = {
   // highlighted — the agent is still semantically in flight, waiting
   // for the tool's return.  The matching tool→agent exit event then
   // clears the tool box and leaves the caller solo-lit.
-  "Propeller Configurator":      "agent-propeller-configurator",
-  "Visual Renderings Generator": "agent-visual-renderings-generator",
+  // "Propeller Configurator" is generate_and_render_propeller, which
+  // builds the 3D geometry AND its renders in one call (the render
+  // step is its built-in final phase); "Blade Sections" is the
+  // cross-section diagram renderer (render_blade_sections).
+  "Propeller Configurator":  "agent-propeller-configurator",
+  "Blade Sections":          "agent-blade-sections",
   // Extra agents — not yet wired into trace(); reserved so they'll
   // light up automatically once instrumentation lands.
   "Database Handler":      "agent-database-handler",
@@ -732,7 +736,7 @@ const FLOW_BOX_BY_NAME = {
 
 const TOOL_NAMES = new Set([
   "Propeller Configurator",
-  "Visual Renderings Generator",
+  "Blade Sections",
   // Context Pruner is treated as a tool-like overlay: when an agent's
   // history exceeds the configured token threshold its pre-invoke
   // hook lights up the CP box ALONGSIDE the calling agent (multi-
@@ -761,11 +765,26 @@ function _activateById(id) {
 // historical-status display instead, gray-italic below the agent
 // name.  The agent's own highlight (yellow border on .active) is
 // orthogonal — driven by agent_active events from real handoffs.
-function recordToolUsedByActiveAgent(name) {
-  // Find the agent box currently lit (Strict-transitions policy:
-  // exactly one agent box has .active during a turn).  Skip tool
-  // boxes (TOOL: Propeller Configurator etc.) and the User box —
-  // they don't call generic helpers.
+function recordToolUsedByActiveAgent(name, agentName) {
+  // Preferred path: the event carries the display name of the agent
+  // that ACTUALLY ran the tool (from trace.get_current_agent on the
+  // backend, tracked in-process).  Bind the subtext to THAT box so a
+  // dropped/late box-switch event can't mis-attribute it — e.g. the
+  // DCIC's "Write parameters" landing under the Planner.
+  if (agentName) {
+    const id = FLOW_BOX_BY_NAME[agentName];
+    if (id) {
+      const box = document.getElementById(id);
+      const label = box && box.querySelector(".agent-tool-label");
+      if (label) {
+        label.textContent = name;
+        return;
+      }
+    }
+  }
+  // Fallback (event without an owner): whatever box is currently lit.
+  // Strict-transitions policy means exactly one agent box has .active
+  // during a turn; skip tool boxes and the User box.
   const active = document.querySelectorAll(
     ".flow-box.active:not(.flow-box-tool):not(.flow-box-user)"
   );
@@ -798,8 +817,8 @@ const DYNAMIC_ARROW_BY_EDGE = {
   "dc input creator|orchestrator":           "dyn-orch-dic",
   "dc input inspector|orchestrator":         "dyn-orch-dii",
   "orchestrator|tool caller":                "dyn-orch-tc",
-  "propeller configurator|tool caller":      "dyn-tc-propeller",
-  "tool caller|visual renderings generator": "dyn-tc-vr",
+  "propeller configurator|tool caller":  "dyn-tc-propeller",
+  "blade sections|tool caller":          "dyn-tc-blade",
 };
 const DYNAMIC_ARROW_IDS = Object.values(DYNAMIC_ARROW_BY_EDGE);
 
@@ -878,7 +897,7 @@ function startEventStream() {
           // The `end` event is intentionally ignored — the label
           // sticks until a newer tool overwrites it.
           if (data.state === "start") {
-            recordToolUsedByActiveAgent(data.name);
+            recordToolUsedByActiveAgent(data.name, data.agent);
           }
         } else if (data.type === "session_save_done") {
           // The server-side End Session background task has finished
@@ -1724,12 +1743,13 @@ const LR_BOXES = [
     label: "Input Inspector" },
   { key: "tool_caller",           role: "agent", x: 420, y: 450, w: 140, h: 95,
     label: "Tool Caller" },
-  // Tools — display only.  Propeller Configurator sits just below
-  // the EXTRA AGENTS panel (frame ends at y=255).
+  // Tools — display only.  Propeller Configurator (the merged
+  // geometry+renders tool) sits just below the EXTRA AGENTS panel
+  // (frame ends at y=255); Blade Sections is the cross-section renderer.
   { key: "propeller_configurator",   role: "tool", x: 610, y: 275, w: 180, h: 60,
     label: "Propeller Configurator", toolPrefix: true },
-  { key: "visual_renderings_generator", role: "tool", x: 610, y: 480, w: 180, h: 60,
-    label: "Visual Renderings", toolPrefix: true },
+  { key: "blade_sections", role: "tool", x: 610, y: 480, w: 180, h: 60,
+    label: "Blade Sections", toolPrefix: true },
   // Extra agents panel + boxes.  Boxes are full-height (h=95) so their
   // provider+model controls fit on the same scale as the chain agents.
   { key: "__extra_frame__",       role: "extra-frame", x: 600, y: 10, w: 200, h: 245,
@@ -1763,7 +1783,7 @@ const LR_ARROWS = [
   { x1: 490, y1: 446, x2: 490, y2: 299 },
   // Tool Caller ↔ Propeller Configurator (diagonal)
   { x1: 564, y1: 470, x2: 606, y2: 305 },
-  // Tool Caller ↔ Visual Renderings generator (diagonal)
+  // Tool Caller ↔ Blade Sections (diagonal)
   { x1: 564, y1: 530, x2: 606, y2: 510 },
 ];
 

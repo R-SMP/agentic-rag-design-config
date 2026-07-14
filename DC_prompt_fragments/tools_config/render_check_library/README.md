@@ -1,12 +1,12 @@
 # Render / mesh-check library variants
 
-Two interchangeable backends live behind the single LangChain tool
-name ``render_and_check_mesh`` — exactly one is bound to the Tool
-Caller per session, picked at startup by ``loader.py``.  Both
-backends compute the same metrics (watertightness, volume,
-degenerate-face count) on the same mesh and produce three PNG
-renders (``render_isometric.png`` / ``render_top.png`` /
-``render_side.png``) into the active attempt folder.
+Two interchangeable backends implement the render+check step of the
+merged ``generate_and_render_propeller`` tool — exactly one is active
+per session, picked at startup by ``loader.py``.  Both backends compute
+the same metrics (watertightness, volume, degenerate-face count) on the
+same mesh and produce three PNG renders (``render_isometric.png`` /
+``render_top.png`` / ``render_side.png``) into the active attempt
+folder.
 
 | Choice | Fragment | Backend |
 |--------|----------|---------|
@@ -20,12 +20,13 @@ is loaded but unused for the session.
 
 ## Adding another backend
 
-1. Implement the new tool under ``tools/render_mesh/`` so that it
-   exports the SAME LangChain tool name (``render_and_check_mesh``)
-   and matches the trimesh backend's argument signature, return-text
-   shape, and render-reuse attempt-folder behavior.
+1. Implement the new backend under ``tools/render_mesh/`` so that it
+   exports a ``render_and_check``-style core function
+   ``(mesh_path, output_dir) -> str`` matching the trimesh backend's
+   argument signature, return-text shape, and render-reuse
+   attempt-folder behavior.
 2. Register it in ``tools/__init__.py`` (extend ``RENDER_LIBRARIES``,
-   add a branch in ``get_render_tool``, sync ``set_mesh_checks``).
+   add a branch in ``get_render_core``, sync ``set_mesh_checks``).
 3. Drop a new ``<library>.md`` fragment alongside ``trimesh.md`` /
    ``pyvista.md`` describing the backend's specifics.
 4. Wire the fragment into ``agents/shared/prompts.py`` (read it as a

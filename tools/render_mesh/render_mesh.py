@@ -1,4 +1,10 @@
-"""Visual rendering and mesh quality-checking tool (trimesh backend)."""
+"""Visual rendering and mesh quality-checking core (trimesh backend).
+
+Exposes :func:`render_and_check` — the render+check step that the merged
+``generate_and_render_propeller`` tool runs after a successful geometry
+build.  ``tools/__init__`` wires it as the active backend when the trimesh
+render library is selected.
+"""
 
 from pathlib import Path
 
@@ -6,9 +12,7 @@ import numpy as np
 import trimesh
 import pyrender
 from PIL import Image
-from langchain_core.tools import tool
 
-from agents.shared.agent_activity import tool_active
 from config import ATTEMPTS_DIR
 
 # Module-level toggle: when False the deterministic quality checks
@@ -55,8 +59,8 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
     if attempts_root not in path.parents and path != attempts_root:
         return None, (
             f"Error: '{path}' is not an attempt folder under "
-            f"{attempts_root}.  ``render_and_check_mesh`` only writes "
-            f"inside an attempt folder."
+            f"{attempts_root}.  The render step only writes inside an "
+            f"attempt folder."
         )
     return path, None
 
@@ -206,43 +210,38 @@ def _render_mesh_views(mesh, output_dir):
 
 
 # ---------------------------------------------------------------------------
-# Render & check tool
+# Render & check core (trimesh backend)
 # ---------------------------------------------------------------------------
 
 
-@tool
-@tool_active("Visual Renderings Generator")
-def render_and_check_mesh(mesh_path: str, output_dir: str) -> str:
+def render_and_check(mesh_path: str, output_dir: str) -> str:
     """Render the mesh at ``mesh_path`` from three viewpoints (isometric,
-    top-down, side) and run geometric quality checks.
+    top-down, side) and run geometric quality checks (trimesh backend).
 
-    Both arguments are REQUIRED.
+    Internal helper — the render+check phase of
+    ``generate_and_render_propeller`` (the merged geometry+renders tool).
+    ``tools/__init__`` wires this as the active render backend when the
+    trimesh library is selected.
 
-    - ``mesh_path``: absolute path of the .obj mesh to render.  Pass
-      the path that ``generate_propeller_mesh`` just returned — do
-      NOT call this tool with a guessed path.
-    - ``output_dir``: absolute path of the attempt folder where the
-      three render PNGs should be written.  Pass the same attempt
-      folder that holds the mesh (the path the hand-off carries
-      under ``Current attempt:``).  The folder must already exist
-      (created by ``new_attempt``).  If the three render files are
-      already present they are REUSED (not re-rendered) — identical
-      parameters give identical geometry, so re-running this tool needs
-      no new attempt.
+    - ``mesh_path``: absolute path of the .obj mesh to render.
+    - ``output_dir``: the attempt folder where the three render PNGs are
+      written.  If the three render files are already present they are
+      REUSED (not re-rendered) — identical parameters give identical
+      geometry.
 
-    Returns an analysis report listing the saved render paths plus
-    any warnings or issues detected.
+    Returns an analysis report listing the saved render paths plus any
+    warnings or issues detected.
     """
     if not isinstance(mesh_path, str) or not mesh_path.strip():
         return (
-            "Error: missing or non-string 'mesh_path' argument.  Pass "
-            "the absolute path that generate_propeller_mesh returned."
+            "Error: missing or non-string 'mesh_path' — the render step "
+            "was given no mesh to render."
         )
     mesh_path_obj = Path(mesh_path)
     if not mesh_path_obj.is_file():
         return (
-            f"Error: '{mesh_path}' is not an existing file.  Run "
-            f"generate_propeller_mesh first and pass its returned path."
+            f"Error: '{mesh_path}' is not an existing file — the geometry "
+            f"must be generated before the render step runs."
         )
 
     out_dir, err = _validate_output_dir(output_dir)

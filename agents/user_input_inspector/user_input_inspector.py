@@ -389,7 +389,7 @@ class UserInputInspector(BaseChainAgent):
     # write_extraction handler
     # ------------------------------------------------------------------
 
-    @generic_tool("Write extraction")
+    @generic_tool("Write extracted inputs")
     def _handle_write_extraction_tool(self, tc: dict) -> None:
         """Write the three-section extraction to the path the LLM supplied."""
         args = tc.get("args", {}) or {}

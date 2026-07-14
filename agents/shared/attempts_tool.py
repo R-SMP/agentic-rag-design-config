@@ -21,10 +21,11 @@ Three tools are defined here:
 - ``new_attempt(slug, description)`` — create a new, empty attempt
   folder and return its absolute path.
 
-``parameters.json`` and the mesh are append-only: their write tools
-refuse to overwrite an existing file.  The render/QC tool
-(``render_and_check_mesh``) instead reuses the three ``render_*.png``
-files in place when they already exist rather than refusing.
+``parameters.json`` is append-only: its write tool refuses to overwrite
+an existing file.  The merged geometry+renders tool
+(``generate_and_render_propeller``) reuses an existing
+``propeller_mesh.obj`` in place (never overwritten) and reuses the three
+``render_*.png`` files when they already exist rather than refusing.
 """
 
 import re
@@ -305,7 +306,7 @@ def read_attempt(n: int, file: str) -> str:
 
 
 @tool
-@generic_tool("Generate new design attempt")
+@generic_tool("Open new attempt")
 def new_attempt(slug: str = "attempt", description: str = "") -> str:
     """Create a new, empty attempt folder for an upcoming design generation.
 

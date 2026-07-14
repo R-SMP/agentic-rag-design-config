@@ -74,7 +74,7 @@ def check_stop_or_raise() -> None:
     loops.  Equivalent in effect to the Orchestrator's existing
     hop-boundary check at ``orchestrator.dispatch`` but at a much
     finer granularity, so a stop click during a slow LLM call or
-    a slow tool (e.g. generate_propeller_mesh) is honoured BEFORE
+    a slow tool (e.g. generate_and_render_propeller) is honoured BEFORE
     the next step starts rather than after the current full hop
     completes.
     """

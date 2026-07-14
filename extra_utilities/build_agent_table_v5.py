@@ -334,7 +334,8 @@ ROWS = [
             "Comparison source per mode 1/2/3:",
             "  user_query.txt + paired reference image(s) + notes (mode 1, 3)",
             "  extracted_inputs.txt (mode 2, 3)",
-            "Optional: deterministic mesh-quality metrics from render_and_check_mesh",
+            "Optional: deterministic mesh-quality metrics from the render step "
+            "of generate_and_render_propeller",
             "If present: planner notes for DCOI",
         ),
         b(
@@ -373,14 +374,14 @@ ROWS = [
     # ============== 6. Tool Caller ==============
     (
         b(
-            "Has the complete set of mesh-generation + rendering tools.",
+            "Has the merged mesh-generation + rendering tool.",
             "Workflow per cycle:",
             "  1. read_parameters(parameters.json)",
-            "  2. generate_propeller_mesh(...)  — RhinoCompute via .gh definition; "
-            "writes propeller_mesh.obj, plus propeller_mesh_components.obj sidecar "
-            "when MeshFinal is the primary path.",
-            "  3. render_and_check_mesh(...)  — three PNGs + (when MESH_CHECKS=True) "
-            "watertight / volume / degenerate-face metrics.",
+            "  2. generate_and_render_propeller(...)  — builds the geometry "
+            "(selected backend + bidirectional fallback; writes propeller_mesh.obj "
+            "plus propeller_mesh_components.obj sidecar when MeshFinal is the primary "
+            "path) AND, as its built-in final step, renders three PNGs + (when "
+            "MESH_CHECKS=True) watertight / volume / degenerate-face metrics.",
             "Render-and-check backend is selectable per session via RENDER_LIBRARY in "
             "workflow_settings (trimesh OR pyvista).",
             "Hand-off to DCOI with absolute mesh + render paths.",

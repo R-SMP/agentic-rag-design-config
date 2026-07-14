@@ -1,12 +1,12 @@
 ## Active mesh-check backend: PyVista / VTK (renders via pyrender)
 
-For this session the bound ``render_and_check_mesh`` tool runs the
-deterministic mesh checks on the **PyVista (VTK)** backend.  The
+For this session the render+check step of ``generate_and_render_propeller``
+runs the deterministic mesh checks on the **PyVista (VTK)** backend.  The
 three visual renders go through the SAME pyrender pipeline used by
 the trimesh-metrics backend, so the PNGs are visually identical to
-what the trimesh backend would produce.  The tool's contract
-(arguments, three render filenames, render-reuse attempt-folder
-behavior, ``set_mesh_checks`` toggle) is unchanged.
+what the trimesh backend would produce.  The render+check contract
+(three render filenames, render-reuse attempt-folder behavior,
+``set_mesh_checks`` toggle) is unchanged.
 
 A few specifics worth keeping in mind so you read the tool's return
 text correctly:

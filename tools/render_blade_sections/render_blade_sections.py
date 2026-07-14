@@ -27,7 +27,7 @@ from pathlib import Path
 
 from langchain_core.tools import tool
 
-from agents.shared.agent_activity import generic_tool
+from agents.shared.agent_activity import tool_active
 from config import ATTEMPTS_DIR
 from tools.render_blade_sections.draw import render_png
 
@@ -42,7 +42,7 @@ _REQUIRED_KEYS = (
 
 
 @tool
-@generic_tool("Render blade sections")
+@tool_active("Blade Sections")
 def render_blade_sections(parameters_path: str, grid: bool = False) -> str:
     """Render the three blade cross-sections (Inner / Middle / Outer) stacked
     vertically into a PNG image.

@@ -4,11 +4,11 @@ Stateful agent with THREE kinds of tools bound to its LLM:
 
 - **Read tool** (``read_parameters``) — loads the parameter JSON
   from the path supplied in the incoming hand-off.  Non-terminal.
-- **Utility tools** (``generate_propeller_mesh``,
-  ``render_and_check_mesh``, ``calculate``, ``list_attempts``,
-  ``read_attempt``) — these do actual work and the run loop keeps
-  going after them, letting the LLM call more tools before finally
-  producing a response + routing call.
+- **Utility tools** (``generate_and_render_propeller`` — builds the
+  mesh AND renders/checks it in one call — ``calculate``,
+  ``list_attempts``, ``read_attempt``) — these do actual work and the
+  run loop keeps going after them, letting the LLM call more tools
+  before finally producing a response + routing call.
 - **Routing tools** (``call_dc_output_inspector``,
   ``call_dc_input_creator`` when DCII is skipped, otherwise
   ``call_dc_input_inspector``, ``call_orchestrator``) — these are

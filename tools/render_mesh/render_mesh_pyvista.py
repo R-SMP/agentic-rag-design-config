@@ -1,19 +1,17 @@
-"""Mesh quality-checking tool — PyVista / VTK backend for the metrics,
+"""Mesh quality-checking core — PyVista / VTK backend for the metrics,
 shared pyrender pipeline for the visual renders.
 
-Mirrors the contract of ``tools/render_mesh/render_mesh.py`` (the
-trimesh-metrics backend): same arguments, same three render
-filenames, same attempt-folder integrity rules, same
-``set_mesh_checks`` toggle.  Only the deterministic-checks library
-differs here — the visual renders go through the same pyrender
-pipeline used by the trimesh backend so the three PNGs are visually
-identical regardless of which backend was chosen at startup.
+Exposes :func:`render_and_check_pv` — the render+check step that the merged
+``generate_and_render_propeller`` tool runs after a successful geometry
+build.  Mirrors the contract of :func:`tools.render_mesh.render_mesh.render_and_check`
+(the trimesh-metrics backend): same arguments, same three render filenames,
+same attempt-folder integrity rules, same ``set_mesh_checks`` toggle.  Only
+the deterministic-checks library differs here — the visual renders go through
+the same pyrender pipeline used by the trimesh backend so the three PNGs are
+visually identical regardless of which backend was chosen at startup.
 
-The two tools register the SAME LangChain tool name
-(``render_and_check_mesh``) so prompt fragments and routing wiring
-stay backend-agnostic.  ``tools/__init__.py`` decides which of the
-two is bound to the Tool Caller for a given session based on the
-user's startup choice.
+``tools/__init__.py`` decides which of the two cores is wired into the merged
+tool for a given session based on the user's startup choice.
 """
 
 from pathlib import Path
@@ -21,9 +19,7 @@ from pathlib import Path
 import numpy as np
 import pyvista as pv
 import trimesh
-from langchain_core.tools import tool
 
-from agents.shared.agent_activity import tool_active
 from config import ATTEMPTS_DIR
 from tools.render_mesh.render_mesh import _render_mesh_views
 
@@ -71,8 +67,8 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
     if attempts_root not in path.parents and path != attempts_root:
         return None, (
             f"Error: '{path}' is not an attempt folder under "
-            f"{attempts_root}.  ``render_and_check_mesh`` only writes "
-            f"inside an attempt folder."
+            f"{attempts_root}.  The render step only writes inside an "
+            f"attempt folder."
         )
     return path, None
 
@@ -148,45 +144,39 @@ def _signed_volume(mesh: pv.PolyData) -> float:
 
 
 # ---------------------------------------------------------------------------
-# Render & check tool
+# Render & check core (PyVista / VTK backend)
 # ---------------------------------------------------------------------------
 
 
-@tool("render_and_check_mesh")
-@tool_active("Visual Renderings Generator")
-def render_and_check_mesh_pv(mesh_path: str, output_dir: str) -> str:
+def render_and_check_pv(mesh_path: str, output_dir: str) -> str:
     """Render the mesh at ``mesh_path`` from three viewpoints (isometric,
-    top-down, side) and run geometric quality checks.
+    top-down, side) and run geometric quality checks (PyVista / VTK backend).
 
-    PyVista / VTK backend.  Same contract as the trimesh backend.
+    Internal helper — the render+check phase of
+    ``generate_and_render_propeller`` (the merged geometry+renders tool).
+    ``tools/__init__`` wires this as the active render backend when the
+    pyvista library is selected.  Same contract as the trimesh backend
+    (``render_and_check``).
 
-    Both arguments are REQUIRED.
+    - ``mesh_path``: absolute path of the .obj mesh to render.
+    - ``output_dir``: the attempt folder where the three render PNGs are
+      written.  If the three render files are already present they are
+      REUSED (not re-rendered) — identical parameters give identical
+      geometry.
 
-    - ``mesh_path``: absolute path of the .obj mesh to render.  Pass
-      the path that ``generate_propeller_mesh`` just returned — do
-      NOT call this tool with a guessed path.
-    - ``output_dir``: absolute path of the attempt folder where the
-      three render PNGs should be written.  Pass the same attempt
-      folder that holds the mesh (the path the hand-off carries
-      under ``Current attempt:``).  The folder must already exist
-      (created by ``new_attempt``).  If the three render files are
-      already present they are REUSED (not re-rendered) — identical
-      parameters give identical geometry, so re-running this tool needs
-      no new attempt.
-
-    Returns an analysis report listing the saved render paths plus
-    any warnings or issues detected.
+    Returns an analysis report listing the saved render paths plus any
+    warnings or issues detected.
     """
     if not isinstance(mesh_path, str) or not mesh_path.strip():
         return (
-            "Error: missing or non-string 'mesh_path' argument.  Pass "
-            "the absolute path that generate_propeller_mesh returned."
+            "Error: missing or non-string 'mesh_path' — the render step "
+            "was given no mesh to render."
         )
     mesh_path_obj = Path(mesh_path)
     if not mesh_path_obj.is_file():
         return (
-            f"Error: '{mesh_path}' is not an existing file.  Run "
-            f"generate_propeller_mesh first and pass its returned path."
+            f"Error: '{mesh_path}' is not an existing file — the geometry "
+            f"must be generated before the render step runs."
         )
 
     out_dir, err = _validate_output_dir(output_dir)

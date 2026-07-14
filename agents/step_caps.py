@@ -63,9 +63,9 @@ to judge appropriateness."""
 MAX_TC_STEPS = 15
 """Tool Caller's ``run()``.  Higher than the others because the
 generation pipeline is sequential: ``read_parameters`` →
-``generate_propeller_mesh`` → ``render_and_check_mesh`` → routing
-call, with potential ``calculate`` calls between, plus the LLM
-sometimes inserts intermediate text turns."""
+``generate_and_render_propeller`` (builds the mesh AND renders it in one
+call) → routing call, with potential ``calculate`` calls between, plus
+the LLM sometimes inserts intermediate text turns."""
 
 MAX_DCOI_STEPS = 15
 """DC Output Inspector's ``run()``.  Standard flow is

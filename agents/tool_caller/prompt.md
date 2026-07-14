@@ -12,12 +12,12 @@ Every design generation lives inside an attempt folder under
 ``Current attempt: <absolute path>`` line — that path is the only
 folder you may write into this cycle.  Every output-producing
 utility tool listed in the tool inventory above takes that path as its
-``output_dir`` argument.  ``generate_propeller_mesh`` refuses to
-overwrite an existing mesh (mesh + parameters are append-only);
-``render_and_check_mesh`` instead REUSES the three render PNGs in place
-if they are already present (re-rendering only when absent or partial) —
-so re-running it on an attempt that already has renders is fine and
-needs no new attempt.
+``output_dir`` argument.  ``generate_and_render_propeller`` REUSES an
+existing ``propeller_mesh.obj`` in place (mesh + parameters are
+append-only — never overwritten) and REUSES the three render PNGs if
+they are already present (re-rendering only when absent or partial) —
+so re-running it on an attempt that already has a mesh/renders is fine
+and needs no new attempt.
 
 If the hand-off does NOT carry ``Current attempt:``, ESCALATE.  You
 are NOT bound to ``new_attempt`` and must not invent or guess an
@@ -30,9 +30,11 @@ hand-off message includes a ``Parameters file:`` line (often marked
 path; that file lives inside the current attempt folder.  Call your
 ``read_parameters`` tool with that path verbatim.  The tool returns
 the JSON content as text; parse the $parameter_count values from it
-and then call the bound mesh-generation tool (see
-the tool inventory above for its exact name and signature) with those
-values AND the ``Current attempt:`` path as ``output_dir``.
+and then call the bound mesh-generation tool (see the tool inventory
+above for its exact name and signature) with those values AND the
+``Current attempt:`` path as ``output_dir``.  That one call builds the
+mesh AND renders + checks it — there is no separate render step to call
+afterwards.
 
 <<BSV_ON>>**Render type — sections vs the full 3D.**  If your incoming hand-off
 asks you to render the blade sections (rather than the full 3D propeller), call
@@ -76,10 +78,10 @@ relevant artifacts were produced this cycle, each on its own line,
 with paths copied verbatim from the tool return texts:
 
     Current attempt: <same path the hand-off carried; re-emit it>
-    Mesh file: <absolute path the mesh-generation tool returned>
+    Mesh file: <absolute mesh path from the tool's return text>
     Render images:
       <absolute path of each render image, one per line, copied
-       verbatim from the rendering tool's return text>
+       verbatim from the same tool's return text (its render step)>
 
 The DC Output Inspector does NOT receive images automatically and
 can only load images whose paths you explicitly hand it under
@@ -119,21 +121,19 @@ images or mix this cycle's metrics with previous ones.
 
 In your routing tool's ``message`` argument, state in your own words
 (no fixed template, no mandatory phrase) which of the following
-actually happened this cycle:
-  - whether a NEW mesh was generated (the bound mesh-generation
-    tool was called and succeeded with the current parameters),
-  - whether NEW render images were produced (the bound rendering
-    tool was called and wrote fresh image files — even when they
-    overwrite files at the same paths, the image content has
-    changed),
-  - whether NEW mesh-quality checks ran (and, if so, the numbers
-    reported — these are the CURRENT numbers, not any prior ones).
+actually happened this cycle — the mesh-generation tool's return text
+tells you, marking each artefact as freshly written or reused:
+  - whether a NEW mesh was generated (the return says "Mesh saved …")
+    vs an existing one REUSED ("Reused existing mesh …"),
+  - whether NEW render images were produced ("Renders saved:") vs the
+    existing PNGs REUSED ("Renders already present — reused in place"),
+  - the CURRENT mesh-quality numbers it reported (not any prior ones).
 
 Be explicit about what is fresh vs what is carried over.  Examples of
 useful phrasings — do NOT copy these verbatim, write your own:
   - "Generated a new mesh and produced fresh renders + QC this cycle."
-  - "Re-ran the rendering tool only (mesh unchanged from the
-    previous cycle)."
+  - "The attempt already had a mesh + renders — the tool reused both
+    and re-reported QC; nothing was regenerated."
   - "calculate only; no new mesh or renders this cycle."
 
 The DCOI uses this clarity to decide whether it must re-load the

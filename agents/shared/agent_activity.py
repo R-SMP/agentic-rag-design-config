@@ -26,7 +26,7 @@ Usage::
 
     @tool
     @tool_active("Propeller Configurator")
-    def generate_propeller_mesh(...) -> str:
+    def generate_and_render_propeller(...) -> str:
         ...
 
 ``@tool_active`` MUST sit BELOW ``@tool`` so it wraps the plain
@@ -41,8 +41,8 @@ from typing import Callable
 
 def generic_tool(name: str) -> Callable[[Callable], Callable]:
     """Decorator for "generic" tools — every tool that is NOT one of
-    the two DC-specific tools that have their own box on the
-    flowchart (Propeller Configurator, Visual Renderings Generator).
+    the tools that have their own box on the flowchart (Propeller
+    Configurator, Blade Sections).
 
     A generic tool call does NOT swap which agent is active — the
     calling agent stays "in flight" while the helper runs (reading
@@ -64,10 +64,15 @@ def generic_tool(name: str) -> Callable[[Callable], Callable]:
     def decorator(fn: Callable) -> Callable:
         @functools.wraps(fn)
         def wrapper(*args, **kwargs):
+            # Stamp the running agent onto the event so the frontend can
+            # bind the subtext to the box of the agent that ACTUALLY ran
+            # this helper, rather than whatever box is currently lit
+            # (which can be stale if the box-switch event was dropped).
             try:
                 from agents.shared.viz_bus import publish as _publish
-                _publish({"type": "generic_tool",
-                          "name": name, "state": "start"})
+                from agents.shared.trace import get_current_agent
+                _publish({"type": "generic_tool", "name": name,
+                          "state": "start", "agent": get_current_agent()})
             except Exception:
                 pass
             try:
@@ -75,8 +80,9 @@ def generic_tool(name: str) -> Callable[[Callable], Callable]:
             finally:
                 try:
                     from agents.shared.viz_bus import publish as _publish
-                    _publish({"type": "generic_tool",
-                              "name": name, "state": "end"})
+                    from agents.shared.trace import get_current_agent
+                    _publish({"type": "generic_tool", "name": name,
+                              "state": "end", "agent": get_current_agent()})
                 except Exception:
                     pass
         return wrapper

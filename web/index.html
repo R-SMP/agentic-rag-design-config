@@ -435,7 +435,7 @@
               <line id="dyn-tc-propeller" class="orch-dyn-link"
                     x1="963" y1="366" x2="1012" y2="363"
                     marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
-              <line id="dyn-tc-vr" class="orch-dyn-link"
+              <line id="dyn-tc-blade" class="orch-dyn-link"
                     x1="976" y1="420" x2="1012" y2="438"
                     marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
 
@@ -511,18 +511,19 @@
                       class="agent-tool-label"></text>
               </g>
 
-              <!-- TOOL: Propeller Generator -->
+              <!-- TOOL: Propeller Generator (generates the 3D geometry AND
+                   its visual renders — one merged tool) -->
               <g id="agent-propeller-configurator" class="flow-box flow-box-tool">
                 <rect x="1020" y="325" width="160" height="64" rx="3" ry="3" />
                 <text x="1100" y="350" text-anchor="middle" class="tool-prefix">TOOL:</text>
                 <text x="1100" y="372" text-anchor="middle">Propeller Generator</text>
               </g>
 
-              <!-- TOOL: Visual Renders -->
-              <g id="agent-visual-renderings-generator" class="flow-box flow-box-tool">
+              <!-- TOOL: Blade Sections (cross-section diagram renderer) -->
+              <g id="agent-blade-sections" class="flow-box flow-box-tool">
                 <rect x="1020" y="450" width="160" height="64" rx="3" ry="3" />
                 <text x="1100" y="475" text-anchor="middle" class="tool-prefix">TOOL:</text>
-                <text x="1100" y="497" text-anchor="middle">Visual Renders</text>
+                <text x="1100" y="497" text-anchor="middle">Blade Sections</text>
               </g>
 
               <!-- Database Handler (floating, no arrows) -->

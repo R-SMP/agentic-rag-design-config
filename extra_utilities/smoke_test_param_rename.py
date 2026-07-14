@@ -1,4 +1,4 @@
-"""Smoke-test for the generate_propeller_mesh parameter naming.
+"""Smoke-test for the generate_and_render_propeller parameter naming.
 
 Verifies that:
 1. ``generate_mesh.py`` imports cleanly.
@@ -95,7 +95,14 @@ with patch.object(gm.gh_compute, "EvaluateDefinition", _fake_eval):
         "_validate_output_dir",
         lambda raw: (Path(raw), None),
     ):
-        result = gm.generate_propeller_mesh.invoke(sample_args)
+        # Neutralise the merged tool's built-in render step — this test
+        # only verifies the parameter names sent to RhinoCompute.
+        with patch.object(
+            gm,
+            "_render_and_check_fn",
+            lambda mesh_path, output_dir: "(render step skipped in test)",
+        ):
+            result = gm.generate_and_render_propeller.invoke(sample_args)
 
 print(f"Tool returned: {result}")
 print()

@@ -12,12 +12,15 @@ The module exposes two entry points with different audiences:
    slider wiggling in the live preview is cheap on cache hits and
    editing the .gh file automatically invalidates stale entries.
 
-2. :func:`generate_propeller_mesh` — AGENT path: same LangChain ``@tool``
-   the tool caller has always invoked.  Validates that ``output_dir``
-   is an attempt folder under ``ATTEMPTS_DIR``, delegates the actual
-   mesh generation to :func:`render_mesh_obj_text`, then writes the
-   primary mesh + optional per-component sidecar to disk and returns
-   a status string.  External behaviour identical to pre-Step-5.
+2. :func:`generate_and_render_propeller` — AGENT path: the LangChain
+   ``@tool`` the Tool Caller invokes.  Validates that ``output_dir`` is
+   an attempt folder under ``ATTEMPTS_DIR``, builds the mesh (selected
+   geometry backend + bidirectional fallback), writes the primary mesh +
+   optional per-component sidecar to disk, and THEN runs the render+check
+   step (injected by ``tools/__init__`` via :func:`set_render_and_check_fn`)
+   as its built-in final phase — returning one combined status string.
+   A pre-existing mesh is reused in place (append-only); a geometry
+   failure skips the render step.
 
 Failures inside the pure helper raise :class:`MeshGenerationError`;
 the agent path catches it and returns the error message as the tool's
@@ -105,7 +108,7 @@ _PREVIEW_CACHE_SIZE = 64
 # ---------------------------------------------------------------------------
 # Geometry backend selection (agent path only).
 # ---------------------------------------------------------------------------
-# ``generate_propeller_mesh`` can build the mesh two ways:
+# ``generate_and_render_propeller`` can build the mesh two ways:
 #   "rhino"  RhinoCompute + Grasshopper (the .gh definition) — the source of
 #            truth for the downloadable deliverable, but depends on an external
 #            server that can be unreachable.
@@ -143,6 +146,27 @@ def get_geometry_backend() -> str:
     return _geometry_backend
 
 
+# ---------------------------------------------------------------------------
+# Render backend injection (agent path only).
+# ---------------------------------------------------------------------------
+# ``generate_and_render_propeller`` runs the render+check as its built-in
+# final step.  The actual render core (trimesh or pyvista) is chosen at
+# session start by ``tools/__init__`` (via ``set_render_library``) and injected
+# here, so this module needs no import of the render backends — which would
+# pull trimesh / pyrender / pyvista into the pure live-preview path that only
+# needs geometry.  ``None`` until wired; ``tools/__init__`` wires a default at
+# import, so in the agent path it is always set by the time the tool runs.
+_render_and_check_fn = None
+
+
+def set_render_and_check_fn(fn) -> None:
+    """Inject the render+check core that ``generate_and_render_propeller``
+    calls after a successful geometry build.  Called by ``tools/__init__``,
+    which owns the trimesh-vs-pyvista selection."""
+    global _render_and_check_fn
+    _render_and_check_fn = fn
+
+
 class MeshGenerationError(RuntimeError):
     """Raised by :func:`render_mesh_obj_text` when RhinoCompute fails,
     returns no usable mesh output, or all mesh parts fail to decode.
@@ -156,9 +180,11 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
     """Resolve and validate an attempt folder for writing the mesh.
 
     Returns ``(path, None)`` on success, ``(None, error_message)`` on
-    failure.  The folder must already exist (created by
-    ``new_attempt``), must live under ``logs/attempts/``, and must not
-    already contain a ``propeller_mesh.obj``.
+    failure.  The folder must already exist (created by ``new_attempt``)
+    and live under ``logs/attempts/``.  A pre-existing
+    ``propeller_mesh.obj`` is NOT rejected — the merged tool reuses it in
+    place (append-only; never overwritten) and proceeds to the render
+    step.
     """
     if not isinstance(raw, str) or not raw.strip():
         return None, (
@@ -181,17 +207,13 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
     if attempts_root not in path.parents and path != attempts_root:
         return None, (
             f"Error: '{path}' is not an attempt folder under "
-            f"{attempts_root}.  ``generate_propeller_mesh`` only "
+            f"{attempts_root}.  ``generate_and_render_propeller`` only "
             f"writes inside an attempt folder."
         )
-    target = path / _MESH_FILENAME
-    if target.exists():
-        return None, (
-            f"Error: '{target}' already exists.  Attempt folders are "
-            f"append-only — a generated mesh cannot be overwritten.  "
-            f"Create a NEW attempt via ``new_attempt`` if these "
-            f"parameters need a fresh run."
-        )
+    # A pre-existing propeller_mesh.obj is NOT an error: the merged
+    # generate_and_render_propeller REUSES it in place (append-only —
+    # never overwritten) and proceeds to the render step, so a retry
+    # after a render hiccup needs no new attempt.
     return path, None
 
 
@@ -405,7 +427,7 @@ def render_mesh_obj_text(
     params: dict[str, int | float],
 ) -> tuple[str, int, str | None]:
     """Pure mesh-generation helper.  Used by both the agent path
-    (:func:`generate_propeller_mesh`) and the live-preview HTTP route
+    (:func:`generate_and_render_propeller`) and the live-preview HTTP route
     ``/api/preview_mesh`` (Step 6 of the Parameters Inputs redesign).
 
     Args:
@@ -585,13 +607,14 @@ def _backend_label(backend_used: str) -> str:
 
 @tool
 @tool_active("Propeller Configurator")
-def generate_propeller_mesh(
+def generate_and_render_propeller(
     output_dir: Annotated[
         str,
-        "Absolute path of the attempt folder where propeller_mesh.obj "
-        "should be written (the same path the hand-off carries under "
-        "``Current attempt:``).  Must already exist (created by "
-        "``new_attempt``); must not already contain propeller_mesh.obj.",
+        "Absolute path of the attempt folder where propeller_mesh.obj and "
+        "the render PNGs should be written (the same path the hand-off "
+        "carries under ``Current attempt:``).  Must already exist (created "
+        "by ``new_attempt``).  If it already contains propeller_mesh.obj "
+        "the existing mesh is reused and the tool goes straight to rendering.",
     ],
     bladeCount: Annotated[int, "Number of blades (positive integer)"],
     impellerRadius: Annotated[float, "Outer radius of the impeller ring (mm)"],
@@ -610,10 +633,13 @@ def generate_propeller_mesh(
     outerChord: Annotated[float, "Outer-section chord length (mm)"],
     outerAngle: Annotated[float, "Outer-section angle of attack (degrees)"],
 ) -> str:
-    """Generate the propeller mesh for the 16 design parameters and save it to
-    ``<output_dir>/propeller_mesh.obj``.  (The outer-ring height is NOT a
-    parameter — it is derived from the outer blade section and injected
-    automatically so the mesh matches the 3D preview.)
+    """Generate the propeller 3D geometry for the 16 design parameters, save it
+    to ``<output_dir>/propeller_mesh.obj``, THEN render it (three views —
+    isometric, top, side) and run mesh quality checks, all in one call.  The
+    render step is the automatic next step after a successful geometry build
+    and is skipped only if the geometry generation itself fails.  (The
+    outer-ring height is NOT a parameter — it is derived from the outer blade
+    section and injected automatically so the mesh matches the 3D preview.)
 
     Geometry backend: chosen by the ``GEOMETRY_BACKEND`` workflow setting —
     either RhinoCompute + the Grasshopper definition (the exact geometry) or a
@@ -626,94 +652,127 @@ def generate_propeller_mesh(
     regenerated via RhinoCompute.
 
     ``output_dir`` MUST be the absolute path of an attempt folder (created
-    earlier by ``new_attempt``).  This tool refuses to run if
-    ``propeller_mesh.obj`` already exists in the target folder.
+    earlier by ``new_attempt``).  If it already contains ``propeller_mesh.obj``
+    the existing mesh is REUSED in place (append-only — never overwritten) and
+    the tool proceeds straight to the render step.
 
-    Returns a status string (saved mesh path, vertex count, parts, and the
-    geometry backend used), or an error message — prefixed ``Error:`` /
-    ``RhinoCompute error:`` / ``FEG error:`` — when both backends fail.
+    Returns a combined status string: the geometry summary (saved/reused mesh
+    path, vertex count, parts, backend) followed by the render+check report
+    (the three saved render paths plus any quality warnings).  On geometry
+    failure (both backends) it returns an ``Error:`` / ``RhinoCompute error:``
+    / ``FEG error:`` message and does NOT render.
     """
     out_path_dir, err = _validate_output_dir(output_dir)
     if err is not None:
         return err
 
-    # Identity mapping: the @tool's keyword-argument names ARE the
-    # parameter names the Grasshopper definition exposes.  The agent
-    # writes parameters.json with the same camelCase keys, the
-    # ``write_parameters`` / ``read_parameters`` round-trip preserves
-    # them, and RhinoCompute matches them by ParamName against the
-    # .gh definition's input ports — no translation layer anywhere.
-    #
-    # IMPORTANT: this contract requires the .gh definition's input
-    # parameters to be named exactly as below.  The .gh's 17th port,
-    # ``impellerHeight``, is NOT sent from here — render_mesh_obj_text
-    # derives it (the ring auto-fits the outer section) and injects it.
-    # If the names ever drift, either the .gh side must rename to match,
-    # or this dict must become a translation again.
-    param_values: dict[str, int | float] = {
-        "bladeCount": bladeCount,
-        "impellerRadius": impellerRadius,
-        "impellerThickness": impellerThickness,
-        "innerThickness": innerThickness,
-        "innerMaxPos": innerMaxPos,
-        "innerCamber": innerCamber,
-        "innerChord": innerChord,
-        "innerAngle": innerAngle,
-        "middlePos": middlePos,
-        "middleChord": middleChord,
-        "middleAngle": middleAngle,
-        "outerThickness": outerThickness,
-        "outerMaxPos": outerMaxPos,
-        "outerCamber": outerCamber,
-        "outerChord": outerChord,
-        "outerAngle": outerAngle,
-    }
-
-    # Delegate to the backend dispatcher (selected backend + bidirectional
-    # fallback).  Catch MeshGenerationError and convert back to the tool's
-    # status-string contract.
-    try:
-        mesh_text, vertex_count, components_text, backend_used = (
-            render_agent_mesh_obj_text(param_values)
-        )
-    except MeshGenerationError as exc:
-        msg = str(exc)
-        # Preserve the prior contract: error strings start with "Error:",
-        # "RhinoCompute error:" or "FEG error:" so the agent can pattern-
-        # match; a combined both-backends-failed message and everything
-        # else gets the generic "Error:" prefix.
-        if msg.startswith(("Error:", "RhinoCompute error:", "FEG error:")):
-            return msg
-        return f"Error: {msg}"
-
-    # Write the primary mesh.
     output_path = out_path_dir / _MESH_FILENAME
-    output_path.write_text(mesh_text, encoding="utf-8")
-    file_size = output_path.stat().st_size
 
-    # Compute the parts-used summary by re-parsing the OBJ for the
-    # ``g <name>`` group lines.  Cheap and avoids threading raw mesh
-    # parts through the helper's return value.
-    parts_used_set: list[str] = []
-    for line in mesh_text.splitlines():
-        if line.startswith("g "):
-            name = line[2:].strip()
-            if name and name not in parts_used_set:
-                parts_used_set.append(name)
-    parts_used = ", ".join(parts_used_set) if parts_used_set else "MeshFinal"
+    # --- Geometry: reuse an existing mesh in place, else build it. ---
+    if output_path.is_file():
+        # Append-only: never overwrite.  Identical parameters give
+        # identical geometry, so reuse the mesh and go straight to the
+        # render step (covers a retry after a render hiccup).
+        geometry_summary = (
+            f"Reused existing mesh at {output_path.resolve()} "
+            f"({output_path.stat().st_size} bytes; geometry not "
+            f"regenerated)."
+        )
+    else:
+        # Identity mapping: the @tool's keyword-argument names ARE the
+        # parameter names the Grasshopper definition exposes.  The agent
+        # writes parameters.json with the same camelCase keys, the
+        # ``write_parameters`` / ``read_parameters`` round-trip preserves
+        # them, and RhinoCompute matches them by ParamName against the
+        # .gh definition's input ports — no translation layer anywhere.
+        #
+        # IMPORTANT: this contract requires the .gh definition's input
+        # parameters to be named exactly as below.  The .gh's 17th port,
+        # ``impellerHeight``, is NOT sent from here — render_mesh_obj_text
+        # derives it (the ring auto-fits the outer section) and injects it.
+        # If the names ever drift, either the .gh side must rename to match,
+        # or this dict must become a translation again.
+        param_values: dict[str, int | float] = {
+            "bladeCount": bladeCount,
+            "impellerRadius": impellerRadius,
+            "impellerThickness": impellerThickness,
+            "innerThickness": innerThickness,
+            "innerMaxPos": innerMaxPos,
+            "innerCamber": innerCamber,
+            "innerChord": innerChord,
+            "innerAngle": innerAngle,
+            "middlePos": middlePos,
+            "middleChord": middleChord,
+            "middleAngle": middleAngle,
+            "outerThickness": outerThickness,
+            "outerMaxPos": outerMaxPos,
+            "outerCamber": outerCamber,
+            "outerChord": outerChord,
+            "outerAngle": outerAngle,
+        }
 
-    # Sidecar: when MeshFinal was the primary output, also save the
-    # four named components to a separate .obj so the offline
-    # diagnostic script can inspect each one individually.  Skipped
-    # on the fallback path (the four components are already present
-    # as ``g`` groups inside ``propeller_mesh.obj``).  Written
-    # silently — the live tools never read this file.
-    if components_text is not None:
-        sidecar_path = out_path_dir / _COMPONENTS_FILENAME
-        sidecar_path.write_text(components_text, encoding="utf-8")
+        # Delegate to the backend dispatcher (selected backend +
+        # bidirectional fallback).  On MeshGenerationError the geometry
+        # failed on BOTH backends — return the error and do NOT render.
+        try:
+            mesh_text, vertex_count, components_text, backend_used = (
+                render_agent_mesh_obj_text(param_values)
+            )
+        except MeshGenerationError as exc:
+            msg = str(exc)
+            # Preserve the prior contract: error strings start with "Error:",
+            # "RhinoCompute error:" or "FEG error:" so the agent can pattern-
+            # match; a combined both-backends-failed message and everything
+            # else gets the generic "Error:" prefix.
+            if msg.startswith(("Error:", "RhinoCompute error:", "FEG error:")):
+                return msg
+            return f"Error: {msg}"
 
-    return (
-        f"Mesh saved to {output_path.resolve()} ({file_size} bytes, "
-        f"{vertex_count} vertices). Parts: {parts_used}. "
-        f"Geometry backend: {_backend_label(backend_used)}."
-    )
+        # Write the primary mesh.
+        output_path.write_text(mesh_text, encoding="utf-8")
+        file_size = output_path.stat().st_size
+
+        # Compute the parts-used summary by re-parsing the OBJ for the
+        # ``g <name>`` group lines.  Cheap and avoids threading raw mesh
+        # parts through the helper's return value.
+        parts_used_set: list[str] = []
+        for line in mesh_text.splitlines():
+            if line.startswith("g "):
+                name = line[2:].strip()
+                if name and name not in parts_used_set:
+                    parts_used_set.append(name)
+        parts_used = ", ".join(parts_used_set) if parts_used_set else "MeshFinal"
+
+        # Sidecar: when MeshFinal was the primary output, also save the
+        # four named components to a separate .obj so the offline
+        # diagnostic script can inspect each one individually.  Skipped
+        # on the fallback path (the four components are already present
+        # as ``g`` groups inside ``propeller_mesh.obj``).  Written
+        # silently — the live tools never read this file.
+        if components_text is not None:
+            sidecar_path = out_path_dir / _COMPONENTS_FILENAME
+            sidecar_path.write_text(components_text, encoding="utf-8")
+
+        geometry_summary = (
+            f"Mesh saved to {output_path.resolve()} ({file_size} bytes, "
+            f"{vertex_count} vertices). Parts: {parts_used}. "
+            f"Geometry backend: {_backend_label(backend_used)}."
+        )
+
+    # --- Renders: the always-done next step after a good geometry build. ---
+    # The render+check core (trimesh or pyvista) is injected by
+    # ``tools/__init__``.  A render failure never masks a good mesh — the
+    # mesh is already on disk and the report notes the render problem.
+    if _render_and_check_fn is None:
+        return (
+            geometry_summary
+            + "\n\n(Render step unavailable — no render backend wired.)"
+        )
+    try:
+        render_report = _render_and_check_fn(
+            str(output_path), str(out_path_dir)
+        )
+    except Exception as exc:  # noqa: BLE001 — a render error must not lose the mesh
+        render_report = f"Render step failed: {exc}"
+
+    return f"{geometry_summary}\n\n{render_report}"
