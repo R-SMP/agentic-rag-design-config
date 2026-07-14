@@ -1039,6 +1039,7 @@ function switchView(name) {
   if (name === "settings") {
     if (!settingsLoaded) loadSettings();
     loadLrRouting();
+    loadRenderCompression();
     // Pick up the latest lock state when the user opens the view;
     // otherwise a session started in another tab/turn could leave the
     // view stale.
@@ -1527,6 +1528,133 @@ settingsReload &&
     setSettingsStatus("", "");
     loadSettings();
   });
+
+// ---------------------------------------------------------------------------
+// Render compression panel — per-type degree (cross-section diagrams vs 3D
+// geometry) previewed live against the bundled web/render_samples/ renders.
+// ---------------------------------------------------------------------------
+const RC_KINDS = ["cross", "geo"];
+let rcSizes = ["small", "medium", "large"];
+let rcAvail = { cross: false, geo: false };
+let rcTimer = null;
+
+function setRcStatus(msg, kind) {
+  const el = $("rc-status");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "rc-status" + (kind ? " " + kind : "");
+}
+
+function setRcValue(kind, deg) {
+  deg = Math.max(0, Math.min(100, deg | 0));
+  const s = $("rc-" + kind + "-slider");
+  const dEl = $("rc-" + kind + "-degree");
+  if (s) s.value = deg;
+  if (dEl) dEl.textContent = deg + "%";
+}
+
+async function loadRenderCompression() {
+  if (!$("render-compression")) return;
+  try {
+    const res = await fetch("/api/render_compression");
+    if (!res.ok) return;
+    const d = await res.json();
+    rcSizes = d.sizes || rcSizes;
+    rcAvail = { cross: !!d.cross_available, geo: !!d.geo_available };
+    setRcValue("cross", d.cross_degree || 0);
+    setRcValue("geo", d.geo_degree || 0);
+    setRcStatus("", "");
+    for (const kind of RC_KINDS) rcRefreshSamples(kind);
+  } catch (e) { /* non-fatal */ }
+}
+
+// Build (once) then update the 3 sample figures for a kind at the slider's degree.
+async function rcRefreshSamples(kind) {
+  const wrap = $("rc-" + kind + "-samples");
+  if (!wrap) return;
+  if (!rcAvail[kind]) {
+    wrap.innerHTML =
+      '<p class="rc-missing">Samples not generated yet — run ' +
+      '<code>python extra_utilities/gen_render_samples.py --geo</code> in the ' +
+      'app container, then commit <code>web/render_samples/geo_*.png</code>. ' +
+      'The degree still applies to real renders.</p>';
+    return;
+  }
+  const deg = parseInt(($("rc-" + kind + "-slider") || {}).value, 10) || 0;
+  if (wrap.querySelectorAll(".rc-sample").length !== rcSizes.length) {
+    wrap.innerHTML = "";
+    for (const size of rcSizes) {
+      const fig = document.createElement("figure");
+      fig.className = "rc-sample";
+      fig.dataset.size = size;
+      fig.innerHTML =
+        '<div class="rc-sample-imgwrap"><img alt="' + kind + " " + size +
+        ' render sample" /></div><figcaption class="rc-cap"></figcaption>';
+      wrap.appendChild(fig);
+    }
+  }
+  for (const fig of wrap.querySelectorAll(".rc-sample")) {
+    const size = fig.dataset.size;
+    try {
+      const res = await fetch("/api/render_compression/sample?kind=" + kind +
+        "&size=" + size + "&degree=" + deg);
+      if (!res.ok) continue;
+      const d = await res.json();
+      const img = fig.querySelector("img");
+      if (img) img.src = d.preview;
+      const o = d.orig, c = d.compressed;
+      fig.querySelector(".rc-cap").innerHTML =
+        size + " · <b>" + c.width + "×" + c.height + "</b> px · Anthropic " +
+        o.tokens.anthropic + " → " + c.tokens.anthropic + " tok";
+    } catch (e) { /* skip this sample */ }
+  }
+}
+
+function rcSync(kind) {
+  const deg = parseInt(($("rc-" + kind + "-slider") || {}).value, 10) || 0;
+  const dEl = $("rc-" + kind + "-degree");
+  if (dEl) dEl.textContent = deg + "%";
+  setRcStatus("Modified — not saved.", "warn");
+  clearTimeout(rcTimer);
+  rcTimer = setTimeout(() => rcRefreshSamples(kind), 200);
+}
+
+async function saveRenderCompression() {
+  const cross = parseInt(($("rc-cross-slider") || {}).value, 10) || 0;
+  const geo = parseInt(($("rc-geo-slider") || {}).value, 10) || 0;
+  const btn = $("rc-save");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/render_compression", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ cross_degree: cross, geo_degree: geo }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.status === 409) {
+      setRcStatus("Locked — end the session to edit.", "err");
+      return;
+    }
+    if (!res.ok) { setRcStatus(d.detail || "Save failed.", "err"); return; }
+    setRcStatus("Saved — applies to the next session.", "ok");
+  } catch (e) {
+    setRcStatus("Network error: " + e, "err");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
+for (const kind of RC_KINDS) {
+  const s = $("rc-" + kind + "-slider");
+  if (s) s.addEventListener("input", () => rcSync(kind));
+}
+if ($("rc-save")) $("rc-save").addEventListener("click", saveRenderCompression);
+if ($("rc-reload")) {
+  $("rc-reload").addEventListener("click", () => {
+    setRcStatus("", "");
+    loadRenderCompression();
+  });
+}
 
 // ---------------------------------------------------------------------------
 // LLM routing — duplicate-layout flowchart in Workflow Settings with a

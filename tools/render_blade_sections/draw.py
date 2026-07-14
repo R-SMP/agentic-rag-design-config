@@ -37,7 +37,7 @@ SECTIONS = (
 
 # Logical (final-image) constants.  The scene is rendered at _SUPERSAMPLE x
 # these and downscaled, so everything stays crisp.
-PX_PER_MM = 14         # final px per mm → 1 mm grid square = 14 px
+PX_PER_MM = 11         # final px per mm → 1 mm grid square = 11 px
 _MARGIN = 16
 _GAP = 18              # vertical gap between stacked sections
 _LABEL_GUTTER = 60     # left column reserved for the Inner/Middle/Outer labels
@@ -48,6 +48,12 @@ _GRID_MINOR = (221, 221, 221)
 _GRID_MAJOR = (198, 198, 198)
 _MAJOR_EVERY_MM = 5
 _PROTRACTOR_MAX_DEG = 25
+
+# Text sizes (final px).  Kept large relative to PX_PER_MM so the labels stay
+# legible next to the section shapes (which scale with the physical mm size).
+_FONT_LABEL = 22       # Inner / Middle / Outer name labels
+_FONT_TITLE = 18       # protractor "Angle of attack" title
+_FONT_ANGLE = 16       # per-ray angle values
 
 
 def _load_font(size):
@@ -183,9 +189,9 @@ def render_png(params, grid, out_path):
     base = Image.alpha_composite(base, overlay)
     draw = ImageDraw.Draw(base)
 
-    font = _load_font(15 * ss)
-    font_title = _load_font(14 * ss)
-    font_small = _load_font(12 * ss)
+    font = _load_font(_FONT_LABEL * ss)
+    font_title = _load_font(_FONT_TITLE * ss)
+    font_small = _load_font(_FONT_ANGLE * ss)
     for s in secs:
         draw.line(s["px"] + [s["px"][0]], fill=s["color"], width=2 * ss, joint="curve")
         # Label in the left gutter, vertically centred on the section.

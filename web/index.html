@@ -801,6 +801,52 @@
             </div>
           </section>
 
+          <!-- Render compression: per-type degree (cross-section diagrams vs
+               3D geometry) previewed live against bundled sample renders.
+               Filled in by app.js when the Settings view opens. -->
+          <section class="rc-panel" id="render-compression">
+            <div class="rc-head">
+              <h2>Render compression</h2>
+              <p class="rc-note">
+                How much the agent-facing copy of each render type is
+                downscaled to save vision tokens — 0% = full resolution,
+                100% = the render floor.  Cross-section diagrams and 3D
+                geometry are tuned separately (a 3D view tolerates more
+                downscale than a labelled diagram).  The saved render file is
+                always full-res; changes take effect for the
+                <strong>next session</strong>.
+              </p>
+            </div>
+
+            <div class="rc-block" data-kind="cross">
+              <div class="rc-block-head">
+                <h3>Cross-section diagrams</h3>
+                <span class="rc-degree" id="rc-cross-degree">0%</span>
+              </div>
+              <div class="rc-samples" id="rc-cross-samples"></div>
+              <input class="rc-slider" id="rc-cross-slider" type="range"
+                     min="0" max="100" step="1" value="0"
+                     aria-label="Cross-section compression percent" />
+            </div>
+
+            <div class="rc-block" data-kind="geo">
+              <div class="rc-block-head">
+                <h3>3D geometry</h3>
+                <span class="rc-degree" id="rc-geo-degree">0%</span>
+              </div>
+              <div class="rc-samples" id="rc-geo-samples"></div>
+              <input class="rc-slider" id="rc-geo-slider" type="range"
+                     min="0" max="100" step="1" value="0"
+                     aria-label="3D geometry compression percent" />
+            </div>
+
+            <div class="rc-bar">
+              <button id="rc-save" class="primary" type="button">Save render compression</button>
+              <button id="rc-reload" class="ghost" type="button">Reload</button>
+              <span id="rc-status" class="rc-status" role="status"></span>
+            </div>
+          </section>
+
           <div class="settings-head">
             <h2>Workflow Settings</h2>
             <p class="settings-note">

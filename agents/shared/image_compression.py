@@ -52,6 +52,7 @@ except AttributeError:  # pragma: no cover - older Pillow
 
 _DEFAULT_ENABLED = True
 _DEFAULT_MIN_LONG_EDGE = 512   # long edge at 100% ("max compression")
+_DEFAULT_RENDER_MIN_LONG_EDGE = 320   # lower 100% floor for software renders
 _DEFAULT_CAP = 1024            # size-based auto-default target long edge
 _JPEG_QUALITY = 90
 
@@ -85,13 +86,24 @@ def _cap() -> int:
         return _DEFAULT_CAP
 
 
+def _render_floor() -> int:
+    """The (lower) long edge a RENDER reaches at 100% degree — separate from the
+    user-image floor so schematic renders can compress further."""
+    try:
+        return max(1, int(_get_setting(
+            "IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE", _DEFAULT_RENDER_MIN_LONG_EDGE)))
+    except (TypeError, ValueError):
+        return _DEFAULT_RENDER_MIN_LONG_EDGE
+
+
 # --------------------------------------------------------------------------
 # Degree <-> resolution
 # --------------------------------------------------------------------------
-def degree_to_long_edge(degree_pct, orig_long_edge: int) -> int:
+def degree_to_long_edge(degree_pct, orig_long_edge: int, floor: int = None) -> int:
     """Map a 0-100 degree to a target long-edge (px).  0 -> original,
-    100 -> the floor; linear between.  Never upscales."""
-    floor = _floor()
+    100 -> *floor* (defaults to the user-image floor); linear between.  Never
+    upscales."""
+    floor = _floor() if floor is None else max(1, int(floor))
     L = int(orig_long_edge)
     if L <= floor:
         return L
@@ -210,18 +222,48 @@ def _normalize_mode(im: "Image.Image", out_format: str) -> "Image.Image":
     return im.convert("RGB")
 
 
-def compress_for_model(raw: bytes, degree_pct=None, is_render: bool = False) -> bytes:
+_CROSS_SECTION_PREFIX = "render_blade_sections"
+_3D_RENDER_NAMES = frozenset(
+    ("render_isometric.png", "render_top.png", "render_side.png"))
+
+
+def render_kind(image_path) -> Optional[str]:
+    """"cross" for a blade-sections diagram, "3d" for a 3D mesh view, else None
+    — decided by the render's canonical filename."""
+    name = Path(image_path).name
+    if name.startswith(_CROSS_SECTION_PREFIX):
+        return "cross"
+    if name in _3D_RENDER_NAMES:
+        return "3d"
+    return None
+
+
+def render_degree_and_floor(image_path):
+    """(degree_pct, floor) for a render path per its kind + the workflow
+    settings, or (None, None) when the path is not a recognised render (the
+    caller then falls back to the size-based default)."""
+    kind = render_kind(image_path)
+    if kind is None:
+        return None, None
+    setting = ("IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE" if kind == "cross"
+               else "IMAGE_COMPRESSION_3D_RENDER_DEGREE")
+    deg = _coerce_degree(_get_setting(setting, 0))
+    return (0 if deg is None else deg), _render_floor()
+
+
+def compress_for_model(raw: bytes, degree_pct=None, is_render: bool = False,
+                       floor: int = None) -> bytes:
     """Resolution-reduced copy of *raw* for MODEL viewing.  *degree_pct* None (or
-    non-numeric) => size-based ``suggested_degree``; an explicit int (incl. 0)
-    overrides.  *is_render* marks a software-generated render — when the
-    IMAGE_COMPRESSION_COMPRESS_RENDERS toggle is off, renders pass through at
-    full resolution.  Format preserved; the long edge is downscaled per the
-    degree curve.  Returns the ORIGINAL bytes unchanged when compression is
-    disabled, no downscale is needed, or ANYTHING fails — never raises, never
-    upscales.  OCR / embeddings must NOT call this; they read the full original."""
+    non-numeric) => size-based ``suggested_degree``; an explicit int (incl. 0,
+    which means "no downscale") overrides.  *floor* overrides the long edge the
+    100% degree reaches (renders pass a lower floor than user images).
+    *is_render* is informational only — the per-render-type degree + floor are
+    chosen by the caller (see ``render_degree_and_floor``).  Format preserved;
+    the long edge is downscaled per the degree curve.  Returns the ORIGINAL
+    bytes unchanged when compression is disabled, no downscale is needed, or
+    ANYTHING fails — never raises, never upscales.  OCR / embeddings must NOT
+    call this; they read the full original."""
     if not bool(_get_setting("IMAGE_COMPRESSION_ENABLED", _DEFAULT_ENABLED)):
-        return raw
-    if is_render and not bool(_get_setting("IMAGE_COMPRESSION_COMPRESS_RENDERS", True)):
         return raw
     try:
         im = Image.open(io.BytesIO(raw))
@@ -229,7 +271,7 @@ def compress_for_model(raw: bytes, degree_pct=None, is_render: bool = False) -> 
         L = max(w, h)
         chosen = _coerce_degree(degree_pct)
         pct = suggested_degree(w, h) if chosen is None else chosen
-        target_L = degree_to_long_edge(pct, L)
+        target_L = degree_to_long_edge(pct, L, floor=floor)
         if target_L >= L:
             return raw  # no shrink -> keep the original bytes (and true format)
 

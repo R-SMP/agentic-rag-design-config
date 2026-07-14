@@ -38,6 +38,7 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 from agents.shared.image_compression import (
     compress_for_model,
     read_degree,
+    render_degree_and_floor,
     sniff_media_type,
 )
 from workflow_settings import settings as _workflow_settings
@@ -358,18 +359,33 @@ def encode_image(image_path: Path, is_render: bool = False) -> str:
     software-generated render so the renders toggle applies.
     """
     p = Path(image_path)
-    raw = compress_for_model(p.read_bytes(), read_degree(p), is_render=is_render)
+    if is_render:
+        # Renders use the per-type degree + lower floor from settings (chosen by
+        # the render's canonical filename), NOT a per-image sidecar.
+        deg, floor = render_degree_and_floor(p)
+        raw = compress_for_model(p.read_bytes(), deg, is_render=True, floor=floor)
+    else:
+        raw = compress_for_model(p.read_bytes(), read_degree(p), is_render=False)
     return base64.b64encode(raw).decode()
 
 
-def encode_image_bytes(raw: bytes, degree_pct=None, is_render: bool = False) -> str:
+def encode_image_bytes(raw: bytes, degree_pct=None, is_render: bool = False,
+                       name: str = None) -> str:
     """Base64 of the MODEL-facing (downscaled) copy of in-memory image bytes.
 
     For images fetched from R2; the caller keeps the untouched original bytes
-    for OCR.  ``degree_pct`` None => size-based auto-default.
+    for OCR.  ``degree_pct`` None => size-based auto-default.  When ``is_render``
+    and ``name`` is the render's filename/key, the per-render-type degree + the
+    lower render floor from settings are used (matching the live
+    ``encode_image`` path).
     """
+    floor = None
+    if is_render and name is not None:
+        rdeg, rfloor = render_degree_and_floor(name)
+        if rdeg is not None:
+            degree_pct, floor = rdeg, rfloor
     return base64.b64encode(
-        compress_for_model(raw, degree_pct, is_render=is_render)
+        compress_for_model(raw, degree_pct, is_render=is_render, floor=floor)
     ).decode()
 
 

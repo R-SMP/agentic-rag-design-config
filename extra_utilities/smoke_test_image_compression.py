@@ -121,11 +121,22 @@ def main():
     m._get_setting = orig
     ok(m.compress_for_model(b"not an image") == b"not an image", "undecodable -> passthrough")
 
-    # Renders toggle: is_render honours IMAGE_COMPRESSION_COMPRESS_RENDERS
-    ok(max(_dims(m.compress_for_model(big, is_render=True))) <= CAP, "render compressed when toggle on (default)")
-    m._get_setting = lambda n, d: False if n == "IMAGE_COMPRESSION_COMPRESS_RENDERS" else orig(n, d)
-    ok(m.compress_for_model(big, is_render=True) == big, "render passthrough when toggle off")
-    ok(max(_dims(m.compress_for_model(big, is_render=False))) <= CAP, "user image still compressed when render toggle off")
+    # Per-type render compression: explicit degree + a lower render floor.
+    ok(max(_dims(m.compress_for_model(big, is_render=True))) <= CAP,
+       "render with no explicit degree -> size-based default <= cap")
+    ok(m.compress_for_model(big, degree_pct=0) == big, "degree 0 -> passthrough (no downscale)")
+    ok(max(_dims(m.compress_for_model(big, degree_pct=100, floor=320))) == 320,
+       "degree 100 + render floor -> long edge == 320")
+    ok(m.render_kind("/x/render_blade_sections.png") == "cross", "cross-section render kind by name")
+    ok(m.render_kind("/x/render_isometric.png") == "3d", "3d render kind by name")
+    ok(m.render_kind("/x/user_photo.png") is None, "non-render name -> None kind")
+    m._get_setting = lambda n, d: (60 if n == "IMAGE_COMPRESSION_3D_RENDER_DEGREE"
+                                   else 320 if n == "IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE"
+                                   else orig(n, d))
+    ok(m.render_degree_and_floor("/x/render_isometric.png") == (60, 320),
+       "3d degree+floor pulled from settings")
+    ok(m.render_degree_and_floor("/x/user_photo.png") == (None, None),
+       "non-render -> (None, None)")
     m._get_setting = orig
 
     # make_image_block's auto media-type detection reads the b64 head correctly

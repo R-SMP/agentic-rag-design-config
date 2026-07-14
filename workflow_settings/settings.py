@@ -783,19 +783,28 @@ BLADE_SECTIONS_VISUALIZER_ENABLED: bool = True
 #                                   image whose long edge exceeds this is
 #                                   compressed down to it; images already
 #                                   under it default to 0%.
-#   IMAGE_COMPRESSION_COMPRESS_RENDERS
-#                                   whether software-generated renders (3D
-#                                   views, blade-section diagrams) are also
-#                                   downscaled when an agent reads them.
-#                                   True = treat them like any image (most
-#                                   are already <= the cap); False = renders
-#                                   always reach the model at full resolution.
-#                                   Only the agent-facing copy is affected;
-#                                   the saved render file is always full-res.
+#   IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE / _3D_RENDER_DEGREE
+#                                   per-render-type compression degree (0-100)
+#                                   for the AGENT-facing copy of a render:
+#                                   0 = full resolution, 100 = the render floor
+#                                   below.  Cross-section diagrams
+#                                   (render_blade_sections*) and 3D mesh views
+#                                   (render_isometric / _top / _side) are tuned
+#                                   SEPARATELY (a 3D view tolerates more
+#                                   downscale than a labelled diagram).  Set +
+#                                   previewed in the "Render compression" panel
+#                                   of the Workflow settings UI.  The saved
+#                                   render file is always full-res.
+#   IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE
+#                                   the long edge (px) a render reaches at 100%
+#                                   degree — a lower floor than user images so
+#                                   schematic renders can compress further.
 #
-# Valid values: IMAGE_COMPRESSION_ENABLED / _COMPRESS_RENDERS True|False; the
-# two sizes positive ints (px) with MIN_LONG_EDGE <= DEFAULT_CAP.
+# Valid values: IMAGE_COMPRESSION_ENABLED True|False; the sizes positive ints
+# (px) with the floors <= DEFAULT_CAP; the two degrees ints in [0, 100].
 IMAGE_COMPRESSION_ENABLED: bool = True
 IMAGE_COMPRESSION_MIN_LONG_EDGE: int = 512
 IMAGE_COMPRESSION_DEFAULT_CAP: int = 1024
-IMAGE_COMPRESSION_COMPRESS_RENDERS: bool = True
+IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE: int = 35
+IMAGE_COMPRESSION_3D_RENDER_DEGREE: int = 55
+IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320

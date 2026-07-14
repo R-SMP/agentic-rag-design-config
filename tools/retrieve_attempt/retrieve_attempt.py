@@ -490,9 +490,10 @@ def _run_retrieve_attempt(
                             # per-file <missing/> marker
                             fetch_failures.append(key)
                             continue
-                        # Renders reach the model downscaled (is_render honours
-                        # the renders toggle); ``data`` stays full-res for R2.
-                        b64 = encode_image_bytes(data, is_render=True)
+                        # Renders reach the model downscaled per the per-type
+                        # degree (``key``'s filename picks cross-section vs 3D);
+                        # ``data`` stays full-res for R2.
+                        b64 = encode_image_bytes(data, is_render=True, name=key)
                         image_blocks.append(
                             make_image_block(b64, provider)
                         )

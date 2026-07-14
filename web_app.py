@@ -2583,6 +2583,98 @@ def api_images_compression_save(body: ImageCompressionIn) -> dict:
     return {"ok": True, "degree": degree}
 
 
+# ---------------------------------------------------------------------------
+# Render compression — per-type degrees (cross-section diagrams vs 3D geometry)
+# previewed against bundled sample renders (web/render_samples/) in the
+# Workflow settings panel.  The two degrees are hidden settings, written via
+# the editor's internal path; this panel is their dedicated control surface.
+# ---------------------------------------------------------------------------
+RENDER_SAMPLES_DIR = WEB_DIR / "render_samples"
+_RENDER_SAMPLE_KINDS = ("cross", "geo")
+_RENDER_SAMPLE_SIZES = ("small", "medium", "large")
+
+
+class RenderCompressionIn(BaseModel):
+    cross_degree: int
+    geo_degree: int
+
+
+def _render_sample_path(kind: str, size: str) -> Path:
+    if kind not in _RENDER_SAMPLE_KINDS or size not in _RENDER_SAMPLE_SIZES:
+        raise HTTPException(status_code=400, detail="Unknown render sample.")
+    return RENDER_SAMPLES_DIR / f"{kind}_{size}.png"
+
+
+@app.get("/api/render_compression")
+def api_render_compression_get() -> dict:
+    """Current per-render-type compression degrees + which sample sets exist."""
+    _require_auth()
+    importlib.reload(workflow_settings)
+
+    def _avail(kind: str) -> bool:
+        return all(_render_sample_path(kind, s).is_file() for s in _RENDER_SAMPLE_SIZES)
+
+    return {
+        "cross_degree": int(getattr(workflow_settings,
+                                    "IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE", 0)),
+        "geo_degree": int(getattr(workflow_settings,
+                                  "IMAGE_COMPRESSION_3D_RENDER_DEGREE", 0)),
+        "render_floor": int(getattr(workflow_settings,
+                                    "IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE", 320)),
+        "sizes": list(_RENDER_SAMPLE_SIZES),
+        "cross_available": _avail("cross"),
+        "geo_available": _avail("geo"),
+    }
+
+
+@app.get("/api/render_compression/sample")
+def api_render_compression_sample(kind: str, size: str, degree: int) -> dict:
+    """Compress a bundled sample render at *degree* (with the render floor) and
+    return the preview + before/after dimensions and per-provider token
+    estimates — exactly how an agent would see that render type at this degree."""
+    _require_auth()
+    path = _render_sample_path(kind, size)
+    if not path.is_file():
+        raise HTTPException(status_code=404, detail="Sample not generated yet.")
+    raw = path.read_bytes()
+    w, h = _image_wh(raw)
+    floor = int(getattr(workflow_settings,
+                        "IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE", 320))
+    out = compress_for_model(raw, degree, is_render=True, floor=floor)
+    ow, oh = _image_wh(out)
+    if out == raw:
+        # Unchanged (0% or already <= floor) — reuse the statically-served file.
+        preview = f"/static/render_samples/{kind}_{size}.png"
+    else:
+        preview = "data:" + sniff_media_type(out) + ";base64," + \
+            base64.b64encode(out).decode()
+    return {
+        "kind": kind, "size": size, "degree": max(0, min(100, int(degree))),
+        "orig": {"width": w, "height": h, "bytes": len(raw), "tokens": _image_tokens(w, h)},
+        "compressed": {"width": ow, "height": oh, "bytes": len(out), "tokens": _image_tokens(ow, oh)},
+        "preview": preview,
+    }
+
+
+@app.post("/api/render_compression")
+def api_render_compression_save(body: RenderCompressionIn) -> dict:
+    """Persist the two per-render-type degrees (hidden settings, panel-owned).
+    Locked while a session is active, like every other settings write."""
+    _require_auth()
+    _require_no_session()
+    cross = max(0, min(100, int(body.cross_degree)))
+    geo = max(0, min(100, int(body.geo_degree)))
+    try:
+        settings_editor.write_internal({
+            "IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE": cross,
+            "IMAGE_COMPRESSION_3D_RENDER_DEGREE": geo,
+        })
+    except settings_editor.SettingsError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    logger.info("[WEB] render compression saved: cross=%d%% geo=%d%%", cross, geo)
+    return {"ok": True, "cross_degree": cross, "geo_degree": geo}
+
+
 @app.get("/api/events")
 async def api_events() -> StreamingResponse:
     """Server-Sent Events stream. Pushes a "visualize" event the

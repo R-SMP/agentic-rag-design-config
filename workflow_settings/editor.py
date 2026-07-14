@@ -51,9 +51,10 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
 DERIVED_READONLY = {"EMBEDDING_API_KEY"}
 
 # Hidden from the flag-list UI and rejected by ``write_updates``.
-# Owned by a dedicated control surface (see workflow_settings/
-# llm_routing.py).  The internal write path ``write_internal`` is the
-# only way to mutate these names.
+# Owned by a dedicated control surface (the LLM-routing panel via
+# workflow_settings/llm_routing.py; the two render-compression degrees via
+# the "Render compression" panel).  The internal write path
+# ``write_internal`` is the only way to mutate these names.
 #
 # EMBEDDING_INPUT_MAX_CHARS and DATABASE_ENTRY_RETRY_BACKOFF_SECONDS
 # are internal tuning knobs for db_writer.py — they live in settings.py
@@ -63,6 +64,10 @@ HIDDEN_FROM_FLAG_LIST = {
     "LLM_ROUTING_MODE",
     "EMBEDDING_INPUT_MAX_CHARS",
     "DATABASE_ENTRY_RETRY_BACKOFF_SECONDS",
+    # Owned by the dedicated "Render compression" panel, which previews each
+    # degree against sample renders with a slider.
+    "IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE",
+    "IMAGE_COMPRESSION_3D_RENDER_DEGREE",
 }
 
 _FENCE_RE = re.compile(r"^#+\s*=+\s*$")
@@ -300,9 +305,11 @@ def write_internal(updates: dict[str, Any]) -> None:
     """Trusted-caller variant of :func:`write_updates` that may also
     write names in :data:`HIDDEN_FROM_FLAG_LIST`.
 
-    Intended for use by the routing module
-    (``workflow_settings/llm_routing.py``); never wired to a public
-    HTTP endpoint.
+    Callers must pass only fixed setting names with server-validated values.
+    Used by the routing module (``workflow_settings/llm_routing.py``, which
+    validates its own payload) and directly by the render-compression panel's
+    ``POST /api/render_compression`` handler (web_app.py), which passes only
+    the two ``IMAGE_COMPRESSION_*_DEGREE`` names clamped to [0, 100].
     """
     _do_write(updates, allow_hidden=True)
 

@@ -856,6 +856,35 @@ button.danger:hover { background: #3a1d1d; }
 .settings-status.ok { color: #4caf78; }
 .settings-status.err { color: var(--error); }
 
+/* Render compression panel */
+.rc-panel { margin: 0 0 28px; padding: 0 0 20px; border-bottom: 1px solid var(--border); }
+.rc-head h2 { margin: 0 0 6px; }
+.rc-note { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0 0 16px; max-width: 74ch; }
+.rc-block { margin-bottom: 20px; }
+.rc-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
+.rc-block-head h3 { margin: 0; font-size: 14px; color: var(--text); }
+.rc-degree { font-size: 14px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }
+.rc-samples { display: flex; gap: 12px; align-items: flex-start; flex-wrap: wrap; margin-bottom: 12px; }
+.rc-sample { margin: 0; flex: 1 1 190px; min-width: 150px; max-width: 250px; }
+.rc-sample-imgwrap {
+  background: var(--panel); border: 1px solid var(--border); border-radius: 8px;
+  padding: 6px; display: flex; align-items: center; justify-content: center;
+  min-height: 96px; overflow: hidden;
+}
+.rc-sample img { max-width: 100%; height: auto; display: block; border-radius: 4px; }
+.rc-cap { font-size: 11px; color: var(--muted); margin-top: 6px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+.rc-slider { width: 100%; max-width: 520px; }
+.rc-missing {
+  font-size: 12px; color: var(--muted); line-height: 1.6; margin: 0; padding: 12px;
+  background: var(--panel); border: 1px dashed var(--border); border-radius: 8px;
+}
+.rc-missing code { font-size: 11px; background: var(--panel-2); padding: 1px 5px; border-radius: 4px; }
+.rc-bar { display: flex; align-items: center; gap: 10px; margin-top: 4px; }
+.rc-status { font-size: 13px; min-height: 18px; }
+.rc-status.ok { color: #4caf78; }
+.rc-status.err { color: var(--error); }
+.rc-status.warn { color: #e0a83c; }
+
 @media (max-width: 900px) {
   .workspace { flex-direction: column; }
   .sidenav {
@@ -1068,6 +1097,7 @@ button.danger:hover { background: #3a1d1d; }
 .settings-scroll.locked .llm-routing,
 .settings-scroll.locked .settings-root,
 .settings-scroll.locked .settings-bar,
+.settings-scroll.locked .rc-panel,
 .settings-scroll.locked .lr-bar {
   opacity: 0.55;
   pointer-events: none;
