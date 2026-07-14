@@ -3061,3 +3061,81 @@ runs QC on the mesh), else renders.  Scoped to **renders/QC only** —
 refuses to overwrite a mesh).  All "append-only renders" prompt text reconciled.
 This does NOT relax the append-only `parameters.json`, so a parameter TWEAK still
 opens a new attempt — that remaining piece is F45's deferred scope.
+
+**Update (2026-07-14, `d5de05c`).** `render_and_check_mesh` no longer exists as a
+standalone tool — it was merged into `generate_and_render_propeller` (F50).  The
+render-reuse behaviour described here now lives in that tool's built-in render step
+(a plain `render_and_check` / `render_and_check_pv` core, wired via
+`set_render_and_check_fn`), which reuses the three PNGs in place exactly as before.
+
+
+### F49. LOG/Status flowchart: "last used tool" caption bound to the wrong agent box (+ label renames + Blade Sections box)
+
+**Status.** FIXED (2026-07-14, commit `d5de05c` → stage-a) — pending a live (py3.13)
+look at the running flowchart; NOT visually verified in-sandbox (the py3.8 worktree
+can't import the app and the screenshot subsystem is broken, so the wiring was checked
+structurally + the pure-Python attribution path was runtime-tested).
+
+**Bug.** The gray "last used tool" caption under each agent box (published by the
+`@generic_tool` decorator) was attached to whichever box currently had `.active` in
+the DOM, with NO tool→owner check.  When a box-switch (`agent_active`) event was
+dropped by the lossy viz bus (`viz_bus._MAX_QUEUED=32`, silent drop-on-full), the
+caption landed on the previously-lit box — e.g. the DCIC's "Write parameters" showed
+under the **Planner** (the reported symptom).
+
+**Fix.** The event now carries its owner.  `agents/shared/trace.py` keeps an
+in-process `_current_agent` (updated inside `trace()` ONLY when `to_agent` is a real
+agent — the 8 `AGENT_DISPLAY.values()` + "Database Handler"; reset in `init_trace()`;
+read via `get_current_agent()`).  `@generic_tool` (`agent_activity.py`) stamps
+`{"agent": get_current_agent()}` onto its event.  The frontend
+`recordToolUsedByActiveAgent(name, agentName)` (`web/app.js`) targets
+`FLOW_BOX_BY_NAME[agentName]` (falls back to the old `.active` query only if the field
+is absent).  `viz_bus._MAX_QUEUED` 32→256 + **drop-oldest** on overflow so box-switch
+bursts rarely lose an event and, when they do, the freshest state wins (still
+non-blocking).
+
+**Also in this pass.** (a) Renamed 4 captions for accuracy/consistency: "Write
+extraction"→"Write extracted inputs", "Generate new design attempt"→"Open new
+attempt", "OCR regions"→"Read text regions (OCR)", "Database Search"→"Database
+search".  (b) `render_blade_sections` now gets its OWN light-green "Blade Sections"
+flow box (`@generic_tool("Render blade sections")`→`@tool_active("Blade Sections")`;
+wired in `web/index.html` + `style.css` + `app.js` `FLOW_BOX_BY_NAME`/`TOOL_NAMES`/
+`DYNAMIC_ARROW_BY_EDGE` + the LLM-routing chart) instead of a transient caption —
+delivers the box side of F43.  Adversarial review (4 dimensions × verify) → 0
+confirmed defects.
+
+
+### F50. Merge generate_propeller_mesh + render_and_check_mesh into one tool
+
+**Status.** FIXED (2026-07-14, commit `d5de05c` → stage-a) — pending a prod (py3.13)
+run to exercise the merged tool's render step (needs the real trimesh/pyrender stack,
+unavailable in the py3.8 worktree).
+
+**Context.** The Tool Caller called two design tools in sequence —
+`generate_propeller_mesh` (geometry) then `render_and_check_mesh` (3D renders + QC) —
+hand-copying the mesh path from the first into the second.  Rendering is always the
+logical next step after a good geometry build, so the split added a round-trip and a
+chance for the LLM to skip or mis-path the second call.
+
+**Fix.** ONE tool `generate_and_render_propeller`
+(`tools/generate_mesh/generate_mesh.py`, `@tool @tool_active("Propeller Configurator")`):
+builds the geometry (selected backend + bidirectional fallback) then, as its built-in
+final step, renders the three views + runs QC — no path round-trip.  It **reuses an
+existing `propeller_mesh.obj` in place** (append-only preserved — never overwritten;
+relaxed `_validate_output_dir` from refuse-if-exists to reuse) so a re-run is
+idempotent and a render retry needs no new attempt (folds in F48's reuse).  It **skips
+the render step only if the geometry generation fails** (both backends).  The two
+render tools were de-decorated into plain cores `render_and_check` /
+`render_and_check_pv`; `tools/__init__` injects the active one via
+`set_render_and_check_fn()` (`get_render_tool`→`get_render_core`), so the merge adds NO
+import of trimesh/pyrender/pyvista to the pure `render_mesh_obj_text` live-preview
+path.  `get_tools()`→`[generate_and_render_propeller, calculate]`.  The "Visual
+Renderings Generator" flow box is removed (one combined "Propeller Configurator" box —
+see F49).  Prompts/fragments rewritten two-step→one tool ("calls exactly three
+design-tool actions"→"exactly two"); Tool-Caller freshness signalling now reads the
+return's "Mesh saved"/"Reused existing mesh" + "Renders saved:"/"Renders already
+present" markers.  Adversarial review (4 dimensions × verify) → 0 confirmed defects.
+
+**Caveat.** The external `propeller-dc` MCP server still exposes
+`generate_propeller_mesh` / `render_and_check_mesh` by those names — a different layer,
+untouched by this rename.
