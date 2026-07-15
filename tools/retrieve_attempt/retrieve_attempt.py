@@ -24,7 +24,7 @@ images_flag)``, the tool:
 
 The ``@tool``-decorated public stub returns ``""`` — the dispatcher in
 ``agents/shared/retrieve_tool_dispatcher.py`` intercepts and runs the
-real ``_run_retrieve_attempt`` function below.  Same load_input_images
+real ``_run_retrieve_attempt`` function below.  Same view_images
 pattern as ``retrieve_user_inputs``.
 
 Architecture references

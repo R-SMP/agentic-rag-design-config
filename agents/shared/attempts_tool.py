@@ -17,7 +17,7 @@ Three tools are defined here:
 - ``read_attempt(n, file)`` — read one specific file from the n-th
   attempt.  Text/JSON content is returned inline; for images the
   absolute path is returned so the caller can hand it to
-  ``load_render_images``.
+  ``view_images``.
 - ``new_attempt(slug, description)`` — create a new, empty attempt
   folder and return its absolute path.
 
@@ -215,7 +215,7 @@ def read_attempt(n: int, file: str) -> str:
     For text / JSON files the content is returned inline.  For image
     files the resolved absolute path is returned so the caller can
     hand it to a tool that loads images (e.g.
-    ``load_render_images``).  For MESH files (``.obj`` / ``.stl`` /
+    ``view_images``).  For MESH files (``.obj`` / ``.stl`` /
     ``.ply``) only the absolute path is returned — never the inline
     content, because a propeller mesh's text representation is
     typically hundreds of thousands of tokens and would blow past
@@ -270,7 +270,7 @@ def read_attempt(n: int, file: str) -> str:
             f"Image file at: {target.resolve()}\n"
             f"(read_attempt does not return image bytes inline — "
             f"hand this absolute path to a tool that loads images, "
-            f"e.g. ``load_render_images``.)"
+            f"e.g. ``view_images``.)"
         )
     if suffix in _MESH_SUFFIXES:
         try:

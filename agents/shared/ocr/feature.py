@@ -1,6 +1,6 @@
 """OCR feature-integration layer — the single entry point chain tools call.
 
-`load_input_images`, `read_user_inputs` and `retrieve_user_inputs` all
+`view_images`, `read_user_inputs` and `retrieve_user_inputs` all
 call :func:`ocr_summary_if_enabled` so they behave identically: the gate
 (``OCR_ENABLED`` + the agent's per-call flag) and the per-image
 formatting live in ONE place.

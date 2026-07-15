@@ -140,8 +140,8 @@ CHAIN_ACCESS: bool = True
 # ===========================================================
 # 6.  Keep loaded images in agent context
 # ===========================================================
-# What happens to image bytes loaded via load_render_images /
-# load_input_images / retrieve_user_inputs / retrieve_attempt
+# What happens to image bytes loaded via view_images /
+# retrieve_user_inputs / retrieve_attempt
 # AT THE MOMENT THE AGENT HANDS OFF to another agent (= when
 # its LLM invokes a routing tool).  This is the only point at
 # which the strip runs — NOT after the LLM reads the image once.
@@ -692,7 +692,7 @@ SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
 # ===========================================================
 # 24. OCR — read text written on user-supplied images
 # ===========================================================
-# When ON, the image tools (``load_input_images``, ``read_user_inputs``,
+# When ON, the image tools (``view_images``, ``read_user_inputs``,
 # ``retrieve_user_inputs``) additionally run OCR (Google Cloud Vision
 # text detection) on each loaded image and append the detected text —
 # grouped into callout regions — to the tool's result, so the agent
@@ -716,7 +716,7 @@ SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
 #                            "google_vision" exists today; the value
 #                            selects the swappable engine module so a
 #                            different one can slot in later.
-#   OCR_WHOLE_IMAGE_DEFAULT  default of load_input_images' per-call
+#   OCR_WHOLE_IMAGE_DEFAULT  default of view_images' per-call
 #                            ``extract_text`` flag — whether the agent
 #                            gets OCR text unless it opts out on a
 #                            given call.
@@ -739,7 +739,7 @@ OCR_MAX_TEXT_CHARS: int = 2000
 # three blade cross-sections (Inner / Middle / Outer) stacked
 # vertically — the same airfoils the in-browser Parameters Inputs
 # "Blade sections" view draws — written under the attempt folder so it
-# auto-displays in chat and can be read back by ``load_render_images``.
+# auto-displays in chat and can be read back by ``view_images``.
 # The tool also takes a ``grid`` flag (default False): when True a light
 # 1 mm × 1 mm grid is drawn behind the sections.
 #

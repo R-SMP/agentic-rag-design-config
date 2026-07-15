@@ -7,12 +7,16 @@ the four LangChain ``@tool`` stubs defined here:
   * ``list_input_files``      — categorised filesystem listing
   * ``read_input_text``       — read any text file under ``inputs/``
   * ``read_image_notes``      — read every ``<name>_note.txt`` at once
-  * ``load_input_images``     — load one or more user-supplied images
+  * ``view_images``           — the unified image tool: view any images
+    (user sketches under ``inputs/`` AND tool renders under ``attempts/``),
+    optionally cropped to a coarse region and/or merged side-by-side into
+    one comparison image.  Replaces the former ``load_input_images`` +
+    ``load_render_images``.
 
 The actual handlers live in this module too — each one mutates the
 calling agent's ``messages`` list (appending a ToolMessage with a
-text summary, plus, for ``load_input_images``, a separate
-HumanMessage carrying the paired path-text + image content blocks).
+text summary, plus, for ``view_images``, a separate HumanMessage
+carrying the paired path-text + image content blocks).
 The single ``dispatch_user_inputs_tool(agent, tc, agent_key)``
 helper is the one-liner each agent's run loop adds to route a tool
 call to its correct handler.
@@ -30,9 +34,11 @@ image loads.
 from __future__ import annotations
 
 import base64
+import io
 import logging
 from pathlib import Path
 
+from PIL import Image
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 
@@ -43,10 +49,20 @@ from agents.shared.file_utils import (
     load_text_file,
     pair_input_images,
 )
-from agents.shared.llm_provider import encode_image, make_image_block
+from agents.shared.image_stitch import crop_to_region, stitch, to_rgb
+from agents.shared.llm_provider import (
+    encode_image,
+    encode_image_bytes,
+    make_image_block,
+)
 from agents.shared.routing_tools import log_tool_call
 from agents.shared.ocr import ocr_regions_reread, ocr_summary_if_enabled
-from config import INPUT_IMAGES_DIR, INPUT_IMAGES_SUBDIR, USER_INPUTS_DIR
+from config import (
+    ATTEMPTS_DIR,
+    INPUT_IMAGES_DIR,
+    INPUT_IMAGES_SUBDIR,
+    USER_INPUTS_DIR,
+)
 from workflow_settings import ocr_access
 from workflow_settings import ocr_region_crops_access
 from workflow_settings import settings as workflow_settings
@@ -95,51 +111,68 @@ def read_image_notes() -> str:
     return ""  # handled by dispatch_user_inputs_tool
 
 
-_LOAD_IMAGES_BASE_DOC = (
-    "Load one or more user-supplied images so you can see them.\n\n"
-    "``paths`` MUST be a list of absolute paths obtained from "
-    "``list_input_files`` (or relayed in the hand-off message).  Each "
-    "path must point at a ``.png``, ``.jpg``, or ``.jpeg`` inside "
-    "``inputs/input_images/``.  Loaded images are attached in the next "
-    "user message, each preceded by its absolute path so the path "
-    "remains in your history even if image bytes are later stripped.  "
-    "Do NOT call this tool with guessed or fabricated paths."
+_VIEW_IMAGES_BASE_DOC = (
+    "View one or more images so you can see them — user sketches (under "
+    "``inputs/``) and/or tool-generated renders (under ``attempts/``), "
+    "interchangeably.\n\n"
+    "``paths``: a LIST of absolute image paths (``.png`` / ``.jpg`` / "
+    "``.jpeg``) obtained from ``list_input_files`` or relayed in the hand-off. "
+    "Do NOT guess or fabricate paths.  By default each image is shown "
+    "full-size as its own block; the images are attached in the next user "
+    "message, each preceded by its absolute path.\n\n"
+    "``side_by_side`` (default False): when True, up to THREE images are "
+    "merged into ONE labelled composite image so you can compare them "
+    "directly in a single frame — best for judging shape/detail.  Pass more "
+    "than 3 paths only with ``side_by_side=False``.\n\n"
+    "``layout`` (``'match_height'`` default | ``'native'``): only affects "
+    "``side_by_side`` — ``'match_height'`` scales every panel to the same "
+    "height (best for comparing shapes at a matched scale); ``'native'`` "
+    "keeps native pixels.\n\n"
+    "``regions`` (OPTIONAL): a list aligned by index with ``paths``; each "
+    "entry is a COARSE crop box ``[x0, y0, x1, y1]`` as fractions in 0..1 (or "
+    "``null`` for no crop), so a large sketch is cropped to its relevant region "
+    "before viewing or comparing.  The User Input Inspector sets these from a "
+    "raw sketch and records them in the extraction; other agents (e.g. the DC "
+    "Output Inspector comparing blade sections) REUSE a recorded region when it "
+    "helps.  Do NOT invent regions — use only recorded / handed-off ones."
 )
 
-_LOAD_IMAGES_OCR_DOC = _LOAD_IMAGES_BASE_DOC + (
-    "\n\nIf OCR is enabled, each loaded image is also passed through an "
-    "OCR engine that recognises any text written on the image — "
-    "dimension callouts, labels, annotations — and that recognised text "
-    "is returned to you here, one entry per detected text region.  Treat "
-    "it as the image's text, read for you by OCR: it is machine-recognised, "
-    "so check it against the image before you rely on a value.  Pass "
-    "``extract_text=False`` to skip OCR for a given call."
+_VIEW_IMAGES_OCR_DOC = _VIEW_IMAGES_BASE_DOC + (
+    "\n\nIf OCR is enabled, each USER image (under ``inputs/``) is also passed "
+    "through an OCR engine that recognises any text written on it — dimension "
+    "callouts, labels, annotations — returned here one entry per detected "
+    "region (when a crop region is given, only that region is OCR'd).  It is "
+    "machine-recognised, so check it against the image before relying on a "
+    "value.  Renders are never OCR'd.  Pass ``extract_text=False`` to skip OCR."
 )
 
 
-def _build_load_input_images(ocr_on: bool):
-    """Build the ``load_input_images`` tool.
+def _build_view_images(ocr_on: bool):
+    """Build the unified ``view_images`` tool (replaces the old
+    ``load_input_images`` + ``load_render_images``).
 
-    The ``extract_text`` OCR flag is present ONLY when *ocr_on* is True —
-    so when OCR is globally disabled the agent never sees the flag.  The
-    real work happens in ``_handle_load_input_images`` via the
-    dispatcher; this stub just defines the LLM-facing schema + doc.
+    The ``extract_text`` OCR flag is present ONLY when *ocr_on* is True.  The
+    real work happens in ``_handle_view_images`` via the dispatcher; this stub
+    just defines the LLM-facing schema + doc.
     """
     if ocr_on:
-        def _impl(paths: list[str], extract_text: bool = True) -> str:
+        def _impl(paths: list[str], side_by_side: bool = False,
+                  layout: str = "match_height", regions: list = None,
+                  extract_text: bool = True) -> str:
             return ""  # handled by dispatch_user_inputs_tool
-        _impl.__doc__ = _LOAD_IMAGES_OCR_DOC
+        _impl.__doc__ = _VIEW_IMAGES_OCR_DOC
     else:
-        def _impl(paths: list[str]) -> str:
+        def _impl(paths: list[str], side_by_side: bool = False,
+                  layout: str = "match_height", regions: list = None) -> str:
             return ""  # handled by dispatch_user_inputs_tool
-        _impl.__doc__ = _LOAD_IMAGES_BASE_DOC
-    return tool("load_input_images")(_impl)
+        _impl.__doc__ = _VIEW_IMAGES_BASE_DOC
+    return tool("view_images")(_impl)
 
 
 _OCR_REGIONS_DOC = (
     "Re-read one or more labelled text regions of a user image at higher "
     "resolution — in a single call.\n\n"
-    "Use this when an image's whole-image OCR (from ``load_input_images`` "
+    "Use this when an image's whole-image OCR (from ``view_images`` "
     "/ ``read_user_inputs``) shows callouts you want to read more "
     "confidently — small, faint, or garbled dimensions.  ``image_path`` "
     "is the absolute path of that user image (under "
@@ -167,7 +200,7 @@ USER_INPUTS_TOOL_NAMES = {
     "list_input_files",
     "read_input_text",
     "read_image_notes",
-    "load_input_images",
+    "view_images",
     "ocr_regions",
 }
 
@@ -188,7 +221,7 @@ def build_user_inputs_tools(
 
     When *include_image_tools* is False the agent gets ONLY the text-file
     tools (``list_input_files`` / ``read_input_text``); the image-viewing
-    tools (``read_image_notes`` / ``load_input_images`` / ``ocr_regions``)
+    tools (``read_image_notes`` / ``view_images`` / ``ocr_regions``)
     are withheld.  The DC Input Creator uses this — it works from
     ``extracted_inputs.txt`` and does not view raw images.
     """
@@ -196,7 +229,7 @@ def build_user_inputs_tools(
     if include_image_tools:
         on = ocr_access.is_enabled_for(agent_key)
         tools.append(read_image_notes)
-        tools.append(_build_load_input_images(on))
+        tools.append(_build_view_images(on))
         if on:
             # The region zoom-in tool exists only when OCR is enabled.
             tools.append(_build_ocr_regions())
@@ -216,6 +249,39 @@ def _is_inside_inputs(path: Path) -> bool:
     except OSError:
         return False
     return p == root or root in p.parents
+
+
+def _is_inside_attempts(path: Path) -> bool:
+    """True iff *path* resolves inside the configured attempts root (a render)."""
+    try:
+        p = path.resolve()
+        root = ATTEMPTS_DIR.resolve()
+    except OSError:
+        return False
+    return p == root or root in p.parents
+
+
+_COMPARISONS_SUBDIR = "_comparisons"
+
+
+def _save_composite(png_bytes: bytes):
+    """Save a side-by-side composite under ``attempts/_comparisons/`` so it
+    auto-displays in the chat (the turn artefact-diff globs ``render_*.png``
+    under ATTEMPTS_DIR).  Best-effort: returns the saved ``Path`` or ``None``
+    on any write error.  Named ``render_comparison_<n>.png``."""
+    try:
+        out_dir = ATTEMPTS_DIR / _COMPARISONS_SUBDIR
+        out_dir.mkdir(parents=True, exist_ok=True)
+        n = sum(1 for _ in out_dir.glob("render_comparison_*.png")) + 1
+        out_path = out_dir / f"render_comparison_{n}.png"
+        while out_path.exists():   # skip past any gap so we never clobber
+            n += 1
+            out_path = out_dir / f"render_comparison_{n}.png"
+        out_path.write_bytes(png_bytes)
+        return out_path
+    except OSError as exc:
+        logger.warning("[view_images] could not save composite: %s", exc)
+        return None
 
 
 def _format_input_files_listing() -> str:
@@ -399,94 +465,161 @@ def _handle_read_image_notes(agent, tc: dict, agent_key: str) -> None:
     ))
 
 
-@generic_tool("Load input images")
-def _handle_load_input_images(agent, tc: dict, agent_key: str) -> None:
-    raw_paths = (tc.get("args", {}) or {}).get("paths")
+def _load_cropped(path: Path, region):
+    """Return (rgb_pil, png_bytes) for a possibly-cropped, white-flattened copy
+    of the image at *path*.  The on-disk original is never modified."""
+    im = to_rgb(Image.open(path))
+    cropped = crop_to_region(im, region)
+    buf = io.BytesIO()
+    cropped.save(buf, format="PNG")
+    return cropped, buf.getvalue()
+
+
+@generic_tool("View images")
+def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
+    args = tc.get("args", {}) or {}
+    raw_paths = args.get("paths")
     if isinstance(raw_paths, str):
         raw_paths = [raw_paths]
     if not isinstance(raw_paths, list) or not raw_paths:
         summary = (
-            "Error: 'paths' must be a non-empty list of absolute image "
-            "paths.  Discover valid paths via list_input_files."
+            "Error: 'paths' must be a non-empty list of absolute image paths "
+            "(user images under inputs/ or renders under attempts/).  Discover "
+            "valid paths via list_input_files or the hand-off."
         )
         log_tool_call(agent_key, tc["name"], tc.get("args"), summary)
         agent.messages.append(ToolMessage(
-            content=summary,
-            tool_call_id=tc["id"],
-            name=tc["name"],
+            content=summary, tool_call_id=tc["id"], name=tc["name"],
         ))
         return
 
-    loaded: list[str] = []
-    missing: list[str] = []
-    image_blocks: list[dict] = []
-    image_paths: list[str] = []
+    side_by_side = bool(args.get("side_by_side", False))
+    layout = args.get("layout") or "match_height"
+    if layout not in ("match_height", "native"):
+        layout = "match_height"
+    regions = args.get("regions")
+    if not isinstance(regions, list):
+        regions = []
+    # Per-agent OCR gate: the schema hides ``extract_text`` when THIS agent's
+    # OCR is off, but the runtime pass must also honour the per-agent flag —
+    # ``ocr_summary_if_enabled`` only checks the GLOBAL switch, so without this
+    # a per-agent-disabled agent would still get OCR text on the default.
+    ocr_on = ocr_access.is_enabled_for(agent_key)
+    extract_text = ocr_on and bool(args.get(
+        "extract_text",
+        getattr(workflow_settings, "OCR_WHOLE_IMAGE_DEFAULT", True),
+    ))
     provider = getattr(agent, "provider", "openai")
 
-    for raw in raw_paths:
+    # Resolve + validate each path; classify user-image (inputs/) vs render
+    # (attempts/); attach the aligned crop region.
+    resolved = []          # {path, is_render, region}
+    missing: list[str] = []
+    for i, raw in enumerate(raw_paths):
         if not isinstance(raw, str):
-            missing.append(str(raw))
-            continue
+            missing.append(str(raw)); continue
         path = Path(raw)
-        if not _is_inside_inputs(path):
-            missing.append(f"{raw} (not under inputs/)")
-            continue
+        in_inputs = _is_inside_inputs(path)
+        in_attempts = _is_inside_attempts(path)
+        if not (in_inputs or in_attempts):
+            missing.append(f"{raw} (not under inputs/ or attempts/)"); continue
         if not path.is_file() or path.suffix.lower() not in ALLOWED_IMAGE_SUFFIXES:
-            missing.append(f"{raw} (missing or unsupported suffix)")
-            continue
-        try:
-            b64 = encode_image(path)
-            image_blocks.append(make_image_block(b64, provider))
-            image_paths.append(str(path.resolve()))
-            loaded.append(str(path.resolve()))
-        except OSError as exc:
-            missing.append(f"{raw} (read error: {exc})")
+            missing.append(f"{raw} (missing or unsupported suffix)"); continue
+        region = regions[i] if i < len(regions) else None
+        resolved.append({"path": path, "is_render": in_attempts, "region": region})
 
-    parts = [f"Loaded {len(loaded)} user input image(s)."]
+    image_blocks: list[dict] = []
+    image_paths: list[str] = []
+    ocr_items = []         # (label, source) — user images only; source = bytes/path
+    loaded: list[str] = []
+    body_parts: list[str] = []
+
+    if side_by_side and resolved:
+        # Merge up to 3 (cropped) panels into ONE labelled composite image.
+        pil_panels, labels = [], []
+        for j, r in enumerate(resolved[:3]):
+            try:
+                cropped, cbytes = _load_cropped(r["path"], r["region"])
+            except (OSError, ValueError) as exc:
+                missing.append(f"{r['path']} (read error: {exc})"); continue
+            pil_panels.append(cropped)
+            labels.append(f"{j + 1}: {r['path'].name}")
+            loaded.append(str(r["path"].resolve()))
+            if (not r["is_render"]) and extract_text:
+                ocr_items.append((r["path"].name, cbytes))
+        if pil_panels:
+            try:
+                comp = stitch(pil_panels, labels, layout)
+                cbuf = io.BytesIO(); comp.save(cbuf, format="PNG")
+                comp_bytes = cbuf.getvalue()
+                saved = _save_composite(comp_bytes)   # auto-shows in chat
+                # degree_pct=0: the composite is already sized to the vision cap.
+                b64 = encode_image_bytes(comp_bytes, degree_pct=0)
+                image_blocks.append(make_image_block(b64, provider))
+                image_paths.append(str(saved) if saved else "composite")
+                body_parts.append(
+                    f"Composed {len(pil_panels)} image(s) side-by-side "
+                    f"(layout={layout}) into one comparison image"
+                    + (f", saved to {saved}." if saved else ".")
+                )
+            except Exception as exc:   # noqa: BLE001 — a compose error must not crash the tool
+                body_parts.append(f"Could not compose the side-by-side image: {exc}")
+    else:
+        # Separate full-size blocks (today's behaviour; >3 allowed).
+        for r in resolved:
+            try:
+                if r["region"]:
+                    _cropped, cbytes = _load_cropped(r["path"], r["region"])
+                    if r["is_render"]:
+                        b64 = encode_image_bytes(cbytes, is_render=True,
+                                                 name=r["path"].name)
+                    else:
+                        b64 = encode_image_bytes(cbytes, degree_pct=None,
+                                                 is_render=False)
+                    ocr_src = cbytes
+                else:
+                    b64 = encode_image(r["path"], is_render=r["is_render"])
+                    ocr_src = r["path"]
+            except (OSError, ValueError) as exc:
+                missing.append(f"{r['path']} (read error: {exc})"); continue
+            image_blocks.append(make_image_block(b64, provider))
+            image_paths.append(str(r["path"].resolve()))
+            loaded.append(str(r["path"].resolve()))
+            if (not r["is_render"]) and extract_text:
+                ocr_items.append((r["path"].name, ocr_src))
+
+    # Build the ToolMessage summary.
+    head = [
+        f"Viewed {len(loaded)} image(s)"
+        + (" as a side-by-side comparison." if side_by_side else ".")
+    ]
     if loaded:
-        parts.append("Loaded paths:\n  " + "\n  ".join(loaded))
+        head.append("Paths:\n  " + "\n  ".join(loaded))
     if missing:
-        parts.append(
-            "Missing / invalid paths:\n  " + "\n  ".join(missing)
-        )
+        head.append("Missing / invalid paths:\n  " + "\n  ".join(missing))
     if image_blocks:
-        parts.append(
-            "The loaded images are attached in the next user message, "
-            "each preceded by its absolute path so the path remains in "
-            "history even if image bytes are later stripped."
+        head.append(
+            "The image(s) are attached in the next user message, each preceded "
+            "by its path so it stays in history even if bytes are later stripped."
         )
     else:
-        parts.append("No images were loaded.  Do not retry with guessed paths.")
+        head.append("No images were shown.  Do not retry with guessed paths.")
 
-    # OCR pass (gated): read any text written on the loaded images and
-    # append it to THIS ToolMessage via the shared OCR entry point.  The
-    # shared function no-ops when OCR is disabled or not requested, and
-    # is non-fatal on any engine error.  Default of the per-call
-    # ``extract_text`` flag follows OCR_WHOLE_IMAGE_DEFAULT.  See
-    # extra_utilities/OCR_technology_notes.md.
-    args = tc.get("args", {}) or {}
-    extract_text = bool(
-        args.get(
-            "extract_text",
-            getattr(workflow_settings, "OCR_WHOLE_IMAGE_DEFAULT", True),
-        )
+    # OCR (gated) — user images only, on the cropped region when one was given.
+    parts = head + body_parts + list(
+        ocr_summary_if_enabled(ocr_items, extract_text)
     )
-    parts.extend(ocr_summary_if_enabled([(p, p) for p in loaded], extract_text))
-
     summary = "\n".join(parts)
 
     log_tool_call(agent_key, tc["name"], tc.get("args"), summary)
     agent.messages.append(ToolMessage(
-        content=summary,
-        tool_call_id=tc["id"],
-        name=tc["name"],
+        content=summary, tool_call_id=tc["id"], name=tc["name"],
     ))
     if image_blocks:
-        # Buffer instead of appending HumanMessage immediately, so that
-        # if the LLM batched another tool_call alongside this one, the
-        # contiguity rule (every tool_use → tool_result before any
-        # other content) is preserved.  The agent's _run_llm_loop
-        # flushes the buffer once all ToolMessages are appended.
+        # Buffer instead of appending a HumanMessage immediately so that a
+        # batched sibling tool_call still satisfies the tool_use→tool_result
+        # contiguity rule; the run loop flushes the buffer after all
+        # ToolMessages are appended.
         append_pending_images(agent, image_blocks, image_paths)
 
 
@@ -619,7 +752,7 @@ _HANDLERS = {
     "list_input_files":  _handle_list_input_files,
     "read_input_text":   _handle_read_input_text,
     "read_image_notes":  _handle_read_image_notes,
-    "load_input_images": _handle_load_input_images,
+    "view_images":       _handle_view_images,
     "ocr_regions":       _handle_ocr_regions,
 }
 

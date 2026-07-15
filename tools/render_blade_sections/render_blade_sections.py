@@ -14,7 +14,7 @@ will not mislead — e.g. NOT when matching a user's drawing whose own grid is
 not 1 mm per square (the scales would not correspond).
 
 The PNG is written under the parameters file's attempt folder (so it
-auto-displays in the chat and can be read back by ``load_render_images``) and
+auto-displays in the chat and can be read back by ``view_images``) and
 the canvas is sized tightly to the content to keep the image small.
 
 No web imports here; like the other tools this is pure agent-layer code.
@@ -52,7 +52,7 @@ def render_blade_sections(parameters_path: str, grid: bool = False) -> str:
     its angle of attack, colour-coded with a name label, plus a small angle
     protractor.  The PNG is written into that attempt's folder and will be
     shown to the user in the chat; any agent with an image-reading tool (e.g.
-    the DC Output Inspector via ``load_render_images``) can view it by passing
+    the DC Output Inspector via ``view_images``) can view it by passing
     the returned path.
 
     Args:
@@ -82,7 +82,7 @@ def render_blade_sections(parameters_path: str, grid: bool = False) -> str:
                 f"Pass the path the previous agent reported.")
 
     # Keep outputs inside the attempts directory so the render auto-displays
-    # in chat and can be re-read by load_render_images / served by /api/artefact.
+    # in chat and can be re-read by view_images / served by /api/artefact.
     try:
         root = ATTEMPTS_DIR.resolve()
     except OSError:
@@ -119,4 +119,4 @@ def render_blade_sections(parameters_path: str, grid: bool = False) -> str:
     return (f"render_blade_sections: OK — wrote {out_name} ({w}x{h}px, "
             f"grid={'on' if grid else 'off'}) to {out_path.parent}. The image "
             f"will be shown in the chat; read it by passing this path to "
-            f"load_render_images: {out_path}")
+            f"view_images: {out_path}")

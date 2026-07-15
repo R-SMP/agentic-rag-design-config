@@ -21,7 +21,7 @@ images_flag)``, the tool:
 The ``@tool``-decorated public stub returns ``""`` — the dispatcher
 in ``agents/shared/retrieve_tool_dispatcher.py`` intercepts and runs
 the real ``_run_retrieve_user_inputs`` function below.  This split
-mirrors the existing ``load_input_images`` pattern: one LLM-side
+mirrors the existing ``view_images`` pattern: one LLM-side
 tool call produces both XML evidence (appended as a ``ToolMessage``)
 and image content blocks (buffered for the next ``HumanMessage``).
 

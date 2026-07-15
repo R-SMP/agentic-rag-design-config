@@ -403,7 +403,7 @@ Never instruct an agent to perform anything outside this list.
   are appropriate, within ranges, and coming from an authorised source.
 <</DCII_ONLY>>- $tool_caller_capabilities
 - **DC Output Inspector**: inspects rendered images + quality-check
-  report.  Loads images via its own ``load_render_images`` tool (given
+  report.  Loads images via its own ``view_images`` tool (given
   paths in the Tool Caller's message).  The available quality
   metrics are exactly those produced by the Tool Caller's bound
   inspection tool (see the tool inventory) — no others exist.

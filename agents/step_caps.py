@@ -42,14 +42,14 @@ MAX_UII_STEPS = 10
 ``read_user_inputs`` → ``write_extraction`` → routing call (3 turns).
 Extra slack covers the post-image-loading user-input tools
 (``list_input_files`` / ``read_image_notes`` / ``read_input_text`` /
-``load_input_images``) and the occasional ``calculate``."""
+``view_images``) and the occasional ``calculate``."""
 
 MAX_DCIC_STEPS = 50
 """DC Input Creator's ``run()``.  Standard flow is
 ``read_extracted_inputs`` → ``new_attempt`` (for a new generation) →
 ``write_parameters`` → routing call (3-4 turns).  Reference-matching
 runs may additionally invoke ``list_input_files`` /
-``read_image_notes`` / ``load_input_images``, which can push the
+``read_image_notes`` / ``view_images``, which can push the
 turn count up materially when the LLM also needs intermediate
 ``calculate`` calls."""
 
@@ -69,10 +69,10 @@ the LLM sometimes inserts intermediate text turns."""
 
 MAX_DCOI_STEPS = 15
 """DC Output Inspector's ``run()``.  Standard flow is
-``load_render_images`` → routing call (2 turns).  Extra slack
+``view_images`` → routing call (2 turns).  Extra slack
 covers reference-image comparison cycles
 (``list_input_files`` / ``read_image_notes`` /
-``load_input_images``) and looking up prior attempts via
+``view_images``) and looking up prior attempts via
 ``list_attempts`` / ``read_attempt``."""
 
 MAX_DH_STEPS = 10

@@ -284,7 +284,7 @@ together with their notes.  ``read_user_inputs`` (below) gives you all
 the text — including every image's ``_note.txt`` — and LISTS the images
 present, but does NOT load the images themselves.  Read the notes first,
 then load the image(s) you actually need to see with
-``load_input_images`` (see below), which attaches the picture and its
+``view_images`` (see below), which attaches the picture and its
 OCR text.  Load every image whose content you must judge (to count
 features, read geometry, or resolve anything a note leaves ambiguous);
 skip loading only an image its note already fully describes.
@@ -311,7 +311,7 @@ $sketch_notes
 don't loop).  It returns the root text files PLUS every paired
 ``_note.txt``, and LISTS the reference images with their paths — it does
 NOT load the images.  Load the image(s) you need to see with
-``load_input_images``.
+``view_images``.
 
 **``write_extraction(path, quantitative, qualitative, intent)``**
 (mandatory) — persist your extraction to the ``Extraction output file:``
@@ -319,7 +319,7 @@ path from your hand-off (verbatim; downstream reads that exact file, so
 skipping this loses the extraction).  Put "None specified." in any empty
 section; the tool adds the headers, so you do not.
 
-**``load_input_images(paths)``** — load the actual image(s) you need to
+**``view_images(paths)``** — load the actual image(s) you need to
 see, by path (from the ``read_user_inputs`` listing).  Each loaded image
 is attached with its OCR text (dimension callouts, labels); also use it
 to re-load an image after bytes were stripped at a hand-off.

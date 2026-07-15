@@ -308,7 +308,7 @@ class DCInputInspector(BaseChainAgent):
 
         With ``keep_images_in_context=False`` strip every image content
         block from this agent's history (the DCII may load user input
-        images via ``load_input_images`` to inform parameter
+        images via ``view_images`` to inform parameter
         validation), leaving the paired ``Loaded image (path: …):``
         text blocks behind.  No-op when ``keep_images_in_context=True``.
         """

@@ -77,7 +77,7 @@ _READ_INPUTS_DOC = (
     "including every image's ``_note.txt`` — followed by a list of the "
     "reference images present with their paths.  To actually SEE an image "
     "(and get its OCR-recognised text: dimension callouts, labels), call "
-    "``load_input_images`` with the path(s) you need."
+    "``view_images`` with the path(s) you need."
 )
 
 
@@ -86,7 +86,7 @@ def _build_read_user_inputs():
 
     Returns text + an image LIST only; the real work happens in
     ``_handle_read_inputs_tool``.  Images (and their OCR) are loaded on
-    demand via ``load_input_images``.
+    demand via ``view_images``.
     """
     def _impl(path: str) -> str:
         return ""  # handled by _handle_read_inputs_tool
@@ -333,7 +333,7 @@ class UserInputInspector(BaseChainAgent):
                 if not workflow_settings.UII_MAY_READ_PREVIOUS_EXTRACTION:
                     exclude_root = ("extracted_inputs.txt",)
                 # Images are NOT loaded here — the UII loads the specific
-                # image(s) it needs on demand via load_input_images (which
+                # image(s) it needs on demand via view_images (which
                 # also runs OCR per image).  read_user_inputs stays cheap:
                 # text + notes + a list of the images present.
                 loaded = load_user_inputs_bundle(
@@ -370,7 +370,7 @@ class UserInputInspector(BaseChainAgent):
                         f"{len(image_paths)} reference image(s) are available "
                         f"but NOT loaded here (their notes are in the file "
                         f"contents above).  To SEE an image and get its OCR "
-                        f"text, call load_input_images with the path(s) you "
+                        f"text, call view_images with the path(s) you "
                         f"need:\n" + listing
                     )
                 summary = "\n\n".join(summary_parts)

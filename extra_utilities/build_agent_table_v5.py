@@ -309,7 +309,7 @@ ROWS = [
             "Inspects the generated mesh + 3 renders and judges design correctness "
             "vs. the user's intent.",
             "Procedure (HARD RULE):",
-            "  1. Load the 3 renders FIRST (load_render_images) and form an INDEPENDENT "
+            "  1. Load the 3 renders FIRST (view_images) and form an INDEPENDENT "
             "visual judgement.",
             "  2. THEN load the comparison source per DCOI_COMPARISON_MODE:",
             "     mode 1: USER INPUTS only (forbids reading extracted_inputs.txt)",
@@ -324,13 +324,13 @@ ROWS = [
             "Y",
             "Own self.messages persists across hand-offs.",
             "Image bytes stripped at on_operation_end (the agent re-loads renders "
-            "via load_render_images on each turn it needs them).",
+            "via view_images on each turn it needs them).",
             "Buffer-and-flush ensures parallel image-loading + non-image tool calls "
             "produce a valid message history.",
         ),
         b(
             "Hand-off from Tool Caller (mesh path + 3 render paths)",
-            "Render images (load_render_images)",
+            "Render images (view_images)",
             "Comparison source per mode 1/2/3:",
             "  user_query.txt + paired reference image(s) + notes (mode 1, 3)",
             "  extracted_inputs.txt (mode 2, 3)",

@@ -293,7 +293,7 @@ class Planner(BaseChainAgent):
                     )
                     break
 
-            # Flush any image content blocks buffered by load_input_images
+            # Flush any image content blocks buffered by view_images
             # as a single trailing HumanMessage AFTER all ToolMessages
             # for this AIMessage are appended.  Preserves the
             # tool_use → tool_result contiguity rule on Anthropic / OpenAI.
@@ -373,7 +373,7 @@ class Planner(BaseChainAgent):
 
         With ``keep_images_in_context=False`` strip every image content
         block from this agent's history (the Planner can load user
-        input images via ``load_input_images`` for special reasoning),
+        input images via ``view_images`` for special reasoning),
         leaving the paired ``Loaded image (path: …):`` text blocks
         behind.  No-op when ``keep_images_in_context=True``.
         """

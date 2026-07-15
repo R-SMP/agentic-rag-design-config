@@ -48,7 +48,7 @@ Four tools give you on-demand access:
   * ``read_input_text(path)`` — read any text file under inputs/
     (e.g. one specific ``_note.txt``).
   * ``read_image_notes()`` — read every ``_note.txt`` at once.
-  * ``load_input_images(paths)`` — load one or more user images so
+  * ``view_images(paths)`` — load one or more user images so
     you can see them.
   * ``ocr_regions(image_path, region_ids)`` — re-read small/faint/garbled
     OCR callouts at higher resolution; pass every region you want in ONE
@@ -155,7 +155,7 @@ is genuinely unclear — you can and should consult the user
 inputs directly.
 
 (The tools for this — ``list_input_files`` / ``read_input_text`` /
-``read_image_notes`` / ``load_input_images`` — and the image-pairing
+``read_image_notes`` / ``view_images`` — and the image-pairing
 convention are described under "Optional reference: user input images"
 above.  Use them sparingly: only when the discrepancy cannot be
 resolved from the extraction alone.)

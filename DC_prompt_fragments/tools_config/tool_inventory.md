@@ -10,4 +10,4 @@
    roles (parameters / mesh / renders / description) each holds.
 4. **read_attempt(n, file)** — read one file from the n-th attempt (text
    inline; an image or mesh returns a path to hand on, e.g. to
-   ``load_render_images``).
+   ``view_images``).

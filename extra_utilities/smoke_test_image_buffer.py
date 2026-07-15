@@ -33,25 +33,25 @@ def shape(msgs):
 
 
 # ---------------------------------------------------------------------
-# Test 1: dual parallel tool call (load_input_images + read_input_text)
+# Test 1: dual parallel tool call (view_images + read_input_text)
 # ---------------------------------------------------------------------
-print("Test 1: dual parallel tool call (load_input_images + read_input_text)")
+print("Test 1: dual parallel tool call (view_images + read_input_text)")
 agent = FakeAgent()
 
 ai_msg = AIMessage(
     content="",
     tool_calls=[
-        {"id": "t_load", "name": "load_input_images", "args": {"paths": ["/x/r.png"]}},
+        {"id": "t_load", "name": "view_images", "args": {"paths": ["/x/r.png"]}},
         {"id": "t_read", "name": "read_input_text",   "args": {"path":  "/x/notes.txt"}},
     ],
 )
 agent.messages.append(ai_msg)
 
-# Tool 1: load_input_images appends ToolMessage AND buffers image blocks
+# Tool 1: view_images appends ToolMessage AND buffers image blocks
 agent.messages.append(ToolMessage(
     content="Loaded 1 image.",
     tool_call_id="t_load",
-    name="load_input_images",
+    name="view_images",
 ))
 fake_image_block = {
     "type": "image",
@@ -117,19 +117,19 @@ agent3 = FakeAgent()
 ai_msg = AIMessage(
     content="",
     tool_calls=[
-        {"id": "A", "name": "load_input_images",  "args": {"paths": ["/x/a.png"]}},
+        {"id": "A", "name": "view_images",  "args": {"paths": ["/x/a.png"]}},
         {"id": "B", "name": "list_input_files",   "args": {}},
-        {"id": "C", "name": "load_render_images", "args": {"paths": ["/x/b.png", "/x/c.png"]}},
+        {"id": "C", "name": "view_images", "args": {"paths": ["/x/b.png", "/x/c.png"]}},
     ],
 )
 agent3.messages.append(ai_msg)
 
-agent3.messages.append(ToolMessage(content="A done", tool_call_id="A", name="load_input_images"))
+agent3.messages.append(ToolMessage(content="A done", tool_call_id="A", name="view_images"))
 append_pending_images(agent3, [{"type": "image", "source": {}}], ["/x/a.png"])
 
 agent3.messages.append(ToolMessage(content="B done", tool_call_id="B", name="list_input_files"))
 
-agent3.messages.append(ToolMessage(content="C done", tool_call_id="C", name="load_render_images"))
+agent3.messages.append(ToolMessage(content="C done", tool_call_id="C", name="view_images"))
 append_pending_images(
     agent3,
     [{"type": "image", "source": {}}, {"type": "image", "source": {}}],
@@ -153,24 +153,24 @@ print()
 # ---------------------------------------------------------------------
 # Test 4: two image-loading calls in one batch (the exact DCOI failure)
 # ---------------------------------------------------------------------
-print("Test 4: load_render_images + load_input_images in one AIMessage")
+print("Test 4: view_images + view_images in one AIMessage")
 print("        (the exact shape that 400'd in the run we just analysed)")
 agent4 = FakeAgent()
 ai_msg = AIMessage(
     content="",
     tool_calls=[
-        {"id": "R", "name": "load_render_images", "args": {"paths": ["/r/iso.png"]}},
-        {"id": "I", "name": "load_input_images",  "args": {"paths": ["/i/ref.png"]}},
+        {"id": "R", "name": "view_images", "args": {"paths": ["/r/iso.png"]}},
+        {"id": "I", "name": "view_images",  "args": {"paths": ["/i/ref.png"]}},
     ],
 )
 agent4.messages.append(ai_msg)
 
 # render-load handler: ToolMessage + buffer
-agent4.messages.append(ToolMessage(content="loaded 1 render", tool_call_id="R", name="load_render_images"))
+agent4.messages.append(ToolMessage(content="loaded 1 render", tool_call_id="R", name="view_images"))
 append_pending_images(agent4, [{"type": "image", "source": {}}], ["/r/iso.png"])
 
 # input-load handler: ToolMessage + buffer
-agent4.messages.append(ToolMessage(content="loaded 1 input", tool_call_id="I", name="load_input_images"))
+agent4.messages.append(ToolMessage(content="loaded 1 input", tool_call_id="I", name="view_images"))
 append_pending_images(agent4, [{"type": "image", "source": {}}], ["/i/ref.png"])
 
 flush_pending_image_blocks(agent4)

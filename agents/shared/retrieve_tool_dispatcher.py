@@ -13,7 +13,7 @@ the next ``HumanMessage`` via ``append_pending_images``.
 The split — public ``@tool``-decorated stub returning ``""`` plus a
 private ``_run_retrieve_*`` doing the real work plus this
 dispatcher routing the ``ToolMessage`` — mirrors the existing
-``load_input_images`` pattern, so each chain agent sees one tool
+``view_images`` pattern, so each chain agent sees one tool
 call producing two attached pieces of evidence (XML text + image
 content blocks) in its next view.
 
@@ -123,7 +123,7 @@ def _handle_retrieve_user_inputs(agent, tc: dict, agent_key: str) -> None:
         # Buffer images for the next HumanMessage so the
         # tool_use → tool_result contiguity invariant is preserved
         # when this tool call was batched alongside others.  Same
-        # pattern as load_input_images.
+        # pattern as view_images.
         append_pending_images(agent, image_blocks, image_paths)
 
 

@@ -1,31 +1,23 @@
 """DC Output Inspector agent — analyses generated geometry and renders.
 
-Stateful agent.  Owns a ``load_render_images`` utility tool (to load
-rendered PNGs from disk into the LLM's view) and a set of routing
-tools.  It is the last agent in the natural pipeline: its FORWARD
-target is the Orchestrator.
+Stateful agent.  Uses the shared ``view_images`` tool (to load renders /
+user images — optionally cropped and/or side-by-side — into the LLM's view)
+and a set of routing tools.  It is the last agent in the natural pipeline:
+its FORWARD target is the Orchestrator.
 """
 
 import logging
-from pathlib import Path
 
 from langchain_core.messages import HumanMessage, ToolMessage
-from langchain_core.tools import tool
 
-from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import list_attempts, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
-    append_pending_images,
     flush_pending_image_blocks,
     strip_image_blocks_from_messages,
 )
-from agents.shared.llm_provider import (
-    encode_image,
-    make_image_block,
-    make_system_message,
-)
+from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import _build_template, routing_instructions
 from agents.shared.routing_tools import (
@@ -51,8 +43,6 @@ from tools.retrieve_user_inputs.retrieve_user_inputs import (
 )
 from workflow_settings import database_access
 
-ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
-
 logger = logging.getLogger("propeller_agent")
 
 
@@ -69,7 +59,7 @@ image bytes stripped from your history at every operation hand-off;
 only the paired ``Loaded image (path: …):`` text blocks survive as a
 path-only record of which images you had loaded.  To see those earlier
 renders again you must explicitly re-load them from those paths via
-``load_render_images``.  Mode: KEEP IMAGES IN CONTEXT (OFF)."""
+``view_images``.  Mode: KEEP IMAGES IN CONTEXT (OFF)."""
 
 
 # Comparison-source blocks — one per startup choice (1 / 2 / 3).
@@ -84,7 +74,7 @@ their paired ``_note.txt`` description(s).  The UII's
 mode; you compare against the user's raw materials.
 
 **Recommended order each cycle:**
-  1. ``load_render_images([...])`` — load this cycle's renders FIRST,
+  1. ``view_images([...])`` — load this cycle's renders FIRST,
      and form your visual judgement of the rendered design on its
      own terms (counts, presence/absence of features, proportions)
      before reading any user material.  This ordering matters:
@@ -97,7 +87,7 @@ mode; you compare against the user's raw materials.
      typed prompt for this design.
   3. ``read_image_notes()`` — when reference images are present,
      learn what each one depicts.
-  4. ``load_input_images([...])`` — load the relevant user reference
+  4. ``view_images([...])`` — load the relevant user reference
      image(s) so you can compare them against the renders.
 
 The comparison source(s) in scope this session: ``user_query.txt``
@@ -116,7 +106,7 @@ in this mode; the extraction IS the comparison source.
 Path to read: ``{extracted_inputs_path}``.
 
 **Recommended order each cycle:**
-  1. ``load_render_images([...])`` — load this cycle's renders FIRST,
+  1. ``view_images([...])`` — load this cycle's renders FIRST,
      and form your visual judgement of the rendered design on its
      own terms before reading the extraction.  This ordering
      matters: loading the extraction first anchors the model on
@@ -149,7 +139,7 @@ extraction's ``DESIGN INTENT`` explicitly calls for it.
 Path to the extraction: ``{extracted_inputs_path}``.
 
 **Recommended order each cycle:**
-  1. ``load_render_images([...])`` — load this cycle's renders FIRST,
+  1. ``view_images([...])`` — load this cycle's renders FIRST,
      and form your visual judgement of the rendered design on its
      own terms before reading any comparison source.  This
      ordering matters: loading a comparison source first anchors
@@ -176,7 +166,7 @@ Path to the extraction: ``{extracted_inputs_path}``.
      Use the user-input tools as needed:
      ``list_input_files()``, ``read_input_text(path of
      {user_query_path} or a paired _note.txt)``, ``read_image_notes()``,
-     ``load_input_images([...])``.
+     ``view_images([...])``.
   4. **Otherwise, the extraction alone is sufficient.**  Don't
      burn LLM turns loading user inputs you don't need to consult.
 
@@ -206,22 +196,6 @@ def _build_comparison_mode_block(
     )
 
 
-# ---------------------------------------------------------------------------
-# Utility tool schema (actual loading handled by DCOutputInspector)
-# ---------------------------------------------------------------------------
-
-@tool
-def load_render_images(paths: list[str]) -> str:
-    """Load one or more rendered images (PNG/JPG) from disk so you can see
-    them.  Pass the full file paths that were explicitly listed in the
-    incoming message (under a "Render images:" label).  Without valid
-    paths, no image can be loaded — do not call this tool with guessed or
-    fabricated paths.  The loaded images will be attached in the
-    following user message; this tool's text output is only a loading
-    summary."""
-    return ""  # Actual loading is performed by _handle_load_tool.
-
-
 class DCOutputInspector(BaseChainAgent):
     """Stateful agent with an image-loading tool + routing tools."""
 
@@ -249,7 +223,6 @@ class DCOutputInspector(BaseChainAgent):
                 f"(got {session.dcoi_comparison_mode!r})"
             )
         self.dcoi_comparison_mode = session.dcoi_comparison_mode
-        self._load_tool = load_render_images
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
         self.system_prompt: str = ""
@@ -273,8 +246,7 @@ class DCOutputInspector(BaseChainAgent):
             _retrieve_attempt = make_retrieve_attempt_tool("dc_output_inspector")
             self._extra_utility_tools_by_name[_retrieve_attempt.name] = _retrieve_attempt
         all_tools = (
-            [self._load_tool]
-            + list(self._extra_utility_tools_by_name.values())
+            list(self._extra_utility_tools_by_name.values())
             + build_user_inputs_tools(self.AGENT_KEY)
             + list(tools)
         )
@@ -347,9 +319,6 @@ class DCOutputInspector(BaseChainAgent):
             for i, tc in enumerate(response.tool_calls):
                 check_stop_or_raise()
                 name = tc["name"]
-                if name == "load_render_images":
-                    self._handle_load_tool(tc)
-                    continue
                 if dispatch_user_inputs_tool(self, tc, "dc_output_inspector"):
                     continue
                 if dispatch_retrieve_tool(self, tc, "dc_output_inspector"):
@@ -410,77 +379,6 @@ class DCOutputInspector(BaseChainAgent):
             "Error: DC Output Inspector reached the step limit without routing.",
         )
 
-    # ------------------------------------------------------------------
-    # load_render_images handler
-    # ------------------------------------------------------------------
-
-    @generic_tool("Load render images")
-    def _handle_load_tool(self, tc: dict) -> None:
-        """Load the requested images and make them visible to the LLM."""
-        paths = tc.get("args", {}).get("paths") or []
-        if isinstance(paths, str):
-            paths = [paths]
-
-        loaded: list[str] = []
-        missing: list[str] = []
-        image_blocks: list[dict] = []
-        image_paths: list[str] = []
-
-        for p in paths:
-            try:
-                path = Path(p)
-            except TypeError:
-                missing.append(str(p))
-                continue
-            if (
-                path.exists()
-                and path.is_file()
-                and path.suffix.lower() in ALLOWED_IMAGE_SUFFIXES
-            ):
-                try:
-                    b64 = encode_image(path, is_render=True)
-                    image_blocks.append(make_image_block(b64, self.provider))
-                    image_paths.append(str(path.resolve()))
-                    loaded.append(str(path))
-                except OSError as exc:
-                    missing.append(f"{path} (read error: {exc})")
-            else:
-                missing.append(str(p))
-
-        parts = [f"Loaded {len(loaded)} image(s)."]
-        if loaded:
-            parts.append("Loaded paths:\n  " + "\n  ".join(loaded))
-        if missing:
-            parts.append("Missing / invalid paths:\n  " + "\n  ".join(missing))
-        if image_blocks:
-            parts.append(
-                "The loaded images are attached in the next user message, "
-                "each preceded by its absolute path so the path remains in "
-                "history even if image bytes are later stripped."
-            )
-        else:
-            parts.append(
-                "No images were loaded.  Do not retry with guessed paths."
-            )
-        summary = "\n".join(parts)
-
-        log_tool_call(
-            "dc_output_inspector", tc["name"], tc.get("args"), summary,
-        )
-
-        self.messages.append(ToolMessage(
-            content=summary,
-            tool_call_id=tc["id"],
-            name=tc["name"],
-        ))
-        if image_blocks:
-            # Buffer instead of appending HumanMessage immediately, so that
-            # if the LLM batched another tool_call alongside this one
-            # (e.g. read_input_text), the contiguity rule is preserved.
-            # The run loop flushes after the tool_calls iteration
-            # completes — see file_utils.flush_pending_image_blocks.
-            append_pending_images(self, image_blocks, image_paths)
-
     def on_operation_end(self) -> None:
         """End-of-operation hook called by the dispatcher.
 
@@ -492,7 +390,7 @@ class DCOutputInspector(BaseChainAgent):
         block in this agent's history is stripped, leaving the paired
         ``Loaded image (path: …):`` text blocks behind as a path-only
         record.  Re-loading the same images later requires another
-        explicit ``load_render_images`` call.
+        explicit ``view_images`` call.
         """
         if self.keep_images_in_context:
             return

@@ -29,6 +29,6 @@ you never call their tools yourself, so this is awareness, not HOW):
   generate-and-render tool, which builds the mesh AND renders + checks it —
   producing the mesh file + renders in the attempt folder.
 - **DC Output Inspector**: loads the renders the Tool Caller listed
-  (``load_render_images``) and inspects them; can pull a prior cycle's
+  (``view_images``) and inspects them; can pull a prior cycle's
   renders in for comparison.
 - **Receptionist**: reads agent history to answer simple user questions.

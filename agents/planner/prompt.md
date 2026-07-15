@@ -377,7 +377,7 @@ The user's input directory ({user_inputs_dir}) contains:
 On-demand tools: ``list_input_files()`` (categorised listing incl.
 pairing status), ``read_input_text(path)`` (one text file, e.g. a
 specific ``_note.txt``), ``read_image_notes()`` (every note at once),
-``load_input_images(paths)`` (see the images — use only when a visual
+``view_images(paths)`` (see the images — use only when a visual
 judgement actually changes your plan; image analysis is the UII's job,
 and comparing output against a reference is the DCOI's).
 
