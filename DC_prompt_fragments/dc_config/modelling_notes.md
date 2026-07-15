@@ -2,8 +2,11 @@
   and high-point.
 - "High-point" is the chordwise location of maximum thickness, given in
   tenths of chord (e.g. a value of 3 means 30% chord from the leading edge).
-- "Distance to middle NACA" is dimensionless: multiply it by the propeller
-  radius to obtain the actual radial distance from the centre.
+- ``middlePos`` (the middle section's radial position) is a fraction of the BLADE
+  SPAN measured from the blade root: 0 = root (the central hub, radius 4 mm), 1 = tip
+  (impellerRadius), 0.5 = the blade's exact midpoint.  The middle section's actual
+  radius = ``4 + middlePos·(impellerRadius − 4)`` mm — NOT ``middlePos × impellerRadius``.
+  Its range [0.3, 0.7] means the middle section sits 30–70% of the way along the blade.
 - bladeCount, innerMaxPos, and outerMaxPos must be integers; all
   other parameters are floating-point numbers.
 
@@ -20,8 +23,9 @@ this propeller DC are:
     (``innerCamber`` / ``outerCamber``).
   * Highpoint in mm ↔ integer percent of chord
     (``innerMaxPos`` / ``outerMaxPos`` — round after conversion).
-  * Distance from hub in mm ↔ fraction of radius
-    (``middlePos`` is stored as a fraction of ``impellerRadius``).
+  * Distance along the blade ↔ ``middlePos`` (a fraction of the blade SPAN, root→tip,
+    NOT of ``impellerRadius``): ``middlePos = (r − 4) / (impellerRadius − 4)``, with
+    ``r`` the desired middle-section radius in mm and 4 mm the hub radius.
   * Diameter ↔ radius (the configurator parameterises only ``impellerRadius``;
     user-stated diameters convert via ``impellerRadius = diameter / 2``).
   * Absolute mm ↔ fraction / percent of an overall scale parameter

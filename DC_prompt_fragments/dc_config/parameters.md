@@ -13,7 +13,7 @@
  8. innerAngle      (degrees)                 — Angle of attack [2; 25]
 
 ### Middle blade section
- 9. middlePos      (x impellerRadius, unitless)  — Radial position as multiplier of propeller radius [0.3; 0.7]
+ 9. middlePos      (fraction of blade span, unitless)  — Middle-section position along the blade: 0 = root (hub, r = 4 mm), 1 = tip; radius = 4 + middlePos·(impellerRadius − 4) mm [0.3; 0.7]
 10. middleChord    (mm)                          — Chord length [10; 30]
 11. middleAngle    (degrees)                     — Angle of attack [2; 25]
 
