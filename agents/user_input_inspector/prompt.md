@@ -246,6 +246,18 @@ What is the user trying to achieve?  Consider:
 - Aesthetic preferences.
 - **Reporting preferences** the user has stated (e.g. "do not report
   back until a viable solution is found").
+- **A precision / iteration demand.**  When the user asks for the design
+  (especially the blade sections) to match a reference drawing *closely*
+  and/or to keep trying — "recreate as precisely as possible", "match the
+  details of my sketch", "make as many attempts as needed" — record it in
+  force as a ``PRECISION DEMAND: <what they asked, at their strength>`` line.
+  Keep it faithful to intent; it is free-form text, NOT a yes/no flag.  The
+  Planner reads this to decide whether to run a forced precision refine loop,
+  so an under-stated demand means the loop never happens.  This is the user's
+  stated MANDATE — a separate thing from whether a given sketch is itself
+  precise (that judgement lives in "Sketch handling" below); a precise drawing
+  with no stated demand, or a demand with only a rough doodle, are both
+  possible and both worth recording as you see them.
 - **Authorisations to vary parameters when they relate to a design
   characteristic.**  If the user's permission is tied to design
   intent (e.g. "I prioritise clean geometry over my exact value

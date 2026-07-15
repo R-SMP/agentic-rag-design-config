@@ -71,6 +71,32 @@ plan format below is for recovery reasoning.
     blocks); to END it, simply stop including a block.  The generic "copy the
     block verbatim" rule binds the agents carrying YOUR directive downstream —
     it does not limit your authority to set, replace, or drop it.
+
+    A **PRECISION SECTION-MATCH job** is the canonical case.  When the
+    extraction signals the user wants the blade sections to closely reproduce a
+    precise drawing — a ``PRECISION DEMAND`` line in DESIGN INTENT, a PRECISE
+    SKETCH carrying a ``SUGGESTED SECTION SHAPES`` block, or wording like "match
+    as precisely as possible / try as many attempts as needed" — DECIDE it is a
+    precision job and issue a directive along these lines (adapt the wording;
+    keep it operational and self-contained):
+
+        PRECISION JOB — blade sections.  Iterate the blade-section SHAPES to
+        match the user's cropped sketch.  The DC Output Inspector must NOT
+        approve on ordering/proportions alone and must NOT approve the first
+        render; each round it compares the current sections render side-by-side
+        with the sketch crop and describes the visual shape gap in prose.  The
+        DC Input Creator adjusts ONLY the unlocked shape params (*Thickness /
+        *Camber / *MaxPos + section angles) toward that feedback and preserves
+        every locked number.  Keep iterating until the sections closely match OR
+        the NACA airfoil model is provably at its limit (a plateau); then
+        finalize and report the residual honestly — do NOT silently approve the
+        first render.
+
+    You decide precision vs. ordinary — a rough freehand doodle is NOT a
+    precision job; a measured, to-scale section drawing with a matching user
+    demand is.  When it is a precision job, issuing the directive is what turns
+    the DCOI's one-shot check into the forced refine loop; without it the loop
+    does not happen.
 <<PF_OFF>>  * **CLARIFY back to the UII** (``call_user_input_inspector``) — ONLY
     when the extraction you received is missing required information or
     carries an inconsistency that only the UII can resolve.  That is

@@ -118,3 +118,16 @@ will execute in a single user turn before bailing out via
 ``_surface_limit_to_user("max dispatch hops")``.  Catches runaway
 ping-pong loops that slip past the per-agent caps (e.g. agents
 escalating back-and-forth indefinitely)."""
+
+MAX_SECTIONS_REFINE_ROUNDS = 8
+"""Hard cap on how many blade-section REFINE ROUNDS a precision job may
+run before the dispatcher forces an honest finalize.  A "round" is one
+hop into the DC Output Inspector while a Planner-issued standing
+directive is active (each round = render → DCOI shape-comparison →
+optional DCIC shape adjustment).  This is the CODE backstop behind the
+DCOI's own prose-level stop judgments (Satisfied / Plateau): even if the
+DCOI never says "converged", the loop can never run forever.  On hitting
+the cap the dispatcher CLEARS the standing directive (so the DCOI is no
+longer bound to keep iterating) and appends a "finalize + report the
+residual honestly" note to the hand-off — a graceful stop, not an error.
+Generous because the airfoil model usually plateaus well before 8."""

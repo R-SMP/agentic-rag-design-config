@@ -204,6 +204,35 @@ Two cases to keep straight:
   NOT need to manufacture a Planner directive on top of a direct
   user authorisation.
 
+## Precision refine loop — relay DCOI shape-feedback straight to the DCIC
+
+When a **precision standing directive** is active (a
+``=== STANDING DIRECTIVES (copy verbatim to the next agent) ===`` block the
+Planner issued, riding the hand-offs), the DC Output Inspector runs a TIGHT
+refine loop against the user's sketch rather than a one-shot approve/revise.
+Handle its hand-backs differently from a normal cycle, by what it is asking
+for:
+
+- **Still iterating (REVISE — a shape change)** — relay the DCOI's free-form
+  visual-gap description **straight to the DC Input Creator**
+  (``call_dc_input_creator``), NOT to the Planner.  The shape params are
+  CHANGING, so this is a new generation: pass NO ``Current attempt:`` — the
+  DCIC opens a fresh attempt for the adjusted params itself (each round is a new
+  attempt, which also gives the DCOI a prior render to measure progress
+  against).  Do **not** re-plan per round: the Planner already set up the job
+  via the directive, so your role is simply to keep the tight
+  DCOI → DCIC → render → DCOI loop turning.  The standing-directive block rides
+  through verbatim (re-stamped automatically if any agent drops it).
+- **Finalizing (APPROVE, or a Plateau / airfoil-model-ceiling report)** — this
+  is end-of-cycle: fall back to the normal path and call the **Planner** as
+  FINAL APPROVER (below).
+- **A real blocker (ESCALATE)** — no images, a locked-value conflict, or a
+  failure no tight-loop step can fix → route to the **Planner** for a recovery
+  plan, as usual.
+
+You never originate the shape feedback or the parameter moves — you relay the
+DCOI's prose to the DCIC, which owns translating it into shape-param changes.
+
 ## Completing a cycle — the Planner is the FINAL APPROVER (HARD)
 
 When the design pipeline has finished (DC Output Inspector returned

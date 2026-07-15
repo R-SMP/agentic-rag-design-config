@@ -181,6 +181,18 @@ you have exactly TWO valid responses:
      which parameters you would have wanted to change and exactly
      why you cannot.
 
+**Under a precision standing directive (blade-section matching):** the
+qualitative directive you receive is the DCOI's visual shape-gap description
+for the sections ("inner too thin, leading edge too pointed; middle camber
+too shallow…").  Act by adjusting ONLY the unlocked SHAPE parameters — the
+``*Thickness`` values, the ``*Camber`` and ``*MaxPos`` high-points, and the
+section angles — in the direction the DCOI described; leave every locked user
+number untouched (the directive says so, and the LOCKED rule above still
+binds).  If the UII recorded a ``SUGGESTED SECTION SHAPES`` warm-start, your
+FIRST attempt should already be seeded from it (Guidelines item 3); on each
+later round, nudge the shape params toward the DCOI's newest feedback.  Every
+round is a fresh generation — a new attempt.
+
 ## Attempt folders + reusing history (read before writing)
 
 Each generation cycle is anchored on an attempt folder under
@@ -276,6 +288,20 @@ it, and (if known) why.
 the change is appropriate and whether the agent that asked for it has
 the authority to do so.  <</DCII_ONLY>>There is no fixed phrasing for this — talk
 normally, but name the source.
+
+<<DCII_ONLY>>**Tight precision loop — when a precision standing directive is active.**
+On a precision refine round you have TWO forward targets: the DC Input
+Inspector (``call_dc_input_inspector``, your normal forward) and the Tool
+Caller (``call_tool_caller``, straight to render).  To keep the loop tight,
+forward MOST refine rounds STRAIGHT to the Tool Caller — skipping the DCII —
+and route through the DC Input Inspector only PERIODICALLY (roughly every third
+round) and on the round you expect to be the LAST before the DCOI finalizes,
+so a full parameter-validation pass still catches any drift before it ships.
+Outside a precision job, always take your normal forward (the DCII); the
+direct-to-Tool-Caller edge is for precision refine rounds only.  Either target
+carries the same three ``Current attempt:`` / ``Parameters file:`` /
+``Extracted inputs file:`` lines.
+<</DCII_ONLY>>
 
 If you CLARIFY back to <<PF_ON>>the UII<</PF_ON>><<PF_OFF>>the Planner<</PF_OFF>> or ESCALATE to the
 Orchestrator, no path lines are needed — only FORWARDs carry them.

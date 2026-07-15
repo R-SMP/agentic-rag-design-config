@@ -54,6 +54,7 @@ from agents.step_caps import (
     MAX_DISPATCH_HOPS,
     MAX_ORCH_INNER_STEPS,
     MAX_ORCHESTRATOR_STEPS,
+    MAX_SECTIONS_REFINE_ROUNDS,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
@@ -330,12 +331,21 @@ class Orchestrator(BaseChainAgent):
                 self.dc_input_creator, cl,
             )
             dcic_next_agent = "DC Input Inspector"
+            # Precision tight-loop (A5): a direct-to-render edge so the DCIC can
+            # SKIP the DCII on non-validation refine rounds (the DCII still runs
+            # periodically + before finalizing).  Unused outside a precision job
+            # — the DCIC prompt gates it to precision refine rounds only.
+            dcic_skip_dcii_tools = [
+                build_routing_tool("dc_input_creator", "tool_caller",
+                                   self.dc_input_creator, cl),
+            ]
         else:
             dcic_forward_tool = build_routing_tool(
                 "dc_input_creator", "tool_caller",
                 self.dc_input_creator, cl,
             )
             dcic_next_agent = "Tool Caller"
+            dcic_skip_dcii_tools = []  # forward already renders directly
 
         if PLANNER_FIRST:
             dcic_clarify_tool = build_routing_tool(
@@ -354,7 +364,7 @@ class Orchestrator(BaseChainAgent):
                 dcic_clarify_tool,
                 build_routing_tool("dc_input_creator", "orchestrator",
                                    self.dc_input_creator, cl),
-            ],
+            ] + dcic_skip_dcii_tools,
             next_agent=dcic_next_agent,
         )
 
@@ -535,6 +545,11 @@ class Orchestrator(BaseChainAgent):
         orch_chain_log_cursor = len(self.session.chain_log_exchanges)
         orch_visits = 0
         first_orch_entry = True
+        # A6 (precision sections): count refine ROUNDS while a standing
+        # directive is active — one round per hop into the DCOI.  A local
+        # here (not on the session) because a precision loop lives entirely
+        # within ONE dispatch call (one user turn).
+        precision_rounds = 0
 
         for _ in range(MAX_DISPATCH_HOPS):
             # Cooperative-stop check: the web UI's Stop button sets
@@ -638,6 +653,40 @@ class Orchestrator(BaseChainAgent):
 
             if hop.target == DONE:
                 return hop.message
+
+            # A6 (precision sections): a refine ROUND is one hop into the DCOI
+            # while a precision standing directive is active.  When the loop
+            # exceeds its hard cap, DROP the directive (so the DCOI is no longer
+            # bound to keep iterating) and tell it to finalize with the best
+            # attempt + report the residual honestly.  This is the graceful code
+            # backstop behind the DCOI's own Satisfied/Plateau prose judgments,
+            # so a stuck loop can never run forever regardless of prose.  Runs
+            # BEFORE the re-stamp block below, so clearing the field here makes
+            # that block's ensure_present a no-op (it won't re-add the directive).
+            # Keyed on ANY active directive because precision section-matching is
+            # the only directive TYPE today, and only its tight loop can reach 9
+            # DCOI hops in one turn — an ordinary directive leaves the DCOI at
+            # its usual 1-3 visits, far under the cap.  If a non-precision
+            # directive type is ever added, gate this on it being a precision one
+            # (the finalize note below is sections-specific).
+            if hop.target == "dc_output_inspector" and self.session.standing_directives:
+                precision_rounds += 1
+                if precision_rounds > MAX_SECTIONS_REFINE_ROUNDS:
+                    logger.warning(
+                        "[DISPATCH] Sections refine cap "
+                        f"({MAX_SECTIONS_REFINE_ROUNDS}) reached — forcing an "
+                        "honest finalize"
+                    )
+                    self.session.standing_directives = ""
+                    hop.message += (
+                        "\n\n=== SECTIONS REFINE CAP REACHED ===\n"
+                        f"The precision refine loop hit its "
+                        f"{MAX_SECTIONS_REFINE_ROUNDS}-round cap.  STOP iterating: "
+                        "finalize with the best attempt so far and report honestly "
+                        "how closely it matched the sketch, naming any remaining gap "
+                        "as the configurator's airfoil-model limit rather than "
+                        "ordering another cycle."
+                    )
 
             # Component C: capture a Planner-issued standing directive, then
             # re-stamp it onto any forward hand-off that dropped it (the loss
