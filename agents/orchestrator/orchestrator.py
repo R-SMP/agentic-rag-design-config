@@ -679,13 +679,14 @@ class Orchestrator(BaseChainAgent):
                     )
                     self.session.standing_directives = ""
                     hop.message += (
-                        "\n\n=== SECTIONS REFINE CAP REACHED ===\n"
+                        "\n\n=== PRECISION REFINE CAP REACHED ===\n"
                         f"The precision refine loop hit its "
                         f"{MAX_SECTIONS_REFINE_ROUNDS}-round cap.  STOP iterating: "
                         "finalize with the best attempt so far and report honestly "
                         "how closely it matched the sketch, naming any remaining gap "
-                        "as the configurator's airfoil-model limit rather than "
-                        "ordering another cycle."
+                        "as the configurator's limit (the airfoil-model ceiling for a "
+                        "sections match, or the geometry / locked-parameter limit for "
+                        "a 3D match) rather than ordering another cycle."
                     )
 
             # Component C: capture a Planner-issued standing directive, then
@@ -697,6 +698,15 @@ class Orchestrator(BaseChainAgent):
             if current == "planner":
                 _issued = standing_directives.extract_directive(hop.message)
                 if _issued:
+                    # A6b: a FRESH / changed Planner directive begins a NEW
+                    # precision PHASE (e.g. sections converged → the 3D check),
+                    # so reset the per-phase refine-round budget.  Only the
+                    # Planner issues directives + it is not re-invoked per round,
+                    # so this fires just at phase boundaries, giving each phase
+                    # its own ~MAX_SECTIONS_REFINE_ROUNDS (user choice: separate
+                    # budget per phase).
+                    if _issued != self.session.standing_directives:
+                        precision_rounds = 0
                     self.session.standing_directives = _issued
             if hop.target in _DIRECTIVE_CARRIERS:
                 hop.message = standing_directives.ensure_present(

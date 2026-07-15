@@ -126,6 +126,12 @@ plan format below is for recovery reasoning.
     result ("showing attempt N for context — not satisfying yet").
     The Receptionist reads that wording to decide whether to update
     the Parameters panel; no fixed keyword — clarity in your own words.
+    For a **PRECISION job**, ALSO carry the DCOI's fidelity/ceiling
+    residual into Part 2 — verbatim or faithfully summarised (how closely
+    it matched the sketch, and any gap it named as the model's / geometry's
+    limit).  The Receptionist relays that honesty note FROM your hand-off
+    and will not manufacture one, so a generic "satisfying solution" with
+    the residual dropped would oversell a plateaued or ceiling-limited match.
   * **REPLY DIRECTLY** — when the right output is text, not a pipeline
     run (a question answered from histories, a written proposal, an
     extraction-only report): put the user-facing answer in Part 2 via
@@ -225,6 +231,29 @@ Then, typically, one of:
   * **REPLY DIRECTLY** — the request never needed a generated mesh (a
     question, a proposal) but the chain ran anyway: user-facing
     summary as Part 2; no attempt is surfaced.
+  * **CONTINUE to the 3D precision check** — when the cycle you are approving
+    was a SECTIONS precision job that has now converged (or hit its cap) AND the
+    user also supplied a whole-propeller / top-view / side-view sketch the full
+    3D geometry should match, do NOT approve to the user yet.  Instead ISSUE A
+    FRESH 3D precision directive (replacing the sections one — see "Issue a
+    STANDING DIRECTIVE") and produce a Recovery PLAN (Role 2) that generates the
+    full 3D from the converged attempt (Tool Caller,
+    ``generate_and_render_propeller``, reusing that attempt) and then routes to
+    the DCOI to compare the 3D top/side render views against the relevant sketch
+    view.  The 3D directive mirrors the sections one but swaps the target, e.g.:
+
+        PRECISION JOB — full 3D.  The blade sections have converged; now match
+        the WHOLE-propeller geometry to the user's top/side sketch.  The DCOI
+        compares the 3D render views side-by-side with the relevant sketch view
+        and must not approve on a coarse match alone.  Iterate ONLY an UNLOCKED
+        lever that measurably improves the mismatched aspect (e.g. a section's
+        radial position / middlePos affecting the planform, a chord, or an
+        angle); if the remaining mismatch traces to LOCKED user numbers or the
+        configurator's limits, report it honestly and do NOT touch locked
+        values.  Finalize on a close match or a plateau.
+
+    Only after this 3D check finalizes do you APPROVE to the user.  If the user
+    gave NO 3D-view sketch, there is nothing extra to check — approve as normal.
 
 What you do NOT see in Role 3: mid-cycle hops along a sequence you
 already authored (the Orchestrator forwards those without you; you see

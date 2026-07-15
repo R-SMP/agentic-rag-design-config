@@ -193,6 +193,15 @@ FIRST attempt should already be seeded from it (Guidelines item 3); on each
 later round, nudge the shape params toward the DCOI's newest feedback.  Every
 round is a fresh generation — a new attempt.
 
+When the directive instead targets the FULL 3D (matching a top / side sketch of
+the whole propeller), the lever set WIDENS to whatever UNLOCKED parameter moves
+the mismatched aspect the DCOI named — a section's radial position
+(``middlePos``), a chord, an angle, or the ring proportions — still leaving
+every locked user number untouched.  If NO unlocked parameter can move the
+mismatched aspect (the levers that would help are all locked), do not touch a
+locked value: ESCALATE with a concrete note on which locked parameters would
+have to change, so the DCOI reports the limit honestly.
+
 ## Attempt folders + reusing history (read before writing)
 
 Each generation cycle is anchored on an attempt folder under

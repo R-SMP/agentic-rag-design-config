@@ -131,3 +131,15 @@ extra records make the downstream section-matching far more efficient:
 
    Coarse is fine — it only needs to isolate the sections from the rest of the
    page; do not attempt a tight pixel-accurate box.
+
+   The same applies to a WHOLE-PROPELLER view — a top / side / perspective
+   drawing the 3D geometry (not just the sections) should match.  Record a
+   coarse crop box for it too, LABELLED with which view it is, so the later 3D
+   precision check knows which sketch view to compare against which render view:
+
+       SKETCH CROP REGION (top view) — the top-down propeller drawing in 0346_1.png
+       fills the upper half: crop box [0.0, 0.0, 1.0, 0.55] (compare against the
+       3D top render).
+
+   The precision loop uses the sections crop first (the cheap sections match)
+   and any whole-propeller crop later (the expensive 3D check).

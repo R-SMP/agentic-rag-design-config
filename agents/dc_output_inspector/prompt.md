@@ -146,13 +146,40 @@ FINALIZE when ANY of these holds — state which in your verdict:
 - **Plateau** — across ~2 consecutive rounds the shapes stopped meaningfully
   improving (compare this render with the previous round's): you have reached
   the NACA-airfoil model's ceiling for this drawing.
-- **Cap reached** — the hand-off carries a ``SECTIONS REFINE CAP REACHED`` note
+- **Cap reached** — the hand-off carries a ``PRECISION REFINE CAP REACHED`` note
   (the code backstop fired): stop now and finalize with the best attempt.
 On stopping, route to the Orchestrator to finalize (the Planner is the final
 approver) and **report the residual honestly** — how closely it matched, and
 if a gap remains, name it as the configurator's airfoil-model limit rather than
 implying more rounds would close it.  Never silently approve a first render,
 and never claim a match you did not see in a ``view_images`` call THIS turn.
+
+### Full-3D precision check (when the directive targets the 3D)
+A precision directive may target the WHOLE-propeller 3D instead of the sections
+— the Planner issues it after the sections converge, when the user supplied a
+top / side / perspective sketch of the whole propeller.  The SAME loop applies,
+with the target swapped:
+- Compare the **3D render views** (isometric / top / side, from the ``Render
+  images:`` paths) side-by-side with the **relevant sketch view** cropped to
+  the propeller — a top-view sketch against the top render, a side sketch
+  against the side render.  Same ``view_images(side_by_side=True)`` + the UII's
+  crop region (which for a 3D job covers the whole-propeller view, not the
+  sections strip).
+- Judge the mismatched ASPECT — planform outline, blade sweep / twist, tip
+  shape, ring proportions — and describe it in prose.
+- **Iterate only if an UNLOCKED lever helps (A6b).**  If an unlocked parameter
+  would measurably improve the mismatched aspect — e.g. a section's radial
+  position (``middlePos``) shifting the planform, a chord, or an angle — route
+  the gap to the DCIC as above.  If the mismatch traces to LOCKED user numbers
+  or the configurator's limits, so nothing unlocked can move it, do NOT iterate:
+  STOP and report the mismatch honestly, naming what could not be matched and
+  why.
+- **The first 3D render MAY be approved** if it genuinely matches — unlike the
+  sections loop, there is NO "never the first render" rule here, because the 3D
+  is built from the already-converged sections, so a good first match is
+  expected.  The bar is only "not a coarse match alone".
+- Termination is the same (Satisfied / Plateau / cap); the 3D loop is usually
+  short because it has few levers.
 
 ## Per-claim verification against the comparison source(s) in scope
 
