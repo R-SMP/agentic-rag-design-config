@@ -2915,10 +2915,16 @@ of the BSV fast-path fragments alongside `render_blade_sections`
 
 ### F41. Planner: "maximum precision possible" means multiple refinement attempts
 
-**Status.** PARTIALLY ADDRESSED (2026-06-18) — the Planner blade-sections
-overlay covers the sections-context case (max precision ⇒ several cheap
-section-refinement passes); the general directive (any geometry, not just
-sections) is still open.
+**Status.** ADDRESSED (2026-07-15) by the precision sections-matching feature
+(**F51**) — a "match precisely / many attempts" demand now becomes a FORCED refine
+loop: the Planner issues a standing directive, the DCOI won't approve the first render
+or on proportions alone, and the loop iterates (sections, then — if a whole-propeller
+sketch exists — the 3D) until a close match or a code-capped plateau, reporting the
+residual honestly. Generalises beyond the 2026-06-18 sections-only overlay. Pending a
+prod end-to-end run (see F51).
+
+Earlier (2026-06-18): PARTIALLY ADDRESSED — the Planner blade-sections overlay covered
+the sections-context case (max precision ⇒ several cheap section-refinement passes).
 
 > Let the planner know that it is very important that if the user specifies they want maximum precision possible, it means performing multiple attempts trying to refine the geometry as much as possible (within a reasonable error)
 
@@ -3139,3 +3145,57 @@ present" markers.  Adversarial review (4 dimensions × verify) → 0 confirmed d
 **Caveat.** The external `propeller-dc` MCP server still exposes
 `generate_propeller_mesh` / `render_and_check_mesh` by those names — a different layer,
 untouched by this rename.
+
+
+### F51. Precision sections-matching — iterate to match a user's precise blade-section drawings
+
+**Status.** BUILT — all 5 phases (2026-07-15) → stage-a (commits `6cdfa3c` P1,
+`97b6d21` P2, `f0b8763` P3, `cce0276` P4, `6a37974` P5; plus `9ed7c2a` for the
+`middlePos` correction). Pending a prod (py3.13) END-TO-END run with a real precision
+sketch — the py3.8 worktree can't import the app, so verification so far is
+`py_compile` + pure-Python unit tests + structural / fragment-marker checks + per-phase
+adversarial reviews only.
+
+**Context.** Per `LOG_systemNotCheckingCrossSections.txt`: on a run where the user
+mandated "recreate as precisely as possible / as many attempts as needed", the
+sections-first loop ran ONCE — the DCOI approved the first blade-sections render on
+ordering + proportions (explicitly declining shape) and went straight to 3D. Root
+causes: DCOI bar too low (A), section-shape params never extracted from the drawing (B),
+"many attempts" recorded as permission not mandate (D); compounded by a small /
+compressed comparison render (C) and the NACA airfoil ceiling (E). Full design:
+`extra_utilities/design_precision_sections_match.md` (31 decisions; 3 components).
+
+**Fix (3 components, 5 phases).**
+  * **C — standing directives (P1).** A verbose Planner-issued instruction survives the
+    whole agent chain in a `=== STANDING DIRECTIVES ===` block, re-stamped by the
+    dispatcher on loss, cleared per turn. NOT a flag.
+    (`agents/shared/standing_directives.py` + `orchestrator.dispatch`.)
+  * **B — unified `view_images` tool (P2).** One tool with coarse crop + side-by-side
+    stitch replaces `load_input_images` / `load_render_images` across the 4 image agents;
+    the composite saves to `attempts/_comparisons/` and auto-shows in chat.
+    (`agents/shared/image_stitch.py` + `agents/shared/user_inputs_tool.py`.)
+  * **A — the precision loop (P3–P5).**
+    - P3: the UII writes a rough `SUGGESTED SECTION SHAPES` warm-start estimate + a coarse
+      `SKETCH CROP REGION`; the DCIC seeds shape params from it; `draw.py` scaled ×18/11 so
+      the comparison render stays legible when stitched.
+    - P4: the Planner decides a precision job + issues the directive; the DCOI stitches
+      render + sketch-crop, judges SHAPE fidelity, won't approve the first render /
+      proportions-only, describes the visual gap in prose; the Orchestrator relays it
+      STRAIGHT to the DCIC (no re-plan); the DCIC does shape-param-only moves; a code
+      backstop in `dispatch` caps the loop at `MAX_SECTIONS_REFINE_ROUNDS = 8`
+      (`agents/step_caps.py`) and forces an honest finalize.
+    - P5: after sections converge, the Planner issues a FRESH 3D directive & the DCOI
+      precision-checks the 3D top/side renders vs the sketch view (iterate an unlocked
+      lever else report); per-phase ~8 budget via a counter reset; the Receptionist
+      relays the achieved fidelity + ceiling residual honestly (wired producer-side
+      through the Planner APPROVE move).
+
+**Review.** Every phase went through find→verify adversarial review before commit; 6
+confirmed defects fixed total (P3 protractor title overflow, P4 COMPARISON MODE 2
+contradiction, P5 misattributed cap note + A7 producer-side wiring gap).
+
+**Relation to F41 / F45.** CLOSES F41 (see its updated status). It deliberately does NOT
+do F45's "refine in place" — each refine round opens a NEW attempt (`parameters.json`
+stays append-only), consistent with F45's 2026-06-18 decision to keep per-attempt
+history; the accumulating attempts also give the DCOI a prior render to measure progress
+against for plateau detection.
