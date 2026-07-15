@@ -1,6 +1,12 @@
 # Precision Sections-Matching — Consolidated Design Spec
 
-**Status:** DESIGN — approved decisions captured, not yet implemented. 2026-07-15 (rev 3).
+**Status:** ✅ COMPLETE — all 5 phases built + pushed to `stage-a-web-deploy` (2026-07-15):
+commits `6cdfa3c` (P1/C), `97b6d21` (P2/B), `f0b8763` (P3/A2+A3), `cce0276` (P4/A1+A5+A6),
+`6a37974` (P5/A6b+A7), plus `9ed7c2a` (the `middlePos` correction). Each phase was
+adversarially reviewed before commit (6 confirmed defects fixed across the five). Design
+captured 2026-07-15 (rev 3). **Outstanding:** a prod (py3.13) end-to-end run with a real
+precision sketch — the py3.8 worktree can't import the app, so verification so far is
+`py_compile` + pure-Python unit tests + structural checks + the per-phase reviews only.
 **Origin:** `LOG_systemNotCheckingCrossSections.txt` (session `web_20260714_140221`). The
 system did not iterate to match the user's precise blade-section drawings before generating
 the 3D geometry, despite an explicit *"recreate as precisely as possible / make as many
@@ -300,17 +306,21 @@ the composite saved under the attempt folder.
 
 ---
 
-## 9. Suggested phasing (buildable incrementally)
+## 9. Phasing — ALL PHASES COMPLETE ✅ (built + pushed to stage-a, 2026-07-15)
 
-1. **C — standing-directives propagation.** Infrastructure the loop's reliability depends on;
-   independently valuable. Block convention + Planner issue + Orchestrator loss-detection.
-2. **B — the unified view/crop/stitch tool.** Independently useful + testable; ships the measuring
-   stick.
-3. **A2 + A3** — UII warm-start estimation + `render_blade_sections` legible-crop resolution +
-   DCOI render-vs-sketch-crop comparison.
-4. **A1 + A5 + A6** — Planner precision directive (via C) + the forced tight-cycle loop + the
-   DCOI-judged / code-capped termination.
-5. **A6b + A7** — full-3D precision check (iterate unlocked levers, else report) + honest ceiling
-   reporting.
+1. ✅ **C — standing-directives propagation** — commit `6cdfa3c`. Infrastructure the loop's
+   reliability depends on; independently valuable. Block convention + Planner issue +
+   Orchestrator loss-detection.
+2. ✅ **B — the unified view/crop/stitch tool** — commit `97b6d21`. Independently useful +
+   testable; ships the measuring stick.
+3. ✅ **A2 + A3** — commit `f0b8763`. UII warm-start estimation + `render_blade_sections`
+   legible-crop resolution + DCOI render-vs-sketch-crop comparison.
+4. ✅ **A1 + A5 + A6** — commit `cce0276`. Planner precision directive (via C) + the forced
+   tight-cycle loop + the DCOI-judged / code-capped termination.
+5. ✅ **A6b + A7** — commit `6a37974`. Full-3D precision check (iterate unlocked levers, else
+   report) + honest ceiling reporting.
 
-Each phase is shippable and reviewable on its own.
+Each phase shipped and was adversarially reviewed on its own (6 confirmed defects fixed across
+the five). Also landed: the `middlePos` correction (blade-span fraction; 4 mm hub) — commit
+`9ed7c2a`. **Outstanding:** a prod (py3.13) end-to-end run with a real precision sketch — the
+only validation the py3.8 worktree could not perform.
