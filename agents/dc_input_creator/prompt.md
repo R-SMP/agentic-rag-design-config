@@ -19,7 +19,13 @@ $modelling_notes
    engineering judgement and the allowed ranges:
 $qualitative_examples
 3. For any parameter the user did not mention at all (neither numerically
-   nor qualitatively), pick a reasonable mid-range default.
+   nor qualitatively), pick a reasonable mid-range default — EXCEPT: if
+   QUALITATIVE DESCRIPTIONS carries a ``SUGGESTED SECTION SHAPES`` block (the
+   UII's rough reading of a precise blade-section drawing), SEED the
+   section-shape parameters (``*Thickness`` / ``*Camber`` / ``*MaxPos``) from
+   those estimates instead (clamped to their allowed ranges).  They are a rough
+   starting point, NOT user-locked, so downstream feedback may still move them —
+   but starting from the drawing gets the first render close.
 4. ALL values MUST be within their allowed ranges.
 5. Consider the design intent and functional requirements when choosing
    defaults and translating qualitative descriptions.

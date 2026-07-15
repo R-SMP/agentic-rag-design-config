@@ -94,3 +94,40 @@ match with the right strictness — for example:
 Without this, downstream agents default to one strictness and either chase
 unmeetable proportions on a rough sketch or discard real proportions on a
 precise one.
+
+### UII — for a PRECISE blade-section drawing, add a warm-start estimate + a crop region
+The DC Input Creator authors the parameters but CANNOT see the images; you can.
+So when a reference image contains a precise blade-section (airfoil) drawing, two
+extra records make the downstream section-matching far more efficient:
+
+1. **A rough shape estimate (warm start).**  Read the drawn airfoil proportions
+   into a ROUGH numeric estimate of the section-shape parameters, per section
+   (inner / middle / outer): profile **thickness** (% of chord), **camber**
+   (% of chord), and the chordwise **max-thickness position** (tenths of chord).
+   Record it in QUALITATIVE DESCRIPTIONS under a clear label so the DC Input
+   Creator seeds its first attempt close to the drawing instead of from defaults:
+
+       SUGGESTED SECTION SHAPES (rough estimate read from the precise drawing — a
+       STARTING POINT for the DC Input Creator, NOT a user-locked value; refine
+       within ranges):
+         inner  ≈ 8% thick, 3% camber, max-thickness at ~3/10 chord
+         middle ≈ 14% thick, 4% camber, max-thickness at ~3/10 chord
+         outer  ≈ 10% thick, 3% camber, max-thickness at ~4/10 chord
+
+   This is your READING of the user's own drawing (they DID draw the shape), not
+   an invented number — a rough eyeball is enough; mark it clearly as an estimate
+   and unlocked, distinct from any explicit user numbers in QUANTITATIVE INPUTS.
+   The downstream loop refines it against the drawing, so do not over-invest.
+
+2. **A coarse crop region.**  When the section drawings occupy only part of a
+   larger multi-part sketch (e.g. the bottom strip of a full technical page),
+   record a COARSE normalized crop box ``[x0, y0, x1, y1]`` (fractions in 0..1)
+   for that region, so the DC Output Inspector can crop to it when it compares
+   the rendered sections side-by-side with your sketch:
+
+       SKETCH CROP REGION — the blade-section drawings in 0346_3.png occupy roughly
+       the bottom third: crop box [0.0, 0.72, 1.0, 1.0] for that image (pass as
+       ``regions`` to ``view_images`` when comparing the sections).
+
+   Coarse is fine — it only needs to isolate the sections from the rest of the
+   page; do not attempt a tight pixel-accurate box.

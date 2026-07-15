@@ -37,11 +37,17 @@ SECTIONS = (
 
 # Logical (final-image) constants.  The scene is rendered at _SUPERSAMPLE x
 # these and downscaled, so everything stays crisp.
-PX_PER_MM = 11         # final px per mm → 1 mm grid square = 11 px
-_MARGIN = 16
-_GAP = 18              # vertical gap between stacked sections
-_LABEL_GUTTER = 60     # left column reserved for the Inner/Middle/Outer labels
-_PROT_R = 112          # protractor radius
+#
+# The WHOLE layout was scaled x(18/11) from the earlier PX_PER_MM=11 tuning so
+# the render is ~1.6x larger natively (~690x285) and stays legible when a
+# side-by-side comparison (view_images match_height=640) scales it up — WITHOUT
+# upscaling it 3-4x.  All the layout + font constants scale together, so the
+# section/label/protractor BALANCE from the rebalance is preserved.
+PX_PER_MM = 18         # final px per mm → 1 mm grid square = 18 px
+_MARGIN = 26
+_GAP = 29              # vertical gap between stacked sections
+_LABEL_GUTTER = 98     # left column reserved for the Inner/Middle/Outer labels
+_PROT_R = 183          # protractor radius
 _SUPERSAMPLE = 3
 _BG = (247, 247, 247)
 _GRID_MINOR = (221, 221, 221)
@@ -49,11 +55,11 @@ _GRID_MAJOR = (198, 198, 198)
 _MAJOR_EVERY_MM = 5
 _PROTRACTOR_MAX_DEG = 25
 
-# Text sizes (final px).  Kept large relative to PX_PER_MM so the labels stay
+# Text sizes (final px).  Scaled with the layout above so the labels stay
 # legible next to the section shapes (which scale with the physical mm size).
-_FONT_LABEL = 22       # Inner / Middle / Outer name labels
-_FONT_TITLE = 18       # protractor "Angle of attack" title
-_FONT_ANGLE = 16       # per-ray angle values
+_FONT_LABEL = 36       # Inner / Middle / Outer name labels
+_FONT_TITLE = 29       # protractor "Angle of attack" title
+_FONT_ANGLE = 26       # per-ray angle values
 
 
 def _load_font(size):
@@ -94,7 +100,7 @@ def _draw_protractor(draw, vx, vy, r, secs, font_title, font_small, ss):
 
     panel_left = vx - 10 * ss
     panel_right = vx + r + 40 * ss
-    panel_top = top - 26 * ss
+    panel_top = top - 42 * ss   # title band — scaled with _FONT_TITLE (18->29)
     panel_bottom = vy + 8 * ss
     draw.rectangle([panel_left, panel_top, panel_right, panel_bottom],
                    fill=(255, 255, 255), outline=(208, 208, 208), width=ss)
@@ -102,7 +108,7 @@ def _draw_protractor(draw, vx, vy, r, secs, font_title, font_small, ss):
     title = "Angle of attack"
     tw = draw.textlength(title, font=font_title)
     cxp = (panel_left + panel_right) / 2.0
-    draw.text((cxp - tw / 2.0, panel_top + 4 * ss), title,
+    draw.text((cxp - tw / 2.0, panel_top + 6 * ss), title,
               fill=(90, 90, 90), font=font_title)
 
     # Baseline (0 deg) + arc + 5 deg ticks.
@@ -159,7 +165,7 @@ def render_png(params, grid, out_path):
     # 0-25 deg wedge (plus the title).
     prot_r = _PROT_R * ss
     prot_box_w = prot_r + 44 * ss
-    prot_box_h = int(prot_r * math.sin(math.radians(_PROTRACTOR_MAX_DEG))) + 36 * ss
+    prot_box_h = int(prot_r * math.sin(math.radians(_PROTRACTOR_MAX_DEG))) + 52 * ss
     gap_x = 16 * ss
 
     w = int(round(margin + gutter + sec_col_w + gap_x + prot_box_w + margin))
