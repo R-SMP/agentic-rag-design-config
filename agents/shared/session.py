@@ -160,6 +160,12 @@ class Session:
     # TZ).  Populated by the routing tools (commit 5).
     chain_log_exchanges: list[dict] = field(default_factory=list)
 
+    # Component C — the active Planner-issued STANDING DIRECTIVE (verbose
+    # free-form text, NOT a flag).  Empty when no directive is active.  The
+    # dispatcher captures it from Planner hand-offs and re-stamps it onto any
+    # forward hand-off that dropped it (see agents/shared/standing_directives.py).
+    standing_directives: str = ""
+
     # Per-agent state, one entry per agent_key in KNOWN_AGENT_KEYS.
     # Empty dict at construction; populated as agents are
     # rebuilt-and-snapshot per turn (commits 3-6).
@@ -231,6 +237,7 @@ class Session:
             "resolved_session_name":      self.resolved_session_name,
             "resolved_session_timestamp": self.resolved_session_timestamp,
             "chain_log_exchanges":    list(self.chain_log_exchanges),
+            "standing_directives":    self.standing_directives,
             "agent_states": {
                 k: asdict(v) for k, v in self.agent_states.items()
             },
@@ -265,6 +272,7 @@ class Session:
             resolved_session_name=      data.get("resolved_session_name"),
             resolved_session_timestamp= data.get("resolved_session_timestamp"),
             chain_log_exchanges=    list(data.get("chain_log_exchanges", [])),
+            standing_directives=    data.get("standing_directives", ""),
             agent_states={
                 k: AgentState(**v) for k, v in data.get("agent_states", {}).items()
             },

@@ -56,6 +56,21 @@ plan format below is for recovery reasoning.
     carries.  When the hand-off references user images, add your sense of
     how readable each is — a hint for the DCII / DCOI on whether to
     re-load, not a binding classification.
+  * **Issue a STANDING DIRECTIVE** — when an instruction must reach a LATER
+    agent unchanged (e.g. a precision-matching mandate the DC Output
+    Inspector must obey many steps downstream), place it inside a
+    ``=== STANDING DIRECTIVES (copy verbatim to the next agent) ===`` /
+    ``=== END STANDING DIRECTIVES ===`` block in your routing ``message``.
+    You are the ONLY agent that may set one; every downstream agent then
+    carries the block verbatim, and it is re-stamped automatically if any
+    agent drops it.  Use it ONLY for instructions that genuinely must survive
+    the whole chain — keep the directive text self-contained, operational,
+    and ready to be reproduced verbatim; do NOT use it for ordinary per-step
+    hand-off content.  As the issuer you are not a mere carrier: to CHANGE the
+    directive write the NEW block in place of the old one (never stack two
+    blocks); to END it, simply stop including a block.  The generic "copy the
+    block verbatim" rule binds the agents carrying YOUR directive downstream —
+    it does not limit your authority to set, replace, or drop it.
 <<PF_OFF>>  * **CLARIFY back to the UII** (``call_user_input_inspector``) — ONLY
     when the extraction you received is missing required information or
     carries an inconsistency that only the UII can resolve.  That is

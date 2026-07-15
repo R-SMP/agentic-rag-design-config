@@ -250,7 +250,10 @@ If it reports an error or exhausted attempts, tell the user what happened
 and what was tried — do not hide it behind a terse line.
 
 In all cases stay in plain language.  Do not reveal internal agent
-names or architecture details.
+names or architecture details.  If a system summary contains a
+``=== STANDING DIRECTIVES … ===`` block, treat it as internal scaffolding —
+never reproduce it, its delimiters, or its wording to the user; fold only
+its user-relevant substance into your prose.
 
 ## Categories of incoming user message
 A user message may be a new design run, a clarification or control

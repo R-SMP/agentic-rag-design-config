@@ -48,6 +48,7 @@ from agents.shared.routing_tools import (
     log_tool_call,
 )
 from agents.shared.session import AgentState, Session
+from agents.shared import standing_directives
 from agents.shared.trace import trace as _trace
 from agents.step_caps import (
     MAX_DISPATCH_HOPS,
@@ -67,6 +68,16 @@ from tools.retrieve_user_inputs.retrieve_user_inputs import (
 from workflow_settings import database_access
 
 logger = logging.getLogger("propeller_agent")
+
+
+# Component C — the chain agents that must carry a standing directive forward
+# (everyone a Planner directive is meant to reach).  Excludes the Orchestrator +
+# Receptionist (mediators / user-facing) and the User; the Orchestrator re-stamps
+# on its OUTGOING hop, so a block dropped on the way INTO it is not lost.
+_DIRECTIVE_CARRIERS = frozenset({
+    "user_input_inspector", "planner", "dc_input_creator",
+    "dc_input_inspector", "tool_caller", "dc_output_inspector",
+})
 
 
 _ROLE4_INSTRUCTIONS_PATH = Path(__file__).parent / "role4_feedback_instructions.md"
@@ -508,6 +519,13 @@ class Orchestrator(BaseChainAgent):
         """Run the horizontal dispatch loop and return the user-facing text."""
         current = start_agent_key
         message = kickoff_message
+        # Component C: a standing directive is issued fresh each user turn
+        # (the Planner re-derives it from the extraction when still relevant),
+        # so a stale directive from a prior turn is never forced onto — or
+        # leaked by — an unrelated later turn.  Within-turn persistence is
+        # unaffected: capture happens later in THIS dispatch and the field is
+        # session-scoped for the rest of the loop.
+        self.session.standing_directives = ""
         # Cursor into the SESSION-scoped chain log.  Initialised to the
         # log's current length so the per-turn chain-access view shows
         # only exchanges produced during THIS dispatch call, not prior
@@ -621,6 +639,21 @@ class Orchestrator(BaseChainAgent):
             if hop.target == DONE:
                 return hop.message
 
+            # Component C: capture a Planner-issued standing directive, then
+            # re-stamp it onto any forward hand-off that dropped it (the loss
+            # backstop).  The directive is verbose text carried IN the messages,
+            # not a flag; only the Planner may set one.  ensure_present is a
+            # no-op when nothing is active or the block is still intact — so it
+            # re-stamps ONLY on detected loss.
+            if current == "planner":
+                _issued = standing_directives.extract_directive(hop.message)
+                if _issued:
+                    self.session.standing_directives = _issued
+            if hop.target in _DIRECTIVE_CARRIERS:
+                hop.message = standing_directives.ensure_present(
+                    hop.message, self.session.standing_directives
+                )
+
             current = hop.target
             message = hop.message
 
@@ -710,6 +743,7 @@ class Orchestrator(BaseChainAgent):
         """Clear all agent histories for a fresh start."""
         self.messages.clear()
         self.session.chain_log_exchanges.clear()
+        self.session.standing_directives = ""
         self.planner.reset()
         self.receptionist.reset()
         self.user_input_inspector.reset()

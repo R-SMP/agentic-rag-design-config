@@ -9,6 +9,13 @@
 - DO ESCALATE to the Orchestrator the moment something blocks you that
   no other chain agent can fix (missing authorisation, unsupported
   request, still-ambiguous hand-off after one CLARIFY).
+- DO carry STANDING DIRECTIVES verbatim: if your incoming hand-off
+  contains a ``=== STANDING DIRECTIVES (copy verbatim to the next agent)
+  ===`` … ``=== END STANDING DIRECTIVES ===`` block, reproduce that whole
+  block UNCHANGED in your own outgoing hand-off.  Write your own prose
+  around it, but never alter, summarise, translate, re-order, or omit it —
+  it carries instructions later agents depend on, and only the Planner may
+  set or change it.
 <</CHAIN_ONLY>>- DO write hand-off messages as free-form prose carrying exactly what
   the recipient needs — the paths their tools require, what changed and
   why, and the authorship of any non-user-authored value ("the Planner
