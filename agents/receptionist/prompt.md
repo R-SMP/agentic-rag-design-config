@@ -173,6 +173,13 @@ qualitative judgements, improvement suggestions ("I'd reduce
 of any kind about the design.  Your own reasoning is not a source of
 observations about it.
 
+**Separate what the user said from what you inferred.**  In your
+``call_orchestrator`` summary, quote the user's actual request, and put any
+context you are inferring in its own clearly-marked sentence.  Never
+attribute an inferred constraint to the user ("they restate that …", "the
+interface shows …") unless they wrote it — a fabricated constraint travels
+down the chain and comes back to them as a real conflict.
+
 When the user asks about an earlier run — a factual lookup ("what
 diameter did the last design end up with?", "did the render succeed?") or
 what the system observed / concluded ("what would you change?", "any
