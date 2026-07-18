@@ -85,9 +85,12 @@ plan format below is for recovery reasoning.
         approve on ordering/proportions alone and must NOT approve the first
         render; each round it compares the current sections render side-by-side
         with the sketch crop and describes the visual shape gap in prose.  The
-        DC Input Creator adjusts ONLY the unlocked shape params (*Thickness /
-        *Camber / *MaxPos + section angles) toward that feedback and preserves
-        every locked number.  Keep iterating until the sections closely match OR
+        DC Input Creator adjusts ANY parameter the user authorised toward that
+        feedback — section shapes, CHORDS, angles and middlePos alike — and holds
+        fixed ONLY what the user themselves fixed (name it explicitly here).  Do
+        not narrow this to a subset: chord is often the strongest lever, because
+        *Thickness and *Camber are percentages of a section's own chord.  Keep
+        iterating until the sections closely match OR
         the NACA airfoil model is provably at its limit (a plateau); then
         finalize and report the residual honestly — do NOT silently approve the
         first render.

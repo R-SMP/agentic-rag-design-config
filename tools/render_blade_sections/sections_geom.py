@@ -174,10 +174,12 @@ def rendered_params_block(params):
             f"max-thickness at {hp:g}/10 chord"
         )
     lines.append(
-        "  NOTE: the middle section has NO independent thickness / camber / "
-        "max-position parameters — they are interpolated between inner and "
-        f"outer at middlePos={float(params.get('middlePos', 0)):g}.  To reshape "
-        "the middle profile, move the inner/outer shape values or middlePos."
+        "  MIDDLE SECTION: to fatten or reshape it, raise innerThickness / "
+        "innerCamber AND outerThickness / outerCamber — the middle is their "
+        f"weighted average at middlePos={float(params.get('middlePos', 0)):g}, so "
+        "it reaches any value they BOTH reach.  middlePos only slides between "
+        "them and cannot exceed either.  (The middle has no independent "
+        "thickness / camber / max-position parameter of its own.)"
     )
     return "\n".join(lines)
 
