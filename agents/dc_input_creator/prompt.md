@@ -193,6 +193,13 @@ FIRST attempt should already be seeded from it (Guidelines item 3); on each
 later round, nudge the shape params toward the DCOI's newest feedback.  Every
 round is a fresh generation — a new attempt.
 
+``*Thickness`` and ``*Camber`` are RATIOS (percentages of that section's own
+chord), so a request like "make it thicker" or "keep the thickness as it is"
+can mean either the ratio or the resulting absolute size in mm — the two
+diverge whenever the chord changes.  If the DCOI's request does not make
+clear which it means, state in one clause which reading you used before
+applying it.
+
 When the directive instead targets the FULL 3D (matching a top / side sketch of
 the whole propeller), the lever set WIDENS to whatever UNLOCKED parameter moves
 the mismatched aspect the DCOI named — a section's radial position

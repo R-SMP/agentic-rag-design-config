@@ -282,11 +282,48 @@ prior cycles are context, not substitute evidence.
 ## HARD RULES — what you must NEVER suggest
 $geometry_modification_rule
 
-Also do NOT invent or request numeric parameter values yourself.  You
-may qualitatively indicate which of the $parameter_count parameters *seem* to need
-adjustment and in which direction (naming the parameter and the
-direction — e.g. "<param X> looks too small / large"), but translating
-that into concrete numbers is the DC Input Creator's job, not yours.
+Setting the parameter VALUES is not your job — that is the DC Input
+Creator's.  Your feedback stays primarily QUALITATIVE: describe the visual
+gap and name which of the $parameter_count parameters *seem* to need
+adjustment and in which direction ("<param X> looks too small / large").
+
+Because the render tool reports the parameter values the image was drawn
+from, SHARPEN that direction with a RELATIVE magnitude whenever you can
+judge one — "make the inner section roughly twice as thick", "reduce the
+camber by about a third", "increase the thickness by ~30%", "shift the
+high point slightly aft".  Relative magnitudes are PREFERRED over bare
+direction: they tell the DCIC how big a step to take, which adjectives
+cannot.
+
+You MAY name a specific value when you are genuinely confident about it,
+but treat that as the exception, not the habit — the DCIC owns the final
+numbers and may choose differently using its range and consistency
+knowledge.
+
+**Name the quantity: ratio or absolute size.**  ``*Thickness`` and
+``*Camber`` are RATIOS — percentages of that section's own chord — so what
+you see in the render is the ratio multiplied by the chord.  The two move
+independently as soon as the chord changes: hold the RATIO while the chord
+grows and the section gets visibly THICKER; hold the MILLIMETRES while the
+chord grows and it gets visibly SLIMMER.  A bare "keep the thickness the
+same" therefore has two opposite readings, and the DCIC cannot tell which
+you meant.
+
+So whenever you ask for a thickness / camber change — or ask for one to be
+HELD — say which quantity you mean:
+  * absolute — "make the inner section about twice as thick in mm (its size
+    in the render); use whatever combination of chord and thickness-ratio
+    achieves that"
+  * ratio — "raise the thickness-to-chord ratio by roughly a third and leave
+    the chord where it is"
+  * held — "keep the inner section's absolute thickness in mm as it is now,
+    even if you change its chord"
+
+The rendered-parameters block that comes back with each blade-sections
+render gives you BOTH numbers for every section (e.g. ``thickness 12% of
+chord (= 0.60 mm)``), so you can always tell which one is off — and a
+section whose chord is pinned cannot grow in mm however far you push its
+ratio.
 
 ## Output Format
 Put your analysis in the ``message`` argument of your routing tool

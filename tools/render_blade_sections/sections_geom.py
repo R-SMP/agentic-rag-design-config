@@ -150,6 +150,38 @@ def section_params(kind, params):
     }
 
 
+def rendered_params_block(params):
+    """Compact per-section summary of the values a render was drawn from.
+
+    Attached to a ``view_images`` result so whoever is looking at a render can
+    tie the picture to the numbers behind it.  Each shape value is reported
+    BOTH as the parameter (a RATIO: % of that section's own chord) and as the
+    absolute size it produces (mm), because the two move independently once the
+    chord changes — a section whose chord is pinned cannot grow in mm however
+    far its ratio is pushed.
+    """
+    lines = ["Parameters this render was drawn from:"]
+    for kind, label in (("inner", "inner "), ("middle", "middle"), ("outer", "outer ")):
+        sp = section_params(kind, params)
+        c = float(sp["chord"])
+        t = float(sp["thickness"])
+        cam = float(sp["camber"])
+        hp = float(sp["highPt"])
+        lines.append(
+            f"  {label}: chord {c:g} mm, angle {float(sp['angleDeg']):g} deg, "
+            f"thickness {t:g}% of chord (= {t * c / 100.0:.2f} mm), "
+            f"camber {cam:g}% (= {cam * c / 100.0:.2f} mm), "
+            f"max-thickness at {hp:g}/10 chord"
+        )
+    lines.append(
+        "  NOTE: the middle section has NO independent thickness / camber / "
+        "max-position parameters — they are interpolated between inner and "
+        f"outer at middlePos={float(params.get('middlePos', 0)):g}.  To reshape "
+        "the middle profile, move the inner/outer shape values or middlePos."
+    )
+    return "\n".join(lines)
+
+
 def build_section_points(kind, params, count_i=COUNT_I):
     """The placed 2D airfoil for ``kind`` as a list of (x, z) points in mm,
     TE on the left and rotated by the section's angle of attack (mirrors

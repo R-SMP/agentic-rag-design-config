@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import base64
 import io
+import json
 import logging
 from pathlib import Path
 
@@ -249,6 +250,37 @@ def _is_inside_inputs(path: Path) -> bool:
     except OSError:
         return False
     return p == root or root in p.parents
+
+
+def _attempt_params_blocks(loaded) -> list:
+    """For any viewed image that lives in an attempt folder, append the
+    parameter values that attempt was built from — so whoever is looking at a
+    render always sees the numbers behind the picture, without depending on an
+    upstream agent to relay them.  One block per attempt folder; silently
+    skipped when the folder has no readable/complete ``parameters.json``.
+    """
+    # Imported lazily: reaching tools.render_blade_sections executes
+    # tools/__init__, which pulls the heavy 3D render stack (trimesh / pyrender
+    # / pyvista).  This module is a light shared image utility, so we only pay
+    # that when a render is actually viewed.
+    from tools.render_blade_sections.sections_geom import rendered_params_block
+
+    out, seen = [], set()
+    for raw in loaded:
+        folder = Path(raw).parent
+        if folder in seen or not _is_inside_attempts(folder):
+            continue
+        pj = folder / "parameters.json"
+        if not pj.is_file():
+            continue
+        seen.add(folder)
+        try:
+            params = json.loads(pj.read_text(encoding="utf-8"))
+            if isinstance(params, dict):
+                out.append(f"{folder.name}:\n" + rendered_params_block(params))
+        except Exception:  # unreadable / partial params — not worth failing a view
+            continue
+    return out
 
 
 def _is_inside_attempts(path: Path) -> bool:
@@ -606,7 +638,7 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
         head.append("No images were shown.  Do not retry with guessed paths.")
 
     # OCR (gated) — user images only, on the cropped region when one was given.
-    parts = head + body_parts + list(
+    parts = head + body_parts + _attempt_params_blocks(loaded) + list(
         ocr_summary_if_enabled(ocr_items, extract_text)
     )
     summary = "\n".join(parts)
