@@ -160,7 +160,7 @@ def read_state() -> dict[str, Any]:
           "agents": [
             {"key": "receptionist", "label": "Receptionist",
              "wired": True, "provider": "openai", "model": "gpt-5-mini",
-             "source": "shared" | "per-agent",
+             "source": "shared" | "per-agent" | "global",
              "override_provider": "" | "openai" | "anthropic" | "google",
              "override_model": ""},
             ...
@@ -225,7 +225,20 @@ def read_state() -> dict[str, Any]:
         per_env = _read_env(_agent_env_path(key))
         override_provider = (per_env.get("LLM_PROVIDER") or "").strip().lower()
         override_model = (per_env.get("MODEL_NAME") or "").strip()
-        if override_provider in _PROVIDER_KEYS and override_model:
+        if mode in _PROVIDER_KEYS:
+            # GLOBAL OVERRIDE active.  ``llm_provider._resolve_config`` forces
+            # this provider + the shared MODEL_NAME on every agent and does
+            # NOT consult the per-agent files at all, so reporting a per-agent
+            # value here would describe a model that will never be used (it
+            # previously did, which made both the chart and the session-config
+            # banner misreport what actually ran).  The override_* fields below
+            # still carry the literal file values, so the UI keeps showing —
+            # and can still save — per-agent entries for when the mode goes
+            # back to "individual".
+            effective_provider = mode
+            effective_model = shared_model
+            source = "global"
+        elif override_provider in _PROVIDER_KEYS and override_model:
             effective_provider = override_provider
             effective_model = override_model
             source = "per-agent"
