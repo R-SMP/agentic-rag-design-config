@@ -861,6 +861,42 @@ button.danger:hover { background: #3a1d1d; }
 .rc-head h2 { margin: 0 0 6px; }
 .rc-note { color: var(--muted); font-size: 13px; line-height: 1.55; margin: 0 0 16px; max-width: 74ch; }
 .rc-block { margin-bottom: 20px; }
+
+/* Model context windows — the Context Pruner's lookup table.  Reuses
+   .rc-panel so it inherits the session-locked styling above. */
+.mw-warn {
+  background: var(--panel); border: 1px solid var(--border);
+  border-left: 3px solid var(--accent); border-radius: 6px;
+  padding: 9px 12px; margin: 0 0 14px; font-size: 12.5px;
+  line-height: 1.5; color: var(--text);
+}
+.mw-warn > div + div { margin-top: 5px; }
+.mw-table-wrap { max-height: 320px; overflow-y: auto; border: 1px solid var(--border); border-radius: 8px; }
+.mw-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+.mw-table thead th {
+  position: sticky; top: 0; z-index: 1; text-align: left;
+  background: var(--panel); border-bottom: 1px solid var(--border);
+  padding: 8px 10px; font-weight: 600; font-size: 12px; color: var(--muted);
+}
+.mw-table td { padding: 4px 10px; border-bottom: 1px solid var(--border); }
+.mw-table tr:last-child td { border-bottom: none; }
+.mw-table input {
+  width: 100%; box-sizing: border-box; padding: 5px 7px; font-size: 13px;
+  font-family: inherit; background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px;
+}
+.mw-table td:nth-child(2) input { font-variant-numeric: tabular-nums; }
+.mw-threshold { color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+.mw-table .mw-del { padding: 4px 9px; font-size: 12px; }
+.mw-default-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 4px; }
+.mw-default-row label { font-size: 13px; font-weight: 600; }
+.mw-default-row input {
+  width: 120px; padding: 5px 7px; font-size: 13px; font-family: inherit;
+  background: var(--bg); color: var(--text);
+  border: 1px solid var(--border); border-radius: 5px;
+  font-variant-numeric: tabular-nums;
+}
+.mw-hint { color: var(--muted); font-size: 12px; flex: 1 1 300px; }
 .rc-block-head { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; margin-bottom: 10px; }
 .rc-block-head h3 { margin: 0; font-size: 14px; color: var(--text); }
 .rc-degree { font-size: 14px; font-weight: 600; color: var(--accent); font-variant-numeric: tabular-nums; }

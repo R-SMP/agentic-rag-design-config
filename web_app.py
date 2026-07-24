@@ -2599,6 +2599,51 @@ class RenderCompressionIn(BaseModel):
     geo_degree: int
 
 
+class ModelWindowsIn(BaseModel):
+    models: dict
+    default: int
+
+
+@app.get("/api/model_windows")
+def api_model_windows_get() -> dict:
+    """The editable context-window table used by the Context Pruner.
+
+    Also reports which models the live session resolved to the default (i.e.
+    matched nothing in the table) so the panel can flag them, and the current
+    threshold settings so the panel can show what each window actually means.
+    """
+    _require_auth()
+    importlib.reload(workflow_settings)
+    from agents.shared.model_windows import read_table
+    state = read_table()
+    state["fraction"] = float(getattr(
+        workflow_settings, "CONTEXT_PRUNER_WINDOW_FRACTION", 0.60))
+    state["max_threshold"] = int(getattr(
+        workflow_settings, "CONTEXT_PRUNER_MAX_THRESHOLD_TOKENS", 150000))
+    state["min_threshold"] = int(getattr(
+        workflow_settings, "CONTEXT_PRUNER_MIN_THRESHOLD_TOKENS", 20000))
+    return state
+
+
+@app.post("/api/model_windows")
+def api_model_windows_save(body: ModelWindowsIn) -> dict:
+    """Persist the table.  Locked while a session is active, like every other
+    settings write; validation errors come back as 400 with the reason."""
+    _require_auth()
+    _require_no_session()
+    from agents.shared.model_windows import write_table, read_table
+    try:
+        write_table(body.models, body.default)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    except OSError as exc:
+        raise HTTPException(status_code=500,
+                            detail=f"could not write the table: {exc}")
+    logger.info("[WEB] model-window table saved: %d entries, default %d",
+                len(body.models), body.default)
+    return {"ok": True, **read_table()}
+
+
 def _render_sample_path(kind: str, size: str) -> Path:
     if kind not in _RENDER_SAMPLE_KINDS or size not in _RENDER_SAMPLE_SIZES:
         raise HTTPException(status_code=400, detail="Unknown render sample.")

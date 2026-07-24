@@ -32,6 +32,7 @@ import json
 import logging
 import urllib.error
 import urllib.request
+from pathlib import Path
 
 logger = logging.getLogger("propeller_agent")
 
@@ -85,40 +86,153 @@ CONTEXT_WINDOWS: dict[str, int] = {
 
 DEFAULT_CONTEXT_WINDOW = 200_000
 
+# Editable copy of the table, managed from the Workflow Settings panel.  The
+# dict above stays as the built-in fallback for a missing/corrupt file.
+TABLE_PATH = Path(__file__).with_suffix(".json")
+
 # Populated by refresh_from_api(); exact model id -> max_input_tokens.
 _api_windows: dict[str, int] = {}
 _api_fetched = False
+
+# Loaded from TABLE_PATH on first use; None until then.
+_file_windows: dict[str, int] | None = None
+_file_default: int | None = None
+
+# Models that resolved to the default because nothing matched — surfaced in the
+# settings panel so an unlisted model is visible without reading the logs.
+_unmatched: set[str] = set()
+
+
+def _load_table() -> tuple[dict[str, int], int]:
+    """Return (models, default) from the JSON file, or the built-ins.
+
+    Fail-soft by design: a missing, unreadable or malformed file leaves the
+    verified built-in table in place rather than breaking session startup.
+    """
+    global _file_windows, _file_default
+    if _file_windows is not None and _file_default is not None:
+        return _file_windows, _file_default
+    models, default = dict(CONTEXT_WINDOWS), DEFAULT_CONTEXT_WINDOW
+    try:
+        if TABLE_PATH.is_file():
+            data = json.loads(TABLE_PATH.read_text(encoding="utf-8"))
+            raw = data.get("models")
+            if isinstance(raw, dict) and raw:
+                cleaned = {}
+                for k, v in raw.items():
+                    key = str(k).strip().lower()
+                    try:
+                        val = int(v)
+                    except (TypeError, ValueError):
+                        continue
+                    if key and val > 0:
+                        cleaned[key] = val
+                if cleaned:
+                    models = cleaned
+            try:
+                d = int(data.get("default", default))
+                if d > 0:
+                    default = d
+            except (TypeError, ValueError):
+                pass
+    except Exception as exc:  # pragma: no cover - never block startup
+        logger.warning(f"[CP]  model-window table unreadable ({exc}); "
+                       f"using the built-in table.")
+    _file_windows, _file_default = models, default
+    return models, default
+
+
+def reload_table() -> None:
+    """Drop the cached file table so the next lookup re-reads TABLE_PATH."""
+    global _file_windows, _file_default
+    _file_windows = _file_default = None
+    _unmatched.clear()
+
+
+def read_table() -> dict:
+    """The current editable table, for the settings panel."""
+    models, default = _load_table()
+    return {
+        "models": dict(sorted(models.items(), key=lambda kv: (-len(kv[0]), kv[0]))),
+        "default": default,
+        "api_overrides": dict(_api_windows),
+        "unmatched": sorted(_unmatched),
+        "path": str(TABLE_PATH),
+    }
+
+
+def write_table(models: dict, default: int) -> None:
+    """Persist the table and drop the cache.  Raises ValueError on bad input."""
+    cleaned: dict[str, int] = {}
+    for k, v in (models or {}).items():
+        key = str(k).strip().lower()
+        if not key:
+            continue
+        try:
+            val = int(v)
+        except (TypeError, ValueError):
+            raise ValueError(f"'{k}' has a non-numeric window: {v!r}")
+        if val <= 0:
+            raise ValueError(f"'{k}' must have a positive window, got {val}")
+        cleaned[key] = val
+    if not cleaned:
+        raise ValueError("the table must contain at least one model")
+    try:
+        dflt = int(default)
+    except (TypeError, ValueError):
+        raise ValueError(f"default must be an integer, got {default!r}")
+    if dflt <= 0:
+        raise ValueError("default must be positive")
+
+    existing = {}
+    if TABLE_PATH.is_file():
+        try:
+            existing = json.loads(TABLE_PATH.read_text(encoding="utf-8"))
+        except Exception:
+            existing = {}
+    payload = {
+        "_comment": existing.get("_comment", "Editable context-window table."),
+        "default": dflt,
+        "models": cleaned,
+    }
+    tmp = TABLE_PATH.with_suffix(".json.tmp")
+    tmp.write_text(json.dumps(payload, indent=2) + "\n", encoding="utf-8")
+    tmp.replace(TABLE_PATH)          # atomic on the same filesystem
+    reload_table()
 
 
 def context_window_for(model: str) -> int:
     """Best-known context window (tokens) for *model*.
 
-    Prefers a value fetched from the provider API, then the longest matching
-    static prefix, then ``DEFAULT_CONTEXT_WINDOW``.
+    Priority: a value fetched live from the provider API, then the longest
+    matching prefix in the editable table, then the table's default.
     """
     name = (model or "").strip().lower()
+    models, default = _load_table()
     if not name:
-        return DEFAULT_CONTEXT_WINDOW
+        return default
 
     live = _api_windows.get(name)
     if live and live > 0:
         return int(live)
 
-    best, best_len = DEFAULT_CONTEXT_WINDOW, -1
-    for prefix, window in CONTEXT_WINDOWS.items():
+    best, best_len = default, -1
+    for prefix, window in models.items():
         if name.startswith(prefix) and len(prefix) > best_len:
             best, best_len = window, len(prefix)
+    if best_len < 0:
+        _unmatched.add(name)
     return best
 
 
 def source_for(model: str) -> str:
     """Where ``context_window_for`` got its answer — for logging."""
     name = (model or "").strip().lower()
+    models, _ = _load_table()
     if _api_windows.get(name):
         return "provider API"
-    for prefix in CONTEXT_WINDOWS:
-        if name.startswith(prefix):
-            return "static table"
+    if any(name.startswith(p) for p in models):
+        return "table"
     return "default (model not recognised)"
 
 

@@ -1059,6 +1059,7 @@ function switchView(name) {
     if (!settingsLoaded) loadSettings();
     loadLrRouting();
     loadRenderCompression();
+    loadModelWindows();
     // Pick up the latest lock state when the user opens the view;
     // otherwise a session started in another tab/turn could leave the
     // view stale.
@@ -1669,6 +1670,183 @@ function updateGeoGenButton() {
   if (btn) btn.textContent = rcAvail.geo ? "Regenerate 3D samples" : "Generate 3D samples";
 }
 
+// ---- Model context windows -----------------------------------------------
+// The table the Context Pruner uses. Rows are model-name PREFIXES matched
+// longest-first, so a version-specific row wins over a family row.
+let mwState = { rows: [], default: 200000, fraction: 0.6, max: 150000, min: 20000 };
+
+function setMwStatus(msg, cls) {
+  const el = $("mw-status");
+  if (!el) return;
+  el.textContent = msg;
+  el.className = "settings-status" + (cls ? " " + cls : "");
+}
+
+// Mirrors the backend: max(min, min(fraction * window, max)).
+function mwThreshold(window_) {
+  const w = Number(window_) || 0;
+  if (w <= 0) return null;
+  return Math.max(mwState.min, Math.min(Math.round(w * mwState.fraction), mwState.max));
+}
+
+function mwRenderRows() {
+  const body = $("mw-rows");
+  if (!body) return;
+  body.innerHTML = "";
+  mwState.rows.forEach((row, i) => {
+    const tr = document.createElement("tr");
+
+    const tdName = document.createElement("td");
+    const name = document.createElement("input");
+    name.type = "text";
+    name.value = row.name;
+    name.placeholder = "e.g. gpt-5.7-nano";
+    name.addEventListener("input", () => { row.name = name.value; });
+    tdName.appendChild(name);
+
+    const tdWin = document.createElement("td");
+    const win = document.createElement("input");
+    win.type = "text";
+    win.inputMode = "numeric";
+    win.value = row.window == null ? "" : String(row.window);
+    win.addEventListener("input", () => {
+      row.window = win.value;
+      tdThr.textContent = mwFormatThreshold(row.window);
+    });
+    tdWin.appendChild(win);
+
+    const tdThr = document.createElement("td");
+    tdThr.className = "mw-threshold";
+    tdThr.textContent = mwFormatThreshold(row.window);
+
+    const tdDel = document.createElement("td");
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "ghost mw-del";
+    del.textContent = "Remove";
+    del.addEventListener("click", () => {
+      mwState.rows.splice(i, 1);
+      mwRenderRows();
+    });
+    tdDel.appendChild(del);
+
+    tr.appendChild(tdName);
+    tr.appendChild(tdWin);
+    tr.appendChild(tdThr);
+    tr.appendChild(tdDel);
+    body.appendChild(tr);
+  });
+}
+
+function mwFormatThreshold(window_) {
+  const t = mwThreshold(window_);
+  if (t == null) return "—";
+  const w = Number(window_) || 0;
+  // Say which rule bit, so the effect of an edit is visible.
+  const bound =
+    t === mwState.max ? "cap" : (t === mwState.min ? "floor" : "fraction");
+  return t.toLocaleString() + "  (" + bound + ")";
+}
+
+async function loadModelWindows() {
+  if (!$("model-windows")) return;
+  try {
+    const res = await fetch("/api/model_windows");
+    if (!res.ok) return;
+    const d = await res.json();
+    mwState.fraction = d.fraction != null ? d.fraction : 0.6;
+    mwState.max = d.max_threshold != null ? d.max_threshold : 150000;
+    mwState.min = d.min_threshold != null ? d.min_threshold : 20000;
+    mwState.default = d.default;
+    // Longest prefix first — the order the backend matches in.
+    mwState.rows = Object.entries(d.models || {})
+      .sort((a, b) => (b[0].length - a[0].length) || a[0].localeCompare(b[0]))
+      .map(([name, window_]) => ({ name, window: window_ }));
+    const dflt = $("mw-default");
+    if (dflt) dflt.value = String(d.default);
+    mwRenderRows();
+
+    // Flag any model the running system fell back to the default for, and
+    // any window the provider API overrode — both are invisible otherwise.
+    // Built with text nodes rather than innerHTML: model names are
+    // user-editable, so they must never be interpreted as markup.
+    const warn = $("mw-warn");
+    if (warn) {
+      warn.textContent = "";
+      let any = false;
+      if ((d.unmatched || []).length) {
+        const p = document.createElement("div");
+        p.textContent =
+          "Not in this table, using the fallback: " +
+          d.unmatched.join(", ") +
+          " — add a row so the threshold matches the real window.";
+        warn.appendChild(p);
+        any = true;
+      }
+      const ov = Object.keys(d.api_overrides || {});
+      if (ov.length) {
+        const p = document.createElement("div");
+        p.textContent =
+          "Refreshed live from the provider API (these override the table): " +
+          ov.length + " model" + (ov.length === 1 ? "" : "s") + ".";
+        warn.appendChild(p);
+        any = true;
+      }
+      warn.hidden = !any;
+    }
+    setMwStatus("", "");
+  } catch (e) { /* non-fatal */ }
+}
+
+async function saveModelWindows() {
+  const models = {};
+  for (const row of mwState.rows) {
+    const name = (row.name || "").trim().toLowerCase();
+    if (!name) continue;
+    const n = parseInt(String(row.window).replace(/[^0-9-]/g, ""), 10);
+    if (!Number.isFinite(n) || n <= 0) {
+      setMwStatus('"' + name + '" needs a positive token count.', "err");
+      return;
+    }
+    if (models[name] != null) {
+      setMwStatus('Duplicate row: "' + name + '".', "err");
+      return;
+    }
+    models[name] = n;
+  }
+  if (!Object.keys(models).length) {
+    setMwStatus("The table needs at least one model.", "err");
+    return;
+  }
+  const dflt = parseInt(
+    String(($("mw-default") || {}).value || "").replace(/[^0-9-]/g, ""), 10);
+  if (!Number.isFinite(dflt) || dflt <= 0) {
+    setMwStatus("The fallback needs a positive token count.", "err");
+    return;
+  }
+
+  const btn = $("mw-save");
+  if (btn) btn.disabled = true;
+  try {
+    const res = await fetch("/api/model_windows", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ models: models, default: dflt }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (res.status === 409) {
+      setMwStatus("Locked — end the session to edit.", "err");
+      return;
+    }
+    if (!res.ok) { setMwStatus(d.detail || "Save failed.", "err"); return; }
+    setMwStatus("Saved — applies to the next session.", "ok");
+  } catch (e) {
+    setMwStatus("Network error: " + e, "err");
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
+
 // Run gen_render_samples.py --geo server-side (needs Node + pyrender, both in
 // the app container).  Ephemeral — a redeploy wipes the samples, re-run then.
 async function generateGeoSamples() {
@@ -1705,6 +1883,22 @@ if ($("rc-reload")) {
   $("rc-reload").addEventListener("click", () => {
     setRcStatus("", "");
     loadRenderCompression();
+    loadModelWindows();
+  });
+}
+if ($("mw-save")) $("mw-save").addEventListener("click", saveModelWindows);
+if ($("mw-add")) {
+  $("mw-add").addEventListener("click", () => {
+    mwState.rows.push({ name: "", window: "" });
+    mwRenderRows();
+    const inputs = document.querySelectorAll("#mw-rows tr:last-child input");
+    if (inputs.length) inputs[0].focus();
+  });
+}
+if ($("mw-reload")) {
+  $("mw-reload").addEventListener("click", () => {
+    setMwStatus("", "");
+    loadModelWindows();
   });
 }
 

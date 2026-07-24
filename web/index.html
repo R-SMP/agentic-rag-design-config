@@ -869,6 +869,61 @@
             <button id="settings-reload" class="ghost" type="button">Reload</button>
             <span id="settings-status" class="settings-status" role="status"></span>
           </div>
+
+          <!-- Model context windows: the table the Context Pruner uses to
+               decide how much history each agent may accumulate.  Rows are
+               model-name PREFIXES matched longest-first.  Filled in by
+               app.js when the Settings view opens. -->
+          <section class="rc-panel" id="model-windows">
+            <div class="rc-head">
+              <h2>Model context windows</h2>
+              <p class="rc-note">
+                How large a context window each model has, in input tokens.
+                The Context Pruner uses this to decide when an agent's history
+                has grown too long: it prunes at
+                <strong>max(min-threshold, min(fraction &times; window,
+                max-threshold))</strong>, counting the system prompt as well as
+                the history.
+                Rows are matched as <strong>name prefixes, longest first</strong>,
+                so <code>claude-opus-4-5</code> (200k) wins over
+                <code>claude-opus</code> for that model — which matters, because
+                the window varies by version within a family.  Keep the short
+                family rows conservative.
+                Anthropic models are refreshed live from the provider API at
+                session start and override this table; OpenAI exposes no window,
+                so those rows are maintained here.  Changes take effect for the
+                <strong>next session</strong>.
+              </p>
+            </div>
+            <div id="mw-warn" class="mw-warn" hidden></div>
+            <div class="mw-table-wrap">
+              <table class="mw-table" id="mw-table">
+                <thead>
+                  <tr>
+                    <th>Model name prefix</th>
+                    <th>Context window (tokens)</th>
+                    <th>Prunes at</th>
+                    <th></th>
+                  </tr>
+                </thead>
+                <tbody id="mw-rows"></tbody>
+              </table>
+            </div>
+            <div class="mw-default-row">
+              <label for="mw-default">Fallback for unlisted models</label>
+              <input type="text" id="mw-default" inputmode="numeric" />
+              <span class="mw-hint">
+                Keep this at the smallest window in use — an unrecognised model
+                should prune early rather than overflow.
+              </span>
+            </div>
+            <div class="settings-bar">
+              <button id="mw-add" class="ghost" type="button">Add model</button>
+              <button id="mw-save" class="primary" type="button">Save table</button>
+              <button id="mw-reload" class="ghost" type="button">Reload</button>
+              <span id="mw-status" class="settings-status" role="status"></span>
+            </div>
+          </section>
         </div>
       </section>
 
