@@ -168,10 +168,25 @@ class BaseChainAgent:
             from workflow_settings import settings as _ws
             if not getattr(_ws, "CONTEXT_PRUNER_ENABLED", False):
                 return
-            threshold = int(getattr(_ws, "CONTEXT_PRUNER_THRESHOLD_TOKENS", 80000))
+            fraction = float(getattr(_ws, "CONTEXT_PRUNER_WINDOW_FRACTION", 0.60))
+            cap_tok = int(getattr(_ws, "CONTEXT_PRUNER_MAX_THRESHOLD_TOKENS", 150000))
+            floor_tok = int(getattr(_ws, "CONTEXT_PRUNER_MIN_THRESHOLD_TOKENS", 20000))
             keep_n = int(getattr(_ws, "CONTEXT_PRUNER_KEEP_LAST_MESSAGES", 6))
         except Exception:
             return
+
+        # Threshold = a share of THIS agent's model window, but never above an
+        # absolute cap.  Current windows are 200k-1.05M, so on the big models
+        # the CAP governs: 60% of 1M would let an agent accumulate ~600k tokens
+        # of history, which costs far more in re-sent context than pruning
+        # saves long before it is ever unsafe.  The fraction still binds on
+        # small-window models (200k Haiku -> 120k), which is where it matters.
+        try:
+            from agents.shared.model_windows import context_window_for
+            window = context_window_for(getattr(self, "model", "") or "")
+        except Exception:
+            window = 200_000
+        threshold = max(floor_tok, min(int(window * fraction), cap_tok))
 
         pruner = getattr(self.session, "context_pruner", None)
         if pruner is None:
@@ -220,6 +235,12 @@ class BaseChainAgent:
         try:
             serialised_full = _serialise_messages(self.messages)
             n_before = count_tokens(serialised_full)
+            # Count the system prompt too: it is re-sent on EVERY turn and is
+            # up to ~30k tokens (Planner), so leaving it out made the same
+            # nominal threshold mean very different real context per agent.
+            _sys_prompt = getattr(self, "system_prompt", "") or ""
+            if _sys_prompt:
+                n_before += count_tokens(_sys_prompt)
         except Exception as exc:
             logger.warning(
                 f"[CP]  token count failed for {self.AGENT_KEY}: {exc}"
@@ -228,6 +249,18 @@ class BaseChainAgent:
 
         if n_before <= threshold:
             return
+
+        try:
+            from agents.shared.model_windows import source_for
+            _src = source_for(getattr(self, "model", "") or "")
+        except Exception:
+            _src = "unknown"
+        logger.info(
+            f"[CP]  {self.AGENT_KEY} over budget: {n_before:,} tok "
+            f"(history + system prompt) > {threshold:,} threshold "
+            f"[model {getattr(self, 'model', '?')}, window {window:,} "
+            f"via {_src}]"
+        )
 
         # Pick the cut point: keep the last keep_n messages, then walk
         # forward (toward the tail) until we land on a "safe" boundary

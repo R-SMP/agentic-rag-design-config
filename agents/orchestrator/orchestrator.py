@@ -197,6 +197,16 @@ class Orchestrator(BaseChainAgent):
         # by ``workflow_settings.CONTEXT_PRUNER_ENABLED``.
         self.context_pruner = ContextPruner(self.base_llm)
         setattr(session, "context_pruner", self.context_pruner)
+        # Learn real per-model context windows once per process, so the
+        # Pruner's threshold tracks the model each agent actually runs on.
+        # Anthropic-only (its /v1/models returns max_input_tokens; OpenAI's
+        # does not expose a window), cached, and fail-open: any error leaves
+        # the verified static table in place.
+        try:
+            from agents.shared.model_windows import refresh_from_api
+            refresh_from_api()
+        except Exception as exc:  # pragma: no cover - never block startup
+            logger.warning(f"[CP]  model-window refresh skipped: {exc}")
         # Database Handler — runs ONLY post-session, after the user
         # types ``quit`` and confirms saving.  Not part of the
         # dispatch loop, has no routing tools, never speaks to the

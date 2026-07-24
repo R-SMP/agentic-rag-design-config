@@ -380,15 +380,37 @@ CONTEXT_PRUNER_ENABLED: bool = True
 # ===========================================================
 # 14. Context Pruner — token threshold per agent
 # ===========================================================
-# The cl100k_base token count above which the pre-invoke check fires.
-# When the agent's ``self.messages`` count tokens above this number,
-# the Pruner is invoked; otherwise the invoke proceeds as today.
+# The threshold is derived per agent, from the context window of the model
+# THAT agent is running on:
 #
-# Picking a value: stay well below the cheapest provider's window
-# (e.g. ~128k for many tiers) with at least 30-50k headroom for the
-# next-hop reply.  80,000 is a conservative starting point.
+#     threshold = max(MIN, min(WINDOW_FRACTION x window, MAX))
 #
-# Valid values: any positive int (token count, cl100k_base)
+# and the count it is compared against includes the agent's SYSTEM PROMPT as
+# well as its message history — so the number means "total context sent",
+# not "history only".  (Before v9 the system prompt sat on top of the
+# threshold, so a nominal 80k meant ~95k of real context for the Tool Caller
+# and ~110k for the Planner.)
+#
+# Why both a fraction and a cap: current windows span 200k (Claude Haiku 4.5)
+# to 1.05M (gpt-5.4 / gpt-5.5 / gpt-5.6).  A pure fraction would let an agent
+# on a 1M model accumulate ~600k tokens of history, which costs far more in
+# re-sent context on every turn than pruning would save, long before it is
+# ever unsafe.  The CAP therefore governs on large-window models, while the
+# FRACTION still binds on small-window ones (200k x 0.60 = 120k).
+#
+# Windows are resolved by agents/shared/model_windows.py — from the Anthropic
+# Models API when reachable, else a static table verified against provider
+# docs.  An unrecognised model falls back to the smallest window in use, so
+# it prunes early rather than overflowing.
+#
+# Valid values: fraction 0 < f <= 1; MIN/MAX positive ints (cl100k_base)
+CONTEXT_PRUNER_WINDOW_FRACTION: float = 0.60
+CONTEXT_PRUNER_MAX_THRESHOLD_TOKENS: int = 150000
+CONTEXT_PRUNER_MIN_THRESHOLD_TOKENS: int = 20000
+
+# DEPRECATED (v9): replaced by the three settings above.  Kept so the
+# settings UI and any saved profile that still references it keep loading;
+# the pruning path no longer reads it.
 CONTEXT_PRUNER_THRESHOLD_TOKENS: int = 80000
 
 

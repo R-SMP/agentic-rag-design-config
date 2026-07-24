@@ -7,10 +7,12 @@ redundant or superseded content.
 How it's wired (v9 onwards)
 ---------------------------
 Every chain agent calls ``self.prune_history_if_needed()`` at the top
-of its invoke loop (see ``agents/shared/base_chain_agent.py``).  When
-the agent's accumulated ``self.messages`` crosses
-``workflow_settings.CONTEXT_PRUNER_THRESHOLD_TOKENS`` (cl100k_base),
-the pruner runs a THREE-TIER ESCALATION:
+of its invoke loop (see ``agents/shared/base_chain_agent.py``).  When the
+agent's accumulated ``self.messages`` PLUS its system prompt crosses a
+per-agent threshold — derived from the context window of the model that
+agent runs on, as ``max(MIN, min(WINDOW_FRACTION x window, MAX))``; see
+``agents/shared/model_windows.py`` — the pruner runs a THREE-TIER
+ESCALATION:
 
   * **Tier 1 (coarse).**  Summarise the older portion (everything
     BEFORE the last ``CONTEXT_PRUNER_KEEP_LAST_MESSAGES`` messages)
