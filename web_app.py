@@ -71,7 +71,14 @@ from agents.shared.viz_bus import (
     get_last_visualized_attempt_dir as viz_get_last_attempt_dir,
     set_last_visualized_attempt_dir as viz_set_last_attempt_dir,
 )
-from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
+from config import (
+    ATTEMPTS_DIR,
+    INPUT_IMAGES_DIR,
+    LOGS_DIR,
+    PREVIOUS_SESSIONS_DIR,
+    USER_INPUTS_DIR,
+)
+from agents.shared import sessions_queue
 from tools import set_mesh_checks, set_render_library, set_geometry_backend
 from tools.generate_mesh.generate_mesh import (
     MeshGenerationError,
@@ -218,6 +225,20 @@ _TURN_IN_FLIGHT: bool = False
 # value is discarded since nothing is awaiting it.  See W36 for
 # the no-regression rules.
 _current_turn_task: asyncio.Task | None = None
+
+
+# Sessions Queue (overnight benchmark runner) guards.  ``_QUEUE_IN_FLIGHT``
+# is the same atomic-bool primitive as ``_TURN_IN_FLIGHT`` / ``_END_IN_FLIGHT``
+# (single-worker event loop, W13/O9): set in ``api_queue_start`` before the
+# background task is scheduled, cleared by the task's ``finally``.  While it
+# is set, all human-driven mutating endpoints (chat turn, End Session, Stop,
+# image writes, settings writes) are rejected 409 so a stray click can never
+# collide with the runner on the shared single session.  ``_runner_halt`` is
+# the runner-owned stop flag the Halt button sets; unlike ``stop_signal`` it
+# is NOT auto-cleared each turn, so it survives the per-run turn boundary and
+# stops the whole queue.
+_QUEUE_IN_FLIGHT: bool = False
+_runner_halt: bool = False
 
 
 def _new_session_id() -> str:
@@ -499,6 +520,7 @@ def api_config() -> dict:
         "auth_required": _auth_required(),
         "authed": _BOX.authed or not _auth_required(),
         "session_active": _BOX.session is not None,
+        "queue_active": _QUEUE_IN_FLIGHT,
     }
 
 
@@ -533,6 +555,35 @@ def _require_no_session() -> None:
             status_code=409,
             detail="Settings are locked while a session is active. "
                    "End the session to edit them.",
+        )
+    # Also locked while the overnight runner owns the session lifecycle
+    # (it flips the session None ↔ active between runs, so a settings
+    # write landing in the None gap would still corrupt the next run).
+    _require_no_queue()
+
+
+def _require_no_queue() -> None:
+    """Reject a human-driven mutating action while the Sessions Queue
+    runner is active (HTTP 409).  The runner owns the single global
+    session for the duration of the queue; a concurrent chat turn, End
+    Session, Stop, image write or settings write would collide with it.
+    """
+    if _QUEUE_IN_FLIGHT:
+        raise HTTPException(
+            status_code=409,
+            detail=("A Sessions Queue is running. Human controls are "
+                    "locked until it finishes or you press Halt."),
+        )
+    # Even after the queue releases, a pipeline that could not be
+    # interrupted may still be running on a threadpool thread — keep the
+    # lock engaged until it drains so a human turn can't clear its stop
+    # flag and run concurrently on the shared session.
+    if _live_orphans():
+        raise HTTPException(
+            status_code=409,
+            detail=("A prior pipeline is still unwinding (an "
+                    "uninterruptible turn); controls stay locked until it "
+                    "drains or the app is restarted."),
         )
 
 
@@ -667,6 +718,7 @@ async def api_turn(body: TurnIn) -> dict:
     """
     global _TURN_IN_FLIGHT, _current_turn_task
     _require_auth()
+    _require_no_queue()
     text = (body.message or "").strip()
     if not text:
         raise HTTPException(status_code=400, detail="Empty message.")
@@ -1298,6 +1350,7 @@ async def api_end(body: EndIn | None = None) -> dict:
     atomic in the single-worker uvicorn event loop (W13/O9).
     """
     global _END_IN_FLIGHT
+    _require_no_queue()
     # Check-and-set is atomic: no ``await`` between the read and the
     # write, so no other coroutine can race on the same event loop.
     if _END_IN_FLIGHT:
@@ -1338,6 +1391,52 @@ async def api_end(body: EndIn | None = None) -> dict:
     }
 
 
+def _snapshot_log_to_r2() -> "tuple[str, str]":
+    """Snapshot the active session's log file to R2.
+
+    Returns ``(remote_key, session_name)``.  Raises ``RuntimeError`` on
+    any precondition or upload failure.  Factored out of ``api_save_log``
+    so the Sessions Queue runner can record each finished run's log key
+    with the SAME key format + ``resolved_session_name`` pinning the
+    HTTP endpoint uses (so the snapshot lands in the same R2 namespace
+    the end-of-session archive would, and the session_counter is not
+    double-incremented).
+    """
+    if _BOX.session is None or _BOX.log_path is None:
+        raise RuntimeError("No active session to snapshot.")
+    log_path = _BOX.log_path
+    if not log_path.exists():
+        raise RuntimeError(f"Log file not found at {log_path}.")
+
+    from agents.shared import r2_uploader as _r2
+    if not _r2.is_enabled():
+        raise RuntimeError(
+            "R2 is not configured on this deploy (R2_ACCOUNT_ID / "
+            "R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET_NAME "
+            "missing)."
+        )
+
+    # Force-resolve the canonical session_name so the snapshot lands in
+    # the same R2 namespace the end-of-session archive will use (cached
+    # on the Session and reused by every subsequent caller).
+    if _BOX.session.resolved_session_name is None:
+        from agents.loader import _resolve_session_name
+        _BOX.session.resolved_session_name = _resolve_session_name()
+    session_name = _BOX.session.resolved_session_name
+    if not session_name:
+        raise RuntimeError("No canonical session name available after resolve.")
+
+    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    remote_key = f"{session_name}/logs/snapshot_{ts}.log"
+    if not _r2.upload_file(log_path, remote_key):
+        raise RuntimeError(
+            "R2 upload returned False (see server log for the "
+            "underlying error)."
+        )
+    logger.info(f"[WEB] snapshot log -> {remote_key}")
+    return remote_key, session_name
+
+
 @app.post("/api/save_log")
 async def api_save_log() -> dict:
     """Snapshot the current session log to R2 without ending the session.
@@ -1354,86 +1453,11 @@ async def api_save_log() -> dict:
     Returns ``{ok: bool, key?, session?, error?}``.
     """
     _require_auth()
-
-    # Need both a session AND a log file path to snapshot.
-    if _BOX.session is None or _BOX.log_path is None:
-        return {"ok": False, "error": "No active session to snapshot."}
-
-    log_path = _BOX.log_path
-    if not log_path.exists():
-        return {
-            "ok":    False,
-            "error": f"Log file not found at {log_path}.",
-        }
-
-    # R2 must be configured for this to do anything useful.
-    from agents.shared import r2_uploader as _r2
-    if not _r2.is_enabled():
-        return {
-            "ok": False,
-            "error": (
-                "R2 is not configured on this deploy "
-                "(R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / "
-                "R2_BUCKET_NAME missing)."
-            ),
-        }
-
-    # Force-resolve the canonical session_name so the snapshot lands in
-    # the same R2 namespace the end-of-session archive will use.  The
-    # caching contract (Session.resolved_session_name set once, reused
-    # by every subsequent caller) matches what _run_dh_save already
-    # does for the regular save flow.
-    if _BOX.session.resolved_session_name is None:
-        try:
-            from agents.loader import _resolve_session_name
-            _BOX.session.resolved_session_name = _resolve_session_name()
-        except Exception as exc:
-            logger.exception("[WEB] /api/save_log could not resolve session name")
-            return {
-                "ok":    False,
-                "error": f"{type(exc).__name__}: {exc}",
-            }
-
-    session_name = _BOX.session.resolved_session_name
-    if not session_name:
-        return {
-            "ok":    False,
-            "error": "No canonical session name available after resolve.",
-        }
-
-    # UTC ISO-style timestamp with Zulu suffix.  Lexicographically
-    # sortable, matches Session.session_ts (also UTC), and avoids
-    # local-time ambiguity when reading the bucket months later.
-    ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    remote_key = f"{session_name}/logs/snapshot_{ts}.log"
-
     try:
-        ok = _r2.upload_file(log_path, remote_key)
-    except Exception as exc:
-        logger.exception("[WEB] /api/save_log upload failed")
-        return {
-            "ok":    False,
-            "error": f"{type(exc).__name__}: {exc}",
-        }
-
-    if not ok:
-        return {
-            "ok":    False,
-            "error": (
-                "R2 upload returned False (see server log for the "
-                "underlying error)."
-            ),
-        }
-
-    # Best-effort: log the snapshot key INTO the same log that was just
-    # shipped, so a subsequent snapshot from the same session captures
-    # this trail too.
-    logger.info(f"[WEB] /api/save_log uploaded snapshot -> {remote_key}")
-    return {
-        "ok":      True,
-        "key":     remote_key,
-        "session": session_name,
-    }
+        remote_key, session_name = _snapshot_log_to_r2()
+    except Exception as exc:  # noqa: BLE001 — thin error envelope for the UI
+        return {"ok": False, "error": str(exc)}
+    return {"ok": True, "key": remote_key, "session": session_name}
 
 
 @app.post("/api/stop")
@@ -1467,6 +1491,9 @@ def api_stop() -> dict:
     setting the flag twice is a no-op).
     """
     _require_auth()
+    # The human Stop button is disabled while a queue runs; use the
+    # Sessions Queue Halt button instead (it drives _runner_halt).
+    _require_no_queue()
     stop_signal_request()
     task = _current_turn_task
     if task is not None and not task.done():
@@ -1807,6 +1834,7 @@ def api_db_options_post(body: _DbOptionsModeIn) -> dict:
     """Persist the 3-way mode choice.  Records the choice only — no
     read/write routing is wired to it yet (§6.3)."""
     _require_auth()
+    _require_no_queue()
     try:
         mode = _db_options.set_mode(body.mode)
     except ValueError as exc:
@@ -1864,6 +1892,7 @@ async def api_db_options_backfill(body: _BackfillIn) -> dict:
     Progress streams over /api/events (``backfill_log`` lines +
     ``backfill_done``).  Rejected with 409 if one is already running."""
     _require_auth()
+    _require_no_queue()
     global _BACKFILL_IN_FLIGHT
     if _BACKFILL_IN_FLIGHT:
         raise HTTPException(
@@ -1871,6 +1900,681 @@ async def api_db_options_backfill(body: _BackfillIn) -> dict:
     _BACKFILL_IN_FLIGHT = True
     asyncio.create_task(_run_backfill_in_background(bool(body.force)))
     return {"ok": True, "status": "started"}
+
+
+# ==========================================================================
+# Sessions Queue — overnight benchmark runner (server-side).
+# ==========================================================================
+# A single asyncio background task drives the ONE global session through a
+# queue of runs: for each run it ends any live session, applies the run's
+# LLM condition, builds a fresh session, sends the query, auto-sends the
+# continue-message while the reply is INTERMEDIATE (up to a per-run cap),
+# snapshots the log to R2, records the manifest, and resets — no
+# Database-Handler save (fast + no RAG contamination of Test 1).  The
+# manifest + queue-progress persist to previous_sessions/_sessions_queue/
+# (the only Railway-persistent volume) after every transition, so a
+# restart loses at most the in-flight run and can resume.  All human
+# mutating endpoints are 409-locked while it runs (see _require_no_queue).
+# Pure helpers (condition registry, classifier, persistence) live in
+# agents/shared/sessions_queue.py.
+
+class QueueRunIn(BaseModel):
+    run_id:           str | None = None
+    condition:        str = "current"
+    query:            str = ""
+    continue_message: str | None = None
+    timeout_min:      int | None = None
+    max_continues:    int | None = None
+
+
+class QueueStartIn(BaseModel):
+    runs:                     list[QueueRunIn] = Field(default_factory=list)
+    resume:                   bool = False
+    default_continue_message: str = "Proceed with the task as I had instructed you to"
+    default_timeout_min:      int = 60
+    default_max_continues:    int = 3
+    classifier_provider:      str = "openai"
+    classifier_model:         str = "gpt-5.4-mini"
+
+
+def _web_now_iso() -> str:
+    return datetime.now(timezone.utc).isoformat(timespec="seconds")
+
+
+def _dump_model(m: BaseModel) -> dict:
+    # pydantic v2 keeps ``.dict()`` as a deprecated alias; v1 has only it.
+    return m.model_dump() if hasattr(m, "model_dump") else m.dict()
+
+
+def _queue_progress(manifest: dict, *, current_index: int, stage: str,
+                    in_flight_run_id: "str | None", active: bool) -> dict:
+    return {
+        "queue_active":     active,
+        "current_index":    current_index,
+        "total":            len(manifest["runs"]),
+        "in_flight_run_id": in_flight_run_id,
+        "stage":            stage,
+        "updated_at":       _web_now_iso(),
+    }
+
+
+def _emit_runner(manifest: dict, progress: dict, line: "str | None" = None) -> None:
+    """Persist manifest + progress and publish a ``runner_status`` snapshot.
+
+    Newest-wins full-state (the viz_bus buffer drops oldest on overflow),
+    so the authoritative record is the on-disk manifest, not the SSE
+    stream — the browser may be closed overnight.
+    """
+    try:
+        sessions_queue.write_manifest(manifest)
+        sessions_queue.write_progress(progress)
+    except Exception:
+        logger.exception("[QUEUE] persist failed")
+    payload = {
+        "type":     "runner_status",
+        "progress": progress,
+        "runs": [
+            {
+                "run_id":     r["run_id"],
+                "status":     r["status"],
+                "condition":  r["condition"],
+                "continues":  r.get("continues", 0),
+                "note":       r.get("note"),
+                "session_id": r.get("session_id"),
+                "r2_key":     r.get("r2_key"),
+            }
+            for r in manifest["runs"]
+        ],
+    }
+    if line is not None:
+        payload["line"] = line
+    try:
+        viz_publish(payload)
+    except Exception:
+        logger.exception("[QUEUE] publish failed")
+
+
+# Tasks whose pipeline could not be joined after a timeout/halt within
+# _ORPHAN_JOIN_TIMEOUT_S.  A live orphan runs on a REAL threadpool thread,
+# so the NEXT turn must not clear the global stop flag (that would resurrect
+# the orphan to run CONCURRENTLY on the shared session / attempts dir).  The
+# runner refuses to start a new turn while any tracked orphan is still alive.
+_orphan_tasks: "list[asyncio.Task]" = []
+_ORPHAN_JOIN_TIMEOUT_S: float = 600.0
+
+
+class _OrphanAliveError(RuntimeError):
+    """A pipeline could not be joined after a timeout/halt and is still
+    running on a real threadpool thread.  While an orphan is alive the
+    process is unsafe (an uninterruptible turn we cannot kill), so the
+    runner stops the queue and the human-control lock stays engaged until
+    the orphan drains — see :func:`_live_orphans` / :func:`_require_no_queue`."""
+
+
+def _live_orphans() -> bool:
+    """Prune finished orphan tasks; return True if any is still running."""
+    _orphan_tasks[:] = [t for t in _orphan_tasks if not t.done()]
+    return bool(_orphan_tasks)
+
+
+async def _drive_one_turn(text: str, timeout_s: float):
+    """Drive ONE dispatch_turn on the global session with a hard timeout.
+
+    Returns the ``TurnResult`` on normal completion, or ``None`` on a
+    per-turn TIMEOUT (or error).  On HALT the turn unwinds via the stop
+    flag and returns a (possibly interrupted) ``TurnResult``; the caller
+    checks ``_runner_halt`` to treat it as interrupted.
+
+    Cancellation model — JOIN, never orphan-and-cancel.  ``run_in_threadpool``
+    runs ``dispatch_turn`` on a REAL OS thread, so cancelling the asyncio
+    task would only detach the awaiter while the thread keeps running the
+    whole pipeline; the next turn's ``stop_signal_clear`` would then
+    resurrect it to run concurrently on the shared session / attempts dir.
+    Instead, on timeout/halt we set the cooperative stop flag and WAIT for
+    the pipeline to unwind (bounded by ``_ORPHAN_JOIN_TIMEOUT_S``; the LLM
+    clients carry their own request timeout, so a realistic unwind is well
+    within it).  Only if it will not unwind is the task tracked as an
+    orphan, after which the runner refuses to start another turn.
+    """
+    global _TURN_IN_FLIGHT, _current_turn_task
+
+    # Never start a turn while a prior pipeline is still alive — the
+    # stop_signal_clear below would let it resume concurrently.
+    if _live_orphans():
+        raise _OrphanAliveError(
+            "A prior turn's pipeline is still unwinding; refusing to start "
+            "a new turn (would run two pipelines on the shared session).")
+
+    session = _ensure_session()
+    _TURN_IN_FLIGHT = True
+    stop_signal_clear()   # safe: no live orphan (checked above)
+    task = asyncio.ensure_future(
+        run_in_threadpool(
+            functools.partial(
+                dispatch_turn,
+                session=session,
+                user_input=text,
+                inputs_dir=USER_INPUTS_DIR,
+                fixed_params=None,
+                released_params=None,
+            )
+        )
+    )
+    _current_turn_task = task
+
+    # Retrieve any exception once the task is done so asyncio does not log
+    # a noisy "Task exception was never retrieved" for a tracked orphan.
+    def _consume(t: "asyncio.Task") -> None:
+        if not t.cancelled():
+            try:
+                t.exception()
+            except Exception:
+                pass
+    task.add_done_callback(_consume)
+
+    try:
+        # Poll in short slices so a halt is noticed within ~2 s instead of
+        # blocking for the whole (up to 60 min) per-turn timeout.
+        elapsed = 0.0
+        poll = 2.0
+        stop_now = False
+        while True:
+            done, _pending = await asyncio.wait({task}, timeout=poll)
+            if task in done:
+                break
+            elapsed += poll
+            if _runner_halt or elapsed >= timeout_s:
+                stop_now = True
+                break
+        if stop_now:
+            # Per-turn timeout OR halt.  Ask the pipeline to stop and JOIN
+            # it (never cancel — cancelling orphans the threadpool thread).
+            reason = "halt" if _runner_halt else "timeout"
+            logger.warning("[QUEUE] turn %s at %.0fs — requesting stop, "
+                           "joining pipeline unwind", reason, elapsed)
+            stop_signal_request()
+            joined, _ = await asyncio.wait({task}, timeout=_ORPHAN_JOIN_TIMEOUT_S)
+            if task not in joined:
+                logger.error(
+                    "[QUEUE] pipeline did NOT unwind within %.0fs after stop; "
+                    "tracking as orphan and stopping the queue.",
+                    _ORPHAN_JOIN_TIMEOUT_S)
+                _orphan_tasks.append(task)
+                raise _OrphanAliveError(
+                    f"pipeline did not unwind within "
+                    f"{_ORPHAN_JOIN_TIMEOUT_S:.0f}s after stop")
+            return None
+        # Completed within the turn timeout (this includes a halt whose
+        # stop flag made dispatch_turn return an interrupted TurnResult —
+        # the caller inspects _runner_halt).
+        try:
+            return task.result()
+        except Exception as exc:
+            logger.exception("[QUEUE] turn raised: %s", exc)
+            return None
+    finally:
+        _TURN_IN_FLIGHT = False
+        _current_turn_task = None
+
+
+async def _run_queue_in_background(manifest: dict) -> None:
+    global _QUEUE_IN_FLIGHT, _runner_halt
+    runs = manifest["runs"]
+    defaults = manifest["defaults"]
+    # Routing captured at queue start (write_updates-shaped).  'current'
+    # runs restore THIS baseline (not "whatever the previous run left"),
+    # and the finally block restores it so the user's next normal chat is
+    # unaffected by the last run's condition.
+    baseline = manifest.get("baseline_routing")
+    halted = False
+    try:
+        for i, run in enumerate(runs):
+            if _runner_halt:
+                break
+            if run["status"] in sessions_queue.TERMINAL_STATES:
+                continue  # resume: already finished, skip
+
+            run["status"] = "running"
+            run["started_at"] = _web_now_iso()
+            run["continues"] = 0
+            run["note"] = None
+            _emit_runner(
+                manifest,
+                _queue_progress(manifest, current_index=i, stage="condition",
+                                in_flight_run_id=run["run_id"], active=True),
+                f"[{run['run_id']}] start · condition="
+                f"{sessions_queue.condition_label(run['condition'])}",
+            )
+
+            # 1. Clean slate so the condition binds at the next build
+            #    (end -> write -> build; a mid-session write is a no-op).
+            #    A failed teardown fails ONLY this run, never the night.
+            if _BOX.session is not None:
+                try:
+                    await run_in_threadpool(_end_session, False)
+                except Exception as exc:
+                    run["status"] = "failed"
+                    run["note"] = f"pre-run session teardown failed: {exc}"
+                    run["finished_at"] = _web_now_iso()
+                    _emit_runner(
+                        manifest,
+                        _queue_progress(manifest, current_index=i, stage="turn",
+                                        in_flight_run_id=run["run_id"], active=True),
+                        f"[{run['run_id']}] FAILED — {run['note']}",
+                    )
+                    continue
+
+            # 2. Apply the LLM condition.  'current' restores the captured
+            #    baseline (deterministic, no drift); a named condition uses
+            #    its payload.  None (no baseline captured) leaves routing.
+            if run["condition"] == "current":
+                payload = baseline
+            else:
+                payload = sessions_queue.routing_payload_for(run["condition"])
+            if payload is not None:
+                try:
+                    await run_in_threadpool(
+                        settings_llm_routing.write_updates, payload)
+                except Exception as exc:
+                    run["status"] = "failed"
+                    run["note"] = f"condition write failed: {exc}"
+                    run["finished_at"] = _web_now_iso()
+                    _emit_runner(
+                        manifest,
+                        _queue_progress(manifest, current_index=i, stage="turn",
+                                        in_flight_run_id=run["run_id"], active=True),
+                        f"[{run['run_id']}] FAILED — {run['note']}",
+                    )
+                    continue
+
+            # 3. Build the run's session.  A build failure fails ONLY this
+            #    run (not the whole overnight queue) — mark it and move on.
+            _emit_runner(
+                manifest,
+                _queue_progress(manifest, current_index=i, stage="build",
+                                in_flight_run_id=run["run_id"], active=True),
+                f"[{run['run_id']}] building session",
+            )
+            try:
+                await run_in_threadpool(_build_session)
+            except Exception as exc:
+                run["status"] = "failed"
+                run["note"] = f"session build failed: {exc}"
+                run["finished_at"] = _web_now_iso()
+                _emit_runner(
+                    manifest,
+                    _queue_progress(manifest, current_index=i, stage="turn",
+                                    in_flight_run_id=run["run_id"], active=True),
+                    f"[{run['run_id']}] FAILED — {run['note']}",
+                )
+                continue
+
+            # 4. Drive the query; auto-Continue while INTERMEDIATE.
+            timeout_min = run.get("timeout_min") or defaults["timeout_min"]
+            max_continues = (run["max_continues"]
+                             if run.get("max_continues") is not None
+                             else defaults["max_continues"])
+            cont_msg = run.get("continue_message") or defaults["continue_message"]
+            text = run["query"]
+            reached_final = False
+            orphan_stop = False
+            while True:
+                if _runner_halt:
+                    run["status"] = "interrupted"
+                    run["note"] = "halted by user"
+                    break
+                _emit_runner(
+                    manifest,
+                    _queue_progress(manifest, current_index=i, stage="turn",
+                                    in_flight_run_id=run["run_id"], active=True),
+                    f"[{run['run_id']}] sending turn (timeout {timeout_min}m)",
+                )
+                try:
+                    result = await _drive_one_turn(
+                        text, float(timeout_min) * 60.0)
+                except _OrphanAliveError as exc:
+                    # A turn could not be interrupted and is still running on
+                    # a threadpool thread.  Do NOT snapshot/end this run (they
+                    # would collide with the live orphan on the log / attempts
+                    # dir / session) — record it failed and stop the queue.
+                    # _require_no_queue keeps human controls locked until the
+                    # orphan drains.
+                    run["status"] = "failed"
+                    run["note"] = f"pipeline orphaned (uninterruptible): {exc}"
+                    orphan_stop = True
+                    _emit_runner(
+                        manifest,
+                        _queue_progress(manifest, current_index=i, stage="turn",
+                                        in_flight_run_id=run["run_id"], active=True),
+                        f"[{run['run_id']}] ORPHANED — stopping queue; controls "
+                        f"stay locked until the stuck turn drains",
+                    )
+                    break
+                # Halt is checked FIRST: a halt makes the in-flight turn
+                # unwind via the stop flag and return a normal (interrupted)
+                # TurnResult, so this must win over classifying that reply.
+                if _runner_halt:
+                    run["status"] = "interrupted"
+                    run["note"] = "halted by user"
+                    break
+                if result is None:
+                    run["status"] = "failed"
+                    run["note"] = (f"turn timed out or errored "
+                                   f"(> {timeout_min} min)")
+                    break
+
+                reply = getattr(result, "reply_text", "") or ""
+                _emit_runner(
+                    manifest,
+                    _queue_progress(manifest, current_index=i, stage="classify",
+                                    in_flight_run_id=run["run_id"], active=True),
+                    f"[{run['run_id']}] classifying reply ({len(reply)} chars)",
+                )
+                verdict = await run_in_threadpool(
+                    functools.partial(
+                        sessions_queue.classify_reply, run["query"], reply,
+                        provider=defaults["classifier_provider"],
+                        model=defaults["classifier_model"],
+                    )
+                )
+                if verdict.get("error"):
+                    run["status"] = "needs_review"
+                    run["note"] = f"classifier error: {verdict.get('reason', '')}"
+                    _emit_runner(
+                        manifest,
+                        _queue_progress(manifest, current_index=i, stage="turn",
+                                        in_flight_run_id=run["run_id"], active=True),
+                        f"[{run['run_id']}] NEEDS REVIEW — {run['note']}",
+                    )
+                    break
+                if verdict["verdict"] == "final":
+                    reached_final = True
+                    break
+
+                run["continues"] = run.get("continues", 0) + 1
+                if run["continues"] > max_continues:
+                    run["status"] = "needs_review"
+                    run["note"] = (f"still intermediate after "
+                                   f"{max_continues} continue(s)")
+                    _emit_runner(
+                        manifest,
+                        _queue_progress(manifest, current_index=i, stage="turn",
+                                        in_flight_run_id=run["run_id"], active=True),
+                        f"[{run['run_id']}] NEEDS REVIEW — {run['note']}",
+                    )
+                    break
+                _emit_runner(
+                    manifest,
+                    _queue_progress(manifest, current_index=i, stage="continue",
+                                    in_flight_run_id=run["run_id"], active=True),
+                    f"[{run['run_id']}] intermediate → continue #{run['continues']}",
+                )
+                text = cont_msg
+
+            if orphan_stop:
+                # Skip snapshot + reset (they touch the log / attempts dir /
+                # session the orphan is still writing).  Persist the run
+                # record and stop the whole queue.
+                run["finished_at"] = _web_now_iso()
+                _emit_runner(
+                    manifest,
+                    _queue_progress(manifest, current_index=i, stage="orphaned",
+                                    in_flight_run_id=None, active=True),
+                    "[queue] STOPPED — a turn could not be interrupted; human "
+                    "controls stay locked until it drains or the app restarts",
+                )
+                break
+
+            if run["status"] == "running":
+                run["status"] = "done" if reached_final else "needs_review"
+
+            # 5. Snapshot the log to R2 while the session is still live.
+            _emit_runner(
+                manifest,
+                _queue_progress(manifest, current_index=i, stage="snapshot",
+                                in_flight_run_id=run["run_id"], active=True),
+                f"[{run['run_id']}] snapshotting log to R2",
+            )
+            try:
+                key, sess_name = await run_in_threadpool(_snapshot_log_to_r2)
+                run["r2_key"] = key
+                run["session_id"] = sess_name
+            except Exception as exc:
+                prev = run.get("note")
+                run["note"] = ((prev + " | ") if prev else "") + \
+                    f"log snapshot failed: {exc}"
+                try:
+                    if _BOX.session is not None:
+                        run["session_id"] = (
+                            _BOX.session.resolved_session_name
+                            or _BOX.session.session_id)
+                except Exception:
+                    pass
+
+            run["finished_at"] = _web_now_iso()
+
+            # 6. Reset the session — fast path, NO Database-Handler save.
+            _emit_runner(
+                manifest,
+                _queue_progress(manifest, current_index=i, stage="reset",
+                                in_flight_run_id=run["run_id"], active=True),
+                f"[{run['run_id']}] {run['status'].upper()} · ending session",
+            )
+            if _BOX.session is not None:
+                try:
+                    await run_in_threadpool(_end_session, False)
+                except Exception as exc:
+                    # Non-fatal here — the run is already finalized; the
+                    # next run's step-1 teardown will retry.  Just note it.
+                    prev = run.get("note")
+                    run["note"] = ((prev + " | ") if prev else "") + \
+                        f"post-run session teardown failed: {exc}"
+                    logger.exception("[QUEUE] post-run _end_session failed")
+            # A silently-failed archive would leave inputs/ populated and
+            # contaminate the next run (dispatch reads whatever is on disk).
+            try:
+                if INPUT_IMAGES_DIR.exists():
+                    leftover = [p.name for p in INPUT_IMAGES_DIR.glob("*")
+                                if p.is_file()]
+                    if leftover:
+                        logger.warning(
+                            "[QUEUE] inputs/input_images not clear after run "
+                            "%s: %s", run["run_id"], leftover)
+            except Exception:
+                pass
+
+            if _runner_halt:
+                break
+    except Exception as exc:  # noqa: BLE001 — always release the guard
+        logger.exception("[QUEUE] runner crashed: %s", exc)
+    finally:
+        halted = halted or _runner_halt
+        # Restore the pre-queue routing so the user's next normal chat is
+        # not left running under the last run's condition.  Safe even with a
+        # live orphan: write_updates only rewrites the .env / settings files,
+        # which a mid-flight dispatch_turn has already read and will not
+        # re-read.  Best-effort — a failure is logged, not fatal.
+        if baseline is not None:
+            try:
+                await run_in_threadpool(
+                    settings_llm_routing.write_updates, baseline)
+                logger.info("[QUEUE] restored pre-queue LLM routing")
+            except Exception:
+                logger.exception("[QUEUE] failed to restore pre-queue routing")
+        _QUEUE_IN_FLIGHT = False
+        _runner_halt = False
+        orphaned = _live_orphans()
+        if halted:
+            final_stage, final_line = "halted", "[queue] halted by user"
+        elif orphaned:
+            final_stage, final_line = (
+                "orphaned",
+                "[queue] STOPPED — a turn is stuck; controls locked until it "
+                "drains or the app restarts")
+        else:
+            final_stage, final_line = "done", "[queue] complete"
+        _emit_runner(
+            manifest,
+            _queue_progress(manifest, current_index=len(runs),
+                            stage=final_stage,
+                            in_flight_run_id=None, active=False),
+            final_line,
+        )
+        logger.info("[QUEUE] finished (halted=%s, orphaned=%s)",
+                    halted, orphaned)
+
+
+def _capture_routing_baseline() -> "dict | None":
+    """Snapshot the current LLM routing as a ``write_updates``-shaped
+    payload so the runner can resolve ``'current'`` deterministically and
+    restore the routing when the queue ends.  Returns ``None`` if it
+    cannot be read (routing then left untouched)."""
+    try:
+        st = settings_llm_routing.read_state()
+        agents = []
+        for a in st.get("agents", []):
+            op = (a.get("override_provider") or "").strip()
+            om = (a.get("override_model") or "").strip()
+            if not (op and om):   # write_updates rejects partial overrides
+                op, om = "", ""
+            agents.append({"key": a["key"],
+                           "override_provider": op, "override_model": om})
+        shared = st.get("shared", {}) or {}
+        return {
+            "mode":   st.get("mode", "individual"),
+            "shared": {"provider": shared.get("provider", "openai"),
+                       "model": shared.get("model", "")},
+            "agents": agents,
+        }
+    except Exception:
+        logger.exception("[QUEUE] could not capture routing baseline")
+        return None
+
+
+@app.get("/api/queue/conditions")
+def api_queue_conditions() -> dict:
+    """LLM-condition dropdown options for the Sessions Queue editor."""
+    _require_auth()
+    return {"conditions": sessions_queue.list_conditions()}
+
+
+@app.get("/api/queue/state")
+def api_queue_state() -> dict:
+    """Manifest + queue-progress so the view can hydrate on open/refresh."""
+    _require_auth()
+    manifest = sessions_queue.read_manifest()
+    orphan_active = _live_orphans()
+    return {
+        "queue_active":  _QUEUE_IN_FLIGHT,
+        "orphan_active": orphan_active,
+        "manifest":      manifest,
+        "progress":      sessions_queue.read_progress(),
+        "resumable":     (sessions_queue.has_resumable(manifest)
+                          and not _QUEUE_IN_FLIGHT and not orphan_active),
+    }
+
+
+@app.post("/api/queue/start", status_code=202)
+async def api_queue_start(body: QueueStartIn) -> dict:
+    """Start (or resume) the overnight runner as a background task."""
+    _require_auth()
+    global _QUEUE_IN_FLIGHT, _runner_halt
+    if _QUEUE_IN_FLIGHT:
+        raise HTTPException(status_code=409,
+                            detail="A Sessions Queue is already running.")
+    if _TURN_IN_FLIGHT or _END_IN_FLIGHT:
+        raise HTTPException(
+            status_code=409,
+            detail=("A chat turn or End Session is in flight — wait for it "
+                    "to finish before starting a queue."),
+        )
+    if _live_orphans():
+        raise HTTPException(
+            status_code=409,
+            detail=("A prior pipeline is still unwinding (an uninterruptible "
+                    "turn) — wait for it to drain or restart the app before "
+                    "starting a new queue."),
+        )
+
+    dcm = (body.default_continue_message or "").strip() \
+        or "Proceed with the task as I had instructed you to"
+    dtm = int(body.default_timeout_min) if (body.default_timeout_min
+                                            and body.default_timeout_min > 0) else 60
+    dmc = int(body.default_max_continues) if (body.default_max_continues
+                                              is not None
+                                              and body.default_max_continues >= 0) else 3
+    defaults = {
+        "continue_message":    dcm,
+        "timeout_min":         dtm,
+        "max_continues":       dmc,
+        "classifier_provider": (body.classifier_provider or "openai").strip().lower(),
+        "classifier_model":    (body.classifier_model or "gpt-5.4-mini").strip(),
+    }
+
+    # Fail fast: a classifier whose API key is absent would error on the
+    # FIRST reply of EVERY run (→ needs_review), wasting the whole night.
+    if not sessions_queue.classifier_key_present(defaults["classifier_provider"]):
+        raise HTTPException(
+            status_code=400,
+            detail=(f"Classifier provider {defaults['classifier_provider']!r} "
+                    f"has no API key set in the environment — set it or "
+                    f"choose a provider whose key is present."),
+        )
+
+    if body.resume:
+        manifest = sessions_queue.read_manifest()
+        if not sessions_queue.has_resumable(manifest):
+            raise HTTPException(
+                status_code=400,
+                detail="No resumable queue on disk (nothing pending).")
+        manifest["defaults"] = defaults  # honour any edited view-level defaults
+        # Keep the baseline captured at the original start if present;
+        # else capture the current routing now.
+        if not manifest.get("baseline_routing"):
+            manifest["baseline_routing"] = _capture_routing_baseline()
+    else:
+        try:
+            manifest = sessions_queue.build_manifest(
+                runs=[_dump_model(r) for r in body.runs], defaults=defaults)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
+        manifest["baseline_routing"] = _capture_routing_baseline()
+
+    _QUEUE_IN_FLIGHT = True
+    _runner_halt = False
+    try:
+        sessions_queue.write_manifest(manifest)
+        sessions_queue.write_progress(
+            _queue_progress(manifest, current_index=0, stage="starting",
+                            in_flight_run_id=None, active=True))
+    except Exception:
+        logger.exception("[QUEUE] initial persist failed")
+    asyncio.create_task(_run_queue_in_background(manifest))
+    logger.info("[QUEUE] started — %d run(s), resume=%s",
+                len(manifest["runs"]), body.resume)
+    return {"ok": True, "status": "started", "total": len(manifest["runs"])}
+
+
+@app.post("/api/queue/halt")
+def api_queue_halt() -> dict:
+    """Halt the running queue: stop after the in-flight turn unwinds.
+
+    Sets the runner-owned halt flag + the cooperative stop signal.  It
+    does NOT ``.cancel()`` the in-flight turn task: cancelling would
+    detach the awaiter while the real threadpool thread keeps running the
+    pipeline (an orphan).  Instead the stop flag makes ``dispatch_turn``
+    return an interrupted result at its next poll; ``_drive_one_turn``
+    joins it and the runner marks the run ``interrupted``.  Returns 202
+    immediately, so the UI never blocks on the unwind.
+    """
+    _require_auth()
+    global _runner_halt
+    if not _QUEUE_IN_FLIGHT:
+        return {"ok": False, "error": "No queue is running."}
+    _runner_halt = True
+    stop_signal_request()
+    logger.info("[QUEUE] halt requested by user")
+    return {"ok": True}
 
 
 class DhScheduleIn(BaseModel):
@@ -2115,6 +2819,9 @@ async def api_db_admin_clear_previous_sessions(
             "ok": False,
             "error": f"Phrase must be exactly {CLEAR_PREV_SESSIONS_PHRASE!r}.",
         }
+    # PREVIOUS_SESSIONS_DIR holds the live Sessions Queue manifest +
+    # every finished-run archive while a queue runs — refuse to wipe it.
+    _require_no_queue()
 
     import shutil
     from config import PREVIOUS_SESSIONS_DIR
@@ -2415,6 +3122,7 @@ def api_images_list() -> dict:
 @app.post("/api/images")
 async def api_images_upload(files: list[UploadFile] = File(...)) -> dict:
     _require_auth()
+    _require_no_queue()
     saved: list[str] = []
     errors: list[str] = []
     for f in files:
@@ -2475,6 +3183,7 @@ def api_images_note_get(name: str) -> dict:
 @app.post("/api/images/note")
 def api_images_note_save(body: ImageNoteIn) -> dict:
     _require_auth()
+    _require_no_queue()
     image = _safe_image_path(body.name)
     if not image.is_file():
         raise HTTPException(status_code=404, detail="Image not found.")
@@ -2486,6 +3195,7 @@ def api_images_note_save(body: ImageNoteIn) -> dict:
 @app.post("/api/images/note/reset")
 def api_images_note_reset(body: ImageNameIn) -> dict:
     _require_auth()
+    _require_no_queue()
     image = _safe_image_path(body.name)
     # Keep the .txt alive (pairing requires it) but empty its content.
     _note_path_for(image).write_text("", encoding="utf-8")
@@ -2496,6 +3206,7 @@ def api_images_note_reset(body: ImageNameIn) -> dict:
 @app.delete("/api/images")
 def api_images_delete(name: str) -> dict:
     _require_auth()
+    _require_no_queue()
     image = _safe_image_path(name)
     note = _note_path_for(image)
     if image.exists():
@@ -2574,6 +3285,7 @@ def api_images_compression_save(body: ImageCompressionIn) -> dict:
     """Persist the chosen degree in the image's sidecar (agents apply it on
     load; the original file is never modified)."""
     _require_auth()
+    _require_no_queue()
     image = _safe_image_path(body.name)
     if not image.is_file():
         raise HTTPException(status_code=404, detail="Image not found.")
@@ -2878,6 +3590,19 @@ async def api_events() -> StreamingResponse:
                         "errors":        evt.get("errors"),
                         "rows_inserted": evt.get("rows_inserted"),
                         "error":         evt.get("error"),
+                    }
+                    yield f"data: {json.dumps(payload)}\n\n"
+                elif evt.get("type") == "runner_status":
+                    # Sessions Queue overnight runner — live status snapshot
+                    # (newest-wins full state: progress + per-run summary +
+                    # an optional human-readable log line).  The authoritative
+                    # record is the on-disk manifest; this stream is for the
+                    # live view only.
+                    payload = {
+                        "type":     "runner_status",
+                        "progress": evt.get("progress"),
+                        "runs":     evt.get("runs", []),
+                        "line":     evt.get("line"),
                     }
                     yield f"data: {json.dumps(payload)}\n\n"
         finally:

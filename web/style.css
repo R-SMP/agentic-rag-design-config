@@ -4469,3 +4469,145 @@ button.danger:hover { background: #3a1d1d; }
 @media (max-width: 900px) {
   .db-opt-columns { flex-direction: column; }
 }
+
+/* ==========================================================================
+   Sessions Queue — overnight benchmark runner view.
+   ========================================================================== */
+.sessions-queue-view { overflow: hidden; }
+.sq-scroll {
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px 24px 40px;
+}
+.sq-head h2 { margin: 0 0 6px; }
+.sq-note { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0 0 18px; max-width: 900px; }
+.sq-scroll h3 { margin: 22px 0 10px; font-size: 15px; }
+.sq-sub { color: var(--muted); font-size: 12px; font-weight: normal; }
+
+/* Locked (queue running): gray out the editor sections but keep the
+   actions row (Halt) + progress + log fully interactive. */
+.sq-scroll.sq-locked .sq-defaults,
+.sq-scroll.sq-locked .sq-editor {
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+.sq-defaults-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 12px;
+}
+.sq-defaults-grid label,
+.sq-run-adv-box label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sq-defaults-grid input,
+.sq-defaults-grid select,
+.sq-run input,
+.sq-run select,
+.sq-run textarea,
+.sq-run-adv-box input {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: inherit;
+}
+
+.sq-editor-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.sq-runs { display: flex; flex-direction: column; gap: 12px; margin-top: 6px; }
+.sq-empty { color: var(--muted); font-size: 13px; }
+.sq-run {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 12px;
+}
+.sq-run-top { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
+.sq-run-id { width: 110px; flex: 0 0 auto; }
+.sq-run-cond { flex: 1 1 auto; min-width: 0; }
+.sq-run-query { width: 100%; box-sizing: border-box; resize: vertical; }
+.sq-run-adv-box {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 10px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px dashed var(--border);
+}
+button.danger-ghost {
+  border: 1px solid #7a2a2a;
+  background: transparent;
+  color: #ff9d9d;
+  border-radius: 6px;
+  padding: 6px 9px;
+  flex: 0 0 auto;
+}
+button.danger-ghost:hover { background: #3a1d1d; }
+
+.sq-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 18px;
+  flex-wrap: wrap;
+}
+button.danger {
+  background: var(--error);
+  border-color: var(--error);
+  color: #fff;
+}
+button.danger:hover:not(:disabled) { filter: brightness(1.1); }
+.sq-status { font-size: 13px; color: var(--muted); min-height: 18px; }
+.sq-status.ok { color: #4caf78; }
+.sq-status.err { color: var(--error); }
+
+.sq-progress-meta { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+.sq-progress-strip { display: flex; flex-wrap: wrap; gap: 8px; }
+.sq-chip {
+  display: inline-flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  background: var(--panel-2);
+  font-size: 12px;
+  font-weight: 600;
+  min-width: 76px;
+}
+.sq-chip small { font-weight: normal; color: var(--muted); font-size: 11px; }
+.sq-chip.sq-pending     { border-color: var(--border); }
+.sq-chip.sq-running     { border-color: var(--accent); box-shadow: inset 0 0 0 1px var(--accent); }
+.sq-chip.sq-done        { border-color: #2f7d54; }
+.sq-chip.sq-done small        { color: #6fd39b; }
+.sq-chip.sq-needs_review { border-color: #7a5e22; }
+.sq-chip.sq-needs_review small { color: #ffd98a; }
+.sq-chip.sq-failed      { border-color: #7a2a2a; }
+.sq-chip.sq-failed small      { color: #ff9d9d; }
+.sq-chip.sq-interrupted { border-color: #7a5e22; }
+
+.sq-log {
+  margin: 0;
+  padding: 12px 16px;
+  max-height: 320px;
+  overflow: auto;
+  background: #0b0d12;
+  color: #cfd3da;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: 12px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-word;
+}

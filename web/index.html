@@ -57,6 +57,9 @@
         </button>
       </div>
       <div class="nav-group">
+        <button class="nav-item" type="button" data-view="sessions_queue">
+          <span class="nav-ico">🗂️</span><span>Sessions Queue</span>
+        </button>
         <button class="nav-item" type="button" data-view="logstatus">
           <span class="nav-ico">📊</span><span>LOG and Status</span>
         </button>
@@ -340,6 +343,90 @@
       </section>
 
       <!-- 4. LOG and Status: agent-flow visualization + live session log -->
+      <!-- Sessions Queue: overnight benchmark runner (server-side). -->
+      <section class="view sessions-queue-view" data-view="sessions_queue" hidden>
+        <div class="sq-scroll" id="sq-scroll">
+          <div class="sq-head">
+            <h2>Sessions Queue</h2>
+            <p class="sq-note">
+              Run a queue of benchmark sessions unattended (overnight).
+              The runner drives each run <strong>server-side</strong> — you
+              can close the browser and turn off your laptop; reopen this
+              view any time to read progress.  Each run: set its LLM
+              condition, send the query, auto-send the continue-message
+              while the reply is intermediate (up to the cap), snapshot the
+              log to R2, then reset.  <strong>Halt</strong> stops after the
+              in-flight turn unwinds.
+            </p>
+          </div>
+
+          <div id="sq-run-banner" class="settings-lock-banner" hidden>
+            A Sessions Queue is running — the editor is locked.  Use
+            <strong>Halt</strong> to stop it.
+          </div>
+          <div id="sq-session-banner" class="settings-lock-banner" hidden>
+            A chat session is active — end it (Chat → End Session) before
+            starting a queue.
+          </div>
+
+          <div class="sq-defaults">
+            <h3>Defaults <span class="sq-sub">(per-run overrides win)</span></h3>
+            <div class="sq-defaults-grid">
+              <label>Continue message
+                <input id="sq-def-continue" type="text"
+                       value="Proceed with the task as I had instructed you to" />
+              </label>
+              <label>Timeout (min)
+                <input id="sq-def-timeout" type="number" min="1" step="1"
+                       value="60" />
+              </label>
+              <label>Max continues
+                <input id="sq-def-maxcont" type="number" min="0" step="1"
+                       value="3" />
+              </label>
+              <label>Classifier provider
+                <select id="sq-def-clsprov">
+                  <option value="openai">openai</option>
+                  <option value="anthropic">anthropic</option>
+                  <option value="google">google</option>
+                </select>
+              </label>
+              <label>Classifier model
+                <input id="sq-def-clsmodel" type="text" value="gpt-5.4-mini" />
+              </label>
+            </div>
+          </div>
+
+          <div class="sq-editor">
+            <div class="sq-editor-head">
+              <h3>Queue</h3>
+              <button id="sq-add-run" class="ghost" type="button">+ Add run</button>
+            </div>
+            <div id="sq-runs" class="sq-runs"></div>
+          </div>
+
+          <div class="sq-actions">
+            <button id="sq-start" class="primary" type="button">Start queue</button>
+            <button id="sq-resume" class="ghost" type="button" hidden>
+              Resume incomplete queue
+            </button>
+            <button id="sq-halt" class="danger" type="button" hidden>Halt</button>
+            <span id="sq-status" class="sq-status"></span>
+          </div>
+
+          <div class="sq-progress">
+            <h3>Progress</h3>
+            <div id="sq-progress-meta" class="sq-progress-meta">Not running.</div>
+            <div id="sq-progress-strip" class="sq-progress-strip"></div>
+          </div>
+
+          <div class="sq-log-wrap">
+            <h3>Runner log</h3>
+            <pre id="sq-log" class="sq-log"><span class="log-empty">(runner status will appear here)</span></pre>
+          </div>
+        </div>
+      </section>
+
       <section class="view logstatus-view" data-view="logstatus" hidden>
         <div class="flow-pane">
           <div class="flow-head">

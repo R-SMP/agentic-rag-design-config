@@ -932,6 +932,9 @@ function startEventStream() {
         } else if (data.type === "backfill_done") {
           // Terminal backfill signal — re-enable the button + summarise.
           dbOptFinalizeBackfill(data);
+        } else if (data.type === "runner_status") {
+          // Sessions Queue overnight runner — live status snapshot.
+          sqRenderStatus(data);
         }
       } catch (_) {
         /* ignore malformed event */
@@ -1084,6 +1087,7 @@ function switchView(name) {
   }
   if (name === "logstatus") startLogStream();
   else stopLogStream();
+  if (name === "sessions_queue") hydrateSessionsQueue();
   if (name === "questions") {
     loadQuestions();
     refreshSessionActive();
@@ -4262,6 +4266,308 @@ if (copyParametersBtn) {
     }
   });
 }
+
+// ---------------------------------------------------------------------------
+// Sessions Queue — overnight benchmark runner (client).
+// The server-side runner drives the sessions; this view is the queue
+// editor + live observability (progress strip + runner log).  Endpoints:
+//   GET  /api/queue/conditions   POST /api/queue/start
+//   GET  /api/queue/state        POST /api/queue/halt
+// Live status arrives as {type:"runner_status"} on the shared /api/events
+// stream (routed in startEventStream).  Because the runner is server-side,
+// correctness never depends on this view being open — it is display only.
+// ---------------------------------------------------------------------------
+let sqConditions = [{ id: "current", label: "Current settings (no change)" }];
+let sqRuns = [];
+let sqQueueActive = false;
+let sqRunCounter = 0;
+
+function sqEsc(s) {
+  return String(s == null ? "" : s).replace(
+    /[&<>"]/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;" }[c]));
+}
+
+function sqStatus(msg, kind) {
+  const el = document.getElementById("sq-status");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "sq-status" + (kind ? " " + kind : "");
+}
+
+async function loadSqConditions() {
+  try {
+    const data = await (await fetch("/api/queue/conditions")).json();
+    if (Array.isArray(data.conditions) && data.conditions.length) {
+      sqConditions = data.conditions;
+    }
+  } catch (_) { /* keep the fallback list */ }
+}
+
+function sqConditionOptions(selected) {
+  return sqConditions.map((c) =>
+    `<option value="${sqEsc(c.id)}"${c.id === selected ? " selected" : ""}>`
+    + `${sqEsc(c.label)}</option>`
+  ).join("");
+}
+
+function sqNewRun() {
+  sqRunCounter += 1;
+  return {
+    run_id: "run-" + String(sqRunCounter).padStart(2, "0"),
+    condition: "current",
+    query: "",
+    continue_message: "",
+    timeout_min: "",
+    max_continues: "",
+    _adv: false,
+  };
+}
+
+function sqRenderRuns() {
+  const host = document.getElementById("sq-runs");
+  if (!host) return;
+  if (!sqRuns.length) {
+    host.innerHTML = `<p class="sq-empty">No runs yet — click “+ Add run”.</p>`;
+    return;
+  }
+  host.innerHTML = sqRuns.map((run, i) => `
+    <div class="sq-run" data-idx="${i}">
+      <div class="sq-run-top">
+        <input class="sq-run-id" type="text" value="${sqEsc(run.run_id)}"
+               data-k="run_id" placeholder="run id" />
+        <select class="sq-run-cond" data-k="condition">${sqConditionOptions(run.condition)}</select>
+        <button class="sq-run-adv ghost" type="button" title="Per-run overrides">⚙</button>
+        <button class="sq-run-del danger-ghost" type="button" title="Remove run">✕</button>
+      </div>
+      <textarea class="sq-run-query" data-k="query" rows="3"
+        placeholder="The full prompt to send for this run…">${sqEsc(run.query)}</textarea>
+      <div class="sq-run-adv-box" ${run._adv ? "" : "hidden"}>
+        <label>Continue message
+          <input class="sq-run-cont" type="text" data-k="continue_message"
+                 value="${sqEsc(run.continue_message)}" placeholder="(use default)" />
+        </label>
+        <label>Timeout min
+          <input class="sq-run-to" type="number" min="1" step="1" data-k="timeout_min"
+                 value="${sqEsc(run.timeout_min)}" placeholder="(default)" />
+        </label>
+        <label>Max continues
+          <input class="sq-run-mc" type="number" min="0" step="1" data-k="max_continues"
+                 value="${sqEsc(run.max_continues)}" placeholder="(default)" />
+        </label>
+      </div>
+    </div>
+  `).join("");
+}
+
+// Delegated editor events (survive innerHTML re-renders — listener is on
+// the stable #sq-runs parent).
+(function sqWireEditor() {
+  const host = document.getElementById("sq-runs");
+  if (!host) return;
+  host.addEventListener("input", (ev) => {
+    const row = ev.target.closest(".sq-run");
+    if (!row) return;
+    const i = Number(row.dataset.idx);
+    const k = ev.target.dataset.k;
+    if (!Number.isInteger(i) || !k || !sqRuns[i]) return;
+    sqRuns[i][k] = ev.target.value;
+  });
+  host.addEventListener("click", (ev) => {
+    const row = ev.target.closest(".sq-run");
+    if (!row) return;
+    const i = Number(row.dataset.idx);
+    if (!sqRuns[i]) return;
+    if (ev.target.classList.contains("sq-run-del")) {
+      sqRuns.splice(i, 1);
+      sqRenderRuns();
+    } else if (ev.target.classList.contains("sq-run-adv")) {
+      sqRuns[i]._adv = !sqRuns[i]._adv;
+      sqRenderRuns();
+    }
+  });
+})();
+
+function sqNumOrNull(v) {
+  const n = parseInt(v, 10);
+  return Number.isFinite(n) ? n : null;
+}
+
+function sqVal(id, fallback) {
+  const el = document.getElementById(id);
+  return el && el.value !== "" ? el.value : fallback;
+}
+
+function sqCollectStart() {
+  const dmcRaw = sqNumOrNull((document.getElementById("sq-def-maxcont") || {}).value);
+  return {
+    runs: sqRuns.map((r) => ({
+      run_id: (r.run_id || "").trim() || null,
+      condition: r.condition || "current",
+      query: r.query || "",
+      continue_message: (r.continue_message || "").trim() || null,
+      timeout_min: sqNumOrNull(r.timeout_min),
+      max_continues: sqNumOrNull(r.max_continues),
+    })),
+    resume: false,
+    default_continue_message:
+      sqVal("sq-def-continue", "Proceed with the task as I had instructed you to"),
+    default_timeout_min: sqNumOrNull((document.getElementById("sq-def-timeout") || {}).value) || 60,
+    default_max_continues: dmcRaw == null ? 3 : dmcRaw,
+    classifier_provider: sqVal("sq-def-clsprov", "openai"),
+    classifier_model: sqVal("sq-def-clsmodel", "gpt-5.4-mini"),
+  };
+}
+
+async function sqStart(resume) {
+  const payload = sqCollectStart();
+  payload.resume = !!resume;
+  if (!resume && !payload.runs.some((r) => (r.query || "").trim())) {
+    sqStatus("Add at least one run with a query.", "err");
+    return;
+  }
+  sqStatus(resume ? "Resuming…" : "Starting…");
+  try {
+    const r = await fetch("/api/queue/start", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    const data = await r.json().catch(() => ({}));
+    if (!r.ok) {
+      sqStatus(data.detail || ("Start failed (HTTP " + r.status + ")"), "err");
+      return;
+    }
+    sqStatus("Started — " + (data.total || 0) + " run(s).", "ok");
+    sqApplyLock({ queueActive: true });
+  } catch (e) {
+    sqStatus("Start failed: " + e, "err");
+  }
+}
+
+async function sqHalt() {
+  if (!confirm("Halt the running queue after the current turn?")) return;
+  sqStatus("Halting…");
+  try {
+    const data = await (await fetch("/api/queue/halt", { method: "POST" })).json()
+      .catch(() => ({}));
+    if (data.ok) sqStatus("Halt requested — stopping after the in-flight turn.", "ok");
+    else sqStatus(data.error || "Halt failed.", "err");
+  } catch (e) {
+    sqStatus("Halt failed: " + e, "err");
+  }
+}
+
+function sqApplyLock({ queueActive, sessionActive }) {
+  if (typeof queueActive === "boolean") sqQueueActive = queueActive;
+  const sessActive = !!sessionActive;
+  const runBanner = document.getElementById("sq-run-banner");
+  const sessBanner = document.getElementById("sq-session-banner");
+  const scroll = document.getElementById("sq-scroll");
+  const start = document.getElementById("sq-start");
+  const halt = document.getElementById("sq-halt");
+  const add = document.getElementById("sq-add-run");
+  const resume = document.getElementById("sq-resume");
+  if (runBanner) runBanner.hidden = !sqQueueActive;
+  if (scroll) scroll.classList.toggle("sq-locked", sqQueueActive);
+  if (halt) halt.hidden = !sqQueueActive;
+  if (start) start.disabled = sqQueueActive || sessActive;
+  if (add) add.disabled = sqQueueActive;
+  // Resume only makes sense when nothing is running; never during a queue.
+  if (resume && sqQueueActive) resume.hidden = true;
+  if (sessBanner && typeof sessionActive === "boolean") {
+    sessBanner.hidden = sqQueueActive || !sessionActive;
+  }
+}
+
+function sqRenderStrip(runs, progress) {
+  const strip = document.getElementById("sq-progress-strip");
+  const meta = document.getElementById("sq-progress-meta");
+  if (strip) {
+    if (!runs || !runs.length) {
+      strip.innerHTML = `<span class="sq-empty">No queue.</span>`;
+    } else {
+      strip.innerHTML = runs.map((r) => {
+        const st = r.status || "pending";
+        const cont = r.continues ? ` ·${r.continues}c` : "";
+        const tip = r.r2_key || r.note || "";
+        const tattr = tip ? ` title="${sqEsc(tip)}"` : "";
+        return `<span class="sq-chip sq-${sqEsc(st)}"${tattr}>${sqEsc(r.run_id)}`
+          + `<small>${sqEsc(st)}${cont}</small></span>`;
+      }).join("");
+    }
+  }
+  if (meta && progress) {
+    const terminal = ["done", "needs_review", "failed"];
+    const done = (runs || []).filter((r) => terminal.includes(r.status)).length;
+    meta.textContent =
+      `${progress.queue_active ? "Running" : "Idle"} · `
+      + `${done}/${progress.total || (runs || []).length} finished`
+      + (progress.in_flight_run_id
+        ? ` · now: ${progress.in_flight_run_id} (${progress.stage || ""})` : "")
+      + (progress.updated_at ? ` · ${progress.updated_at}` : "");
+  }
+}
+
+function sqLogLine(line) {
+  const el = document.getElementById("sq-log");
+  if (!el || !line) return;
+  const empty = el.querySelector(".log-empty");
+  if (empty) empty.remove();
+  el.appendChild(document.createTextNode(line + "\n"));
+  el.scrollTop = el.scrollHeight;
+}
+
+function sqRenderStatus(data) {
+  if (data.line) sqLogLine(data.line);
+  sqRenderStrip(data.runs, data.progress);
+  if (data.progress && typeof data.progress.queue_active === "boolean") {
+    sqApplyLock({ queueActive: data.progress.queue_active });
+    if (data.progress.queue_active === false) {
+      // Queue just ended — refresh the Resume affordance (a halt leaves
+      // pending runs; a full completion leaves none).
+      fetch("/api/queue/state").then((r) => r.json()).then((st) => {
+        const rb = document.getElementById("sq-resume");
+        if (rb) rb.hidden = !st.resumable;
+      }).catch(() => {});
+    }
+  }
+}
+
+async function hydrateSessionsQueue() {
+  await loadSqConditions();
+  if (!sqRuns.length) sqRuns = [sqNewRun()];
+  sqRenderRuns();
+  try {
+    const cfg = await (await fetch("/api/config")).json();
+    const st = await (await fetch("/api/queue/state")).json();
+    sqApplyLock({ queueActive: !!st.queue_active, sessionActive: !!cfg.session_active });
+    const runs = (st.manifest && st.manifest.runs) ? st.manifest.runs : [];
+    sqRenderStrip(runs, st.progress);
+    const resumeBtn = document.getElementById("sq-resume");
+    if (resumeBtn) resumeBtn.hidden = !st.resumable;
+    // Rare recovery state: a turn is stuck and un-interruptible, so the
+    // backend keeps controls 409-locked even though the queue itself has
+    // released.  Reflect it so Start/Resume aren't offered in vain.
+    if (st.orphan_active) {
+      const start = document.getElementById("sq-start");
+      if (start) start.disabled = true;
+      if (resumeBtn) resumeBtn.hidden = true;
+      sqStatus("A prior turn is stuck and could not be interrupted — "
+        + "controls stay locked until it drains or the app restarts.", "err");
+    }
+  } catch (_) { /* leave defaults in place */ }
+}
+
+(function sqWireActions() {
+  const add = document.getElementById("sq-add-run");
+  const start = document.getElementById("sq-start");
+  const resume = document.getElementById("sq-resume");
+  const halt = document.getElementById("sq-halt");
+  if (add) add.addEventListener("click", () => { sqRuns.push(sqNewRun()); sqRenderRuns(); });
+  if (start) start.addEventListener("click", () => sqStart(false));
+  if (resume) resume.addEventListener("click", () => sqStart(true));
+  if (halt) halt.addEventListener("click", sqHalt);
+})();
 
 init();
 startEventStream();
