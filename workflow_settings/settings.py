@@ -101,7 +101,7 @@ GEOMETRY_BACKEND: str = "feg"
 # build, matching the broader "next session" semantics).
 #
 # Valid values: True, False
-RAG_ENABLED: bool = True
+RAG_ENABLED: bool = False
 
 
 # ===========================================================
