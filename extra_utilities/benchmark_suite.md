@@ -479,16 +479,51 @@ recorded.
 | 2 | **All-medium** (OpenAI → `gpt-5.4`) | run → `GPT_5_4/` |
 | 3 | **All-low** (Anthropic + OpenAI → `claude-haiku-4-5`, `gpt-5.4-mini`) | run → `CLAUDE_HAIKU_4_5/`, `GPT_5_4_mini/` |
 | 4 | **High + medium** mix | **SKIPPED** (saving money) |
-| 5 | **High + medium + low**, a **different LLM per agent** | **TO BE BUILT** (with the team) |
+| 5 | **High + medium + low**, a **different LLM per agent** | **built** (see below); run pending |
 
-Subject 5's per-agent assignment will be set from the tier table above, using
-each agent's reasoning and context-window needs. **Hypothesis:** Subject 1 first
-in quality, Subject 4 second, Subject 5 third — but Subject 5 with the lowest
-cost and time, making it the **best compromise**.
+**Hypothesis:** Subject 1 first in quality, Subject 4 second, Subject 5 third —
+but Subject 5 with the lowest cost and time, making it the **best compromise**.
+
+**Subject 5 — the per-agent tiering.** Chosen by **reasoning demand** (context
+window is not binding — every tier is ≥ 200k and peak usage was ~30k). The
+*same* tier assignment runs on both providers, so Subject 5 is two benchmark
+runs (OpenAI models, Anthropic models).
+
+| Agent (function) | Tier | OpenAI | Anthropic |
+|---|---|---|---|
+| User Input Inspector (perceive) | HIGH | `gpt-5.5` | `claude-opus-4-8` |
+| DC Input Inspector (validate) | HIGH | `gpt-5.5` | `claude-opus-4-8` |
+| DC Output Inspector (critique) | HIGH | `gpt-5.5` | `claude-opus-4-8` |
+| DC Input Creator (create) | MEDIUM | `gpt-5.4` | `claude-sonnet-4-6` |
+| Planner (plan) | MEDIUM | `gpt-5.4` | `claude-sonnet-4-6` |
+| Receptionist (interface) | MEDIUM | `gpt-5.4` | `claude-sonnet-4-6` |
+| Orchestrator (route) | LOW | `gpt-5.4-mini` | `claude-haiku-4-5` |
+| Tool Caller (execute) | LOW | `gpt-5.4-mini` | `claude-haiku-4-5` |
+| Context Pruner (utility) | HIGH | `gpt-5.5` | `claude-opus-4-8` |
+| Database Handler (post-session) | LOW | `gpt-5.4-mini` | `claude-haiku-4-5` |
+
+The Context Pruner now builds its **own** LLM from this assignment (a code change
+in `orchestrator.py`; it previously shared the Orchestrator's), so HIGH takes
+effect on the summarisation call — which fires only when a long history crosses
+the pruning threshold (rare; it never fired in the runs so far). The Database
+Handler does not run during a scored Test-1 session, so its tier is cost-only.
+
+The tiering is stored as the two **"Proposed …Workflow (Test 1 · Subj 5)"**
+presets in `workflow_settings/llm_defaults.py::PROPOSED_WORKFLOWS`.
+
+**Deploying / running Subject 5** (per provider):
+1. Workflow Settings → LLM routing → set the **Global LLM dropdown to "Use
+   individual LLMs"** — *required*: a provider override there silently ignores
+   the per-agent mix and forces one model on every agent.
+2. Click the **"Proposed OpenAI Workflow (Test 1 · Subj 5)"** (or Anthropic)
+   button → it fills every per-agent row → **Save LLM routing**.
+3. Run the benchmark. Swap to the other provider's preset + Save for the second
+   run.
 
 **Model → folder mapping (as run).** The `<CONDITION>` folders are Test-1
 subjects: `CLAUDE_OPUS_4_8` = Subj 1, `GPT_5_4` = Subj 2, `CLAUDE_HAIKU_4_5` +
-`GPT_5_4_mini` = Subj 3.
+`GPT_5_4_mini` = Subj 3. Subject 5 will need its own condition folders (e.g.
+`SUBJ5_OPENAI` / `SUBJ5_ANTHROPIC`).
 
 > **Open decision.** Whether Tests 2 & 3 use Subject 5 (the per-agent mix) is
 > **not yet finalised** — the expectation is that Subject 5 is the best
@@ -554,7 +589,8 @@ be documented when those land.
   sketches) run-status to confirm.
 - **M4 orientation**, **M5 pure dimension-extraction**, and **M7 point-cloud
   geometry** metrics are not yet implemented (§A.8).
-- **Test 1 Subject 5** (per-agent LLM mix) to be built.
+- **Test 1 Subject 5** (per-agent LLM mix) is **built** (the two Proposed
+  Workflow presets); the two runs (OpenAI, Anthropic) are pending.
 - Whether **Tests 2 & 3 use Subject 5** — pending Test 1 results.
 - **Test 3 (RAG)** harness + documentation — pending.
 - **Cost precision** — real per-call token usage from the API responses would

@@ -188,14 +188,24 @@ class Orchestrator(BaseChainAgent):
         self.tool_caller = ToolCaller(
             state=_state_for("tool_caller"), session=session,
         )
-        # Context Pruner shares the Orchestrator's LLM (cheaper than
-        # spinning up a 9th provider build).  Exposed on the Session so
-        # every chain agent's
-        # ``BaseChainAgent.prune_history_if_needed`` can reach it via
-        # ``self.session.context_pruner`` without needing a back-
-        # reference to the Orchestrator.  Pre-invoke pruning is gated
-        # by ``workflow_settings.CONTEXT_PRUNER_ENABLED``.
-        self.context_pruner = ContextPruner(self.base_llm)
+        # Context Pruner gets its OWN LLM, built from its per-agent model
+        # assignment, rather than sharing the Orchestrator's — so tiering it
+        # independently (e.g. Test-1 Subject 5's "context_pruner: HIGH") takes
+        # effect on the (rare) summarisation call.  Falls back to the
+        # Orchestrator's LLM on any resolution error, so a missing per-agent
+        # entry can never block startup.  Exposed on the Session so every chain
+        # agent's ``BaseChainAgent.prune_history_if_needed`` reaches it via
+        # ``self.session.context_pruner``.  Pruning is gated by
+        # ``workflow_settings.CONTEXT_PRUNER_ENABLED``.
+        try:
+            from agents.shared.llm_provider import build_llm as _build_pruner
+            _pruner_llm, _, _pruner_model = _build_pruner("context_pruner")
+            logger.info(f"[CP]  pruner LLM built: {_pruner_model}")
+        except Exception as exc:
+            logger.warning(f"[CP]  pruner LLM build failed ({exc}); "
+                           f"sharing the Orchestrator's LLM instead.")
+            _pruner_llm = self.base_llm
+        self.context_pruner = ContextPruner(_pruner_llm)
         setattr(session, "context_pruner", self.context_pruner)
         # Learn real per-model context windows once per process, so the
         # Pruner's threshold tracks the model each agent actually runs on.
