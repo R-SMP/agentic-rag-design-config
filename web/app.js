@@ -4280,7 +4280,20 @@ if (copyParametersBtn) {
 let sqConditions = [{ id: "current", label: "Current settings (no change)" }];
 let sqRuns = [];
 let sqQueueActive = false;
-let sqRunCounter = 0;
+let sqSessionActive = false;
+let sqSelectedIdx = -1;
+let sqDraftLoaded = false;
+let sqDraftTimer = null;
+
+function sqUUID() {
+  try { if (window.crypto && crypto.randomUUID) return crypto.randomUUID(); } catch (_) {}
+  return "r-" + Date.now().toString(36) + "-"
+    + Math.floor(Math.random() * 1e9).toString(36);
+}
+
+function sqRunLabel(run, idx) {
+  return (run && (run.run_id || "").trim()) || ("run " + (idx + 1));
+}
 
 function sqEsc(s) {
   return String(s == null ? "" : s).replace(
@@ -4311,15 +4324,16 @@ function sqConditionOptions(selected) {
 }
 
 function sqNewRun() {
-  sqRunCounter += 1;
   return {
-    run_id: "run-" + String(sqRunCounter).padStart(2, "0"),
+    stage_id: sqUUID(),
+    run_id: "",
     condition: "current",
     query: "",
     continue_message: "",
     timeout_min: "",
     max_continues: "",
     _adv: false,
+    _imgCount: 0,
   };
 }
 
@@ -4331,11 +4345,12 @@ function sqRenderRuns() {
     return;
   }
   host.innerHTML = sqRuns.map((run, i) => `
-    <div class="sq-run" data-idx="${i}">
+    <div class="sq-run${i === sqSelectedIdx ? " selected" : ""}" data-idx="${i}">
       <div class="sq-run-top">
         <input class="sq-run-id" type="text" value="${sqEsc(run.run_id)}"
-               data-k="run_id" placeholder="run id" />
+               data-k="run_id" placeholder="run id (optional)" />
         <select class="sq-run-cond" data-k="condition">${sqConditionOptions(run.condition)}</select>
+        <button class="sq-run-img" type="button" title="Manage this run's images">🖼 ${run._imgCount || 0}</button>
         <button class="sq-run-adv ghost" type="button" title="Per-run overrides">⚙</button>
         <button class="sq-run-del danger-ghost" type="button" title="Remove run">✕</button>
       </div>
@@ -4371,6 +4386,7 @@ function sqRenderRuns() {
     const k = ev.target.dataset.k;
     if (!Number.isInteger(i) || !k || !sqRuns[i]) return;
     sqRuns[i][k] = ev.target.value;
+    sqSaveDraftDebounced();
   });
   host.addEventListener("click", (ev) => {
     const row = ev.target.closest(".sq-run");
@@ -4378,59 +4394,319 @@ function sqRenderRuns() {
     const i = Number(row.dataset.idx);
     if (!sqRuns[i]) return;
     if (ev.target.classList.contains("sq-run-del")) {
+      const sid = sqRuns[i].stage_id;
       sqRuns.splice(i, 1);
+      if (sqSelectedIdx === i) {
+        sqSelectedIdx = -1;
+        sqRenderImages(null);
+        sqShowImgPane("empty");
+      } else if (sqSelectedIdx > i) sqSelectedIdx -= 1;
       sqRenderRuns();
+      sqFlushDraft();
+      if (sid) {
+        fetch("/api/queue/images/run?stage_id=" + encodeURIComponent(sid),
+          { method: "DELETE" }).catch(() => {});
+      }
     } else if (ev.target.classList.contains("sq-run-adv")) {
       sqRuns[i]._adv = !sqRuns[i]._adv;
       sqRenderRuns();
+    } else if (ev.target.classList.contains("sq-run-img")) {
+      sqSelectRun(i);
+    } else if (!ev.target.closest("input,textarea,select,button")) {
+      // Clicking the block's body (not a field) selects the run.
+      sqSelectRun(i);
     }
   });
 })();
-
-function sqNumOrNull(v) {
-  const n = parseInt(v, 10);
-  return Number.isFinite(n) ? n : null;
-}
 
 function sqVal(id, fallback) {
   const el = document.getElementById(id);
   return el && el.value !== "" ? el.value : fallback;
 }
 
-function sqCollectStart() {
-  const dmcRaw = sqNumOrNull((document.getElementById("sq-def-maxcont") || {}).value);
+function sqCollectDefaults() {
   return {
-    runs: sqRuns.map((r) => ({
-      run_id: (r.run_id || "").trim() || null,
-      condition: r.condition || "current",
-      query: r.query || "",
-      continue_message: (r.continue_message || "").trim() || null,
-      timeout_min: sqNumOrNull(r.timeout_min),
-      max_continues: sqNumOrNull(r.max_continues),
-    })),
-    resume: false,
-    default_continue_message:
+    continue_message:
       sqVal("sq-def-continue", "Proceed with the task as I had instructed you to"),
-    default_timeout_min: sqNumOrNull((document.getElementById("sq-def-timeout") || {}).value) || 60,
-    default_max_continues: dmcRaw == null ? 3 : dmcRaw,
+    timeout_min: sqVal("sq-def-timeout", "60"),
+    max_continues: sqVal("sq-def-maxcont", "3"),
     classifier_provider: sqVal("sq-def-clsprov", "openai"),
     classifier_model: sqVal("sq-def-clsmodel", "gpt-5.4-mini"),
   };
 }
 
-async function sqStart(resume) {
-  const payload = sqCollectStart();
-  payload.resume = !!resume;
-  if (!resume && !payload.runs.some((r) => (r.query || "").trim())) {
-    sqStatus("Add at least one run with a query.", "err");
+function sqApplyDefaults(d) {
+  const set = (id, v) => {
+    const el = document.getElementById(id);
+    if (el && v != null && v !== "") el.value = v;
+  };
+  set("sq-def-continue", d.continue_message);
+  set("sq-def-timeout", d.timeout_min);
+  set("sq-def-maxcont", d.max_continues);
+  set("sq-def-clsprov", d.classifier_provider);
+  set("sq-def-clsmodel", d.classifier_model);
+}
+
+// --- Draft persistence (server-side, survives a browser close) ---
+function sqSaveDraftDebounced() {
+  if (sqDraftTimer) clearTimeout(sqDraftTimer);
+  sqDraftTimer = setTimeout(sqFlushDraft, 500);
+}
+
+async function sqFlushDraft() {
+  if (sqDraftTimer) { clearTimeout(sqDraftTimer); sqDraftTimer = null; }
+  const payload = {
+    runs: sqRuns.map((r) => ({
+      stage_id: r.stage_id,
+      run_id: r.run_id || "",
+      condition: r.condition || "current",
+      query: r.query || "",
+      continue_message: r.continue_message || "",
+      timeout_min: r.timeout_min || "",
+      max_continues: r.max_continues || "",
+    })),
+    defaults: sqCollectDefaults(),
+  };
+  try {
+    const r = await fetch("/api/queue/draft", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    });
+    return r.ok;
+  } catch (_) { return false; }
+}
+
+// --- Per-run image manager (right pane) ---
+function sqShowImgPane(mode) {   // "empty" | "body" | "locked"
+  const empty = document.getElementById("sq-img-empty");
+  const body = document.getElementById("sq-img-body");
+  const locked = document.getElementById("sq-img-locked");
+  if (empty) empty.hidden = mode !== "empty";
+  if (body) body.hidden = mode !== "body";
+  if (locked) locked.hidden = mode !== "locked";
+}
+
+function sqSelectRun(idx) {
+  sqSelectedIdx = idx;
+  sqRenderRuns();
+  const run = sqRuns[idx];
+  if (!run) { sqRenderImages(null); return; }
+  const label = document.getElementById("sq-img-runlabel");
+  if (label) label.textContent = sqRunLabel(run, idx);
+  sqLoadImages(run.stage_id);
+}
+
+async function sqLoadImages(stageId) {
+  if (sqQueueActive) { sqShowImgPane("locked"); return; }
+  if (!stageId) { sqShowImgPane("empty"); return; }
+  sqShowImgPane("body");
+  let images = [];
+  try {
+    const d = await (await fetch(
+      "/api/queue/images/list?stage_id=" + encodeURIComponent(stageId))).json();
+    images = d.images || [];
+  } catch (_) { images = []; }
+  // Selection may have changed while awaiting — don't render one run's
+  // images under another run's label.
+  const sel = sqRuns[sqSelectedIdx];
+  if (!sel || sel.stage_id !== stageId) return;
+  sqRenderImages(images, stageId);
+  if (sel._imgCount !== images.length) {
+    sel._imgCount = images.length;
+    sqRenderRuns();
+  }
+}
+
+function sqRenderImages(images, stageId) {
+  const list = document.getElementById("sq-img-list");
+  if (!list) return;
+  if (!images) { list.innerHTML = ""; return; }
+  list.dataset.stageId = stageId || "";
+  if (!images.length) {
+    list.innerHTML = `<p class="sq-img-none">No images yet — click “Upload images”.</p>`;
     return;
+  }
+  list.innerHTML = images.map((im) => {
+    const deg = (im.degree == null) ? (im.suggested || 0) : im.degree;
+    const auto = (im.degree == null) ? " (auto)" : "";
+    return `
+    <div class="sq-img-item" data-name="${sqEsc(im.name)}">
+      <div class="sq-img-top">
+        <img class="sq-img-thumb" src="${sqEsc(im.url)}" alt="" />
+        <div class="sq-img-meta">
+          <div class="sq-img-name">${sqEsc(im.name)}</div>
+          <div class="sq-img-dims">${im.width}×${im.height}</div>
+        </div>
+        <button class="sq-img-del danger-ghost" type="button" title="Remove image">✕</button>
+      </div>
+      <label class="sq-img-desc-label">Description
+        <textarea class="sq-img-desc" rows="2"
+          placeholder="Describe what this image shows…">${sqEsc(im.description)}</textarea>
+      </label>
+      <div class="sq-img-cmp">
+        <div class="sq-img-cmp-row">
+          <span>Compression</span>
+          <input class="sq-img-cmp-slider" type="range" min="0" max="100" value="${deg}" />
+          <span class="sq-img-cmp-val">${deg}%${auto}</span>
+        </div>
+        <div class="sq-img-cmp-info"></div>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+async function sqUploadImages(files) {
+  const run = sqRuns[sqSelectedIdx];
+  if (!run || !files || !files.length) return;
+  const fd = new FormData();
+  fd.append("stage_id", run.stage_id);
+  for (const f of files) fd.append("files", f);
+  sqStatus("Uploading images…");
+  try {
+    const d = await (await fetch("/api/queue/images/upload",
+      { method: "POST", body: fd })).json();
+    if (d.errors && d.errors.length) sqStatus(d.errors.join("; "), "err");
+    else sqStatus("");
+    await sqLoadImages(run.stage_id);
+  } catch (e) { sqStatus("Upload failed: " + e, "err"); }
+  const fi = document.getElementById("sq-img-file");
+  if (fi) fi.value = "";
+}
+
+const sqNoteTimers = {};
+const sqNotePending = {};
+function sqSaveNoteDebounced(stageId, name, description) {
+  const key = stageId + "|" + name;
+  sqNotePending[key] = { stageId, name, description };
+  if (sqNoteTimers[key]) clearTimeout(sqNoteTimers[key]);
+  sqNoteTimers[key] = setTimeout(() => sqFlushNote(key), 500);
+}
+function sqFlushNote(key) {
+  if (sqNoteTimers[key]) { clearTimeout(sqNoteTimers[key]); delete sqNoteTimers[key]; }
+  const p = sqNotePending[key];
+  if (!p) return Promise.resolve();
+  delete sqNotePending[key];
+  return fetch("/api/queue/images/note", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage_id: p.stageId, name: p.name, description: p.description }),
+  }).catch(() => {});
+}
+async function sqFlushPendingNotes() {
+  await Promise.all(Object.keys(sqNotePending).map(sqFlushNote));
+}
+
+const sqPrevTimers = {};
+function sqPreviewCompressionDebounced(stageId, name, degree, item) {
+  const key = stageId + "|" + name;
+  if (sqPrevTimers[key]) clearTimeout(sqPrevTimers[key]);
+  sqPrevTimers[key] = setTimeout(async () => {
+    try {
+      const d = await (await fetch(
+        "/api/queue/images/compression/preview?stage_id="
+        + encodeURIComponent(stageId) + "&name=" + encodeURIComponent(name)
+        + "&degree=" + degree)).json();
+      const thumb = item.querySelector(".sq-img-thumb");
+      if (thumb && d.preview) thumb.src = d.preview;
+      const info = item.querySelector(".sq-img-cmp-info");
+      if (info && d.compressed) {
+        const ot = (d.orig.tokens && d.orig.tokens.anthropic) || 0;
+        const ct = (d.compressed.tokens && d.compressed.tokens.anthropic) || 0;
+        info.textContent = "→ " + d.compressed.width + "×" + d.compressed.height
+          + " · ~" + ct + " tok (was ~" + ot + ")";
+      }
+    } catch (_) {}
+  }, 250);
+}
+
+function sqSaveCompression(stageId, name, degree) {
+  fetch("/api/queue/images/compression", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ stage_id: stageId, name, degree }),
+  }).catch(() => {});
+}
+
+async function sqDeleteImage(stageId, name) {
+  try {
+    await fetch("/api/queue/images?stage_id=" + encodeURIComponent(stageId)
+      + "&name=" + encodeURIComponent(name), { method: "DELETE" });
+    await sqLoadImages(stageId);
+  } catch (_) {}
+}
+
+async function sqRefreshBadges() {
+  let changed = false;
+  for (const r of sqRuns) {
+    if (!r.stage_id) continue;
+    try {
+      const d = await (await fetch(
+        "/api/queue/images/list?stage_id=" + encodeURIComponent(r.stage_id))).json();
+      const n = (d.images || []).length;
+      if (r._imgCount !== n) { r._imgCount = n; changed = true; }
+    } catch (_) {}
+  }
+  if (changed) sqRenderRuns();
+}
+
+(function sqWireImages() {
+  const upBtn = document.getElementById("sq-img-upload");
+  const fileInput = document.getElementById("sq-img-file");
+  if (upBtn && fileInput) {
+    upBtn.addEventListener("click", () => fileInput.click());
+    fileInput.addEventListener("change", () => sqUploadImages(fileInput.files));
+  }
+  const list = document.getElementById("sq-img-list");
+  if (!list) return;
+  list.addEventListener("input", (ev) => {
+    const item = ev.target.closest(".sq-img-item");
+    if (!item) return;
+    const name = item.dataset.name;
+    const stageId = list.dataset.stageId;
+    if (ev.target.classList.contains("sq-img-desc")) {
+      sqSaveNoteDebounced(stageId, name, ev.target.value);
+    } else if (ev.target.classList.contains("sq-img-cmp-slider")) {
+      const deg = parseInt(ev.target.value, 10) || 0;
+      const val = item.querySelector(".sq-img-cmp-val");
+      if (val) val.textContent = deg + "%";
+      sqPreviewCompressionDebounced(stageId, name, deg, item);
+    }
+  });
+  list.addEventListener("change", (ev) => {
+    if (!ev.target.classList.contains("sq-img-cmp-slider")) return;
+    const item = ev.target.closest(".sq-img-item");
+    if (!item) return;
+    sqSaveCompression(list.dataset.stageId, item.dataset.name,
+      parseInt(ev.target.value, 10) || 0);
+  });
+  list.addEventListener("click", (ev) => {
+    if (!ev.target.classList.contains("sq-img-del")) return;
+    const item = ev.target.closest(".sq-img-item");
+    if (item) sqDeleteImage(list.dataset.stageId, item.dataset.name);
+  });
+})();
+
+async function sqStart(resume) {
+  if (!resume) {
+    if (!sqRuns.some((r) => (r.query || "").trim())) {
+      sqStatus("Add at least one run with a query.", "err");
+      return;
+    }
+    sqStatus("Saving…");
+    // Flush pending image-description edits, THEN the draft — both must
+    // land before Start, or the run executes with stale text/images.
+    await sqFlushPendingNotes();
+    const ok = await sqFlushDraft();   // server builds the manifest from it
+    if (!ok) {
+      sqStatus("Could not save the queue draft — not started. Try again.", "err");
+      return;
+    }
   }
   sqStatus(resume ? "Resuming…" : "Starting…");
   try {
     const r = await fetch("/api/queue/start", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ resume: !!resume }),
     });
     const data = await r.json().catch(() => ({}));
     if (!r.ok) {
@@ -4459,7 +4735,7 @@ async function sqHalt() {
 
 function sqApplyLock({ queueActive, sessionActive }) {
   if (typeof queueActive === "boolean") sqQueueActive = queueActive;
-  const sessActive = !!sessionActive;
+  if (typeof sessionActive === "boolean") sqSessionActive = sessionActive;
   const runBanner = document.getElementById("sq-run-banner");
   const sessBanner = document.getElementById("sq-session-banner");
   const scroll = document.getElementById("sq-scroll");
@@ -4470,12 +4746,17 @@ function sqApplyLock({ queueActive, sessionActive }) {
   if (runBanner) runBanner.hidden = !sqQueueActive;
   if (scroll) scroll.classList.toggle("sq-locked", sqQueueActive);
   if (halt) halt.hidden = !sqQueueActive;
-  if (start) start.disabled = sqQueueActive || sessActive;
+  if (start) start.disabled = sqQueueActive || sqSessionActive;
   if (add) add.disabled = sqQueueActive;
   // Resume only makes sense when nothing is running; never during a queue.
   if (resume && sqQueueActive) resume.hidden = true;
-  if (sessBanner && typeof sessionActive === "boolean") {
-    sessBanner.hidden = sqQueueActive || !sessionActive;
+  // Right image pane: locked while running; else the selected run's images
+  // (or the "select a run" placeholder).
+  if (sqQueueActive) sqShowImgPane("locked");
+  else if (sqSelectedIdx >= 0 && sqRuns[sqSelectedIdx]) sqShowImgPane("body");
+  else sqShowImgPane("empty");
+  if (sessBanner) {
+    sessBanner.hidden = sqQueueActive || !sqSessionActive;
   }
 }
 
@@ -4535,8 +4816,31 @@ function sqRenderStatus(data) {
 
 async function hydrateSessionsQueue() {
   await loadSqConditions();
+  if (!sqDraftLoaded) {
+    try {
+      const d = await (await fetch("/api/queue/draft")).json();
+      if (d.draft) {
+        if (Array.isArray(d.draft.runs) && d.draft.runs.length) {
+          sqRuns = d.draft.runs.map((r) => ({
+            stage_id: r.stage_id || sqUUID(),
+            run_id: r.run_id || "",
+            condition: r.condition || "current",
+            query: r.query || "",
+            continue_message: r.continue_message || "",
+            timeout_min: r.timeout_min || "",
+            max_continues: r.max_continues || "",
+            _adv: false,
+            _imgCount: 0,
+          }));
+        }
+        sqApplyDefaults(d.draft.defaults || {});
+      }
+    } catch (_) { /* leave defaults */ }
+    sqDraftLoaded = true;
+  }
   if (!sqRuns.length) sqRuns = [sqNewRun()];
   sqRenderRuns();
+  sqRefreshBadges();
   try {
     const cfg = await (await fetch("/api/config")).json();
     const st = await (await fetch("/api/queue/state")).json();
@@ -4563,10 +4867,20 @@ async function hydrateSessionsQueue() {
   const start = document.getElementById("sq-start");
   const resume = document.getElementById("sq-resume");
   const halt = document.getElementById("sq-halt");
-  if (add) add.addEventListener("click", () => { sqRuns.push(sqNewRun()); sqRenderRuns(); });
+  if (add) add.addEventListener("click", () => {
+    sqRuns.push(sqNewRun());
+    sqSelectRun(sqRuns.length - 1);   // select the new run so images are ready
+    sqFlushDraft();
+  });
   if (start) start.addEventListener("click", () => sqStart(false));
   if (resume) resume.addEventListener("click", () => sqStart(true));
   if (halt) halt.addEventListener("click", sqHalt);
+  // Defaults panel edits persist into the draft too.
+  ["sq-def-continue", "sq-def-timeout", "sq-def-maxcont",
+   "sq-def-clsprov", "sq-def-clsmodel"].forEach((id) => {
+    const el = document.getElementById(id);
+    if (el) el.addEventListener("input", sqSaveDraftDebounced);
+  });
 })();
 
 init();

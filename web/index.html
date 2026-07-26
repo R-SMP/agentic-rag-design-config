@@ -345,7 +345,7 @@
       <!-- 4. LOG and Status: agent-flow visualization + live session log -->
       <!-- Sessions Queue: overnight benchmark runner (server-side). -->
       <section class="view sessions-queue-view" data-view="sessions_queue" hidden>
-        <div class="sq-scroll" id="sq-scroll">
+        <div class="sq-left" id="sq-scroll">
           <div class="sq-head">
             <h2>Sessions Queue</h2>
             <p class="sq-note">
@@ -425,6 +425,28 @@
             <pre id="sq-log" class="sq-log"><span class="log-empty">(runner status will appear here)</span></pre>
           </div>
         </div>
+
+        <aside class="sq-right" id="sq-right">
+          <div id="sq-img-empty" class="sq-img-empty">
+            Select a run on the left to add its reference images.
+          </div>
+          <div id="sq-img-locked" class="sq-img-locked" hidden>
+            A queue is running — image editing is locked.
+          </div>
+          <div id="sq-img-body" class="sq-img-body" hidden>
+            <div class="sq-img-head">
+              <h3>Images · <span id="sq-img-runlabel"></span></h3>
+              <input id="sq-img-file" type="file" accept=".png,.jpg,.jpeg"
+                     multiple hidden />
+              <button id="sq-img-upload" class="primary" type="button">Upload images</button>
+            </div>
+            <p class="sq-img-hint">
+              Each image gets a description and a compression % (higher =
+              smaller, fewer vision tokens). A blank description is fine.
+            </p>
+            <div id="sq-img-list" class="sq-img-list"></div>
+          </div>
+        </aside>
       </section>
 
       <section class="view logstatus-view" data-view="logstatus" hidden>

@@ -38,7 +38,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from urllib.parse import quote
 
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
 from fastapi.responses import FileResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
@@ -54,6 +54,7 @@ from agents.shared.image_compression import (
     compress_for_model,
     estimate_image_tokens,
     read_degree,
+    sidecar_path as compression_sidecar_path,
     sniff_media_type,
     suggested_degree,
     write_degree,
@@ -1918,23 +1919,28 @@ async def api_db_options_backfill(body: _BackfillIn) -> dict:
 # Pure helpers (condition registry, classifier, persistence) live in
 # agents/shared/sessions_queue.py.
 
-class QueueRunIn(BaseModel):
-    run_id:           str | None = None
-    condition:        str = "current"
-    query:            str = ""
-    continue_message: str | None = None
-    timeout_min:      int | None = None
-    max_continues:    int | None = None
-
-
+# The editor's persistent draft is the single source of truth for a fresh
+# Start: the frontend flushes it to /api/queue/draft, then Start builds the
+# manifest from it (so the runs match their staged images by stage_id).
 class QueueStartIn(BaseModel):
-    runs:                     list[QueueRunIn] = Field(default_factory=list)
-    resume:                   bool = False
-    default_continue_message: str = "Proceed with the task as I had instructed you to"
-    default_timeout_min:      int = 60
-    default_max_continues:    int = 3
-    classifier_provider:      str = "openai"
-    classifier_model:         str = "gpt-5.4-mini"
+    resume: bool = False
+
+
+class QueueDraftIn(BaseModel):
+    runs:     list[dict] = Field(default_factory=list)
+    defaults: dict = Field(default_factory=dict)
+
+
+class QueueImageNoteIn(BaseModel):
+    stage_id:    str
+    name:        str
+    description: str = ""
+
+
+class QueueImageCompressionIn(BaseModel):
+    stage_id: str
+    name:     str
+    degree:   int
 
 
 def _web_now_iso() -> str:
@@ -2209,6 +2215,28 @@ async def _run_queue_in_background(manifest: dict) -> None:
                 )
                 continue
 
+            # 3b. Guarantee a CLEAN inputs dir, then copy this run's staged
+            #     reference images (+ notes + compression sidecars) into
+            #     inputs/input_images/.  The unconditional clear is the run-
+            #     isolation guarantee — no run ever inherits leftovers (a
+            #     failed archive, or images staged via the standalone Image
+            #     Inputs view before the queue).  Runs for EVERY run,
+            #     independent of stage_id.
+            try:
+                await run_in_threadpool(_clear_input_images)
+                n_imgs = await run_in_threadpool(
+                    _copy_staged_images_to_inputs, run.get("stage_id"))
+            except Exception:
+                logger.exception("[QUEUE] staged-image setup failed")
+                n_imgs = 0
+            if n_imgs:
+                _emit_runner(
+                    manifest,
+                    _queue_progress(manifest, current_index=i, stage="images",
+                                    in_flight_run_id=run["run_id"], active=True),
+                    f"[{run['run_id']}] staged {n_imgs} reference image(s)",
+                )
+
             # 4. Drive the query; auto-Continue while INTERMEDIATE.
             timeout_min = run.get("timeout_min") or defaults["timeout_min"]
             max_continues = (run["max_continues"]
@@ -2424,6 +2452,164 @@ async def _run_queue_in_background(manifest: dict) -> None:
                     halted, orphaned)
 
 
+# --------------------------------------------------------------------------
+# Per-run image staging (Sessions Queue milestone 2).  Each queued run's
+# reference images live under _sessions_queue/images/<stage_id>/ with their
+# _note.txt descriptions + .compression.json sidecars, mirroring inputs/.
+# The runner copies a run's folder into inputs/input_images/ before its turn.
+# --------------------------------------------------------------------------
+
+def _stage_note_path(image: Path) -> Path:
+    return image.parent / f"{image.stem}{NOTE_SUFFIX}"
+
+
+def _staged_unique_target(sdir: Path, stem: str, suffix: str) -> Path:
+    """A free ``<stem><suffix>`` inside ``sdir`` (mirrors _unique_target)."""
+    existing = {}
+    if sdir.exists():
+        existing = {
+            p.stem.lower(): p for p in sdir.iterdir()
+            if p.is_file() and p.suffix.lower() in ALLOWED_IMAGE_SUFFIXES
+        }
+    candidate = stem
+    n = 0
+    while True:
+        clash = existing.get(candidate.lower())
+        if clash is None:
+            return sdir / f"{candidate}{suffix}"
+        if clash.suffix.lower() != suffix:
+            raise HTTPException(
+                status_code=400,
+                detail=(f"An image named '{clash.name}' already exists in this "
+                        f"run; one format per name. Rename or delete it first."),
+            )
+        n += 1
+        candidate = f"{stem}-{n}"
+
+
+def _staged_safe_image(stage_id: str, name: str) -> Path:
+    """Resolve ``name`` to a file directly inside the run's staging dir."""
+    try:
+        sdir = sessions_queue.stage_dir(stage_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    raw = (name or "").strip()
+    if not raw or raw != Path(raw).name:
+        raise HTTPException(status_code=400, detail="Invalid image name.")
+    if Path(raw).suffix.lower() not in ALLOWED_IMAGE_SUFFIXES:
+        raise HTTPException(status_code=400, detail="Unsupported image type.")
+    target = (sdir / raw)
+    if target.resolve().parent != sdir.resolve():
+        raise HTTPException(status_code=403, detail="Path outside stage dir.")
+    return target
+
+
+def _staged_listing(stage_id: str) -> "list[dict]":
+    try:
+        sdir = sessions_queue.stage_dir(stage_id)
+    except ValueError:
+        return []
+    out: list[dict] = []
+    if not sdir.exists():
+        return out
+    for p in sorted(sdir.iterdir(), key=lambda x: x.name.lower()):
+        if not (p.is_file() and p.suffix.lower() in ALLOWED_IMAGE_SUFFIXES):
+            continue
+        desc = ""
+        note = _stage_note_path(p)
+        try:
+            if note.is_file():
+                desc = note.read_text(encoding="utf-8")
+        except OSError:
+            pass
+        w = h = 0
+        try:
+            w, h = _image_wh(p.read_bytes())
+        except Exception:
+            pass
+        out.append({
+            "name":        p.name,
+            "url":         (f"/api/queue/images/file?stage_id={quote(stage_id)}"
+                            f"&name={quote(p.name)}"),
+            "description": desc,
+            "degree":      read_degree(p),
+            "suggested":   suggested_degree(w, h) if (w and h) else 0,
+            "width":       w,
+            "height":      h,
+        })
+    return out
+
+
+def _clear_input_images() -> None:
+    """Remove every loose file from inputs/input_images/ so a run can never
+    inherit leftovers — a prior run's images after a silently-failed archive,
+    or images staged via the standalone Image Inputs view before the queue.
+    The load-bearing isolation step: called at the top of every run, always."""
+    d = INPUT_IMAGES_DIR
+    if not d.exists():
+        return
+    for p in d.iterdir():
+        try:
+            if p.is_file():
+                p.unlink()
+        except OSError:
+            logger.warning("[QUEUE] could not remove leftover input %s", p)
+
+
+def _copy_staged_images_to_inputs(stage_id: "str | None") -> int:
+    """Copy a run's staged images (+ notes + compression sidecars) into
+    inputs/input_images/ (which _end_session emptied for this run).  Returns
+    the image count.  No-op when stage_id is falsy or the folder is absent."""
+    if not stage_id:
+        return 0
+    try:
+        sdir = sessions_queue.stage_dir(stage_id)
+    except ValueError:
+        return 0
+    if not sdir.exists():
+        return 0
+    import shutil
+    dest = _images_dir()  # ensures INPUT_IMAGES_DIR exists
+    n = 0
+    for p in sdir.iterdir():
+        if not p.is_file():
+            continue
+        try:
+            shutil.copy2(p, dest / p.name)
+            if p.suffix.lower() in ALLOWED_IMAGE_SUFFIXES:
+                n += 1
+        except Exception:
+            logger.exception("[QUEUE] failed to copy staged file %s", p)
+    return n
+
+
+def _normalize_queue_defaults(d: "dict | None") -> dict:
+    """Apply the same fallbacks whether the defaults come from the draft or a
+    resumed manifest."""
+    d = d or {}
+    dcm = (str(d.get("continue_message") or "")).strip() \
+        or "Proceed with the task as I had instructed you to"
+    try:
+        dtm = int(d.get("timeout_min"))
+    except (TypeError, ValueError):
+        dtm = 60
+    if dtm <= 0:
+        dtm = 60
+    try:
+        dmc = int(d.get("max_continues"))
+    except (TypeError, ValueError):
+        dmc = 3
+    if dmc < 0:
+        dmc = 3
+    return {
+        "continue_message":    dcm,
+        "timeout_min":         dtm,
+        "max_continues":       dmc,
+        "classifier_provider": (str(d.get("classifier_provider") or "openai")).strip().lower(),
+        "classifier_model":    (str(d.get("classifier_model") or "gpt-5.4-mini")).strip(),
+    }
+
+
 def _capture_routing_baseline() -> "dict | None":
     """Snapshot the current LLM routing as a ``write_updates``-shaped
     payload so the runner can resolve ``'current'`` deterministically and
@@ -2496,49 +2682,50 @@ async def api_queue_start(body: QueueStartIn) -> dict:
                     "starting a new queue."),
         )
 
-    dcm = (body.default_continue_message or "").strip() \
-        or "Proceed with the task as I had instructed you to"
-    dtm = int(body.default_timeout_min) if (body.default_timeout_min
-                                            and body.default_timeout_min > 0) else 60
-    dmc = int(body.default_max_continues) if (body.default_max_continues
-                                              is not None
-                                              and body.default_max_continues >= 0) else 3
-    defaults = {
-        "continue_message":    dcm,
-        "timeout_min":         dtm,
-        "max_continues":       dmc,
-        "classifier_provider": (body.classifier_provider or "openai").strip().lower(),
-        "classifier_model":    (body.classifier_model or "gpt-5.4-mini").strip(),
-    }
-
-    # Fail fast: a classifier whose API key is absent would error on the
-    # FIRST reply of EVERY run (→ needs_review), wasting the whole night.
-    if not sessions_queue.classifier_key_present(defaults["classifier_provider"]):
-        raise HTTPException(
-            status_code=400,
-            detail=(f"Classifier provider {defaults['classifier_provider']!r} "
-                    f"has no API key set in the environment — set it or "
-                    f"choose a provider whose key is present."),
-        )
-
     if body.resume:
         manifest = sessions_queue.read_manifest()
         if not sessions_queue.has_resumable(manifest):
             raise HTTPException(
                 status_code=400,
                 detail="No resumable queue on disk (nothing pending).")
-        manifest["defaults"] = defaults  # honour any edited view-level defaults
-        # Keep the baseline captured at the original start if present;
-        # else capture the current routing now.
+        defaults = _normalize_queue_defaults(manifest.get("defaults"))
+        manifest["defaults"] = defaults
+        if not sessions_queue.classifier_key_present(defaults["classifier_provider"]):
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Classifier provider {defaults['classifier_provider']!r} "
+                        f"has no API key set in the environment."))
+        # Keep the baseline captured at the original start if present.
         if not manifest.get("baseline_routing"):
             manifest["baseline_routing"] = _capture_routing_baseline()
     else:
+        # Fresh start: the persisted draft is the source of truth (its runs
+        # match their staged images by stage_id).  The frontend flushes the
+        # editor to /api/queue/draft immediately before calling Start.
+        draft = sessions_queue.read_draft()
+        if not draft or not (draft.get("runs") or []):
+            raise HTTPException(
+                status_code=400,
+                detail="The queue is empty — add at least one run.")
+        defaults = _normalize_queue_defaults(draft.get("defaults"))
+        if not sessions_queue.classifier_key_present(defaults["classifier_provider"]):
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Classifier provider {defaults['classifier_provider']!r} "
+                        f"has no API key set in the environment — set it or "
+                        f"choose a provider whose key is present."))
         try:
             manifest = sessions_queue.build_manifest(
-                runs=[_dump_model(r) for r in body.runs], defaults=defaults)
+                runs=list(draft["runs"]), defaults=defaults)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         manifest["baseline_routing"] = _capture_routing_baseline()
+        # GC staging folders no longer referenced by this queue.
+        try:
+            keep = {r["stage_id"] for r in manifest["runs"] if r.get("stage_id")}
+            sessions_queue.prune_staging(keep)
+        except Exception:
+            logger.exception("[QUEUE] staging prune failed")
 
     _QUEUE_IN_FLIGHT = True
     _runner_halt = False
@@ -2574,6 +2761,174 @@ def api_queue_halt() -> dict:
     _runner_halt = True
     stop_signal_request()
     logger.info("[QUEUE] halt requested by user")
+    return {"ok": True}
+
+
+# ---- Sessions Queue: persistent draft + per-run image staging ----------
+
+@app.get("/api/queue/draft")
+def api_queue_draft_get() -> dict:
+    """The persisted editor draft (runs + defaults), or null if none."""
+    _require_auth()
+    return {"draft": sessions_queue.read_draft()}
+
+
+@app.post("/api/queue/draft")
+def api_queue_draft_post(body: QueueDraftIn) -> dict:
+    """Persist the editor draft so a half-built queue survives a browser
+    close.  Stored verbatim; validated only at Start."""
+    _require_auth()
+    _require_no_queue()
+    sessions_queue.write_draft({"runs": body.runs, "defaults": body.defaults})
+    return {"ok": True}
+
+
+@app.post("/api/queue/images/upload")
+async def api_queue_images_upload(
+    stage_id: str = Form(...),
+    files: list[UploadFile] = File(...),
+) -> dict:
+    """Upload reference images into a run's staging folder (same guards as
+    the standard image upload; auto-creates an empty note per image)."""
+    _require_auth()
+    _require_no_queue()
+    try:
+        sid = sessions_queue.sanitize_stage_id(stage_id)
+        sdir = sessions_queue.stage_dir(sid)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    sdir.mkdir(parents=True, exist_ok=True)
+    saved: list[str] = []
+    errors: list[str] = []
+    for f in files:
+        suffix = Path(f.filename or "").suffix.lower()
+        if suffix not in ALLOWED_IMAGE_SUFFIXES:
+            errors.append(f"{f.filename}: unsupported type (.png .jpg .jpeg)")
+            continue
+        data = await f.read()
+        if len(data) > MAX_IMAGE_BYTES:
+            errors.append(f"{f.filename}: exceeds "
+                          f"{MAX_IMAGE_BYTES // (1024 * 1024)} MB limit")
+            continue
+        stem = _sanitize_stem(Path(f.filename or "image").stem)
+        try:
+            target = _staged_unique_target(sdir, stem, suffix)
+        except HTTPException as exc:
+            errors.append(f"{f.filename}: {exc.detail}")
+            continue
+        target.write_bytes(data)
+        note = _stage_note_path(target)
+        if not note.exists():
+            note.write_text("", encoding="utf-8")
+        saved.append(target.name)
+    return {"ok": not errors, "saved": saved, "errors": errors,
+            "images": _staged_listing(sid)}
+
+
+@app.get("/api/queue/images/list")
+def api_queue_images_list(stage_id: str) -> dict:
+    _require_auth()
+    try:
+        sid = sessions_queue.sanitize_stage_id(stage_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"images": _staged_listing(sid)}
+
+
+@app.get("/api/queue/images/file")
+def api_queue_images_file(stage_id: str, name: str) -> FileResponse:
+    _require_auth()
+    target = _staged_safe_image(stage_id, name)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    return FileResponse(target)
+
+
+@app.get("/api/queue/images/compression/preview")
+def api_queue_images_compression_preview(
+    stage_id: str, name: str, degree: int,
+) -> dict:
+    """Compress a staged image at *degree* and return the preview (data-URI)
+    + before/after dims + per-provider token estimates (reuses the standard
+    compression-preview logic, scoped to the staging folder)."""
+    _require_auth()
+    target = _staged_safe_image(stage_id, name)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    raw = target.read_bytes()
+    w, h = _image_wh(raw)
+    out = compress_for_model(raw, degree)
+    ow, oh = _image_wh(out)
+    if out == raw:
+        preview = (f"/api/queue/images/file?stage_id={quote(stage_id)}"
+                   f"&name={quote(target.name)}&_c=0")
+    else:
+        preview = "data:" + sniff_media_type(out) + ";base64," + \
+            base64.b64encode(out).decode()
+    return {
+        "name":       target.name,
+        "degree":     max(0, min(100, int(degree))),
+        "orig":       {"width": w, "height": h, "bytes": len(raw),
+                       "tokens": _image_tokens(w, h)},
+        "compressed": {"width": ow, "height": oh, "bytes": len(out),
+                       "tokens": _image_tokens(ow, oh)},
+        "preview":    preview,
+    }
+
+
+@app.post("/api/queue/images/note")
+def api_queue_images_note(body: QueueImageNoteIn) -> dict:
+    _require_auth()
+    _require_no_queue()
+    target = _staged_safe_image(body.stage_id, body.name)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    _stage_note_path(target).write_text(body.description, encoding="utf-8")
+    return {"ok": True}
+
+
+@app.post("/api/queue/images/compression")
+def api_queue_images_compression(body: QueueImageCompressionIn) -> dict:
+    _require_auth()
+    _require_no_queue()
+    target = _staged_safe_image(body.stage_id, body.name)
+    if not target.is_file():
+        raise HTTPException(status_code=404, detail="Image not found.")
+    degree = max(0, min(100, int(body.degree)))
+    write_degree(target, degree)
+    return {"ok": True, "degree": degree}
+
+
+@app.delete("/api/queue/images")
+def api_queue_images_delete(stage_id: str, name: str) -> dict:
+    _require_auth()
+    _require_no_queue()
+    target = _staged_safe_image(stage_id, name)
+    for p in (target, _stage_note_path(target), compression_sidecar_path(target)):
+        try:
+            if p.exists():
+                p.unlink()
+        except OSError:
+            pass
+    try:
+        sid = sessions_queue.sanitize_stage_id(stage_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    return {"ok": True, "images": _staged_listing(sid)}
+
+
+@app.delete("/api/queue/images/run")
+def api_queue_images_delete_run(stage_id: str) -> dict:
+    """Delete a whole run's staging folder (called when a run is removed)."""
+    _require_auth()
+    _require_no_queue()
+    try:
+        sdir = sessions_queue.stage_dir(stage_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    import shutil
+    if sdir.exists():
+        shutil.rmtree(sdir, ignore_errors=True)
     return {"ok": True}
 
 

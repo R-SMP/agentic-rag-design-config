@@ -4473,21 +4473,33 @@ button.danger:hover { background: #3a1d1d; }
 /* ==========================================================================
    Sessions Queue — overnight benchmark runner view.
    ========================================================================== */
-.sessions-queue-view { overflow: hidden; }
-.sq-scroll {
+.sessions-queue-view { overflow: hidden; display: flex; }
+.sq-left {
+  flex: 1 1 58%;
+  min-width: 0;
   height: 100%;
   overflow-y: auto;
   padding: 20px 24px 40px;
+  border-right: 1px solid var(--border);
+}
+.sq-right {
+  flex: 1 1 42%;
+  min-width: 0;
+  max-width: 540px;
+  height: 100%;
+  overflow-y: auto;
+  padding: 20px 22px 40px;
 }
 .sq-head h2 { margin: 0 0 6px; }
-.sq-note { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0 0 18px; max-width: 900px; }
-.sq-scroll h3 { margin: 22px 0 10px; font-size: 15px; }
+.sq-note { color: var(--muted); font-size: 13px; line-height: 1.5; margin: 0 0 18px; }
+.sq-left h3, .sq-right h3 { margin: 22px 0 10px; font-size: 15px; }
+.sq-right h3 { margin-top: 0; }
 .sq-sub { color: var(--muted); font-size: 12px; font-weight: normal; }
 
 /* Locked (queue running): gray out the editor sections but keep the
    actions row (Halt) + progress + log fully interactive. */
-.sq-scroll.sq-locked .sq-defaults,
-.sq-scroll.sq-locked .sq-editor {
+.sq-left.sq-locked .sq-defaults,
+.sq-left.sq-locked .sq-editor {
   opacity: 0.5;
   pointer-events: none;
 }
@@ -4532,9 +4544,26 @@ button.danger:hover { background: #3a1d1d; }
   border-radius: 10px;
   padding: 12px;
 }
+.sq-run { cursor: pointer; }
+.sq-run.selected {
+  border-color: var(--accent);
+  box-shadow: inset 0 0 0 1px var(--accent);
+}
+.sq-run input, .sq-run textarea, .sq-run select { cursor: auto; }
 .sq-run-top { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
-.sq-run-id { width: 110px; flex: 0 0 auto; }
+.sq-run-id { width: 100px; flex: 0 0 auto; }
 .sq-run-cond { flex: 1 1 auto; min-width: 0; }
+.sq-run-img {
+  flex: 0 0 auto;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  white-space: nowrap;
+}
+.sq-run-img:hover { border-color: var(--accent); }
 .sq-run-query { width: 100%; box-sizing: border-box; resize: vertical; }
 .sq-run-adv-box {
   display: grid;
@@ -4611,3 +4640,67 @@ button.danger:hover:not(:disabled) { filter: brightness(1.1); }
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* Right pane — per-run image manager. */
+.sq-img-empty, .sq-img-locked {
+  color: var(--muted);
+  font-size: 13px;
+  padding: 24px 4px;
+  line-height: 1.5;
+}
+.sq-img-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+.sq-img-hint { color: var(--muted); font-size: 12px; margin: 6px 0 14px; line-height: 1.5; }
+.sq-img-none { color: var(--muted); font-size: 13px; }
+.sq-img-list { display: flex; flex-direction: column; gap: 14px; }
+.sq-img-item {
+  border: 1px solid var(--border);
+  background: var(--panel);
+  border-radius: 10px;
+  padding: 12px;
+}
+.sq-img-top { display: flex; gap: 10px; align-items: flex-start; }
+.sq-img-thumb {
+  width: 96px;
+  height: 96px;
+  object-fit: contain;
+  background: #0b0d12;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  flex: 0 0 auto;
+}
+.sq-img-meta { flex: 1 1 auto; min-width: 0; }
+.sq-img-name { font-size: 13px; word-break: break-all; }
+.sq-img-dims { color: var(--muted); font-size: 12px; margin-top: 3px; }
+.sq-img-desc-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  margin-top: 10px;
+}
+.sq-img-desc {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: inherit;
+  resize: vertical;
+}
+.sq-img-cmp { margin-top: 10px; }
+.sq-img-cmp-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sq-img-cmp-row input[type="range"] { flex: 1 1 auto; }
+.sq-img-cmp-val { flex: 0 0 auto; min-width: 62px; text-align: right; color: var(--text); }
+.sq-img-cmp-info { color: var(--muted); font-size: 12px; margin-top: 6px; min-height: 16px; }

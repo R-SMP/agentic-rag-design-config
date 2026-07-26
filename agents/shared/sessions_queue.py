@@ -27,6 +27,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -40,10 +41,37 @@ from config import PREVIOUS_SESSIONS_DIR
 QUEUE_DIR = PREVIOUS_SESSIONS_DIR / "_sessions_queue"
 MANIFEST_PATH = QUEUE_DIR / "manifest.json"
 PROGRESS_PATH = QUEUE_DIR / "queue-progress.json"
+DRAFT_PATH = QUEUE_DIR / "draft.json"
+# Per-run staged images (one subfolder per run's stage_id), each holding
+# the image files + their `_note.txt` descriptions + `.compression.json`
+# sidecars.  The runner copies a run's folder into inputs/input_images/
+# before that run's turn.
+IMAGES_ROOT = QUEUE_DIR / "images"
 
 # Terminal run states — a run in one of these is never re-driven on a
 # resume, and the queue skips straight past it.
 TERMINAL_STATES = {"done", "needs_review", "failed"}
+
+# A stage_id keys a run's staged-image folder.  Client-generated
+# (crypto.randomUUID); validated here before it ever touches the filesystem.
+_STAGE_ID_RE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$")
+
+
+def sanitize_stage_id(stage_id: str) -> str:
+    sid = (stage_id or "").strip()
+    if not _STAGE_ID_RE.match(sid):
+        raise ValueError(f"Invalid stage_id {stage_id!r}.")
+    return sid
+
+
+def stage_dir(stage_id: str) -> Path:
+    """Absolute staging folder for ``stage_id`` (validated, inside IMAGES_ROOT)."""
+    sid = sanitize_stage_id(stage_id)
+    d = (IMAGES_ROOT / sid)
+    root = IMAGES_ROOT.resolve()
+    if d.resolve().parent != root:
+        raise ValueError(f"stage_id {stage_id!r} escapes the images root.")
+    return d
 
 
 def _now_iso() -> str:
@@ -328,6 +356,32 @@ def read_progress() -> "dict | None":
         return None
 
 
+def write_draft(draft: dict) -> None:
+    _atomic_write(DRAFT_PATH, draft)
+
+
+def read_draft() -> "dict | None":
+    try:
+        return json.loads(DRAFT_PATH.read_text(encoding="utf-8"))
+    except Exception:
+        return None
+
+
+def prune_staging(keep_stage_ids: "set[str] | list[str]") -> None:
+    """Remove staged-image folders whose stage_id is not in ``keep_stage_ids``
+    (best-effort GC of runs the user deleted / old queues)."""
+    keep = {str(s) for s in (keep_stage_ids or [])}
+    if not IMAGES_ROOT.exists():
+        return
+    import shutil
+    for d in IMAGES_ROOT.iterdir():
+        try:
+            if d.is_dir() and d.name not in keep:
+                shutil.rmtree(d, ignore_errors=True)
+        except Exception:
+            pass
+
+
 def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
     """Assemble a fresh manifest from a start payload.
 
@@ -346,10 +400,12 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
                 f"Run #{i + 1} has unknown condition {cond!r}. "
                 f"Valid conditions: {sorted(known)}.")
         rid = (r.get("run_id") or "").strip() or f"run-{i + 1:02d}"
+        stage_id = (r.get("stage_id") or "").strip() or None
         out_runs.append({
             "run_id":           rid,
             "condition":        cond,
             "query":            query,
+            "stage_id":         stage_id,
             "continue_message": (r.get("continue_message") or "").strip() or None,
             "timeout_min":      _pos_int_or_none(r.get("timeout_min")),
             "max_continues":    _nonneg_int_or_none(r.get("max_continues")),
