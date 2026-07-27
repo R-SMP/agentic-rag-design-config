@@ -360,6 +360,19 @@
             </p>
           </div>
 
+          <div class="sq-library">
+            <div class="sq-library-row">
+              <input id="sq-set-name" type="text" placeholder="Set name (optional)" />
+              <button id="sq-export" class="ghost" type="button">⬇ Export set (.zip)</button>
+              <button id="sq-import" class="ghost" type="button">⬆ Import set…</button>
+              <input id="sq-import-file" type="file" accept=".zip" hidden />
+            </div>
+            <label class="sq-globalnote-label">Intended global settings — reminder only (the runner does NOT apply this)
+              <textarea id="sq-def-globalnote" rows="2"
+                placeholder="e.g. RAG: off; 7-agent structure. A note for your morning checklist / later scoring."></textarea>
+            </label>
+          </div>
+
           <div id="sq-run-banner" class="settings-lock-banner" hidden>
             A Sessions Queue is running — the editor is locked.  Use
             <strong>Halt</strong> to stop it.

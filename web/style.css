@@ -4499,9 +4499,47 @@ button.danger:hover { background: #3a1d1d; }
 /* Locked (queue running): gray out the editor sections but keep the
    actions row (Halt) + progress + log fully interactive. */
 .sq-left.sq-locked .sq-defaults,
-.sq-left.sq-locked .sq-editor {
+.sq-left.sq-locked .sq-editor,
+.sq-left.sq-locked .sq-library {
   opacity: 0.5;
   pointer-events: none;
+}
+
+.sq-library { margin: 0 0 16px; }
+.sq-library-row {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+  margin-bottom: 10px;
+}
+.sq-library-row input[type="text"] {
+  flex: 1 1 180px;
+  min-width: 0;
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: inherit;
+}
+.sq-globalnote-label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sq-globalnote-label textarea {
+  background: var(--panel-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 7px 9px;
+  font: inherit;
+  resize: vertical;
+  width: 100%;
+  box-sizing: border-box;
 }
 
 .sq-defaults-grid {

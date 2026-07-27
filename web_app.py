@@ -25,6 +25,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import hmac
+import io
 import json
 import logging
 import base64
@@ -33,6 +34,7 @@ import queue
 import re
 import time
 import uuid
+import zipfile
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -3003,6 +3005,174 @@ def api_queue_images_copy(body: QueueImageCopyIn) -> dict:
             except Exception:
                 logger.exception("[QUEUE] staged copy failed for %s", p)
     return {"ok": True, "images": _staged_listing(to_sid)}
+
+
+# ---- Benchmark-set portable bundle (export / import as a .zip) -----------
+
+_BUNDLE_MAX_ZIP_BYTES     = 200 * 1024 * 1024   # compressed upload cap
+_BUNDLE_MAX_UNCOMPRESSED  = 500 * 1024 * 1024   # zip-bomb guard
+_BUNDLE_MAX_ENTRIES       = 3000
+_BUNDLE_MAX_QUEUE_JSON    = 10 * 1024 * 1024
+_BUNDLE_MAX_TEXT_BYTES    = 1 * 1024 * 1024
+_BUNDLE_IMAGE_SUFFIXES    = {".png", ".jpg", ".jpeg"}
+_BUNDLE_TEXT_SUFFIXES     = {".txt", ".json"}    # notes + .compression.json
+
+
+@app.get("/api/queue/export")
+def api_queue_export() -> Response:
+    """Download the current benchmark set (draft runs + defaults + staged
+    images) as a self-contained .zip bundle — the durable, portable library
+    unit the user keeps on their own disk."""
+    _require_auth()
+    draft = sessions_queue.read_draft() or {"runs": [], "defaults": {}}
+    runs = draft.get("runs") or []
+    defaults = draft.get("defaults") or {}
+    name = str(defaults.get("set_name") or "").strip()
+    bundle = {
+        "format":               "sessions_queue_bundle",
+        "version":              1,
+        "exported_at":          _web_now_iso(),
+        "name":                 name,
+        "global_settings_note": str(defaults.get("global_settings_note") or ""),
+        "defaults":             defaults,
+        "runs":                 runs,
+    }
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.writestr("queue.json",
+                    json.dumps(bundle, indent=2, ensure_ascii=False))
+        seen = set()
+        for r in runs:
+            sid = str((r or {}).get("stage_id") or "").strip()
+            if not sid or sid in seen:
+                continue
+            seen.add(sid)
+            try:
+                sdir = sessions_queue.stage_dir(sid)
+            except ValueError:
+                continue
+            if not sdir.exists():
+                continue
+            for p in sorted(sdir.iterdir()):
+                if p.is_file():
+                    zf.write(p, f"images/{sid}/{p.name}")
+    slug = re.sub(r"[^A-Za-z0-9._-]", "_", name).strip("_") or \
+        datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    return Response(
+        content=buf.getvalue(),
+        media_type="application/zip",
+        headers={"Content-Disposition":
+                 f'attachment; filename="benchmark_set_{slug}.zip"'},
+    )
+
+
+@app.post("/api/queue/import")
+async def api_queue_import(file: UploadFile = File(...)) -> dict:
+    """Import a benchmark-set .zip bundle, REPLACING the current draft +
+    staging.  Hardened against zip-slip + zip-bombs: every target path is
+    built from a VALIDATED stage_id + a SANITISED filename (never the raw
+    zip entry path), with size / count caps on the unpack."""
+    _require_auth()
+    _require_no_queue()
+    data = await file.read()
+    if len(data) > _BUNDLE_MAX_ZIP_BYTES:
+        raise HTTPException(status_code=400, detail="Bundle file is too large.")
+    try:
+        zf = zipfile.ZipFile(io.BytesIO(data))
+    except Exception:
+        raise HTTPException(status_code=400, detail="Not a valid .zip file.")
+
+    infos = zf.infolist()
+    if len(infos) > _BUNDLE_MAX_ENTRIES:
+        raise HTTPException(status_code=400, detail="Bundle has too many entries.")
+    if sum(i.file_size for i in infos) > _BUNDLE_MAX_UNCOMPRESSED:
+        raise HTTPException(status_code=400,
+                            detail="Bundle uncompressed size is too large.")
+
+    qinfo = next((i for i in infos if i.filename == "queue.json"), None)
+    if qinfo is None:
+        raise HTTPException(status_code=400, detail="Bundle is missing queue.json.")
+    if qinfo.file_size > _BUNDLE_MAX_QUEUE_JSON:
+        raise HTTPException(status_code=400, detail="queue.json is too large.")
+    try:
+        # Read the SAME ZipInfo we size-checked — reading by name resolves to
+        # the LAST duplicate member, which would bypass the size cap.
+        bundle = json.loads(zf.read(qinfo))
+    except Exception:
+        raise HTTPException(status_code=400, detail="queue.json is not valid JSON.")
+    if not isinstance(bundle, dict) or \
+            bundle.get("format") != "sessions_queue_bundle":
+        raise HTTPException(status_code=400, detail="Not a Sessions Queue bundle.")
+    runs = bundle.get("runs")
+    defaults = bundle.get("defaults")
+    if not isinstance(runs, list) or not isinstance(defaults, dict):
+        raise HTTPException(status_code=400, detail="Bundle runs/defaults malformed.")
+
+    # Which stage_ids do the runs legitimately reference (validated)?
+    valid_sids = set()
+    clean_runs = []
+    for r in runs:
+        if not isinstance(r, dict):
+            continue
+        sid = str(r.get("stage_id") or "").strip()
+        if sid:
+            try:
+                sessions_queue.sanitize_stage_id(sid)
+                valid_sids.add(sid)
+            except ValueError:
+                r = dict(r)
+                r["stage_id"] = ""      # drop an unsafe stage_id → text-only run
+        clean_runs.append(r)
+
+    # Extract image/note/sidecar files — target built ONLY from validated
+    # components, never the raw zip path.
+    for info in infos:
+        nm = (info.filename or "").replace("\\", "/")
+        if nm == "queue.json" or nm.endswith("/"):
+            continue
+        parts = nm.split("/")
+        if len(parts) != 3 or parts[0] != "images":
+            continue                    # ignore anything not images/<sid>/<file>
+        sid, raw_name = parts[1], parts[2]
+        if sid not in valid_sids:
+            continue
+        try:
+            sdir = sessions_queue.stage_dir(sid)
+        except ValueError:
+            continue
+        base = Path(raw_name).name
+        if not base or base != raw_name:
+            continue
+        suffix = Path(base).suffix.lower()
+        if suffix in _BUNDLE_IMAGE_SUFFIXES:
+            if info.file_size > MAX_IMAGE_BYTES:
+                continue
+        elif suffix in _BUNDLE_TEXT_SUFFIXES:
+            if info.file_size > _BUNDLE_MAX_TEXT_BYTES:
+                continue
+        else:
+            continue                    # unknown file type
+        target = sdir / base
+        if target.resolve().parent != sdir.resolve():
+            continue                    # paranoia — never escape the stage dir
+        try:
+            sdir.mkdir(parents=True, exist_ok=True)
+            with zf.open(info) as fp:
+                target.write_bytes(fp.read())
+        except Exception:
+            # A corrupt/truncated member must not 500 the whole import —
+            # skip it (that image just won't be present).
+            logger.warning("[QUEUE] import: skipped unreadable member %s", nm)
+            continue
+
+    # REPLACE the draft, then GC staging the new set doesn't reference.
+    sessions_queue.write_draft({"runs": clean_runs, "defaults": defaults})
+    try:
+        sessions_queue.prune_staging(valid_sids)
+    except Exception:
+        logger.exception("[QUEUE] import prune failed")
+    logger.info("[QUEUE] imported benchmark set — %d run(s)", len(clean_runs))
+    return {"ok": True, "runs": len(clean_runs)}
 
 
 class DhScheduleIn(BaseModel):
