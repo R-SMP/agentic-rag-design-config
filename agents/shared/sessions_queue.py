@@ -93,10 +93,7 @@ def _now_iso() -> str:
 # are built from ``workflow_settings.llm_defaults.PROPOSED_WORKFLOWS`` so
 # they never drift from the Workflow-Settings preset buttons.
 
-_GLOBAL_OVERRIDE_MODELS = {
-    "openai":    "gpt-5.4",
-    "anthropic": "claude-sonnet-4-6",
-}
+_VALID_PROVIDERS = {"openai", "anthropic", "google"}
 
 
 def _subj5_payload(preset: dict) -> dict:
@@ -118,23 +115,34 @@ def _subj5_payload(preset: dict) -> dict:
     }
 
 
-def _global_payload(provider: str, model: str) -> dict:
-    """Global-override payload — force ``provider`` + ``model`` on every agent."""
-    return {
-        "mode":   provider,
-        "shared": {"provider": provider, "model": model},
-        "agents": [],
-    }
+def single_model_payload(provider: str, model: str) -> dict:
+    """Global-override payload — force one ``provider`` + ``model`` on EVERY
+    agent (the runner's ``single`` condition).  Validates: provider must be
+    known and the model non-empty.  Raises ``ValueError`` otherwise."""
+    p = (provider or "").strip().lower()
+    m = (model or "").strip()
+    if p not in _VALID_PROVIDERS:
+        raise ValueError(
+            f"single-model provider must be one of {sorted(_VALID_PROVIDERS)}, "
+            f"got {provider!r}.")
+    if not m:
+        raise ValueError("single-model run needs a model name.")
+    return {"mode": p, "shared": {"provider": p, "model": m}, "agents": []}
 
 
 def _conditions() -> "list[dict[str, Any]]":
     """Build the ordered condition list (id, label, payload).
 
     Built lazily so a broken/absent ``llm_defaults`` never stops the
-    module importing — the runner degrades to just ``current``.
+    module importing — the runner degrades to just ``current`` + ``single``.
+    ``single`` carries no static payload: the runner builds it per run from
+    that run's ``single_provider`` / ``single_model`` fields.
     """
     out: list[dict[str, Any]] = [
         {"id": "current", "label": "Current settings (no change)", "payload": None},
+        {"id": "single",
+         "label": "Single model — all agents (pick provider + model below)",
+         "payload": None},
     ]
     try:
         from workflow_settings.llm_defaults import PROPOSED_WORKFLOWS
@@ -152,14 +160,8 @@ def _conditions() -> "list[dict[str, Any]]":
                 "payload": _subj5_payload(by_id["anthropic"]),
             })
     except Exception:
-        # Fall through with just the global overrides + current.
+        # Fall through with just current + single.
         pass
-    for provider, model in _GLOBAL_OVERRIDE_MODELS.items():
-        out.append({
-            "id":      f"all-{provider}",
-            "label":   f"Global override · All {provider.capitalize()} ({model})",
-            "payload": _global_payload(provider, model),
-        })
     return out
 
 
@@ -190,22 +192,27 @@ def known_condition_ids() -> "set[str]":
     return {c["id"] for c in _conditions()}
 
 
-_CLASSIFIER_KEY_ENV = {
+_PROVIDER_KEY_ENV = {
     "openai":    "OPENAI_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
     "google":    "GOOGLE_API_KEY",
 }
 
 
-def classifier_key_present(provider: str) -> bool:
-    """True when the API key for the classifier ``provider`` is in the env.
+def provider_key_present(provider: str) -> bool:
+    """True when the API key for ``provider`` is set in the process env.
 
-    Used to fail-fast at queue start: a classifier whose key is absent
-    would error on the FIRST reply of EVERY run (→ needs_review), wasting
-    the whole night.
+    Used to fail-fast at queue start: a classifier (or a single-model run's
+    condition) whose provider key is absent would error every run — better
+    caught before the night starts.
     """
-    env = _CLASSIFIER_KEY_ENV.get((provider or "").strip().lower())
+    env = _PROVIDER_KEY_ENV.get((provider or "").strip().lower())
     return bool(env and os.getenv(env, "").strip())
+
+
+def classifier_key_present(provider: str) -> bool:
+    """Back-compat alias — the classifier's key check is a provider check."""
+    return provider_key_present(provider)
 
 
 # ---------------------------------------------------------------------------
@@ -431,6 +438,14 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
             raise ValueError(
                 f"Run #{i + 1} has unknown condition {cond!r}. "
                 f"Valid conditions: {sorted(known)}.")
+        single_provider = (r.get("single_provider") or "").strip().lower()
+        single_model = (r.get("single_model") or "").strip()
+        if cond == "single":
+            # Validate now (raises on bad provider / empty model).
+            try:
+                single_model_payload(single_provider, single_model)
+            except ValueError as exc:
+                raise ValueError(f"Run #{i + 1}: {exc}")
         rid = (r.get("run_id") or "").strip() or f"run-{i + 1:02d}"
         stage_id = (r.get("stage_id") or "").strip() or None
         out_runs.append({
@@ -438,6 +453,8 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
             "condition":        cond,
             "query":            query,
             "stage_id":         stage_id,
+            "single_provider":  single_provider or None,
+            "single_model":     single_model or None,
             "expected_output":  (r.get("expected_output") or "").strip() or None,
             "continue_message": (r.get("continue_message") or "").strip() or None,
             "timeout_min":      _pos_int_or_none(r.get("timeout_min")),

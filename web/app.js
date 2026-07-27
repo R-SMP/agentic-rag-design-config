@@ -4328,6 +4328,8 @@ function sqNewRun() {
     stage_id: sqUUID(),
     run_id: "",
     condition: "current",
+    single_provider: "openai",
+    single_model: "",
     query: "",
     expected_output: "",
     continue_message: "",
@@ -4355,6 +4357,20 @@ function sqRenderRuns() {
         <button class="sq-run-adv ghost" type="button" title="Per-run overrides">⚙</button>
         <button class="sq-run-del danger-ghost" type="button" title="Remove run">✕</button>
       </div>
+      ${run.condition === "single" ? `
+      <div class="sq-run-single">
+        <label>Provider
+          <select class="sq-run-sp" data-k="single_provider">
+            <option value="openai"${run.single_provider === "openai" ? " selected" : ""}>openai</option>
+            <option value="anthropic"${run.single_provider === "anthropic" ? " selected" : ""}>anthropic</option>
+            <option value="google"${run.single_provider === "google" ? " selected" : ""}>google</option>
+          </select>
+        </label>
+        <label>Model
+          <input class="sq-run-sm" type="text" data-k="single_model"
+                 value="${sqEsc(run.single_model)}" placeholder="e.g. gpt-5.4" />
+        </label>
+      </div>` : ""}
       <textarea class="sq-run-query" data-k="query" rows="3"
         placeholder="The full prompt to send for this run…">${sqEsc(run.query)}</textarea>
       <div class="sq-run-adv-box" ${run._adv ? "" : "hidden"}>
@@ -4392,6 +4408,8 @@ function sqRenderRuns() {
     if (!Number.isInteger(i) || !k || !sqRuns[i]) return;
     sqRuns[i][k] = ev.target.value;
     sqSaveDraftDebounced();
+    // Changing the condition shows/hides the single-model provider+model row.
+    if (k === "condition") sqRenderRuns();
   });
   host.addEventListener("click", (ev) => {
     const row = ev.target.closest(".sq-run");
@@ -4432,7 +4450,7 @@ function sqVal(id, fallback) {
 function sqCollectDefaults() {
   return {
     continue_message:
-      sqVal("sq-def-continue", "Proceed with the task as I had instructed you to"),
+      sqVal("sq-def-continue", "Do not ask me anything further. Resolve any ambiguity using your own best judgment per my original instructions, and continue all the way to the final deliverable."),
     timeout_min: sqVal("sq-def-timeout", "60"),
     max_continues: sqVal("sq-def-maxcont", "3"),
     classifier_provider: sqVal("sq-def-clsprov", "openai"),
@@ -4465,6 +4483,8 @@ async function sqFlushDraft() {
       stage_id: r.stage_id,
       run_id: r.run_id || "",
       condition: r.condition || "current",
+      single_provider: r.single_provider || "openai",
+      single_model: r.single_model || "",
       query: r.query || "",
       expected_output: r.expected_output || "",
       continue_message: r.continue_message || "",
@@ -4831,6 +4851,8 @@ async function hydrateSessionsQueue() {
             stage_id: r.stage_id || sqUUID(),
             run_id: r.run_id || "",
             condition: r.condition || "current",
+            single_provider: r.single_provider || "openai",
+            single_model: r.single_model || "",
             query: r.query || "",
             expected_output: r.expected_output || "",
             continue_message: r.continue_message || "",
@@ -4846,7 +4868,15 @@ async function hydrateSessionsQueue() {
     sqDraftLoaded = true;
   }
   if (!sqRuns.length) sqRuns = [sqNewRun()];
+  // Drop any condition no longer offered (e.g. a removed preset) → 'current',
+  // so the dropdown matches and Start doesn't 400 on an unknown condition.
+  const validCond = new Set(sqConditions.map((c) => c.id));
+  let condFixed = false;
+  for (const r of sqRuns) {
+    if (!validCond.has(r.condition)) { r.condition = "current"; condFixed = true; }
+  }
   sqRenderRuns();
+  if (condFixed) sqFlushDraft();
   sqRefreshBadges();
   try {
     const cfg = await (await fetch("/api/config")).json();

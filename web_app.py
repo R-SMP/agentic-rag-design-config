@@ -2171,10 +2171,27 @@ async def _run_queue_in_background(manifest: dict) -> None:
                     continue
 
             # 2. Apply the LLM condition.  'current' restores the captured
-            #    baseline (deterministic, no drift); a named condition uses
-            #    its payload.  None (no baseline captured) leaves routing.
+            #    baseline (deterministic, no drift); 'single' forces one
+            #    provider+model on every agent (built from the run's fields);
+            #    a named condition uses its preset payload.  None (no baseline
+            #    captured) leaves routing untouched.
             if run["condition"] == "current":
                 payload = baseline
+            elif run["condition"] == "single":
+                try:
+                    payload = sessions_queue.single_model_payload(
+                        run.get("single_provider"), run.get("single_model"))
+                except Exception as exc:
+                    run["status"] = "failed"
+                    run["note"] = f"single-model condition invalid: {exc}"
+                    run["finished_at"] = _web_now_iso()
+                    _emit_runner(
+                        manifest,
+                        _queue_progress(manifest, current_index=i, stage="turn",
+                                        in_flight_run_id=run["run_id"], active=True),
+                        f"[{run['run_id']}] FAILED — {run['note']}",
+                    )
+                    continue
             else:
                 payload = sessions_queue.routing_payload_for(run["condition"])
             if payload is not None:
@@ -2594,7 +2611,9 @@ def _normalize_queue_defaults(d: "dict | None") -> dict:
     resumed manifest."""
     d = d or {}
     dcm = (str(d.get("continue_message") or "")).strip() \
-        or "Proceed with the task as I had instructed you to"
+        or ("Do not ask me anything further. Resolve any ambiguity using your "
+            "own best judgment per my original instructions, and continue all "
+            "the way to the final deliverable.")
     try:
         dtm = int(d.get("timeout_min"))
     except (TypeError, ValueError):
@@ -2732,6 +2751,17 @@ async def api_queue_start(body: QueueStartIn) -> dict:
             sessions_queue.prune_staging(keep)
         except Exception:
             logger.exception("[QUEUE] staging prune failed")
+
+    # Fail fast on any single-model run whose provider key is absent (else it
+    # would error every turn mid-night).  Covers fresh + resume.
+    for r in manifest.get("runs", []):
+        if r.get("condition") == "single" and not sessions_queue.provider_key_present(
+                r.get("single_provider")):
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Run {r.get('run_id')!r}: single-model provider "
+                        f"{r.get('single_provider')!r} has no API key set in "
+                        f"the environment."))
 
     _QUEUE_IN_FLIGHT = True
     _runner_halt = False
