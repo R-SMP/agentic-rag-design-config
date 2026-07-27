@@ -51,8 +51,14 @@ close as the keep-close strength asks when there's room."
    flag its deviation); DCOI ("a SOFT TARGET is not a claim to enforce —
    judge it vs its goal"); Orchestrator (relay-authorisations bullet names
    soft targets). Receptionist unchanged (does not handle parameter values).
-2. Then the **5-agent** drafts (Conductor / Creator / UII), inheriting the same
-   logic (re-pointed).
+2. **5-agent** drafts — **Conductor DONE** (2026-07-26): HARD RULE 8 third
+   case + HARD RULE 9 soft-target exclusion + the "Relaying user
+   authorisations" bullet names soft targets
+   (`extra_utilities/draft_prompt_conductor.md`). The 5-agent **UII**,
+   **Creator** (DCIC+DCII), and **DCOI** drafts do NOT exist yet (build-order
+   stages 3-4); they MUST carry the soft-target handling when authored (UII
+   marker convention + UI-pin-softening; Creator not-locked/start-near +
+   self-validate-no-violation; DCOI not-a-claim).
 3. Later, the **3-agent** system.
 
 ## Recording format (DECIDED 2026-07-26): Option A — marker on the line
