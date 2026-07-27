@@ -19,6 +19,8 @@ user → Receptionist → Orchestrator → User Input Inspector
 
 Any agent can ESCALATE to the Orchestrator, which calls the Planner for a Problem/Solution/Sequence plan and re-routes one step at a time. On REVISE, a new attempt folder is opened.
 
+**User-provided values — locked, soft, or free.** A value the user gives is treated one of three ways. **LOCKED** (default): an exact number they stated is a hard constraint — nothing changes it without their authorisation. **FREE**: a parameter they never mentioned — the system chooses it within range. **SOFT TARGET**: a value they provided but explicitly *subordinated to a qualitative goal* (e.g. *"here are dimensions, but fit the sketched shape; the exact dimensions matter less"*) — the **goal dominates on conflict** (the system varies the value freely to serve it) while holding it **close when there is slack**. The User Input Inspector records a soft target as a `SOFT TARGET (goal: …; keep near … if free)` marker on its QUANTITATIVE INPUTS line, and every downstream agent honours it (Planner authorisation, Creator generation, DCII validation, DCOI output inspection). Details: [`extra_utilities/design_soft_targets.md`](extra_utilities/design_soft_targets.md).
+
 **Post-session save (opt-in):** when the user types `quit`, the system asks whether to save the session to the database. If yes, the **Database Handler** interviews each in-session agent through a per-field `ASK:`/`SAVE:` protocol and writes one `.txt` file per scheduled field, shaped to be embedding-ready (self-contained, declarative, one topic per file, ≤700 `cl100k_base` tokens for Semantic fields).
 
 ## Project layout
