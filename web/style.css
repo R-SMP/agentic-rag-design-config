@@ -4573,6 +4573,12 @@ button.danger:hover { background: #3a1d1d; }
   padding-top: 10px;
   border-top: 1px dashed var(--border);
 }
+.sq-adv-full { grid-column: 1 / -1; }
+.sq-run-exp {
+  width: 100%;
+  box-sizing: border-box;
+  resize: vertical;
+}
 button.danger-ghost {
   border: 1px solid #7a2a2a;
   background: transparent;

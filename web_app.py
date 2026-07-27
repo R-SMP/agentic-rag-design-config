@@ -2292,15 +2292,21 @@ async def _run_queue_in_background(manifest: dict) -> None:
                     break
 
                 reply = getattr(result, "reply_text", "") or ""
+                arts = getattr(result, "new_artefacts_paths", None) or []
+                art_summary = (", ".join(sorted({p.name for p in arts}))
+                               if arts else "none")
                 _emit_runner(
                     manifest,
                     _queue_progress(manifest, current_index=i, stage="classify",
                                     in_flight_run_id=run["run_id"], active=True),
-                    f"[{run['run_id']}] classifying reply ({len(reply)} chars)",
+                    f"[{run['run_id']}] classifying reply ({len(reply)} chars, "
+                    f"files: {art_summary})",
                 )
                 verdict = await run_in_threadpool(
                     functools.partial(
                         sessions_queue.classify_reply, run["query"], reply,
+                        expected_output=run.get("expected_output") or "",
+                        artefacts=art_summary,
                         provider=defaults["classifier_provider"],
                         model=defaults["classifier_model"],
                     )

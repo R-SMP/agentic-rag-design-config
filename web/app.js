@@ -4329,6 +4329,7 @@ function sqNewRun() {
     run_id: "",
     condition: "current",
     query: "",
+    expected_output: "",
     continue_message: "",
     timeout_min: "",
     max_continues: "",
@@ -4357,6 +4358,10 @@ function sqRenderRuns() {
       <textarea class="sq-run-query" data-k="query" rows="3"
         placeholder="The full prompt to send for this run…">${sqEsc(run.query)}</textarea>
       <div class="sq-run-adv-box" ${run._adv ? "" : "hidden"}>
+        <label class="sq-adv-full">Expected output — classifier only (blank = grade against the query)
+          <textarea class="sq-run-exp" data-k="expected_output" rows="2"
+            placeholder="What a FINISHED answer must contain, e.g. “the 16-parameter JSON + provenance; no mesh”.">${sqEsc(run.expected_output)}</textarea>
+        </label>
         <label>Continue message
           <input class="sq-run-cont" type="text" data-k="continue_message"
                  value="${sqEsc(run.continue_message)}" placeholder="(use default)" />
@@ -4461,6 +4466,7 @@ async function sqFlushDraft() {
       run_id: r.run_id || "",
       condition: r.condition || "current",
       query: r.query || "",
+      expected_output: r.expected_output || "",
       continue_message: r.continue_message || "",
       timeout_min: r.timeout_min || "",
       max_continues: r.max_continues || "",
@@ -4826,6 +4832,7 @@ async function hydrateSessionsQueue() {
             run_id: r.run_id || "",
             condition: r.condition || "current",
             query: r.query || "",
+            expected_output: r.expected_output || "",
             continue_message: r.continue_message || "",
             timeout_min: r.timeout_min || "",
             max_continues: r.max_continues || "",

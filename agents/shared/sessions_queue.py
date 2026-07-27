@@ -213,22 +213,24 @@ def classifier_key_present(provider: str) -> bool:
 # ---------------------------------------------------------------------------
 
 _CLASSIFIER_SYSTEM = (
-    "You are a strict classifier for a multi-agent propeller-design "
-    "assistant. Given the user's request and the assistant's reply, "
-    "decide whether the reply is the FINAL deliverable the user asked "
-    "for, or an INTERMEDIATE result where the assistant has paused and "
-    "is waiting for the user to tell it to proceed / continue to the "
-    "next stage (for example: it produced the blade cross-sections and "
-    "is asking whether to go on to the 3D geometry, or it is otherwise "
-    "checking in before finishing).\n"
-    "Answer with exactly ONE word — either FINAL or INTERMEDIATE — and "
-    "nothing else."
-)
-
-_CLASSIFIER_USER = (
-    "USER REQUEST:\n{query}\n\n"
-    "ASSISTANT REPLY:\n{reply}\n\n"
-    "Is the assistant's reply FINAL or INTERMEDIATE?"
+    "You are a strict classifier for an automated benchmark runner driving a "
+    "multi-agent propeller-design assistant. Your ONLY job: decide whether the "
+    "assistant's latest reply has DELIVERED what the user asked for in THIS "
+    "run, or whether the assistant is still working — i.e. it paused, is asking "
+    "a clarifying question, gave only a partial / intermediate result, or is "
+    "waiting to be told to continue.\n"
+    "\n"
+    "Judge STRICTLY against what the user actually requested in their query "
+    "(and the explicit acceptance criterion, if one is given) — NOT against any "
+    "assumption about what a 'complete' propeller job normally involves. In "
+    "particular: if the user asked only for extracted parameter values, a "
+    "specific number, or any text answer, then a reply that contains exactly "
+    "that IS final — even if no 3D geometry, mesh, blade-section drawings, or "
+    "renders were produced. Absent geometry means 'not done' ONLY when the user "
+    "asked for geometry. Do not invent extra steps the user did not request.\n"
+    "\n"
+    "Answer with exactly ONE word — either FINAL or INTERMEDIATE — and nothing "
+    "else."
 )
 
 
@@ -277,42 +279,72 @@ def _content_text(resp: Any) -> str:
 
 
 def classify_reply(query: str, reply: str, *,
+                   expected_output: str = "",
+                   artefacts: str = "",
                    provider: str = "openai",
                    model: str = "gpt-5.4-mini") -> dict:
-    """Classify ``reply`` as ``"final"`` or ``"intermediate"``.
+    """Classify ``reply`` as ``"final"`` or ``"intermediate"`` for THIS run.
 
-    Returns ``{"verdict", "reason", "error"}``.  ``error`` is True when
-    the classifier call itself failed — the runner treats that as
-    "stop and flag for review" rather than looping, so a broken
-    classifier never spins the queue.
+    ``expected_output`` is an optional per-run acceptance criterion (a
+    classifier-only grading hint — never sent to the agents); blank means
+    "grade against the query".  ``artefacts`` is a short summary of the
+    files the assistant produced this turn (e.g. ``"propeller_mesh.obj,
+    render_isometric.png"`` or ``"none"``), so an expectation of geometry
+    can be graded on the actual artefact rather than the reply's claim.
+
+    Returns ``{"verdict", "reason", "error"}``.  ``error`` is True when the
+    classifier call itself failed — the runner treats that as "stop and
+    flag for review" rather than looping, so a broken classifier never
+    spins the queue.
     """
     result = {"verdict": "final", "reason": "", "error": False}
     try:
         llm = _build_classifier_llm(provider, model)
         from langchain_core.messages import HumanMessage, SystemMessage
+        # Built by concatenation (NOT str.format) so a query / reply / note
+        # containing "{" or "}" can never raise.
+        expected_block = ""
+        if (expected_output or "").strip():
+            expected_block = (
+                "EXPLICIT ACCEPTANCE CRITERION for this run — what a FINISHED "
+                "answer must contain; treat as authoritative:\n"
+                + expected_output.strip()[:2000] + "\n\n")
+        artefact_block = (
+            "FILES THE ASSISTANT PRODUCED THIS TURN: "
+            + ((artefacts or "").strip() or "none")[:500] + "\n\n")
+        user_msg = (
+            "USER REQUEST (what this run asked for):\n"
+            + (query or "")[:6000] + "\n\n"
+            + expected_block
+            + artefact_block
+            + "ASSISTANT REPLY:\n" + (reply or "")[:8000] + "\n\n"
+            + "Has the assistant delivered what the user asked for (FINAL), or "
+              "is it still working / paused / asking a question (INTERMEDIATE)? "
+              "Answer FINAL or INTERMEDIATE."
+        )
         messages = [
             SystemMessage(content=_CLASSIFIER_SYSTEM),
-            HumanMessage(content=_CLASSIFIER_USER.format(
-                query=(query or "")[:6000],
-                reply=(reply or "")[:8000],
-            )),
+            HumanMessage(content=user_msg),
         ]
         text = _content_text(llm.invoke(messages)).strip()
         up = text.upper()
-        i_int = up.find("INTERMEDIATE")
-        i_fin = up.find("FINAL")
-        if i_int == -1 and i_fin == -1:
-            # No decisive word — default to final (never discard, never
-            # loop on an unparseable reply).
+        # WHOLE-WORD matches only, so "FINALIZE" / "FINALLY" do not count as
+        # a FINAL verdict.  The prompt demands exactly one word; anything
+        # ambiguous (both words, or neither) means the model did not comply.
+        has_fin = re.search(r"\bFINAL\b", up) is not None
+        has_int = re.search(r"\bINTERMEDIATE\b", up) is not None
+        if has_fin and not has_int:
             result["verdict"] = "final"
-        elif i_fin == -1:
+            result["reason"] = text[:300]
+        elif has_int and not has_fin:
             result["verdict"] = "intermediate"
-        elif i_int == -1:
-            result["verdict"] = "final"
+            result["reason"] = text[:300]
         else:
-            # Both words present — the earlier one wins.
-            result["verdict"] = "intermediate" if i_int < i_fin else "final"
-        result["reason"] = text[:300]
+            # Ambiguous / non-compliant output — do NOT guess.  Flag as an
+            # error so the runner STOPS and marks the run needs_review
+            # (never silently finalises, never loops).
+            result["error"] = True
+            result["reason"] = "unparseable classifier verdict: " + text[:200]
     except Exception as exc:  # noqa: BLE001 — surface, never raise into the loop
         result["error"] = True
         result["reason"] = f"{type(exc).__name__}: {exc}"
@@ -406,6 +438,7 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
             "condition":        cond,
             "query":            query,
             "stage_id":         stage_id,
+            "expected_output":  (r.get("expected_output") or "").strip() or None,
             "continue_message": (r.get("continue_message") or "").strip() or None,
             "timeout_min":      _pos_int_or_none(r.get("timeout_min")),
             "max_continues":    _nonneg_int_or_none(r.get("max_continues")),
