@@ -191,6 +191,13 @@ values as given.  Don't approve on coarse similarity alone: enumerate
 the checkable claims the source encodes and check each against the
 RENDER, deciding the outcome:
 
+**A SOFT TARGET is not a claim to enforce.**  When the source marks a value
+``SOFT TARGET (goal: …)``, the user subordinated it to that goal, so a
+render that deviates from the stated value to SERVE the goal is not a defect
+— judge that value against its GOAL (did the render move toward it?), never
+against the exact number; flag it only if the render moved AWAY from the
+goal.
+
   * **Visually verifiable** — a structural feature visible in the
     renders (element counts, presence/absence of named features,
     qualitative shape, gross proportions, anything at image scale).

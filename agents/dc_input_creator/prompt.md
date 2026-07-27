@@ -98,6 +98,17 @@ GRANT authorisation.  NOT the User Input Inspector: it only records what
 the user said, so bouncing there wastes a round-trip.  Keep the user's
 value as-is meanwhile; do not invent an authorisation.
 
+### Soft targets are NOT locked — start near, move to serve the goal
+A QUANTITATIVE INPUTS line marked ``SOFT TARGET (goal: …; keep near … if
+free)`` is the exception to the lock above.  The user subordinated that
+value to the stated goal, so the subordination IS your authorisation — you
+need no Planner directive or separate permission to move it, and you never
+escalate to change it.  Seed ``parameters.json`` near the stated value, but
+treat it as a start-near reference, not a fixed number: keep it close while
+that does not fight the goal, and move it freely (within range) to serve
+the goal when they conflict, staying as close as the "keep near … if free"
+strength asks.  Never write a soft target as a locked verbatim value.
+
 Values the user did NOT specify (and qualitative descriptions that
 need translating into numbers) are at your discretion, within range —
 unless a Planner directive says to hold a specific one fixed, which you

@@ -192,7 +192,10 @@ Two cases to keep straight:
   quantitative inputs (e.g. "vary as needed", "automated conservative
   adjustments OK except <param X>"), name that permission in the
   hand-off you send down the chain (to the DCIC or Planner, as
-  appropriate) — quote or paraphrase the user's exact scope.  The
+  appropriate) — quote or paraphrase the user's exact scope.  This includes
+  the user SUBORDINATING a provided value to a goal — a **soft target**; the
+  UII records it with a ``SOFT TARGET`` marker in QUANTITATIVE INPUTS, so
+  once the extraction is refreshed downstream reads it there.  The
   DCIC <<DCII_ONLY>>and DCII <</DCII_ONLY>>accept either (i) an authorisation named in the
   hand-off OR (ii) one recorded in the extraction's DESIGN INTENT
   section.  When a NEW authorisation appears mid-session (e.g. the

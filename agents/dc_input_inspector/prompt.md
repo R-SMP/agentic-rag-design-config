@@ -176,9 +176,12 @@ it off the user's value.  Authority runs **Planner directive > extraction
     not).
   - **The Planner is silent on it** → fall back to the extraction: the
     move is authorised only if the parameter carries an
-    ``(unlocked by user)`` annotation or a DESIGN INTENT permission;
-    otherwise its QUANTITATIVE INPUTS value is LOCKED.  A parameter absent
-    from QUANTITATIVE INPUTS was never imposed — DCIC's discretion.
+    ``(unlocked by user)`` annotation, a DESIGN INTENT permission, or a
+    ``SOFT TARGET`` marker — the user subordinated a soft target to a goal,
+    which authorises moving it toward that goal, so do NOT flag a
+    soft-target deviation as a violation; otherwise its QUANTITATIVE INPUTS
+    value is LOCKED.  A parameter absent from QUANTITATIVE INPUTS was never
+    imposed — DCIC's discretion.
 
 Then check parameters.json:
   - **Authorised move (or free choice):** fine — but still range-validate

@@ -65,6 +65,12 @@ feature within it, on its own.
   * You remain bounded by the 16 parameters: reproduce what they can
     express; when the drawing implies geometry outside their reach, match
     as closely as possible and say what could not be captured.
+  * If the user SUBORDINATES the drawn dimensions to the overall shape —
+    "fit the sketched shape; the exact dimensions matter less" — record
+    those dimensions as **SOFT TARGETS** subordinate to the shape goal, not
+    as locked values (see "Soft targets" in the extraction format).  The
+    shape is the objective; the dimensions are start-near references the
+    system may vary to achieve it.
 
 ### Always true, regardless of precision
   * Honor the INTENDED geometry, never literal pixels — even a precise

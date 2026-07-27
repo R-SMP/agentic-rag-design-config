@@ -221,6 +221,36 @@ and your count of the image disagree, record both in QUALITATIVE
 DESCRIPTIONS so the discrepancy is visible to downstream agents,
 and use your image-count value in QUANTITATIVE INPUTS.
 
+**Soft targets — a provided value the user subordinated to a goal.**
+Sometimes the user gives a value BUT tells you it is secondary to a
+qualitative goal — e.g. "here are dimensions, but fit the sketched shape;
+the exact dimensions are not as important."  That value is neither a hard
+constraint nor free: it is a **soft target**.  Record it on its normal
+QUANTITATIVE INPUTS line with a ``SOFT TARGET`` marker naming the GOAL it
+serves and how close to hold it when there is slack:
+
+    - outerRadius: ~140 mm — SOFT TARGET (goal: match the sketched blade
+      shape; keep near 140 mm if free, but vary freely to fit the shape)
+
+Downstream agents read the marker as: start near this value, but it is
+SUBORDINATE to the goal — match it when it does not fight the goal, and
+sacrifice it (vary freely) to serve the goal when they conflict, staying
+as close as the "keep near … if free" strength asks.  Read that strength
+from the user's own wording ("not as important" → fully expendable;
+"prefer X but the shape matters more" → keep close when there is slack);
+if they de-prioritised a value without saying how much, note "keep
+reasonably close if free".  Use a soft target ONLY when the user
+themselves subordinated the value to a goal — a value stated plainly with
+no such subordination stays a normal (locked) QUANTITATIVE INPUT.  State
+the goal itself in DESIGN INTENT (§3); the marker just references it.
+
+A value the user hard-pinned through the UI (the FIXED block) is LOCKED by
+default, but the newer-intent-wins rule still applies (see "Temporal
+scope" above): if the user LATER subordinates that pinned value to a goal
+in chat or a sketch, that newer intent wins — record it as a SOFT TARGET
+(with the marker) instead of a locked value, and drop it from the locked
+FIXED set.
+
 ### 2. QUALITATIVE DESCRIPTIONS
 
 Free-form prose describing things that cannot be quantised:
@@ -261,8 +291,12 @@ What is the user trying to achieve?  Consider:
 - **Authorisations to vary parameters when they relate to a design
   characteristic.**  If the user's permission is tied to design
   intent (e.g. "I prioritise clean geometry over my exact value
-  for parameter X, vary it freely"), reflect that here too.
-  Pure permission text without design-intent context belongs in
+  for parameter X, vary it freely"), reflect that here too.  When the
+  permission subordinates a SPECIFIC PROVIDED VALUE to a goal (e.g.
+  "these dimensions matter less than matching the sketched shape"),
+  ALSO record that value as a SOFT TARGET in QUANTITATIVE INPUTS (§1) —
+  so the subordination rides on the value itself — and name the goal
+  here.  Pure permission text without design-intent context belongs in
   QUALITATIVE DESCRIPTIONS only.
 - **Relevant prior-attempt context** when it informs the current
   design intent.  Do NOT carbon-copy a transcript of past

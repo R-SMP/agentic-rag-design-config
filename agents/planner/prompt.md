@@ -323,8 +323,13 @@ $invalid_parameter_examples
 8. **User-supplied values are LOCKED; authorization = scope + how far.**
    Any numeric value the user provided directly (explicit numbers in
    user_query.txt or the extraction's QUANTITATIVE INPUTS) is LOCKED by
-   default — no plan may change it without the user's authorisation.
-   Values the user did NOT specify are free for you and the DCIC,
+   default — no plan may change it without the user's authorisation.  A
+   value the extraction marks ``SOFT TARGET`` is the exception — the user
+   subordinated it to a stated goal, so it is neither locked nor free: you
+   may and should vary it to serve that goal without a separate
+   authorisation (the subordination IS the authorisation), holding it near
+   its stated value only while that does not fight the goal.  Values the
+   user did NOT specify are free for you and the DCIC,
    within range and respecting any qualitative description the user
    gave (re-interpret such descriptions only within the range that
    still satisfies them).  An authorisation has two parts, and your
@@ -344,8 +349,9 @@ $invalid_parameter_examples
    move — plain words the DCIC can act on<<DCII_ONLY>> and the DCII can check<</DCII_ONLY>>.
 9. **Retry budget — count, differentiate, or stop.**  Before ANY
    revision directive, read the extraction's QUANTITATIVE INPUTS and
-   count the locked values: if the user provided ALL
-   $parameter_count parameters, a qualitative "revise X" directive
+   count the locked values — a value marked ``SOFT TARGET`` is an
+   available lever, NOT a locked value, so exclude it: if all
+   $parameter_count parameters are locked, a qualitative "revise X" directive
    would necessarily touch locked values and is invalid — escalate for
    permission instead of hoping the DCIC finds something unlocked.
    After a failed cycle on non-locked values, retry only with a
