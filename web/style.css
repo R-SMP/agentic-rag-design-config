@@ -4564,6 +4564,8 @@ button.danger:hover { background: #3a1d1d; }
   white-space: nowrap;
 }
 .sq-run-img:hover { border-color: var(--accent); }
+.sq-run-top .sq-run-adv,
+.sq-run-top .sq-run-dup { flex: 0 0 auto; padding: 6px 9px; }
 .sq-run-single { display: flex; gap: 10px; margin-bottom: 8px; }
 .sq-run-single label {
   display: flex;

@@ -1943,6 +1943,11 @@ class QueueImageCompressionIn(BaseModel):
     degree:   int
 
 
+class QueueImageCopyIn(BaseModel):
+    from_stage_id: str
+    to_stage_id:   str
+
+
 def _web_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
@@ -2626,10 +2631,17 @@ def _normalize_queue_defaults(d: "dict | None") -> dict:
         dmc = 3
     if dmc < 0:
         dmc = 3
+    try:
+        dit = int(d.get("iterations"))
+    except (TypeError, ValueError):
+        dit = 1
+    if dit < 1:
+        dit = 1
     return {
         "continue_message":    dcm,
         "timeout_min":         dtm,
         "max_continues":       dmc,
+        "iterations":          dit,
         "classifier_provider": (str(d.get("classifier_provider") or "openai")).strip().lower(),
         "classifier_model":    (str(d.get("classifier_model") or "gpt-5.4-mini")).strip(),
     }
@@ -2966,6 +2978,31 @@ def api_queue_images_delete_run(stage_id: str) -> dict:
     if sdir.exists():
         shutil.rmtree(sdir, ignore_errors=True)
     return {"ok": True}
+
+
+@app.post("/api/queue/images/copy")
+def api_queue_images_copy(body: QueueImageCopyIn) -> dict:
+    """Copy one run's staging folder into another's (the duplicate-run button
+    gives the copy its own independent images + notes + compression sidecars)."""
+    _require_auth()
+    _require_no_queue()
+    try:
+        src = sessions_queue.stage_dir(body.from_stage_id)
+        dst = sessions_queue.stage_dir(body.to_stage_id)
+        to_sid = sessions_queue.sanitize_stage_id(body.to_stage_id)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    if not src.exists():
+        return {"ok": True, "images": []}   # source had no images — nothing to do
+    import shutil
+    dst.mkdir(parents=True, exist_ok=True)
+    for p in src.iterdir():
+        if p.is_file():
+            try:
+                shutil.copy2(p, dst / p.name)
+            except Exception:
+                logger.exception("[QUEUE] staged copy failed for %s", p)
+    return {"ok": True, "images": _staged_listing(to_sid)}
 
 
 class DhScheduleIn(BaseModel):

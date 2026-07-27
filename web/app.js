@@ -4335,6 +4335,7 @@ function sqNewRun() {
     continue_message: "",
     timeout_min: "",
     max_continues: "",
+    iterations: "",
     _adv: false,
     _imgCount: 0,
   };
@@ -4354,6 +4355,7 @@ function sqRenderRuns() {
                data-k="run_id" placeholder="run id (optional)" />
         <select class="sq-run-cond" data-k="condition">${sqConditionOptions(run.condition)}</select>
         <button class="sq-run-img" type="button" title="Manage this run's images">🖼 ${run._imgCount || 0}</button>
+        <button class="sq-run-dup ghost" type="button" title="Duplicate run">⧉</button>
         <button class="sq-run-adv ghost" type="button" title="Per-run overrides">⚙</button>
         <button class="sq-run-del danger-ghost" type="button" title="Remove run">✕</button>
       </div>
@@ -4389,6 +4391,10 @@ function sqRenderRuns() {
         <label>Max continues
           <input class="sq-run-mc" type="number" min="0" step="1" data-k="max_continues"
                  value="${sqEsc(run.max_continues)}" placeholder="(default)" />
+        </label>
+        <label>Iterations
+          <input class="sq-run-it" type="number" min="1" step="1" data-k="iterations"
+                 value="${sqEsc(run.iterations)}" placeholder="(default)" />
         </label>
       </div>
     </div>
@@ -4435,6 +4441,8 @@ function sqRenderRuns() {
       sqRenderRuns();
     } else if (ev.target.classList.contains("sq-run-img")) {
       sqSelectRun(i);
+    } else if (ev.target.classList.contains("sq-run-dup")) {
+      sqDuplicateRun(i);
     } else if (!ev.target.closest("input,textarea,select,button")) {
       // Clicking the block's body (not a field) selects the run.
       sqSelectRun(i);
@@ -4453,6 +4461,7 @@ function sqCollectDefaults() {
       sqVal("sq-def-continue", "Do not ask me anything further. Resolve any ambiguity using your own best judgment per my original instructions, and continue all the way to the final deliverable."),
     timeout_min: sqVal("sq-def-timeout", "60"),
     max_continues: sqVal("sq-def-maxcont", "3"),
+    iterations: sqVal("sq-def-iterations", "1"),
     classifier_provider: sqVal("sq-def-clsprov", "openai"),
     classifier_model: sqVal("sq-def-clsmodel", "gpt-5.4-mini"),
   };
@@ -4466,6 +4475,7 @@ function sqApplyDefaults(d) {
   set("sq-def-continue", d.continue_message);
   set("sq-def-timeout", d.timeout_min);
   set("sq-def-maxcont", d.max_continues);
+  set("sq-def-iterations", d.iterations);
   set("sq-def-clsprov", d.classifier_provider);
   set("sq-def-clsmodel", d.classifier_model);
 }
@@ -4490,6 +4500,7 @@ async function sqFlushDraft() {
       continue_message: r.continue_message || "",
       timeout_min: r.timeout_min || "",
       max_continues: r.max_continues || "",
+      iterations: r.iterations || "",
     })),
     defaults: sqCollectDefaults(),
   };
@@ -4511,6 +4522,44 @@ function sqShowImgPane(mode) {   // "empty" | "body" | "locked"
   if (empty) empty.hidden = mode !== "empty";
   if (body) body.hidden = mode !== "body";
   if (locked) locked.hidden = mode !== "locked";
+}
+
+async function sqDuplicateRun(i) {
+  const src = sqRuns[i];
+  if (!src) return;
+  const copy = {
+    stage_id: sqUUID(),
+    run_id: (src.run_id || "").trim() ? src.run_id + " copy" : "",
+    condition: src.condition,
+    single_provider: src.single_provider,
+    single_model: src.single_model,
+    query: src.query,
+    expected_output: src.expected_output,
+    continue_message: src.continue_message,
+    timeout_min: src.timeout_min,
+    max_continues: src.max_continues,
+    iterations: src.iterations,
+    _adv: false,
+    _imgCount: 0,
+  };
+  sqRuns.splice(i + 1, 0, copy);
+  if (sqSelectedIdx > i) sqSelectedIdx += 1;
+  sqRenderRuns();
+  sqFlushDraft();
+  // Give the copy its own independent images.  Always attempt the copy
+  // (the endpoint no-ops on an empty source and returns the real listing),
+  // so a stale/unfetched _imgCount can't silently drop the duplicate's images.
+  if (src.stage_id) {
+    try {
+      const d = await (await fetch("/api/queue/images/copy", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          from_stage_id: src.stage_id, to_stage_id: copy.stage_id }),
+      })).json();
+      copy._imgCount = (d.images || []).length;
+      sqRenderRuns();
+    } catch (_) { /* best-effort */ }
+  }
 }
 
 function sqSelectRun(idx) {
@@ -4858,6 +4907,7 @@ async function hydrateSessionsQueue() {
             continue_message: r.continue_message || "",
             timeout_min: r.timeout_min || "",
             max_continues: r.max_continues || "",
+            iterations: r.iterations || "",
             _adv: false,
             _imgCount: 0,
           }));
@@ -4913,7 +4963,7 @@ async function hydrateSessionsQueue() {
   if (resume) resume.addEventListener("click", () => sqStart(true));
   if (halt) halt.addEventListener("click", sqHalt);
   // Defaults panel edits persist into the draft too.
-  ["sq-def-continue", "sq-def-timeout", "sq-def-maxcont",
+  ["sq-def-continue", "sq-def-timeout", "sq-def-maxcont", "sq-def-iterations",
    "sq-def-clsprov", "sq-def-clsmodel"].forEach((id) => {
     const el = document.getElementById(id);
     if (el) el.addEventListener("input", sqSaveDraftDebounced);

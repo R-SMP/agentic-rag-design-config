@@ -3199,3 +3199,66 @@ do F45's "refine in place" — each refine round opens a NEW attempt (`parameter
 stays append-only), consistent with F45's 2026-06-18 decision to keep per-attempt
 history; the accumulating attempts also give the DCOI a prior render to measure progress
 against for plateau detection.
+
+
+### F52. Sessions Queue overnight runner: SOLID token / rate / context-limit resilience
+
+**Status.** NOT STARTED — planned. **Relatively HIGH importance.** Do this AFTER the
+current Sessions Queue milestones (M3 + the other night-time-running changes already
+planned). The overnight runner is unattended, so an LLM token/rate/context limit MUST NOT
+halt the night or silently waste runs — the handling has to be solid.
+
+**Problem.** During an unattended overnight queue an agent's LLM call can hit a limit:
+(a) **rate limit** (HTTP 429 — RPM or, more likely, per-minute TPM), (b) **context-length**
+(HTTP 400 "context length exceeded" — a single request over the model's window), or
+(c) an **account quota** (daily/monthly cap). Any of these can currently DISCARD a run (or,
+worst case, stall it) instead of recovering.
+
+**Current state (grounded — what already exists).**
+  * `agents/shared/llm_retry.py::invoke_with_retry` (every agent's LLM call goes through it)
+    retries **429 `RateLimitError`** up to `MAX_ATTEMPTS=5`, sleeping the `Retry-After` header
+    or `DEFAULT_RATE_LIMIT_BACKOFF_S=60s`; and **connection/timeout** errors with exponential
+    back-off (2→30 s). On exhaustion it **re-raises**. It does NOT catch context-length
+    400s (correctly — they aren't transient) and does NOT catch account-quota errors.
+  * The process-global `InMemoryRateLimiter` (`llm_provider.py`, `RATE_LIMIT_REQUESTS_PER_SECOND=1`)
+    smooths **RPM only, not TPM** — a heavy queue can still overrun the token/min budget.
+  * Context-length is handled ENTIRELY by the Context Pruner (three-tier + pre-scan; see
+    `agents/shared/context_pruner.py`, F23, F35). Its "all tiers exhausted → proceed anyway"
+    path can still send an over-window request → 400.
+  * **The runner gap:** `web_app.py::_drive_one_turn` catches ANY turn exception and returns
+    None → `_run_queue_in_background` marks the run `failed` (terminal) and moves on. So a
+    *sustained* rate limit (past the 5 call-level retries) or a context-400 **DISCARDS the run**
+    — it is treated identically to a genuine failure, never retried. An account-quota hit would
+    burn the whole night marking every run failed.
+
+**Ways to counter (ranked; the fix should combine several for solidity).**
+  1. **Classify the failure in the runner.** Detect 429 / `RateLimitError` and context-length
+     (400 / "context length") in the caught exception; treat them as RETRYABLE, distinct from a
+     real failure. (Requires surfacing the exception type through `dispatch_turn` → `_drive_one_turn`,
+     which today only returns a `TurnResult` or None.)
+  2. **Run-level retry with long back-off / pause — do NOT discard.** When the call-level retries
+     are exhausted on a limit error, retry the whole RUN after a longer sleep (TPM windows can need
+     minutes; a daily quota needs hours). A "pause the queue and retry later" loop so the queue
+     survives rather than losing the run.
+  3. **Circuit breaker.** If N consecutive runs fail on limit errors (account-level quota), PAUSE the
+     whole queue (long sleep + a cheap periodic probe call) instead of running through the night
+     failing everything; resume when a probe succeeds. Surface a queue-level "paused (rate limit)"
+     state in the runner log + manifest.
+  4. **TPM-aware pacing.** Add a token-rate pace (or a conservative inter-turn/inter-run delay) on top
+     of the RPM limiter, ideally self-throttling from the provider's `x-ratelimit-remaining-tokens`
+     headers, so a heavy queue does not overrun TPM in the first place.
+  5. **Context-length hardening (belt).** Guarantee no single request can 400 on length: audit the
+     pruner's all-tiers-exhausted path (F23/F35), add a last-resort hard truncation, and/or a
+     per-agent preflight (count tokens vs the model window before invoke; force-prune/truncate if over).
+  6. **Per-run token budget guard.** Cap tokens a single run may consume so a runaway continue/refine
+     loop is flagged `needs_review` rather than retry-storming.
+  7. **Observability.** Record every limit event on the run (`note` = "rate-limited, paused Ns,
+     retried" / "context-truncated") and in the runner log, so the morning review sees exactly what
+     happened.
+
+**Where the pieces live.** `agents/shared/llm_retry.py` (call-level retry), `llm_provider.py`
+`_RATE_LIMITER` + `RATE_LIMIT_REQUESTS_PER_SECOND` (pace), `agents/shared/context_pruner.py` +
+`model_windows.py` (window), `web_app.py::_drive_one_turn` / `_run_queue_in_background` (runner-level
+classify + retry + pause + circuit-breaker), `agents/dispatch.py` (surface the exception type out of
+`dispatch_turn`). Related: F23, F35, O2, O3; the Sessions Queue runner (`web_app.py`
+`_run_queue_in_background`).

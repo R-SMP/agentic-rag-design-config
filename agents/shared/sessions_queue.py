@@ -421,12 +421,20 @@ def prune_staging(keep_stage_ids: "set[str] | list[str]") -> None:
             pass
 
 
+ITERATIONS_MAX = 100
+
+
 def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
     """Assemble a fresh manifest from a start payload.
 
-    Raises ``ValueError`` when a run has no query — the runner has
-    nothing to send otherwise.
+    Each editor run is EXPANDED into its ``iterations`` count (per-run field,
+    else the queue-wide default, else 1) — each iteration is an independent
+    manifest run (its own session / log / R2 key), tagged with ``base_run_id``
+    / ``iteration`` / ``iterations_total`` so the morning scoring can group
+    the repeats.  Raises ``ValueError`` on an empty query, unknown condition,
+    or an invalid single-model spec.
     """
+    default_iter = _pos_int_or_none(defaults.get("iterations")) or 1
     out_runs: list[dict] = []
     known = known_condition_ids()
     for i, r in enumerate(runs):
@@ -448,8 +456,11 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
                 raise ValueError(f"Run #{i + 1}: {exc}")
         rid = (r.get("run_id") or "").strip() or f"run-{i + 1:02d}"
         stage_id = (r.get("stage_id") or "").strip() or None
-        out_runs.append({
-            "run_id":           rid,
+
+        n_iter = _pos_int_or_none(r.get("iterations")) or default_iter
+        n_iter = max(1, min(ITERATIONS_MAX, n_iter))
+
+        base = {
             "condition":        cond,
             "query":            query,
             "stage_id":         stage_id,
@@ -459,14 +470,23 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
             "continue_message": (r.get("continue_message") or "").strip() or None,
             "timeout_min":      _pos_int_or_none(r.get("timeout_min")),
             "max_continues":    _nonneg_int_or_none(r.get("max_continues")),
-            "status":           "pending",
-            "session_id":       None,
-            "r2_key":           None,
-            "continues":        0,
-            "started_at":       None,
-            "finished_at":      None,
-            "note":             None,
-        })
+        }
+        for it in range(1, n_iter + 1):
+            run_dict = dict(base)
+            run_dict.update({
+                "run_id":          rid if n_iter == 1 else f"{rid}·{it}",
+                "base_run_id":     rid,
+                "iteration":       it,
+                "iterations_total": n_iter,
+                "status":          "pending",
+                "session_id":      None,
+                "r2_key":          None,
+                "continues":       0,
+                "started_at":      None,
+                "finished_at":     None,
+                "note":            None,
+            })
+            out_runs.append(run_dict)
     if not out_runs:
         raise ValueError("The queue is empty — add at least one run.")
     return {"created_at": _now_iso(), "defaults": defaults, "runs": out_runs}
