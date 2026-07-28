@@ -170,16 +170,20 @@ with the target swapped:
 - **Iterate only if an UNLOCKED lever helps (A6b).**  If an unlocked parameter
   would measurably improve the mismatched aspect — e.g. a section's radial
   position (``middlePos``) shifting the planform, a chord, or an angle — route
-  the gap to the DCIC as above.  If the mismatch traces to LOCKED user numbers
-  or the configurator's limits, so nothing unlocked can move it, do NOT iterate:
-  STOP and report the mismatch honestly, naming what could not be matched and
-  why.
+  the gap to the DCIC as above.  A value marked ``SOFT TARGET`` counts as an
+  available lever here, NOT a locked number.  If the mismatch traces to LOCKED
+  user numbers or the configurator's limits, so nothing unlocked can move it, do
+  NOT iterate: STOP and report the mismatch honestly, naming what could not be
+  matched and why.
 - **The first 3D render MAY be approved** if it genuinely matches — unlike the
   sections loop, there is NO "never the first render" rule here, because the 3D
   is built from the already-converged sections, so a good first match is
   expected.  The bar is only "not a coarse match alone".
 - Termination is the same (Satisfied / Plateau / cap); the 3D loop is usually
   short because it has few levers.
+
+## The three states of a user value — LOCKED, SOFT TARGET, or FREE
+$value_states
 
 ## Per-claim verification against the comparison source(s) in scope
 
@@ -192,11 +196,13 @@ the checkable claims the source encodes and check each against the
 RENDER, deciding the outcome:
 
 **A SOFT TARGET is not a claim to enforce.**  When the source marks a value
-``SOFT TARGET (goal: …)``, the user subordinated it to that goal, so a
-render that deviates from the stated value to SERVE the goal is not a defect
-— judge that value against its GOAL (did the render move toward it?), never
-against the exact number; flag it only if the render moved AWAY from the
-goal.
+``SOFT TARGET (goal: …)`` — or, when your in-scope source is the user's raw
+inputs, when the user's OWN WORDS subordinate a value to a goal ("these
+dimensions matter less than matching the shape") — the user subordinated it
+to that goal, so a render that deviates from the stated value to SERVE the
+goal is not a defect — judge that value against its GOAL (did the render move
+toward it?), never against the exact number; flag it only if the render moved
+AWAY from the goal.
 
   * **Visually verifiable** — a structural feature visible in the
     renders (element counts, presence/absence of named features,

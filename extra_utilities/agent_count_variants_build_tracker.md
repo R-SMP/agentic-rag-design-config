@@ -132,14 +132,34 @@ system first.** Keep this file updated as stages complete.
    full audit + targeted re-check both clean). Draft:
    `extra_utilities/draft_prompt_conductor.md`.
 2. **5-agent fragment bodies** — IN PROGRESS. Done: `pipeline_flow` ✅,
-   `available_agents` merged roster ✅ (both in
-   `extra_utilities/draft_5agent_fragments/`; the roster absorbs
-   `agent_tools_overview` + `$tool_caller_capabilities` for the Conductor).
-   REMAINING: the **routing set** — `NATURAL_PIPELINE` +
-   `routing_instructions()` (defines the Conductor's / survivors' actual
-   `call_<agent>` tools incl. `call_creator`) + `routing_orchestrator` /
-   `routing_receptionist`; then a DCII/agent-ref **audit** of
-   `capabilities_can/cannot`, `hard_constraints_*`, `eos_feedback_*`.
+   `available_agents` merged roster ✅, **`routing_conductor` ✅** (all in
+   `extra_utilities/draft_5agent_fragments/`). Routing insight: the
+   Conductor is the HUB → it uses a **static `$routing_conductor` fragment
+   like the Orchestrator, NOT the chain `routing_instructions()` builder**;
+   the prompt's `## Your tools` slot changed `{routing_instructions}` →
+   `$routing_conductor`. That fragment confirms tool name **`call_creator`**,
+   drops `call_planner` / `call_dc_input_inspector` / the `new_attempt`
+   fallback, and re-points the UII tool to **CLARIFY-only** (uii-first).
+   Fragment **audit DONE + 3 re-points DONE**: `capabilities_can/cannot` +
+   `eos_feedback_outro` are topology-agnostic (SHARE as-is);
+   `hard_constraints_dc` (DCIC→Creator), `hard_constraints_tools`
+   (DCIC→Creator + drop the Orchestrator `new_attempt` fallback), and
+   `eos_feedback_intro` (Orchestrator→Conductor) copied to
+   `draft_5agent_fragments/`. `generic_constraints` DEFERRED to stage 4
+   (chain-agent-centric + the `<<CHAIN_ONLY>>` filter). **Stage 2 done bar
+   generic_constraints (a stage-4 concern).** **DEFERRED to stage 4 /
+   topology-selector** (they belong to the SURVIVOR prompts, not the
+   Conductor): the 5-agent `NATURAL_PIPELINE`, the `routing_instructions()`
+   boilerplate re-pointed Orchestrator→Conductor, and the survivor
+   `routing_<agent>.md` + `routing_receptionist.md`.
+
+   **Soft targets VALIDATED LIVE (2026-07-27)** — two 7-agent OpenAI runs
+   proved both halves of the contract (ID228 gpt-5.4 keep-close-if-free;
+   ID229 gpt-5.5 vary-to-serve-goal + honest plateau). NO prompt tuning
+   needed. Only external issue: precision runs exceed the Sessions-Queue
+   3600 s per-run cap (raise runtime; F52). The 5-agent Creator / UII / DCOI
+   (stages 3–4) must inherit the soft-target handling from the live 7-agent
+   prompts + `design_soft_targets.md`. See [[v9_soft_targets]].
 3. **Creator prompt** (merge DCIC + DCII).
 4. **Survivor 5-agent prompts** (UII, Tool Caller, DCOI, Receptionist),
    cross-references re-pointed.
@@ -309,6 +329,161 @@ line-by-line completeness audit of the draft against BOTH originals
 dropped/weakened instruction — BEFORE moving to the fragment bodies.
 
 ---
+
+## Value-states shared fragment — three-state model redesign (2026-07-27)
+
+The LOCKED / SOFT TARGET / FREE explanation is being **restructured for
+clarity** (model-first, fluid prose — NOT a rigid table) and pulled into a
+**single topology-agnostic shared fragment `$value_states`** (draft:
+`extra_utilities/draft_shared_fragments/value_states.md`; eventual home
+`agents/shared/prompt_fragments/value_states.md`). It states the model +
+recognition + the three authorisation sources (A hand-off / B DESIGN INTENT
+/ **C `(unlocked by user)` inline annotation**) + the "as needed vs freely"
+extent — ONCE. Each consumer keeps only its role-specific ACTION.
+- **Rule:** presentation redesign only — **no semantics change**; re-validate.
+- **Consumers to rewire = `$value_states` + action:** 7-agent **DCIC**
+  (write), **DCII** (check), **Planner** HARD RULE 8/9 (what a plan may
+  touch), **DCOI** (judge a soft target vs its goal); 5-agent **Creator**
+  (write + check). User chose **whole-set + fix-7-agent-first**.
+- **Content-loss catch:** source **(C) `(unlocked by user)` annotation** was
+  in the DCIC "Verbatim entries" bullet + DCII §4a but missing from my first
+  `$value_states` draft — restored.
+- **Granularity decision (2026-07-28):** ONE full `$value_states` (core +
+  authorisation, not split). The DCOI carries the full model and simply does
+  not act on the authorisation part — accepted as harmless extra context.
+- **LIVE fragment created + registered (2026-07-28):**
+  `agents/shared/prompt_fragments/value_states.md` written (clean body, no
+  draft header); registered in `prompts.py` — added to `_build_slots()`
+  (`"value_states": _read_generic_fragment("value_states.md")`) and to
+  `FRAGMENT_TO_SLOT`. No braces in the fragment → no `{}`-escaping / `.format()`
+  risk. Not import-verified (py3.8 worktree can't load the app).
+- **DCIC rewired LIVE (2026-07-28):** `agents/dc_input_creator/prompt.md` —
+  (A) "Verbatim entries" bullet now points to the three-state section instead
+  of restating locked-by-default; (B) the whole `## User-supplied … LOCKED by
+  default` block (When-authorised / When-not / Soft-targets / free-values)
+  replaced by `## The three states … $value_states` + a 5-sentence **write-
+  action** (verbatim LOCKED / seed-near-and-move SOFT / discretion FREE /
+  escalate-to-Orchestrator-not-UII, don't-invent). DCIC now inherits the
+  extent clause (user approved — "it should have had it to begin with").
+  Cross-ref "the LOCKED rule above" (line ~150) still resolves. **Wording
+  generalization flagged:** the explicit sender list (Orchestrator / Planner-
+  via-Orchestrator / UII / CLARIFY) → generic "incoming hand-off"; auth TYPES
+  all preserved; offered to restore senders to the write-action if wanted.
+- **DCII rewired LIVE (2026-07-28):** `agents/dc_input_inspector/prompt.md` —
+  `## The three states … $value_states` inserted before `## What to Check`;
+  §4a slimmed to the CHECK-action (precedence **Planner directive > extraction
+  > DCIC discretion** kept verbatim; bullet 2 now reads "fall back to the
+  extraction's **markers**" and keeps "do NOT flag a soft-target deviation").
+  Everything from `Then check parameters.json:` onward unchanged.
+- **Planner rewired LIVE (2026-07-28):** `agents/planner/prompt.md` —
+  `## The three states … $value_states` inserted between the `<<DCII_ONLY>>`
+  status block and `## HARD RULES` (the `<</DCII_ONLY>>` tag stays glued to the
+  new heading, so the heading survives both DCII on/off builds); HARD RULE 8
+  slimmed to the Planner's per-state actions + scope/how-far authorisation.
+  HR9 / HR10 reviewed, NO change needed (they APPLY the model, not define it).
+- **⚠ CONTRADICTION CAUGHT BY THE USER (2026-07-28) — keep this lesson:** my
+  first HR8 rewrite said *"LOCKED covers any number the user gave directly,
+  whether in user_query.txt or the extraction's QUANTITATIVE INPUTS"* — which
+  **contradicts SOFT TARGET**, because a soft target IS a number the user gave
+  directly in QUANTITATIVE INPUTS. **Rule: LOCKED is defined by the ABSENCE OF
+  A MARKER, never by the SOURCE of the value.** The original avoided this with
+  "LOCKED **by default** … SOFT TARGET is **the exception**"; my slimming
+  dropped that framing. Fixed by removing the source clause entirely and
+  letting `$value_states` define all three states. Also dropped: the
+  `user_query.txt` mention — a raw query number carries NO marker, so state is
+  only decidable from the extraction's QUANTITATIVE INPUTS.
+- **Repo-wide contradiction sweep (2026-07-28):** adversarial multi-agent audit
+  of all ~70 prompt-surface files (7 live prompts + shared fragments + DC
+  fragments + 5-agent drafts + a Python-embedded-prompt critic) for the same
+  "locked-by-source" defect class.
+- **⚠ NEW FEATURE SPUN OUT (2026-07-28) — see
+  `extra_utilities/design_no_ask_back_and_range_degrade.md`.** Benchmark 6
+  (user states an OUT-OF-RANGE value, asks to keep it, asks the system NOT to
+  ask back) exposed that the Receptionist hard-gates out-of-range values at the
+  front door and no "don't ask back" support exists anywhere. Owner signed off
+  8 decisions (global no-escalation, standing directive in DESIGN INTENT,
+  extraction-only vs geometry 2×2, degrade-to-SOFT-TARGET reusing the existing
+  marker, DCIC substitutes + DCII verifies, insistence = authorisation,
+  mandatory disclosure, never override). **This SUPERSEDES the pending P2 edit**
+  — do not apply the old P2 wording as-is. Requires amending the live UII rule
+  "use a soft target ONLY when the user themselves subordinated the value".
+- **DCOI rewired LIVE (2026-07-28) — 3 changes, one of them a REAL BUG FIX:**
+  (1) `## The three states … $value_states` inserted before `## Per-claim
+  verification …`; (2) **P1** — the 3D precision loop's "iterate only if an
+  UNLOCKED lever helps" now says *"A value marked ``SOFT TARGET`` counts as an
+  available lever here, NOT a locked number"* (without it the DCOI counts a soft
+  target among "LOCKED user numbers" and **STOPS iterating**, reporting an
+  unmatchable mismatch while a legitimate lever was free — mirrors Planner HR9);
+  (3) the "A SOFT TARGET is not a claim to enforce" paragraph gained a clause for
+  when the in-scope comparison source is the user's RAW INPUTS.
+- **⚠ DCOI_COMPARISON_MODE — I OVERSTATED THIS ONCE, keep the facts:** it is a
+  workflow setting 1/2/3, **DEFAULT = 3** (`workflow_settings/settings.py:242`,
+  `agents/shared/session.py:43`). 1 = raw user inputs only (extraction OUT of
+  scope — the "check the original, not the interpretation" mode); 2 = extraction
+  only; **3 = extraction PRIMARY + raw inputs secondary when needed**. So the
+  DCOI is NOT normally barred from `extracted_inputs.txt` — only in mode 1. I
+  first claimed this made injecting `$value_states` into the DCOI wrong; it does
+  not (coherent in 2 and 3, merely inapplicable in 1). Owner uses **mode 3
+  always** for tests.
+  **The real find:** SOFT TARGET markers exist ONLY in the extraction, but the
+  subordination also appears in the user's OWN WORDS — so change (3) makes the
+  carve-out fire on the user's language too. Live bug fix for mode 1, and it
+  also helps **mode 3's secondary raw-input consultation**.
+- **Static checks PASSED before commit:** `value_states.md` contains **0 braces**
+  (no `.format()` escaping hazard — the codebase's top gotcha); 4 consumers wired
+  (DCIC/DCII/DCOI/Planner); registered in BOTH `FRAGMENT_TO_SLOT` and
+  `_build_slots()`. NOT import-verified (py3.8 worktree cannot load the app).
+- **FAITHFULNESS REVIEW PASSED (2026-07-28, 11-agent adversarial):** **0
+  confirmed losses** out of 6 claimed — every one refuted with evidence of where
+  the content survives. **Build safety CLEAN**: the reviewer re-implemented the
+  4 filters from `prompts.py:71-119` and rendered both edited prompts under ALL
+  FOUR `DCII_ENABLED` × `PLANNER_FIRST` combinations — no unresolved markers, and
+  the glued `<</DCII_ONLY>>## The three states …` tag at `planner/prompt.md:288`
+  is correct in BOTH branches. Blanket locked-by-source assertion confirmed GONE
+  from all four files.
+- **Post-review fixes, ALL APPLIED (2026-07-28):**
+  * **1f (HIGH) — the DCIC mirror of the DCOI's P1 bug.** P1 fixed only the DCOI;
+    the DCIC — *the agent that actually moves values* — still read "the levers
+    that would help are all locked → ESCALATE". So the DCOI would hand back a
+    shape gap expecting a soft-target chord to move while the DCIC declared no
+    lever available. **This is the failure already observed in production
+    ("DCIC froze levers", precision-sections work)** — P1 alone would NOT have
+    fixed it. Added the soft-target-is-a-lever carve-out to BOTH DCIC precision
+    paragraphs (sections + full-3D).
+  * **3 verbatim losses restored** (the #1 no-details-lost rule, missed by the
+    category audit): the **`(HARD)`** force marker on the DCIC heading; the
+    dropped verb **"adjust"** + the `re-scale` hyphenation; and **"read it once
+    and act."** with the sender enumeration (Orchestrator / Planner-via-
+    Orchestrator / UII / CLARIFY bounce).
+  * **1a — source (C) was a DEAD marker.** `value_states.md` told 4 agents to
+    look for `(unlocked by user)`, but `user_input_inspector/prompt.md:131-138`
+    FORBIDS writing it (*"simply OMIT it from QUANTITATIVE INPUTS"*) — VERIFIED.
+    It was stale in DCIC+DCII already; centralising SPREAD it to Planner+DCOI.
+    Fixed by **correcting the FREE definition** (a value is FREE whether the user
+    never specified it OR specified-then-released it — omission is the real
+    unlock mechanism) and **demoting (C) to legacy** ("IF PRESENT — an older
+    extraction may still carry this"), so archived DB extractions still parse.
+  * **1b** — DCII §4a bullet 2 now accepts *"a user permission named in the
+    hand-off (source (A) above)"*; without it an Orchestrator-relayed user
+    permission fell through to LOCKED → VIOLATION → bounced a lawful DCIC change,
+    contradicting `orchestrator/prompt.md:198-201`.
+  * **1e** — Planner HR8 regained `user_query.txt` coverage: a number the user
+    gave in chat that the extraction has not yet recorded (incl. a
+    `[Receptionist clarification: …]` line) is LOCKED until the extraction says
+    otherwise. Without it, a fresh clarification classified as FREE.
+  * **4b** — `sketch_handling.md` cross-ref *"see 'Soft targets' in the
+    extraction format"* made self-contained; it is injected into UII+DCII+DCOI
+    but only the UII has that heading.
+  * **3a SKIPPED deliberately** (owner agreed): HR8's inline restatement of the
+    three states duplicates the fragment, BUT *"**no plan** may change a LOCKED
+    value"* is Planner-specific force the generic fragment does not carry.
+    Force > tidiness.
+- **Done:** `$value_states` LIVE + registered; Creator C2a uses it; **DCIC + DCII
+  + Planner + DCOI all rewired LIVE**; P1/P3/P5 + all post-review fixes applied;
+  adversarially reviewed with 0 surviving losses. **Pending:** P2 (soft-target
+  out-of-range → CLARIFY) and P4 (Receptionist permission block) proposed but NOT
+  approved; the no-ask-back feature (own design doc); the Creator merge C2b/C3/C4;
+  then commit + a re-validation run.
 
 ## Separate feature TODO (surfaced 2026-07-26 — NOT part of the reduced-agent build)
 
