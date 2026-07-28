@@ -68,9 +68,8 @@ feature within it, on its own.
   * If the user SUBORDINATES the drawn dimensions to the overall shape —
     "fit the sketched shape; the exact dimensions matter less" — record
     those dimensions as **SOFT TARGETS** subordinate to the shape goal, not
-    as locked values (see "Soft targets" in the extraction format).  The
-    shape is the objective; the dimensions are start-near references the
-    system may vary to achieve it.
+    as locked values.  The shape is the objective; the dimensions are
+    start-near references the system may vary to achieve it.
 
 ### Always true, regardless of precision
   * Honor the INTENDED geometry, never literal pixels — even a precise

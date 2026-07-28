@@ -470,6 +470,7 @@ FRAGMENT_TO_SLOT: dict[str, str] = {
     "agents/shared/prompt_fragments/generic_constraints.md":  "hard_constraints_generic",
     "agents/shared/prompt_fragments/eos_feedback_intro.md":   "eos_feedback_intro",
     "agents/shared/prompt_fragments/eos_feedback_outro.md":   "eos_feedback_outro",
+    "agents/shared/prompt_fragments/value_states.md":         "value_states",
     "agents/shared/prompt_fragments/routing_receptionist.md": "routing_receptionist",
     "agents/shared/prompt_fragments/routing_orchestrator.md": "routing_orchestrator",
     "agents/shared/prompt_fragments/available_agents.md":     "available_agents",
@@ -574,6 +575,7 @@ def _build_slots() -> dict[str, str]:
         "hard_constraints_generic": _read_generic_fragment("generic_constraints.md"),
         "eos_feedback_intro": _read_generic_fragment("eos_feedback_intro.md"),
         "eos_feedback_outro": _read_generic_fragment("eos_feedback_outro.md"),
+        "value_states": _read_generic_fragment("value_states.md"),
         # Per-agent routing fragments (Receptionist + Orchestrator only;
         # the six chain agents load theirs via routing_instructions())
         "routing_receptionist": _read_generic_fragment("routing_receptionist.md"),

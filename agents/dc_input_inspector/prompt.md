@@ -92,6 +92,9 @@ tool returns the three-section extraction as text.
 Do NOT call either tool with a guessed path.  If a path line is
 missing from the hand-off, ESCALATE.
 
+## The three states of a user value — LOCKED, SOFT TARGET, or FREE
+$value_states
+
 ## What to Check
 
 ### 1. Range validation (STRICT — explicit per-parameter check)
@@ -167,21 +170,22 @@ consistency check is different for each:
 
 For each parameter whose QUANTITATIVE INPUTS label matches a configurator
 parameter, check every cycle whether parameters.json was ALLOWED to move
-it off the user's value.  Authority runs **Planner directive > extraction
-> DCIC discretion**, so resolve each parameter in that order:
+it off the user's value.  What each state means and what authorises a move
+are set out under "The three states of a user value" above; for this
+check, authority runs **Planner directive > extraction > DCIC discretion**,
+so resolve each parameter in that order:
 
   - **A Planner directive in the hand-off names it** → that governs: a
     directive to change it AUTHORISES the move (over any user-imposed
     value); a directive to keep it fixed LOCKS it (even if the user did
     not).
-  - **The Planner is silent on it** → fall back to the extraction: the
-    move is authorised only if the parameter carries an
-    ``(unlocked by user)`` annotation, a DESIGN INTENT permission, or a
-    ``SOFT TARGET`` marker — the user subordinated a soft target to a goal,
-    which authorises moving it toward that goal, so do NOT flag a
-    soft-target deviation as a violation; otherwise its QUANTITATIVE INPUTS
-    value is LOCKED.  A parameter absent from QUANTITATIVE INPUTS was never
-    imposed — DCIC's discretion.
+  - **The Planner is silent on it** → the move is authorised by a user
+    permission named in the hand-off (source (A) above), or by the
+    extraction's markers: an ``(unlocked by user)`` annotation, a DESIGN
+    INTENT permission, or a ``SOFT TARGET`` marker (a soft target's deviation
+    toward its goal is authorised — do NOT flag it as a violation);
+    otherwise its QUANTITATIVE INPUTS value is LOCKED.  A parameter absent
+    from QUANTITATIVE INPUTS was never imposed — DCIC's discretion.
 
 Then check parameters.json:
   - **Authorised move (or free choice):** fine — but still range-validate
