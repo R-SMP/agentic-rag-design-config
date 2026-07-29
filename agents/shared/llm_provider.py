@@ -92,7 +92,15 @@ _API_KEY_ENV_VARS: dict = {
     "openai": "OPENAI_API_KEY",
     "google": "GOOGLE_API_KEY",
     "anthropic": "ANTHROPIC_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
 }
+
+# OpenRouter is OpenAI-API-compatible — the SAME ChatOpenAI client with a
+# different base_url — which is how open-weight models (DeepSeek, Qwen-VL,
+# Llama, …) are reached.  Model names are OpenRouter-style, e.g.
+# "deepseek/deepseek-chat"; vision models use the OpenAI-style image block
+# ``make_image_block`` already emits for non-Anthropic providers.
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 _DEFAULT_MODEL = "gpt-5-mini"
 
@@ -146,9 +154,22 @@ def _current_routing_mode() -> str:
     setting is missing or unrecognised.
     """
     mode = (getattr(_workflow_settings, "LLM_ROUTING_MODE", "individual") or "").strip().lower()
-    if mode not in {"individual", "openai", "anthropic", "google"}:
+    if mode not in {"individual", "openai", "anthropic", "google", "openrouter"}:
         return "individual"
     return mode
+
+
+def _require_explicit_openrouter_model(provider: str, explicit_model: str,
+                                       where: str) -> None:
+    """OpenRouter model ids are vendor-prefixed (e.g. ``deepseek/deepseek-chat``);
+    the generic OpenAI-style fallback default would be rejected with a 400.
+    Fail early with a clear message instead of an opaque provider error."""
+    if provider == "openrouter" and not explicit_model:
+        raise ValueError(
+            f"{where} selects provider 'openrouter' but no MODEL_NAME is set. "
+            f"OpenRouter needs an explicit vendor-prefixed model, "
+            f"e.g. 'deepseek/deepseek-chat'."
+        )
 
 
 def _resolve_config(agent_name: str) -> Tuple[str, str, str]:
@@ -171,7 +192,7 @@ def _resolve_config(agent_name: str) -> Tuple[str, str, str]:
         return (layer.get(key) or "").strip()
 
     mode = _current_routing_mode()
-    if mode in {"openai", "anthropic", "google"}:
+    if mode in {"openai", "anthropic", "google", "openrouter"}:
         # Global override active — shared file's MODEL_NAME applies to
         # every agent, per-agent files are deliberately not consulted.
         provider = mode
@@ -182,7 +203,10 @@ def _resolve_config(agent_name: str) -> Tuple[str, str, str]:
                 f"LLM_ROUTING_MODE={mode!r} but {env_var} is not set "
                 f"in agents/.env or the process environment."
             )
-        model = _from(shared, "MODEL_NAME") or _DEFAULT_MODEL
+        explicit = _from(shared, "MODEL_NAME")
+        _require_explicit_openrouter_model(
+            provider, explicit, "LLM_ROUTING_MODE=openrouter")
+        model = explicit or _DEFAULT_MODEL
         return provider, model, api_key
 
     per_agent = _read_env_file(agent_name)
@@ -199,7 +223,10 @@ def _resolve_config(agent_name: str) -> Tuple[str, str, str]:
             )
         api_key = _from(per_agent, env_var) or os.getenv(env_var, "")
         if api_key:
-            model = _from(per_agent, "MODEL_NAME") or _default_model_for(agent_name)
+            explicit = _from(per_agent, "MODEL_NAME")
+            _require_explicit_openrouter_model(
+                provider, explicit, f"agents/{agent_name}/.env")
+            model = explicit or _default_model_for(agent_name)
             return provider, model, api_key
 
     # Fall through to the shared default.
@@ -218,7 +245,9 @@ def _resolve_config(agent_name: str) -> Tuple[str, str, str]:
             f"agents/{agent_name}/.env with a complete LLM_PROVIDER + "
             f"key + MODEL_NAME triple."
         )
-    model = _from(shared, "MODEL_NAME") or _default_model_for(agent_name)
+    explicit = _from(shared, "MODEL_NAME")
+    _require_explicit_openrouter_model(provider, explicit, "agents/.env")
+    model = explicit or _default_model_for(agent_name)
     return provider, model, api_key
 
 
@@ -256,6 +285,16 @@ def build_llm(agent_name: str) -> Tuple[object, str, str]:
             rate_limiter=_RATE_LIMITER,
             timeout=_LLM_REQUEST_TIMEOUT_S,
         )
+    elif provider == "openrouter":
+        # OpenAI-compatible endpoint — same client, base_url override.
+        from langchain_openai import ChatOpenAI
+        llm = ChatOpenAI(
+            model=model,
+            api_key=api_key,
+            base_url=OPENROUTER_BASE_URL,
+            rate_limiter=_RATE_LIMITER,
+            timeout=_LLM_REQUEST_TIMEOUT_S,
+        )
     else:
         # Defensive — _resolve_config already validated, but keep this
         # path so a future provider key omitted from the dispatch table
@@ -278,7 +317,7 @@ def list_agent_configs(agent_names: list[str]) -> list[dict]:
     """
     shared = _read_shared_env()
     mode = _current_routing_mode()
-    if mode in {"openai", "anthropic", "google"}:
+    if mode in {"openai", "anthropic", "google", "openrouter"}:
         shared_model = (shared.get("MODEL_NAME") or _DEFAULT_MODEL).strip()
         return [
             {"agent": name, "provider": mode,

@@ -341,7 +341,7 @@ EMBEDDING_INPUT_MAX_CHARS: int = 30000
 # provider+model is resolved via the original mechanism:
 # per-agent ``.env`` first, then shared ``agents/.env``.
 #
-# Valid values: "individual" | "openai" | "anthropic" | "google"
+# Valid values: "individual" | "openai" | "anthropic" | "google" | "openrouter"
 # Default is "individual" — a fresh checkout (or any session
 # that has never written this value) honours per-agent .env
 # overrides AND the per-agent baked-in defaults in

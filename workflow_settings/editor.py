@@ -260,7 +260,7 @@ def _to_literal(type_str: str, value: Any) -> str:
     return json.dumps(str(value))  # double-quoted, escaped
 
 
-_LLM_ROUTING_MODES = {"individual", "openai", "anthropic", "google"}
+_LLM_ROUTING_MODES = {"individual", "openai", "anthropic", "google", "openrouter"}
 
 
 def _validate(merged: dict[str, Any]) -> None:

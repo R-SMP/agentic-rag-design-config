@@ -48,14 +48,15 @@ from workflow_settings.llm_defaults import (
 # ---------------------------------------------------------------------------
 
 PROVIDERS: list[dict[str, str]] = [
-    {"key": "openai",    "label": "OpenAI",    "env_var": "OPENAI_API_KEY"},
-    {"key": "anthropic", "label": "Anthropic", "env_var": "ANTHROPIC_API_KEY"},
-    {"key": "google",    "label": "Google",    "env_var": "GOOGLE_API_KEY"},
+    {"key": "openai",     "label": "OpenAI",     "env_var": "OPENAI_API_KEY"},
+    {"key": "anthropic",  "label": "Anthropic",  "env_var": "ANTHROPIC_API_KEY"},
+    {"key": "google",     "label": "Google",     "env_var": "GOOGLE_API_KEY"},
+    {"key": "openrouter", "label": "OpenRouter", "env_var": "OPENROUTER_API_KEY"},
 ]
 _PROVIDER_KEYS = {p["key"] for p in PROVIDERS}
 _PROVIDER_ENV_VARS = {p["key"]: p["env_var"] for p in PROVIDERS}
 
-_MODES = {"individual", "openai", "anthropic", "google"}
+_MODES = {"individual", "openai", "anthropic", "google", "openrouter"}
 
 # (agent_key, display label, wired_into_dispatcher)
 AGENT_SPEC: list[tuple[str, str, bool]] = [
@@ -86,9 +87,10 @@ _DEFAULT_MODEL = "gpt-5-mini"
 # Recommended placeholder model names per provider; the UI uses these
 # as input ``placeholder`` text only — the field stays free-form.
 PROVIDER_MODEL_PLACEHOLDERS = {
-    "openai":    "gpt-5-mini",
-    "anthropic": "claude-sonnet-4-5",
-    "google":    "gemini-2.5-pro",
+    "openai":     "gpt-5-mini",
+    "anthropic":  "claude-sonnet-4-5",
+    "google":     "gemini-2.5-pro",
+    "openrouter": "deepseek/deepseek-chat",
 }
 
 

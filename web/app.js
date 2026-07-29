@@ -4366,11 +4366,12 @@ function sqRenderRuns() {
             <option value="openai"${run.single_provider === "openai" ? " selected" : ""}>openai</option>
             <option value="anthropic"${run.single_provider === "anthropic" ? " selected" : ""}>anthropic</option>
             <option value="google"${run.single_provider === "google" ? " selected" : ""}>google</option>
+            <option value="openrouter"${run.single_provider === "openrouter" ? " selected" : ""}>openrouter</option>
           </select>
         </label>
         <label>Model
           <input class="sq-run-sm" type="text" data-k="single_model"
-                 value="${sqEsc(run.single_model)}" placeholder="e.g. gpt-5.4" />
+                 value="${sqEsc(run.single_model)}" placeholder="e.g. gpt-5.4 or deepseek/deepseek-chat" />
         </label>
       </div>` : ""}
       <textarea class="sq-run-query" data-k="query" rows="3"

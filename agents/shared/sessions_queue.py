@@ -93,7 +93,7 @@ def _now_iso() -> str:
 # are built from ``workflow_settings.llm_defaults.PROPOSED_WORKFLOWS`` so
 # they never drift from the Workflow-Settings preset buttons.
 
-_VALID_PROVIDERS = {"openai", "anthropic", "google"}
+_VALID_PROVIDERS = {"openai", "anthropic", "google", "openrouter"}
 
 
 def _subj5_payload(preset: dict) -> dict:
@@ -193,9 +193,10 @@ def known_condition_ids() -> "set[str]":
 
 
 _PROVIDER_KEY_ENV = {
-    "openai":    "OPENAI_API_KEY",
-    "anthropic": "ANTHROPIC_API_KEY",
-    "google":    "GOOGLE_API_KEY",
+    "openai":     "OPENAI_API_KEY",
+    "anthropic":  "ANTHROPIC_API_KEY",
+    "google":     "GOOGLE_API_KEY",
+    "openrouter": "OPENROUTER_API_KEY",
 }
 
 
@@ -287,6 +288,13 @@ def _build_classifier_llm(provider: str, model: str):
         return ChatGoogleGenerativeAI(model=model,
                                       google_api_key=os.getenv("GOOGLE_API_KEY", ""),
                                       timeout=60)
+    if provider == "openrouter":
+        # OpenAI-compatible endpoint — same client, base_url override.
+        from langchain_openai import ChatOpenAI
+        return ChatOpenAI(model=model,
+                          api_key=os.getenv("OPENROUTER_API_KEY", ""),
+                          base_url="https://openrouter.ai/api/v1",
+                          timeout=60)
     raise ValueError(f"Unsupported classifier provider {provider!r}.")
 
 
