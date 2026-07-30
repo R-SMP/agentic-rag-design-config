@@ -16,7 +16,62 @@ interrupted).
 
 ---
 
-## The blocker that started it
+> ## ✅ STATUS UPDATE (2026-07-28) — the front-door blocker is GONE, feature shrunk
+>
+> The owner decided to **remove the Receptionist's out-of-range blocking
+> entirely** ("it's easier like this at this point"), independently of this
+> feature. Applied: the `## Quantitative viability check` became a
+> `## Parameter-name check` — steps 2 (compare to range) and 3 (block) are
+> DELETED, along with the "only claim within range if you just ran the check"
+> paragraph and the "once all values are in range … proceed" precondition.
+> **Kept:** step 1 name-mapping (an unrecognised parameter name still bounces),
+> and the no-clip half — *"never silently clip, round, or redistribute a user's
+> value: substituting values is not your job"* (D6 gives substitution to the
+> DCIC). Added: *"an out-of-range number is NEVER a reason to stop a request at
+> the door."* Grep confirmed **no other agent** depended on this gate.
+>
+> **Consequences for D1–D8:**
+> - **The "blocker that started it" (below) no longer exists.** An out-of-range
+>   value now always flows into the pipeline.
+> - **D4's extraction-only column is SATISFIED already** — such a request now
+>   reaches the UII, is extracted as-is, and the Planner replies (it already
+>   refuses to hand extraction-only work to the DCIC). This unblocks the
+>   owner's **text-only parameter-extraction benchmark tests**, which the gate
+>   was silently failing.
+> - **D4's geometry+normal cell still asks the user**, just LATER — from the
+>   DCII via the Orchestrator instead of at the door. Behaviour preserved.
+> - **The feature's Receptionist work shrinks accordingly**: what remains there
+>   is the no-ask-back suppression of its OTHER gates (image pairing, off-topic
+>   notes, unrecognised names) and D8 disclosure — not the range gate.
+>
+> ## ✅ G2 — PARTLY WRONG AS ORIGINALLY WRITTEN
+> I claimed no agent classifies extraction-only vs geometry. **It does exist:**
+> the Receptionist is told to *"mention in your `call_orchestrator` summary that
+> this is an extraction-only request (no full design run expected) so the
+> Orchestrator can route appropriately"*, and the Planner acts on it —
+> *"Extraction-only … the extraction IS the deliverable … Do NOT hand off to the
+> DCIC and do not trigger mesh/render work."* What is genuinely missing is only
+> the relay of that classification to the **UII**, which needs it for D5.
+>
+> ## ✅ G5 — RESOLVED (owner insight, 2026-07-28)
+> G5 was: the UII is told *"conversion is the DCIC's job"*, so for a 4 cm chord
+> against a 30 mm limit it may never convert, never detect the breach, and never
+> write the marker — leaving D4's own worked example with no route to a degrade.
+> **Resolution: the DCIC must know the degrade rule too, not just the UII.**
+> The DCIC is the agent that CONVERTS, so it is the one that DISCOVERS the
+> breach in exactly the case the UII cannot. Therefore:
+>   * the **UII** marks the degrade when it CAN detect it (unit matches a param);
+>   * the **DCIC** applies it when IT discovers the breach after conversion, and
+>     documents the substitution in its hand-off;
+>   * the **DCII** must accept a documented degrade as authorised, or it flags
+>     the resulting move as a VIOLATION;
+>   * in the merged **Creator** all three collapse into one agent.
+> The authority-based out-of-range phrasing now live in the DCII (escalate only
+> when NOTHING authorises the move — marker, hand-off permission, DESIGN INTENT,
+> or directive) is what makes this addition clean: once a degrade IS authorised,
+> the routing rules already handle it with no further edits.
+
+## The blocker that started it (HISTORICAL — resolved, see status update above)
 
 `agents/receptionist/prompt.md` line ~81 already gates every out-of-range user
 value at the front door:

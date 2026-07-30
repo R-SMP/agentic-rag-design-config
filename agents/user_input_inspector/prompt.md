@@ -232,10 +232,11 @@ serves and how close to hold it when there is slack:
     - outerRadius: ~140 mm — SOFT TARGET (goal: match the sketched blade
       shape; keep near 140 mm if free, but vary freely to fit the shape)
 
-Downstream agents read the marker as: start near this value, but it is
-SUBORDINATE to the goal — match it when it does not fight the goal, and
-sacrifice it (vary freely) to serve the goal when they conflict, staying
-as close as the "keep near … if free" strength asks.  Read that strength
+Downstream agents read the marker as: the value is SUBORDINATE to the goal —
+the goal governs, so they set the parameter to whatever the goal calls for
+and never have to justify moving off the user's number; they fall back to
+that number only when the goal does not bear on the parameter, staying as
+close as the "keep near … if free" strength asks.  Read that strength
 from the user's own wording ("not as important" → fully expendable;
 "prefer X but the shape matters more" → keep close when there is slack);
 if they de-prioritised a value without saying how much, note "keep
