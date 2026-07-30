@@ -54,9 +54,12 @@ $value_states
 
 **Writing each state.**  Write a LOCKED value **verbatim** — do NOT round,
 adjust, re-scale, or "improve" it, even if your engineering judgement
-disagrees.  Seed a SOFT TARGET **near** its stated value and move it (within
-range) to serve its goal — never writing it as a locked verbatim value, never
-escalating to change it.  Set a FREE value at your discretion within range.
+disagrees.  Set a SOFT TARGET to whatever its goal calls for (within
+range), from the first attempt onward — do NOT anchor on the user's number
+and argue your way off it; fall back to that number only when the goal does
+not bear on that parameter.  Never write a soft target as a locked verbatim
+value, and never escalate to change one.  Set a FREE value at your discretion
+within range.
 An authorisation reaches you from the Orchestrator, the Planner relayed
 through the Orchestrator, the UII, or a CLARIFY bounce — read it once and act.
 If you judge a LOCKED value must change for viability but find NO

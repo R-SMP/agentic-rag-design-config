@@ -485,6 +485,94 @@ extent — ONCE. Each consumer keeps only its role-specific ACTION.
   approved; the no-ask-back feature (own design doc); the Creator merge C2b/C3/C4;
   then commit + a re-validation run.
 
+## ⚠ SOFT-TARGET FRICTION FIX — "the goal governs" (2026-07-28, owner-driven)
+
+**Owner caught a bias I INTRODUCED and shipped in `ae39b9e`.** My compressed
+write-action read *"Seed a SOFT TARGET **near** its stated value and move it
+(within range) to serve its goal"* — which frames nearness as the default
+posture and movement as the exception. The owner's objection, verbatim: *"this
+friction … can prevent the system from finding the best solution … only stay
+close to it if there are no other design goals that are important and related
+to that parameter."* Benchmark 7 ("dimensions given, but fit the shape") is
+exactly what it would have degraded.
+
+**Note the pre-existing text was already RIGHT** — the old DCIC said "keep it
+close while that does not fight the goal, and move it freely to serve the goal
+when they conflict". The friction came from my compression, not from the
+original. **Lesson: when compressing a two-sided rule, check which side the
+compression makes the default.**
+
+**Decisions (owner, 3 explicit sign-offs):**
+1. **Goal first; the stated number is only a TIEBREAK.** Set the parameter to
+   whatever the goal calls for, from the first attempt onward. Fall back to the
+   user's number ONLY when the goal does not bear on that parameter.
+2. **Reframe the shared `$value_states` SOFT TARGET bullet**, not just the
+   write-action — it is the definition all 4 live agents read.
+3. **The "keep near … if free" STRENGTH survives**, as the tiebreak calibration
+   for the no-conflict case ("not as important" → free choice; "prefer X but
+   the shape matters more" → use X).
+
+**Applied (4 places):** `value_states.md` SOFT TARGET bullet (now leads with
+"**The goal governs**" + "you never have to justify moving it"); the DCIC
+write-action; `user_input_inspector/prompt.md:235` (its description of what
+downstream agents do said "start near this value" — stale once downstream went
+goal-first); and the Creator draft C2a. **Pending:** `sketch_handling.md:72`
+"start-near references" — the last residual, proposed.
+
+**⚠ RE-VALIDATION NEEDED:** logs ID228/ID229 validated soft targets under the
+OLD wording, so they do NOT cover this. A fresh run is required before trusting it.
+
+## Creator merge — C1/C2/C3 DONE (2026-07-28)
+
+- **C1 revised to THREE phases** (owner's call — "the write is considerably
+  different from the self-validate"): **DRAFT → SELF-VALIDATE → WRITE**.
+  Originally WRITE-then-validate, which was **impossible**: `write_parameters`
+  refuses a folder that already holds a `parameters.json` (append-only) and the
+  DCIC opens *exactly one* attempt per generation, so a post-write correction
+  had nowhere legal to go. Draft-first means the file on disk is **validated by
+  construction**. Added guard: *"do not write a set you know to be wrong."*
+- **C2a corrected + C2b written**: real-world-quantity (3 routes), filtering
+  responsibility, acting-on-a-Conductor-directive, all 3 precision paragraphs.
+  Re-points: Planner/Orchestrator→Conductor, `<<DCII_ONLY>>` audit clauses→
+  "check it again in your self-validation", DCIC discretion→your discretion.
+- **C3 written** — the DCII's 5 axes as the Creator's own pre-write check:
+  images section (owner: "match what the dcii does" — inherits all 5 tools +
+  the selectivity framing), `$sketch_handling`/`$sketch_notes` (union rule: the
+  DCII has them, the DCIC does not), §1 strict per-parameter range check, §2
+  consistency, §3 hard blockers via `calculate`, §4a changeability ladder, §4b
+  real-world verification, §5 appropriateness (advisory framing KEPT and
+  re-pointed — it is the only sentence stopping the value-author from
+  overriding the plan). Verdict table: 3 destinations → **PASS** (write once →
+  Tool Caller) / **SELF-CORRECT** (no hop) / **ESCALATE** (Conductor).
+- Owner decisions: no mandatory `read_parameters` re-read (it authored the
+  values; staleness cannot occur inside one turn).
+- **Live bug found while copying:** the DCII said *"**Four** tools"* then listed
+  **five** (`ocr_regions` added later without updating the count). Fixed live.
+
+## ⚠ RECEPTIONIST RANGE GATE REMOVED (2026-07-28, owner)
+
+Owner: *"remove completely from the receptionist the function of blocking
+out-of-range values, it's easier like this at this point."* The
+`## Quantitative viability check` is now a `## Parameter-name check`: the
+range comparison AND the blocking are deleted; **name-mapping survives**
+(unrecognised parameter names still bounce), as does the no-clip half
+(*"never silently clip, round, or redistribute a user's value"*).
+**Why it mattered:** the gate was silently failing the owner's **text-only
+parameter-extraction benchmark tests** — an out-of-range value stopped the
+request at the door even though the Planner would never have sent it to the
+DCIC. Fixed 2 dangling refs ("step 1 of the quantitative check", "the
+quantitative viability check below"); grep confirmed no other agent depended
+on it. **This also removes the front-door blocker the whole no-ask-back
+feature was built around** — see the status update in
+`design_no_ask_back_and_range_degrade.md`.
+
+**Out-of-range routing is now AUTHORITY-BASED, not marker-based** (live DCII +
+Creator draft). Owner's objection to my marker-based draft: it would make the
+no-ask-back case depend on the UII having written a `SOFT TARGET` marker — and
+per G5 the UII may never even detect a unit-mismatched breach. So: escalate
+only when **nothing** authorises the move; any of a `SOFT TARGET` marker, a
+hand-off permission, a DESIGN INTENT permission, or a directive is enough.
+
 ## Separate feature TODO (surfaced 2026-07-26 — NOT part of the reduced-agent build)
 
 **Per-agent stateful/stateless toggle in the Workflow-Settings agent flow

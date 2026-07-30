@@ -6,9 +6,13 @@ read off the extraction's QUANTITATIVE INPUTS section:
   authorisation frees it (below).
 - **SOFT TARGET** — a value marked ``SOFT TARGET (goal: …; keep near … if
   free)``.  The user subordinated it to that goal, so it is neither locked
-  nor free: the marker itself IS the authorisation to move it (within range)
-  to serve the goal, held as close to the stated value as the "keep near …
-  if free" strength asks.
+  nor free.  **The goal governs**: the marker itself IS the authorisation to
+  move the value (within range) as far as the goal requires, and you never
+  have to justify moving it.  The stated value is a reference, not a pull —
+  it settles the parameter only when the goal does NOT bear on it, and the
+  "keep near … if free" strength then says how closely to follow it ("not as
+  important" → your choice within range; "prefer X but the shape matters
+  more" → use X).
 - **FREE** — a parameter absent from QUANTITATIVE INPUTS: either the user never
   specified it, or they specified it and later released it (a value that is no
   longer constrained is simply OMITTED from the section).  Either way it is the
