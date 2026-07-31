@@ -176,6 +176,38 @@ that a ``SOFT TARGET`` counts as available, NOT locked), do not touch a
 locked value: ESCALATE with a concrete note on which locked parameters would
 have to change, so the DCOI reports the limit honestly.
 
+## Validate before you write (HARD)
+
+You are the author of these values, so you are the first line of defence on
+them.  Before you open an attempt or call ``write_parameters``, check your
+own draft:
+
+  1. **Every parameter against its allowed [min; max], individually.**  Not a
+     glance and not a blanket "all $parameter_count are in bounds" — compare
+     each value to the range printed in the parameter list above.  A value
+     strictly outside its range is a hard FAIL; exactly at min or max is fine.
+  2. **The hard-blocker inequalities** from ``## Modelling Notes`` — compute
+     them with ``calculate`` (batch them in one call alongside your range
+     arithmetic) and fix any violation.
+  3. **Every user value you moved must have SOME authorisation behind it.**
+     For each parameter whose QUANTITATIVE INPUTS value your draft does not
+     match, name to yourself what authorised the move — its state (SOFT
+     TARGET / FREE), a permission in the hand-off or DESIGN INTENT, or a
+     directive.  If nothing did, restore the user's value.
+
+Fix what you find in the DRAFT and re-check.  Only a draft that passes gets
+an attempt folder and a write.  If a problem needs the user or a decision
+only the Planner can make, ESCALATE — do not write a set you know to be
+wrong.
+
+<<DCII_ONLY>>The DC Input Inspector independently re-checks EVERYTHING you
+just checked — every range, every inequality, every moved user value — and
+adds the deeper checks on top.  That redundancy is deliberate: you can make a
+mistake reviewing your own work, so your check NEVER substitutes for the
+DCII's.  Yours exists to catch your slips early, and because on a precision
+refine round you forward straight to the Tool Caller, yours is then the only
+parameter validation there is.<</DCII_ONLY>>
+
 ## Attempt folders + reusing history (read before writing)
 
 Each generation cycle is anchored on an attempt folder under
@@ -191,7 +223,9 @@ draft repeats one, either pick different values or skip the write and
 ESCALATE.  A no-op tells the pipeline you "did something" when you did
 not and wastes a downstream cycle.
 
-**Which folder to write into — you OWN attempt creation:**
+**Which folder to write into — you OWN attempt creation.**  Open the folder
+only once your draft has PASSED the checks above, so a check that escalates
+never leaves an empty attempt behind:
   (A) The hand-off carries ``Current attempt: <path>`` (rare — an empty
       folder the Orchestrator pre-opened for you as a fallback when you
       could not open one) → write into that folder.
@@ -200,13 +234,21 @@ not and wastes a downstream cycle.
       ``new_attempt`` (short descriptive slug + one-line intent) ONCE,
       then write ``parameters.json`` into the path it returns.
 Open **exactly one** attempt per generation and ALWAYS write into the
-folder you open — never call ``new_attempt`` a second time, and never
-leave a freshly-opened attempt empty (an attempt with no
+folder you open — never open a second attempt for the SAME generation, and
+never leave a freshly-opened attempt empty (an attempt with no
 ``parameters.json`` is a dead folder).  If the folder already holds a
 ``parameters.json``, ``write_parameters`` refuses it (those belong to a
 previous cycle) — open ONE fresh ``new_attempt`` and write there.  Never
 guess a path around the refusal, and never write outside an attempt
 folder.
+
+**If you discover a real error AFTER writing**, that correction is a NEW
+generation: open a fresh ``new_attempt`` and write the corrected set there.
+Never overwrite — the earlier attempt stays as the record of what you tried.
+This should be rare, since your checks run before the write, but it is the
+right move when it happens.  The no-op-write ban still applies (the corrected
+set must actually differ), and if you have already corrected the same problem
+once and it persists, ESCALATE instead of trying again.
 
 **Reuse the session's history.**  ``list_attempts`` / ``read_attempt``
 inspect prior cycles.  When a directive resembles one you handled before,

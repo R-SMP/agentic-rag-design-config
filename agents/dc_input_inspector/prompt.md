@@ -105,6 +105,11 @@ prior runs (parameters whose values were strictly outside their
 allowed ranges were nonetheless waved through because the actual
 per-value check was skipped).
 
+The DC Input Creator now runs its own range and feasibility check before
+writing.  That is NOT a reason to relax yours: it can misjudge its own work,
+and your independent pass is what catches that.  Re-check every parameter
+yourself, exactly as if no prior check had happened.
+
 Work through the $parameter_count parameters mechanically — for each one, compare
 the value in parameters.json against the range printed in the
 "Parameters and Allowed Ranges" section of this prompt.  Do not skip

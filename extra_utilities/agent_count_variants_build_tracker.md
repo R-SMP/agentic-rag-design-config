@@ -549,6 +549,95 @@ OLD wording, so they do NOT cover this. A fresh run is required before trusting 
 - **Live bug found while copying:** the DCII said *"**Four** tools"* then listed
   **five** (`ocr_regions` added later without updating the count). Fixed live.
 
+## Creator C4 + merge audit (2026-07-28) — DRAFT COMPLETE
+
+**C4 written:** attempt folders (case (A) dropped — the Conductor has no
+`new_attempt`), no-op-write ban folded into self-validation, read/write tool
+policy, a merged Output Format carrying BOTH the choices and the validation
+result, the 3-line Tool Caller hand-off, routing split into fix-yourself vs
+escalate, and a merged end-of-session scope covering both halves of the job.
+
+**29-agent completeness audit: 0 CONFIRMED LOSSES out of 22 claimed.** Stale
+topology mechanically clean (0 hits for DCIC/DCII/Planner/Orchestrator);
+filter markers balanced (only `<<HAS_DBA>>` / `<<BSV_*>>` survive — no
+`<<DCII_ONLY>>` / `<<PF_*>>`, matching the settled 5-agent decision).
+
+**But the coherence pass found 6 real self-contradictions — all fixed:**
+- **A1 — I resolved a conditional filter to the WRONG branch.** DCIC:323 is
+  `<<PF_ON>>the UII<</PF_ON>><<PF_OFF>>the Planner<</PF_OFF>>`; the 5-agent
+  flow is **PF_OFF (uii-first)**, confirmed by
+  `routing_dc_input_creator_uii_first.md:7` (`call_planner` = CLARIFY target).
+  I had kept the PF_ON branch. Fixed → **the Conductor**, which also collapses
+  the phantom 4th route: CLARIFY and ESCALATE share one tool, differing only
+  in stated intent.
+- **A2** — the MUST tool sequence omitted `new_attempt`; now
+  `new_attempt` → `write_parameters` → `call_tool_caller` (2 places).
+- **A3** — "never call `new_attempt` a second time" + "open ONE fresh
+  `new_attempt` and write there" contradicted each other once case (A) was
+  removed. **Owner's ruling: a post-write correction IS a NEW generation** —
+  allowed, gets a fresh attempt, never an overwrite. Reuses the precision
+  loop's existing principle ("every round is a fresh generation"). Bounded by
+  the EXISTING guards (no-op-write ban + "corrected once and it persists →
+  ESCALATE"), no new numeric cap. **Applied to the live DCIC too**, per
+  "same goes for the DCIC".
+- **A4** — a write the tool REJECTS is not a write; "exactly once" counts
+  successful writes.
+- **A5** — phase 2 let the AUTHORISATION check go "light on a nudge" while
+  §4a said "check every cycle". **Owner's model, now implemented: everything
+  the DCIC checks (ranges + blockers + authorisation) runs EVERY cycle; only
+  the DCII-style deeper comparisons (raw inputs/images, appropriateness,
+  real-world audit) scale.**
+- **A6** — two overlapping fix-lists that disagreed (pre-write "fix the draft"
+  vs post-write "re-call the tool"); collapsed, with the post-write cases
+  named explicitly.
+- **B1** — "axis 5" pointed at nothing (the draft has phases, not axes) and
+  misdirected to §5 = *Appropriateness*; now names §4 explicitly.
+  **B2** — "missing from your hand-off" → "the incoming hand-off" ("your
+  hand-off" everywhere else means the one the Creator WRITES).
+
+**Not changed (deliberate):** the real-world-quantity do-then-verify
+duplication (doing and checking are genuinely different passes) and the
+duplications inherited verbatim from the sources — trimming those would break
+the faithful-merge rule rather than serve it.
+
+## 🔴 DCIC NOW SELF-CHECKS BEFORE WRITING (2026-07-28, owner-driven — LIVE FIX)
+
+**Owner's side-question during C4 exposed a live hole:** *"does the DCIC, in any
+case, check its own parameters before writing the file, like the creator does?
+The DCIC should. The DCII is more like an additional check."*
+
+**Verified: the DCIC had NO self-check at all.** Its only "verify" was specific
+to unit conversions; its only pre-write check was the no-op check (compares
+against PREVIOUS writes, not ranges). Guideline 4 said *"ALL values MUST be
+within their allowed ranges"* with no procedure. Combine that with:
+  * the DCIC **skips the DCII on ~2 of 3 precision refine rounds** (tight loop);
+  * `write_parameters` validates key-set + numeric-ness only — **no code-level
+    range check exists anywhere**;
+  * the DCII's own prompt records that range violations *"produced false
+    APPROVEs in prior runs"*.
+⟹ **On most precision refine rounds, parameters reached the geometry backend
+with ZERO range validation.**
+
+**Applied (3 edits):**
+1. New `## Validate before you write (HARD)` in the DCIC — per-parameter range
+   check, hard-blocker inequalities via `calculate`, and "every user value you
+   moved must have SOME authorisation behind it" (owner reworded this from
+   "is authorised", which read as an assertion rather than a check to perform).
+2. Attempt folder is opened **only once the draft PASSES** — a check that
+   escalates can no longer leave a dead empty folder.
+3. **DCII guard against relaxing:** *"The DC Input Creator now runs its own
+   range and feasibility check before writing. That is NOT a reason to relax
+   yours: it can misjudge its own work… Re-check every parameter yourself,
+   exactly as if no prior check had happened."*
+
+**Owner's explicit constraint — the DCII loses NOTHING:** *"The DCII is an
+additional check for EVERYTHING, not just the things the DCIC does not check on
+itself. It can happen that the DCIC makes a mistake when reviewing itself,
+that's why the DCII also has to check what may seem as a redundant check."*
+The redundancy is deliberate. Net DCII change: +4 lines, −0.
+**Tight precision loop KEPT** — it is now safe, since the skipped rounds are no
+longer unvalidated.
+
 ## ⚠ RECEPTIONIST RANGE GATE REMOVED (2026-07-28, owner)
 
 Owner: *"remove completely from the receptionist the function of blocking
