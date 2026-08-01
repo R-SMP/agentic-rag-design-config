@@ -160,9 +160,19 @@ system first.** Keep this file updated as stages complete.
    3600 s per-run cap (raise runtime; F52). The 5-agent Creator / UII / DCOI
    (stages 3–4) must inherit the soft-target handling from the live 7-agent
    prompts + `design_soft_targets.md`. See [[v9_soft_targets]].
-3. **Creator prompt** (merge DCIC + DCII).
+3. **Creator prompt** (merge DCIC + DCII) — ✅ **DONE** (C1–C4 in
+   `extra_utilities/draft_prompt_creator.md`; 29-agent completeness audit =
+   0 losses; 6 coherence contradictions found + fixed). Committed `1e1ecb9`.
 4. **Survivor 5-agent prompts** (UII, Tool Caller, DCOI, Receptionist),
-   cross-references re-pointed.
+   cross-references re-pointed — **NEXT**. Plus the items deferred here from
+   stage 2: the 5-agent `generic_constraints` (chain-agent-centric + the
+   `<<CHAIN_ONLY>>` filter), `NATURAL_PIPELINE`, the `routing_instructions()`
+   boilerplate re-pointed Orchestrator→Conductor, and the survivor
+   `routing_<agent>.md` + `routing_receptionist.md`.
+   Known re-points: DCIC/DCII→**Creator**, Planner/Orchestrator→**Conductor**.
+   Known NEW content: the Receptionist gains the "does this message carry
+   meaningful content for the UII" judgment, since in the 5-agent flow it
+   calls the UII directly (Receptionist → UII → Conductor → …).
 Then: 3-agent variant (all of the above, tailored to 3 agents).
 Separately, after discussion: the topology selector.
 
@@ -334,9 +344,10 @@ dropped/weakened instruction — BEFORE moving to the fragment bodies.
 
 The LOCKED / SOFT TARGET / FREE explanation is being **restructured for
 clarity** (model-first, fluid prose — NOT a rigid table) and pulled into a
-**single topology-agnostic shared fragment `$value_states`** (draft:
-`extra_utilities/draft_shared_fragments/value_states.md`; eventual home
-`agents/shared/prompt_fragments/value_states.md`). It states the model +
+**single topology-agnostic shared fragment `$value_states`**, LIVE at
+`agents/shared/prompt_fragments/value_states.md` and **SHARED by both
+topologies** (the 5-agent draft copy was deleted 2026-07-31 — see F4). It
+states the model +
 recognition + the three authorisation sources (A hand-off / B DESIGN INTENT
 / **C `(unlocked by user)` inline annotation**) + the "as needed vs freely"
 extent — ONCE. Each consumer keeps only its role-specific ACTION.
@@ -548,6 +559,140 @@ OLD wording, so they do NOT cover this. A fresh run is required before trusting 
   values; staleness cannot occur inside one turn).
 - **Live bug found while copying:** the DCII said *"**Four** tools"* then listed
   **five** (`ocr_regions` added later without updating the count). Fixed live.
+
+## Stage-4 AUDIT + fix set F1–F7 (2026-07-31) — CLOSED
+
+**29-agent whole-set audit: 0 confirmed losses**, filters all correct
+(including the Creator PF pair mis-resolved earlier — now right), no stale
+agent names in any body. But the CROSS-FILE pass found what per-file review
+structurally cannot — gaps that would break a run:
+
+- **F1 — the UII would get NO paths.** It needs `Input directory:` /
+  `Extraction output file:` "verbatim; don't guess"; its tool handlers ERROR
+  without them. Fixed: the Receptionist now emits both.
+  **⚠ LIVE FINDING (code-conclusive, own section in `routing_boilerplate.md`):
+  the ONLY emitter is `planner/prompt.md:38-39`, inside `<<PF_ON>>` — and the
+  live default is PF_OFF, so the block is STRIPPED and NO live agent emits
+  them.** Runs succeed only because the UII infers the conventional paths.
+  Latent live fragility; a 7-agent fix is NOT yet proposed.
+- **F2 — the Receptionist's second door was invisible.** The Conductor said
+  raw user input "never" reaches it (3 places + 2 fragments). Fixed across
+  all 5, plus a Role-1 clause, plus a **light CLARIFY path in Role 2** (a
+  chain agent asking what you meant gets a sharpened directive, NOT a full
+  Recovery PLAN). This also resolved a contradiction that PREDATED the audit
+  (conductor :194 "not to fetch new content" vs :480 "route through the UII").
+- **F3 — the Receptionist's context died at the UII.** Owner corrected my
+  first proposal: DESIGN INTENT is about the PIECE, not the system's modus
+  operandi, and the 7-agent conveys this by **verbatim relay**
+  (orchestrator:90/93, planner:158 — verified). My persistence argument was
+  also wrong: agents are STATEFUL, so a relayed cap already persists.
+  Landed as BOTH channels (owner's call): the DESIGN INTENT bullet broadened
+  `Reporting preferences` → **`Process preferences`** (covers strategy caps
+  and "run without asking back" — which is exactly what **no-ask-back D1**
+  needs), plus a one-clause relay in the UII's forward. Also added "your
+  incoming hand-off is a source too".
+  *Checked:* the `Reporting preferences` bullet is NOT mine — it dates to the
+  initial commit `e16d20e`.
+- **F4 — deleted the stale `draft_shared_fragments/value_states.md`.** It
+  predated the live `8ebfe5f` fix and would have REGRESSED "goal governs" on
+  promotion. Root cause was copying a fragment that never needed copying (its
+  only agent reference is the UII, which survives), so the fix kills the
+  staleness CLASS: value_states is SHARED, like `capabilities_can/cannot`.
+- **F5** — conductor "the Receptionist splices those from the extraction" →
+  the Receptionist CANNOT read it; the Conductor can, so it includes the
+  values itself. (The live Planner hedged "Orchestrator / Receptionist"; the
+  merge kept the wrong one.)
+- **F6** — dropped the "Conductor's final user-facing wrap-up" exception.
+  **It was already wrong LIVE**: the Orchestrator's own prompt says "do NOT
+  write the final user message yourself". Confirmed rule: every agent ends
+  with a routing call; the ONLY exception is the Receptionist replying to the
+  user. Worth fixing live separately.
+- **F7** — `available_agents` said the Tool Caller does "exactly two
+  design-tool actions", which literally BLOCKS the `render_blade_sections`
+  the Conductor's own precision directive requires. Now split by
+  `<<BSV_ON>>`/`<<BSV_OFF>>`: the ON variant (the DEFAULT) emphasises BOTH
+  rendering actions and that the directive must say which; the OFF variant
+  states plainly that sections cannot be rendered alone.
+
+**Deferred, INHERITED from the 7-agent (not merge-introduced):** the DCOI
+cannot supply the `Parameters file:` line it is told to carry; the Creator's
+DCOI-directed context dies at the Tool Caller; no `conductor`/`creator`
+variants of the per-agent database/BSV fragments; `user_input_inspector.py`
+still says paths are "supplied by the Planner".
+
+## Stage 4 — routing layer + survivor prompts (2026-07-28, IN PROGRESS)
+
+**Routing layer DONE** (`extra_utilities/draft_5agent_fragments/`):
+- `routing_boilerplate.md` — the 5-agent `NATURAL_PIPELINE`
+  (`Receptionist → UII → Conductor → Creator → Tool Caller → DCOI →
+  Conductor`; the Receptionist IS in the string, unlike the 7-agent one,
+  because here it is genuinely the UII's previous), the per-agent
+  prev/next table, every boilerplate re-point, and a recorded warning about
+  the PF-branch trap. **The one substantive change, not a rename:** the
+  authorisation source list collapses from three to two — "from the user
+  (via Receptionist → Conductor), or from the Conductor itself".
+- `routing_user_input_inspector.md` (gains `call_receptionist` — the UII asks
+  the user directly through it), `routing_creator.md` (NEW; CLARIFY and
+  ESCALATE share `call_conductor`, differing only in stated intent),
+  `routing_tool_caller.md` (DCII_OFF branch, CLARIFY → `call_creator`),
+  `routing_dc_output_inspector.md`, `routing_receptionist.md`.
+- **`generic_constraints.md`** — the stage-2 deferral, now done.
+  **`<<CHAIN_ONLY>>` markers are KEPT**: unlike `<<PF_*>>`/`<<DCII_ONLY>>`
+  (topology flags resolved at authoring time), CHAIN_ONLY strips chain-only
+  rules for the USER-FACING agents, which here are the Receptionist and the
+  Conductor. It is still doing real work.
+- **`agents/shared/routing.py` was NOT touched** — it is live and drives the
+  7-agent system; the topology selector is still a pending discussion. The
+  boilerplate doc records the exact strings so that port is mechanical.
+
+**Receptionist's NEW judgement (owner decision):** it now dispatches into the
+pipeline, so it inherits the "is this meaningful content" call the Orchestrator
+makes today. Criterion: **new/changed design content → UII; an answer to a
+system question, a control instruction about an in-flight run, or a restatement
+of something already captured → Conductor.** A message that does both → UII.
+
+**Survivor prompts:**
+- **Tool Caller ✅** `draft_prompt_tool_caller.md` — remarkably clean, only
+  THREE re-points (DCIC→Creator at the staleness note, Orchestrator→Conductor
+  at "no menu of options", Planner→Conductor at "strategy decisions belong
+  to"). No `<<PF_*>>`/`<<DCII_ONLY>>` markers exist in it at all.
+- **DC Output Inspector ✅** `draft_prompt_dc_output_inspector.md` — made by
+  COPYING the live file and applying targeted edits, so the untouched ~90% is
+  byte-identical (verified: ~27 changed lines of 423). 12 mechanical re-points
+  + `call_orchestrator`→`call_conductor` throughout. Two judgement calls:
+  (1) "you do NOT re-check parameters (that's the DCII)" → "(that's the
+  **Creator's self-validation**)" — the job moved, it did not vanish;
+  (2) the two `<<DCII_ONLY>>` asides in "Override authority" — a LITERAL
+  rename would have been **false**, since the original says "the DCII's check
+  is parameters-vs-extraction only" but the Creator now consults raw inputs
+  too (the A5 decision). Re-pointed to the surviving distinction instead:
+  "the Creator validates PARAMETERS against the inputs; only you compare the
+  rendered RESULT against them" / "overriding a **Creator PASS**".
+- **User Input Inspector ✅** `draft_prompt_user_input_inspector.md` — copy +
+  targeted edits. Contained MANY `<<PF_ON>>/<<PF_OFF>>` pairs, ALL resolved to
+  **PF_OFF**. FORWARD target `call_planner` → **`call_conductor`**. One block
+  rewritten beyond a rename: the live PF_OFF text says *"You are the first
+  agent in the chain — there is no upstream agent to CLARIFY back to"*, which
+  is FALSE in the 5-agent system — the Receptionist precedes the UII and the
+  UII can call it. Replaced with the Receptionist-relays-not-decides paragraph
+  + the new `call_receptionist` ask-the-user path.
+- **Receptionist ✅** `draft_prompt_receptionist.md` — the biggest survivor
+  change. **Path 1 now has TWO doors** (`call_user_input_inspector` /
+  `call_conductor`) plus the "Which door" criterion; every `call_orchestrator`
+  had to resolve to one of them or be generalised ("the act of invoking **a
+  forward tool** IS the decision to forward"; "must NOT invoke **any routing
+  tool**" in Situation B). Also re-pointed the `read_agent_history` roster
+  (Planner→Conductor for reasoning, DCIC→Creator for parameter values) and the
+  database/images agent lists. **Flagged + fixed consequence:** the
+  extraction-only flag used to be addressed to the Orchestrator directly;
+  the Receptionist now forwards to the UII, so it is re-pointed to "so the
+  **Conductor** can route appropriately", noting the UII carries it on and
+  independently recognises an extraction-only ask.
+
+**All four survivor bodies verified to contain ZERO residual topology refs**
+(the only grep hits are the drafts' own header comments). **Stage 4 COMPLETE**;
+whole-set audit running (per-prompt faithfulness + adversarial verification +
+a cross-artefact consistency pass over all 6 prompts and 13 fragments).
 
 ## Creator C4 + merge audit (2026-07-28) — DRAFT COMPLETE
 

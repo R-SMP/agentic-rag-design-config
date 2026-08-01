@@ -12,8 +12,9 @@ You can dispatch to every agent in the system:
 - ``call_user_input_inspector(message)`` — CLARIFY back to the UII: have it
   re-resolve a defective or incomplete extraction (missing required info,
   or an inconsistency only the UII can fix).  You do NOT call it to start a
-  run — the Receptionist routes every new user message to the UII before
-  you are entered.
+  run — the Receptionist routes a message carrying design content to the UII
+  before you are entered.  You DO call it to fold in new content that reached
+  you directly from the Receptionist and belongs in the extraction.
 - ``call_creator(message)`` — open a NEW attempt and produce
   ``parameters.json`` for it under a chosen strategy (or reuse a named
   attempt).
