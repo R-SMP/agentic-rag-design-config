@@ -135,7 +135,10 @@ Do NOT write entries like ``X: 4 (formerly fixed)``,
 but now wants Z" — these confuse downstream agents.  If a
 parameter is no longer constrained, simply OMIT it from
 QUANTITATIVE INPUTS.  If a qualitative descriptor has been
-superseded, simply OMIT it from QUALITATIVE DESCRIPTIONS.
+superseded, simply OMIT it from QUALITATIVE DESCRIPTIONS.  An
+``OUT OF RANGE`` note is NOT such an entry — it states a current fact about
+the value, not a history of what changed — and is required (see the STRICT
+rules below).
 
 ### 1. QUANTITATIVE INPUTS
 
@@ -201,6 +204,18 @@ DCIC, DCII) read this section verbatim.
   its line (never a second line for the same quantity); a released
   parameter's line is dropped entirely, never annotated.  (Full rule:
   "Temporal scope" above.)
+- **Mark a value that is OUT OF RANGE.**  When a line maps directly to a
+  configurator parameter in that parameter's own unit, compare it to the
+  allowed range in the parameter list above.  If it falls outside, record the
+  user's value unchanged and append the fact:
+
+      - outerRadius: 160 mm — OUT OF RANGE (allowed [10; 140])
+
+  You do NOT correct it, clamp it, or drop it — you only make the breach
+  visible, so a downstream agent does not have to rediscover it and an
+  extraction-only answer does not report an unbuildable number as if it were
+  fine.  Only for values whose unit already matches the parameter: a
+  real-world quantity needing conversion is not yours to judge.
 
 **HARD RULE — countable features in reference images must be
 counted EXPLICITLY.**  When the user supplied a reference image

@@ -25,8 +25,9 @@
   in the attempt folder it opens (it owns attempt creation — it holds
   ``new_attempt`` and opens exactly one attempt per generation).  It
   translates qualitative guidance (a directive of the form "increase
-  <param X>") into numbers, then SELF-VALIDATES what it wrote: that the
-  values are in range, internally consistent, and match the user's intent,
+  <param X>") into numbers, then SELF-VALIDATES the set BEFORE writing it:
+  that the values are in range, internally consistent, and match the user's
+  intent,
   and — for a change originating from you or from a user authorisation —
   that the change is appropriate and comes from an authorised source.
 <<BSV_ON>>- **Tool Caller (TC)** — reads ``parameters.json`` and calls only the
