@@ -502,6 +502,16 @@ PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
     "user_input_inspector": frozenset({"routing_instructions"}),
     "dc_input_creator":     frozenset({"routing_instructions"}),
     "dc_input_inspector":   frozenset({"routing_instructions"}),
+    # 5-agent topology.  The Conductor inherits the Planner's three path
+    # slots but NOT ``routing_instructions``: being the hub, it uses the
+    # static ``$routing_conductor`` fragment the way the Orchestrator uses
+    # ``$routing_orchestrator``.  It has no ``chain_access_block`` either —
+    # chain access was dropped from its prompt.
+    "conductor":            frozenset({
+        "user_inputs_dir", "input_images_subdir",
+        "extraction_output_file",
+    }),
+    "creator":              frozenset({"routing_instructions"}),
     "tool_caller":          frozenset({
         "routing_instructions", "render_check_library_block",
     }),
