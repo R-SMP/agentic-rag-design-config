@@ -125,6 +125,14 @@ AGENT_DISPLAY: dict[str, str] = {
     "dc_output_inspector":  "DC Output Inspector",
     "orchestrator":         "Orchestrator",
     "receptionist":         "Receptionist",
+    # 5-agent topology: the Conductor merges Planner + Orchestrator, the
+    # Creator merges DC Input Creator + DC Input Inspector.  Listed here for
+    # EVERY topology because this table is the identity registry
+    # (``ROUTING_TOOL_NAMES`` below and ``session.KNOWN_AGENT_KEYS`` derive
+    # from it).  Nothing iterates it to BUILD agents, so a topology that does
+    # not use them simply never constructs them.
+    "conductor":            "Conductor",
+    "creator":              "Creator",
 }
 
 ROUTING_TOOL_NAMES: set[str] = {f"call_{k}" for k in AGENT_DISPLAY}
@@ -202,6 +210,22 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "free-form prose.  Use this when the natural pipeline has "
         "completed, when you cannot proceed, or when the Orchestrator's "
         "incoming instruction told you to report back."
+    ),
+    "call_conductor": (
+        "Return control to the Conductor — the hub that plans, routes and "
+        "approves.  The ``message`` argument IS the hand-off text it will "
+        "see — write it as free-form prose.  Use this when the natural "
+        "pipeline has completed, to CLARIFY when its directive was "
+        "ambiguous or could not be expressed in concrete parameter "
+        "values, or to ESCALATE when you are stuck; the Conductor is the "
+        "single point the chain returns to on any failure."
+    ),
+    "call_creator": (
+        "Call the Creator.  The ``message`` argument IS the hand-off text "
+        "the Creator will see — write it as free-form prose.  It authors "
+        "the complete parameter set AND self-validates it before writing, "
+        "so state the qualitative direction you want (\"increase <param "
+        "X>\") rather than concrete numbers."
     ),
     "call_receptionist": (
         "Hand a user-facing result to the Receptionist, which composes "

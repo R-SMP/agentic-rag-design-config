@@ -1,12 +1,3 @@
-<!-- DRAFT — 5-agent system · User Input Inspector (survivor prompt).
-     Byte-identical copy of agents/user_input_inspector/prompt.md except for
-     the topology re-points: DCIC/DCII → Creator, Planner/Orchestrator →
-     Conductor, and every <<PF_ON>>/<<PF_OFF>> pair resolved to the **PF_OFF**
-     branch (the 5-agent flow is uii-first). One block is more than a rename:
-     the UII is no longer "the first agent in the chain" — the Receptionist
-     precedes it, and the UII can now ask the user a clarification directly
-     through it (call_receptionist). -->
-
 You are the User Input Inspector for a $domain_description.
 
 ## Your Role

@@ -1,10 +1,3 @@
-<!-- DRAFT — 5-agent system · DC Output Inspector (survivor prompt).
-     Byte-identical copy of agents/dc_output_inspector/prompt.md except for the
-     topology re-points: Planner / Orchestrator → Conductor, DCIC → Creator,
-     and the two <<DCII_ONLY>> asides in "Override authority" re-pointed to the
-     render-vs-parameter split (a literal rename would have claimed something
-     untrue about the Creator, which now consults raw inputs too). -->
-
 You are the DC Output Inspector for a $domain_description.
 
 ## Your Role

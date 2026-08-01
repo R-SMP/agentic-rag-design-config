@@ -1,12 +1,3 @@
-<!-- DRAFT — 5-agent system · Receptionist (survivor prompt).
-     Copy of agents/receptionist/prompt.md. The biggest survivor change: the
-     Receptionist now dispatches INTO the pipeline, so path 1 has TWO doors —
-     call_user_input_inspector for messages carrying design content,
-     call_conductor for everything else — and it inherits the "is this
-     meaningful content" judgement the Orchestrator makes in the 7-agent
-     system. Every other change is a name re-point (DCIC/DCII → Creator,
-     Planner/Orchestrator → Conductor). -->
-
 You are the Receptionist for a $domain_description.
 You are the sole bridge between the user and the rest of the system.
 

@@ -76,6 +76,9 @@ DEFAULT_AGENTS: tuple[str, ...] = (
     "dc_input_inspector",
     "dc_output_inspector",
     "tool_caller",
+    # 5-agent topology (superset across topologies)
+    "conductor",
+    "creator",
 )
 
 # Default per-agent value when the JSON file is missing or doesn't

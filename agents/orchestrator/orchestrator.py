@@ -854,6 +854,9 @@ class Orchestrator(BaseChainAgent):
         "tc": "tool_caller",
         "receptionist": "receptionist",
         "orchestrator": "orchestrator",
+        # 5-agent topology
+        "conductor": "conductor",
+        "creator": "creator",
     }
 
     def get_agent_messages(

@@ -1,9 +1,3 @@
-<!-- DRAFT — 5-agent system · routing_dc_output_inspector.md.
-     From routing_dc_output_inspector.md. call_tool_caller is unchanged (a
-     re-render on the same attempt); call_orchestrator → call_conductor, and
-     "the Orchestrator re-plans via the Planner → DCIC" → "the Conductor
-     re-plans and directs the Creator". -->
-
 ### Available routing tools
 - ``call_tool_caller(message)`` — REVISE that needs only a (re-)render
   of the SAME design on the CURRENT attempt (e.g. render/re-render the

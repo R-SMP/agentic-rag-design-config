@@ -146,6 +146,9 @@ class BaseChainAgent:
         "dc_input_inspector":   "DC Input Inspector",
         "dc_output_inspector":  "DC Output Inspector",
         "tool_caller":          "Tool Caller",
+        # 5-agent topology
+        "conductor":            "Conductor",
+        "creator":              "Creator",
     }
 
     def prune_history_if_needed(self) -> None:

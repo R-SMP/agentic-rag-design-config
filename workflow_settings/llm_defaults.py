@@ -45,6 +45,12 @@ DEFAULT_PER_AGENT_MODELS: dict[str, str] = {
     "tool_caller":          "gpt-5.4-mini",
     "database_handler":     "gpt-5-mini",
     "context_pruner":       "gpt-5.4",
+    # 5-agent topology.  The Conductor takes the Orchestrator's default
+    # (its hub half runs on every turn); the Creator takes the DC Input
+    # Inspector's — the STRONGER of its two parents — because it now
+    # authors AND validates in a single turn.
+    "conductor":            "gpt-5.4-mini",
+    "creator":              "gpt-5.5",
 }
 
 

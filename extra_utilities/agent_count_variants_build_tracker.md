@@ -560,6 +560,67 @@ OLD wording, so they do NOT cover this. A fresh run is required before trusting 
 - **Live bug found while copying:** the DCII said *"**Four** tools"* then listed
   **five** (`ocr_regions` added later without updating the count). Fixed live.
 
+## ✅ 5-AGENT PROMPT LAYER COMPLETE (2026-08-01)
+
+The four per-agent fragments for the merged agents are written, so **nothing
+prompt-side remains**: 6 prompts + 17 fragments.
+- `database_search_conductor.md` — merges the Planner's + Orchestrator's;
+  "request is complex" appeared in both (one copy kept), and the two priority
+  lines collapse into one once those agents are the same agent.
+- `database_search_creator.md` — merges DCIC's (retrieve_attempt to calibrate
+  parameter choices) + DCII's (retrieve_user_inputs with images to validate).
+  Dropped the DCII's trailing retrieve_attempt clause — the DCIC half already
+  mandates it.
+- `blade_sections_visualizer_conductor.md` — the Planner's verbatim except the
+  closing rule, which said *"**you** should NOT open a new attempt"*: the
+  Conductor holds no `new_attempt`, so it is re-pointed to direct the Creator.
+- `blade_sections_visualizer_creator.md` — the DCIC's, with "create the attempt
+  and write" re-ordered to "open the attempt and write" per draft-first.
+
+## ✅ TOPOLOGY LAYOUT DECIDED + DRAFTS PROMOTED (2026-08-01)
+
+**Owner's decision: separate folder per topology, SHARED FILES STAY SHARED.**
+The second half is what prevents another F4 (the stale `value_states` copy).
+Also decided: **leave the 7-agent where it is** — it is the incumbent, working
+system, and moving 8 live prompts buys symmetry while risking a system that
+runs today. `SYSTEM_TOPOLOGY` will default to 7.
+
+**Layout (grounded in the loader: `_build_template` reads
+`AGENTS_DIR / <name> / "prompt.md"`, and `<name>` is a PATH string, so a
+nested path needs NO loader change):**
+```
+agents/conductor/{conductor.py, prompt.md}   NEW — 5-agent only, no variant needed
+agents/creator/{creator.py, prompt.md}       NEW — same
+agents/<agent>/prompt.md                     7-agent, UNCHANGED
+agents/5agent/<agent>/prompt.md              the FOUR survivor variants only
+agents/5agent/fragments/*.md                 17 topology-specific fragments
+agents/shared/prompt_fragments/              SHARED by both, never copied
+```
+Only the four survivors need a variant, because they share one Python class
+but read different prompts. The Conductor and Creator exist only in the
+5-agent, so their prompts sit with their code as ordinary agent packages.
+
+**PROMOTED 2026-08-01:** all 22 draft files moved into place, `<!-- DRAFT -->`
+headers stripped (authoring notes = real tokens every turn; the information
+lives here instead), and the drafts DELETED so exactly one copy of each file
+exists. `routing_boilerplate.md` deliberately stayed in `extra_utilities/` —
+it is a port-notes document, not a prompt fragment; no agent reads it.
+**Zero runtime risk: nothing reads these paths until `SYSTEM_TOPOLOGY` is
+wired.**
+
+**WHAT REMAINS IS CODE + THE TOPOLOGY SELECTOR** (no prompt work):
+`agents/conductor/` and `agents/creator/` packages; `prompts.py` templates +
+allow-lists (incl. the F1 Receptionist runtime slots); a `routing.py` variant
+(strings already recorded in `routing_boilerplate.md`); dispatch registration
+and `call_conductor` / `call_creator` tool bindings; then a validation run.
+**The selector governs where all of it lives and is still undiscussed.**
+
+**OWNER'S END-OF-5-AGENT REVIEW (requested 2026-08-01) — do this before
+declaring done:** check for (1) anything missed, (2) useless repetitions,
+(3) text that can be shrunk/simplified without losing effectiveness, (4) token
+count reducible without impacting effectiveness, (5) inconsistencies or
+conflicts between the 7-agent and 5-agent systems.
+
 ## Stage-4 AUDIT + fix set F1–F7 (2026-07-31) — CLOSED
 
 **29-agent whole-set audit: 0 confirmed losses**, filters all correct

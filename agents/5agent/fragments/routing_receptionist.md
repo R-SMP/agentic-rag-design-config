@@ -1,10 +1,3 @@
-<!-- DRAFT — 5-agent system · routing_receptionist.md.
-     The biggest routing change in the merge: the Receptionist now dispatches
-     INTO the pipeline (call_user_input_inspector) instead of only handing to
-     the hub, and therefore inherits the "does this message carry meaningful
-     new design content" judgement the Orchestrator makes in the 7-agent
-     system. The reply-directly paragraph is unchanged. -->
-
 ### Available routing tools
 - ``call_user_input_inspector(message)`` — FORWARD a validated new user
   message into the pipeline.  The UII always runs first on a message that

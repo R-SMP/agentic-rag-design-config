@@ -70,6 +70,11 @@ AGENT_SPEC: list[tuple[str, str, bool]] = [
     ("tool_caller",           "Tool Caller",           True),
     ("database_handler",      "Database Handler",      True),
     ("context_pruner",        "Context Pruner",        False),
+    # 5-agent topology.  ``wired_into_dispatcher=False`` until the
+    # topology wiring lands — they exist as identities but are never
+    # constructed yet.
+    ("conductor",             "Conductor",             False),
+    ("creator",               "Creator",               False),
 ]
 AGENT_KEYS = [k for k, _, _ in AGENT_SPEC]
 

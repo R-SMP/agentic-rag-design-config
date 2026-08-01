@@ -1,8 +1,3 @@
-<!-- DRAFT — 5-agent system · $routing_conductor body.
-     Modelled on the Orchestrator's static $routing_orchestrator (the Conductor
-     is the hub, not a chain agent, so it does NOT use routing_instructions()).
-     Eventual home TBD (separate-folders-per-topology decision). -->
-
 ### Available routing tools
 You can dispatch to every agent in the system:
 

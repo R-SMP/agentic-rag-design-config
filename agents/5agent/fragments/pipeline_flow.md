@@ -1,7 +1,3 @@
-<!-- DRAFT — 5-agent system · $pipeline_flow body (uii-first).
-     Eventual home: agents/shared/prompt_fragments/pipeline_flow_5agent.md,
-     selected by the topology selector once built. -->
-
 The pipeline is a chain built around the Conductor, its hub.  The full
 flow is:
 
