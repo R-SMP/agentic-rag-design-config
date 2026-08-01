@@ -8,8 +8,11 @@ flow is:
   user → Receptionist → User Input Inspector → Conductor → Creator →
   Tool Caller → DC Output Inspector → Conductor → Receptionist → user
 
-A new user message enters through the Receptionist, which routes it
-straight to the User Input Inspector — the UII always runs first.  The
+A new user message enters through the Receptionist, which routes it to the
+User Input Inspector whenever it carries design content — the usual case, and
+the UII then runs first.  A message with no new design content (an answer to a
+system question, a control instruction about a run in progress) goes straight
+to the Conductor instead.  The
 UII extracts the user's intent and writes ``extracted_inputs.txt``, then
 either forwards the extraction to the Conductor to proceed, or — when the
 input is too ambiguous to extract cleanly — asks the user for a
