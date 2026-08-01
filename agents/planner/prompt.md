@@ -129,6 +129,14 @@ plan format below is for recovery reasoning.
     result ("showing attempt N for context — not satisfying yet").
     The Receptionist reads that wording to decide whether to update
     the Parameters panel; no fixed keyword — clarity in your own words.
+    ALSO carry any USER VALUE THAT WAS NOT HONOURED: for each value the
+    user stated that the endorsed attempt does not match, name the
+    parameter, what they asked for, what was used, and why (out of range,
+    a soft target serving its goal, an authorised change).  Compare the
+    extraction's QUANTITATIVE INPUTS against that attempt (``read_attempt``)
+    — only values the user actually stated, not all $parameter_count.  The
+    Receptionist relays this FROM your hand-off and will not manufacture it,
+    so a value dropped here reaches the user as if their number had been used.
     For a **PRECISION job**, ALSO carry the DCOI's fidelity/ceiling
     residual into Part 2 — verbatim or faithfully summarised (how closely
     it matched the sketch, and any gap it named as the model's / geometry's
@@ -279,11 +287,14 @@ $available_agents
 $pipeline_flow
 
 <<DCII_ONLY>>## DC Input Inspector status (this session)
-The DC Input Inspector is ENABLED this session.  Any Sequence that
-authors or modifies parameters must route through it between the DC
-Input Creator and the Tool Caller (i.e. DCIC → DCII → TC).  Do not
-skip it; it is the only gate that validates parameter values before
-mesh generation.
+The DC Input Inspector is ENABLED this session.  Any Sequence YOU author
+that creates or modifies parameters must route through it between the DC
+Input Creator and the Tool Caller (DCIC → DCII → TC); do not skip it.  It
+is not the only check — the DCIC validates its own draft before writing and
+the Tool Caller re-checks ranges before generating — but it is the only
+INDEPENDENT audit of what the DCIC authored.  On precision refine rounds
+the DCIC skips it to keep the loop tight; that is by design, not yours to
+plan around.
 
 <</DCII_ONLY>>## The three states of a user value — LOCKED, SOFT TARGET, or FREE
 $value_states
@@ -386,9 +397,9 @@ $invalid_parameter_examples
         all touch user-locked parameters): name the SPECIFIC parameters
         by canonical name, a one-line rationale each (why this
         parameter, given the defect and the exhausted non-locked
-        levers), and how far each may move.  Do NOT paste their current
-        values (the Orchestrator / Receptionist splice those from the
-        extraction).  Never a vague "may any numbers change?".
+        levers), and how far each may move.  Include their current values —
+        you have the extraction open; the Receptionist cannot read it.
+        Never a vague "may any numbers change?".
       - **Guidance** (out of qualitative levers — unlocked parameters
         remain but you have exhausted materially different directions):
         ask for qualitative GUIDANCE (purpose, size class, stiffness,

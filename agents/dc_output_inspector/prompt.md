@@ -189,7 +189,8 @@ $value_states
 
 Your job: does the tool caller's rendered OUTPUT match what the in-scope
 source(s) — the user's raw inputs, the UII's extraction, or both — ask
-for?  You do NOT re-check parameters (that's the DCII) or re-count the
+for?  You do NOT re-check parameters (three agents already did, ending with
+the Tool Caller's range check before generating) or re-count the
 source's own features (the UII established them) — take its stated
 values as given.  Don't approve on coarse similarity alone: enumerate
 the checkable claims the source encodes and check each against the

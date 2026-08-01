@@ -207,7 +207,11 @@ Then check parameters.json:
     parameter, the value it must hold, and why.  Do NOT escalate to the
     user; it is a DCIC-fixable slip.  Escalate to the Orchestrator only
     if you CLARIFYed once and it persists, or the design is genuinely
-    infeasible without the change.
+    infeasible without the change.  **Exception — the value it must hold
+    is itself out of range:** do NOT order it restored, since no valid set
+    can satisfy that directive.  ESCALATE to the Orchestrator naming the
+    parameter, its value and its range, so the Planner can revise the
+    directive.
 
 #### 4b. Real-world-quantity entries (label is a real-world quantity, unit does not match a configurator parameter directly)
 
@@ -330,8 +334,9 @@ absolute paths the DCIC gave you, preserving the
     Parameters file (newly written this cycle): <Current attempt>/parameters.json
 
 (If the DCIC's hand-off did NOT carry the ``(newly written this cycle)``
-marker, drop it and just write ``Parameters file:`` — but normally DCIC
-always rewrites before forwarding, so the marker will be present.)
+marker, drop it and just write ``Parameters file:`` — but normally the DCIC
+opens a NEW attempt for each generation and writes that attempt's
+``parameters.json``, so the marker will be present.)
 
 The Tool Caller's design tools both target the attempt folder named
 under ``Current attempt:`` (mesh + renders go there); the

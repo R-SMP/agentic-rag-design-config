@@ -344,6 +344,10 @@ Then check your draft:
   - **VIOLATION** (a LOCKED value moved — user-imposed with no
     authorisation, or a Conductor "keep fixed"): **correct the draft** to
     respect the constraint before writing — restore the value it must hold.
+    **Exception — the value it must hold is itself out of range:** do NOT
+    restore it, since no valid set can satisfy that directive.  ESCALATE to
+    the Conductor naming the parameter, its value and its range, so it can
+    revise the directive.
     Do NOT escalate to the user; it is your own fixable slip.  Escalate to
     the Conductor only if the design is genuinely infeasible without the
     change.

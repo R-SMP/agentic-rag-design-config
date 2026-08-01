@@ -196,7 +196,8 @@ $value_states
 
 Your job: does the tool caller's rendered OUTPUT match what the in-scope
 source(s) — the user's raw inputs, the UII's extraction, or both — ask
-for?  You do NOT re-check parameters (that's the Creator's self-validation) or re-count the
+for?  You do NOT re-check parameters (the Creator validates them and the Tool
+Caller re-checks every range before generating) or re-count the
 source's own features (the UII established them) — take its stated
 values as given.  Don't approve on coarse similarity alone: enumerate
 the checkable claims the source encodes and check each against the

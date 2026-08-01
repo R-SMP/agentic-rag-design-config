@@ -226,7 +226,15 @@ missing piece rather than continuing forward as if it had finished.
     solution because …") vs an interim result ("showing attempt N for
     context — not satisfying yet").  The Receptionist reads that wording to
     decide whether to update the Parameters panel; no fixed keyword —
-    clarity in your own words.  For a **PRECISION job**, ALSO carry the
+    clarity in your own words.  ALSO carry any USER VALUE THAT WAS NOT
+    HONOURED: for each value the user stated that the endorsed attempt does
+    not match, name the parameter, what they asked for, what was used, and
+    why (out of range, a soft target serving its goal, an authorised
+    change).  Compare the extraction's QUANTITATIVE INPUTS against that
+    attempt (``read_attempt``) — only values the user actually stated, not
+    all $parameter_count.  The Receptionist relays this FROM your hand-off
+    and will not manufacture it, so a value dropped here reaches the user as
+    if their number had been used.  For a **PRECISION job**, ALSO carry the
     DCOI's fidelity/ceiling residual into Part 2 — verbatim or faithfully
     summarised (how closely it matched the sketch, and any gap it named as
     the model's / geometry's limit).  The Receptionist relays that honesty
