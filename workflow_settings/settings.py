@@ -833,7 +833,42 @@ IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320
 
 
 # ===========================================================
-# 27. Step budgets for the merged agents (5-agent topology)
+# 27. Agent topology
+# ===========================================================
+# SYSTEM_TOPOLOGY — how many agents the design workflow runs with.
+#
+# The same job can be done by more agents with narrower roles, or by
+# fewer agents each doing more.  The value IS the agent count, and the
+# prompts for each variant live in ``agents/<N>agent/`` (the 7-agent
+# set is the default and lives at ``agents/<agent>/prompt.md``):
+#
+#   7  Receptionist, Orchestrator, User Input Inspector, Planner,
+#      DC Input Creator, DC Input Inspector, Tool Caller,
+#      DC Output Inspector.  The original topology: every role is
+#      separate, so each parameter set is authored by one agent and
+#      independently audited by another.
+#   5  Receptionist, User Input Inspector, CONDUCTOR, CREATOR,
+#      Tool Caller, DC Output Inspector.  The Conductor merges the
+#      Planner and Orchestrator; the Creator merges the DC Input
+#      Creator and DC Input Inspector, authoring the parameters AND
+#      self-validating them before writing.  Fewer hand-offs and fewer
+#      LLM calls per cycle, but the parameter set is checked by the
+#      agent that wrote it — the Tool Caller's independent range check
+#      before generating is what compensates.
+#
+# Changing this takes effect on the NEXT session; a run already in
+# flight keeps the topology it started with.
+#
+# Adding a further variant needs no code change here: create
+# ``agents/<N>agent/`` with that variant's prompts and fragments and
+# add N to the dropdown.
+#
+# Valid values: 7, 5
+SYSTEM_TOPOLOGY: int = 7
+
+
+# ===========================================================
+# 28. Step budgets for the merged agents (5-agent topology)
 # ===========================================================
 # How much room the two MERGED agents get before the system stops
 # them.  These are tunable settings — rather than fixed constants like

@@ -37,6 +37,9 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
     "RENDER_LIBRARY": ["trimesh", "pyvista"],
     "GEOMETRY_BACKEND": ["feg", "rhino"],
     "DCOI_COMPARISON_MODE": [1, 2, 3],
+    # Agent topology — the value IS the agent count.  Adding a further
+    # variant needs only a new agents/<N>agent/ folder and N here.
+    "SYSTEM_TOPOLOGY": [7, 5],
     "EMBEDDING_PROVIDER": ["OpenAI"],
     # STITCHING_PROVIDER is locked to a single-option dropdown
     # (matches EMBEDDING_PROVIDER's pattern).  The Anthropic and
