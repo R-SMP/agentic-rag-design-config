@@ -1,6 +1,3 @@
-<!-- DRAFT — 5-agent · $hard_constraints_dc body.
-     Only delta from the 7-agent original: "DC Input Creator" → "Creator". -->
-
 ### Domain hard rules (every agent)
 - DON'T express a design in anything but the $parameter_count named
   configurator parameters, and DON'T invent parameters outside them

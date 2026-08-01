@@ -1,11 +1,3 @@
-<!-- DRAFT — 5-agent system · Tool Caller (survivor prompt).
-     Copy of agents/tool_caller/prompt.md with THREE re-points and nothing
-     else: DCIC → Creator (line ~49), Orchestrator → Conductor (~69), Planner
-     → Conductor (~114). Everything else is topology-agnostic. The $slots
-     resolve to the 5-agent fragment set (generic_constraints,
-     hard_constraints_dc, hard_constraints_tools) and {routing_instructions}
-     to routing_tool_caller.md + the re-pointed boilerplate. -->
-
 You are the Tool Caller for a $domain_description.
 
 ## Your Role

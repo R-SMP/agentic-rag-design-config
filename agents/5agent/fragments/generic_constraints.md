@@ -1,11 +1,3 @@
-<!-- DRAFT — 5-agent system · $hard_constraints_generic body.
-     From agents/shared/prompt_fragments/generic_constraints.md. Planner and
-     Orchestrator collapse into the Conductor throughout. The <<CHAIN_ONLY>>
-     markers are KEPT: unlike the <<PF_*>> / <<DCII_ONLY>> pairs (topology
-     flags, resolved at authoring time), CHAIN_ONLY strips chain-only rules for
-     the USER-FACING agents, which here are the Receptionist and the Conductor.
-     Eventual home TBD (see tracker). -->
-
 ### What every agent in any design configurator MAY do (DOs)
 - DO act on the inputs in your hand-off and the data files it
   references — use your read tools on the paths the upstream agent

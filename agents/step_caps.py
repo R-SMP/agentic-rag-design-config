@@ -112,6 +112,44 @@ invocation.  Lets the Orchestrator chain a couple of utility calls
 final routing tool.  Kept tight because the Orchestrator should
 relay, not deliberate."""
 
+
+# ---------------------------------------------------------------------------
+# Conductor + Creator caps (5-agent topology)
+#
+# Unlike every cap above, these are USER-TUNABLE from the Workflow
+# Settings UI (section 27 of ``workflow_settings/settings.py``) rather
+# than fixed here.  Neither merged agent can inherit a parent's budget
+# — each does strictly MORE per turn than either agent it replaces —
+# and the right figure is only really learnable from real runs, so the
+# values live where they can be adjusted without a code change.
+#
+# Read at import, like the rest of this module.  Changing them in the
+# UI takes effect on the next process start.
+# ---------------------------------------------------------------------------
+
+from workflow_settings import settings as _ws
+
+MAX_CONDUCTOR_STEPS = _ws.MAX_CONDUCTOR_STEPS
+"""LLM turns allowed inside ONE ``Conductor.run()`` invocation.
+Defaults to the Planner's 20, NOT the Orchestrator's 6: the latter was
+deliberately tight because the Orchestrator should "relay, not
+deliberate", but the Conductor does both and its deliberating half is
+what needs the room.  Tunable — see settings.py §27."""
+
+MAX_CONDUCTOR_VISITS = _ws.MAX_CONDUCTOR_VISITS
+"""How many times the dispatcher may RE-ENTER the Conductor during a
+single user turn — the ``MAX_ORCHESTRATOR_STEPS`` analogue.  Defaults
+above the Orchestrator's 60 because the Conductor absorbs the Planner:
+a planning turn used to happen INSIDE the Planner and cost the hub
+nothing, whereas here every plan, re-plan and approval is itself a
+re-entry.  Tunable — see settings.py §27."""
+
+MAX_CREATOR_STEPS = _ws.MAX_CREATOR_STEPS
+"""LLM turns allowed inside ONE ``Creator.run()`` invocation.  Defaults
+above either parent (DCIC 50 to author, DCII 50 to inspect) but far
+below their sum: the merged agent runs both passes in one loop and
+shares most of their tool calls.  Tunable — see settings.py §27."""
+
 MAX_DISPATCH_HOPS = 200
 """Hard ceiling on the total number of agent hops the dispatcher
 will execute in a single user turn before bailing out via

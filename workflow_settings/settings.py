@@ -830,3 +830,64 @@ IMAGE_COMPRESSION_DEFAULT_CAP: int = 1024
 IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE: int = 35
 IMAGE_COMPRESSION_3D_RENDER_DEGREE: int = 55
 IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320
+
+
+# ===========================================================
+# 27. Step budgets for the merged agents (5-agent topology)
+# ===========================================================
+# How much room the two MERGED agents get before the system stops
+# them.  These are tunable settings — rather than fixed constants like
+# the 7-agent caps in ``agents/step_caps.py`` — because neither merged
+# agent can inherit a parent's budget: each does strictly MORE per turn
+# than either agent it replaces, and the right figure is only really
+# learnable from real runs.
+#
+# A cap is a RUNAWAY-LOOP GUARD, not a ration on normal work.  Hitting
+# one is not a soft warning: the dispatcher stops the workflow and the
+# Receptionist tells the user it halted.  So err generous — a cap set
+# slightly too high costs some wasted tokens on a stuck model, while
+# one set too low truncates a legitimate design run and looks to the
+# user like a system failure.
+#
+# Changing any of these takes effect on the next process start.
+#
+# MAX_CONDUCTOR_STEPS — LLM turns allowed inside ONE Conductor.run()
+# invocation.
+#
+# The Conductor's two parents disagreed sharply about this: the
+# Orchestrator was given 6, deliberately tight because it "should relay,
+# not deliberate", while the Planner was given 20.  The Conductor does
+# BOTH jobs inside one loop, so it takes the planning figure — a turn
+# that only relays simply uses fewer.
+#
+# Raise this if you see the Conductor being cut off mid-plan.
+#
+# Valid values: positive int.
+MAX_CONDUCTOR_STEPS: int = 20
+
+# MAX_CONDUCTOR_VISITS — how many times the dispatcher may RE-ENTER the
+# Conductor during a single user turn (the hub-visit cap).
+#
+# The 7-agent Orchestrator gets 60, but there a planning turn happened
+# INSIDE the Planner and cost the hub nothing.  Here every plan, re-plan
+# and approval is itself a re-entry, so identical work consumes more
+# visits — which is why the default is higher rather than inherited.
+#
+# Raise this FIRST if long precision sessions stop early: this is the
+# cap a multi-round refine loop hits before any other.
+#
+# Valid values: positive int.
+MAX_CONDUCTOR_VISITS: int = 80
+
+# MAX_CREATOR_STEPS — LLM turns allowed inside ONE Creator.run()
+# invocation.
+#
+# Its parents got 50 each (the DC Input Creator to author the parameter
+# set, the DC Input Inspector to inspect it).  The Creator does both in
+# one loop but SHARES most of their tool calls — one read of the
+# extraction, one batched calculate — so the honest figure is nearer one
+# parent's budget than their sum.  The headroom over 50 covers the
+# self-validation pass and the image / OCR calls it inherited.
+#
+# Valid values: positive int.
+MAX_CREATOR_STEPS: int = 60

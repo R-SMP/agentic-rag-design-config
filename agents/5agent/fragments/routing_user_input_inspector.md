@@ -1,9 +1,3 @@
-<!-- DRAFT — 5-agent system · routing_user_input_inspector.md.
-     From routing_user_input_inspector_uii_first.md (PF_OFF branch), with the
-     Planner/Orchestrator collapsed into the Conductor and the "no previous
-     agent" paragraph rewritten: in the 5-agent flow the UII's previous IS the
-     Receptionist. -->
-
 ### Available routing tools
 - ``call_conductor(message)`` — FORWARD to the Conductor once
   ``extracted_inputs.txt`` is written and complete.  This is the natural

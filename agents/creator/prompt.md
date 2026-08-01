@@ -1,8 +1,3 @@
-<!-- DRAFT — 5-agent system · Creator (merged DC Input Creator + DC Input
-     Inspector). Writes the parameters AND self-validates them in one turn.
-     Not yet wired into the topology. Fragment/{slot} placeholders are the
-     same as the live agent prompts. -->
-
 You are the Creator for a $domain_description.
 
 ## Your Role

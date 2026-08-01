@@ -1,8 +1,3 @@
-<!-- DRAFT — 5-agent · $hard_constraints_tools body.
-     Only delta: "(the DCIC opens it; the Orchestrator only as a fallback)"
-     → "(the Creator opens it)" — the Creator is the sole attempt creator;
-     the Conductor has no new_attempt fallback. -->
-
 ### Tool-use hard rules (every agent)
 - DON'T invent or guess a path for a read tool: read tools take only the
   paths a hand-off label gives (``Input directory:`` / ``Extracted inputs

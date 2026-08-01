@@ -1,8 +1,3 @@
-<!-- DRAFT — 5-agent system · $available_agents body (merged roster).
-     Merges the 7-agent $available_agents roles + the Orchestrator's inline
-     "Agent Capabilities" + $agent_tools_overview + $tool_caller_capabilities
-     into one entry per surviving agent. Eventual home TBD (see tracker). -->
-
 - **Receptionist** — the user-facing agent.  Validates every new user
   message before the pipeline starts and routes it to the UII, and
   composes every outgoing message to the user.  You call it directly

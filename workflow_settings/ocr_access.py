@@ -61,15 +61,21 @@ from workflow_settings import settings as _workflow_settings
 _PATH = Path(__file__).parent / "ocr_access.json"
 _LOCK = threading.Lock()
 
-# The 5 chain agents that bind the image tools (lowercase_snake
-# slugs) — the only ones for which OCR is meaningful.  When the set
-# of image-tool-binding agents changes, edit this tuple.
+# The chain agents that bind the image tools (lowercase_snake slugs) —
+# the only ones for which OCR is meaningful.  When the set of
+# image-tool-binding agents changes, edit this tuple.  Superset across
+# topologies: a topology that never constructs an agent simply never
+# consults its entry.
 DEFAULT_AGENTS: tuple[str, ...] = (
     "user_input_inspector",
     "planner",
     "dc_input_creator",
     "dc_input_inspector",
     "dc_output_inspector",
+    # 5-agent topology: the Creator inherits the DCIC's + DCII's image
+    # tools; the Conductor inherits the Planner's ``view_images``.
+    "conductor",
+    "creator",
 )
 
 # Default per-agent value when the JSON file is missing or doesn't

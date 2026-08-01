@@ -46,6 +46,9 @@ _AGENT_DISPLAY_NAMES = frozenset({
     "Receptionist", "Orchestrator", "User Input Inspector", "Planner",
     "DC Input Creator", "DC Input Inspector", "Tool Caller",
     "DC Output Inspector", "Database Handler",
+    # 5-agent topology (superset — a topology that does not use them
+    # simply never emits their events).
+    "Conductor", "Creator",
 })
 _current_agent = None
 
