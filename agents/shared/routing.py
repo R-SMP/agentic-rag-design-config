@@ -56,10 +56,39 @@ def _load_routing_fragment(fragment_name: str) -> str:
     DCII conditional regions (``<<DCII_ONLY>>`` / ``<<DCII_OFF>>``)
     and PLANNER_FIRST conditional regions (``<<PF_ON>>`` /
     ``<<PF_OFF>>``) are resolved here.
-    """
-    from agents.shared.prompts import apply_flag_filters
 
-    path = _FRAGMENTS_DIR / fragment_name
+    The active topology's override is preferred when one exists, so the
+    5-agent chain loads ``routing_creator_5agents.md`` while a fragment
+    with no topology-specific copy comes from the shared directory.
+    ``_topology_override`` is imported lazily, alongside
+    ``apply_flag_filters``, because ``prompts`` imports THIS module at its
+    own import time — a module-level import here would be circular.
+    """
+    from agents.shared.prompts import _topology_override, apply_flag_filters
+
+    # PLANNER_FIRST splits some of these fragments into a
+    # ``*_planner_first.md`` / ``*_uii_first.md`` pair.  That axis exists
+    # ONLY in the 7-agent system: a topology whose hub IS the planner has
+    # no Planner/UII ordering to choose, so it ships ONE fragment per
+    # agent and its override cannot match the branched name the caller
+    # passes.  Try the exact name first — a topology CAN still branch if
+    # it ever needs to — then the name with the branch suffix removed.
+    candidates = [fragment_name]
+    stem, suffix = Path(fragment_name).stem, Path(fragment_name).suffix
+    for branch in ("_planner_first", "_uii_first"):
+        if stem.endswith(branch):
+            candidates.append(f"{stem[: -len(branch)]}{suffix}")
+            break
+
+    path = None
+    for name in candidates:
+        path = _topology_override(f"prompt_fragments/{name}")
+        if path is not None:
+            break
+    # The shared fallback always uses the ORIGINAL name, never the
+    # collapsed one, so topology 7 reads exactly what it always read.
+    if path is None:
+        path = _FRAGMENTS_DIR / fragment_name
     return apply_flag_filters(path.read_text(encoding="utf-8").rstrip())
 
 

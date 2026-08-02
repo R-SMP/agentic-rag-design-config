@@ -332,6 +332,155 @@ The disposition table + chunk-4 plan below remain as the build record.
 
 ---
 
+## ✅ STEP 4 DONE — topology-aware prompt/fragment resolution (2026-08-02)
+
+**Layout.**  `agents/<N>agent/` holds only the files that DIFFER from the
+7-agent originals — 20 of them for the 5-agent — each suffixed `_<N>agents`
+and filed under a sub-folder mirroring its source root (`prompt_fragments/`,
+`dc_config/`, `tools_config/`, `<agent>/`).  Everything else is shared: one
+copy, cannot drift.  Agents existing ONLY in a topology (Conductor, Creator)
+keep a normal package and take the suffix on the file
+(`agents/conductor/prompt_5agents.md`).
+
+**Resolution.**  `_topology()` reads `SYSTEM_TOPOLOGY` FRESH per call — never
+captured at import, because the Sessions Queue switches topology between runs
+inside one process and `web_app` reloads `settings` but not `prompts`.
+`_topology_override(rel_path)` returns the override or `None`; every caller
+is override-then-fallback, and there is no `agents/7agent/`, so **topology 7
+takes the byte-identical historic path**.
+
+Touched: `_read_dc_fragment`, `_read_generic_fragment`, `_prompt_path` (new,
+3 candidates), the two per-agent overlays in `_build_template`,
+`_pipeline_flow_fragment_name()` (was a constant), and
+`routing._load_routing_fragment`.
+
+**Three defects the test found and closed:**
+1. `$routing_conductor` had no slot → the Conductor shipped that literal
+   string and ZERO routing-tool docs.  Fixed by a single topology-neutral
+   `$routing_hub` slot that BOTH hub prompts reference, filled from
+   `routing_<hub>.md` for the active topology.  Chosen over an
+   `optional=`/second-helper approach because it makes the missing-file case
+   *not exist* rather than tolerating it — a real typo still raises.
+   Also delivers `_HUB_BY_TOPOLOGY` / `_hub_agent()`, which step 6 needs.
+2. The UII passes a PF-branched name (`routing_user_input_inspector_uii_first.md`)
+   that its 5-agent override could never match → it silently loaded the
+   **7-agent** fragment, i.e. was told to call `call_planner` /
+   `call_orchestrator`, neither of which exists or is bound in a 5-agent run.
+   Fixed by collapsing the `_planner_first` / `_uii_first` branch as a
+   SECOND candidate in `_load_routing_fragment` (exact name still wins).
+   Chosen over renaming the file so it cannot regress if `PLANNER_FIRST` is
+   ever flipped.
+3. `_USER_FACING_AGENTS` → `_NON_CHAIN_AGENTS`, now listing both hubs.  The
+   name described the wrong property: the filter gates `<<CHAIN_ONLY>>`,
+   which is about being a LINK IN THE CHAIN, not about talking to the user.
+   Without the entry the Conductor kept "ESCALATE to the Conductor",
+   "return to the Conductor", "route your content to the Conductor" —
+   self-referential instructions to the hub.
+
+**Verification** — `extra_utilities/smoke_test_topology_fragments.py`
+(imports the REAL `prompts.py` / `routing.py`; only `agents/__init__.py` is
+stubbed, as it drags in `langchain_core`).  Run with `py` (needs ≥3.10).
+Seven checks over 4 combinations (topology 7/5 × `PLANNER_FIRST` False/True):
+COVERAGE, NO-LEAK, ISOLATION, SHARING, SLOT, HUB-SLOT, CHAIN_ONLY, plus
+DEGRADE and PRECEDENCE.  **All pass; 20/20 overrides reached.**  Separately
+verified by sha256 that all nine assembled 7-agent prompts are **byte-identical**
+before and after the whole step.
+
+---
+
+## 🔶 OPEN — the eager `*_TEMPLATE` block in `prompts.py` (raised 2026-08-02)
+
+**Status:** deliberately NOT touched during the topology-resolution step, to
+keep that step's blast radius small.  Not a live defect today; a latent trap.
+Decide before the 3-agent variant.
+
+### The condition
+The tail of `agents/shared/prompts.py` builds nine module-level constants at
+**import** time:
+
+```python
+RECEPTIONIST_TEMPLATE = _build_template("receptionist")
+ORCHESTRATOR_TEMPLATE = _build_template("orchestrator")
+PLANNER_TEMPLATE      = _build_template("planner")
+UII_TEMPLATE          = _build_template("user_input_inspector")
+DCIC_TEMPLATE         = _build_template("dc_input_creator")
+DCII_TEMPLATE         = _build_template("dc_input_inspector")
+TOOL_CALLER_TEMPLATE  = _build_template("tool_caller")
+DCOI_TEMPLATE         = _build_template("dc_output_inspector")
+DH_TEMPLATE           = _build_template("database_handler")
+```
+
+They are the **7-agent** set, and they run exactly once, when the module is
+first imported.  All nine are listed in `__all__`.
+
+### The problem (four parts, in ascending severity)
+
+1. **Wasted startup work.**  Under topology 5 all nine still build — including
+   Planner, Orchestrator, DCIC and DCII, which that topology never
+   constructs.  Each `_build_template` call re-reads ~40 fragment files, so
+   this is ~360 file reads done at import for ~4/9 no reason.  A cost, not a
+   correctness issue.
+
+1b. **What those four builds actually CONTAIN is incoherent** (this is the
+   sharper form of 1, and the original O9 in `design_topology_selector.md`).
+   Under topology 5, `_build_template("planner")` reads the 7-agent
+   `agents/planner/prompt.md` but fills it from a topology-5 slot map — so
+   `PLANNER_TEMPLATE` becomes the 7-agent Planner prompt with **5-agent
+   fragments spliced into it**: `generic_constraints_5agents.md` telling it
+   to escalate to a Conductor, `hard_constraints_dc_5agents.md`, and so on.
+   A topology-MIXED prompt, not merely a wasted one.  Harmless only because
+   nothing reads it — which is exactly the assumption problem 3 says will
+   not hold forever.
+
+2. **They are topology-frozen and hot-reload-stale.**  `_topology()` is read
+   fresh per call precisely because the Sessions Queue switches topology
+   between runs inside one process.  These nine capture whatever
+   `SYSTEM_TOPOLOGY` was on disk when the module was FIRST imported, and
+   never update — neither on a topology switch nor on a System-Prompts-UI
+   edit.  They are the one place in this module that breaks the
+   fresh-read contract.
+
+3. **They look like the supported API.**  Being in `__all__`, a future caller
+   doing `from agents.shared.prompts import DCOI_TEMPLATE` would silently get
+   an import-time, topology-frozen, stale string, while every current agent
+   correctly calls `_build_template(...)` fresh in its own `__init__`.  This
+   is the same trap already documented for the module-level fragment
+   constants at `prompts.py` ("captured at import time for back-compat …
+   NOT used by `_build_template` any more").
+
+4. **They become a hard startup failure the moment a topology deletes a
+   prompt.**  Each line needs its `agents/<agent>/prompt.md` to resolve.  All
+   nine 7-agent files exist today, so under topology 5 candidates 1–2 of
+   `_prompt_path` miss and each falls through to its historic file — fine.
+   But if the 3-agent variant ever REMOVES a 7-agent prompt file, this block
+   raises `FileNotFoundError` **at module import**, i.e. the whole app fails
+   to boot rather than failing at the one agent that needed it.
+
+### Why it is safe right now
+Grepped: no production code reads any of the nine.  The only consumer is
+`extra_utilities/smoke_test_prompt_format.py:88`
+(`getattr(prompts, f"{name}_TEMPLATE")`).  So today they are dead weight.
+
+### Proposed solutions
+
+- **Option A — make them lazy (recommended).**  Delete the nine assignments
+  and add a PEP-562 module-level `__getattr__` that maps
+  `<NAME>_TEMPLATE` → `_build_template(<agent_dir>)` on attribute access.
+  Fixes 1, 2 and 4 at once: nothing is built until asked for, and what is
+  built is topology-correct and disk-fresh.  `__all__` is unchanged and
+  `smoke_test_prompt_format.py` needs no edit, so call-site churn is zero.
+- **Option B — remove them.**  Delete the nine constants and their `__all__`
+  entries; change the one harness to call `_build_template` directly.
+  Cleanest end state and kills 3 outright, but it is a public-API removal.
+- **Option C — guard only.**  Wrap the block in a topology check or a
+  try/except.  Addresses 4 alone, leaves 1, 2 and 3 in place.  Not
+  recommended — it hides the staleness rather than fixing it.
+
+**Recommendation:** A now (zero call-site churn, fixes three of four), then B
+later if the API surface is ever worth removing outright.
+
+---
+
 ## Final completeness pass (planned)
 Once the whole Conductor draft is assembled, run an adversarial,
 line-by-line completeness audit of the draft against BOTH originals
