@@ -70,11 +70,11 @@ AGENT_SPEC: list[tuple[str, str, bool]] = [
     ("tool_caller",           "Tool Caller",           True),
     ("database_handler",      "Database Handler",      True),
     ("context_pruner",        "Context Pruner",        False),
-    # 5-agent topology.  ``wired_into_dispatcher=False`` until the
-    # topology wiring lands — they exist as identities but are never
-    # constructed yet.
-    ("conductor",             "Conductor",             False),
-    ("creator",               "Creator",               False),
+    # 5-agent topology.  Constructed by ``agents/hub.py:build_hub`` when
+    # SYSTEM_TOPOLOGY is 5, so they are wired like any other agent —
+    # a 5-agent run routes through them and nothing else.
+    ("conductor",             "Conductor",             True),
+    ("creator",               "Creator",               True),
 ]
 AGENT_KEYS = [k for k, _, _ in AGENT_SPEC]
 

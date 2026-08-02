@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 
 from agents.dispatch import dispatch_turn
-from agents.orchestrator import Orchestrator
+from agents.hub import build_hub
 from agents.shared.llm_provider import list_agent_configs
 from agents.shared.routing_tools import AGENT_DISPLAY
 from agents.shared.session import Session
@@ -428,7 +428,7 @@ def _close_logger(logger: logging.Logger) -> None:
 
 def _end_session(
     logger: logging.Logger,
-    orchestrator,
+    hub,
     save_database: bool = False,
 ) -> None:
     """End-of-session shutdown: optionally populate the database via
@@ -470,17 +470,17 @@ def _end_session(
     # history files in ``logs/agent_histories/`` reflect the actual
     # session.
     try:
-        if orchestrator is not None:
-            _dump_agent_histories(orchestrator, logger)
+        if hub is not None:
+            _dump_agent_histories(hub, logger)
     except Exception as exc:
         try:
             logger.warning(f"[SESSION END]  history dump failed: {exc}")
         except Exception:
             pass
 
-    if save_database and orchestrator is not None and session_name is not None:
+    if save_database and hub is not None and session_name is not None:
         try:
-            dh = getattr(orchestrator, "database_handler", None)
+            dh = getattr(hub, "database_handler", None)
             if dh is None:
                 logger.warning(
                     "[SESSION END]  Database Handler not available; "
@@ -494,7 +494,7 @@ def _end_session(
                 written = dh.populate_database(
                     session_db_dir,
                     session_timestamp=_resolve_session_timestamp(),
-                    orchestrator=orchestrator,
+                    orchestrator=hub,
                 )
                 logger.info(f"[DH]  wrote {written} entries")
                 print(f"Database entries written: {written} -> {session_db_dir.resolve()}")
@@ -526,11 +526,11 @@ def _end_session(
 # ---------------------------------------------------------------------------
 
 
-def _dump_agent_histories(orchestrator, logger) -> None:
+def _dump_agent_histories(hub, logger) -> None:
     """Write per-agent message histories to logs/agent_histories/."""
     try:
         dest = LOGS_DIR / "agent_histories"
-        paths = orchestrator.dump_histories(dest)
+        paths = hub.dump_histories(dest)
         if paths:
             logger.info(
                 f"[AGENT HISTORIES]  wrote {len(paths)} files to "
@@ -631,7 +631,7 @@ def run() -> None:
     launching: nothing gets archived until shutdown.
     """
     logger = _setup_logger()
-    orchestrator = None
+    hub = None
     save_database = False
     try:
         print("=== Multi-Agent Design Configurator ===\n")
@@ -737,13 +737,13 @@ def run() -> None:
             dcoi_comparison_mode=dcoi_comparison_mode,
         )
 
-        # Build the Orchestrator (which constructs every sub-agent, each
-        # of which builds its own LLM via build_llm(<key>))
+        # Build the topology's hub (which constructs every sub-agent,
+        # each of which builds its own LLM via build_llm(<key>))
         print("Initialising agents...")
-        orchestrator = Orchestrator(session=session)
+        hub = build_hub(session)
         print("Agents ready.\n")
 
-        logger.info("[AGENTS]  Orchestrator and all sub-agents initialised")
+        logger.info("[AGENTS]  hub and all sub-agents initialised")
         logger.info(
             "[AGENTS]  Receptionist, Planner, User Input Inspector, "
             "DC Input Creator, DC Input Inspector, DC Output Inspector, "
@@ -790,7 +790,7 @@ def run() -> None:
                 session=session,
                 user_input=user_input,
                 inputs_dir=USER_INPUTS_DIR,
-                orchestrator=orchestrator,
+                hub=hub,
             )
             print(f"\nAssistant: {result.reply_text}\n")
     except KeyboardInterrupt:
@@ -808,7 +808,7 @@ def run() -> None:
         # still see the traceback.
         raise
     finally:
-        _end_session(logger, orchestrator, save_database=save_database)
+        _end_session(logger, hub, save_database=save_database)
         # Printed AFTER all post-session work is complete so it is
         # the last thing the user sees on stdout.  See
         # warnings_developer.md (W10).

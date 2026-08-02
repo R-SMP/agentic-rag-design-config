@@ -388,6 +388,46 @@ before and after the whole step.
 
 ---
 
+## ✅ CLOSED (step 7) — receptionist-hop trace, landed WITH the dispatch entry
+
+Resolved by making `dispatch_turn` topology-neutral: the "5-agent dispatch
+entry" this was waiting on turned out not to be a new function at all, but
+`dispatch_turn` itself once it stopped naming a concrete hub class.  Both
+halves landed together, as required — `dispatch.py` now emits
+`_trace("Receptionist", hub_display(), "forwarded")`, and the suppression in
+`routing_tools.py` is keyed on `target_key == hub_key()`.  Original analysis
+kept below for the reasoning.
+
+---
+
+## 🔗 (was) COUPLED — receptionist-hop trace
+
+`routing_tools.py` `build_routing_tool._invoke` suppresses its own
+`_trace(caller, target)` for the Receptionist → hub hop:
+
+```python
+if not (caller_key == "receptionist" and target_key == "orchestrator"):
+```
+
+Step 6 made the sibling chain-log skip hub-aware but left THIS one literal,
+deliberately.  The suppression is only correct where something else emits a
+richer trace, and the sole emitter is `agents/dispatch.py:277`
+(`_trace("Receptionist", "Orchestrator", "forwarded")`).  `Conductor.dispatch`
+has no counterpart — its only `_trace` calls are "stopped by user" and
+"Error, Escalated to Conductor".  So keying this on the active hub today would
+SILENTLY DELETE the Receptionist → Conductor trace rather than de-duplicate
+it.  Left literal, the 5-agent path emits exactly one trace, which is correct.
+
+**When writing the 5-agent dispatch entry**, do both in the same change:
+1. emit `_trace("Receptionist", "Conductor", "forwarded")` at the point the
+   Receptionist hands off, mirroring `dispatch.py:277`; and
+2. change the guard above to `target_key == hub_key()`.
+
+Doing either alone is wrong: (1) without (2) double-traces the hop; (2)
+without (1) loses it entirely.
+
+---
+
 ## 🔶 OPEN — the eager `*_TEMPLATE` block in `prompts.py` (raised 2026-08-02)
 
 **Status:** deliberately NOT touched during the topology-resolution step, to

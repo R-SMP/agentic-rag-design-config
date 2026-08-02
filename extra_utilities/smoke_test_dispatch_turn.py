@@ -85,7 +85,7 @@ try:
             session=session,
             user_input="some user input",
             inputs_dir=test_dir,
-            orchestrator=orch,
+            hub=orch,
         )
     assert isinstance(result, TurnResult)
     assert result.forwarded is False
@@ -125,7 +125,7 @@ try:
             session=session3,
             user_input="design me a 3-blade prop",
             inputs_dir=test_dir3,
-            orchestrator=orch3,
+            hub=orch3,
         )
     assert result.forwarded is True
     assert result.reply_text == "Here is your design: 3 blades, 200mm diameter."
@@ -164,7 +164,7 @@ try:
             session=session4,
             user_input="ping",
             inputs_dir=test_dir4,
-            orchestrator=orch4,
+            hub=orch4,
         )
     assert result.forwarded is True
     assert "internal error" in result.reply_text.lower()
@@ -195,7 +195,7 @@ try:
             session=session5,
             user_input="x",
             inputs_dir=test_dir5,
-            orchestrator=external_orch,
+            hub=external_orch,
         )
     assert result.forwarded is False
     assert result.reply_text == "ok"

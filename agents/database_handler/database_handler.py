@@ -1077,13 +1077,13 @@ class DatabaseHandler(BaseChainAgent):
         """
         session_dir.mkdir(parents=True, exist_ok=True)
 
-        # Build a wired Orchestrator from self.session if the caller
-        # didn't supply one.  Used only to read each agent's
-        # ``system_prompt`` and ``base_llm`` — never mutated, never
-        # invoked.
+        # Build the active topology's wired hub from self.session if
+        # the caller didn't supply one.  Used only to read each
+        # agent's ``system_prompt`` and ``base_llm`` — never mutated,
+        # never invoked.
         if orchestrator is None:
-            from agents.orchestrator import Orchestrator
-            orchestrator = Orchestrator(session=self.session)
+            from agents.hub import build_hub
+            orchestrator = build_hub(self.session)
 
         dc_inspector_enabled = self.session.dc_inspector_enabled
 

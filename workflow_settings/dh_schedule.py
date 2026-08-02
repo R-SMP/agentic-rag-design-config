@@ -73,6 +73,14 @@ AGENT_KEYS: list[str] = [
     "tool_caller",
     "database_handler",
     "context_pruner",
+    # 5-agent topology.  Listed for EVERY topology because this list
+    # VALIDATES schedule entries (``from_agent`` and each target): omit
+    # them and a schedule naming the Conductor or Creator is rejected,
+    # so the DH could never interview the two agents that do all the
+    # work in a 5-agent run.  A topology that does not build them simply
+    # never produces a schedule entry naming them.
+    "conductor",
+    "creator",
 ]
 
 # Short labels (the same as the LOG-and-Status chart uses on its boxes).
@@ -89,6 +97,11 @@ AGENT_SHORT_LABELS: dict[str, str] = {
     "tool_caller":          "TC",
     "database_handler":     "DH",
     "context_pruner":       "CP",
+    # 5-agent topology — without these the To-column popover would
+    # fall back to the raw underscored keys for the two agents a
+    # 5-agent run actually uses.
+    "conductor":            "Conductor",
+    "creator":              "Creator",
 }
 
 # Valid enum values.

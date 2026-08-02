@@ -349,7 +349,7 @@ def _run_dh_save() -> dict:
         _resolve_session_name,
         _resolve_session_timestamp,
     )
-    from agents.orchestrator import Orchestrator
+    from agents.hub import build_hub
     from config import DATABASE_DIR
 
     session = _BOX.session
@@ -380,26 +380,26 @@ def _run_dh_save() -> dict:
         return {"error": f"Could not resolve session timestamp: {exc}"}
 
     try:
-        orchestrator = Orchestrator(session=session)
+        hub = build_hub(session)
     except Exception as exc:
-        logger.exception("[WEB] DH save: orchestrator build failed")
-        return {"error": f"Could not build orchestrator: {exc}"}
+        logger.exception("[WEB] DH save: hub build failed")
+        return {"error": f"Could not build agent hub: {exc}"}
 
     # W1 — dump histories BEFORE the DH so the per-agent history files
     # reflect the actual session (the DH's interview phase mutates each
     # agent's live messages).
     try:
-        _dump_agent_histories(orchestrator, logger)
+        _dump_agent_histories(hub, logger)
     except Exception as exc:
         logger.warning(f"[WEB] DH save: history dump failed: {exc}")
 
     try:
         session_db_dir = DATABASE_DIR / session_name
         logger.info(f"[WEB] DH save: populating {session_db_dir.resolve()}")
-        written = orchestrator.database_handler.populate_database(
+        written = hub.database_handler.populate_database(
             session_db_dir,
             session_timestamp=session_timestamp,
-            orchestrator=orchestrator,
+            orchestrator=hub,
         )
         logger.info(f"[WEB] DH save: wrote {written} entries")
         return {"written": int(written), "session_dir": str(session_db_dir)}
@@ -1090,20 +1090,20 @@ def _run_feedback_round_sync(feedback: "FeedbackIn") -> dict:
     saved data is the core promise, the feedback round is an
     enhancement).
     """
-    from agents.orchestrator import Orchestrator
+    from agents.hub import build_hub
 
     session = _BOX.session
     if session is None:
         return {"ok": False, "error": "No active session for feedback."}
 
     try:
-        orchestrator = Orchestrator(session=session)
+        hub = build_hub(session)
     except Exception as exc:
-        logger.exception("[WEB] feedback round: orchestrator build failed")
-        return {"ok": False, "error": f"orch build: {exc}"}
+        logger.exception("[WEB] feedback round: hub build failed")
+        return {"ok": False, "error": f"hub build: {exc}"}
 
     try:
-        return orchestrator.run_feedback_round(
+        return hub.run_feedback_round(
             satisfaction    = (feedback.satisfaction    or "").strip(),
             what_went_well  = (feedback.what_went_well  or "").strip(),
             what_went_wrong = (feedback.what_went_wrong or "").strip(),

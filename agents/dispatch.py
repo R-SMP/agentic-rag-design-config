@@ -6,10 +6,12 @@ user turn end-to-end:
 
   1. Saves the user's text to ``user_query.txt`` under the supplied
      ``inputs_dir``.
-  2. Constructs (or reuses) an Orchestrator from the Session.
+  2. Constructs (or reuses) the active topology's hub agent from the
+     Session (Orchestrator in the 7-agent system, Conductor in the
+     5-agent one).
   3. Runs ``Receptionist.validate_input`` against the inputs dir.
   4. If the Receptionist forwards into the pipeline, builds a kickoff
-     message and runs ``Orchestrator.dispatch``.
+     message and runs the hub's ``dispatch``.
   5. Returns the user-facing reply text alongside whether the pipeline
      was actually invoked.
 
@@ -21,7 +23,7 @@ chat-message bubbles in and out.
 
 Caller responsibility
 ---------------------
-* The caller manages the Orchestrator's lifetime.  The v4 loader holds
+* The caller manages the hub's lifetime.  The v4 loader holds
   one for the entire REPL session and reuses it across turns; the v3
   Streamlit dispatcher may rebuild one per turn (cheap with the LLM
   cache) — chain agents are reconstructed from session.agent_states
@@ -39,7 +41,8 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
 
-from agents.orchestrator import Orchestrator
+from agents.hub import build_hub
+from agents.shared.topology import hub_display as _hub_display
 from agents.shared.session import Session
 from agents.shared.stop_signal import StopRequestedError
 from agents.shared.trace import trace as _trace
@@ -167,7 +170,7 @@ def _snapshot_artefact_paths(attempts_dir: Path) -> set[Path]:
     """Return the absolute paths of every artefact currently under
     ``attempts_dir`` matching ``_ARTEFACT_PATTERNS``.
 
-    Used to diff before vs. after one ``Orchestrator.dispatch`` so the
+    Used to diff before vs. after one hub ``dispatch`` so the
     Streamlit handler can display only the artefacts that were created
     during the just-completed turn.  Returns an empty set when
     ``attempts_dir`` does not yet exist (first turn before any
@@ -189,7 +192,7 @@ def dispatch_turn(
     *,
     inputs_dir: Path,
     attempts_dir: Path | None = None,
-    orchestrator: Orchestrator | None = None,
+    hub=None,
     llm_cache=None,
     fixed_params: dict[str, str] | None = None,
     released_params: list[str] | None = None,
@@ -212,8 +215,8 @@ def dispatch_turn(
     callers (the v4 REPL loader, smoke tests) keep their existing
     behaviour.
     """
-    if orchestrator is None:
-        orchestrator = Orchestrator(session=session, llm_cache=llm_cache)
+    if hub is None:
+        hub = build_hub(session, llm_cache=llm_cache)
 
     if attempts_dir is None:
         attempts_dir = _CONFIG_ATTEMPTS_DIR
@@ -247,7 +250,7 @@ def dispatch_turn(
         # 2. Receptionist reads the input files and decides whether to
         #    forward into the pipeline or reply directly.
         _trace("User", "Receptionist")
-        validation = orchestrator.receptionist.validate_input(inputs_dir)
+        validation = hub.receptionist.validate_input(inputs_dir)
         # Log only the decision flag here.  The message body is already
         # in the session log:
         #   * forward=True  →  the [AGENT MSG] Receptionist -> Orchestrator
@@ -273,9 +276,12 @@ def dispatch_turn(
                 ),
             )
 
-        # 3. Receptionist forwarded — Orchestrator drives the dispatch loop.
-        _trace("Receptionist", "Orchestrator", "forwarded")
-        orchestrator.reset_turn()
+        # 3. Receptionist forwarded — the hub drives the dispatch loop.
+        #    The trace names the ACTIVE hub; ``routing_tools`` suppresses
+        #    its own Receptionist->hub trace on the strength of this one,
+        #    so the two must agree.
+        _trace("Receptionist", _hub_display(), "forwarded")
+        hub.reset_turn()
         receptionist_summary = (validation.get("message") or "").strip()
         if receptionist_summary.startswith(_RECEPTIONIST_LABEL):
             receptionist_summary = receptionist_summary[
@@ -304,7 +310,7 @@ def dispatch_turn(
             "do its job well.  Lose no useful context.",
         ]
         kickoff = "\n".join(kickoff_parts)
-        outgoing = orchestrator.dispatch(kickoff)
+        outgoing = hub.dispatch(kickoff)
         if not outgoing or not outgoing.strip():
             outgoing = (
                 "(internal error — the system produced no user-facing "
@@ -351,7 +357,7 @@ def dispatch_turn(
         # AgentStates created at Orchestrator-construction time.
         # Runs in a finally so a mid-dispatch crash still persists
         # whatever progress the agents made before the failure.
-        _snapshot_agents_to_session(orchestrator, session)
+        _snapshot_agents_to_session(hub, session)
 
 
 def _compute_new_artefacts(
@@ -379,17 +385,17 @@ def _compute_new_artefacts(
 
 
 def _snapshot_agents_to_session(
-    orchestrator: Orchestrator, session: Session,
+    hub, session: Session,
 ) -> None:
     """Write every live agent's snapshot_state into session.agent_states.
 
-    Covers the seven chain agents + Orchestrator (all of which live in
-    ``orchestrator._agents_by_key``) and the DatabaseHandler (held
-    separately on the Orchestrator).  Each call replaces the existing
+    Covers every agent the active topology built (all of which live in
+    ``hub._agents_by_key``) and the DatabaseHandler (held separately on
+    the hub).  Each call replaces the existing
     ``session.agent_states[<key>]`` entry with a fresh AgentState.
     """
-    for agent_key, agent in orchestrator._agents_by_key.items():
+    for agent_key, agent in hub._agents_by_key.items():
         session.agent_states[agent_key] = agent.snapshot_state()
     session.agent_states["database_handler"] = (
-        orchestrator.database_handler.snapshot_state()
+        hub.database_handler.snapshot_state()
     )

@@ -37,13 +37,39 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
 
+# Windows consoles default to cp1252, and the pipeline strings contain
+# U+2192 (→).  Without this, a failure whose detail quotes one crashes the
+# report with a UnicodeEncodeError instead of printing the finding — the
+# test still exits non-zero, but says nothing useful about why.
+if hasattr(sys.stdout, "reconfigure"):
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+
 # Pre-seed package stubs so the real submodules import normally.
 for _name, _rel in (("agents", "agents"), ("agents.shared", "agents/shared")):
     _m = types.ModuleType(_name)
     _m.__path__ = [str(ROOT / _rel)]
     sys.modules[_name] = _m
 
-from agents.shared import prompts, routing  # noqa: E402
+# routing_tools.py needs langchain_core for StructuredTool, which is not
+# installed here.  Stub the ONE symbol it imports so the rest of that
+# module — the identity tables, stuck_escalation, the hub-aware routing
+# tool factory — can be exercised for real rather than by replica.
+_lc = types.ModuleType("langchain_core")
+_lc.__path__ = []
+_lct = types.ModuleType("langchain_core.tools")
+
+
+class _StubStructuredTool:  # noqa: D101
+    @staticmethod
+    def from_function(*a, **k):
+        return None
+
+
+_lct.StructuredTool = _StubStructuredTool
+sys.modules["langchain_core"] = _lc
+sys.modules["langchain_core.tools"] = _lct
+
+from agents.shared import prompts, routing, routing_tools, topology  # noqa: E402
 
 DC_FRAGMENTS_DIR = ROOT / "DC_prompt_fragments"
 GENERIC_FRAGMENTS_DIR = ROOT / "agents" / "shared" / "prompt_fragments"
@@ -273,6 +299,154 @@ def check_case(topo: int, planner_first: bool) -> None:
 for _topo in (7, 5):
     for _pf in (False, True):
         check_case(_topo, _pf)
+
+# --- HUB: the routing boilerplate must name the ACTIVE topology's hub -----
+# Chain agents whose ## Routing section is built by routing_instructions(),
+# with the natural neighbours each topology gives them.
+CHAIN_BY_TOPOLOGY = {
+    7: [("User Input Inspector", "Planner", None,
+         "routing_user_input_inspector_{pf}.md"),
+        ("Tool Caller", "DC Output Inspector", "DC Input Inspector",
+         "routing_tool_caller.md"),
+        ("DC Output Inspector", None, "Tool Caller",
+         "routing_dc_output_inspector.md")],
+    5: [("User Input Inspector", "Conductor", "Receptionist",
+         "routing_user_input_inspector_{pf}.md"),
+        ("Creator", "Tool Caller", "Conductor", "routing_creator.md"),
+        ("Tool Caller", "DC Output Inspector", "Creator",
+         "routing_tool_caller.md"),
+        ("DC Output Inspector", None, "Tool Caller",
+         "routing_dc_output_inspector.md")],
+}
+
+for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
+    _other_hub = HUB_BY_TOPOLOGY[7 if _topo == 5 else 5]
+    _other_display = {"orchestrator": "Orchestrator",
+                      "conductor": "Conductor"}[_other_hub]
+    for _pf_flag in (False, True):
+        prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
+        prompts.PLANNER_FIRST = _pf_flag
+        _case = f"topology {_topo}, PLANNER_FIRST={_pf_flag}"
+        _pf = "planner_first" if _pf_flag else "uii_first"
+        _hub_disp = topology.hub_display()
+
+        # natural_pipeline() must describe THIS topology.
+        _flow = routing.natural_pipeline()
+        if _other_display in _flow:
+            fail(_case, "HUB",
+                 f"natural_pipeline() names the other hub: {_flow}")
+        if _hub_disp not in _flow:
+            fail(_case, "HUB",
+                 f"natural_pipeline() never names its own hub: {_flow}")
+
+        for _name, _next, _prev, _frag in _rows:
+            block = routing.routing_instructions(
+                agent_name=_name, next_agent=_next, prev_agent=_prev,
+                fragment_name=_frag.format(pf=_pf),
+            )
+            if _other_display in block:
+                bad = [ln.strip() for ln in block.splitlines()
+                       if _other_display in ln]
+                fail(_case, "HUB",
+                     f"{_name}'s routing section names the other hub "
+                     f"({_other_display}): {bad[:2]}")
+            if f"the {_hub_disp}" not in block:
+                fail(_case, "HUB",
+                     f"{_name}'s routing section never names its own hub "
+                     f"({_hub_disp})")
+            # The Planner is a distinct grantor ONLY in the 7-agent system.
+            has_planner_grantor = "from the Planner" in block
+            if _topo == 7 and not has_planner_grantor:
+                fail(_case, "HUB",
+                     f"{_name}: 7-agent lost the Planner as an "
+                     f"authorisation source")
+            if _topo != 7 and has_planner_grantor:
+                fail(_case, "HUB",
+                     f"{_name}: names the Planner as an authorisation "
+                     f"source, but it is merged into the hub here")
+
+        # stuck_escalation must target the active hub, not a literal.
+        hop = routing_tools.stuck_escalation("Tool Caller", "calculate")
+        if hop.target != HUB_BY_TOPOLOGY[_topo]:
+            fail(_case, "HUB",
+                 f"stuck_escalation targets {hop.target!r}, expected "
+                 f"{HUB_BY_TOPOLOGY[_topo]!r}")
+
+# --- FACTORY: build_hub must return the active topology's hub -------------
+# The real hub classes cannot be constructed here (they need a live
+# langchain_core and a Session), so both modules are replaced by sentinels.
+# What is under test is build_hub's BRANCH, which is the whole of its logic.
+class _SentinelOrchestrator:
+    def __init__(self, session=None, llm_cache=None):
+        self.which = "orchestrator"
+
+
+class _SentinelConductor:
+    def __init__(self, session=None, llm_cache=None):
+        self.which = "conductor"
+
+
+_mo = types.ModuleType("agents.orchestrator")
+_mo.Orchestrator = _SentinelOrchestrator
+_mc = types.ModuleType("agents.conductor")
+_mc.Conductor = _SentinelConductor
+sys.modules["agents.orchestrator"] = _mo
+sys.modules["agents.conductor"] = _mc
+
+from agents.hub import build_hub  # noqa: E402
+
+for _topo, _expect in ((7, "orchestrator"), (5, "conductor"), (3, "orchestrator")):
+    prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
+    got = build_hub(session=None).which
+    if got != _expect:
+        failures.append(
+            f"[FACTORY] topology {_topo}: build_hub returned the {got} "
+            f"hub, expected {_expect}"
+        )
+
+# --- IDENTITY: every table must agree on the agent-key universe -----------
+# The 5-agent agents are registered in several independent tables.  Missing
+# one is silent: dh_schedule.AGENT_KEYS validates schedule entries, so
+# omitting 'conductor' there meant a schedule naming it was REJECTED and the
+# DH could never interview the hub of a 5-agent run.
+from agents.shared import session as _session_mod  # noqa: E402
+from agents.shared import trace as _trace_mod  # noqa: E402
+from workflow_settings import dh_schedule as _dh  # noqa: E402
+from workflow_settings import llm_routing as _llm  # noqa: E402
+
+for _agent in ("conductor", "creator"):
+    _display = routing_tools.AGENT_DISPLAY.get(_agent)
+    for _label, _ok in (
+        ("routing_tools.AGENT_DISPLAY", _display is not None),
+        ("routing_tools.ROUTING_TOOL_NAMES",
+         f"call_{_agent}" in routing_tools.ROUTING_TOOL_NAMES),
+        ("session.KNOWN_AGENT_KEYS", _agent in _session_mod.KNOWN_AGENT_KEYS),
+        ("trace._AGENT_DISPLAY_NAMES",
+         _display in _trace_mod._AGENT_DISPLAY_NAMES),
+        ("llm_routing.AGENT_KEYS", _agent in _llm.AGENT_KEYS),
+        ("dh_schedule.AGENT_KEYS", _agent in _dh.AGENT_KEYS),
+        ("dh_schedule.AGENT_SHORT_LABELS", _agent in _dh.AGENT_SHORT_LABELS),
+    ):
+        if not _ok:
+            failures.append(f"[IDENTITY] {_agent!r} missing from {_label}")
+
+# Both 5-agent agents are constructed by build_hub now, so neither may
+# still be flagged unwired in the LLM-routing spec.
+for _k, _d, _wired in _llm.AGENT_SPEC:
+    if _k in ("conductor", "creator") and not _wired:
+        failures.append(
+            f"[IDENTITY] llm_routing marks {_k!r} unwired, but build_hub "
+            f"constructs it under topology 5"
+        )
+
+# --- TABLES: topology.py display names must match AGENT_DISPLAY -----------
+for _key, _disp in topology._HUB_BY_TOPOLOGY.values():
+    if routing_tools.AGENT_DISPLAY.get(_key) != _disp:
+        failures.append(
+            f"[TABLES] topology.py calls {_key!r} {_disp!r} but "
+            f"AGENT_DISPLAY calls it "
+            f"{routing_tools.AGENT_DISPLAY.get(_key)!r}"
+        )
 
 # --- DEGRADE: a topology with no directory must fall back, not crash ------
 # Drive the SAME workload under topology 7 and under a topology that has no

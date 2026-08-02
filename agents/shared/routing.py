@@ -20,6 +20,7 @@ reads), not runtime mechanism (which lives in
 from pathlib import Path
 
 from workflow_settings import settings as _workflow_settings
+from agents.shared import topology as _topology
 
 # ---------------------------------------------------------------------------
 # Natural-pipeline string
@@ -28,15 +29,65 @@ from workflow_settings import settings as _workflow_settings
 # inter-agent flow string never names DCII when DCII is off.
 # ---------------------------------------------------------------------------
 
-_HEAD = (
-    "Orchestrator → Planner → User Input Inspector → " if _workflow_settings.PLANNER_FIRST
-    else "Orchestrator → User Input Inspector → Planner → "
-)
-_MIDDLE = (
-    "DC Input Creator → DC Input Inspector → " if _workflow_settings.DC_INSPECTOR_ENABLED
-    else "DC Input Creator → "
-)
-NATURAL_PIPELINE = _HEAD + _MIDDLE + "Tool Caller → DC Output Inspector → Orchestrator"
+# Topologies whose flow is FIXED — no PLANNER_FIRST ordering to choose and
+# no separable DC Input Inspector to switch off, because both were merged
+# into other agents.
+#
+# Note the 5-agent string includes the Receptionist while the 7-agent one
+# does not.  That is not an oversight either way: the 7-agent Receptionist
+# hands to the Orchestrator rather than into the chain, so the string
+# starts and ends at the hub; the 5-agent Receptionist routes straight to
+# the UII, so it IS the UII's natural previous and belongs in the flow.
+_PIPELINE_BY_TOPOLOGY = {
+    5: (
+        "Receptionist → User Input Inspector → Conductor → Creator → "
+        "Tool Caller → DC Output Inspector → Conductor"
+    ),
+}
+
+
+def _authorisation_sources(hub: str) -> str:
+    """Who can grant an authorisation, for the active topology.
+
+    The ONE place in the routing boilerplate that is not a rename: the
+    7-agent system has the Planner as a grantor distinct from the hub,
+    but the 5-agent Conductor absorbs the Planner, so the list collapses
+    from three sources to two.
+    """
+    if _topology.topology() == 7:
+        return (
+            "authorisations come from the user "
+            f"(relayed by the Receptionist → {hub}), from the Planner "
+            f"(relayed by the {hub}), or from the {hub} itself."
+        )
+    return (
+        "authorisations come from the user "
+        f"(relayed by the Receptionist → {hub}), or from the {hub} itself."
+    )
+
+
+def natural_pipeline() -> str:
+    """The canonical inter-agent flow string for the active topology.
+
+    A function rather than a constant: it depends on ``SYSTEM_TOPOLOGY``,
+    which the Sessions Queue switches between runs inside one process, and
+    in the 7-agent case also on ``PLANNER_FIRST`` and
+    ``DC_INSPECTOR_ENABLED``.
+    """
+    fixed = _PIPELINE_BY_TOPOLOGY.get(_topology.topology())
+    if fixed is not None:
+        return fixed
+    head = (
+        "Orchestrator → Planner → User Input Inspector → "
+        if _workflow_settings.PLANNER_FIRST
+        else "Orchestrator → User Input Inspector → Planner → "
+    )
+    middle = (
+        "DC Input Creator → DC Input Inspector → "
+        if _workflow_settings.DC_INSPECTOR_ENABLED
+        else "DC Input Creator → "
+    )
+    return head + middle + "Tool Caller → DC Output Inspector → Orchestrator"
 
 
 # ---------------------------------------------------------------------------
@@ -111,12 +162,17 @@ def routing_instructions(
     guidance, permission-question routing rule, "routing is a tool
     call" mandate — are shared boilerplate built inline below.
     """
+    # Whoever the active topology's hub is — Orchestrator (7-agent) or
+    # Conductor (5-agent).  Every "route back / escalate to …" below names
+    # it, so it is resolved once here rather than hard-coded per sentence.
+    hub = _topology.hub_display()
+
     lines: list[str] = [
         "## Routing",
         "",
         "You are one agent in a decentralised pipeline.  The natural "
         "flow is:",
-        f"  {NATURAL_PIPELINE}",
+        f"  {natural_pipeline()}",
         "",
         f"Your position: **{agent_name}**.",
     ]
@@ -125,32 +181,32 @@ def routing_instructions(
     else:
         lines.append(
             "- You are the last agent in the natural flow; completing "
-            "normally means handing control back to the Orchestrator."
+            f"normally means handing control back to the {hub}."
         )
     if prev_agent:
         lines.append(f"- Your natural previous in line is: **{prev_agent}**.")
     else:
         lines.append(
             "- You are the first agent in the natural flow; if you need "
-            "to go 'back', that means handing control to the Orchestrator."
+            f"to go 'back', that means handing control to the {hub}."
         )
 
     lines += [
         "",
         "### How to decide where to route",
-        "- If the Orchestrator's instruction in your incoming message told "
+        f"- If the {hub}'s instruction in your incoming message told "
         "you to *continue the pipeline* (explicitly or by default, since "
         "no instruction to report back means continue), and your own "
         "work succeeded, route FORWARD to the next agent.",
-        "- If the Orchestrator's instruction told you to *report back* or "
-        "to *do X and return*, route to the Orchestrator once your work "
+        f"- If the {hub}'s instruction told you to *report back* or "
+        f"to *do X and return*, route to the {hub} once your work "
         "is done.",
         "- If you cannot do your job because the upstream message is "
         "ambiguous, missing data, or contains an error that the previous "
         "agent can fix, route to the previous agent with a clear "
         "clarification request (CLARIFY).",
         "- If something is fundamentally wrong and no agent in the chain "
-        "can fix it, route to the Orchestrator (ESCALATE).",
+        f"can fix it, route to the {hub} (ESCALATE).",
         "",
     ]
 
@@ -165,12 +221,12 @@ def routing_instructions(
         "arguments you already called earlier in this turn, STOP.  Calling "
         "the same read tool twice on unchanged input, or re-thinking the "
         "same decision in a loop, will not give you new information.  "
-        "Instead, ESCALATE to the Orchestrator with a short note describing "
+        f"Instead, ESCALATE to the {hub} with a short note describing "
         "what is ambiguous or missing and what you would need to proceed.  "
-        "The Orchestrator can then re-dispatch you with new instructions, "
+        f"The {hub} can then re-dispatch you with new instructions, "
         "consult another agent, or ask the user.  Never silently loop.",
         "",
-        "### Permission / authorisation issues → Orchestrator (not "
+        f"### Permission / authorisation issues → {hub} (not "
         "the previous agent)",
         "If a rule in your system prompt blocks an action unless some "
         "authorisation is present, READ THE INCOMING HAND-OFF (and any "
@@ -183,10 +239,8 @@ def routing_instructions(
         "is a wasted round-trip.",
         "",
         "When an authorisation is truly missing or ambiguous, ESCALATE "
-        "to the Orchestrator.  The previous agent in the chain typically "
-        "CANNOT grant permission — authorisations come from the user "
-        "(relayed by the Receptionist → Orchestrator), from the Planner "
-        "(relayed by the Orchestrator), or from the Orchestrator itself.  "
+        f"to the {hub}.  The previous agent in the chain typically "
+        "CANNOT grant permission — " + _authorisation_sources(hub) + "  "
         "CLARIFY back to the previous agent is appropriate for data / "
         "wording / format issues the previous agent can actually fix, "
         "NOT for permission questions.",

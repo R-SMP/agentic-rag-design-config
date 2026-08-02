@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from langchain_core.tools import StructuredTool
 
+from agents.shared.topology import hub_key as _hub_key
 from agents.shared.trace import trace as _trace
 
 if TYPE_CHECKING:
@@ -259,7 +260,11 @@ def build_routing_tool(
     )
 
     def _invoke(message: str) -> str:
-        if target_key != "orchestrator":
+        # Returning to the hub is not a chain exchange, so it is not
+        # recorded in the chain log.  Resolved per call rather than per
+        # build so a topology switch cannot leave a stale hub captured in
+        # the closure.
+        if target_key != _hub_key():
             session.chain_log_exchanges.append({
                 "from_agent": caller_display,
                 "to_agent": target_display,
@@ -267,10 +272,16 @@ def build_routing_tool(
                 "ts": datetime.now(timezone.utc).isoformat(),
             })
         _log_inter_agent_message(caller_display, target_display, message)
-        # The Receptionist -> Orchestrator hop is traced by the loader
-        # with a richer "forwarded" note; skip the routing-tool trace
-        # here to avoid a duplicate entry.
-        if not (caller_key == "receptionist" and target_key == "orchestrator"):
+        # The Receptionist -> hub hop is traced by ``dispatch.py`` with a
+        # richer "forwarded" note; skip the routing-tool trace here to
+        # avoid a duplicate entry.
+        #
+        # Hub-aware ONLY because ``dispatch_turn`` is topology-neutral and
+        # emits ``_trace("Receptionist", hub_display(), "forwarded")`` for
+        # whichever hub is active.  These two must move together: making
+        # this hub-aware without that emitter would silently DELETE the
+        # Receptionist -> Conductor trace rather than de-duplicate it.
+        if not (caller_key == "receptionist" and target_key == _hub_key()):
             _trace(caller_display, target_display)
         # Label the hand-off with its sender so the target agent can
         # never mis-attribute the content (e.g. mistake a Planner plan
@@ -318,9 +329,16 @@ def tool_call_signature(tc: dict) -> tuple[str, str]:
 
 
 def stuck_escalation(agent_label: str, tool_name: str) -> AgentHop:
-    """Build the AgentHop used when a stuck loop is detected."""
+    """Build the AgentHop used when a stuck loop is detected.
+
+    Targets the ACTIVE topology's hub.  Hard-coding ``"orchestrator"``
+    sent the 5-agent chain's failure path to an agent that topology never
+    builds — and the callers (Creator, Tool Caller, User Input Inspector)
+    all run there, so the escalation route was broken exactly when it was
+    needed.
+    """
     return AgentHop(
-        "orchestrator",
+        _hub_key(),
         (
             f"Error: {agent_label} detected a stuck loop — it was about to "
             f"call '{tool_name}' with the same arguments it already used "

@@ -38,7 +38,12 @@ import re
 from pathlib import Path
 from string import Template
 
-from agents.shared.routing import NATURAL_PIPELINE, routing_instructions
+from agents.shared.routing import natural_pipeline, routing_instructions
+
+# Topology facts live in their own dependency-free module so that
+# ``routing_tools`` (a leaf) can read them too.  Aliased to the private
+# names this module has always used, so call sites below are unchanged.
+from agents.shared.topology import hub_key as _hub_agent, topology as _topology
 from workflow_settings import settings as _workflow_settings
 
 AGENTS_DIR = Path(__file__).resolve().parent.parent
@@ -75,29 +80,6 @@ GENERIC_FRAGMENTS_DIR = Path(__file__).resolve().parent / "prompt_fragments"
 # misses and falls through to the path it used before this indirection
 # existed.
 # ---------------------------------------------------------------------------
-
-def _topology() -> int:
-    """The active agent topology, read FRESH from ``settings`` per call.
-
-    Deliberately not a module constant.  ``web_app._build_session`` reloads
-    the settings module in place but does NOT reload this one, so a value
-    captured at import would pin the topology to whatever was on disk when
-    the process started — and the Sessions Queue switches topology BETWEEN
-    runs inside a single process.  Cost is one attribute read.
-    """
-    return int(getattr(_workflow_settings, "SYSTEM_TOPOLOGY", 7))
-
-
-# Each topology's HUB — the agent that dispatches to the others rather than
-# forwarding along a chain.  Used to resolve ``$routing_hub`` (below) and,
-# more generally, wherever a prompt has to name the hub.
-_HUB_BY_TOPOLOGY = {7: "orchestrator", 5: "conductor"}
-
-
-def _hub_agent() -> str:
-    """The active topology's hub agent key."""
-    return _HUB_BY_TOPOLOGY.get(_topology(), "orchestrator")
-
 
 def _topology_override(rel_path: str) -> Path | None:
     """This topology's override of ``rel_path``, or None for the shared file.
@@ -821,9 +803,9 @@ DH_TEMPLATE = _build_template("database_handler")
 
 
 # Re-export routing helpers so agents can do ``from agents.shared.prompts
-# import NATURAL_PIPELINE, routing_instructions`` for one-stop access.
+# import natural_pipeline, routing_instructions`` for one-stop access.
 __all__ = [
-    "NATURAL_PIPELINE",
+    "natural_pipeline",
     "routing_instructions",
     "DC_NAME",
     "DOMAIN_DESCRIPTION",
