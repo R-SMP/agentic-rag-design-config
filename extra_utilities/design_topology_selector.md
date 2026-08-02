@@ -56,6 +56,11 @@ Full detail in the wiring map; the ones that survive the O1 correction:
   longer identifies a fragment; the failure mode is **loading the WRONG
   content**, not `FileNotFoundError`.  Resolution must be
   **override-then-fallback**, never override-only.
+  > **CLOSED (2026-08-02).**  Every topology file now carries an
+  > `_<N>agents` suffix and sits in a sub-folder mirroring its source root,
+  > so no two are alike.  Resolution is override-then-fallback throughout.
+  > `smoke_test_topology_fragments.py` asserts all 20 overrides are reached
+  > and that no shared original of an overridden fragment is ever read.
 - **O2 — `_wire_routing` is a topology expressed as control flow**
   (~30 literal `build_routing_tool` calls, 7 different consumer signatures).
   Each topology's hub needs its own; not a shared table to extend.
@@ -66,9 +71,25 @@ Full detail in the wiring map; the ones that survive the O1 correction:
   `pipeline_flow.md` is a single file with no PF markers);
   `PROMPT_MD_RUNTIME_SLOTS` needs two different values for the key
   `"receptionist"` (7-agent has none, 5-agent has two).
+  > **O6/O7 CLOSED (2026-08-02).**  `_USER_FACING_AGENTS` →
+  > `_NON_CHAIN_AGENTS`, listing both hubs: it is a delete-list KEY, never
+  > rendered, and each hub is only built in its own topology, so no
+  > per-topology branch is needed (verified — the nine 7-agent prompts are
+  > byte-identical by hash before/after).  `_PIPELINE_FLOW_FRAGMENT_NAME` is
+  > now `_pipeline_flow_fragment_name()`, which returns the unbranched
+  > `pipeline_flow.md` whenever the topology ships one.  The same
+  > PF-collapse rule is applied in `routing._load_routing_fragment`, since
+  > the UII passes a `*_uii_first.md` name its 5-agent override could never
+  > match.  **O8 still open.**
 - **O9 — the eager `*_TEMPLATE` block is an active hazard**: once `_build_slots`
   is topology-aware it would splice one topology's fragments into another's
   prompts.  Delete it (it is dead) or guard it.
+  > **STILL OPEN (2026-08-02)** — deliberately untouched to keep the
+  > resolution step's blast radius small.  Written up in full in the build
+  > tracker (condition, five problems, three fix options; recommendation =
+  > make them lazy via a module-level `__getattr__`).  Confirmed dead: no
+  > production code reads any of the nine, only
+  > `smoke_test_prompt_format.py:88`.
 - **O12 — ALREADY LIVE:** `prompts_admin._agent_for_prompt_md` has a
   `len(parts) == 3` gate, so it returns `None` for
   `agents/5agent/<agent>/prompt.md`.  **The unescaped-brace validator therefore

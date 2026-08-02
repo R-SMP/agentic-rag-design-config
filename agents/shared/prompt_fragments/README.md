@@ -9,7 +9,7 @@ to the prompt-fragment library** (rather than to any single
 | --- | --- | --- |
 | `generic_constraints.md` | DOs / DON'Ts every agent inherits, regardless of DC or tool. | `$hard_constraints_generic` |
 | `routing_receptionist.md` | Receptionist's "which agents can you call" section. | `$routing_receptionist` |
-| `routing_orchestrator.md` | Orchestrator's "which agents can you call" section. | `$routing_orchestrator` |
+| `routing_orchestrator.md` | The HUB's "which agents can you call" section. One file per topology — this one for the 7-agent Orchestrator, `agents/5agent/prompt_fragments/routing_conductor_5agents.md` for the 5-agent Conductor — behind a single topology-neutral slot, so only the active topology's file is ever read. | `$routing_hub` |
 | `routing_planner.md` | Planner's "Available routing tools" subsection (loaded by `routing_instructions(...)` at wiring time, not via `$`-slot). | (loaded by `routing.py`) |
 | `routing_user_input_inspector.md` | UII's "Available routing tools" subsection. | (loaded by `routing.py`) |
 | `routing_dc_input_creator.md` | DCIC's "Available routing tools" subsection. | (loaded by `routing.py`) |

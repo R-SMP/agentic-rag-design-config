@@ -50,6 +50,75 @@ GENERIC_FRAGMENTS_DIR = Path(__file__).resolve().parent / "prompt_fragments"
 
 
 # ---------------------------------------------------------------------------
+# Agent topology
+#
+# A topology owns ``agents/<N>agent/``, holding ONLY the files that differ
+# from the 7-agent originals.  Each is named with an ``_<N>agents`` suffix
+# and filed under a sub-folder mirroring its SOURCE root:
+#
+#   agents/5agent/prompt_fragments/generic_constraints_5agents.md
+#        overrides  agents/shared/prompt_fragments/generic_constraints.md
+#   agents/5agent/dc_config/hard_constraints_dc_5agents.md
+#        overrides  DC_prompt_fragments/dc_config/hard_constraints_dc.md
+#   agents/5agent/tools_config/database_search_creator_5agents.md
+#        overrides  DC_prompt_fragments/tools_config/database_search_creator.md
+#   agents/5agent/receptionist/prompt_5agents.md
+#        overrides  agents/receptionist/prompt.md
+#
+# Anything WITHOUT an override is shared: read from the original path, one
+# copy, cannot drift.  The suffix makes each file self-identifying — an
+# editor tab or a log line reading ``generic_constraints_5agents.md`` names
+# its topology; a bare ``generic_constraints.md`` in a sibling folder does
+# not.
+#
+# There is no ``agents/7agent/``, so under topology 7 every lookup below
+# misses and falls through to the path it used before this indirection
+# existed.
+# ---------------------------------------------------------------------------
+
+def _topology() -> int:
+    """The active agent topology, read FRESH from ``settings`` per call.
+
+    Deliberately not a module constant.  ``web_app._build_session`` reloads
+    the settings module in place but does NOT reload this one, so a value
+    captured at import would pin the topology to whatever was on disk when
+    the process started — and the Sessions Queue switches topology BETWEEN
+    runs inside a single process.  Cost is one attribute read.
+    """
+    return int(getattr(_workflow_settings, "SYSTEM_TOPOLOGY", 7))
+
+
+# Each topology's HUB — the agent that dispatches to the others rather than
+# forwarding along a chain.  Used to resolve ``$routing_hub`` (below) and,
+# more generally, wherever a prompt has to name the hub.
+_HUB_BY_TOPOLOGY = {7: "orchestrator", 5: "conductor"}
+
+
+def _hub_agent() -> str:
+    """The active topology's hub agent key."""
+    return _HUB_BY_TOPOLOGY.get(_topology(), "orchestrator")
+
+
+def _topology_override(rel_path: str) -> Path | None:
+    """This topology's override of ``rel_path``, or None for the shared file.
+
+    ``rel_path`` is relative to the topology directory and keeps its source
+    sub-folder (``dc_config/x.md``, ``prompt_fragments/y.md``,
+    ``<agent>/prompt.md``); only the basename gains the suffix.  Returning
+    None is every caller's signal to read the shared original, which is what
+    makes topology 7 — with no topology directory at all — behave exactly as
+    it did before.
+    """
+    topo = _topology()
+    topo_dir = AGENTS_DIR / f"{topo}agent"
+    if not topo_dir.is_dir():
+        return None
+    rel = Path(rel_path)
+    cand = (topo_dir / rel).with_name(f"{rel.stem}_{topo}agents{rel.suffix}")
+    return cand if cand.is_file() else None
+
+
+# ---------------------------------------------------------------------------
 # DC-Input-Inspector conditional filter
 #
 # When DC_INSPECTOR_ENABLED is False, every DCII reference must be
@@ -85,11 +154,21 @@ _HAS_DBA_RE = re.compile(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>", re.DOTALL)
 _BSV_ON_RE = re.compile(r"<<BSV_ON>>(.*?)<</BSV_ON>>", re.DOTALL)
 _BSV_OFF_RE = re.compile(r"<<BSV_OFF>>(.*?)<</BSV_OFF>>", re.DOTALL)
 # Per-agent chain-only filter — strips ``<<CHAIN_ONLY>>`` regions from the
-# two user-facing agents (Receptionist, Orchestrator), which compose prose
-# for the user and are not links in the forward chain, and unwraps them for
-# the six chain agents.  See ``apply_chain_only_filter``.
+# agents that are NOT links in the forward chain, and unwraps them for the
+# ones that are.  See ``apply_chain_only_filter``.
 _CHAIN_ONLY_RE = re.compile(r"<<CHAIN_ONLY>>(.*?)<</CHAIN_ONLY>>", re.DOTALL)
-_USER_FACING_AGENTS = frozenset({"receptionist", "orchestrator"})
+
+# The non-chain agents: the Receptionist, which composes the user's wording
+# rather than passing work along, and each topology's HUB — Orchestrator in
+# the 7-agent system, Conductor in the 5-agent one — which dispatches and
+# receives rather than forwarding to a "next" agent.
+#
+# Both hubs are listed unconditionally.  This is a delete-list keyed by
+# agent name; it is never rendered into any prompt, and each hub is only
+# ever built in its own topology, so the entry for the absent hub is simply
+# never consulted.  (Verified: adding "conductor" leaves all nine 7-agent
+# prompts byte-identical.)
+_NON_CHAIN_AGENTS = frozenset({"receptionist", "orchestrator", "conductor"})
 
 
 def apply_dcii_filter(text: str) -> str:
@@ -187,17 +266,19 @@ def apply_dba_filter(text: str, agent_dir_name: str) -> str:
 def apply_chain_only_filter(text: str, agent_dir_name: str) -> str:
     """Resolve ``<<CHAIN_ONLY>>...<</CHAIN_ONLY>>`` conditional regions.
 
-    The Receptionist and Orchestrator are user-facing agents that compose
-    prose for the user and are not links in the forward chain, so
-    chain-only constraints (FORWARD-to-next, escalate-to-Orchestrator,
-    permission-routing, blind-retry, don't-script-user-wording) are
-    stripped from their prompts.  The six chain agents keep them; the
-    Database Handler has no such regions, so unwrapping is a no-op there.
+    The chain-only constraints — FORWARD-to-your-next-agent,
+    escalate-to-the-hub, don't-bounce-permission-questions-backward,
+    don't-retry-blindly, don't-script-the-user-facing-reply — only make
+    sense for an agent that is a LINK in the forward chain.  Given to the
+    hub itself they are self-referential ("escalate to the Conductor",
+    addressed to the Conductor), so they are stripped for every agent in
+    ``_NON_CHAIN_AGENTS`` and unwrapped for the rest.  The Database
+    Handler has no such regions, so unwrapping is a no-op there.
 
     Like :func:`apply_dba_filter`, this is per-agent and therefore runs in
     :func:`_build_template` rather than in :func:`apply_flag_filters`.
     """
-    if agent_dir_name in _USER_FACING_AGENTS:
+    if agent_dir_name in _NON_CHAIN_AGENTS:
         return _CHAIN_ONLY_RE.sub("", text)
     return _CHAIN_ONLY_RE.sub(lambda m: m.group(1), text)
 
@@ -216,13 +297,20 @@ def apply_flag_filters(text: str) -> str:
 
 
 def _read_dc_fragment(rel_path: str) -> str:
-    """Read a DC- or tool-specific fragment under ``DC_prompt_fragments/``."""
-    return (DC_FRAGMENTS_DIR / rel_path).read_text(encoding="utf-8").rstrip()
+    """Read a DC- or tool-specific fragment under ``DC_prompt_fragments/``,
+    preferring the active topology's override when one exists."""
+    path = _topology_override(rel_path) or (DC_FRAGMENTS_DIR / rel_path)
+    return path.read_text(encoding="utf-8").rstrip()
 
 
 def _read_generic_fragment(rel_path: str) -> str:
-    """Read a generic fragment under ``agents/shared/prompt_fragments/``."""
-    return (GENERIC_FRAGMENTS_DIR / rel_path).read_text(encoding="utf-8").rstrip()
+    """Read a generic fragment under ``agents/shared/prompt_fragments/``,
+    preferring the active topology's override when one exists."""
+    path = (
+        _topology_override(f"prompt_fragments/{rel_path}")
+        or GENERIC_FRAGMENTS_DIR / rel_path
+    )
+    return path.read_text(encoding="utf-8").rstrip()
 
 
 # ---------------------------------------------------------------------------
@@ -400,11 +488,25 @@ ROUTING_ORCHESTRATOR = _read_generic_fragment("routing_orchestrator.md")
 # nested $-placeholders.
 # ---------------------------------------------------------------------------
 
-_PIPELINE_FLOW_FRAGMENT_NAME = (
-    "pipeline_flow_planner_first.md" if PLANNER_FIRST
-    else "pipeline_flow_uii_first.md"
-)
-PIPELINE_FLOW = _read_generic_fragment(_PIPELINE_FLOW_FRAGMENT_NAME)
+def _pipeline_flow_fragment_name() -> str:
+    """Which pipeline-flow fragment this topology + flag combination wants.
+
+    ``PLANNER_FIRST`` picks the Planner/UII ordering, but that choice only
+    exists in the 7-agent system — in the 5-agent one the Conductor IS the
+    planner, so there is no ordering to pick and a single flow file covers
+    both settings of the flag.  A topology shipping its own
+    ``pipeline_flow_<N>agents.md`` therefore uses it unconditionally; one
+    that does not falls through to the historic two-file choice.
+    """
+    if _topology_override("prompt_fragments/pipeline_flow.md") is not None:
+        return "pipeline_flow.md"
+    return (
+        "pipeline_flow_planner_first.md" if PLANNER_FIRST
+        else "pipeline_flow_uii_first.md"
+    )
+
+
+PIPELINE_FLOW = _read_generic_fragment(_pipeline_flow_fragment_name())
 AVAILABLE_AGENTS = _read_generic_fragment("available_agents.md")
 
 
@@ -472,7 +574,12 @@ FRAGMENT_TO_SLOT: dict[str, str] = {
     "agents/shared/prompt_fragments/eos_feedback_outro.md":   "eos_feedback_outro",
     "agents/shared/prompt_fragments/value_states.md":         "value_states",
     "agents/shared/prompt_fragments/routing_receptionist.md": "routing_receptionist",
-    "agents/shared/prompt_fragments/routing_orchestrator.md": "routing_orchestrator",
+    # $routing_hub has one source file PER TOPOLOGY; only the active
+    # topology's is ever read.  Same many-to-one shape as $pipeline_flow.
+    # (The other 5-agent override paths are not in this index yet — that is
+    # part of the System-Prompts-UI surface step.)
+    "agents/shared/prompt_fragments/routing_orchestrator.md": "routing_hub",
+    "agents/5agent/prompt_fragments/routing_conductor_5agents.md": "routing_hub",
     "agents/shared/prompt_fragments/available_agents.md":     "available_agents",
     # $pipeline_flow has TWO source files; only the file matching the
     # current PLANNER_FIRST flag is read by _build_slots.  Both are
@@ -586,12 +693,19 @@ def _build_slots() -> dict[str, str]:
         "eos_feedback_intro": _read_generic_fragment("eos_feedback_intro.md"),
         "eos_feedback_outro": _read_generic_fragment("eos_feedback_outro.md"),
         "value_states": _read_generic_fragment("value_states.md"),
-        # Per-agent routing fragments (Receptionist + Orchestrator only;
-        # the six chain agents load theirs via routing_instructions())
+        # Per-agent routing fragments (Receptionist + the topology's hub;
+        # the chain agents load theirs via routing_instructions()).
+        #
+        # The hub's fragment is named per topology — routing_orchestrator.md
+        # in the 7-agent system, routing_conductor.md in the 5-agent one —
+        # but BOTH hub prompts reference the single topology-neutral slot
+        # $routing_hub.  Only the active topology's file is ever asked for,
+        # so there is no "might be missing" case to tolerate: a genuine typo
+        # still raises FileNotFoundError, loudly, as it should.
         "routing_receptionist": _read_generic_fragment("routing_receptionist.md"),
-        "routing_orchestrator": _read_generic_fragment("routing_orchestrator.md"),
+        "routing_hub": _read_generic_fragment(f"routing_{_hub_agent()}.md"),
         # Cross-agent organisational fragments (Planner + Orchestrator)
-        "pipeline_flow": _read_generic_fragment(_PIPELINE_FLOW_FRAGMENT_NAME),
+        "pipeline_flow": _read_generic_fragment(_pipeline_flow_fragment_name()),
         "available_agents": _read_generic_fragment("available_agents.md"),
         # Embedding (DH only) — settings.py values, captured at import time
         "embedding_provider": EMBEDDING_PROVIDER,
@@ -599,6 +713,26 @@ def _build_slots() -> dict[str, str]:
         "embedding_vector_dims": EMBEDDING_VECTOR_DIMS,
         "embedding_max_response_tokens": EMBEDDING_MAX_RESPONSE_TOKENS,
     }
+
+
+def _prompt_path(agent_dir_name: str) -> Path:
+    """Locate an agent's prompt, honouring the active topology.  First hit:
+
+    1. ``agents/<N>agent/<agent>/prompt_<N>agents.md`` — this topology's
+       tailored copy of an agent that ALSO exists in the 7-agent system
+       (Receptionist, UII, Tool Caller, DCOI).
+    2. ``agents/<agent>/prompt_<N>agents.md`` — an agent existing ONLY in
+       this topology (Conductor, Creator).  It has no 7-agent original to
+       shadow, so it lives in a normal agent package rather than under the
+       topology directory.
+    3. ``agents/<agent>/prompt.md`` — the historic path.  Under topology 7
+       candidates 1 and 2 always miss, so this is always the answer.
+    """
+    override = _topology_override(f"{agent_dir_name}/prompt.md")
+    if override is not None:
+        return override
+    own = AGENTS_DIR / agent_dir_name / f"prompt_{_topology()}agents.md"
+    return own if own.is_file() else AGENTS_DIR / agent_dir_name / "prompt.md"
 
 
 def _build_template(agent_dir_name: str) -> str:
@@ -621,7 +755,7 @@ def _build_template(agent_dir_name: str) -> str:
     System Prompts UI take effect on the next session's agent
     construction without a Python restart.
     """
-    raw = (AGENTS_DIR / agent_dir_name / "prompt.md").read_text(encoding="utf-8")
+    raw = _prompt_path(agent_dir_name).read_text(encoding="utf-8")
     # Per-agent overlay onto the global slot map: load this agent's
     # ``database_search_<agent_dir_name>.md`` fragment if present and
     # expose it as ``$database_search_per_agent``.  Agents without a
@@ -629,7 +763,11 @@ def _build_template(agent_dir_name: str) -> str:
     # write-only post-session and has no <<HAS_DBA>> block in its
     # prompt) get an empty string — harmless because their prompt.md
     # does not reference the slot.
-    per_agent_dbs_file = TOOLS_CONFIG_DIR / f"database_search_{agent_dir_name}.md"
+    per_agent_dbs_rel = f"tools_config/database_search_{agent_dir_name}.md"
+    per_agent_dbs_file = (
+        _topology_override(per_agent_dbs_rel)
+        or TOOLS_CONFIG_DIR / f"database_search_{agent_dir_name}.md"
+    )
     per_agent_dbs = (
         per_agent_dbs_file.read_text(encoding="utf-8").rstrip()
         if per_agent_dbs_file.exists()
@@ -638,8 +776,12 @@ def _build_template(agent_dir_name: str) -> str:
     # Per-agent Blade-sections-visualizer overlay (Tool Caller = full tool
     # usage, DC Output Inspector = read-by-path; others have no file → empty,
     # so only the shared brief awareness shows).  Same idiom as the DBa overlay.
+    per_agent_bsv_rel = (
+        f"tools_config/blade_sections_visualizer_{agent_dir_name}.md"
+    )
     per_agent_bsv_file = (
-        TOOLS_CONFIG_DIR / f"blade_sections_visualizer_{agent_dir_name}.md"
+        _topology_override(per_agent_bsv_rel)
+        or TOOLS_CONFIG_DIR / f"blade_sections_visualizer_{agent_dir_name}.md"
     )
     per_agent_bsv = (
         per_agent_bsv_file.read_text(encoding="utf-8").rstrip()
