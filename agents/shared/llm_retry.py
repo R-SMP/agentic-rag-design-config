@@ -39,6 +39,8 @@ import random
 import time
 from typing import Any
 
+from agents.shared import token_usage
+
 logger = logging.getLogger("propeller_agent")
 
 # ---------------------------------------------------------------------------
@@ -125,7 +127,19 @@ def invoke_with_retry(llm: Any, messages: list, agent_name: str) -> Any:
     last_exc: BaseException | None = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            return llm.invoke(messages)
+            response = llm.invoke(messages)
+            # Every LLM call in the system passes through here, so this
+            # is the one place token usage has to be read.  Never allowed
+            # to break a live call: accounting is observability, not
+            # behaviour.
+            try:
+                token_usage.record(agent_name, response)
+            except Exception:
+                logger.warning(
+                    f"[{agent_name}]  token accounting failed; continuing",
+                    exc_info=True,
+                )
+            return response
         except Exception as exc:
             if _is_rate_limit(exc):
                 last_exc = exc

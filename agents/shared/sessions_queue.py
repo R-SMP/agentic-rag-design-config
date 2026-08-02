@@ -26,13 +26,17 @@ most the single in-flight run and can resume from the manifest.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
+from agents.shared import token_usage
 from config import PREVIOUS_SESSIONS_DIR
+
+logger = logging.getLogger("propeller_agent")
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -362,7 +366,21 @@ def classify_reply(query: str, reply: str, *,
             SystemMessage(content=_CLASSIFIER_SYSTEM),
             HumanMessage(content=user_msg),
         ]
-        text = _content_text(llm.invoke(messages)).strip()
+        _clf_response = llm.invoke(messages)
+        # Own LLM call, outside any agent turn and bypassing
+        # ``invoke_with_retry`` — so it records itself or its cost is
+        # invisible.  It fires after EVERY queued run, which adds up
+        # across an overnight queue.  Note it runs BETWEEN sessions, so
+        # depending on timing its tokens may be tallied against the next
+        # session rather than the one it classified.
+        try:
+            token_usage.record("QueueClassifier", _clf_response)
+        except Exception:
+            logger.warning(
+                "[QueueClassifier]  token accounting failed; continuing",
+                exc_info=True,
+            )
+        text = _content_text(_clf_response).strip()
         up = text.upper()
         # WHOLE-WORD matches only, so "FINALIZE" / "FINALLY" do not count as
         # a FINAL verdict.  The prompt demands exactly one word; anything

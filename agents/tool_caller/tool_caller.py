@@ -32,6 +32,7 @@ from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
 from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
+from agents.shared import token_usage
 from agents.shared.prompts import (
     RENDER_CHECK_LIBRARY_PYVISTA,
     RENDER_CHECK_LIBRARY_TRIMESH,
@@ -159,6 +160,7 @@ class ToolCaller(BaseChainAgent):
 
     def run(self, message: str) -> AgentHop:
         """Process one hand-off message."""
+        token_usage.begin_turn("ToolCaller")
         self._pending_hop = None
         text = f"Hand-off from previous agent:\n{message}"
         self.messages.append(HumanMessage(content=text))

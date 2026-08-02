@@ -37,6 +37,7 @@ from agents.shared.file_utils import ai_text
 from agents.shared.history_tool import build_read_agent_history_tool
 from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
+from agents.shared import token_usage
 from agents.shared.prompts import _build_template, PLANNER_FIRST
 from agents.shared.stop_signal import is_stop_requested
 from agents.shared.routing_tools import (
@@ -465,6 +466,7 @@ class Orchestrator(BaseChainAgent):
 
     def run(self, message: str) -> AgentHop:
         """Process one incoming message and return the chosen hop."""
+        token_usage.begin_turn("Orchestrator")
         self._pending_hop = None
         self.messages.append(HumanMessage(content=message))
 
