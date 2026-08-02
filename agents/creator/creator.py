@@ -65,6 +65,7 @@ from agents.shared.file_utils import (
 )
 from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
+from agents.shared import token_usage
 from agents.shared.prompts import (
     PARAMETER_NAMES,
     _build_template,
@@ -222,6 +223,7 @@ class Creator(BaseChainAgent):
 
     def run(self, message: str) -> AgentHop:
         """Process one hand-off message and return the chosen hop."""
+        token_usage.begin_turn("Creator")
         self._pending_hop = None
         text = f"Hand-off from Conductor:\n{message}"
         self.messages.append(HumanMessage(content=text))

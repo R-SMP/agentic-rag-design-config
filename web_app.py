@@ -60,6 +60,7 @@ from agents.shared.image_compression import (
     write_degree,
 )
 from agents.shared.session import Session
+from agents.shared import token_usage
 from agents.shared.stop_signal import (
     clear_stop as stop_signal_clear,
     request_stop as stop_signal_request,
@@ -420,6 +421,14 @@ def _end_session(was_saved: bool = False) -> None:
     # the save state is treated as "not saved" (safer default; the
     # R2 upload then runs only when the setting allows it).
     logger.info("[WEB] end_session — archiving session, clearing state")
+    # Token roll-ups MUST be emitted before ``_detach_log_handler``
+    # below, or they land nowhere: that call unhooks the per-session
+    # log file this summary is meant to end up in.
+    try:
+        token_usage.log_session_totals()
+        token_usage.reset()
+    except Exception:
+        logger.warning("[WEB] token roll-up failed; continuing", exc_info=True)
     try:
         close_trace()
     except Exception:

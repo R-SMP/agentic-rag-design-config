@@ -48,7 +48,13 @@ schedule entries in one save and relies on accumulated state to
 ask coherent follow-ups.  All other chain agents are pruned.
 """
 
+import logging
+
 from langchain_core.messages import HumanMessage, SystemMessage
+
+from agents.shared import token_usage
+
+logger = logging.getLogger("propeller_agent")
 
 # ---------------------------------------------------------------------------
 # Pruning prompts — a shared base + a short per-tier delta.  Only ONE tier
@@ -160,4 +166,17 @@ class ContextPruner:
             SystemMessage(content=system_prompt),
             HumanMessage(content=user_content),
         ])
+        # The ONE LLM call in the system that does not go through
+        # ``invoke_with_retry``, so it records its own usage or it would
+        # be invisible — and a pruning pass reads a long history, so its
+        # input cost is far from negligible.  Deliberately NOT folded
+        # into the calling agent's turn total: the pruner gets its own
+        # line in the per-agent breakdown.
+        try:
+            token_usage.record("ContextPruner", response)
+        except Exception:
+            logger.warning(
+                "[ContextPruner]  token accounting failed; continuing",
+                exc_info=True,
+            )
         return response.content

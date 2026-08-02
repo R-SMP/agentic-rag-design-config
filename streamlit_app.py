@@ -51,6 +51,7 @@ import streamlit as st
 from agents.dispatch import dispatch_turn
 from agents.shared.trace import close_trace, init_trace
 from agents.shared.session import Session
+from agents.shared import token_usage
 from config import LOGS_DIR, USER_INPUTS_DIR
 from tools import set_mesh_checks, set_render_library, set_geometry_backend
 from workflow_settings import settings as workflow_settings
@@ -349,6 +350,15 @@ def end_session() -> None:
     plumbing in Stage A — see warnings_developer.md W14.
     """
     log_path = st.session_state.get("session_log_path")
+    # Before ``_detach_session_log_handler`` below — that call releases
+    # the per-session log file these totals belong in.
+    try:
+        token_usage.log_session_totals()
+        token_usage.reset()
+    except Exception:
+        logging.getLogger("propeller_agent").warning(
+            "[STREAMLIT] token roll-up failed; continuing", exc_info=True,
+        )
     try:
         close_trace()
     except Exception:

@@ -59,6 +59,7 @@ from agents.shared.file_utils import ai_text
 from agents.shared.history_tool import build_read_agent_history_tool
 from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
+from agents.shared import token_usage
 from agents.shared.prompts import _build_template
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.routing_tools import (
@@ -113,7 +114,9 @@ _DIRECTIVE_CARRIERS = frozenset({
 })
 
 
-_ROLE4_INSTRUCTIONS_PATH = Path(__file__).parent / "role4_feedback_instructions.md"
+_ROLE4_INSTRUCTIONS_PATH = (
+    Path(__file__).parent / "role4_feedback_instructions_5agents.md"
+)
 
 
 def _load_role4_instructions() -> str:
@@ -345,6 +348,7 @@ class Conductor(BaseChainAgent):
 
     def run(self, message: str) -> AgentHop:
         """Process one incoming message and return the chosen hop."""
+        token_usage.begin_turn("Conductor")
         self._pending_hop = None
         self.messages.append(HumanMessage(content=message))
 

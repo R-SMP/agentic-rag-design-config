@@ -32,6 +32,7 @@ from agents.shared.file_utils import (
 )
 from agents.shared.llm_provider import make_system_message
 from agents.shared.llm_retry import invoke_with_retry
+from agents.shared import token_usage
 from agents.shared.prompts import _build_template
 from agents.shared.routing_tools import (
     AgentHop,
@@ -407,6 +408,7 @@ class Receptionist(BaseChainAgent):
 
     def run(self, message: str) -> AgentHop:
         """Compose a user-facing message and return a terminal hop."""
+        token_usage.begin_turn("Receptionist")
         return AgentHop(DONE, self.format_outgoing(message))
 
     def on_operation_end(self) -> None:
