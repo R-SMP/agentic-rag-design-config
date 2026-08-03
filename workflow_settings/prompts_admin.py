@@ -55,6 +55,12 @@ _GROUPS: tuple[dict, ...] = (
      "subtitle": "DC_prompt_fragments/dc_config/"},
     {"id": "tools_config",   "label": "Tools configuration",
      "subtitle": "DC_prompt_fragments/tools_config/"},
+    # Topology overrides.  Only the files that DIFFER from the 7-agent
+    # originals live here; everything else is shared and appears in the
+    # groups above.  Empty (and hidden) when no topology directory
+    # exists, so a 7-agent-only checkout sees the original four groups.
+    {"id": "topology",       "label": "Topology overrides",
+     "subtitle": "agents/<N>agent/"},
 )
 
 
@@ -193,6 +199,10 @@ def build_tree() -> dict:
     for g in _GROUPS:
         if g["id"] == "per_agent":
             children = _per_agent_children()
+        elif g["id"] == "topology":
+            children = _topology_children(slot_usage)
+            if not children:
+                continue          # no topology dir -> hide the group
         else:
             root = _group_root(g["id"])
             children = _walk_dir(root, slot_usage)
@@ -213,18 +223,47 @@ def _group_root(group_id: str) -> Path:
     }[group_id]
 
 
+def _topology_children(slot_usage: dict[str, set[str]]) -> list[dict]:
+    """One folder per ``agents/<N>agent/`` directory found on disk.
+
+    Discovered rather than hard-coded, so the 3-agent variant appears
+    the moment its directory exists.
+    """
+    out: list[dict] = []
+    agents_root = REPO_ROOT / "agents"
+    if not agents_root.is_dir():
+        return out
+    for d in sorted(agents_root.iterdir(), key=lambda p: p.name.lower()):
+        if d.is_dir() and re.fullmatch(r"\d+agent", d.name):
+            inner = _walk_dir(d, slot_usage)
+            if inner:
+                out.append({"kind": "folder", "display": d.name,
+                            "children": inner})
+    return out
+
+
 def _per_agent_children() -> list[dict]:
+    """Every agent prompt that lives in its own package.
+
+    Covers the nine 7-agent prompts AND agents that exist only in a
+    reduced topology (Conductor, Creator), whose file is
+    ``prompt_<N>agents.md`` — those have no plain ``prompt.md``, so
+    iterating a fixed list against that one name hid them completely.
+    """
     children: list[dict] = []
-    for agent_dir in _AGENT_DIRS:
-        p = REPO_ROOT / "agents" / agent_dir / "prompt.md"
-        if not p.exists():
+    agents_root = REPO_ROOT / "agents"
+    for d in sorted(agents_root.iterdir(), key=lambda p: p.name.lower()):
+        if not d.is_dir() or re.fullmatch(r"\d+agent", d.name):
             continue
-        children.append({
-            "kind":    "file",
-            "path":    _to_rel(p),
-            "display": agent_dir,
-            "used_by": [agent_dir],
-        })
+        for f in sorted(d.iterdir(), key=lambda p: p.name.lower()):
+            if f.is_file() and _PROMPT_FILE_RE.match(f.name):
+                children.append({
+                    "kind":    "file",
+                    "path":    _to_rel(f),
+                    "display": (d.name if f.name == "prompt.md"
+                                else f"{d.name}  ({f.stem.split(chr(95))[-1]})"),
+                    "used_by": [d.name],
+                })
     return children
 
 
@@ -377,15 +416,72 @@ _BRACE_RE = re.compile(
 
 
 def _known_slot_names() -> frozenset[str]:
-    """Slot names that ``Template.safe_substitute`` will resolve."""
-    return frozenset(set(FRAGMENT_TO_SLOT.values()) | {"database_search_per_agent"})
+    """Slot names that ``Template.safe_substitute`` will resolve.
+
+    Derived from the LIVE slot map rather than the ``FRAGMENT_TO_SLOT``
+    reverse index, because the two drift: the index only lists slots that
+    come from an editable file, so slots built from settings values
+    (``$embedding_*``) or from more than one file were reported as
+    "unknown" even though they resolve perfectly.  Both per-agent overlays
+    are added by hand — they are merged in by ``_build_template`` rather
+    than living in the slot map.
+    """
+    from agents.shared.prompts import _build_slots
+
+    return frozenset(_build_slots()) | {
+        "database_search_per_agent",
+        "blade_sections_visualizer_per_agent",
+    }
+
+
+# Roots whose ``.md`` files are spliced into prompts via ``$slot``.  Used by
+# rule (c) to decide whether a non-prompt file is a fragment.  READMEs sit in
+# these trees but are never spliced, so they are excluded.
+_FRAGMENT_ROOT_PREFIXES: tuple[str, ...] = (
+    "agents/shared/prompt_fragments/",
+    "DC_prompt_fragments/",
+)
+
+
+def _is_spliced_fragment(rel_path: str) -> bool:
+    """True when ``rel_path`` is a fragment whose text lands in a prompt."""
+    if not rel_path.endswith(".md"):
+        return False
+    if Path(rel_path).name.upper().startswith("README"):
+        return False
+    if any(rel_path.startswith(p) for p in _FRAGMENT_ROOT_PREFIXES):
+        return True
+    # A topology's overrides mirror those same roots under agents/<N>agent/.
+    parts = rel_path.split("/")
+    return (
+        len(parts) >= 4
+        and parts[0] == "agents"
+        and re.fullmatch(r"\d+agent", parts[1]) is not None
+        and parts[2] in ("prompt_fragments", "dc_config", "tools_config")
+    )
+
+
+# The three shapes an agent prompt can take.  The topology work added the
+# latter two, and the old ``len(parts) == 3 and parts[2] == "prompt.md"``
+# test matched neither — so rule (c) silently skipped every 5-agent prompt.
+#
+#   agents/<X>/prompt.md                         7-agent, and any survivor
+#   agents/<X>/prompt_<N>agents.md               agent existing ONLY in <N>
+#   agents/<N>agent/<X>/prompt_<N>agents.md      <N>'s copy of a survivor
+#
+# In all three the agent directory is the SECOND-TO-LAST path segment.
+_PROMPT_FILE_RE = re.compile(r"^prompt(?:_\d+agents)?\.md$")
 
 
 def _agent_for_prompt_md(rel_path: str) -> str | None:
-    """If ``rel_path`` is ``agents/<X>/prompt.md`` return X, else None."""
+    """Agent directory name if ``rel_path`` is an agent prompt, else None."""
     parts = rel_path.split("/")
-    if len(parts) == 3 and parts[0] == "agents" and parts[2] == "prompt.md":
-        return parts[1]
+    if (
+        len(parts) >= 3
+        and parts[0] == "agents"
+        and _PROMPT_FILE_RE.match(parts[-1])
+    ):
+        return parts[-2]
     return None
 
 
@@ -393,60 +489,99 @@ def validate_one(rel_path: str, content: str) -> list[dict]:
     """Run the 3 validation rules + the empty-file check on one file.
 
     Returns ``[{path, line, kind, detail}, ...]``.  Empty when clean.
+
+    READMEs are documentation ABOUT the fragment system and are never
+    spliced into a prompt, so rules (a) and (b) are skipped for them: they
+    deliberately contain example slot names (``$slot_name``) and prose
+    mentions of region markers, none of which can cause a runtime failure,
+    and reporting them buried the real findings under five permanent false
+    positives.  Rule (c) already skips them via ``_is_spliced_fragment``.
+    The empty-file check still applies — a blanked README is a real edit
+    accident whatever the file is for.
     """
     warnings: list[dict] = []
     lines = content.splitlines()
+    is_readme = Path(rel_path).name.upper().startswith("README")
 
     # Rule (a) — unknown $slot
-    known = _known_slot_names()
-    for i, line in enumerate(lines, start=1):
-        for m in _DOLLAR_SLOT_RE.finditer(line):
-            name = m.group(1)
-            if name not in known:
-                warnings.append({
-                    "path":   rel_path,
-                    "line":   i,
-                    "kind":   "unknown_slot",
-                    "detail": f"${name} — {_KNOWN_SLOTS_NOTE}",
-                })
+    if not is_readme:
+        known = _known_slot_names()
+        for i, line in enumerate(lines, start=1):
+            for m in _DOLLAR_SLOT_RE.finditer(line):
+                name = m.group(1)
+                if name not in known:
+                    warnings.append({
+                        "path":   rel_path,
+                        "line":   i,
+                        "kind":   "unknown_slot",
+                        "detail": f"${name} — {_KNOWN_SLOTS_NOTE}",
+                    })
 
     # Rule (b) — unbalanced <<…>> conditional markers
-    for open_, close_ in _MARKER_PAIRS:
-        n_open  = content.count(open_)
-        n_close = content.count(close_)
-        if n_open != n_close:
-            row = 1
-            for i, line in enumerate(lines, start=1):
-                if open_ in line or close_ in line:
-                    row = i
-                    break
-            warnings.append({
-                "path":   rel_path,
-                "line":   row,
-                "kind":   "unbalanced_marker",
-                "detail": (
-                    f"{open_} opens={n_open}, closes={n_close} "
-                    "— region marker mismatch will swallow content "
-                    "via the greedy regex."
-                ),
-            })
+    if not is_readme:
+        for open_, close_ in _MARKER_PAIRS:
+            n_open  = content.count(open_)
+            n_close = content.count(close_)
+            if n_open != n_close:
+                row = 1
+                for i, line in enumerate(lines, start=1):
+                    if open_ in line or close_ in line:
+                        row = i
+                        break
+                warnings.append({
+                    "path":   rel_path,
+                    "line":   row,
+                    "kind":   "unbalanced_marker",
+                    "detail": (
+                        f"{open_} opens={n_open}, closes={n_close} "
+                        "— region marker mismatch will swallow content "
+                        "via the greedy regex."
+                    ),
+                })
 
-    # Rule (c) — unescaped { in a prompt.md
+    # Rule (c) — unescaped { that runtime .format() would choke on.
+    #
+    # Applies to agent prompts AND to spliced fragments.  Fragments matter
+    # just as much: they are substituted INTO a prompt before that prompt is
+    # .format()ed, so a literal brace in a fragment reaches .format() exactly
+    # as if it had been typed in the prompt.  Rule (c) used to skip them
+    # entirely, which left the codebase's top recorded gotcha unguarded in
+    # the one place it is easiest to hit by accident (pasting JSON or code
+    # into a shared fragment).
+    #
+    # Fragments allow NO unescaped single brace at all.  None currently
+    # carries one, and a fragment can be spliced into several agents with
+    # different allow-lists, so "none" is both the status quo and the only
+    # rule that is correct for every consumer.  Warnings are advisory, so a
+    # deliberate exception can still be saved through.
     agent = _agent_for_prompt_md(rel_path)
-    if agent is not None:
-        allowed = PROMPT_MD_RUNTIME_SLOTS.get(agent, frozenset())
+    is_fragment = agent is None and _is_spliced_fragment(rel_path)
+    if agent is not None or is_fragment:
+        allowed = (
+            PROMPT_MD_RUNTIME_SLOTS.get(agent, frozenset())
+            if agent is not None else frozenset()
+        )
         for i, line in enumerate(lines, start=1):
             for m in _BRACE_RE.finditer(line):
                 name = m.group(1)
                 if name not in allowed:
-                    allow_list = ", ".join(sorted(allowed)) or "(none)"
+                    if agent is not None:
+                        where = (
+                            f"Allowed for {agent}: "
+                            f"{', '.join(sorted(allowed)) or '(none)'}."
+                        )
+                    else:
+                        where = (
+                            "Fragments take no runtime slots — this text is "
+                            "spliced into a prompt that is then .format()ed."
+                        )
                     warnings.append({
                         "path":   rel_path,
                         "line":   i,
                         "kind":   "brace_escape",
                         "detail": (
                             f"{{{name}}} — runtime .format() will raise "
-                            f"KeyError.  Allowed for {agent}: {allow_list}.  "
+                            f"KeyError.  {where}  "
                             "To embed a literal brace, double it: "
                             "`{{` / `}}`."
                         ),
