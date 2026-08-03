@@ -367,13 +367,47 @@ unrelated 400 never silently disables it, and it resets on process restart.
 > reads `_CACHE_KWARG_DISABLED` directly and FAILS on it; never re-derive
 > "it worked" from the absence of an exception.
 
-**One deliberate exclusion inside the Orchestrator.** Its feedback-dispatch
-call sends a freshly-built `[system] + [instruction]` list rather than the
-persistent `self.messages`. An automatic breakpoint there would key on content
-that changes every call — a pure cache WRITE premium no later request can ever
-match — so that site passes no kwarg. Its system prompt is still cached by the
-explicit marker. **The rule: only call sites whose message list persists across
-turns get the history breakpoint.**
+### Which call sites cache, and which deliberately do not
+
+**The rule: only call sites whose message list persists across turns get the
+history breakpoint.** Ten do — the 8-agent topology plus the 5-agent one
+(Conductor, Creator). Four are excluded on purpose:
+
+| Excluded | Why |
+|---|---|
+| **Database Handler** (5 sites) | Post-session, its own lifecycle; out of scope |
+| **Context Pruner** | Rare one-off summarisation, no persistent history |
+| **Orchestrator** feedback-dispatch | Sends a freshly-built `[system] + [instruction]` list |
+| **Conductor** feedback-dispatch | Same shape, same reason |
+
+For the two feedback-dispatch sites, `instruction` is rebuilt every call, so an
+automatic breakpoint there could only ever write an entry nothing can match — a
+pure cache WRITE premium with no offsetting read. Their system prompt is still
+cached by the explicit marker, which IS stable across those calls.
+
+### Reading the cost in the log
+
+Raw token counts stopped being a cost proxy the moment caching landed. Each
+`[TOKENS]` line therefore carries a `billed=` figure in **input-token
+equivalents** (`agents/shared/token_usage.py`):
+
+```
+billed = uncached + 0.1·cache_read + 1.25·write_5m + 2.0·write_1h
+```
+
+```
+[DCIC]  tokens  in=8,564  out=142  (cached 8,513 · wrote 49 5m)
+                billed=915 in-eq (saves 89%)
+```
+
+Equivalents rather than currency, so it stays valid across models with no price
+table to drift. Output tokens are billed separately and are NOT included.
+
+Two deliberate behaviours: a **cold call reports a write premium, not a saving**
+(`billed=10,575 in-eq (write premium +25%)` — caching only pays back from the
+second call), and **nothing is printed for providers that do not report cache
+fields**, since OpenAI caches automatically without saying so and a "saves 0%"
+there would be an assertion this module cannot support.
 
 **Verify with** `extra_utilities/smoke_test_prompt_cache.py` (live calls, prints
 the usage counters, checks the latch never tripped, and that a later call reads
@@ -437,7 +471,8 @@ right answer once a live A/B has measured it.
   targets would persist and a cost analysis would wrongly read "1h didn't help".
   The smoke test cannot detect this (two back-to-back calls hit under either
   ttl); only a deliberate >5 min gap would. **Verify before trusting a `1h` A/B.**
-- **⚠ The 5-agent and 3-agent systems do NOT have this** — TODO **F53**.
+- **⚠ The 3-agent (Architect) topology does NOT have this** — TODO **F53**. The
+  5-agent topology (Conductor + Creator) does, as of this change.
 - **Step 2 (not built):** the briefing anchor (marker ②). Only worth adding if
   measurement shows the post-strip / lookback misses matter; it is the one
   hand-placed marker and so the only place coercion risk returns.

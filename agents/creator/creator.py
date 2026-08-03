@@ -63,7 +63,10 @@ from agents.shared.file_utils import (
     flush_pending_image_blocks,
     strip_image_blocks_from_messages,
 )
-from agents.shared.llm_provider import make_system_message
+from agents.shared.llm_provider import (
+    history_cache_control,
+    make_system_message,
+)
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import (
@@ -238,6 +241,7 @@ class Creator(BaseChainAgent):
                 [make_system_message(self.system_prompt, self.provider)]
                 + self.messages,
                 "Creator",
+                cache_control=history_cache_control(self.provider),
             )
             self.messages.append(response)
 

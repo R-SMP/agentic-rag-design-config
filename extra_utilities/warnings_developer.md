@@ -1720,9 +1720,13 @@ provider, so the kwarg is omitted entirely and the request stays byte-identical 
 pre-caching shape. A Claude model served through **OpenRouter** runs as
 `provider == "openrouter"` and therefore gets **no caching at all** — expected, not a bug.
 
-**Scope gap.** Only the 8 in-session agents of the current topology pass the kwarg. The
-**5-agent and 3-agent systems do not** (TODO F53), and the **Database Handler is excluded
-on purpose**.
+**Scope gap.** The 8-agent topology and the 5-agent one (Conductor + Creator) pass the
+kwarg; the **3-agent topology does not** (TODO F53). Three call sites are excluded ON
+PURPOSE and must stay that way: the **Database Handler** (post-session), the **Context
+Pruner** (rare one-off summarisation), and each hub's **feedback-dispatch** call, which
+sends a freshly-built one-off message list so a breakpoint there could only ever write an
+entry nothing can match. The rule: **only call sites whose message list persists across
+turns get the history breakpoint.**
 
 **Status.** In force from 2026-08-04 (the conversation-history-caching change).
 See `extra_utilities/design_prompt_caching.md` and `workflow_settings/settings.py` §29.

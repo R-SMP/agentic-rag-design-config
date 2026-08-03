@@ -27,6 +27,34 @@ which is the worst kind of wrong number.
 ``unavailable``.  A fabricated token count is worse than a missing one:
 it would silently corrupt exactly the comparison this module exists to
 support.
+
+Prompt-cache cost
+-----------------
+Raw token counts stopped being a cost proxy once prompt caching landed:
+the same 8,500 input tokens cost wildly different amounts depending on
+whether they were read from cache (0.1x), written to it (1.25x at a
+5-minute ttl, 2x at an hour) or sent fresh (1x).  So each line also
+carries a ``billed=`` figure in **input-token equivalents** — 1.0
+equivalent being one full-price input token::
+
+    [DCIC]  tokens  in=8,564  out=142  (cached 8,513 · wrote 49 5m)
+                    billed=915 in-eq (saves 89%)
+
+The unit is deliberately equivalents rather than currency: it is
+model-agnostic, so it stays correct across Opus / Sonnet / Haiku and
+needs no price table to drift out of date.  Output tokens are billed
+separately and are NOT folded in.
+
+Two things it is careful about:
+
+* **A cold call shows a write PREMIUM, not a saving** — writing 8,435
+  tokens at 1.25x bills 10,575 equivalents against 8,466 raw.  That is
+  real, and caching only pays back from the second call on; the wording
+  says ``write premium +25%`` so it can never be read as a win.
+* **Silence on providers that do not report caching.**  OpenAI and
+  Google expose no cache fields, so no ``billed=`` is printed for them.
+  Printing "billed = in, saves 0%" would assert something this module
+  cannot see — OpenAI caches automatically and simply does not say so.
 """
 
 from __future__ import annotations
@@ -47,18 +75,20 @@ logger = logging.getLogger("propeller_agent")
 _LOCK = threading.RLock()
 
 # agent display name -> {"in": int, "out": int, "calls": int}
-_SESSION: dict[str, dict[str, int]] = {}
+_SESSION: dict[str, dict] = {}
 
 # The turn currently open, if any.
 _TURN_AGENT: str | None = None
-_TURN: dict[str, int] = {"in": 0, "out": 0, "calls": 0}
+_TURN: dict = {"in": 0, "out": 0, "calls": 0, "billed": 0.0, "cache_seen": 0}
 
 # Calls whose provider reported no usage at all, session-wide.
 _UNAVAILABLE = 0
 
 
-def _blank() -> dict[str, int]:
-    return {"in": 0, "out": 0, "calls": 0}
+def _blank() -> dict:
+    # ``billed`` is a float — input-token EQUIVALENTS after cache pricing
+    # (see billed_input).  Every other value is a raw count.
+    return {"in": 0, "out": 0, "calls": 0, "billed": 0.0, "cache_seen": 0}
 
 
 # ---------------------------------------------------------------------------
@@ -92,6 +122,24 @@ def _extract(response: Any) -> dict[str, int] | None:
             cached = detail_in.get("cache_read")
             if cached:
                 out["cached"] = int(cached)
+            # Cache WRITES, split by ttl so each can be priced correctly
+            # (a 5-minute write costs 1.25x base input, a 1-hour one 2x).
+            #
+            # ``cache_creation`` alone is NOT the write count: when
+            # Anthropic returns the per-ttl breakdown, langchain-anthropic
+            # moves the tokens into the two ``ephemeral_*`` keys and sets
+            # ``cache_creation`` to 0.  Reading only that key reports "no
+            # writes" on a call that plainly wrote — read all three.
+            w5 = int(detail_in.get("ephemeral_5m_input_tokens") or 0)
+            w1h = int(detail_in.get("ephemeral_1h_input_tokens") or 0)
+            if not (w5 or w1h):
+                # No per-ttl split reported.  5 minutes is the API default
+                # when no ttl is sent, so that is the right assumption.
+                w5 = int(detail_in.get("cache_creation") or 0)
+            if w5:
+                out["write_5m"] = w5
+            if w1h:
+                out["write_1h"] = w1h
         if isinstance(detail_out, dict):
             reasoning = detail_out.get("reasoning")
             if reasoning:
@@ -111,16 +159,86 @@ def _extract(response: Any) -> dict[str, int] | None:
     return None
 
 
-def _fmt(counts: dict[str, int]) -> str:
-    """``in=12,345  out=678  (cached 8,192 · reasoning 512)``"""
+# Anthropic prompt-cache multipliers, relative to the base input-token
+# price.  See extra_utilities/design_prompt_caching.md §4.
+_PRICE_CACHE_READ = 0.1
+_PRICE_WRITE_5M = 1.25
+_PRICE_WRITE_1H = 2.0
+
+
+def billed_input(counts: dict) -> float:
+    """Input cost of one call in *input-token equivalents*.
+
+    1.0 equivalent = one full-price input token, so the unit is
+    model-agnostic: it stays meaningful across Opus / Sonnet / Haiku and
+    needs no price table to maintain.  Compare it against the raw ``in``
+    count to see what caching saved.
+
+        billed = uncached + 0.1·read + 1.25·write_5m + 2.0·write_1h
+
+    ``in`` is the TOTAL input (langchain sums cached, written and fresh
+    tokens into it), so the uncached remainder is what is left after
+    subtracting the two cached kinds.
+    """
+    read = counts.get("cached", 0)
+    w5 = counts.get("write_5m", 0)
+    w1h = counts.get("write_1h", 0)
+    uncached = max(0, counts.get("in", 0) - read - w5 - w1h)
+    return (uncached
+            + _PRICE_CACHE_READ * read
+            + _PRICE_WRITE_5M * w5
+            + _PRICE_WRITE_1H * w1h)
+
+
+def _has_cache_activity(counts: dict) -> bool:
+    return bool(counts.get("cached") or counts.get("write_5m")
+                or counts.get("write_1h"))
+
+
+def _verdict(raw: int, billed: float) -> str:
+    """``saves 89%`` / ``write premium +25%`` / ``no change``.
+
+    Spelled out in words rather than a signed percentage on purpose: a
+    bare ``+89%`` reads as "89% MORE" when it means "89% LESS", and the
+    write-premium case (a cold call, where billed EXCEEDS raw because a
+    write costs 1.25-2x) would then look like a saving.  That is the one
+    misreading that would make this indicator worse than useless.
+    """
+    if not raw:
+        return "no input"
+    delta = (billed - raw) / raw * 100.0
+    if delta < -0.5:
+        return f"saves {-delta:.0f}%"
+    if delta > 0.5:
+        return f"write premium +{delta:.0f}%"
+    return "no change"
+
+
+def _fmt(counts: dict) -> str:
+    """``in=12,345  out=678  (cached 8,192 · wrote 49 5m)  billed=1,024 in-eq (-88%)``
+
+    The billed figure is shown ONLY when the provider actually reported
+    cache activity.  On OpenAI / Google there are no cache fields to read,
+    and printing "billed = in, saved 0%" there would assert something this
+    module cannot see — OpenAI caches automatically and simply does not
+    report it.  Silence is the honest output.
+    """
     line = f"in={counts['in']:,}  out={counts['out']:,}"
     extras = []
     if counts.get("cached"):
         extras.append(f"cached {counts['cached']:,}")
+    if counts.get("write_5m"):
+        extras.append(f"wrote {counts['write_5m']:,} 5m")
+    if counts.get("write_1h"):
+        extras.append(f"wrote {counts['write_1h']:,} 1h")
     if counts.get("reasoning"):
         extras.append(f"reasoning {counts['reasoning']:,}")
     if extras:
         line += "  (" + " · ".join(extras) + ")"
+    if _has_cache_activity(counts):
+        billed = billed_input(counts)
+        raw = counts.get("in", 0)
+        line += f"  billed={billed:,.0f} in-eq ({_verdict(raw, billed)})"
     return line
 
 
@@ -154,27 +272,50 @@ def record(agent_name: str, response: Any) -> None:
 
         logger.info(f"[{agent_name}]  tokens  {_fmt(counts)}")
 
+        billed = billed_input(counts)
+        seen = 1 if _has_cache_activity(counts) else 0
+
         if _TURN_AGENT == agent_name:
             _TURN["in"] += counts["in"]
             _TURN["out"] += counts["out"]
             _TURN["calls"] += 1
+            _TURN["billed"] = _TURN.get("billed", 0.0) + billed
+            _TURN["cache_seen"] = _TURN.get("cache_seen", 0) + seen
 
         agg = _SESSION.setdefault(agent_name, _blank())
         agg["in"] += counts["in"]
         agg["out"] += counts["out"]
         agg["calls"] += 1
+        agg["billed"] += billed
+        agg["cache_seen"] += seen
 
 
 def _flush_turn_locked() -> None:
     """Emit the open turn's total.  Caller must hold ``_LOCK``."""
     global _TURN_AGENT
     if _TURN_AGENT is not None and _TURN["calls"]:
-        logger.info(
+        line = (
             f"[{_TURN_AGENT}]  turn total  "
             f"in={_TURN['in']:,}  out={_TURN['out']:,}  "
             f"· {_TURN['calls']} call{'s' if _TURN['calls'] != 1 else ''}"
         )
+        line += _billed_suffix(_TURN)
+        logger.info(line)
     _TURN_AGENT = None
+
+
+def _billed_suffix(agg: dict) -> str:
+    """``  billed=9,412 in-eq (-72%)`` — empty when no cache was observed.
+
+    Suppressed unless at least one call in the aggregate actually reported
+    cache activity, so a provider that does not report caching never gets
+    a misleading "0% saved" attached to its totals.
+    """
+    if not agg.get("cache_seen"):
+        return ""
+    billed = agg.get("billed", 0.0)
+    raw = agg.get("in", 0)
+    return f"  billed={billed:,.0f} in-eq ({_verdict(raw, billed)})"
 
 
 def log_session_totals() -> None:
@@ -189,13 +330,19 @@ def log_session_totals() -> None:
             logger.info("[TOKENS] session total  no LLM calls recorded")
             return
 
-        total_in = sum(a["in"] for a in _SESSION.values())
-        total_out = sum(a["out"] for a in _SESSION.values())
-        total_calls = sum(a["calls"] for a in _SESSION.values())
+        grand = {
+            "in": sum(a["in"] for a in _SESSION.values()),
+            "out": sum(a["out"] for a in _SESSION.values()),
+            "calls": sum(a["calls"] for a in _SESSION.values()),
+            "billed": sum(a.get("billed", 0.0) for a in _SESSION.values()),
+            "cache_seen": sum(a.get("cache_seen", 0) for a in _SESSION.values()),
+        }
 
         logger.info(
-            f"[TOKENS] session total  in={total_in:,}  out={total_out:,}  "
-            f"· {total_calls} call{'s' if total_calls != 1 else ''}"
+            f"[TOKENS] session total  in={grand['in']:,}  "
+            f"out={grand['out']:,}  "
+            f"· {grand['calls']} call{'s' if grand['calls'] != 1 else ''}"
+            + _billed_suffix(grand)
         )
         # Heaviest first — the interesting end of the list.
         for name, agg in sorted(
@@ -205,6 +352,13 @@ def log_session_totals() -> None:
                 f"[TOKENS]   {name:<22} in={agg['in']:,}  "
                 f"out={agg['out']:,}  · {agg['calls']} "
                 f"call{'s' if agg['calls'] != 1 else ''}"
+                + _billed_suffix(agg)
+            )
+        if grand["cache_seen"]:
+            logger.info(
+                "[TOKENS]   billed = input-token EQUIVALENTS after prompt-cache "
+                "pricing (read 0.1x, write 1.25x/5m or 2x/1h); output tokens "
+                "are billed separately and are NOT in that figure."
             )
         if _UNAVAILABLE:
             logger.info(
@@ -224,7 +378,7 @@ def reset() -> None:
         _UNAVAILABLE = 0
 
 
-def session_totals() -> dict[str, dict[str, int]]:
+def session_totals() -> dict[str, dict]:
     """Snapshot of the per-agent totals, for callers that want the
     numbers rather than the log lines (e.g. a benchmark harness)."""
     with _LOCK:

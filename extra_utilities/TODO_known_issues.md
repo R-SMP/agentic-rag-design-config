@@ -3265,11 +3265,11 @@ classify + retry + pause + circuit-breaker), `agents/dispatch.py` (surface the e
 
 ---
 
-### F53. Prompt caching: port conversation-history caching to the 5-agent and 3-agent systems
+### F53. Prompt caching: port conversation-history caching to the 3-agent system
 
-**Status.** NOT STARTED for the reduced-agent systems. The 8-agent (7-agent chain +
-Receptionist) in-session system HAS it as of the prompt-caching change; the **5-agent and
-3-agent topologies do NOT**. Whoever builds or next touches those topologies must port it,
+**Status.** PARTLY DONE. The 8-agent system and the **5-agent topology (Conductor +
+Creator) now have it**; the **3-agent (Architect) topology does not** — it is not built
+yet, so this is a reminder to wire it in at build time rather than retrofit it. Whoever builds or next touches those topologies must port it,
 or they will silently run at full input-token price while the 8-agent system runs at ~0.1x
 on its cached prefix — which would also make any Test-2 (agent-count) cost comparison
 meaningless, since the configurations would differ in caching as well as in agent count.
