@@ -95,6 +95,23 @@ def _blank() -> dict:
 # Reading usage off a provider response
 # ---------------------------------------------------------------------------
 
+def _configured_ttl() -> str:
+    """The ttl this run asked for — ``"5m"`` or ``"1h"``.
+
+    Read at call time (not import time) so a Workflow-Settings change is
+    picked up on the next session, matching how llm_provider reads it.
+    Only consulted when the provider does NOT report the per-ttl split;
+    when it does, the reported buckets win, because what was actually
+    written beats what was requested.
+    """
+    try:
+        from workflow_settings import settings as _s
+        ttl = str(getattr(_s, "PROMPT_CACHE_TTL", "5m")).strip()
+        return ttl if ttl in ("5m", "1h") else "5m"
+    except Exception:
+        return "5m"
+
+
 def _extract(response: Any) -> dict[str, int] | None:
     """Pull token counts off an ``AIMessage``-like response.
 
@@ -133,9 +150,18 @@ def _extract(response: Any) -> dict[str, int] | None:
             w5 = int(detail_in.get("ephemeral_5m_input_tokens") or 0)
             w1h = int(detail_in.get("ephemeral_1h_input_tokens") or 0)
             if not (w5 or w1h):
-                # No per-ttl split reported.  5 minutes is the API default
-                # when no ttl is sent, so that is the right assumption.
-                w5 = int(detail_in.get("cache_creation") or 0)
+                generic = int(detail_in.get("cache_creation") or 0)
+                if generic:
+                    # No per-ttl split reported.  Attribute by the ttl THIS
+                    # run asked for rather than assuming the 5-minute
+                    # default: pricing a 1-hour write at the 5m rate
+                    # under-states it by 37.5% and would OVERSTATE the
+                    # saving — the one direction of error that matters for
+                    # a number used to justify the feature.
+                    if _configured_ttl() == "1h":
+                        w1h = generic
+                    else:
+                        w5 = generic
             if w5:
                 out["write_5m"] = w5
             if w1h:
