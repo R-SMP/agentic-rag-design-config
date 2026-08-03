@@ -428,7 +428,42 @@ without (1) loses it entirely.
 
 ---
 
-## 🔶 OPEN — the LIVE 7-agent flow never emits the UII's two path lines
+## ✅ CLOSED (`fa5e2f5`) — the LIVE 7-agent flow never emitted the UII's paths
+
+Fixed by a prompt edit to the Orchestrator ALONE — not the three-part change
+proposed below.  No runtime slots and no `orchestrator.py` change were
+needed, because the Orchestrator already receives `Input file directory:` in
+the dispatch kickoff: it relays that verbatim and names the extraction file
+inside the same directory.  Nothing is baked in at construction, so it stays
+correct if `inputs_dir` ever becomes per-session.
+
+Placed OUTSIDE any `<<PF>>` marker: `routing_orchestrator.md:9` lists
+`call_user_input_inspector` ungated and `orchestrator.py:438` binds it
+unconditionally, so gating would have recreated the same hole under the
+other flag setting.
+
+**Two corrections to the analysis below, from the full path-flow trace:**
+
+1. *"nobody sends the line"* was too strong.  The dispatcher DOES supply the
+   input **directory** to the hub (`dispatch.py:303`); only the extraction
+   **filename** was never stated.  Everything downstream was already correct
+   — the extraction path flows FORWARD from the UII via its own
+   `Extracted inputs file:` line, consumed by the Planner, DCIC, DCII and
+   Creator.  The Planner and Conductor needed nothing.
+2. An earlier attempt also injected the path at two runtime points (the
+   dispatch kickoff and the Receptionist's own message).  Reverted as
+   over-reach: it put an unexplained line into the 7-agent Receptionist's
+   context, which never calls the UII.
+
+Guarded by the suite's UII-PATHS check (whoever KICKS OFF the UII must emit
+both labels; CLARIFY-back agents are exempt, since agents are stateful
+within a session and the UII still holds the original hand-off).
+
+Original analysis kept below.
+
+---
+
+## 🔶 (was) OPEN — the LIVE 7-agent flow never emits the UII's two path lines
 
 **Not a 5-agent problem.**  Surfaced while wiring the Receptionist's runtime
 slots (2026-08-03) and deliberately left alone: it changes live, deployed,
