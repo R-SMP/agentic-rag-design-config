@@ -428,6 +428,48 @@ without (1) loses it entirely.
 
 ---
 
+## 🔶 OPEN — the LIVE 7-agent flow never emits the UII's two path lines
+
+**Not a 5-agent problem.**  Surfaced while wiring the Receptionist's runtime
+slots (2026-08-03) and deliberately left alone: it changes live, deployed,
+working behaviour and deserves its own review.
+
+### The finding, code-conclusive
+The UII reads and writes files ONLY via paths given in its incoming hand-off
+— `user_input_inspector.py:317` returns *"Error: no directory path
+provided"* otherwise — and its prompt says so ("persist your extraction to
+the ``Extraction output file:``").  But:
+
+* the ONLY place those two labels are emitted is
+  `agents/planner/prompt.md:38-39`;
+* that block sits inside `<<PF_ON>>` (opened line 33, closed line 43);
+* `PLANNER_FIRST` is `False` in `settings.py:270` — the live default — so
+  the block is STRIPPED at assembly.
+
+Verified by assembling all four candidate prompts under topology 7: the
+string `Extraction output file:` survives in the **UII's** prompt only, and
+the UII is the CONSUMER, not the emitter.  Nobody sends the line.
+
+Real runs (ID228 / ID229) succeed, so the UII must be INFERRING the
+conventional paths and happening to be right.  That is a latent fragility,
+not a design: it breaks the moment a path convention changes, a session uses
+a namespaced inputs dir, or a weaker model guesses differently.
+
+### Why it is NOT fixed by the Receptionist change
+In the 5-agent flow the Receptionist hands off to the UII, so giving it the
+two slots closes the hole there.  In the 7-agent flow the UII's entry point
+is the **Orchestrator**, a different agent — so the fix needs an Orchestrator
+prompt edit, an entry in `PROMPT_MD_RUNTIME_SLOTS["orchestrator"]` (today
+only `chain_access_block`), and a `.format()` change in `orchestrator.py`.
+
+### Proposed fix when it is taken up
+Add the two lines to the Orchestrator's FORWARD-to-UII hand-off, mirroring
+`agents/5agent/receptionist/prompt_5agents.md:110-111`, and note that
+`orchestrator.py` already imports what it needs.  Cost is two lines per UII
+hand-off; benefit is that the path stops being a guess.
+
+---
+
 ## 🔶 OPEN — the eager `*_TEMPLATE` block in `prompts.py` (raised 2026-08-02)
 
 **Status:** deliberately NOT touched during the topology-resolution step, to

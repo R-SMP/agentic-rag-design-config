@@ -113,6 +113,15 @@ ROUTING_FRAGMENTS_BY_TOPOLOGY = {
 # is self-referential.
 HUB_BY_TOPOLOGY = {7: "orchestrator", 5: "conductor"}
 
+# The Database Handler is the ONLY agent whose assembled template is never
+# passed through ``str.format()`` — ``database_handler.py`` builds it with
+# ``_build_template`` alone.  Literal braces in its prompt are therefore
+# harmless, and it deliberately carries a JSON example.  Every other agent
+# IS formatted at construction, so a stray brace there is fatal at startup.
+# The Receptionist joined the formatted set when it gained its two path
+# slots; before that it was the second exception.
+NEVER_FORMATTED = frozenset({"database_handler"})
+
 # Routing-tool names unique to each topology's hub fragment.  Used to prove
 # $routing_hub resolved to the RIGHT file, not merely to some file: the
 # 7-agent hub can call the Planner, the 5-agent hub can call the Creator,
@@ -280,6 +289,26 @@ def check_case(topo: int, planner_first: bool) -> None:
             if other_slot in text:
                 fail(case, "HUB-SLOT",
                      f"{who} still references the retired {other_slot}")
+
+    # --- FORMAT: every assembled prompt must survive str.format() ---------
+    # The codebase's top recorded gotcha: agent prompts are .format()ed at
+    # construction, so ONE literal { or } anywhere in a prompt or in any of
+    # the ~40 fragments spliced into it raises KeyError/ValueError and takes
+    # the whole pipeline down at startup.  Feeding each template exactly the
+    # slots it declares reproduces what the agent does for real.
+    for agent in AGENTS_BY_TOPOLOGY[topo]:
+        if agent in NEVER_FORMATTED:
+            continue
+        declared = prompts.PROMPT_MD_RUNTIME_SLOTS.get(agent, frozenset())
+        kwargs = {k: f"<{k}>" for k in declared}
+        try:
+            built[agent].format(**kwargs)
+        except Exception as exc:  # noqa: BLE001
+            fail(case, "FORMAT",
+                 f"{agent}: assembled prompt fails .format() with its own "
+                 f"declared slots ({sorted(declared) or 'none'}) — "
+                 f"{type(exc).__name__}: {exc}.  A literal brace needs "
+                 f"doubling to {{{{ / }}}}.")
 
     # --- CHAIN_ONLY: the hub must not keep chain-link rules ---------------
     marker = "FORWARD to your natural"

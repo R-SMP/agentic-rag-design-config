@@ -46,7 +46,7 @@ from agents.shared.user_inputs_tool import (
     dispatch_user_inputs_tool,
     read_input_text,
 )
-from config import ATTEMPTS_DIR
+from config import ATTEMPTS_DIR, USER_INPUTS_DIR
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
 from tools.calculate.calculate import calculate
@@ -86,7 +86,19 @@ class Receptionist(BaseChainAgent):
         # Built fresh at construction time so live edits to .md
         # fragments via the System Prompts UI take effect on the
         # NEXT session without a Python restart.
-        self.system_prompt: str = _build_template("receptionist")
+        #
+        # The two path slots are consumed only by the 5-agent prompt,
+        # where the Receptionist hands off directly to the UII and the
+        # UII's tools refuse to run without explicit paths.  The 7-agent
+        # prompt references neither, so ``.format()`` is a no-op there —
+        # but it is still called, because the alternative is a topology
+        # branch here for no behavioural gain.  Mirrors planner.py.
+        self.system_prompt: str = _build_template("receptionist").format(
+            user_inputs_dir=str(USER_INPUTS_DIR.resolve()),
+            extraction_output_file=str(
+                (USER_INPUTS_DIR / "extracted_inputs.txt").resolve()
+            ),
+        )
         self._tools_by_name: dict = {}
         # Receptionist resets cycle_start_ts at the start of every
         # validate_input call.  When restoring from a fresh AgentState

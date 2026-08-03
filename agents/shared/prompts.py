@@ -582,7 +582,14 @@ FRAGMENT_TO_SLOT: dict[str, str] = {
 # If you add a new format kwarg in an agent's ``__init__``, ADD the
 # same name to this set in the same commit.
 PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
-    "receptionist":         frozenset(),
+    # The 5-agent Receptionist forwards straight to the UII, whose tools
+    # refuse to run without explicit paths ("Error: no directory path
+    # provided"), so it must state them in the hand-off.  Its 7-agent
+    # prompt references neither slot — there the Orchestrator is the UII's
+    # entry point — so ``.format()`` is a no-op in that topology.
+    "receptionist":         frozenset({
+        "user_inputs_dir", "extraction_output_file",
+    }),
     "orchestrator":         frozenset({"chain_access_block"}),
     "planner":              frozenset({
         "routing_instructions", "user_inputs_dir",
