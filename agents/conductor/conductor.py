@@ -104,6 +104,16 @@ from agents.orchestrator.orchestrator import (
     _truncate,
 )
 
+# The two read tools the Conductor inherits from the Planner half of its
+# merge.  Both are SELF-CONTAINED — they do their own file I/O rather than
+# being stubs backed by a handler — so binding them is all that is
+# required; there is no dispatch code to port.  Imported for the same
+# reason as the helpers above: a second copy would drift.
+from agents.planner.planner import (
+    read_extracted_inputs,
+    read_user_queries,
+)
+
 logger = logging.getLogger("propeller_agent")
 
 
@@ -337,6 +347,16 @@ class Conductor(BaseChainAgent):
             calculate,
             list_attempts,
             read_attempt,
+            # Role 1 (read the extraction, THEN plan) is the Conductor's
+            # first act on a design turn, and its prompt has always told
+            # it to use these two — but they were never bound.  Live
+            # consequence: it called read_attempt on a file that is not in
+            # an attempt folder ("Error: no attempts created yet"), then
+            # routed to the Tool Caller purely to have the file read back
+            # to it, costing two hops and a misuse of read_parameters on
+            # every design turn.
+            read_extracted_inputs,
+            read_user_queries,
         ]
         if database_access.is_enabled_for(self.AGENT_KEY):
             cond_tools.append(make_database_search_tool(self.AGENT_KEY))

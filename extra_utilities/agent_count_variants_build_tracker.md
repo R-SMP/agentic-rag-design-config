@@ -301,9 +301,21 @@ The disposition table + chunk-4 plan below remain as the build record.
   handling into them too: UII marker convention + UI-pin-softening; Creator
   not-locked/start-near + self-validate-no-violation (the DCII half); DCOI
   "not a claim to enforce".
-- **`read_extracted_inputs` tool:** the Conductor reads the extraction
-  (Role 1) → it needs this Planner tool. Confirm in wiring/routing (stage
-  2/4).
+- ✅ **`read_extracted_inputs` tool — DONE.** The Conductor reads the
+  extraction (Role 1) → it needed this Planner tool. It was NOT bound, and
+  the first live 5-agent run (ID237) showed the cost: the Conductor's prompt
+  told it to read the extraction, it had no such tool, so it called
+  `read_attempt` on a file that is not in an attempt folder (`Error: no
+  attempts created yet`) and then routed to the Tool Caller purely to have
+  the file read back to it — two wasted hops and a misuse of
+  `read_parameters` on a non-parameters file, every design turn.
+  `read_user_queries` was missing for the same reason and is bound too.
+  Both are self-contained (their own file I/O, no handler), so binding was
+  the whole fix; the prompt already documented both, including a full
+  `## Utility tool: read_user_queries(...)` section.
+  **Lesson:** a prompt can promise a tool the code never binds, and nothing
+  in the test suite can see it. Whenever a merged prompt names a tool,
+  check the class actually binds it.
 - **APPROVE ↔ Name-attempt-format:** the Conductor's APPROVE hand-off to
   the Receptionist must itself carry the full "Name the attempt folder(s)"
   format (every attempt's number + absolute path + the `Show to user:`
