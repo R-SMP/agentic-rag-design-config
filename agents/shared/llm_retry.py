@@ -101,9 +101,50 @@ def _read_retry_after(exc: BaseException) -> float | None:
 
 
 # ---------------------------------------------------------------------------
+# cache_control fail-open latch
+# ---------------------------------------------------------------------------
+# The prompt-cache kwarg rides on a third-party passthrough
+# (``langchain-anthropic`` is floored at >=0.3.0 with no ceiling) and on a
+# recent Anthropic request parameter.  If the installed binding or the API
+# rejects it, EVERY in-session Anthropic turn would die — and the feature
+# ships enabled by default.  So a rejection that names ``cache_control`` is
+# caught once, latched process-wide, and the call is immediately retried
+# WITHOUT the kwarg: caching degrades to off instead of taking the session
+# down with it.  The latch resets on process restart (i.e. a redeploy).
+_CACHE_KWARG_DISABLED = False
+
+
+def _is_cache_control_rejection(exc: BaseException) -> bool:
+    """True when *exc* is specifically a complaint about ``cache_control``.
+
+    Deliberately narrow — it must NAME the kwarg — so an unrelated 400 never
+    silently switches caching off.  Covers both failure shapes: a binding
+    that does not accept the kwarg (``TypeError``) and an API that rejects
+    the parameter (``BadRequestError`` / 400), including the mismatched-ttl
+    400 documented in warnings_developer.md W40.
+    """
+    if "cache_control" not in str(exc).lower():
+        return False
+    name = type(exc).__name__
+    return name in (
+        "TypeError",
+        "BadRequestError",
+        "UnprocessableEntityError",
+        "APIStatusError",
+        "InvalidRequestError",
+    ) or "400" in str(exc)
+
+
+# ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
-def invoke_with_retry(llm: Any, messages: list, agent_name: str) -> Any:
+def invoke_with_retry(
+    llm: Any,
+    messages: list,
+    agent_name: str,
+    *,
+    cache_control: "dict | None" = None,
+) -> Any:
     """Call ``llm.invoke(messages)`` with retry on rate-limit / connection
     errors, logging every retry decision under the calling agent's name.
 
@@ -115,6 +156,15 @@ def invoke_with_retry(llm: Any, messages: list, agent_name: str) -> Any:
     messages
         The full message list to pass to ``invoke``.  Constructed by
         the caller exactly as before — this helper does not modify it.
+    cache_control
+        Optional Anthropic prompt-caching payload, forwarded verbatim as
+        a kwarg to ``llm.invoke``.  Pure plumbing: this helper holds NO
+        policy about which agents cache — each call site decides, so
+        "who caches" stays greppable and the post-session Database
+        Handler is excluded simply by not passing it.  ``None`` (the
+        default) omits the kwarg entirely, leaving the request
+        byte-identical to the pre-caching shape.  Build the value with
+        ``llm_provider.history_cache_control(provider)``.
     agent_name
         Short display label for the agent (e.g. ``"Planner"``,
         ``"DCIC"``).  Appears in retry log lines.
@@ -124,10 +174,16 @@ def invoke_with_retry(llm: Any, messages: list, agent_name: str) -> Any:
     The provider's response object (``AIMessage``-like).  Identical
     return value to ``llm.invoke(messages)`` on success.
     """
+    # Omit the kwarg entirely when unset so non-Anthropic providers (and
+    # scope="off") see exactly the pre-caching call shape.  The latch means
+    # one rejection anywhere disables it for the rest of the process.
+    if _CACHE_KWARG_DISABLED:
+        cache_control = None
+    invoke_kwargs = {} if cache_control is None else {"cache_control": cache_control}
     last_exc: BaseException | None = None
     for attempt in range(1, MAX_ATTEMPTS + 1):
         try:
-            response = llm.invoke(messages)
+            response = llm.invoke(messages, **invoke_kwargs)
             # Every LLM call in the system passes through here, so this
             # is the one place token usage has to be read.  Never allowed
             # to break a live call: accounting is observability, not
@@ -141,6 +197,39 @@ def invoke_with_retry(llm: Any, messages: list, agent_name: str) -> Any:
                 )
             return response
         except Exception as exc:
+            # Fail OPEN on a cache_control rejection: drop the kwarg and
+            # retry the same call rather than killing the turn.  Does not
+            # consume the rate-limit/connection back-off budget meaningfully
+            # (no sleep) and only ever happens once per process.
+            if invoke_kwargs and _is_cache_control_rejection(exc):
+                globals()["_CACHE_KWARG_DISABLED"] = True
+                invoke_kwargs = {}
+                logger.warning(
+                    f"[{agent_name}]  prompt-cache kwarg rejected "
+                    f"({type(exc).__name__}: {str(exc)[:160]}); disabling "
+                    f"prompt caching for this process and retrying without it"
+                )
+                if attempt == MAX_ATTEMPTS:
+                    # Last iteration: a bare ``continue`` would leave the loop
+                    # and re-raise whatever stale exception an earlier attempt
+                    # left in ``last_exc`` (or trip the assert when there is
+                    # none) — i.e. fail CLOSED on the one path that exists to
+                    # fail open.  Retry in place instead; any exception from
+                    # this call is a genuine failure and propagates as itself.
+                    response = llm.invoke(messages)
+                    # Account for it too — this is a real LLM call, and
+                    # skipping it here would silently under-report usage on
+                    # exactly the path that is already misbehaving.
+                    try:
+                        token_usage.record(agent_name, response)
+                    except Exception:
+                        logger.warning(
+                            f"[{agent_name}]  token accounting failed; "
+                            f"continuing",
+                            exc_info=True,
+                        )
+                    return response
+                continue
             if _is_rate_limit(exc):
                 last_exc = exc
                 if attempt == MAX_ATTEMPTS:

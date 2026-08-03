@@ -30,7 +30,10 @@ from agents.shared.file_utils import (
     load_user_inputs_bundle,
     strip_image_blocks_from_messages,
 )
-from agents.shared.llm_provider import make_system_message
+from agents.shared.llm_provider import (
+    history_cache_control,
+    make_system_message,
+)
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import _build_template
@@ -163,6 +166,7 @@ class Receptionist(BaseChainAgent):
                 [make_system_message(self.system_prompt, self.provider)]
                 + self.messages,
                 "Receptionist",
+                cache_control=history_cache_control(self.provider),
             )
             self.messages.append(response)
 

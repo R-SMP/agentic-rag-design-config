@@ -47,6 +47,12 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
     # T17 in the architecture doc — add their values here when
     # those branches land.
     "STITCHING_PROVIDER": ["OpenAI"],
+    # Prompt caching (Anthropic only).  Scope = WHAT gets a cache
+    # breakpoint; TTL = how long entries live.  Kept as two settings
+    # because a system-only cache still has a lifetime.  See
+    # workflow_settings/settings.py §29.
+    "PROMPT_CACHE_SCOPE": ["off", "system", "system+history"],
+    "PROMPT_CACHE_TTL": ["5m", "1h"],
 }
 
 # Derived from the environment via os.getenv — show read-only, mask

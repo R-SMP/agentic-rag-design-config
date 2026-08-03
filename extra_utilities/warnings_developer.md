@@ -1698,3 +1698,45 @@ emitter.  See architecture doc §4.11 + §9.15; the read-routing TODO is
 F39.
 
 **Status.** In force from 2026-06-16 (the read-routing build).
+
+---
+
+## W40. Prompt-cache breakpoints: one ttl feeds both, and the reduced-agent systems lack them
+
+**Two Anthropic cache breakpoints are emitted per in-session request**: an EXPLICIT one on
+the system prompt (`make_system_message`) and Anthropic's TOP-LEVEL automatic one (the
+`cache_control` kwarg forwarded by `invoke_with_retry`). They are documented as compatible
+and together consume 2 of the 4 available breakpoint slots.
+
+**The trap.** Anthropic returns a **400** when the automatic breakpoint lands on a block
+that already carries an explicit `cache_control` with a **different** ttl. Both markers are
+therefore built from the single `PROMPT_CACHE_TTL` setting, via
+`llm_provider.system_cache_control()` / `history_cache_control()`. **Never hand-write a
+`cache_control` dict at a call site** — route it through those helpers, or a future edit can
+reintroduce a ttl mismatch that only fails at runtime, on Anthropic, in production.
+
+**Also:** `cache_control` is Anthropic-only. Both helpers return `None` for every other
+provider, so the kwarg is omitted entirely and the request stays byte-identical to the
+pre-caching shape. A Claude model served through **OpenRouter** runs as
+`provider == "openrouter"` and therefore gets **no caching at all** — expected, not a bug.
+
+**Scope gap.** Only the 8 in-session agents of the current topology pass the kwarg. The
+**5-agent and 3-agent systems do not** (TODO F53), and the **Database Handler is excluded
+on purpose**.
+
+**Status.** In force from 2026-08-04 (the conversation-history-caching change).
+See `extra_utilities/design_prompt_caching.md` and `workflow_settings/settings.py` §29.
+
+**Unverified assumption (2026-08-04).** Whether the **top-level** `cache_control`
+request parameter honours a `ttl` field is NOT confirmed — every documented example
+of the top-level form is the bare `{"type": "ephemeral"}`, and `ttl` is documented
+on *block-level* markers. If it is ignored, choosing `PROMPT_CACHE_TTL="1h"` yields
+a 1-hour system anchor and a 5-minute history breakpoint. Verify with a deliberate
+>5 minute gap before drawing conclusions from a `1h` A/B; the smoke test cannot
+detect it (back-to-back calls hit under either ttl).
+
+**Fail-open.** `invoke_with_retry` catches a rejection that NAMES `cache_control`,
+latches `_CACHE_KWARG_DISABLED` process-wide, and retries without the kwarg — so a
+binding/API that rejects it degrades caching to off instead of killing every
+in-session Anthropic turn. If caching mysteriously stops, grep the session log for
+"prompt-cache kwarg rejected".

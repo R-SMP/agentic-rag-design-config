@@ -428,6 +428,76 @@ def encode_image_bytes(raw: bytes, degree_pct=None, is_render: bool = False,
     ).decode()
 
 
+# ----------------------------------------------------------------------
+# Prompt caching (Anthropic only) — see workflow_settings/settings.py §29
+# and extra_utilities/design_prompt_caching.md
+# ----------------------------------------------------------------------
+# Both breakpoints are built from ONE ttl value here.  Anthropic returns
+# a 400 when the automatic breakpoint lands on a block that already
+# carries an explicit ``cache_control`` with a DIFFERENT ttl, so routing
+# every marker through this module makes that divergence impossible
+# rather than merely unlikely.
+
+_CACHE_SCOPES = ("off", "system", "system+history")
+
+
+def _cache_settings() -> "tuple[str, str]":
+    """Live (scope, ttl), read off the already-imported settings module.
+
+    Read at call time (not import time) so a Workflow-Settings save that
+    triggers ``web_app._build_session``'s reload is picked up on the next
+    session build, matching how every other live setting behaves here.
+    Unrecognised values fall back to the safe defaults rather than raise.
+    """
+    scope = str(getattr(_workflow_settings, "PROMPT_CACHE_SCOPE", "system")).strip()
+    if scope not in _CACHE_SCOPES:
+        scope = "system"
+    ttl = str(getattr(_workflow_settings, "PROMPT_CACHE_TTL", "5m")).strip()
+    if ttl not in ("5m", "1h"):
+        ttl = "5m"
+    return scope, ttl
+
+
+def _cache_control_dict(ttl: str) -> dict:
+    """``cache_control`` payload for *ttl*.  5m is the API default and is
+    expressed by OMITTING the field — do not send ``"ttl": "5m"``."""
+    return {"type": "ephemeral"} if ttl == "5m" else {"type": "ephemeral", "ttl": ttl}
+
+
+def system_cache_control(provider: str) -> "dict | None":
+    """Marker for the EXPLICIT breakpoint on an agent's system prompt.
+
+    Returns ``None`` when caching is off or the provider is not Anthropic
+    (no other provider accepts the field).
+    """
+    if provider != "anthropic":
+        return None
+    scope, ttl = _cache_settings()
+    if scope == "off":
+        return None
+    return _cache_control_dict(ttl)
+
+
+def history_cache_control(provider: str) -> "dict | None":
+    """Value for the TOP-LEVEL ``cache_control`` request parameter — the
+    AUTOMATIC breakpoint that advances with the growing conversation.
+
+    Returned only for scope ``"system+history"``; ``None`` otherwise, so
+    the kwarg is simply not passed and the request is byte-identical to
+    the pre-caching shape.  ``ChatAnthropic._llm_type == "anthropic-chat"``
+    means ``langchain_anthropic`` leaves this in ``kwargs`` and it reaches
+    the Messages API as the top-level parameter; the API then places the
+    breakpoint on the last cacheable block itself, so nothing here has to
+    rewrite message content (and nothing can drift between calls).
+    """
+    if provider != "anthropic":
+        return None
+    scope, ttl = _cache_settings()
+    if scope != "system+history":
+        return None
+    return _cache_control_dict(ttl)
+
+
 def make_system_message(prompt: str, provider: str) -> SystemMessage:
     """Build a provider-appropriate ``SystemMessage`` for the agent's prompt.
 
@@ -443,9 +513,12 @@ def make_system_message(prompt: str, provider: str) -> SystemMessage:
     significantly inflates cost on OpenAI as well.
 
     For Anthropic the prompt is wrapped in a single text content block
-    tagged with ``{"type": "ephemeral"}`` cache control.  ``langchain_
-    anthropic`` forwards the typed-dict content list to the Anthropic
-    API verbatim, preserving the cache marker.
+    tagged with a ``cache_control`` marker whose ttl comes from
+    ``PROMPT_CACHE_TTL``.  ``langchain_anthropic`` preserves the field
+    (``_format_text_block`` keeps ``cache_control`` in its allow-list),
+    so the marker reaches the API intact.  When ``PROMPT_CACHE_SCOPE``
+    is ``"off"`` no marker is emitted and the plain-string form is used
+    instead, which is what makes a true no-caching baseline measurable.
 
     For OpenAI the prompt is returned as a plain-string ``SystemMessage``
     — OpenAI applies prompt caching automatically (50% discount on
@@ -456,14 +529,9 @@ def make_system_message(prompt: str, provider: str) -> SystemMessage:
     langchain bindings for those providers do not currently surface a
     cache-control mechanism through ``SystemMessage`` content blocks.
     """
-    if provider == "anthropic":
+    cc = system_cache_control(provider)
+    if cc is not None:
         return SystemMessage(
-            content=[
-                {
-                    "type": "text",
-                    "text": prompt,
-                    "cache_control": {"type": "ephemeral"},
-                }
-            ]
+            content=[{"type": "text", "text": prompt, "cache_control": cc}]
         )
     return SystemMessage(content=prompt)

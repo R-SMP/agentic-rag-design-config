@@ -35,7 +35,10 @@ from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.context_pruner import ContextPruner
 from agents.shared.file_utils import ai_text
 from agents.shared.history_tool import build_read_agent_history_tool
-from agents.shared.llm_provider import make_system_message
+from agents.shared.llm_provider import (
+    history_cache_control,
+    make_system_message,
+)
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import _build_template, PLANNER_FIRST
@@ -478,6 +481,7 @@ class Orchestrator(BaseChainAgent):
                 [make_system_message(self.system_prompt, self.provider)]
                 + self.messages,
                 "Orchestrator",
+                cache_control=history_cache_control(self.provider),
             )
             self.messages.append(response)
 
@@ -997,6 +1001,14 @@ class Orchestrator(BaseChainAgent):
                 [make_system_message(self.system_prompt, self.provider)]
                 + [instruction],
                 "Orchestrator-feedback-dispatch",
+                # NO history breakpoint here on purpose.  This call sends a
+                # freshly-built one-off list ([system] + [instruction]) rather
+                # than the persistent self.messages, so ``instruction`` differs
+                # every time and an automatic breakpoint placed on it would
+                # write an entry no later request can ever match — a pure cache
+                # WRITE premium with no offsetting read.  The system prompt is
+                # still cached: make_system_message applies its own explicit
+                # breakpoint, and that prefix IS stable across these calls.
             )
         except Exception as exc:
             logger.warning(

@@ -30,7 +30,10 @@ from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import list_attempts, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
-from agents.shared.llm_provider import make_system_message
+from agents.shared.llm_provider import (
+    history_cache_control,
+    make_system_message,
+)
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import (
@@ -175,6 +178,7 @@ class ToolCaller(BaseChainAgent):
                 [make_system_message(self.system_prompt, self.provider)]
                 + self.messages,
                 "Tool Caller",
+                cache_control=history_cache_control(self.provider),
             )
             self.messages.append(response)
 

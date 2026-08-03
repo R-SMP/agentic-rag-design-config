@@ -3262,3 +3262,35 @@ worst case, stall it) instead of recovering.
 classify + retry + pause + circuit-breaker), `agents/dispatch.py` (surface the exception type out of
 `dispatch_turn`). Related: F23, F35, O2, O3; the Sessions Queue runner (`web_app.py`
 `_run_queue_in_background`).
+
+---
+
+### F53. Prompt caching: port conversation-history caching to the 5-agent and 3-agent systems
+
+**Status.** NOT STARTED for the reduced-agent systems. The 8-agent (7-agent chain +
+Receptionist) in-session system HAS it as of the prompt-caching change; the **5-agent and
+3-agent topologies do NOT**. Whoever builds or next touches those topologies must port it,
+or they will silently run at full input-token price while the 8-agent system runs at ~0.1x
+on its cached prefix — which would also make any Test-2 (agent-count) cost comparison
+meaningless, since the configurations would differ in caching as well as in agent count.
+
+**What has to be ported.** Each in-session agent of the reduced topology must:
+
+1. import `history_cache_control` alongside `make_system_message` from
+   `agents.shared.llm_provider`;
+2. pass `cache_control=history_cache_control(self.provider)` to its
+   `invoke_with_retry(...)` call(s).
+
+Nothing else — `make_system_message` already applies the explicit system-prompt
+breakpoint, and both markers derive their ttl from the single `PROMPT_CACHE_TTL`
+setting, so they cannot diverge (a mismatched ttl is a 400 from Anthropic).
+
+**Do NOT add it to the Database Handler** — deliberately excluded (post-session, its own
+lifecycle, ~28-round accumulated-state interview). That exclusion is by omission at the
+call site, not by a list, so it survives refactors.
+
+**Where.** `agents/<each reduced-topology agent>/*.py`. Reference implementation: the 8
+in-session agents on the current topology. Mechanics + measured rationale:
+`extra_utilities/design_prompt_caching.md`. Settings: `workflow_settings/settings.py` §29.
+Related: the agent-count work in `extra_utilities/design_agent_count_variants.md` and
+`agent_count_variants_build_tracker.md`.

@@ -926,3 +926,64 @@ MAX_CONDUCTOR_VISITS: int = 80
 #
 # Valid values: positive int.
 MAX_CREATOR_STEPS: int = 60
+# 29. Prompt caching (Anthropic only)
+# ===========================================================
+# Anthropic prompt caching stores the model's precomputed state for
+# a prompt PREFIX, keyed by a hash of that prefix's exact tokens.  A
+# later request whose prompt STARTS with the same tokens reads that
+# state back at ~0.1x the normal input price instead of re-paying
+# full price for it.  See extra_utilities/design_prompt_caching.md
+# for the full mechanics (breakpoints, the 20-block lookback, TTL
+# economics and the measured behaviour of this system).
+#
+# TWO ORTHOGONAL KNOBS.  Scope decides WHAT gets a cache breakpoint;
+# TTL decides HOW LONG entries live.  They are separate because a
+# system-only cache still has a lifetime.
+#
+#   PROMPT_CACHE_SCOPE
+#     "off"             no cache_control is emitted at all; every
+#                       call pays full price for the whole prompt.
+#     "system"          only the agent's system prompt is cached
+#                       (one explicit breakpoint).  This was the
+#                       behaviour before scope became configurable.
+#     "system+history"  as "system", PLUS Anthropic's top-level
+#                       automatic breakpoint, which advances with the
+#                       growing conversation so the history is read
+#                       back at cache-read price instead of being
+#                       re-billed in full on every call.
+#
+#   PROMPT_CACHE_TTL    lifetime of every entry; ignored when the
+#                       scope is "off".  The TTL refreshes for free
+#                       on each hit, so a continuously-used entry
+#                       stays alive.
+#     "5m"              5 minutes.  Cache writes cost 1.25x.
+#     "1h"              1 hour.  Writes cost 2x, but nothing expires
+#                       mid-session — measured revisit gaps show the
+#                       Receptionist exceeds 5 min in every session
+#                       and the Planner in most.
+#
+# ONE TTL FEEDS BOTH BREAKPOINTS.  Anthropic returns a 400 if the
+# automatic breakpoint lands on a block that already carries an
+# explicit cache_control with a DIFFERENT ttl, so both markers are
+# built from this single value and cannot diverge.
+#
+# ANTHROPIC ONLY.  Other providers never receive these fields:
+# OpenAI caches automatically with no API surface, and Google /
+# OpenRouter expose no equivalent.  On a non-Anthropic run both
+# settings are silently inert.
+#
+# WHY THE DEFAULT IS "5m" AND NOT "1h".  The measured analysis in
+# design_prompt_caching.md §6 concludes 1h is the cheaper choice OVERALL,
+# because a single expiry re-writes a whole accumulated prefix while the
+# 1h premium applies only to deltas.  "5m" still ships as the Step-1
+# default deliberately: the agents that actually exceed 5 minutes are the
+# Receptionist and the Planner, and those two carry SMALL histories, so
+# their expiries are cheap — while the expensive tight-loop agents (DCIC,
+# DCOI, UII, Tool Caller, DCII) revisit every 70–160 s and never expire,
+# so they get the cheaper 1.25x write. Flip to "1h" once a live A/B has
+# measured the real numbers.
+#
+# Valid values: PROMPT_CACHE_SCOPE "off"|"system"|"system+history";
+# PROMPT_CACHE_TTL "5m"|"1h".
+PROMPT_CACHE_SCOPE: str = "system+history"
+PROMPT_CACHE_TTL: str = "5m"
