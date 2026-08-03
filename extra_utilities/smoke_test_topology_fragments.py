@@ -122,6 +122,17 @@ HUB_BY_TOPOLOGY = {7: "orchestrator", 5: "conductor"}
 # slots; before that it was the second exception.
 NEVER_FORMATTED = frozenset({"database_handler"})
 
+# Who hands the UII its paths at the START of a turn.  In the 7-agent flow
+# the Orchestrator kicks off the UII; in the 5-agent flow the Receptionist
+# routes to it directly.  They get the paths differently, and deliberately
+# so: the Orchestrator relays the ``Input file directory:`` line it already
+# receives in the dispatch kickoff and names the extraction file inside it,
+# while the Receptionist carries both as runtime slots filled at
+# construction.  What this check enforces is only that whoever kicks off
+# actually STATES both — the UII's read and write tools each take a required
+# ``path`` with no default, so an unstated path leaves it guessing.
+UII_KICKOFF_AGENT = {7: "orchestrator", 5: "receptionist"}
+
 # Routing-tool names unique to each topology's hub fragment.  Used to prove
 # $routing_hub resolved to the RIGHT file, not merely to some file: the
 # 7-agent hub can call the Planner, the 5-agent hub can call the Creator,
@@ -309,6 +320,31 @@ def check_case(topo: int, planner_first: bool) -> None:
                  f"declared slots ({sorted(declared) or 'none'}) — "
                  f"{type(exc).__name__}: {exc}.  A literal brace needs "
                  f"doubling to {{{{ / }}}}.")
+
+    # --- UII-PATHS: whoever can call the UII must state its two paths -----
+    # write_extraction's ``path`` and read_user_inputs's ``path`` are both
+    # REQUIRED with no default, so an agent that calls the UII without
+    # stating them leaves the UII guessing.  That is exactly how the
+    # 7-agent system regressed unnoticed: the only emitter sat inside a
+    # <<PF_ON>> block, PLANNER_FIRST flipped to False, and the block was
+    # silently stripped.
+    # Only the agent that KICKS OFF the UII is required to state them.
+    # Agents that merely CLARIFY back to the UII later in the same turn are
+    # exempt: agents are stateful within a session, so a UII that already
+    # ran still holds the original hand-off — and its paths — in its own
+    # message history.  (The Planner under PF_OFF is exactly such a case.)
+    #
+    # The label must BEGIN a line, i.e. actually be emitted, not merely
+    # mentioned: a shared fragment discusses "the paths a hand-off label
+    # gives (``Input directory:`` …)" in prose, and a bare substring test
+    # would accept that as if the instruction were still there.
+    agent = UII_KICKOFF_AGENT[topo]
+    emitted = {ln.strip() for ln in built[agent].splitlines()}
+    for label in ("Input directory:", "Extraction output file:"):
+        if not any(ln.startswith(label) for ln in emitted):
+            fail(case, "UII-PATHS",
+                 f"{agent} kicks off the UII but its prompt never emits a "
+                 f"{label!r} line — the UII's tools require an explicit path")
 
     # --- CHAIN_ONLY: the hub must not keep chain-link rules ---------------
     marker = "FORWARD to your natural"

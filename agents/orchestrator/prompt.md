@@ -45,6 +45,19 @@ forwards to the Planner); when you resume mid-chain after a
 recovery, you still route to the UII first if the user added new
 content to the conversation.<</PF_OFF>>
 
+Every ``call_user_input_inspector`` message MUST carry these two lines: the
+UII reads and writes files only via the paths you give it, and its tools
+refuse to run without them.  Take the directory VERBATIM from the ``Input
+file directory:`` line of your own incoming message — never invent, shorten
+or reconstruct it — and name the extraction file inside that same directory:
+
+    Input directory: <the path on your ``Input file directory:`` line>
+    Extraction output file: <that same path>/extracted_inputs.txt
+
+The extraction file is a DESTINATION, not a file that must already exist —
+the UII writes it, and on the first turn of a session it is not there yet.
+Do not paste file content; the UII reads the files itself.
+
 "Meaningful" is judged by whether the content plausibly changes how a
 downstream agent would act.  New parameter values, new constraints,
 new goals, a new permission to vary a locked value, a new strategy cap
