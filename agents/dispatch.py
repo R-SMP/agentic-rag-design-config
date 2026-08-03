@@ -42,7 +42,10 @@ from datetime import datetime
 from pathlib import Path
 
 from agents.hub import build_hub
-from agents.shared.topology import hub_display as _hub_display
+from agents.shared.topology import (
+    hub_display as _hub_display,
+    hub_key as _hub_key,
+)
 from agents.shared.session import Session
 from agents.shared.stop_signal import StopRequestedError
 from agents.shared.trace import trace as _trace
@@ -280,7 +283,20 @@ def dispatch_turn(
         #    The trace names the ACTIVE hub; ``routing_tools`` suppresses
         #    its own Receptionist->hub trace on the strength of this one,
         #    so the two must agree.
-        _trace("Receptionist", _hub_display(), "forwarded")
+        # Where the Receptionist actually addressed its hand-off.  In the
+        # 7-agent topology it is bound exactly one routing tool, so this is
+        # always the hub; in the 5-agent one it chooses between the User
+        # Input Inspector (new design content — the usual case) and the
+        # Conductor, and that choice must be honoured or the turn starts at
+        # the wrong agent.
+        start_agent = validation.get("target") or _hub_key()
+
+        # Traced here ONLY for the hop into the hub, because that is the
+        # exact case ``routing_tools`` suppresses its own trace for.  For a
+        # hop to any other agent routing_tools already emitted one, and
+        # tracing again would double-log it.
+        if start_agent == _hub_key():
+            _trace("Receptionist", _hub_display(), "forwarded")
         hub.reset_turn()
         receptionist_summary = (validation.get("message") or "").strip()
         if receptionist_summary.startswith(_RECEPTIONIST_LABEL):
@@ -303,14 +319,32 @@ def dispatch_turn(
             f"Input file directory: {validation['input_dir']}",
             f"Available file types: {ft_str}",
             "",
-            "Decide freely how to proceed.  In most cases this means "
-            "handing off to the Planner with whatever context from the "
-            "Receptionist (goals, strategy caps, specific requirements, "
-            "abstract reasoning, disambiguations) would help the Planner "
+            # Deliberately names no agent.  This used to say "handing off
+            # to the Planner", which is wrong twice over: the Planner does
+            # not exist in the 5-agent topology, and under the live
+            # PLANNER_FIRST=False the Orchestrator's own prompt says it
+            # kicks off the User Input Inspector — so the dispatcher was
+            # contradicting the prompt it was feeding.  The hub's prompt
+            # already states exactly who it starts, per topology and per
+            # flag; the dispatcher should not second-guess it.
+            "Decide freely how to proceed — your own prompt states who you "
+            "kick off.  Carry whatever context from the Receptionist "
+            "(goals, strategy caps, specific requirements, abstract "
+            "reasoning, disambiguations) would help the agent you hand to "
             "do its job well.  Lose no useful context.",
         ]
         kickoff = "\n".join(kickoff_parts)
-        outgoing = hub.dispatch(kickoff)
+
+        # A hand-off addressed to a chain agent is ALREADY the hand-off —
+        # wrapping it in the hub kickoff would address the wrong agent and
+        # bury the Receptionist's own message.  Only the hub gets the
+        # kickoff.
+        if start_agent == _hub_key():
+            outgoing = hub.dispatch(kickoff)
+        else:
+            outgoing = hub.dispatch(
+                validation["message"], start_agent_key=start_agent,
+            )
         if not outgoing or not outgoing.strip():
             outgoing = (
                 "(internal error — the system produced no user-facing "

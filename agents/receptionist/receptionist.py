@@ -288,15 +288,26 @@ class Receptionist(BaseChainAgent):
         # directly to the user both count).
         self.on_operation_end()
 
-        if (
-            self._pending_hop is not None
-            and self._pending_hop.target == "orchestrator"
-        ):
+        # ANY routing-tool invocation in Situation A is a forward: the only
+        # other way this method can end is plain prose, which is the
+        # reply-direct path.  Previously this tested ``target ==
+        # "orchestrator"``, which silently mis-classified every 5-agent
+        # turn — there the Receptionist routes to the User Input Inspector,
+        # so the test failed and the turn was reported as a direct reply
+        # carrying ``reply``, which is EMPTY when the turn ended in a tool
+        # call.  The 7-agent path is unaffected: its Receptionist is bound
+        # exactly one routing tool, so the target is always "orchestrator".
+        #
+        # ``target`` is returned so the caller knows WHERE to start the
+        # dispatch loop; the Receptionist may address a chain agent
+        # directly rather than the hub.
+        if self._pending_hop is not None:
             categories = list({f["category"] for f in loaded["root_files"]})
             if loaded["image_paths"]:
                 categories.append("image")
             return {
                 "forward": True,
+                "target": self._pending_hop.target,
                 "message": self._pending_hop.message.strip(),
                 "input_dir": str(input_path.resolve()),
                 "file_types": categories,
@@ -304,6 +315,7 @@ class Receptionist(BaseChainAgent):
 
         return {
             "forward": False,
+            "target": None,
             "message": reply,
             "input_dir": str(input_path.resolve()),
             "file_types": [],
