@@ -53,11 +53,16 @@ Two of them, to show the shape:
 | 13 | RAG-gated prose — 7 guard defects shipping today, plus 15 cuts for when RAG is on |
 | 14 | Manual spot-check watch-lists — 66 concrete checks |
 | 15 | Application order, low risk first |
-| 16 | The two decisions already taken (emphasis policy, Receptionist name check) |
+| 16 | Two changes under consideration (emphasis policy, Receptionist name check) — neither decided |
 | 17 | Competing rewrites of the same shared fragment — 13 regions where you must pick one |
 
 ### Ground rules
 
+- **Nothing here is settled.** This document records what we are *considering* and why — not a plan
+  that has been agreed. Every change in it is a proposal, including the ones written in decisive
+  language and the ones labelled as decisions. Any of it may be narrowed, reordered or dropped once
+  we look at it properly, and finding that a change is a bad idea is a perfectly good outcome of
+  writing it down.
 - **Nothing has been applied.** No prompt, fragment or Python file has been modified. This document
   is the only change in the repository.
 - Every change is independently applicable and identified. Sections 1–7 use the first audit pass
@@ -1119,7 +1124,7 @@ _READ_INPUTS_DOC = (
 
 METHOD + VALIDATION. Token figures are chars/4 of the description text as the LLM receives it. Cross-check against your measured dump: Tool Caller's 9 schemas sum to 2,122 by my method vs 2,201 measured; Receptionist's 8 sum to 1,753 vs 1,714; DCOI's 10 sum to 1,992 vs 1,911. Within 4%, so the per-tool numbers are trustworthy.
 
-BINDING COUNTS (7-agent, PLANNER_FIRST=False, DCII on): calculate/list_attempts/read_attempt = 8 agents each; read_input_text = 6; list_input_files = 5; view_images/ocr_regions/read_image_notes = 4; read_agent_history = 3 (Planner, Receptionist, Orchestrator); new_attempt = 2 (DCIC + Orchestrator-as-fallback); 24 routing-tool bindings total. Every rewrite above also lands in the 5-agent topology for free — agents/creator/creator.py and agents/conductor/conductor.py import the same shared tool modules.
+BINDING COUNTS (7-agent, PLANNER_FIRST=False, DCII on): calculate/list_attempts/read_attempt = 8 agents each; read_input_text = 6; list_input_files = 5; view_images/ocr_regions/read_image_notes = 4; read_agent_history = 2 (Planner, Receptionist) [CORRECTED — the auditor wrote 3 and included the Orchestrator; orchestrator.py:438-452 does not bind it, see CON-15]; new_attempt = 2 (DCIC + Orchestrator-as-fallback); 24 routing-tool bindings total. Every rewrite above also lands in the 5-agent topology for free — agents/creator/creator.py and agents/conductor/conductor.py import the same shared tool modules.
 
 DUPLICATES BEING COLLAPSED (policy moved out of schemas, not deleted from the system):
 - "batch every expression into ONE calculate call" lives in DC_prompt_fragments/tools_config/hard_constraints_tools.md:6-10 (spliced into EVERY agent), again in tool_inventory.md:7-8 (Tool Caller), again in agent_tools_overview.md:1-2 (Orchestrator). The Annotated description is the 3rd/4th copy. Cut from the schema; the Python-syntax steer (the '&&' failure) survives as one clause.
@@ -14501,6 +14506,14 @@ Four separate places tell the Orchestrator to call a tool it cannot call.  Two o
 
 **Fix**
 
+> **Direction taken (2026-08-05): option B — do NOT bind the tool.**
+> The Planner already holds `read_agent_history` (`orchestrator.py:310`) and so does the
+> Receptionist (`:318`); the Orchestrator builds the tool at `:287` for them and never binds it to
+> itself. Rather than widen the hub's capability, remove the four false claims and let the
+> verification duty sit with the Planner, which has the tool and owns recovery strategy anyway.
+> **Ignore the first option below and apply the second** ("If the binding is deliberately withheld").
+> This is a direction, not a finished edit — the wording still needs review.
+
 ```
 Bind the tool the prompts already assume.  In agents/orchestrator/orchestrator.py, inside `_wire_routing`, change the `orch_tools` literal (currently lines 439-452) to:
 
@@ -21035,12 +21048,50 @@ You asked to work low-risk to high-risk rather than agent by agent. This orders 
 
 ---
 
-## 16. Two decisions already taken
+## 16. Two changes we are considering — neither is decided
 
-**Emphasis.** Hard marking is kept on exactly three rules, everywhere they appear; every other `HARD` / `IMPORTANT` / `CRITICAL` / mandatory-voice marker becomes plain prose. The three: *routing is a tool call*; *never state an observation about an artefact you did not load this turn*; *an answer to a system-posed question must be forwarded, never answered directly*. These are the three whose violation ends or corrupts a session — everything else is a rule the agent should weigh, and marking it CRITICAL only dilutes the three that are not negotiable.
+Both of these came out of multiple-choice questions during the review, and both are recorded here as
+**intentions, not conclusions**. Neither has been specified as a concrete edit yet. Either may be
+dropped, narrowed, or reversed — writing them down is how we decide, not a sign that we have.
 
-**The Receptionist's parameter-name check is deleted.** The Situation-A procedure that maps a user's stated parameter names against the table and rejects unknown ones goes entirely. The prompt already tells the Receptionist not to check ranges because the pipeline validates downstream; names are the same argument, and the UII, DCIC and DCII all validate them anyway. This removes a class of door-checker-too-strict failure and roughly 220 tokens. The cost is that a user who types `fillet_radius = 3` learns it after a pipeline round-trip rather than immediately.
----
+### Emphasis policy
+
+The question was which rules should keep `HARD` / `IMPORTANT` / `CRITICAL` marking, since those
+markers currently appear dozens of times per prompt and flatten each other — if everything is
+critical, nothing is.
+
+The direction chosen was **only the three pipeline-fatal ones**:
+
+1. Routing is a tool call.
+2. Never state an observation about an artefact you did not load this turn.
+3. An answer to a system-posed question must be forwarded, never answered directly.
+
+Those are the three whose violation ends or corrupts a session. Everything else is a rule the agent
+should weigh, and marking it CRITICAL only dilutes the three that are not negotiable.
+
+**What that implies, and why it is not yet a change:** it means demoting every *other* emphasis
+marker across all nine prompts to plain prose. That is a large cross-cutting sweep and **not a single
+concrete instance of it has been specified** — no file, no line, no replacement text. Before it could
+be applied, someone has to go through every `HARD` / `IMPORTANT` / `CRITICAL` heading in the fleet
+and decide case by case. It is entirely reasonable to narrow this to a few prompts, or to drop it.
+
+### The Receptionist's parameter-name check
+
+The Receptionist currently runs a Situation-A procedure that maps the parameter names a user types
+against the 16-parameter table and replies directly if one is not there — so `fillet_radius = 3` gets
+bounced at the door instead of forwarded.
+
+The argument for deleting it: the prompt already forbids the Receptionist from checking *ranges*,
+because the pipeline validates those downstream. Names are the same argument. And the UII, DCIC and
+DCII all validate names anyway, so the check is redundant three times over. Removing it saves roughly
+220 tokens and removes a whole class of door-checker-too-strict failure.
+
+The argument against: it costs a real behaviour. A user who typos a parameter name would learn it
+after a full pipeline round-trip rather than immediately. That is a genuine UX regression for 220
+tokens, and it is fair to decide the instant feedback is worth more than the saving.
+
+The direction chosen was **delete it** — but as above, **no concrete cut has been written**, and this
+is exactly the kind of trade-off worth revisiting before anything is edited.
 
 ## 17. Competing proposals for the same shared text — pick one
 
