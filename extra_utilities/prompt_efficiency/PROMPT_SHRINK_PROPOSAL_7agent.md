@@ -13,6 +13,59 @@ IDs are namespaced per agent (`RCP` Receptionist · `ORC` Orchestrator · `PLN` 
 
 ---
 
+## 0. Start here
+
+This began as a token-reduction exercise. It is no longer only that. You said the real worry is that
+**a cluttered, self-contradicting context makes the system decide worse without anyone noticing** —
+so the most valuable findings here are not the biggest cuts.
+
+**Read §8 first.** It lists 45 places where the assembled prompts contradict themselves, state facts
+the code has outgrown, or hand an agent rules for tools it is not bound to. 12 are high severity.
+They are defects the system is following *today*, independent of whether you shrink anything.
+
+Two of them, to show the shape:
+
+- The **Orchestrator is instructed four times to call `read_agent_history`** — including inside a
+  HARD rule — and it has never been bound that tool. The rule cannot be satisfied, so the Orchestrator
+  either burns a step on an unknown-tool call or skips the verification and relays an escalating
+  agent's self-exonerating diagnosis, which is the exact failure the rule exists to prevent.
+- The **blade-sections visualizer is live**, yet `capabilities_cannot.md` lists "cross-sections"
+  among the things the system cannot do and `hard_constraints_dc.md` forbids offering them. The
+  Receptionist is told never to offer anything on the CANNOT list; the Planner is told in the same
+  prompt to prefer a sections-first plan. The system will refuse to admit to a capability it has.
+
+### What is in here
+
+| § | contents |
+|---|---|
+| 1 | Where the tokens are — per-agent before/after |
+| 2 | Cross-prompt duplication census — 31 blocks, 31,765 fleet tokens |
+| 3 | Tool-schema pruning — 22 rewritten docstrings, 8,308 tokens |
+| 4 | **349 prompt cuts**, per agent, each with verbatim anchors and full replacement text |
+| 5 | Adversarial verification of the first six agents |
+| 6 | Integrity check on the audit itself — what to trust and what not to |
+| 7 | Four independent second-opinion audits from the restarted run |
+| **8** | **45 contradictions, stale facts and orphaned instructions — start here** |
+| 9 | Verification of the Orchestrator / Planner / DH cuts — 10 refuted, one systematic defect |
+| 10 | Tool-architecture spec — 6 changes, 4,734 tokens |
+| 11 | Per-agent scoped-fragment spec — 12 changes, 4,026 tokens |
+| 12 | Agent-freedom audit — 52 replacements that narrow the agent's judgement |
+| 13 | RAG-gated prose — 7 guard defects shipping today, plus 15 cuts for when RAG is on |
+| 14 | Manual spot-check watch-lists — 66 concrete checks |
+| 15 | Application order, low risk first |
+| 16 | The two decisions already taken (emphasis policy, Receptionist name check) |
+| 17 | Competing rewrites of the same shared fragment — 13 regions where you must pick one |
+
+### Ground rules
+
+- **Nothing has been applied.** No prompt, fragment or Python file has been modified. This document
+  is the only change in the repository.
+- Every change is independently applicable and identified. Sections 1–7 use the first audit pass
+  throughout; §7 holds the second opinions rather than merging them.
+- The 5-agent and 3-agent topologies are deliberately out of scope.
+
+---
+
 ## 1. Where the tokens are
 
 | Agent | now | proposed | cut | # changes |
@@ -14232,3 +14285,8181 @@ TWO TRAPS IN THE MECHANICS.
 CONFLICT TO RESOLVE: GEN-05 (delete the DON'T-loop bullet) and REC-18 (compress the same rule in routing.py) both target the anti-loop rule. Apply at most one as a DELETE. The Receptionist and Orchestrator do not receive routing_instructions, so if you take GEN-05 they lose the rule entirely — prefer taking REC-18 only, or take GEN-05 knowing the two non-chain agents are covered by their own routing fragments.
 
 I did not audit the 12 bound tool schemas (2,104 tok). Golden rule 9 applies there too: read_parameters / read_extracted_inputs / read_input_text / list_input_files / read_image_notes is five read tools where two or three would do, and the prompt currently spends ~1,000 chars compensating for that overlap (REC-07 + REC-08). Merging list_input_files into read_image_notes, and read_input_text into read_extracted_inputs, would let both of those sections shrink further.
+---
+
+## 8. Contradictions, stale facts and orphaned instructions
+
+**This is the section to read first.** It is not about shrinking. Three auditors assembled each of the nine prompts the way `prompts.py` does and hunted for text that could make an agent decide *wrongly* — statements that contradict each other, facts that stopped being true after a refactor, rules governing tools the agent is not bound to, and pointers to sections that are not in its prompt.
+
+**45 findings: 12 high, 21 medium, 12 low.** Every one was checked against the code or git history, not against other prose, and every one carries corrected text ready to paste.
+
+| kind | n | what it means |
+|---|---:|---|
+| `DIRECT_CONTRADICTION` | 10 | two statements in one prompt that cannot both be followed |
+| `STALE_FACT` | 10 | was true once; the code has moved on |
+| `DEAD_REFERENCE` | 8 | points at a tool, section, file or agent that is not there |
+| `RULE_CONFLICT` | 8 | two sensible rules that collide in a reachable case |
+| `ORPHANED_INSTRUCTION` | 6 | governs a tool the agent is not bound to, or a flag that is off |
+| `DUPLICATE_WITH_DRIFT` | 2 | the same rule stated twice with different content |
+| `AMBIGUOUS_PRECEDENCE` | 1 | a conflict the prompt anticipates but never resolves |
+
+| id | sev | kind | agents | the wrong decision it enables |
+|---|---|---|---|---|
+| **CON-01** | high | DIRECT_CONTRADICTION | DC Input Creator | The tool IS bound (agents/orchestrator/orchestrator.py:362-365 builds the DCIC→tool_caller edge when DC_INSPECTOR_ENABLED), but the agent's own exhaus… |
+| **CON-02** | high | DEAD_REFERENCE | User Input Inspector, DC Input Inspector, DC Input Creator, DC Output Inspector | The UII carries both texts (parameters.md at prompt.md:15, sketch_handling at prompt.md:367). Told to estimate a middle thickness/camber/high-point, i… |
+| **CON-03** | high | STALE_FACT | DC Input Creator | The prompt tells the DCIC its previous agent is the Planner and gives it ``call_planner`` as the CLARIFY-back tool, while the message body in front of… |
+| **CON-15** | high | DEAD_REFERENCE | Orchestrator, Planner | Four separate places tell the Orchestrator to call a tool it cannot call.  Two of them gate mandatory behaviour: the HARD 'Verify the diagnosis' rule … |
+| **CON-16** | high | DIRECT_CONTRADICTION | Receptionist, Orchestrator, Planner, User Input Inspector, DC Input Creator, DC Input Inspector, Tool Caller, DC Output Inspector | Every one of the three target prompts carries both statements verbatim (receptionist_assembled: CANNOT-list at the Receptionist's HARD "what this syst… |
+| **CON-17** | high | DIRECT_CONTRADICTION | Orchestrator | There is no turn 'after call_receptionist': orchestrator.py:534-539 breaks out of the run loop and returns the hop the instant a routing tool fires, a… |
+| **CON-18** | high | ORPHANED_INSTRUCTION | Receptionist | The Receptionist reads a HARD section describing three tools it is not bound to, with the usage documentation for them removed — the worst possible co… |
+| **CON-30** | high | RULE_CONFLICT | tool_caller, dc_output_inspector | Both fragments land in the SAME assembled prompt for the Tool Caller (asm lines ~289 and ~319) and the DC Output Inspector, roughly 30 lines apart, wi… |
+| **CON-31** | high | DIRECT_CONTRADICTION | tool_caller | agents/tool_caller/tool_caller.py:116-118 binds a FIFTH utility tool (`render_blade_sections`) whenever `blade_sections_access.is_enabled()` — which i… |
+| **CON-32** | high | STALE_FACT | tool_caller | The Tool Caller is the ONLY agent bound to `generate_and_render_propeller`, so it is the only agent that sees both. The code is unambiguous — web/feg/… |
+| **CON-33** | high | DIRECT_CONTRADICTION | dc_output_inspector, orchestrator | In the assembled DCOI prompt the two counts sit 17 lines apart (asm lines 548/555 vs 565). git log shows geometry_modification_rule.md has never been … |
+| **CON-34** | high | DEAD_REFERENCE | dc_output_inspector | The fragment was written for the Orchestrator (which does hold `call_planner`) and is spliced unchanged into the DCOI, where it (a) refers to the read… |
+| **CON-04** | medium | DIRECT_CONTRADICTION | User Input Inspector, DC Input Inspector, DC Output Inspector | `git log -L 58,68` on this file shows commit dda1560 ("derive outer-ring height instead of an input parameter") changed the second bullet 17→16 and MI… |
+| **CON-05** | medium | DIRECT_CONTRADICTION | User Input Inspector, DC Input Creator, DC Input Inspector, Orchestrator, Planner, Tool Caller, DC Output Inspector, Receptionist | `git log -S"cross-sections"` shows the prohibition is from the v4 baseline commit e16d20e; the visualizer arrived later (a8dec7e / 6221d46) and nobody… |
+| **CON-06** | medium | RULE_CONFLICT | User Input Inspector | An extraction-only request is precisely the case a reader identifies as "no Planner follow-up is required", so the routing roster invites ``call_orche… |
+| **CON-07** | medium | STALE_FACT | User Input Inspector | The UII is told in one breath that nothing is upstream of it, and in the next that the Planner supplied its hand-off and both of its mandatory file pa… |
+| **CON-08** | medium | DEAD_REFERENCE | User Input Inspector | Both worked examples of the two most consequential markers use a parameter name that does not exist and a range ([10; 140]) that contradicts the 16-ro… |
+| **CON-09** | medium | RULE_CONFLICT | DC Input Inspector | Axis 4 explicitly puts "a DCIC default" in the class of values that need an AUTHORISED source, and then defines a chain agent choosing a value on its … |
+| **CON-10** | medium | STALE_FACT | DC Input Creator | Two facts are stale under PLANNER_FIRST=False. (1) The Planner hands off DIRECTLY to the DCIC — agents/orchestrator/orchestrator.py:300-307 builds ``b… |
+| **CON-19** | medium | ORPHANED_INSTRUCTION | Orchestrator | This is the ONLY worked example in the Orchestrator's HARD "Preserving user directives" section, so it is the template it will imitate.  Following it … |
+| **CON-20** | medium | STALE_FACT | Orchestrator, DC Output Inspector | The Orchestrator is told 16 and 17 in the same prompt, with the 17 appearing under a HARD heading.  Its "You ORIGINATE nothing" and "Agent Capabilitie… |
+| **CON-21** | medium | RULE_CONFLICT | Planner | The Planner's whole two-part contract depends on Part 1 being substantial — planner.py:322-363 persists it to logs/current_plan.txt, and orchestrator.… |
+| **CON-22** | medium | DIRECT_CONTRADICTION | Receptionist | The second passage enumerates five different agents, each holding a different slice, and explicitly authorises repeat calls; the first caps the Recept… |
+| **CON-23** | medium | DIRECT_CONTRADICTION | Planner | HARD RULE 1 is an anti-hallucination guard, so the Planner applies it defensively.  With description.txt and propeller_mesh.obj excluded from its own … |
+| **CON-24** | medium | DEAD_REFERENCE | Receptionist, Planner, User Input Inspector, DC Input Creator, DC Input Inspector, Tool Caller, DC Output Inspector | Every consumer of this fragment is told to fold the user's end-of-session feedback into "your DH answers" — a deliverable none of them produce and a n… |
+| **CON-25** | medium | RULE_CONFLICT | Receptionist | Situation B is exactly where arithmetic shows up — relaying "impellerRadius went from 70 mm to 65 mm" invites a percentage, and the "Values the system… |
+| **CON-35** | medium | DUPLICATE_WITH_DRIFT | dc_output_inspector, dc_input_inspector, user_input_inspector | Two bullets of the SAME sub-section, five lines apart, give different counts for the same bounded design space, and the fragment is spliced into the D… |
+| **CON-36** | medium | AMBIGUOUS_PRECEDENCE | dc_output_inspector | Both passages govern the same artefact — the RECOMMENDATION text — and neither states which wins. "increase the thickness by ~30%" and "about twice as… |
+| **CON-37** | medium | DEAD_REFERENCE | tool_caller | The same prompt names the producer explicitly at agents/tool_caller/prompt.md:49-51 ("the parameter set has just been written by the DCIC") and at :74… |
+| **CON-38** | medium | DIRECT_CONTRADICTION | database_handler, planner | The DH's prompt asserts the tool-level overview is absent 20 lines after dumping it, and dumps it as a broken cross-reference: the sentence reads "see… |
+| **CON-39** | medium | ORPHANED_INSTRUCTION | database_handler | $available_agents is authored for the Planner and the 5-agent Conductor (its only other consumers, agents/planner/prompt.md:284 and agents/conductor/p… |
+| **CON-40** | medium | STALE_FACT | database_handler | The DH's own roster of who it may interview omits two of the eight agents it is actually driven to interview — and the Planner alone accounts for six … |
+| **CON-42** | medium | RULE_CONFLICT | tool_caller | `new_attempt` is real (agents/shared/attempts_tool.py:310) but bound only to the DC Input Creator and the Orchestrator (dc_input_creator.py:152, orche… |
+| **CON-11** | low | ORPHANED_INSTRUCTION | User Input Inspector, DC Input Creator, DC Input Inspector | All three agents bind ``read_attempt`` and are pointed by its schema at a tool none of them has; the DCIC is additionally pointed at ``view_images``, … |
+| **CON-12** | low | STALE_FACT | DC Input Inspector | The DCII is told the file it is about to read was overwritten, and separately that overwriting a parameters.json is a hard rule violation. A literal-m… |
+| **CON-13** | low | DEAD_REFERENCE | DC Input Inspector | The pointer "each detailed under What to Check below" is false for the one axis whose number collides. An inspector working the list in order lands on… |
+| **CON-14** | low | ORPHANED_INSTRUCTION | User Input Inspector | ``calculate`` IS bound (agents/user_input_inspector/user_input_inspector.py:152), but the UII's own inventory presents itself as complete and omits it… |
+| **CON-26** | low | STALE_FACT | Receptionist | The prompt shows a wildcard as the call to make, so the Receptionist will make it and get an error mid-composition.  It self-recovers (the error lists… |
+| **CON-27** | low | DEAD_REFERENCE | Planner, Database Handler | The Planner's HARD RULE 5 points at this roster ("see the agent roster") for which metrics exist, and the roster's Tool-Caller bullet is now a nested … |
+| **CON-28** | low | STALE_FACT | Planner | "a ``<name>_note.txt`` describing it" plus "any image present has its note" reads as a guarantee of content.  The Planner's own on-demand tool list in… |
+| **CON-29** | low | RULE_CONFLICT | Receptionist | A HARD tool rule enumerates five path sources, none of which the Receptionist ever receives, so a literal reading makes every path-taking tool it owns… |
+| **CON-41** | low | DUPLICATE_WITH_DRIFT | database_handler | The DH is told to preserve agent acronyms verbatim and given two different acronyms for the same agent inside one prompt. Since the DH authors the tex… |
+| **CON-43** | low | STALE_FACT | database_handler | In the common case — one resolved attempt — the id appears in ONE place, not two, so the stated justification is false exactly when it is invoked most… |
+| **CON-44** | low | ORPHANED_INSTRUCTION | database_handler | The DH is handed a three-way classification procedure keyed on two fields (Q-number, scope) that are absent from every input it will ever see, immedia… |
+| **CON-45** | low | RULE_CONFLICT | dc_output_inspector | Under DCOI_COMPARISON_MODE=1 the DCOI is told in one section to read the LOCKED / SOFT TARGET / FREE states off a file another section forbids it to o… |
+
+### CON-01 · HIGH · DIRECT_CONTRADICTION
+
+*Affects:* DC Input Creator
+
+**Statement A**
+
+```
+agents/dc_input_creator/prompt.md:327-338 — "**Tight precision loop — when a precision standing directive is active.** On a precision refine round you have TWO forward targets: the DC Input Inspector (``call_dc_input_inspector``, your normal forward) and the Tool Caller (``call_tool_caller``, straight to render).  To keep the loop tight, forward MOST refine rounds STRAIGHT to the Tool Caller — skipping the DCII —"
+```
+**Statement B**
+
+```
+agents/shared/prompt_fragments/routing_dc_input_creator_uii_first.md:1-13 — the entire "### Available routing tools" list under DCII_ONLY is ``call_dc_input_inspector`` / ``call_planner`` / ``call_orchestrator``; ``call_tool_caller`` is NOT listed.  Combined with agents/shared/routing.py:249-250 ("Every response that ends your turn MUST invoke exactly one of the routing tools listed above.") and agents/shared/prompt_fragments/generic_constraints.md:5 ("DO use only the tools listed for your role; that list is exhaustive.") and :28-30 ("DON'T invent tools ... If you can't do something with your bound tools, ESCALATE.")
+```
+**Why it confuses the system**
+
+The tool IS bound (agents/orchestrator/orchestrator.py:362-365 builds the DCIC→tool_caller edge when DC_INSPECTOR_ENABLED), but the agent's own exhaustive roster says it does not exist. On a precision refine round the DCIC must choose between an instruction that names ``call_tool_caller`` and a roster that forbids anything outside three other tools. The likely resolutions are both wrong: route to the DCII on every round (the tight loop never happens — the feature is dead), or ESCALATE to the Orchestrator because it believes it is being asked to invent a tool. Either way the ~8-round precision refine loop costs a full DCII validation pass per round.
+
+**Fix**
+
+```
+### Available routing tools
+<<DCII_ONLY>>- ``call_dc_input_inspector(message)`` — FORWARD to the DC Input
+  Inspector (the next step in the natural pipeline).
+- ``call_tool_caller(message)`` — FORWARD straight to the Tool Caller,
+  SKIPPING the DC Input Inspector.  Use it ONLY on a precision refine
+  round, as described under "Tight precision loop" above; outside a
+  precision job always take the normal forward.
+<</DCII_ONLY>><<DCII_OFF>>- ``call_tool_caller(message)`` — FORWARD to the Tool Caller (the
+  next step in the natural pipeline).
+<</DCII_OFF>>
+- ``call_planner(message)`` — CLARIFY back to the Planner if its
+  hand-off was ambiguous, or if the qualitative directive it gave
+  cannot be expressed in concrete parameter values.
+
+- ``call_orchestrator(message)`` — ESCALATE when stuck (locked-value
+  collision, qualitative directive with no quantitative expression,
+  or a budgeted attempt cap reached).
+
+(Apply the same insertion of the ``call_tool_caller`` bullet inside the
+<<DCII_ONLY>> region of routing_dc_input_creator_planner_first.md, whose
+CLARIFY bullet is ``call_user_input_inspector`` instead of ``call_planner``.)
+```
+*Lands in:* `agents/shared/prompt_fragments/routing_dc_input_creator_uii_first.md`, `agents/shared/prompt_fragments/routing_dc_input_creator_planner_first.md`
+
+### CON-02 · HIGH · DEAD_REFERENCE
+
+*Affects:* User Input Inspector, DC Input Inspector, DC Input Creator, DC Output Inspector
+
+**Statement A**
+
+```
+DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md:108-120 — "Read the drawn airfoil proportions into a ROUGH numeric estimate of the section-shape parameters, per section (inner / middle / outer): profile **thickness** (% of chord), **camber** (% of chord), and the chordwise **max-thickness position** (tenths of chord)." … "middle ≈ 14% thick, 4% camber, max-thickness at ~3/10 chord"
+```
+**Statement B**
+
+```
+DC_prompt_fragments/dc_config/parameters.md:15-18 — the "### Middle blade section" block contains exactly three parameters: ``middlePos``, ``middleChord``, ``middleAngle``.  There is no ``middleThickness`` / ``middleCamber`` / ``middleMaxPos``: `grep -rn "middleThickness\|middleCamber\|middleMaxPos"` returns zero hits across the whole repo.
+```
+**Why it confuses the system**
+
+The UII carries both texts (parameters.md at prompt.md:15, sketch_handling at prompt.md:367). Told to estimate a middle thickness/camber/high-point, it writes a SUGGESTED SECTION SHAPES block with a middle row. The DCIC is then told (agents/dc_input_creator/prompt.md:22-28) to "SEED the section-shape parameters (``*Thickness`` / ``*Camber`` / ``*MaxPos``) from those estimates" — for the middle row there is no cell to seed. The two reachable outcomes are both cycle-wasting: the DCIC passes middleThickness/middleCamber/middleMaxPos to ``write_parameters``, which rejects the call with "Unexpected keys (remove them)" (agents/dc_input_creator/dc_input_creator.py:460-471); or it applies its own rule at prompt.md:372-375 ("Instructions to write parameters that are NOT in the 16-parameter list … ESCALATE") and stalls the precision-sections workflow this warm-start exists to accelerate. The DCII, reading the same fragment, can also REVISE a correct parameters.json for "missing" middle shape values.
+
+**Fix**
+
+```
+1. **A rough shape estimate (warm start).**  Read the drawn airfoil proportions
+   into a ROUGH numeric estimate of the section-shape parameters, for the two
+   sections that HAVE them — inner and outer: profile **thickness** (% of
+   chord), **camber** (% of chord), and the chordwise **max-thickness position**
+   (tenths of chord).  The MIDDLE section has NO profile-shape parameters of its
+   own (only ``middlePos`` / ``middleChord`` / ``middleAngle``) — its profile is
+   interpolated between inner and outer — so do NOT estimate a middle thickness,
+   camber or high-point.  If the drawing clearly shows a distinct middle
+   profile, say so in prose as a limit of what the parameters can express.
+   Record the estimate in QUALITATIVE DESCRIPTIONS under a clear label so the DC
+   Input Creator seeds its first attempt close to the drawing instead of from
+   defaults:
+
+       SUGGESTED SECTION SHAPES (rough estimate read from the precise drawing — a
+       STARTING POINT for the DC Input Creator, NOT a user-locked value; refine
+       within ranges):
+         inner  ≈ 8% thick, 3% camber, max-thickness at ~3/10 chord
+         outer  ≈ 10% thick, 3% camber, max-thickness at ~4/10 chord
+         (middle: chord / angle / radial position only — it has no own profile
+          shape; its section is interpolated from inner and outer)
+```
+*Lands in:* `DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md`
+
+### CON-03 · HIGH · STALE_FACT
+
+*Affects:* DC Input Creator
+
+**Statement A**
+
+```
+agents/dc_input_creator/dc_input_creator.py:201 — ``text = f"Hand-off from User Input Inspector:\n{message}"`` — prepended to EVERY incoming hand-off the DCIC sees.
+```
+**Statement B**
+
+```
+agents/orchestrator/orchestrator.py:299-307 builds the Planner's routing set with ``build_routing_tool("planner", "dc_input_creator", …)`` when PLANNER_FIRST is False, i.e. the DCIC's actual sender is the **Planner**; agents/shared/routing.py:83 renders the flow as "Orchestrator → User Input Inspector → Planner → DC Input Creator → …", and dc_input_creator.py:179-184 sets ``prev_agent="Planner"`` so the same prompt says "Your natural previous in line is: **Planner**."
+```
+**Why it confuses the system**
+
+The prompt tells the DCIC its previous agent is the Planner and gives it ``call_planner`` as the CLARIFY-back tool, while the message body in front of it is labelled as coming from the UII. Two concrete failures follow. (1) Attribution: generic_constraints.md:19-23 orders it to carry "the authorship of any non-user-authored value … never relabel one source as another", so a Planner directive gets forwarded as "the UII asked for X" — and the DCII's axis 4 (dc_input_inspector/prompt.md:11-16) treats a change from a chain agent rather than the Planner/Orchestrator as unauthorised, producing a spurious REVISE bounce. (2) Precedence: the DCII resolves conflicts as "Planner directive > extraction > DCIC discretion" (prompt.md:181-182); a directive the DCIC believes came from the UII loses that precedence. The Tool Caller already uses the correct neutral form at agents/tool_caller/tool_caller.py:168.
+
+**Fix**
+
+```
+In agents/dc_input_creator/dc_input_creator.py, line 201, replace:
+
+        text = f"Hand-off from User Input Inspector:\n{message}"
+
+with the topology-neutral form the Tool Caller already uses:
+
+        text = f"Hand-off from previous agent:\n{message}"
+
+And in the same file, the ``read_extracted_inputs`` docstring (lines 80-83) currently reads "Pass the absolute path supplied by the User Input Inspector under the ``Extracted inputs file:`` label."  Replace with:
+
+    Pass the absolute path carried in your incoming hand-off under the
+    ``Extracted inputs file:`` label (the UII wrote the file; whoever
+    handed off to you relayed the path).  Returns the full three-
+    section extraction as text.  Do NOT call this tool with a guessed
+    path.
+
+Same for the error string at lines 316-321: replace "the absolute path supplied by the User Input Inspector under the 'Extracted inputs file:' label" with "the absolute path your hand-off carries under the 'Extracted inputs file:' label".
+```
+*Lands in:* `agents/dc_input_creator/dc_input_creator.py`
+
+### CON-15 · HIGH · DEAD_REFERENCE
+
+*Affects:* Orchestrator, Planner
+
+**Statement A**
+
+```
+agents/orchestrator/prompt.md:381-393 — "### Verify the diagnosis BEFORE you relay it (HARD) … Call ``read_agent_history(<the escalating agent>)`` and read the failing tool's most recent result literally."  Same tool is demanded again at agents/orchestrator/prompt.md:347-351 ("If you are not certain of an attempt's number or absolute path, confirm it via ``read_agent_history`` … BEFORE calling the Planner / Receptionist — never guess a path and never omit an attempt.") and offered at :117-119.  DC_prompt_fragments/tools_config/agent_tools_overview.md:18-21 states it as fact: "**You (Orchestrator)**: ``call_<agent>`` routing + the universal utilities + ``read_agent_history`` + ``new_attempt``".  agents/planner/prompt.md:385-388 routes work to it too: "have the Orchestrator re-read the failing agent's last tool result (``read_agent_history``)".
+```
+**Statement B**
+
+```
+agents/orchestrator/orchestrator.py:439-464 — the Orchestrator's actual binding: `orch_tools = [ …six/seven build_routing_tool(...)…, calculate, list_attempts, read_attempt, new_attempt ]` then `self.llm = self.base_llm.bind_tools(orch_tools)`.  `history_tool` is built at :287 and handed ONLY to the Planner (:308-311) and the Receptionist (:317-322).  `git show e16d20e:agents/orchestrator/orchestrator.py` shows the same list at the v4 baseline — the Orchestrator has never had this tool.
+```
+**Why it confuses the system**
+
+Four separate places tell the Orchestrator to call a tool it cannot call.  Two of them gate mandatory behaviour: the HARD 'Verify the diagnosis' rule cannot be satisfied at all, so the Orchestrator either emits an unknown-tool call (run loop returns "Error: unknown tool 'read_agent_history'" and it burns a step), or it skips verification and relays the escalating agent's self-exonerating "the tool is broken" diagnosis to the Planner — exactly the failure the rule exists to prevent.  The attempt-path rule is worse: it says "never guess a path" and names read_agent_history as the only way to confirm one, so on any uncertainty the Orchestrator is left with guess-or-omit, and an omitted/guessed attempt path means the Receptionist shows the user nothing or the wrong attempt.
+
+**Fix**
+
+```
+Bind the tool the prompts already assume.  In agents/orchestrator/orchestrator.py, inside `_wire_routing`, change the `orch_tools` literal (currently lines 439-452) to:
+
+        orch_tools = [
+            build_routing_tool("orchestrator", "planner", self, cl),
+            build_routing_tool("orchestrator", "user_input_inspector",
+                               self, cl),
+            build_routing_tool("orchestrator", "dc_input_creator", self, cl),
+            build_routing_tool("orchestrator", "tool_caller", self, cl),
+            build_routing_tool("orchestrator", "dc_output_inspector",
+                               self, cl),
+            build_routing_tool("orchestrator", "receptionist", self, cl),
+            history_tool,
+            calculate,
+            list_attempts,
+            read_attempt,
+            new_attempt,
+        ]
+
+(The `orch_tools.insert(4, …)` DCII branch below is unaffected — index 4 is still the dc_output_inspector routing tool.)
+
+If the binding is deliberately withheld instead, then all four prompt sites must go.  Replacement for agents/orchestrator/prompt.md:381-393:
+
+### Verify the diagnosis BEFORE you relay it (HARD)
+When an agent ESCALATES with a self-exonerating diagnosis — "the tool is
+broken", "the tool-schema is inconsistent", "my interface is wrong" — do
+NOT parrot it upstream.  The agent's prose is one account; the tool's
+actual return string is the truth, and you cannot read it yourself.
+RE-CALL that agent and require it to quote the failing tool's last
+return string verbatim before you relay any diagnosis.  If that quote
+names a missing or malformed argument (e.g. "you omitted 'parameters'"),
+the fault is the AGENT'S call, not the tool — hand it straight back with
+"re-issue with '<arg>' supplied", NOT to the Planner with a "tool-schema
+bug" framing.  Only a genuine runtime / environment fault (network, a
+missing file the agent did not author, an OS error) is "the tool failed"
+worth relaying upstream.
+
+and for agents/orchestrator/prompt.md:347-351:
+
+  * If you are not certain of an attempt's number or absolute path, ask
+    the agent that produced it (the Tool Caller / DCIC / DCOI hand-offs
+    carry ``Current attempt:`` lines) or run ``list_attempts`` BEFORE
+    calling the Planner / Receptionist — never guess a path and never
+    omit an attempt.
+
+and delete " + ``read_agent_history``" from DC_prompt_fragments/tools_config/agent_tools_overview.md:19, and in agents/planner/prompt.md:385-388 replace "have the Orchestrator re-read the failing agent's last tool result (``read_agent_history``)" with "have the Orchestrator make the failing agent quote its last tool result verbatim".
+```
+*Lands in:* `agents/orchestrator/orchestrator.py`, `agents/orchestrator/prompt.md`, `DC_prompt_fragments/tools_config/agent_tools_overview.md`, `agents/planner/prompt.md`
+
+### CON-16 · HIGH · DIRECT_CONTRADICTION
+
+*Affects:* Receptionist, Orchestrator, Planner, User Input Inspector, DC Input Creator, DC Input Inspector, Tool Caller, DC Output Inspector
+
+**Statement A**
+
+```
+DC_prompt_fragments/tools_config/blade_sections_visualizer.md:3-12 (spliced into all three targets under <<BSV_ON>>, and BLADE_SECTIONS_VISUALIZER_ENABLED=True at workflow_settings/settings.py:782) — "The system can render JUST the blade cross-sections — a flat image showing the three blade sections (Inner, Middle, Outer) … the sections can be rendered and refined cheaply on their own, and can even be the final deliverable."  Reinforced for the Planner by DC_prompt_fragments/tools_config/blade_sections_visualizer_planner.md:1-3, "prefer a **sections-first** plan".
+```
+**Statement B**
+
+```
+DC_prompt_fragments/dc_config/capabilities_cannot.md:5-8 — "Mesh refinement, smoothing, custom tessellation density, additional camera angles, cross-sections, or any render beyond the three fixed views."  AND DC_prompt_fragments/dc_config/hard_constraints_dc.md:12-17 — "DON'T offer analysis the system cannot perform … nor alternative output formats (STL, STEP, IGES, …), camera angles, cross-sections, or higher-resolution renders — the parameter set, tessellation, and the three fixed views are not negotiable."
+```
+**Why it confuses the system**
+
+Every one of the three target prompts carries both statements verbatim (receptionist_assembled: CANNOT-list at the Receptionist's HARD "what this system can and cannot do" section, hard rule further down, capability claim at the end; same pattern in the Orchestrator and Planner).  The Receptionist's rule is explicitly "Never offer anything from the CANNOT list", so when a user asks "can I just see the blade sections?" the Receptionist is instructed to tell them the system does not do it — while the Tool Caller's `render_blade_sections` tool is live and the Planner is being told sections-first is the preferred plan.  The Orchestrator's "Do NOT seed follow-ups the system cannot deliver" section will strip a sections render out of any technical summary.  And the Planner has to choose between a HARD DON'T and a fragment telling it to prefer exactly that.  This is a live capability the system will refuse to admit it has.
+
+**Fix**
+
+```
+Carve the blade-sections visualizer out of both blanket denials, flag-aware so the OFF configuration keeps the old wording.
+
+DC_prompt_fragments/dc_config/capabilities_cannot.md — replace lines 5-8 with:
+
+- Mesh refinement, smoothing, custom tessellation density, additional
+  camera angles, arbitrary section cuts through the mesh, or any 3D
+  render beyond the three fixed views.  The tessellation is fixed by the
+  Grasshopper definition and cannot be tuned from this
+  system.<<BSV_ON>>  (The blade-sections visualizer is NOT covered by
+  this line: rendering the three blade cross-sections as a flat image IS
+  supported and may be offered as a next step.)<</BSV_ON>>
+
+DC_prompt_fragments/dc_config/hard_constraints_dc.md — replace lines 12-17 with:
+
+- DON'T offer analysis the system cannot perform (performance / RPM /
+  thrust / flow / pressure / efficiency / CFD, or structural / FEA /
+  stress / material / load / tolerance), nor alternative output formats
+  (STL, STEP, IGES, …), extra camera angles, arbitrary section cuts
+  through the mesh, or higher-resolution renders — the parameter set,
+  tessellation, and the three fixed 3D views are not
+  negotiable.<<BSV_ON>>  The blade-sections visualizer is the one
+  exception: rendering the three blade cross-sections as a flat image is
+  a real capability, not a forbidden "cross-section".<</BSV_ON>>
+```
+*Lands in:* `DC_prompt_fragments/dc_config/capabilities_cannot.md`, `DC_prompt_fragments/dc_config/hard_constraints_dc.md`
+
+### CON-17 · HIGH · DIRECT_CONTRADICTION
+
+*Affects:* Orchestrator
+
+**Statement A**
+
+```
+agents/orchestrator/prompt.md:530-534 — "## Output format  Every response should end with your next tool call.  You may write a short reasoning line above the call, but keep it terse.  When the cycle is complete (after ``call_receptionist``), produce no further tool call — your response text is the answer."
+```
+**Statement B**
+
+```
+agents/orchestrator/prompt.md:305-309 — "Once the Planner has approved, call ``call_receptionist`` … The Receptionist composes the user-facing wording — do NOT write the final user message yourself.  The dispatcher delivers the Receptionist's composed text to the user."  Plus Anti-Hallucination rule 5 at :512 ("Do not script user-facing wording — the Receptionist does that.") and agents/shared/prompt_fragments/routing_orchestrator.md:4-6 (``call_receptionist`` … "This is the normal way to end a cycle.").
+```
+**Why it confuses the system**
+
+There is no turn 'after call_receptionist': orchestrator.py:534-539 breaks out of the run loop and returns the hop the instant a routing tool fires, and the dispatcher then returns the *Receptionist's* text (orchestrator.py:680-681).  So the only state the Output-format sentence can actually describe is the Orchestrator emitting prose with NO tool call — and orchestrator.py:492-501 turns that prose into `AgentHop(DONE, final)`, which dispatch returns to the user verbatim, in the Orchestrator's voice, with the Receptionist never invoked.  The prompt's last section therefore licenses precisely the bypass that three other rules forbid, and it is the section an LLM weights most for output shape.  Result: a completed cycle where the user gets the Orchestrator's internal technical summary (attempt paths, agent names, "Show to user:" labels) instead of a composed reply — and the anti-fabrication guard rails that live in the Receptionist prompt never run.  agents/shared/prompt_fragments/generic_constraints.md:53-55 makes it worse by naming "the Orchestrator's final user-facing wrap-up" as a sanctioned exception.
+
+**Fix**
+
+```
+Replace agents/orchestrator/prompt.md:530-534 with:
+
+## Output format
+Every response MUST end with a tool call.  You may write a short
+reasoning line above it, but keep it terse.  ``call_receptionist`` is
+how a cycle ends: your turn stops the moment you issue it, and the
+Receptionist's composed text — not yours — is what the user reads.
+Never end a turn with plain prose and no tool call.  That prose is
+delivered to the user verbatim, unreviewed, in your voice, which is
+exactly what "the Receptionist composes the user's wording" forbids.
+If you think you have nothing left to route, you still route:
+``call_receptionist`` with the technical summary.
+
+And in agents/shared/prompt_fragments/generic_constraints.md, replace lines 53-55 ("Every chain agent is bound by this; the\n  only exceptions are the Receptionist's direct user replies and the\n  Orchestrator's final user-facing wrap-up.") with:
+
+  Every chain agent is bound by this; the
+  only exception is the Receptionist's direct user replies.
+```
+*Lands in:* `agents/orchestrator/prompt.md`, `agents/shared/prompt_fragments/generic_constraints.md`
+
+### CON-18 · HIGH · ORPHANED_INSTRUCTION
+
+*Affects:* Receptionist
+
+**Statement A**
+
+```
+agents/receptionist/prompt.md:371-391 — "## Your DBa scope — your OWN work, not the chain's (HARD)  You have ``database_search`` / ``retrieve_user_inputs`` / ``retrieve_attempt`` for YOUR own work … The UII / DCIC / DCII / DCOI have these same tools and will consult the database from their own context … Never call ``retrieve_user_inputs`` / ``retrieve_attempt`` with ``images_flag=True`` … Use ``images_flag=False``."  This section sits OUTSIDE the <<HAS_DBA>> guard, which only opens at :414 and closes at :423.
+```
+**Statement B**
+
+```
+agents/receptionist/receptionist.py:140-143 — the three tools are appended only `if database_access.is_enabled_for("receptionist")`, and workflow_settings/database_access.py:150-152 returns False unconditionally while RAG_ENABLED is False (workflow_settings/settings.py:104).  Confirmed by rendering the template: the receptionist's assembled prompt keeps the whole DBa-scope section (lines 511-527) while the "## Searching past saved sessions" block that documents those tools is stripped.
+```
+**Why it confuses the system**
+
+The Receptionist reads a HARD section describing three tools it is not bound to, with the usage documentation for them removed — the worst possible combination.  Two concrete wrong decisions follow.  (1) On "what diameter did the last design end up with?" the prompt has just told it it can confirm a named past session and find a past attempt; it may emit `database_search`, get "Error: unknown tool 'database_search'" from receptionist.py:186, and burn steps or apologise to the user about a database that is not in play.  (2) On "the agents MUST look at the database", the section instructs it to forward the mandate verbatim because "The UII / DCIC / DCII / DCOI have these same tools" — they do not, this session — so a request that should be answered with "this session has no database access" is pushed into a pipeline that will escalate on it.
+
+**Fix**
+
+```
+Wrap the section in the same guard the rest of the DBa material uses.  In agents/receptionist/prompt.md, put `<<HAS_DBA>>` on its own line immediately BEFORE line 371 and `<</HAS_DBA>>` on its own line immediately AFTER line 391, so the block reads:
+
+<<HAS_DBA>>
+## Your DBa scope — your OWN work, not the chain's (HARD)
+You have ``database_search`` / ``retrieve_user_inputs`` /
+``retrieve_attempt`` for YOUR own work — answering a user question that
+depends on a prior run, confirming what a named past session contained,
+finding a past attempt the user asks to see again.
+
+You MUST NOT use them to pre-cook the CHAIN's work.  When the user asks
+the CHAIN to use past experience ("the agents MUST look at the database",
+"analyse 3 previous sketches"), do NOT run the search yourself and pack
+the results into your summary.  The UII / DCIC / DCII / DCOI have these
+same tools and will consult the database from their own context, with
+their own visual capabilities on past sketches / renders.  Pre-cooking
+wastes tokens (the chain re-runs it anyway), strips past images at your
+``on_operation_end`` (so the chain never sees them), and biases the chain
+toward your conclusion.  Forward the user's mandate verbatim (per
+"Preserve the force of user directives" above) and let them do the work.
+
+Never call ``retrieve_user_inputs`` / ``retrieve_attempt`` with
+``images_flag=True`` — past images are for the UII / DCII / DCOI, which
+compare visual evidence as their core task; in your text-coordination role
+they are wasted tokens.  Use ``images_flag=False``.
+<</HAS_DBA>>
+```
+*Lands in:* `agents/receptionist/prompt.md`
+
+### CON-30 · HIGH · RULE_CONFLICT
+
+*Affects:* tool_caller, dc_output_inspector
+
+**Statement A**
+
+```
+DC_prompt_fragments/dc_config/hard_constraints_dc.md:12-17 — "- DON'T offer analysis the system cannot perform (performance / RPM / thrust / flow / pressure / efficiency / CFD, or structural / FEA / stress / material / load / tolerance), nor alternative output formats (STL, STEP, IGES, …), camera angles, cross-sections, or higher-resolution renders — the parameter set, tessellation, and the three fixed views are not negotiable."
+```
+**Statement B**
+
+```
+DC_prompt_fragments/tools_config/blade_sections_visualizer.md:3-12 — "The system can render JUST the blade cross-sections — a flat image showing the three blade sections (Inner, Middle, Outer) stacked vertically … so when a request centres on the blade sections (section drawings or specific section details), the sections can be rendered and refined cheaply on their own, and can even be the final deliverable."
+```
+**Why it confuses the system**
+
+Both fragments land in the SAME assembled prompt for the Tool Caller (asm lines ~289 and ~319) and the DC Output Inspector, roughly 30 lines apart, with BLADE_SECTIONS_VISUALIZER=True. One is labelled a HARD constraint and forbids offering cross-sections and any view beyond "the three fixed views"; the other says cross-sections are a first-class, cheap, even-final deliverable. Reachable case: the DCOI is asked to loop on a precise blade-section drawing. Obeying the HARD rule it must NOT recommend a cross-section render, so it never issues the `call_tool_caller` "render the blade sections" REVISE that the precision-sections loop depends on; symmetrically the Tool Caller can refuse `render_blade_sections` as an out-of-scope "cross-section". Git confirms the collision is live and unreconciled: the BSV fragment landed 2026-06-18 (a8dec7e) and hard_constraints_dc.md was edited later, 2026-07-04 (97b2a0f), still carrying "cross-sections".
+
+**Fix**
+
+```
+- DON'T offer analysis the system cannot perform (performance / RPM /
+  thrust / flow / pressure / efficiency / CFD, or structural / FEA /
+  stress / material / load / tolerance), nor alternative output formats
+  (STL, STEP, IGES, …), arbitrary camera angles, mesh slices, or
+  higher-resolution renders — the parameter set, tessellation, and the
+  three fixed 3D views are not negotiable.<<BSV_ON>>  (The blade-sections
+  image is the ONE exception: it is produced by its own dedicated tool
+  from the parameters file, not by re-rendering or slicing the mesh, and
+  IS offerable.)<</BSV_ON>>
+```
+*Lands in:* `DC_prompt_fragments/dc_config/hard_constraints_dc.md`
+
+### CON-31 · HIGH · DIRECT_CONTRADICTION
+
+*Affects:* tool_caller
+
+**Statement A**
+
+```
+agents/tool_caller/prompt.md:84-86 — "## HARD LIMITS — Do NOT\n- You have EXACTLY the utility tools listed above (plus the read and routing tools)."  The list "above" is $tool_inventory = DC_prompt_fragments/tools_config/tool_inventory.md:1-13, which contains exactly four entries: generate_and_render_propeller, calculate, list_attempts, read_attempt.  Reinforced by agents/shared/prompt_fragments/generic_constraints.md:5 — "DO use only the tools listed for your role; that list is exhaustive."
+```
+**Statement B**
+
+```
+agents/tool_caller/prompt.md:39-44 — "<<BSV_ON>>**Render type — sections vs the full 3D.**  If your incoming hand-off asks you to render the blade sections … call ``render_blade_sections`` with the ``Parameters file:`` path INSTEAD of the mesh-generation tool…"
+```
+**Why it confuses the system**
+
+agents/tool_caller/tool_caller.py:116-118 binds a FIFTH utility tool (`render_blade_sections`) whenever `blade_sections_access.is_enabled()` — which is the measured config. The prompt therefore declares a four-item list "EXACTLY" exhaustive and then orders the agent to call a tool that is not on it. A model that takes the HARD LIMIT literally refuses the sections render ("that tool is not in my inventory — ESCALATE"), killing the sections fast-path; a model that ignores it has learned the hard-limits block is unreliable. Note the per-agent overlay that would have documented the tool, DC_prompt_fragments/tools_config/blade_sections_visualizer_tool_caller.md, is a 0-byte file (emptied deliberately in 4a2829e), so nothing else patches the gap.
+
+**Fix**
+
+```
+Append to DC_prompt_fragments/tools_config/tool_inventory.md (after the existing item 4):
+
+<<BSV_ON>>5. **render_blade_sections(parameters_path, grid=False)** — render JUST the
+   three blade cross-sections (Inner / Middle / Outer) stacked vertically as one
+   PNG, straight from an attempt's ``parameters.json``; no mesh is built.  The
+   PNG is written into that parameters file's own attempt folder (it takes no
+   ``output_dir``) and the tool returns its path.
+<</BSV_ON>>
+```
+*Lands in:* `DC_prompt_fragments/tools_config/tool_inventory.md`
+
+### CON-32 · HIGH · STALE_FACT
+
+*Affects:* tool_caller
+
+**Statement A**
+
+```
+tools/generate_mesh/generate_mesh.py:627 — `middlePos: Annotated[float, "Middle-section radial position (x impellerRadius, dimensionless)"]` (shipped to the Tool Caller in the tool-schema array alongside its prompt)
+```
+**Statement B**
+
+```
+DC_prompt_fragments/dc_config/parameters.md:16, spliced into agents/tool_caller/prompt.md:59 — " 9. middlePos      (fraction of blade span, unitless)  — Middle-section position along the blade: 0 = root (hub, r = 4 mm), 1 = tip; radius = 4 + middlePos·(impellerRadius − 4) mm [0.3; 0.7]"
+```
+**Why it confuses the system**
+
+The Tool Caller is the ONLY agent bound to `generate_and_render_propeller`, so it is the only agent that sees both. The code is unambiguous — web/feg/profiles.js:19 computes `radius: 4.0 + (impellerRadius - 4.0) * t` — and DC_prompt_fragments/dc_config/modelling_notes.md:8 says in as many words "NOT ``middlePos × impellerRadius``". Commit 9ed7c2a ("correct middlePos semantics", 2026-07-15) fixed parameters.md, modelling_notes.md and structure.md but never touched generate_mesh.py, so the exact wrong gloss the commit set out to delete is still the authoritative-looking argument description in the tool schema. Concrete wrong decision: on a hand-off saying "put the middle section at r = 40 mm on an 80 mm-radius propeller", the schema gloss makes middlePos = 0.5 look right while the correct value is (40−4)/(80−4) = 0.474; more likely the Tool Caller flags a correct upstream value as inconsistent with its own tool schema and bounces a valid parameter set back on the hard-STOP range-check path.
+
+**Fix**
+
+```
+    middlePos: Annotated[float, "Middle-section position as a fraction of the BLADE SPAN from the root: 0 = root (hub, r = 4 mm), 1 = tip; actual radius = 4 + middlePos*(impellerRadius - 4) mm. NOT middlePos * impellerRadius."],
+```
+*Lands in:* `tools/generate_mesh/generate_mesh.py`
+
+### CON-33 · HIGH · DIRECT_CONTRADICTION
+
+*Affects:* dc_output_inspector, orchestrator
+
+**Statement A**
+
+```
+DC_prompt_fragments/dc_config/geometry_modification_rule.md:1-2 and :8-9 — "The ONLY way to change the generated geometry is by changing the 17 design parameters via the **DC Input Creator** and regenerating." / "adding struts, supports, or any feature not derivable from the 17 parameters"
+```
+**Statement B**
+
+```
+agents/dc_output_inspector/prompt.md:301 ($parameter_count = 16) — "name which of the 16 parameters *seem* to need adjustment and in which direction"; and the same prompt's DC hard rules, DC_prompt_fragments/dc_config/hard_constraints_dc.md:2 — "DON'T express a design in anything but the 16 named configurator parameters"
+```
+**Why it confuses the system**
+
+In the assembled DCOI prompt the two counts sit 17 lines apart (asm lines 548/555 vs 565). git log shows geometry_modification_rule.md has never been edited since the initial commit e16d20e, so it predates dda1560 ("Remove impellerHeight as an input (17 -> 16 params)", 2026-07-07) which changed "parameter_count slot 17 -> 16" everywhere else. The DCOI is being told the design space has 17 dimensions and 16 dimensions in the same breath; the concrete risk is it invents/expects a 17th lever (the removed impellerHeight, i.e. the outer-ring height that DC_prompt_fragments/dc_config/visual_inspection_guide.md:6 tells it is derived) and files a REVISE asking the DCIC to change a parameter that no longer exists.  (This is the calibration example from the brief, confirmed and reported because the DCOI is in scope.)
+
+**Fix**
+
+```
+The ONLY way to change the generated geometry is by changing the
+$parameter_count design parameters via the **DC Input Creator** and
+regenerating.
+You must NEVER invent or request operations such as:
+  - boolean unions / welding / vertex merging
+  - remeshing / retessellation / hole filling
+  - normal recomputation / manifold repair
+  - small-component pruning
+  - adding struts, supports, or any feature not derivable from those
+    parameters
+  - custom output filenames
+  - any "mesh-fix pipeline", external script, or manual post-processing
+```
+*Lands in:* `DC_prompt_fragments/dc_config/geometry_modification_rule.md`
+
+### CON-34 · HIGH · DEAD_REFERENCE
+
+*Affects:* dc_output_inspector
+
+**Statement A**
+
+```
+DC_prompt_fragments/dc_config/geometry_modification_rule.md:12-14, spliced verbatim into agents/dc_output_inspector/prompt.md:297 under the heading "## HARD RULES — what you must NEVER suggest" — "If the DC Output Inspector reports issues, call the Planner to propose a parameter change, then let the chain execute."
+```
+**Statement B**
+
+```
+agents/dc_output_inspector/prompt.md:381-383 — "REVISE needing a PARAMETER/design change → ``call_orchestrator`` with your analysis and a note that a corrective plan is required; the Orchestrator re-plans (Planner → DCIC → new attempt)."  Verified against agents/orchestrator/orchestrator.py:431-436, which binds the DCOI exactly two routing tools: `call_tool_caller` and `call_orchestrator`.
+```
+**Why it confuses the system**
+
+The fragment was written for the Orchestrator (which does hold `call_planner`) and is spliced unchanged into the DCOI, where it (a) refers to the reader in the third person and (b) instructs it to call a routing tool it is not bound to. This fires on the single most common non-APPROVE path — "the render is wrong, a parameter must change". The DCOI can emit a `call_planner` tool call, which dc_output_inspector.py:366-371 answers with "Error: unknown tool 'call_planner'", burning a step and risking the MAX_DCOI_STEPS "reached the step limit without routing" escalation; or it hesitates between two prompt sections that name different recipients for the same decision.
+
+**Fix**
+
+```
+Issues reported by the DC Output Inspector are fixed by a PARAMETER
+change — proposed by the Planner and executed by the chain — never by a
+mesh operation.  Do NOT ask the Tool Caller to "fix" the mesh; it only
+generates and renders.  Route your report to the hub and let it re-plan.
+```
+*Lands in:* `DC_prompt_fragments/dc_config/geometry_modification_rule.md`
+
+### CON-04 · MEDIUM · DIRECT_CONTRADICTION
+
+*Affects:* User Input Inspector, DC Input Inspector, DC Output Inspector
+
+**Statement A**
+
+```
+DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md:60-62 — "Read the drawn proportions and reproduce them as closely as the 17 parameters allow — e.g. a measured blade-section's thickness, camber, high-point, chord, and angle, or the middle section's radial position."
+```
+**Statement B**
+
+```
+DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md:65-67 (four lines later, same bullet list) — "You remain bounded by the 16 parameters: reproduce what they can express; when the drawing implies geometry outside their reach, match as closely as possible and say what could not be captured."  The count is 16 (DC_prompt_fragments/dc_config/parameter_count.txt:1; parameter_keys.txt lists 16 keys).
+```
+**Why it confuses the system**
+
+`git log -L 58,68` on this file shows commit dda1560 ("derive outer-ring height instead of an input parameter") changed the second bullet 17→16 and MISSED the first — the same half-done edit as the confirmed geometry_modification_rule.md case, but here both numbers sit inside a single bullet list in one fragment, so the agent cannot even use section distance to guess which is current. The 17th parameter was the outer-ring HEIGHT, which is now auto-derived. A UII reading a precise drawing that dimensions the ring height will record it as a configurator-parameter line rather than a real-world-quantity line, and the DCII will then look for a 17th cell to range-check.
+
+**Fix**
+
+```
+  * Read the drawn proportions and reproduce them as closely as the 16
+    parameters allow — e.g. a measured blade-section's thickness, camber,
+    high-point, chord, and angle, or the middle section's radial position.
+```
+*Lands in:* `DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md`
+
+### CON-05 · MEDIUM · DIRECT_CONTRADICTION
+
+*Affects:* User Input Inspector, DC Input Creator, DC Input Inspector, Orchestrator, Planner, Tool Caller, DC Output Inspector, Receptionist
+
+**Statement A**
+
+```
+DC_prompt_fragments/dc_config/hard_constraints_dc.md:12-17 — "DON'T offer analysis the system cannot perform (…), nor alternative output formats (STL, STEP, IGES, …), camera angles, cross-sections, or higher-resolution renders — the parameter set, tessellation, and the three fixed views are not negotiable."
+```
+**Statement B**
+
+```
+DC_prompt_fragments/tools_config/blade_sections_visualizer.md:3-11 (spliced into the same prompts because BLADE_SECTIONS_VISUALIZER_ENABLED is True) — "The system can render JUST the blade cross-sections — a flat image showing the three blade sections (Inner, Middle, Outer) stacked vertically … so when a request centres on the blade sections … the sections can be rendered and refined cheaply on their own, and can even be the final deliverable."
+```
+**Why it confuses the system**
+
+`git log -S"cross-sections"` shows the prohibition is from the v4 baseline commit e16d20e; the visualizer arrived later (a8dec7e / 6221d46) and nobody removed "cross-sections" from the DON'T list. Both texts land in the same assembled prompt for all three of my targets. The prohibition is phrased as a non-negotiable domain hard rule, so the safest-looking reading is to obey it: the UII's own BSV overlay (blade_sections_visualizer_user_input_inspector.md) tells it to flag a sections-centred request so the Planner can take the faster sections-first path — and the hard rule tells it that cross-sections are exactly what the system must not offer. Result: the cheap sections-first path is never taken, or an agent tells the user a supported deliverable is out of scope.
+
+**Fix**
+
+```
+- DON'T offer analysis the system cannot perform (performance / RPM /
+  thrust / flow / pressure / efficiency / CFD, or structural / FEA /
+  stress / material / load / tolerance), nor alternative output formats
+  (STL, STEP, IGES, …), camera angles,<<BSV_OFF>> cross-sections,<</BSV_OFF>> or
+  higher-resolution renders — the parameter set, tessellation, and the
+  three fixed views are not negotiable.<<BSV_ON>>  The blade-section
+  cross-section image is the ONE exception: it is a real, supported render —
+  see "Blade-sections visualizer" below.<</BSV_ON>>
+```
+*Lands in:* `DC_prompt_fragments/dc_config/hard_constraints_dc.md`
+
+### CON-06 · MEDIUM · RULE_CONFLICT
+
+*Affects:* User Input Inspector
+
+**Statement A**
+
+```
+agents/user_input_inspector/prompt.md:456-458 (PF_OFF region, active) — "**Extraction-only request** (read / report the inputs, not a design generation) — forward it to the Planner exactly as above; the Planner recognises the extraction-only ask and returns the answer, so you do not route it specially."
+```
+**Statement B**
+
+```
+agents/shared/prompt_fragments/routing_user_input_inspector_uii_first.md:5-7, spliced in as the "### Available routing tools" subsection — "``call_orchestrator(message)`` — return control to the Orchestrator for normal completion (when no Planner follow-up is required) or for ESCALATE."
+```
+**Why it confuses the system**
+
+An extraction-only request is precisely the case a reader identifies as "no Planner follow-up is required", so the routing roster invites ``call_orchestrator`` while the prompt body mandates ``call_planner`` — with no precedence stated, and the roster is the section the routing boilerplate points at ("MUST invoke exactly one of the routing tools listed above"). If the UII returns to the Orchestrator, the Planner — the system's final approver — never sees the extraction, so the OUT OF RANGE marking the UII was told is "the only guard on an extraction-only request" is reported to the user unreviewed, and the Orchestrator has to re-dispatch. Note that with PLANNER_FIRST=False there is no other 'normal completion' case for this agent at all: every successful extraction forwards to the Planner.
+
+**Fix**
+
+```
+### Available routing tools
+- ``call_planner(message)`` — FORWARD to the Planner once
+  ``extracted_inputs.txt`` is written and complete.  This is the
+  natural next step in the pipeline, and it is also how an
+  EXTRACTION-ONLY request leaves you: the Planner recognises that ask
+  and returns the answer.
+- ``call_orchestrator(message)`` — ESCALATE only: the request is out of
+  scope, asks for something not in the user's files, or you hit an error
+  you cannot recover from.  Finishing your work normally is never a
+  reason to route here — every successful extraction goes to the Planner.
+
+You are the first agent in the natural flow; there is no "previous"
+agent in the chain for you to CLARIFY back to.  Anything that would
+otherwise be a "back" routes to the Orchestrator instead.
+```
+*Lands in:* `agents/shared/prompt_fragments/routing_user_input_inspector_uii_first.md`
+
+### CON-07 · MEDIUM · STALE_FACT
+
+*Affects:* User Input Inspector
+
+**Statement A**
+
+```
+agents/user_input_inspector/user_input_inspector.py:203 — ``text = f"Hand-off from Planner:\n{message}"``; plus the two tool schemas the LLM receives: :78-80 (``read_user_inputs``) "Pass the absolute path of the inputs directory supplied by the Planner under the ``Input directory:`` label (do NOT guess)." and :107-109 (``write_extraction``) "Pass the absolute file path supplied by the Planner under the ``Extraction output file:`` label".
+```
+**Statement B**
+
+```
+agents/user_input_inspector/prompt.md:465-467 (PF_OFF region, active) — "You are the first agent in the chain — there is no upstream agent to CLARIFY back to; anything that would be a 'back' goes to the Orchestrator."  The sender is the Orchestrator (agents/orchestrator/orchestrator.py:441-442 binds ``call_user_input_inspector`` on the Orchestrator), and routing.py:83 places the Planner AFTER the UII.
+```
+**Why it confuses the system**
+
+The UII is told in one breath that nothing is upstream of it, and in the next that the Planner supplied its hand-off and both of its mandatory file paths. ``call_planner`` is bound as its FORWARD tool, so a 'clarify back to whoever sent this' impulse produces a routing call that looks like a normal forward but carries a question instead of an extraction — the Planner then has to bounce it, burning a cycle. It also mis-attributes the source of the ``Input directory:`` / ``Extraction output file:`` labels, which matters because hard_constraints_tools.md:2-5 forbids using any path that did not come from a hand-off label.
+
+**Fix**
+
+```
+In agents/user_input_inspector/user_input_inspector.py, line 203, replace:
+
+        text = f"Hand-off from Planner:\n{message}"
+
+with the topology-neutral form already used by the Tool Caller:
+
+        text = f"Hand-off from previous agent:\n{message}"
+
+In the same file, _READ_INPUTS_DOC (lines 75-85), replace
+"Pass the absolute path of the inputs directory supplied by the Planner under the ``Input directory:`` label (do NOT guess)." with:
+
+    "Pass the absolute path of the inputs directory your hand-off carries "
+    "under the ``Input directory:`` label (do NOT guess).  "
+
+and in ``write_extraction``'s docstring (lines 105-111) replace "Pass the absolute file path supplied by the Planner under the ``Extraction output file:`` label" with:
+
+    Pass the absolute file path your hand-off carries under the
+    ``Extraction output file:`` label, plus three strings (one per
+    section).
+
+Also update the two runtime error strings that name the Planner: line 321-323 ("Call this tool with the absolute path supplied by the Planner." → "…the absolute path your hand-off carries under the 'Input directory:' label.") and lines 408-412 ("…supplied by the Planner under the 'Extraction output file:' label." → "…your hand-off carries under the 'Extraction output file:' label.").
+```
+*Lands in:* `agents/user_input_inspector/user_input_inspector.py`
+
+### CON-08 · MEDIUM · DEAD_REFERENCE
+
+*Affects:* User Input Inspector
+
+**Statement A**
+
+```
+agents/user_input_inspector/prompt.md:212 — "      - outerRadius: 160 mm — OUT OF RANGE (allowed [10; 140])" and prompt.md:247-248 — "    - outerRadius: ~140 mm — SOFT TARGET (goal: match the sketched blade shape; keep near 140 mm if free, but vary freely to fit the shape)"
+```
+**Statement B**
+
+```
+agents/user_input_inspector/prompt.md:161-163 — "Use the parameter list above as the source of truth for the canonical parameter names and the units the configurator uses."  That list (DC_prompt_fragments/dc_config/parameters.md:3) has no ``outerRadius``; the outer radius is ``impellerRadius`` with range [60; 80].
+```
+**Why it confuses the system**
+
+Both worked examples of the two most consequential markers use a parameter name that does not exist and a range ([10; 140]) that contradicts the 16-row table printed 200 lines above them in the same prompt. Two wrong decisions follow. (1) Label: the UII copies the example's shape and writes an ``outerRadius:`` line, which the DCIC cannot map to a cell and the DCII cannot range-check as a verbatim entry (dc_input_inspector/prompt.md:177-179) — so a real user constraint silently degrades into a real-world-quantity entry. (2) Threshold: the OUT OF RANGE rule exists specifically so an extraction-only answer never reports an unbuildable number as fine; an example that treats 140 mm as in-bounds anchors exactly the wrong ceiling for a parameter capped at 80. Note a previous review rejected substituting ``impellerRadius`` because agents/*/prompt.md is the DC-neutral layer (grep -c impeller over the nine prompts returns 0); the fix below keeps that layering by using placeholders, as the surrounding lines 149-160 already do.
+
+**Fix**
+
+```
+Replace line 212 with:
+
+      - <parameter_name>: <the user's value> <parameter_unit> — OUT OF RANGE (allowed [<min>; <max>], from the parameter list above)
+
+and replace lines 247-248 with:
+
+    - <parameter_name>: ~<the user's value> <parameter_unit> — SOFT TARGET (goal: match
+      the sketched blade shape; keep near <the user's value> <parameter_unit> if free,
+      but vary freely to fit the shape)
+```
+*Lands in:* `agents/user_input_inspector/prompt.md`
+
+### CON-09 · MEDIUM · RULE_CONFLICT
+
+*Affects:* DC Input Inspector
+
+**Statement A**
+
+```
+agents/dc_input_inspector/prompt.md:11-16 — "4. **Authorship + authorisation of changes** — a value the user did NOT set (a DCIC default, or an upstream-directed change) must be appropriate, in-range, and from an AUTHORISED source (the Planner / Orchestrator direct changes; a chain agent inventing a value on its own does not)."
+```
+**Statement B**
+
+```
+agents/dc_input_inspector/prompt.md:193-194 — "A parameter absent from QUANTITATIVE INPUTS was never imposed — DCIC's discretion."  And agents/dc_input_creator/prompt.md:21-22 mandates exactly that: "For any parameter the user did not mention at all …, pick a reasonable mid-range default".
+```
+**Why it confuses the system**
+
+Axis 4 explicitly puts "a DCIC default" in the class of values that need an AUTHORISED source, and then defines a chain agent choosing a value on its own as NOT authorised — the DCIC is a chain agent, and a mid-range default is by definition its own choice. §4a says the opposite for the same values. With no precedence stated, the DCII can apply axis 4 to a typical run where 10 of 16 values are DCIC defaults, and take the REVISE bullet at prompt.md:296-297 ("a change was applied but the DCIC did not say who requested it or why — ask for the missing authorship") on every single cycle. That is an unconditional bounce loop on well-formed parameter sets. The reverse error is available too: an inspector reading §4a first may skip authorship checking entirely, including on values an upstream agent actually did direct.
+
+**Fix**
+
+```
+4. **Authorship + authorisation of changes** — a value the user DID set may
+   only have been moved off their number by an AUTHORISED source (a Planner /
+   Orchestrator directive, a user permission, or the value's own ``SOFT
+   TARGET`` marker); a chain agent moving a user value on its own initiative
+   is not authorised.  A parameter the user never constrained is the DCIC's
+   own choice — judge it on range and engineering merit (§1, §5), never on
+   authorship.  User-set values that were NOT moved are authorised by
+   construction — you only check their numbers against ranges + feasibility.
+```
+*Lands in:* `agents/dc_input_inspector/prompt.md`
+
+### CON-10 · MEDIUM · STALE_FACT
+
+*Affects:* DC Input Creator
+
+**Statement A**
+
+```
+agents/dc_input_creator/prompt.md:63-69 — "An authorisation reaches you from the Orchestrator, the Planner relayed through the Orchestrator, the UII, or a CLARIFY bounce — read it once and act. … only it (relaying the user / Planner) or the user can GRANT authorisation, NOT the User Input Inspector (it only records what the user said, so bouncing there wastes a round-trip)"
+```
+**Why it confuses the system**
+
+Two facts are stale under PLANNER_FIRST=False. (1) The Planner hands off DIRECTLY to the DCIC — agents/orchestrator/orchestrator.py:300-307 builds ``build_routing_tool("planner", "dc_input_creator", …)`` — so "the Planner relayed through the Orchestrator" describes a channel that is not the normal one, and the DCIC can fail to recognise a direct Planner directive as a valid authorisation to move a LOCKED value: it then keeps an unbuildable value and ESCALATEs, costing the round-trip the paragraph was written to prevent. (The same stale claim is generated into the prompt by agents/shared/routing.py:58-62.) (2) "bouncing there wastes a round-trip" is an orphaned instruction: with PLANNER_FIRST=False the DCIC has no ``call_user_input_inspector`` tool at all (orchestrator.py:379-383 makes its CLARIFY target the Planner), so it is being warned off a route it cannot take, while the genuine warning it needs — that the Planner IS its CLARIFY target and IS a grantor — is missing.
+
+**Fix**
+
+```
+An authorisation reaches you in your incoming hand-off — from the Planner
+(<<PF_OFF>>your natural previous, which hands off to you directly<</PF_OFF>><<PF_ON>>relayed
+by the Orchestrator<</PF_ON>>), from the Orchestrator, from the extraction's DESIGN
+INTENT, or on a CLARIFY bounce — read it once and act; the channel it arrived
+on does not weaken it.
+If you judge a LOCKED value must change for viability but find NO
+authorisation, keep it as-is and ESCALATE to the **Orchestrator** — only the
+Planner, the Orchestrator (relaying the user) or the user can GRANT one; the
+User Input Inspector only RECORDS what the user said, so it can never grant
+one.  Never invent an authorisation.
+```
+*Lands in:* `agents/dc_input_creator/prompt.md`
+
+### CON-19 · MEDIUM · ORPHANED_INSTRUCTION
+
+*Affects:* Orchestrator
+
+**Statement A**
+
+```
+agents/orchestrator/prompt.md:172-177 — "Concretely: if the user wrote \"the agents MUST use past experience from the database\", your hand-off should say \"The user has MANDATED that you use past experience from the database — this is a HARD directive, not optional.  Call ``database_search`` (and/or ``retrieve_user_inputs`` / ``retrieve_attempt``) before finalising your output.\""  This is outside the prompt's <<HAS_DBA>> guard (which opens at :535).
+```
+**Statement B**
+
+```
+workflow_settings/settings.py:104 `RAG_ENABLED: bool = False`, and workflow_settings/database_access.py:150-152 — with the master switch off, `is_enabled_for` returns False for every agent, so no agent in the session binds `database_search` / `retrieve_user_inputs` / `retrieve_attempt`.  workflow_settings/database_access.json additionally has `"orchestrator": false`.
+```
+**Why it confuses the system**
+
+This is the ONLY worked example in the Orchestrator's HARD "Preserving user directives" section, so it is the template it will imitate.  Following it produces a hand-off ordering the DCIC (or UII, or DCOI) to call a tool that is not in its schema this session.  The recipient then either emits an unknown-tool call and wastes a step, or — more likely under "DO use only the tools listed for your role; that list is exhaustive" (generic_constraints.md:5) plus "DO ESCALATE the moment something blocks you" — escalates a HARD directive it cannot satisfy, sending the cycle back to the Planner for a recovery plan against a non-problem.
+
+**Fix**
+
+```
+Replace agents/orchestrator/prompt.md:172-177 with a tool-agnostic example:
+
+Concretely: if the user wrote "the agents MUST re-examine my
+sketch before choosing values", your hand-off should say "The
+user has MANDATED that you re-examine the sketch before
+choosing values — this is a HARD directive, not optional."
+Name the demand and its force.  Name a specific TOOL only when
+you know the recipient is actually bound to it this session:
+you cannot see another agent's tool list, and a directive to
+call a tool it does not have costs a wasted round-trip or an
+escalation it cannot resolve.
+```
+*Lands in:* `agents/orchestrator/prompt.md`
+
+### CON-20 · MEDIUM · STALE_FACT
+
+*Affects:* Orchestrator, DC Output Inspector
+
+**Statement A**
+
+```
+DC_prompt_fragments/dc_config/geometry_modification_rule.md:1-2 — "The ONLY way to change the generated geometry is by changing the 17 design parameters via the **DC Input Creator** and regenerating."  Repeated at :8-9 — "adding struts, supports, or any feature not derivable from the 17 parameters".
+```
+**Statement B**
+
+```
+DC_prompt_fragments/dc_config/parameter_count.txt = "16"; DC_prompt_fragments/dc_config/parameter_keys.txt lists exactly 16 keys; DC_prompt_fragments/dc_config/parameters.md numbers rows 1-16 and states "(The outer-ring HEIGHT is not a parameter — it is derived automatically to fit the outer blade section.)".  In the assembled Orchestrator prompt these sit ~120 lines apart: the 16-row table under "## The 16 Design Parameters — the ONLY parameters that exist", then "the 17 design parameters" under "## Geometry Modification Rule (HARD)".  impellerHeight was removed as an input in commit dda1560.
+```
+**Why it confuses the system**
+
+The Orchestrator is told 16 and 17 in the same prompt, with the 17 appearing under a HARD heading.  Its "You ORIGINATE nothing" and "Agent Capabilities" sections make it the checker of what the DCIC authored; a 17-count belief means a complete 16-key parameters.json can read as one short, prompting a spurious re-route to the DCIC "to supply the missing parameter" — and the only plausible candidate is impellerHeight, an input the system deliberately removed and which propose_attempt now has to strip defensively (agents/receptionist/propose_attempt_tool.py:128-131).
+
+**Fix**
+
+```
+Replace the whole of DC_prompt_fragments/dc_config/geometry_modification_rule.md with (using the slot so it can never drift again):
+
+The ONLY way to change the generated geometry is by changing the $parameter_count
+design parameters via the **DC Input Creator** and regenerating.
+You must NEVER invent or request operations such as:
+  - boolean unions / welding / vertex merging
+  - remeshing / retessellation / hole filling
+  - normal recomputation / manifold repair
+  - small-component pruning
+  - adding struts, supports, or any feature not derivable from the
+    $parameter_count parameters
+  - custom output filenames
+  - any "mesh-fix pipeline", external script, or manual post-processing
+If the DC Output Inspector reports issues, call the Planner to propose
+a parameter change, then let the chain execute.  Do NOT ask the Tool
+Caller to "fix" the mesh — it cannot.
+```
+*Lands in:* `DC_prompt_fragments/dc_config/geometry_modification_rule.md`
+
+### CON-21 · MEDIUM · RULE_CONFLICT
+
+*Affects:* Planner
+
+**Statement A**
+
+```
+agents/planner/prompt.md:19-26 — "**Part 1 — your reasoning (response text).**  The analysis or plan, written as ordinary response content."  Expanded at :110-118 ("**Recovery PLAN** — write Part 1 in this format" — Problem / Solution / Sequence / Reasoning) and :188-190 ("A proposal / suggestions ask … → write the proposal as Part 1").
+```
+**Statement B**
+
+```
+agents/shared/routing.py:266-273, built by `routing_instructions()` and substituted into `{routing_instructions}` at agents/planner/prompt.md:587 — i.e. the LAST text in the assembled prompt: "Any ordinary response text you produce is for your own brief reasoning only — it is NOT delivered to the recipient; only the tool's ``message`` argument is.  Keep that reasoning terse (one or two lines is plenty)."
+```
+**Why it confuses the system**
+
+The Planner's whole two-part contract depends on Part 1 being substantial — planner.py:322-363 persists it to logs/current_plan.txt, and orchestrator.py:782-786 surfaces it as "Latest Planner plan" when the pipeline hits a step cap.  The closing routing block, which the model reads last and which is phrased as a hard cap, tells it a one-or-two-line response is plenty.  Concretely: on a Role-2 recovery the Planner writes a one-line Part 1 instead of Problem/Solution/Sequence/Reasoning, so nothing records what was ruled out — and rule 9's "count from your history" retry budget has no history to count.  On a proposal ask ("what would you suggest?"), where the proposal IS supposed to be Part 1, the Planner truncates it and the user gets an empty answer.
+
+**Fix**
+
+```
+Amend the shared boilerplate so the length guidance defers to each agent's own role sections.  In agents/shared/routing.py, replace the final list entry (currently lines 266-273) with:
+
+        "Do NOT describe or announce which tool you intend to call.  Do "
+        "NOT wait for the next turn to invoke it.  Do NOT substitute the "
+        "tool call with free-form prose that says \"routing to X\".  In "
+        "the same response where you finish your work, invoke the tool.  "
+        "Any ordinary response text you produce is for your own record "
+        "only — it is NOT delivered to the recipient; only the tool's "
+        "``message`` argument is.  Keep it terse UNLESS your own role "
+        "sections above ask you to write something longer there — the "
+        "Planner's Part 1 (recovery plans, written proposals) is the one "
+        "case that does, and that instruction wins over this one.",
+```
+*Lands in:* `agents/shared/routing.py`
+
+### CON-22 · MEDIUM · DIRECT_CONTRADICTION
+
+*Affects:* Receptionist
+
+**Statement A**
+
+```
+agents/receptionist/prompt.md:117-121 — "**Reply to the user directly** … Optionally, you may first call ``read_agent_history`` to answer a question from a prior run; after the tool returns, your next turn should be plain text with no further tool calls."
+```
+**Statement B**
+
+```
+agents/receptionist/prompt.md:180-184 — "First ``read_agent_history`` on whichever agent saw it (DCOI for the visual verdict, Planner for reasoning, Tool Caller for what ran + metrics + paths, DCIC for chosen parameter values, UII for extracted intent; call it more than once if needed)."
+```
+**Why it confuses the system**
+
+The second passage enumerates five different agents, each holding a different slice, and explicitly authorises repeat calls; the first caps the Receptionist at exactly one call before it must produce prose.  A single realistic question spans two of them — "what values did we end up with and did the render succeed?" needs the DCIC's history and the Tool Caller's.  Under the one-call reading the Receptionist answers from one history and, per the anti-fabrication rule, has to say it does not know the rest — or it fills the gap from imagination, which is the exact failure mode the surrounding section exists to prevent.
+
+**Fix**
+
+```
+Replace agents/receptionist/prompt.md:117-121 with:
+
+2. **Reply to the user directly** — produce a plain-text response with
+   no tool call.  Optionally, you may first call ``read_agent_history``
+   — once per agent whose history you need, and more than once when the
+   answer spans several agents (see "you NEVER invent observations"
+   below for who holds what); once you have enough, your next turn is
+   plain text with no further tool calls.  Choose
+   this path when the request is off-topic / out of scope / malformed,
+```
+*Lands in:* `agents/receptionist/prompt.md`
+
+### CON-23 · MEDIUM · DIRECT_CONTRADICTION
+
+*Affects:* Planner
+
+**Statement A**
+
+```
+agents/planner/prompt.md:304-308 (HARD RULE 1) — "No invented mechanisms.  No timers, waits, confidence scores, custom JSON schemas, version numbers, checksums, fallback policies, notification systems, or any file that does not already exist.  The only data files are: user_query.txt, extracted_inputs.txt, parameters.json, and the render images."
+```
+**Statement B**
+
+```
+Same prompt, agents/planner/prompt.md:530 ("the canonical home for that cycle's ``parameters.json``, mesh, renders, and optional ``description.txt``"), :539-541 ("state WHY … so the DCIC records a self-explanatory ``description.txt``"), :551-552 ("``read_attempt(n, file)`` reads one file — ``parameters.json`` …, ``description.txt`` for its rationale"), and the inlined tool inventory at :284 ("build ``propeller_mesh.obj`` into the attempt folder").  agents/shared/attempts_tool.py:310 `new_attempt(slug, description)` writes description.txt; tools/generate_mesh/generate_mesh.py:610 writes propeller_mesh.obj.
+```
+**Why it confuses the system**
+
+HARD RULE 1 is an anti-hallucination guard, so the Planner applies it defensively.  With description.txt and propeller_mesh.obj excluded from its own list of existing files, the two most useful supervision moves in the prompt become self-forbidden: the 'Defect-recovery supervision' step (read prior attempts' rationale) and the instruction to have the DCIC record a self-explanatory description.txt when opening an attempt.  A Planner that treats description.txt as an invented file drops the slug+WHY from its Part-2, and every attempt folder afterwards is anonymous — which then defeats the same prompt's "compare the first and last attempt" requirement in the APPROVE move.
+
+**Fix**
+
+```
+Replace agents/planner/prompt.md:304-308 with:
+
+1. **No invented mechanisms.**  No timers, waits, confidence scores,
+   custom JSON schemas, version numbers, checksums, fallback policies,
+   notification systems, or any file that does not already exist.  The
+   files that DO exist are: ``user_query.txt`` and
+   ``extracted_inputs.txt`` in the inputs directory, and — inside an
+   attempt folder — ``parameters.json``, ``description.txt``,
+   ``propeller_mesh.obj`` and the ``render_*.png`` images.
+```
+*Lands in:* `agents/planner/prompt.md`
+
+### CON-24 · MEDIUM · DEAD_REFERENCE
+
+*Affects:* Receptionist, Planner, User Input Inspector, DC Input Creator, DC Input Inspector, Tool Caller, DC Output Inspector
+
+**Statement A**
+
+```
+agents/shared/prompt_fragments/eos_feedback_outro.md:1-2 — "Treat it as ground truth and fold it into your DH answers about what went well or badly this session."
+```
+**Statement B**
+
+```
+`grep -rn 'eos_feedback' agents --include=prompt.md` shows the fragment is spliced into seven prompts — receptionist:404, planner:436, user_input_inspector:493, dc_input_creator:386, dc_input_inspector:359, dc_output_inspector:398, tool_caller:176 — and into NONE of them is the Database Handler.  agents/database_handler/prompt.md references neither $eos_feedback_intro nor $eos_feedback_outro.  "DH" (Database Handler) is an internal agent name that appears nowhere else in the Receptionist's or Planner's assembled prompt.
+```
+**Why it confuses the system**
+
+Every consumer of this fragment is told to fold the user's end-of-session feedback into "your DH answers" — a deliverable none of them produce and a name none of them are otherwise given.  The Receptionist's copy is directly harmful: its immediately preceding lines define its scope as "how you presented attempts to the user, how you composed user-facing messages", and the Receptionist is also under a HARD rule never to reveal internal agent names.  Pointing its feedback at an unexplained "DH" either makes the instruction inert (feedback about a botched attempt presentation changes nothing) or invites it to surface an internal agent name to the user.  The Planner's copy is the same: its scope line names retry-budget and approval-pick judgement, then the outro redirects that to "DH answers".
+
+**Fix**
+
+```
+Replace the whole of agents/shared/prompt_fragments/eos_feedback_outro.md with:
+
+Treat it as ground truth: fold it into how you do your own work for the
+rest of the session, and into anything you are later asked to report
+about what went well or badly.
+```
+*Lands in:* `agents/shared/prompt_fragments/eos_feedback_outro.md`
+
+### CON-25 · MEDIUM · RULE_CONFLICT
+
+*Affects:* Receptionist
+
+**Statement A**
+
+```
+agents/receptionist/prompt.md:216-219 — "The ONLY tools permitted here are the read-only / display ones that do not loop control back: ``read_attempt``, ``list_attempts``, ``visualize_3d_model`` and ``propose_attempt``."  (Situation B, outgoing composition.)
+```
+**Statement B**
+
+```
+DC_prompt_fragments/tools_config/hard_constraints_tools.md:6-10, spliced into the Receptionist at prompt.md:413 — "DO route EVERY arithmetic operation — sums, ratios, conversions, range comparisons — through the ``calculate`` tool (never mental arithmetic; LLM sums are unreliable even for trivial cases)."  `calculate` IS bound to the Receptionist (agents/receptionist/receptionist.py:126) and is advertised to the user as a capability (DC_prompt_fragments/dc_config/capabilities_can.md:8, "Arithmetic via a built-in calculator").
+```
+**Why it confuses the system**
+
+Situation B is exactly where arithmetic shows up — relaying "impellerRadius went from 70 mm to 65 mm" invites a percentage, and the "Values the system did not honour" and "Precision jobs" sections both ask the Receptionist to state what was asked for versus what was used.  One rule says every such computation must go through `calculate`; the other says `calculate` is not permitted in this situation.  Whichever it picks it violates a rule stated as absolute, and the likely resolution is silent mental arithmetic in a user-facing message — the one place a wrong number reaches the user unreviewed.
+
+**Fix**
+
+```
+Add the tool to the Situation-B whitelist.  Replace agents/receptionist/prompt.md:216-219 with:
+
+system) and must NOT call ``read_agent_history``.  The ONLY tools
+permitted here are the read-only / display ones that do not loop
+control back: ``read_attempt``, ``list_attempts``, ``calculate``,
+``visualize_3d_model`` and ``propose_attempt``.  When the summary describes a finished design and carries an
+```
+*Lands in:* `agents/receptionist/prompt.md`
+
+### CON-35 · MEDIUM · DUPLICATE_WITH_DRIFT
+
+*Affects:* dc_output_inspector, dc_input_inspector, user_input_inspector
+
+**Statement A**
+
+```
+DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md:59-62 — "### Matching a PRECISE sketch — faithful within the parameters\n  * Read the drawn proportions and reproduce them as closely as the 17 parameters allow …"
+```
+**Statement B**
+
+```
+DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md:65-67 — "  * You remain bounded by the 16 parameters: reproduce what they can express; when the drawing implies geometry outside their reach, match as closely as possible and say what could not be captured."
+```
+**Why it confuses the system**
+
+Two bullets of the SAME sub-section, five lines apart, give different counts for the same bounded design space, and the fragment is spliced into the DCOI at agents/dc_output_inspector/prompt.md:99. `git show dda1560 -- .../sketch_handling.md` proves it is a half-applied fix: that commit changed exactly one line ("the 17 parameters" → "the 16 parameters") and left the occurrence five lines above untouched. On a precise-sketch job the DCOI reads "reproduce as closely as the 17 parameters allow", then "you remain bounded by the 16" — it cannot tell which is current, and the natural repair is to look for the missing 17th lever, which is the removed impellerHeight (outer-ring height), now derived and unsettable. That produces a REVISE demanding a change no one can make.
+
+**Fix**
+
+```
+  * Read the drawn proportions and reproduce them as closely as the
+    $parameter_count parameters allow — e.g. a measured blade-section's
+    thickness, camber, high-point, chord, and angle, or the middle
+    section's radial position.
+```
+*Lands in:* `DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md`
+
+### CON-36 · MEDIUM · AMBIGUOUS_PRECEDENCE
+
+*Affects:* dc_output_inspector
+
+**Statement A**
+
+```
+agents/dc_output_inspector/prompt.md:362-364 — "RECOMMENDATION: <APPROVE, or REVISE — describe the defect qualitatively and, if useful, name which parameter(s) likely need adjustment and the direction; NO concrete numeric values, NO mesh-editing steps>"
+```
+**Statement B**
+
+```
+agents/dc_output_inspector/prompt.md:304-315 — "SHARPEN that direction with a RELATIVE magnitude whenever you can judge one — 'make the inner section roughly twice as thick', 'reduce the camber by about a third', 'increase the thickness by ~30%' … Relative magnitudes are PREFERRED over bare direction" and "You MAY name a specific value when you are genuinely confident about it, but treat that as the exception, not the habit"
+```
+**Why it confuses the system**
+
+Both passages govern the same artefact — the RECOMMENDATION text — and neither states which wins. "increase the thickness by ~30%" and "about twice as thick" are concrete numeric values by any plain reading, and "You MAY name a specific value" is explicitly permissive, yet the output-format template forbids concrete numerics outright. A cautious model resolves the conflict in favour of the flat prohibition and strips exactly the relative magnitudes the DCIC needs to size its step — which is the documented failure mode of the precision-sections loop (feedback too vague to act on). A permissive model emits numbers and looks non-compliant with its own template.
+
+**Fix**
+
+```
+RECOMMENDATION: <APPROVE, or REVISE — describe the defect qualitatively
+and name which parameter(s) likely need adjustment and in which
+direction, sharpened with a RELATIVE magnitude wherever you can judge
+one ("about twice as thick in mm", "camber down by roughly a third").
+An exact target value is allowed only when you are genuinely confident,
+as the exception; the DCIC owns the final numbers.  NO mesh-editing
+steps.>
+```
+*Lands in:* `agents/dc_output_inspector/prompt.md`
+
+### CON-37 · MEDIUM · DEAD_REFERENCE
+
+*Affects:* tool_caller
+
+**Statement A**
+
+```
+agents/tool_caller/prompt.md:68-71 — "A value strictly outside its range is a hard STOP: do NOT generate.  Route back to the agent that produced the parameters (your routing tools name it), quoting the parameter, its value and its allowed range."
+```
+**Statement B**
+
+```
+agents/shared/prompt_fragments/routing_tool_caller.md:5-7 (DCII_ONLY branch, active at DC_INSPECTOR_ENABLED=True) — "``call_dc_input_inspector(message)`` — CLARIFY back to the DC Input Inspector when its parameter audit caused a tool failure that the inspector might catch on a second pass."  Confirmed by agents/orchestrator/orchestrator.py:405-428: with DCII enabled the Tool Caller's three routing tools are call_dc_output_inspector, call_dc_input_inspector, call_orchestrator — there is no call_dc_input_creator.
+```
+**Why it confuses the system**
+
+The same prompt names the producer explicitly at agents/tool_caller/prompt.md:49-51 ("the parameter set has just been written by the DCIC") and at :74-75 ("authoring values belongs to the agent that wrote them"). So "route back to the agent that produced the parameters" resolves to the DC Input Creator, and the parenthetical promises the routing tools name it — but with DCII on they do not. On the hard-STOP path (an out-of-range value, where the prompt forbids generating and forbids fixing) the Tool Caller must pick a target under a promise the roster does not keep: it can emit `call_dc_input_creator`, which tool_caller.py:227-228 answers with "Error: Unknown tool", burning one of MAX_TC_STEPS and risking the stuck-escalation path.
+
+**Fix**
+
+```
+A value strictly outside its range is a hard STOP: do NOT generate.  Route
+back to the previous agent in the chain — the one your routing tools name as
+CLARIFY target — quoting the parameter, its value and its allowed range; it
+relays the correction to whoever authored the value.  Being exactly at min
+or max is fine.
+```
+*Lands in:* `agents/tool_caller/prompt.md`
+
+### CON-38 · MEDIUM · DIRECT_CONTRADICTION
+
+*Affects:* database_handler, planner
+
+**Statement A**
+
+```
+DC_prompt_fragments/tools_config/agent_tools_overview_brief.md:3-5, spliced into agents/database_handler/prompt.md:20 — "This fragment is consumed by the Database Handler only; chain agents see a fuller, tool-level overview that does not appear in your prompt."
+```
+**Statement B**
+
+```
+agents/shared/prompt_fragments/available_agents.md:21-27, spliced into agents/database_handler/prompt.md:11 — "… — see ``$tool_inventory`` for the exact tool name and behaviour."  `$tool_inventory` is resolved by the SECOND substitution pass in agents/shared/prompts.py:785-786, so the DH's assembled prompt inlines the entire four-item tool inventory (generate_and_render_propeller / calculate / list_attempts / read_attempt) mid-sentence inside backticks — verified at assembled DH lines 34-46.
+```
+**Why it confuses the system**
+
+The DH's prompt asserts the tool-level overview is absent 20 lines after dumping it, and dumps it as a broken cross-reference: the sentence reads "see ``1. **generate_and_render_propeller** — build propeller_mesh.obj … 4. read_attempt(n, file) …`` for the exact tool name and behaviour". The DH's Tools section (agents/database_handler/prompt.md:43-46) then tries to neutralise stray tool names by pointing at the WRONG heading — "The tool list above (under \"Tools used across the system\")" — but that section (the brief) names no tools at all, while the section that does name them is "The agents you may interview". So the one guard against the DH trying to invoke a session tool does not cover the only place tool names actually appear.
+
+**Fix**
+
+```
+Replace agents/shared/prompt_fragments/available_agents.md:21-27 with:
+
+- **Tool Caller (TC)**: reads parameters.json from disk and calls the
+  bound merged generate-and-render tool once — it produces the mesh
+  file AND, as its built-in final step, the renders and (if enabled)
+  the quality-check numbers.  Also has a ``calculate`` tool for
+  arithmetic.  Reports the produced file paths for the DC Output
+  Inspector.
+```
+*Lands in:* `agents/shared/prompt_fragments/available_agents.md`
+
+### CON-39 · MEDIUM · ORPHANED_INSTRUCTION
+
+*Affects:* database_handler
+
+**Statement A**
+
+```
+agents/shared/prompt_fragments/available_agents.md:1-6, spliced into agents/database_handler/prompt.md:11 — "You never call the Receptionist directly — if the user needs to be asked something, route to the Orchestrator and state what question is needed; the Orchestrator hands off to the Receptionist, which composes the exact wording."
+```
+**Statement B**
+
+```
+agents/database_handler/prompt.md:36-46 — "You have **one** tool, bound only on specific turns: ``save_attempt_data(attempt_ids: list[str])`` … On every OTHER turn … you have NO tools."  and :166-168 — "(3) address any other agent or the user (post-session there is no chain — their answer is consumed by you alone)."
+```
+**Why it confuses the system**
+
+$available_agents is authored for the Planner and the 5-agent Conductor (its only other consumers, agents/planner/prompt.md:284 and agents/conductor/prompt_5agents.md:629), both of which hold `call_orchestrator`. The Database Handler runs post-session with no routing tools at all (verified: agents/database_handler/database_handler.py binds tools only at line 2359, and only `save_attempt_data`). Handing it a routing procedure for reaching the user contradicts the section that tells it there is no chain, and gives it an apparent escape hatch when an interviewed agent's answer is unclear — the correct behaviour there is an `ASK:` round, not "route to the Orchestrator".
+
+**Fix**
+
+```
+In agents/database_handler/prompt.md, replace lines 8-20 with:
+
+## What you know about the system
+
+### The agents you may interview
+You interview them one at a time and you never call an agent yourself —
+the system delivers your question and returns the reply.
+$agent_tools_overview_brief
+
+### The design configurator
+The system designs $dc_name designs.  It has $parameter_count
+quantitative parameters that fully describe one design.  See the
+agents' own histories for the specific values used during this
+session.
+
+and replace lines 43-46 with:
+
+On every OTHER turn (session-scoped Qs, sub-rows, SAVE: emits, regular
+ASK: rounds) you have NO tools.  Any tool named anywhere above belonged
+to an agent DURING the session, not to you — do not try to invoke it.
+```
+*Lands in:* `agents/database_handler/prompt.md`
+
+### CON-40 · MEDIUM · STALE_FACT
+
+*Affects:* database_handler
+
+**Statement A**
+
+```
+agents/database_handler/prompt.md:10-11 — "### The agents you may interview\n$available_agents", which resolves to agents/shared/prompt_fragments/available_agents.md:1-32 listing exactly six agents: Receptionist, UII, DCIC, DCII, TC, DC Output Inspector.  Neither the Orchestrator nor the Planner appears.
+```
+**Statement B**
+
+```
+agents/database_handler/database_handler.py:83-85 — "Sequence is fixed: UII, Planner, DCIC, DCII (if enabled), TC, DCOI, Orchestrator, Receptionist."  The SCHEDULE contains six `"agent_key": "planner"` rows (lines 196, 206, 216, 227, 238, 249) and an `"agent_key": "orchestrator"` row (line 396).
+```
+**Why it confuses the system**
+
+The DH's own roster of who it may interview omits two of the eight agents it is actually driven to interview — and the Planner alone accounts for six of the schedule's fields. When the system hands the DH a Planner or Orchestrator field, the roster says that agent is not interviewable. The concrete failure is a badly-shaped or hedged first question ("I have no record of a Planner in this system…"), which for a Semantic field propagates straight into the embedded .txt, since agents/database_handler/database_handler.py:2785+ gives the DH only the field name, type and description to work from.
+
+**Fix**
+
+```
+In agents/database_handler/prompt.md, replace lines 10-11 with:
+
+### The agents you may interview
+You interview them one at a time and you never call an agent yourself —
+the system delivers your question and returns the reply.
+$agent_tools_overview_brief
+
+and delete the now-duplicated lines 19-20 ("### Tools used across the system (high-level only, for context)" and "$agent_tools_overview_brief").  The brief fragment already covers all eight agents including the Orchestrator and the Planner.
+```
+*Lands in:* `agents/database_handler/prompt.md`
+
+### CON-42 · MEDIUM · RULE_CONFLICT
+
+*Affects:* tool_caller
+
+**Statement A**
+
+```
+agents/tool_caller/prompt.md:22-24 — "If the hand-off does NOT carry ``Current attempt:``, ESCALATE.  You are NOT bound to ``new_attempt`` and must not invent or guess an attempt path."
+```
+**Statement B**
+
+```
+tools/generate_mesh/generate_mesh.py:613-617 (the `output_dir` Annotated description, shipped in the Tool Caller's tool schema) — "Must already exist (created by ``new_attempt``)." and generate_mesh.py:198-202 (returned on a bad path) — "Error: '{raw}' is not an existing directory.  Create the attempt folder first via ``new_attempt`` and pass its absolute path."
+```
+**Why it confuses the system**
+
+`new_attempt` is real (agents/shared/attempts_tool.py:310) but bound only to the DC Input Creator and the Orchestrator (dc_input_creator.py:152, orchestrator.py:33) — never to the Tool Caller. The tool schema and its error text therefore instruct the Tool Caller to perform an action its prompt explicitly forbids and its bindings make impossible. This fires precisely when the attempt path is missing or wrong — the case where the prompt wants a clean ESCALATE. Instead the tool result tells the agent to create the folder, so the plausible next move is a `new_attempt` call answered with "Error: Unknown tool", or a retry with a guessed path, both forbidden by the same prompt.
+
+**Fix**
+
+```
+In tools/generate_mesh/generate_mesh.py, change the `output_dir` Annotated description (lines 611-618) to:
+
+    output_dir: Annotated[
+        str,
+        "Absolute path of the attempt folder where propeller_mesh.obj and "
+        "the render PNGs should be written — copy it verbatim from the "
+        "``Current attempt:`` line of your hand-off.  The folder already "
+        "exists; do not create one.  If it already contains "
+        "propeller_mesh.obj the existing mesh is reused and the tool goes "
+        "straight to rendering.",
+    ],
+
+and change the two `_validate_output_dir` error strings (lines 190-195 and 198-202) to:
+
+            "Error: missing or non-string 'output_dir'.  Pass the "
+            "absolute path carried by the hand-off under "
+            "``Current attempt:``."
+
+            f"Error: '{raw}' is not an existing directory.  Do not create "
+            f"or guess an attempt folder; ESCALATE if the hand-off "
+            f"supplied no valid ``Current attempt:`` path."
+```
+*Lands in:* `tools/generate_mesh/generate_mesh.py`
+
+### CON-11 · LOW · ORPHANED_INSTRUCTION
+
+*Affects:* User Input Inspector, DC Input Creator, DC Input Inspector
+
+**Statement A**
+
+```
+agents/shared/attempts_tool.py:220-224 (the ``read_attempt`` tool schema all three agents receive) — "Hand the returned path to ``visualize_3d_model`` to display it, or to a downstream tool that operates on the mesh."  Repeated in the runtime return value at :285-288.  The same docstring at :215-218 says "For image files the resolved absolute path is returned so the caller can hand it to a tool that loads images (e.g. ``view_images``)."
+```
+**Statement B**
+
+```
+``visualize_3d_model`` is bound to the Receptionist alone (agents/receptionist/receptionist.py:56,130 — the only import/bind site in the repo).  ``view_images`` is withheld from the DC Input Creator: agents/dc_input_creator/dc_input_creator.py:165 calls ``build_user_inputs_tools(self.AGENT_KEY, include_image_tools=False)``, and agents/dc_input_creator/prompt.md:276 states "You cannot view the images themselves — rely on the extraction."
+```
+**Why it confuses the system**
+
+All three agents bind ``read_attempt`` and are pointed by its schema at a tool none of them has; the DCIC is additionally pointed at ``view_images``, which its own prompt says it does not have. An agent that follows the pointer gets "Error: unknown tool 'visualize_3d_model'" appended to its history, and a second identical attempt trips the repeat-signature guard into ``stuck_escalation`` (e.g. dc_input_creator.py:236-239) — a spurious escalation on an otherwise healthy cycle. It also sits against generic_constraints.md:28-30 ("DON'T invent tools … If you can't do something with your bound tools, ESCALATE"), leaving the agent unsure whether the tool exists.
+
+**Fix**
+
+```
+In agents/shared/attempts_tool.py, in the ``read_attempt`` docstring (lines 215-224) replace the two pointers with capability-neutral wording:
+
+    For text / JSON files the content is returned inline.  For image
+    files the resolved absolute path is returned, so you can pass it to
+    an image-loading tool IF you have one bound (agents that can see
+    images use ``view_images``).  For MESH files (``.obj`` / ``.stl`` /
+    ``.ply``) only the absolute path is returned — never the inline
+    content, because a propeller mesh's text representation is
+    typically hundreds of thousands of tokens and would blow past
+    every agent's context window.  Pass the path on to an agent or tool
+    that operates on meshes; do NOT call a display tool you are not
+    bound to.  Returns an explicit error string if the attempt or file
+    is missing.
+
+and in the runtime mesh branch (lines 282-289) replace "Hand this absolute path to ``visualize_3d_model`` to display it in the web viewer, or to a downstream tool that operates on the mesh." with "Hand this absolute path on to whichever agent or tool operates on the mesh; only the Receptionist can display it in the web viewer."
+```
+*Lands in:* `agents/shared/attempts_tool.py`
+
+### CON-12 · LOW · STALE_FACT
+
+*Affects:* DC Input Inspector
+
+**Statement A**
+
+```
+agents/dc_input_inspector/prompt.md:74-79 — "If the DCIC's hand-off marks the line ``Parameters file (newly written this cycle):`` then ``parameters.json`` has just been overwritten — anything you remember from a previous read is STALE."
+```
+**Statement B**
+
+```
+DC_prompt_fragments/tools_config/hard_constraints_tools.md:11-14, spliced into the same prompt — "Attempt folders are COHERENT and append-only for their inputs: never rewrite / edit / delete a ``parameters.json`` or mesh already in one".  The code enforces it: agents/dc_input_creator/dc_input_creator.py:416-422 refuses a write into a folder that already holds a parameters.json.
+```
+**Why it confuses the system**
+
+The DCII is told the file it is about to read was overwritten, and separately that overwriting a parameters.json is a hard rule violation. A literal-minded inspector can open its report with an append-only breach that never happened, and REVISE or ESCALATE a perfectly valid new attempt. The intended fact — a NEW file in a NEW attempt folder, so any cached read is stale — survives the fix.
+
+**Fix**
+
+```
+**When to (re-)call ``read_parameters``**:
+  - If the DCIC's hand-off marks the line
+    ``Parameters file (newly written this cycle):`` then this cycle's
+    ``parameters.json`` was written FRESH — normally in a NEW attempt
+    folder, since attempt folders are append-only and nothing is ever
+    overwritten — so anything you remember from a previous read is
+    STALE.  Call ``read_parameters`` again on every such hand-off, even
+    if an earlier turn in this conversation already shows a parameters
+    block.
+```
+*Lands in:* `agents/dc_input_inspector/prompt.md`
+
+### CON-13 · LOW · DEAD_REFERENCE
+
+*Affects:* DC Input Inspector
+
+**Statement A**
+
+```
+agents/dc_input_inspector/prompt.md:4-6 — "judge whether it is fit to proceed, across five axes — each detailed under \"What to Check\" below", followed by axis "5. **Faithfulness of the extraction**" (:17-20).
+```
+**Statement B**
+
+```
+agents/dc_input_inspector/prompt.md:252 — "### 5. Appropriateness — your engineering critique", which is a DIFFERENT subject from axis 5.  Axis 5 is in fact handled outside "What to Check" entirely, at :42-43 ("This is also how you carry out axis 5 — extraction-fidelity verification") inside "## Optional reference: user input images".
+```
+**Why it confuses the system**
+
+The pointer "each detailed under What to Check below" is false for the one axis whose number collides. An inspector working the list in order lands on §5 expecting extraction-fidelity and finds engineering critique, so extraction fidelity — the only check that would catch a UII misread of a reference image — is the axis most likely to be silently dropped. The Output Format headings (:273-280) and the two pre-routing self-checks (:319-325) reinforce this: neither mentions extraction fidelity at all.
+
+**Fix**
+
+```
+Check the parameters.json the DC Input Creator wrote (you do NOT write or
+modify it) and judge whether it is fit to proceed, across six axes.  Axes 1-4
+are detailed in the same-numbered sections of "What to Check" below; axis 5 is
+carried out with the image tools described under "Optional reference: user
+input images"; axis 6 is "What to Check" §5.
+
+1. **Range validity** — every value inside its [min; max].
+2. **Consistency with the user's stated inputs.**
+3. **Engineering soundness** — no impossible / self-intersecting geometry.
+4. **Authorship + authorisation of changes** — (see CON-09 for this axis's
+   corrected body).
+5. **Faithfulness of the extraction** — that ``extracted_inputs.txt``
+   truly reflects what the user said or showed; re-read the raw inputs
+   (text AND images) and cross-check when the stakes warrant (complex or
+   image-rich requests, important quantitative values).
+6. **Appropriateness** — your engineering critique of the values the DCIC
+   chose or was directed to set (advisory; the Planner's plan outranks
+   your opinion).
+```
+*Lands in:* `agents/dc_input_inspector/prompt.md`
+
+### CON-14 · LOW · ORPHANED_INSTRUCTION
+
+*Affects:* User Input Inspector
+
+**Statement A**
+
+```
+DC_prompt_fragments/tools_config/hard_constraints_tools.md:6-10, spliced into the UII prompt at line 502 — "DO route EVERY arithmetic operation — sums, ratios, conversions, range comparisons — through the ``calculate`` tool (never mental arithmetic; LLM sums are unreliable even for trivial cases)."
+```
+**Statement B**
+
+```
+agents/user_input_inspector/prompt.md:371-397 ("## Your utility tools") and :399-406 ("Reading prior attempts") enumerate read_user_inputs, write_extraction, view_images, ocr_regions, list_input_files, read_input_text, read_image_notes, list_attempts, read_attempt — ``calculate`` appears nowhere in the prompt, while agents/shared/prompt_fragments/generic_constraints.md:5 says "DO use only the tools listed for your role; that list is exhaustive."
+```
+**Why it confuses the system**
+
+``calculate`` IS bound (agents/user_input_inspector/user_input_inspector.py:152), but the UII's own inventory presents itself as complete and omits it. The UII's OUT OF RANGE rule (prompt.md:209-218) is a range comparison, i.e. exactly the arithmetic the hard rule says must go through ``calculate``. An agent that trusts its inventory either does the comparison mentally — the failure mode the rule was written to stop — or skips the OUT OF RANGE marking, which the prompt itself calls the only guard on an extraction-only answer.
+
+**Fix**
+
+```
+Append to agents/user_input_inspector/prompt.md, after line 398 (the "On demand (for revisiting one file)" paragraph):
+
+**``calculate(...)``** — every arithmetic step goes through it, including the
+range comparisons behind an ``OUT OF RANGE`` mark and any counting or unit
+arithmetic you do while extracting.  Batch this turn's expressions into ONE
+call.
+```
+*Lands in:* `agents/user_input_inspector/prompt.md`
+
+### CON-26 · LOW · STALE_FACT
+
+*Affects:* Receptionist
+
+**Statement A**
+
+```
+agents/receptionist/prompt.md:295-297 — "1. ``read_attempt(n, \"parameters.json\")`` for its real values, and (optionally) ``read_attempt(n, \"render_*.png\")`` to confirm render paths."
+```
+**Statement B**
+
+```
+agents/shared/attempts_tool.py:205-243 — `read_attempt(n, file)` takes "a bare filename inside the attempt folder"; there is no glob expansion.  A literal `"render_*.png"` falls through to `target = folder / file_clean; if not target.is_file():` and returns "Error: 'render_*.png' not found in attempt N …".
+```
+**Why it confuses the system**
+
+The prompt shows a wildcard as the call to make, so the Receptionist will make it and get an error mid-composition.  It self-recovers (the error lists the files present), but it costs a round-trip on the user-facing turn, and a model that reads the error as "this attempt has no renders" will tell the user no renders were produced — while the Anti-stale rule three lines later forbids it from listing a path it did not get back.
+
+**Fix**
+
+```
+Replace agents/receptionist/prompt.md:295-297 with:
+
+  1. ``read_attempt(n, "parameters.json")`` for its real values, and
+     (optionally) ``read_attempt(n, "render_isometric.png")`` — one
+     exact filename per call, no wildcards — to confirm a render path.
+     Relay ONLY what these results return — never a value or path
+     you did not get back.
+```
+*Lands in:* `agents/receptionist/prompt.md`
+
+### CON-27 · LOW · DEAD_REFERENCE
+
+*Affects:* Planner, Database Handler
+
+**Statement A**
+
+```
+DC_prompt_fragments/tools_config/agent_tools_overview.md is spliced into the Orchestrator only, but agents/shared/prompt_fragments/available_agents.md:21-27 (spliced into the Planner at prompt.md:284 and the DH at prompt.md:11) says "— see ``$tool_inventory`` for the exact tool name and behaviour."
+```
+**Statement B**
+
+```
+agents/shared/prompts.py:785-786 runs `Template(...).safe_substitute(slots)` twice, so the nested `$tool_inventory` is resolved in pass 2.  Rendering the Planner template confirms the bullet becomes: "see ``1. **generate_and_render_propeller** — build ``propeller_mesh.obj`` … 4. **read_attempt(n, file)** — read one file from the n-th attempt …`` for the exact tool name and behaviour." — the whole four-item inventory pasted inside inline backticks, mid-sentence, inside a bullet of the agent roster.
+```
+**Why it confuses the system**
+
+The Planner's HARD RULE 5 points at this roster ("see the agent roster") for which metrics exist, and the roster's Tool-Caller bullet is now a nested list with its own numbering.  A pointer that resolves to its own target is noise the model has to parse past, and the inlined `3. list_attempts` / `4. read_attempt` items sit inside a bullet describing what the TOOL CALLER does, inviting the reading that those belong to the Tool Caller rather than being universal utilities.
+
+**Fix**
+
+```
+Replace the Tool Caller bullet in agents/shared/prompt_fragments/available_agents.md (lines 21-27, keeping the preceding `<</DCII_ONLY>>` marker exactly where it is) with:
+
+<</DCII_ONLY>>- **Tool Caller (TC)**: reads parameters.json from disk and calls
+  ``generate_and_render_propeller`` once — it produces the mesh file
+  AND, as its built-in final step, the renders and (if enabled) the
+  quality-check numbers.  Also has a ``calculate`` tool for
+  arithmetic.  Reports the produced file paths for the DC Output
+  Inspector.
+```
+*Lands in:* `agents/shared/prompt_fragments/available_agents.md`
+
+### CON-28 · LOW · STALE_FACT
+
+*Affects:* Planner
+
+**Statement A**
+
+```
+agents/planner/prompt.md:455-457 — "``{input_images_subdir}/`` subfolder — OPTIONAL user reference images, each paired with a ``<name>_note.txt`` describing it (the Receptionist enforces the pairing, so any image present has its note)."
+```
+**Statement B**
+
+```
+agents/receptionist/prompt.md:4-8 and :22-25 — "each paired with a ``<name>_note.txt`` (auto-created on upload, so the note FILE always exists; its written description is optional and may be blank) … A BLANK note is fine: an image may be uploaded with no written description, so forward it normally (the UII inspects the image itself) — never ask the user to add a description just because a note is empty."  (Behaviour landed in commit 26a6ad5; agents/shared/file_utils.py `pair_input_images` checks file existence, not content.)
+```
+**Why it confuses the system**
+
+"a ``<name>_note.txt`` describing it" plus "any image present has its note" reads as a guarantee of content.  The Planner's own on-demand tool list includes ``read_image_notes()``; when that returns an empty note it looks like a broken input, and the Planner's Role-1 branch "too ambiguous to act on → ESCALATE" is right there.  The result is an escalation asking the user to describe an image the system deliberately allows to be undescribed.
+
+**Fix**
+
+```
+Replace agents/planner/prompt.md:455-457 with:
+
+  * ``{input_images_subdir}/`` subfolder — OPTIONAL user reference
+    images, each paired with a ``<name>_note.txt`` (the Receptionist
+    enforces the pairing, so any image present has its note FILE — but
+    the note may legitimately be BLANK.  An undescribed image is a
+    valid upload, not a defect; the UII reads the image itself).
+```
+*Lands in:* `agents/planner/prompt.md`
+
+### CON-29 · LOW · RULE_CONFLICT
+
+*Affects:* Receptionist
+
+**Statement A**
+
+```
+DC_prompt_fragments/tools_config/hard_constraints_tools.md:2-5, spliced into the Receptionist at prompt.md:413 — "DON'T invent or guess a path for a read tool: read tools take only the paths a hand-off label gives (``Input directory:`` / ``Extracted inputs file:`` / ``Parameters file:`` / ``Render images:`` / ``Current attempt:``) or an upstream tool's return value."
+```
+**Statement B**
+
+```
+None of those five labels ever reaches the Receptionist.  agents/receptionist/receptionist.py:271-277 builds its Situation-A message as "User input files from: {path}" + "Files found: …" + "Image+note pairing: …", and its Situation-B message (:337, plus the Orchestrator's block at agents/orchestrator/prompt.md:324-328) carries "Attempts this cycle:" / "Show to user:" / "DC parameters written this cycle".  Yet agents/receptionist/prompt.md:31-33 tells it to use "``read_input_text(path)`` … re-reads a specific ``_note.txt``" and :298-300 to pass an attempt folder's ``propeller_mesh.obj`` to ``visualize_3d_model``.
+```
+**Why it confuses the system**
+
+A HARD tool rule enumerates five path sources, none of which the Receptionist ever receives, so a literal reading makes every path-taking tool it owns unusable.  Reachable case: a note's auto-loaded copy is garbled and the prompt says to `read_input_text` it — the Receptionist has the path only from the "User input files from:" line, which is not on the sanctioned list, so it skips the re-read and replies from the garbled copy.  Same for `visualize_3d_model`, where the obj path is derived from the "Attempts this cycle:" folder rather than a ``Current attempt:`` label.
+
+**Fix**
+
+```
+Replace DC_prompt_fragments/tools_config/hard_constraints_tools.md lines 2-5 with:
+
+- DON'T invent or guess a path for a read tool: read tools take only
+  the paths your own incoming message already gives you — a hand-off
+  label (``Input directory:`` / ``Extracted inputs file:`` /
+  ``Parameters file:`` / ``Render images:`` / ``Current attempt:``), the
+  Receptionist's ``User input files from:`` line or the ``Attempts this
+  cycle:`` / ``Show to user:`` block, or an upstream tool's return
+  value.
+```
+*Lands in:* `DC_prompt_fragments/tools_config/hard_constraints_tools.md`
+
+### CON-41 · LOW · DUPLICATE_WITH_DRIFT
+
+*Affects:* database_handler
+
+**Statement A**
+
+```
+agents/shared/prompt_fragments/available_agents.md:28, in the DH's assembled prompt — "- **DC Output Inspector (DOI)**: loads the rendered PNGs …"
+```
+**Statement B**
+
+```
+agents/database_handler/prompt.md:337-340 (rewrite rule 7) — "Preserve technical terms verbatim (camelCase parameter names like ``bladeCount``, agent acronyms ``UII``/``DCIC``/``DCII``/``DCOI``/``TC``/``Receptionist``, units, numeric thresholds)."  DC_prompt_fragments/tools_config/agent_tools_overview_brief.md:28 also uses "(DCOI)".
+```
+**Why it confuses the system**
+
+The DH is told to preserve agent acronyms verbatim and given two different acronyms for the same agent inside one prompt. Since the DH authors the text that becomes the embedding vector, an answer saved as "the DOI approved the render" will not retrieve on a "DCOI" query later — a silent, permanent corruption of the RAG corpus this agent exists to build.
+
+**Fix**
+
+```
+- **DC Output Inspector (DCOI)**: loads the rendered PNGs using the
+  paths supplied by the Tool Caller and performs a qualitative visual
+  analysis.  Approves the design (FORWARD to Orchestrator) or flags
+  defects and escalates.  Cannot measure precise dimensions; comments
+  on overall shape, proportions, and feature count.
+```
+*Lands in:* `agents/shared/prompt_fragments/available_agents.md`
+
+### CON-43 · LOW · STALE_FACT
+
+*Affects:* database_handler
+
+**Statement A**
+
+```
+agents/database_handler/prompt.md:88-92 — "the saved ``.txt`` file already carries the attempt id in TWO places (the filename suffix ``__NNN`` and the ``--- Attempt ID ---`` header) so repeating it inside QUESTION/ANSWER wastes embedding-token budget."
+```
+**Statement B**
+
+```
+agents/database_handler/database_handler.py:1480 and :1644 — the identifying-Q single-attempt branch passes `attempt_suffix=None`, and sub-rows compute `attempt_suffix = norm if n_attempts >= 2 else None`.  agents/database_handler/database_handler.py:3071-3072 only appends `__{attempt_suffix}` when it is truthy, so a single-attempt row's filename has NO `__NNN`.
+```
+**Why it confuses the system**
+
+In the common case — one resolved attempt — the id appears in ONE place, not two, so the stated justification is false exactly when it is invoked most. The instruction it supports (drop the "For attempt NNN:" lead-in) is still correct, because `_write_entry` always writes the `--- Attempt ID ---` header (database_handler.py:3120-3124). But a DH that checks the premise and finds it wrong may re-insert "attempt 002" into the saved QUESTION/ANSWER "since the filename doesn't carry it", polluting the embedding with a token that is meaningless to semantic search.
+
+**Fix**
+
+```
+   **Do NOT echo the attempt id into the short SAVE: QUESTION or
+   ANSWER you emit.**  Drop the ``"For attempt NNN:"`` lead-in and
+   any other "attempt NNN" / "attempt #NNN" wording — the saved
+   ``.txt`` file always carries the attempt id in its
+   ``--- Attempt ID ---`` header (and, when a question resolved to
+   more than one attempt, in the ``__NNN`` filename suffix too), so
+   repeating it inside QUESTION/ANSWER wastes embedding-token
+   budget.  Phrase the short question/answer as if the reader
+   already knows which attempt is being discussed.
+```
+*Lands in:* `agents/database_handler/prompt.md`
+
+### CON-44 · LOW · ORPHANED_INSTRUCTION
+
+*Affects:* database_handler
+
+**Statement A**
+
+```
+agents/database_handler/prompt.md:64-85 — "Every row in the schedule is one of three kinds:\n\n1. **Session-related** (e.g. ``Q1``, ``Q3``, ``Q5`` …) …\n\n2. **Identifying attempt-specific** (e.g. ``Q2``, ``Q6`` — top-level rows whose scope is ``attempt`` and whose Q-number has no ``.``) …\n\n3. **Attempt-specific sub-rows** (e.g. ``Q2.1``, ``Q2.2``, ``Q6.1``) …"
+```
+**Statement B**
+
+```
+The DH never receives a Q-number or a scope value.  Every message the DH gets carries only "Agent: …\nField: …\nField type: …\nField description: …" (agents/database_handler/database_handler.py:1996, 2201, 2262, 2785-2790, 2945).  Scope and parent_id are consumed internally at database_handler.py:1297-1298 and never rendered into a prompt; the kind is signalled instead by the literal text "(identifying attempt-specific)" appended to the Field line (database_handler.py:2376) and by the auto-prefixed "For attempt NNN: " lead-in.
+```
+**Why it confuses the system**
+
+The DH is handed a three-way classification procedure keyed on two fields (Q-number, scope) that are absent from every input it will ever see, immediately before the force-tool protocol that depends on getting the classification right. It has to reverse-engineer which kind a row is from cues the prompt never names, and it cannot verify its guess against the stated test — so it may fail to recognise a sub-row and re-derive the attempt from scratch, or treat a session row as attempt-specific and wait for a force-tool turn that never comes.
+
+**Fix**
+
+```
+Every row in the schedule is one of three kinds.  The system tells you
+which by the wording it hands you, not by any row number:
+
+1. **Session-related** (the default — the Field line carries no extra
+   marker) — about the session as a whole, not any specific design
+   attempt.  Examples: "what was the user's original request?", "did the
+   Planner detect any problems?".  Saved verbatim per the SAVE: rules
+   below.
+
+2. **Identifying attempt-specific** — the Field line is marked
+   ``(identifying attempt-specific)``.  These pin down WHICH attempt is
+   being discussed.  Examples: "Which attempt best satisfied the user
+   request?", "Which attempt led to problems?".  The system FORCES you to
+   call ``save_attempt_data`` after Agent A's first reply (see below).
+
+3. **Attempt-specific sub-rows** — the field description arrives
+   prefixed with ``"For attempt NNN: "``.  They are about the SAME
+   attempt their parent identifying row pinned down.  Examples after a
+   parent "which attempt was best": "why was that attempt successful?",
+   "what numerical parameters were used?".
+```
+*Lands in:* `agents/database_handler/prompt.md`
+
+### CON-45 · LOW · RULE_CONFLICT
+
+*Affects:* dc_output_inspector
+
+**Statement A**
+
+```
+agents/shared/prompt_fragments/value_states.md:1-2, spliced into agents/dc_output_inspector/prompt.md:186 — "Every value the user could have given is in exactly one of three states, read off the extraction's QUANTITATIVE INPUTS section:"
+```
+**Statement B**
+
+```
+agents/dc_output_inspector/dc_output_inspector.py:98-100 (_COMPARISON_MODE_1, filled into the same prompt's {comparison_mode_block} at prompt.md:71) — "Do NOT read ``extracted_inputs.txt`` in this mode — it is the UII's interpretation, not the user's raw input."
+```
+**Why it confuses the system**
+
+Under DCOI_COMPARISON_MODE=1 the DCOI is told in one section to read the LOCKED / SOFT TARGET / FREE states off a file another section forbids it to open, with no precedence stated. The prompt body already anticipates this for soft targets alone (prompt.md:201-206 adds "when your in-scope source is the user's raw inputs, when the user's OWN WORDS subordinate a value to a goal…"), which shows the authors saw the collision but patched only one of the three states in one place — the shared fragment still hard-codes the extraction as the sole source. Reachable only at mode 1 (settings.py:242 defaults to 3), which is why this is low: at mode 1 the DCOI either violates the mode by reading the extraction, or treats every user value as FREE because it cannot see a QUANTITATIVE INPUTS section, and stops flagging deviations from locked numbers.
+
+**Fix**
+
+```
+Every value the user could have given is in exactly one of three states.
+Read them off the extraction's QUANTITATIVE INPUTS section when the
+extraction is in scope for you this session; when it is not (your
+comparison-source configuration puts it out of scope), read the same
+three states off the user's own words instead — a value stated plainly is
+LOCKED, a value the user subordinates to a goal is a SOFT TARGET, and
+anything unstated or released is FREE.
+```
+*Lands in:* `agents/shared/prompt_fragments/value_states.md`
+
+---
+
+## 9. Verification of the Orchestrator, Planner and Database Handler cuts
+
+The 115 cuts produced after the interruption have now been through the same three adversarial lenses as the rest. **10 of 115 were refuted — and 8 of the 10 are the Orchestrator, sharing one root cause.**
+
+### The systematic defect: stripped `<<FLAG>>` guards
+
+The Orchestrator auditor wrote replacements that hardcode the *measured* configuration, discarding the conditional regions that make the prompt correct under other flag settings. Under `PLANNER_FIRST=True` the hub would be told the wrong chain order and to bypass the Planner; under `DC_INSPECTOR_ENABLED=False` it would be told to originate hand-offs to an agent it has no tool to call. Each refutation below carries the one-line guard-wrap that repairs it — none of these cuts has to be abandoned.
+
+| cut | verdict | votes | why |
+|---|---|---:|---|
+| **ORC-03** | UNSAFE_NEEDS_REPLACEMENT | 2/3 | Third instance of the same guard loss: the original DCII bullet is wrapped in <<DCII_ONLY>> ... <</DCII_ONLY>> (agents/orchestrator/prompt.md:196-203) and the replacement states 'the DCII ju… |
+| **ORC-06** | UNSAFE_NEEDS_REPLACEMENT | 2/3 | The quoted original wraps the DC Input Inspector bullet in <<DCII_ONLY>> ... <</DCII_ONLY>> (agents/orchestrator/prompt.md:446-449); the replacement roster drops the guard and states '- **DC… |
+| **ORC-07** | UNSAFE_NEEDS_REPLACEMENT | 1/3 | The replacement freezes "no extra views or cross-sections" into agents/orchestrator/prompt.md. In the measured baseline BLADE_SECTIONS_VISUALIZER is ON, and DC_prompt_fragments/tools_config/… |
+| **ORC-09** | UNSAFE_NEEDS_REPLACEMENT | 3/3 | Same guard loss, and here it is an instruction rather than a description. The original reads 'When YOU call <<DCII_ONLY>>``call_dc_input_inspector``, <</DCII_ONLY>>``call_tool_caller``, or `… |
+| **ORC-11** | OVERLAPS_ANOTHER_CUT | 3/3 | ORC-11 and PLN-10 (the one filed against DC_prompt_fragments/dc_config/parameters.md, -644 chars) rewrite the SAME region of the SAME shared fragment - both start at '### Global / ring\n 1. … |
+| **ORC-12** | UNSAFE_NEEDS_REPLACEMENT | 2/3 | Two invariants die. (1) The replacement hardcodes the UII-first order and 'You kick the chain off by calling the User Input Inspector', but the quote it removes is exactly the <<PF_ON>>/<<PF… |
+| **ORC-20** | UNSAFE_NEEDS_REPLACEMENT | 2/3 | The quoted region is the <<PF_ON>>/<<PF_OFF>> pair at agents/orchestrator/prompt.md:39-46, whose whole purpose is that the kick-off target differs by configuration: PF_ON = 'kicking off the … |
+| **ORC-22** | UNSAFE_NEEDS_REPLACEMENT | 1/3 | The replacement writes a literal "16" ("Geometry changes ONLY by changing the 16 parameters") instead of the $parameter_count slot the prompt already interpolates at line 38. dda1560 took th… |
+| **PLN-03** | UNSAFE_NEEDS_REPLACEMENT | 1/3 | This is the auditor_id PLN-03 cut on agents/planner/prompt.md (the FORWARD move), not FRG-03/RTG-03. Rated low; it is at least medium. fa5e2f5 (HEAD~2) exists precisely because the UII's two… |
+| **PLN-28** | UNSAFE_NEEDS_REPLACEMENT | 1/3 | The risk_note's premise is false. It says $sketch_handling "carries it for the UII, DCII and DCOI" and that "this prompt tells the Planner not to do image analysis" - but the Planner has ``v… |
+
+#### ORC-03 — UNSAFE_NEEDS_REPLACEMENT (2 of 3 verifiers)
+
+**Reason.** Third instance of the same guard loss: the original DCII bullet is wrapped in <<DCII_ONLY>> ... <</DCII_ONLY>> (agents/orchestrator/prompt.md:196-203) and the replacement states 'the DCII judges authority from it' unconditionally. Lower blast radius than ORC-06/ORC-09 (it is a rationale clause, not a routing target), but it is the same one-wrap fix. Note also the anchor: quote_end is given as 'NOT need to manufacture a Planner directive on top of a direct\nuser authorisation.' while the file indents both lines by two spaces (lines 220-221), so this is one of only two quotes in the batch that fails an exact-substring match. The substantive content of the cut is fine - the SOFT TARGET literal, the either-source rule and the 'never manufacture a Planner directive' patch are all preserved.
+
+**Safer alternative**
+
+```
+'- Where a parameter change came from - user, Planner, or another agent. Name the source<<DCII_ONLY>>; the DCII judges authority from it<</DCII_ONLY>>.' plus re-quote quote_end with its two-space indentation.
+```
+**Reason.** Two mechanical defects. (1) The replacement re-introduces the DCII unconditionally: the cut span (agents/orchestrator/prompt.md 184-221) contains two complete <<DCII_ONLY>>…<</DCII_ONLY>> pairs, but the replacement writes the bare sentence 'Name the source; the DCII judges authority from it.' agents/shared/prompts.py:106-117 states the invariant explicitly — when DC_INSPECTOR_ENABLED is False 'every DCII reference must be stripped from every assembled system prompt … weaker models get confused … and treat the agent as still present' — and DC_INSPECTOR_ENABLED is a live toggle (workflow_settings/settings.py:120, read per session by web_app.py:318). The prompts_admin validator only checks marker BALANCE (prompts_admin.py rule (b), lines 520-540), so an unguarded mention ships silently. (2) quote_end does not appear in the file: the file reads 'on top of a direct\n  user authorisation.' (two-space continuation indent); the cut's quote_end has '\nuser authorisation.' — verified by exact-match scan, this was the only ORC/PLN/DH anchor besides ORC-11 that failed to resolve.
+
+**Safer alternative**
+
+```
+Keep the cut. Wrap the one clause: '<<DCII_ONLY>>Name the source; the DCII judges authority from it.<</DCII_ONLY>>' (+26 chars), and correct quote_end to 'NOT need to manufacture a Planner directive on top of a direct\n  user authorisation.'
+```
+#### ORC-06 — UNSAFE_NEEDS_REPLACEMENT (2 of 3 verifiers)
+
+**Reason.** The quoted original wraps the DC Input Inspector bullet in <<DCII_ONLY>> ... <</DCII_ONLY>> (agents/orchestrator/prompt.md:446-449); the replacement roster drops the guard and states '- **DCII** - checks those parameters ...' unconditionally. DC_INSPECTOR_ENABLED is a live switch (agents/shared/prompts.py apply_dcii_filter, and ORC-14's own replacement keeps the guard on call_dc_input_inspector), so with the inspector off this roster - headed 'never ask an agent for more' - tells the hub an agent exists that it has no tool to call.
+
+**Safer alternative**
+
+```
+Wrap that one bullet: '<<DCII_ONLY>>- **DCII** - checks those parameters against user intent and that agent-originated changes came from an authorised source.\n<</DCII_ONLY>>' (rest of the replacement unchanged).
+```
+**Reason.** The original roster wraps the DC Input Inspector entry in <<DCII_ONLY>>…<</DCII_ONLY>> (agents/orchestrator/prompt.md 446-449); the replacement's line '- **DCII** — checks those parameters against user intent and that agent-originated changes came from an authorised source.' is unguarded. Under DC_INSPECTOR_ENABLED=False the Orchestrator's capability roster — the section headed 'never ask an agent for more' — would list an agent that is not built, which is exactly the failure apply_dcii_filter exists to prevent (agents/shared/prompts.py:106-117). The auditor's own ORC-14 and PLN-02 replacements guard the same agent correctly, so this is an inconsistency, not a deliberate choice.
+
+**Safer alternative**
+
+```
+Prefix and suffix that one bullet: '<<DCII_ONLY>>- **DCII** — checks those parameters against user intent and that agent-originated changes came from an authorised source.\n<</DCII_ONLY>>'.
+```
+#### ORC-07 — UNSAFE_NEEDS_REPLACEMENT (1 of 3 verifiers)
+
+**Reason.** The replacement freezes "no extra views or cross-sections" into agents/orchestrator/prompt.md. In the measured baseline BLADE_SECTIONS_VISUALIZER is ON, and DC_prompt_fragments/tools_config/blade_sections_visualizer.md - spliced into all nine prompts - says the system renders the three blade cross-sections and that they "can even be the final deliverable"; ORC-06's own replacement tells the same prompt the Tool Caller holds ``render_blade_sections`` "(cross-sections only; far faster, and can be the deliverable)". The claim is already stale in capabilities_cannot.md, but there it is one shared fragment that a single BSV-aware fix corrects for the whole fleet. Inlining it into prompt.md creates a private copy that rots exactly the way geometry_modification_rule.md's "17" did. This section specifically governs what the Orchestrator writes into the technical summary the Receptionist relays verbatim, so the stale half can reach the user as "the system cannot produce cross-sections" on a run whose deliverable IS the sections render.
+
+**Safer alternative**
+
+```
+Same replacement with "no extra camera angles" in place of "no extra views or cross-sections" - one word shorter and no longer contradicts ORC-06 in the same prompt.
+```
+#### ORC-09 — UNSAFE_NEEDS_REPLACEMENT (3 of 3 verifiers)
+
+**Reason.** Same guard loss, and here it is an instruction rather than a description. The original reads 'When YOU call <<DCII_ONLY>>``call_dc_input_inspector``, <</DCII_ONLY>>``call_tool_caller``, or ``call_dc_output_inspector``' (agents/orchestrator/prompt.md:149-150); the replacement says 'Hand-offs YOU originate to the DCII, Tool Caller or DCOI must carry ``Current attempt:``' with no guard, so with DC_INSPECTOR_ENABLED=False the Orchestrator is told to originate hand-offs to an agent that is not in its routing tool set.
+
+**Safer alternative**
+
+```
+One wrap inside the existing replacement: 'Hand-offs YOU originate to the <<DCII_ONLY>>DCII, <</DCII_ONLY>>Tool Caller or DCOI must carry ``Current attempt: <absolute path>``; ...' (rest unchanged).
+```
+**Reason.** Same guard loss. The original writes 'When YOU call <<DCII_ONLY>>``call_dc_input_inspector``, <</DCII_ONLY>>``call_tool_caller``…' (agents/orchestrator/prompt.md:149); the replacement writes 'Hand-offs YOU originate to the DCII, Tool Caller or DCOI must carry ``Current attempt: <absolute path>``' with no marker. With DC_INSPECTOR_ENABLED=False this instructs the hub to originate hand-offs to a non-existent agent. Everything else in this cut checks out: both anchors resolve, and the ``Current attempt:`` / ``Parameters file:`` literals — the ones the Tool Caller's read tools require (agents/tool_caller/tool_caller.py:78,272) — survive verbatim.
+
+**Safer alternative**
+
+```
+Guard the mention only: 'Hand-offs YOU originate to the <<DCII_ONLY>>DCII, <</DCII_ONLY>>Tool Caller or DCOI must carry …'.
+```
+**Reason.** The replacement drops the sentence cf4b900 added to this exact section: "To RE-USE an existing attempt's parameters (e.g. 'regenerate the mesh for attempt 3'), quote that existing ``Current attempt:`` path - do NOT open a new one." cf4b900's second half is titled "reuse existing renders" and fixed a real logged failure: render_and_check_mesh used to error and force a new attempt + full regeneration for identical parameters. The Orchestrator is the agent that receives "regenerate attempt 3" and the only holder of new_attempt besides the DCIC. This cut does not act alone: ORC-06 drops $tool_caller_capabilities, which carries "REUSES the three render PNGs when they already exist ... so re-running it on an already-built attempt needs no new attempt", and ORC-16 drops hard_constraints_tools' "Re-running the render/QC tool on an attempt that already has renders REUSES them in place - no new attempt is needed just to re-render". Applied together, all three statements leave the Orchestrator prompt at once, and what remains pushes the other way: ORC-16 keeps "To build on an old parameter set, have the DCIC open a NEW attempt" and ORC-10 keeps "each round is a fresh attempt". The Planner keeps its copy (PLN-03's "Pass ``Current attempt: <path>`` ONLY to REUSE an attempt"), so the hole is Orchestrator-specific rather than fleet-wide.
+
+**Safer alternative**
+
+```
+Append one clause to ORC-09's replacement: "To re-run or re-render an EXISTING attempt, quote its existing ``Current attempt:`` path - renders are reused in place; never open a new folder for that."
+```
+#### ORC-11 — OVERLAPS_ANOTHER_CUT (3 of 3 verifiers)
+
+**Reason.** ORC-11 and PLN-10 (the one filed against DC_prompt_fragments/dc_config/parameters.md, -644 chars) rewrite the SAME region of the SAME shared fragment - both start at '### Global / ring\n 1. bladeCount ...' and end at the outerAngle line - with different, mutually exclusive replacement text. The file is spliced by 7 prompts, so applying both is impossible and applying either silently voids the other. ORC-11 is also the weaker of the two: its quote_end reads '16. outerAngle      (degrees)' (six spaces) while the file has '16. outerAngle     (degrees)' (five), so the anchor does not match byte-for-byte (verified: it is one of only two of the 115 quotes that fail an exact-substring search), and its replacement collapses the per-parameter units/types into a prose preamble, whereas PLN-10 keeps '(mm)', '(degrees)', '(integer, tenths of chord)', '(% of chord)' on every line.
+
+**Safer alternative**
+
+```
+Drop ORC-11 and apply PLN-10's parameters.md rewrite as the single edit to that file. PLN-10 already carries both facts ORC-11 was added for: '*Thickness/*Camber are % of THIS section's own chord' and 'middlePos (fraction of blade SPAN ... radius = 4 + middlePos*(impellerRadius - 4) mm)'.
+```
+**Reason.** ORC-11 and PLN-10 (the second PLN-10 in the list, #82) both rewrite the SAME region of the SAME file — DC_prompt_fragments/dc_config/parameters.md, from '### Global / ring\n 1. bladeCount …' through '16. outerAngle …' — with two different replacement texts. Whichever is applied first destroys the other's anchors, and a naive applier would either fail or emit the parameter list twice into a fragment spliced by nine prompts. Independently, ORC-11's own quote_end does not match the file: it has six spaces in '16. outerAngle      (degrees)' where the file has five ('16. outerAngle     (degrees)                   — Angle of attack [2; 25]'), so its anchor fails even against the unmodified file. PLN-10's anchors resolve byte-for-byte.
+
+**Safer alternative**
+
+```
+Drop ORC-11 and apply PLN-10 alone. PLN-10 is anchor-accurate and strictly more complete (it keeps every unit as well as every range, plus the same middlePos span formula and own-chord note). Both replacements were checked for content fidelity: all 16 names and all 16 ranges are correct in each.
+```
+**Reason.** ORC-11 and PLN-10 [auditor_id FRG-10] both replace the ENTIRE DC_prompt_fragments/dc_config/parameters.md - identical span, offsets 0-1248 - with two DIFFERENT texts. That file is spliced into 7+ prompts, so applying both sequentially either fails (the second cut's anchor no longer exists) or silently double-writes whichever runs last. The two versions are not interchangeable: ORC-11 adds "The middle section has no profile shape of its own - it is interpolated", which is the fact behind b6cd5ee's second defect (the DCOI quoted the middle-section note as a ceiling and the DCIC chased middlePos, a mathematically inert lever); FRG-10 instead keeps the per-parameter unit glosses inline ("fraction of blade SPAN, unitless") that ORC-11 demotes to a trailing paragraph. Both are otherwise faithful - I checked all 16 names, types and ranges and the `radius = 4 + middlePos*(impellerRadius - 4)` formula against parameters.md and modelling_notes.md, and both are correct.
+
+**Safer alternative**
+
+```
+Apply PLN-10 [FRG-10] only and append ORC-11's one extra sentence ("The middle section has no profile shape of its own - it is interpolated between inner and outer.") to it; drop ORC-11 as a separate cut.
+```
+#### ORC-12 — UNSAFE_NEEDS_REPLACEMENT (2 of 3 verifiers)
+
+**Reason.** Two invariants die. (1) The replacement hardcodes the UII-first order and 'You kick the chain off by calling the User Input Inspector', but the quote it removes is exactly the <<PF_ON>>/<<PF_OFF>> pair (agents/orchestrator/prompt.md:4-18) that exists because PLANNER_FIRST is live: agents/shared/prompts.py:486 picks pipeline_flow_planner_first.md vs _uii_first.md, and agents/orchestrator/orchestrator.py:292 branches on it. Under PLANNER_FIRST=True the Orchestrator's prompt would state the wrong chain order AND the wrong kick-off agent. (2) Both pipeline_flow_*.md files are the only carrier of 'The Planner's recovery Sequence picks out a subset of these agents ... the Orchestrator executes that sequence one agent at a time - the standard forward chain is NOT re-entered'. $pipeline_flow is spliced by exactly two prompts (orchestrator, planner); PLN-13 removes the Planner's splice, so ORC-12's own rationale ('the Planner keeps the fragment') is false and the fragment becomes orphaned. For the Planner the rule survives in PLN-06's replacement ('which executes the sequence agent by agent (the forward chain is NOT re-entered)'), but for the Orchestrator - the agent that actually executes it - ORC-19 simultaneously drops 'Execute the Planner's sequence faithfully (by calling the named agent(s) in the order the plan specifies)', leaving only ORC-01's 'REVISE (execute its recovery sequence)'.
+
+**Safer alternative**
+
+```
+Keep the compressed section, but flag-guard the order/kick-off and add one sentence: '## The pipeline\n<<PF_ON>>user -> Receptionist -> **you** -> Planner -> User Input Inspector -> DC Input Creator -> <<DCII_ONLY>>DC Input Inspector -> <</DCII_ONLY>>Tool Caller -> DC Output Inspector -> **you** -> Planner -> Receptionist -> user<</PF_ON>><<PF_OFF>>user -> Receptionist -> **you** -> User Input Inspector -> Planner -> DC Input Creator -> <<DCII_ONLY>>DC Input Inspector -> <</DCII_ONLY>>Tool Caller -> DC Output Inspector -> **you** -> Planner -> Receptionist -> user<</PF_OFF>>\n\nEach agent forwards to the next on its own. You kick the chain off by calling the <<PF_ON>>Planner<</PF_ON>><<PF_OFF>>User Input Inspector<</PF_OFF>>; control returns to you only when the DCOI has a verdict or an agent escalates. A Planner recovery Sequence names a SUBSET of these agents: call them one at a time in that order - the forward chain is NOT re-entered.'
+```
+**Reason.** The cut deletes BOTH runtime branches of a live conditional and hardcodes one. It removes the $pipeline_flow slot — whose source file is chosen by PLANNER_FIRST in prompts._pipeline_flow_fragment_name() — and the matching <<PF_ON>>/<<PF_OFF>> kick-off pair, replacing them with a fixed UII-first chain plus 'You kick the chain off by calling the User Input Inspector.' PLANNER_FIRST is a documented, user-editable setting (workflow_settings/settings.py:270, 'Valid values: True, False', read per session by web_app.py:322), and routing.natural_pipeline() branches on it too. With PLANNER_FIRST=True the Orchestrator's prompt would state the wrong topology and the wrong first hop: calling the UII directly makes the UII forward to its natural next and the Planner's Role-1 never runs. The measured baseline (PLANNER_FIRST=False) hides this, which is why it survived the audit.
+
+**Safer alternative**
+
+```
+Keep the compression, restore the branch — one extra line: '## The pipeline\n<<PF_ON>>user → Receptionist → **you** → Planner → User Input Inspector → DC Input Creator → …<</PF_ON>><<PF_OFF>>user → Receptionist → **you** → User Input Inspector → Planner → DC Input Creator → …<</PF_OFF>>' and 'You kick the chain off by calling the <<PF_ON>>Planner<</PF_ON>><<PF_OFF>>User Input Inspector<</PF_OFF>>'. (Cheapest variant: keep the single '$pipeline_flow' line and cut only the two PF prose paragraphs below it.)
+```
+#### ORC-20 — UNSAFE_NEEDS_REPLACEMENT (2 of 3 verifiers)
+
+**Reason.** The quoted region is the <<PF_ON>>/<<PF_OFF>> pair at agents/orchestrator/prompt.md:39-46, whose whole purpose is that the kick-off target differs by configuration: PF_ON = 'kicking off the Planner, which forwards into the UII', PF_OFF = 'kicking off the UII directly'. The replacement hardcodes 'kick off ``call_user_input_inspector``'. PLANNER_FIRST is read at prompt-build time (agents/shared/prompts.py:120,177) and drives the Orchestrator's own FORWARD targets (agents/orchestrator/orchestrator.py:292,327,374), so under PLANNER_FIRST=True this instructs the hub to bypass the Planner on every new-content turn.
+
+**Safer alternative**
+
+```
+Replace the one clause: '... kick off the chain (<<PF_ON>>``call_planner``, which forwards into the UII<</PF_ON>><<PF_OFF>>``call_user_input_inspector``<</PF_OFF>>) so ``extracted_inputs.txt`` is rewritten. This holds when you resume mid-chain after a recovery too.'
+```
+**Reason.** Same class as ORC-12, in the rule that actually fires on every new user turn. The span (agents/orchestrator/prompt.md 34-46) carries a <<PF_ON>> variant ('kicking off the Planner, which forwards into the UII') and a <<PF_OFF>> variant ('kicking off the UII directly'); the replacement collapses both into 'kick off ``call_user_input_inspector``'. Under PLANNER_FIRST=True that is the wrong hop, and this rule is the one the Orchestrator applies whenever the user supplies new content — including mid-chain after a recovery.
+
+**Safer alternative**
+
+```
+Keep the compressed sentence and re-add the two-word branch: '… kick off <<PF_ON>>``call_planner``, which forwards into the UII<</PF_ON>><<PF_OFF>>``call_user_input_inspector``<</PF_OFF>> so it rewrites ``extracted_inputs.txt``.'
+```
+#### ORC-22 — UNSAFE_NEEDS_REPLACEMENT (1 of 3 verifiers)
+
+**Reason.** The replacement writes a literal "16" ("Geometry changes ONLY by changing the 16 parameters") instead of the $parameter_count slot the prompt already interpolates at line 38. dda1560 took the count from 17 to 16, and the very fragment this cut inlines - DC_prompt_fragments/dc_config/geometry_modification_rule.md - still says "the 17 design parameters" twice, nine months later. The cut's own risk_note admits it: "BUG: the fragment says 'the 17 design parameters' twice - stale since the impellerHeight removal ... It is also spliced into the DCOI prompt, which still reads the wrong count." Swapping one hardcoded count for another reproduces exactly the defect being complained about, in a file the System Prompts editor exposes for hand-editing. The same defect is in ORC-06 ("16 params + folder"), ORC-07 ("build a mesh from the 16 parameters") and ORC-31 ("a plan using only these 16"); ORC-33 gets it right and uses $parameter_count.
+
+**Safer alternative**
+
+```
+Write $parameter_count instead of the literal 16 in ORC-22, ORC-06, ORC-07 and ORC-31. Zero token cost, and it makes the stale-17 bug disappear for the Orchestrator.
+```
+#### PLN-03 — UNSAFE_NEEDS_REPLACEMENT (1 of 3 verifiers)
+
+**Reason.** This is the auditor_id PLN-03 cut on agents/planner/prompt.md (the FORWARD move), not FRG-03/RTG-03. Rated low; it is at least medium. fa5e2f5 (HEAD~2) exists precisely because the UII's two path lines were emitted by exactly one prompt - agents/planner/prompt.md:38-39 - inside a <<PF_ON>> block that PLANNER_FIRST=False strips, leaving no assembled prompt stating them. Its guard, extra_utilities/smoke_test_topology_fragments.py lines 337-347, deliberately requires the label to BEGIN a line: `emitted = {ln.strip() for ln in built[agent].splitlines()}` then `any(ln.startswith(label) ...)`, with the comment "The label must BEGIN a line, i.e. actually be emitted, not merely mentioned: a shared fragment discusses 'the paths a hand-off label gives (``Input directory:`` ...)' in prose, and a bare substring test would accept that as if the instruction were still there." The replacement folds both labels into a run-on sentence whose line breaks land mid-label ("carrying verbatim ``Input directory:\n{user_inputs_dir}`` and ``Extraction output file:\n{extraction_output_file}``"), so no line begins with either label - the prose-mention form the commit explicitly rejects. It escapes the smoke test only because UII_KICKOFF_AGENT is hardcoded to {7: "orchestrator"} (line 134); under PLANNER_FIRST=True the Planner IS the kickoff agent and the UII's read_user_inputs / write_extraction both take a required `path` with no default.
+
+**Safer alternative**
+
+```
+Keep the two labels as their own indented lines inside the <<PF_ON>> branch, e.g. "...carrying verbatim:" then a blank line, then "    Input directory: {user_inputs_dir}" and "    Extraction output file: {extraction_output_file}". Costs ~4 characters over the proposed replacement.
+```
+#### PLN-28 — UNSAFE_NEEDS_REPLACEMENT (1 of 3 verifiers)
+
+**Reason.** The risk_note's premise is false. It says $sketch_handling "carries it for the UII, DCII and DCOI" and that "this prompt tells the Planner not to do image analysis" - but the Planner has ``view_images(paths)`` bound and PLN-27's own replacement keeps it ("use ``view_images`` only when a visual judgement changes your plan"), while agents/planner/prompt.md splices no $sketch_handling at all (verified: sketch_handling appears only in user_input_inspector, dc_input_inspector, dc_output_inspector and their 5-agent copies). 5ebb4a8 added the rule to sketch_handling.md AND, separately and deliberately, "plus a short note in the Planner" - this exact paragraph - because the Planner is the one image-capable agent the fragment does not reach. Deleting it leaves it free to read a pre-printed form's guide values as the user's numbers; the fragment's worked example ("a form prints 'Ø160 / Ø120' ... but the user drew an outline labelled 'Ø140'") matches the Ø160-vs-140 ambiguity observed in the ID224 drawings run.
+
+**Safer alternative**
+
+```
+Delete the paragraph but append one clause to PLN-27's ``view_images`` sentence: "on a filled-in form only the user's own marks are inputs - printed guides, callouts and min/max are scaffolding, not choices." Recovers ~250 of the 335 chars.
+```
+
+> Checked all 115 cuts (33 Database Handler, 33 Orchestrator, 49 Planner) against the nine prompt.md files, every shared/DC fragment, agents/shared/prompts.py, agents/shared/routing.py and agents/orchestrator/orchestrator.py, tracing each removed rule to a surviving statement and confirming by grep which prompts actually splice each $slot. 109 pass: the load-bearing history items all survive somewhere - the STANDING DIRECTIVES markers stay byte-identical in PLN-03/PLN-04 (and are re-stamped in code by standing_directives.ensure_present, so ORC-10 is safe), the middlePos span formula and the %-of-own-chord fact survive in PLN-10's parameters.md rewrite, the subset-revocation bug is covered by PLN-04 ('ANY parameter the user authorised ... holding fixed ONLY what the user fixed') plus PLN-21 ('freeing one says nothing about the rest'), the no-fabricated-observations rule survives in PLN-04's generic_constraints DON'Ts and ORC-08's replacement, the prose-without-a-routing-call rule survives in PLN-06's generic_constraints bullet, PLN-05's routing.py block and ORC-32, and the DCII blanket-approval guard survives in PLN-02/ORC-06. 6 refuted, 5 of them the same mechanical defect - a compressed replacement that silently drops a live conditional guard.
+
+Three couplings the applier must respect, all correctly flagged by the auditor but worth restating: ORC-08 must ship in the SAME commit as ORC-32 (ORC-32 is the only remaining statement of 'prose without a routing tool call halts the pipeline' for the Orchestrator, which is in _NON_CHAIN_AGENTS and so never receives routing_instructions()); DH-14 must ship with DH-06 (only surviving statement of $embedding_max_response_tokens); DH-02 relies on DH-07 and DH-10 for the one-block-vs-ATTEMPT-block SAVE shapes.
+
+Two rationale errors that do NOT change my verdict but are worth correcting for the record: (a) ORC-05 claims '$agent_tools_overview is still spliced by the Database Handler' - it is not; the DH splices $agent_tools_overview_BRIEF, so ORC-05 orphans agent_tools_overview.md fleet-wide. I still accept it: its two operative facts (universal calculate/list_attempts/read_attempt, and new_attempt bound to the DCIC with the Orchestrator as fallback) survive verbatim in ORC-06's roster and ORC-14's routing_orchestrator.md rewrite. (b) ORC-07's replacement asserts 'no extra views or cross-sections' while ORC-06's roster tells the same prompt that render_blade_sections produces cross-sections and 'can be the deliverable'. This contradiction is pre-existing (capabilities_cannot.md and hard_constraints_dc.md both say 'cross-sections' today, while BLADE_SECTIONS_VISUALIZER is on), so the cut does not introduce it - and PLN-11's hard_constraints_dc rewrite quietly fixes the fleet-wide copy by dropping 'cross-sections' from the forbidden list. If the owner wants the Orchestrator consistent too, delete 'or cross-sections' from ORC-07's replacement.
+
+> Checked all 115 cuts against the repo (22 medium, 93 low); 6 refuted, 109 accepted. Verification performed: (a) exact-match resolution of every quote_start/quote_end against the named file (CRLF-normalised) — 113 of 115 resolved, ORC-03 and ORC-11 did not; (b) grep for every runtime-load-bearing literal — "Current attempt:", "Extracted inputs file:", "Parameters file:", "Render images:", "Input directory:", "Input file directory:", "Extraction output file:", "Attempts this cycle:", "Show to user:", "=== STANDING DIRECTIVES (copy verbatim to the next agent) ===", "=== END STANDING DIRECTIVES ===", "SOFT TARGET", "SUGGESTED SECTION SHAPES", "SKETCH CROP REGION", "PRECISION DEMAND", "PRECISION REFINE CAP REACHED", "ASK:", "SAVE:", "QUESTION:", "ANSWER:", "ATTEMPT:", "PROPOSED VALUE" — every one survives in the surviving text of the cuts that touch it; (c) template safety — every $slot introduced by a replacement ($parameter_count, $dc_name, $embedding_max_response_tokens, $hard_constraints_*, $blade_sections_visualizer_per_agent, $tool_inventory-free) is a real key of _build_slots(); every {brace} introduced is either an allowed PROMPT_MD_RUNTIME_SLOTS key for that agent ({user_inputs_dir}, {input_images_subdir}, {extraction_output_file} in planner/prompt.md; {hub}, {agent_name}, {next_agent}, {prev_agent} inside routing.py f-strings) or is not matched by prompts_admin's _BRACE_RE (DH-18's literal {"call_orchestrator": "…"}, and the DH prompt never goes through .format() — database_handler.py:1022 calls _build_template with no format pass); (d) per-cut <<FLAG>> balance for DCII_ONLY / DCII_OFF / PF_ON / PF_OFF / BSV_ON / BSV_OFF / CHAIN_ONLY / HAS_DBA — all net-balanced; (e) the 5 routing.py edits parse as valid Python (implicit literal concatenation plus the existing "…" + _authorisation_sources(hub) + "…" idiom is preserved). The 6 refutations reduce to three root causes: three replacements re-state the DC Input Inspector without its <<DCII_ONLY>> guard (ORC-03/06/09), two hardcode the PLANNER_FIRST=False branch after deleting both <<PF_ON>>/<<PF_OFF>> variants (ORC-12/20), and one duplicates another cut on the same fragment region (ORC-11 vs PLN-10). Every fix is a marker wrapper or a dropped duplicate — no cut needs to be kept as-is. Two non-blocking notes for the owner: (1) display_id is NOT unique in this list — PLN-01 through PLN-12 each appear two or three times on different files (e.g. PLN-11 is both the Planner's Role-3 section and hard_constraints_dc.md), so apply by file+anchor, not by id; (2) several accepted Orchestrator replacements (ORC-06, ORC-07, ORC-22, ORC-31) hardcode "16" where the original used $parameter_count — harmless today (parameter_count.txt is 16) but it re-creates the drift that already left DC_prompt_fragments/dc_config/geometry_modification_rule.md saying "17" after dda1560; substituting $parameter_count costs nothing.
+
+> Checked all 115 cuts (22 medium, 93 low). All 115 quote_start/quote_end anchors resolve in their named files (verified programmatically after normalising the repo's cp1252 em-dashes, which is why a naive UTF-8 substring check would report 57 false misses). 109 accepted, 6 refuted; 2 of the 6 were rated low by the auditor, so the low ratings are not uniformly reliable.
+
+Verified-safe on the medium ones I expected to fail: DH-01 (available_agents.md genuinely omits the Orchestrator and Planner while agent_tools_overview_brief.md covers all eight, and it does nest $tool_inventory), ORC-08 (the Orchestrator is in _NON_CHAIN_AGENTS, so the <<CHAIN_ONLY>> DOs including "carry STANDING DIRECTIVES verbatim" are already stripped from its rendered prompt - and the "FORWARD to your natural" literal the smoke test asserts survives inside FRG-03's rewrite), ORC-10 (dropping the "re-stamped automatically" note is safe: standing_directives.ensure_present is a dispatcher-level backstop), ORC-25 (fa5e2f5's two path labels still begin their own lines, so the UII-PATHS check passes), PLN-04 and PLN-21 (b6cd5ee's "do not narrow to a subset" survives as "ANY parameter the user authorised ... holding fixed ONLY what the user fixed" plus "freeing one says nothing about the rest"), PLN-07 (all three 567880a clauses - per-phase residual, never upgrade "plateaued", untried authorised levers - are preserved), PLN-12 and PLN-23 (e46b194's corrections both survive), FRG-01 (all three value states, the literal SOFT TARGET marker, all three authorisation sources and the how-far wording kept), and the four HARD-RULE deletions PLN-14/17/18/19 (each genuinely duplicated by $hard_constraints_dc or $generic_constraints in the same prompt). No replacement introduces an unescaped literal brace into a .format()ed prompt (DH-18's JSON example is safe: PROMPT_MD_RUNTIME_SLOTS["database_handler"] is empty), and every $slot referenced in a replacement is a real registered slot.
+
+Two non-blocking notes. ORC-05's rationale says agent_tools_overview.md "is still spliced by the Database Handler" - it is not; the DH splices agent_tools_overview_BRIEF, a different file, so ORC-05 makes agent_tools_overview.md dead. The cut is still safe (ORC-06 and ORC-14 carry the new_attempt-fallback clause), but the justification is wrong. And ORC-12 + ORC-19 together remove both statements of "execute the Planner's Sequence one agent at a time; the forward chain is NOT re-entered" from the Orchestrator; ORC-01's "execute its recovery sequence" and ORC-13's "forward to that agent" cover it and I found no incident behind the removed wording, so I did not refute - but it is the thinnest surviving margin in the Orchestrator set.
+
+---
+
+## 10. Tool architecture — merges, unbinds, and the hand-off contract moved into the schemas (6 changes, 4,734 tokens)
+
+| id | change | kind | tokens | risk | files |
+|---|---|---|---:|---|---:|
+| **A5** | Unbind new_attempt from the Orchestrator (DCIC/Creator becomes the only holder) | TOOL_UNBIND | 713 | low | 13 |
+| **A1** | Six read tools become one shared read_pipeline_file(path) | TOOL_MERGE | 1135 | medium | 35 |
+| **A2** | read_user_inputs absorbs list_input_files + read_image_notes, and loses its path argument | TOOL_MERGE | 1000 | medium | 16 |
+| **A3** | ocr_regions folds into view_images as an ocr_region_ids argument | TOOL_MERGE | 756 | medium | 8 |
+| **A4** | visualize_3d_model + propose_attempt merge into show_attempt(obj_path, proposed_values=None) | TOOL_MERGE | 900 | medium | 14 |
+| **B** | Move the hand-off label contract from six prompts into each call_<agent> tool's message-argument schema | SCHEMA_MOVE | 230 | medium | 12 |
+
+### A5 · Unbind new_attempt from the Orchestrator (DCIC/Creator becomes the only holder)
+
+*Kind:* TOOL_UNBIND · *Tokens:* 713 · *Risk:* low
+
+*Files:*
+- `agents/orchestrator/orchestrator.py:33`
+- `agents/orchestrator/orchestrator.py:451`
+- `agents/shared/prompt_fragments/routing_orchestrator.md:26-29`
+- `agents/orchestrator/prompt.md:134-146`
+- `agents/orchestrator/prompt.md:156-157`
+- `DC_prompt_fragments/tools_config/agent_tools_overview.md:6-11`
+- `DC_prompt_fragments/tools_config/agent_tools_overview.md:19-22`
+- `DC_prompt_fragments/dc_config/output_file_locations.md:3-6`
+- `DC_prompt_fragments/tools_config/hard_constraints_tools.md:11-19`
+- `agents/dc_input_creator/prompt.md:234-243`
+- `agents/dc_input_creator/dc_input_creator.py:96-101`
+- `agents/step_caps.py:109-113`
+- `agents/shared/attempts_tool.py:6-10`
+
+**Today**
+
+```
+VERIFIED. The bind site is a bare list entry:
+
+agents/orchestrator/orchestrator.py:439-452
+``​`
+        orch_tools = [
+            build_routing_tool("orchestrator", "planner", self, cl),
+            build_routing_tool("orchestrator", "user_input_inspector",
+                               self, cl),
+            build_routing_tool("orchestrator", "dc_input_creator", self, cl),
+            build_routing_tool("orchestrator", "tool_caller", self, cl),
+            build_routing_tool("orchestrator", "dc_output_inspector",
+                               self, cl),
+            build_routing_tool("orchestrator", "receptionist", self, cl),
+            calculate,
+            list_attempts,
+            read_attempt,
+            new_attempt,
+        ]
+``​`
+and the import at agents/orchestrator/orchestrator.py:33 `from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt`. Grep confirms `new_attempt` appears in orchestrator.py ONLY at those two lines — no other use.
+
+The 5-agent Conductor already does NOT hold it (agents/conductor/conductor.py:328-340, comment at 328-330: "Note it does NOT get ``new_attempt``: the Creator is the sole owner of attempt creation in this topology."). So this change makes the 7-agent hub match the 5-agent hub.
+```
+**Proposed**
+
+```
+1. agents/orchestrator/orchestrator.py:33 — drop the import:
+``​`python
+from agents.shared.attempts_tool import list_attempts, read_attempt
+``​`
+
+2. agents/orchestrator/orchestrator.py:448-452 — drop the bind (and say why, so nobody re-adds it):
+``​`python
+            calculate,
+            list_attempts,
+            read_attempt,
+            # No ``new_attempt``: cf4b900 made the DC Input Creator the sole
+            # creator of attempt folders, and the 5-agent Conductor already
+            # holds none (conductor.py:328).  A hub that can mint folders
+            # produces empty attempts nobody writes into, and every prompt
+            # then has to spend prose saying "but don't".
+        ]
+``​`
+
+3. agents/shared/prompt_fragments/routing_orchestrator.md — delete lines 26-29 outright (the paragraph beginning "You also have ``new_attempt(slug, description)``"). Nothing replaces it.
+
+4. agents/orchestrator/prompt.md:134-146 — replace the whole `### Attempt folders and ``Current attempt:`` propagation` section with:
+``​`
+### Attempt folders and ``Current attempt:`` propagation
+Every design generation lives in an attempt folder under ``logs/attempts/``
+(that cycle's ``parameters.json``, mesh and renders).  The **DCIC creates
+the folder** — it is the only agent that can, and it opens one whenever its
+hand-off carries no ``Current attempt:``.  You never open one: for a new
+generation name the slug + intent and let the DCIC do it; to RE-USE an
+existing attempt (e.g. "regenerate the mesh for attempt 3"), quote that
+attempt's existing path.  If the DCIC cannot open a folder, that is an
+error to surface, not something to work around.
+``​`
+
+5. agents/orchestrator/prompt.md:156-157 — inside `### Hand-offs you originate…`, the sentence "If you are unsure of the path, do NOT guess — route through the DCIC, which emits the labels itself." stays; it is now the whole recovery story.
+
+6. DC_prompt_fragments/tools_config/agent_tools_overview.md:6-11 — replace with:
+``​`
+``new_attempt(slug, description)`` — the only way to open a fresh attempt
+folder — is bound to the **DCIC alone**, which owns attempt creation; every
+other agent (including you and the Planner) uses the folder named in its
+hand-off under ``Current attempt:``.
+``​`
+and :19-22 — replace the "**You (Orchestrator)**" bullet with:
+``​`
+- **You (Orchestrator)**: ``call_<agent>`` routing + the universal utilities
+  + ``read_agent_history``.  You cannot open attempt folders; the DCIC opens
+  one whenever it sees no ``Current attempt:``.
+``​`
+
+7. DC_prompt_fragments/dc_config/output_file_locations.md:3-6 — replace "The folder is created via ``new_attempt`` by the DC Input Creator (or, only as a special-case fallback, the Orchestrator); downstream agents…" with:
+``​`
+The folder is created via ``new_attempt`` by the DC Input Creator; every
+other agent targets it by reading the ``Current attempt:`` label in its
+hand-off.
+``​`
+
+8. DC_prompt_fragments/tools_config/hard_constraints_tools.md:17-19 — change "(the DCIC opens it; the Orchestrator only as a fallback)" to "(the DCIC opens it)".
+
+9. agents/dc_input_creator/prompt.md:234-243 — collapse the two-branch choice to one branch:
+``​`
+**Which folder to write into — you OWN attempt creation.**  Open the folder
+only once your draft has PASSED the checks above, so a check that escalates
+never leaves an empty attempt behind: call ``new_attempt`` (short descriptive
+slug + one-line intent) ONCE, then write ``parameters.json`` into the path it
+returns.  A hand-off that already carries ``Current attempt: <path>`` is a
+REUSE instruction — write into that folder instead of opening a new one.
+``​`
+
+10. agents/dc_input_creator/dc_input_creator.py:96-101 — the `write_parameters` docstring still describes the removed fallback. Replace those lines with:
+``​`python
+    - ``attempt_dir``: absolute path of the attempt folder this
+      parameter set belongs to — normally the path your own
+      ``new_attempt`` call returned, or the path the hand-off carries
+      under ``Current attempt:`` when you were told to reuse an
+      existing attempt.  The folder must already exist; the
+``​`
+
+11. agents/step_caps.py:109-113 — the MAX_ORCH_INNER_STEPS docstring cites the removed tool. Replace "(e.g. ``new_attempt`` to mint an attempt path)" with "(e.g. ``list_attempts`` / ``read_attempt`` to check where a cycle stands)".
+
+12. agents/shared/attempts_tool.py:6-10 — module docstring: "Folders are created explicitly by the DC Input Creator (the default owner of attempt creation; the Orchestrator may open one only as a fallback) — nothing creates them implicitly." becomes "Folders are created explicitly by the DC Input Creator (the 5-agent topology's Creator) — the only holder of ``new_attempt``; nothing creates them implicitly."
+```
+**Prompt prose this frees**
+
+```
+Whole paragraphs, all quoted from the live files:
+
+(a) agents/shared/prompt_fragments/routing_orchestrator.md:26-29, under "### Available routing tools" — DELETED ENTIRELY (69 tok, ×1 agent):
+"You also have ``new_attempt(slug, description)`` to allocate a fresh attempt folder, but ONLY as a special-case fallback for when the DCIC cannot open its own attempt (it blocks, loops, or errors on creation).  Normally the DCIC opens the attempt itself — do not pre-open one."
+
+(b) agents/orchestrator/prompt.md:141-144, heading "### Attempt folders and ``Current attempt:`` propagation" — 214 tok section drops to ~110:
+"…you do NOT pre-open one for a normal new generation.  You also hold ``new_attempt``, but ONLY as a special-case fallback: use it if the DCIC cannot open the attempt itself (it blocks, loops, or errors on creation)."
+
+(c) DC_prompt_fragments/tools_config/agent_tools_overview.md:6-11 + 19-22 (Orchestrator-only slot $agent_tools_overview; the database_handler uses the *_brief file) — 156 tok drops to ~70:
+"``new_attempt(slug, description)`` — the only way to open a fresh attempt folder — is bound to the **DCIC** (which owns attempt creation) and to **you (the Orchestrator) only as a special-case fallback** for when the DCIC cannot open its own attempt" and "``new_attempt`` (ONLY as a fallback if the DCIC cannot open its own attempt).  Normally the DCIC opens the attempt itself when it sees no ``Current attempt:``."
+
+(d) DC_prompt_fragments/dc_config/output_file_locations.md:3-5 ($output_file_locations, ×2 agents — DCIC + Receptionist) — 56→~34 tok each:
+"The folder is created via ``new_attempt`` by the DC Input Creator (or, only as a special-case fallback, the Orchestrator)"
+
+(e) agents/dc_input_creator/prompt.md:237-239, heading "**Which folder to write into — you OWN attempt creation.**" — the (A) branch, ~55 tok:
+"(A) The hand-off carries ``Current attempt: <path>`` (rare — an empty folder the Orchestrator pre-opened for you as a fallback when you could not open one) → write into that folder."
+
+(f) DC_prompt_fragments/tools_config/hard_constraints_tools.md:17-18 ($hard_constraints_tools, ×8 agents) — ~10 tok × 8:
+"(the DCIC opens it; the Orchestrator only as a fallback)"
+```
+**Migration**
+
+1. agents/orchestrator/orchestrator.py:33 — remove `new_attempt` from the import list.
+2. agents/orchestrator/orchestrator.py:451 — remove the `new_attempt,` list entry (add the explanatory comment). `self._tools_by_name` at :463 and `bind_tools` at :464 derive from `orch_tools`, so no other code change is needed.
+3. Grep confirms NO dispatcher branch keys on the name: the Orchestrator resolves utility tools generically through `self._tools_by_name`, so an unbound name would already fall through to "Error: unknown tool". No handler to delete.
+4. Prompt/fragment edits (3)-(12) above. `$agent_tools_overview` is consumed ONLY by agents/orchestrator/prompt.md (the database_handler match in grep is `$agent_tools_overview_brief`). `$output_file_locations` is consumed by dc_input_creator + receptionist. `$hard_constraints_tools` by all 8.
+5. Registries: NO change needed to agents/shared/prompts.py FRAGMENT_TO_SLOT or `_build_slots` — no fragment is added or deleted, only edited in place.
+6. 5-agent topology: nothing to do. agents/conductor/conductor.py:328-340 already omits `new_attempt`, and agents/5agent/prompt_fragments/available_agents_5agents.md:21,75 already say the Creator is the only holder. This change makes 7-agent match 5-agent rather than diverging from it.
+7. extra_utilities/build_agent_table_v5.py — grep it for an Orchestrator tool row listing `new_attempt` before regenerating the agent table.
+8. Docs: extra_utilities/agent_count_variants_build_tracker.md:141,146,221,252 records "drop the Orchestrator new_attempt fallback" as a 5-agent-only decision; note there that 7-agent now does the same.
+
+**Verify by**
+
+(a) `python -c "import ast,sys; ast.parse(open('agents/orchestrator/orchestrator.py').read())"` — the worktree has no langchain, so import-level checks are not available; parse + grep is the honest ceiling here.
+(b) `grep -rn new_attempt agents/orchestrator/` must return nothing.
+(c) Run a normal design turn and confirm the session log shows exactly one `[TOOL CALL]  DC Input Creator -> new_attempt` per generation and none from the Orchestrator.
+(d) Force the failure path the fallback existed for: make `new_attempt` fail (e.g. read-only ATTEMPTS_DIR) and confirm the DCIC escalates with a legible message rather than the Orchestrator silently minting a folder. THIS IS THE HONEST LOSS: after this change there is no in-band recovery for "the DCIC cannot open its own attempt" — the Orchestrator can only re-dispatch the DCIC or escalate to the user. That failure has not been observed in production; the fallback's real cost is the prose in six places neutralising a tool the hub should never use.
+(e) `python extra_utilities/prompt_efficiency/measure_prompts.py` — expect the Orchestrator line to drop ~380 tok and every $hard_constraints_tools consumer ~10 tok.
+
+### A1 · Six read tools become one shared read_pipeline_file(path)
+
+*Kind:* TOOL_MERGE · *Tokens:* 1135 · *Risk:* medium
+
+*Files:*
+- `agents/shared/user_inputs_tool.py:1-32`
+- `agents/shared/user_inputs_tool.py:94-103`
+- `agents/shared/user_inputs_tool.py:200-206`
+- `agents/shared/user_inputs_tool.py:209-237`
+- `agents/shared/user_inputs_tool.py:447-486`
+- `agents/shared/user_inputs_tool.py:783-789`
+- `agents/planner/planner.py:93-115`
+- `agents/planner/planner.py:198`
+- `agents/dc_input_creator/dc_input_creator.py:76-84`
+- `agents/dc_input_creator/dc_input_creator.py:133`
+- `agents/dc_input_creator/dc_input_creator.py:163`
+- `agents/dc_input_creator/dc_input_creator.py:241-243`
+- `agents/dc_input_creator/dc_input_creator.py:306-357`
+- `agents/dc_input_inspector/dc_input_inspector.py:71-90`
+- `agents/dc_input_inspector/dc_input_inspector.py:114-115`
+- `agents/dc_input_inspector/dc_input_inspector.py:139`
+- `agents/dc_input_inspector/dc_input_inspector.py:207-212`
+- `agents/dc_input_inspector/dc_input_inspector.py:272-310`
+- `agents/dc_input_inspector/dc_input_inspector.py:334-379`
+- `agents/tool_caller/tool_caller.py:73-80`
+- `agents/tool_caller/tool_caller.py:104`
+- `agents/tool_caller/tool_caller.py:135`
+- `agents/tool_caller/tool_caller.py:208-210`
+- `agents/tool_caller/tool_caller.py:259-307`
+- `agents/creator/creator.py:109-116`
+- `agents/creator/creator.py:169`
+- `agents/creator/creator.py:200`
+- `agents/creator/creator.py:271-273`
+- `agents/creator/creator.py:337-389`
+- `agents/receptionist/receptionist.py:50`
+- `agents/receptionist/receptionist.py:129`
+- `agents/dc_output_inspector/dc_output_inspector.py:90`
+- `agents/dc_output_inspector/dc_output_inspector.py:121`
+- `agents/dc_output_inspector/dc_output_inspector.py:154`
+- `agents/dc_output_inspector/dc_output_inspector.py:171-172`
+
+**Today**
+
+```
+VERIFIED — six tools, one job ("read the text file whose path a hand-off label gave me"), and they HAVE drifted.
+
+1. agents/shared/user_inputs_tool.py:94-103 `read_input_text(path)` — real dispatcher handler at :447-486; refuses anything outside `USER_INPUTS_DIR` (`_is_inside_inputs`, :245-252). Bound to 6 agents (Receptionist, Planner, UII, DCIC, DCII, DCOI).
+2. agents/planner/planner.py:93-115 `read_extracted_inputs(path)` — the ONLY copy that is a real function (`@tool` over a live body, invoked through `tool_fn.invoke` at planner.py:284), with NO path restriction and no "Loaded … chars" header.
+3. agents/dc_input_creator/dc_input_creator.py:76-84 — stub + handler `_handle_read_tool` (:310-357).
+4. agents/dc_input_inspector/dc_input_inspector.py:82-90 — stub + `_handle_read_extraction_tool` (:294-310) via `_read_file_at_path(validate_json=False)`.
+5. agents/dc_input_inspector/dc_input_inspector.py:71-79 `read_parameters(path)` — via `_read_file_at_path(validate_json=True)`.
+6. agents/tool_caller/tool_caller.py:73-80 `read_parameters(path)` — its own handler at :263-307 with NO JSON validation.
+(plus a SEVENTH in the 5-agent topology: agents/creator/creator.py:109-116.)
+
+DRIFT 1 — the Planner's copy carries a policy paragraph no other copy has (planner.py:104-107):
+"Use this whenever ``extracted_inputs.txt`` is present in the pipeline state.  In UII-first mode (PLANNER_FIRST=False) the Planner ALWAYS reads the extraction first and only consults the raw user inputs (texts + notes) afterwards if more context is needed."
+That is topology policy living in a tool schema, and it is silently WRONG whenever PLANNER_FIRST is True — the schema text does not vary with the flag.
+
+DRIFT 2 — the same file, read by two agents, is validated by one and not the other. DCII, dc_input_inspector.py:366-373:
+``​`
+    if validate_json:
+        try:
+            json.loads(content)
+        except json.JSONDecodeError as exc:
+            return (f"Error: '{raw_path}' is not valid JSON ({exc}).  ESCALATE.")
+``​`
+The Tool Caller — the agent that actually feeds those numbers into the mesh generator — has no such check (tool_caller.py:283-298 reads and returns the text unconditionally). A malformed parameters.json therefore reaches the LLM as raw text at exactly the step where it does damage, and is caught at the step before, which does not use it.
+
+DRIFT 3 — four different "do not guess" phrasings across the six docstrings, and three different success formats: `--- {name} (path: {abs}) ---` (read_input_text), bare file content (Planner), `Loaded {content_label} from {abs} ({n} chars)` (DCII), `Loaded parameters from …` / `Loaded extraction from …` (TC / DCIC).
+```
+**Proposed**
+
+```
+ONE tool in agents/shared/user_inputs_tool.py, replacing lines 94-103 (`read_input_text`):
+
+``​`python
+_READ_PIPELINE_FILE_DOC = (
+    "Read one text or JSON file the pipeline works from: the UII's "
+    "``extracted_inputs.txt``, an attempt's ``parameters.json``, "
+    "``user_query.txt``, or an image's ``<name>_note.txt``.\n\n"
+    "``path`` must be the ABSOLUTE path a hand-off label gave you "
+    "(``Extracted inputs file:`` / ``Parameters file:`` / a file inside "
+    "``Current attempt:``) or that a tool returned; only the inputs and "
+    "attempts trees are readable, and a ``.json`` file is validated before "
+    "it is returned.  Re-read whenever a path is marked ``(newly written "
+    "this cycle)`` or you are not certain your remembered copy still "
+    "matches disk.  On an error you get an explanation, not content — "
+    "never retry with a guessed path."
+)
+
+
+def _build_read_pipeline_file():
+    """Build the single shared ``read_pipeline_file`` tool.
+
+    Replaces six near-identical tools that all did "read the text file whose
+    path a hand-off label gave me": ``read_input_text``, the three
+    ``read_extracted_inputs`` copies (Planner / DCIC / DCII, plus the
+    5-agent Creator's) and the two ``read_parameters`` copies (DCII / Tool
+    Caller).  Merging them also fixes the drift the copies had accumulated:
+    the Planner's carried a PLANNER_FIRST-specific policy paragraph in its
+    schema, and the DCII validated ``parameters.json`` as JSON while the
+    Tool Caller — the agent that actually feeds it to the mesh generator —
+    did not.
+    """
+    def _impl(path: str) -> str:
+        return ""  # handled by dispatch_user_inputs_tool
+    _impl.__doc__ = _READ_PIPELINE_FILE_DOC
+    return tool("read_pipeline_file")(_impl)
+
+
+read_pipeline_file = _build_read_pipeline_file()
+``​`
+
+The handler, replacing `_handle_read_input_text` at :447-486:
+
+``​`python
+@generic_tool("Read pipeline file")
+def _handle_read_pipeline_file(agent, tc: dict, agent_key: str) -> None:
+    """Read one text/JSON file under inputs/ or attempts/ and feed it back.
+
+    One implementation for every agent, so the error wording, the success
+    header and the JSON validation are identical wherever a pipeline file is
+    read.  Validation is driven by the SUFFIX, not by which agent asked, so
+    the Tool Caller now gets the malformed-JSON check the DCII already had.
+    """
+    raw_path = (tc.get("args", {}) or {}).get("path")
+    summary = _read_pipeline_file_text(raw_path)
+    log_tool_call(agent_key, tc["name"], tc.get("args"), summary)
+    agent.messages.append(ToolMessage(
+        content=summary, tool_call_id=tc["id"], name=tc["name"],
+    ))
+
+
+def _read_pipeline_file_text(raw_path) -> str:
+    """Return a ToolMessage-ready rendering of the file at *raw_path*.
+
+    Every failure is a plain string (never an exception) that names the
+    problem and, where the pipeline can do nothing about it, says ESCALATE.
+    """
+    if not isinstance(raw_path, str) or not raw_path.strip():
+        return (
+            "Error: missing or non-string 'path' argument.  Call this tool "
+            "with the absolute path a hand-off label supplied "
+            "('Extracted inputs file:' / 'Parameters file:' / a file inside "
+            "'Current attempt:')."
+        )
+    path = Path(raw_path)
+    if not (_is_inside_inputs(path) or _is_inside_attempts(path)):
+        return (
+            f"Error: '{raw_path}' is outside the readable trees.  This tool "
+            f"reads files under {USER_INPUTS_DIR.resolve()} or "
+            f"{ATTEMPTS_DIR.resolve()} only."
+        )
+    if not path.is_file():
+        return (
+            f"Error: '{raw_path}' is not an existing file.  Do not retry "
+            f"with a guessed path; ESCALATE if no valid path was supplied."
+        )
+    try:
+        content = load_text_file(path)
+    except Exception as exc:  # noqa: BLE001 — a read error must not crash a turn
+        return f"Error reading '{raw_path}': {exc}"
+    if not content.strip():
+        return f"Warning: '{raw_path}' exists but is empty.  ESCALATE."
+    if path.suffix.lower() == ".json":
+        try:
+            json.loads(content)
+        except json.JSONDecodeError as exc:
+            return (
+                f"Error: '{raw_path}' is not valid JSON ({exc}).  ESCALATE — "
+                f"do not act on its contents."
+            )
+    return (
+        f"Loaded {path.name} from {path.resolve()} ({len(content)} chars)."
+        f"\n\n--- {path.name} ---\n{content}"
+    )
+``​`
+
+Registry updates in the same file:
+``​`python
+USER_INPUTS_TOOL_NAMES = {
+    "read_user_inputs",       # see A2
+    "read_pipeline_file",
+    "view_images",
+}
+
+_HANDLERS = {
+    "read_user_inputs":   _handle_read_user_inputs,   # see A2
+    "read_pipeline_file": _handle_read_pipeline_file,
+    "view_images":        _handle_view_images,
+}
+``​`
+and in `build_user_inputs_tools` (:229) `tools = [list_input_files, read_input_text]` becomes `tools = [_build_read_user_inputs(), read_pipeline_file]`.
+
+The Tool Caller is the one agent that does not call `build_user_inputs_tools`, so it takes the tool directly — agents/tool_caller/tool_caller.py:
+``​`python
+from agents.shared.user_inputs_tool import (
+    dispatch_user_inputs_tool,
+    read_pipeline_file,
+)
+``​`
+replace `self._read_tool = read_parameters` (:104) with `self._read_tool = read_pipeline_file`, and replace the run-loop branch at :208-210 with a NARROW dispatch (not the blanket `dispatch_user_inputs_tool`, which would also execute a hallucinated `view_images` whose buffered image blocks the Tool Caller never flushes):
+``​`python
+                if name == "read_pipeline_file":
+                    dispatch_user_inputs_tool(self, tc, "tool_caller")
+                    continue
+``​`
+```
+**Prompt prose this frees**
+
+```
+(a) agents/dc_input_inspector/prompt.md:62-93, the whole "## Your two primary utility tools (IMPORTANT)" section incl. "### 1. read_parameters(path)" and "### 2. read_extracted_inputs(path)" — 362 tok, replaced by ~60:
+"You MUST use these tools before forming your opinion.  Neither file is loaded automatically. … **When to (re-)call ``read_parameters``**: - If the DCIC's hand-off marks the line ``Parameters file (newly written this cycle):`` then ``parameters.json`` has just been overwritten — anything you remember from a previous read is STALE. … Do NOT call either tool with a guessed path.  If a path line is missing from the hand-off, ESCALATE."
+Replacement: "Read BOTH files the hand-off names before forming your opinion — ``read_pipeline_file`` on the ``Parameters file:`` path and on the ``Extracted inputs file:`` path.  Neither is loaded for you.  If either label is missing, ESCALATE."
+
+(b) agents/tool_caller/prompt.md:46-56, under "## Loading parameters (IMPORTANT)" — 142 tok, DELETED (the staleness rule and the no-guessing rule are now in the tool's own schema):
+"**When to (re-)call ``read_parameters``**: - If the hand-off marks the line ``Parameters file (newly written this cycle):``, the parameter set has just been written by the DCIC — anything you remember from a previous read is STALE.  Re-read on every such hand-off. - Whenever you are NOT CERTAIN that the content you remember still matches what is on disk, call ``read_parameters`` again.  When in doubt, re-read.\n\nDo NOT call ``read_parameters`` with a guessed path.  If no ``Parameters file:`` line was supplied, ESCALATE — do not proceed."
+And :27-32 shortens to one sentence naming `read_pipeline_file` (~96 tok freed).
+
+(c) agents/dc_input_creator/prompt.md:270-284, "## Re-reading raw inputs (optional)" + the ``read_extracted_inputs`` bullet of "## Read + write tools — policy" — 210 tok down to ~90:
+"``list_input_files`` lists everything under ``inputs/`` and ``read_input_text(path)`` reads any text file there (e.g. ``user_query.txt`` or an image's ``_note.txt``)." and "**``read_extracted_inputs(path)``** — reading is at your discretion, but when in doubt, re-read. … Path verbatim."
+
+(d) agents/dc_output_inspector/prompt.md:79-81, under "The user-input tools available to you" — the `read_input_text` bullet, ~35 tok, renamed and merged into one line.
+
+(e) agents/planner/prompt.md:459-464, "On-demand tools:" — the `read_input_text(path)` clause plus prompt.md:452-454 "Your PRIMARY input — read it via ``read_extracted_inputs(<path>)`` before consulting the raw files." (~39 tok freed; the second is inside <<PF_OFF>> so it IS in the measured config).
+
+(f) agents/user_input_inspector/prompt.md:395-397, "On demand (for revisiting one file):" — the `read_input_text(path)` clause (~20 tok).
+```
+**Migration**
+
+SHARED MODULE (agents/shared/user_inputs_tool.py):
+1. Add `import json` and `from config import ATTEMPTS_DIR` — ATTEMPTS_DIR is ALREADY imported at :63; `json` is already imported at :38. No new imports needed beyond `load_user_inputs_bundle` (that one is for A2).
+2. Replace :94-103 with `_READ_PIPELINE_FILE_DOC` / `_build_read_pipeline_file` / `read_pipeline_file`.
+3. Replace the handler at :447-486 with `_handle_read_pipeline_file` + `_read_pipeline_file_text`.
+4. Update `USER_INPUTS_TOOL_NAMES` (:200-206) and `_HANDLERS` (:783-789).
+5. Update `build_user_inputs_tools` (:229) and its docstring (:209-237), which names the removed tools twice.
+6. Update the module docstring (:1-32), which lists the four stubs by name.
+
+PER-AGENT — delete the local copy, its `self._read_tool` slot, its all_tools entry, its run-loop branch and its handler:
+7. agents/planner/planner.py — delete :93-115 (`read_extracted_inputs`, the only real-function copy); at :198 `[read_user_queries, read_extracted_inputs, calculate]` becomes `[read_user_queries, calculate]`. `build_user_inputs_tools` at :201 supplies the merged tool. The Planner routes user-inputs tools by name at :274 through `USER_INPUTS_TOOL_NAMES`, which now contains `read_pipeline_file` — no loop change needed.
+8. agents/dc_input_creator/dc_input_creator.py — delete :76-84; :133 `self._read_tool = read_extracted_inputs` deleted; :163 `[self._read_tool, self._write_tool]` → `[self._write_tool]`; delete the branch :241-243; delete `_handle_read_tool` :306-357. `Path` (:19) and `json` (:17) stay — still used at :396 and :477. The DCIC binds `build_user_inputs_tools(..., include_image_tools=False)` at :165, which now yields `read_user_inputs` + `read_pipeline_file`. Update the module docstring :5-11.
+9. agents/dc_input_inspector/dc_input_inspector.py — delete BOTH stubs :71-90; :114-115 both `self._read_*_tool` lines; :139 `[self._read_params_tool, self._read_extraction_tool]` → the list starts at `list(self._extra_utility_tools_by_name.values())`; delete branches :207-212; delete both handlers :276-310; delete the now-dead `_read_file_at_path` :338-379. THEN `import json` (:18) and `from pathlib import Path` (:20) become unused — grep confirms their only uses were :351/:368-369 inside that helper. Update the module docstring :5-11.
+10. agents/tool_caller/tool_caller.py — delete :73-80; import `read_pipeline_file` + `dispatch_user_inputs_tool`; :104 `self._read_tool = read_pipeline_file`; :135 unchanged (`[self._read_tool]`); replace branch :208-210 with the narrow dispatch shown above; delete `_handle_read_parameters_tool` :259-307; `from pathlib import Path` (:24) becomes unused (grep: only :275). Update the module docstring :5-6 and :18-20. NOTE: the Tool Caller does not import `flush_pending_image_blocks`; the narrow branch is what keeps that safe.
+11. agents/creator/creator.py (5-AGENT — the owner handles topology separately but this file imports the same shared module, so it breaks if left) — delete :109-116; :169; :200 `[self._read_tool, self._write_tool]` → `[self._write_tool]`; branch :271-273; handler `_handle_read_tool` :337-389.
+12. agents/receptionist/receptionist.py:50 — `read_input_text` → `read_pipeline_file` in the import; :129 in the `set_tools` list; :121-124 docstring. This WIDENS the Receptionist: it can now read files under attempts/ by absolute path. It already reads them via `read_attempt(n, file)`, so this is a second door to the same room, not new authority.
+13. agents/dc_output_inspector/dc_output_inspector.py — these are runtime PROMPT STRINGS, not code paths: rename `read_input_text` → `read_pipeline_file` at :90 (mode 1 step 2), :121 (mode 2 step 2), :154 (mode 3 step 2) and :171-172 (mode 3 step 3 tool list).
+
+PROMPTS (7-agent): agents/dc_input_inspector/prompt.md:48, 62-93; agents/tool_caller/prompt.md:26-56; agents/dc_input_creator/prompt.md:270-284; agents/dc_output_inspector/prompt.md:79-81; agents/planner/prompt.md:452-454, 459-464; agents/user_input_inspector/prompt.md:395-397; agents/receptionist/prompt.md:31.
+PROMPTS (5-agent, for the owner's topology pass): agents/creator/prompt_5agents.md:222-226, 301-302, 492, 496; agents/conductor/prompt_5agents.md:268, 797, 803-805; agents/5agent/dc_output_inspector/prompt_5agents.md:79; agents/5agent/tool_caller/prompt_5agents.md:31, 46, 52, 55; agents/5agent/receptionist/prompt_5agents.md:31; agents/5agent/user_input_inspector/prompt_5agents.md:406.
+SHARED FRAGMENT: DC_prompt_fragments/tools_config/hard_constraints_tools.md:2-5 keeps its label list (Group B changes that separately).
+
+REGISTRIES: agents/shared/prompts.py FRAGMENT_TO_SLOT and `_build_slots` need NO change (no fragment added/removed). workflow_settings/ocr_access.py and ocr_region_crops_access.py need no change (neither tool is OCR-gated).
+
+TESTS / TOOLING: extra_utilities/smoke_test_image_buffer.py:38,45,68,101 uses the literal name `read_input_text` as the non-image sibling in its parallel-tool-call test — rename so the test keeps exercising a real tool name. extra_utilities/build_agent_table_v5.py:75, 379, 550 lists these tools per agent. agents/step_caps.py:42-74 documents the per-agent tool sequences by name (MAX_UII_STEPS, MAX_DCIC_STEPS, MAX_DCII_STEPS, MAX_TC_STEPS, MAX_DCOI_STEPS). README.md:151, 196, 230.
+
+**Verify by**
+
+(a) `grep -rn "read_input_text\|read_extracted_inputs\|read_parameters" agents/ tools/ extra_utilities/*.py` returns nothing but the intentional generate_mesh.py:685 comment.
+(b) `python -m py_compile` on the six agent modules (note: py_compile proves syntax only — it does NOT prove the wiring, so (c) is the real check).
+(c) Run one full design turn and confirm the session log shows `[TOOL CALL]  DC Input Inspector -> read_pipeline_file` twice (parameters + extraction) and `[TOOL CALL]  Tool Caller -> read_pipeline_file` once, each returning the `Loaded <name> from <abs> (<n> chars)` header.
+(d) REGRESSION TEST FOR DRIFT 2: hand the Tool Caller a deliberately malformed parameters.json and confirm it now returns "is not valid JSON … ESCALATE" instead of the raw text. This is a behaviour CHANGE at the Tool Caller, and the point of the merge.
+(e) Confirm the Receptionist can still read a `_note.txt` (its only prior use of `read_input_text`).
+(f) `python extra_utilities/prompt_efficiency/measure_prompts.py` for the prompt-side delta; the tool-schema delta is not measured by that harness — count it by hand as 1,305 tok of old schemas (104×6 + 145 + 141×2 + 127×2) against ~140×7 = 980 new.
+HONEST CAPABILITY NOTE: nothing is lost. The Planner's copy had no path restriction at all, so widening `read_input_text` from inputs/-only to inputs/+attempts/ is what makes one tool cover all six cases. The one behaviour that CHANGES is JSON validation reaching the Tool Caller (a fix), and the Planner losing a schema paragraph that was only correct for one setting of PLANNER_FIRST.
+
+### A2 · read_user_inputs absorbs list_input_files + read_image_notes, and loses its path argument
+
+*Kind:* TOOL_MERGE · *Tokens:* 1000 · *Risk:* medium
+
+*Files:*
+- `agents/shared/user_inputs_tool.py:82-92`
+- `agents/shared/user_inputs_tool.py:106-112`
+- `agents/shared/user_inputs_tool.py:436-444`
+- `agents/shared/user_inputs_tool.py:489-497`
+- `agents/shared/user_inputs_tool.py:386-428`
+- `agents/user_input_inspector/user_input_inspector.py:75-98`
+- `agents/user_input_inspector/user_input_inspector.py:136`
+- `agents/user_input_inspector/user_input_inspector.py:165`
+- `agents/user_input_inspector/user_input_inspector.py:243-245`
+- `agents/user_input_inspector/user_input_inspector.py:308-392`
+- `agents/user_input_inspector/user_input_inspector.py:29`
+- `agents/user_input_inspector/user_input_inspector.py:43`
+- `agents/dc_output_inspector/dc_output_inspector.py:92`
+- `agents/dc_output_inspector/dc_output_inspector.py:171-172`
+- `agents/orchestrator/prompt.md:48-59`
+- `agents/planner/prompt.md:33-43`
+
+**Today**
+
+```
+VERIFIED — three tools, one directory, overlapping outputs.
+
+`read_user_inputs(path)` (UII-only, built at agents/user_input_inspector/user_input_inspector.py:88-98, handler :312-392) calls `load_user_inputs_bundle(directory, include_image_bytes=False)` and returns: a one-line summary, the pairing WARNING when invalid, `--- File contents ---` = every root text/JSON file PLUS every paired `_note.txt` (agents/shared/file_utils.py:307-321 documents `text_content : root text/JSON + paired notes`), and a list of image paths.
+
+`list_input_files()` (agents/shared/user_inputs_tool.py:82-92, formatter :319-383) returns the same directory, the same pairing status (with orphan + duplicate-stem detail the bundle's WARNING summarises), the same image paths — but no file CONTENT.
+
+`read_image_notes()` (:106-112, formatter :386-428) returns exactly the note text that `read_user_inputs` already inlines.
+
+The UII binds all three (user_input_inspector.py:165 `[self._read_tool, self._write_tool]` + :167 `build_user_inputs_tools(self.AGENT_KEY)`), and its prompt then has to arbitrate between them — agents/user_input_inspector/prompt.md:395-397: "On demand (for revisiting one file): ``list_input_files`` (listing + pairing status), ``read_input_text(path)`` (one text file, e.g. a specific ``_note.txt``), ``read_image_notes`` (all notes at once)."
+
+THE PATH ARGUMENT IS CEREMONY. `read_user_inputs(path)` is the ONLY reason the `Input directory:` hand-off label exists — `list_input_files` and `read_image_notes` take no argument and read `config.USER_INPUTS_DIR`, a module constant (config.py:28 `USER_INPUTS_DIR = PROJECT_ROOT / "inputs"`). The path the Orchestrator is told to copy "VERBATIM… never invent, shorten or reconstruct" is a compile-time constant that the tool already knows.
+```
+**Proposed**
+
+```
+In agents/shared/user_inputs_tool.py, replace `list_input_files` (:82-92) AND `read_image_notes` (:106-112) with ONE argument-free tool:
+
+``​`python
+_READ_USER_INPUTS_DOC = (
+    "Read everything the user supplied, in one call: a categorised listing "
+    "of ``inputs/`` and its ``input_images/`` subfolder (with image+note "
+    "pairing status), the full text of every root text / JSON file, and the "
+    "full text of every image's ``<name>_note.txt``.  Reference images are "
+    "LISTED with their absolute paths but NOT loaded — call ``view_images`` "
+    "with the paths you actually need to see.  Takes NO arguments; the "
+    "inputs root is fixed by the system."
+)
+
+
+def _build_read_user_inputs():
+    """Build the shared, argument-free ``read_user_inputs`` tool.
+
+    Absorbs the former ``list_input_files`` (listing + pairing) and
+    ``read_image_notes`` (every note) and drops the ``path`` argument the
+    UII-only version took — that argument only ever received
+    ``config.USER_INPUTS_DIR``, which this module already knows, and it was
+    the sole reason the ``Input directory:`` hand-off label existed.
+    """
+    def _impl() -> str:
+        return ""  # handled by dispatch_user_inputs_tool
+    _impl.__doc__ = _READ_USER_INPUTS_DOC
+    return tool("read_user_inputs")(_impl)
+``​`
+
+The handler replaces `_handle_list_input_files` (:436-444) and `_handle_read_image_notes` (:489-497):
+
+``​`python
+@generic_tool("Read user inputs")
+def _handle_read_user_inputs(agent, tc: dict, agent_key: str) -> None:
+    """Listing + pairing status + every root text file + every note.
+
+    The listing half is the old ``list_input_files`` formatter; the text half
+    is ``load_user_inputs_bundle`` with image bytes excluded, which already
+    inlines every paired ``_note.txt`` (file_utils.py:307-321).  Images are
+    listed, never loaded — ``view_images`` does that.
+    """
+    parts: list[str] = [_format_input_files_listing()]
+
+    # UII_MAY_READ_PREVIOUS_EXTRACTION applied to the UII's read tool only;
+    # keep it applying to exactly that agent and exactly that file, read
+    # disk-fresh per the standard workflow_settings pattern.
+    exclude: tuple[str, ...] = ()
+    if (
+        agent_key == "user_input_inspector"
+        and not workflow_settings.UII_MAY_READ_PREVIOUS_EXTRACTION
+    ):
+        exclude = ("extracted_inputs.txt",)
+
+    try:
+        loaded = load_user_inputs_bundle(
+            USER_INPUTS_DIR,
+            getattr(agent, "provider", "openai"),
+            include_image_bytes=False,
+            exclude_root_files=exclude,
+        )
+    except Exception as exc:  # noqa: BLE001 — a bad file must not kill a turn
+        parts.append(f"(could not read the inputs bundle: {exc})")
+    else:
+        parts.append(
+            "--- File contents (root text/JSON + every image's note) ---\n"
+            + loaded["text_content"]
+            if loaded["text_content"]
+            else "(no text or JSON files found)"
+        )
+        if not loaded["pairing"]["ok"]:
+            parts.append(
+                "WARNING: image+note pairing is INVALID.  The Receptionist "
+                "should have caught this — ESCALATE so the user can be asked "
+                "to fix the uploads."
+            )
+        if loaded["image_paths"]:
+            parts.append(
+                f"{len(loaded['image_paths'])} reference image(s) are listed "
+                f"above but NOT loaded (their notes are in the file contents "
+                f"above).  To SEE one and get its OCR text, call view_images "
+                f"with its path."
+            )
+
+    summary = "\n\n".join(parts)
+    log_tool_call(agent_key, tc["name"], tc.get("args"), summary)
+    agent.messages.append(ToolMessage(
+        content=summary, tool_call_id=tc["id"], name=tc["name"],
+    ))
+``​`
+
+Import to add at agents/shared/user_inputs_tool.py:47-52:
+``​`python
+from agents.shared.file_utils import (
+    append_pending_images,
+    list_files,
+    load_text_file,
+    load_user_inputs_bundle,
+    pair_input_images,
+)
+``​`
+
+`build_user_inputs_tools` (:229-237) becomes:
+``​`python
+    tools = [_build_read_user_inputs(), read_pipeline_file]
+    if include_image_tools:
+        on = ocr_access.is_enabled_for(agent_key)
+        tools.append(_build_view_images(on))
+``​`
+(the `read_image_notes` append is gone; `_build_ocr_regions` folds into `view_images` under A3).
+```
+**Prompt prose this frees**
+
+```
+(a) agents/orchestrator/prompt.md:48-59 — the ENTIRE two-label paragraph, 181 tok, becomes one line, because `Input directory:` no longer exists:
+"Every ``call_user_input_inspector`` message MUST carry these two lines: the UII reads and writes files only via the paths you give it, and its tools refuse to run without them.  Take the directory VERBATIM from the ``Input file directory:`` line of your own incoming message — never invent, shorten or reconstruct it — and name the extraction file inside that same directory:\n\n    Input directory: <the path on your ``Input file directory:`` line>\n    Extraction output file: <that same path>/extracted_inputs.txt\n\nThe extraction file is a DESTINATION, not a file that must already exist — the UII writes it, and on the first turn of a session it is not there yet.  Do not paste file content; the UII reads the files itself."
+Replacement (the `Extraction output file:` label survives because `write_extraction(path, …)` still takes one; that contract moves into the schema under Group B): "Do not paste file content in a UII hand-off — it reads the files itself."
+
+(b) agents/planner/prompt.md:33-43, under "## Your common moves" → **FORWARD** — the same two-label block, ~145 tok. LATENT: it sits inside `<<PF_ON>>`, so it costs nothing in the measured PLANNER_FIRST=False config. Quoted anyway because it must be edited in the same commit:
+"Every UII forward MUST carry these two lines verbatim (the UII reads and writes files only via the paths you give it):\n\n        Input directory: {user_inputs_dir}\n        Extraction output file: {extraction_output_file}"
+
+(c) agents/user_input_inspector/prompt.md:373-378, "## Your utility tools" → the ``read_user_inputs(path)`` bullet, 88 tok down to ~35:
+"**``read_user_inputs(path)``** (primary read) — call it ONCE with the ``Input directory:`` path from your hand-off (verbatim; don't guess, don't loop).  It returns the root text files PLUS every paired ``_note.txt``, and LISTS the reference images with their paths — it does NOT load the images."
+
+(d) agents/user_input_inspector/prompt.md:395-397 — the whole "On demand (for revisiting one file):" line, 50 tok, collapses to naming `read_pipeline_file` alone (shared with A1; counted once).
+
+(e) agents/dc_input_inspector/prompt.md:46-50 and agents/dc_output_inspector/prompt.md:76-82 — the `list_input_files()` and `read_image_notes()` bullets in each agent's tool list, ~35 tok each:
+"* ``list_input_files()`` — listing of every file under inputs/, including pairing status.\n  * … \n  * ``read_image_notes()`` — read every ``_note.txt`` at once."
+
+(f) agents/planner/prompt.md:459-461, "On-demand tools:" — "``list_input_files()`` (categorised listing incl. pairing status), … ``read_image_notes()`` (every note at once)" (~30 tok).
+
+(g) agents/user_input_inspector/prompt.md:346-355, under "## User input layout (text + images)" — the read_user_inputs/view_images division of labour, 149 tok down to ~80.
+```
+**Migration**
+
+1. agents/shared/user_inputs_tool.py: delete `list_input_files` (:82-92) and `read_image_notes` (:106-112); add `_READ_USER_INPUTS_DOC` + `_build_read_user_inputs`; delete `_handle_list_input_files` (:436-444) and `_handle_read_image_notes` (:489-497); add `_handle_read_user_inputs`; add `load_user_inputs_bundle` to the file_utils import; update `USER_INPUTS_TOOL_NAMES`, `_HANDLERS`, `build_user_inputs_tools` and the module docstring (:1-32, which lists all four stubs by name).
+2. `_format_input_files_listing` (:319-383) and `_format_image_notes` (:386-428) — KEEP the first (the new handler calls it); DELETE the second (its output is a strict subset of `load_user_inputs_bundle`'s `text_content`). That makes `load_text_file` still needed (A1 uses it) but check whether `pair_input_images` is still referenced — it is, by `_format_input_files_listing`.
+3. agents/user_input_inspector/user_input_inspector.py: delete `_READ_INPUTS_DOC` (:75-85) and `_build_read_user_inputs` (:88-98); delete `self._read_tool` (:136); :165 `[self._read_tool, self._write_tool]` → `[self._write_tool]`; delete the branch :243-245; delete `_handle_read_inputs_tool` (:312-392). THEN `load_user_inputs_bundle` (:29) and `from workflow_settings import settings as workflow_settings` (:43) both become unused — grep confirms :339 was the only `workflow_settings` use in that file. Update the module docstring (:5-10).
+4. agents/dc_output_inspector/dc_output_inspector.py: these are runtime prompt strings — :92 (mode 1 step 3 `read_image_notes()`) and :171-172 (mode 3 step 3 tool list `list_input_files()` … `read_image_notes()`) must be rewritten to name `read_user_inputs()`.
+5. Prompts (7-agent): agents/orchestrator/prompt.md:48-59; agents/planner/prompt.md:33-43 (PF_ON) + 459-461; agents/user_input_inspector/prompt.md:346-355, 373-378, 395-397; agents/dc_input_creator/prompt.md:273-274; agents/dc_input_inspector/prompt.md:46-50, 166-167; agents/dc_output_inspector/prompt.md:76-82.
+6. Prompts (5-agent, owner's topology pass): agents/5agent/user_input_inspector/prompt_5agents.md:357, 383, 397, 405-407; agents/5agent/dc_output_inspector/prompt_5agents.md:76-82; agents/creator/prompt_5agents.md:222-226, 301-302, 492; agents/conductor/prompt_5agents.md:803-805; agents/5agent/receptionist/prompt_5agents.md:31.
+7. RUNTIME SLOTS: if `Input directory:` is fully retired, `user_inputs_dir` may become an unused `.format()` kwarg for the Planner and the 5-agent Receptionist/Conductor. Do NOT remove it from `PROMPT_MD_RUNTIME_SLOTS` (agents/shared/prompts.py:584-618) unless you also remove the `{user_inputs_dir}` reference from agents/planner/prompt.md:449 ("The user's input directory ({user_inputs_dir}) contains:"), which is a legitimate remaining use. Leave the slot; only the hand-off label goes.
+8. workflow_settings/ocr_access.py:8 and workflow_settings/ocr_region_crops_access.py — the docstrings name `read_user_inputs` as an OCR-carrying tool. Under this merge `read_user_inputs` no longer loads images and therefore never OCRs; correct both docstrings. No DEFAULT_AGENTS change.
+9. extra_utilities/smoke_test_topology_fragments.py:325 asserts on write_extraction's and read_user_inputs's `path` args — the latter no longer exists; update.
+10. extra_utilities/build_agent_table_v5.py:75, 550; agents/step_caps.py:42-45, 51-52, 74; README.md:196, 495 (the UII_MAY_READ_PREVIOUS_EXTRACTION entry names the `read_user_inputs` bundle — still accurate, but the gating now lives in the shared handler, so update the "Gated in agents/shared/file_utils.py:load_user_inputs_bundle" pointer).
+
+**Verify by**
+
+(a) Session log shows ONE `[TOOL CALL]  User Input Inspector -> read_user_inputs` per turn returning listing + contents + notes, with no follow-up `list_input_files` / `read_image_notes`.
+(b) Set `UII_MAY_READ_PREVIOUS_EXTRACTION=False` and confirm `extracted_inputs.txt` is absent from BOTH the listing half and the contents half of the UII's result, and PRESENT in the Planner's / DCOI's result (the gate is UII-only by design). PRE-EXISTING LEAK, unchanged by this work: `read_pipeline_file` can still read that file by absolute path, so the setting was never a hard fence.
+(c) Upload an orphan image and confirm the merged output still shows `ORPHAN image (no matching …_note.txt)` from `_format_input_files_listing` AND the ESCALATE warning.
+(d) Confirm the DCIC (bound with `include_image_tools=False`) now receives note TEXT in `read_user_inputs`. This is a genuine BEHAVIOUR CHANGE — today the DCIC can only reach note text via `read_input_text` on a specific `_note.txt`. Notes are text, not images, so the "you cannot view the images themselves" rule at dc_input_creator/prompt.md:275-276 still holds, but the prompt should say so explicitly.
+HONEST CAPABILITY LOSS: the DC Output Inspector in COMPARISON MODE 2 (dc_output_inspector.py:102-132, "Do NOT load the user's raw inputs") currently has a cheap way to discover whether reference images exist — `list_input_files()` returns a listing with no user text. After the merge, any such call also pulls `user_query.txt` into context, which mode 2 forbids. Mitigation: mode 2's block must say "do not call ``read_user_inputs`` in this mode" rather than relying on a listing-only tool. If the owner would rather keep the escape hatch, the alternative is a `read_user_inputs(include_text: bool = True)` flag — but that re-creates the ambiguous decision point this change exists to remove.
+
+### A3 · ocr_regions folds into view_images as an ocr_region_ids argument
+
+*Kind:* TOOL_MERGE · *Tokens:* 756 · *Risk:* medium
+
+*Files:*
+- `agents/shared/user_inputs_tool.py:151-197`
+- `agents/shared/user_inputs_tool.py:510-656`
+- `agents/shared/user_inputs_tool.py:658-780`
+- `agents/shared/user_inputs_tool.py:229-237`
+- `agents/user_input_inspector/prompt.md:391-393`
+- `agents/dc_input_inspector/prompt.md:53-55`
+- `agents/dc_output_inspector/prompt.md:85-87`
+- `workflow_settings/ocr_region_crops_access.py:54-61`
+
+**Today**
+
+```
+VERIFIED, and the collision is real. Both tools crop a user image, both are built by the same factory, and both are bound to the SAME agents — `build_user_inputs_tools` (agents/shared/user_inputs_tool.py:229-237) appends `_build_view_images(on)` and, when `on`, `_build_ocr_regions()`, for the Planner, UII, DCII and DCOI (plus the 5-agent Creator).
+
+The two notions of "region" are incompatible:
+- `view_images(regions=…)` — agents/shared/user_inputs_tool.py:132-138: "each entry is a COARSE crop box ``[x0, y0, x1, y1]`` as fractions in 0..1 (or ``null`` for no crop)".
+- `ocr_regions(region_ids=…)` — :181-183: "``region_ids`` is a LIST of the region numbers shown for THAT image in its OCR output (e.g. ``[2, 5, 7]`` for ``[region 2]`` etc.)".
+
+And the confusion FAILS SILENTLY. agents/shared/image_stitch.py:59-76 `crop_to_region`:
+``​`
+    try:
+        x0, y0, x1, y1 = (float(v) for v in list(region)[:4])
+    except (TypeError, ValueError):
+        return im
+``​`
+A model that passes region NUMBERS to `view_images` gets the uncropped image back with no error, no warning, and a confident "here is region 3" in its own head.
+
+The two tools also already cross-reference each other in prose: `_OCR_REGIONS_DOC` at :175-178 says "Use this when an image's whole-image OCR (from ``view_images`` / ``read_user_inputs``) shows callouts you want to read more confidently".
+```
+**Proposed**
+
+```
+Add a third region-ish argument to `view_images` and delete `ocr_regions`.
+
+1. agents/shared/user_inputs_tool.py — extend the OCR doc (:141-148) and the builder (:151-170):
+
+``​`python
+_VIEW_IMAGES_OCR_DOC = _VIEW_IMAGES_BASE_DOC + (
+    "\n\nIf OCR is enabled, each USER image (under ``inputs/``) is also passed "
+    "through an OCR engine that recognises any text written on it — dimension "
+    "callouts, labels, annotations — returned here one entry per detected "
+    "region (when a crop region is given, only that region is OCR'd).  It is "
+    "machine-recognised, so check it against the image before relying on a "
+    "value.  Renders are never OCR'd.  Pass ``extract_text=False`` to skip OCR."
+    "\n\n``ocr_region_ids`` (OPTIONAL): a list aligned by index with ``paths``; "
+    "each entry is a list of REGION NUMBERS from that image's earlier OCR "
+    "output (e.g. ``[2, 5, 7]``), or ``null``.  Each named region is cropped, "
+    "zoomed and re-OCR'd, and its higher-resolution text returned — pass every "
+    "region you want in ONE call.  Region NUMBERS are not crop boxes: use "
+    "``regions`` for a coarse fractional box, ``ocr_region_ids`` to re-read "
+    "callouts the OCR already found."
+)
+
+
+def _build_view_images(ocr_on: bool):
+    """Build the unified ``view_images`` tool.
+
+    Absorbs the former ``ocr_regions`` tool: both cropped a user image, both
+    were bound to the same agents, and their two notions of "region" —
+    fractional box vs OCR region number — collided silently, because
+    ``crop_to_region`` returns the image UNCHANGED on a malformed box.  One
+    tool with two explicitly-typed, mutually-exclusive region arguments makes
+    the distinction impossible to miss.  Both OCR-dependent arguments exist
+    ONLY when *ocr_on* is True.
+    """
+    if ocr_on:
+        def _impl(paths: list[str], side_by_side: bool = False,
+                  layout: str = "match_height", regions: list = None,
+                  ocr_region_ids: list = None,
+                  extract_text: bool = True) -> str:
+            return ""  # handled by dispatch_user_inputs_tool
+        _impl.__doc__ = _VIEW_IMAGES_OCR_DOC
+    else:
+        def _impl(paths: list[str], side_by_side: bool = False,
+                  layout: str = "match_height", regions: list = None) -> str:
+            return ""  # handled by dispatch_user_inputs_tool
+        _impl.__doc__ = _VIEW_IMAGES_BASE_DOC
+    return tool("view_images")(_impl)
+``​`
+
+2. Delete `_OCR_REGIONS_DOC` (:173-189) and `_build_ocr_regions` (:192-197); in `build_user_inputs_tools` drop the `if on: tools.append(_build_ocr_regions())` branch (:234-236).
+
+3. `_handle_view_images` (:510-656) gains a re-read pass. Insert after the per-path resolution loop (after :561) and before the summary is built:
+
+``​`python
+    # Per-image OCR region re-reads (the former ``ocr_regions`` tool).
+    # Aligned by index with ``paths``, like ``regions``; user images only —
+    # renders are never OCR'd.  Runs on the ORIGINAL file, not the crop, so a
+    # region id from an earlier whole-image pass still resolves.
+    reread_ids = args.get("ocr_region_ids")
+    if not isinstance(reread_ids, list):
+        reread_ids = []
+    reread_parts: list[str] = []
+    crop_blocks: list[dict] = []
+    crop_labels: list[str] = []
+    if ocr_on and reread_ids:
+        crops_on = ocr_region_crops_access.is_enabled_for(agent_key)
+        for i, r in enumerate(resolved):
+            ids = reread_ids[i] if i < len(reread_ids) else None
+            if not ids or r["is_render"]:
+                continue
+            reread_parts.extend(_reread_regions_block(
+                r["path"], ids, crops_on, provider,
+                crop_blocks, crop_labels,
+            ))
+``​`
+
+and appends `reread_parts` to `parts` (:641-643), then extends the pending-image buffer with `crop_blocks` / `crop_labels` alongside `image_blocks` in the single `append_pending_images` call at :655 — one flush, so the tool_use→tool_result contiguity rule the buffer exists for is preserved.
+
+4. New helper, lifted verbatim from the body of `_handle_ocr_regions` (:694-772) so no OCR behaviour changes:
+
+``​`python
+def _reread_regions_block(path, raw_ids, crops_on, provider,
+                          crop_blocks, crop_labels) -> list[str]:
+    """Re-OCR the named regions of ONE user image at higher resolution.
+
+    The body of the former ``ocr_regions`` handler, unchanged in behaviour:
+    forgiving id coercion, one shared detection pass for all regions of the
+    image, per-region failures reported inline rather than aborting, and the
+    zoomed crop attached only when this agent's crop toggle is on.
+    Appends any crop content blocks to *crop_blocks* / *crop_labels* so the
+    caller can flush them together with the viewed images.
+    """
+    if isinstance(raw_ids, (int, str)):
+        raw_ids = [raw_ids]
+    region_ids, bad_ids = [], []
+    for raw in raw_ids:
+        try:
+            region_ids.append(int(raw))
+        except (TypeError, ValueError):
+            bad_ids.append(repr(raw))
+    if not region_ids:
+        return [f"Could not re-read regions on {path.name}: no valid "
+                f"integer region numbers (got {raw_ids!r})."]
+
+    result = ocr_regions_reread(str(path.resolve()), region_ids)
+    if not result.get("ok"):
+        return [f"Could not re-read regions on {path.name}: "
+                f"{result.get('error')}."]
+
+    results = result.get("results") or []
+    n_ok = sum(1 for r in results if r.get("ok"))
+    out = [f"Re-read {n_ok} of {len(results)} region(s) on {path.name} at "
+           f"higher resolution — machine-read, so check each value:"]
+    for r in results:
+        rid = r.get("region_id")
+        if r.get("ok"):
+            reread = (r.get("reread_text") or "").strip()
+            line = f"  [region {rid}] {reread or '(no text detected)'}"
+            if r.get("original_text"):
+                line += f"   (whole-image OCR: {r['original_text']!r})"
+            out.append(line)
+            if crops_on and r.get("crop_png"):
+                crop_blocks.append(make_image_block(
+                    base64.b64encode(r["crop_png"]).decode(), provider,
+                ))
+                crop_labels.append(f"{path.resolve()} (region {rid} zoom)")
+        else:
+            out.append(f"  [region {rid}] could not re-read: {r.get('error')}")
+    for inv in result.get("invalid") or []:
+        out.append(f"  Invalid: region {inv.get('region_id')} — "
+                   f"{inv.get('error')}")
+    if bad_ids:
+        out.append("  Ignored non-integer region id(s): " + ", ".join(bad_ids))
+    if crops_on and crop_blocks:
+        out.append("The zoomed crop(s) are attached with the images in the "
+                   "next user message, labelled by region — verify each "
+                   "value against its crop.")
+    return out
+``​`
+
+5. Delete `_handle_ocr_regions` (:658-780) and its `_HANDLERS` entry (:788); drop `"ocr_regions"` from `USER_INPUTS_TOOL_NAMES` (:205). The `ocr_region_crops_access` and `ocr_regions_reread` imports (:60, :67-68) stay — the merged handler uses both.
+```
+**Prompt prose this frees**
+
+```
+Three near-identical blurbs, one per agent that binds the tool, all deleted (the distinction now lives in the argument's own schema line):
+
+(a) agents/user_input_inspector/prompt.md:391-393, under "## Your utility tools" — 48 tok:
+"**``ocr_regions(image_path, region_ids)``** — to confirm small/faint/garbled OCR callouts, re-read them at higher resolution; pass every region number you want in ONE call, not one call each."
+
+(b) agents/dc_input_inspector/prompt.md:53-55, under "Five tools give you on-demand access:" — 44 tok:
+"* ``ocr_regions(image_path, region_ids)`` — re-read small/faint/garbled OCR callouts at higher resolution; pass every region you want in ONE call, not one call each."
+(the bullet count "Five tools" at :45 also drops to three after A2 + A3.)
+
+(c) agents/dc_output_inspector/prompt.md:85-87, under "The user-input tools available to you" — 44 tok, identical wording to (b).
+```
+**Migration**
+
+1. agents/shared/user_inputs_tool.py: extend `_VIEW_IMAGES_OCR_DOC` and `_build_view_images`; delete `_OCR_REGIONS_DOC`, `_build_ocr_regions`, `_handle_ocr_regions`; add `_reread_regions_block`; wire the re-read pass into `_handle_view_images`; update `USER_INPUTS_TOOL_NAMES`, `_HANDLERS` and the module docstring (:1-32).
+2. CRITICAL ORDERING inside `_handle_view_images`: the crop blocks must go into the SAME `append_pending_images` call as the viewed images (:650-656). Two separate calls would work today (the buffer accumulates) but the single call is what the comment at :651-654 is protecting — "so that a batched sibling tool_call still satisfies the tool_use→tool_result contiguity rule".
+3. GATING: `_handle_view_images` already re-checks `ocr_access.is_enabled_for(agent_key)` at runtime (:539) rather than trusting the schema — reuse that same `ocr_on` for the re-read pass, so a per-agent-disabled agent that hallucinates `ocr_region_ids` gets nothing rather than an OCR bill.
+4. workflow_settings/ocr_region_crops_access.py:54-61 — the comment "The 3 chain agents that actually bind the ``ocr_regions`` tool" and `DEFAULT_AGENTS = (user_input_inspector, dc_input_inspector, dc_output_inspector)` must be rewritten: the toggle now controls whether `view_images` attaches zoomed crops. PRE-EXISTING BUG worth fixing in the same pass — `planner` and `creator` DO bind the tool today (they call `build_user_inputs_tools` with image tools) but are absent from that tuple, so `get()` returns False for them unconditionally (:112-113) and their crops can never be turned on. Add them, or state that the omission is deliberate.
+5. web/app.js:2210, 2220-2232 and web/style.css:2428 and web_app.py:1730 describe the Crops toggle in terms of "the ocr_regions tool" — update the user-facing copy to "view_images' region re-read".
+6. Prompts (7-agent): agents/user_input_inspector/prompt.md:391-393; agents/dc_input_inspector/prompt.md:45, 53-55; agents/dc_output_inspector/prompt.md:85-87.
+7. Prompts (5-agent): agents/5agent/dc_output_inspector/prompt_5agents.md and agents/creator/prompt_5agents.md carry the same bullets — check both.
+8. extra_utilities/smoke_test_google_vision.py exercises `feature.ocr_regions_reread` DIRECTLY, not the tool — it keeps passing unchanged. Its printed label at :93 ("[the ocr_regions menu]") is cosmetic.
+9. workflow_settings/ocr_access.py:9, 12 docstrings name `ocr_regions` — update.
+10. README.md, agents/step_caps.py: neither names `ocr_regions` (verified by grep) — no change.
+
+**Verify by**
+
+(a) With OCR on, call `view_images(paths=[sketch], ocr_region_ids=[[2,5]])` and confirm the ToolMessage carries both the image-view summary AND the `[region 2] / [region 5]` re-read lines, with the crops attached only when the agent's Crops toggle is on.
+(b) With OCR off for an agent, confirm neither `extract_text` nor `ocr_region_ids` appears in its bound schema and that a hallucinated `ocr_region_ids` is ignored.
+(c) Confirm `regions` and `ocr_region_ids` on the SAME image still produce a sensible result (the crop is applied to the view; the re-read runs against the original file so ids stay valid) — that ordering is deliberate and should be asserted, because re-reading a cropped image would renumber the regions.
+(d) One image, `side_by_side=True`, plus `ocr_region_ids` — confirm the composite and the crops flush in one HumanMessage.
+HONEST ASSESSMENT: this is the WEAKEST of the five merges. `view_images` is a vision call and `ocr_regions` is a text-extraction call; the merged tool has two mutually-exclusive region arguments, which is itself a decision point. What justifies it is that the current arrangement's failure mode is SILENT (crop_to_region swallows a malformed box and returns the whole image), the two tools are bound to exactly the same agents, and one of them already documents itself by reference to the other. If the owner disagrees, the fallback is to keep both tools and only shrink `_OCR_REGIONS_DOC` — that recovers ~550 of the 756 tok with none of the risk.
+
+### A4 · visualize_3d_model + propose_attempt merge into show_attempt(obj_path, proposed_values=None)
+
+*Kind:* TOOL_MERGE · *Tokens:* 900 · *Risk:* medium
+
+*Files:*
+- `tools/visualize_model/visualize_model.py:1-95`
+- `agents/receptionist/propose_attempt_tool.py:1-167`
+- `agents/receptionist/receptionist.py:56`
+- `agents/receptionist/receptionist.py:63`
+- `agents/receptionist/receptionist.py:119-139`
+- `DC_prompt_fragments/tools_config/visualize_3d_model.md:1-22`
+- `DC_prompt_fragments/tools_config/propose_attempt.md:1-34`
+- `agents/shared/prompts.py:383-398`
+- `agents/shared/prompts.py:548-549`
+- `agents/shared/prompts.py:669-670`
+- `agents/receptionist/prompt.md:38-40`
+- `agents/receptionist/prompt.md:216-226`
+- `agents/receptionist/prompt.md:295-314`
+- `extra_utilities/smoke_test_prompts_hot_reload.py:84-85`
+
+**Today**
+
+```
+VERIFIED — always called as a pair, and the code says so in three places.
+
+agents/receptionist/propose_attempt_tool.py:36: "Pair with ``visualize_3d_model`` in the same turn."
+agents/receptionist/propose_attempt_tool.py:103-104 (the LLM-facing docstring): "Call this AFTER ``visualize_3d_model`` when you have decided…"
+DC_prompt_fragments/tools_config/propose_attempt.md:31-32: "When the user should both see the model AND have the sliders update, call ``visualize_3d_model`` first, then ``propose_attempt`` in the same turn."
+
+And the informational case is already expressed as "call one but not the other" — propose_attempt_tool.py:38-42: "NOT to be called when: - Showing an attempt for INFORMATIONAL reasons only (e.g. the user asked \"show me the worst one\") … Use ``visualize_3d_model`` only."
+
+Both are bound to exactly one agent, in one list — agents/receptionist/receptionist.py:125-139:
+``​`
+        all_tools = list(tools) + [
+            calculate,
+            list_attempts,
+            read_attempt,
+            read_input_text,
+            visualize_3d_model,
+            …
+            propose_attempt,
+        ]
+``​`
+and both publish to the same bus (`agents.shared.viz_bus.publish`) with different `type` keys (`"visualize"` / `"params_proposed"`). Two prompt fragments carry their usage rules: `$visualize_3d_model_tool` (298 tok) and `$propose_attempt_tool` (530 tok), both spliced into the Receptionist alone (agents/receptionist/prompt.md:38 and :40).
+```
+**Proposed**
+
+```
+One tool in a new module `tools/show_attempt/show_attempt.py` (keeping `tools/visualize_model/` and `agents/receptionist/propose_attempt_tool.py` deleted, their bodies moved here so the validation logic is unchanged):
+
+``​`python
+"""``show_attempt`` — the Receptionist's one tool for putting a design in
+front of the user.
+
+Merges the former ``visualize_3d_model(obj_path)`` and
+``propose_attempt(values)``.  Those two were always called as a pair — both
+their docstrings and the prompt fragment said so — and the distinction that
+actually mattered was whether the panel should update, i.e. whether the
+attempt is ENDORSED or merely being shown.  Here that distinction IS the
+optional ``proposed_values`` argument: omitting it is the informational case.
+
+No web imports: both halves publish on ``agents.shared.viz_bus`` and the web
+layer subscribes.  The two halves are INDEPENDENT — a missing mesh does not
+block the panel update, and a rejected parameter dict does not block the
+viewer — so a parameters-only attempt can still be proposed.
+"""
+
+from pathlib import Path
+from typing import Annotated, Optional
+
+from langchain_core.tools import tool
+
+from agents.shared.agent_activity import generic_tool
+from agents.shared.attempts_tool import attempt_label_for_path
+from agents.shared.viz_bus import publish, set_last_visualized_attempt_dir
+from config import ATTEMPTS_DIR
+
+# Canonical 16-parameter INPUT set (impellerHeight removed by dda1560 — the
+# ring height is DERIVED, not proposed).  Duplicated from
+# tools/generate_mesh/generate_mesh.py::_CANONICAL_PARAM_NAMES rather than
+# imported, to keep this UI-signalling tool out of the mesh tool's import
+# chain (which pulls RhinoCompute / trimesh).
+_CANONICAL_PARAM_NAMES = frozenset({
+    "bladeCount", "impellerRadius", "impellerThickness",
+    "innerThickness", "innerMaxPos", "innerCamber", "innerChord",
+    "innerAngle", "middlePos", "middleChord", "middleAngle",
+    "outerThickness", "outerMaxPos", "outerCamber", "outerChord",
+    "outerAngle",
+})
+
+_PROPOSED_VALUES_DESC = (
+    "OPTIONAL.  That attempt's FULL 16-key parameter dict, copied from a "
+    "``read_attempt(n, \"parameters.json\")`` result and NEVER invented — the "
+    "user is shown the numbers literally.  Pass it ONLY when the hand-off "
+    "ENDORSES this attempt as the system's current best (\"recommend attempt "
+    "N\", \"the satisfying result\") or the user asks for it directly.  OMIT "
+    "it for an informational look (\"show me the worst one\") or a hedged, "
+    "still-iterating attempt — the panel is STICKY and must keep showing the "
+    "last endorsed proposal.  The outer-ring height is DERIVED; do not "
+    "include it."
+)
+
+
+@tool
+@generic_tool("Show attempt")
+def show_attempt(
+    obj_path: Annotated[
+        str,
+        "Absolute path to that attempt's ``propeller_mesh.obj``, inside the "
+        "attempts directory.  It loads live in the web UI's 3D panel.",
+    ],
+    proposed_values: Annotated[
+        Optional[dict], _PROPOSED_VALUES_DESC,
+    ] = None,
+) -> str:
+    """Show a design attempt to the user in the web interface.
+
+    Displays the attempt's 3D mesh in the interactive viewer and — only when
+    ``proposed_values`` is given — marks those values in the Parameters Inputs
+    panel as the system's PROPOSED SATISFYING SOLUTION (non-FIXED rows move to
+    the proposed value; every row, FIXED included, gets a "PROPOSED VALUE: X"
+    label).  Omitting ``proposed_values`` IS the informational case: the model
+    is shown and the panel keeps whatever it was already showing.
+
+    Showing a mesh tells you NOTHING about how it looks — you still never
+    describe or judge its appearance, and its return value says nothing about
+    design quality.
+
+    Returns one status line per action taken.
+    """
+    lines = [_visualize(obj_path)]
+    if proposed_values is not None:
+        lines.append(_propose(proposed_values))
+    return "\n".join(lines)
+
+
+def _visualize(obj_path: str) -> str:
+    """Body of the former ``visualize_3d_model`` — unchanged."""
+    raw = (obj_path or "").strip()
+    if not raw:
+        return ("show_attempt: viewer FAILED — no obj_path given.  Pass the "
+                "absolute path to the attempt's propeller_mesh.obj.")
+    try:
+        target = Path(raw).resolve()
+    except Exception as exc:  # noqa: BLE001
+        return f"show_attempt: viewer FAILED — invalid path {raw!r}: {exc}"
+    if target.suffix.lower() != ".obj":
+        return (f"show_attempt: viewer FAILED — {target} is not an .obj file. "
+                f"Only mesh .obj files can be shown.")
+    if not target.is_file():
+        return (f"show_attempt: viewer FAILED — no file at {target}.  Check "
+                f"the attempt folder path.")
+    try:
+        root = ATTEMPTS_DIR.resolve()
+    except OSError:
+        root = ATTEMPTS_DIR
+    if root != target and root not in target.parents:
+        return (f"show_attempt: viewer FAILED — {target} is outside the "
+                f"attempts directory ({root}).")
+    reached = publish({
+        "type": "visualize",
+        "path": str(target),
+        "name": target.name,
+        "attempt_label": attempt_label_for_path(target),
+    })
+    set_last_visualized_attempt_dir(target.parent)
+    if reached:
+        return (f"show_attempt: viewer OK — sent {target.name} to the web "
+                f"interface's 3D viewer.")
+    return (f"show_attempt: viewer OK — {target.name} is valid and was "
+            f"queued, but no web interface is currently connected (e.g. "
+            f"running headless / REPL).")
+
+
+def _propose(values) -> str:
+    """Body of the former ``propose_attempt`` — unchanged.
+
+    Deliberately independent of ``_visualize``: an attempt whose mesh is
+    missing can still be proposed, which is the one case the old pairing
+    could not express.
+    """
+    if not isinstance(values, dict):
+        return (f"show_attempt: panel NOT updated — proposed_values was "
+                f"{type(values).__name__}, expected a 16-key dict.")
+    if "impellerHeight" in values:   # lenient: removed as an input by dda1560
+        values = {k: v for k, v in values.items() if k != "impellerHeight"}
+    received = set(values.keys())
+    missing = _CANONICAL_PARAM_NAMES - received
+    extra = received - _CANONICAL_PARAM_NAMES
+    if missing or extra:
+        problems = []
+        if missing:
+            problems.append(f"missing: {sorted(missing)}")
+        if extra:
+            problems.append(f"unknown: {sorted(extra)}")
+        return "show_attempt: panel NOT updated — " + "; ".join(problems)
+    try:
+        sanitized = {k: float(v) for k, v in values.items()}
+    except (TypeError, ValueError) as exc:
+        return (f"show_attempt: panel NOT updated — could not coerce values "
+                f"to float: {exc}")
+    publish({"type": "params_proposed", "values": sanitized})
+    return (f"show_attempt: panel updated — surfaced {len(sanitized)} "
+            f"proposed parameter values.")
+``​`
+
+And ONE merged fragment `DC_prompt_fragments/tools_config/show_attempt.md`, replacing both existing fragments:
+
+``​`
+### Showing a design to the user — ``show_attempt``
+
+The mechanics are on the tool.  The ``obj_path`` is ``<attempt folder>/
+propeller_mesh.obj``, where the attempt folder is the one named in your turn's
+hand-off block ("Attempts this cycle:" / "Show to user:").  Take
+``proposed_values`` from a ``read_attempt(n, "parameters.json")`` result and
+never invent a number — the user sees the dict literally.
+
+**Whether to pass ``proposed_values`` is the only decision.**  Read the Part-2
+"Show to user:" wording you are answering.  Endorsement — *"recommend attempt N
+because it best matches the brief"*, *"the satisfying result of the cycle"*,
+*"the best attempt so far"*, *"final pick"* — means PASS the values.  A direct
+user request ("make this the proposed solution") is an unambiguous trigger too.
+Non-committal or hedging wording — *"showing attempt N for context"*,
+*"intermediate result while we keep iterating"*, *"not satisfying yet"* — and a
+merely informational look ("show me the worst one", "show me a DIFFERENT
+attempt") mean OMIT them: the panel is sticky and must keep showing the last
+endorsed proposal.
+
+``show_attempt`` is one of the few tools permitted in Situation B, because it
+does not loop control back into the system.  It tells you nothing about how the
+design looks or whether it is good — the no-fabrication rule holds: never
+describe or judge an attempt from it.
+``​`
+```
+**Prompt prose this frees**
+
+```
+(a) DC_prompt_fragments/tools_config/visualize_3d_model.md — the ENTIRE 22-line fragment, 298 tok, and DC_prompt_fragments/tools_config/propose_attempt.md — the ENTIRE 34-line fragment, 530 tok. Both replaced by the single ~420-tok fragment above (net 408 tok, ×1 agent). The largest single deletion is propose_attempt.md:29-32, which exists only to describe the pairing this merge makes structural:
+"**Pair it, and never judge from it.**  ``propose_attempt`` only updates the sliders — it does not render the model, create an attempt, or trigger any agent.  When the user should both see the model AND have the sliders update, call ``visualize_3d_model`` first, then ``propose_attempt`` in the same turn."
+
+(b) agents/receptionist/prompt.md:216-226, under "### Situation B" — ~40 tok:
+"The ONLY tools permitted here are the read-only / display ones that do not loop control back: ``read_attempt``, ``list_attempts``, ``visualize_3d_model`` and ``propose_attempt``. … (``read_attempt`` the designated attempt(s), ``visualize_3d_model`` the model, and ``propose_attempt`` when the hand-off endorses it)"
+becomes "… ``read_attempt``, ``list_attempts`` and ``show_attempt``. … (``read_attempt`` the designated attempt(s), then ``show_attempt``)".
+
+(c) agents/receptionist/prompt.md:299-307, under "**Reporting attempts**" — steps 2 and 3 collapse into one, ~60 tok:
+"2. Show the designated model with ``visualize_3d_model`` (see its tool block for the ``propeller_mesh.obj`` path rule).\n  3. **``propose_attempt`` only when the hand-off ENDORSES the attempt as the current best** (*\"recommend attempt N\"*, *\"the satisfying result\"*) — pass that attempt's full $parameter_count-param dict from step 1.  HEDGING wording (*\"showing for context\"*, *\"not satisfying yet\"*) does NOT: visualize but skip ``propose_attempt`` so the Parameters panel keeps the last endorsed attempt."
+
+(d) agents/receptionist/prompt.md:310-312: "then ``read_attempt`` / ``visualize_3d_model`` — but do NOT ``propose_attempt`` (the recommendation has not changed)" becomes "then ``show_attempt`` WITHOUT ``proposed_values`` (the recommendation has not changed)" — the rule now reads as an argument, not a tool-choice.
+```
+**Migration**
+
+1. Create tools/show_attempt/__init__.py + tools/show_attempt/show_attempt.py with the code above. DELETE tools/visualize_model/ and agents/receptionist/propose_attempt_tool.py.
+2. agents/receptionist/receptionist.py: replace the imports at :56 (`from tools.visualize_model.visualize_model import visualize_3d_model`) and :63 (`from agents.receptionist.propose_attempt_tool import propose_attempt`) with `from tools.show_attempt.show_attempt import show_attempt`; in `set_tools` (:125-139) replace both list entries with `show_attempt,` and delete the 7-line stale comment at :131-137 (it still says "17-param dict", wrong since dda1560, and "prompt.md will be updated to match in Step 11", which happened). Update the `set_tools` docstring at :119-124.
+3. FRAGMENT REGISTRY — three coordinated edits in agents/shared/prompts.py, all required or the assembled prompt keeps a literal `$visualize_3d_model_tool` in it:
+   - :383-398 — replace the `VISUALIZE_3D_MODEL_TOOL` and `PROPOSE_ATTEMPT_TOOL` module constants with one `SHOW_ATTEMPT_TOOL = _read_dc_fragment("tools_config/show_attempt.md")`.
+   - :548-549 in `FRAGMENT_TO_SLOT` — replace the two rows with `"DC_prompt_fragments/tools_config/show_attempt.md": "show_attempt_tool",`.
+   - :669-670 in `_build_slots` — replace the two entries with `"show_attempt_tool": _read_dc_fragment("tools_config/show_attempt.md"),`.
+4. agents/receptionist/prompt.md:38-40 — replace the two `$visualize_3d_model_tool` / `$propose_attempt_tool` lines with one `$show_attempt_tool`. Also agents/5agent/receptionist/prompt_5agents.md:38-40 (same two slots).
+5. Delete DC_prompt_fragments/tools_config/visualize_3d_model.md and propose_attempt.md; add show_attempt.md.
+6. agents/shared/attempts_tool.py:53-55, :222-224 and :287-289 all point a caller at `visualize_3d_model` from `read_attempt`'s mesh/image branches — rename to `show_attempt` (these strings reach the LLM).
+7. extra_utilities/smoke_test_prompts_hot_reload.py:84-85 maps both fragment filenames to sentinels — replace with one `"show_attempt.md": "[SHOW_ATTEMPT]"` entry, or the hot-reload test fails on a missing file.
+8. web_app.py:778, 788, 4082, 4168 and web/app.js:912, 5060, 5144, 5377, 5642 and web/index.html:240 and web/style.css:1988, 2033, 2062 reference the tools BY NAME IN COMMENTS ONLY — the wire contract is the viz_bus `type` key (`"visualize"` / `"params_proposed"`), which this change does NOT touch. Comment-only updates; no functional web change.
+9. extra_utilities/web_interface_notes.md §§C, 67-68, 93-135, 174-284 and extra_utilities/warnings_developer.md:662-702 and extra_utilities/TODO_known_issues.md:1986-1995 are design records naming `propose_attempt` — leave the history, add a note that the tool merged.
+10. README.md:151, 230 list the generic tools by name.
+
+**Verify by**
+
+(a) Endorsed path: hand the Receptionist a "recommend attempt N" summary and confirm ONE `show_attempt` call with `proposed_values`, the viewer loads, and the Parameters panel turns orange — i.e. both viz_bus events fire from one tool call.
+(b) Informational path: "show me the worst one" → `show_attempt` with NO `proposed_values`; the viewer updates and the panel stays on the previously endorsed set (the stickiness rule, which is the behaviour a real production concern at warnings_developer.md:662-702 is about).
+(c) PARTIAL-SUCCESS PATH — the case that justifies the independent halves: point `show_attempt` at an attempt that has `parameters.json` but no `propeller_mesh.obj`, WITH `proposed_values`. The return must be two lines: `viewer FAILED — no file at …` and `panel updated — surfaced 16 proposed parameter values`. If the halves were made dependent, that attempt could never be proposed, and that WOULD be a real capability loss versus today.
+(d) Rejected dict: pass 15 keys and confirm the viewer still succeeds while the panel reports `NOT updated — missing: [...]`.
+(e) `python extra_utilities/smoke_test_prompts_hot_reload.py` must pass (it will fail loudly if step 7 is skipped).
+HONEST CAPABILITY NOTE: `obj_path` is REQUIRED in the merged tool, so "update the panel without touching the viewer" is no longer expressible as a call with no mesh. In practice the Receptionist always has the attempt's obj path from `read_attempt`, and the partial-success semantics above cover the missing-mesh case — the panel still updates, the return just also reports that the viewer half failed. If the owner wants the panel-only call preserved exactly, make `obj_path: Optional[str] = None` and return an error only when BOTH arguments are omitted; that costs ~20 tok and re-opens a second empty-call decision point.
+
+### B · Move the hand-off label contract from six prompts into each call_<agent> tool's message-argument schema
+
+*Kind:* SCHEMA_MOVE · *Tokens:* 230 · *Risk:* medium
+
+*Files:*
+- `agents/shared/routing_tools.py:27-42`
+- `agents/shared/routing_tools.py:179-236`
+- `agents/shared/routing_tools.py:239-303`
+- `agents/user_input_inspector/prompt.md:444-453`
+- `agents/dc_input_creator/prompt.md:298-313`
+- `agents/dc_input_creator/prompt.md:336-338`
+- `agents/dc_input_inspector/prompt.md:327-348`
+- `agents/tool_caller/prompt.md:98-116`
+- `agents/dc_output_inspector/prompt.md:375-380`
+- `agents/orchestrator/prompt.md:148-159`
+- `agents/planner/prompt.md:51-55`
+- `DC_prompt_fragments/tools_config/hard_constraints_tools.md:2-5`
+
+**Today**
+
+```
+VERIFIED. Six prompts narrate the same contract, and it has already drifted in exactly the way six copies drift.
+
+agents/tool_caller/prompt.md:98-102 requires THREE labels (`Current attempt:`, `Mesh file:`, `Render images:`). agents/orchestrator/prompt.md:151-153 tells the Orchestrator that the Tool Caller "ESCALATEs without both" `Current attempt:` and `Parameters file:` — the two lists do not agree on which labels are which agent's obligation. agents/dc_input_inspector/prompt.md:336-339 spends four lines on what to do if the `(newly written this cycle)` marker is absent; agents/tool_caller/prompt.md never mentions dropping it.
+
+The tool descriptions today carry only the generic sentence, agents/shared/routing_tools.py:189-201:
+``​`
+    "call_dc_input_creator": (
+        "Call the DC Input Creator.  The ``message`` argument IS the "
+        "hand-off text the DCIC will see — write it as free-form prose."
+    ),
+``​`
+One target already breaks the pattern and states its label, which is the proof the mechanism works — :202-207:
+``​`
+    "call_dc_output_inspector": (
+        "Call the DC Output Inspector.  … Include "
+        "the full paths of any rendered images that the Inspector "
+        "should analyse, under a 'Render images:' label."
+    ),
+``​`
+`build_routing_tool` (:239-303) builds each tool with `StructuredTool.from_function(func=_invoke, name=tool_name, description=description)` and `_invoke(message: str)` has NO annotation metadata, so `properties.message` currently reaches the model with no description at all.
+
+routing_tools.py has no `from __future__ import annotations` (it opens with the docstring then `import json` at :27), so annotations are live objects and can be set per-target after the closure is defined.
+```
+**Proposed**
+
+```
+1. agents/shared/routing_tools.py:31 — add `Annotated` to the typing import:
+``​`python
+from typing import TYPE_CHECKING, Annotated
+``​`
+
+2. Replace `_TOOL_DESCRIPTIONS` (:179-236) with a short WHO table plus a per-target WHAT-TO-CARRY table. The description says who you are calling; the message argument's schema says what the call must carry.
+
+``​`python
+# ---------------------------------------------------------------------------
+# Routing tool schemas
+#
+# TWO tables, deliberately split:
+#   _TOOL_DESCRIPTIONS  — one line per target: WHO you are handing to.
+#   _MESSAGE_CONTRACT   — per target: WHAT the ``message`` must carry.
+#
+# The second is a CONTRACT between two agents, not advice, so it lives on the
+# ``message`` argument's schema rather than in prose in each caller's system
+# prompt.  It used to be narrated in six prompts (UII, DCIC, DCII, TC, DCOI,
+# Orchestrator, plus a PLANNER_FIRST-only copy in the Planner), which is how
+# the Tool Caller's own list of required labels came to disagree with the
+# Orchestrator's description of it.  Keyed by TARGET, because the labels a
+# hand-off must carry are a property of the recipient's tools, not of who is
+# calling.  Targets with no path requirements are deliberately absent — an
+# empty entry is the correct signal, and adding "no labels needed" prose to
+# ``call_orchestrator`` would cost more than the whole change saves (it is
+# bound to seven agents).
+# ---------------------------------------------------------------------------
+
+_TOOL_DESCRIPTIONS: dict[str, str] = {
+    "call_planner":
+        "Call the Planner — pipeline kickoff and recovery planning.",
+    "call_user_input_inspector":
+        "Call the User Input Inspector — it reads the user's raw inputs and "
+        "writes the structured extraction.",
+    "call_dc_input_creator":
+        "Call the DC Input Creator — it authors the parameter set and opens "
+        "the attempt folder.",
+    "call_dc_input_inspector":
+        "Call the DC Input Inspector — it validates the parameter set.",
+    "call_tool_caller":
+        "Call the Tool Caller — it generates the mesh and renders it.",
+    "call_dc_output_inspector":
+        "Call the DC Output Inspector — it judges the renders.",
+    "call_orchestrator": (
+        "Return control to the Orchestrator.  Use this when the natural "
+        "pipeline has completed, when you cannot proceed, or when the "
+        "Orchestrator's incoming instruction told you to report back."
+    ),
+    "call_conductor": (
+        "Return control to the Conductor — the hub that plans, routes and "
+        "approves.  Use this when the natural pipeline has completed, to "
+        "CLARIFY when its directive was ambiguous or could not be expressed "
+        "in concrete parameter values, or to ESCALATE when you are stuck."
+    ),
+    "call_creator": (
+        "Call the Creator — it authors the complete parameter set AND "
+        "self-validates it before writing, so state the qualitative "
+        "direction you want (\"increase <param X>\") rather than numbers."
+    ),
+    "call_receptionist": (
+        "Hand a user-facing result to the Receptionist, which composes and "
+        "delivers the final message to the user.  Pass a technical summary — "
+        "the Receptionist composes the actual wording."
+    ),
+}
+
+_MESSAGE_GENERIC = (
+    "The hand-off text the recipient will see, as free-form prose.  It is the "
+    "ONLY thing delivered — your own response text is not."
+)
+
+_MESSAGE_CONTRACT: dict[str, str] = {
+    "call_user_input_inspector": (
+        _MESSAGE_GENERIC + "  MUST carry, on its own line and copied "
+        "verbatim: ``Extraction output file: <inputs folder>/"
+        "extracted_inputs.txt`` — its write tool refuses to run without it, "
+        "and that file is a DESTINATION it writes, not one that must already "
+        "exist.  Never paste file content; it reads the files itself."
+    ),
+    "call_planner": (
+        _MESSAGE_GENERIC + "  Once an extraction exists it MUST carry "
+        "``Extracted inputs file: <absolute path>`` — the Planner reads that "
+        "file itself; never paste its content."
+    ),
+    "call_dc_input_creator": (
+        _MESSAGE_GENERIC + "  MUST carry ``Extracted inputs file: <absolute "
+        "path>`` — the DCIC reads that file itself; never paste its content. "
+        "Add ``Current attempt: <folder>`` ONLY to REUSE an existing attempt; "
+        "a NEW generation carries none — give a slug + one-line intent and "
+        "the DCIC opens the folder itself."
+    ),
+    "call_dc_input_inspector": (
+        _MESSAGE_GENERIC + "  MUST carry, each on its own line and copied "
+        "verbatim from whatever produced it: ``Current attempt: <folder>``, "
+        "``Parameters file (newly written this cycle): <folder>/"
+        "parameters.json``, ``Extracted inputs file: <absolute path>``.  Keep "
+        "the ``(newly written this cycle)`` marker whenever parameters.json "
+        "was just written — it tells the recipient any copy it remembers is "
+        "stale and must be re-read."
+    ),
+    "call_tool_caller": (
+        _MESSAGE_GENERIC + "  MUST carry, each on its own line and copied "
+        "verbatim: ``Current attempt: <folder>`` (the mesh and renders are "
+        "written there) and ``Parameters file (newly written this cycle): "
+        "<folder>/parameters.json``; the Tool Caller ESCALATEs without both. "
+        "Keep the ``(newly written this cycle)`` marker whenever "
+        "parameters.json was just written — it tells the Tool Caller any copy "
+        "it remembers is stale and must be re-read."
+    ),
+    "call_dc_output_inspector": (
+        _MESSAGE_GENERIC + "  MUST carry ``Current attempt: <folder>``, "
+        "``Mesh file: <absolute path>``, and a ``Render images:`` label "
+        "followed by one absolute render path per line — all copied verbatim "
+        "from the generating tool's return text.  The Inspector receives NO "
+        "images automatically and can load only the paths you list.  If "
+        "rendering failed or was skipped, say so plainly and list none."
+    ),
+    "call_creator": (
+        _MESSAGE_GENERIC + "  MUST carry ``Extracted inputs file: <absolute "
+        "path>`` — the Creator reads that file itself; never paste its "
+        "content.  Add ``Current attempt: <folder>`` ONLY to REUSE an "
+        "existing attempt; a NEW generation carries none."
+    ),
+}
+``​`
+
+3. In `build_routing_tool`, after `_invoke` is defined and before the return (replacing :299-303):
+
+``​`python
+    # Put the label contract on the ``message`` ARGUMENT's schema, not in the
+    # tool description: the model reads a required argument's schema as part
+    # of the call it is making, rather than as advice it read earlier.
+    # ``routing_tools`` has no ``from __future__ import annotations``, so the
+    # annotation is a live object and can be set per target here.
+    _invoke.__annotations__["message"] = Annotated[
+        str, _MESSAGE_CONTRACT.get(tool_name, _MESSAGE_GENERIC),
+    ]
+
+    return StructuredTool.from_function(
+        func=_invoke,
+        name=tool_name,
+        description=description,
+    )
+``​`
+```
+**Prompt prose this frees**
+
+```
+Whole sections, quoted from the live files. All are the same contract, restated.
+
+(a) agents/tool_caller/prompt.md:98-116, heading "## Data Flow and reporting file paths (IMPORTANT)" — 264 tok, DELETED ENTIRELY:
+"In the ``message`` argument of your routing tool include only a brief report (success/failure + paths).  Three labels MUST appear when the relevant artifacts were produced this cycle, each on its own line, with paths copied verbatim from the tool return texts:\n\n    Current attempt: <same path the hand-off carried; re-emit it>\n    Mesh file: <absolute mesh path from the tool's return text>\n    Render images:\n      <absolute path of each render image, one per line, copied verbatim from the same tool's return text (its render step)>\n\nThe DC Output Inspector does NOT receive images automatically and can only load images whose paths you explicitly hand it under ``Render images:``. … The ``Current attempt:`` line is REQUIRED on every routing call so the DCOI can also use ``read_attempt`` against the right folder."
+
+(b) agents/dc_input_inspector/prompt.md:327-348, heading "## Hand-off to the Tool Caller (IMPORTANT)" — 276 tok, DELETED ENTIRELY, including the marker-absent branch that no other prompt has:
+"When you FORWARD to the Tool Caller, the ``message`` argument of your ``call_tool_caller`` tool call MUST include these two lines … (If the DCIC's hand-off did NOT carry the ``(newly written this cycle)`` marker, drop it and just write ``Parameters file:`` …) … Both labels are required.  The marker tells the Tool Caller that any cached parameter content it remembers is stale and must be re-read.\n\nIf you CLARIFY back to the DCIC or ESCALATE to the Orchestrator, no path lines are needed."
+
+(c) agents/dc_input_creator/prompt.md:298-313, heading "## Hand-off to the next agent (IMPORTANT)" — 232 tok, DELETED (the surrounding "say who asked for a non-user value" paragraph at :315-322 is agent-unique judgement and STAYS):
+"When you FORWARD to the next agent …, the ``message`` argument of your routing call MUST include these three lines with absolute paths: … The phrase ``(newly written this cycle)`` is REQUIRED … Copy the ``Current attempt`` path verbatim from the path you used as ``attempt_dir`` … Copy ``Extracted inputs file:`` verbatim from the hand-off that set you up."
+Also :336-338: "Either target carries the same three ``Current attempt:`` / ``Parameters file:`` / ``Extracted inputs file:`` lines."
+
+(d) agents/orchestrator/prompt.md:148-159, heading "### Hand-offs you originate for a design cycle MUST carry ``Current attempt:``" — 228 tok, cut to two sentences (the DCIC exception and "do not guess" survive, as attempt-ownership policy under A5):
+"When YOU call ``call_dc_input_inspector``, ``call_tool_caller``, or ``call_dc_output_inspector`` for an active cycle, include ``Current attempt: <absolute path>`` — and for ``call_tool_caller`` also ``Parameters file: <Current attempt>/parameters.json`` (the Tool Caller ESCALATEs without both). … When the chain flows DCIC → (DCII →) Tool Caller naturally, the upstream agent supplies the labels; this rule covers only hand-offs you originate."
+
+(e) agents/user_input_inspector/prompt.md:444-453, under "## Forwarding and routing" → "**Design-generation request → FORWARD.**" — 149 tok:
+"Your forward ``message`` MUST carry these lines verbatim:\n\n    Extracted inputs file: <the path from your incoming \"Extraction output file:\" line>\n    Current attempt: <absolute path>          # ONLY when the hand-off supplied one\n\nThe recipient does not auto-load the extraction — it reads the file at that path.  When your incoming hand-off carried a ``Current attempt:``, copy it through (the Planner relays it to the DCIC); otherwise omit it.  A minimal forward is just those lines after a short note."
+
+(f) agents/dc_output_inspector/prompt.md:375-380, under "**Routing guidance:**" — 90 tok down to ~35:
+"- REVISE needing only a (re-)render of the SAME design on the current attempt … → ``call_tool_caller``, reusing the attempt — carry the ``Current attempt:`` + ``Parameters file:`` lines through so the Tool Caller writes into the right folder"
+
+(g) DC_prompt_fragments/tools_config/hard_constraints_tools.md:2-5 ($hard_constraints_tools, ×8 agents) — 66 → ~28 tok each, because the label list is now on the tools:
+"- DON'T invent or guess a path for a read tool: read tools take only the paths a hand-off label gives (``Input directory:`` / ``Extracted inputs file:`` / ``Parameters file:`` / ``Render images:`` / ``Current attempt:``) or an upstream tool's return value."
+becomes "- DON'T invent or guess a path: read tools take only a path a hand-off label gave you or an upstream tool returned."
+
+(h) LATENT (inside `<<PF_ON>>`, so 0 tok in the measured PLANNER_FIRST=False config, ~145 tok when the flag flips): agents/planner/prompt.md:33-43, the same two-label block for `call_user_input_inspector`.
+```
+**Migration**
+
+1. agents/shared/routing_tools.py:31 — add `Annotated` to the typing import.
+2. Replace `_TOOL_DESCRIPTIONS` (:179-236) with the two tables above.
+3. Add the `__annotations__` assignment in `build_routing_tool` before the `StructuredTool.from_function` return (:299-303).
+4. NO other code change is needed — every caller goes through `build_routing_tool`. Grep confirms the only build sites are agents/orchestrator/orchestrator.py (:290-464, 25 live bindings in the measured 7-agent config) and agents/conductor/conductor.py (:290-340).
+5. Prompt deletions (a)-(g) above, all in one commit with the code — a half-applied change leaves the label contract in NO copy at all.
+6. `$hard_constraints_tools` (g) is consumed by ALL EIGHT agents (verified: dc_input_creator, dc_input_inspector, dc_output_inspector, orchestrator, planner, receptionist, tool_caller, user_input_inspector) and has a 5-agent override at agents/5agent/tools_config/hard_constraints_tools_5agents.md — edit both or the topologies drift.
+7. Registries: agents/shared/prompts.py FRAGMENT_TO_SLOT and `_build_slots` need NO change (no fragment added or removed). `PROMPT_MD_RUNTIME_SLOTS` needs no change.
+8. 5-agent topology (owner's pass, but the shared module reaches it immediately): `call_creator` gains a contract, `call_conductor` deliberately does not. The equivalent prompt sections live in agents/creator/prompt_5agents.md:537, :569, agents/5agent/tool_caller/prompt_5agents.md and agents/conductor/prompt_5agents.md:430.
+9. `routing_instructions` (agents/shared/routing.py:257-264) already says "Include everything the recipient genuinely needs (paths the recipient's tools require, …)" — that generic sentence STAYS and is now the pointer to the per-tool contract. Do not delete it.
+10. extra_utilities/prompt_efficiency/measure_prompts.py transcribes the routing boilerplate verbatim at `_ROUTING_*` — this change does NOT touch routing.py, so the harness stays in sync. The harness measures PROMPTS only; the tool-schema side must be counted by hand.
+
+**Verify by**
+
+(a) SCHEMA VERIFICATION FIRST, and it cannot be done in this worktree — `python -c "import langchain_core"` fails here (no langchain installed, py3.8). In an environment with the real deps, run:
+```
+t = build_routing_tool("dc_input_creator", "tool_caller", agent, session)
+print(t.args_schema.model_json_schema()["properties"]["message"]["description"])
+```
+and confirm the contract text is present. If `create_schema_from_function` does not propagate `Annotated` metadata on the installed version, the FALLBACK is the established idiom already used in this repo at agents/shared/history_tool.py:19-34 — fold the contract into the `description` string instead. Same tokens, slightly weaker signal. Do not ship without checking which one you got.
+(b) Run a full design cycle and confirm the DCIC→DCII→TC→DCOI hand-offs still carry all the labels, with the prompt sections deleted. This is the actual test: the whole change is a bet that a required argument's schema is at least as binding as prose in a system prompt.
+(c) Confirm the Tool Caller still ESCALATEs on a hand-off with no `Parameters file:` line.
+(d) Confirm the `(newly written this cycle)` marker still round-trips DCIC → DCII → TC.
+HONEST TOKEN ACCOUNTING — this change is NOT a token win, and should not be sold as one. Prompt prose freed in the measured config: ~1,385 tok (a-g), plus ~145 latent behind PLANNER_FIRST. Tool-schema text added: ~1,471 tok, because the contract multiplies by BINDINGS (25 in the 7-agent config: call_orchestrator ×7, call_tool_caller ×4, call_planner/call_dc_input_creator/call_dc_input_inspector ×3 each, call_user_input_inspector/call_dc_output_inspector ×2 each, call_receptionist ×1) while the prose it replaces multiplies by PROMPTS (7). Shortening the descriptions themselves recovers ~315 tok. NET: about +230 tok saved — a wash. Deliberately leaving `call_orchestrator` (×7) and `call_receptionist` with no contract is what keeps it from going negative. The reason to do it is that the contract stops being restated six times and stops drifting (today the Tool Caller's required-label list and the Orchestrator's description of it already disagree), and that it is read at the moment of the call rather than recalled from a system prompt.
+
+### Sequencing
+
+Apply in this order; each step's prompt edits depend on the previous step's tool names existing.
+
+1. **A5 (unbind new_attempt)** — fully independent of everything else, touches only the Orchestrator binding plus attempt-ownership prose. Ship first so the rest is a clean diff.
+2. **A1 (read_pipeline_file)** — must precede A2, because A2's `build_user_inputs_tools` rewrite assumes `read_pipeline_file` already exists in the shared module, and because six agent modules lose imports/handlers here that A2 would otherwise have to touch twice.
+3. **A2 (read_user_inputs absorbs list_input_files + read_image_notes)** — depends on A1 for the shared module shape. A2 also retires the `Input directory:` hand-off label, so it MUST land before Group B: B's `call_user_input_inspector` contract is written for the post-A2 world (one label, not two). If you apply B first, that contract has to be edited again.
+4. **A3 (ocr_regions into view_images)** — depends on A2 only for the `build_user_inputs_tools` body it edits; otherwise independent.
+5. **A4 (show_attempt)** — fully independent (Receptionist-only, its own fragment/slot). Can be done at any point; last is fine because it is the only change that adds and deletes prompt fragments, and therefore the only one that touches `FRAGMENT_TO_SLOT` / `_build_slots` / the hot-reload smoke test.
+6. **B (label contract into the schemas)** — LAST. Every prompt section it deletes is also touched by A1/A2/A5 (the DCIC hand-off section, the Orchestrator's originate-labels section, `hard_constraints_tools.md`), so doing it last means editing each of those once.
+
+Cross-cutting caution: A5, A2 and B all edit `DC_prompt_fragments/tools_config/hard_constraints_tools.md` (×8 agents) and `agents/orchestrator/prompt.md`. Doing them in the above order keeps each file to one edit per step rather than three overlapping ones.
+
+Every step is independently revertible except A2→B, which share the `Input directory:` retirement.
+
+### Notes
+
+SCOPE / VERIFICATION STATUS
+Read-only pass: no file under the worktree was created, edited or deleted, and no state-changing git command was run. Every claim below was checked against the code, not recalled.
+
+ALL FIVE GROUP-A CLAIMS HOLD UP. None was dropped, but their strength differs sharply:
+- A1 and A5 are unambiguous. A1's copies have genuinely drifted (the Planner's carries a PLANNER_FIRST-specific policy paragraph that is silently wrong when the flag is True; the DCII validates parameters.json as JSON while the Tool Caller, which actually feeds it to the mesh generator, does not). A5's bind site is a single list entry the 5-agent Conductor already omits.
+- A2 is stronger than the original claim: `read_user_inputs` is not merely a superset, its `path` argument is ceremony. It only ever receives `config.USER_INPUTS_DIR`, a module constant (config.py:28), which is why removing the tool also removes the `Input directory:` hand-off label and 181 tok of Orchestrator prose telling the model to copy that constant "VERBATIM… never invent, shorten or reconstruct it".
+- A4 is well supported: three separate places in the code say the two tools are always paired, and the informational case is already written as "call one but not the other".
+- A3 IS THE WEAKEST and I would not fault the owner for dropping it. The collision is real (fractional box vs OCR region id, same four agents, and `crop_to_region` at image_stitch.py:64-69 silently returns the uncropped image on a malformed box, so the confusion never surfaces as an error). But `view_images` is a vision call and `ocr_regions` is a text-extraction call, and the merged tool carries two mutually-exclusive region arguments — itself a decision point. The safe fallback recovers ~550 of the 756 tok with none of the risk: keep both tools, shrink `_OCR_REGIONS_DOC`.
+
+GROUP B IS A CORRECTNESS CHANGE, NOT A TOKEN CHANGE — the single most important honest finding here. The proposal document estimates ~1,570 tok saved. That figure counts only one side. Prompt prose multiplies by PROMPTS (7); tool-schema text multiplies by BINDINGS (25 in the measured 7-agent config). Moving the same words therefore costs about 3.5× more per word than it saves. Measured: ~1,385 tok of prompt prose freed, ~1,471 tok of schema text added, ~315 tok recovered by shortening the tool descriptions themselves — net about +230. It only stays positive because `call_orchestrator` (bound to 7 agents) and `call_receptionist` deliberately get NO contract. The reason to do it anyway is that the contract stops being restated six times: today agents/tool_caller/prompt.md:100-102 lists three required labels while agents/orchestrator/prompt.md:151-153 describes the Tool Caller as needing a different two, and nothing reconciles them.
+
+THINGS I COULD NOT VERIFY IN THIS WORKTREE
+- `python -c "import langchain_core"` fails (no langchain, py3.8). I could not empirically confirm that `StructuredTool.from_function` propagates `Annotated` metadata into `properties.message.description`. The repo uses the `Annotated` idiom successfully under `@tool` (tools/calculate/calculate.py:13-27, agents/receptionist/propose_attempt_tool.py:87-97) and both decorators funnel through the same `create_schema_from_function`, so it should hold on langchain>=0.3.0 — but B's verification step says to check the emitted JSON schema before shipping, and names the fallback (fold into `description`, the idiom already used at agents/shared/history_tool.py:19-34).
+- `py_compile` proves nothing here beyond syntax; every change's verification section names a runtime observation instead.
+
+FOUR SIDE-FINDINGS, none of them part of the requested work, all worth the owner's attention
+1. **The 5-agent Conductor's prompt advertises four tools it is not bound to.** agents/conductor/conductor.py:331-340 binds only routing tools + `calculate` / `list_attempts` / `read_attempt` (+ the RAG trio). But agents/conductor/prompt_5agents.md:803-805 tells it to use `list_input_files()`, `read_input_text(path)`, `read_image_notes()`, and :268 / :797 tell it to call `read_extracted_inputs(<path>)`. All four would return "Error: unknown tool". This predates every change here and is not caused by any of them.
+2. **`ocr_region_crops_access.DEFAULT_AGENTS` (workflow_settings/ocr_region_crops_access.py:57-61) is missing two agents that bind the tool.** The comment says "The 3 chain agents that actually bind the ``ocr_regions`` tool", but the Planner and (in 5-agent) the Creator also call `build_user_inputs_tools` with image tools. `get()` returns False for anything outside the tuple (:112-113), so their Crops toggle can never be turned on. A3 forces this file to be edited anyway — fix it there or record the omission as deliberate.
+3. **`UII_MAY_READ_PREVIOUS_EXTRACTION` was never a hard fence.** It filters the UII's bundle read (user_input_inspector.py:338-350), but `read_input_text` — and after A1 `read_pipeline_file` — can read `extracted_inputs.txt` by absolute path from any agent that binds it. A2 preserves the gate exactly where it applied; it does not close the leak, and the README entry at :495 overstates it.
+4. **`agents/receptionist/receptionist.py:131-137` carries a stale 7-line comment** saying "a 17-param dict" (wrong since dda1560 took it to 16) and "prompt.md will be updated to match in Step 11" (long done). A4 deletes it.
+
+WHAT THIS SPEC DOES NOT COVER
+The 5-agent topology's own wiring. Every shared module named here — `agents/shared/user_inputs_tool.py`, `agents/shared/routing_tools.py`, `agents/shared/attempts_tool.py` — is imported by `agents/creator/creator.py` and `agents/conductor/conductor.py`, so A1/A2/A3/B reach the 5-agent system the moment they land and will break it if its call sites are not updated in the same commit. Each change's migration_steps lists those 5-agent files explicitly (creator.py:109-116/169/200/271-273/337-389 is the seventh `read_extracted_inputs` copy the original audit did not count). The 5-agent PROMPT files are listed for the owner's topology pass but are not specified line-by-line here.
+
+---
+
+## 11. Per-agent scoped fragments — UII and Planner (12 changes, 4,026 tokens)
+
+| id | change | kind | tokens | risk | files |
+|---|---|---|---:|---|---:|
+| **WIRE-01** | Add the per-agent SCOPED-FRAGMENT resolver to prompts.py (enables every change below) | WIRING | 0 | low | 3 |
+| **PLN-01** | Planner-scoped copy of generic_constraints (drops 8 of 13 bullets) | NEW_FRAGMENT | 558 | medium | 2 |
+| **PLN-02** | Planner-scoped copy of hard_constraints_dc (drops the 2 bullets HARD RULES 4 and 6 already own) | NEW_FRAGMENT | 157 | low | 3 |
+| **PLN-03** | Planner-scoped copy of hard_constraints_tools (drops the append-only attempt-folder bullet) | NEW_FRAGMENT | 161 | low | 3 |
+| **PLN-04** | Planner-scoped agent roster — drops the nested $tool_inventory (a tool signature the Planner cannot call) | NEW_FRAGMENT | 217 | low | 3 |
+| **PLN-05** | Delete the now-dangling STANDING-DIRECTIVES carve-out sentence in the Planner prompt | WIRING | 54 | low | 1 |
+| **UII-01** | UII-scoped copy of generic_constraints (drops 5 of 13 bullets, one of them inapplicable by construction) | NEW_FRAGMENT | 361 | medium | 2 |
+| **UII-02** | UII-scoped hard_constraints_dc — replaces 4 unreachable bullets (2 of which conflict with 'Capture, do not filter') with the one rule the UII can act on | NEW_FRAGMENT | 172 | medium | 3 |
+| **UII-03** | UII-scoped hard_constraints_tools (drops the append-only attempt-folder bullet; the UII never writes into one) | NEW_FRAGMENT | 149 | low | 2 |
+| **UII-04** | UII-scoped sketch_handling — drops the three sections addressed to the DCIC/DCOI (the single biggest per-agent cut available) | NEW_FRAGMENT | 443 | medium | 2 |
+| **UII-05** | UII-scoped sketch_notes — folds four artifact bullets into one and resolves a live contradiction with the UII's counting HARD RULE | NEW_FRAGMENT | 78 | medium | 3 |
+| **RTG-01** | Move routing.py's inline boilerplate into a fragment so it can be scoped per agent (the largest remaining lever for both) | NEW_FRAGMENT | 1676 | medium | 4 |
+
+### WIRE-01 · Add the per-agent SCOPED-FRAGMENT resolver to prompts.py (enables every change below)
+
+*Kind:* WIRING · *Tokens:* 0 · *Risk:* low
+
+*Files:*
+- `agents/shared/prompts.py:780`
+- `workflow_settings/prompts_admin.py:101`
+- `extra_utilities/prompt_efficiency/measure_prompts.py:196`
+
+**Today**
+
+```
+`_build_template` already carries TWO per-agent overlays, both name-derived and neither registered in `_build_slots` or `FRAGMENT_TO_SLOT`:
+
+``​`python
+    per_agent_bsv_rel = (
+        f"tools_config/blade_sections_visualizer_{agent_dir_name}.md"
+    )
+    per_agent_bsv_file = (
+        _topology_override(per_agent_bsv_rel)
+        or TOOLS_CONFIG_DIR / f"blade_sections_visualizer_{agent_dir_name}.md"
+    )
+    per_agent_bsv = (
+        per_agent_bsv_file.read_text(encoding="utf-8").rstrip()
+        if per_agent_bsv_file.exists()
+        else ""
+    )
+    slots = {
+        **_build_slots(),
+        "database_search_per_agent": per_agent_dbs,
+        "blade_sections_visualizer_per_agent": per_agent_bsv,
+    }
+``​`
+
+The overlay pattern falls back to `""` and is exposed under its OWN slot name (`$blade_sections_visualizer_per_agent`), separate from the shared `$blade_sections_visualizer`. A scoped COPY needs the other fallback — the shared file — and must land under the SAME slot name so no prompt.md changes.
+```
+**Proposed**
+
+```
+Insert after the `GENERIC_FRAGMENTS_DIR` definition block (near line 296, beside `_read_generic_fragment`):
+
+``​`python
+# ---------------------------------------------------------------------------
+# Per-agent SCOPED COPIES of shared fragments
+#
+# Same file-naming idiom as the $blade_sections_visualizer_per_agent /
+# $database_search_per_agent overlays: a file whose basename carries the
+# agent's directory name wins over the shared one.  ONE difference, and it is
+# the whole point --- an overlay falls back to "" under its own _per_agent
+# slot; a SCOPED COPY replaces the value of the SHARED slot and falls back to
+# the SHARED FILE.
+#
+# Consequence: no prompt.md changes anywhere.  An agent with no scoped file
+# assembles byte-for-byte what it assembles today; an agent with one gets its
+# own text under the same $slot name it already references.  There is no
+# "registered but not referenced" or "referenced but not registered" state to
+# get wrong, because no new slot name is introduced.
+#
+# Keys are $-slot names.  Values are (root, path-relative-to-that-root), where
+# "dc" means DC_prompt_fragments/ and "generic" means
+# agents/shared/prompt_fragments/ --- the two roots _read_dc_fragment and
+# _read_generic_fragment already use.
+# ---------------------------------------------------------------------------
+
+_SCOPED_FRAGMENTS: dict[str, tuple[str, str]] = {
+    "hard_constraints_generic": ("generic", "generic_constraints.md"),
+    "available_agents":         ("generic", "available_agents.md"),
+    "hard_constraints_dc":      ("dc", "dc_config/hard_constraints_dc.md"),
+    "hard_constraints_tools":   ("dc", "tools_config/hard_constraints_tools.md"),
+    "sketch_handling":          ("dc", "dc_config/user_input_types/sketch_handling.md"),
+    "sketch_notes":             ("dc", "dc_config/user_input_types/sketch_notes.md"),
+}
+
+
+def _scoped_fragments_for(agent_dir_name: str) -> dict[str, str]:
+    """Slot -> text, for every shared fragment this agent has its own copy of.
+
+    Only slots with an existing scoped file are returned, so the caller can
+    splat the result over the shared slot map and leave the rest alone.
+    Honours the active topology's override exactly as _read_dc_fragment and
+    _read_generic_fragment do, so a 5-agent Creator could ship
+    agents/5agent/dc_config/hard_constraints_dc_creator_5agents.md.
+    """
+    out: dict[str, str] = {}
+    for slot, (root, rel) in _SCOPED_FRAGMENTS.items():
+        p = Path(rel)
+        # as_posix(), never str(): _topology_override re-parses this string,
+        # and a Windows backslash would not survive the Linux container.
+        scoped_rel = (
+            p.parent / f"{p.stem}_{agent_dir_name}{p.suffix}"
+        ).as_posix()
+        if root == "generic":
+            path = (
+                _topology_override(f"prompt_fragments/{scoped_rel}")
+                or GENERIC_FRAGMENTS_DIR / scoped_rel
+            )
+        else:
+            path = _topology_override(scoped_rel) or DC_FRAGMENTS_DIR / scoped_rel
+        if path.is_file():
+            out[slot] = path.read_text(encoding="utf-8").rstrip()
+    return out
+``​`
+
+Then in `_build_template`, change the slot dict (line ~780) to:
+
+``​`python
+    slots = {
+        **_build_slots(),
+        "database_search_per_agent": per_agent_dbs,
+        "blade_sections_visualizer_per_agent": per_agent_bsv,
+        # LAST, so a scoped copy wins over the shared fragment.
+        **_scoped_fragments_for(agent_dir_name),
+    }
+``​`
+
+In `workflow_settings/prompts_admin.py`, append to `_WIRING_TIME_USAGE` (after the database_search overlay rows, line 101):
+
+``​`python
+    # Per-agent SCOPED COPIES of shared fragments (prompts._SCOPED_FRAGMENTS).
+    # These belong HERE and not in FRAGMENT_TO_SLOT: _used_by resolves a
+    # FRAGMENT_TO_SLOT hit through _prompt_md_slot_usage, which counts every
+    # agent whose prompt.md mentions the slot --- so a row here for
+    # generic_constraints_planner.md would report "used by 8 agents".
+    "agents/shared/prompt_fragments/generic_constraints_planner.md":              ["planner"],
+    "agents/shared/prompt_fragments/generic_constraints_user_input_inspector.md": ["user_input_inspector"],
+    "agents/shared/prompt_fragments/available_agents_planner.md":                 ["planner"],
+    "DC_prompt_fragments/dc_config/hard_constraints_dc_planner.md":               ["planner"],
+    "DC_prompt_fragments/dc_config/hard_constraints_dc_user_input_inspector.md":  ["user_input_inspector"],
+    "DC_prompt_fragments/tools_config/hard_constraints_tools_planner.md":              ["planner"],
+    "DC_prompt_fragments/tools_config/hard_constraints_tools_user_input_inspector.md": ["user_input_inspector"],
+    "DC_prompt_fragments/dc_config/user_input_types/sketch_handling_user_input_inspector.md": ["user_input_inspector"],
+    "DC_prompt_fragments/dc_config/user_input_types/sketch_notes_user_input_inspector.md":    ["user_input_inspector"],
+``​`
+
+In `extra_utilities/prompt_efficiency/measure_prompts.py`, `build_template_only` (line ~196), mirror the resolver:
+
+``​`python
+_SCOPED_ROOTS = {"generic": GEN_DIR, "dc": DCF_DIR}
+_SCOPED_FRAGMENTS = {
+    "hard_constraints_generic": ("generic", "generic_constraints.md"),
+    "available_agents":         ("generic", "available_agents.md"),
+    "hard_constraints_dc":      ("dc", "dc_config/hard_constraints_dc.md"),
+    "hard_constraints_tools":   ("dc", "tools_config/hard_constraints_tools.md"),
+    "sketch_handling":          ("dc", "dc_config/user_input_types/sketch_handling.md"),
+    "sketch_notes":             ("dc", "dc_config/user_input_types/sketch_notes.md"),
+}
+
+
+def _scoped(agent: str) -> dict:
+    out = {}
+    for slot, (root, rel) in _SCOPED_FRAGMENTS.items():
+        p = Path(rel)
+        f = _SCOPED_ROOTS[root] / (p.parent / f"{p.stem}_{agent}{p.suffix}").as_posix()
+        if f.exists():
+            out[slot] = _rd(f)
+    return out
+``​`
+and add `slots.update(_scoped(agent))` immediately before the first `Template(raw).safe_substitute(slots)`.
+```
+**Prompt prose this frees**
+
+```
+None on its own — this is the enabling mechanism. It is what makes the nine NEW_FRAGMENT changes below deletable-per-agent instead of deletable-fleet-wide.
+```
+**Migration**
+
+1. Add `_SCOPED_FRAGMENTS` + `_scoped_fragments_for` to prompts.py and splat it LAST into `_build_template`'s slot dict. With no scoped files on disk, `_scoped_fragments_for` returns `{}` and all nine prompts are byte-identical — land this alone first and diff to prove it.
+2. Add the nine `_WIRING_TIME_USAGE` rows to prompts_admin.py. Do NOT add FRAGMENT_TO_SLOT rows (wrong badge, see the comment in the code). Do NOT touch `_known_slot_names()` — no new slot names exist.
+3. Sync measure_prompts.py, which is the only tool that can verify the result in this worktree (prompts.py cannot be imported under Python 3.8).
+4. Only then drop the fragment files in.
+Registries deliberately NOT touched, each verified: `_build_slots()` (no new slot), `FRAGMENT_TO_SLOT` (would mis-badge), `PROMPT_MD_RUNTIME_SLOTS` (no new `{}` slot), `_known_slot_names()` (derives from `_build_slots`), and every `agents/*/prompt.md` (no `$slot` line changes at all).
+
+**Verify by**
+
+Step 1 alone: `python extra_utilities/prompt_efficiency/measure_prompts.py --dump OUT` before and after, then diff OUT — all nine files must be identical. After the fragments land: re-dump and `grep -o '\$[a-z_][a-z_0-9]*' OUT/*.txt` must return nothing (a literal `$slot` surviving into the prompt is the silent-failure mode). Open the System Prompts UI and confirm each new file shows "used by: planner" or "used by: user_input_inspector", not 8 agents.
+
+### PLN-01 · Planner-scoped copy of generic_constraints (drops 8 of 13 bullets)
+
+*Kind:* NEW_FRAGMENT · *Tokens:* 558 · *Risk:* medium
+
+*Files:*
+- `agents/shared/prompt_fragments/generic_constraints_planner.md`
+- `agents/shared/prompt_fragments/generic_constraints.md:1`
+
+**Today**
+
+```
+`$hard_constraints_generic` splices 3,370 assembled chars (842 tok) into the Planner. Bullet-by-bullet, what the Planner cannot act on or already has better:
+
+1. "DO follow the natural pipeline: … FORWARD to your natural next agent; otherwise return to the Orchestrator" (CHAIN_ONLY) — verbatim duplicate of the routing block's `### How to decide where to route` bullets 1-2, injected into this same prompt ~40 lines below.
+2. "DO ESCALATE to the Orchestrator the moment something blocks you" (CHAIN_ONLY) — duplicate of the same block's bullet 4 plus its whole `### Do not loop — ESCALATE when stuck` section.
+3. "DO carry STANDING DIRECTIVES verbatim … only the Planner may set or change it" (CHAIN_ONLY) — the Planner is the SOLE ISSUER. Its own `Issue a STANDING DIRECTIVE` move already owns the mechanism, and currently has to spend a whole sentence neutralising this bullet: "The generic ``copy the block verbatim`` rule binds the agents carrying YOUR directive downstream — it does not limit your authority to set, replace, or drop it." Removing the bullet removes the need for the carve-out (see PLN-05).
+4. "DO write hand-off messages as free-form prose carrying exactly what the recipient needs … the authorship of any non-user-authored value" — the routing block says this almost word-for-word: "Write the ``message`` argument as free-form prose … authorship of any non-user-authored values … and nothing they do not."
+5. "DON'T invent tools, scripts, infrastructure, fallback policies, confidence scores, version numbers, or files that do not already exist" — HARD RULE 1 is the same list, longer: "No timers, waits, confidence scores, custom JSON schemas, version numbers, checksums, fallback policies, notification systems, or any file that does not already exist." Anti-Hallucination B covers the rest.
+6. "DON'T loop: if you are about to call the same tool with the same arguments…" — duplicate of `### Do not loop — ESCALATE when stuck`, 90 words, same prompt.
+7. "DON'T bounce permission questions back to the previous agent. Authorisations come from the user …, the Planner (via the Orchestrator), or the Orchestrator itself" (CHAIN_ONLY) — self-referential: it names the Planner as a grantor while addressing the Planner. HARD RULE 8 owns authorisation scope-and-extent for this agent, and the routing block repeats the routing half at length.
+8. "DON'T retry a failing step blindly; when the same class of failure recurs, ESCALATE so the Planner can pick a different angle" (CHAIN_ONLY) — also self-referential, and HARD RULE 9 ("Retry budget — count, differentiate, or stop", with the `Attempt N of expected ~M` self-check) is the real rule.
+9. "DON'T script the final user-facing reply … never write the user-facing message yourself" (CHAIN_ONLY) — this one is not merely dead, it CONTRADICTS the prompt it ships in. The Planner's REPLY DIRECTLY move says "put the user-facing answer in Part 2", and HARD RULE 10 says "The Receptionist relays your Part-2 as-is, so give it the truth in short operational prose".
+
+Tool bindings confirming the above (agents/planner/planner.py:196-203): read_user_queries, read_extracted_inputs, calculate, read_agent_history, list_attempts, read_attempt, list_input_files, read_input_text, read_image_notes, view_images, ocr_regions, plus three routing tools. No write tool of any kind.
+```
+**Proposed**
+
+```
+New file `agents/shared/prompt_fragments/generic_constraints_planner.md` (1,144 bytes; every surviving line is byte-identical to the shared fragment — this is a delete-only diff, apart from dropping the trailing "Every chain agent is bound by this; the only exceptions are the Receptionist's direct user replies and the Orchestrator's final user-facing wrap-up.", which describes agents the Planner is not):
+
+``​`
+### What every agent in any design configurator MAY do (DOs)
+- DO act on the inputs in your hand-off and the data files it
+  references — use your read tools on the paths the upstream agent
+  supplied.
+- DO use only the tools listed for your role; that list is exhaustive.
+- DO answer in English; do not substitute words from other languages or
+  scripts.
+
+### What every agent in any design configurator MUST NOT do (DON'Ts)
+- DON'T fabricate observations about artifacts you did not see produced.
+  If you cannot source a statement to a tool result, an agent's history,
+  or something the user literally said, do not make it.
+- DON'T communicate to another agent in plain prose.  The ONLY channel
+  to another agent is a routing tool call (``call_<agent>``); the prose
+  you write into that tool's ``message`` argument IS the hand-off.  Any
+  text you emit WITHOUT invoking a routing tool is silently discarded and
+  the pipeline halts with a "no routing tool call" error — no matter how
+  complete your reasoning looks.  Do not announce a routing call instead
+  of making it: invoke it in the same response where you finish your
+  work.
+``​`
+```
+**Prompt prose this frees**
+
+```
+agents/planner/prompt.md, `## Your common moves` → `Issue a STANDING DIRECTIVE`: the carve-out sentence beginning "The generic \"copy the block verbatim\" rule binds the agents carrying YOUR directive downstream" (216 chars, 54 tok) becomes a dangling reference and must be deleted in the same commit — see PLN-05. Nothing else in the Planner prompt references the shared bullets.
+```
+**Migration**
+
+Drop the file in after WIRE-01. No prompt.md `$slot` line changes. Two invariants deliberately preserved byte-for-byte because production incidents created them: "DON'T fabricate observations about artifacts you did not see produced" (agents inventing render observations) and the whole "DON'T communicate to another agent in plain prose … the pipeline halts" bullet (prose with no routing call halting the chain). The STANDING DIRECTIVES literal markers are NOT lost: `agents/shared/standing_directives.py` keys on the directive TEXT, not the header, and `agents/orchestrator/orchestrator.py:737` re-stamps `BLOCK_START` on every hop into `_DIRECTIVE_CARRIERS` (which includes the Planner), so the mechanism self-heals regardless of prompt wording — and the Planner's own move section still carries both markers verbatim.
+
+**Verify by**
+
+Re-dump and confirm the assembled Planner still contains, verbatim: `=== STANDING DIRECTIVES (copy verbatim to the next agent) ===`, `SOFT TARGET`, `no routing tool call`, and `DON'T fabricate observations`. Then grep the assembled Planner for `never write the user-facing message yourself` — it must be GONE, because it contradicts the REPLY DIRECTLY move that remains.
+
+### PLN-02 · Planner-scoped copy of hard_constraints_dc (drops the 2 bullets HARD RULES 4 and 6 already own)
+
+*Kind:* NEW_FRAGMENT · *Tokens:* 157 · *Risk:* low
+
+*Files:*
+- `agents/shared/prompt_fragments/../../../DC_prompt_fragments/dc_config/hard_constraints_dc_planner.md`
+- `DC_prompt_fragments/dc_config/hard_constraints_dc.md:1`
+- `agents/planner/prompt.md:323`
+
+**Today**
+
+```
+`$hard_constraints_dc` splices 1,223 assembled chars (306 tok). Of its four bullets:
+
+1. "DON'T express a design in anything but the $parameter_count named configurator parameters, and DON'T invent parameters outside them (hub_radius, fillet_radius, tip_clearance…) … Geometry changes ONLY by changing those parameters and regenerating via the DC Input Creator → Tool Caller path; there is no mesh-editing capability." — the Planner prompt states this TWICE more, at line 323 ("**Geometry is changed ONLY via the $parameter_count design parameters.** There is NO mesh-editing capability…") and line 330 ("**The $parameter_count design parameters are the ONLY parameters.** Use their exact names"), the second followed immediately by `$invalid_parameter_examples`, which is the same hub_radius/fillet_radius/tip_clearance list. Three copies in one prompt.
+2. "DON'T propose mesh post-processing of any kind — no boolean unions, welding, vertex merging, remeshing, hole filling, normal recomputation, manifold repair, fillets, chamfers, struts, supports…" — HARD RULE 4 is the same list: "no boolean unions, welding, remeshing, hole filling, normal repair, component pruning, struts/supports, or any other mesh post-processing."
+3. "DON'T offer analysis the system cannot perform (CFD / FEA …), nor alternative output formats, camera angles, cross-sections, or higher-resolution renders" — KEEP. The Planner authors recovery Sequences and can plan a step; "offer" widens to "plan" for this agent.
+4. "The ONLY mesh metrics are watertightness, volume, and degenerate-face count…" — KEEP. HARD RULE 5 ("Plan only around metrics that actually exist. The DC Output Inspector's automated checks are exactly what the Tool Caller's bound inspection tool returns (see the agent roster)") points at the roster, and today the roster does not name them either. This is the only place the Planner is told what the three metrics are.
+```
+**Proposed**
+
+```
+New file `DC_prompt_fragments/dc_config/hard_constraints_dc_planner.md` (599 bytes; bullets 3 and 4 verbatim, with "DON'T offer" widened to "DON'T plan or offer" — the only word changed):
+
+``​`
+### Domain hard rules (every agent)
+- DON'T plan or offer analysis the system cannot perform (performance /
+  RPM / thrust / flow / pressure / efficiency / CFD, or structural / FEA /
+  stress / material / load / tolerance), nor alternative output formats
+  (STL, STEP, IGES, …), camera angles, cross-sections, or higher-resolution
+  renders — the parameter set, tessellation, and the three fixed views are
+  not negotiable.
+- The ONLY mesh metrics are watertightness, volume, and degenerate-face
+  count; when mesh checks are disabled at startup, rely on visual
+  inspection and say so plainly.
+``​`
+```
+**Prompt prose this frees**
+
+```
+Nothing needs deleting — this cut works the other way round: it removes the fragment's third copy of a rule the Planner prompt already states in its own numbered HARD RULES. If you would rather cut the prompt than the fragment, the alternative is deleting HARD RULES 4 and 6 (audit items PLN-17 and PLN-19); do ONE of the two, not both, or the mesh-editing prohibition disappears from the Planner entirely.
+```
+**Migration**
+
+Drop in after WIRE-01. Note the file KEEPS the `$parameter_count` -free wording, so no nested-slot dependency. Cross-check against audit items PLN-17/PLN-19 before applying: they delete the Planner's own HARD RULES 4 and 6, which are the copies I am relying on to survive. Applying this fragment AND those two cuts together removes the no-mesh-editing rule from the Planner's prompt completely.
+
+**Verify by**
+
+grep the assembled Planner for `mesh-editing` and `boolean unions` — each must still appear at least once (from HARD RULE 4). grep for `watertightness` — must appear exactly once.
+
+### PLN-03 · Planner-scoped copy of hard_constraints_tools (drops the append-only attempt-folder bullet)
+
+*Kind:* NEW_FRAGMENT · *Tokens:* 161 · *Risk:* low
+
+*Files:*
+- `DC_prompt_fragments/tools_config/hard_constraints_tools_planner.md`
+- `DC_prompt_fragments/tools_config/hard_constraints_tools.md:11`
+- `agents/planner/prompt.md:526`
+
+**Today**
+
+```
+`$hard_constraints_tools` splices 1,252 assembled chars (313 tok). Three bullets:
+
+1. "DON'T invent or guess a path for a read tool: read tools take only the paths a hand-off label gives (``Input directory:`` / ``Extracted inputs file:`` / ``Parameters file:`` / ``Render images:`` / ``Current attempt:``) or an upstream tool's return value." — KEEP, but trim the label list: the Planner's read tools are `read_extracted_inputs`, `read_user_queries`, `read_input_text`, `read_attempt`, `view_images`. It never receives a `Parameters file:` or `Render images:` label (those go to the DCII and the DCOI), so those two labels are noise for it.
+2. "DO route EVERY arithmetic operation … through the ``calculate`` tool" — KEEP verbatim. `calculate` IS bound (planner.py:198) and HARD RULE 9 requires counting locked values.
+3. "Attempt folders are COHERENT and append-only for their inputs: never rewrite / edit / delete a ``parameters.json`` or mesh already in one, write only into the ``Current attempt:`` folder, and a folder's mesh + ``render_*.png`` must have come from its own ``parameters.json``. Re-running the render/QC tool on an attempt that already has renders REUSES them in place — no new attempt is needed just to re-render. To build on an old parameter set, COPY its values into a NEW attempt (the DCIC opens it; the Orchestrator only as a fallback) — never edit the old folder's parameters." — DEAD WEIGHT, 631 chars. The Planner has no write tool at all (verified in the `all_tools` list at planner.py:196-203), so no rule about what it may write can bind it. And the half that IS relevant — reuse-vs-new-attempt — is stated better and at length in the Planner's own `## Attempt folders and the attempt tools` section (line 526ff): "The **DCIC creates the folder** for each new generation … You do NOT have a tool to create attempt folders and must NOT try to open one yourself" plus the whole "Opening a folder — you DIRECT, the DCIC creates" paragraph including the REUSE case. That section is Planner-specific and post-dates cf4b900; the shared bullet is the generic version of it.
+```
+**Proposed**
+
+```
+New file `DC_prompt_fragments/tools_config/hard_constraints_tools_planner.md` (612 bytes; bullet 2 byte-identical, bullet 1 with two inapplicable labels dropped):
+
+``​`
+### Tool-use hard rules (every agent)
+- DON'T invent or guess a path for a read tool: read tools take only the
+  paths a hand-off label gives (``Input directory:`` / ``Extracted inputs
+  file:`` / ``Current attempt:``) or an upstream tool's return value.
+- DO route EVERY arithmetic operation — sums, ratios, conversions, range
+  comparisons — through the ``calculate`` tool (never mental arithmetic;
+  LLM sums are unreliable even for trivial cases).  Batch every expression
+  you need this turn into ONE ``calculate`` call; issue a second only when
+  later expressions genuinely depend on earlier results.
+``​`
+```
+**Prompt prose this frees**
+
+```
+Nothing to delete — the Planner's own `## Attempt folders and the attempt tools` section (line 526) becomes the SOLE statement of the attempt-folder model for this agent, which is what it was written to be. Keep it; do not also apply an audit cut that shortens it (PLN-32) without re-reading it against this change.
+```
+**Migration**
+
+Drop in after WIRE-01. The append-only invariant is not weakened system-wide: the DCIC, DCII, Tool Caller, DCOI and Orchestrator all still splice the full shared fragment, and the DCIC — the sole creator of attempt folders since cf4b900 — is the agent the rule actually binds.
+
+**Verify by**
+
+grep the assembled Planner for `append-only` — it must still appear (from the Planner's own attempt-folders section). grep for `calculate` — must still appear. Confirm `Parameters file:` no longer appears in the Planner prompt.
+
+### PLN-04 · Planner-scoped agent roster — drops the nested $tool_inventory (a tool signature the Planner cannot call)
+
+*Kind:* NEW_FRAGMENT · *Tokens:* 217 · *Risk:* low
+
+*Files:*
+- `agents/shared/prompt_fragments/available_agents_planner.md`
+- `agents/shared/prompt_fragments/available_agents.md:21`
+- `DC_prompt_fragments/tools_config/tool_inventory.md`
+
+**Today**
+
+```
+`$available_agents` contributes 2,854 assembled chars (714 tok) to the Planner — 2,029 of its own plus 881 from the NESTED `$tool_inventory` splice inside the Tool Caller entry ("see ``$tool_inventory`` for the exact tool name and behaviour"), resolved by `_build_template`'s second `safe_substitute` pass.
+
+`tool_inventory.md` is a four-entry call reference: the `generate_and_render_propeller` argument contract ("pass them plus ``output_dir``"), `calculate`, `list_attempts`, `read_attempt(n, file)`. The Planner cannot call `generate_and_render_propeller` — it is not in the Planner's bound tool list — and it already has `calculate`, `list_attempts` and `read_attempt` described in its own prompt (lines 472-568). The ONE fact the Planner needs from it is what the render/QC step returns, because HARD RULE 5 says "Plan only around metrics that actually exist … exactly what the Tool Caller's bound inspection tool returns (see the agent roster)" — and today the roster does not name those metrics, so the cross-reference dead-ends.
+
+The Receptionist entry is also partly dead: "You never call the Receptionist directly — if the user needs to be asked something, route to the Orchestrator and state what question is needed; the Orchestrator hands off to the Receptionist, which composes the exact wording" restates the ESCALATE move, HARD RULE 10 and the routing fragment.
+
+The UII / DCIC / DCII / DCOI entries all stay — the Planner names these agents in recovery Sequences (Role 2), so the roster is genuinely load-bearing for it. (Audit option (c) proposed dropping `$available_agents` entirely; I would not, for that reason.)
+```
+**Proposed**
+
+```
+New file `agents/shared/prompt_fragments/available_agents_planner.md` (2,008 bytes raw, ~1,987 assembled — the saving is the 881-char nested `$tool_inventory` that no longer resolves). The UII, DCIC, DCII and DCOI entries are byte-identical to the shared fragment; the Tool Caller entry is rewritten to state the metrics HARD RULE 5 points at; a routing-reachability line is added at the top:
+
+``​`
+Use these names when you author a recovery Sequence.  Of them, only the
+User Input Inspector, the DC Input Creator and the Orchestrator are
+reachable from your routing tools.
+
+- **Receptionist**: the user-facing agent.  Composes every outgoing message
+  to the user.  You never call it — say in your Part 2 what the user needs
+  to be asked; the Orchestrator hands off and the Receptionist composes the
+  exact wording.
+- **User Input Inspector (UII)**: reads user_query.txt and any other
+  input files in the inputs directory (text, JSON, sketches/images),
+  extracts design values, intent, and constraints, and writes
+  extracted_inputs.txt.  This is the only agent that interprets raw
+  user content into structured design data.
+- **DC Input Creator (DCIC)**: reads extracted_inputs.txt and writes
+  the complete $parameter_count-parameter set to parameters.json.  This is the only
+  agent that authors concrete numeric parameter values.  Translates
+  qualitative guidance (a directive of the form "increase <param X>")
+  into numbers.  It also opens the attempt folder.
+<<DCII_ONLY>>- **DC Input Inspector (DCII)**: reads parameters.json and
+  extracted_inputs.txt from disk and validates that the parameter
+  values are in range, internally consistent, and match the user's
+  intent.  Can send corrections back to the DC Input Creator.
+<</DCII_ONLY>>- **Tool Caller (TC)**: one call to the bound merged generate-and-render
+  tool produces the mesh AND, as its built-in final step, the three fixed
+  render views and — when mesh checks are enabled — the only metrics that
+  exist: watertightness, volume, and degenerate-face count.  Plan around
+  those and nothing else.
+- **DC Output Inspector (DOI)**: loads the rendered PNGs using the
+  paths supplied by the Tool Caller and performs a qualitative visual
+  analysis.  Approves the design (FORWARD to Orchestrator) or flags
+  defects and escalates.  Cannot measure precise dimensions; comments
+  on overall shape, proportions, and feature count.
+``​`
+```
+**Prompt prose this frees**
+
+```
+agents/planner/prompt.md HARD RULE 5's dangling cross-reference is repaired rather than freed: "(see the agent roster)" now resolves to a roster that actually names the three metrics. Combined with PLN-02 this is the only place the Planner learns them, so do not delete both.
+```
+**Migration**
+
+Drop in after WIRE-01. Two nested-substitution dependencies to preserve and verify: `$parameter_count` (resolved on `_build_template`'s SECOND pass — the shared fragment already relies on this, so the mechanism is proven) and the `<<DCII_ONLY>>` region (resolved by `apply_flag_filters` AFTER both passes). Both markers are balanced in the text above; an unbalanced one silently blanks the region under DC_INSPECTOR_ENABLED=False. The shared `available_agents.md` stays in place for the Database Handler — if audit item DH-"drop $available_agents" also lands, the shared file drops to zero consumers and can be deleted, at which point this scoped copy becomes the only roster in the tree.
+
+**Verify by**
+
+Re-dump under BOTH DC_INSPECTOR_ENABLED settings and diff: the DCII entry must appear when True and vanish cleanly (no stray marker text) when False. grep the assembled Planner for `output_dir` — must be GONE. grep for `watertightness` — must appear.
+
+### PLN-05 · Delete the now-dangling STANDING-DIRECTIVES carve-out sentence in the Planner prompt
+
+*Kind:* WIRING · *Tokens:* 54 · *Risk:* low
+
+*Files:*
+- `agents/planner/prompt.md:70`
+
+**Today**
+
+```
+agents/planner/prompt.md, `## Your common moves` → `Issue a STANDING DIRECTIVE`, final sentence:
+
+"As the issuer you are not a mere carrier: to CHANGE the directive write the NEW block in place of the old one (never stack two blocks); to END it, simply stop including a block.  The generic \"copy the block verbatim\" rule binds the agents carrying YOUR directive downstream — it does not limit your authority to set, replace, or drop it."
+
+The second sentence exists ONLY to neutralise the shared `generic_constraints.md` bullet "DO carry STANDING DIRECTIVES verbatim … never alter, summarise, translate, re-order, or omit it". PLN-01 removes that bullet from the Planner's copy, so the sentence points at a rule the Planner can no longer see.
+```
+**Proposed**
+
+```
+Delete exactly this span, leaving the preceding sentence intact:
+
+``​`
+  The generic "copy the block verbatim" rule binds
+    the agents carrying YOUR directive downstream —
+    it does not limit your authority to set, replace, or drop it.
+``​`
+
+The surviving text ends: "…As the issuer you are not a mere carrier: to CHANGE the directive write the NEW block in place of the old one (never stack two blocks); to END it, simply stop including a block."
+```
+**Prompt prose this frees**
+
+```
+216 chars / 54 tok of pure cross-reference maintenance.
+```
+**Migration**
+
+Apply in the SAME commit as PLN-01. Applying PLN-01 without this leaves a reference to an invisible rule; applying this without PLN-01 removes the Planner's only statement that it may replace its own directive while the generic bullet still says never alter it — that would be a real regression. The literal `=== STANDING DIRECTIVES (copy verbatim to the next agent) ===` / `=== END STANDING DIRECTIVES ===` markers in the surrounding text are untouched.
+
+**Verify by**
+
+grep the assembled Planner for both literal markers — both must survive. grep for `mere carrier` — must survive. grep for `does not limit your authority` — must be gone.
+
+### UII-01 · UII-scoped copy of generic_constraints (drops 5 of 13 bullets, one of them inapplicable by construction)
+
+*Kind:* NEW_FRAGMENT · *Tokens:* 361 · *Risk:* medium
+
+*Files:*
+- `agents/shared/prompt_fragments/generic_constraints_user_input_inspector.md`
+- `agents/shared/prompt_fragments/generic_constraints.md:1`
+
+**Today**
+
+```
+`$hard_constraints_generic` splices the same 3,370 assembled chars (842 tok) into the UII. UII tool bindings (agents/user_input_inspector/user_input_inspector.py:164-168): `read_user_inputs`, `write_extraction`, `calculate`, `list_attempts`, `read_attempt`, `list_input_files`, `read_input_text`, `read_image_notes`, `view_images`, `ocr_regions`, plus `call_planner` and `call_orchestrator`. One write tool, whose target is the `Extraction output file:` path from the hand-off.
+
+Bullets the UII cannot act on:
+
+1. "DO follow the natural pipeline … FORWARD to your natural next agent; otherwise return to the Orchestrator" — the routing block's `### How to decide where to route` bullets 1-2 say it, and the UII's own `## Forwarding and routing` section says it a third time with the actual tool names.
+2. "DO ESCALATE to the Orchestrator the moment something blocks you" — routing block bullet 4 plus `### Do not loop — ESCALATE when stuck`, plus the UII's own "**ESCALATE → ``call_orchestrator``** when the request is out of scope…".
+3. "DO write hand-off messages as free-form prose carrying exactly what the recipient needs … the authorship of any non-user-authored value" — the routing block's own text includes the phrase "authorship of any non-user-authored values". Same instruction, same prompt.
+4. "DON'T loop: if you are about to call the same tool with the same arguments you already used this turn, STOP and ESCALATE" — `### Do not loop — ESCALATE when stuck` is a 90-word section saying this, and the UII's own tool description already says "call it ONCE with the ``Input directory:`` path from your hand-off (verbatim; don't guess, don't loop)".
+5. "DON'T bounce permission questions back to the previous agent. Authorisations come from the user (via Receptionist → Orchestrator), the Planner (via the Orchestrator), or the Orchestrator itself; route them to the Orchestrator." — INAPPLICABLE BY CONSTRUCTION at the measured config. Under PLANNER_FIRST=False the UII is the first chain agent; its own routing fragment states "You are the first agent in the natural flow; there is no \"previous\" agent in the chain for you to CLARIFY back to." There is no previous agent to bounce to.
+6. "DON'T retry a failing step blindly; when the same class of failure recurs, ESCALATE so the Planner can pick a different angle" — the UII runs one read and one write per cycle; its retry path is the CLARIFY-back handling in its own prompt ("re-read the source and call ``write_extraction`` again with the correction").
+
+Bullets KEPT and why: "DO carry STANDING DIRECTIVES verbatim" — the UII IS in `orchestrator._DIRECTIVE_CARRIERS` (orchestrator.py:83), so a Planner-issued directive can reach it through a recovery Sequence; "DON'T invent tools … or files that do not already exist" — the UII has no HARD RULE 1 equivalent and inventing an input file is a live failure mode; "DON'T fabricate observations" — the UII is the agent that looks at images, the exact incident this guards; "DON'T script the final user-facing reply" — reachable on the extraction-only path; "DON'T communicate in plain prose" — the pipeline-halt guard.
+```
+**Proposed**
+
+```
+New file `agents/shared/prompt_fragments/generic_constraints_user_input_inspector.md` (1,995 bytes; every surviving line byte-identical to the shared fragment except the dropped trailing "Every chain agent is bound by this; the only exceptions are the Receptionist's direct user replies and the Orchestrator's final user-facing wrap-up."):
+
+``​`
+### What every agent in any design configurator MAY do (DOs)
+- DO act on the inputs in your hand-off and the data files it
+  references — use your read tools on the paths the upstream agent
+  supplied.
+- DO use only the tools listed for your role; that list is exhaustive.
+- DO carry STANDING DIRECTIVES verbatim: if your incoming hand-off
+  contains a ``=== STANDING DIRECTIVES (copy verbatim to the next agent)
+  ===`` … ``=== END STANDING DIRECTIVES ===`` block, reproduce that whole
+  block UNCHANGED in your own outgoing hand-off.  Write your own prose
+  around it, but never alter, summarise, translate, re-order, or omit it —
+  it carries instructions later agents depend on, and only the Planner may
+  set or change it.
+- DO answer in English; do not substitute words from other languages or
+  scripts.
+
+### What every agent in any design configurator MUST NOT do (DON'Ts)
+- DON'T invent tools, scripts, infrastructure, fallback policies,
+  confidence scores, version numbers, or files that do not already
+  exist.  If you can't do something with your bound tools, ESCALATE.
+- DON'T fabricate observations about artifacts you did not see produced.
+  If you cannot source a statement to a tool result, an agent's history,
+  or something the user literally said, do not make it.
+- DON'T script the final user-facing reply.  Route your content to the
+  Orchestrator and let the Receptionist compose the user's wording —
+  never write the user-facing message yourself.
+- DON'T communicate to another agent in plain prose.  The ONLY channel
+  to another agent is a routing tool call (``call_<agent>``); the prose
+  you write into that tool's ``message`` argument IS the hand-off.  Any
+  text you emit WITHOUT invoking a routing tool is silently discarded and
+  the pipeline halts with a "no routing tool call" error — no matter how
+  complete your reasoning looks.  Do not announce a routing call instead
+  of making it: invoke it in the same response where you finish your
+  work.
+``​`
+```
+**Prompt prose this frees**
+
+```
+No companion prompt.md edit needed — nothing in the UII prompt cross-references the dropped bullets.
+```
+**Migration**
+
+Drop in after WIRE-01. CONFIGURATION CAVEAT, and it is the real risk here: bullet 5 ("DON'T bounce permission questions back to the previous agent") is dead only because PLANNER_FIRST=False. Under PLANNER_FIRST=True the UII's previous agent IS the Planner and the bullet becomes live again. If you ever intend to run PLANNER_FIRST=True, either keep that bullet in this file or wrap it in `<<PF_ON>>…<</PF_ON>>` — `apply_flag_filters` runs over scoped fragments exactly as it does over shared ones, so the marker works here.
+
+**Verify by**
+
+Re-dump under BOTH PLANNER_FIRST settings. Under False, confirm the UII prompt no longer contains `bounce permission questions`. Under True, confirm you have either restored the bullet or wrapped it — otherwise the UII loses its permission-routing rule in that configuration. Also confirm both STANDING DIRECTIVES literal markers survive.
+
+### UII-02 · UII-scoped hard_constraints_dc — replaces 4 unreachable bullets (2 of which conflict with 'Capture, do not filter') with the one rule the UII can act on
+
+*Kind:* NEW_FRAGMENT · *Tokens:* 172 · *Risk:* medium
+
+*Files:*
+- `DC_prompt_fragments/dc_config/hard_constraints_dc_user_input_inspector.md`
+- `DC_prompt_fragments/dc_config/hard_constraints_dc.md:1`
+- `agents/user_input_inspector/prompt.md:38`
+
+**Today**
+
+```
+`$hard_constraints_dc` splices 1,223 assembled chars (306 tok) into the UII. The UII's role is extraction, not design: it has no geometry tool, no mesh tool, no render tool, and no user-facing channel (its only routing targets are `call_planner` and `call_orchestrator`). Bullet by bullet:
+
+1. "DON'T express a design in anything but the $parameter_count named configurator parameters … Geometry changes ONLY by changing those parameters and regenerating via the DC Input Creator → Tool Caller path" — the UII expresses no design. Worse, this is in TENSION with the UII's own `### Capture, do not filter` section 460 lines above it: "Even when an input looks irrelevant or non-actionable — a number with no obvious application, an aesthetic comment, a unit that doesn't match anything — record it", with the explicit examples "500 MPa yield strength", "shiny material", "for cooling fins". Shipping a blanket "express nothing outside the 16 parameters … reject them" alongside that is a live contradiction.
+2. "DON'T propose mesh post-processing of any kind — no boolean unions, welding, vertex merging, remeshing…" — the UII proposes nothing. If the user asks for a fillet, the UII's job is to RECORD that they asked.
+3. "DON'T offer analysis the system cannot perform (CFD / FEA), nor alternative output formats, camera angles, cross-sections, or higher-resolution renders" — "offer" is a user-facing act. The UII never addresses the user; the Receptionist composes every outgoing message. Same tension as (1): a CFD request is DESIGN INTENT the UII must record.
+4. "The ONLY mesh metrics are watertightness, volume, and degenerate-face count; when mesh checks are disabled at startup, rely on visual inspection" — the UII never sees a mesh or a metric. Fully dead.
+
+What the UII genuinely needs from this fragment is the one thing it does NOT currently say: the parameter set governs LABELLING, not what gets recorded. That distinction drives the `### 1. QUANTITATIVE INPUTS` line-format rule ("When the value maps verbatim to a configurator parameter AND uses the parameter's unit, use the parameter name as the line label … otherwise use a descriptive label naming the real-world quantity") and it is currently only implied.
+```
+**Proposed**
+
+```
+New file `DC_prompt_fragments/dc_config/hard_constraints_dc_user_input_inspector.md` (541 bytes). This is the one fragment in this set that is a rewrite rather than a deletion, because deleting all four bullets would leave an empty file:
+
+``​`
+### Domain hard rules (every agent)
+- The configurator's whole vocabulary is the $parameter_count named
+  parameters listed above — there is no hub_radius, fillet_radius,
+  tip_clearance or any "supplemental" parameter.  This does NOT narrow what
+  you extract: record every input the user gave.  It decides only how you
+  LABEL a line — a value in a parameter's own name and unit gets that
+  parameter name; anything else gets a descriptive real-world label (see
+  §1).  Never force a value onto a parameter name that does not fit it.
+``​`
+```
+**Prompt prose this frees**
+
+```
+Nothing deleted from prompt.md, but this resolves the standing contradiction between `### Capture, do not filter` (agents/user_input_inspector/prompt.md:38-58) and the shared DC hard rules. If you would rather scope this out entirely, the alternative is dropping the `$hard_constraints_dc` line from the UII prompt (line 499) — that saves 306 tok instead of 172, at the cost of the labelling rule above.
+```
+**Migration**
+
+Drop in after WIRE-01. `$parameter_count` resolves on `_build_template`'s second substitution pass — the same nesting the shared `available_agents.md` already relies on. This is the only scoped file whose text is NOT a subset of the shared original, so read it against the UII's `### 1. QUANTITATIVE INPUTS` section before approving: the "§1" reference points there.
+
+**Verify by**
+
+grep the assembled UII for `hub_radius` — must appear once (the invented-parameter guard survives). grep for `boolean unions` and `watertightness` — both must be GONE from the UII. Then re-read `### Capture, do not filter` in the assembled prompt and confirm nothing now contradicts it.
+
+### UII-03 · UII-scoped hard_constraints_tools (drops the append-only attempt-folder bullet; the UII never writes into one)
+
+*Kind:* NEW_FRAGMENT · *Tokens:* 149 · *Risk:* low
+
+*Files:*
+- `DC_prompt_fragments/tools_config/hard_constraints_tools_user_input_inspector.md`
+- `DC_prompt_fragments/tools_config/hard_constraints_tools.md:11`
+
+**Today**
+
+```
+`$hard_constraints_tools` splices 1,252 assembled chars (313 tok).
+
+1. "DON'T invent or guess a path for a read tool: read tools take only the paths a hand-off label gives (``Input directory:`` / ``Extracted inputs file:`` / ``Parameters file:`` / ``Render images:`` / ``Current attempt:``) or an upstream tool's return value." — KEEP, most load-bearing bullet in the fragment for this agent. The UII's tools "refuse to run without explicit paths", and its two mandatory calls both take a hand-off path verbatim. Widen "read tool" to "read or write tool" (`write_extraction` takes the `Extraction output file:` path) and drop `Parameters file:` / `Render images:`, which the UII never receives; add the `read_user_inputs` image-path listing as the concrete instance of "an upstream tool's return value", since that is how `view_images` gets its paths.
+2. "DO route EVERY arithmetic operation … through the ``calculate`` tool" — KEEP verbatim. `calculate` is bound (user_input_inspector.py:153) and the UII does range comparisons for the OUT OF RANGE rule and unit conversions in real-world-quantity lines.
+3. "Attempt folders are COHERENT and append-only for their inputs: never rewrite / edit / delete a ``parameters.json`` or mesh already in one, write only into the ``Current attempt:`` folder … To build on an old parameter set, COPY its values into a NEW attempt (the DCIC opens it; the Orchestrator only as a fallback) — never edit the old folder's parameters." — 631 chars of dead weight. The UII's only write tool is `write_extraction`, which writes `extracted_inputs.txt` to the hand-off path. It touches attempt folders only through the READ-ONLY `list_attempts` / `read_attempt` pair, and its own `## Reading prior attempts when the user references them` section already governs that use.
+```
+**Proposed**
+
+```
+New file `DC_prompt_fragments/tools_config/hard_constraints_tools_user_input_inspector.md` (663 bytes; bullet 2 byte-identical):
+
+``​`
+### Tool-use hard rules (every agent)
+- DON'T invent or guess a path for a read or write tool: they take only
+  the paths a hand-off label gives (``Input directory:`` / ``Extraction
+  output file:`` / ``Current attempt:``) or an upstream tool's return
+  value (the image paths ``read_user_inputs`` lists).
+- DO route EVERY arithmetic operation — sums, ratios, conversions, range
+  comparisons — through the ``calculate`` tool (never mental arithmetic;
+  LLM sums are unreliable even for trivial cases).  Batch every expression
+  you need this turn into ONE ``calculate`` call; issue a second only when
+  later expressions genuinely depend on earlier results.
+``​`
+```
+**Prompt prose this frees**
+
+```
+Nothing deleted. Note this ADDS the `Extraction output file:` label to the path-discipline rule, which the shared fragment omits even though it is the UII's mandatory write path — a small correctness gain alongside the cut.
+```
+**Migration**
+
+Drop in after WIRE-01. The append-only invariant is untouched for the six agents that can actually write: DCIC, DCII, Tool Caller, DCOI, Orchestrator, Receptionist all still splice the full shared fragment.
+
+**Verify by**
+
+grep the assembled UII for `Extraction output file:` — must appear (it also appears in the Forwarding section, so expect 2+ hits). grep for `append-only` — must be GONE from the UII only; re-dump the DCIC and confirm it still has it.
+
+### UII-04 · UII-scoped sketch_handling — drops the three sections addressed to the DCIC/DCOI (the single biggest per-agent cut available)
+
+*Kind:* NEW_FRAGMENT · *Tokens:* 443 · *Risk:* medium
+
+*Files:*
+- `DC_prompt_fragments/dc_config/user_input_types/sketch_handling_user_input_inspector.md`
+- `DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md:47`
+
+**Today**
+
+```
+`$sketch_handling` is 8,605 chars / 2,151 tok — the largest single block in the UII prompt after the prompt body itself, and 17.5% of the whole assembled prompt. It is spliced into three agents (UII, DCII, DCOI) and its own text is explicitly split by audience: two sections are headed "### UII responsibility …" and "### UII — for a PRECISE blade-section drawing …", while three others instruct whoever MATCHES the design against the sketch — which the UII never does. Section by section:
+
+- Opening paragraph + `### Filled-in templates and forms` + `### Judging a sketch's precision` — KEEP verbatim. Judging precision and reading a filled-in form ARE the UII's job; the Ø160-vs-Ø140 worked example is the fix for a real misread.
+- `### Matching a ROUGH sketch — qualitative` (2 bullets, ~880 chars) — DROP. "Imperfections are drawing artifacts … do not revise for these" and "Recovery loops must NOT chase sketch imperfections … the design is CONVERGED — do not order another cycle" are instructions to the DCOI (which judges renders) and the Planner (which orders cycles). The UII orders nothing and revises nothing.
+- `### Matching a PRECISE sketch — faithful within the parameters` bullets 1-3 (~800 chars) — DROP. "reproduce them as closely as the 17 parameters allow", "A real deviation … IS a defect worth a revision", "You remain bounded by the 16 parameters" all address the agent that authors or judges geometry. Bullet 4 (the SOFT TARGET subordination rule) is UII-addressed and is KEPT, under a heading that names what it is.
+  Note this also removes the fragment's internal contradiction: it says "the 17 parameters" on line 61 and "the 16 parameters" on line 66. 16 is correct since dda1560 removed impellerHeight.
+- `### Always true, regardless of precision` (~630 chars) — DROP. "Communicate honestly: say whether you matched qualitatively or reproduced precise proportions … don't imply more iterations would close the gap" is the DCOI's honest-ceiling-reporting rule from Phase 5. The UII produces no such report.
+- `### UII responsibility — record the sketch's precision` and `### UII — … warm-start estimate + a crop region` — KEEP verbatim, both. The SUGGESTED SECTION SHAPES warm start and the SKETCH CROP REGION machinery are shipped Phase-3 precision-matching features and the UII is the only agent that can produce them ("The DC Input Creator authors the parameters but CANNOT see the images; you can").
+```
+**Proposed**
+
+```
+New file `DC_prompt_fragments/dc_config/user_input_types/sketch_handling_user_input_inspector.md` (6,895 bytes). Delete-only apart from one heading rename and one trimmed opening clause:
+
+``​`
+A "sketch" here is a USER-SUPPLIED reference image that conveys design
+intent.  Its PRECISION varies — do NOT assume it is rough.  Judge where
+each reference image falls on the spectrum from a rough freehand doodle to
+a precise, measured drawing, and record where it falls.
+
+### Filled-in templates and forms
+Some reference images are a PRE-PRINTED FORM the user drew on, not a
+freehand sketch.  The form's own printed content — faint/typeset guide
+lines, reference circles, min/max callouts, measurement scales (e.g. an
+angle protractor), grids, and fixed labels (part names, section titles) —
+is SCAFFOLDING: it shows WHAT to specify and the guides/ranges/units to
+draw against; it is NOT a user choice.  The user's actual inputs are ONLY
+the marks added on top — darker handwritten numbers and hand-drawn
+shapes/lines.  Read the answer from those marks; treat the printed content
+as context only — never read a printed guide value or a printed min/max as
+the user's value, and do not enforce a printed range as a limit.  E.g. a
+form prints "Ø160 / Ø120" guide circles and "5 mm max / 1 mm min", but the
+user drew an outline labelled "Ø140" and a ring reading ~3 mm → diameter
+140, ring 3, never 160/120 or 5/1.
+
+If you have a BLANK copy of the same form (the user supplied one, or with
+RAG on you retrieved a match from a past session), compare filled against
+blank — what matches the blank is scaffolding, only what was added is
+input.  Otherwise separate them by character: printed elements are faint,
+uniform and typeset in fixed guide positions; the user's marks are darker,
+handwritten and irregular.
+
+### Judging a sketch's precision
+Weigh, per image:
+  * **What the user says** — "rough" / "approximate" / "just an idea" points
+    to a qualitative sketch; "to scale" / "precise" / "match exactly" points
+    to a precise one.
+  * **Line quality** — wobbly, uneven, freehand lines mean rougher; crisp,
+    controlled lines mean more precise.
+  * **Image character** — dimensions, a scale bar, gridlines, or clean
+    CAD-like geometry point to precise; no dimensioning, freehand wobble,
+    and asymmetry between elements meant to be identical point to rough.
+  * **View type** — a whole-propeller doodle is usually rough; a dedicated
+    blade top-view or a blade-section (airfoil) profile often carries
+    precise proportions (chord, camber, thickness, angle) meant to be
+    reproduced.
+
+A single input can be MIXED — e.g. a precise blade-section profile
+alongside a rough overall-layout doodle.  Assess each image, and each
+feature within it, on its own.
+
+### When the user subordinates the drawn dimensions to the shape
+  * If the user SUBORDINATES the drawn dimensions to the overall shape —
+    "fit the sketched shape; the exact dimensions matter less" — record
+    those dimensions as **SOFT TARGETS** subordinate to the shape goal, not
+    as locked values.  The shape is the objective; the dimensions are
+    references the system may vary freely to achieve it.
+
+### UII responsibility — record the sketch's precision in the extraction
+The User Input Inspector decides whether a reference image is a sketch and
+how precise it is, and states that in the DESIGN INTENT section of
+``extracted_inputs.txt`` so downstream agents (DCOI comparison modes that
+don't load the image, and the DC Input Creator that authors the parameters)
+match with the right strictness — for example:
+
+    Reference image is a ROUGH SKETCH — match qualitatively; treat
+    asymmetry / wobble / imperfections as drawing artifacts, not
+    requirements.
+
+    Reference image is a PRECISE SKETCH (measured blade sections) —
+    reproduce the drawn proportions (thickness / camber / high-point /
+    chord / angle) as closely as the parameters allow; ignore only genuine
+    hand tremor.
+
+Without this, downstream agents default to one strictness and either chase
+unmeetable proportions on a rough sketch or discard real proportions on a
+precise one.
+
+### UII — for a PRECISE blade-section drawing, add a warm-start estimate + a crop region
+The DC Input Creator authors the parameters but CANNOT see the images; you can.
+So when a reference image contains a precise blade-section (airfoil) drawing, two
+extra records make the downstream section-matching far more efficient:
+
+1. **A rough shape estimate (warm start).**  Read the drawn airfoil proportions
+   into a ROUGH numeric estimate of the section-shape parameters, per section
+   (inner / middle / outer): profile **thickness** (% of chord), **camber**
+   (% of chord), and the chordwise **max-thickness position** (tenths of chord).
+   Record it in QUALITATIVE DESCRIPTIONS under a clear label so the DC Input
+   Creator seeds its first attempt close to the drawing instead of from defaults:
+
+       SUGGESTED SECTION SHAPES (rough estimate read from the precise drawing — a
+       STARTING POINT for the DC Input Creator, NOT a user-locked value; refine
+       within ranges):
+         inner  ≈ 8% thick, 3% camber, max-thickness at ~3/10 chord
+         middle ≈ 14% thick, 4% camber, max-thickness at ~3/10 chord
+         outer  ≈ 10% thick, 3% camber, max-thickness at ~4/10 chord
+
+   This is your READING of the user's own drawing (they DID draw the shape), not
+   an invented number — a rough eyeball is enough; mark it clearly as an estimate
+   and unlocked, distinct from any explicit user numbers in QUANTITATIVE INPUTS.
+   The downstream loop refines it against the drawing, so do not over-invest.
+
+2. **A coarse crop region.**  When the section drawings occupy only part of a
+   larger multi-part sketch (e.g. the bottom strip of a full technical page),
+   record a COARSE normalized crop box ``[x0, y0, x1, y1]`` (fractions in 0..1)
+   for that region, so the DC Output Inspector can crop to it when it compares
+   the rendered sections side-by-side with your sketch:
+
+       SKETCH CROP REGION — the blade-section drawings in 0346_3.png occupy roughly
+       the bottom third: crop box [0.0, 0.72, 1.0, 1.0] for that image (pass as
+       ``regions`` to ``view_images`` when comparing the sections).
+
+   Coarse is fine — it only needs to isolate the sections from the rest of the
+   page; do not attempt a tight pixel-accurate box.
+
+   The same applies to a WHOLE-PROPELLER view — a top / side / perspective
+   drawing the 3D geometry (not just the sections) should match.  Record a
+   coarse crop box for it too, LABELLED with which view it is, so the later 3D
+   precision check knows which sketch view to compare against which render view:
+
+       SKETCH CROP REGION (top view) — the top-down propeller drawing in 0346_1.png
+       fills the upper half: crop box [0.0, 0.0, 1.0, 0.55] (compare against the
+       3D top render).
+
+   The precision loop uses the sections crop first (the cheap sections match)
+   and any whole-propeller crop later (the expensive 3D check).
+``​`
+```
+**Prompt prose this frees**
+
+```
+Nothing to delete from prompt.md. The reciprocal cut is the one worth queuing next: the DCOI and DCII carry the two "### UII …" sections (about 3,900 chars each) that neither can act on — the DCOI cannot write an extraction and the DCII never sees an image. Scoped copies for those two are worth roughly another 975 tok each and follow this same file-naming rule.
+```
+**Migration**
+
+Drop in after WIRE-01. Every load-bearing item is preserved and should be spot-checked in the assembled prompt: the Ø160/Ø120 vs Ø140 form-scaffolding example, the literal `SOFT TARGET` marker, the literal `SUGGESTED SECTION SHAPES` and `SKETCH CROP REGION` labels (Phase-3 warm start; the DCIC and DCOI key on those strings), and the four precision-judging criteria. The 17-vs-16 parameter-count inconsistency disappears with the dropped bullets rather than being edited.
+
+**Verify by**
+
+grep the assembled UII for `SUGGESTED SECTION SHAPES`, `SKETCH CROP REGION`, `SOFT TARGET`, `Ø140` — all four must survive. grep for `17 parameters` — must be GONE (it is wrong since dda1560). grep for `do not order another cycle` — must be GONE from the UII; re-dump the DCOI and confirm it still has it. Then run one precision-sections case end to end and confirm the extraction still carries a SUGGESTED SECTION SHAPES block.
+
+### UII-05 · UII-scoped sketch_notes — folds four artifact bullets into one and resolves a live contradiction with the UII's counting HARD RULE
+
+*Kind:* NEW_FRAGMENT · *Tokens:* 78 · *Risk:* medium
+
+*Files:*
+- `DC_prompt_fragments/dc_config/user_input_types/sketch_notes_user_input_inspector.md`
+- `DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md:36`
+- `agents/user_input_inspector/prompt.md:220`
+
+**Today**
+
+```
+`$sketch_notes` is 1,708 chars / 427 tok, spliced into the UII, DCII and DCOI. Four of its six bullets tell the reader how to RENDER-MATCH a rough sketch ("do NOT replicate a drawn gap or overshoot", "do NOT reproduce the drawn wobble or off-centre placement", "pick a single curvature / sweep / chord", "pick a single ``impellerThickness``") — parameter-authoring choices the UII does not make. The UII's stake in them is only that it must NAME them as artifacts in DESIGN INTENT, which `sketch_handling` already tells it to do.
+
+The blade-count bullet is genuinely the UII's, and its *Small exception* is a LIVE CONTRADICTION with the UII's own HARD RULE at agents/user_input_inspector/prompt.md:233-237:
+
+- sketch_notes: "an explicitly stated count overrides the drawn shapes. If the user conveys the number by other means instead of drawing each blade … follow that stated count, not the number of blades actually drawn."
+- prompt.md HARD RULE: "Do not infer the count from the user's note text when the image itself is loaded; the image is the ground truth for what the user drew. When the note text and your count of the image disagree, record both in QUALITATIVE DESCRIPTIONS … and use your image-count value in QUANTITATIVE INPUTS."
+
+Both ship in the same assembled prompt and give opposite answers when a note says "6 blades" and the drawing shows 5. They are reconcilable — the exception is meant for the case where only ONE representative blade is drawn, so there is no drawn count to contradict — but nothing in either text says so.
+```
+**Proposed**
+
+```
+New file `DC_prompt_fragments/dc_config/user_input_types/sketch_notes_user_input_inspector.md` (1,409 bytes). The count bullet is byte-identical; the exception is rewritten to state the reconciliation explicitly; the four artifact bullets collapse into one:
+
+``​`
+Configurator-specific patterns the operator has observed in how users
+sketch propellers for THIS DC.
+
+  * **Number of blades — COUNT IT, and trust the count.** The blade count
+    is a deliberate, discrete attribute the user means exactly. Even when
+    the rest of the sketch is rough, carefully count the blades in the
+    top-down view and treat that count as authoritative — it is one of the
+    most reliable things a propeller sketch tells you.
+
+  * *Small exception:* when the user conveys the number instead of drawing
+    each blade — a "×6" label beside a single representative blade, or "6
+    blades" in the note text — follow that stated count.  This is NOT an
+    exception to the count-from-the-image HARD RULE above: that rule governs
+    the case where the user DID draw every blade and the note text disagrees,
+    and there your own count of the image wins (record both, per §2).
+
+  * **The configurator normalises what a rough sketch gets "wrong".** It
+    always renders blades structurally joined to the ring, a clean
+    cylindrical hub at the geometric centre, identical blades, and a
+    uniform-thickness ring.  A drawn tip gap or overshoot, an off-centre or
+    oval hub, blade-to-blade curvature variation, and uneven ring thickness
+    are therefore drawing artifacts on a rough sketch — describe the average
+    character and name them as artifacts in DESIGN INTENT.
+``​`
+```
+**Prompt prose this frees**
+
+```
+Nothing deleted. The value here is mostly correctness, not tokens: 78 tok saved, and one contradiction closed. If you would rather not scope this file, the minimum action is still to fix the exception's wording in the SHARED fragment — the contradiction exists today and the UII is the agent it misleads.
+```
+**Migration**
+
+Drop in after WIRE-01. The `§2` reference points at the UII prompt's `### 2. QUALITATIVE DESCRIPTIONS`; confirm that heading still exists if audit item UII-01 or its neighbours have already renumbered the sections. This is the one change here whose primary justification is a behaviour fix rather than a token cut — the owner should read the two texts side by side before approving, because I am choosing which of two shipped rules wins.
+
+**Verify by**
+
+grep the assembled UII for `COUNT IT, and trust the count` — must survive. Then read the assembled prompt's counting HARD RULE and this exception together and confirm they now agree. Regression case worth running: a sketch whose note says "6 blades" but which draws 5 — the extraction must record 5 in QUANTITATIVE INPUTS and both numbers in QUALITATIVE DESCRIPTIONS.
+
+### RTG-01 · Move routing.py's inline boilerplate into a fragment so it can be scoped per agent (the largest remaining lever for both)
+
+*Kind:* NEW_FRAGMENT · *Tokens:* 1676 · *Risk:* medium
+
+*Files:*
+- `agents/shared/routing.py:132`
+- `agents/shared/prompt_fragments/routing_boilerplate.md`
+- `agents/planner/planner.py:211`
+- `agents/user_input_inspector/user_input_inspector.py:173`
+
+**Today**
+
+```
+The `{routing_instructions}` block injected at wiring time is 4,809 chars (1,202 tok) in the Planner and 4,706 chars (1,176 tok) in the UII. Only 701 / 535 chars of that is each agent's own `routing_<agent>.md` fragment — the other 4,108 / 4,171 chars (1,027 / 1,043 tok) is shared boilerplate built inline as Python string lists (`_ROUTING_DECIDE` and the `lines += [...]` tail in `routing_instructions`, agents/shared/routing.py:194-274). Because it is CODE, it is invisible to the System Prompts UI and cannot be scoped by any existing mechanism.
+
+It is also the most duplicated text in the fleet: four sections — `### How to decide where to route`, `### Do not loop — ESCALATE when stuck`, `### Permission / authorisation issues → <hub>`, `### Routing is a tool call — MANDATORY` — shipped identically to six chain agents.
+
+Per-agent dead weight, measured:
+- **Planner** — `### How to decide where to route` (~890 chars) is superseded by `routing_planner_uii_first.md` immediately below it, which states FORWARD / CLARIFY / ESCALATE per bound tool. `### Do not loop` (~600) is HARD RULE 9's subject, stated far more precisely there ("Attempt N of expected ~M; this directive differs from prior cycles in <one concrete way>"). `### Permission / authorisation issues` (~1,100) is self-addressed — its own text says authorisations come "from the Planner (relayed by the Orchestrator)" while addressing the Planner — and HARD RULES 8 and 10 own the subject. In `### Routing is a tool call`, the "``---ROUTING---`` / ``---MESSAGE---`` / ``---END---`` template … has been retired" paragraph describes a format that no longer exists, and the free-form-prose paragraph is said better by `## Output mechanics`'s Part 1 / Part 2 split. ~3,350 chars / ~838 tok removable.
+- **UII** — same four sections. `### How to decide` conflicts outright with the UII's own routing fragment ("there is no \"previous\" agent in the chain for you to CLARIFY back to") while bullet 3 tells it to CLARIFY to the previous agent. `### Permission / authorisation issues` is entirely about not bouncing to a previous agent that does not exist for this agent, and the UII prompt's closing paragraph already says "ESCALATE to the Orchestrator stating what is missing — the UII is the wrong target for permission questions". ~3,350 chars / ~838 tok removable.
+```
+**Proposed**
+
+```
+Step 1 — new file `agents/shared/prompt_fragments/routing_boilerplate.md`, holding the four sections VERBATIM as they render today, with `$hub` / `$authorisation_sources` where the code interpolates and a `<<ROUTING_TOOLS>>` marker where the per-agent fragment is spliced. Copy the string literals out of `routing.py:194-274` unchanged; the only edits are replacing the literal hub name with `$hub` and the `_authorisation_sources(hub)` call site with `$authorisation_sources`.
+
+Step 2 — in `agents/shared/routing.py`, replace `_ROUTING_DECIDE` / the tail `lines += [...]` with:
+
+``​`python
+_BOILERPLATE_NAME = "routing_boilerplate.md"
+
+
+def _load_routing_boilerplate(agent_dir_name: "str | None", hub: str) -> str:
+    """The shared decide/loop/permission/tool-call boilerplate, per agent.
+
+    Authored in ``routing_boilerplate.md`` rather than inline Python lists so
+    an agent that cannot act on part of it can ship a scoped copy —
+    ``routing_boilerplate_<agent_dir_name>.md`` — exactly the way
+    ``generic_constraints_<agent>.md`` scopes the constitution.  Passing
+    ``None`` (the default for every call site that has not opted in) reads the
+    shared file, which renders byte-for-byte what that agent reads today.
+    """
+    from agents.shared.prompts import _topology_override, apply_flag_filters
+
+    names = []
+    if agent_dir_name:
+        names.append(f"routing_boilerplate_{agent_dir_name}.md")
+    names.append(_BOILERPLATE_NAME)
+    for name in names:
+        path = _topology_override(f"prompt_fragments/{name}") or (
+            _FRAGMENTS_DIR / name
+        )
+        if path.is_file():
+            break
+    raw = path.read_text(encoding="utf-8").rstrip()
+    filled = Template(raw).safe_substitute(
+        hub=hub, authorisation_sources=_authorisation_sources(hub)
+    )
+    return apply_flag_filters(filled)
+``​`
+
+and in `routing_instructions(...)` add `agent_dir_name: "str | None" = None` to the signature, then replace the two `lines +=` blocks with:
+
+``​`python
+    boiler = _load_routing_boilerplate(agent_dir_name, hub)
+    decide, _, tail = boiler.partition("<<ROUTING_TOOLS>>")
+    lines.append(decide.rstrip())
+    lines.append("")
+    lines.append(_load_routing_fragment(fragment_name))
+    lines.append("")
+    lines.append(tail.strip())
+    return "\n".join(lines)
+``​`
+
+(`from string import Template` at the top of routing.py.)
+
+Step 3 — pass `agent_dir_name=self.AGENT_KEY` at the four call sites in `agents/planner/planner.py:211,218` and `agents/user_input_inspector/user_input_inspector.py:173,181`. The other six call sites (creator, dc_input_creator ×2, dc_input_inspector, tool_caller, dc_output_inspector) stay unchanged and keep the default `None`.
+
+Step 4 — author `routing_boilerplate_planner.md` and `routing_boilerplate_user_input_inspector.md` as delete-only copies of the shared file: drop `### How to decide where to route`, drop `### Do not loop — ESCALATE when stuck`, drop `### Permission / authorisation issues → $hub`, and in `### Routing is a tool call — MANDATORY` keep the first paragraph verbatim ("Every response that ends your turn MUST invoke exactly one of the routing tools listed above. The tool's ``message`` argument IS the complete hand-off text the recipient will see") plus the final "Do NOT describe or announce which tool you intend to call…" paragraph, dropping the retired-`---ROUTING---`-template paragraph and the free-form-prose paragraph. Keep the `<<ROUTING_TOOLS>>` marker in both.
+```
+**Prompt prose this frees**
+
+```
+Nothing in prompt.md. What it frees is the CODE-owned duplication the audit's RTG-01..05 items have to edit as Python list literals — after this change they are markdown edits, visible in the System Prompts UI and validated by the same brace/slot checks as every other fragment.
+```
+**Migration**
+
+Land Steps 1-3 alone first, with no scoped copies on disk: `routing_instructions` must render byte-identically for all six chain agents. Diff a full `--dump` before and after to prove it — this is a pure text-relocation step and any diff at all is a bug (watch the blank lines around the `<<ROUTING_TOOLS>>` split; the current code emits an empty string before and after the per-agent fragment). Only then add the two scoped copies in Step 4. Register both new-file paths in `prompts_admin._WIRING_TIME_USAGE` alongside the other routing fragments. `routing_boilerplate.md` itself belongs in `_WIRING_TIME_USAGE` mapped to all six chain agents (it is a wiring-time fragment, not a `$slot` one, so it does NOT go in FRAGMENT_TO_SLOT). The 838-tok-per-agent figure is the Planner and the UII only; the four other chain agents keep the shared file until someone audits their bullets the same way.
+
+**Verify by**
+
+Steps 1-3: `measure_prompts.py --dump` before/after must produce nine identical files. (Note that harness transcribes the routing boilerplate verbatim in `_ROUTING_DECIDE` / `_ROUTING_TAIL`; it must be re-synced to read the fragment, or its numbers silently diverge.) Step 4: the assembled Planner and UII must still contain `MUST invoke exactly one of the routing tools listed above`; the Planner must no longer contain `authorisations come from the user`; the UII must no longer contain `route to the previous agent with a clear clarification request`. Then run one full pipeline cycle and confirm no agent emits prose without a routing call.
+
+### Sequencing
+
+Apply in this order; each step is independently verifiable and the first two are no-op-provable.
+
+1. **WIRE-01, Steps 1-3 only** (resolver in prompts.py + prompts_admin rows + measure_prompts sync). With no scoped files on disk this is provably a no-op: dump all nine prompts before and after and diff. Land and verify before anything else.
+2. **RTG-01, Steps 1-3** (relocate routing.py's boilerplate into `routing_boilerplate.md`, add the optional `agent_dir_name` kwarg, opt in at the four Planner/UII call sites). Also provably a no-op — same before/after dump diff. Landing it early means the two riskiest mechanical changes are both verified against a byte-identical baseline, before any text is deleted.
+3. **The five low-risk fragment copies**: PLN-02, PLN-03, PLN-04, UII-03, UII-05. Each is a delete-only or near-delete-only diff against a shared file, each affects exactly one agent. Re-dump after each and run the greps in its `verification` field.
+4. **PLN-01 + PLN-05 together, in one commit.** They are a pair: PLN-01 removes the shared STANDING-DIRECTIVES carry bullet from the Planner, PLN-05 removes the prompt sentence that exists only to neutralise it. Either alone leaves an inconsistency.
+5. **UII-01**, but first decide whether PLANNER_FIRST=True is ever going to run. If yes, wrap the permission bullet in `<<PF_ON>>…<</PF_ON>>` instead of deleting it, then dump under both settings and diff.
+6. **UII-02** — the only rewrite-not-deletion in the set. Read it against the UII's `### Capture, do not filter` and `### 1. QUANTITATIVE INPUTS` sections before approving; it resolves a contradiction rather than just shrinking one.
+7. **UII-04** last among the fragments — biggest single cut (443 tok) and the one that touches shipped precision-matching behaviour. Run a real precision-sections case after it and confirm the extraction still carries `SUGGESTED SECTION SHAPES` and `SKETCH CROP REGION`.
+8. **RTG-01, Step 4** (the two scoped routing boilerplate copies) last of all — it is the largest single saving but it edits the block that keeps the pipeline from halting, so land it when everything else is stable and run a full cycle immediately after.
+
+COLLISION WARNING against the 349-cut audit. Nine of these ten changes touch a file the audit also edits. Do not apply both to the same text:
+- PLN-01 / UII-01 vs FRG-03/04/05/06 (generic_constraints, 8 agents) — the audit COMPRESSES bullets I DELETE. Apply the audit's cuts to the shared file first, then re-derive the two scoped copies from the compressed text by deleting the same bullets.
+- PLN-02 vs PLN-17/PLN-19 — those delete the Planner's HARD RULES 4 and 6, which are the copies PLN-02 relies on surviving. Pick one.
+- PLN-04 vs FRG-02 / audit option (c) — (c) drops `$available_agents` from the Planner entirely; PLN-04 keeps a scoped roster instead. They are alternatives.
+- UII-04/UII-05 vs the six sketch_handling / sketch_notes cuts (UII+DCII+DCOI) — same rule: audit compresses shared, then re-scope.
+- RTG-01 vs RTG-01..05 in the audit — after Step 2 those become markdown edits instead of Python list-literal edits, which is strictly easier. Do RTG-01 Step 2 first.
+
+### Notes
+
+MEASURED NUMBERS FIRST — and the baseline in the brief is slightly stale.
+
+I re-measured with `extra_utilities/prompt_efficiency/measure_prompts.py` at the current working tree, then corrected two bugs in that harness (below). Real assembled sizes today, PLANNER_FIRST=False / DCII=True / BSV=True / RAG=False:
+
+  Planner 13,191 tok (brief said 12,326) · UII 12,290 tok (brief said 12,069) · fleet 91,765 tok.
+
+Component breakdown, measured by blanking one slot at a time:
+
+  PLANNER 13,191 tok = own prompt.md body 7,859 + routing block 1,202 + hard_constraints_generic 842 + value_states 721 + available_agents 714 (of which 220 is a NESTED $tool_inventory) + parameter_list 386 + hard_constraints_tools 313 + hard_constraints_dc 306 + pipeline_flow 259 + blade_sections_visualizer 185 + invalid_parameter_examples 99 + eos 71 + misc 34
+
+  UII 12,290 tok = own prompt.md body 6,157 + sketch_handling 2,151 + routing block 1,176 + hard_constraints_generic 842 + sketch_notes 427 + parameter_list 386 + hard_constraints_tools 313 + hard_constraints_dc 306 + dc_structure 191 + blade_sections_visualizer 185 + qualitative_examples 72 + eos 71 + misc 13
+
+Two corrections to the brief's premise, both verified:
+- **The UII does not carry `$value_states`.** `grep -o '\$[a-z_]*' agents/user_input_inspector/prompt.md` returns no such slot. It is spliced into the Planner, DCIC, DCII and DCOI only.
+- **The UII does not carry the agent roster** either. `$available_agents` goes to the Planner and the Database Handler only.
+The two blocks the brief did not name are the ones that actually dominate: `$sketch_handling` (2,151 tok in the UII — bigger than the roster, value_states and all three hard-constraint blocks combined) and the injected routing boilerplate (1,027-1,043 tok per agent, invisible because it lives in Python).
+
+DOES IT LAND IN 1,000-3,000? No. Not close, and no arrangement of per-agent fragment copies gets there.
+
+  Planner 13,191 → 12,091 with the four fragment copies → ~11,253 with the routing scoping. Target 3,000.
+  UII     12,290 → 11,099 with the five fragment copies → ~10,261 with the routing scoping. Target 3,000.
+
+The arithmetic that forecloses it: the Planner's OWN prompt.md body, with every shared fragment and the routing block removed, is 7,859 tok. The UII's is 6,157. Per-agent fragment copies cannot touch either number — they only change what the agent inherits. To reach 3,000 the bodies have to shrink by 65-75%, which is the 349 prose cuts' job, not this layer's.
+
+Combined with the audit's 349 cuts, the realistic landing zone is **Planner ~4,900-5,050 tok, UII ~3,700-3,900 tok** — better than the audit's standalone 5,470 / 4,600, still above 3,000. The incremental value of this layer ON TOP of the audit is smaller than the standalone 4,026, roughly 400-550 tok for the Planner and 700-900 for the UII, because the audit already compresses the same shared files fleet-wide; what scoping adds is the ability to delete WHOLE BULLETS that eight agents cannot all afford to lose.
+
+WHY I DROPPED `$value_states` FROM THE PROPOSAL. The brief named it as scopable weight for the Planner. It is not. Reading it bullet by bullet against the Planner's HARD RULE 8 ("no plan may change a LOCKED value without the user's authorisation; a SOFT TARGET you may and should vary"), HARD RULE 9 ("count the locked values — a value marked SOFT TARGET is an available lever, NOT a locked value, so exclude it") and HARD RULE 10 (permission-vs-guidance escalation), every one of the three states and all three authorisation sources are load-bearing for this agent. I drafted a Planner-scoped copy at 1,939 chars and threw it away: it saved 721→485 tok while the audit's shared compression (FRG-01/PLN-01) gets the same fragment to ~1,487 chars for all four agents that carry it. Scoping here would be worse than the shared cut AND would put the SOFT TARGET feature — shipped at 70ded2f, benchmark 7 — behind a second copy that has to be kept in sync. Take FRG-01 instead.
+
+THREE DEFECTS FOUND WHILE VERIFYING (independent of this work):
+
+1. **`extra_utilities/prompt_efficiency/measure_prompts.py` is stale and silently under-reports.** Its `build_slots()` replica is missing `value_states` and `routing_hub`. Both are left as literal `$slots` in its output, and its own integrity check does not flag them ("INTEGRITY: 9/9 assemble … OK"). Verified by dumping and grepping: `$value_states` survives in the planner, dc_input_creator, dc_input_inspector and dc_output_inspector dumps, `$routing_hub` in the orchestrator dump. Effect: the harness under-reports the Planner by 736 tok, the DCIC/DCII/DCOI by ~721 each, and the Orchestrator by ~394 — a fleet under-report of ~3,300 tok. Fix `build_slots()` and add a fail (not INFO) when any `$slot` survives into an assembled prompt; that check is exactly the silent-failure mode the brief is worried about, and it is currently switched off.
+
+2. **A live contradiction in the Planner prompt.** `generic_constraints.md` ships "DON'T script the final user-facing reply … never write the user-facing message yourself" into the Planner, whose own REPLY DIRECTLY move says "put the user-facing answer in Part 2" and whose HARD RULE 10 says "The Receptionist relays your Part-2 as-is, so give it the truth in short operational prose". PLN-01 removes the contradicting bullet from the Planner's copy only.
+
+3. **A live contradiction in the UII prompt.** `sketch_notes.md` says a stated blade count "overrides the drawn shapes … follow that stated count, not the number of blades actually drawn"; the UII prompt's own HARD RULE says "Do not infer the count from the user's note text when the image itself is loaded … use your image-count value in QUANTITATIVE INPUTS". Both ship in the same prompt and disagree when a note says 6 and the drawing shows 5. UII-05 states the reconciliation (the exception is for the case where only one representative blade is drawn).
+
+THE MAINTENANCE COST — ASKED FOR PLAINLY.
+
+You are right that this inverts the design, and the drift is real but smaller than it looks, for one reason: I made eight of the nine fragment copies **strict deletions** from the shared text. Every surviving line is byte-identical to its shared original. That turns "did the copies drift?" from a judgement call into a `diff`. A CI check of about fifteen lines — for each scoped file, assert every non-blank line appears verbatim in its shared parent — catches the whole failure class, and fails loudly the moment someone edits a shared bullet without mirroring it. The two exceptions where I could not stay delete-only (UII-02, which would otherwise be an empty file, and UII-05's exception clause) should be marked in a header comment as intentionally divergent so the check can skip them.
+
+Ongoing cost with that check in place: an edit to a shared bullet that a scoped copy KEPT breaks CI and takes a 30-second mirror edit. An edit to a bullet a scoped copy DROPPED is silently fine, which is correct. New fragments need no action. That is roughly the cost you already pay for `database_search_<agent>.md` × 8 and `blade_sections_visualizer_<agent>.md` × 6 — you have thirteen per-agent fragment files in the tree today, so this is not a new pattern, only a wider one.
+
+What would keep them in sync, ranked:
+- **Shared core + per-agent appendix** would be architecturally cleaner but does not fit this content. The dead weight here is not a tail you can append past — it is interior bullets scattered through the middle of each list. You would end up with a core of four bullets plus nine different appendices, which is worse.
+- **A generated fragment** (shared file with per-agent `<<ONLY:planner>>` regions, one source of truth, filtered at build time) is the design I would actually recommend if this grows past these two agents. It reuses the `<<FLAG>>` machinery you already have and there is literally no second copy to drift. Cost: `generic_constraints.md` becomes hard to read with nine agents' markers interleaved, and the region filter has to be per-agent like `apply_dba_filter`, not global.
+- **Strict-deletion copies + a diff check** is what I have specified, because it is the smallest change to a tree that already uses this idiom, and because a copy you can `diff` is not really a fork.
+
+WOULD I RECOMMEND IT OVER ACCEPTING THE TWO AGENTS ABOVE TARGET? Partly, and the split is not where the brief assumes.
+
+- **RTG-01 — yes, unreservedly, and do it whether or not you do anything else here.** 1,676 tok across the two agents, and the same relocation makes the audit's five routing cuts markdown edits instead of Python string-literal surgery. It also drags 1,000+ tok of prompt text out of code and into the System Prompts UI where you can see it. This is the highest-value item in the whole spec and it barely counts as "per-agent fragment copies".
+- **UII-04 (sketch_handling) — yes.** 443 tok, and the fragment already labels its own sections by audience. Scoping it is closer to finishing a job that was started than to forking a shared rule. The reciprocal DCOI/DCII copies are worth another ~975 tok each and follow the same rule.
+- **PLN-01, PLN-04, UII-01 — yes, but for the correctness, not the tokens.** 1,136 tok combined is not much against a 9,000-token overshoot. What earns them is that they delete a bullet that contradicts the Planner's own REPLY DIRECTLY move, a bullet that tells the Planner to escalate to the Planner, a bullet inapplicable to an agent with no previous agent, and a nested tool signature for a tool the Planner cannot call. Those are prompt bugs; scoping is just the tidiest way to fix them for one agent without touching seven others.
+- **PLN-02, PLN-03, UII-03, UII-05 — marginal.** 556 tok combined across four new files. If you want to hold the line on shared fragments, these are the four to skip; you lose about 0.6% of the fleet and keep four files out of the tree. I would still take PLN-03 and UII-03 (the append-only attempt-folder bullet is 631 chars aimed at two agents that have no write tool for an attempt folder, which is as clean a case as this analysis produces).
+
+And the honest bottom line: **none of this rescues the 1,000-3,000 target, and neither do the 349 prose cuts.** Both audits reached the same conclusion independently and both are right. The Planner's prompt describes five jobs — strategy, recovery planning, final approval, authorisation arbitration, retry budgeting — and the UII's describes an extraction contract plus a precision-sketch pipeline. At 3,000 tokens something has to stop being described. If the target is real rather than aspirational, the lever is topology (split Role 3 out of the Planner; the 5-agent system on `SYSTEM_TOPOLOGY=7` already proves you are willing to move that lever), not prompt editing. What this layer buys you is ~4,000 tokens, four contradictions closed, and 1,000 tokens of prompt text moved out of Python — worth doing on its own terms, not as a route to 3,000.
+
+---
+
+## 12. Agent-freedom audit — did any replacement close down judgement?
+
+Your standing principle is that prompt guidance should read as **guidelines for known cases, not a closed rule-set**, and that agent judgement and free-form inter-agent messages must survive. Compression quietly attacks that: turning *"usually you will want to X; use your judgement"* into *"do X"* is both shorter and more constraining.
+
+All 304 replacements carrying text were re-read against the original. **52 narrow the agent's discretion** — 3 high, 25 medium, 24 low. Each carries a rewording that keeps the saving and restores the room.
+
+| pattern | n |
+|---|---:|
+| `JUDGEMENT_CLAUSE_REMOVED` | 22 |
+| `HEDGE_MADE_MANDATORY` | 15 |
+| `OPEN_LIST_MADE_EXHAUSTIVE` | 8 |
+| `FREE_FORM_MADE_TEMPLATE` | 6 |
+| `EXAMPLE_MADE_RULE` | 1 |
+
+### HIGH severity (3)
+
+#### PLN-01 (agents/planner/prompt.md — '## The three situations you are called in') — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* Planner
+
+**The discretion the current prompt grants**
+
+```
+Each section below describes the situation and the moves that usually fit it.  These are guidelines for the known cases, NOT a closed menu: you keep full judgement to combine or depart from them when the situation genuinely calls for it, and every message you write is free prose — no fixed template, no mandated phrasing.
+```
+**What the replacement says instead**
+
+```
+The moves below are guidelines, not a closed menu.
+```
+**Keep both — suggested wording**
+
+```
+The Orchestrator calls you as **Role 1** (a new user message), **Role 2** (a problem to recover from) or **Role 3** (a completed cycle to approve); other agents use those names.  The moves below are guidelines for the known cases, not a closed menu — combine or depart from them when the situation calls for it, and write every message as free prose: no fixed template, no mandated phrasing.
+```
+#### DCIC-09 — FREE_FORM_MADE_TEMPLATE
+
+*Agent:* DC Input Creator
+
+**The discretion the current prompt grants**
+
+```
+Beyond those three lines, write whatever prose is genuinely useful to the next agent. ... There is no fixed phrasing for this — talk normally, but name the source.
+```
+**What the replacement says instead**
+
+```
+Say plainly, in your own words, when a value did NOT come from the extraction: what changed, who asked for it, and why.
+```
+**Keep both — suggested wording**
+
+```
+Beyond those three lines write whatever prose is genuinely useful — no fixed phrasing, talk normally.  Say plainly, in your own words, when a value did NOT come from the extraction: what changed, who asked for it, and why.
+```
+#### DCOI-06 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Output Inspector
+
+**The discretion the current prompt grants**
+
+```
+SECONDARILY against the user's raw inputs (``user_query.txt``, paired image+note) when you judge it necessary OR when the extraction's ``DESIGN INTENT`` explicitly calls for it. […] The comparison source(s) in scope this session: extraction ALWAYS, plus the user's raw inputs WHEN your judgement says they are needed.
+```
+**What the replacement says instead**
+
+```
+when DESIGN INTENT calls for it, when a quantity's unit or framing looks ambiguous, or when you suspect the extraction misread something.  Otherwise the extraction alone is enough — don't burn turns loading inputs you won't consult.
+```
+**Keep both — suggested wording**
+
+```
+_COMPARISON_MODE_3 = """\
+Compare the design PRIMARILY against the UII's extraction at
+``{extracted_inputs_path}`` (its ``QUANTITATIVE INPUTS`` and
+``DESIGN INTENT`` sections), and SECONDARILY against the user's raw
+inputs (``user_query.txt``, paired image+note) whenever your judgement
+says they are needed — e.g. DESIGN INTENT calls for it, a quantity's
+unit or framing looks ambiguous, or you suspect the extraction misread
+something.  Otherwise the extraction alone is enough — don't burn turns
+loading inputs you won't consult.
+
+Recommended order each cycle: load this cycle's renders and form your
+visual judgement FIRST, before reading any comparison source — reading
+the source first makes the model confabulate agreement instead of
+actually counting what the render shows."""
+```
+### MEDIUM severity (25)
+
+#### ORC-01 (agents/orchestrator/prompt.md — '## Completing a cycle — the Planner is the FINAL APPROVER') — OPEN_LIST_MADE_EXHAUSTIVE
+
+*Agent:* Orchestrator
+
+**The discretion the current prompt grants**
+
+```
+When the design pipeline has finished (DC Output Inspector returned its verdict, or you reach any point where the cycle is "done"), you do NOT call the Receptionist directly. […] This applies to EVERY completed cycle: single-attempt, multi-attempt ("give me 3 designs and pick the best"), and recovery flows that eventually reached a DCOI verdict.
+```
+**What the replacement says instead**
+
+```
+When the DCOI returns a verdict you call the **Planner**, not the Receptionist:
+```
+**Keep both — suggested wording**
+
+```
+## Completing a cycle — the Planner approves last (HARD)
+When the DCOI returns a verdict — or you reach any other point where the cycle is done — you call the **Planner**, not the Receptionist:
+
+    DCOI → you → Planner → you → Receptionist → user
+
+Give it facts only: every attempt folder produced this cycle (number + absolute path) and the DCOI's verdict. Do NOT recommend which to show — the Planner picks. It replies APPROVE (forward its pick + one-line reason to the Receptionist), REVISE (execute its recovery sequence), or REPLY DIRECTLY (hand its answer to the Receptionist). Mid-cycle steps it already planned need no check-in, and its own direct answer needs no re-approval.
+```
+#### ORC-03 (agents/orchestrator/prompt.md — '## Letting agents decide when to use their own tools') — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* Orchestrator
+
+**The discretion the current prompt grants**
+
+```
+Each agent owns its tools and decides when to invoke them.  Your job is to give them the *information* they need to make that decision.
+```
+**What the replacement says instead**
+
+```
+## Tell agents what they cannot infer
+Three things only you can supply:
+```
+**Keep both — suggested wording**
+
+```
+## Tell agents what they cannot infer
+Each agent owns its tools and decides when to use them; your job is the information they cannot infer:
+- Whether the user supplied new inputs this turn (so the DCIC knows whether to re-read ``extracted_inputs.txt``).
+- Where a parameter change came from — user, Planner, or another agent. Name the source; the DCII judges authority from it.
+- Any user permission to vary a stated value, including a **soft target** (a value subordinated to a goal; the UII marks it ``SOFT TARGET``). Quote the user's scope. Either the hand-off or the extraction's DESIGN INTENT section is sufficient — never manufacture a Planner directive on top of a direct user authorisation.
+```
+#### PLN-09 (agents/planner/prompt.md — '## Role 1 — a new user message') — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* Planner
+
+**The discretion the current prompt grants**
+
+```
+Not every message is a design request — judge what it actually asks.  Typical handling: […] There is no fixed tag for this — read the hand-off's motivation prose and judge.
+```
+**What the replacement says instead**
+
+```
+Not every message is a design request:
+```
+**Keep both — suggested wording**
+
+```
+Not every message is a design request — judge what it actually asks; none of these arrives tagged.  Typical handling:
+```
+#### PLN-11 (agents/planner/prompt.md — '## Role 3 — a completed cycle to approve') — OPEN_LIST_MADE_EXHAUSTIVE
+
+*Agent:* Planner
+
+**The discretion the current prompt grants**
+
+```
+Then, typically, one of:
+
+  * **APPROVE** … * **REVISE** … * **REPLY DIRECTLY** … * **CONTINUE to the 3D precision check** …
+```
+**What the replacement says instead**
+
+```
+…your own earlier plan), then: **APPROVE** (see that move); **REVISE** — …
+```
+**Keep both — suggested wording**
+
+```
+Read what you need (``read_agent_history('dc_output_inspector')``, ``list_attempts()``, ``read_attempt(n, …)``, your own earlier plan), then typically one of: **APPROVE** (see that move); **REVISE** — the DCOI missed a defect, is overconfident, or the cycle is not done: Recovery PLAN (Role 2); **REPLY DIRECTLY** — no mesh was ever needed, surface no attempt; or **CONTINUE to a 3D precision check** — … (rest of the replacement unchanged).
+```
+#### ORC-02 (agents/orchestrator/prompt.md — '### Name the attempt folder(s) and say which to show') — FREE_FORM_MADE_TEMPLATE
+
+*Agent:* Orchestrator
+
+**The discretion the current prompt grants**
+
+```
+Use this shape (keep the labelled lines; the surrounding prose is yours):
+```
+**What the replacement says instead**
+
+```
+Your ``call_receptionist`` message MUST carry, on their own lines:
+```
+**Keep both — suggested wording**
+
+```
+The Receptionist never scans the filesystem — it only sees what you write. Your ``call_receptionist`` message MUST carry these labelled lines (the prose around them is yours):
+```
+#### PLN-23 (agents/planner/prompt.md — HARD RULES rule 10) — OPEN_LIST_MADE_EXHAUSTIVE
+
+*Agent:* Planner
+
+**The discretion the current prompt grants**
+
+```
+- **Permission** (locked-value collision …) … - **Guidance** (out of qualitative levers …) … - **Both** — name both halves.
+    Never list system-chosen defaults as if user-locked, and never mix the permission and guidance framings.
+```
+**What the replacement says instead**
+
+```
+Two framings, never mixed: **permission** — … ; or **guidance** — …
+```
+**Keep both — suggested wording**
+
+```
+10. **Escalating — describe the ACTUAL problem.**  The Receptionist relays your Part 2 as-is, so give it short operational prose (not a Problem/Solution/Sequence dump): what was tried, the defect the DCOI keeps reporting, and why asking NOW is right.  Two framings — keep them distinct, and name both halves when both apply: **permission** — the remaining levers all touch user-LOCKED parameters, so name them canonically WITH their current values (you have the extraction; the Receptionist does not), one line of rationale each, and how far each may move, never a vague "may any numbers change?"; or **guidance** — unlocked levers remain but materially different directions are exhausted, so ask for qualitative guidance and say plainly that another automated guess is unlikely to converge.  Never list system-chosen defaults as if user-locked.
+```
+#### UII-08 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* User Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+**Format is flexible — structure by intent.** ... Pick the format that makes the user's intent CLEAREST, not the format that compresses tightest.
+```
+**What the replacement says instead**
+
+```
+Structure by intent: a plain list for a simple request; a labelled sub-list per design for a multi-design request; a sentence naming the swept parameter(s) and their bounds for a sweep; one sentence if there are no quantitative constraints at all.
+```
+**Keep both — suggested wording**
+
+```
+Format is flexible — structure by intent, whichever shape makes the user's intent clearest: e.g. a plain list for a simple request, a labelled sub-list per design for a multi-design request, a sentence naming the swept parameter(s) and their bounds for a sweep, one sentence when there are no quantitative constraints.  Downstream agents read this section verbatim.
+```
+#### DCIC-04 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Input Creator
+
+**The discretion the current prompt grants**
+
+```
+leave every locked user number untouched (the directive says so, and the LOCKED state above still binds — but a value marked ``SOFT TARGET`` is NOT locked: it is an available lever)
+```
+**What the replacement says instead**
+
+```
+move ONLY unlocked shape levers (``*Thickness``, ``*Camber``, ``*MaxPos``, section angles) in the direction described
+```
+**Keep both — suggested wording**
+
+```
+**Precision (blade-section matching) rounds.**  The directive is the DCOI's shape-gap description: move ONLY unlocked shape levers (``*Thickness``, ``*Camber``, ``*MaxPos``, section angles — a ``SOFT TARGET`` counts as unlocked) in the direction described, seeded on round 1 from any ``SUGGESTED SECTION SHAPES``.  ``*Thickness`` / ``*Camber`` are percentages of that section's OWN chord, so "thicker" may mean the ratio or the absolute mm — say which you used.  Every round is a new attempt.
+```
+#### DCIC-18 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Input Creator
+
+**The discretion the current prompt grants**
+
+```
+If NO unlocked parameter can move the mismatched aspect (the levers that would help are all locked — remembering that a ``SOFT TARGET`` counts as available, NOT locked)
+```
+**What the replacement says instead**
+
+```
+If every helping lever is locked, ESCALATE naming them rather than touching a locked value.
+```
+**Keep both — suggested wording**
+
+```
+For a full-3D mismatch the lever set widens to any UNLOCKED parameter that moves the aspect named (``middlePos``, a chord, an angle, ring proportions; a ``SOFT TARGET`` counts as unlocked).  If every helping lever is genuinely locked, ESCALATE naming them rather than touching a locked value.
+```
+#### DCIC-35 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Input Creator
+
+**The discretion the current prompt grants**
+
+```
+A line literally saying "user-locked" is only the DEFAULT lock and does NOT override a current authorisation — the hand-off, DESIGN INTENT, and any inline annotation are the current sources of truth.
+```
+**What the replacement says instead**
+
+```
+One source is enough — never demand re-confirmation of an authorisation the hand-off already carries.
+```
+**Keep both — suggested wording**
+
+```
+One source is enough — never demand re-confirmation of an authorisation the hand-off already carries, and a line reading "user-locked" is only the default lock, not an override of a current one.  How far an authorised or soft value may move follows the wording: "as needed" = the smallest change that restores viability; "freely", or nothing said = as far as the goal requires, within range.
+```
+#### DCII-03 — HEDGE_MADE_MANDATORY
+
+*Agent:* DC Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+DO act on the inputs in your hand-off and the data files it references — use your read tools on the paths the upstream agent supplied.
+```
+**What the replacement says instead**
+
+```
+DO act only on the paths and data your hand-off supplies, using only the tools listed for your role.
+```
+**Keep both — suggested wording**
+
+```
+- DO act on your hand-off, the files it points to and what your tools return, using only the tools listed for your role.
+```
+#### DCII-09 — HEDGE_MADE_MANDATORY
+
+*Agent:* DC Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+Whether the extraction's textual treatment suffices or the image is worth re-loading depends on how complex it is, which you learn from the UII's readability note ... The case for consulting one is strongest when you suspect the parameters do not match a structural feature the user explicitly showed
+```
+**What the replacement says instead**
+
+```
+Consulting one costs turns — do it only when you suspect the parameters contradict something the user plainly showed (a count that disagrees, a different design archetype).
+```
+**Keep both — suggested wording**
+
+```
+Uploaded images live in ``inputs/input_images/``, each with a paired ``<name>_note.txt``.  Consulting one costs turns, so weigh the UII's readability note and the image note first; the case is strongest when you suspect the parameters contradict something the user plainly showed (a count that disagrees, a different design archetype), or that the UII misread the image.  Tools: ``list_input_files()``, ``read_input_text(path)``, ``read_image_notes()``, ``view_images(paths)``, ``ocr_regions(image_path, region_ids)`` (pass every region in ONE call).
+```
+#### DCII-04 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+A qualitative description that must be turned into a number is FREE for that parameter too — unless a directive holds a specific one fixed, which is then treated as LOCKED for that cycle.
+```
+**What the replacement says instead**
+
+```
+- **FREE** — absent from QUANTITATIVE INPUTS (never specified, or specified and later released).  The system's choice within range.
+```
+**Keep both — suggested wording**
+
+```
+- **FREE** — absent from QUANTITATIVE INPUTS (never specified, or specified and later released).  The system's choice within range, as is any qualitative description that must be turned into a number, unless a directive pins it.
+```
+#### UII-21 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* User Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+The ONLY mesh metrics are watertightness, volume, and degenerate-face count; when mesh checks are disabled at startup, rely on visual inspection and say so plainly.
+```
+**What the replacement says instead**
+
+```
+- The only mesh metrics are watertightness, volume and degenerate-face count.
+```
+**Keep both — suggested wording**
+
+```
+- The only mesh metrics are watertightness, volume and degenerate-face count; when mesh checks are disabled, rely on visual inspection and say so plainly.
+```
+#### DCII-05 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+or a ``SOFT TARGET`` marker (a soft target's deviation toward its goal is authorised — do NOT flag it as a violation)
+```
+**What the replacement says instead**
+
+```
+otherwise the three states above decide, and a parameter absent from QUANTITATIVE INPUTS was never imposed (DCIC's free choice).
+```
+**Keep both — suggested wording**
+
+```
+...otherwise the three states above decide — a SOFT TARGET's move toward its goal is authorised, never a violation — and a parameter absent from QUANTITATIVE INPUTS was never imposed (DCIC's free choice).
+```
+#### TC-19 — OPEN_LIST_MADE_EXHAUSTIVE
+
+*Agent:* Tool Caller
+
+**The discretion the current prompt grants**
+
+```
+If you cannot do your job because the upstream message is ambiguous, missing data, or contains an error that the previous agent can fix, route to the previous agent with a clear clarification request (CLARIFY).
+```
+**What the replacement says instead**
+
+```
+- CLARIFY back to the previous agent only for data / wording / format problems it can actually fix.
+```
+**Keep both — suggested wording**
+
+```
+        "- CLARIFY back to the previous agent when its hand-off is "
+        "ambiguous, missing a datum, or wrong in a way IT can fix — "
+        "never for a permission question.",
+```
+#### TC-18 — HEDGE_MADE_MANDATORY
+
+*Agent:* Tool Caller
+
+**The discretion the current prompt grants**
+
+```
+If you find yourself about to call the same tool with the same arguments you already called earlier in this turn, STOP.  Calling the same read tool twice on unchanged input, or re-thinking the same decision in a loop, will not give you new information.
+```
+**What the replacement says instead**
+
+```
+Never call the same tool with the same arguments twice in a turn — it yields nothing new.
+```
+**Keep both — suggested wording**
+
+```
+        "### Do not loop",
+        "Don't repeat a tool call with the same arguments on unchanged "
+        "input, and don't re-think the same decision in a loop — neither "
+        f"yields anything new.  ESCALATE to the {hub} instead, "
+        "saying what is missing or ambiguous.",
+```
+#### TC-20 — HEDGE_MADE_MANDATORY
+
+*Agent:* Tool Caller
+
+**The discretion the current prompt grants**
+
+```
+Batch every expression you need this turn into ONE ``calculate`` call; issue a second only when later expressions genuinely depend on earlier results.
+```
+**What the replacement says instead**
+
+```
+batching this turn's expressions into ONE call.
+```
+**Keep both — suggested wording**
+
+```
+- DO route EVERY arithmetic operation through the ``calculate`` tool — LLM
+  mental arithmetic is unreliable — batching this turn's expressions into
+  ONE call, and a second only if later ones depend on earlier results.
+```
+#### TC-21 — HEDGE_MADE_MANDATORY
+
+*Agent:* Tool Caller
+
+**The discretion the current prompt grants**
+
+```
+Every chain agent is bound by this; the only exceptions are the Receptionist's direct user replies and the Orchestrator's final user-facing wrap-up.
+```
+**What the replacement says instead**
+
+```
+Text emitted without a routing call is silently discarded and the pipeline halts.
+```
+**Keep both — suggested wording**
+
+```
+- DON'T talk to another agent in prose: the ONLY channel is a routing
+  tool call (``call_<agent>``), and its ``message`` argument IS the
+  hand-off.  Text emitted without a routing call is silently discarded
+  and the pipeline halts — the only exceptions are the Receptionist's
+  direct user replies and the Orchestrator's final wrap-up.
+```
+#### DCOI-03 — HEDGE_MADE_MANDATORY
+
+*Agent:* DC Output Inspector
+
+**The discretion the current prompt grants**
+
+```
+Every chain agent is bound by this; the only exceptions are the Receptionist's direct user replies and the Orchestrator's final user-facing wrap-up.
+```
+**What the replacement says instead**
+
+```
+- **Routing is a tool call.**  The ONLY channel to another agent is ``call_<agent>``; its ``message`` argument IS the hand-off.  Text emitted without a routing call is discarded and the pipeline halts.
+```
+**Keep both — suggested wording**
+
+```
+- **Routing is a tool call.**  The ONLY channel to another agent is ``call_<agent>``; its ``message`` argument IS the hand-off.  Text emitted without a routing call is discarded and the pipeline halts — except the Receptionist's direct user replies and the Orchestrator's final wrap-up.
+<<CHAIN_ONLY>>- Copy any ``=== STANDING DIRECTIVES … ===`` block into your outgoing hand-off UNCHANGED — write your own prose around it, never inside it; only the Planner may alter it.<</CHAIN_ONLY>>
+```
+#### DCOI-01 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Output Inspector
+
+**The discretion the current prompt grants**
+
+```
+Its PRECISION varies — do NOT assume it is rough.  Judge where each reference image falls on the spectrum from a rough freehand doodle to a precise, measured drawing, and match it accordingly. […] A single input can be MIXED […] Assess each image, and each feature within it, on its own.
+```
+**What the replacement says instead**
+
+```
+the UII records which in DESIGN INTENT — match with that strictness
+```
+**Keep both — suggested wording**
+
+```
+## Sketch handling
+A user reference image may be anywhere from a rough doodle to a measured drawing, and ONE image can be mixed. The UII usually records which in DESIGN INTENT — match with that strictness; where it did not, or where your comparison source is the user's raw inputs, judge the precision yourself, per image and per feature. On a ROUGH sketch, asymmetry, wobble and off-centre features are drawing artifacts, not defects: never order a revision to chase them, and treat a sketch-quality-only mismatch as CONVERGED. On a PRECISE sketch, a real deviation from a drawn proportion IS a defect — hand tremor still is not. On a pre-printed form, only the handwritten marks are user input — printed guide values and min/max are scaffolding. Say honestly what the parameters could not capture.
+```
+#### DCOI-04 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Output Inspector
+
+**The discretion the current prompt grants**
+
+```
+the **extraction's DESIGN INTENT section** records one — a user authorisation the UII wrote, standing every cycle until revoked
+```
+**What the replacement says instead**
+
+```
+the extraction's DESIGN INTENT section
+```
+**Keep both — suggested wording**
+
+```
+**Freeing a LOCKED value.**  Any ONE of these authorises it: the incoming hand-off (a user permission, or a strategy / recovery directive), the extraction's DESIGN INTENT section (an authorisation recorded there STANDS every cycle until revoked), or an ``(unlocked by user)`` annotation on the value's own line.  One source is enough — never demand a re-confirmation of something already carried, and a line saying "user-locked" is only the DEFAULT lock.  How far it may move follows the wording: "as needed / only if necessary" = the smallest change that restores viability; "freely" or nothing said = as far as the goal requires, within range.
+```
+#### DCOI-21 — HEDGE_MADE_MANDATORY
+
+*Agent:* DC Output Inspector
+
+**The discretion the current prompt grants**
+
+```
+### What you can typically check visually for this DC […] ### What is typically NOT resolvable at render resolution
+```
+**What the replacement says instead**
+
+```
+Visually checkable: […] NOT resolvable at render resolution: sub-millimetre thicknesses, exact twist angles, chord lengths within ~1 mm, camber / high-point percentages
+```
+**Keep both — suggested wording**
+
+```
+Typically checkable: blade count (top-down view), ring presence and continuity, hub presence and proportion, broad vs. narrow planform, rounded vs. squared tips, blade-to-ring connection vs. detached tips.  Watch for missing or malformed blades, self-intersections, disconnected elements, spikes, holes and degenerate faces.
+
+Typically NOT resolvable at render resolution: sub-millimetre thicknesses, exact twist angles, chord lengths within ~1 mm, camber / high-point percentages — judge the image in front of you (a blade-sections render resolves section shape far better than the 3D views); when a claim really is unresolvable, mark it as such and trust falls on the DCIC's parameter choice<<DCII_ONLY>> and the DCII's authorisation check<</DCII_ONLY>>.
+```
+#### DCOI-23 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Output Inspector
+
+**The discretion the current prompt grants**
+
+```
+You MAY name a specific value when you are genuinely confident about it, but treat that as the exception, not the habit — the DCIC owns the final numbers and may choose differently using its range and consistency knowledge.
+```
+**What the replacement says instead**
+
+```
+Naming an exact value is the rare exception, not the habit.
+```
+**Keep both — suggested wording**
+
+```
+Setting parameter VALUES is the DC Input Creator's job.  Keep your feedback QUALITATIVE: describe the visual gap and name which of the $parameter_count parameters seem to need adjusting and in which direction — sharpened with a RELATIVE magnitude whenever you can judge one ("roughly twice as thick", "reduce the camber by about a third", "shift the high point slightly aft"), since a bare direction tells the DCIC nothing about step size.  You MAY name an exact value when you are genuinely confident, but that is the exception, not the habit — the DCIC owns the final numbers.
+```
+#### DH-03 — OPEN_LIST_MADE_EXHAUSTIVE
+
+*Agent:* Database Handler
+
+**The discretion the current prompt grants**
+
+```
+Use ``ASK:`` when Agent A's answer does not yet fully cover the field, when something is unclear, or when you need a concrete example to make the answer embedding-ready.  Use ``SAVE:`` once you have everything you need.
+```
+**What the replacement says instead**
+
+```
+Use ``ASK:`` while the answer does not yet cover the field; ``SAVE:`` once it does.
+```
+**Keep both — suggested wording**
+
+```
+Use ``ASK:`` while the answer does not yet cover the field, is unclear, or still needs a concrete example to be embedding-ready; ``SAVE:`` once you have what you need.  ASK: rounds are capped — do not stall.
+```
+### LOW severity (24)
+
+#### PLN-07 (agents/planner/prompt.md — '## Your common moves — APPROVE the cycle') — EXAMPLE_MADE_RULE
+
+*Agent:* Planner
+
+**The discretion the current prompt grants**
+
+```
+Phrase your endorsement level plainly: a satisfying recommendation ("recommend attempt N as the satisfying solution because …") vs an interim result ("showing attempt N for context — not satisfying yet").  The Receptionist reads that wording to decide whether to update the Parameters panel; no fixed keyword — clarity in your own words.
+```
+**What the replacement says instead**
+
+```
+…and your endorsement level in plain words ("recommend attempt N as the satisfying solution because …" vs "showing attempt N for context — not satisfying yet"), which is what the Receptionist reads to decide whether to update the Parameters panel.
+```
+**Keep both — suggested wording**
+
+```
+  * **APPROVE the cycle** — Part 2 names which attempt(s) to show (number + one-line reason), the technical outcome, and your endorsement level in your own plain words — no fixed keyword (e.g. "recommend attempt N as the satisfying solution because …" vs "showing attempt N for context — not satisfying yet") — which is what the Receptionist reads to decide whether to update the Parameters panel.  It relays your Part 2 and manufactures nothing, so what you drop never reaches the user.  ALSO carry: … (rest of the replacement unchanged).
+```
+#### PLN-04 (agents/planner/prompt.md — '## Your common moves — Issue a STANDING DIRECTIVE') — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* Planner
+
+**The discretion the current prompt grants**
+
+```
+DECIDE it is a precision job and issue a directive along these lines (adapt the wording; keep it operational and self-contained) […] You decide precision vs. ordinary — a rough freehand doodle is NOT a precision job; a measured, to-scale section drawing with a matching user demand is.
+```
+**What the replacement says instead**
+
+```
+Canonical case: a PRECISION job (a ``PRECISION DEMAND`` line, a ``SUGGESTED SECTION SHAPES`` block, or "match as precisely as possible" — a rough doodle is NOT one).  Issuing it is what turns the DCOI's one-shot check into a refine loop, so write one saying:
+```
+**Keep both — suggested wording**
+
+```
+Canonical case: a PRECISION job — YOU decide it is one (signals: a ``PRECISION DEMAND`` line, a ``SUGGESTED SECTION SHAPES`` block, "match as precisely as possible", or anything equivalent; a rough doodle is NOT one).  Issuing it is what turns the DCOI's one-shot check into a refine loop, so write one in your own wording saying: the DCOI compares each render side-by-side with the sketch, describes the shape gap in prose and must NOT approve the first render or on proportions alone; the DCIC may move ANY parameter the user authorised — chords included, since *Thickness and *Camber are percentages of a section's own chord — holding fixed ONLY what the user fixed; iterate until it matches or provably plateaus, then report the residual honestly.
+```
+#### PLN-22 (agents/planner/prompt.md — HARD RULES rule 9) — HEDGE_MADE_MANDATORY
+
+*Agent:* Planner
+
+**The discretion the current prompt grants**
+
+```
+There is no fixed cap — but every re-run Part-2 MUST carry the self-check line […] (N from your history; M a rough honest budget, usually ~3–5 — raise it only when each attempt genuinely breaks new ground.)
+```
+**What the replacement says instead**
+
+```
+(N from your history, M usually ~3–5.)
+```
+**Keep both — suggested wording**
+
+```
+(N from your history; M your own honest budget, usually ~3–5 — no fixed cap.)
+```
+#### RCP-11 (agents/receptionist/prompt.md — questions about an earlier run) — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* Receptionist
+
+**The discretion the current prompt grants**
+
+```
+If they lack it — or the user may want more than they contain — forward to the Orchestrator (a non-design forward) with what you found and why it was insufficient
+```
+**What the replacement says instead**
+
+```
+If the histories fall short, forward to the Orchestrator with what you found.
+```
+**Keep both — suggested wording**
+
+```
+If the histories fall short — or the user may want more than they hold — forward to the Orchestrator with what you found.
+```
+#### ORC-04 (agents/orchestrator/prompt.md — '## When calling an agent') — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* Orchestrator
+
+**The discretion the current prompt grants**
+
+```
+relay them — quote them if short, or point the Planner at the source … if long.  This is a judgement call; if nothing actionable was said, invent nothing.  You relay or you point — you never originate strategy.
+```
+**What the replacement says instead**
+
+```
+**Another agent's proposal is evidence, not your framing.** If the DCOI already named fixes, quote them or point the Planner at ``read_agent_history('dc_output_inspector')``.
+```
+**Keep both — suggested wording**
+
+```
+- **Another agent's proposal is evidence, not your framing.** If the DCOI already named fixes, quote them or point the Planner at ``read_agent_history('dc_output_inspector')`` — your call which; if nothing actionable was said, invent nothing.
+```
+#### PLN-03 (agents/planner/prompt.md — '## Your common moves — FORWARD') — FREE_FORM_MADE_TEMPLATE
+
+*Agent:* Planner
+
+**The discretion the current prompt grants**
+
+```
+plus, optionally, a short focus/strategy note and any disambiguating annotation from the Receptionist — do not paste file content […] When the hand-off references user images, add your sense of how readable each is — a hint for the DCII / DCOI on whether to re-load, not a binding classification.
+```
+**What the replacement says instead**
+
+```
+**FORWARD**<<PF_ON>> to the User Input Inspector (``call_user_input_inspector``), carrying verbatim ``Input directory: {user_inputs_dir}`` and ``Extraction output file: {extraction_output_file}``<</PF_ON>>
+```
+**Keep both — suggested wording**
+
+```
+  * **FORWARD**<<PF_ON>> to the User Input Inspector (``call_user_input_inspector``), carrying verbatim ``Input directory: {user_inputs_dir}`` and ``Extraction output file: {extraction_output_file}``, plus any focus note, Receptionist disambiguation, or image-readability sense you judge useful (a hint, not a binding classification)<</PF_ON>><<PF_OFF>> to the DC Input Creator … (PF_OFF branch unchanged)<</PF_OFF>>.
+```
+#### PLN-08 (DC_prompt_fragments/tools_config/blade_sections_visualizer_planner.md) — HEDGE_MADE_MANDATORY
+
+*Agent:* Planner
+
+**The discretion the current prompt grants**
+
+```
+This is a suggestion, not a rule — judge it from the request. […] Make the render type explicit when you route a sections-first plan — the chain should tell the Tool Caller to render the blade sections, not the full 3D mesh.
+```
+**What the replacement says instead**
+
+```
+It is a suggestion, not a rule.  Always say which render type the Tool Caller should produce.
+```
+**Keep both — suggested wording**
+
+```
+It is a suggestion, not a rule — judge it from the request; when you do route a sections-first plan, say which render type the Tool Caller should produce.
+```
+#### ORC-24 (agents/orchestrator/prompt.md — unheaded paragraph after the pipeline blocks) — HEDGE_MADE_MANDATORY
+
+*Agent:* Orchestrator
+
+**The discretion the current prompt grants**
+
+```
+An ESCALATE back to you usually means the agent's expected artifact … is still pending — in that case it often makes sense to re-route to that same agent with the missing piece, rather than continuing forward as if it had finished.
+```
+**What the replacement says instead**
+
+```
+an escalation usually means the expected artifact is still missing, so re-routing to that same agent with the missing piece beats moving forward.
+```
+**Keep both — suggested wording**
+
+```
+You do not drive the pipeline step by step — the agents route between themselves and control returns to you only on completion or escalation. Before choosing the next hop, look at what the previous turn actually produced: an escalation usually means the expected artifact is still missing, so re-routing to that same agent with the missing piece often beats moving forward.
+```
+#### DCIC-11 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Input Creator
+
+**The discretion the current prompt grants**
+
+```
+**``read_extracted_inputs(path)``** — reading is at your discretion, but when in doubt, re-read.
+```
+**What the replacement says instead**
+
+```
+Re-read ``read_extracted_inputs(path)`` (path verbatim) on your first turn, when the hand-off mentions new inputs, or when unsure your memory is current.
+```
+**Keep both — suggested wording**
+
+```
+Re-reading ``read_extracted_inputs(path)`` (path verbatim) is your call — when in doubt, re-read: first turn, hand-off mentions new inputs, or you are unsure your memory is current.  ``write_parameters`` succeeds exactly ONCE per cycle; an error wrote nothing — fix what it names and re-call it on the SAME folder.
+```
+#### DCIC-13 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Input Creator
+
+**The discretion the current prompt grants**
+
+```
+When the entry could constrain more than one parameter, choose the route your judgement supports:
+```
+**What the replacement says instead**
+
+```
+**One entry constraining several parameters:** honour it on the single most plausible one, or distribute across the family at a looser tolerance, or escalate if neither is defensible — and say which you did.
+```
+**Keep both — suggested wording**
+
+```
+**One entry constraining several parameters:** take the route your judgement supports — honour it on the single most plausible one, distribute across the family at a looser tolerance, or escalate if neither is defensible — and say which you did.  Never silently copy the same value into every candidate.
+```
+#### UII-04 — HEDGE_MADE_MANDATORY
+
+*Agent:* User Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+**When to use them — circumstantial.**  Most cycles you should NOT call these tools ... But when the user's message EXPLICITLY references a prior attempt and asks you to treat its values as the baseline for the new request, you SHOULD inspect the relevant attempt
+```
+**What the replacement says instead**
+
+```
+Use them ONLY when the user makes a prior attempt the baseline
+```
+**Keep both — suggested wording**
+
+```
+``list_attempts()`` / ``read_attempt(n, file)`` read this session's attempt folders (``parameters.json``, ``description.txt``, render paths).  Use them when the user makes a prior attempt the baseline — "same parameters as the latest attempt but one fewer blade", "take attempt 3 but …", "something between attempts 1 and 4" — or whenever a referenced attempt would change what you extract, and write the resulting values into QUANTITATIVE INPUTS.  Most cycles you should not: for a generic request ("make it lighter") the DCIC chooses on its own.
+```
+#### DCII-14 — HEDGE_MADE_MANDATORY
+
+*Agent:* DC Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+re-read the raw inputs (text AND images) and cross-check when the stakes warrant (complex or image-rich requests, important quantitative values).
+```
+**What the replacement says instead**
+
+```
+If you doubt the extraction itself, re-read the raw user inputs.
+```
+**Keep both — suggested wording**
+
+```
+...User-set values are authorised by construction; you only check their numbers.  Re-read the raw user inputs whenever the stakes warrant it — an image-rich or complex request, an important number, or any doubt about the extraction itself.
+```
+#### DCII-24 — FREE_FORM_MADE_TEMPLATE
+
+*Agent:* DC Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+You may use these headings when useful, but do NOT treat them as a fixed template:
+```
+**What the replacement says instead**
+
+```
+short plain prose covering range validation, any real contradiction with the user's inputs, the authorship and authorisation of any upstream-directed change, hard engineering blockers, and your recommendation
+```
+**Keep both — suggested wording**
+
+```
+Put your assessment in the routing tool's ``message``: short plain prose, typically covering range validation, any real contradiction with the user's inputs, the authorship and authorisation of any upstream-directed change, hard engineering blockers, and your recommendation (naming the parameter and the reason, never a guessed replacement number).  Use whatever shape fits — no fixed template.
+```
+#### UII-19 — OPEN_LIST_MADE_EXHAUSTIVE
+
+*Agent:* User Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+Configurator-specific patterns the operator has observed in how users sketch propellers for THIS DC ... ### Common drawing artifacts in propeller sketches
+```
+**What the replacement says instead**
+
+```
+### Drawing artifacts to ignore
+```
+**Keep both — suggested wording**
+
+```
+Configurator-specific patterns in how users sketch propellers for THIS DC.
+
+### Common drawing artifacts
+The configurator renders idealised geometry — blades structurally connected to the ring, a clean cylindrical hub at the geometric centre, identical blades, a uniform-thickness ring.  So a drawn tip gap or overshoot, an off-centre or oval hub, blade-to-blade curvature differences, an uneven ring, and any other deviation from what it can render are drawing noise: pick a single representative value, don't replicate them.
+```
+#### UII-01 — FREE_FORM_MADE_TEMPLATE
+
+*Agent:* User Input Inspector
+
+**The discretion the current prompt grants**
+
+```
+### 3. Design Intent and Functional Requirements
+What is the user trying to achieve?  Consider:
+```
+**What the replacement says instead**
+
+```
+One coherent paragraph — the CURRENT intent, not a log: purpose, performance goals, constraints, aesthetics, reporting preferences
+```
+**Keep both — suggested wording**
+
+```
+### 3. DESIGN INTENT
+
+The CURRENT intent, not a log — purpose, performance goals, constraints, aesthetics, reporting preferences ("don't report back until viable"), and prior-attempt context where it still shapes the design.  Prose; shape it however communicates the intent best.  Also state here, when present:
+
+- **PRECISION DEMAND: <what they asked, at their strength>** — the user asking the design (especially the blade sections) to match a drawing closely, or to keep trying.  Free-form text, NOT a yes/no flag; the Planner reads it to decide whether to run the forced precision refine loop, so understating it means the loop never happens.  It is the user's MANDATE — separate from how precise the sketch itself is.
+- The goal behind any SOFT TARGET recorded in §1, and any permission to vary a parameter that is tied to a design characteristic.
+```
+#### TC-24 — FREE_FORM_MADE_TEMPLATE
+
+*Agent:* Tool Caller
+
+**The discretion the current prompt grants**
+
+```
+reproduce that whole block UNCHANGED in your own outgoing hand-off.  Write your own prose around it, but never alter, summarise, translate, re-order, or omit it
+```
+**What the replacement says instead**
+
+```
+reproduce any ``=== STANDING DIRECTIVES … ===`` block from your hand-off VERBATIM inside your own outgoing hand-off — never altered, summarised, re-ordered or omitted
+```
+**Keep both — suggested wording**
+
+```
+- DO reproduce any ``=== STANDING DIRECTIVES … ===`` block from your
+  hand-off VERBATIM in your own outgoing hand-off — write your own prose
+  around it, never inside it, and never alter, summarise, re-order or
+  omit it; only the Planner may change it.
+```
+#### DCOI-02 — HEDGE_MADE_MANDATORY
+
+*Agent:* DC Output Inspector
+
+**The discretion the current prompt grants**
+
+```
+**Recommended order each cycle:**
+  1. ``view_images([...])`` — load this cycle's renders FIRST, and form your visual judgement of the rendered design on its own terms […] before reading any user material.
+```
+**What the replacement says instead**
+
+```
+Load this cycle's renders and form your visual judgement FIRST, before reading any user material: reading the source first makes the model confabulate agreement instead of actually counting what the render shows.
+```
+**Keep both — suggested wording**
+
+```
+Recommended order: when you load this cycle's renders, do it FIRST and
+form your visual judgement before reading any user material — reading the
+source first makes the model confabulate agreement instead of actually
+counting what the render shows.  Then ``read_input_text(path={user_query_path})``,
+``read_image_notes()`` when images exist, and ``view_images`` on the
+relevant reference images.  (Same ordering in _COMPARISON_MODE_2, against
+the extraction.)
+```
+#### DCOI-20 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Output Inspector
+
+**The discretion the current prompt grants**
+
+```
+### When to stop (you judge; a code cap backstops you)
+```
+**What the replacement says instead**
+
+```
+### When to stop
+```
+**Keep both — suggested wording**
+
+```
+### When to stop (you judge; a code cap backstops you)
+Finalize — naming which applies — when the shapes match as closely as the airfoil model allows (Satisfied), when they stopped meaningfully improving across ~2 rounds (Plateau), or when the hand-off carries ``PRECISION REFINE CAP REACHED``.  Then route to the Orchestrator and report the residual honestly, naming any remaining gap as the configurator's airfoil-model limit rather than implying more rounds would close it.
+```
+#### DCOI-22 — HEDGE_MADE_MANDATORY
+
+*Agent:* DC Output Inspector
+
+**The discretion the current prompt grants**
+
+```
+Batch every expression you need this turn into ONE ``calculate`` call; issue a second only when later expressions genuinely depend on earlier results.
+```
+**What the replacement says instead**
+
+```
+batching all of this turn's expressions into ONE call.
+```
+**Keep both — suggested wording**
+
+```
+- Route EVERY arithmetic operation through the ``calculate`` tool — never mental arithmetic, LLM sums are unreliable — batching all of this turn's expressions into ONE call, and issuing a second only if later ones depend on earlier results.
+```
+#### DCOI-31 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* DC Output Inspector
+
+**The discretion the current prompt grants**
+
+```
+Re-loading is neither automatic nor mandatory: load the current renders when a fresh visual judgement adds value this turn
+```
+**What the replacement says instead**
+
+```
+Re-load the current renders when a fresh visual judgement changes your verdict or your diagnosis of WHICH parameters are off
+```
+**Keep both — suggested wording**
+
+```
+You choose: re-load the current renders whenever a fresh visual judgement would add anything this turn — settling a verdict the QC numbers don't, or diagnosing WHICH parameters are off — and skip them when QC alone decides (e.g. the mesh isn't watertight).  When the hand-off says no new renders were produced, don't re-load the current ones: rest on text, or cite the earlier images as unchanged.
+```
+#### DH-06 — HEDGE_MADE_MANDATORY
+
+*Agent:* Database Handler
+
+**The discretion the current prompt grants**
+
+```
+Per-pair token cap: **each** ``QUESTION`` + ``ANSWER`` pair MUST stay below $embedding_max_response_tokens (cl100k_base); prefer well under 600 PER PAIR.  N pairs of 500 tokens each is fine — they are independent embeddings.
+```
+**What the replacement says instead**
+
+```
+Each ``QUESTION``+``ANSWER`` pair must stay under $embedding_max_response_tokens cl100k_base tokens; prefer well under 600 per pair.
+```
+**Keep both — suggested wording**
+
+```
+The saved ``QUESTION`` is NOT the long question you asked — it is a short
+(under 80 token) self-contained rewrite that must embed well on its own.
+Each ``QUESTION``+``ANSWER`` pair must stay under
+$embedding_max_response_tokens cl100k_base tokens; prefer well under 600
+per pair — N such pairs is fine, they embed independently.
+```
+#### DH-08 — OPEN_LIST_MADE_EXHAUSTIVE
+
+*Agent:* Database Handler
+
+**The discretion the current prompt grants**
+
+```
+You may strip leading/trailing pleasantries ("Sure, here is …") and remove obvious meta-commentary, but do not paraphrase or reorganise the data.
+```
+**What the replacement says instead**
+
+```
+Strip only leading/trailing pleasantries.
+```
+**Keep both — suggested wording**
+
+```
+Save Agent A's answer verbatim as a single block with no ``QUESTION:`` /
+``ANSWER:`` headers — keep every number, unit, camelCase key and
+structural marker.  Strip only pleasantries and obvious meta-commentary;
+never paraphrase or reorganise the data.  No token cap applies.  If there
+is no usable data, save one short sentence saying so (e.g. ``No parameter
+set was approved this session.``).
+```
+#### DH-21 — JUDGEMENT_CLAUSE_REMOVED
+
+*Agent:* Database Handler
+
+**The discretion the current prompt grants**
+
+```
+You MAY adapt the wording slightly given the design configurator's goal and what earlier agents have already told you in this same save, IF such adaptation is genuinely useful AND it does not drift the question away from the field's original meaning.
+```
+**What the replacement says instead**
+
+```
+you may adapt the wording, but never invent details and never drift the question.
+```
+**Keep both — suggested wording**
+
+```
+Stay faithful to the field's meaning in the schema; you may adapt the wording where the configurator's goal or what earlier agents told you this save makes it genuinely more useful — never invent details, never drift the question.
+```
+#### DH-29 — OPEN_LIST_MADE_EXHAUSTIVE
+
+*Agent:* Database Handler
+
+**The discretion the current prompt grants**
+
+```
+For "Problem ..." / "...solution" / "...request" fields, when nothing of the kind happened during the session, Agent A is expected to say so explicitly — that is a valid answer.
+```
+**What the replacement says instead**
+
+```
+Word "Problem …" / "…solution" questions so that "no such problem occurred this session" is obviously an acceptable answer.
+```
+**Keep both — suggested wording**
+
+```
+Word "Problem …" / "…solution" / "…request" questions so that "nothing of the kind occurred this session" is obviously an acceptable answer.
+```
+> Reviewed all 99 group-1 cuts that carry a replacement (Receptionist 26, Orchestrator 30, Planner 43 — 15 cuts in the file have an empty replacement and were skipped). For each I located the original in the named file via quote_start..quote_end and compared it clause by clause; two anchors did not resolve (ORC-03's quote_end and ORC-11's quote_end do not match the file text — the applier will need corrected anchors), so I read those two sections directly from agents/orchestrator/prompt.md and DC_prompt_fragments/dc_config/parameters.md.
+
+The great majority of the compression is clean: terser, more imperative phrasings of rules that were always mandatory (routing is a tool call, never fabricate an observation, no parameter outside the 16, append-only attempt folders, the DCII sequencing rule, the UII path lines). Several replacements are actually MORE permissive than the original — PLN-31 turns a closed four-case "reach for these tools only when:" list into an open criterion plus examples, ORC-13 drops one of two conjunctive conditions on re-consulting the Planner, PLN-24 drops the "no multi-option menus" prohibition — and PLN-01 (value_states.md), PLN-05/PLN-02 (routing.py) and PLN-03 (generic_constraints.md) all keep their free-form-prose guarantees intact.
+
+15 replacements do narrow discretion the original granted. One is serious: PLN-01 in agents/planner/prompt.md deletes the fleet's most explicit statement of the owner's principle — "you keep full judgement to combine or depart from them … every message you write is free prose — no fixed template, no mandated phrasing" — leaving only "guidelines, not a closed menu". That matters more because three other Planner cuts erode the same freedom in detail: PLN-07 removes "no fixed keyword — clarity in your own words" while keeping the two sample endorsement phrasings (which the Receptionist's RCP-03/RCP-22 now key off, so those examples risk hardening into required strings), PLN-04 removes "You decide precision vs. ordinary", and PLN-09 removes both "judge what it actually asks" and "There is no fixed tag for this … and judge".
+
+Six medium flags: ORC-01 restricts the Planner-approves-last rule from "DCOI verdict, or any point where the cycle is done" to DCOI verdicts only; ORC-03 deletes "Each agent owns its tools and decides when to invoke them", the sentence that establishes downstream agent autonomy as the reason the Orchestrator exists; ORC-02 drops "keep the labelled lines; the surrounding prose is yours", so a labelled block becomes the whole message contract; PLN-11 turns "Then, typically, one of:" into a closed four-way; PLN-23 keeps "never mixed" while silently deleting the documented "**Both** — name both halves" case. The remaining low flags are single dropped hedges or optional clauses (PLN-22's "there is no fixed cap", RCP-11's "or the user may want more than they contain", ORC-04's "this is a judgement call", PLN-03's optional focus note and image-readability hint, PLN-08's scope creep from "when you route a sections-first plan" to "always", ORC-24's "often makes sense" → "beats").
+
+Every suggested_rewording is written out in full and costs 3–20 tokens against the cut's saving; none reverts to the original text.
+
+> Reviewed all 119 replacement-bearing cuts for the UII, DCIC and DCII (locating each original in the repo, not working from the rationales). 17 flagged; the other 102 are honest compressions — most tighten rules that were always inviolable (routing is a tool call, per-parameter range checks, append-only attempt folders, no invented parameters), and several actually PRESERVE discretion well (DCIC-02 keeps "You decide what is actionable"; DCIC-37 and DCII-11 keep the "typical patterns … derive anything unfamiliar / fall back to judgement" escape hatch; UII-26 turns four bullets into an explicit spectrum; DCII-21 keeps "advisory"; DCII-38 opens a closed list with "e.g.").
+
+The one high-severity flag is DCIC-09: it deletes both "Beyond those three lines, write whatever prose is genuinely useful" and "There is no fixed phrasing for this — talk normally". Combined with DCIC-27 (three mandatory path lines) and DCIC-26 (which strips "write your brief note … in the message argument"), the DCIC's hand-off guidance collapses to "three lines + one mandated disclosure + don't echo the JSON" — a template, for exactly the free-form inter-agent message the owner wants kept open. Note that DC Input Creator prompt.md lines 315/320/324 are the ONLY place that prompt says "free-form / your own words / no fixed phrasing"; after this cut only the injected routing block still says it.
+
+Three flags cluster on one production regression the prompts were patched to fix (memory: "DCIC froze levers"). DCIC-04 and DCIC-18 both delete the explicit carve-out "a SOFT TARGET is NOT locked: it is an available lever" / "counts as available, NOT locked", and DCII-05 deletes "a soft target's deviation toward its goal is authorised — do NOT flag it as a violation". Applied together, the DCIC loses the reminder in both precision paragraphs and the DCII loses the instruction not to flag it. Each is restored by 4–8 words.
+
+Two flags are cross-cut inconsistencies worth resolving before applying, because the same shared fragment is cut twice with different outcomes: hard_constraints_dc.md — UII-21 drops "when mesh checks are disabled at startup, rely on visual inspection and say so plainly" while DCII-23 keeps it; value_states.md — DCIC-35 drops the "'user-locked' is only the DEFAULT lock" clause while DCII-04 keeps it, and conversely DCII-04 drops the "a qualitative description turned into a number is FREE" clause that DCIC-33 keeps. Whichever cut is applied last silently decides.
+
+The remaining flags are low-severity "only/always" creep with cheap fixes: "Most cycles you should NOT … you SHOULD inspect" → "Use them ONLY when" (UII-04); "the case is strongest when" → "do it only when" (DCII-09, which also erases the weighing inputs and the axis-5 extraction-fidelity use, and now contradicts DCII-14/DCII-15); "reading is at your discretion, when in doubt re-read" → an enumerated trigger list (DCIC-11); "choose the route your judgement supports" dropped (DCIC-13); "You may use these headings when useful, but do NOT treat them as a fixed template" → "covering [5 items]" (DCII-24); "Common drawing artifacts … patterns the operator has observed" → "Drawing artifacts to ignore" (UII-19); and "What is the user trying to achieve? Consider:" → "One coherent paragraph" (UII-01), which imposes a shape on a section that then has to carry bullets anyway. Every suggested_rewording above keeps the compression (each is within ~10-25 characters of the proposed replacement, and UII-08/UII-19/DCII-24 stay shorter than the original) while restoring the latitude.
+
+> Reviewed all 86 cuts in cuts_group3.json that carry a non-empty replacement (Tool Caller 24, DC Output Inspector 33, Database Handler 29 by file), reading each original in place rather than from the rationale. 20 replacements narrow discretion the original granted; the other 66 are pure compression and safe on this axis.
+
+The single worst is DCOI-06 (dc_output_inspector.py, _COMPARISON_MODE_3 — the DEFAULT comparison mode). The original consults the user's raw inputs "when you judge it necessary OR when DESIGN INTENT explicitly calls for it", and closes with "extraction ALWAYS, plus the user's raw inputs WHEN your judgement says they are needed". The replacement deletes both judgement clauses and leaves exactly three enumerated triggers followed by "Otherwise the extraction alone is enough" — a closed list where an open one stood, in the mode most sessions actually run.
+
+Recurring patterns worth noting:
+1. Escape hatches inside otherwise-correct hard rules get dropped. TC-20/DCOI-22 (same file, hard_constraints_tools.md) both delete "issue a second [calculate] call only when later expressions genuinely depend on earlier results". TC-18 turns "calling the same read tool twice ON UNCHANGED INPUT yields nothing new" into a flat "never call the same tool with the same arguments twice in a turn" — which collides with the Tool Caller's own surviving instruction (TC-11) to re-read parameters.json whenever it is not certain memory matches disk.
+2. Both proposed rewrites of generic_constraints.md (TC-21 and DCOI-03) drop "the only exceptions are the Receptionist's direct user replies and the Orchestrator's final user-facing wrap-up". That fragment is spliced into the Receptionist and Orchestrator (they get it, minus <<CHAIN_ONLY>>, and neither receives {routing_instructions}), so the absolute form is simply false for the two agents that talk to the user.
+3. Precision judgement is being centralised away from the DCOI. DCOI-01 replaces "judge where each reference image falls on the spectrum … assess each image, and each feature within it, on its own" with "the UII records which in DESIGN INTENT" — but under comparison mode 1 the DCOI is forbidden to read extracted_inputs.txt, so it would have no source for strictness at all. DCOI-21 drops "typically" from both halves of the visual-inspection guide, hardening "camber / high-point percentages" into permanently unresolvable — directly at odds with the precision refine loop, which asks the DCOI to judge exactly those from the blade-sections render.
+4. Two cross-cut dependencies to keep in view when applying: TC-27 is safe ONLY because TC-17/DCOI-09 keep "free-form prose (no template)" in routing_instructions() — if a later pass trims that too, the free-form hand-off guarantee disappears for every chain agent. And TC-19 and DCOI-28 are competing rewrites of the same routing block: DCOI-28's CLARIFY bullet keeps "ambiguity, missing datum or error", TC-19's does not — prefer DCOI-28's phrasing.
+
+Not flagged, deliberately: TC-06 (range check), TC-08/TC-32/DCOI-24 (domain hard rules), DCOI-11 (never describe unloaded images), DCOI-14 (ratio vs mm), DH-02 (force-tool turn). These were always mandatory and reading harder is correct. DCOI-19 and DH-10 keep their "not a rigid template" hedges intact, and DCOI-15's "you may recommend REVISE" survives — those three were the highest-risk spots for FREE_FORM_MADE_TEMPLATE and they came through clean.
+
+---
+
+## 13. RAG-gated prose (`RAG_ENABLED=True`)
+
+The headline numbers were measured with RAG off, so this material scored zero there. Two separate things: **7 guard defects that ship TODAY even with RAG off**, and 15 shrink cuts worth 2,273 tokens that become live when you enable it.
+
+### Guard defects — these are in your prompts right now
+
+Prose about the RAG tools that sits OUTSIDE its `<<HAS_DBA>>` guard is assembled into the prompt regardless of the flag. The agent is handed rules for tools it is not bound to — the same class of problem as §8's orphaned instructions.
+
+| agent | file | section | chars shipped with RAG off |
+|---|---|---|---:|
+| receptionist | `agents/receptionist/prompt.md` | ## Your DBa scope — your OWN work, not the chain's (HARD) (lines 371-391, + blank line 392) | 1313 |
+| orchestrator | `agents/orchestrator/prompt.md` | ## Preserving user directives in hand-offs (HARD) — the 'Concretely:' worked example (lines 172-177, + blank 178); secondary: the trigger examples on lines 164-165 | 407 |
+| orchestrator | `DC_prompt_fragments/tools_config/agent_tools_overview.md` | Universal-utilities paragraph, lines 4-5 — the clause '; ``database_search`` (semantic search over past saved sessions) to the DBa-enabled agents.' | 92 |
+| user_input_inspector, dc_input_inspector, dc_output_inspector | `DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md` | 'Filled-in templates and forms', lines 21-22 — the clause ', or with\nRAG on you retrieved a match from a past session' | 177 |
+| all eight DBa agents (RAG-on defect only) | `DC_prompt_fragments/tools_config/retrieve_attempt.md` | whole file — it is ZERO BYTES | 0 |
+| receptionist (5-agent topology — dormant) | `agents/5agent/receptionist/prompt_5agents.md` | ## Your DBa scope — your OWN work, not the chain's (HARD) (lines 392-412) | 1310 |
+| conductor (5-agent topology — dormant) | `agents/conductor/prompt_5agents.md` | Preserving user directives in hand-offs — the 'Concretely:' worked example (lines 460-465) | 344 |
+
+#### receptionist — ## Your DBa scope — your OWN work, not the chain's (HARD) (lines 371-391, + blank line 392)
+
+**Problem.** The entire DBa-scope section sits OUTSIDE any <<HAS_DBA>> region, between the extraction-only guidance and '## Routing'. The correctly-guarded '## Searching past saved sessions' block is 23 lines further down at 414-423. With RAG_ENABLED=False the Receptionist is bound to NONE of database_search / retrieve_user_inputs / retrieve_attempt, yet still receives a HARD-labelled section that names all three tools eight times, tells it what its 'DBa scope' is, forbids pre-cooking chain work, and mandates images_flag=False on a tool it cannot call. Worse, the guarded per-agent overlay DC_prompt_fragments/tools_config/database_search_receptionist.md ends with '(Full rule: "Your DBa scope" in your main prompt.)' — so today the cross-reference target ships without the cross-reference, and the pointer would be the only surviving half if the section were simply deleted.
+
+**Fix**
+
+```
+Wrap the block in its own guard, in place — insert a line '<<HAS_DBA>>' immediately before line 371 ('## Your DBa scope — your OWN work, not the chain's (HARD)') and a line '<</HAS_DBA>>' immediately after line 391 ('they are wasted tokens.  Use ``images_flag=False``.'). Do NOT relocate the text down into the existing 414-423 block: it belongs where it is (adjacent to the forwarding rules it qualifies), and the position change would reflow the prompt for no benefit. A second <<HAS_DBA>> pair in the same file is safe: _HAS_DBA_RE in agents/shared/prompts.py:131 is a non-greedy re.DOTALL pattern applied with re.sub, so every pair is resolved independently; the eight prompts happen to have one pair each today, but nothing in the code assumes that.
+```
+#### orchestrator — ## Preserving user directives in hand-offs (HARD) — the 'Concretely:' worked example (lines 172-177, + blank 178); secondary: the trigger examples on lines 164-165
+
+**Problem.** The section itself is generic and must stay unconditional, but its ONLY worked example is entirely RAG. Lines 172-177 tell the hub that the correct relay is 'The user has MANDATED that you use past experience from the database — this is a HARD directive, not optional.  Call ``database_search`` (and/or ``retrieve_user_inputs`` / ``retrieve_attempt``) before finalising your output.' With RAG off that is an instruction to write a hand-off ordering a downstream agent to call three tools that are not in its bind_tools list — a guaranteed dead end, and precisely the failure the <<HAS_DBA>> mechanism exists to prevent. Separately, 2 of the 5 trigger examples on lines 164-165 ('the agents MUST use the database', 'you must look at past sessions') are also RAG-only, so with RAG off the rule illustrates itself with unreachable behaviour.
+
+**Fix**
+
+```
+Insert '<<HAS_DBA>>' before line 172 ('Concretely: if the user wrote "the agents MUST use past') and '<</HAS_DBA>>' after line 177 ('``retrieve_attempt``) before finalising your output."'). Because the section would then have no example when RAG is off, pair it with a <<HAS_DBA>>-free alternative — e.g. a second 'Concretely:' paragraph built on a non-RAG mandate ('the user wrote "you MUST analyse every reference image"'). For the trigger list on 164-165, swap the two database examples for non-RAG ones ('"you must analyse every reference image"', '"check the ring thickness"'); this is cost-neutral in characters and is a correctness fix, not a shrink.
+```
+#### orchestrator — Universal-utilities paragraph, lines 4-5 — the clause '; ``database_search`` (semantic search over past saved sessions) to the DBa-enabled agents.'
+
+**Problem.** This fragment is spliced via $agent_tools_overview at agents/orchestrator/prompt.md:459, outside any guard, and unconditionally advertises database_search as part of the universal-tool inventory. With RAG off the hub's tool inventory names a tool no agent in the session holds. The phrase 'to the DBa-enabled agents' is a weak self-qualification — it implies some agents ARE DBa-enabled, which with RAG_ENABLED=False is false for all eight.
+
+**Fix**
+
+```
+Guard the clause inside the fragment itself: change lines 3-5 to end at '...are bound to every agent.' and add '<<HAS_DBA>>``database_search`` (semantic search over past saved sessions) is bound to the DBa-enabled agents.<</HAS_DBA>>' as its own sentence. This works because _build_template (agents/shared/prompts.py:785-793) substitutes all $slots FIRST (two passes) and only then calls apply_dba_filter, so a <<HAS_DBA>> marker written inside a fragment is resolved exactly like one written in a prompt.md — a cheap fix that is easy to miss if you assume guards only work at prompt.md level.
+```
+#### user_input_inspector, dc_input_inspector, dc_output_inspector — 'Filled-in templates and forms', lines 21-22 — the clause ', or with\nRAG on you retrieved a match from a past session'
+
+**Problem.** $sketch_handling is spliced unguarded into agents/user_input_inspector/prompt.md:367, agents/dc_input_inspector/prompt.md:58 and agents/dc_output_inspector/prompt.md:99. The clause tells the agent it may have retrieved a blank copy of a pre-printed form from a past session. Low severity because it is self-qualifying ('with RAG on'), but it still ships RAG vocabulary to three agents that have no retrieval tools, and it is the only place in the fleet where retrieval is presented as a source of comparison scaffolding.
+
+**Fix**
+
+```
+Either wrap the clause — '(the user supplied one<<HAS_DBA>>, or you retrieved a match from a past session<</HAS_DBA>>)' — which also lets the awkward 'with RAG on' hedge be dropped, or leave it: it is the cheapest defect in the list and the hedge makes it non-misleading. Recommend wrapping, since the same edit removes 12 characters of hedge when RAG is on.
+```
+#### all eight DBa agents (RAG-on defect only) — whole file — it is ZERO BYTES
+
+**Problem.** $retrieve_attempt_tool resolves to the empty string, so the '$retrieve_user_inputs_tool\n\n$retrieve_attempt_tool' tail of every <<HAS_DBA>> block emits a trailing blank-line pair and nothing else. Consequence with RAG ON: retrieve_attempt is bound to all eight chain agents (make_retrieve_attempt_tool in orchestrator.py:456, planner.py, dc_input_creator.py:160, dc_input_inspector.py:136, dc_output_inspector.py:250, etc.) but has ZERO dedicated prompt guidance — it is only mentioned in passing inside database_search.md and four per-agent overlays. The single most complete statement of what retrieve_attempt is for anywhere in the 7-agent fleet is the Receptionist's 'Your DBa scope' section — i.e. the block that is mis-guarded (defect 1). Nothing ships with RAG off, so the cost today is 0; the risk is to the shrink pass, where an auditor can 'cut' a fragment that is already empty and book a saving that does not exist.
+
+**Fix**
+
+```
+Do not touch it as part of a shrink pass. Either delete the file and the $retrieve_attempt_tool slot line from all eight prompt.md guards plus the entry in _build_slots (prompts.py:673) and FRAGMENT_TO_SLOT (prompts.py:552) — retrieve_user_inputs.md already documents both tools jointly ('``retrieve_user_inputs`` and ``retrieve_attempt`` document their purpose...') — or fill it with the read_attempt-vs-retrieve_attempt disambiguation described in the notes. Deleting is the smaller change and loses nothing.
+```
+#### receptionist (5-agent topology — dormant) — ## Your DBa scope — your OWN work, not the chain's (HARD) (lines 392-412)
+
+**Problem.** Byte-for-byte the same unguarded block as the 7-agent Receptionist (only 'DCIC / DCII' is rewritten to 'Creator'); its guarded '## Searching past saved sessions' block sits at 435-444. Dormant today because SYSTEM_TOPOLOGY=7, so it costs nothing now — but the 5-agent prompts were built by faithful merge from the 7-agent originals, which is exactly how this class of defect propagates. Fixing only the 7-agent copy leaves the bug live for the first 5-agent run.
+
+**Fix**
+
+```
+Apply the identical edit: '<<HAS_DBA>>' before line 392, '<</HAS_DBA>>' after line 412 ('they are wasted tokens.  Use ``images_flag=False``.'). Make it part of the same change as the 7-agent fix so the two topologies do not diverge.
+```
+#### conductor (5-agent topology — dormant) — Preserving user directives in hand-offs — the 'Concretely:' worked example (lines 460-465)
+
+**Problem.** Same unguarded RAG-only worked example as the Orchestrator, rewrapped to a wider column. Same failure mode: with RAG off the hub is taught to order downstream agents to call database_search / retrieve_user_inputs / retrieve_attempt. Dormant under SYSTEM_TOPOLOGY=7.
+
+**Fix**
+
+```
+'<<HAS_DBA>>' before line 460, '<</HAS_DBA>>' after line 465, plus the same non-RAG replacement example as the Orchestrator fix. Note that agents/5agent/prompt_fragments/available_agents_5agents.md:74-75 also names database_search unguarded, but phrases it '(and ``database_search`` where database access is enabled)', which is self-qualifying — same low-severity class as sketch_handling.md, optional.
+```
+### Shrink cuts for the RAG prose
+
+| id | agent | section | −chars | risk | what |
+|---|---|---|---:|---|---|
+| **RAG-01** | all 8 DBa agents (shared fragment) | Heading + opening paragraph (lines 1-8) | 186 | low | The '### Searching past saved sessions' heading duplicates the '## Searching past saved sessions' heading every prompt.md emits on the line directly above the slot, and the argument list (``query``, ``n``, ``attempt_specific_flag``, ``metafilters``) is restated verbatim from the tool schema the model already receives. |
+| **RAG-02** | all 8 DBa agents (shared fragment) | **How to use what you retrieve — IMPORTANT.** (lines 10-24) | 245 | low | Keeps the whole TAKE/LEAVE contrast and the blueprint framing but drops the restatement tail ('use past content to inform your method, not to short-cut your judgement') and the parenthetical gloss on diameters, which only re-say the bullet above them. |
+| **RAG-03** | all 8 DBa agents (shared fragment) | **Verify context before trusting past content — and use the images.** (lines 26-41) | 283 | medium | Preserves the two load-bearing rules (visual proof before literal transfer; database_search is text-only so fetch pixels separately) but drops the three-example enumeration of visual judgements and the multimodal ``<image_ref>`` sentence, which describes a mode the chunks_mm read-routing may not be in. |
+| **RAG-04** | all 8 DBa agents (shared fragment) | **When to call it** / **When NOT to call it** (lines 43-52) | 8 | low | Nearly cost-neutral on its own, but it CENTRALISES the 'Planner's instructions still take priority' rule that is currently duplicated in six of the eight per-agent overlays — which is what makes cuts RAG-06, RAG-09, RAG-09B, RAG-10, RAG-12, RAG-13 and RAG-14 safe to take. |
+| **RAG-05** | all 8 DBa agents (shared fragment) | Body under '### Retrieving past saved content' (lines 3-14) | 190 | low | Same two rules, same three literal markers the model must recognise in a response; the removed text is prose scaffolding ('Two things they do NOT cover:', 'with the rest of the response intact', 'image / render bytes never count toward that cap'). |
+| **RAG-06** | user_input_inspector | Opening bullets (lines 1-6) | 152 | low | Drops the Planner-priority bullet, now stated once in the shared fragment by RAG-04; the rest is reflowed only. |
+| **RAG-07** | user_input_inspector | **HARD — call ``database_search`` BEFORE ``write_extraction`` when:** (lines 8-14) | 106 | low | Same two triggers and the same softened-relay escape-hatch, as prose instead of a two-item bullet list; the dropped tail ('past sessions calibrate how comparable sketches were extracted') is justification, not instruction. |
+| **RAG-08** | user_input_inspector | 'When it applies:' 3-step procedure (lines 16-33) | 221 | medium | Keeps all three steps, the MANDATORY-on-explicit-demand clause and the HARD-failure label; medium risk only because this overlay is the UII's strongest behavioural lever and the memory index records a live run where a directive restating a SUBSET silently revoked an authorisation. |
+| **RAG-09** | orchestrator | whole file (lines 1-6) | 250 | low | Three near-identical single-clause bullets plus a two-sentence coda collapse to one bullet; the Planner-priority clause moves to the shared fragment under RAG-04. |
+| **RAG-09B** | tool_caller | whole file (lines 1-6) | 250 | low | This file is byte-identical to database_search_orchestrator.md (verified by diff), so it takes the same edit — and the duplication is itself worth flagging: two agents with different jobs are given the same routing-flavoured search advice. |
+| **RAG-10** | planner | whole file (lines 1-5) | 71 | low | Drops only the trailing 'Your own plan still governs over whatever the database surfaces', which RAG-04 now states once in the shared fragment. |
+| **RAG-11** | receptionist | whole file (lines 1-7) | 90 | low | Modest on its own; take it only AFTER the Receptionist guard defect is fixed, because the closing cross-reference is only valid once 'Your DBa scope' is inside a <<HAS_DBA>> region and therefore appears exactly when this overlay does. |
+| **RAG-12** | dc_input_creator | whole file (lines 1-11) | 263 | low | Removes the duplicated Planner-priority bullet (centralised by RAG-04) and the parenthetical spelling-out of 'similar design'; the calibration instruction and the exact call signature are kept verbatim. |
+| **RAG-13** | dc_input_inspector | whole file (lines 1-10) | 172 | low | Same removal of the duplicated Planner-priority bullet plus light compression of the role restatement; both call signatures and the visual-comparison rationale survive. |
+| **RAG-14** | dc_output_inspector | whole file (lines 1-10) | 221 | low | Duplicated Planner-priority bullet removed and 'comparing the current renders against the user's inputs' dropped as a restatement of the DCOI's own job description, which its prompt.md already opens with. |
+
+<details><summary><b>Full text of each RAG cut</b></summary>
+
+#### RAG-01 · replace · −186 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search.md` · *Section:* Heading + opening paragraph (lines 1-8)
+
+**Cut from** `### Searching past saved sessions — ``database_search```
+
+**...through** `call it and HOW to use what comes back.`
+
+**Replace with:**
+
+```
+``database_search`` runs a semantic vector search over Q+A from past
+saved sessions (the Database Handler's corpus).  Its arguments and XML
+return shape are documented on the tool itself; this section is about
+WHEN to call it and HOW to use what comes back.
+```
+
+#### RAG-02 · replace · −245 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search.md` · *Section:* **How to use what you retrieve — IMPORTANT.** (lines 10-24)
+
+**Cut from** `**How to use what you retrieve — IMPORTANT.**  Treat any past-session`
+
+**...through** `    short-cut your judgement.`
+
+**Replace with:**
+
+```
+**How to use what you retrieve — IMPORTANT.**  Past sessions answered
+DIFFERENT requests under DIFFERENT constraints, so treat retrieved
+content (here or via ``retrieve_user_inputs`` / ``retrieve_attempt``) as
+a **blueprint for HOW to act, NOT values to copy**.  TAKE: reasoning
+patterns, pitfalls and how they were resolved, extraction /
+interpretation conventions, calibration evidence (which parameter ranges
+produced sound vs degenerate geometry).  LEAVE BEHIND: specific
+parameter values, past users' numbers, past outcomes — copy those only
+when the current request obviously calls for the same solution.  When in
+doubt, derive your own values from the CURRENT user's inputs.
+```
+
+#### RAG-03 · replace · −283 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search.md` · *Section:* **Verify context before trusting past content — and use the images.** (lines 26-41)
+
+**Cut from** `**Verify context before trusting past content — and use the images.**  A`
+
+**...through** `fetch the same way.`
+
+**Replace with:**
+
+```
+**Verify context before trusting past content — and use the images.**  A
+past session's wording can read as if it applies to you while its
+underlying context (template, conventions, reference values) differs, so
+the same phrase can be silently wrong.  Treat a past claim as literally
+transferable only with visual proof that the contexts match; otherwise
+keep the PRINCIPLE (what the past agent checked, which defects, why) and
+drop the literal values.  For any visual or geometric judgement, fetch
+the pixels: ``database_search`` returns TEXT ONLY, but each
+``<session>`` lists ``<available_attempts>`` global_ids for
+``retrieve_attempt(..., images_flag=True)`` (attempt renders), and
+``retrieve_user_inputs(session_ids=[...], images_flag=True)`` returns
+past user images.  Text-only is cheaper; a visual call usually earns the
+images.
+```
+
+#### RAG-04 · replace · −8 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search.md` · *Section:* **When to call it** / **When NOT to call it** (lines 43-52)
+
+**Cut from** `**When to call it** — when a question or doubt could plausibly be`
+
+**...through** `(use ``calculate``).`
+
+**Replace with:**
+
+```
+**Call it** when a question or doubt could plausibly be answered by
+prior sessions: an obstacle you have hit, what was tried in similar
+situations, a request resembling a past one, a choice you are unsure of.
+**Do NOT call it** for questions the current session's messages already
+answer (each call round-trips Postgres + an embedding), iteratively as a
+search engine (ONE focused call per question, never a loop), or for
+arithmetic (use ``calculate``).
+
+Whatever you retrieve, the Planner's instructions (however relayed) take
+priority over it.
+```
+
+#### RAG-05 · replace · −190 chars
+
+*File:* `DC_prompt_fragments/tools_config/retrieve_user_inputs.md` · *Section:* Body under '### Retrieving past saved content' (lines 3-14)
+
+**Cut from** ```retrieve_user_inputs`` and ``retrieve_attempt`` document their purpose,`
+
+**...through** `  render bytes never count toward that cap).`
+
+**Replace with:**
+
+```
+``retrieve_user_inputs`` / ``retrieve_attempt`` document their arguments
+and return shape on the tools.  Two things they do not:
+
+- **Don't over-call.**  Never retrieve what the live session already
+  holds; make ONE call with all the ids, never a loop.
+- **Partial responses are normal.**  A missing row renders
+  ``status="not_found"``; a failed image fetch leaves ``<missing
+  path="..."/>``; over the token cap, whole items drop from the END
+  under ``<truncated omitted_.../>`` (image bytes are exempt).
+```
+
+#### RAG-06 · replace · −152 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search_user_input_inspector.md` · *Section:* Opening bullets (lines 1-6)
+
+**Cut from** `* Especially useful when the user's inputs need interpretation — above all`
+
+**...through** `  prior experience the database surfaces.`
+
+**Replace with:**
+
+```
+* Especially useful when the user's inputs need interpretation — above
+  all images (photos, sketches, renders) — and when the request is
+  complex, carries qualitative requirements (*make it light*, *fly
+  high*), or hit a problem before.
+```
+
+#### RAG-07 · replace · −106 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search_user_input_inspector.md` · *Section:* **HARD — call ``database_search`` BEFORE ``write_extraction`` when:** (lines 8-14)
+
+**Cut from** `**HARD — call ``database_search`` BEFORE ``write_extraction`` when:**`
+
+**...through** `    sketches were extracted.`
+
+**Replace with:**
+
+```
+**HARD — call ``database_search`` BEFORE ``write_extraction`` when** the
+user or an upstream agent required using past experience / the database /
+prior sessions (treat it as MANDATORY even when the relay softens it to
+"leveraging" or "emphasizes"), OR the extraction depends on visually
+interpreting a sketch or reference image (the dominant UII case).
+```
+
+#### RAG-08 · replace · −221 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search_user_input_inspector.md` · *Section:* 'When it applies:' 3-step procedure (lines 16-33)
+
+**Cut from** `When it applies:`
+
+**...through** `     knows you considered it.`
+
+**Replace with:**
+
+```
+When it applies:
+  1. ``database_search(query=<short focused query>, n=2-4)`` first —
+     phrase the query around what you are extracting ("blade count from a
+     hand-drawn sketch", "thickness calibration from blade sections").
+  2. Fetch the past user's images to compare
+     (``retrieve_user_inputs(session_ids=[<sid>], images_flag=True)``) —
+     **MANDATORY on at least one in-scope session when the user demanded
+     past-image / past-experience use** (skipping it then is a HARD
+     failure); a strong default when extracting from a sketch, where text
+     alone is too thin to anchor a numeric extraction.  Likewise
+     ``retrieve_attempt(..., images_flag=True)`` for relevant attempts.
+     Fetch one or two at most (~0.6-1k tokens per image).
+  3. In your hand-off, say what you searched, what you retrieved with
+     images, what the comparison showed, and whether it changed your
+     extraction — including "it did not", so the chain knows you looked.
+```
+
+#### RAG-09 · replace · −250 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search_orchestrator.md` · *Section:* whole file (lines 1-6)
+
+**Cut from** `* The database is useful when dealing with exceptions or routing problems.`
+
+**...through** `In these cases the database search should almost always be used.  Evaluate when and how the search should be done.`
+
+**Replace with:**
+
+```
+* Most useful for exceptions, routing problems, and complex or long
+  requests — in those cases a search almost always pays; judge when and
+  how to run it.
+```
+
+#### RAG-09B · replace · −250 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search_tool_caller.md` · *Section:* whole file (lines 1-6)
+
+**Cut from** `* The database is useful when dealing with exceptions or routing problems.`
+
+**...through** `In these cases the database search should almost always be used.  Evaluate when and how the search should be done.`
+
+**Replace with:**
+
+```
+* Most useful for exceptions, routing problems, and complex or long
+  requests — in those cases a search almost always pays; judge when and
+  how to run it.
+```
+
+#### RAG-10 · replace · −71 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search_planner.md` · *Section:* whole file (lines 1-5)
+
+**Cut from** `* Especially worth a search when structuring a recovery plan or when the`
+
+**...through** `  surfaces.`
+
+**Replace with:**
+
+```
+* Especially worth a search when structuring a recovery plan or when the
+  request is complex — past sessions show what was tried in similar
+  situations.
+```
+
+#### RAG-11 · replace · −90 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search_receptionist.md` · *Section:* whole file (lines 1-7)
+
+**Cut from** `* Use the database only for a task YOU handle directly (a user question you`
+
+**...through** `  (Full rule: "Your DBa scope" in your main prompt.)`
+
+**Replace with:**
+
+```
+* Only for a task YOU handle directly (a user question answerable from
+  past text, or confirming a past attempt the user names).  Never
+  pre-cook past-session content for a forwarded request, and never pass
+  ``images_flag=True`` — past images belong in the UII / DCII / DCOI
+  context.  Full rule: "Your DBa scope" in your main prompt.
+```
+
+#### RAG-12 · replace · −263 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search_dc_input_creator.md` · *Section:* whole file (lines 1-11)
+
+**Cut from** `* The Planner's instructions (however relayed) still take priority over any`
+
+**...through** `geometry for designs like yours.  Fetch only the most useful ones.`
+
+**Replace with:**
+
+```
+**Retrieve past attempts to calibrate your parameters.**  When
+``<available_attempts>`` lists attempts from a similar design, prefer
+``retrieve_attempt(attempts_ID_list=[<global_id>, ...],
+images_flag=True)`` to inspect their ``parameters.json`` AND renders —
+past parameter sets encode which ranges gave viable vs degenerate
+geometry.  Fetch only the most useful ones.
+```
+
+#### RAG-13 · replace · −172 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search_dc_input_inspector.md` · *Section:* whole file (lines 1-10)
+
+**Cut from** `* The Planner's instructions (however relayed) still take priority over any`
+
+**...through** `surface.  Fetch only the most useful ones.`
+
+**Replace with:**
+
+```
+**Retrieve past content with images to validate.**  You validate the
+DCIC's parameters against the extraction and the configurator's
+constraints, so prefer ``retrieve_user_inputs(session_ids=[<sid>],
+images_flag=True)`` to compare past sketches with the current user's
+(visual comparison catches extraction errors text hides), and
+``retrieve_attempt(..., images_flag=True)`` for relevant past attempts.
+Fetch only the most useful ones.
+```
+
+#### RAG-14 · replace · −221 chars
+
+*File:* `DC_prompt_fragments/tools_config/database_search_dc_output_inspector.md` · *Section:* whole file (lines 1-10)
+
+**Cut from** `* The Planner's instructions (however relayed) still take priority over any`
+
+**...through** `passed visual inspection and what failed, and why.  Fetch only the most
+useful ones.`
+
+**Replace with:**
+
+```
+**Retrieve past content to calibrate your visual judgement.**  Your job
+is visual, so prefer ``retrieve_user_inputs(..., images_flag=True)`` (how
+past users' inputs looked and how the chain read them) and
+``retrieve_attempt(..., images_flag=True)`` — past renders show what
+passed visual inspection, what failed, and why.  Fetch only the most
+useful ones.
+```
+
+</details>
+
+**Notes.** HOW prompts.py RESOLVES THE GUARDS (read before judging any finding above)
+
+_build_template (agents/shared/prompts.py:727-794) runs in this order: (1) read agents/<agent>/prompt.md, (2) Template.safe_substitute over the full $slot map — TWICE, so a fragment may itself contain $slots, (3) apply_flag_filters = BSV then PLANNER_FIRST then DCII, (4) apply_dba_filter(text, agent_dir_name), (5) apply_chain_only_filter. Two consequences that shape every finding here:
+
+- Substitution happens BEFORE the guard filter. So a <<HAS_DBA>> marker written inside a FRAGMENT is resolved exactly like one written in a prompt.md. That is what makes the agent_tools_overview.md and sketch_handling.md fixes one-line edits rather than restructurings.
+- apply_dba_filter (prompts.py:211-245) uses _HAS_DBA_RE = re.compile(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>", re.DOTALL) with re.sub, i.e. non-greedy and global. Multiple guard pairs per file work correctly. Every one of the eight chain prompts happens to have exactly one pair today, but nothing depends on that, so wrapping the Receptionist's DBa-scope section in place (rather than moving it down to the existing block) is safe.
+- The gate is per-agent AND global: database_access.is_enabled_for() returns False for every agent when RAG_ENABLED is False, so under the measured configuration all eight guarded blocks are stripped and the ninth agent (database_handler, not in DEFAULT_AGENTS) never had one.
+
+INVERSE CHECK — NEGATIVE RESULT. I checked for text that should be unconditional but is trapped inside a guard, and found none. All eight <<HAS_DBA>> regions have identical structure: the heading '## Searching past saved sessions' followed by $database_search_tool, $database_search_per_agent, $retrieve_user_inputs_tool, $retrieve_attempt_tool, and nothing else. No general-purpose rule, no routing instruction, no hard constraint is inside a guard anywhere in the fleet. The Database Handler's single RAG mention (agents/database_handler/prompt.md:5, 'material can later be used for retrieval-augmented generation (RAG)') is correctly unconditional — the DH writes the corpus whether or not anyone reads it.
+
+MEASURED SIZE OF THE RAG SURFACE (my numbers differ from the brief's ~4,600 tokens). Unique RAG fragment text on disk is 9,254 chars ≈ 2,310 tokens (database_search.md 3,106 + retrieve_user_inputs.md 747 + retrieve_attempt.md 0 + eight overlays 5,401). But the shared fragments are copied into EIGHT prompts, so the fleet-wide assembled cost with RAG on is ~36,545 chars ≈ 9,140 tokens: Receptionist 4,287 / Orchestrator 4,261 / Planner 4,082 / UII 5,938 / DCIC 4,492 / DCII 4,467 / Tool Caller 4,261 / DCOI 4,437, plus ~320 chars of headings. The ~4,600-token figure in the brief sits between the two; if it was meant as unique text it is ~2× high, if fleet-wide it is ~2× low. Worth reconciling before these numbers go in a report.
+
+WHAT THE CUTS BUY. Per-file chars_removed is what you would see in the diff. Because RAG-01..RAG-05 land in fragments shared by all eight agents, their fleet effect is ×8: RAG-01 1,488 / RAG-02 1,960 / RAG-03 2,264 / RAG-04 64 / RAG-05 1,520 = 7,296. The ten per-agent overlay cuts contribute 1,796 as written. Fleet total 9,092 chars ≈ 2,273 tokens (the latent_tokens figure), taking the RAG surface from ~9,140 to ~6,870 tokens, about 25%. Zero effect on today's headline numbers, since all of it is behind a guard that currently strips it.
+
+Two cuts are order-dependent and should not be applied alone. RAG-04 is nearly cost-neutral by itself (8 chars) and exists only to centralise the 'Planner's instructions still take priority' rule that is currently duplicated across six of the eight overlays; RAG-06, RAG-09, RAG-09B, RAG-10, RAG-12, RAG-13 and RAG-14 all delete their local copy and are unsafe without it. RAG-11 should follow the Receptionist guard fix, because its closing cross-reference ('Full rule: "Your DBa scope" in your main prompt') only resolves once that section is inside a guard and therefore appears exactly when the overlay does.
+
+RAG/NON-RAG TOOL OVERLAP AND WHAT IT WOULD COST
+
+retrieve_attempt vs read_attempt is the sharp one. read_attempt(n, file) reads the n-th attempt folder of THIS session; retrieve_attempt(attempts_ID_list=[global_id, ...]) fetches attempts from PAST saved sessions out of R2. Same noun, same artefacts (parameters.json, renders, description), different index space (local ordinal vs global_id), different latency (local file read vs Postgres + R2 round-trip), different cost (retrieve_attempt with images_flag=True pulls ~0.6-1k tokens per image). I grepped every prompt.md and every fragment: there is NO sentence anywhere in the fleet that contrasts the two. tool_inventory.md item 4 describes read_attempt with no mention of its RAG twin; database_search.md's only bridge is 'each <session> lists <available_attempts> global_ids you can feed to retrieve_attempt'. So with RAG on, eight agents hold two similarly-named tools over the same artefact type with no disambiguation — the ambiguous-decision-point pattern the earlier tool analysis flagged. The observable failure is cheap in one direction and expensive in the other: calling read_attempt(3) when you wanted a past session's attempt silently returns THIS session's attempt 3 and looks like a valid answer.
+
+Cost of fixing it properly, if RAG is switched on as-is: about 200-260 chars in DC_prompt_fragments/tools_config/retrieve_attempt.md — which is currently a zero-byte file, so it is free shelf space, not new prompt real estate. Something like 'read_attempt(n, file) reads THIS session's n-th attempt folder by local index. retrieve_attempt(attempts_ID_list=[...]) fetches PAST sessions' attempts by global_id (from database_search's <available_attempts>) over R2 — slower, and images_flag=True costs ~0.6-1k tokens per image. If the attempt is in this session, use read_attempt.' Filling that file adds ~250 chars × 8 agents ≈ 2,000 chars ≈ 500 tokens fleet-wide, which the cuts above more than cover (2,273 tokens saved). Net: you can fix the overlap and still be ~1,750 tokens ahead.
+
+Two smaller overlaps, both cheaper: (a) list_attempts vs database_search's <available_attempts> — same enumeration idea over different scopes, but the names are dissimilar enough that no extra prose is needed; (b) view_images (loads local render paths) vs retrieve_user_inputs/retrieve_attempt with images_flag=True (pulls past images into the next turn via the dispatcher in agents/shared/retrieve_tool_dispatcher.py) — these do not collide in naming, but they do collide in the Receptionist's context budget, which is exactly what the mis-guarded 'Your DBa scope' section exists to police. That is one more reason to guard that section rather than delete it: with RAG on it is load-bearing.
+
+FILES TOUCHED BY THE GUARD FIXES (all absolute paths under C:/Users/vince/MT Coding/tests/test11_v9_git/.claude/worktrees/admiring-austin-d46925/):
+agents/receptionist/prompt.md (lines 371-391), agents/orchestrator/prompt.md (lines 164-165 and 172-177), DC_prompt_fragments/tools_config/agent_tools_overview.md (lines 4-5), DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md (lines 21-22), DC_prompt_fragments/tools_config/retrieve_attempt.md (empty), plus the two dormant 5-agent copies agents/5agent/receptionist/prompt_5agents.md (lines 392-412) and agents/conductor/prompt_5agents.md (lines 460-465). Total shipping today with RAG off: 2,081 chars across the live 7-agent topology (~520 tokens), of which 1,313 is the single Receptionist section. Nothing was written or modified — this is analysis only.
+
+---
+
+## 14. Manual spot-check watch-lists
+
+Manual inspection is the only validation in the loop, so "risk: medium" is only useful if you know what to look at. 66 concrete checks across the nine agents — each names the observable behaviour, the cuts that would cause it, the shortest input that exercises it, and what the failure actually looks like.
+
+### Receptionist (8 checks)
+
+**Watch:** After the system asks the user a question (permission-to-vary, a choice between options), the user's next message — even a bare "yes" / "no" / "keep them" — appears in the session log as `[AGENT MSG]  Receptionist -> Orchestrator`, NOT as a `[RECEPTIONIST -> USER]` line. The forwarded prose must not contain "I will keep…" / "I'll go with…".
+
+- *Trigger:* Ask for a design whose numbers cannot all be honoured, e.g. "4 blades, impellerRadius 60 mm, innerChord 11 mm, outerChord 12 mm — use exactly these". The chain will come back asking whether it may vary any of them. Reply with the single word "yes".
+- *Regression looks like:* The log's last two lines are `[USER -> RECEPTIONIST]  yes` then `[RECEPTIONIST -> USER]  Understood — I'll keep those values`, with no Receptionist->Orchestrator hop. The pipeline is stranded: no new attempt folder appears and the session effectively ends without a design.
+- *Cuts:* `RCP-09`, `RCP-08`, `RCP-13`
+
+**Watch:** Every parameter value and every render path in the final user-facing message can be traced to an earlier `[TOOL CALL]  Receptionist -> read_attempt` result in the same log, and the message contains no aesthetic/performance/design judgement of its own ("this should be efficient", "I'd lower the camber", "I cannot verify this").
+
+- *Trigger:* Any complete design run to a finished result — e.g. "design a 4-blade propeller with thick, aggressive blades" — then read the final message against the log.
+- *Regression looks like:* The final message adds an opinion the chain never produced, quotes a parameter value with no preceding read_attempt, or hedges on a value the chain reported ("the system says 5 blades but I cannot confirm this").
+- *Cuts:* `RCP-29`, `RCP-12`, `RCP-10`, `RCP-24`, `DCII-03`, `DCOI-03`, `PLN-04 (generic_constraints.md DON'Ts)`
+
+**Watch:** When the Orchestrator->Receptionist hand-off says a requested value was NOT honoured (soft target moved to serve its goal, out-of-range value changed) or that a precision match plateaued at the configurator's ceiling, the user-facing text states both what was asked and what was delivered, and does not round "closest the model allows, with a residual" up to "matches your sketch".
+
+- *Trigger:* Upload a blade-section drawing and write: "impellerRadius 75 mm and 4 blades — but fit the sketched blade shape; the exact numbers matter less than the shape." Let it run to completion with the radius ending somewhere other than 75.
+- *Regression looks like:* Final message says "your 75 mm propeller is ready" (the request, not the delivery), or silently reports 71 mm as if that is what was asked, or claims a clean sketch match when the DCOI verdict in the log named a residual gap.
+- *Cuts:* `RCP-23`, `RCP-12`, `RCP-10`
+
+**Watch:** `propose_attempt` (and therefore the Parameters Inputs panel updating) fires ONLY when the hand-off endorses an attempt as the current best. On a hedged hand-off ("showing for context", "not satisfying yet") and on a user request to see a DIFFERENT attempt, the model is visualized but the panel keeps its previous values.
+
+- *Trigger:* Run a design to a clean finish (panel should update to those 16 values). Then send "show me attempt 1 again" and watch the Parameters Inputs panel.
+- *Regression looks like:* A `[TOOL CALL]  Receptionist -> propose_attempt` appears on the "show me attempt 1" turn, and the Parameters Inputs sliders jump back to the older attempt's numbers — the user's pinned/endorsed set is silently overwritten.
+- *Cuts:* `RCP-03`, `RCP-22`, `RCP-02`
+
+**Watch:** Image gate, three branches: (a) image with a BLANK note forwards normally, with the call_orchestrator summary mentioning that images were supplied; (b) an INVALID pairing banner produces a reply-direct that names the specific orphan file(s) and no forward; (c) an off-topic note produces a reply-direct asking for a revision.
+
+- *Trigger:* (a) Upload a top-view propeller sketch in Image Inputs and leave the description empty, then "make this". (b) Upload an image and delete/never create its note so the pairing banner reads INVALID. (c) Upload an image whose note reads "photo from my holiday in Crete".
+- *Regression looks like:* For (a): "please add a description of your image before I can proceed" — the exact bug commit 26a6ad5 fixed. For (b): a forward happens anyway and the UII later reports missing notes. For (c): the off-topic note reaches the UII and lands in extracted_inputs.txt.
+- *Cuts:* `RCP-01`, `RCP-04`
+
+**Watch:** The parameter-name check stops PLAIN invented names at the door but forwards convoluted / relative statements untouched. And an out-of-range number is forwarded, never bounced, and the forward summary never claims values are "within range".
+
+- *Trigger:* Three separate first turns: (1) "give me a propeller with hub_radius 8 mm and 4 blades" — expect a reply-direct naming hub_radius; (2) "make the outer chord twice the inner chord" — expect a plain forward; (3) "impellerRadius 160 mm" — expect a plain forward.
+- *Regression looks like:* (1) hub_radius is forwarded and turns up in extracted_inputs.txt or a DCII escalation; (2) the relative phrasing is bounced back with "please restate using the canonical parameter names", costing the user a turn; (3) the Receptionist replies "160 mm is outside the allowed 60–80 range" and the UII never gets to write the OUT OF RANGE marker.
+- *Cuts:* `RCP-05`, `RCP-31`, `RCP-30`, `RCP-06`
+
+**Watch:** With RAG on, the Receptionist does not run database_search itself on behalf of the chain: when the user mandates that the agents consult past sessions, the log shows the mandate relayed verbatim-in-force in the call_orchestrator message and NO `[TOOL CALL]  Receptionist -> database_search` on that turn.
+
+- *Trigger:* With RAG_ENABLED=True: "The agents MUST look at the database and analyse three previous propeller sketches before designing this one."
+- *Regression looks like:* A Receptionist database_search / retrieve_attempt call appears before the forward and its results are pasted into the summary; downstream agents then never search themselves and never see the past images. Also watch that the relayed wording keeps "MUST" rather than softening to "would like the agents to consider".
+- *Cuts:* `RCP-26`, `RCP-07`
+
+**Watch:** PROMPT-INSPECTION, not a session check: open System prompts -> Receptionist with RAG_ENABLED=False and confirm the "Your DBa scope" section is gone (the audit claims it currently sits OUTSIDE the <<HAS_DBA>> region, so the agent is handed ~1.3k chars of rules for tools it is not bound to).
+
+- *Trigger:* Workflow Settings -> RAG off, then System prompts view -> Receptionist, search for "Your DBa scope".
+- *Regression looks like:* The section is still present with RAG off — the cut's claimed saving did not materialise, and the agent is still told about database_search / retrieve_user_inputs / retrieve_attempt it cannot call.
+- *Cuts:* `RCP-26`
+
+### Orchestrator (8 checks)
+
+**Watch:** On EVERY completed cycle the log shows the four-hop tail `DC Output Inspector -> Orchestrator`, `Orchestrator -> Planner`, `Planner -> Orchestrator`, `Orchestrator -> Receptionist`. The Orchestrator's message to the Planner carries facts only (each attempt's number + absolute path, plus the DCOI verdict) and does NOT recommend which attempt to show.
+
+- *Trigger:* The simplest clean run: "design a 3-blade propeller with thick blades", where the DCOI approves first time.
+- *Regression looks like:* `Orchestrator -> Receptionist` follows the DCOI verdict directly, with the Planner absent from the second half of the cycle — the final-approver protocol (the whole point of Planner-as-final-approver) is gone. Milder form: the Orchestrator's message to the Planner already says "recommend showing attempt 4", pre-empting the pick.
+- *Cuts:* `ORC-01`
+
+**Watch:** The `Orchestrator -> Receptionist` message carries, on their own lines, an `Attempts this cycle:` block listing EVERY attempt produced this cycle as `- Attempt N — <absolute path>` (including single-attempt cycles), and a `Show to user: Attempt N  (Planner approved — <reason>)` line transcribing the Planner's own pick and reason.
+
+- *Trigger:* Force a multi-attempt cycle: "design a propeller with innerChord 11 mm and innerThickness 3 % — if that fails, fix it and try again", or "generate a thin-blade version and a thick-blade version".
+- *Regression looks like:* The block is missing, uses relative paths, or omits an attempt. Downstream the Receptionist's anti-stale rule then makes it list NO parameter values or paths at all, so the user gets a result message with no numbers. Or `Show to user:` names a different attempt than the Planner's message named.
+- *Cuts:* `ORC-02`, `ORC-28`
+
+**Watch:** Label discipline on hand-offs the Orchestrator originates: `call_user_input_inspector` carries `Input directory:` and `Extraction output file:` copied verbatim from its own incoming `Input file directory:` line; `call_dc_input_creator` for a NEW generation carries NO `Current attempt:`; `call_tool_caller` carries BOTH `Current attempt: <abs path>` and `Parameters file: <Current attempt>/parameters.json`.
+
+- *Trigger:* Turn 1 of any session exercises the UII lines; the first generation cycle exercises the rest.
+- *Regression looks like:* UII tools fail on turn 1 with "Error: no directory path provided"; the Tool Caller escalates "no Current attempt / Parameters file line"; or TWO attempt folders appear for one generation (the Orchestrator pre-opened one via new_attempt and the DCIC opened another), one of them empty of parameters.json.
+- *Cuts:* `ORC-25`, `ORC-09`
+
+**Watch:** The Orchestrator's technical summary to the Receptionist offers no follow-up the system cannot deliver — no performance/CFD/FEA estimate, no STL/STEP export, no extra camera angle, no higher-resolution render, no mesh post-processing.
+
+- *Trigger:* Finish any normal design run and read the wrap-up; then, for a harder probe, send "what else can you do with this design?" and read the resulting summary.
+- *Regression looks like:* The summary (and therefore the user-facing message, since the Receptionist relays it) contains "if the user wants performance estimates…", "we can export this as STL", or "I can render it from another angle".
+- *Cuts:* `ORC-07`, `ORC-15`, `ORC-22`
+
+**Watch:** The Orchestrator supplies the three things only it can: whether the user gave NEW inputs this turn, WHERE each parameter change came from (user / Planner / other agent, named explicitly), and any user permission to vary a value including its scope. It does not manufacture a Planner directive on top of a direct user authorisation.
+
+- *Trigger:* Two-turn session: turn 1 "4 blades, impellerRadius 75 mm"; turn 2 (after the chain asks) "yes, you may vary the radius, but not the blade count".
+- *Regression looks like:* The DCII CLARIFYs back "impellerRadius moved with no stated author" or "no authorisation for this change"; or an extra Planner round-trip appears purely to re-issue permission the user already gave (a wasted cycle visible as Orchestrator -> Planner -> Orchestrator with no new information).
+- *Cuts:* `ORC-03`, `ORC-17`
+
+**Watch:** Cycles never stall silently: every Orchestrator turn ends in a routing tool call. There is no point in the log where the Orchestrator's reasoning is the last thing that happens.
+
+- *Trigger:* A long session — a precision refine run with several rounds, or a run with 3+ attempts.
+- *Regression looks like:* The session stops with no `[RECEPTIONIST -> USER]` line and the log's last Orchestrator entry has no following `[AGENT MSG]  Orchestrator -> …`. NOTE: ORC-08 removes $hard_constraints_generic and ORC-32 is where the halt rule lands instead — if only ORC-08 is applied, this failure has no statement anywhere in the Orchestrator prompt.
+- *Cuts:* `ORC-08`, `ORC-32`
+
+**Watch:** PROMPT-INSPECTION: in System prompts -> Orchestrator, the parameter table lists exactly 16 names with the ranges bladeCount 3–6, impellerRadius 60–80, impellerThickness 1–5, inner/outer Thickness 3–24, MaxPos 2–8, Camber 0–9, innerChord 3–11, middle/outerChord 10–30, all Angles 2–25, middlePos 0.3–0.7 — and states that *Thickness/*Camber are % of that section's OWN chord and that middlePos is a span fraction from the 4 mm root.
+
+- *Trigger:* System prompts view; diff the rewritten table against DC_prompt_fragments/dc_config/parameters.md before the change.
+- *Regression looks like:* A single mis-transcribed bound is a systemic failure: the DCII range check passes a value the generator rejects, or an agent proposes middlePos 0.8. Not detectable from one session — verify by reading, not by running.
+- *Cuts:* `ORC-11`
+
+**Watch:** Precision refine loop: DCOI shape-feedback is relayed straight to the DCIC without a Planner re-plan, and the standing directive block travels with it.
+
+- *Trigger:* Precision section run (precise airfoil drawing + "match as precisely as possible").
+- *Regression looks like:* Each refine round detours through the Planner (visible as an extra Orchestrator -> Planner hop per round), burning the 8-round cap on routing rather than on refinement; or the DCOI's prose feedback is rewritten into numeric parameter instructions before reaching the DCIC.
+- *Cuts:* `ORC-10`, `ORC-13`
+
+### User Input Inspector (9 checks)
+
+**Watch:** `inputs/extracted_inputs.txt` §3 DESIGN INTENT carries a `PRECISION DEMAND: <what they asked>` line at the user's own strength, and the log then shows the Planner issuing a `=== STANDING DIRECTIVES (copy verbatim to the next agent) ===` block.
+
+- *Trigger:* Upload a measured blade-section (airfoil) drawing and write: "recreate these blade sections as precisely as possible — make as many attempts as you need."
+- *Regression looks like:* No PRECISION DEMAND line in the extraction file. Downstream consequence is the visible one: the Planner issues no standing directive, the DCOI approves the first render, and the whole session finishes in one cycle instead of iterating.
+- *Cuts:* `UII-01`, `UII-22`
+
+**Watch:** A subordinated value keeps its literal marker on its normal QUANTITATIVE INPUTS line: `- impellerRadius: ~75 mm — SOFT TARGET (goal: match the sketched blade shape; keep near 75 mm if free, but vary freely to fit the shape)`, and the goal is named in DESIGN INTENT. It is neither a plain locked line nor omitted.
+
+- *Trigger:* Upload a blade sketch and write: "impellerRadius 75 mm and 4 blades — but fit the sketched shape; the exact numbers matter less."
+- *Regression looks like:* Two distinct failures, both visible in the file: (a) the radius is recorded as a plain locked line, so the DCIC pins 75 and the sketch shape is never matched; (b) the radius is dropped from QUANTITATIVE INPUTS entirely, so it becomes FREE and the DCIC ignores 75 completely. Also watch the marker's exact spelling — the DCIC/DCII/DCOI match on the literal string `SOFT TARGET`.
+- *Cuts:* `UII-05`, `PLN-01 (value_states.md)`, `DCII-04`, `DCOI-04`, `DCIC-34`
+
+**Watch:** The Parameters Inputs FIXED/RELEASED blocks are walked forward as snapshots: after pinning two values then releasing one, extracted_inputs.txt lists exactly the still-pinned value, and the released key appears NOWHERE — not as a value, not as "(no longer fixed)", not as an annotation.
+
+- *Trigger:* In Parameters Inputs pin bladeCount=5 and impellerRadius=70, send "design this". Then unpin impellerRadius only and send "make the blades thicker". Read inputs/extracted_inputs.txt after the second turn.
+- *Regression looks like:* impellerRadius still listed (the DCIC then keeps 70 the user meant to free), or listed with an annotation like `impellerRadius: 70 (formerly fixed)`, or the two FIXED blocks merged as a delta so both turns' pins survive.
+- *Cuts:* `UII-06`, `UII-32`, `UII-03`
+
+**Watch:** Countable features are counted from the IMAGE, not the note text: extracted_inputs.txt records `bladeCount: <n>` matching what is drawn, and a note/image disagreement is written up in QUALITATIVE DESCRIPTIONS.
+
+- *Trigger:* Upload a top-view sketch that clearly shows 5 blades, with the note text saying "4-blade propeller".
+- *Regression looks like:* The extraction says 4 (note-derived), or says 5 with no discrepancy recorded so the mismatch never reaches the user. Either way the eventual mesh has a blade count the user did not draw.
+- *Cuts:* `UII-13`, `UII-41`
+
+**Watch:** For a precise section drawing, QUALITATIVE DESCRIPTIONS carries the `SUGGESTED SECTION SHAPES (rough estimate read from the precise drawing — a STARTING POINT …, NOT a user-locked value)` block with all three per-section triples, plus a `SKETCH CROP REGION`.
+
+- *Trigger:* Same precise airfoil upload as the PRECISION DEMAND check.
+- *Regression looks like:* Block absent — the DCIC cold-starts from defaults and the first two refine rounds are wasted converging on proportions the UII could see. Or the block appears WITHOUT the "NOT user-locked" framing, and the DCII then CLARIFYs back every time the DCIC moves off those numbers, deadlocking the loop.
+- *Cuts:* `UII-09`, `UII-10`
+
+**Watch:** An out-of-range user value is recorded UNCHANGED with the breach appended: `- impellerRadius: 160 mm — OUT OF RANGE (allowed [60; 80])`. Never clamped, never dropped. The parameter name and range quoted must be real ones.
+
+- *Trigger:* "Make a propeller with impellerRadius 160 mm and 4 blades."
+- *Regression looks like:* The file shows 80 mm (clamped), or 160 with no marker (then the DCII rediscovers it late and escalates, costing a round-trip). Also watch for the agent parroting the old prompt's bogus example — a line naming `outerRadius` with range `[10; 140]`, neither of which exists in this configurator.
+- *Cuts:* `UII-39`
+
+**Watch:** The forward hand-off carries the path lines verbatim: `[AGENT MSG]  User Input Inspector -> Planner` (or -> DC Input Creator under PLANNER_FIRST) contains `Extracted inputs file: <absolute path>`, and `Current attempt:` only when the incoming hand-off supplied one.
+
+- *Trigger:* Turn 1 of any session. Also verify once with PLANNER_FIRST=True so the <<PF_ON>> branch is exercised.
+- *Regression looks like:* The recipient escalates "no Extracted inputs file line" or reads a guessed path; under PF_ON, the extraction-only branch routes to the Planner instead of the Orchestrator. A malformed <<PF_ON>>/<<PF_OFF>> edit shows up as literal `<<PF_ON>>` text in the System prompts view.
+- *Cuts:* `UII-14`, `UII-37`, `UII-43`
+
+**Watch:** Sketch strictness: a rough freehand doodle is recorded as ROUGH (and the run does not iterate on wobble); a pre-printed FORM's printed guide values are treated as scaffolding — only the handwritten marks become inputs.
+
+- *Trigger:* (a) Upload a rough freehand top-view doodle with no dimensions and say "make this". (b) Upload a pre-printed spec form printing "Ø160 / Ø120" guides and "5 mm max", with a hand-drawn outline labelled "Ø140" and a hand-drawn ~3 mm ring.
+- *Regression looks like:* (a) The extraction claims precision, a standing directive is issued, and the chain iterates chasing hand-tremor asymmetry. (b) The extraction records 160 mm as the user's diameter, or treats "5 mm max" as an enforced limit — the exact Ø160-vs-Ø140 misread this text was written for.
+- *Cuts:* `UII-02`, `UII-29`, `UII-26`, `UII-19`
+
+**Watch:** With the qualitative→parameter hint table removed from the UII, the extraction still captures descriptors faithfully in QUALITATIVE DESCRIPTIONS and still does NOT invent numbers in QUANTITATIVE INPUTS.
+
+- *Trigger:* "I want a big propeller with really thick, aggressive blades and the middle section close to the centre" — no numbers at all.
+- *Regression looks like:* Two opposite failures: invented lines appear in QUANTITATIVE INPUTS (e.g. `innerThickness: 20 %`) which the DCII will read as user-imposed; or QUALITATIVE DESCRIPTIONS becomes so terse ("user wants a large thick propeller") that the DCIC has nothing to map "aggressive" or "middle section close to the centre" onto.
+- *Cuts:* `UII-38`, `UII-30`, `UII-11`
+
+### Planner (7 checks)
+
+**Watch:** On every completed cycle the Planner's reply names exactly one of the four outcomes — APPROVE (with which attempt to show and a one-line reason), REVISE (with a recovery sequence), REPLY DIRECTLY, or CONTINUE-to-3D — and it does so even when the DCOI cleanly approved.
+
+- *Trigger:* The simplest clean run: "design a 4-blade propeller with thick blades", first cycle approved by the DCOI.
+- *Regression looks like:* The Planner returns commentary with no pick, so the Orchestrator has nothing to put in `Show to user:` and the Receptionist ends up listing no parameter values. Or the Planner rubber-stamps without reading — visible as an approval with no preceding `read_agent_history('dc_output_inspector')` / `read_attempt` tool call in that turn.
+- *Cuts:* `PLN-11 (planner/prompt.md §Role 3)`, `PLN-07 (planner/prompt.md §APPROVE)`, `PLN-08 (planner/prompt.md §REPLY DIRECTLY/ESCALATE)`
+
+**Watch:** For a precision job the Planner's hand-off contains the literal delimiters `=== STANDING DIRECTIVES (copy verbatim to the next agent) ===` … `=== END STANDING DIRECTIVES ===` (byte-exact — the code's loss-detector matches on this string), and the directive text covers all four requirements: DCOI must NOT approve the first render nor on proportions alone; compare side by side against the sketch crop; the DCIC may move ANY user-authorised parameter INCLUDING chords; report the residual honestly.
+
+- *Trigger:* Precise blade-section drawing + "match the section shapes as precisely as possible".
+- *Regression looks like:* No block at all → no refine loop, one-shot approval. Worse and subtler: a block whose text restates only a SUBSET of the authorisation (e.g. names thickness and camber but not chord) — this is the exact bug that silently revoked a chord authorisation, and it shows as the DCIC holding every *Chord constant across all 8 rounds while the DCOI keeps reporting "still too thin".
+- *Cuts:* `PLN-04 (planner/prompt.md §Issue a STANDING DIRECTIVE)`, `UII-01`
+
+**Watch:** 3D continuation: once a sections precision job converges or caps, and the user ALSO supplied a whole-propeller / top / side view, the Planner issues a FRESH 3D directive that REPLACES the sections one (exactly one block in the message, not two) and only approves after the 3D cycle finishes.
+
+- *Trigger:* Upload BOTH a precise blade-section drawing and a top-view outline, then "match both as closely as you can".
+- *Regression looks like:* The session ends at sections convergence and the top view is never checked. Or two directive blocks appear in one message — `extract_directive` takes the LAST one, so whichever the Planner wrote second silently wins and the other is dead text.
+- *Cuts:* `PLN-11 (planner/prompt.md §Role 3)`, `DCOI-08`
+
+**Watch:** Any Planner hand-off directing a change to a user-provided value names the parameter(s), WHICH ones the authorisation covers, and HOW FAR each may move. A number the user gave in chat that the extraction has not recorded yet — including a `[Receptionist clarification: …]` line — is treated as LOCKED.
+
+- *Trigger:* Two turns: "innerChord 11 mm, outerChord 10 mm, 6 blades" (an infeasible combination that forces a recovery), then when asked, "you can change the chords if you must".
+- *Regression looks like:* A directive reading only "adjust as needed for viability" with no parameter named — the DCII then CLARIFYs it back as unauthored, or the DCIC treats it as blanket permission and moves bladeCount too. Or a value the user gave mid-conversation gets varied because it was not yet in extracted_inputs.txt.
+- *Cuts:* `PLN-21`, `PLN-01 (value_states.md)`
+
+**Watch:** When every relevant lever is locked and the design is infeasible, the Planner ESCALATES with a specific question to the user instead of ordering another identical cycle.
+
+- *Trigger:* Pin a combination that violates a modelling-note hard blocker through the Parameters Inputs panel (e.g. innerChord at 11 with innerThickness at 3 and a tight ring) and demand "build exactly this".
+- *Regression looks like:* Identical DCIC→DCII→Tool Caller cycles repeat with byte-identical parameters.json until the dispatch hop cap, and the user gets a step-limit error instead of a question they could have answered in one word.
+- *Cuts:* `PLN-22`, `PLN-23`
+
+**Watch:** PROMPT-INSPECTION: the Planner's parameter table (System prompts view) still lists all 16 names/units/ranges, and the middlePos entry still carries the span formula `radius = 4 + middlePos·(impellerRadius − 4)` from the 4 mm root.
+
+- *Trigger:* System prompts view; diff the rewritten table against the pre-change parameters.md.
+- *Regression looks like:* Not observable in a single session — a wrong bound only shows up when a design happens to land near it. Verify by reading. Note these three cut ids collide with same-numbered planner/prompt.md cuts; check the `file` field before applying.
+- *Cuts:* `PLN-10 (parameters.md)`, `PLN-11 (hard_constraints_dc.md)`, `PLN-12 (hard_constraints_tools.md)`
+
+**Watch:** The Planner does not attempt image analysis after the form-scaffolding paragraph is dropped — it acts on the UII's extraction, not on its own reading of the drawing.
+
+- *Trigger:* The filled-in-form upload (printed Ø160 guides, handwritten Ø140).
+- *Regression looks like:* NOT INDEPENDENTLY OBSERVABLE. The Planner never loads images, so the only way a printed guide value becomes the design is through the UII's extraction — this collapses into the UII form check (UII-29). If the UII check passes, PLN-28 carries no separate risk.
+- *Cuts:* `PLN-28`, `PLN-27`
+
+### DC Input Creator (8 checks)
+
+**Watch:** Exactly ONE attempt folder per generation, and it always ends up containing parameters.json. The log shows one `[TOOL CALL]  DC Input Creator -> new_attempt` followed by one `write_parameters` into the path that call returned.
+
+- *Trigger:* Any design run, then a revision turn ("make the blades thicker"). Inspect `attempts/` on disk afterwards.
+- *Regression looks like:* An empty attempt folder with no parameters.json (a dead folder), two new_attempt calls in one cycle, or the DCIC writing into the PREVIOUS attempt's folder — which breaks the append-only rule and makes the folder's mesh disagree with its parameters.json.
+- *Cuts:* `DCIC-06`, `DCIC-05`, `DCIC-19`, `DCIC-22`
+
+**Watch:** LOCKED values reach parameters.json verbatim — no rounding, no re-scaling, no "improving" — and any user value the draft moved has an authorisation named explicitly in the DCIC's outgoing hand-off.
+
+- *Trigger:* "bladeCount 5, impellerRadius 63 mm, innerChord 7 mm — use exactly these numbers." Then open attempts/attempt_N/parameters.json.
+- *Regression looks like:* parameters.json shows 65 instead of 63, or 7 nudged to 8 "for a better fit". Or the hand-off says "adjusted innerChord for balance" with no authorisation cited — which should have been an ESCALATE to the Orchestrator, not a silent change.
+- *Cuts:* `DCIC-07`, `DCIC-34`, `DCIC-35`, `DCIC-15`
+
+**Watch:** A SOFT TARGET is acted on from ATTEMPT ONE: the very first parameters.json of the run already puts the soft value where the goal requires, rather than pinning the user's number and promising to vary it later.
+
+- *Trigger:* The soft-target run: sketch + "impellerRadius 75 mm but the sketched shape matters more."
+- *Regression looks like:* attempt_1/parameters.json has impellerRadius exactly 75 and the DCIC's hand-off says something like "kept the user's value for now; will vary if the shape does not match" — a wasted cycle that the marker was designed to prevent.
+- *Cuts:* `DCIC-07`, `DCIC-32`, `DCIC-44`
+
+**Watch:** Pre-write validation actually happens: the log shows a `calculate` call (batched) covering the modelling-note blocker inequalities BEFORE `write_parameters`, and no out-of-range value ever appears in a parameters.json.
+
+- *Trigger:* Push toward the edges: "as thick and aggressive as the blades can get, and as large a propeller as possible."
+- *Regression looks like:* parameters.json carries e.g. innerThickness 26 or middlePos 0.8. Note the tell: the DCII catching it is itself the symptom — the DCIC's own check is the first line of defence, and a DCII REVISE for a range breach means it fired second.
+- *Cuts:* `DCIC-08`, `DCIC-12`, `DCIC-DEL-A`, `DCIC-41`
+
+**Watch:** In a precision job the *Chord values actually MOVE across refine rounds when the DCOI reports a section is too thin/too small, and the DCIC's reasoning names that *Thickness/*Camber are percentages of that section's OWN chord.
+
+- *Trigger:* A precision section run where the drawn section is visibly fatter than the configurator's default — a wide, heavily cambered airfoil.
+- *Regression looks like:* Diff parameters.json across attempt_1..attempt_8: every *Chord is identical and only the ratio parameters move. The DCOI keeps saying "still too thin" and the run dies at the `[DISPATCH] Sections refine cap (8) reached` warning — the exact failure mode of the two 2026-07-18 production runs.
+- *Cuts:* `DCIC-04`, `DCIC-18`, `DCIC-37`, `PLN-04 (planner/prompt.md §Issue a STANDING DIRECTIVE)`
+
+**Watch:** parameters.json contains EXACTLY the 16 named keys — no extras, no omissions — and the DCIC never proposes a supplemental parameter in its hand-off.
+
+- *Trigger:* "Add a 2 mm fillet where each blade meets the ring, and give the hub a radius of 8 mm."
+- *Regression looks like:* parameters.json gains a 17th key (the Tool Caller's read then feeds a bad dict to the generator), or the DCIC's message to the DCII proposes hub_radius / fillet_radius as if they existed. DCIC-28 removes the explicit named-rejection list for this agent, so this is the direct test of whether the general principle suffices.
+- *Cuts:* `DCIC-28`, `DCIC-45`
+
+**Watch:** middlePos is computed as a fraction of blade SPAN from the 4 mm root, not a fraction of radius from centre: radius = 4 + middlePos·(impellerRadius − 4).
+
+- *Trigger:* "impellerRadius 80 mm, and put the middle blade section about 30 mm out from the centre."
+- *Regression looks like:* parameters.json shows middlePos ≈ 0.375 (= 30/80, the from-centre reading) instead of ≈ 0.34 (= (30−4)/(80−4)). This is a known past bug — DCIC-45 removes the third copy of the structure text, so this check verifies the surviving copies are enough. Check the `calculate` call's expression in the log to see which formula was used.
+- *Cuts:* `DCIC-45`, `DCIC-36`, `DCIC-39`, `UII-33`
+
+**Watch:** The DCIC re-reads `extracted_inputs.txt` when — and only when — the hand-off says the user supplied new inputs this turn.
+
+- *Trigger:* A three-turn session: design, then a pure revision instruction ("thicker blades"), then a new upload.
+- *Regression looks like:* The DCIC works from a stale remembered extraction after a new upload (visible as no `read_extracted_inputs` call on the turn following the upload), so the new image's content never reaches parameters.json.
+- *Cuts:* `DCIC-11`, `DCIC-24`, `DCIC-01`
+
+### DC Input Inspector (7 checks)
+
+**Watch:** The range check is per-parameter and explicit: the DCII's message enumerates the values it checked (or the log shows `calculate` calls covering them), never a blanket "all 16 values are within bounds". Strictly outside is a hard FAIL; exactly at min or max passes.
+
+- *Trigger:* A run that lands values at the extremes: "the thickest, most aggressive blades possible on the largest ring" — then check whether anything sits at or beyond a bound.
+- *Regression looks like:* `[AGENT MSG]  DC Input Inspector -> Tool Caller` approving a set that contains an out-of-range value, with a message reading "all parameters are in range" and no per-value evidence. The generator then fails or produces degenerate geometry — this is the exact false-APPROVE incident this text was written for.
+- *Cuts:* `DCII-06`, `DCII-22`, `DCII-26`
+
+**Watch:** The verdict word in the DCII's message MATCHES the routing tool it actually invoked: APPROVE → `-> Tool Caller`, REVISE → `-> DC Input Creator`, ESCALATE → `-> Orchestrator`. Nothing in code enforces this pairing, so the log header is the only evidence.
+
+- *Trigger:* Any run containing at least one revision — e.g. request something infeasible so the first parameter set gets bounced.
+- *Regression looks like:* A message whose text says "REVISE — innerChord out of range" arriving at the Tool Caller (a bad set gets built), or an approved set routed to the Orchestrator (the cycle stalls and the Orchestrator has to re-dispatch).
+- *Cuts:* `DCII-08`, `DCII-24`
+
+**Watch:** Authority order Planner directive > extraction > DCIC discretion: when a directive authorised moving a user value, the DCII approves rather than bouncing it; when the DCIC moved a LOCKED value with no author, the DCII CLARIFYs back to the DCIC (not to the user via the Orchestrator), and escalates only if the same problem survives one CLARIFY.
+
+- *Trigger:* A recovery cycle where the Planner explicitly authorises varying an impellerRadius the user gave: infeasible first request → Planner recovery plan naming the radius as free → new parameter set.
+- *Regression looks like:* Ping-pong: the DCII CLARIFYs "impellerRadius differs from the user's stated 75" on every cycle despite the directive, visible as repeated DC Input Inspector -> DC Input Creator hops with no progress. Or it escalates to ask the user for permission the Planner already granted, costing a user turn.
+- *Cuts:* `DCII-05`, `DCII-15`, `DCII-17`
+
+**Watch:** A user-provided OUT-OF-RANGE value escalates only when NOTHING authorises moving it. Once a SOFT TARGET marker, a hand-off permission, a DESIGN INTENT authorisation or a Planner directive exists, the DCII CLARIFYs back to the DCIC to bring it into range instead of asking the user again.
+
+- *Trigger:* Turn 1: "impellerRadius 160 mm, 4 blades" (expect ESCALATE → a user question). Turn 2: "yes, bring it into a buildable range." (expect CLARIFY to the DCIC and a build at ≤80).
+- *Regression looks like:* Turn 2 produces a SECOND user question about the same value, or the first turn silently clamps 160→80 with no user question at all.
+- *Cuts:* `DCII-08`, `DCII-04`
+
+**Watch:** Hard-blocker feasibility checks still run: the DCII uses `calculate` on the modelling-note inequalities rather than eyeballing them, and blocks a geometrically impossible set.
+
+- *Trigger:* A set that violates a modelling-note blocker — e.g. a large innerChord with a small ring radius and a middlePos near the root.
+- *Regression looks like:* An impossible set is approved and the Tool Caller's generator fails or produces a self-intersecting mesh; the log shows the DCII approving with no `calculate` call that turn.
+- *Cuts:* `DCII-02`, `DCII-20`, `DCII-27`
+
+**Watch:** With the shared sketch_handling fragment scoped out of this prompt, the DCII still applies the right strictness: it does not REVISE a parameter set for failing to match hand-tremor detail in a rough doodle, and it does not treat a form's printed guide values as user constraints.
+
+- *Trigger:* (a) rough doodle run; (b) the printed-form run (Ø160 printed, Ø140 handwritten).
+- *Regression looks like:* (a) REVISE verdicts citing asymmetry the user drew by hand; (b) a REVISE citing "impellerRadius should be 160 per the drawing" — DCII-01 removes 10k chars of sketch guidance from this agent, so this is the direct test of whether the surviving text is enough.
+- *Cuts:* `DCII-01`, `UII-02`, `UII-29`
+
+**Watch:** A SOFT TARGET deviation is not treated as a violation: the DCII approves a soft value that moved to serve its goal, without demanding a justification.
+
+- *Trigger:* The soft-target sketch run, once the DCIC has moved the radius off 75 on attempt 1.
+- *Regression looks like:* `REVISE — impellerRadius 71 does not match the user's 75 mm` on the first cycle, which restarts the loop and eventually pins the design back to the number the user explicitly subordinated.
+- *Cuts:* `DCII-04`, `DCII-05`
+
+### Tool Caller (6 checks)
+
+**Watch:** Hard preconditions are enforced: with no `Current attempt:` line, or no `Parameters file:` line, the Tool Caller ESCALATES to the Orchestrator rather than guessing a path or calling new_attempt (which it is not bound to).
+
+- *Trigger:* Hard to force deliberately from the UI. Watch it opportunistically on any run where the Orchestrator originates a call_tool_caller — and check every `[TOOL CALL]  Tool Caller -> read_parameters` argument against a path that actually appeared in the incoming hand-off.
+- *Regression looks like:* A read_parameters call with a path that appears nowhere in the preceding hand-off (a guessed path), or a generation writing into a folder no one named. Practically, the visible tell is a mesh landing in the wrong attempt folder, so its parameters.json and mesh disagree.
+- *Cuts:* `TC-07`, `TC-10`, `TC-11`, `ORC-09`
+
+**Watch:** The Tool Caller re-checks all 16 values against their ranges before generating, independently of upstream, and escalates rather than building a bad set.
+
+- *Trigger:* Not directly triggerable while the DCII is enabled. Turn DC_INSPECTOR_ENABLED off in Workflow Settings and run a request that pushes to the extremes — the Tool Caller then becomes the last gate.
+- *Regression looks like:* With the DCII off, an out-of-range set reaches the generator: the log shows generate_and_render_propeller called and then failing, or producing a mesh with a degenerate-face count. TC-03 removes the DC-specific hard-constraints fragment from this agent, so this check is what tells you whether the one-line replacement holds.
+- *Cuts:* `TC-06`, `TC-03`, `TC-08`
+
+**Watch:** The hand-off to the DCOI states plainly what is FRESH this cycle: whether a NEW mesh was generated vs an existing one REUSED, whether NEW renders were produced vs reused in place, and the CURRENT QC numbers — taken from the tool's own return text.
+
+- *Trigger:* Any run with two cycles on the same attempt (a re-render / QC re-run without regeneration), which happens naturally in a precision refine loop.
+- *Regression looks like:* The DCOI verdict quotes QC numbers from the previous cycle, or re-loads all render images every single cycle because the hand-off was too vague to tell it not to (visible as extra view_images calls and a slower loop).
+- *Cuts:* `TC-02`, `TC-09`
+
+**Watch:** When the hand-off asks for blade SECTIONS, the Tool Caller calls `render_blade_sections` with the Parameters file path and does NOT generate the 3D mesh that cycle; when it does not ask, the full mesh is generated.
+
+- *Trigger:* A precision sections refine round (a precise airfoil drawing + "match as precisely as possible"), with BLADE_SECTIONS_VISUALIZER_ENABLED on.
+- *Regression looks like:* Every refine round generates a full 3D mesh (slow, costly), and the DCOI has no sections image to put side-by-side with the sketch crop — so the refine loop degrades into judging the 3D render against an airfoil drawing.
+- *Cuts:* `TC-12`, `TC-04`, `TC-31`
+
+**Watch:** The Tool Caller never offers or attempts mesh post-processing, an alternate export format, or an extra camera angle, and never invents a tool.
+
+- *Trigger:* Get a hand-off that asks for something impossible — e.g. after a mesh with holes, ask "can you weld the seams and export as STL?" and let the chain carry it down.
+- *Regression looks like:* The Tool Caller's message proposes a repair step, or it attempts a tool name that does not exist (visible as a tool-error line in the log followed by a retry).
+- *Cuts:* `TC-03`, `TC-32`, `TC-08`
+
+**Watch:** NOT OBSERVABLE DURING A SESSION. TC-05 deletes the end-of-session feedback block, whose only effect is on the Tool Caller's answers to the Database Handler after End Session. The single visible surface is the saved DB rows' Tool Caller fields.
+
+- *Trigger:* Run a session where the Orchestrator relays user feedback about tool execution, End Session with save, then read the Tool Caller's saved fields in the Database view.
+- *Regression looks like:* The saved answers contradict the user's end-of-session feedback (which the agent no longer knows to treat as ground truth). This is a quality judgement on a text field, not a pass/fail — treat it as low-value to check unless DB quality matters to the owner.
+- *Cuts:* `TC-05`
+
+### DC Output Inspector (7 checks)
+
+**Watch:** Every visual claim in the DCOI's verdict is backed by a `[TOOL CALL]  DC Output Inspector -> view_images` in THAT SAME turn on THIS hand-off's render paths. If no images were loaded, the verdict says so explicitly ("renders not loaded this turn — verdict based only on QC numerics").
+
+- *Trigger:* A second or third cycle in the same session, so prior renders are already in the DCOI's history. Run once with KEEP_IMAGES_IN_CONTEXT on and once off.
+- *Regression looks like:* A cycle-2 verdict reading "the renders show clean, watertight blades with no holes" with no view_images call anywhere in that turn — the exact anti-hallucination failure this HARD RULE was written for. The paths being identical to a prior cycle's is not an excuse; the file contents changed.
+- *Cuts:* `DCOI-11`, `DCOI-31`, `DCOI-34`
+
+**Watch:** With a standing precision directive active, the FIRST render is never approved. The first verdict is a `PRECISION REFINE` routed to the Orchestrator, carrying prose shape feedback naming section + feature + direction ("inner too thin, leading edge too pointed; middle camber shallower than drawn") and no dictated numbers. There is ONE `view_images` call with `side_by_side=True` loading this cycle's sections render plus the sketch cropped to the UII's `SKETCH CROP REGION`.
+
+- *Trigger:* Precise airfoil drawing + "recreate these sections as precisely as possible".
+- *Regression looks like:* Cycle 1 approves and the session ends (the whole refine feature is dead). Or the DCOI loads only the render and not the sketch — the standing directive is supposed to override the comparison mode's normal exclusion of raw user images. Or the feedback dictates values ("set innerThickness to 14"), stealing the DCIC's job.
+- *Cuts:* `DCOI-07`, `DCOI-16`, `DCOI-20`
+
+**Watch:** In the 3D phase the DCOI iterates only when an UNLOCKED lever (a SOFT TARGET counts) can measurably improve the match; when the mismatch traces to LOCKED numbers or the configurator's limits it STOPS and says so. Unlike the sections loop, a first 3D render MAY be approved.
+
+- *Trigger:* Sections + top-view precision run with impellerRadius and bladeCount pinned through the Parameters Inputs panel, and a top-view sketch whose outline those locked values cannot reproduce.
+- *Regression looks like:* Round after round chasing a mismatch no free lever can fix, ending at the `[DISPATCH] Sections refine cap (8) reached — forcing an honest finalize` warning. That warning line is the giveaway; a healthy run should have stopped on its own with an honest report.
+- *Cuts:* `DCOI-08`
+
+**Watch:** Rough vs precise strictness: on a rough doodle the DCOI does NOT order revisions for asymmetry, wobble or off-centre features, and treats a sketch-quality-only mismatch as CONVERGED.
+
+- *Trigger:* Upload a rough freehand top-view doodle with no dimensions and say "make this".
+- *Regression looks like:* Repeated REVISE verdicts citing "the hub is off-centre relative to the sketch" or "blade 3 is wider than blade 1" — artifacts of a human hand, not intent. The user sees a long run that never converges. DCOI-01 strips 8.2k chars of sketch guidance from this agent, so this is the primary test of the replacement.
+- *Cuts:* `DCOI-01`, `DCOI-05`, `DCOI-12`, `DCOI-39`
+
+**Watch:** Every thickness/camber instruction says WHICH quantity it means — ratio or millimetres — and the DCOI is aware that a pinned chord caps absolute size however far the ratio is pushed.
+
+- *Trigger:* "Keep the blade thickness the same but make the blades wider."
+- *Regression looks like:* The DCOI writes "keep the thickness as is" without qualification, the DCIC grows the chord holding the RATIO, and the section gets visibly thicker in mm — then the next DCOI verdict complains it got thicker. Two consecutive verdicts contradicting each other on the same parameter is the recognisable signature.
+- *Cuts:* `DCOI-14`, `DCOI-17`, `DCOI-23`
+
+**Watch:** Ordering discipline in the default comparison mode: the DCOI loads this cycle's renders and forms its visual judgement BEFORE reading extracted_inputs.txt / user_query.txt — visible as `view_images` preceding `read_extracted_inputs` in the tool-call sequence for that turn.
+
+- *Trigger:* Any cycle. Easiest to catch on a run where the extraction is wrong on purpose — e.g. the 5-blades-drawn / 4-blades-noted image, where the extraction may say one thing and the render shows another.
+- *Regression looks like:* read_extracted_inputs comes first and the verdict then "confirms" the extraction — e.g. reports 4 blades because the extraction says 4, when the render shows 5. This is confabulated agreement, precisely what the anti-anchoring ordering rule prevents. NOTE: these literals live in agents/dc_output_inspector/dc_output_inspector.py, not in an editable fragment — the System Prompts UI cannot show or edit them.
+- *Cuts:* `DCOI-06`, `DCOI-02`, `DCOI-18`
+
+**Watch:** A SOFT TARGET deviation is not reported as a defect, and a value the user locked is not silently excused.
+
+- *Trigger:* The soft-target run (radius subordinated to the sketched shape).
+- *Regression looks like:* The verdict flags "impellerRadius is 71, the user asked for 75 — REVISE", forcing a cycle that undoes exactly what the SOFT TARGET marker authorised.
+- *Cuts:* `DCOI-04`, `DCOI-15`
+
+### Database Handler (6 checks)
+
+**Watch:** After End Session (with save), the saved session log contains `[DH]  semantic pairs within per-pair cap for <agent>/<field>: […] <= <cap> each` and NOT a run of `[DH]  N/M semantic pair(s) OVER the <cap>-token per-pair cap … asking for shorter version(s)` warnings.
+
+- *Trigger:* Run a long session (several attempts plus a precision refine loop so the agents' histories are rich), then End Session with save and read the tail of the saved log.
+- *Regression looks like:* Repeated OVER-cap warnings followed by `keeping the shorter version` — every one is a wasted extra LLM round-trip at save time, and any pair that stays over cap embeds badly or is dropped. DH-06 is the ONLY surviving statement of the per-pair cap if the token-budget section is also cut, so this is the direct test.
+- *Cuts:* `DH-06`, `DH-14`
+
+**Watch:** The saved `QUESTION` field is a SHORT (under ~80 tokens), self-contained rewrite that stands alone without the session context — not the long question the DH actually asked the agent.
+
+- *Trigger:* After a saved session, open the Database view (or Questions for Saved Sessions) and read the QUESTION column for a few agents.
+- *Regression looks like:* QUESTION fields that are paragraphs, contain file paths, contain routing-tool wrappers (`call_dc_input_creator(message=…)`), or reference "this session" / "the above" — all of which make the row retrieve badly on a future semantic search.
+- *Cuts:* `DH-06`, `DH-21`, `DH-22`, `DH-17`, `DH-18`, `DH-20`
+
+**Watch:** All eight interviewable agents still get a per-field pass, and the DH never tries to route to an agent (it holds only save_attempt_data, no routing tools).
+
+- *Trigger:* End Session with save on any complete run; scan the log's `[DH]` lines for one block per agent.
+- *Regression looks like:* An agent silently missing from the saved fields, or DH output that talks about calling the Orchestrator / Receptionist. DH-01 removes the only place the DH is told "route to the Orchestrator, never the Receptionist" — the audit argues that instruction was already wrong for this agent, so watch for the DH becoming confused rather than for the instruction being missed.
+- *Cuts:* `DH-01`, `DH-11`, `DH-15`
+
+**Watch:** The force-tool protocol still fires for attempt-specific questions: the DH resolves which attempt a question is about and the saved answer names it, rather than answering generically across attempts.
+
+- *Trigger:* Save a session that produced 3+ attempts with different parameter sets, then read the saved rows for a question like "why was this parameter chosen".
+- *Regression looks like:* Saved answers that blur several attempts together ("the chord was raised, then lowered, then raised again") with no attempt anchor — the row becomes unusable for a later cross-session lookup.
+- *Cuts:* `DH-02`, `DH-07`, `DH-13`
+
+**Watch:** PROMPT-INSPECTION: in System prompts -> Database Handler, confirm the full `$tool_inventory` text is no longer present (the audit claims $available_agents nests it and drags all 881 chars in on the second safe_substitute pass, defeating the purpose of the brief roster fragment).
+
+- *Trigger:* System prompts view -> Database Handler; search for tool-inventory wording.
+- *Regression looks like:* The inventory is still there — the claimed 2.9k-char saving did not land. This is a size/assembly check, not a behaviour check.
+- *Cuts:* `DH-01`
+
+**Watch:** OBSERVABILITY CAVEAT for this whole agent: the Database Handler runs only post-session, and almost all its cuts (DH-03, DH-05, DH-08, DH-09, DH-10, DH-12, DH-16, DH-19, DH-23 through DH-33) affect only the shape and wording of saved DB rows. There is no live signal during a design session and no automated grader.
+
+- *Trigger:* The only meaningful test is: save one representative session BEFORE applying the DH cuts, save an equivalent one AFTER, and diff the resulting rows field by field in the Database view.
+- *Regression looks like:* Judgeable only by reading: answers that lost their reasoning and became parameter dumps, answers that are no longer self-contained/declarative, or negation-phrased answers that changed polarity. Without a before/after pair there is nothing to compare against — recommend capturing the baseline rows before touching this prompt.
+- *Cuts:* `DH-03`, `DH-05`, `DH-08`, `DH-09`, `DH-10`, `DH-12`, `DH-16`, `DH-19`, `DH-24`, `DH-25`, `DH-26`, `DH-27`, `DH-28`, `DH-29`, `DH-30`, `DH-31`, `DH-32`, `DH-33`
+
+### Cross-cutting checks
+
+Seven checks exercise shared text that is spliced into many prompts. Run each ONCE, not once per agent.
+
+1. ROUTING-CALL-OR-HALT (the single most load-bearing invariant in the fleet).
+   Cuts: PLN-05/PLN-02/PLN-03 (routing.py), UII-07, UII-31, UII-36, DCII-12, DCII-16, DCOI-09, DCOI-28, TC-17, TC-19, DCIC-31, TC-21, ORC-32, PLN-06 (generic_constraints.md).
+   These rewrite the SAME two places: routing_instructions() in agents/shared/routing.py (injected into the 6 chain agents) and the "DON'T communicate in plain prose" bullet in generic_constraints.md. The Receptionist and Orchestrator do NOT receive routing_instructions(), so the generic_constraints bullet is their only statement of the rule — do not delete it there.
+   Watch: no turn anywhere in a long session ends with agent reasoning and no `[AGENT MSG]  X -> Y` line following it.
+   Trigger: one long session — a precision refine run with several rounds plus a couple of revisions.
+   Symptom: the session stops dead with no `[RECEPTIONIST -> USER]` line, no error, and the UI just sits there.
+
+2. STANDING DIRECTIVES VERBATIM CARRY (code-backstopped — read the log, not the outcome).
+   Cuts: DCIC-30, TC-24, UII-28, PLN-03 (generic_constraints.md DOs), DCII-03, DCOI-03.
+   agents/shared/standing_directives.ensure_present() silently re-stamps a dropped block onto the hand-off, and the `[AGENT MSG]` line is logged BEFORE the re-stamp. So the loop keeps working even when an agent drops the block — the only evidence is the log.
+   Watch: once the Planner has issued a block, every subsequent chain hand-off in the log still contains the two literal delimiters `=== STANDING DIRECTIVES (copy verbatim to the next agent) ===` / `=== END STANDING DIRECTIVES ===` with byte-identical body text (the detector normalises whitespace only).
+   Trigger: one precision run with a standing directive active.
+   Symptom: an `[AGENT MSG]` where the block is absent or paraphrased — that agent dropped it and the backstop covered for it. Two blocks in one message is the other failure: extract_directive takes the LAST one.
+
+3. VALUE STATES — LOCKED / SOFT TARGET / FREE (value_states.md, spliced into Planner, DCIC, DCII, DCOI).
+   Cuts: PLN-01, DCII-04, DCOI-04, DCIC-34, DCIC-35, DCIC-33, DCIC-44, DCIC-32.
+   One soft-target run exercises all four agents at once. Watch the chain end-to-end: UII writes the `SOFT TARGET (goal: …; keep near … if free)` marker → DCIC moves the value on attempt 1 without justifying it → DCII approves the deviation → DCOI does not flag it → Receptionist tells the user the number changed and why.
+   Trigger: sketch + "impellerRadius 75 mm and 4 blades, but fit the sketched shape; the exact numbers matter less."
+   Symptom: the chain breaks at whichever agent re-locks the value — a DCII REVISE, a DCOI defect flag, or a DCIC that pins 75 on attempt 1.
+
+4. THE 16-PARAMETER TABLE (parameters.md, spliced into 7 chain agents + conductor + creator).
+   Cuts: ORC-11, PLN-10 (parameters.md), UII-16, DCII-22.
+   Four auditors independently rewrote the SAME file into four different layouts. Pick one. This is a READ check, not a run check: diff every name, unit and bound against the original, and confirm the two facts the rewrites add are correct — *Thickness/*Camber are % of that section's OWN chord, and middlePos is a span fraction from the 4 mm root (radius = 4 + middlePos·(impellerRadius − 4)).
+   Symptom: not detectable from one session. A single mis-transcribed bound produces a DCII that passes a value the generator rejects, or an agent that never explores part of a range. Verify by reading, before running anything.
+
+5. DOMAIN HARD RULES (hard_constraints_dc.md, spliced into all 8 non-DH prompts).
+   Cuts: PLN-11 (hard_constraints_dc.md), DCII-23, UII-21, DCOI-24, TC-32, plus the SCOPE_PER_AGENT drops RCP-30, ORC-15, DCIC-28, TC-03 which remove the fragment from four agents entirely.
+   One turn probes the whole fleet's refusal surface: after a finished design, send "can you estimate the thrust, weld the seams, add a 2 mm fillet, export it as STL, and render it from below?"
+   Watch: nothing in the chain proposes, plans or attempts any of it, and the Receptionist replies that the system does not do these and offers only CAN-list alternatives.
+   Symptom: any agent picking one up. The trimmed enumerations are the risk — if a specific refusal regresses (STL is the likeliest), restore that one word rather than the whole list.
+
+6. TOOL-USE HARD RULES (hard_constraints_tools.md, spliced into all 8 non-DH prompts).
+   Cuts: PLN-12 (hard_constraints_tools.md), DCIC-41, UII-25, DCII-20, DCOI-22, TC-20, plus the drops RCP-31 and ORC-16.
+   Three invariants to watch in one ordinary run: (a) every arithmetic operation goes through `calculate` — spot-check the log for a number derived in prose with no calculate call behind it; (b) no read tool is called with a path that did not come from a hand-off label or a prior tool return; (c) attempt folders stay append-only — no parameters.json is rewritten, and a re-render reuses the existing PNGs in place.
+   Symptom: an arithmetic error in a derived value (the reason mental arithmetic was banned), a guessed path error in the log, or a parameters.json whose mtime is later than its folder's mesh.
+
+7. SKETCH HANDLING (sketch_handling.md, spliced into UII, DCII, DCOI).
+   Cuts: UII-02, UII-09, UII-10, UII-22, UII-26, UII-29, plus DCII-01 and DCOI-01/DCOI-05 which remove the fragment from the DCII and DCOI entirely and replace it with short per-agent text.
+   Two runs cover it: (a) a rough freehand doodle with no dimensions — nothing anywhere should iterate on wobble/asymmetry; (b) a pre-printed form with printed "Ø160 / Ø120" guides and "5 mm max" plus a hand-drawn "Ø140" outline and a ~3 mm ring — only 140 and 3 may become inputs, at any of the three agents.
+   Symptom: 160 mm anywhere in extracted_inputs.txt, parameters.json or a DCOI verdict; or a rough doodle triggering a precision refine loop. Note the original fragment also contains an internal inconsistency ("the 17 parameters" vs "the 16 parameters") that several replacements drop — confirm the surviving text says 16.
+
+8. BUILD-TIME ASSEMBLY CHECK (do this BEFORE any session).
+   agents/shared/prompts.py runs Template.safe_substitute TWICE, then apply_flag_filters, then a per-agent .format(). So in any replacement text: a literal `$` will be eaten by substitution, a literal `{`/`}` will break .format(), and a `$slot` inside a fragment gets expanded on the second pass (the DH-01 nesting bug). Open System prompts for all nine agents and confirm: no literal `$name` left unresolved, no literal `<<CHAIN_ONLY>>` / `<<PF_ON>>` / `<<PF_OFF>>` / `<<BSV_ON>>` / `<<BSV_OFF>>` / `<<HAS_DBA>>` markers visible in the rendered text, and the PROMPT_MD_RUNTIME_SLOTS validator (rule "c") reports clean. Several cuts explicitly preserve or move these markers (DCIC-31's leading `<</CHAIN_ONLY>>`, UII-14's PF branches, DCIC-16's dropped BSV_OFF branch) — a mangled marker turns a whole region into visible garbage or silently deletes the wrong half.
+
+**Notes.** SCOPE: 84 medium-risk cuts were turned into checks, plus the low-risk cuts whose replacements touch something visible in a session log, in inputs/extracted_inputs.txt, in attempts/attempt_N/parameters.json, in the Parameters Inputs panel, the 3D viewer, or the user-facing message.
+
+WHERE BEHAVIOUR SURFACES (grounded in the code, so the owner knows what a check can actually be judged from):
+- Session log `logs/<session_id>.log` is by far the richest surface. agents/shared/routing_tools.py logs EVERY inter-agent hand-off as `[AGENT MSG]  <caller> -> <target>\n<full message>` (untruncated), and every utility tool as `[TOOL CALL]  <agent> -> <tool>` with args truncated at 800 chars and result at 800 chars. agents/dispatch.py adds `[USER -> RECEPTIONIST]` and `[RECEPTIONIST -> USER]`. So hand-off content, label lines, standing-directive blocks, tool-call ordering and verdict-vs-tool pairing are all directly readable. This is also the "LOG and Status" web view.
+- `inputs/extracted_inputs.txt` is the UII's whole output — read it on disk, since the write_extraction tool-call args are truncated at 800 chars in the log.
+- `attempts/attempt_N/parameters.json` is the DCIC's whole output; diffing it across attempts is the only reliable way to see whether a lever actually moved during a refine loop.
+- Backstops that mask regressions (so the log, not the outcome, is the evidence): standing_directives.ensure_present() silently re-stamps a dropped directive; MAX_SECTIONS_REFINE_ROUNDS = 8 in agents/step_caps.py force-finalizes a runaway loop with a `[DISPATCH] Sections refine cap (8) reached` warning; receptionist.py ignores a routing call made in Situation B with a `[RECEPTIONIST] LLM invoked a routing tool in Situation B` warning. All three mean a broken prompt can still produce a plausible-looking session.
+
+NOT OBSERVABLE BY MANUAL INSPECTION — say this plainly, since there is no test suite behind these:
+- The 16-parameter table rewrites (ORC-11, PLN-10/parameters.md, UII-16, DCII-22). A mis-transcribed bound only surfaces when a design happens to land near it. Verify by DIFFING the replacement against the original, before running anything.
+- All Database Handler cuts except DH-06's token cap. The DH runs post-session; its output is DB row text with no correctness signal. The only real method is a before/after diff of saved rows — capture a baseline BEFORE applying these cuts or there is nothing to compare against.
+- TC-05 (Tool Caller end-of-session feedback): affects only post-session DH answers.
+- PLN-28 (Planner form-scaffolding paragraph): the Planner never loads images, so this collapses entirely into the UII form check.
+- The Tool Caller's independent range check (TC-06 / TC-03) cannot be exercised while the DC Input Inspector is enabled — it needs DC_INSPECTOR_ENABLED=False to become the last gate.
+- Prompt-size claims (RCP-26's <<HAS_DBA>> defect, DH-01's nested $tool_inventory) are System-prompts-view inspections, not session checks.
+
+TWO PROCESS WARNINGS THE OWNER NEEDS BEFORE APPLYING ANYTHING:
+1. The cut ids are NOT unique. Twelve Planner ids are reused across different files — PLN-01, PLN-02, PLN-03, PLN-04, PLN-05, PLN-06, PLN-07, PLN-08, PLN-09, PLN-10, PLN-11, PLN-12 each name two or three different cuts (planner/prompt.md vs value_states.md vs routing.py vs generic_constraints.md vs parameters.md vs hard_constraints_dc.md vs hard_constraints_tools.md). Always key on the `file` + `section` fields, never on the id alone. I disambiguated them inline in `which_cuts`.
+2. Nine auditors independently rewrote the same shared files, so many cuts are MUTUALLY EXCLUSIVE alternatives, not a set to apply together: generic_constraints.md has 30 competing cuts (DCII-03 and DCOI-03 each rewrite the WHOLE file, and both overlap every finer-grained cut in it), routing.py has 21, value_states.md 8, hard_constraints_tools.md 6, hard_constraints_dc.md 5, parameters.md 4, sketch_handling.md 6. Pick ONE rewrite per shared file before proposing per-change approval, or the quote anchors will collide.
+3. Several cuts are explicitly paired in their own risk notes and must land in the same commit: ORC-08 with ORC-32 (or the routing-halt rule loses its only Orchestrator statement), RCP-12 with RCP-10 (or the don't-cast-doubt behaviour disappears), RCP-29 with RCP-10, TC-16 with the surviving permission bullet, UII-27/DCII-19/DCOI-36/PLN-03 (routing.py "do not loop" deletions) with the generic_constraints DON'T-loop bullet kept intact.
+
+---
+
+## 15. Application order — low risk first
+
+You asked to work low-risk to high-risk rather than agent by agent. This orders every change accordingly. Wave 0 comes first because it is not shrinking at all — it is defect repair, and it is the part that most directly addresses your concern about the system being quietly confused.
+
+| wave | what | n | why here |
+|---|---|---:|---|
+| **0** | §8 high-severity contradictions | 12 | Fix these regardless of shrinking. Each is a wrong instruction the system is following today. |
+| **1** | low-risk cuts, no flags | 229 | No verifier refutation, no freedom flag, no span conflict. Mechanical. |
+| **2** | low-risk cuts with a freedom rewording | 40 | Apply §12's suggested wording instead of the auditor's replacement. |
+| **3** | medium-risk cuts, no flags | 50 | Read the risk note, then apply. |
+| **4** | refuted or flagged medium-risk | 30 | Needs your judgement. Read §9 / §12 first — several need a one-line repair, not rejection. |
+| **5** | §10–§11 code changes | 18 | Tool merges, schema move, scoped fragments. Their own sequencing is given in each section. |
+| **6** | §8 medium/low contradictions | 33 | Lower urgency defect repair. |
+| **7** | §13 RAG cuts | 15 | Only when you enable RAG — but apply §13's guard defects in wave 0, they ship today. |
+
+### Wave 1 — 229 cuts
+
+| id | agent | action | −chars | section |
+|---|---|---|---:|---|
+| `DCII-01` | DC Input Inspector | SCOPE_PER_AGENT | 10363 | ## Sketch handling (when the user supplied a sketch) |
+| `DCII-02` | DC Input Inspector | COMPRESS | 3038 | ### 3. Critical engineering check (hard blockers only) |
+| `PLN-31` | Planner | COMPRESS | 1946 | ## Attempt folders and the attempt tools (list_attempts / re |
+| `DCIC-01` | DC Input Creator | SCOPE_PER_AGENT | 1832 | ## Attempt folders + reusing history (read before writing) |
+| `DCOI-05` | DC Output Inspector | DELETE | 1776 | ## Sketch handling (when the user supplied a sketch) |
+| `ORC-10` | Orchestrator | COMPRESS | 1729 | ## Precision refine loop — relay DCOI shape-feedback straigh |
+| `ORC-13` | Orchestrator | COMPRESS | 1684 | ### Recognise Planner actionable instructions |
+| `ORC-14` | Orchestrator | COMPRESS | 1586 | ### Available routing tools |
+| `TC-14` | Tool Caller | COMPRESS | 1585 | ## Active mesh-check backend: PyVista / VTK (renders via pyr |
+| `RCP-03` | Receptionist | COMPRESS | 1452 | ### Surfacing a proposed solution — ``propose_attempt`` |
+| `RCP-21` | Receptionist | SCOPE_PER_AGENT | 1414 | ## Output file locations — do not confuse these |
+| `DCII-07` | DC Input Inspector | COMPRESS | 1378 | #### 4b. Real-world-quantity entries |
+| `ORC-15` | Orchestrator | SCOPE_PER_AGENT | 1343 | ## Hard constraints — DC-specific |
+| `ORC-16` | Orchestrator | SCOPE_PER_AGENT | 1321 | ## Hard constraints — tool-specific |
+| `RCP-01` | Receptionist | COMPRESS | 1284 | ## User inputs may include images (writing a description is  |
+| `UII-03` | User Input Inspector | COMPRESS | 1275 | ### Temporal scope and Parameters Inputs interface blocks —  |
+| `DCIC-02` | DC Input Creator | COMPRESS | 1171 | ## Real-world-quantity QUANTITATIVE INPUTS — strong suggesti |
+| `DCII-10` | DC Input Inspector | COMPRESS | 1122 | ## Your two primary utility tools (IMPORTANT) |
+| `PLN-13` | Planner | SCOPE_PER_AGENT | 1121 | ## Normal Pipeline Flow (for reference) |
+| `ORC-17` | Orchestrator | COMPRESS | 1109 | ## Preserving user directives in hand-offs (HARD) |
+| `DCII-11` | DC Input Inspector | REPLACE_WITH_EXAMPLES | 1098 | ### Common unit-conversion patterns for this configurator |
+| `RCP-09` | Receptionist | COMPRESS | 1097 | ## HARD RULE — answers to system-posed questions MUST be for |
+| `TC-01` | Tool Caller | DELETE | 1087 | ## Utility tools: list_attempts() and read_attempt(n, file) |
+| `ORC-18` | Orchestrator | COMPRESS | 1084 | ## Extraction-only user requests (answer, don't start a desi |
+| `RCP-05` | Receptionist | MERGE | 1078 | Parameter-name check (Situation A) |
+| `PLN-29` | Planner | COMPRESS | 1044 | ## Utility tool: read_user_queries(n, from_start=False) |
+| `TC-02` | Tool Caller | COMPRESS | 1029 | ## State THIS CYCLE clearly (IMPORTANT) |
+| `RCP-31` | Receptionist | SCOPE_PER_AGENT | 1024 | ## Hard constraints — tool-specific |
+| `RCP-25` | Receptionist | COMPRESS | 1016 | ## Extraction-only requests are valid forwards |
+| `ORC-19` | Orchestrator | COMPRESS | 1016 | ## Escalation Hierarchy (CRITICAL) |
+| `DCIC-37` | DC Input Creator | REPLACE_WITH_EXAMPLES | 1009 | ### Common unit-conversion patterns for this configurator |
+| `DCOI-10` | DC Output Inspector | COMPRESS | 957 | ## Data Flow |
+| `TC-15` | Tool Caller | COMPRESS | 950 | ## Active render / mesh-check backend: trimesh + pyrender |
+| `PLN-02` | Planner | COMPRESS | 947 | available_agents.md (spliced by Planner + Database Handler) |
+| `DCOI-12` | DC Output Inspector | COMPRESS | 930 | ## How to compare this cycle's design against user expectati |
+| `DH-02` | Database Handler | COMPRESS | 925 | ## Identifying attempt-specific questions — the force-tool p |
+| `RCP-22` | Receptionist | COMPRESS | 921 | ## Reporting attempts — driven by the hand-off, fetched via  |
+| `ORC-21` | Orchestrator | COMPRESS | 903 | ### Verify the diagnosis BEFORE you relay it (HARD) |
+| `DCII-13` | DC Input Inspector | SCOPE_PER_AGENT | 899 | <<BSV_ON>> blade-sections visualizer block |
+| `DCIC-03` | DC Input Creator | COMPRESS | 890 | ## Acting on a Planner / Orchestrator qualitative directive  |
+| `UII-10` | User Input Inspector | COMPRESS | 889 | ### UII — … 2. A coarse crop region |
+| `RCP-23` | Receptionist | MERGE | 876 | Values the system did not honour / Precision jobs |
+| `DCIC-16` | DC Input Creator | SCOPE_PER_AGENT | 852 | <<BSV_ON>> blade-sections visualizer block |
+| `DCOI-13` | DC Output Inspector | COMPRESS | 847 | Blade-sections visualizer — DCOI overlay |
+| `RCP-02` | Receptionist | COMPRESS | 839 | ### Showing a generated model — ``visualize_3d_model`` |
+| `UII-11` | User Input Inspector | COMPRESS | 824 | ### Capture, do not filter |
+| `DCOI-15` | DC Output Inspector | COMPRESS | 819 | ### Override authority and reporting upstream interpretation |
+| `RCP-26` | Receptionist | COMPRESS | 812 | ## Your DBa scope — your OWN work, not the chain's (HARD) |
+| `ORC-23` | Orchestrator | SCOPE_PER_AGENT | 800 | <<BSV_ON>> blade-sections visualizer block |
+| `UII-12` | User Input Inspector | COMPRESS | 799 | ## User input layout (text + images) — image inspection + re |
+| `DCOI-16` | DC Output Inspector | REPLACE_WITH_EXAMPLES | 767 | ## Per-claim verification against the comparison source(s) i |
+| `TC-04` | Tool Caller | DELETE | 762 | (trailing <<BSV_ON>> block, above {routing_instructions}) |
+| `DCIC-05` | DC Input Creator | COMPRESS | 745 | ## Routing — strict rules (What you CAN fix) |
+| `DH-04` | Database Handler | SCOPE_PER_AGENT | 743 | ## What you know about the system → blade-sections block |
+| `UII-15` | User Input Inspector | COMPRESS | 742 | ## Your utility tools |
+| `DCII-15` | DC Input Inspector | COMPRESS | 740 | ### 4. Consistency between parameters.json, extracted_inputs |
+| `DCOI-17` | DC Output Inspector | DELETE | 728 | ## HARD RULES — what you must NEVER suggest |
+| `DCIC-41` | DC Input Creator | COMPRESS | 726 | ### Tool-use hard rules (every agent) |
+| `ORC-26` | Orchestrator | COMPRESS | 717 | (the "Meaningful" judgement paragraph) |
+| `PLN-30` | Planner | COMPRESS | 711 | ## Utility tool: read_agent_history(agent_name, last_n=None) |
+| `ORC-27` | Orchestrator | COMPRESS | 708 | ### User questions about observable facts (non-design questi |
+| `DH-05` | Database Handler | REPLACE_WITH_EXAMPLES | 697 | ## Three kinds of questions |
+| `DCOI-18` | DC Output Inspector | COMPRESS | 675 | ## Loading render images (IMPORTANT) |
+| `ORC-28` | Orchestrator | COMPRESS | 674 | ## Anti-Hallucination Rules |
+| `UII-18` | User Input Inspector | COMPRESS | 670 | ## User input layout (text + images) — directory listing |
+| `DCOI-19` | DC Output Inspector | COMPRESS | 664 | ## Output Format |
+| `UII-20` | User Input Inspector | DELETE | 651 | ## End-of-session feedback message (read-only) |
+| `DH-07` | Database Handler | COMPRESS | 649 | ### Semantic fields → **Identifying attempt-specific Q with  |
+| `DCIC-15` | DC Input Creator | COMPRESS | 648 | ## Reading QUANTITATIVE INPUTS |
+| `PLN-10` | Planner | COMPRESS | 645 | ## Role 2 — a problem to recover from |
+| `TC-06` | Tool Caller | COMPRESS | 632 | ## Range check before you generate (HARD — independent of up |
+| `ORC-29` | Orchestrator | COMPRESS | 621 | ## You ORIGINATE nothing — you RELAY and SHAPE |
+| `DCII-16` | DC Input Inspector | COMPRESS | 620 | routing_instructions() — "### How to decide where to route" |
+| `UII-22` | User Input Inspector | COMPRESS | 616 | ### UII responsibility — record the sketch's precision in th |
+| `UII-23` | User Input Inspector | COMPRESS | 605 | ### 1. QUANTITATIVE INPUTS — line-label formats |
+| `UII-24` | User Input Inspector | SCOPE_PER_AGENT | 600 | Blade-sections visualizer block |
+| `DCII-17` | DC Input Inspector | COMPRESS | 600 | routing_instructions() — "### Permission / authorisation iss |
+| `RCP-15` | Receptionist | MERGE | 595 | Situation B composition / permission-to-vary |
+| `DCIC-10` | DC Input Creator | COMPRESS | 593 | ## Hand-off to the next agent — Tight precision loop |
+| `ORC-30` | Orchestrator | COMPRESS | 585 | _CHAIN_ACCESS_ON (## Inter-agent communication visibility (E |
+| `RCP-04` | Receptionist | COMPRESS | 581 | ## Two distinct situations you operate in / Situation A |
+| `UII-25` | User Input Inspector | COMPRESS | 580 | ### Tool-use hard rules (every agent) |
+| `RCP-27` | Receptionist | COMPRESS | 574 | ### Available routing tools |
+| `UII-26` | User Input Inspector | REPLACE_WITH_EXAMPLES | 570 | ### Judging a sketch's precision |
+| `DH-09` | Database Handler | COMPRESS | 568 | ### Rules of authorship |
+| `DH-10` | Database Handler | COMPRESS | 564 | ### Semantic fields |
+| `UII-27` | User Input Inspector | DELETE | 552 | routing_instructions() — "### Do not loop — ESCALATE when st |
+| `RCP-17` | Receptionist | DELETE | 547 | ## Categories of incoming user message |
+| `DCII-18` | DC Input Inspector | COMPRESS | 547 | ## Hand-off to the Tool Caller (IMPORTANT) |
+| `DH-11` | Database Handler | COMPRESS | 543 | (fragment body — the per-agent bullets) |
+| `RCP-14` | Receptionist | COMPRESS | 531 | ### Situation B — Outgoing system message (composition) |
+| `PLN-19` | Planner | DELETE | 520 | ## HARD RULES — rule 6 |
+| `DCII-19` | DC Input Inspector | DELETE | 520 | routing_instructions() — "### Do not loop — ESCALATE when st |
+| `PLN-27` | Planner | COMPRESS | 515 | ## Reference — the user input files (text + images) |
+| `RCP-13` | Receptionist | DELETE | 510 | Decide by reasoning / never invent design intent |
+| `DCIC-12` | DC Input Creator | COMPRESS | 508 | ## Validate before you write — collision resolution |
+| `DCOI-24` | DC Output Inspector | COMPRESS | 508 | ### Domain hard rules (every agent) |
+| `DCIC-DEL-A` | DC Input Creator | DELETE | 503 | ## Validate before you write — DCII redundancy note |
+| `DCII-20` | DC Input Inspector | COMPRESS | 490 | ### Tool-use hard rules (every agent) |
+| `DCII-21` | DC Input Inspector | COMPRESS | 490 | ### 5. Appropriateness — your engineering critique |
+| `DCII-22` | DC Input Inspector | COMPRESS | 490 | whole fragment (16-parameter list) |
+| `RCP-06` | Receptionist | COMPRESS | 489 | Situation A path 1 — Forward |
+| `DCOI-25` | DC Output Inspector | COMPRESS | 489 | ### Available routing tools |
+| `DCOI-26` | DC Output Inspector | COMPRESS | 488 | ## Do NOT mix cycles when forming a verdict |
+| `DCIC-39` | DC Input Creator | COMPRESS | 485 | (whole fragment) |
+| `DCOI-27` | DC Output Inspector | DELETE | 485 | ## What to Look For |
+| `UII-30` | User Input Inspector | COMPRESS | 484 | ### 2. QUALITATIVE DESCRIPTIONS |
+| `PLN-05` | Planner | DELETE | 479 | ## Your common moves — CLARIFY back to the UII |
+| `TC-07` | Tool Caller | COMPRESS | 467 | ## Attempt folder (IMPORTANT — read this before any tool cal |
+| `DH-12` | Database Handler | DELETE | 454 | ### Output format (strict) |
+| `DCOI-28` | DC Output Inspector | COMPRESS | 450 | ### How to decide where to route (routing_instructions build |
+| `DCOI-29` | DC Output Inspector | COMPRESS | 444 | ## Per-claim verification against the comparison source(s) i |
+| `DCOI-30` | DC Output Inspector | DELETE | 443 | ### Verdict shape |
+| `UII-32` | User Input Inspector | COMPRESS | 434 | ### Temporal scope … — D. NEVER include historical entries |
+| `DCOI-32` | DC Output Inspector | MERGE | 430 | ## End-of-session feedback message (read-only) |
+| `TC-08` | Tool Caller | COMPRESS | 415 | ## HARD LIMITS — Do NOT |
+| `RCP-08` | Receptionist | COMPRESS | 411 | Situation A path 2 — Reply directly |
+| `ORC-31` | Orchestrator | SCOPE_PER_AGENT | 406 | (the $invalid_parameter_examples slot line) |
+| `TC-09` | Tool Caller | COMPRESS | 404 | ## Data Flow and reporting file paths (IMPORTANT) |
+| `UII-33` | User Input Inspector | COMPRESS | 403 | whole file |
+| `PLN-02` | Planner | COMPRESS | 401 | ## Output mechanics — every turn ends with a routing call |
+| `DCOI-33` | DC Output Inspector | COMPRESS | 398 | ### Blade-sections visualizer |
+| `UII-34` | User Input Inspector | COMPRESS | 396 | ### 1. QUANTITATIVE INPUTS — STRICT rules (first two bullets |
+| `TC-22` | Tool Caller | DELETE | 396 | ### What every agent … MAY do (DOs) |
+| `RCP-32` | Receptionist | COMPRESS | 386 | ### Blade-sections visualizer |
+| `TC-32` | Tool Caller | COMPRESS | 386 | ### Domain hard rules (every agent) |
+| `RCP-10` | Receptionist | MERGE | 385 | ## HARD RULE — you NEVER invent observations, judgements, or |
+| `UII-35` | User Input Inspector | COMPRESS | 385 | ## What to Extract — categorisation rule |
+| `DCIC-17` | DC Input Creator | SCOPE_PER_AGENT | 385 | ## End-of-session feedback message (read-only) |
+| `RCP-16` | Receptionist | MERGE | 384 | Situation B — result reporting and plain language |
+| `PLN-24` | Planner | COMPRESS | 384 | ## Anti-Hallucination Rules |
+| `DCIC-DEL-F` | DC Input Creator | DELETE | 382 | ### What every agent … MAY do (DOs) — pipeline + escalate bu |
+| `DH-13` | Database Handler | COMPRESS | 382 | ## Three kinds of questions → sub-row note |
+| `DCOI-34` | DC Output Inspector | COMPRESS | 380 | _IMAGE_PERSISTENCE_ON / _IMAGE_PERSISTENCE_OFF |
+| `DH-14` | Database Handler | MERGE | 369 | ### The token budget for SEMANTIC answers |
+| `DCIC-21` | DC Input Creator | COMPRESS | 368 | ## Hand-off to the next agent (IMPORTANT) |
+| `PLN-32` | Planner | SCOPE_PER_AGENT | 363 | ## Blade-sections visualizer (splice) |
+| `UII-37` | User Input Inspector | COMPRESS | 362 | ## Forwarding and routing — ESCALATE / first-agent note |
+| `DCIC-32` | DC Input Creator | COMPRESS | 361 | SOFT TARGET bullet |
+| `DCOI-35` | DC Output Inspector | COMPRESS | 360 | ### Permission / authorisation issues → hub (routing_instruc |
+| `DCIC-14` | DC Input Creator | COMPRESS | 359 | ## Routing — strict rules (What you CANNOT fix) |
+| `UII-40` | User Input Inspector | COMPRESS | 352 | DON'Ts — CHAIN_ONLY block (permissions / retry / user reply) |
+| `UII-41` | User Input Inspector | COMPRESS | 351 | Number of blades — COUNT IT |
+| `DCIC-19` | DC Input Creator | COMPRESS | 351 | ## Attempt folders — error after writing |
+| `DCOI-36` | DC Output Inspector | DELETE | 350 | ### Do not loop — ESCALATE when stuck (routing_instructions  |
+| `DH-15` | Database Handler | COMPRESS | 347 | ## How you operate |
+| `RCP-20` | Receptionist | COMPRESS | 342 | CANNOT list |
+| `TC-10` | Tool Caller | COMPRESS | 340 | ## Loading parameters (IMPORTANT) |
+| `DCIC-DEL-B` | DC Input Creator | DELETE | 339 | ## Filtering responsibility |
+| `PLN-02` | Planner | COMPRESS | 330 | routing_instructions() — How to decide where to route |
+| `UII-43` | User Input Inspector | COMPRESS | 324 | ## Forwarding and routing — CLARIFY-back handling |
+| `DH-16` | Database Handler | COMPRESS | 317 | ## Tools |
+| `PLN-14` | Planner | DELETE | 315 | ## HARD RULES — rule 1 |
+| `DCIC-DEL-G` | DC Input Creator | DELETE | 314 | ### What every agent … MAY do (DOs) — hand-off prose bullet |
+| `DCIC-20` | DC Input Creator | COMPRESS | 312 | ## Guidelines — item 3 |
+| `TC-11` | Tool Caller | COMPRESS | 306 | **When to (re-)call ``read_parameters``** |
+| `DCIC-DEL-H` | DC Input Creator | DELETE | 305 | ### What every agent … MUST NOT do (DON'Ts) — permission bou |
+| `DH-17` | Database Handler | COMPRESS | 304 | #### Rewrite rules → 1. Strip every file path |
+| `DH-18` | Database Handler | COMPRESS | 302 | #### Rewrite rules → 2. Strip routing-tool wrappers |
+| `RCP-28` | Receptionist | SCOPE_PER_AGENT | 296 | ## End-of-session feedback message (read-only) |
+| `DCOI-37` | DC Output Inspector | COMPRESS | 296 | ## Comparing against a prior attempt |
+| `DCIC-36` | DC Input Creator | COMPRESS | 290 | middlePos bullet |
+| `DH-19` | Database Handler | DELETE | 289 | (fragment preamble) |
+| `DH-20` | Database Handler | COMPRESS | 277 | #### Rewrite rules → 6. Self-contained and declarative |
+| `UII-44` | User Input Inspector | COMPRESS | 275 | ### Available routing tools |
+| `PLN-16` | Planner | COMPRESS | 274 | ## HARD RULES — rule 3 |
+| `ORC-32` | Orchestrator | MERGE | 273 | ## Output format |
+| `PLN-12` | Planner | COMPRESS | 269 | ## DC Input Inspector status (this session) |
+| `DCOI-38` | DC Output Inspector | COMPRESS | 264 | ## Per-claim verification against the comparison source(s) i |
+| `RCP-07` | Receptionist | COMPRESS | 262 | Preserve the force of user directives |
+| `UII-45` | User Input Inspector | COMPRESS | 262 | ### Temporal scope … — C. Multi-design requests |
+| `PLN-17` | Planner | DELETE | 261 | ## HARD RULES — rule 4 |
+| `TC-23` | Tool Caller | DELETE | 248 | ### What every agent … MUST NOT do (DON'Ts) |
+| `RCP-18` | Receptionist | COMPRESS | 246 | ## What this system can and cannot do (HARD) |
+| `DCIC-38` | DC Input Creator | COMPRESS | 240 | ### Hard engineering blockers |
+| `DCIC-22` | DC Input Creator | COMPRESS | 238 | ## Attempt folders — Forbidden: a no-op write |
+| `DCIC-DEL-I` | DC Input Creator | DELETE | 234 | ### What every agent … MUST NOT do (DON'Ts) — don't loop |
+| `UII-46` | User Input Inspector | COMPRESS | 232 | ## Forwarding and routing — opening paragraph |
+| `DH-22` | Database Handler | COMPRESS | 232 | ## The questions you ASK Agent A → ### Asked question — leng |
+| `DCIC-33` | DC Input Creator | COMPRESS | 230 | FREE bullet |
+| `DH-23` | Database Handler | COMPRESS | 224 | ## The questions you ASK Agent A → ### Asked question — keep |
+| `UII-47` | User Input Inspector | COMPRESS | 223 | DOs — hand-off prose + English |
+| `DH-24` | Database Handler | COMPRESS | 221 | #### Rewrite rules → 7. Domain-faithful |
+| `DCII-25` | DC Input Inspector | COMPRESS | 220 | ### Available routing tools |
+| `RCP-19` | Receptionist | COMPRESS | 219 | CAN list |
+| `DH-25` | Database Handler | COMPRESS | 219 | #### Rewrite rules → 5. Replace parameter-value dumps with r |
+| `TC-12` | Tool Caller | COMPRESS | 218 | <<BSV_ON>> Render type — sections vs the full 3D |
+| `DH-26` | Database Handler | COMPRESS | 217 | #### Rewrite rules → 3. Unescape JSON string escapes |
+| `DH-27` | Database Handler | COMPRESS | 216 | ## What you SAVE (the body of ``SAVE:``) |
+| `DCOI-39` | DC Output Inspector | COMPRESS | 213 | ## How to compare this cycle's design against user expectati |
+| `PLN-18` | Planner | DELETE | 206 | ## HARD RULES — rule 5 |
+| `DCII-26` | DC Input Inspector | COMPRESS | 206 | Two self-checks before you route |
+| `PLN-06` | Planner | COMPRESS | 205 | ## Your common moves — Recovery PLAN |
+| `DCIC-26` | DC Input Creator | COMPRESS | 205 | ## Output Format |
+| `DCIC-24` | DC Input Creator | COMPRESS | 201 | ## Re-reading raw inputs (optional) |
+| `PLN-05` | Planner | COMPRESS | 199 | generic_constraints.md — chain-only DON'Ts |
+| `DCIC-23` | DC Input Creator | COMPRESS | 199 | ## Attempt folders — Reuse the session's history |
+| `DCIC-DEL-D` | DC Input Creator | DELETE | 188 | ## Attempt folders — Carry Current attempt forward |
+| `DCIC-27` | DC Input Creator | COMPRESS | 186 | ## Hand-off to the next agent (IMPORTANT) |
+| `DCII-27` | DC Input Inspector | COMPRESS | 186 | opening bullets (NACA / middlePos / integer types) |
+| `TC-25` | Tool Caller | COMPRESS | 180 | ### What every agent … MUST NOT do (DON'Ts) |
+| `PLN-06` | Planner | COMPRESS | 178 | generic_constraints.md — routing-tool-call DON'T |
+| `DCIC-DEL-C` | DC Input Creator | DELETE | 177 | ## Guidelines — items 4 and 5 |
+| `TC-26` | Tool Caller | DELETE | 175 | ### What every agent … MUST NOT do (DON'Ts) |
+| `DH-28` | Database Handler | COMPRESS | 174 | ## What you know about the system → ### The design configura |
+| `DCIC-DEL-E` | DC Input Creator | DELETE | 170 | ## Hand-off — CLARIFY/ESCALATE path note |
+| `ORC-33` | Orchestrator | COMPRESS | 168 | ## The $parameter_count Design Parameters — the ONLY paramet |
+| `DCIC-25` | DC Input Creator | COMPRESS | 162 | ## Routing — Tool-error self-correction (HARD) |
+| `TC-31` | Tool Caller | COMPRESS | 149 | (whole file — Tool Caller only) |
+| `UII-48` | User Input Inspector | COMPRESS | 146 | ## Your Role |
+| `DCIC-29` | DC Input Creator | COMPRESS | 145 | NACA / high-point bullets |
+| `DCIC-44` | DC Input Creator | COMPRESS | 142 | intro + LOCKED bullet |
+| `DCII-28` | DC Input Inspector | MERGE | 142 | ## End-of-session feedback message (read-only) |
+| `DCIC-42` | DC Input Creator | MERGE | 134 | ### What every agent in any design configurator MAY do (DOs) |
+| `DH-30` | Database Handler | COMPRESS | 128 | #### Rewrite rules → 4. Drop mid-chain narration |
+| `DH-31` | Database Handler | COMPRESS | 128 | #### Rewrite rules → 9. Negation-canonical |
+| `DH-32` | Database Handler | COMPRESS | 127 | #### Rewrite rules → 8. One topic per file |
+| `UII-49` | User Input Inspector | COMPRESS | 125 | DOs — header + first two bullets |
+| `RCP-24` | Receptionist | COMPRESS | 116 | Anti-stale block handling |
+| `TC-27` | Tool Caller | COMPRESS | 115 | ### What every agent … MAY do (DOs) |
+| `PLN-26` | Planner | MERGE | 103 | ## Hard constraints (three headings) |
+| `DCII-29` | DC Input Inspector | COMPRESS | 91 | ### 2. Consistency with the user's stated inputs |
+| `PLN-20` | Planner | COMPRESS | 69 | ## HARD RULES — rule 7 |
+| `TC-13` | Tool Caller | COMPRESS | 56 | ## Your Role |
+| `DH-33` | Database Handler | COMPRESS | 54 | #### Rewrite rules for the saved QUESTION + ANSWER (semantic |
+| `TC-29` | Tool Caller | MERGE | 53 | ### What every agent … MAY do (DOs) |
+| `TC-30` | Tool Caller | COMPRESS | 42 | ### What every agent … MUST NOT do (DON'Ts) |
+| `PLN-15` | Planner | COMPRESS | 15 | ## HARD RULES — rule 2 |
+| `PLN-25` | Planner | SCOPE_PER_AGENT | -2 | ## End-of-session feedback message (read-only) |
+
+### Wave 2 — 40 cuts
+
+| id | agent | action | −chars | section |
+|---|---|---|---:|---|
+| `ORC-04` | Orchestrator | COMPRESS | 2411 | ## When calling an agent |
+| `DCOI-02` | DC Output Inspector | COMPRESS | 2380 | _COMPARISON_MODE_1 / _COMPARISON_MODE_2 |
+| `DCOI-06` | DC Output Inspector | COMPRESS | 1725 | _COMPARISON_MODE_3 (the default mode) |
+| `PLN-09` | Planner | REPLACE_WITH_EXAMPLES | 1306 | ## Role 1 — a new user message |
+| `DCII-09` | DC Input Inspector | COMPRESS | 1280 | ## Optional reference: user input images |
+| `PLN-07` | Planner | COMPRESS | 1273 | ## Your common moves — APPROVE the cycle |
+| `UII-04` | User Input Inspector | COMPRESS | 1260 | ## Reading prior attempts when the user references them |
+| `PLN-22` | Planner | COMPRESS | 1055 | ## HARD RULES — rule 9 |
+| `UII-08` | User Input Inspector | COMPRESS | 933 | ### 1. QUANTITATIVE INPUTS — Format is flexible |
+| `DCIC-04` | DC Input Creator | COMPRESS | 821 | ## Acting on a Planner / Orchestrator qualitative directive  |
+| `PLN-08` | Planner | COMPRESS | 815 | blade_sections_visualizer_planner.md (Planner only) |
+| `DH-03` | Database Handler | COMPRESS | 787 | ## Per-field protocol |
+| `DCIC-13` | DC Input Creator | COMPRESS | 786 | ## Real-world-quantity QUANTITATIVE INPUTS — Multi-parameter |
+| `DCII-14` | DC Input Inspector | COMPRESS | 755 | ## Your Role |
+| `ORC-24` | Orchestrator | COMPRESS | 753 | (unheaded paragraph after the pipeline blocks) |
+| `DCOI-20` | DC Output Inspector | COMPRESS | 660 | ### When to stop (you judge; a code cap backstops you) |
+| `UII-19` | User Input Inspector | REPLACE_WITH_EXAMPLES | 656 | intro + ### Common drawing artifacts in propeller sketches |
+| `UII-21` | User Input Inspector | COMPRESS | 628 | ### Domain hard rules (every agent) |
+| `DH-08` | Database Handler | COMPRESS | 607 | ### Quantitative fields |
+| `TC-20` | Tool Caller | COMPRESS | 574 | ### Tool-use hard rules (every agent) |
+| `DCIC-09` | DC Input Creator | COMPRESS | 572 | ## Hand-off to the next agent (IMPORTANT) |
+| `RCP-11` | Receptionist | COMPRESS | 556 | Questions about an earlier run (read_agent_history) |
+| `DCOI-21` | DC Output Inspector | COMPRESS | 556 | ## What a Correct Output Should Show |
+| `DCOI-22` | DC Output Inspector | COMPRESS | 550 | ### Tool-use hard rules (every agent) |
+| `DCOI-23` | DC Output Inspector | COMPRESS | 533 | ## HARD RULES — what you must NEVER suggest |
+| `PLN-23` | Planner | COMPRESS | 531 | ## HARD RULES — rule 10 |
+| `DCIC-11` | DC Input Creator | COMPRESS | 515 | ## Read + write tools — policy (mechanics are in each tool's |
+| `PLN-04` | Planner | COMPRESS | 475 | routing_instructions() — Permission / authorisation issues |
+| `DCOI-31` | DC Output Inspector | COMPRESS | 441 | ### Stale images in your history — you choose whether to re- |
+| `DCIC-18` | DC Input Creator | COMPRESS | 419 | ## Acting on a … qualitative directive — full-3D paragraph |
+| `TC-18` | Tool Caller | COMPRESS | 370 | routing_instructions() → ### Do not loop — ESCALATE when stu |
+| `DCII-24` | DC Input Inspector | COMPRESS | 362 | ## Output Format |
+| `PLN-07` | Planner | COMPRESS | 358 | blade_sections_visualizer.md (spliced by all 9 agents) |
+| `PLN-01` | Planner | COMPRESS | 312 | ## The three situations you are called in |
+| `PLN-09` | Planner | COMPRESS | 277 | routing_planner_uii_first.md (Planner only) |
+| `DH-21` | Database Handler | COMPRESS | 269 | ## The questions you ASK Agent A → ### Question wording |
+| `DH-29` | Database Handler | COMPRESS | 158 | ## The questions you ASK Agent A → negation-acceptable wordi |
+| `PLN-01` | Planner | COMPRESS | 145 | routing_instructions() — natural-flow header |
+| `PLN-08` | Planner | COMPRESS | 119 | ## Your common moves — REPLY DIRECTLY / ESCALATE |
+| `TC-19` | Tool Caller | MERGE | 60 | routing_instructions() → ### How to decide where to route |
+
+### Wave 3 — 50 cuts
+
+| id | agent | action | −chars | section |
+|---|---|---|---:|---|
+| `DH-01` | Database Handler | SCOPE_PER_AGENT | 2887 | ## What you know about the system → ### The agents you may i |
+| `ORC-05` | Orchestrator | SCOPE_PER_AGENT | 2282 | ## Agent tools at a glance (what each agent reads / writes o |
+| `ORC-08` | Orchestrator | SCOPE_PER_AGENT | 1938 | ## Hard constraints — generic (apply to every agent) |
+| `RCP-29` | Receptionist | SCOPE_PER_AGENT | 1794 | ## Hard constraints — generic (apply to every agent) |
+| `DCOI-07` | DC Output Inspector | COMPRESS | 1615 | ## Precision section-matching — when a standing precision di |
+| `UII-02` | User Input Inspector | MERGE | 1502 | ### Matching a ROUGH sketch / ### Matching a PRECISE sketch  |
+| `DCII-06` | DC Input Inspector | COMPRESS | 1483 | ### 1. Range validation (STRICT — explicit per-parameter che |
+| `DCOI-08` | DC Output Inspector | COMPRESS | 1379 | ### Full-3D precision check (when the directive targets the  |
+| `DCII-08` | DC Input Inspector | COMPRESS | 1330 | ## Verdict → routing (STRICT — the tool follows your verdict |
+| `RCP-30` | Receptionist | SCOPE_PER_AGENT | 1273 | ## Hard constraints — DC-specific |
+| `UII-05` | User Input Inspector | COMPRESS | 1236 | ### 1. QUANTITATIVE INPUTS — Soft targets |
+| `DCIC-28` | DC Input Creator | SCOPE_PER_AGENT | 1081 | ## Hard constraints — DC-specific |
+| `TC-16` | Tool Caller | DELETE | 1070 | routing_instructions() → ### Permission / authorisation issu |
+| `DCII-12` | DC Input Inspector | COMPRESS | 1050 | routing_instructions() — "### Routing is a tool call — MANDA |
+| `PLN-05` | Planner | COMPRESS | 1042 | routing_instructions() — Routing is a tool call |
+| `TC-03` | Tool Caller | SCOPE_PER_AGENT | 1024 | ## Hard constraints — DC-specific |
+| `DCOI-09` | DC Output Inspector | COMPRESS | 1020 | ### Routing is a tool call — MANDATORY (routing_instructions |
+| `PLN-21` | Planner | COMPRESS | 1005 | ## HARD RULES — rule 8 |
+| `UII-06` | User Input Inspector | COMPRESS | 980 | ### Temporal scope … — B. Parameters Inputs interface blocks |
+| `DCOI-11` | DC Output Inspector | COMPRESS | 949 | ## HARD RULE — never describe images you did not load this t |
+| `UII-07` | User Input Inspector | COMPRESS | 933 | routing_instructions() — "### Routing is a tool call — MANDA |
+| `UII-09` | User Input Inspector | COMPRESS | 905 | ### UII — for a PRECISE blade-section drawing … 1. A rough s |
+| `DCOI-14` | DC Output Inspector | COMPRESS | 824 | ## HARD RULES — what you must NEVER suggest |
+| `UII-13` | User Input Inspector | COMPRESS | 779 | ### 1. QUANTITATIVE INPUTS — HARD RULE, countable features |
+| `UII-14` | User Input Inspector | COMPRESS | 755 | ## Forwarding and routing — design-generation forward |
+| `ORC-25` | Orchestrator | COMPRESS | 742 | (the two mandatory UII hand-off lines) |
+| `UII-16` | User Input Inspector | COMPRESS | 739 | whole file |
+| `DCIC-06` | DC Input Creator | COMPRESS | 717 | ## Attempt folders + reusing history — Which folder to write |
+| `TC-17` | Tool Caller | COMPRESS | 703 | routing_instructions() → ### Routing is a tool call — MANDAT |
+| `UII-17` | User Input Inspector | COMPRESS | 671 | routing_instructions() — "### Permission / authorisation iss |
+| `DCIC-07` | DC Input Creator | COMPRESS | 647 | ## The three states of a user value — Writing each state |
+| `PLN-10` | Planner | COMPRESS | 644 | parameters.md — the 16-parameter list (spliced by 7 agents) |
+| `TC-05` | Tool Caller | DELETE | 640 | ## End-of-session feedback message (read-only) |
+| `DCIC-34` | DC Input Creator | COMPRESS | 630 | **Freeing a LOCKED value.** |
+| `DCIC-08` | DC Input Creator | COMPRESS | 621 | ## Validate before you write (HARD) |
+| `UII-28` | User Input Inspector | COMPRESS | 526 | DOs — CHAIN_ONLY block (pipeline / escalate / standing direc |
+| `DCIC-31` | DC Input Creator | COMPRESS | 523 | ### What every agent … MUST NOT do (DON'Ts) — plain-prose ch |
+| `UII-29` | User Input Inspector | COMPRESS | 522 | ### Filled-in templates and forms |
+| `DCII-23` | DC Input Inspector | COMPRESS | 478 | ### Domain hard rules (every agent) |
+| `RCP-12` | Receptionist | DELETE | 470 | No second-guessing the chain's reported result |
+| `UII-31` | User Input Inspector | COMPRESS | 446 | routing_instructions() — "### How to decide where to route" |
+| `PLN-12` | Planner | COMPRESS | 412 | hard_constraints_tools.md (spliced by all 8 chain/hub agents |
+| `UII-36` | User Input Inspector | COMPRESS | 383 | DON'Ts — routing-tool channel paragraph |
+| `UII-38` | User Input Inspector | SCOPE_PER_AGENT | 362 | ## Qualitative-to-Quantitative Hints |
+| `UII-39` | User Input Inspector | COMPRESS | 353 | ### 1. QUANTITATIVE INPUTS — OUT OF RANGE |
+| `UII-42` | User Input Inspector | COMPRESS | 351 | DON'Ts — invent tools / fabricate observations / loop |
+| `DCIC-30` | DC Input Creator | COMPRESS | 317 | ### What every agent … MAY do (DOs) — standing directives bu |
+| `DCIC-45` | DC Input Creator | SCOPE_PER_AGENT | 308 | ## Domain Structure |
+| `DCIC-43` | DC Input Creator | MERGE | 248 | ### What every agent … MUST NOT do (DON'Ts) — invent / fabri |
+| `TC-28` | Tool Caller | DELETE | 82 | ### What every agent … MAY do (DOs) |
+
+### Wave 4 — 30 cuts
+
+| id | agent | action | −chars | section |
+|---|---|---|---:|---|
+| `DCOI-01` | DC Output Inspector | SCOPE_PER_AGENT | 8231 | ## Sketch handling (when the user supplied a sketch) |
+| `ORC-01` | Orchestrator | COMPRESS | 2985 | ## Completing a cycle — the Planner is the FINAL APPROVER (H |
+| `ORC-02` | Orchestrator | COMPRESS | 2430 | ### Name the attempt folder(s) and say which to show (HARD) |
+| `ORC-03` | Orchestrator | COMPRESS | 2416 | ## Letting agents decide when to use their own tools |
+| `ORC-06` | Orchestrator | MERGE | 2168 | ## Agent Capabilities — DO NOT exceed these |
+| `ORC-07` | Orchestrator | REPLACE_WITH_EXAMPLES | 2144 | ### Do NOT seed follow-ups the system cannot deliver |
+| `DCOI-03` | DC Output Inspector | COMPRESS | 2116 | ### What every agent … MAY do (DOs) / MUST NOT do (DON'Ts) |
+| `DCII-03` | DC Input Inspector | COMPRESS | 2079 | whole fragment (DOs / DON'Ts) |
+| `PLN-11` | Planner | COMPRESS | 2040 | ## Role 3 — a completed cycle to approve |
+| `DCII-04` | DC Input Inspector | COMPRESS | 1985 | whole fragment (LOCKED / SOFT TARGET / FREE) |
+| `PLN-04` | Planner | COMPRESS | 1882 | ## Your common moves — Issue a STANDING DIRECTIVE |
+| `DCOI-04` | DC Output Inspector | COMPRESS | 1860 | ## The three states of a user value — LOCKED, SOFT TARGET, o |
+| `ORC-09` | Orchestrator | MERGE | 1812 | ### Attempt folders and ``Current attempt:`` propagation / # |
+| `DCII-05` | DC Input Inspector | COMPRESS | 1750 | #### 4a. Verbatim entries — the changeability check |
+| `UII-01` | User Input Inspector | COMPRESS | 1622 | ### 3. Design Intent and Functional Requirements |
+| `ORC-11` | Orchestrator | COMPRESS | 1609 | ### Global / ring … ### Outer blade section |
+| `ORC-12` | Orchestrator | SCOPE_PER_AGENT | 1608 | ## The Natural Pipeline (incl. the <<PF_ON>>/<<PF_OFF>> kick |
+| `PLN-01` | Planner | COMPRESS | 1466 | value_states.md (spliced by Planner, DCIC, DCII, DCOI) |
+| `ORC-20` | Orchestrator | COMPRESS | 913 | ## Route through the User Input Inspector on new meaningful  |
+| `PLN-03` | Planner | COMPRESS | 910 | ## Your common moves — FORWARD |
+| `ORC-22` | Orchestrator | SCOPE_PER_AGENT | 805 | ## Geometry Modification Rule (HARD) |
+| `DH-06` | Database Handler | COMPRESS | 683 | ### Semantic fields → **Rules.** |
+| `PLN-03` | Planner | COMPRESS | 559 | generic_constraints.md — DOs (spliced by all 8 chain/hub age |
+| `PLN-03` | Planner | DELETE | 536 | routing_instructions() — Do not loop |
+| `TC-21` | Tool Caller | COMPRESS | 446 | ### What every agent … MUST NOT do (DON'Ts) |
+| `PLN-28` | Planner | SCOPE_PER_AGENT | 335 | ## Reference — the user input files (text + images) |
+| `DCIC-35` | DC Input Creator | COMPRESS | 299 | closing paragraph (one source is enough / how far may it mov |
+| `PLN-11` | Planner | COMPRESS | 253 | hard_constraints_dc.md (spliced by all 8 chain/hub agents) |
+| `TC-24` | Tool Caller | COMPRESS | 246 | ### What every agent … MAY do (DOs) |
+| `PLN-04` | Planner | COMPRESS | 180 | generic_constraints.md — DON'Ts |
+
+---
+
+## 16. Two decisions already taken
+
+**Emphasis.** Hard marking is kept on exactly three rules, everywhere they appear; every other `HARD` / `IMPORTANT` / `CRITICAL` / mandatory-voice marker becomes plain prose. The three: *routing is a tool call*; *never state an observation about an artefact you did not load this turn*; *an answer to a system-posed question must be forwarded, never answered directly*. These are the three whose violation ends or corrupts a session — everything else is a rule the agent should weigh, and marking it CRITICAL only dilutes the three that are not negotiable.
+
+**The Receptionist's parameter-name check is deleted.** The Situation-A procedure that maps a user's stated parameter names against the table and rejects unknown ones goes entirely. The prompt already tells the Receptionist not to check ranges because the pipeline validates downstream; names are the same argument, and the UII, DCIC and DCII all validate them anyway. This removes a class of door-checker-too-strict failure and roughly 220 tokens. The cost is that a user who types `fillet_radius = 3` learns it after a pipeline round-trip rather than immediately.
+---
+
+## 17. Competing proposals for the same shared text — pick one
+
+A shared fragment is spliced into many prompts, and each agent's auditor independently rewrote the copy *its* agent carries. That produces several alternative rewrites of the same region. **They are alternatives, not a sequence** — applying two of them to the same file is impossible, and applying one silently voids the others.
+
+There are **13 such regions**, covering 83 of the 349 cuts. The upside is that you get independently-written options to choose between; the risk is applying them blindly. Run `node extra_utilities/prompt_efficiency/verify_prompt_shrink.cjs` after each batch — anything already applied drops out of the pending list.
+
+| file | region | competing cuts |
+|---|---|---|
+| `agents/shared/prompt_fragments/generic_constraints.md` | chars 0–3482 | `UII-49` (User Input Inspector) · `DCIC-42` (DC Input Creator) · `DCII-03` (DC Input Inspector) · `DCOI-03` (DC Output Inspector) · `PLN-03` (Planner) · `TC-29` (Tool Caller) · `UII-28` (User Input Inspector) · `DCIC-DEL-F` (DC Input Creator) · `TC-22` (Tool Caller) · `DCIC-30` (DC Input Creator) · `TC-24` (Tool Caller) · `UII-47` (User Input Inspector) · `DCIC-DEL-G` (DC Input Creator) · `TC-27` (Tool Caller) · `TC-28` (Tool Caller) · `UII-42` (User Input Inspector) · `DCIC-43` (DC Input Creator) · `PLN-04` (Planner) · `TC-30` (Tool Caller) · `DCIC-DEL-I` (DC Input Creator) · `TC-26` (Tool Caller) · `PLN-05` (Planner) · `UII-40` (User Input Inspector) · `DCIC-DEL-H` (DC Input Creator) · `TC-23` (Tool Caller) · `TC-25` (Tool Caller) · `UII-36` (User Input Inspector) · `DCIC-31` (DC Input Creator) · `PLN-06` (Planner) · `TC-21` (Tool Caller) |
+| `agents/shared/prompt_fragments/value_states.md` | chars 0–2928 | `PLN-01` (Planner) · `DCIC-44` (DC Input Creator) · `DCII-04` (DC Input Inspector) · `DCOI-04` (DC Output Inspector) · `DCIC-32` (DC Input Creator) · `DCIC-33` (DC Input Creator) · `DCIC-34` (DC Input Creator) · `DCIC-35` (DC Input Creator) |
+| `DC_prompt_fragments/tools_config/hard_constraints_tools.md` | chars 0–1270 | `UII-25` (User Input Inspector) · `DCIC-41` (DC Input Creator) · `DCII-20` (DC Input Inspector) · `TC-20` (Tool Caller) · `DCOI-22` (DC Output Inspector) · `PLN-12` (Planner) |
+| `agents/shared/routing.py` | chars 8194–9072 | `UII-31` (User Input Inspector) · `PLN-02` (Planner) · `DCII-16` (DC Input Inspector) · `TC-19` (Tool Caller) · `DCOI-28` (DC Output Inspector) |
+| `agents/shared/routing.py` | chars 9331–9990 | `UII-27` (User Input Inspector) · `PLN-03` (Planner) · `DCII-19` (DC Input Inspector) · `TC-18` (Tool Caller) · `DCOI-36` (DC Output Inspector) |
+| `agents/shared/routing.py` | chars 9992–11140 | `UII-17` (User Input Inspector) · `PLN-04` (Planner) · `DCII-17` (DC Input Inspector) · `TC-16` (Tool Caller) · `DCOI-35` (DC Output Inspector) |
+| `agents/shared/routing.py` | chars 11155–12846 | `UII-07` (User Input Inspector) · `PLN-05` (Planner) · `DCII-12` (DC Input Inspector) · `TC-17` (Tool Caller) · `DCOI-09` (DC Output Inspector) |
+| `DC_prompt_fragments/dc_config/hard_constraints_dc.md` | chars 0–1256 | `UII-21` (User Input Inspector) · `DCII-23` (DC Input Inspector) · `TC-32` (Tool Caller) · `DCOI-24` (DC Output Inspector) · `PLN-11` (Planner) |
+| `DC_prompt_fragments/dc_config/parameters.md` | chars 0–1570 | `ORC-11` (Orchestrator) · `PLN-10` (Planner) · `UII-16` (User Input Inspector) · `DCII-22` (DC Input Inspector) |
+| `DC_prompt_fragments/tools_config/blade_sections_visualizer.md` | chars 0–750 | `RCP-32` (Receptionist) · `PLN-07` (Planner) · `DCOI-33` (DC Output Inspector) |
+| `DC_prompt_fragments/dc_config/modelling_notes.md` | chars 0–795 | `DCIC-29` (DC Input Creator) · `DCII-27` (DC Input Inspector) · `DCIC-36` (DC Input Creator) |
+| `DC_prompt_fragments/dc_config/structure.md` | chars 0–774 | `UII-33` (User Input Inspector) · `DCIC-39` (DC Input Creator) |
+| `DC_prompt_fragments/dc_config/modelling_notes.md` | chars 799–2273 | `DCIC-37` (DC Input Creator) · `DCII-11` (DC Input Inspector) |
+
+### The two genuine conflicts
+
+Two pairs are **same-agent** overlaps — the auditor proposed two cuts for one region of one file. These are mistakes, not choices: merge them by hand or pick one.
+
+- `UII-28` ↔ `UII-47` — `agents/shared/prompt_fragments/generic_constraints.md`
+- `UII-40` ↔ `UII-36` — `agents/shared/prompt_fragments/generic_constraints.md`
+
+### Side by side
+
+#### `agents/shared/prompt_fragments/generic_constraints.md` — 30 competing rewrites
+
+**Current text**
+
+```
+### What every agent in any design configurator MAY do (DOs)
+- DO act on the inputs in your hand-off and the data files it
+  references — use your read tools on the paths the upstream agent
+  supplied.
+- DO use only the tools listed for your role; that list is exhaustive.
+<<CHAIN_ONLY>>- DO follow the natural pipeline: when your work succeeds and the
+  Orchestrator did not ask you to report back, FORWARD to your natural
+  next agent; otherwise return to the Orchestrator.
+- DO ESCALATE to the Orchestrator the moment something blocks you that
+  no other chain agent can fix (missing authorisation, unsupported
+  request, still-ambiguous hand-off after one CLARIFY).
+- DO carry STANDING DIRECTIVES verbatim: if your incoming hand-off
+  contains a ``=== STANDING DIRECTIVES (copy verbatim to the next agent)
+  ===`` … ``=== END STANDING DIRECTIVES ===`` block, reproduce that whole
+  block UNCHANGED in your own outgoing hand-off.  Write your own prose
+  around it, but never alter, summarise, translate, re-order, or omit it —
+  it carries instructions later agents depend on, and only the Planner may
+  set or change it.
+<</CHAIN_ONLY>>- DO write hand-off messages as free-form prose carrying exactly what
+  the recipient needs — the paths their tools require, what changed and
+  why, and the authorship of any non-user-authored value ("the Planner
+  directed …", "the user a
+… (2082 more chars)
+```
+**`UII-49`** — User Input Inspector's auditor · COMPRESS · −125 chars · risk low
+
+*'Act on the inputs in your hand-off' restates default behaviour; the exhaustive-tool-list rule is worth one line.*
+
+```
+### DOs (every agent)
+- DO act on your hand-off and the files it references, using only the tools
+  listed for your role — that list is exhaustive.
+```
+**`DCIC-42`** — DC Input Creator's auditor · MERGE · −134 chars · risk low
+
+*Two bullets merge into one and the long heading shortens now that DOs and DON'Ts live under a single heading.*
+
+```
+### Every agent (DOs / DON'Ts)
+- DO act on your hand-off and the files it points to, using only your bound
+  tools; that list is exhaustive.
+```
+**`DCII-03`** — DC Input Inspector's auditor · COMPRESS · −2079 chars · risk medium
+
+*The copy-pasted 3.4k-char constitution is spliced into all 8 chain agents; half of it is justification prose and default behaviour, and every rule survives in the shorter form.*
+
+```
+### DOs
+- DO act only on the paths and data your hand-off supplies, using only the
+  tools listed for your role.
+<<CHAIN_ONLY>>- DO FORWARD to your natural next agent when your work succeeds and the
+  Orchestrator did not ask you to report back; otherwise return to it.
+  ESCALATE the moment something blocks you that no chain agent can fix.
+- DO reproduce any ``=== STANDING DIRECTIVES (copy verbatim to the next
+  agent) ===`` … ``=== END STANDING DIRECTIVES ===`` block UNCHANGED in your
+  own hand-off — never alter, summarise, re-order or omit it; only the
+  Planner may change it.
+<</CHAIN_ONLY>>- DO write hand-offs as free-form prose carrying exactly what the recipient
+  needs — the paths their tools require, what changed and why, and the true
+  authorship of any non-user-authored value ("the Planner directed …", "the
+  user asked …"; never relabel one source as another).
+- DO answer in English.
+
+### DON'Ts
+- DON'T invent tools, files, fallback policies, confidence scores or version
+  numbers that do not exist; if your bound tools can't do it, ESCALATE.
+- DON'T state an observation you cannot source to a tool result, an agent's
+  history, or something the user literally said.
+- DON'T repeat a tool call with the same arguments, and DON'T retry a
+  failing step blindly — ESCALATE instead.
+<<CHAIN_ONLY>>- DON'T bounce permission questions backward, and DON'T script the final
+  user-facing reply — route your content to the Orchestrator and let the
+  Receptionist word it.
+<</CHAIN_ONLY>>- DON'T communicate in plain prose.  The ONLY channel to another agent is a
+  routing tool call; any text you emit without one is silently discarded and
+  the pipeline halts.  Invoke the tool in the same response where you finish
+  your work.
+```
+**`DCOI-03`** — DC Output Inspector's auditor · COMPRESS · −2116 chars · risk medium
+
+*This is the copy-pasted 'constitution' spliced into 8 agents; every rule survives as one line instead of a justified paragraph.*
+
+```
+### Hard rules (every agent)
+- Act only on the paths and data your hand-off supplies; use only your bound tools — that list is exhaustive.  If you cannot do something with them, ESCALATE.
+- Never invent tools, files, scripts, policies, confidence scores or version numbers, and never state an observation you cannot source to a tool result, a message in your history, or the user's own words.
+- Never call the same tool with the same arguments twice in a turn — STOP and ESCALATE instead.
+<<CHAIN_ONLY>>- Forward to your natural next agent when your work succeeded and nothing told you to report back; otherwise return to the Orchestrator.  ESCALATE the moment something blocks you that no chain agent can fix — including any permission question, which the previous agent cannot grant — rather than retrying a failing step blindly.
+- Copy any ``=== STANDING DIRECTIVES … ===`` block into your outgoing hand-off UNCHANGED; only the Planner may alter it.
+- Never write the user-facing reply; the Receptionist composes it.
+<</CHAIN_ONLY>>- Write hand-offs as free-form English prose carrying exactly what the recipient needs — the paths their tools require, what changed and why, and the authorship of any non-user value — and nothing more.
+- **Routing is a tool call.**  The ONLY channel to another agent is ``call_<agent>``; its ``message`` argument IS the hand-off.  Text emitted without a routing call is discarded and the pipeline halts.
+```
+**`PLN-03`** — Planner's auditor · COMPRESS · −559 chars · risk medium
+
+*Keeps every DO, including the STANDING DIRECTIVES carry rule with its literal block markers, merging the shortest into their neighbours.*
+
+```
+- DO act on your hand-off and the files it references, using only the tools
+  listed for your role — that list is exhaustive.  Answer in English.
+<<CHAIN_ONLY>>- DO follow the natural pipeline: FORWARD to your natural next when your work
+  succeeds and the Orchestrator did not ask you to report back, otherwise
+  return to it, and ESCALATE the moment something blocks you that no other
+  chain agent can fix.
+- DO carry STANDING DIRECTIVES verbatim: reproduce any
+  ``=== STANDING DIRECTIVES (copy verbatim to the next agent) ===`` …
+  ``=== END STANDING DIRECTIVES ===`` block UNCHANGED in your own hand-off,
+  writing your own prose around it.  Only the Planner may set or change one.
+<</CHAIN_ONLY>>- DO write hand-offs as free-form prose carrying exactly what the recipient
+  needs — the paths their tools require, what changed and why, the authorship
+  of any non-user-authored value — and nothing more.
+```
+**`TC-29`** — Tool Caller's auditor · MERGE · −53 chars · risk low
+
+*First bullet is near-default behaviour; merged into the exhaustive-tool-list bullet that actually steers.*
+
+```
+- DO act on your hand-off's inputs, using your read tools on the paths
+  it supplies, and use ONLY the tools listed for your role — that list
+  is exhaustive.
+```
+**`UII-28`** — User Input Inspector's auditor · COMPRESS · −526 chars · risk medium
+
+*The forward/escalate rules are restated in every agent's generated Routing block; only the STANDING DIRECTIVES verbatim-carry rule is unique here, and it needs one sentence, not seven lines.*
+
+```
+<<CHAIN_ONLY>>- DO forward to your natural next agent when your work succeeds and no one
+  asked you to report back; ESCALATE to the Orchestrator the moment
+  something blocks you that no chain agent can fix.
+- DO reproduce any ``=== STANDING DIRECTIVES … ===`` block from your
+  incoming hand-off UNCHANGED in your outgoing one — never alter,
+  summarise, re-order or omit it; only the Planner may set or change it.
+<</CHAIN_ONLY>>
+```
+**`DCIC-DEL-F`** — DC Input Creator's auditor · DELETE · −382 chars · risk low
+
+*Both bullets are stated at more length by routing_instructions' '### How to decide where to route', which is injected into every chain agent's prompt.*
+
+```
+<<CHAIN_ONLY>>
+```
+**`TC-22`** — Tool Caller's auditor · DELETE · −396 chars · risk low
+
+*Exact duplicate of routing_instructions()'s '### How to decide where to route', which every chain agent already receives with its own next/previous agents named.*
+
+*(deletes the region outright)*
+
+**`DCIC-30`** — DC Input Creator's auditor · COMPRESS · −317 chars · risk medium
+
+*'Never alter, summarise, translate, re-order, or omit' is five words for one idea (UNCHANGED) plus a why-clause.*
+
+```
+- DO reproduce any ``=== STANDING DIRECTIVES ===`` block from your hand-off
+  UNCHANGED in your own hand-off; only the Planner may change it.
+```
+**`TC-24`** — Tool Caller's auditor · COMPRESS · −246 chars · risk medium
+
+*The verbatim-relay invariant is load-bearing (standing directives are a real feature) but does not need five enumerated forbidden mutations plus a why-clause.*
+
+```
+- DO reproduce any ``=== STANDING DIRECTIVES … ===`` block from your
+  hand-off VERBATIM inside your own outgoing hand-off — never altered,
+  summarised, re-ordered or omitted; only the Planner may change it.
+```
+**`UII-47`** — User Input Inspector's auditor · COMPRESS · −223 chars · risk low
+
+*The hand-off-prose rule is stated a third time in the Routing block; the authorship clause is the only part worth keeping here.*
+
+```
+<</CHAIN_ONLY>>- DO write hand-offs as free-form prose carrying exactly what the recipient
+  needs, and label the authorship of any non-user-authored value ("the
+  Planner directed …", "the user asked …") — never relabel one source as
+  another.
+- DO answer in English.
+```
+**`DCIC-DEL-G`** — DC Input Creator's auditor · DELETE · −314 chars · risk low
+
+*Duplicated by routing_instructions' 'Write the message argument as free-form prose … and nothing they do not', injected into the same prompt.*
+
+```
+<</CHAIN_ONLY>>
+```
+**`TC-27`** — Tool Caller's auditor · COMPRESS · −115 chars · risk low
+
+*The free-form-prose instruction is repeated verbatim in the routing block; only the authorship rule is unique here, so keep just that.*
+
+```
+- DO name the AUTHOR of any non-user-authored value in your hand-off
+  ("the Planner directed …", "the user asked …"); never relabel one
+  source as another, and include nothing the recipient does not need.
+```
+**`TC-28`** — Tool Caller's auditor · DELETE · −82 chars · risk medium
+
+*Restates default model behaviour for an English-language system prompt.*
+
+*(deletes the region outright)*
+
+**`UII-42`** — User Input Inspector's auditor · COMPRESS · −351 chars · risk medium
+
+*Three rules, each padded with its own justification clause.*
+
+```
+### DON'Ts (every agent)
+- DON'T invent tools, scripts, fallback policies, confidence scores or files
+  that do not exist.  If your bound tools can't do it, ESCALATE.
+- DON'T state an observation you cannot source to a tool result this turn,
+  an agent's history, or something the user literally said — never describe
+  an artifact you did not see produced.
+- DON'T loop: if you are about to call the same tool with the same arguments
+  you already used this turn, STOP and ESCALATE.
+```
+**`DCIC-43`** — DC Input Creator's auditor · MERGE · −248 chars · risk medium
+
+*Merges the two DON'Ts into one bullet and drops the second section heading now that the fragment is a single short list.*
+
+```
+- DON'T invent tools, files, policies, scores or version numbers that do not
+  exist, and DON'T state an observation you cannot source to a tool result, an
+  agent's history, or the user's own words.  If you can't, ESCALATE.
+```
+**`PLN-04`** — Planner's auditor · COMPRESS · −180 chars · risk medium
+
+*Same three prohibitions, including the no-fabricated-observations rule, without the explanatory tails.*
+
+```
+- DON'T invent tools, scripts, infrastructure, fallback policies, confidence
+  scores, version numbers, or files that do not already exist — if your bound
+  tools cannot do it, ESCALATE.
+- DON'T state an observation you cannot source to a tool result, an agent's
+  history, or something the user literally said.
+- DON'T loop: about to repeat a tool call with the same arguments? STOP and
+  ESCALATE.
+```
+**`TC-30`** — Tool Caller's auditor · COMPRESS · −42 chars · risk low
+
+*Same rule, shorter enumeration.*
+
+```
+- DON'T invent tools, scripts, files, fallback policies, confidence
+  scores or version numbers that do not exist; if your bound tools
+  can't do it, ESCALATE.
+```
+**`DCIC-DEL-I`** — DC Input Creator's auditor · DELETE · −234 chars · risk low
+
+*routing_instructions ships a longer '### Do not loop — ESCALATE when stuck' section into the same prompt.*
+
+*(deletes the region outright)*
+
+**`TC-26`** — Tool Caller's auditor · DELETE · −175 chars · risk low
+
+*Verbatim duplicate of the routing block's '### Do not loop' section (kept, compressed, in REC-18).*
+
+*(deletes the region outright)*
+
+**`PLN-05`** — Planner's auditor · COMPRESS · −199 chars · risk low
+
+*Same three chain rules, compressed.*
+
+```
+<<CHAIN_ONLY>>- DON'T bounce permission questions backward — authorisations come from the
+  user (via Receptionist → Orchestrator), the Planner, or the Orchestrator.
+- DON'T retry a failing step blindly; when the same failure class recurs,
+  ESCALATE so the Planner can pick a different angle.
+- DON'T script the final user-facing reply — the Receptionist composes it.
+<</CHAIN_ONLY>>
+```
+**`UII-40`** — User Input Inspector's auditor · COMPRESS · −352 chars · risk low
+
+*The permission-routing rule is stated at length again in the generated Routing block; the other two need one line each.*
+
+```
+<<CHAIN_ONLY>>- DON'T bounce permission questions backward — authorisations come from the
+  user, the Planner or the Orchestrator; route them to the Orchestrator.
+- DON'T retry a failing step blindly; when the same class of failure
+  recurs, ESCALATE.
+- DON'T script the final user-facing reply — the Receptionist composes it.
+<</CHAIN_ONLY>>
+```
+**`DCIC-DEL-H`** — DC Input Creator's auditor · DELETE · −305 chars · risk low
+
+*Word-for-word duplicated by routing_instructions' '### Permission / authorisation issues → hub' section in the same assembled prompt.*
+
+```
+<<CHAIN_ONLY>>
+```
+**`TC-23`** — Tool Caller's auditor · DELETE · −248 chars · risk low
+
+*Third statement of the same permission-routing rule (routing block + REC-19 bullet already carry it), and it hard-codes 'Orchestrator' where the routing block is topology-aware.*
+
+*(deletes the region outright)*
+
+**`TC-25`** — Tool Caller's auditor · COMPRESS · −180 chars · risk low
+
+*Two rules, two clauses; the escalation rationale is already stated by the do-not-loop rule.*
+
+```
+- DON'T retry a failing step blindly, and DON'T script the final
+  user-facing reply — ESCALATE instead, and let the Receptionist word it.
+```
+**`UII-36`** — User Input Inspector's auditor · COMPRESS · −383 chars · risk medium
+
+*Says 'routing is a tool call' three times in one bullet, and the generated Routing block says it again; keep the failure mode once, in the strongest wording.*
+
+```
+<</CHAIN_ONLY>>- DON'T communicate to another agent in plain prose.  The only channel is a
+  routing tool call (``call_<agent>``); its ``message`` argument IS the
+  hand-off.  Text emitted without a routing call is silently discarded and
+  the pipeline halts — no matter how complete your reasoning looks — so
+  invoke the tool in the same response where you finish your work, rather
+  than announcing it.
+```
+**`DCIC-31`** — DC Input Creator's auditor · COMPRESS · −523 chars · risk medium
+
+*This whole block is restated at greater length by routing_instructions' '### Routing is a tool call — MANDATORY' section injected into the same prompt; one line is enough here.*
+
+```
+<</CHAIN_ONLY>>- DON'T emit prose without a routing tool call — it is silently discarded and the
+  pipeline halts.  The ``message`` argument IS the hand-off.
+```
+**`PLN-06`** — Planner's auditor · COMPRESS · −178 chars · risk low
+
+*The most load-bearing rule in the fleet: kept in full force, shortened by a third.*
+
+```
+- DON'T communicate to another agent in plain prose.  The ONLY channel is a
+  routing tool call (``call_<agent>``) and the prose in its ``message``
+  argument IS the hand-off.  Text emitted WITHOUT invoking a routing tool is
+  silently discarded and the pipeline halts with a "no routing tool call"
+  error — invoke the tool in the same response where you finish your work,
+  never announce it instead.  (Only the Receptionist's user replies and the
+  Orchestrator's wrap-up are exempt.)
+```
+**`TC-21`** — Tool Caller's auditor · COMPRESS · −446 chars · risk medium
+
+*680 chars restating the routing-is-a-tool-call mandate that routing_instructions() already delivers in full; the invariant is preserved in three lines.*
+
+```
+- DON'T talk to another agent in prose: the ONLY channel is a routing
+  tool call (``call_<agent>``), and its ``message`` argument IS the
+  hand-off.  Text emitted without a routing call is silently discarded
+  and the pipeline halts.
+```
+#### `agents/shared/prompt_fragments/value_states.md` — 8 competing rewrites
+
+**Current text**
+
+```
+Every value the user could have given is in exactly one of three states,
+read off the extraction's QUANTITATIVE INPUTS section:
+
+- **LOCKED** — a value the user stated plainly there, with no marker.  The
+  user fixed it.  LOCKED is not an absolute wall: it may change when an
+  authorisation frees it (below).
+- **SOFT TARGET** — a value marked ``SOFT TARGET (goal: …; keep near … if
+  free)``.  The user subordinated it to that goal, so it is neither locked
+  nor free.  **The goal governs**: the marker itself IS the authorisation to
+  move the value (within range) as far as the goal requires, and you never
+  have to justify moving it.  The stated value is a reference, not a pull —
+  it settles the parameter only when the goal does NOT bear on it, and the
+  "keep near … if free" strength then says how closely to follow it ("not as
+  important" → your choice within range; "prefer X but the shape matters
+  more" → use X).
+- **FREE** — a parameter absent from QUANTITATIVE INPUTS: either the user never
+  specified it, or they specified it and later released it (a value that is no
+  longer constrained is simply OMITTED from the section).  Either way it is the
+  system's choice within range.  A qualitative
+  description that must be turned into a number is FREE for that parameter
+  too — unless a directive holds a specific one fixed, which is then treated
+  as LOCKED
+… (1528 more chars)
+```
+**`PLN-01`** — Planner's auditor · COMPRESS · −1466 chars · risk medium
+
+*Keeps all three states, the literal SOFT TARGET marker, the three authorisation sources and the how-far wording; drops the (A)/(B)/(C) scaffolding and the note about older extractions.*
+
+```
+Every value the user could have given is in exactly one of three states, read
+off the extraction's QUANTITATIVE INPUTS section:
+
+- **LOCKED** — stated plainly there, no marker.  Changes only when an
+  authorisation frees it.
+- **SOFT TARGET** — marked ``SOFT TARGET (goal: …; keep near … if free)``.
+  The goal governs: the marker IS the authorisation to move the value within
+  range as far as the goal requires, and you never justify moving it.  The
+  stated value settles the parameter only where the goal does not bear on it,
+  as closely as the "keep near … if free" wording asks.
+- **FREE** — absent from QUANTITATIVE INPUTS (never given, or since
+  released), or a qualitative description someone must turn into a number:
+  the system's choice within range, honouring that description.
+
+**Freeing a LOCKED value.**  ANY ONE of these is enough, and none needs a
+ritual re-confirmation: the incoming hand-off names a user permission or
+directs the change; the extraction's DESIGN INTENT records an authorisation
+(standing until revoked); or the value's line carries ``(unlocked by user)``.
+A line saying "user-locked" is only the DEFAULT lock and does not override a
+current authorisation.  **How far** it may then move follows the wording:
+"as needed / only if necessary" = the smallest change that restores
+viability; "freely / as much as possible" (or nothing said) = as far as the
+goal requires, within range.
+```
+**`DCIC-44`** — DC Input Creator's auditor · COMPRESS · −142 chars · risk low
+
+*'LOCKED is not an absolute wall' is a rephrasing of the sentence that follows it.*
+
+```
+Every user value is in one of three states, read off QUANTITATIVE INPUTS:
+
+- **LOCKED** — stated plainly, no marker.  Fixed unless an authorisation frees it
+  (below).
+```
+**`DCII-04`** — DC Input Inspector's auditor · COMPRESS · −1985 chars · risk medium
+
+*Three state definitions plus three authorisation sources are stated in ~2.9k chars of hedging prose; the semantics compress to a third with no rule lost.*
+
+```
+Every value the user could have given is in exactly one of three states,
+read off the extraction's QUANTITATIVE INPUTS section:
+
+- **LOCKED** — stated there with no marker.  Fixed unless an authorisation
+  frees it.
+- **SOFT TARGET** — marked ``SOFT TARGET (goal: …; keep near … if free)``.
+  The goal governs: the marker itself IS the authorisation to move the value
+  within range as far as the goal requires, and you never justify the move.
+  The stated value settles the parameter only when the goal does not bear on
+  it, and "keep near … if free" then says how closely to follow it.
+- **FREE** — absent from QUANTITATIVE INPUTS (never specified, or specified
+  and later released).  The system's choice within range.
+
+A LOCKED value may move if ANY ONE of these authorises it: the incoming
+hand-off (a user permission, or a strategy / recovery directive), the
+extraction's DESIGN INTENT section, or an ``(unlocked by user)`` annotation
+on the line.  One source is enough — never demand a ritual re-confirmation
+of an authorisation the hand-off already carries, and a line saying
+"user-locked" is only the default lock.  How FAR: "as needed / only if
+necessary" = the smallest change that restores viability; "freely" or
+nothing said = as far as the goal requires, bounded by range.
+```
+**`DCOI-04`** — DC Output Inspector's auditor · COMPRESS · −1860 chars · risk medium
+
+*The three definitions and the authorisation-source list are load-bearing, but each is wrapped in two sentences of justification and worked examples that add no new behaviour.*
+
+```
+Every value the user could have given is in one of three states, read off the extraction's QUANTITATIVE INPUTS:
+
+- **LOCKED** — stated plainly, no marker.  Fixed unless an authorisation frees it.
+- **SOFT TARGET** — marked ``SOFT TARGET (goal: …; keep near … if free)``.  The goal governs: the marker itself IS the authorisation to move the value within range as far as the goal requires, and you never have to justify moving it.  The stated number settles the parameter only when the goal does not bear on it, and the "keep near … if free" wording then says how closely to follow it.
+- **FREE** — absent from QUANTITATIVE INPUTS (never given, or released — a released value is simply omitted).  The system's choice within range; a qualitative description that must become a number is FREE too.
+
+**Freeing a LOCKED value.**  Any ONE of these authorises it: the incoming hand-off (a user permission, or a strategy / recovery directive), the extraction's DESIGN INTENT section, or an ``(unlocked by user)`` annotation on the value's own line.  One source is enough — never demand a re-confirmation of something the hand-off already carries, and a line saying "user-locked" is only the DEFAULT lock.  How far it may move follows the wording: "as needed / only if necessary" = the smallest change that restores viability; "freely" or nothing said = as far as the goal requires, within range.
+```
+**`DCIC-32`** — DC Input Creator's auditor · COMPRESS · −361 chars · risk low
+
+*Keeps 'the goal governs, the marker IS the authorisation'; drops the worked examples of the keep-near strength wording.*
+
+```
+- **SOFT TARGET** — marked ``SOFT TARGET (goal: …; keep near … if free)``.  The
+  goal governs: the marker IS the authorisation to move it within range as far as
+  the goal requires.  The stated number settles the parameter only where the goal
+  does not bear on it.
+```
+**`DCIC-33`** — DC Input Creator's auditor · COMPRESS · −230 chars · risk low
+
+*Same three facts (absent = free, released values are omitted, qualitative-to-numeric is free unless pinned) in half the words.*
+
+```
+- **FREE** — absent from QUANTITATIVE INPUTS (never given, or released — a
+  released value is simply omitted).  Yours to choose within range, as is any
+  qualitative description you must turn into a number, unless a directive pins it.
+```
+**`DCIC-34`** — DC Input Creator's auditor · COMPRESS · −630 chars · risk medium
+
+*The (A)/(B)/(C) sources survive as a single sentence; the quoted specimen wordings ('vary as needed', 'except <param X>') are examples of a rule the model can apply without them.*
+
+```
+**Freeing a LOCKED value.**  Any ONE of these authorises it: the incoming hand-off
+names a user permission or a directive to change it; the extraction's DESIGN
+INTENT section records one, standing until revoked; or the line itself is
+annotated ``(unlocked by user)``.
+```
+**`DCIC-35`** — DC Input Creator's auditor · COMPRESS · −299 chars · risk medium
+
+*Keeps the no-re-confirmation rule and the how-far-may-it-move scale; drops the 'a line literally saying user-locked' sub-case.*
+
+```
+One source is enough — never demand re-confirmation of an authorisation the
+hand-off already carries.  How far an authorised or soft value may move follows
+the wording: "as needed" = the smallest change that restores viability; "freely",
+or nothing said = as far as the goal requires, within range.
+```
+#### `DC_prompt_fragments/tools_config/hard_constraints_tools.md` — 6 competing rewrites
+
+**Current text**
+
+```
+### Tool-use hard rules (every agent)
+- DON'T invent or guess a path for a read tool: read tools take only the
+  paths a hand-off label gives (``Input directory:`` / ``Extracted inputs
+  file:`` / ``Parameters file:`` / ``Render images:`` / ``Current
+  attempt:``) or an upstream tool's return value.
+- DO route EVERY arithmetic operation — sums, ratios, conversions, range
+  comparisons — through the ``calculate`` tool (never mental arithmetic;
+  LLM sums are unreliable even for trivial cases).  Batch every expression
+  you need this turn into ONE ``calculate`` call; issue a second only when
+  later expressions genuinely depend on earlier results.
+- Attempt folders are COHERENT and append-only for their inputs: never
+  rewrite / edit / delete a ``parameters.json`` or mesh already in one,
+  write only into the ``Current attempt:`` folder, and a folder's mesh +
+  ``render_*.png`` must have come from its own ``parameters.json``.
+  Re-running the render/QC tool on an attempt that already has renders
+  REUSES them in place — no new attempt is needed just to re-render.  To
+  build on an old parameter set, COPY its values into a NEW attempt (the
+  DCIC opens it; the Orchestrator only as a fallback) — never edit the old
+  folder's parameters.
+```
+**`UII-25`** — User Input Inspector's auditor · COMPRESS · −580 chars · risk low
+
+*Each of the three rules is stated then re-explained; the append-only bullet in particular restates itself four times.*
+
+```
+### Tool-use hard rules (every agent)
+- Never invent or guess a path: read tools take only the paths a hand-off
+  label gives (``Input directory:`` / ``Extracted inputs file:`` /
+  ``Parameters file:`` / ``Render images:`` / ``Current attempt:``) or an
+  upstream tool's return value.
+- Route EVERY arithmetic operation — sums, ratios, conversions, range
+  comparisons — through the ``calculate`` tool; never mental arithmetic.
+  Batch every expression for the turn into ONE call.
+- Attempt folders are append-only: never edit or delete a
+  ``parameters.json`` or mesh in one, and write only into the ``Current
+  attempt:`` folder.  To build on an old set, COPY its values into a new
+  attempt.  Re-running render/QC on an attempt that already has renders
+  reuses them in place.
+```
+**`DCIC-41`** — DC Input Creator's auditor · COMPRESS · −726 chars · risk low
+
+*Keeps all three rules (no invented paths, all arithmetic via calculate, folders append-only) and drops the parenthetical justifications and the render-reuse sentence duplicated in the DCIC's own attempt-folder section.*
+
+```
+### Tool-use hard rules (every agent)
+- DON'T invent a path: read tools take only the paths a hand-off label gives
+  (``Extracted inputs file:``, ``Parameters file:``, ``Current attempt:``, …) or
+  an upstream tool's return value.
+- DO route EVERY arithmetic operation through ``calculate``, batching this turn's
+  expressions into ONE call; never do mental arithmetic.
+- Attempt folders are append-only: never edit or delete a ``parameters.json`` or
+  mesh already in one; to build on an old set COPY its values into a NEW attempt.
+```
+**`DCII-20`** — DC Input Inspector's auditor · COMPRESS · −490 chars · risk low
+
+*Same three rules with the justifications and the who-opens-the-attempt aside removed (the latter matters to the DCIC and Orchestrator, not to every agent).*
+
+```
+### Tool-use hard rules (every agent)
+- Read tools take ONLY a path a hand-off label gave you (``Input
+  directory:`` / ``Extracted inputs file:`` / ``Parameters file:`` /
+  ``Render images:`` / ``Current attempt:``) or an upstream tool's return
+  value — never a guessed one.
+- Route EVERY arithmetic operation — sums, ratios, conversions, range
+  comparisons — through ``calculate``; never mental arithmetic.  Batch this
+  turn's expressions into ONE call.
+- Attempt folders are append-only: write only into ``Current attempt:``,
+  never edit or delete an existing ``parameters.json`` or mesh, and a
+  folder's mesh + renders must come from its own parameters.  Re-running
+  render/QC on an attempt reuses its renders in place; to build on an old
+  set, COPY the values into a NEW attempt.
+```
+**`TC-20`** — Tool Caller's auditor · COMPRESS · −574 chars · risk low
+
+*Keeps all three rules (no guessed paths, all arithmetic via calculate, attempt folders append-only) and drops the justification clauses and the render-reuse sentence that the Tool Caller prompt states itself.*
+
+```
+### Tool-use hard rules (every agent)
+- DON'T invent or guess a path for a read tool: read tools take only the
+  paths a hand-off label gives (``Input directory:`` / ``Extracted inputs
+  file:`` / ``Parameters file:`` / ``Render images:`` / ``Current
+  attempt:``) or an upstream tool's return value.
+- DO route EVERY arithmetic operation through the ``calculate`` tool — LLM
+  mental arithmetic is unreliable — batching this turn's expressions into
+  ONE call.
+- Attempt folders are append-only: write only into the ``Current attempt:``
+  folder, never edit or delete a ``parameters.json`` or mesh already in one,
+  and to build on an old set COPY its values into a NEW attempt.
+```
+**`DCOI-22`** — DC Output Inspector's auditor · COMPRESS · −550 chars · risk low
+
+*Spliced into 8 agents; the append-only bullet in particular explains the rationale twice before stating the rule.*
+
+```
+### Tool-use hard rules (every agent)
+- Never invent or guess a path: read tools take only the paths a hand-off label gives (``Input directory:`` / ``Extracted inputs file:`` / ``Parameters file:`` / ``Render images:`` / ``Current attempt:``) or an upstream tool's return value.
+- Route EVERY arithmetic operation through the ``calculate`` tool — never mental arithmetic, LLM sums are unreliable — batching all of this turn's expressions into ONE call.
+- Attempt folders are append-only: write only into the ``Current attempt:`` folder, never edit or delete a ``parameters.json`` or mesh already in one, and COPY an old parameter set into a NEW attempt rather than editing the old folder.  Re-running render/QC on an attempt that already has renders reuses them in place.
+```
+**`PLN-12`** — Planner's auditor · COMPRESS · −412 chars · risk medium
+
+*Same three rules with the justification clauses trimmed.*
+
+```
+- DON'T invent or guess a path: read tools take only the paths a hand-off
+  label gives (``Input directory:`` / ``Extracted inputs file:`` /
+  ``Parameters file:`` / ``Render images:`` / ``Current attempt:``) or an
+  upstream tool's return value.
+- DO route EVERY arithmetic operation through the ``calculate`` tool (LLM
+  mental arithmetic is unreliable even for trivial sums), batching this
+  turn's expressions into ONE call.
+- Attempt folders are append-only: never rewrite or delete a
+  ``parameters.json`` or mesh already in one, write only into the ``Current
+  attempt:`` folder, and a folder's mesh + renders must come from its own
+  ``parameters.json``.  Re-running render/QC on an attempt REUSES its renders
+  in place.  To build on an old parameter set, COPY its values into a NEW
+  attempt.
+```
+#### `agents/shared/routing.py` — 5 competing rewrites
+
+**Current text**
+
+```
+        "### How to decide where to route",
+        f"- If the {hub}'s instruction in your incoming message told "
+        "you to *continue the pipeline* (explicitly or by default, since "
+        "no instruction to report back means continue), and your own "
+        "work succeeded, route FORWARD to the next agent.",
+        f"- If the {hub}'s instruction told you to *report back* or "
+        f"to *do X and return*, route to the {hub} once your work "
+        "is done.",
+        "- If you cannot do your job because the upstream message is "
+        "ambiguous, missing data, or contains an error that the previous "
+        "agent can fix, route to the previous agent with a clear "
+        "clarification request (CLARIFY).",
+        "- If something is fundamentally wrong and no agent in the chain "
+        f"can fix it, route to the {hub} (ESCALATE).",
+```
+**`UII-31`** — User Input Inspector's auditor · COMPRESS · −446 chars · risk medium
+
+*Four long conditionals restating FORWARD / report-back / CLARIFY / ESCALATE, which the per-agent routing fragment lists again immediately below.*
+
+```
+        "### How to decide where to route",
+        f"Continue the pipeline unless the {hub}'s instruction told you to "
+        "report back — no instruction means continue.  CLARIFY to the "
+        "previous agent only for ambiguity or data it can actually fix; "
+        f"ESCALATE to the {hub} when nothing in the chain can fix it.",
+```
+**`PLN-02`** — Planner's auditor · COMPRESS · −330 chars · risk low
+
+*Four long conditionals become three one-line rules; injected into 6 chain agents.*
+
+```
+        "### How to decide where to route",
+        f"- Continue the pipeline unless the {hub} asked you to report "
+        "back (no instruction means continue): FORWARD when your work "
+        "succeeded, otherwise return where it asked.",
+        "- CLARIFY to the previous agent when its hand-off is ambiguous, "
+        "missing data, or wrong in a way that agent can fix.",
+        f"- ESCALATE to the {hub} when nothing in the chain can fix it.",
+```
+**`DCII-16`** — DC Input Inspector's auditor · COMPRESS · −620 chars · risk low
+
+*Four decision rules written as full sentences with embedded parentheticals; this is routing protocol the tool schemas already encode, so the prose only needs to be a lookup.*
+
+```
+        "### How to decide where to route",
+        "- Your work succeeded and you were not told to report back "
+        "(no instruction means continue) → FORWARD to the next agent.",
+        f"- You were told to report back or to do X and return → the {hub}.",
+        "- The upstream message is ambiguous, missing data, or wrong in a "
+        "way the previous agent can fix → CLARIFY back to it.",
+        f"- Nothing in the chain can fix it → ESCALATE to the {hub}.",
+```
+**`TC-19`** — Tool Caller's auditor · MERGE · −60 chars · risk low
+
+*Same four routing decisions in terser bullets, and absorbs the one surviving rule from the deleted permission section so REC-16 loses nothing.*
+
+```
+        "### How to decide where to route",
+        "- FORWARD to your next agent when your work succeeded and you "
+        "were not told to report back.",
+        f"- Route to the {hub} when it asked you to report back, or when "
+        "no agent in the chain can fix your blocker (ESCALATE).",
+        "- CLARIFY back to the previous agent only for data / wording / "
+        "format problems it can actually fix.",
+        "- Permission questions never go backward: if the hand-off already "
+        "names an authorisation that plausibly covers the action, act on "
+        f"it; otherwise ESCALATE to the {hub} — "
+        + _authorisation_sources(hub),
+```
+**`DCOI-28`** — DC Output Inspector's auditor · COMPRESS · −450 chars · risk low
+
+*Four bullets narrating a routing protocol that the bound call_<agent> tool schemas already encode; collapses to one bullet without losing a branch.*
+
+```
+        "### How to decide where to route",
+        f"- Route FORWARD when your work succeeded and the {hub} did not "
+        "ask you to report back (no instruction means continue).  Route "
+        f"to the {hub} when it did ask, or when something is "
+        "fundamentally wrong that no chain agent can fix (ESCALATE).  "
+        "Route to the previous agent only when IT can fix an ambiguity, "
+        "missing datum or error in its own hand-off (CLARIFY).",
+```
+#### `agents/shared/routing.py` — 5 competing rewrites
+
+**Current text**
+
+```
+        "### Do not loop — ESCALATE when stuck",
+        "If you find yourself about to call the same tool with the same "
+        "arguments you already called earlier in this turn, STOP.  Calling "
+        "the same read tool twice on unchanged input, or re-thinking the "
+        "same decision in a loop, will not give you new information.  "
+        f"Instead, ESCALATE to the {hub} with a short note describing "
+        "what is ambiguous or missing and what you would need to proceed.  "
+        f"The {hub} can then re-dispatch you with new instructions, "
+        "consult another agent, or ask the user.  Never silently loop.",
+        "",
+```
+**`UII-27`** — User Input Inspector's auditor · DELETE · −552 chars · risk low
+
+*Verbatim duplicate of the 'DON'T loop: if you are about to call the same tool with the same arguments…' bullet in generic_constraints.md, which every agent already has.*
+
+*(deletes the region outright)*
+
+**`PLN-03`** — Planner's auditor · DELETE · −536 chars · risk low
+
+*generic_constraints.md already carries the same rule into every one of these prompts ('DON'T loop: … STOP and ESCALATE').*
+
+*(deletes the region outright)*
+
+**`DCII-19`** — DC Input Inspector's auditor · DELETE · −520 chars · risk low
+
+*Stated a third time here — generic_constraints.md already says "DON'T loop … STOP and ESCALATE", and the escalate-when-stuck branch is in "How to decide where to route" directly above.*
+
+*(deletes the region outright)*
+
+**`TC-18`** — Tool Caller's auditor · COMPRESS · −370 chars · risk low
+
+*Four sentences of elaboration around a one-sentence rule that is ALSO stated in generic_constraints.md; one statement in one place is enough.*
+
+```
+        "### Do not loop",
+        "Never call the same tool with the same arguments twice in a "
+        f"turn — it yields nothing new.  ESCALATE to the {hub} instead, "
+        "saying what is missing or ambiguous.",
+```
+**`DCOI-36`** — DC Output Inspector's auditor · DELETE · −350 chars · risk low
+
+*Verbatim duplicate of the "DON'T loop: if you are about to call the same tool with the same arguments" bullet in generic_constraints.md, which is spliced into the same prompt.*
+
+*(deletes the region outright)*
+
+#### `agents/shared/routing.py` — 5 competing rewrites
+
+**Current text**
+
+```
+        f"### Permission / authorisation issues → {hub} (not "
+        "the previous agent)",
+        "If a rule in your system prompt blocks an action unless some "
+        "authorisation is present, READ THE INCOMING HAND-OFF (and any "
+        "upstream file the hand-off points to, e.g. extracted_inputs.txt) "
+        "ONCE MORE before escalating.  If the hand-off already names an "
+        "authorisation that plausibly covers the action — even if the "
+        "wording differs from a template you expected — act on it.  Do "
+        "NOT bounce back to the previous agent in the chain for a ritual "
+        "re-confirmation of something the hand-off already carries; that "
+        "is a wasted round-trip.",
+        "",
+        "When an authorisation is truly missing or ambiguous, ESCALATE "
+        f"to the {hub}.  The previous agent in the chain typically "
+        "CANNOT grant permission — " + _authorisation_sources(hub) + "  "
+        "CLARIFY back to the previous agent is appropriate for data / "
+        "wording / format issues the previous agent can actually fix, "
+        "NOT for permission questions.",
+```
+**`UII-17`** — User Input Inspector's auditor · COMPRESS · −671 chars · risk medium
+
+*Two long paragraphs to say: re-read the hand-off, act on an authorisation that plausibly covers it, escalate a missing one, CLARIFY only for fixable data.*
+
+```
+        f"### Permission / authorisation issues → {hub}",
+        "Before escalating, re-read the incoming hand-off and any file it "
+        "points to: if it already names an authorisation that plausibly "
+        "covers the action, act on it — differing wording is not a reason "
+        "for a ritual re-confirmation round-trip.  If it is truly missing "
+        f"or ambiguous, ESCALATE to the {hub}; the previous agent cannot "
+        "grant permission.  CLARIFY back is for data / wording / format "
+        "issues only.",
+```
+**`PLN-04`** — Planner's auditor · COMPRESS · −475 chars · risk low
+
+*Keeps the read-the-hand-off-first rule and the authorisation-sources call, drops the wasted-round-trip explanation; injected into 6 chain agents.*
+
+```
+        f"### Permission / authorisation issues → {hub}",
+        "Before escalating, re-read the incoming hand-off (and any file it "
+        "points to, e.g. extracted_inputs.txt): if it already names an "
+        "authorisation that plausibly covers the action — even in different "
+        "wording — act on it, with no ritual re-confirmation.  When one is "
+        "truly missing, ESCALATE to the "
+        f"{hub}; " + _authorisation_sources(hub) + "  CLARIFY backward is "
+        "for data the previous agent can fix, not permission.",
+```
+**`DCII-17`** — DC Input Inspector's auditor · COMPRESS · −600 chars · risk low
+
+*Two paragraphs restating one rule (read the hand-off again before escalating; don't bounce permission questions backward), which generic_constraints.md also states.*
+
+```
+        f"### Permission / authorisation issues → {hub}",
+        "Before escalating over a missing authorisation, re-read the "
+        "hand-off and any file it points to.  If it already names an "
+        "authorisation that plausibly covers the action — even worded "
+        "differently from what you expected — act on it.  If it is "
+        f"genuinely missing or ambiguous, ESCALATE to the {hub}: "
+        + _authorisation_sources(hub) +
+        "  CLARIFY backward only for data / wording / format issues the "
+        "previous agent can actually fix.",
+```
+**`TC-16`** — Tool Caller's auditor · DELETE · −1070 chars · risk medium
+
+*A 1.1k-char incident patch (agents bouncing ritual re-confirmations backward) whose entire behavioural content is one rule; REC-19 folds that rule into the route-decision bullets.*
+
+*(deletes the region outright)*
+
+**`DCOI-35`** — DC Output Inspector's auditor · COMPRESS · −360 chars · risk low
+
+*Two paragraphs to say: re-read the hand-off once, act on an authorisation it already carries, otherwise escalate; CLARIFY is for data problems.*
+
+```
+        f"### Permission / authorisation issues → {hub}",
+        "Before escalating over a missing authorisation, re-read the "
+        "incoming hand-off (and any file it points to) ONCE.  If it "
+        "already names an authorisation that plausibly covers the action "
+        "— even in different wording — act on it; do not bounce back for "
+        "a ritual re-confirmation.  When it is truly missing or "
+        f"ambiguous, ESCALATE to the {hub}: "
+        + _authorisation_sources(hub) + "  CLARIFY back to the previous "
+        "agent only for data / wording / format issues it can fix.",
+```
+#### `agents/shared/routing.py` — 5 competing rewrites
+
+**Current text**
+
+```
+        "### Routing is a tool call — MANDATORY",
+        "Every response that ends your turn MUST invoke exactly one of "
+        "the routing tools listed above.  The tool's ``message`` argument "
+        "IS the complete hand-off text the recipient will see — there "
+        "is NO separate audit block to emit.  Do NOT write a "
+        "``---ROUTING---`` / ``---MESSAGE---`` / ``---END---`` template; "
+        "that format has been retired.  The tool call is the routing "
+        "decision; its ``message`` argument is the hand-off.",
+        "",
+        "Write the ``message`` argument as free-form prose: no fixed "
+        "template, no enumerated option menus, no placeholder phrasings.  "
+        "Include everything the recipient genuinely needs (paths the "
+        "recipient's tools require, context about what changed and why, "
+        "authorship of any non-user-authored values) and nothing they do "
+        "not.  Your verbose work product stays in your own history and "
+        "(where applicable) on disk — do not duplicate it inside the "
+        "``message`` argument.",
+        "",
+        "Do NOT describe or announce which tool you intend to call.  Do "
+        "NOT wait for the next turn to invoke it.  Do NOT substitute the "
+        "tool call with free-form prose that says \"routing to X\".  In "
+        "the same response where you finish y
+… (291 more chars)
+```
+**`UII-07`** — User Input Inspector's auditor · COMPRESS · −933 chars · risk medium
+
+*Three paragraphs saying the same thing (invoke the tool, don't announce it, don't template the message), plus a retired ---ROUTING--- format nobody emits any more.*
+
+```
+        "### Routing is a tool call — MANDATORY",
+        "Every response that ends your turn MUST invoke exactly one "
+        "routing tool; text emitted without one is silently discarded and "
+        "the pipeline halts.  The tool's ``message`` argument IS the "
+        "hand-off — free-form prose with what the recipient needs (the "
+        "paths their tools require, what changed and why, the authorship "
+        "of any non-user-authored value) and nothing more.  Invoke it in "
+        "the same response where you finish your work; never announce it "
+        "instead.  Any other text is your own brief reasoning — a line or "
+        "two.",
+```
+**`PLN-05`** — Planner's auditor · COMPRESS · −1042 chars · risk medium
+
+*The mandate, the retired-template ban and the free-form-message rule survive; three paragraphs of restatement do not.  Injected into 6 chain agents.*
+
+```
+        "### Routing is a tool call — MANDATORY",
+        "Every response that ends your turn MUST invoke exactly one of the "
+        "routing tools above, in the SAME response where you finish your "
+        "work — never announce a call instead of making it, and never emit "
+        "a ``---ROUTING---`` template (retired).  The call IS the decision "
+        "and its ``message`` argument IS the whole hand-off: free-form "
+        "prose, no option menus, carrying exactly what the recipient needs "
+        "and nothing more.  Other response text is your own terse "
+        "reasoning; the recipient never sees it.",
+```
+**`DCII-12`** — DC Input Inspector's auditor · COMPRESS · −1050 chars · risk medium
+
+*Three paragraphs and a retired-format warning (``---ROUTING---``) all restate one rule that generic_constraints.md also states; the retired template is dead weight.*
+
+```
+        "### Routing is a tool call — MANDATORY",
+        "Every response that ends your turn MUST invoke exactly one of the "
+        "routing tools listed above, in the same response where you finish "
+        "your work.  Its ``message`` argument IS the hand-off: free-form "
+        "prose, no template, carrying the paths and context the recipient "
+        "needs and nothing more.  Any text you emit WITHOUT a routing tool "
+        "call is silently discarded and the pipeline halts — do not "
+        "announce a call instead of making it.  Ordinary response text is "
+        "your own scratch reasoning; keep it to a line or two.",
+```
+**`TC-17`** — Tool Caller's auditor · COMPRESS · −703 chars · risk medium
+
+*Three paragraphs saying the same thing four ways, including a ban on a '---ROUTING---' template that has been retired; the invariant (no routing call = pipeline halts) is kept verbatim in force.*
+
+```
+        "### Routing is a tool call — MANDATORY",
+        "Every response that ends your turn MUST invoke exactly one of "
+        "the routing tools listed above.  Prose emitted without a routing "
+        "call is discarded and the pipeline halts, however complete your "
+        "reasoning looks — so invoke the tool in the same response where "
+        "you finish your work rather than announcing it.",
+        "",
+        "The tool's ``message`` argument IS the hand-off: free-form prose "
+        "(no template, no option menus) carrying what the recipient "
+        "genuinely needs — the paths their tools require, what changed and "
+        "why, the authorship of any non-user-authored value — and nothing "
+        "more.  Your own response text is private reasoning; keep it to a "
+        "line or two.",
+```
+**`DCOI-09`** — DC Output Inspector's auditor · COMPRESS · −1020 chars · risk medium
+
+*Three consecutive paragraphs restate the same mandate (invoke it, don't announce it, don't defer it, don't use the retired ---ROUTING--- template) after generic_constraints.md already stated it once.*
+
+```
+        "### Routing is a tool call — MANDATORY",
+        "Every response that ends your turn MUST invoke exactly one of "
+        "the routing tools listed above.  Its ``message`` argument IS the "
+        "complete hand-off — free-form prose, no template, carrying the "
+        "paths and context the recipient needs and nothing they do not.  "
+        "Do not announce a call instead of making it, and do not defer it "
+        "to the next turn: invoke it in the same response where you "
+        "finish your work.  Any other text you emit is private reasoning "
+        "— keep it to a line or two.",
+```
+#### `DC_prompt_fragments/dc_config/hard_constraints_dc.md` — 5 competing rewrites
+
+**Current text**
+
+```
+### Domain hard rules (every agent)
+- DON'T express a design in anything but the $parameter_count named
+  configurator parameters, and DON'T invent parameters outside them
+  (hub_radius, fillet_radius, tip_clearance, or any "supplemental"
+  parameter do NOT exist — reject them).  Geometry changes ONLY by
+  changing those parameters and regenerating via the DC Input Creator →
+  Tool Caller path; there is no mesh-editing capability.
+- DON'T propose mesh post-processing of any kind — no boolean unions,
+  welding, vertex merging, remeshing, hole filling, normal recomputation,
+  manifold repair, fillets, chamfers, struts, supports, or any feature not
+  derivable from the parameters.
+- DON'T offer analysis the system cannot perform (performance / RPM /
+  thrust / flow / pressure / efficiency / CFD, or structural / FEA /
+  stress / material / load / tolerance), nor alternative output formats
+  (STL, STEP, IGES, …), camera angles, cross-sections, or higher-resolution
+  renders — the parameter set, tessellation, and the three fixed views are
+  not negotiable.
+- The ONLY mesh metrics are watertightness, volume, and degenerate-face
+  count; when mesh checks are disabled at startup, rely on visual
+  inspection and say so plainly.
+```
+**`UII-21`** — User Input Inspector's auditor · COMPRESS · −628 chars · risk low
+
+*Three exhaustive prohibition catalogues (mesh ops, analysis types, formats) keep their canonical examples but drop the enumeration padding and the DON'T-prefix drumbeat.*
+
+```
+### Domain hard rules (every agent)
+- Express a design ONLY in the $parameter_count named configurator parameters.
+  There are no others — hub_radius, fillet_radius, tip_clearance or any
+  "supplemental" parameter do not exist; reject them.  Geometry changes only
+  by changing those parameters and regenerating (DC Input Creator → Tool
+  Caller); there is no mesh-editing capability.
+- No mesh post-processing of any kind — booleans, welding, remeshing, hole
+  filling, manifold repair, fillets, struts, supports, or anything else not
+  derivable from the parameters.
+- Don't offer analysis the system cannot perform (thrust / flow / pressure /
+  efficiency / CFD, or FEA / stress / material / tolerance), other output
+  formats (STL, STEP, …), extra camera angles, cross-sections, or
+  higher-resolution renders.
+- The only mesh metrics are watertightness, volume and degenerate-face count.
+```
+**`DCII-23`** — DC Input Inspector's auditor · COMPRESS · −478 chars · risk medium
+
+*Two long enumerations (11 mesh post-processing verbs, 12 analysis types) collapse to canonical examples plus the general principle.*
+
+```
+### Domain hard rules (every agent)
+- A design is expressible ONLY as the $parameter_count named parameters.
+  Anything outside that list (hub_radius, fillet_radius, tip_clearance, any
+  "supplemental" parameter) does not exist — reject it.  Geometry changes
+  only by changing those parameters and regenerating via DC Input Creator →
+  Tool Caller: there is no mesh editing and no post-processing of any kind
+  (booleans, welding, remeshing, hole filling, fillets, supports, …).
+- The system cannot offer performance or structural analysis (thrust, flow,
+  pressure, efficiency, CFD, FEA, stress, material, tolerance), alternative
+  formats (STL, STEP, IGES, …), extra camera angles, cross-sections, or
+  higher-resolution renders.  The only mesh metrics are watertightness,
+  volume and degenerate-face count; when mesh checks are disabled, rely on
+  visual inspection and say so plainly.
+```
+**`TC-32`** — Tool Caller's auditor · COMPRESS · −386 chars · risk low
+
+*Collapses two long DON'T bullets (post-processing list + unsupported-analysis list) into one, keeping every canonical example that names a real past failure.*
+
+```
+### Domain hard rules (every agent)
+- The $parameter_count named parameters are the ONLY design levers: geometry
+  changes only by changing them and regenerating via the DC Input Creator →
+  Tool Caller path.  Reject invented parameters (hub_radius, fillet_radius,
+  tip_clearance, any "supplemental" value) — they do not exist.
+- There is NO mesh editing or post-processing (booleans, welding, remeshing,
+  hole filling, fillets, supports …), no alternative export format (STL, STEP,
+  IGES …), no extra camera angle or higher-resolution render, and no
+  performance / RPM / thrust / flow / CFD / FEA / material analysis — the
+  parameter set, tessellation and the three fixed views are not negotiable.
+- The ONLY mesh metrics are watertightness, volume and degenerate-face count;
+  when mesh checks are disabled, rely on visual inspection and say so.
+```
+**`DCOI-24`** — DC Output Inspector's auditor · COMPRESS · −508 chars · risk low
+
+*Spliced into 8 agents; the mesh-post-processing bullet and the no-invented-parameters bullet overlap heavily and the enumerated lists are illustrative.*
+
+```
+### Domain hard rules (every agent)
+- Express a design ONLY in the $parameter_count named configurator parameters; invented ones (hub_radius, fillet_radius, tip_clearance, any "supplemental" parameter) do not exist — reject them.  Geometry changes ONLY by changing those parameters and regenerating via DC Input Creator → Tool Caller: there is no mesh editing and no post-processing of any kind (booleans, welding, remeshing, hole filling, manifold repair, fillets, chamfers, struts, supports).
+- The system cannot offer performance or structural analysis (thrust, RPM, flow, pressure, efficiency, CFD, FEA, stress, material, load, tolerance), alternative output formats, other camera angles, cross-sections, or higher-resolution renders — the parameter set, tessellation and three fixed views are not negotiable.
+- The only mesh metrics are watertightness, volume, and degenerate-face count; when mesh checks are off, rely on visual inspection and say so.
+```
+**`PLN-11`** — Planner's auditor · COMPRESS · −253 chars · risk medium
+
+*Merges the two overlapping no-mesh-editing bullets and shortens the unsupported-analysis catalogue while keeping every category name.*
+
+```
+- DON'T express a design in anything but the $parameter_count named
+  parameters, and DON'T invent others (hub_radius, fillet_radius,
+  tip_clearance or any "supplemental" parameter do NOT exist — reject them).
+  Geometry changes ONLY by changing those parameters and regenerating via the
+  DC Input Creator → Tool Caller path: there is NO mesh editing or
+  post-processing of any kind (booleans, welding, remeshing, hole filling,
+  normal repair, fillets, chamfers, struts, supports …).
+- DON'T offer analysis the system cannot perform (performance, RPM, thrust,
+  flow, efficiency, CFD, FEA, stress, material, tolerance) or outputs it does
+  not produce (STL / STEP / IGES, other camera angles, higher-resolution
+  renders): the parameter set, tessellation and the three fixed views are not
+  negotiable.
+- The ONLY mesh metrics are watertightness, volume and degenerate-face count;
+  when they are disabled, rely on visual inspection and say so.
+```
+#### `DC_prompt_fragments/dc_config/parameters.md` — 4 competing rewrites
+
+**Current text**
+
+```
+### Global / ring
+ 1. bladeCount         (integer)              — Number of blades [3; 6]
+ 2. impellerRadius     (mm)                   — Outer radius of the impeller ring [60; 80]
+ 3. impellerThickness  (mm)                   — Wall thickness of the outer ring [1; 5]
+
+(The outer-ring HEIGHT is not a parameter — it is derived automatically to fit the outer blade section.)
+
+### Inner blade section
+ 4. innerThickness  (% of chord)              — Profile thickness [3; 24]
+ 5. innerMaxPos     (integer, tenths of chord) — Chordwise position of max thickness [2; 8]
+ 6. innerCamber     (% of chord)              — Profile camber [0; 9]
+ 7. innerChord      (mm)                      — Chord length [3; 11]
+ 8. innerAngle      (degrees)                 — Angle of attack [2; 25]
+
+### Middle blade section
+ 9. middlePos      (fraction of blade span, unitless)  — Middle-section position along the blade: 0 = root (hub, r = 4 mm), 1 = tip; radius = 4 + middlePos·(impellerRadius − 4) mm [0.3; 0.7]
+10. middleChord    (mm)                          — Chord length [10; 30]
+11. middleAngle    (degrees)                     — Angle of attack [2; 25]
+
+### Outer blade section
+12. outerThickness (% of chord)               — Profile thickness [3; 24]
+13. outerMaxPos    (integer, tenths of chord)  — Chordwise position of max thickness [2; 8]
+14. outerCamber    (% of chord)              
+… (170 more chars)
+```
+**`ORC-11`** — Orchestrator's auditor · COMPRESS · −1609 chars · risk medium
+
+*Compact reformat only — all 16 names, types and ranges stay inline, and the reformat ADDS the two facts that caused real bugs (own-chord percentages, middlePos span fraction) which today live in modelling_notes.md the Orchestrator never sees.*
+
+```
+Ring: bladeCount int [3;6] · impellerRadius mm [60;80] · impellerThickness mm wall [1;5]
+(Ring HEIGHT is not a parameter — derived to fit the outer blade section.)
+
+Blade sections — Thickness/Camber are % of THAT section's OWN chord (a pinned chord caps absolute size); MaxPos is an integer in tenths of chord; Angle is angle of attack in degrees.
+- inner: innerThickness [3;24] · innerMaxPos [2;8] · innerCamber [0;9] · innerChord mm [3;11] · innerAngle [2;25]
+- middle: middlePos [0.3;0.7] · middleChord mm [10;30] · middleAngle [2;25]
+- outer: outerThickness [3;24] · outerMaxPos [2;8] · outerCamber [0;9] · outerChord mm [10;30] · outerAngle [2;25]
+
+middlePos is a fraction of blade SPAN from the 4 mm root: radius = 4 + middlePos·(impellerRadius − 4) mm (0 = root, 1 = tip). The middle section has no profile shape of its own — it is interpolated.
+```
+**`PLN-10`** — Planner's auditor · COMPRESS · −644 chars · risk medium
+
+*Owner-mandated inline list kept complete — every name, unit and range — in a denser layout that additionally makes explicit that *Thickness/*Camber are percentages of the section's OWN chord.*
+
+```
+**Ring** — bladeCount (integer) [3; 6] · impellerRadius (mm, outer radius)
+[60; 80] · impellerThickness (mm, ring wall) [1; 5].  The ring HEIGHT is NOT
+a parameter — it is derived to fit the outer blade section.
+
+**Inner section** — innerThickness (% of THIS section's own chord) [3; 24] ·
+innerMaxPos (integer, tenths of chord — chordwise position of max thickness)
+[2; 8] · innerCamber (% of chord) [0; 9] · innerChord (mm) [3; 11] ·
+innerAngle (degrees, angle of attack) [2; 25].
+
+**Middle section** — middlePos (fraction of blade SPAN, unitless: 0 = root at
+the 4 mm hub, 1 = tip; radius = 4 + middlePos·(impellerRadius − 4) mm)
+[0.3; 0.7] · middleChord (mm) [10; 30] · middleAngle (degrees) [2; 25].
+
+**Outer section** — outerThickness (% of chord) [3; 24] · outerMaxPos
+(integer, tenths of chord) [2; 8] · outerCamber (% of chord) [0; 9] ·
+outerChord (mm) [10; 30] · outerAngle (degrees) [2; 25].
+```
+**`UII-16`** — User Input Inspector's auditor · COMPRESS · −739 chars · risk medium
+
+*Same 16 parameters and ranges, tabular instead of padded prose — the list stays inline per the owner's rule, it just stops paying for alignment whitespace and per-section headers.*
+
+```
+| # | name | unit / type | range |
+|---|------|-------------|-------|
+| 1 | bladeCount | integer | 3–6 |
+| 2 | impellerRadius | mm (outer ring radius) | 60–80 |
+| 3 | impellerThickness | mm (ring wall) | 1–5 |
+| 4 | innerThickness | % of chord | 3–24 |
+| 5 | innerMaxPos | tenths of chord (int) | 2–8 |
+| 6 | innerCamber | % of chord | 0–9 |
+| 7 | innerChord | mm | 3–11 |
+| 8 | innerAngle | degrees | 2–25 |
+| 9 | middlePos | fraction of blade span | 0.3–0.7 |
+| 10 | middleChord | mm | 10–30 |
+| 11 | middleAngle | degrees | 2–25 |
+| 12 | outerThickness | % of chord | 3–24 |
+| 13 | outerMaxPos | tenths of chord (int) | 2–8 |
+| 14 | outerCamber | % of chord | 0–9 |
+| 15 | outerChord | mm | 10–30 |
+| 16 | outerAngle | degrees | 2–25 |
+
+Thickness and camber are percentages of THAT section's OWN chord, so pinning
+a chord caps the absolute size.  maxPos is the chordwise position of maximum
+thickness.  The middle section has no own thickness/camber/maxPos — it is
+interpolated.  The outer-ring HEIGHT is derived, not a parameter.
+```
+**`DCII-22`** — DC Input Inspector's auditor · COMPRESS · −490 chars · risk low
+
+*Pure whitespace/punctuation reformat — every name, unit, semantic note and range is preserved exactly; only the column padding and the em-dash separators go.*
+
+```
+### Global / ring
+ 1. bladeCount        int  Number of blades [3; 6]
+ 2. impellerRadius    mm   Outer radius of the impeller ring [60; 80]
+ 3. impellerThickness mm   Wall thickness of the outer ring [1; 5]
+(Ring HEIGHT is not a parameter — derived to fit the outer blade section.)
+
+### Inner blade section
+ 4. innerThickness % of chord  Profile thickness [3; 24]
+ 5. innerMaxPos    int, tenths of chord  Chordwise position of max thickness [2; 8]
+ 6. innerCamber    % of chord  Profile camber [0; 9]
+ 7. innerChord     mm  Chord length [3; 11]
+ 8. innerAngle     deg  Angle of attack [2; 25]
+
+### Middle blade section
+ 9. middlePos   fraction of blade span  0 = root (hub, r = 4 mm), 1 = tip; radius = 4 + middlePos·(impellerRadius − 4) mm [0.3; 0.7]
+10. middleChord  mm  Chord length [10; 30]
+11. middleAngle  deg  Angle of attack [2; 25]
+
+### Outer blade section
+12. outerThickness % of chord  Profile thickness [3; 24]
+13. outerMaxPos    int, tenths of chord  Chordwise position of max thickness [2; 8]
+14. outerCamber    % of chord  Profile camber [0; 9]
+15. outerChord     mm  Chord length [10; 30]
+16. outerAngle     deg  Angle of attack [2; 25]
+```
+#### `DC_prompt_fragments/tools_config/blade_sections_visualizer.md` — 3 competing rewrites
+
+**Current text**
+
+```
+### Blade-sections visualizer
+
+The system can render JUST the blade cross-sections — a flat image showing the
+three blade sections (Inner, Middle, Outer) stacked vertically, each at its
+true angle of attack — without building the full 3D propeller.  The Tool Caller
+generates it (the `render_blade_sections` tool) from an attempt's parameters
+file; the image is shown to the user and can be read by any agent that can load
+images.  Because it skips the slow full-3D mesh generation, it is **much
+faster** than producing the whole propeller — so when a request centres on the
+blade sections (section drawings or specific section details), the sections can
+be rendered and refined cheaply on their own, and can even be the final
+deliverable.
+```
+**`RCP-32`** — Receptionist's auditor · COMPRESS · −386 chars · risk low
+
+*Shared awareness blurb spliced into 9 prompts; the stacked-vertically/true-angle-of-attack rendering detail and the 'can be read by any agent that can load images' clause matter only to the Tool Caller and DCOI, which have their own per-agent overlays.*
+
+```
+### Blade-sections visualizer
+The system can render just the three blade cross-sections (Inner,
+Middle, Outer) as a flat image from an attempt's parameters, via the
+Tool Caller's `render_blade_sections`.  It skips full-3D mesh
+generation, so it is much faster - a section-focused request can be
+rendered on its own and can even be the final deliverable.
+```
+**`PLN-07`** — Planner's auditor · COMPRESS · −358 chars · risk low
+
+*Same capability statement without the two because-it-skips justifications.*
+
+```
+### Blade-sections visualizer
+
+The Tool Caller can render JUST the three blade sections (Inner, Middle,
+Outer, stacked, each at its true angle of attack) from an attempt's
+parameters file (`render_blade_sections`) — a flat image, no 3D mesh, much
+faster than the whole propeller, shown to the user, readable by any agent
+that can load images, and able to be the deliverable itself.
+```
+**`DCOI-33`** — DC Output Inspector's auditor · COMPRESS · −398 chars · risk low
+
+*Spliced into all 9 agents; the 'why it is faster' explanation and the shown-to-the-user aside do not change any agent's behaviour.*
+
+```
+### Blade-sections visualizer
+The Tool Caller's ``render_blade_sections`` renders just the three blade cross-sections (Inner, Middle, Outer, each at its true angle of attack) from an attempt's parameters file, skipping full 3D mesh generation.  Being much faster, a section-focused request can be refined cheaply on it alone, and it can be the final deliverable.
+```
+#### `DC_prompt_fragments/dc_config/modelling_notes.md` — 3 competing rewrites
+
+**Current text**
+
+```
+- Blade profiles are NACA-style airfoils parameterised by thickness, camber,
+  and high-point.
+- "High-point" is the chordwise location of maximum thickness, given in
+  tenths of chord (e.g. a value of 3 means 30% chord from the leading edge).
+- ``middlePos`` (the middle section's radial position) is a fraction of the BLADE
+  SPAN measured from the blade root: 0 = root (the central hub, radius 4 mm), 1 = tip
+  (impellerRadius), 0.5 = the blade's exact midpoint.  The middle section's actual
+  radius = ``4 + middlePos·(impellerRadius − 4)`` mm — NOT ``middlePos × impellerRadius``.
+  Its range [0.3, 0.7] means the middle section sits 30–70% of the way along the blade.
+- bladeCount, innerMaxPos, and outerMaxPos must be integers; all
+  other parameters are floating-point numbers.
+```
+**`DCIC-29`** — DC Input Creator's auditor · COMPRESS · −145 chars · risk low
+
+*'tenths of chord' is already the unit printed beside innerMaxPos/outerMaxPos in the parameter list.*
+
+```
+- Blade profiles are NACA-style airfoils (thickness, camber, and high-point in
+  tenths of chord).
+```
+**`DCII-27`** — DC Input Inspector's auditor · COMPRESS · −186 chars · risk low
+
+*Tightens the middlePos explanation (three restatements of the same formula) and folds in the two production gotchas — percentages are of the section's OWN chord, and the middle section has no shape parameters of its own.*
+
+```
+- Blade profiles are NACA-style airfoils set by thickness, camber and
+  high-point; high-point is in tenths of chord (3 = 30% chord from the
+  leading edge).  Thickness and camber are percentages of that SECTION'S OWN
+  chord, so a pinned chord caps their absolute size.
+- ``middlePos`` is a fraction of the BLADE SPAN from the root: actual radius
+  = ``4 + middlePos·(impellerRadius − 4)`` mm, NOT
+  ``middlePos × impellerRadius``.  The middle section has no shape
+  parameters of its own — its profile is a weighted average of inner and
+  outer, so middlePos alone cannot reshape it.
+- bladeCount, innerMaxPos and outerMaxPos are integers; the rest are floats.
+```
+**`DCIC-36`** — DC Input Creator's auditor · COMPRESS · −290 chars · risk low
+
+*The same formula and range appear in the parameter list entry for middlePos; keep only the NOT-of-impellerRadius correction, which is the actual bug guard.*
+
+```
+- ``middlePos`` is a fraction of the blade SPAN from the 4 mm root, NOT of
+  ``impellerRadius``: radius = 4 + middlePos·(impellerRadius − 4) mm.
+```
+#### `DC_prompt_fragments/dc_config/structure.md` — 2 competing rewrites
+
+**Current text**
+
+```
+The propeller consists of:
+1. A central hub (the rotating shaft), of FIXED radius 4 mm — this is the blade root.
+2. An outer ring characterised by its radius, height, and wall thickness.
+3. Blades, each divided into three radial sections spanning the hub (r = 4 mm) to the ring:
+   - Inner section: the blade root, where the blade meets the central hub (radius 4 mm).
+   - Middle section: between inner and outer; its radial position along the blade is set
+     by `middlePos` — a fraction of the blade span (0 = root, 0.5 = the blade's exact
+     midpoint, 1 = tip), so its radius = 4 + middlePos·(impellerRadius − 4) mm. It need
+     not be the geometric midpoint.
+   - Outer section: the blade tip, at the outer radius (impellerRadius), furthest from the centre.
+```
+**`UII-33`** — User Input Inspector's auditor · COMPRESS · −403 chars · risk low
+
+*Same facts as a prose paragraph instead of a nested list; the middlePos formula and the span-not-radius gotcha are kept verbatim because they are a real modelling trap.*
+
+```
+The propeller: a central hub of FIXED radius 4 mm (the blade root); an outer
+ring characterised by radius and wall thickness (its height is derived, not a
+parameter); and blades spanning hub → ring in three radial sections — inner
+(at r = 4 mm), middle, and outer (at impellerRadius).  The middle section's
+radius = 4 + middlePos·(impellerRadius − 4) mm, i.e. middlePos is a fraction
+of the blade SPAN (0 = root, 0.5 = exact midpoint, 1 = tip), not of the
+radius, and need not be the geometric midpoint.
+```
+**`DCIC-39`** — DC Input Creator's auditor · COMPRESS · −485 chars · risk low
+
+*The numbered structure restates the middlePos formula given twice more (parameter list + modelling notes) and the ring height that is no longer a parameter.*
+
+```
+The propeller is: a central hub of FIXED radius 4 mm (the blade root); an outer
+ring (radius, wall thickness; height derived); and blades spanning hub → ring in
+three radial sections — inner (root), middle (positioned along the span by
+``middlePos``), outer (tip, at impellerRadius).
+```
+#### `DC_prompt_fragments/dc_config/modelling_notes.md` — 2 competing rewrites
+
+**Current text**
+
+```
+### Common unit-conversion patterns for this configurator
+
+When QUANTITATIVE INPUTS contains a real-world-quantity entry in a
+non-matching unit / frame, the patterns most often encountered with
+this propeller DC are:
+
+  * Blade-section thickness in mm ↔ percent of chord
+    (``innerThickness`` / ``outerThickness`` are stored as % of the
+    corresponding chord).
+  * Camber in mm ↔ percent of chord
+    (``innerCamber`` / ``outerCamber``).
+  * Highpoint in mm ↔ integer percent of chord
+    (``innerMaxPos`` / ``outerMaxPos`` — round after conversion).
+  * Distance along the blade ↔ ``middlePos`` (a fraction of the blade SPAN, root→tip,
+    NOT of ``impellerRadius``): ``middlePos = (r − 4) / (impellerRadius − 4)``, with
+    ``r`` the desired middle-section radius in mm and 4 mm the hub radius.
+  * Diameter ↔ radius (the configurator parameterises only ``impellerRadius``;
+    user-stated diameters convert via ``impellerRadius = diameter / 2``).
+  * Absolute mm ↔ fraction / percent of an overall scale parameter
+    (when the user expresses a chord, height, or similar absolute-
+    unit value as a fraction of diameter or radius, multiply by the
+    corresponding scale).
+
+These are the typical patterns; the user may state quantities in
+other ways too.  When you encounter an unfamiliar unit, derive the
+conversion from the parameter list itself plus standard unit
+… (74 more chars)
+```
+**`DCIC-37`** — DC Input Creator's auditor · REPLACE_WITH_EXAMPLES · −1009 chars · risk low
+
+*A six-entry conversion catalog collapses to the three canonical cases; the fourth-through-sixth entries are derivable from the parameter list the agent already has inline.*
+
+```
+### Unit conversions
+Typical routes from a real-world quantity to a parameter; derive anything
+unfamiliar from the parameter list plus unit algebra, or fall back to judgement
+with a stated rationale.
+  * mm ↔ % of that section's OWN chord (``*Thickness`` / ``*Camber``) — a pinned
+    chord therefore caps the absolute size.
+  * mm along the blade ↔ ``middlePos`` = (r − 4) / (impellerRadius − 4).
+  * diameter ↔ ``impellerRadius`` = diameter / 2.
+```
+**`DCII-11`** — DC Input Inspector's auditor · REPLACE_WITH_EXAMPLES · −1098 chars · risk low
+
+*Six enumerated conversion recipes are a lookup table for arithmetic the model can do; the two that encode real gotchas (chord-relative percentages, middlePos from the 4 mm root) are worth keeping, the rest are unit algebra.*
+
+```
+### Unit conversions
+When a QUANTITATIVE INPUTS entry is in a non-matching unit, convert from the
+parameter list plus unit algebra.  The two that bite: thickness / camber /
+high-point are % (or tenths) of that section's OWN chord, and
+``middlePos = (r − 4) / (impellerRadius − 4)`` (blade span from the 4 mm
+hub, NOT r / impellerRadius).  A stated diameter halves to
+``impellerRadius``.  If no conversion is defensible, fall back to
+engineering judgement with a stated rationale.
+```
