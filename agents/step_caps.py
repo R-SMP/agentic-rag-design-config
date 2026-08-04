@@ -19,32 +19,34 @@ in practice 1–2 more for the LLM's intermediate "thinking" turns
 where it produces text without a tool call.
 """
 
+from workflow_settings import settings as _ws
+
 # ---------------------------------------------------------------------------
 # Per-agent caps — number of LLM turns inside one ``agent.run(message)``
 # call.  When the cap is hit the agent returns an error AgentHop to the
 # Orchestrator instead of looping forever.
 # ---------------------------------------------------------------------------
 
-MAX_RECEPTIONIST_STEPS = 10
+MAX_RECEPTIONIST_STEPS = _ws.MAX_RECEPTIONIST_STEPS
 """Receptionist's ``_run_llm_loop``.  The Receptionist typically does
 zero or one utility-tool call (``read_agent_history``) and then either
 replies as text or invokes ``call_orchestrator``.  Ten turns is
 already comfortable for that pattern."""
 
-MAX_PLANNER_STEPS = 20
+MAX_PLANNER_STEPS = _ws.MAX_PLANNER_STEPS
 """Planner's ``run()``.  Used both for Role 1 (kickoff) and Role 2
 (recovery planning).  Recovery turns may call ``read_user_queries``
 and ``read_agent_history`` before producing the routing call, so the
 budget needs ~3-4 utility calls plus the routing tool."""
 
-MAX_UII_STEPS = 10
+MAX_UII_STEPS = _ws.MAX_UII_STEPS
 """User Input Inspector's ``run()``.  Standard flow is
 ``read_user_inputs`` → ``write_extraction`` → routing call (3 turns).
 Extra slack covers the post-image-loading user-input tools
 (``list_input_files`` / ``read_image_notes`` / ``read_input_text`` /
 ``view_images``) and the occasional ``calculate``."""
 
-MAX_DCIC_STEPS = 50
+MAX_DCIC_STEPS = _ws.MAX_DCIC_STEPS
 """DC Input Creator's ``run()``.  Standard flow is
 ``read_extracted_inputs`` → ``new_attempt`` (for a new generation) →
 ``write_parameters`` → routing call (3-4 turns).  Reference-matching
@@ -53,21 +55,21 @@ runs may additionally invoke ``list_input_files`` /
 turn count up materially when the LLM also needs intermediate
 ``calculate`` calls."""
 
-MAX_DCII_STEPS = 50
+MAX_DCII_STEPS = _ws.MAX_DCII_STEPS
 """DC Input Inspector's ``run()``.  Standard flow is
 ``read_parameters`` (often parallel-called with
 ``read_extracted_inputs``) → ``calculate`` → routing call (3 turns).
 Extra slack covers cycles where DCII consults user reference images
 to judge appropriateness."""
 
-MAX_TC_STEPS = 15
+MAX_TC_STEPS = _ws.MAX_TC_STEPS
 """Tool Caller's ``run()``.  Higher than the others because the
 generation pipeline is sequential: ``read_parameters`` →
 ``generate_and_render_propeller`` (builds the mesh AND renders it in one
 call) → routing call, with potential ``calculate`` calls between, plus
 the LLM sometimes inserts intermediate text turns."""
 
-MAX_DCOI_STEPS = 15
+MAX_DCOI_STEPS = _ws.MAX_DCOI_STEPS
 """DC Output Inspector's ``run()``.  Standard flow is
 ``view_images`` → routing call (2 turns).  Extra slack
 covers reference-image comparison cycles
@@ -75,7 +77,7 @@ covers reference-image comparison cycles
 ``view_images``) and looking up prior attempts via
 ``list_attempts`` / ``read_attempt``."""
 
-MAX_DH_STEPS = 10
+MAX_DH_STEPS = _ws.MAX_DH_STEPS
 """Database Handler's per-question turn budget.  The DH runs once per
 saved session, post-mortem.  For each (agent, question) pair it
 formulates a question (one LLM turn), sends it to the target agent,
@@ -83,7 +85,7 @@ receives the answer, then writes the result to disk.  No tools are
 bound to the DH for now, so the cap mostly guards against runaway
 loops if a future revision adds tools."""
 
-MAX_DH_TURNS_PER_FIELD = 6
+MAX_DH_TURNS_PER_FIELD = _ws.MAX_DH_TURNS_PER_FIELD
 """Cap on consecutive question/answer rounds the DH may have inside a
 single conversation about ONE database field with one agent.  Each
 round is one DH question and one agent answer; the cap therefore
@@ -96,7 +98,7 @@ cap is reached the DH stops asking and writes whatever it has."""
 # Orchestrator + dispatcher caps
 # ---------------------------------------------------------------------------
 
-MAX_ORCHESTRATOR_STEPS = 60
+MAX_ORCHESTRATOR_STEPS = _ws.MAX_ORCHESTRATOR_STEPS
 """Maximum number of times the dispatcher is allowed to RE-ENTER
 the Orchestrator's ``run()`` during a single user turn.  Each
 re-entry corresponds to one routing decision the Orchestrator has
@@ -105,7 +107,7 @@ etc.).  When this cap is hit the dispatcher calls
 ``_surface_limit_to_user("max Orchestrator visits")`` and the
 Receptionist composes a polite "the workflow stopped" message."""
 
-MAX_ORCH_INNER_STEPS = 6
+MAX_ORCH_INNER_STEPS = _ws.MAX_ORCH_INNER_STEPS
 """Maximum number of LLM turns inside ONE ``Orchestrator.run()``
 invocation.  Lets the Orchestrator chain a couple of utility calls
 (e.g. ``new_attempt`` to mint an attempt path) before invoking its
@@ -127,7 +129,6 @@ relay, not deliberate."""
 # UI takes effect on the next process start.
 # ---------------------------------------------------------------------------
 
-from workflow_settings import settings as _ws
 
 MAX_CONDUCTOR_STEPS = _ws.MAX_CONDUCTOR_STEPS
 """LLM turns allowed inside ONE ``Conductor.run()`` invocation.
@@ -169,14 +170,14 @@ above either parent (DCIC 50 to author, DCII 50 to inspect) but far
 below their sum: the merged agent runs both passes in one loop and
 shares most of their tool calls.  Tunable — see settings.py §27."""
 
-MAX_DISPATCH_HOPS = 200
+MAX_DISPATCH_HOPS = _ws.MAX_DISPATCH_HOPS
 """Hard ceiling on the total number of agent hops the dispatcher
 will execute in a single user turn before bailing out via
 ``_surface_limit_to_user("max dispatch hops")``.  Catches runaway
 ping-pong loops that slip past the per-agent caps (e.g. agents
 escalating back-and-forth indefinitely)."""
 
-MAX_SECTIONS_REFINE_ROUNDS = 8
+MAX_SECTIONS_REFINE_ROUNDS = _ws.MAX_SECTIONS_REFINE_ROUNDS
 """Hard cap on how many blade-section REFINE ROUNDS a precision job may
 run before the dispatcher forces an honest finalize.  A "round" is one
 hop into the DC Output Inspector while a Planner-issued standing

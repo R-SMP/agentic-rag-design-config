@@ -868,24 +868,158 @@ SYSTEM_TOPOLOGY: int = 7
 
 
 # ===========================================================
-# 28. Step budgets for the merged agents (5-agent topology)
+# 28. Step budgets - every agent and the dispatcher
 # ===========================================================
-# How much room the two MERGED agents get before the system stops
-# them.  These are tunable settings — rather than fixed constants like
-# the 7-agent caps in ``agents/step_caps.py`` — because neither merged
-# agent can inherit a parent's budget: each does strictly MORE per turn
-# than either agent it replaces, and the right figure is only really
-# learnable from real runs.
+# How many LLM turns each agent gets, and how many hops the dispatcher
+# allows, before the system stops them.  ALL of them live here now so
+# they can be retuned from the Workflow Settings UI between queued runs.
+# Previously only the merged agents' caps were settings and the twelve
+# 7-agent caps were hardcoded in agents/step_caps.py, so a run that died
+# overnight needed a code edit and a redeploy to rescue.
+#
+# WHAT THESE ARE NOT: they are not per-session budgets and they do not
+# accumulate.  A *_STEPS cap is spent inside ONE agent.run() call and
+# resets every time that agent is activated; a *_VISITS cap and
+# MAX_DISPATCH_HOPS reset every user turn.  Nothing here carries across
+# turns, let alone across queued overnight sessions.
 #
 # A cap is a RUNAWAY-LOOP GUARD, not a ration on normal work.  Hitting
-# one is not a soft warning: the dispatcher stops the workflow and the
-# Receptionist tells the user it halted.  So err generous — a cap set
-# slightly too high costs some wasted tokens on a stuck model, while
-# one set too low truncates a legitimate design run and looks to the
-# user like a system failure.
+# one is not a soft warning: the agent returns an error hop, the
+# dispatcher stops, and the Receptionist tells the user the run halted -
+# in an unattended overnight queue that is a burnt run found in the
+# morning.  So err generous: a cap slightly too high wastes some tokens
+# on a stuck model, one slightly too low kills a legitimate design run.
+#
+# SIZED FROM A REAL RUN (ID237, 5-agent, three-image precision job).
+# Observed peaks per activation were UII 10, Creator 5, DCOI 5,
+# Conductor 3, Tool Caller 3.  Targets are roughly 3x the observed peak,
+# with a floor of 40 for the two VISION agents (UII, DCOI) because image
+# reads and OCR dominate their turns and scale with the drawing count.
+# The UII is why this pass happened: it used 10 of 10.
 #
 # Changing any of these takes effect on the next process start.
+
+# MAX_RECEPTIONIST_STEPS - LLM turns inside ONE Receptionist run (validate_input or
+# format_outgoing).  It does zero or one utility-tool call and then
+# either routes or replies, so 20 is deep headroom; the raise covers
+# turns where it inspects several past attempts before answering.
 #
+# Was 10; raised to 20.
+# Valid values: positive int.
+MAX_RECEPTIONIST_STEPS: int = 20
+
+# MAX_UII_STEPS - LLM turns inside ONE User Input Inspector run.
+#
+# RAISED FROM 10 ON EVIDENCE.  In run ID237 the UII used exactly 10 of
+# 10 on a three-image task - it routed on its last allowed step, with
+# zero margin.  One more image or OCR region and that run would have
+# died.  It is vision-bound: every view_images call plus its OCR is a
+# turn, and image-heavy jobs are exactly the ones worth running.
+#
+# Was 10; raised to 40.
+# Valid values: positive int.
+MAX_UII_STEPS: int = 40
+
+# MAX_PLANNER_STEPS - LLM turns inside ONE Planner run.  Reads the extraction, optionally
+# the raw queries, thinks, then routes.  Doubled for recovery turns
+# that consult several past attempts before re-planning.
+#
+# Was 20; raised to 40.
+# Valid values: positive int.
+MAX_PLANNER_STEPS: int = 40
+
+# MAX_DCIC_STEPS - LLM turns inside ONE DC Input Creator run.  Already generous
+# (observed peak 4-5); raised in proportion with the rest so no agent
+# becomes the accidental bottleneck of a long precision job.
+#
+# Was 50; raised to 80.
+# Valid values: positive int.
+MAX_DCIC_STEPS: int = 80
+
+# MAX_DCII_STEPS - LLM turns inside ONE DC Input Inspector run.  Kept equal to the
+# DCIC's: the pair is a writer and checker of the same parameter set,
+# and an asymmetry between them has no principled basis.
+#
+# Was 50; raised to 80.
+# Valid values: positive int.
+MAX_DCII_STEPS: int = 80
+
+# MAX_TC_STEPS - LLM turns inside ONE Tool Caller run.  Observed peak 3, but a render
+# that fails and is retried with adjusted parameters consumes several
+# turns, and it is the agent most exposed to tool errors.
+#
+# Was 15; raised to 40.
+# Valid values: positive int.
+MAX_TC_STEPS: int = 40
+
+# MAX_DCOI_STEPS - LLM turns inside ONE DC Output Inspector run.
+#
+# The second vision agent, so it gets the same floor as the UII.  In
+# ID237 it made 7 view_images calls across the run, each comparing a
+# render against a user sketch; a job with more views to check scales
+# that directly.
+#
+# Was 15; raised to 40.
+# Valid values: positive int.
+MAX_DCOI_STEPS: int = 40
+
+# MAX_DH_STEPS - LLM turns inside ONE Database Handler run.  The DH interviews agents
+# post-session; a stall here costs the session's saved knowledge rather
+# than the design, but it is unattended work so headroom is cheap.
+#
+# Was 10; raised to 20.
+# Valid values: positive int.
+MAX_DH_STEPS: int = 20
+
+# MAX_DH_TURNS_PER_FIELD - How many LLM turns the DH may spend on ONE schedule field before
+# moving on.  Doubled so a field needing several clarifying passes is
+# not silently abandoned mid-interview.
+#
+# Was 6; raised to 12.
+# Valid values: positive int.
+MAX_DH_TURNS_PER_FIELD: int = 12
+
+# MAX_ORCHESTRATOR_STEPS - How many times the dispatcher may RE-ENTER the Orchestrator during a
+# single user turn.  NOT a per-session budget - it resets every turn.
+# Doubled because a long precision job re-enters the hub once per
+# refine round, and MAX_SECTIONS_REFINE_ROUNDS was raised too.
+#
+# Was 60; raised to 120.
+# Valid values: positive int.
+MAX_ORCHESTRATOR_STEPS: int = 120
+
+# MAX_ORCH_INNER_STEPS - LLM turns inside ONE Orchestrator run.  Deliberately the tightest cap
+# in the system - the Orchestrator should relay, not deliberate - but 6
+# leaves no room to consult an attempt before deciding.  15 keeps the
+# intent while removing the cliff.
+#
+# Was 6; raised to 15.
+# Valid values: positive int.
+MAX_ORCH_INNER_STEPS: int = 15
+
+# MAX_DISPATCH_HOPS - Total inter-agent hops allowed in ONE user turn, across all agents.
+# The outermost runaway guard: it bounds the whole dispatch loop no
+# matter which agents are ping-ponging.  Raised in step with the
+# per-agent caps so it stays the LAST thing to trip, not the first.
+#
+# Was 200; raised to 400.
+# Valid values: positive int.
+MAX_DISPATCH_HOPS: int = 400
+
+# MAX_SECTIONS_REFINE_ROUNDS - How many refine rounds the precision section-matching loop may run
+# before the hub must finalise.
+#
+# NOTE, because this one differs in kind: the others are runaway
+# guards, but this bounds how hard the system TRIES.  Raising it changes
+# what the system does, not merely when it gives up, so a precision
+# benchmark run at 12 is not directly comparable with one run at 8.
+# ID237 converged in 3 sections rounds + 1 3D round, well inside either
+# figure.  Keep it FIXED across any runs you intend to compare.
+#
+# Was 8; raised to 12.
+# Valid values: positive int.
+MAX_SECTIONS_REFINE_ROUNDS: int = 12
+
 # MAX_CONDUCTOR_STEPS — LLM turns allowed inside ONE Conductor.run()
 # invocation.
 #
@@ -898,7 +1032,7 @@ SYSTEM_TOPOLOGY: int = 7
 # Raise this if you see the Conductor being cut off mid-plan.
 #
 # Valid values: positive int.
-MAX_CONDUCTOR_STEPS: int = 20
+MAX_CONDUCTOR_STEPS: int = 40
 
 # MAX_CONDUCTOR_VISITS — how many times the dispatcher may RE-ENTER the
 # Conductor during a single user turn (the hub-visit cap).
@@ -912,7 +1046,7 @@ MAX_CONDUCTOR_STEPS: int = 20
 # cap a multi-round refine loop hits before any other.
 #
 # Valid values: positive int.
-MAX_CONDUCTOR_VISITS: int = 80
+MAX_CONDUCTOR_VISITS: int = 150
 
 # MAX_CREATOR_STEPS — LLM turns allowed inside ONE Creator.run()
 # invocation.
@@ -925,7 +1059,7 @@ MAX_CONDUCTOR_VISITS: int = 80
 # self-validation pass and the image / OCR calls it inherited.
 #
 # Valid values: positive int.
-MAX_CREATOR_STEPS: int = 60
+MAX_CREATOR_STEPS: int = 90
 
 # MAX_ARCHITECT_STEPS - LLM turns allowed inside ONE Architect.run()
 # invocation (3-agent topology).
@@ -938,7 +1072,7 @@ MAX_CREATOR_STEPS: int = 60
 # Conductor's 20 to cover that perception pass on top of planning.
 #
 # Valid values: positive int.
-MAX_ARCHITECT_STEPS: int = 35
+MAX_ARCHITECT_STEPS: int = 60
 
 # MAX_ARCHITECT_VISITS - how many times the dispatcher may RE-ENTER the
 # Architect during a single user turn (3-agent topology).
@@ -948,7 +1082,7 @@ MAX_ARCHITECT_STEPS: int = 35
 # is written once per turn, not once per cycle.
 #
 # Valid values: positive int.
-MAX_ARCHITECT_VISITS: int = 80
+MAX_ARCHITECT_VISITS: int = 150
 
 # MAX_DESIGNER_STEPS - LLM turns allowed inside ONE Designer.run()
 # invocation (3-agent topology).
@@ -960,7 +1094,7 @@ MAX_ARCHITECT_VISITS: int = 80
 # Hence BELOW MAX_CREATOR_STEPS despite merging one more agent.
 #
 # Valid values: positive int.
-MAX_DESIGNER_STEPS: int = 55
+MAX_DESIGNER_STEPS: int = 85
 # 29. Prompt caching (Anthropic only)
 # ===========================================================
 # Anthropic prompt caching stores the model's precomputed state for
