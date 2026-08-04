@@ -79,6 +79,9 @@ DEFAULT_AGENTS: tuple[str, ...] = (
     # 5-agent topology (superset across topologies)
     "conductor",
     "creator",
+    # 3-agent topology
+    "architect",
+    "designer",
 )
 
 # Default per-agent value when the JSON file is missing or doesn't

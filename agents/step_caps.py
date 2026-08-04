@@ -144,6 +144,25 @@ a planning turn used to happen INSIDE the Planner and cost the hub
 nothing, whereas here every plan, re-plan and approval is itself a
 re-entry.  Tunable — see settings.py §27."""
 
+MAX_ARCHITECT_STEPS = _ws.MAX_ARCHITECT_STEPS
+"""LLM turns allowed inside ONE ``Architect.run()`` invocation
+(3-agent).  Above the Conductor's 20 because the Architect also
+PERCEIVES: image reads and OCR dominate its first turn of a design
+job.  Tunable — see settings.py §28."""
+
+MAX_ARCHITECT_VISITS = _ws.MAX_ARCHITECT_VISITS
+"""How many times the dispatcher may RE-ENTER the Architect during
+a single user turn.  Same as the Conductor's: absorbing perception
+adds work inside ONE visit, not extra visits.  Tunable — see
+settings.py §28."""
+
+MAX_DESIGNER_STEPS = _ws.MAX_DESIGNER_STEPS
+"""LLM turns allowed inside ONE ``Designer.run()`` invocation
+(3-agent).  BELOW ``MAX_CREATOR_STEPS`` despite merging one more
+agent: the Designer drops validation entirely, so it carries the
+DCIC's authoring budget plus the Tool Caller's calls but not the
+Creator's self-validation pass.  Tunable — see settings.py §28."""
+
 MAX_CREATOR_STEPS = _ws.MAX_CREATOR_STEPS
 """LLM turns allowed inside ONE ``Creator.run()`` invocation.  Defaults
 above either parent (DCIC 50 to author, DCII 50 to inspect) but far

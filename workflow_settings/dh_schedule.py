@@ -81,6 +81,9 @@ AGENT_KEYS: list[str] = [
     # never produces a schedule entry naming them.
     "conductor",
     "creator",
+    # 3-agent topology, listed for the same reason.
+    "architect",
+    "designer",
 ]
 
 # Short labels (the same as the LOG-and-Status chart uses on its boxes).
@@ -102,6 +105,8 @@ AGENT_SHORT_LABELS: dict[str, str] = {
     # 5-agent run actually uses.
     "conductor":            "Conductor",
     "creator":              "Creator",
+    "architect":            "Architect",
+    "designer":             "Designer",
 }
 
 # Valid enum values.

@@ -134,6 +134,12 @@ AGENT_DISPLAY: dict[str, str] = {
     # not use them simply never constructs them.
     "conductor":            "Conductor",
     "creator":              "Creator",
+    # 3-agent topology.  The Architect merges UII + Planner +
+    # Orchestrator; the Designer merges DC Input Creator + Tool Caller
+    # with NO validation stage.  The critic stays the DC Output
+    # Inspector, unrenamed, exactly as the 5-agent survivors did.
+    "architect":            "Architect",
+    "designer":             "Designer",
 }
 
 ROUTING_TOOL_NAMES: set[str] = {f"call_{k}" for k in AGENT_DISPLAY}
@@ -220,6 +226,21 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "ambiguous or could not be expressed in concrete parameter "
         "values, or to ESCALATE when you are stuck; the Conductor is the "
         "single point the chain returns to on any failure."
+    ),
+    "call_architect": (
+        "Return control to the Architect — the brain that reads the "
+        "user's inputs, plans, routes and approves.  The ``message`` "
+        "argument IS the hand-off text it will see — write it as "
+        "free-form prose.  Use this when your step is complete, to "
+        "CLARIFY when its directive was ambiguous, or to ESCALATE when "
+        "you are stuck; it is the single point the chain returns to."
+    ),
+    "call_designer": (
+        "Call the Designer.  The ``message`` argument IS the hand-off "
+        "text the Designer will see — write it as free-form prose.  It "
+        "authors the complete parameter set AND runs the generation / "
+        "render tools itself, so state the qualitative direction you "
+        "want (\"increase <param X>\") rather than concrete numbers."
     ),
     "call_creator": (
         "Call the Creator.  The ``message`` argument IS the hand-off text "

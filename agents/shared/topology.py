@@ -29,6 +29,9 @@ from workflow_settings import settings as _workflow_settings
 _HUB_BY_TOPOLOGY = {
     7: ("orchestrator", "Orchestrator"),
     5: ("conductor", "Conductor"),
+    # 3-agent topology (strip-down).  The Architect merges the UII into
+    # the Conductor: perceive + plan + route + approve.
+    3: ("architect", "Architect"),
 }
 
 # Fallback for an unrecognised SYSTEM_TOPOLOGY: behave as the 7-agent

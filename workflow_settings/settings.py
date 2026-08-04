@@ -863,7 +863,7 @@ IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320
 # ``agents/<N>agent/`` with that variant's prompts and fragments and
 # add N to the dropdown.
 #
-# Valid values: 7, 5
+# Valid values: 7, 5, 3
 SYSTEM_TOPOLOGY: int = 7
 
 
@@ -926,6 +926,41 @@ MAX_CONDUCTOR_VISITS: int = 80
 #
 # Valid values: positive int.
 MAX_CREATOR_STEPS: int = 60
+
+# MAX_ARCHITECT_STEPS - LLM turns allowed inside ONE Architect.run()
+# invocation (3-agent topology).
+#
+# The Architect merges THREE agents: the UII (perceive - reads images,
+# runs OCR, writes the extraction), the Planner (plan) and the
+# Orchestrator (route/approve).  Its first turn of a design job is the
+# expensive one: image reads dominate, and in a live 5-agent run the
+# UII alone took 10 LLM calls on a three-image task.  Set above the
+# Conductor's 20 to cover that perception pass on top of planning.
+#
+# Valid values: positive int.
+MAX_ARCHITECT_STEPS: int = 35
+
+# MAX_ARCHITECT_VISITS - how many times the dispatcher may RE-ENTER the
+# Architect during a single user turn (3-agent topology).
+#
+# The MAX_CONDUCTOR_VISITS analogue.  Same value: absorbing perception
+# adds work INSIDE one visit rather than adding visits - the extraction
+# is written once per turn, not once per cycle.
+#
+# Valid values: positive int.
+MAX_ARCHITECT_VISITS: int = 80
+
+# MAX_DESIGNER_STEPS - LLM turns allowed inside ONE Designer.run()
+# invocation (3-agent topology).
+#
+# The Designer merges the DC Input Creator (author) and the Tool Caller
+# (generate + render), and DROPS validation entirely - that is the
+# strip-down.  So it needs the DCIC's authoring budget plus the Tool
+# Caller's tool calls, but NOT the Creator's self-validation pass.
+# Hence BELOW MAX_CREATOR_STEPS despite merging one more agent.
+#
+# Valid values: positive int.
+MAX_DESIGNER_STEPS: int = 55
 # 29. Prompt caching (Anthropic only)
 # ===========================================================
 # Anthropic prompt caching stores the model's precomputed state for

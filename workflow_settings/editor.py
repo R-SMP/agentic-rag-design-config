@@ -39,7 +39,7 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
     "DCOI_COMPARISON_MODE": [1, 2, 3],
     # Agent topology — the value IS the agent count.  Adding a further
     # variant needs only a new agents/<N>agent/ folder and N here.
-    "SYSTEM_TOPOLOGY": [7, 5],
+    "SYSTEM_TOPOLOGY": [7, 5, 3],
     "EMBEDDING_PROVIDER": ["OpenAI"],
     # STITCHING_PROVIDER is locked to a single-option dropdown
     # (matches EMBEDDING_PROVIDER's pattern).  The Anthropic and

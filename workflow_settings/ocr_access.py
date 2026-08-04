@@ -76,6 +76,10 @@ DEFAULT_AGENTS: tuple[str, ...] = (
     # tools; the Conductor inherits the Planner's ``view_images``.
     "conductor",
     "creator",
+    # 3-agent topology.  The Architect PERCEIVES — it absorbs the UII,
+    # so it binds the image tools and needs OCR text with them.
+    "architect",
+    "designer",
 )
 
 # Default per-agent value when the JSON file is missing or doesn't

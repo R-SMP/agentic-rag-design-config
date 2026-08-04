@@ -49,6 +49,8 @@ _AGENT_DISPLAY_NAMES = frozenset({
     # 5-agent topology (superset — a topology that does not use them
     # simply never emits their events).
     "Conductor", "Creator",
+    # 3-agent topology (superset, same rationale).
+    "Architect", "Designer",
 })
 _current_agent = None
 

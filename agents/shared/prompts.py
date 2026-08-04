@@ -142,15 +142,19 @@ _CHAIN_ONLY_RE = re.compile(r"<<CHAIN_ONLY>>(.*?)<</CHAIN_ONLY>>", re.DOTALL)
 
 # The non-chain agents: the Receptionist, which composes the user's wording
 # rather than passing work along, and each topology's HUB — Orchestrator in
-# the 7-agent system, Conductor in the 5-agent one — which dispatches and
-# receives rather than forwarding to a "next" agent.
+# the 7-agent system, Conductor in the 5-agent one, Architect in the 3-agent
+# one — which dispatches and receives rather than forwarding to a "next"
+# agent.
 #
-# Both hubs are listed unconditionally.  This is a delete-list keyed by
-# agent name; it is never rendered into any prompt, and each hub is only
-# ever built in its own topology, so the entry for the absent hub is simply
-# never consulted.  (Verified: adding "conductor" leaves all nine 7-agent
-# prompts byte-identical.)
-_NON_CHAIN_AGENTS = frozenset({"receptionist", "orchestrator", "conductor"})
+# EVERY hub is listed unconditionally.  This is a delete-list keyed by agent
+# name; it is never rendered into any prompt, and each hub is only ever
+# built in its own topology, so the entries for the absent hubs are simply
+# never consulted.  (Verified: adding "conductor" left all nine 7-agent
+# prompts byte-identical.)  Miss a hub here and it KEEPS the
+# ``<<CHAIN_ONLY>>`` rules — i.e. it is told to escalate to itself.
+_NON_CHAIN_AGENTS = frozenset({
+    "receptionist", "orchestrator", "conductor", "architect",
+})
 
 
 def apply_dcii_filter(text: str) -> str:
@@ -608,6 +612,17 @@ PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
         "extraction_output_file",
     }),
     "creator":              frozenset({"routing_instructions"}),
+    # 3-agent topology.  The Architect inherits the Planner's three path
+    # slots (it perceives, so it reads the input files itself) but NOT
+    # ``routing_instructions``: being the hub it uses ``$routing_hub``,
+    # exactly as the Orchestrator and Conductor do.
+    "architect":            frozenset({
+        "user_inputs_dir", "input_images_subdir",
+        "extraction_output_file",
+    }),
+    "designer":             frozenset({
+        "routing_instructions", "render_check_library_block",
+    }),
     "tool_caller":          frozenset({
         "routing_instructions", "render_check_library_block",
     }),

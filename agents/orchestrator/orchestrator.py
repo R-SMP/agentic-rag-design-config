@@ -863,6 +863,12 @@ class Orchestrator(BaseChainAgent):
         # 5-agent topology
         "conductor": "conductor",
         "creator": "creator",
+        # 3-agent topology
+        "architect": "architect",
+        "designer": "designer",
+        # 5-agent topology
+        "conductor": "conductor",
+        "creator": "creator",
     }
 
     def get_agent_messages(

@@ -77,6 +77,9 @@ DEFAULT_AGENTS_TO_ACL: tuple[str, ...] = (
     # 5-agent topology (superset across topologies)
     "conductor",
     "creator",
+    # 3-agent topology
+    "architect",
+    "designer",
 )
 """The canonical primary chain-agent identifiers, used as the
 default value for ``chunks.agents_to`` when a DH-schedule entry's

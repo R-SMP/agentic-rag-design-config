@@ -43,6 +43,10 @@ _PIPELINE_BY_TOPOLOGY = {
         "Receptionist → User Input Inspector → Conductor → Creator → "
         "Tool Caller → DC Output Inspector → Conductor"
     ),
+    # 3-agent (strip-down).  Starts and ends at the hub, like the
+    # 7-agent string and unlike the 5-agent one: there is no UII here,
+    # so the Receptionist hands to the HUB rather than into the chain.
+    3: "Architect → Designer → DC Output Inspector → Architect",
 }
 
 

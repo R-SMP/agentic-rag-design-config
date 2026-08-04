@@ -513,26 +513,37 @@ for _key, _disp in topology._HUB_BY_TOPOLOGY.values():
             f"{routing_tools.AGENT_DISPLAY.get(_key)!r}"
         )
 
-# --- DEGRADE: a topology with no directory must fall back, not crash ------
-# Drive the SAME workload under topology 7 and under a topology that has no
-# directory at all.  Every override lookup misses, so the two runs must read
-# exactly the same files and produce exactly the same prompts.
+# --- DEGRADE: an UNREGISTERED topology must fall back, not crash ----------
+# Drive the SAME workload under topology 7 and under a topology that is in
+# no table at all.  Every override lookup misses and the hub falls back to
+# the Orchestrator, so the two runs must read exactly the same files and
+# produce exactly the same prompts.
+#
+# The probe is deliberately a number NO topology uses.  It was 3 until the
+# 3-agent was registered in _HUB_BY_TOPOLOGY; from that moment topology 3
+# resolves $routing_hub to routing_architect.md and CRASHES until its
+# fragments exist — which is correct and wanted.  Selecting a registered
+# topology whose files are missing must fail loudly, never silently run the
+# 7-agent set.  Only a genuinely unknown N tests the fall-back path.
 try:
     base_read, base_built = assemble(7, False)
-    deg_read, deg_built = assemble(3, False, as_topology=7)
+    deg_read, deg_built = assemble(99, False, as_topology=7)
     if deg_read != base_read:
         failures.append(
-            f"[DEGRADE] topology 3 (no directory) read a different file set "
+            f"[DEGRADE] an unregistered topology read a different file set "
             f"than topology 7: {sorted(rel(p) for p in deg_read ^ base_read)}"
         )
     differing = [k for k in base_built if base_built[k] != deg_built.get(k)]
     if differing:
         failures.append(
-            f"[DEGRADE] topology 3 produced different prompts than "
-            f"topology 7 for: {differing}"
+            f"[DEGRADE] an unregistered topology produced different "
+            f"prompts than topology 7 for: {differing}"
         )
 except Exception as exc:  # noqa: BLE001
-    failures.append(f"[DEGRADE] topology 3 raised {type(exc).__name__}: {exc}")
+    failures.append(
+        f"[DEGRADE] an unregistered topology raised "
+        f"{type(exc).__name__}: {exc}"
+    )
 
 # --- PRECEDENCE: an exact-name override must beat the collapsed one -------
 prompts._workflow_settings.SYSTEM_TOPOLOGY = 5
