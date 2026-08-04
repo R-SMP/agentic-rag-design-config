@@ -55,6 +55,7 @@ Two of them, to show the shape:
 | 15 | Application order, low risk first |
 | 16 | Two changes under consideration (emphasis policy, Receptionist name check) — neither decided |
 | 17 | Competing rewrites of the same shared fragment — 13 regions where you must pick one |
+| 18 | The two §16 changes, specified — 36 emphasis demotions and the 4-site name-check deletion |
 
 ### Ground rules
 
@@ -21069,11 +21070,12 @@ The direction chosen was **only the three pipeline-fatal ones**:
 Those are the three whose violation ends or corrupts a session. Everything else is a rule the agent
 should weigh, and marking it CRITICAL only dilutes the three that are not negotiable.
 
-**What that implies, and why it is not yet a change:** it means demoting every *other* emphasis
-marker across all nine prompts to plain prose. That is a large cross-cutting sweep and **not a single
-concrete instance of it has been specified** — no file, no line, no replacement text. Before it could
-be applied, someone has to go through every `HARD` / `IMPORTANT` / `CRITICAL` heading in the fleet
-and decide case by case. It is entirely reasonable to narrow this to a few prompts, or to drop it.
+**What that implies:** demoting every *other* emphasis marker across all nine prompts to plain prose.
+**This is now specified in §18.1** — 36 demotions and 6 keepers, each with file, line, current text
+and replacement, all anchors verified against the working tree. Note before deciding: the whole sweep
+saves roughly 60 tokens. Its value is that the three rules which genuinely end a session stop
+competing with twenty-six that do not, so judge it as a signal change and not a reduction. Narrowing
+it to a few prompts, or dropping it, remains entirely reasonable.
 
 ### The Receptionist's parameter-name check
 
@@ -21090,8 +21092,11 @@ The argument against: it costs a real behaviour. A user who typos a parameter na
 after a full pipeline round-trip rather than immediately. That is a genuine UX regression for 220
 tokens, and it is fair to decide the instant feedback is worth more than the saving.
 
-The direction chosen was **delete it** — but as above, **no concrete cut has been written**, and this
-is exactly the kind of trade-off worth revisiting before anything is edited.
+The direction chosen was **delete it**, and **§18.2 now specifies it** — four edit sites in
+`agents/receptionist/prompt.md`, applied together or not at all. It saves about 1,400 characters
+(~350 tokens), more than the 220 estimated above: the block itself is ~1,000 characters, and deleting
+it also drops the Receptionist's `$invalid_parameter_examples` splice. This is still exactly the kind
+of trade-off worth revisiting before anything is edited.
 
 ## 17. Competing proposals for the same shared text — pick one
 
@@ -22514,3 +22519,210 @@ hub, NOT r / impellerRadius).  A stated diameter halves to
 ``impellerRadius``.  If no conversion is defensible, fall back to
 engineering judgement with a stated rationale.
 ```
+---
+
+## 18. The two §16 changes, specified
+
+§16 describes these two as intentions. This section turns them into applicable edits, in the same
+form as §4: exact file, exact anchor, exact replacement. **They remain proposals** — specifying a
+change is how we evaluate it, not a commitment to make it.
+
+Two things worth knowing before reading:
+
+- **The emphasis policy saves almost nothing in tokens.** Thirty edits of 7–11 characters each comes
+  to roughly 250 characters — about 60 tokens across the whole fleet. Its entire value is that the
+  three rules which genuinely end a session stop competing with twenty-six that do not. Judge it as a
+  signal change, not a reduction.
+- **The name-check deletion saves more than I first estimated** — about 1,400 characters (~350
+  tokens), not 220. The block itself is ~1,000 characters, and deleting it also removes the
+  Receptionist's `$invalid_parameter_examples` splice (a further ~406 characters that stop being
+  assembled). The fragment stays in place for the Orchestrator and Planner.
+
+---
+
+### 18.1 Emphasis policy — 36 demotions (32 always-on + 4 RAG-gated), 6 keepers
+
+**The rule.** Hard marking survives on exactly three rules. Every other `HARD` / `IMPORTANT` /
+`CRITICAL` / `STRICT` / `MANDATORY` marker becomes plain prose.
+
+**Scope of these edits: the markers only.** None of them changes a rule's wording, its position, or
+the mandatory voice inside its body. That keeps each edit mechanical and independently applicable,
+and keeps this from colliding with the §4 cuts or the §12 rewordings, which do touch body text.
+
+#### The six sites that keep their marking
+
+Do not touch these. Three rules, six homes.
+
+| rule | site |
+|---|---|
+| Routing is a tool call | `agents/shared/routing.py:248` — `### Routing is a tool call — MANDATORY` |
+| " | `agents/planner/prompt.md:17` — `…halts the pipeline (HARD)` |
+| " | `agents/user_input_inspector/prompt.md:434` — `a HARD failure (the dispatcher aborts…)` |
+| Never describe an artefact you did not load | `agents/dc_output_inspector/prompt.md:42` — `## HARD RULE — never describe images you did not load this turn` |
+| " | `agents/receptionist/prompt.md:160` — `## HARD RULE — you NEVER invent observations, judgements, or recommendations` |
+| Forward answers to system-posed questions | `agents/receptionist/prompt.md:130` — `## HARD RULE — answers to system-posed questions MUST be forwarded` |
+
+Two existing cross-references point at keepers and stay valid untouched:
+`agents/dc_output_inspector/prompt.md:288` ("per the HARD RULE above" → the DCOI keeper) and
+`DC_prompt_fragments/tools_config/visualize_3d_model.md:22` ("see the HARD rule on inventing
+observations" → the Receptionist keeper).
+
+#### The demotions
+
+| id | file | line | from | to |
+|---|---|---:|---|---|
+| **EMP-01** | `agents/dc_input_creator/prompt.md` | 52 | `## The three states of a user value — LOCKED, SOFT TARGET, or FREE (HARD)` | `## The three states of a user value — LOCKED, SOFT TARGET, or FREE` |
+| **EMP-02** | `agents/dc_input_creator/prompt.md` | 127 | `## Acting on a Planner / Orchestrator qualitative directive (HARD)` | `## Acting on a Planner / Orchestrator qualitative directive` |
+| **EMP-03** | `agents/dc_input_creator/prompt.md` | 179 | `## Validate before you write (HARD)` | `## Validate before you write` |
+| **EMP-04** | `agents/dc_input_creator/prompt.md` | 298 | `## Hand-off to the next agent (IMPORTANT)` | `## Hand-off to the next agent` |
+| **EMP-05** | `agents/dc_input_creator/prompt.md` | 360 | `**Tool-error self-correction (HARD).**` | `**Tool-error self-correction.**` |
+| **EMP-06** | `agents/dc_input_inspector/prompt.md` | 62 | `## Your two primary utility tools (IMPORTANT)` | `## Your two primary utility tools` |
+| **EMP-07** | `agents/dc_input_inspector/prompt.md` | 100 | `### 1. Range validation (STRICT — explicit per-parameter check)` | `### 1. Range validation — explicit per-parameter check` |
+| **EMP-08** | `agents/dc_input_inspector/prompt.md` | 282 | `## Verdict → routing (STRICT — the tool follows your verdict)` | `## Verdict → routing — the tool follows your verdict` |
+| **EMP-09** | `agents/dc_input_inspector/prompt.md` | 327 | `## Hand-off to the Tool Caller (IMPORTANT)` | `## Hand-off to the Tool Caller` |
+| **EMP-10** | `agents/dc_output_inspector/prompt.md` | 10 | `## Loading render images (IMPORTANT)` | `## Loading render images` |
+| **EMP-11** | `agents/dc_output_inspector/prompt.md` | 296 | `## HARD RULES — what you must NEVER suggest` | `## What you must never suggest` |
+| **EMP-12** | `agents/dc_output_inspector/prompt.md` | 130 | `(per the HARD RULES below)` | `(per "What you must never suggest" below)` |
+| **EMP-13** | `agents/orchestrator/prompt.md` | 161 | `## Preserving user directives in hand-offs (HARD)` | `## Preserving user directives in hand-offs` |
+| **EMP-14** | `agents/orchestrator/prompt.md` | 175 | `this is a HARD directive, not optional` | `this is a directive, not optional` |
+| **EMP-15** | `agents/orchestrator/prompt.md` | 252 | `## Completing a cycle — the Planner is the FINAL APPROVER (HARD)` | `## Completing a cycle — the Planner is the FINAL APPROVER` |
+| **EMP-16** | `agents/orchestrator/prompt.md` | 311 | `### Name the attempt folder(s) and say which to show (HARD)` | `### Name the attempt folder(s) and say which to show` |
+| **EMP-17** | `agents/orchestrator/prompt.md` | 381 | `### Verify the diagnosis BEFORE you relay it (HARD)` | `### Verify the diagnosis BEFORE you relay it` |
+| **EMP-18** | `agents/orchestrator/prompt.md` | 469 | `## Geometry Modification Rule (HARD)` | `## Geometry Modification Rule` |
+| **EMP-19** | `agents/orchestrator/prompt.md` | 472 | `## Escalation Hierarchy (CRITICAL)` | `## Escalation Hierarchy` |
+| **EMP-20** | `agents/planner/prompt.md` | 302 | `## HARD RULES` | `## Rules` |
+| **EMP-21** | `agents/receptionist/prompt.md` | 234 | `**HARD — permission-to-vary questions name only user-locked values.**` | `**Permission-to-vary questions name only user-locked values.**` |
+| **EMP-22** | `agents/receptionist/prompt.md` | 268 | `## What this system can and cannot do (HARD)` | `## What this system can and cannot do` |
+| **EMP-23** | `agents/receptionist/prompt.md` | 371 | `## Your DBa scope — your OWN work, not the chain's (HARD)` | `## Your DBa scope — your OWN work, not the chain's` |
+| **EMP-24** | `agents/tool_caller/prompt.md` | 9 | `## Attempt folder (IMPORTANT — read this before any tool call)` | `## Attempt folder — read this before any tool call` |
+| **EMP-25** | `agents/tool_caller/prompt.md` | 26 | `## Loading parameters (IMPORTANT)` | `## Loading parameters` |
+| **EMP-26** | `agents/tool_caller/prompt.md` | 61 | `## Range check before you generate (HARD — independent of upstream)` | `## Range check before you generate — independent of upstream` |
+| **EMP-27** | `agents/tool_caller/prompt.md` | 84 | `## HARD LIMITS — Do NOT` | `## Limits — do NOT` |
+| **EMP-28** | `agents/tool_caller/prompt.md` | 98 | `## Data Flow and reporting file paths (IMPORTANT)` | `## Data Flow and reporting file paths` |
+| **EMP-29** | `agents/tool_caller/prompt.md` | 140 | `## State THIS CYCLE clearly (IMPORTANT)` | `## State THIS CYCLE clearly` |
+| **EMP-30** | `agents/user_input_inspector/prompt.md` | 220 | `**HARD RULE — countable features in reference images must be counted EXPLICITLY**` | `**Countable features in reference images must be counted explicitly**` |
+| **EMP-35** | `agents/user_input_inspector/prompt.md` | 196 | `**STRICT rules for QUANTITATIVE INPUTS:**` | `**Rules for QUANTITATIVE INPUTS:**` |
+| **EMP-36** | `agents/user_input_inspector/prompt.md` | 140 | `is required (see the STRICT\nrules below)` | `is required (see the rules\nbelow)` |
+
+#### RAG-gated demotions (only assembled when `RAG_ENABLED=True`)
+
+| id | file | from | to |
+|---|---|---|---|
+| **EMP-31** | `DC_prompt_fragments/tools_config/database_search.md:10` | `**How to use what you retrieve — IMPORTANT.**` | `**How to use what you retrieve.**` |
+| **EMP-32** | `…/database_search_user_input_inspector.md:8` | `**HARD — call ``database_search`` BEFORE ``write_extraction`` when:**` | `**Call ``database_search`` BEFORE ``write_extraction`` when:**` |
+| **EMP-33** | `…/database_search_user_input_inspector.md:11` | `treat it as MANDATORY` | `treat it as required` |
+| **EMP-34** | `…/database_search_user_input_inspector.md:22-23` | `**MANDATORY on at least one in-scope session when the user explicitly demanded past-image / past-experience use** (skipping it then is a HARD failure` | `**Required on at least one in-scope session when the user explicitly demanded past-image / past-experience use** (skipping it then is a failure` |
+
+#### Three dependencies
+
+- **EMP-11 and EMP-12 must land together.** EMP-11 renames the DCOI heading that EMP-12's
+  cross-reference names. Applying EMP-11 alone leaves `(per the HARD RULES below)` pointing at a
+  heading that no longer exists.
+- **EMP-35 and EMP-36 must land together**, for the same reason: `agents/user_input_inspector/prompt.md:140`
+  points at "the STRICT rules below", which EMP-35 renames. These two were missed on the first pass —
+  the sweep for emphasis markers searched `HARD` / `IMPORTANT` / `CRITICAL` / `MANDATORY` and not
+  `STRICT`, and this pair is bold text rather than a `#` heading, so it fell through both filters. If
+  you extend this policy further, search for all five markers in both headings and body text.
+- **EMP-20 is safe for the numbered cross-references.** `agents/planner/prompt.md` refers to
+  "Rules 8–10 below" at lines 160 and 208. Renaming the heading from `## HARD RULES` to `## Rules`
+  keeps both readable, and the rule numbers are untouched. If the §4 cuts that delete Planner rules
+  1/4/5/6 are also applied, the survivors keep their original numbers for exactly this reason — do
+  not renumber.
+
+#### What this does not do
+
+It does not touch the mandatory voice inside any rule body — "MUST", "NEVER", "do NOT" all survive
+where they are. A reader who wants the emphasis policy to also flatten that language should treat
+this as a first pass and expect a second, larger one that overlaps the §12 rewordings.
+
+---
+
+### 18.2 Deleting the Receptionist's parameter-name check
+
+**What is being removed.** The Situation-A procedure in which the Receptionist maps the parameter
+names a user types against the 16-parameter table and replies directly if one is not recognised.
+
+**Why.** The prompt already forbids the Receptionist from checking ranges, on the grounds that the
+pipeline validates them downstream. Names are the same argument, and the UII, DCIC and DCII all
+validate names anyway, so the check is redundant three times over.
+
+**What it costs.** A user who typos a parameter name learns it after a pipeline round-trip instead
+of immediately. That is a genuine regression and the reason this is worth a second look before
+anyone applies it.
+
+Four edit sites, all in `agents/receptionist/prompt.md`. They are one change — apply all four or none.
+
+#### NCK-01 · line 27 · −47 chars
+
+**Cut from** `If both checks pass (and the parameter-name check below also`
+**...through** `passes), FORWARD normally, mentioning in the ``call_orchestrator`` summary`
+
+**Replace with:**
+
+```
+If both checks pass, FORWARD normally, mentioning in the ``call_orchestrator`` summary
+```
+
+#### NCK-02 · lines 52–58 · −74 chars
+
+**Cut from** `**BEFORE the parameter-name check below, run the image-`
+**...through** `scope failure — an undescribed image forwards normally.)`
+
+**Replace with:**
+
+```
+**Run the image-inputs gate from the "User inputs may include images"
+section above before you respond.**  If pairing is INVALID, OR any
+``_note.txt`` describes content that does not fit the design workflow's
+scope, you MUST take the reply-direct path with a focused fix request —
+do NOT forward.  (A blank note is NOT a scope failure — an undescribed
+image forwards normally.)
+```
+
+#### NCK-03 · lines 60–85 · −866 chars, plus a ~406-char `$slot` that stops being assembled
+
+This is the check itself. It also carries the `$invalid_parameter_examples` splice, which disappears
+with it — the fragment file stays on disk and keeps serving the Orchestrator and Planner.
+
+**Cut from** `**Parameter-name check (plain, explicit user values only).**`
+**...through** `value: substituting values is not your job.`
+
+**Replace with:**
+
+```
+You do not validate the user's numbers at the door — neither their names
+nor their ranges.  The pipeline (UII → DCIC → DCII) interprets and
+validates them and decides what to do about anything out of range.  Never
+state in a forward summary that values are "within range", since you did
+not check, and never silently clip, round, or redistribute a user's
+value: substituting values is not your job.
+```
+
+The replacement keeps the two clauses that were never part of the check and are still load-bearing:
+do not claim "within range" in a forward summary, and do not substitute values.
+
+#### NCK-04 · line 283 · −13 chars
+
+With the check gone, the Receptionist no longer validates anything, so the table's heading
+overstates its role. **The table itself is untouched** — it stays inline per the standing rule.
+
+**Cut from** `## Parameter Ranges (validation reference)`
+**...through** `## Parameter Ranges (validation reference)`
+
+**Replace with:**
+
+```
+## Parameter Ranges (reference)
+```
+
+#### Worth noticing
+
+Deleting the check removes the Receptionist's only *use* of the parameter table. The table stays —
+that is a standing decision and this does not reopen it — but afterwards it is carried purely so the
+agent can name canonical parameters when relaying, not to validate against. If the table is ever
+reconsidered for this one agent, this is the context in which to do it.
+
+#### Net effect on the Receptionist
+
+Roughly 1,400 characters (~350 tokens), against the ~220 estimated in §16 — the difference is the
+`$invalid_parameter_examples` splice, which was not counted there.
