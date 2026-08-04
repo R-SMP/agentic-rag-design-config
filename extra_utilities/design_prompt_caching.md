@@ -350,9 +350,8 @@ through as the API's top-level parameter and the **server** places the
 breakpoint, so no message content is ever rewritten and nothing can drift.
 
 **Wiring.** `invoke_with_retry(..., cache_control=...)` is pure plumbing holding
-no policy; each of the 8 in-session agents passes
-`history_cache_control(self.provider)` at its call site, so "who caches" is a
-grep. The **Database Handler is excluded by omission** — no exclusion list to rot.
+no policy; each in-session agent passes `history_cache_control(self.provider)` at
+its call site, so "who caches" is a grep — no exclusion list to rot.
 
 **Fail-open latch.** `invoke_with_retry` catches a rejection that NAMES
 `cache_control` (a binding that does not accept the kwarg, or an API 400 —
@@ -369,13 +368,13 @@ unrelated 400 never silently disables it, and it resets on process restart.
 
 ### Which call sites cache, and which deliberately do not
 
-**The rule: only call sites whose message list persists across turns get the
-history breakpoint.** Ten do — the 8-agent topology plus the 5-agent one
-(Conductor, Creator). Four are excluded on purpose:
+**The rule: only call sites whose message list persists across turns — or repeats
+across calls — get the history breakpoint.** Fifteen do: the 8-agent topology, the
+5-agent one (Conductor, Creator), and the Database Handler's 5 post-session sites.
+Two are excluded on purpose:
 
 | Excluded | Why |
 |---|---|
-| **Database Handler** (5 sites) | Post-session, its own lifecycle; out of scope |
 | **Context Pruner** | Rare one-off summarisation, no persistent history |
 | **Orchestrator** feedback-dispatch | Sends a freshly-built `[system] + [instruction]` list |
 | **Conductor** feedback-dispatch | Same shape, same reason |
@@ -384,6 +383,104 @@ For the two feedback-dispatch sites, `instruction` is rebuilt every call, so an
 automatic breakpoint there could only ever write an entry nothing can match — a
 pure cache WRITE premium with no offsetting read. Their system prompt is still
 cached by the explicit marker, which IS stable across those calls.
+
+### The session-save phase (Database Handler)
+
+Added 2026-08-04. **Same machinery, separate knobs.** The DH reuses the identical
+helpers, breakpoints and request shape; `phase="save"` only selects a second pair
+of settings (`PROMPT_CACHE_SCOPE_SAVE` / `PROMPT_CACHE_TTL_SAVE`, §30) so the save
+can be tuned or measured without disturbing the session. Everything else defaults
+to `phase="session"`, which is why the 13 in-session call sites were untouched.
+
+**Why it is the largest single opportunity.** `SCHEDULE` holds **29 fields**, and
+`_ask_agent` does `convo_buffer = list(agent_messages)` — re-seeded from the
+agent's **full in-session history** — once per field:
+
+| Agent | Fields | Agent | Fields |
+|---|---|---|---|
+| User Input Inspector | 8 | Receptionist | 3 |
+| Planner | 6 | DC Output Inspector | 3 |
+| DC Input Creator | 3 | Tool Caller | 2 |
+| DC Input Inspector | 3 | Orchestrator | 1 |
+
+Each field runs up to `MAX_DH_TURNS_PER_FIELD = 6` rounds, each round costing one
+DH call plus one agent call. So without caching the UII's whole history is re-billed
+at full price **at least 8 times** and the Planner's 6.
+
+**Why the repeated prefix is stable.** Nothing mutates `agent_state.messages`
+during the save: `list()` copies it and `_ask_agent`'s appends land on the copy.
+That byte-stability is a property of *this code*, not of the API — so it is what
+`smoke_test_prompt_cache.py`'s `run_save_phase()` exists to test, by re-seeding the
+buffer exactly the way the DH does. A growing-history test cannot detect a drifting
+re-seed.
+
+#### Two shapes — only one of them is fully cached today
+
+Measured 2026-08-04, `claude-opus-4-8`, and the two shapes behave very differently.
+
+**Shape A — the DH's own side (`self.messages`): fully cached.** It grows
+monotonically across all 29 fields, since answers are appended "so subsequent fields
+can reference what was just said". Every call's prefix strictly extends the previous
+one, so it hits the end-of-messages breakpoint in full — exactly the measured
+`system+history` pattern where each call reads back everything the last one wrote
+(`read` 8435 → 8464 → 8522 against `write` 29 → 58 → 58).
+
+**Shape B — the agent side (`_ask_agent`): only PARTLY cached.** Measured across
+three re-seeded fields:
+
+```
+field 1  write=558  read=8435      <- 8435 is the SYSTEM PROMPT alone
+field 2  write=558  read=8435      <- flat, not growing
+field 3  write=558  read=8435
+```
+
+The read is flat at the system-prompt size and the ~520-token base history is
+**re-written every field**. Cause: breakpoints exist only on (a) the system prompt
+and (b) the end of the messages. Field 1 writes an entry for
+`system + base + question-1`; field 2's prefix is `system + base + question-2`,
+which diverges at that last block and therefore cannot match it — and **there is no
+breakpoint at `system + base`** to fall back to.
+
+**Net effect, worked through.** Within a field, round 1 writes the base at 1.25x and
+rounds 2+ read it back at 0.1x (they extend round 1's prefix, so they DO hit). Only
+the first round of each field re-pays. For an agent history `H`, `F` fields and `R`
+rounds per field:
+
+| | Cost |
+|---|---|
+| No caching | `F × R × H` |
+| Today (shipped) | `F × (1.25H + (R-1) × 0.1H)` |
+| With the briefing anchor | `1.25H + (F × R - 1) × 0.1H` |
+
+Break-even against no caching is **R = 2**: a one-round field costs 25% more, a
+two-round field 33% less, a three-round field 52% less. Worked for the UII
+(`F = 8`, `R = 2`): no caching `16H`, today `10.8H` (**~32% saved**), with the
+anchor `2.75H` (**~83% saved**).
+
+So what shipped is a genuine win — roughly a third of what is available. The
+remaining two thirds need a **third breakpoint anchored on the last message of the
+re-seeded base** (marker ②, "the briefing anchor" — TODO F55).
+
+**Why the anchor is not a one-liner.** Marking a message requires coercing its
+content into block form, and `convo_buffer = list(agent_messages)` is a *shallow*
+copy — mutating a message in place would corrupt live session state shared with the
+agent. The anchor must therefore mark a COPY of the last base message, and must
+survive whatever that message is (`AIMessage` with `tool_calls`, image blocks left
+by the strip, etc.). It also consumes the 4th breakpoint slot: explicit system (1)
++ top-level automatic (2) + anchor (1) = 4, the documented maximum.
+
+**`_ask_agent` uses the AGENT's provider**, not the DH's — it invokes
+`agent_base_llm`, which may resolve to a different provider entirely. Passing
+`self.provider` there would emit a marker for the wrong provider.
+
+**TTL default is `5m` for the save.** `SCHEDULE` is grouped by agent, so one agent's
+fields run back-to-back seconds apart and every hit refreshes the TTL for free — the
+prefix stays warm through that agent's block however long the whole save takes.
+Revisit after the live measurement (TODO).
+
+**Not cacheable in the save path:** `db_writer.stitch_for_embedding` and
+`embeddings.create` use a raw OpenAI client, not langchain — OpenAI caches
+automatically with no API surface, so there is nothing to wire.
 
 ### Reading the cost in the log
 

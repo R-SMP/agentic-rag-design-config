@@ -63,7 +63,7 @@ from agents.database_handler.token_utils import count_tokens
 from agents.shared import postgres_pool
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
-from agents.shared.llm_provider import make_system_message
+from agents.shared.llm_provider import history_cache_control, make_system_message
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import _build_template
 from agents.shared.session import AgentState, Session
@@ -2396,11 +2396,21 @@ class DatabaseHandler(BaseChainAgent):
 
         for attempt in range(1, self._MAX_FORCE_TOOL_RETRIES + 1):
             try:
+                # Every retry re-sends the SAME prefix, so attempts 2+
+                # read it back at cache price instead of re-paying for
+                # the whole accumulated interview.
                 response = invoke_with_retry(
                     dh_with_tool,
-                    [make_system_message(self.system_prompt, self.provider)]
+                    [
+                        make_system_message(
+                            self.system_prompt, self.provider, phase="save"
+                        )
+                    ]
                     + self.messages,
                     f"DH-force-tool-{attempt}",
+                    cache_control=history_cache_control(
+                        self.provider, phase="save"
+                    ),
                 )
             except Exception as exc:
                 logger.warning(
@@ -2710,11 +2720,26 @@ class DatabaseHandler(BaseChainAgent):
         # Use the agent's BASE llm (no tool bindings) so the model is
         # free to reply in plain prose without trying to invoke
         # routing tools that no longer make sense post-session.
+        # Caching matters MOST here.  convo_buffer is re-seeded from the
+        # agent's full in-session history for every one of its SCHEDULE
+        # fields (8 for the UII, 6 for the Planner), so without a cache
+        # that whole history is re-billed at full price once per field.
+        # Nothing mutates agent_state.messages during the save — list()
+        # copies it and the appends below land on the copy — so the
+        # repeated prefix is byte-stable and hits every time after the
+        # first.  Both markers take the AGENT's provider, not the DH's:
+        # this call invokes agent_base_llm, which may be a different
+        # provider entirely.
         response = invoke_with_retry(
             agent_base_llm,
-            [make_system_message(agent_system_prompt, agent_provider)]
+            [
+                make_system_message(
+                    agent_system_prompt, agent_provider, phase="save"
+                )
+            ]
             + convo_buffer,
             f"DH<-{agent_key}",
+            cache_control=history_cache_control(agent_provider, phase="save"),
         )
         convo_buffer.append(response)
         answer = ai_text(getattr(response, "content", "")).strip()
@@ -2798,9 +2823,14 @@ class DatabaseHandler(BaseChainAgent):
         for _ in range(MAX_DH_STEPS):
             response = invoke_with_retry(
                 self.llm,
-                [make_system_message(self.system_prompt, self.provider)]
+                [
+                    make_system_message(
+                        self.system_prompt, self.provider, phase="save"
+                    )
+                ]
                 + self.messages,
                 "DH-decide",
+                cache_control=history_cache_control(self.provider, phase="save"),
             )
             self.messages.append(response)
             text = ai_text(getattr(response, "content", "")).strip()
@@ -2861,9 +2891,14 @@ class DatabaseHandler(BaseChainAgent):
         for _ in range(MAX_DH_STEPS):
             response = invoke_with_retry(
                 self.llm,
-                [make_system_message(self.system_prompt, self.provider)]
+                [
+                    make_system_message(
+                        self.system_prompt, self.provider, phase="save"
+                    )
+                ]
                 + self.messages,
                 "DH-formulate",
+                cache_control=history_cache_control(self.provider, phase="save"),
             )
             self.messages.append(response)
             text = ai_text(getattr(response, "content", "")).strip()
@@ -2969,9 +3004,14 @@ class DatabaseHandler(BaseChainAgent):
         for _ in range(MAX_DH_STEPS):
             response = invoke_with_retry(
                 self.llm,
-                [make_system_message(self.system_prompt, self.provider)]
+                [
+                    make_system_message(
+                        self.system_prompt, self.provider, phase="save"
+                    )
+                ]
                 + self.messages,
                 "DH-compress",
+                cache_control=history_cache_control(self.provider, phase="save"),
             )
             self.messages.append(response)
             text = ai_text(getattr(response, "content", "")).strip()

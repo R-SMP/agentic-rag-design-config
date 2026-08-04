@@ -987,3 +987,42 @@ MAX_CREATOR_STEPS: int = 60
 # PROMPT_CACHE_TTL "5m"|"1h".
 PROMPT_CACHE_SCOPE: str = "system+history"
 PROMPT_CACHE_TTL: str = "5m"
+
+# 30. Prompt caching for the SESSION-SAVE phase (Anthropic only)
+# ===========================================================
+# The Database Handler interview that runs AFTER a session ends uses
+# the SAME caching machinery as the in-session agents — the same
+# helpers, the same breakpoints, the same top-level parameter.  Only
+# the two knobs below are separate, so the save can be measured and
+# tuned WITHOUT disturbing in-session behaviour (and vice versa).
+# The values mean exactly what their §29 counterparts mean.
+#
+# WHY THE SAVE IS WORTH CACHING AT ALL.  SCHEDULE has 29 fields and
+# _ask_agent re-seeds convo_buffer from the agent's FULL in-session
+# history for every one of them, so the User Input Inspector's whole
+# history is re-sent at least 8 times and the Planner's 6, at full
+# price each.  Nothing mutates agent_state.messages during the save
+# (list() copies; appends land on the copy), so that repeated prefix
+# is byte-stable.
+#
+# WHAT IS AND IS NOT CACHED TODAY (measured 2026-08-04).  The DH's own
+# self.messages grows monotonically and caches FULLY.  The agent side
+# caches only PARTLY: within a field, rounds 2+ hit in full, but ACROSS
+# fields only the system prompt is read back, because the sole other
+# breakpoint sits at the end of the messages and every field ends with
+# a different question.  So each field's FIRST round re-writes the base
+# history at 1.25x.  Net: a win from 2 rounds per field upward (~32% on
+# the UII at 2 rounds), a 25% loss on any field resolved in one round.
+# Closing the gap needs the briefing anchor (TODO F55), worth ~83%.
+# See design_prompt_caching.md § "The session-save phase".
+#
+# WHY THE TTL DEFAULT IS "5m" HERE.  SCHEDULE is grouped by agent, so
+# one agent's fields run back-to-back seconds apart, and every hit
+# refreshes the TTL for free — the prefix stays warm through that
+# agent's block however long the whole save takes.  The cheaper 1.25x
+# write therefore wins; revisit after the live save measurement.
+#
+# Valid values: PROMPT_CACHE_SCOPE_SAVE "off"|"system"|"system+history";
+# PROMPT_CACHE_TTL_SAVE "5m"|"1h".
+PROMPT_CACHE_SCOPE_SAVE: str = "system+history"
+PROMPT_CACHE_TTL_SAVE: str = "5m"

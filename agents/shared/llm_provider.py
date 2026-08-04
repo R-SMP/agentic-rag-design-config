@@ -440,19 +440,34 @@ def encode_image_bytes(raw: bytes, degree_pct=None, is_render: bool = False,
 
 _CACHE_SCOPES = ("off", "system", "system+history")
 
+# Which pair of settings a call reads.  The MACHINERY is identical for
+# both phases — same breakpoints, same markers, same request shape; the
+# phase only selects WHICH two settings are consulted, so the save can
+# be tuned or measured without disturbing the session.  Anything that
+# does not name a phase gets "session", which is why every pre-existing
+# call site keeps its exact previous behaviour.
+_CACHE_SETTING_NAMES = {
+    "session": ("PROMPT_CACHE_SCOPE", "PROMPT_CACHE_TTL"),
+    "save": ("PROMPT_CACHE_SCOPE_SAVE", "PROMPT_CACHE_TTL_SAVE"),
+}
 
-def _cache_settings() -> "tuple[str, str]":
-    """Live (scope, ttl), read off the already-imported settings module.
+
+def _cache_settings(phase: str = "session") -> "tuple[str, str]":
+    """Live (scope, ttl) for *phase*, read off the imported settings module.
 
     Read at call time (not import time) so a Workflow-Settings save that
     triggers ``web_app._build_session``'s reload is picked up on the next
     session build, matching how every other live setting behaves here.
-    Unrecognised values fall back to the safe defaults rather than raise.
+    Unrecognised values fall back to the safe defaults rather than raise
+    — including an unrecognised *phase*, which falls back to "session".
     """
-    scope = str(getattr(_workflow_settings, "PROMPT_CACHE_SCOPE", "system")).strip()
+    scope_name, ttl_name = _CACHE_SETTING_NAMES.get(
+        phase, _CACHE_SETTING_NAMES["session"]
+    )
+    scope = str(getattr(_workflow_settings, scope_name, "system")).strip()
     if scope not in _CACHE_SCOPES:
         scope = "system"
-    ttl = str(getattr(_workflow_settings, "PROMPT_CACHE_TTL", "5m")).strip()
+    ttl = str(getattr(_workflow_settings, ttl_name, "5m")).strip()
     if ttl not in ("5m", "1h"):
         ttl = "5m"
     return scope, ttl
@@ -464,21 +479,22 @@ def _cache_control_dict(ttl: str) -> dict:
     return {"type": "ephemeral"} if ttl == "5m" else {"type": "ephemeral", "ttl": ttl}
 
 
-def system_cache_control(provider: str) -> "dict | None":
+def system_cache_control(provider: str, phase: str = "session") -> "dict | None":
     """Marker for the EXPLICIT breakpoint on an agent's system prompt.
 
     Returns ``None`` when caching is off or the provider is not Anthropic
-    (no other provider accepts the field).
+    (no other provider accepts the field).  *phase* selects which pair of
+    settings governs the decision — see ``_CACHE_SETTING_NAMES``.
     """
     if provider != "anthropic":
         return None
-    scope, ttl = _cache_settings()
+    scope, ttl = _cache_settings(phase)
     if scope == "off":
         return None
     return _cache_control_dict(ttl)
 
 
-def history_cache_control(provider: str) -> "dict | None":
+def history_cache_control(provider: str, phase: str = "session") -> "dict | None":
     """Value for the TOP-LEVEL ``cache_control`` request parameter — the
     AUTOMATIC breakpoint that advances with the growing conversation.
 
@@ -489,16 +505,21 @@ def history_cache_control(provider: str) -> "dict | None":
     the Messages API as the top-level parameter; the API then places the
     breakpoint on the last cacheable block itself, so nothing here has to
     rewrite message content (and nothing can drift between calls).
+
+    *phase* selects which pair of settings governs the decision — see
+    ``_CACHE_SETTING_NAMES``.
     """
     if provider != "anthropic":
         return None
-    scope, ttl = _cache_settings()
+    scope, ttl = _cache_settings(phase)
     if scope != "system+history":
         return None
     return _cache_control_dict(ttl)
 
 
-def make_system_message(prompt: str, provider: str) -> SystemMessage:
+def make_system_message(
+    prompt: str, provider: str, phase: str = "session"
+) -> SystemMessage:
     """Build a provider-appropriate ``SystemMessage`` for the agent's prompt.
 
     Anthropic supports explicit prompt caching via a ``cache_control``
@@ -528,8 +549,14 @@ def make_system_message(prompt: str, provider: str) -> SystemMessage:
     Other providers (Google etc.) get the plain-string form because the
     langchain bindings for those providers do not currently surface a
     cache-control mechanism through ``SystemMessage`` content blocks.
+
+    *phase* selects which settings pair governs the marker.  It defaults
+    to ``"session"``, so the 13 in-session call sites are unaffected; the
+    post-session Database Handler passes ``"save"`` so its system marker
+    obeys the same switch as its history marker rather than splitting
+    across the two settings pairs.
     """
-    cc = system_cache_control(provider)
+    cc = system_cache_control(provider, phase)
     if cc is not None:
         return SystemMessage(
             content=[{"type": "text", "text": prompt, "cache_control": cc}]

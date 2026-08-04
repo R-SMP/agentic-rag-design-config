@@ -95,8 +95,23 @@ def _blank() -> dict:
 # Reading usage off a provider response
 # ---------------------------------------------------------------------------
 
-def _configured_ttl() -> str:
-    """The ttl this run asked for — ``"5m"`` or ``"1h"``.
+# The post-session Database Handler reads its own ttl setting (§30), so
+# pricing an unsplit write by the SESSION ttl would be wrong the moment
+# the two diverge.  Every DH call site labels itself with a name
+# starting "DH" — "DH-decide", "DH-formulate", "DH-compress",
+# "DH-force-tool-<n>", "DH<-<agent_key>" — and no in-session agent name
+# does, so the label is a reliable phase marker.  Keep that true: a new
+# DH call site must keep the prefix, and no agent may be named "DH*".
+_SAVE_LABEL_PREFIX = "DH"
+
+
+def _phase_for(agent_name: str) -> str:
+    """Which caching phase the call labelled *agent_name* belongs to."""
+    return "save" if str(agent_name).startswith(_SAVE_LABEL_PREFIX) else "session"
+
+
+def _configured_ttl(phase: str = "session") -> str:
+    """The ttl this run asked for in *phase* — ``"5m"`` or ``"1h"``.
 
     Read at call time (not import time) so a Workflow-Settings change is
     picked up on the next session, matching how llm_provider reads it.
@@ -104,15 +119,16 @@ def _configured_ttl() -> str:
     when it does, the reported buckets win, because what was actually
     written beats what was requested.
     """
+    name = "PROMPT_CACHE_TTL_SAVE" if phase == "save" else "PROMPT_CACHE_TTL"
     try:
         from workflow_settings import settings as _s
-        ttl = str(getattr(_s, "PROMPT_CACHE_TTL", "5m")).strip()
+        ttl = str(getattr(_s, name, "5m")).strip()
         return ttl if ttl in ("5m", "1h") else "5m"
     except Exception:
         return "5m"
 
 
-def _extract(response: Any) -> dict[str, int] | None:
+def _extract(response: Any, phase: str = "session") -> dict[str, int] | None:
     """Pull token counts off an ``AIMessage``-like response.
 
     Prefers LangChain's standardised ``usage_metadata`` (populated by
@@ -158,7 +174,7 @@ def _extract(response: Any) -> dict[str, int] | None:
                     # under-states it by 37.5% and would OVERSTATE the
                     # saving — the one direction of error that matters for
                     # a number used to justify the feature.
-                    if _configured_ttl() == "1h":
+                    if _configured_ttl(phase) == "1h":
                         w1h = generic
                     else:
                         w5 = generic
@@ -288,7 +304,7 @@ def begin_turn(agent_name: str) -> None:
 def record(agent_name: str, response: Any) -> None:
     """Log one LLM call's usage and fold it into the running totals."""
     global _UNAVAILABLE
-    counts = _extract(response)
+    counts = _extract(response, _phase_for(agent_name))
 
     with _LOCK:
         if counts is None:

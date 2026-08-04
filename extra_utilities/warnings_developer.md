@@ -1720,16 +1720,31 @@ provider, so the kwarg is omitted entirely and the request stays byte-identical 
 pre-caching shape. A Claude model served through **OpenRouter** runs as
 `provider == "openrouter"` and therefore gets **no caching at all** — expected, not a bug.
 
-**Scope gap.** The 8-agent topology and the 5-agent one (Conductor + Creator) pass the
-kwarg; the **3-agent topology does not** (TODO F53). Three call sites are excluded ON
-PURPOSE and must stay that way: the **Database Handler** (post-session), the **Context
-Pruner** (rare one-off summarisation), and each hub's **feedback-dispatch** call, which
+**Scope gap.** The 8-agent topology, the 5-agent one (Conductor + Creator) and the
+post-session **Database Handler** all pass the kwarg; the **3-agent topology does not**
+(TODO F53). Two call sites are excluded ON PURPOSE and must stay that way: the **Context
+Pruner** (rare one-off summarisation) and each hub's **feedback-dispatch** call, which
 sends a freshly-built one-off message list so a breakpoint there could only ever write an
 entry nothing can match. The rule: **only call sites whose message list persists across
-turns get the history breakpoint.**
+turns, or repeats across calls, get the history breakpoint.**
 
-**Status.** In force from 2026-08-04 (the conversation-history-caching change).
-See `extra_utilities/design_prompt_caching.md` and `workflow_settings/settings.py` §29.
+**Two settings PAIRS, one mechanism.** The save phase uses the *same* helpers, markers and
+request shape as the session — it differs only in which settings it reads. `phase="save"`
+selects `PROMPT_CACHE_SCOPE_SAVE` / `PROMPT_CACHE_TTL_SAVE` (§30); everything else defaults
+to `phase="session"` and reads §29. **Both markers on a given call must come from the same
+phase** — mixing them re-opens exactly the ttl-mismatch 400 described above, which is why
+`make_system_message` takes the phase too rather than always reading the session setting.
+
+**The label is load-bearing.** `token_usage._phase_for()` decides how to price an unsplit
+cache write by testing `agent_name.startswith("DH")`. Every DH call site is labelled
+`DH-decide` / `DH-formulate` / `DH-compress` / `DH-force-tool-<n>` / `DH<-<agent_key>`, and
+no in-session agent name starts with `DH` (`DCIC`/`DCII`/`DCOI` start with `DC`). **A new DH
+call site must keep the prefix, and no agent may ever be named `DH*`** — otherwise its
+writes get priced at the wrong phase's ttl the moment the two ttls diverge.
+
+**Status.** In force from 2026-08-04 (the conversation-history-caching change; the
+Database Handler joined the same day). See `extra_utilities/design_prompt_caching.md`
+and `workflow_settings/settings.py` §29–§30.
 
 **Unverified assumption (2026-08-04).** Whether the **top-level** `cache_control`
 request parameter honours a `ttl` field is NOT confirmed — every documented example

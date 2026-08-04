@@ -53,6 +53,11 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
     # workflow_settings/settings.py §29.
     "PROMPT_CACHE_SCOPE": ["off", "system", "system+history"],
     "PROMPT_CACHE_TTL": ["5m", "1h"],
+    # Same two knobs for the post-session Database Handler save.  Same
+    # values, same meaning, same machinery — separate only so the save
+    # can be tuned without disturbing the session.  See §30.
+    "PROMPT_CACHE_SCOPE_SAVE": ["off", "system", "system+history"],
+    "PROMPT_CACHE_TTL_SAVE": ["5m", "1h"],
 }
 
 # Derived from the environment via os.getenv — show read-only, mask

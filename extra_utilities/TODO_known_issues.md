@@ -3285,12 +3285,119 @@ Nothing else — `make_system_message` already applies the explicit system-promp
 breakpoint, and both markers derive their ttl from the single `PROMPT_CACHE_TTL`
 setting, so they cannot diverge (a mismatched ttl is a 400 from Anthropic).
 
-**Do NOT add it to the Database Handler** — deliberately excluded (post-session, its own
-lifecycle, ~28-round accumulated-state interview). That exclusion is by omission at the
-call site, not by a list, so it survives refactors.
+**The Database Handler now HAS it** (2026-08-04, all 5 sites) — it was previously excluded
+by omission. It uses the same helpers with `phase="save"`, which reads the separate
+`PROMPT_CACHE_SCOPE_SAVE` / `PROMPT_CACHE_TTL_SAVE` pair (§30). A reduced-topology agent
+still passes no phase, i.e. the `"session"` default.
 
 **Where.** `agents/<each reduced-topology agent>/*.py`. Reference implementation: the 8
 in-session agents on the current topology. Mechanics + measured rationale:
 `extra_utilities/design_prompt_caching.md`. Settings: `workflow_settings/settings.py` §29.
 Related: the agent-count work in `extra_utilities/design_agent_count_variants.md` and
 `agent_count_variants_build_tracker.md`.
+
+---
+
+### F54. Verify save-phase prompt caching on a REAL session save
+
+**Status.** OPEN — code shipped 2026-08-04, offline + live smoke tests pass, but the
+Database Handler has never run with caching enabled against a real saved session.
+
+**Why it needs a live check.** `smoke_test_prompt_cache.py` proves the mechanism and
+proves a re-seeded buffer keeps a stable prefix, but it builds a *synthetic* base
+history. A real save differs in the ways that could break the win:
+
+1. **Real agent histories** may contain content whose serialisation is not stable
+   across the `list()` copy (tool-call blocks, image placeholders left by the strip,
+   provider-specific metadata). Any instability shows up as a cache read that shrinks
+   field over field.
+2. **Prefix size.** An agent with a short history may fall under the model's minimum
+   cacheable prefix (1024 tokens on Opus 4.8, **4096** on Haiku 4.5 / Opus 4.6), in
+   which case caching is silently skipped for that agent — no error, no saving.
+3. **The 5m TTL assumption** — that one agent's `SCHEDULE` block runs fast enough to
+   stay warm — is reasoning, not measurement.
+
+**How to check.** Run one ordinary session to completion and let it save (this is
+**not** a Sessions Queue run — plain single-session save). Then in the session log:
+
+- filter for `[DH-decide]`, `[DH-formulate]`, `[DH-compress]`, `[DH<-<agent>]`;
+- confirm `billed=` on the `DH<-<agent>` lines drops sharply after each agent's first
+  field, and that the cache-read figure is roughly CONSTANT across that agent's
+  remaining fields (a shrinking read = prefix drift, the failure mode in point 1);
+- confirm the UII (8 fields) and Planner (6 fields) show the largest savings, since
+  they repeat the most;
+- note any agent showing **zero** cache reads throughout — check its history size
+  against the model's minimum cacheable prefix before assuming a bug.
+
+**Then decide the TTL.** If any agent's block spans >5 minutes and shows a re-write of
+its full prefix mid-block, flip `PROMPT_CACHE_TTL_SAVE` to `"1h"`. That setting is
+independent of the session's, so it can be changed without re-measuring the session.
+
+**Where.** `workflow_settings/settings.py` §30; `agents/database_handler/database_handler.py`
+(5 call sites); `agents/shared/token_usage.py` (`_phase_for`, `_configured_ttl`).
+Mechanics: `extra_utilities/design_prompt_caching.md` § "The session-save phase".
+
+---
+
+### F55. The briefing anchor: cache the DH's re-seeded base history ACROSS fields
+
+**Status.** OPEN — this is the larger half of the save-phase saving, and it is NOT
+captured by the 2026-08-04 change. **Measured**, not suspected.
+
+**The gap.** `smoke_test_prompt_cache.py`'s `run_save_phase()` measured three re-seeded
+fields on `claude-opus-4-8`:
+
+```
+field 1  write=558  read=8435      <- 8435 = the SYSTEM PROMPT alone
+field 2  write=558  read=8435      <- flat, not growing
+field 3  write=558  read=8435
+```
+
+The ~520-token base history is re-written on **every** field. Only two breakpoints
+exist: the explicit one on the system prompt, and the top-level automatic one, which
+lands at the END of the messages. Field 1 writes an entry for
+`system + base + question-1`; field 2's prefix diverges at that final block, so it
+cannot match — and there is no breakpoint at `system + base` to fall back to.
+
+**Why it matters.** Within a field, round 1 writes the base at 1.25x and rounds 2+ read
+it back; only each field's FIRST round re-pays. With `F` fields and `R` rounds per
+field: no caching `F × R × H`; today `F × (1.25H + (R-1) × 0.1H)`; with the anchor
+`1.25H + (F × R - 1) × 0.1H`. For the UII (`F = 8`, `R = 2`) that is `16H` → `10.8H`
+today (~32% saved) → `2.75H` with the anchor (~83% saved). So the shipped change is a
+real win and this item claims the remaining two thirds. Real histories are far larger
+than the smoke test's 520 tokens, so the absolute gap is large.
+
+**Break-even note.** A field resolved in a SINGLE round costs 25% more than no caching
+(one 1.25x write, no offsetting read). If a real save turns out to be dominated by
+one-round fields, measure before assuming the current state is net positive for the
+agent side — F54 produces exactly that number.
+
+**What is unaffected.** The DH's own `self.messages` grows monotonically and already
+caches fully — the measured `system+history` pattern (`read` 8435 → 8464 → 8522). Do
+not touch those 4 sites.
+
+**The fix, and why it is not a one-liner.** Place a third breakpoint on the LAST message
+of the re-seeded base, so `system + base` becomes a matchable entry. Constraints:
+
+1. **Never mutate in place.** `convo_buffer = list(agent_messages)` is a SHALLOW copy —
+   marking a message object would corrupt live session state shared with the agent.
+   Mark a COPY of the last base message.
+2. **Content coercion.** Marking requires block-form content. Must survive whatever
+   the last base message actually is: an `AIMessage` carrying `tool_calls`, a message
+   whose content is already a block list, or image placeholders left by the strip.
+   Verify how `langchain_anthropic` serialises each of those forms BEFORE changing any.
+3. **Breakpoint budget.** explicit system (1) + top-level automatic (2) + anchor (1)
+   = **4**, the documented maximum. No slot is left for a fifth.
+4. Consider whether dropping the top-level automatic on the agent side and hand-placing
+   two explicit markers (system + anchor) is simpler — within-field Q/A tails are small,
+   so little is lost, and it frees 2 slots.
+
+**How to confirm the fix.** Re-run the smoke test: `run_save_phase()` currently WARNs
+with a flat read. Success is field 2's read exceeding field 1's by roughly the base
+size, with the per-field write collapsing to the question alone. The check is already
+written — only the verdict changes.
+
+**Where.** `agents/database_handler/database_handler.py` `_ask_agent` (~line 2733);
+`agents/shared/llm_provider.py` (a new marker helper alongside `system_cache_control`).
+Mechanics: `extra_utilities/design_prompt_caching.md` § "The session-save phase".
+Related: F54 (live verification on a real save).
