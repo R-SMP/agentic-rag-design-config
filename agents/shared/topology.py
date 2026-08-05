@@ -45,6 +45,20 @@ def topology() -> int:
     return int(getattr(_workflow_settings, "SYSTEM_TOPOLOGY", 7))
 
 
+def prompt_variant() -> str:
+    """Which PROMPT set the active agent count runs on.
+
+    Orthogonal to :func:`topology`, which is the agent COUNT.  A variant
+    changes only the text the agents read, never which agents exist, so no
+    agent-count logic should branch on this - only prompt resolution does.
+
+    ``"standard"`` (the default) means the prompts as they are today, and
+    resolution behaves exactly as it did before this dimension existed.
+    """
+    v = str(getattr(_workflow_settings, "PROMPT_VARIANT", "standard")).strip()
+    return v or "standard"
+
+
 def hub_key() -> str:
     """Agent key of the active topology's hub, e.g. ``"conductor"``."""
     return _HUB_BY_TOPOLOGY.get(topology(), _DEFAULT_HUB)[0]

@@ -2025,6 +2025,9 @@ const LR_BOXES_BY_TOPOLOGY = { 7: LR_BOXES_7, 5: LR_BOXES_5, 3: LR_BOXES_3 };
 // not a separate view state: switching the toggle saves the setting, so
 // the chart can never show one topology while another is what runs.
 let lrTopology = 7;
+// Which PROMPT set that agent count runs on.  Orthogonal to the count:
+// the two 7-agent buttons share a chart because they are the same agents.
+let lrVariant = "standard";
 
 function lrBoxes() {
   return LR_BOXES_BY_TOPOLOGY[lrTopology] || LR_BOXES_7;
@@ -2420,21 +2423,26 @@ function renderLrTopology() {
   const wrap = lrEl("lr-topology-toggle");
   if (!wrap) return;
   for (const btn of wrap.querySelectorAll("button[data-topo]")) {
-    const on = Number(btn.dataset.topo) === lrTopology;
+    const on = Number(btn.dataset.topo) === lrTopology
+      && (btn.dataset.variant || "standard") === lrVariant;
     btn.classList.toggle("active", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   }
   const note = lrEl("lr-topology-note");
   if (note) {
     note.textContent =
-      "The next session will run the " + lrTopology + "-agent system.";
+      "The next session will run the " + lrTopology + "-agent system"
+      + (lrVariant === "standard" ? "." : " on " + lrVariant + " prompts.");
   }
 }
 
-async function setLrTopology(topo) {
-  if (topo === lrTopology) return;
+async function setLrTopology(topo, variant) {
+  variant = variant || "standard";
+  if (topo === lrTopology && variant === lrVariant) return;
   const prev = lrTopology;
+  const prevVariant = lrVariant;
   lrTopology = topo;
+  lrVariant = variant;
   renderLrTopology();
   buildLrChart();
   renderLrOverlay();
@@ -2443,17 +2451,22 @@ async function setLrTopology(topo) {
     const res = await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ values: { SYSTEM_TOPOLOGY: topo } }),
+      body: JSON.stringify({
+        values: { SYSTEM_TOPOLOGY: topo, PROMPT_VARIANT: variant },
+      }),
     });
     if (res.status === 401) { showGate(); return; }
     if (!res.ok) throw new Error("HTTP " + res.status);
     setLrStatus(
-      "Agent count set to " + topo + ".  Takes effect on the NEXT session.",
+      "Set to " + topo + "-agents"
+      + (variant === "standard" ? "" : " (" + variant + " prompts)")
+      + ".  Takes effect on the NEXT session.",
       "ok",
     );
   } catch (err) {
     // Roll the view back so it keeps matching what is actually saved.
     lrTopology = prev;
+    lrVariant = prevVariant;
     renderLrTopology();
     buildLrChart();
     renderLrOverlay();
@@ -2467,7 +2480,7 @@ function wireLrTopologyToggle() {
   wrap.dataset.wired = "1";
   wrap.addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-topo]");
-    if (btn) setLrTopology(Number(btn.dataset.topo));
+    if (btn) setLrTopology(Number(btn.dataset.topo), btn.dataset.variant);
   });
 }
 
@@ -2594,6 +2607,9 @@ async function loadLrRouting() {
     // for whichever agent set will actually run.
     if (lrState && Number(lrState.topology)) {
       lrTopology = Number(lrState.topology);
+    }
+    if (lrState && lrState.prompt_variant) {
+      lrVariant = String(lrState.prompt_variant);
     }
     wireLrTopologyToggle();
     renderLrTopology();

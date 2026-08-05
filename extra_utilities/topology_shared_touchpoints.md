@@ -98,6 +98,50 @@ The suffix exists so every file is self-identifying: an editor tab reading
 `generic_constraints_5agents.md` names its topology; a bare
 `generic_constraints.md` in a sibling folder does not.
 
+## §A2 — PROMPT_VARIANT: a second, orthogonal dimension
+
+`SYSTEM_TOPOLOGY` is the agent COUNT.  `PROMPT_VARIANT` is which set of
+PROMPTS that same agent set runs on.  They are deliberately independent: a
+"7-agent reduced" system is the SAME seven agents with the same hub, edges,
+step caps and identity rows — only the text differs — so **no agent-count
+logic should ever branch on the variant.**  Only `_topology_override` and
+`_prompt_path` know it exists.
+
+Resolution is two layers, most specific first, then the shared original:
+
+```
+agents/<N>agent_<variant>/…/<name>_<N>agents_<variant>.md
+agents/<N>agent/…/<name>_<N>agents.md
+<the shared original>
+```
+
+**Remark — this is what makes a half-finished variant safe to select.**  An
+override that has not been written yet falls through, so the prompt is
+byte-identical to the standard one.  Verified: with an empty
+`agents/7agent_reduced/`, all nine topology-7 prompts and all seven
+topology-5 prompts hash identically to `standard`.  It also means the
+proposal's 349 cuts can be applied **one at a time**, each independently
+reviewable and revertible by deleting one file.
+
+**⚠ Warning 7 — NEVER DELETE A SHARED FRAGMENT to build a variant.**  The
+shrink proposal removes fragments as well as shrinking them, and says so in
+its own §3 mechanics note: deleting one means stripping its
+`FRAGMENT_TO_SLOT` row and every `$slot` reference *in the same commit*, and
+it explicitly warns that `agents/5agent/` overrides six of the files it
+touches.  A deletion therefore breaks the 5- and 3-agent topologies, which
+read the same files.  In a variant, a "deleted" fragment is simply **no
+longer referenced** by that variant's prompts — the file stays for everyone
+else.  New fragments are added **additively** to `_build_slots()` and
+`FRAGMENT_TO_SLOT` for the same reason.  `_build_slots()` is a superset by
+design; the cost is a few unused file reads per session, which is nothing
+next to breaking a working topology.
+
+**Remark — the two 7-agent buttons share per-agent LLM models.**  Overrides
+live in `agents/<key>/.env` keyed by agent name, and standard and reduced
+have identical agent keys, so they share automatically.  That is also the
+right experiment: a full-vs-reduced prompt comparison is only clean if the
+model is held constant.
+
 ## §B — The resolution machinery (already generic over N)
 
 Built for the 5-agent, parameterised by the integer — **the 3-agent needs no

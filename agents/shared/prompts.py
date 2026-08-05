@@ -43,7 +43,11 @@ from agents.shared.routing import natural_pipeline, routing_instructions
 # Topology facts live in their own dependency-free module so that
 # ``routing_tools`` (a leaf) can read them too.  Aliased to the private
 # names this module has always used, so call sites below are unchanged.
-from agents.shared.topology import hub_key as _hub_agent, topology as _topology
+from agents.shared.topology import (
+    hub_key as _hub_agent,
+    prompt_variant as _prompt_variant,
+    topology as _topology,
+)
 from workflow_settings import settings as _workflow_settings
 
 AGENTS_DIR = Path(__file__).resolve().parent.parent
@@ -92,12 +96,37 @@ def _topology_override(rel_path: str) -> Path | None:
     it did before.
     """
     topo = _topology()
-    topo_dir = AGENTS_DIR / f"{topo}agent"
-    if not topo_dir.is_dir():
-        return None
     rel = Path(rel_path)
-    cand = (topo_dir / rel).with_name(f"{rel.stem}_{topo}agents{rel.suffix}")
-    return cand if cand.is_file() else None
+
+    # Two layers, most specific first:
+    #
+    #   agents/<N>agent_<variant>/…/<name>_<N>agents_<variant>.md
+    #   agents/<N>agent/…/<name>_<N>agents.md
+    #
+    # then the shared original.  A variant that has not written an override
+    # for this file falls through to the topology folder, and a topology
+    # with no folder falls through to the shared file — which is why
+    # selecting a half-finished variant is safe: every unwritten override is
+    # simply the standard text.
+    variant = _prompt_variant()
+    candidates = []
+    if variant and variant != "standard":
+        candidates.append((
+            AGENTS_DIR / f"{topo}agent_{variant}",
+            f"{rel.stem}_{topo}agents_{variant}{rel.suffix}",
+        ))
+    candidates.append((
+        AGENTS_DIR / f"{topo}agent",
+        f"{rel.stem}_{topo}agents{rel.suffix}",
+    ))
+
+    for topo_dir, name in candidates:
+        if not topo_dir.is_dir():
+            continue
+        cand = (topo_dir / rel).with_name(name)
+        if cand.is_file():
+            return cand
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -735,8 +764,17 @@ def _prompt_path(agent_dir_name: str) -> Path:
     override = _topology_override(f"{agent_dir_name}/prompt.md")
     if override is not None:
         return override
-    own = AGENTS_DIR / agent_dir_name / f"prompt_{_topology()}agents.md"
-    return own if own.is_file() else AGENTS_DIR / agent_dir_name / "prompt.md"
+    # An agent that exists ONLY in this topology keeps a normal package, so
+    # its prompt sits beside its code.  A variant of such an agent is named
+    # with the variant suffix in the same folder.
+    variant = _prompt_variant()
+    here = AGENTS_DIR / agent_dir_name
+    if variant and variant != "standard":
+        own_v = here / f"prompt_{_topology()}agents_{variant}.md"
+        if own_v.is_file():
+            return own_v
+    own = here / f"prompt_{_topology()}agents.md"
+    return own if own.is_file() else here / "prompt.md"
 
 
 def _build_template(agent_dir_name: str) -> str:

@@ -40,6 +40,7 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
     # Agent topology — the value IS the agent count.  Adding a further
     # variant needs only a new agents/<N>agent/ folder and N here.
     "SYSTEM_TOPOLOGY": [7, 5, 3],
+    "PROMPT_VARIANT": ["standard", "reduced"],
     "EMBEDDING_PROVIDER": ["OpenAI"],
     # STITCHING_PROVIDER is locked to a single-option dropdown
     # (matches EMBEDDING_PROVIDER's pattern).  The Anthropic and
