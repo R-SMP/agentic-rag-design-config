@@ -164,6 +164,15 @@ _HAS_DBA_RE = re.compile(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>", re.DOTALL)
 # takes effect next session).  See ``apply_bsv_filter``.
 _BSV_ON_RE = re.compile(r"<<BSV_ON>>(.*?)<</BSV_ON>>", re.DOTALL)
 _BSV_OFF_RE = re.compile(r"<<BSV_OFF>>(.*?)<</BSV_OFF>>", re.DOTALL)
+# Global mesh-quality-checks filter — mirrors the BSV pattern, gated by the
+# ``MESH_CHECKS`` workflow setting.  With the checks off the pipeline never
+# produces watertightness / volume / degenerate-face numbers, so prose
+# describing them is dead text in every prompt that carries it.  Read fresh,
+# not captured at import, because ``web_app._build_session`` reloads
+# ``workflow_settings`` in place and the Sessions Queue switches settings
+# between runs inside one process.  See ``apply_mesh_checks_filter``.
+_MESH_ON_RE = re.compile(r"<<MESH_ON>>(.*?)<</MESH_ON>>", re.DOTALL)
+_MESH_OFF_RE = re.compile(r"<<MESH_OFF>>(.*?)<</MESH_OFF>>", re.DOTALL)
 # Per-agent chain-only filter — strips ``<<CHAIN_ONLY>>`` regions from the
 # agents that are NOT links in the forward chain, and unwraps them for the
 # ones that are.  See ``apply_chain_only_filter``.
@@ -241,6 +250,25 @@ def apply_bsv_filter(text: str) -> str:
     return text
 
 
+def apply_mesh_checks_filter(text: str) -> str:
+    """Resolve ``<<MESH_ON>>`` / ``<<MESH_OFF>>`` regions.
+
+    Gated by the ``MESH_CHECKS`` workflow setting, read fresh so a toggle
+    saved in the Workflow Settings editor takes effect on the next session —
+    the same contract as the BSV / DBa / OCR toggles.
+
+    On  = strip the OFF blocks, unwrap the ON blocks.
+    Off = strip the ON blocks, unwrap the OFF blocks.
+    """
+    if bool(_workflow_settings.MESH_CHECKS):
+        text = _MESH_OFF_RE.sub("", text)
+        text = _MESH_ON_RE.sub(lambda m: m.group(1), text)
+    else:
+        text = _MESH_ON_RE.sub("", text)
+        text = _MESH_OFF_RE.sub(lambda m: m.group(1), text)
+    return text
+
+
 def apply_dba_filter(text: str, agent_dir_name: str) -> str:
     """Resolve ``<<HAS_DBA>>...<</HAS_DBA>>`` conditional regions
     for one agent's template.
@@ -299,15 +327,17 @@ def apply_chain_only_filter(text: str, agent_dir_name: str) -> str:
 
 
 def apply_flag_filters(text: str) -> str:
-    """Apply both DCII and PLANNER_FIRST filters in sequence.
+    """Apply the DCII, PLANNER_FIRST, BSV and MESH_CHECKS filters in sequence.
 
     NOTE: per-agent filters (:func:`apply_dba_filter`,
     :func:`apply_chain_only_filter`) are applied separately in
     :func:`_build_template` because they need to know which agent's
     template is being assembled.
     """
-    return apply_bsv_filter(
-        apply_planner_first_filter(apply_dcii_filter(text))
+    return apply_mesh_checks_filter(
+        apply_bsv_filter(
+            apply_planner_first_filter(apply_dcii_filter(text))
+        )
     )
 
 

@@ -307,6 +307,8 @@ _MARKER_PAIRS: tuple[tuple[str, str], ...] = (
     ("<<PF_ON>>",     "<</PF_ON>>"),
     ("<<PF_OFF>>",    "<</PF_OFF>>"),
     ("<<HAS_DBA>>",   "<</HAS_DBA>>"),
+    ("<<MESH_ON>>",   "<</MESH_ON>>"),
+    ("<<MESH_OFF>>",  "<</MESH_OFF>>"),
 )
 
 
