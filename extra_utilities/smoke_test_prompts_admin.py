@@ -350,13 +350,77 @@ def main() -> int:
             setattr(pa, name, val)
         shutil.rmtree(tmp_dir, ignore_errors=True)
 
+    # -- _used_by for per-agent SCOPED COPIES (real repo paths, not fixtures) --
+    #
+    # Two properties.  A scoped copy must report its ONE owning agent, not the
+    # empty list (which reads as "orphan" in the tree and, worse, as
+    # "affected agents: none" on the save receipt for a file that changes
+    # exactly one system prompt).  And the BASE fragment must STOP counting an
+    # agent once that agent has its own copy, or its badge over-counts by one
+    # more with every copy added.
+    #
+    # Ordering matters and is the thing most likely to regress: the base
+    # fragment is a FRAGMENT_TO_SLOT key, so a scoped copy falling through to
+    # that branch would report every agent whose prompt.md mentions the slot.
+    slot_usage = pa._prompt_md_slot_usage()
+    base_rel = "DC_prompt_fragments/dc_config/hard_constraints_dc.md"
+    scoped_rel = (
+        "DC_prompt_fragments/dc_config/hard_constraints_dc_dc_input_inspector.md"
+    )
+    overlay_rel = "DC_prompt_fragments/tools_config/database_search_planner.md"
+
+    got = pa._used_by(scoped_rel, slot_usage)
+    if got != ["dc_input_inspector"]:
+        failures.append(
+            f"_used_by(scoped copy): expected ['dc_input_inspector'], got {got!r}"
+        )
+
+    # The pre-existing _per_agent OVERLAYS use the same basename shape but a
+    # different mechanism; they must keep resolving via _WIRING_TIME_USAGE.
+    got = pa._used_by(overlay_rel, slot_usage)
+    if got != ["planner"]:
+        failures.append(
+            f"_used_by(database_search overlay): expected ['planner'], got {got!r}"
+        )
+
+    base_before = pa._used_by(base_rel, slot_usage)
+    probe = pa.REPO_ROOT / scoped_rel
+    if probe.exists():
+        failures.append(
+            f"scoped-copy probe {probe.name} already exists — refusing to "
+            "overwrite a real file; rename the probe"
+        )
+    else:
+        try:
+            probe.write_text("probe\n", encoding="utf-8")
+            base_with = pa._used_by(base_rel, slot_usage)
+            if "dc_input_inspector" in base_with:
+                failures.append(
+                    "_used_by(base): dc_input_inspector has its own scoped copy "
+                    f"but is still counted against the shared file: {base_with!r}"
+                )
+            if set(base_before) - set(base_with) != {"dc_input_inspector"}:
+                failures.append(
+                    f"_used_by(base): expected exactly dc_input_inspector to "
+                    f"drop, got {base_before!r} -> {base_with!r}"
+                )
+        finally:
+            probe.unlink(missing_ok=True)
+        base_after = pa._used_by(base_rel, slot_usage)
+        if base_after != base_before:
+            failures.append(
+                f"_used_by(base): not restored after removing the scoped copy: "
+                f"{base_before!r} -> {base_after!r}"
+            )
+
     for line in failures:
         print(f"FAIL {line}")
     if failures:
         return 1
     print(
         "OK prompts admin smoke test "
-        "(build_tree + read_file + save_files + path-safety + 4 validators)"
+        "(build_tree + read_file + save_files + path-safety + 4 validators "
+        "+ scoped-copy usage)"
     )
     return 0
 

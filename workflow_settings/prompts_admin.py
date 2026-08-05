@@ -28,6 +28,8 @@ from pathlib import Path
 from agents.shared.prompts import (
     FRAGMENT_TO_SLOT,
     PROMPT_MD_RUNTIME_SLOTS,
+    SCOPED_FRAGMENTS,
+    scoped_fragment_path,
 )
 
 REPO_ROOT = Path(__file__).resolve().parent.parent
@@ -164,6 +166,42 @@ def _prompt_md_slot_usage() -> dict[str, set[str]]:
     return usage
 
 
+_SCOPED_ROOT_PREFIX = {
+    "generic": "agents/shared/prompt_fragments/",
+    "dc":      "DC_prompt_fragments/",
+}
+
+
+def _scoped_owner(rel_path: str) -> str | None:
+    """The one agent a per-agent SCOPED COPY belongs to, or None.
+
+    DERIVED from ``prompts.SCOPED_FRAGMENTS`` + the agent-directory names in
+    ``PROMPT_MD_RUNTIME_SLOTS`` rather than hand-listed, because the naming
+    rule is mechanical (``<stem>_<agent><suffix>``) and a hand-maintained
+    list is one more thing to forget — the same failure shape as the three
+    drifted path patterns 13e0bab had to consolidate, and as the marker list
+    in F56.  A new scoped file is recognised the moment it exists.
+
+    Only slots registered in ``SCOPED_FRAGMENTS`` are considered, so the
+    pre-existing ``blade_sections_visualizer_<agent>.md`` and
+    ``database_search_<agent>.md`` OVERLAYS (different mechanism, already
+    covered by ``_WIRING_TIME_USAGE``) are deliberately not matched here.
+    """
+    for slot, (root, rel) in SCOPED_FRAGMENTS.items():
+        base = Path(rel)
+        sub = base.parent.as_posix()
+        want_dir = _SCOPED_ROOT_PREFIX[root] + ("" if sub == "." else sub + "/")
+        if not rel_path.startswith(want_dir):
+            continue
+        name = rel_path[len(want_dir):]
+        stem, suffix = base.stem, base.suffix
+        if name.startswith(stem + "_") and name.endswith(suffix):
+            agent = name[len(stem) + 1: len(name) - len(suffix)]
+            if agent in PROMPT_MD_RUNTIME_SLOTS:
+                return agent
+    return None
+
+
 def _used_by(rel_path: str, slot_usage: dict[str, set[str]]) -> list[str]:
     """List of agent_dir names whose template includes content from
     this file.  Empty for READMEs / unknown files."""
@@ -175,10 +213,25 @@ def _used_by(rel_path: str, slot_usage: dict[str, set[str]]) -> list[str]:
     # Hardcoded WIRING-time fragments
     if rel_path in _WIRING_TIME_USAGE:
         return list(_WIRING_TIME_USAGE[rel_path])
-    # $-slot fragments
+    # Per-agent SCOPED COPY of a shared fragment.  MUST come before the
+    # FRAGMENT_TO_SLOT branch: the BASE fragment is a key of that dict, and a
+    # scoped copy resolved through it would report every agent whose prompt.md
+    # mentions the slot — "used by 8 agents" for a file exactly one agent reads.
+    scoped_agent = _scoped_owner(rel_path)
+    if scoped_agent:
+        return [scoped_agent]
+    # $-slot fragments.  Agents holding their own scoped copy no longer read
+    # the shared file, so they are subtracted — otherwise the base fragment's
+    # badge over-counts, silently and by one more with every copy added.
     slot = FRAGMENT_TO_SLOT.get(rel_path)
     if slot:
-        return sorted(slot_usage.get(slot, set()))
+        agents = set(slot_usage.get(slot, set()))
+        if slot in SCOPED_FRAGMENTS:
+            agents -= {
+                a for a in list(agents)
+                if scoped_fragment_path(slot, a) is not None
+            }
+        return sorted(agents)
     # README / unknown → nothing
     return []
 

@@ -635,6 +635,90 @@ FRAGMENT_TO_SLOT: dict[str, str] = {
 }
 
 
+# ---------------------------------------------------------------------------
+# Per-agent SCOPED COPIES of shared fragments
+#
+# Same file-naming idiom as the ``$blade_sections_visualizer_per_agent`` /
+# ``$database_search_per_agent`` overlays: a file whose basename carries the
+# agent's directory name wins over the shared one.  ONE difference, and it is
+# the whole point — an overlay falls back to "" under its own ``_per_agent``
+# slot; a SCOPED COPY replaces the value of the SHARED slot and falls back to
+# the SHARED FILE.
+#
+# Consequence: no prompt.md changes anywhere.  An agent with no scoped file
+# assembles byte-for-byte what it assembles today; an agent with one gets its
+# own text under the same $slot name its prompt already references.  There is
+# no "registered but not referenced" or "referenced but not registered" state
+# to get wrong, because no new slot name is introduced.
+#
+# NOTE this can TAILOR but not REMOVE: every prompt.md puts a heading directly
+# above the slot (``## Hard constraints — DC-specific``), so an empty scoped
+# file leaves a bare heading.  Dropping a fragment from an agent entirely means
+# deleting the ``$slot`` line AND its heading from that agent's prompt.md.
+#
+# Keys are $-slot names.  Values are (root, path-relative-to-that-root), where
+# "dc" means DC_prompt_fragments/ and "generic" means
+# agents/shared/prompt_fragments/ — the two roots ``_read_dc_fragment`` and
+# ``_read_generic_fragment`` already use.  Registering a slot costs one
+# ``is_file()`` check per agent per template build and nothing else, so this
+# table is deliberately a SUPERSET of what has a scoped copy today.
+# ---------------------------------------------------------------------------
+
+SCOPED_FRAGMENTS: dict[str, tuple[str, str]] = {
+    "hard_constraints_generic": ("generic", "generic_constraints.md"),
+    "available_agents":         ("generic", "available_agents.md"),
+    "hard_constraints_dc":      ("dc", "dc_config/hard_constraints_dc.md"),
+    "hard_constraints_tools":   ("dc", "tools_config/hard_constraints_tools.md"),
+    "sketch_handling":          ("dc", "dc_config/user_input_types/sketch_handling.md"),
+    "sketch_notes":             ("dc", "dc_config/user_input_types/sketch_notes.md"),
+    "parameter_list":           ("dc", "dc_config/parameters.md"),
+}
+
+
+def scoped_fragment_path(slot: str, agent_dir_name: str) -> Path | None:
+    """Path of *agent_dir_name*'s own copy of *slot*, or None if it has none.
+
+    Honours the active topology + variant exactly as ``_read_dc_fragment`` and
+    ``_read_generic_fragment`` do, so the 7-agent reduced variant can ship
+    ``agents/7agent_reduced/dc_config/hard_constraints_dc_<agent>_7agents_reduced.md``
+    and a 5-agent Creator could ship its own twin.
+
+    Public because ``workflow_settings/prompts_admin.py`` resolves the same
+    question for the System Prompts UI's "used by" badge; a second copy of this
+    naming rule there is exactly the drift 13e0bab had to consolidate away.
+    """
+    try:
+        root, rel = SCOPED_FRAGMENTS[slot]
+    except KeyError:
+        return None
+    p = Path(rel)
+    # as_posix(), never str(): _topology_override re-parses this string, and a
+    # Windows backslash would not survive the Linux container.
+    scoped_rel = (p.parent / f"{p.stem}_{agent_dir_name}{p.suffix}").as_posix()
+    if root == "generic":
+        path = (
+            _topology_override(f"prompt_fragments/{scoped_rel}")
+            or GENERIC_FRAGMENTS_DIR / scoped_rel
+        )
+    else:
+        path = _topology_override(scoped_rel) or DC_FRAGMENTS_DIR / scoped_rel
+    return path if path.is_file() else None
+
+
+def _scoped_fragments_for(agent_dir_name: str) -> dict[str, str]:
+    """Slot → text, for every shared fragment this agent has its own copy of.
+
+    Only slots with an existing scoped file are returned, so the caller can
+    splat the result over the shared slot map and leave the rest alone.
+    """
+    out: dict[str, str] = {}
+    for slot in SCOPED_FRAGMENTS:
+        path = scoped_fragment_path(slot, agent_dir_name)
+        if path is not None:
+            out[slot] = path.read_text(encoding="utf-8").rstrip()
+    return out
+
+
 # Per-agent allow-list of runtime ``{slot}`` names that may appear
 # inside ``agents/<agent>/prompt.md``.  MUST mirror the kwargs passed
 # to ``_build_template(<agent>).format(...)`` in each agent's
@@ -864,6 +948,8 @@ def _build_template(agent_dir_name: str) -> str:
         **_build_slots(),
         "database_search_per_agent": per_agent_dbs,
         "blade_sections_visualizer_per_agent": per_agent_bsv,
+        # LAST, so a per-agent scoped copy wins over the shared fragment.
+        **_scoped_fragments_for(agent_dir_name),
     }
     once = Template(raw).safe_substitute(slots)
     twice = Template(once).safe_substitute(slots)

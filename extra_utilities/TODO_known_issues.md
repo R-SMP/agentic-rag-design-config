@@ -3455,9 +3455,10 @@ the authoritative marker list is `agents/shared/prompts.py:151-175`.
 
 ### F57. The DC Output Inspector is told to name parameters it is never shown
 
-**Status.** OPEN — found 2026-08-05 while scoping which agents need
-`$hard_constraints_dc`.  Present in BOTH the 7- and 5-agent topologies.  Not in
-the shrink proposal; it surfaced from the fragment-audience map, not from a cut.
+**Status.** OPEN — fix DECIDED 2026-08-05, not yet implemented.  Found while
+scoping which agents need `$hard_constraints_dc`.  Present in BOTH the 7- and
+5-agent topologies.  Not in the shrink proposal; it surfaced from the
+fragment-audience map, not from a cut.
 
 **The gap.** Every agent that handles parameters splices `$parameter_list` — the
 canonical 16 names with their ranges — **except the DC Output Inspector**:
@@ -3498,12 +3499,19 @@ names are forbidden.
 
 Both are incidental.  Neither is a substitute for the agent holding the list.
 
-**The fix.** Add `$parameter_list` to `agents/dc_output_inspector/prompt.md` under
-a "Parameter reference" heading, as the other seven prompts do — roughly 386 tok
-for the agent that most needs it.  Do the same for
-`agents/5agent/dc_output_inspector/prompt_5agents.md`.  If that is judged too
-expensive, the cheaper alternative is a names-only list (no ranges): the DCOI
-gives directions, not values, so it needs the vocabulary, not the bounds.
+**The fix — DECIDED by the owner 2026-08-05: the DCOI is to be given the list of
+parameters.**  Add `$parameter_list` to `agents/dc_output_inspector/prompt.md`
+under a "Parameter reference" heading, as the other seven prompts do — roughly
+386 tok for the agent that most needs it.  Do the same for
+`agents/5agent/dc_output_inspector/prompt_5agents.md`.
+
+A cheaper variant remains available if the full fragment proves too expensive
+once the per-agent scoped-fragment table exists (see below): a names-only list
+with no ranges.  The DCOI gives DIRECTIONS, not values — "`<param X>` looks too
+small" — so it needs the vocabulary, not the bounds.  That variant becomes a
+natural `_SCOPED_FRAGMENTS` entry (`parameter_list` → a DCOI-scoped file) rather
+than a new slot, so it costs nothing structurally.  **Either way the DCOI gets
+the names; only the question of ranges-or-not is still open.**
 
 **Check afterwards.** Re-run the assembled-prompt hash diff and confirm only the
 DCOI moves; then confirm `$parameter_list` resolves (it is a real `_build_slots()`

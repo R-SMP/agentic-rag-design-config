@@ -366,6 +366,37 @@ def _per_agent_overlay(agent: str, prefix: str) -> str:
     return _rd(f) if f.exists() else ""
 
 
+# Mirrors agents/shared/prompts.py SCOPED_FRAGMENTS.  Kept as a transcription
+# rather than an import for the same reason the rest of this module is one:
+# measure_prompts deliberately does not import the app (no langchain).  If the
+# real table gains a slot, add it here too or the measured token counts will
+# silently ignore that agent's scoped copy and every before/after delta that
+# touches it will be wrong.
+_SCOPED_ROOTS = {"generic": GEN_DIR, "dc": DCF_DIR}
+_SCOPED_FRAGMENTS = {
+    "hard_constraints_generic": ("generic", "generic_constraints.md"),
+    "available_agents":         ("generic", "available_agents.md"),
+    "hard_constraints_dc":      ("dc", "dc_config/hard_constraints_dc.md"),
+    "hard_constraints_tools":   ("dc", "tools_config/hard_constraints_tools.md"),
+    "sketch_handling":          ("dc", "dc_config/user_input_types/sketch_handling.md"),
+    "sketch_notes":             ("dc", "dc_config/user_input_types/sketch_notes.md"),
+    "parameter_list":           ("dc", "dc_config/parameters.md"),
+}
+
+
+def _scoped(agent: str) -> dict:
+    """Slot -> text for every shared fragment *agent* has its own copy of."""
+    out = {}
+    for slot, (root, rel) in _SCOPED_FRAGMENTS.items():
+        p = Path(rel)
+        f = _SCOPED_ROOTS[root] / (
+            p.parent / f"{p.stem}_{agent}{p.suffix}"
+        ).as_posix()
+        if f.exists():
+            out[slot] = _rd(f)
+    return out
+
+
 def build_template_only(agent: str) -> str:
     """Post $-substitution + flag/DBa filters, runtime {slots} still present."""
     raw = _rd(AGENTS_DIR / agent / "prompt.md")
@@ -373,6 +404,8 @@ def build_template_only(agent: str) -> str:
     slots["database_search_per_agent"] = _per_agent_overlay(agent, "database_search")
     slots["blade_sections_visualizer_per_agent"] = _per_agent_overlay(
         agent, "blade_sections_visualizer")
+    # LAST, so a per-agent scoped copy wins over the shared fragment.
+    slots.update(_scoped(agent))
     once = Template(raw).safe_substitute(slots)
     twice = Template(once).safe_substitute(slots)
     filtered = apply_flags(twice)

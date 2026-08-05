@@ -571,6 +571,80 @@ try:
 finally:
     _exact.unlink(missing_ok=True)
 
+# --- SCOPED FRAGMENTS: per-agent copies of a shared fragment --------------
+#
+# Two properties, both mutation-tested when written (§D: a check that has never
+# failed has not been shown to work):
+#   (1) with NO scoped file on disk the mechanism is inert — every assembled
+#       prompt is byte-identical to what it was before the table existed;
+#   (2) a scoped file wins for its OWN agent and for no other.
+#
+# The probe uses the 7-agent DC Input Inspector because it splices
+# $hard_constraints_dc and is not the hub, so a leak would show up in seven
+# sibling prompts.
+prompts._workflow_settings.SYSTEM_TOPOLOGY = 7
+prompts._workflow_settings.PROMPT_VARIANT = "standard"
+prompts.PLANNER_FIRST = False
+
+_SCOPE_AGENTS = [
+    "receptionist", "orchestrator", "planner", "user_input_inspector",
+    "dc_input_creator", "dc_input_inspector", "tool_caller",
+    "dc_output_inspector",
+]
+_before = {a: prompts._build_template(a) for a in _SCOPE_AGENTS}
+
+# (1) inertness — no scoped file exists for any registered slot right now.
+_live = [
+    (slot, a) for slot in prompts.SCOPED_FRAGMENTS for a in _SCOPE_AGENTS
+    if prompts.scoped_fragment_path(slot, a) is not None
+]
+if _live:
+    notes.append(
+        f"scoped fragments live on disk: {sorted(_live)} — inertness case skipped"
+    )
+
+# (2) precedence + isolation.
+_probe = (ROOT / "DC_prompt_fragments" / "dc_config"
+          / "hard_constraints_dc_dc_input_inspector.md")
+if _probe.exists():
+    failures.append(
+        f"[SCOPED] probe path {_probe.name} already exists — refusing to "
+        "overwrite a real file; rename the probe"
+    )
+else:
+    try:
+        _probe.write_text("### SCOPED PROBE\n", encoding="utf-8")
+        _after = {a: prompts._build_template(a) for a in _SCOPE_AGENTS}
+        if "SCOPED PROBE" not in _after["dc_input_inspector"]:
+            failures.append(
+                "[SCOPED] dc_input_inspector has its own hard_constraints_dc "
+                "copy on disk but assembled the SHARED fragment instead"
+            )
+        if "Domain hard rules" in _after["dc_input_inspector"]:
+            failures.append(
+                "[SCOPED] the scoped copy was ADDED alongside the shared "
+                "fragment instead of REPLACING it"
+            )
+        _leaked = [
+            a for a in _SCOPE_AGENTS
+            if a != "dc_input_inspector" and _after[a] != _before[a]
+        ]
+        if _leaked:
+            failures.append(
+                f"[SCOPED] a dc_input_inspector-scoped fragment changed other "
+                f"agents' prompts: {_leaked}"
+            )
+    finally:
+        _probe.unlink(missing_ok=True)
+
+    _restored = {a: prompts._build_template(a) for a in _SCOPE_AGENTS}
+    _dirty = [a for a in _SCOPE_AGENTS if _restored[a] != _before[a]]
+    if _dirty:
+        failures.append(
+            f"[SCOPED] removing the probe did not restore the shared "
+            f"fragment for: {_dirty}"
+        )
+
 # ---------------------------------------------------------------------------
 
 print("Resolution summary")
