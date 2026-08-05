@@ -3450,3 +3450,67 @@ scoped prompt change also a validator change.  Deliberately left standalone.
 
 **Where.** `workflow_settings/prompts_admin.py:304-311` (`_MARKER_PAIRS`);
 the authoritative marker list is `agents/shared/prompts.py:151-175`.
+
+---
+
+### F57. The DC Output Inspector is told to name parameters it is never shown
+
+**Status.** OPEN — found 2026-08-05 while scoping which agents need
+`$hard_constraints_dc`.  Present in BOTH the 7- and 5-agent topologies.  Not in
+the shrink proposal; it surfaced from the fragment-audience map, not from a cut.
+
+**The gap.** Every agent that handles parameters splices `$parameter_list` — the
+canonical 16 names with their ranges — **except the DC Output Inspector**:
+
+| agent | `$parameter_list` |
+|---|---|
+| Receptionist, Orchestrator, Planner, UII, DCIC, DCII, Tool Caller | yes |
+| **DC Output Inspector** | **no** (7-agent AND 5-agent: `grep -c parameter_list` = 0 in both) |
+
+Yet the DCOI is instructed twice to name them:
+
+* `agents/dc_output_inspector/prompt.md:35` — "diagnose WHY a failure occurred and
+  name which parameters likely need changing"
+* `agents/dc_output_inspector/prompt.md:301` — "name which of the
+  `$parameter_count` parameters *seem* to need adjustment and in which direction
+  (`"<param X> looks too small / large"`)"
+
+It splices `$parameter_count` (the number, "16") but never the names.  The only
+literal parameter name anywhere in its prompt is `middlePos`, in an unrelated
+passage.  So the agent whose entire output is "name the parameter that looks
+wrong" has been given the count and one example.
+
+**Why it matters.** The DCOI's verdict feeds the refine loop: the Orchestrator
+relays its diagnosis to the Planner, which turns it into a parameter directive.
+A hallucinated name (`filletRadius`, `bladePitch`) propagates one hop before
+anything can reject it, and the DCOI is exactly the agent with the least
+information to avoid inventing one.  This is also why `$hard_constraints_dc`'s
+"reject invented parameters" clause should NOT be scoped away from the DCOI
+before this is fixed — today it is one of the few signals it has that made-up
+names are forbidden.
+
+**Partial mitigations that exist today** (none of them designed for this):
+
+* It binds `list_attempts` + `read_attempt`, so it CAN read `parameters.json`
+  and see the real keys — but nothing in its prompt tells it to do so for this
+  purpose, and it costs a tool round-trip.
+* Incoming hand-offs usually quote parameter names in prose.
+
+Both are incidental.  Neither is a substitute for the agent holding the list.
+
+**The fix.** Add `$parameter_list` to `agents/dc_output_inspector/prompt.md` under
+a "Parameter reference" heading, as the other seven prompts do — roughly 386 tok
+for the agent that most needs it.  Do the same for
+`agents/5agent/dc_output_inspector/prompt_5agents.md`.  If that is judged too
+expensive, the cheaper alternative is a names-only list (no ranges): the DCOI
+gives directions, not values, so it needs the vocabulary, not the bounds.
+
+**Check afterwards.** Re-run the assembled-prompt hash diff and confirm only the
+DCOI moves; then confirm `$parameter_list` resolves (it is a real `_build_slots()`
+key, already used by seven prompts).
+
+**Where.** `agents/dc_output_inspector/prompt.md:35,301`;
+`agents/5agent/dc_output_inspector/prompt_5agents.md`;
+the fragment is `DC_prompt_fragments/dc_config/parameters.md` -> slot
+`$parameter_list` (`agents/shared/prompts.py` FRAGMENT_TO_SLOT).
+Related: F56 (also a silent-gap defect found the same way).
