@@ -3522,3 +3522,70 @@ key, already used by seven prompts).
 the fragment is `DC_prompt_fragments/dc_config/parameters.md` -> slot
 `$parameter_list` (`agents/shared/prompts.py` FRAGMENT_TO_SLOT).
 Related: F56 (also a silent-gap defect found the same way).
+
+---
+
+### F58. The UII's categorisation rule says "two buckets" but there are three sections
+
+**Status.** OPEN — found 2026-08-05 while writing the UII-scoped DC hard rules.
+Low severity, but it leaves one output section with no rule routing anything
+into it.  Not in the shrink proposal.
+
+**The gap.** `agents/user_input_inspector/prompt.md:20-31` — the categorisation
+rule that governs the whole extraction:
+
+> "Categorise every input you observe (text, paired image notes, image
+> annotations) into **one of two buckets**, based purely on the NATURE of the
+> data, NOT on whether it matches a configurator parameter:
+>   * **QUANTITATIVE.** Anything numerical, OR anything that resolves to a
+>     number / can be quantised in some way.
+>   * **QUALITATIVE.** Anything that is NOT expressed as numerical data …"
+
+But the output format further down has **three** sections:
+
+* `### 1. QUANTITATIVE INPUTS`      (line 143)
+* `### 2. QUALITATIVE DESCRIPTIONS` (line 270)
+* `### 3. Design Intent and Functional Requirements` (line 287)
+
+Section 3 is substantial — purpose, performance goals, constraints, aesthetic
+preferences, stated **reporting preferences**, and the `PRECISION DEMAND:` line
+that the whole precision sections-matching loop depends on (F51 / commit
+`cce0276`).  None of it is numerical, so under the stated rule it all
+categorises as QUALITATIVE, and nothing directs it to section 3.
+
+**Why it matters.** The rule is emphatic and comes first ("Categorise EVERY
+input … into one of two buckets"), so an agent following it literally has a
+defensible reason to fold design intent into QUALITATIVE DESCRIPTIONS.  A
+`PRECISION DEMAND:` buried in prose under the wrong heading is materially worse
+than one on its own line under section 3 — `agents/shared/standing_directives.py`
+and the Planner both look for it as a distinct entry.
+
+**The fix.** Add the third bucket to the rule at line 21, e.g.:
+
+```
+Categorise every input you observe (text, paired image notes, image
+annotations) into one of three buckets, based purely on the NATURE of the
+data, NOT on whether it matches a configurator parameter:
+
+  * QUANTITATIVE.  Anything numerical, OR anything that resolves to a
+    number / can be quantised in some way.
+  * QUALITATIVE.  Descriptive prose, adjectives, comparisons, aesthetic or
+    stylistic cues.
+  * DESIGN INTENT.  What the user is trying to ACHIEVE rather than what the
+    artefact should be — purpose, performance goals, constraints, reporting
+    preferences, and any precision / iteration demand.
+```
+
+Applies to `agents/5agent/user_input_inspector/prompt_5agents.md` as well if it
+carries the same rule — check before editing.
+
+**Why it is not fixed here.** It is a `prompt.md` change, and under the
+one-file-at-a-time review model that belongs to the UII prompt's own turn.  It
+is recorded now because the UII-scoped `hard_constraints_dc` deliberately does
+NOT paper over it: an earlier draft of that fragment enumerated
+"quantitative, qualitative or design intent" and would have masked the gap from
+inside a hard-constraints fragment — the wrong layer for a routing rule.
+
+**Where.** `agents/user_input_inspector/prompt.md:20-31` (rule), `:143`, `:270`,
+`:287` (the three sections).  Related: F57 (also a UII/DCOI prompt gap found by
+mapping rather than by a proposed cut).

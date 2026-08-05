@@ -206,25 +206,34 @@ def expected_differing(topo: int, variant: str) -> tuple[set[str], list[str]]:
             )
         # (2) who should move
         base_posix = base.as_posix()
+        probe_base = ROOT / base
         if base_posix.endswith("/prompt.md"):
             who = {base.parts[1]}
         else:
             slot = prompts.FRAGMENT_TO_SLOT.get(base_posix)
             if slot is None:
-                owner = _scoped_owner_of(base_posix)
-                if owner is None:
+                found = _scoped_slot_owner(base_posix)
+                if found is None:
                     failures.append(
                         f"[UNKNOWN] {f.relative_to(ROOT)} shadows {base_posix}, "
                         "which is neither a prompt.md, a FRAGMENT_TO_SLOT entry, "
                         "nor a recognised per-agent scoped copy"
                     )
                     continue
+                scoped_slot, owner = found
                 who = {owner}
+                # A scoped copy shadows no file of its own — the text it
+                # REPLACES is whatever that agent would otherwise receive for
+                # the slot (this variant's override of it, else the shared
+                # original).  Without this, the copy gets no CONSUMED probe,
+                # and because a sibling override already moves the same agent
+                # a DEAD scoped copy would sail through REACHED and BLAST.
+                probe_base = _effective_slot_file(scoped_slot, topo, variant)
             else:
                 who = set(slot_users.get(slot, set()))
         who &= agents_here
         expected |= who
-        probe = _deleted_probe(ROOT / base, f)
+        probe = _deleted_probe(probe_base, f) if probe_base else None
         if who and probe:
             consumed_probes.append((topo, variant, f.name, sorted(who), probe))
         lines.append(f"{f.name} -> {sorted(who) or '(no agent in this topology)'}")
@@ -255,24 +264,44 @@ def _deleted_probe(base_path: Path, override_path: Path) -> str | None:
     return max(cands, key=len) if cands else None
 
 
-def _scoped_owner_of(base_posix: str) -> str | None:
-    """Agent owning a per-agent scoped copy path, or None."""
-    roots = {
-        "generic": "agents/shared/prompt_fragments/",
-        "dc": "DC_prompt_fragments/",
-    }
-    for slot, (root, rel) in prompts.SCOPED_FRAGMENTS.items():  # noqa: B007
+_SCOPED_ROOT_PREFIX = {
+    "generic": "agents/shared/prompt_fragments/",
+    "dc": "DC_prompt_fragments/",
+}
+
+
+def _scoped_slot_owner(base_posix: str) -> tuple[str, str] | None:
+    """(slot, agent) for a per-agent scoped copy path, or None."""
+    for slot, (root, rel) in prompts.SCOPED_FRAGMENTS.items():
         b = Path(rel)
         sub = b.parent.as_posix()
-        want = roots[root] + ("" if sub == "." else sub + "/")
+        want = _SCOPED_ROOT_PREFIX[root] + ("" if sub == "." else sub + "/")
         if not base_posix.startswith(want):
             continue
         name = base_posix[len(want):]
         if name.startswith(b.stem + "_") and name.endswith(b.suffix):
             agent = name[len(b.stem) + 1: len(name) - len(b.suffix)]
             if agent in prompts.PROMPT_MD_RUNTIME_SLOTS:
-                return agent
+                return slot, agent
     return None
+
+
+def _effective_slot_file(slot: str, topo: int, variant: str) -> Path | None:
+    """The file an agent WITHOUT a scoped copy receives for *slot*.
+
+    This variant's override of the shared fragment when one exists, else the
+    shared original — i.e. exactly what the scoped copy is displacing.
+    """
+    root, rel = prompts.SCOPED_FRAGMENTS[slot]
+    prompts._workflow_settings.SYSTEM_TOPOLOGY = topo
+    prompts._workflow_settings.PROMPT_VARIANT = variant
+    lookup = f"prompt_fragments/{rel}" if root == "generic" else rel
+    override = prompts._topology_override(lookup)
+    if override is not None:
+        return Path(override)
+    shared = (GENERIC_FRAGMENTS_DIR if root == "generic"
+              else DC_FRAGMENTS_DIR) / rel
+    return shared if shared.is_file() else None
 
 
 # ---------------------------------------------------------------------------
