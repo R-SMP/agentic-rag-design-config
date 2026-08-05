@@ -3589,3 +3589,132 @@ inside a hard-constraints fragment — the wrong layer for a routing rule.
 **Where.** `agents/user_input_inspector/prompt.md:20-31` (rule), `:143`, `:270`,
 `:287` (the three sections).  Related: F57 (also a UII/DCOI prompt gap found by
 mapping rather than by a proposed cut).
+
+---
+
+### F59. The generic CLARIFY bullet needs a per-agent patch paragraph in every first-agent fragment
+
+**Status.** OPEN in the shared tree; fixed in the 7-agent REDUCED variant only
+(owner's call — section-8-class repairs land in the variant, not in standard).
+Found 2026-08-05 while verifying the shrink proposal's routing-duplication claims.
+
+**NOT a contradiction — read this before "fixing" it.**  An earlier analysis of
+mine called it a live contradiction and that was wrong; the owner corrected it.
+"Previous agent" legitimately means *whoever handed you this work*, and the UII
+does have a caller (the Orchestrator) with `call_orchestrator` in its tool set.
+
+**The actual shape.**  `agents/shared/routing.py::routing_instructions` guards
+only the POSITION line on `prev_agent` (lines 190-196).  The
+`### How to decide where to route` block below it is appended unconditionally,
+including:
+
+    - If you cannot do your job because the upstream message is ambiguous,
+      missing data, or contains an error that the previous agent can fix,
+      route to the previous agent with a clear clarification request (CLARIFY).
+
+For an agent with `prev_agent=None` that bullet points at nobody — so the
+per-agent fragment has to patch it afterwards.
+`agents/shared/prompt_fragments/routing_user_input_inspector_uii_first.md`
+closes with exactly that patch:
+
+    You are the first agent in the natural flow; there is no "previous"
+    agent in the chain for you to CLARIFY back to.  Anything that would
+    otherwise be a "back" routes to the Orchestrator instead.
+
+It works.  The cost is structural: EVERY first-agent fragment, in every
+topology, must carry a paragraph correcting generated text — and the generator
+already knows `prev_agent is None`, so it could say the right thing itself.
+Under `PLANNER_FIRST=True` the Planner becomes first and needs the same patch;
+the 5-agent UII needs it; a 3-agent first agent will need it.
+
+**The fix (already applied in the reduced variant).**  Phrase the bullet from
+the generator, defining "previous" as the sender rather than a pipeline
+position:
+
+* `prev_agent` set  — "route back to the agent that handed you this work —
+  normally the **<prev_agent>** — with a clear clarification request (CLARIFY)."
+* `prev_agent` None — "route back to the agent that handed you this work — for
+  you that is the <hub> — with a clear clarification request (CLARIFY)."
+
+The fragment's patch paragraph then becomes redundant and can be deleted, which
+is what makes the proposal's `UII-44` cut safe rather than lossy.
+
+**To port it to the shared tree** apply the same change to
+`agents/shared/routing.py` and drop the closing paragraph from every
+`routing_*_uii_first.md` / first-agent fragment.  Check each fragment
+individually — some may carry other content in the same paragraph.
+
+**Where.** `agents/shared/routing.py:198-215` (the unconditional block),
+`:190-196` (the guard that exists);
+`agents/shared/prompt_fragments/routing_user_input_inspector_uii_first.md:9-11`.
+Reduced-variant fork: `reduced7/agents/shared/routing.py`.
+
+---
+
+### F60. Duplications in the assembled prompts that the shrink proposal does not target
+
+**Status.** OPEN — evidence-backed, no fix attempted.  Found 2026-08-05 by a
+13-agent adversarial verification of the proposal's routing-duplication claims
+(~968k tokens).  Recorded because re-deriving it is expensive; see
+`extra_utilities/prompt_efficiency/UII_CUT_VERDICTS.md` for the per-cut detail.
+
+Four duplications, none of which any of the 349 cuts touches:
+
+1. **"natural next step" appears 3x, not 2.**  The generated position line
+   ("- Your natural next in line is: **Planner**."), the per-agent fragment
+   ("This is the natural next step in the pipeline."), and the agent's own
+   `prompt.md` ("this is the natural\nnext step").  The third splits across a
+   newline, which is why a flat substring search misses it — and it is the most
+   cuttable text in the whole forwarding section.  `UII-44` targets only the
+   fragment copy.
+
+2. **The generated routing block duplicates ITSELF.**  The mandatory-routing
+   rule is asserted twice inside `routing.py::routing_instructions`: "Every
+   response that ends your turn MUST invoke exactly one of the routing tools
+   listed above." and, three paragraphs later, "Do NOT substitute the tool call
+   with free-form prose that says \"routing to X\".  In the same response where
+   you finish your work, invoke the tool."  Fixing it in the generator removes a
+   restatement from all SIX chain agents at once — the single highest-leverage
+   edit found, and no cut proposes it.
+
+3. **The per-agent fragment restates the generator by construction.**  See F59:
+   the fragment's closing paragraph restates the position line the generator
+   already emits whenever `prev_agent` is None.
+
+4. **"ESCALATE to the <hub>" appears 4x** across the assembled UII prompt,
+   outside any cut cluster.  `UII-40`'s rationale assumes the generic bullet is
+   the only copy naming the target; it is not.
+
+**Note on measuring these.** Count against the ASSEMBLED prompt (prompt.md +
+spliced fragments + the runtime `{routing_instructions}` block), not against
+`prompt.md` alone — the routing block is ~4,700 chars and sits 90% of the way
+in, so anything measured without it misses roughly a tenth of the text and all
+of the generated duplication.
+
+---
+
+### F61. `_authorisation_sources()` is topology-gated — a trap for any replacement that names the Planner
+
+**Status.** OPEN as a documented trap; no defect in the current code.  Found
+2026-08-05 while verifying the shrink proposal's `UII-40`.
+
+**The trap.** `agents/shared/routing.py:53-70` builds the authorisation-grantor
+list per topology:
+
+* topology 7 — "authorisations come from the user (relayed by the Receptionist
+  -> <hub>), from the **Planner** (relayed by the <hub>), or from the <hub>
+  itself."
+* topology 5 or 3 — the Planner clause is DROPPED, because the Conductor
+  absorbs the Planner and no such agent exists.
+
+Several proposed replacement texts inline the 7-agent wording as a literal
+string.  Any prompt that hardcodes "the Planner" as an authorisation source will
+name a nonexistent agent under topologies 5 and 3 — the same class of defect as
+the `<<DCII_ONLY>>` guard losses that section 9 refuted eight Orchestrator cuts
+for.
+
+**Rule.** When a replacement needs to state who can authorise, either call
+`_authorisation_sources(hub)` or omit the grantor list.  Never inline it.
+
+**Where.** `agents/shared/routing.py:53-70`; the risk lands in any cut whose
+replacement text quotes the permission paragraph, `UII-40` most directly.

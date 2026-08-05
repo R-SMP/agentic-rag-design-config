@@ -38,7 +38,10 @@ import re
 from pathlib import Path
 from string import Template
 
-from agents.shared.routing import natural_pipeline, routing_instructions
+from agents.shared.routing import natural_pipeline
+from agents.shared.routing import (
+    routing_instructions as _routing_instructions_standard,
+)
 
 # Topology facts live in their own dependency-free module so that
 # ``routing_tools`` (a leaf) can read them too.  Aliased to the private
@@ -84,6 +87,38 @@ GENERIC_FRAGMENTS_DIR = Path(__file__).resolve().parent / "prompt_fragments"
 # misses and falls through to the path it used before this indirection
 # existed.
 # ---------------------------------------------------------------------------
+
+def routing_instructions(
+    agent_name: str,
+    next_agent: str | None,
+    prev_agent: str | None,
+    fragment_name: str,
+) -> str:
+    """Build an agent's ``## Routing`` block, from the active variant's builder.
+
+    THE choke-point for the routing text: every agent imports
+    ``routing_instructions`` from THIS module (not from ``agents.shared.routing``
+    directly), so one selector here reaches all of them and no agent file needs
+    to know a variant exists.
+
+    ``PROMPT_VARIANT`` is read FRESH per call, never captured at import, for the
+    same reason ``topology()`` is: ``web_app._build_session`` reloads the
+    settings module in place, and the Sessions Queue switches settings between
+    runs inside one process.
+
+    The import is lazy so that the standard system never loads ``reduced7`` at
+    all, and so a missing/broken variant tree cannot break startup for the
+    topologies in use.
+    """
+    if _prompt_variant() == "reduced" and _topology() == 7:
+        from reduced7.agents.shared.routing import (
+            routing_instructions as _reduced,
+        )
+        return _reduced(agent_name, next_agent, prev_agent, fragment_name)
+    return _routing_instructions_standard(
+        agent_name, next_agent, prev_agent, fragment_name
+    )
+
 
 def _topology_override(rel_path: str) -> Path | None:
     """This topology's override of ``rel_path``, or None for the shared file.

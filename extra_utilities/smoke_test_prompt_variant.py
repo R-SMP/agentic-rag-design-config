@@ -364,6 +364,56 @@ for variant in VARIANTS:
             for ln in lines:
                 notes.append(f"    {ln}")
 
+# (5) ROUTING — the generated block is a RUNTIME slot, not part of _build_template.
+#
+# prompts._build_template leaves "{routing_instructions}" unfilled, so checks
+# (1)-(4) above are blind to agents/shared/routing.py and to any variant fork of
+# it — roughly 4,700 chars, ~10% of an assembled chain-agent prompt, and the
+# place where the generated duplication lives (F60).  Without this case the
+# reduced routing fork would be entirely untested.
+#
+# Same blast-radius rule as (2): the fork exists only for topology 7, so
+# topologies 5 and 3 must be byte-identical across variants.
+_ROUTING_PROBE = ("User Input Inspector", "Planner", None,
+                  "routing_user_input_inspector_uii_first.md")
+for variant in VARIANTS:
+    fork = ROOT / "reduced7" / "agents" / "shared" / "routing.py"
+    for topo in (7, 5, 3):
+        out = {}
+        for v in ("standard", variant):
+            prompts._workflow_settings.SYSTEM_TOPOLOGY = topo
+            prompts._workflow_settings.PROMPT_VARIANT = v
+            try:
+                out[v] = prompts.routing_instructions(*_ROUTING_PROBE)
+            except Exception as exc:  # noqa: BLE001
+                out[v] = f"ERROR:{type(exc).__name__}:{exc}"
+        differs = out["standard"] != out[variant]
+        if topo == 7:
+            if fork.is_file() and not differs:
+                failures.append(
+                    f"[ROUTING] {fork.relative_to(ROOT)} exists but topology 7 "
+                    f"produces an IDENTICAL routing block under variant "
+                    f"'{variant}' — the selector in prompts.routing_instructions "
+                    "is not reaching the fork"
+                )
+            if not fork.is_file() and differs:
+                failures.append(
+                    "[ROUTING] no reduced7 routing fork on disk, yet the "
+                    f"topology-7 routing block differs under '{variant}'"
+                )
+        elif differs:
+            failures.append(
+                f"[ROUTING] topology {topo} has no routing fork, yet its "
+                f"routing block differs between standard and '{variant}' — "
+                "the variant selector is leaking across topologies"
+            )
+    if fork.is_file():
+        notes.append(
+            f"routing fork active for topology 7 / {variant}; topologies 5 and 3 "
+            "byte-identical across variants"
+        )
+
+
 # (4) CONSUMED — text each override deleted must be gone from the assembly.
 for topo, variant, fname, who, probe in consumed_probes:
     for agent in who:
