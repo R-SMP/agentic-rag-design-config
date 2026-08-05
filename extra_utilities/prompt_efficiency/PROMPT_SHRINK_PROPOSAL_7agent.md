@@ -56,6 +56,7 @@ Two of them, to show the shape:
 | 16 | Two changes under consideration (emphasis policy, Receptionist name check) — neither decided |
 | 17 | Competing rewrites of the same shared fragment — 13 regions where you must pick one |
 | 18 | The two §16 changes, specified — 36 emphasis demotions and the 4-site name-check deletion |
+| 19 | The `RAG_ENABLED=True` flag check — what the flag costs, and why only 2 of the 349 cuts touch it |
 
 ### Ground rules
 
@@ -19743,6 +19744,11 @@ Not flagged, deliberately: TC-06 (range check), TC-08/TC-32/DCOI-24 (domain hard
 
 ## 13. RAG-gated prose (`RAG_ENABLED=True`)
 
+> **§19 checks the same flag from the other direction** — what it costs in tokens, whether any of the
+> 349 cuts break when it flips, and whether the guards stay balanced. Read them together: this
+> section is about shrinking the RAG prose, §19 is about whether the rest of the proposal survives
+> the flag.
+
 The headline numbers were measured with RAG off, so this material scored zero there. Two separate things: **7 guard defects that ship TODAY even with RAG off**, and 15 shrink cuts worth 2,273 tokens that become live when you enable it.
 
 ### Guard defects — these are in your prompts right now
@@ -22726,3 +22732,155 @@ reconsidered for this one agent, this is the context in which to do it.
 
 Roughly 1,400 characters (~350 tokens), against the ~220 estimated in §16 — the difference is the
 `$invalid_parameter_examples` splice, which was not counted there.
+---
+
+## 19. The `RAG_ENABLED=True` flag-combination check
+
+The whole audit measured one configuration, with RAG off. This section answers the question that
+follows: **does the proposal still hold when the flag flips?**
+
+Short answer: **yes, almost entirely.** Only 2 of the 349 cuts touch RAG-gated text at all, and both
+of them *fix* a RAG defect rather than creating one. The risk here is not that the cuts break — it is
+that the token arithmetic in §1 stops being true, and by a lot.
+
+Everything below is measured from the files, not estimated. The check is reproducible; the procedure
+is in §19.6.
+
+---
+
+### 19.1 What the flag actually costs
+
+Each of the eight chain agents carries one `<<HAS_DBA>>` … `<</HAS_DBA>>` region holding four slots.
+With the flag on, those resolve; with it off, the whole region is stripped.
+
+| agent | `$database_search_tool` | `$database_search_per_agent` | `$retrieve_user_inputs_tool` | `$retrieve_attempt_tool` | **+chars** | **+tokens** |
+|---|---:|---:|---:|---:|---:|---:|
+| Receptionist | 3,084 | 432 | 745 | **0** | 4,311 | 1,078 |
+| Orchestrator | 3,084 | 408 | 745 | **0** | 4,287 | 1,072 |
+| Planner | 3,084 | 227 | 745 | **0** | 4,106 | 1,027 |
+| User Input Inspector | 3,084 | **2,069** | 745 | **0** | 5,948 | 1,487 |
+| DC Input Creator | 3,084 | 637 | 745 | **0** | 4,516 | 1,129 |
+| DC Input Inspector | 3,084 | 614 | 745 | **0** | 4,493 | 1,123 |
+| Tool Caller | 3,084 | 408 | 745 | **0** | 4,287 | 1,072 |
+| DC Output Inspector | 3,084 | 582 | 745 | **0** | 4,461 | 1,115 |
+| Database Handler | — | — | — | — | 0 | 0 |
+| **FLEET** | | | | | **36,409** | **9,102** |
+
+Two things to notice.
+
+**The shared `database_search.md` is 3,084 characters carried eight times** — 24,672 characters,
+about 6,168 tokens, or two thirds of the entire RAG cost. It is the single largest duplicated block
+in the system after `generic_constraints`, and it does not appear anywhere in §2's census because
+that census measured the RAG-off configuration.
+
+**This is roughly double the "~4,600 tokens latent behind the RAG flag" quoted in §2.** That figure
+was an aside in the duplication census, not a measurement. The 9,102 above is computed from actual
+file sizes and supersedes it.
+
+### 19.2 What the numbers in §1 become
+
+| agent | now (RAG off) | proposed (RAG off) | now (RAG on) | proposed (RAG on) |
+|---|---:|---:|---:|---:|
+| Receptionist | 9,193 | 3,379 | 10,271 | 4,457 |
+| Orchestrator | 10,355 | 3,000 | 11,427 | 4,072 |
+| Planner | 12,326 | 5,470 | 13,353 | 6,497 |
+| User Input Inspector | 12,069 | 4,600 | 13,556 | 6,087 |
+| DC Input Creator | 9,586 | 3,315 | 10,715 | 4,444 |
+| DC Input Inspector | 11,447 | 2,500 | 12,570 | 3,623 |
+| Tool Caller | 5,004 | 2,250 | 6,076 | 3,322 |
+| DC Output Inspector | 11,505 | 2,400 | 12,620 | 3,515 |
+| Database Handler | 5,505 | 1,740 | 5,505 | 1,740 |
+| **TOTAL** | **86,990** | **28,654** | **96,093** | **37,757** |
+
+**With RAG on, only the Database Handler lands inside the 1,000–3,000 target.** Three agents sit just
+over (DCII 3,623, TC 3,322, DCOI 3,515) and the rest are well over. Applying §13's 2,273 tokens of
+RAG-prose cuts takes roughly 284 tokens off each chain agent — enough to bring the Tool Caller to
+~3,038 and the DCOI to ~3,231, and not enough to change the picture for anyone else.
+
+If reaching the target *with RAG on* matters, the lever is the 6,168 fleet-tokens of duplicated
+`database_search.md`, not further prose editing.
+
+### 19.3 Guard integrity — the check that mattered most
+
+A cut that swallowed a `<<HAS_DBA>>` or `<</HAS_DBA>>` marker would leave an unbalanced region and
+silently corrupt every assembly of that prompt in both flag states. **No cut does.** All 349 spans
+were located in their files and none contains a guard marker.
+
+**Multiple regions in one file are safe.** `RCP-26` introduces a *second* `<<HAS_DBA>>` region into
+`agents/receptionist/prompt.md`, which already has one at lines 414–423. That is fine:
+`agents/shared/prompts.py:131` compiles `<<HAS_DBA>>(.*?)<</HAS_DBA>>` non-greedily with `re.DOTALL`,
+and lines 242/244 apply it with `re.sub`, which replaces every non-overlapping occurrence. Both
+regions resolve independently.
+
+### 19.4 The only two cuts that touch RAG text — both are fixes
+
+| cut | agent | what it touches | effect on the flag |
+|---|---|---|---|
+| **RCP-26** | Receptionist | `## Your DBa scope` (lines 371–391) | **Fixes the defect.** Its replacement wraps the section in `<<HAS_DBA>>` … `<</HAS_DBA>>`, so it stops shipping with RAG off. |
+| **ORC-17** | Orchestrator | `## Preserving user directives in hand-offs` | **Fixes the defect.** It deletes the worked example that names `database_search` / `retrieve_user_inputs` / `retrieve_attempt`; the replacement mentions no RAG tool. |
+
+So the two places where RAG prose currently escapes its guard are both repaired by cuts already in
+the proposal. Neither needs new work, and neither becomes wrong when the flag flips.
+
+An independent scan of all nine `prompt.md` files for RAG tool names outside a guard finds exactly
+these two sites and no others. That is a narrower check than §13's — it looks only at prompt bodies
+for literal tool names, where §13's auditor read the fragments too and reported seven. Where the two
+disagree, trust §13's list and treat this as confirmation of the two clearest cases.
+
+### 19.5 A defect the flag exposes: `retrieve_attempt` has no prompt documentation
+
+`DC_prompt_fragments/tools_config/retrieve_attempt.md` is **0 bytes**, so `$retrieve_attempt_tool`
+resolves to nothing in all eight chain agents.
+
+The tool is nevertheless bound to **all eight** chain agents whenever RAG is on —
+`make_retrieve_attempt_tool(...)` is called at `receptionist.py:143`, `orchestrator.py:456`,
+`planner.py:207`, `user_input_inspector.py:162`, `dc_input_creator.py:160`,
+`dc_input_inspector.py:136`, `tool_caller.py:113` and `dc_output_inspector.py:250`, each behind the
+same `database_access.is_enabled_for(...)` check that gates the region. (The 5-agent topology binds
+it too, at `creator.py:197` and `conductor.py:344`.)
+
+**So with RAG on, eight agents receive a `retrieve_attempt` tool whose only description is its own
+schema, while the two tools beside it get 3,084 and 745 characters of prompt guidance.** This is the
+same class of problem as §8's orphaned instructions, inverted: the capability exists and the prompt
+says nothing about it.
+
+Three options, in the order I would consider them:
+
+1. **Write the fragment.** ~200 characters covering what it returns and when to prefer it over
+   `read_attempt` — which is the ambiguity §3 already flagged (`retrieve_attempt` is past-session,
+   `read_attempt` is this-session, and nothing in either prompt says so).
+2. **Delete the slot and the fragment**, and let the tool schema carry it alone. Consistent with §3's
+   direction of moving mechanics into schemas — but it leaves the `read_attempt` overlap unaddressed.
+3. **Leave it.** Defensible only while RAG stays off.
+
+This is not specified as a cut because it is an addition, not a reduction, and because it should be
+decided together with §3's `retrieve_attempt` / `read_attempt` overlap rather than separately.
+
+### 19.6 Re-running this check
+
+The three checks above are mechanical and should be re-run after any batch of cuts lands, because a
+cut that moves text near a guard boundary can invalidate 19.3 without touching a marker directly.
+
+1. **Guard balance** — for every `prompt.md`, assert `count("<<HAS_DBA>>") == count("<</HAS_DBA>>")`
+   and that no cut span contains either marker.
+2. **Escaped prose** — grep each `prompt.md` for `database_search`, `retrieve_user_inputs`,
+   `retrieve_attempt` and `\bDBa\b`, and confirm every hit falls inside a guarded region. Beware the
+   obvious trap: a case-insensitive search for `DBa` matches "fee**dba**ck", which produced six false
+   positives on the first pass here.
+3. **Token delta** — recompute the table in 19.1 by resolving the four slots per agent against the
+   fragment files on disk, so §1's arithmetic can be restated for the flag-on configuration.
+
+### 19.7 What this section does not cover
+
+The other four flags — `PLANNER_FIRST=True`, `DC_INSPECTOR_ENABLED=False`, `OCR_ENABLED=False`,
+`BLADE_SECTIONS_VISUALIZER=False` — are deliberately out of scope here, per the decision to treat RAG
+as the only one that matters now. Two warnings for whoever does them later:
+
+- **`PLANNER_FIRST` and `DC_INSPECTOR_ENABLED` already have known damage.** §9 found that six of the
+  Orchestrator's cuts strip `<<PF_ON>>` / `<<PF_OFF>>` / `<<DCII_ONLY>>` guards and hardcode the
+  measured configuration. Those are the same class of failure this section checked for and did not
+  find in the RAG regions — so the guard-integrity check in 19.6 should be repeated per flag, not
+  assumed to generalise from this one.
+- **`PLANNER_FIRST` swaps whole fragments**, not just regions: `pipeline_flow_planner_first.md` vs
+  `pipeline_flow_uii_first.md`, and four `routing_*_planner_first.md` variants. A cut anchored in one
+  variant has nothing to match in the other, so the anchor check must be run twice, once per mode.
