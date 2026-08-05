@@ -234,7 +234,7 @@ def _topology_children(slot_usage: dict[str, set[str]]) -> list[dict]:
     if not agents_root.is_dir():
         return out
     for d in sorted(agents_root.iterdir(), key=lambda p: p.name.lower()):
-        if d.is_dir() and re.fullmatch(r"\d+agent", d.name):
+        if d.is_dir() and _TOPOLOGY_DIR_RE.fullmatch(d.name):
             inner = _walk_dir(d, slot_usage)
             if inner:
                 out.append({"kind": "folder", "display": d.name,
@@ -253,7 +253,7 @@ def _per_agent_children() -> list[dict]:
     children: list[dict] = []
     agents_root = REPO_ROOT / "agents"
     for d in sorted(agents_root.iterdir(), key=lambda p: p.name.lower()):
-        if not d.is_dir() or re.fullmatch(r"\d+agent", d.name):
+        if not d.is_dir() or _TOPOLOGY_DIR_RE.fullmatch(d.name):
             continue
         for f in sorted(d.iterdir(), key=lambda p: p.name.lower()):
             if f.is_file() and _PROMPT_FILE_RE.match(f.name):
@@ -456,7 +456,7 @@ def _is_spliced_fragment(rel_path: str) -> bool:
     return (
         len(parts) >= 4
         and parts[0] == "agents"
-        and re.fullmatch(r"\d+agent", parts[1]) is not None
+        and _TOPOLOGY_DIR_RE.fullmatch(parts[1]) is not None
         and parts[2] in ("prompt_fragments", "dc_config", "tools_config")
     )
 
@@ -470,7 +470,14 @@ def _is_spliced_fragment(rel_path: str) -> bool:
 #   agents/<N>agent/<X>/prompt_<N>agents.md      <N>'s copy of a survivor
 #
 # In all three the agent directory is the SECOND-TO-LAST path segment.
-_PROMPT_FILE_RE = re.compile(r"^prompt(?:_\d+agents)?\.md$")
+_PROMPT_FILE_RE = re.compile(r"^prompt(?:_\d+agents(?:_[a-z0-9]+)?)?\.md$")
+
+# A topology directory: agents/<N>agent/, or a PROMPT_VARIANT of one,
+# agents/<N>agent_<variant>/.  Defined once because three call sites need
+# it -- the tree walker, the per-agent lister and the fragment test -- and
+# a fourth pattern drifting from the others is how the variant folder was
+# invisible to the editor in the first place.
+_TOPOLOGY_DIR_RE = re.compile(r"\d+agent(?:_[a-z0-9]+)?")
 
 
 def _agent_for_prompt_md(rel_path: str) -> str | None:
