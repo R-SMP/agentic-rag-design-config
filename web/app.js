@@ -1919,7 +1919,7 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 // LOG chart (h=95 vs h=50) to fit the provider + model controls in
 // their lower half.  Tool boxes stay short (no controls).
 const LR_VIEW = { w: 820, h: 720 };
-const LR_BOXES = [
+const LR_BOXES_7 = [
   // User — display only, no controls.
   { key: "user",                  role: "user",  x: 230, y: 10,  w: 140, h: 40,
     label: "User" },
@@ -1941,15 +1941,12 @@ const LR_BOXES = [
     label: "Input Inspector" },
   { key: "tool_caller",           role: "agent", x: 420, y: 450, w: 140, h: 95,
     label: "Tool Caller" },
-  // Tools — display only.  Propeller Configurator (the merged
-  // geometry+renders tool) sits just below the EXTRA AGENTS panel
-  // (frame ends at y=255); Blade Sections is the cross-section renderer.
+  // Tools — display only.
   { key: "propeller_configurator",   role: "tool", x: 610, y: 275, w: 180, h: 60,
     label: "Propeller Configurator", toolPrefix: true },
   { key: "blade_sections", role: "tool", x: 610, y: 480, w: 180, h: 60,
     label: "Blade Sections", toolPrefix: true },
-  // Extra agents panel + boxes.  Boxes are full-height (h=95) so their
-  // provider+model controls fit on the same scale as the chain agents.
+  // Extra agents panel + boxes.
   { key: "__extra_frame__",       role: "extra-frame", x: 600, y: 10, w: 200, h: 245,
     label: "EXTRA AGENTS" },
   { key: "database_handler",      role: "agent", x: 615, y: 45,  w: 170, h: 95,
@@ -1957,14 +1954,89 @@ const LR_BOXES = [
   { key: "context_pruner",        role: "agent", x: 615, y: 150, w: 170, h: 95,
     label: "Context Pruner" },
 ];
-const LR_AGENT_KEYS = LR_BOXES
-  .filter((b) => b.role === "agent")
-  .map((b) => b.key);
+
+// 5-agent topology.  The Conductor takes the Orchestrator's central
+// position (it IS the hub) and the Creator takes the Input Creator's; the
+// Planner and Input Inspector boxes are gone, absorbed into them.  Laid
+// out as a straight vertical flow because without the Planner the
+// 7-agent's left column has nothing in it.
+const LR_BOXES_5 = [
+  { key: "user",                  role: "user",  x: 230, y: 10,  w: 140, h: 40,
+    label: "User" },
+  { key: "receptionist",          role: "agent", x: 230, y: 75,  w: 140, h: 95,
+    label: "Receptionist" },
+  { key: "user_input_inspector",  role: "agent", x: 230, y: 200, w: 140, h: 95,
+    label: "User Input Inspector" },
+  { key: "conductor",             role: "agent", x: 230, y: 325, w: 140, h: 95,
+    label: "Conductor" },
+  { key: "creator",               role: "agent", x: 40,  y: 450, w: 140, h: 95,
+    label: "Creator" },
+  { key: "tool_caller",           role: "agent", x: 230, y: 450, w: 140, h: 95,
+    label: "Tool Caller" },
+  { key: "dc_output_inspector",   role: "agent", x: 420, y: 450, w: 140, h: 95,
+    label: "Output Inspector" },
+  // Tools — display only.
+  { key: "propeller_configurator",   role: "tool", x: 610, y: 275, w: 180, h: 60,
+    label: "Propeller Configurator", toolPrefix: true },
+  { key: "blade_sections", role: "tool", x: 610, y: 480, w: 180, h: 60,
+    label: "Blade Sections", toolPrefix: true },
+  // Extra agents panel + boxes.
+  { key: "__extra_frame__",       role: "extra-frame", x: 600, y: 10, w: 200, h: 245,
+    label: "EXTRA AGENTS" },
+  { key: "database_handler",      role: "agent", x: 615, y: 45,  w: 170, h: 95,
+    label: "Database Handler" },
+  { key: "context_pruner",        role: "agent", x: 615, y: 150, w: 170, h: 95,
+    label: "Context Pruner" },
+];
+
+// 3-agent topology (strip-down).  The Architect absorbs the UII as well as
+// the Planner and Orchestrator, so there is no separate perceiver box; the
+// Designer absorbs the Tool Caller.  The Critic is the DC Output Inspector,
+// unrenamed.  Designer and Critic sit side by side because the refine loop
+// runs BETWEEN them without passing through the Architect.
+const LR_BOXES_3 = [
+  { key: "user",                  role: "user",  x: 230, y: 10,  w: 140, h: 40,
+    label: "User" },
+  { key: "receptionist",          role: "agent", x: 230, y: 75,  w: 140, h: 95,
+    label: "Receptionist" },
+  { key: "architect",             role: "agent", x: 230, y: 200, w: 140, h: 95,
+    label: "Architect" },
+  { key: "designer",              role: "agent", x: 130, y: 400, w: 140, h: 95,
+    label: "Designer" },
+  { key: "dc_output_inspector",   role: "agent", x: 330, y: 400, w: 140, h: 95,
+    label: "Output Inspector" },
+  // Tools — display only.
+  { key: "propeller_configurator",   role: "tool", x: 610, y: 275, w: 180, h: 60,
+    label: "Propeller Configurator", toolPrefix: true },
+  { key: "blade_sections", role: "tool", x: 610, y: 480, w: 180, h: 60,
+    label: "Blade Sections", toolPrefix: true },
+  // Extra agents panel + boxes.
+  { key: "__extra_frame__",       role: "extra-frame", x: 600, y: 10, w: 200, h: 245,
+    label: "EXTRA AGENTS" },
+  { key: "database_handler",      role: "agent", x: 615, y: 45,  w: 170, h: 95,
+    label: "Database Handler" },
+  { key: "context_pruner",        role: "agent", x: 615, y: 150, w: 170, h: 95,
+    label: "Context Pruner" },
+];
+
+const LR_BOXES_BY_TOPOLOGY = { 7: LR_BOXES_7, 5: LR_BOXES_5, 3: LR_BOXES_3 };
+
+// Which topology the chart is showing.  This is SYSTEM_TOPOLOGY itself,
+// not a separate view state: switching the toggle saves the setting, so
+// the chart can never show one topology while another is what runs.
+let lrTopology = 7;
+
+function lrBoxes() {
+  return LR_BOXES_BY_TOPOLOGY[lrTopology] || LR_BOXES_7;
+}
+function lrAgentKeys() {
+  return lrBoxes().filter((b) => b.role === "agent").map((b) => b.key);
+}
 
 // Static black arrows between boxes (drawn first so they sit behind).
 // Coords match the box centre-edges; arrowheads at both ends to mirror
 // the LOG-and-Status chart's visual convention.
-const LR_ARROWS = [
+const LR_ARROWS_7 = [
   // User ↔ Receptionist
   { x1: 300, y1: 54,  x2: 300, y2: 71  },
   // Receptionist ↔ Orchestrator
@@ -1984,6 +2056,38 @@ const LR_ARROWS = [
   // Tool Caller ↔ Blade Sections (diagonal)
   { x1: 564, y1: 530, x2: 606, y2: 510 },
 ];
+
+// 5-agent: Receptionist -> UII -> Conductor -> Creator -> Tool Caller ->
+// Output Inspector -> Conductor.
+const LR_ARROWS_5 = [
+  { x1: 300, y1: 54,  x2: 300, y2: 71  },   // User - Receptionist
+  { x1: 300, y1: 174, x2: 300, y2: 196 },   // Receptionist - UII
+  { x1: 300, y1: 299, x2: 300, y2: 321 },   // UII - Conductor
+  { x1: 262, y1: 422, x2: 130, y2: 448 },   // Conductor - Creator
+  { x1: 184, y1: 497, x2: 226, y2: 497 },   // Creator - Tool Caller
+  { x1: 374, y1: 497, x2: 416, y2: 497 },   // Tool Caller - Output Inspector
+  { x1: 470, y1: 448, x2: 338, y2: 422 },   // Output Inspector - Conductor
+];
+
+// 3-agent: Receptionist -> Architect -> Designer, and then the Designer
+// and the Critic refine with EACH OTHER.  The Architect is reached only on
+// escalation, phase change, or a dispatcher-forced checkpoint - which is
+// why its arrow to the Critic is drawn as well as the one to the Designer.
+const LR_ARROWS_3 = [
+  { x1: 300, y1: 54,  x2: 300, y2: 71  },   // User - Receptionist
+  { x1: 300, y1: 174, x2: 300, y2: 196 },   // Receptionist - Architect
+  { x1: 262, y1: 297, x2: 208, y2: 398 },   // Architect - Designer
+  { x1: 338, y1: 297, x2: 392, y2: 398 },   // Architect - Critic
+  { x1: 274, y1: 447, x2: 326, y2: 447 },   // Designer <-> Critic (refine loop)
+];
+
+const LR_ARROWS_BY_TOPOLOGY = {
+  7: LR_ARROWS_7, 5: LR_ARROWS_5, 3: LR_ARROWS_3,
+};
+
+function lrArrows() {
+  return LR_ARROWS_BY_TOPOLOGY[lrTopology] || LR_ARROWS_7;
+}
 
 function lrEl(id) { return document.getElementById(id); }
 
@@ -2023,7 +2127,7 @@ function buildLrChart() {
   svg.appendChild(defs);
 
   // Arrows (drawn before boxes so they sit behind).
-  for (const a of LR_ARROWS) {
+  for (const a of lrArrows()) {
     svg.appendChild(_svg("line", {
       x1: a.x1, y1: a.y1, x2: a.x2, y2: a.y2,
       stroke: "#e6e8eb", "stroke-width": "2",
@@ -2033,7 +2137,7 @@ function buildLrChart() {
   }
 
   // Boxes.
-  for (const b of LR_BOXES) {
+  for (const b of lrBoxes()) {
     if (b.role === "extra-frame") {
       svg.appendChild(_svg("rect", {
         x: b.x, y: b.y, width: b.w, height: b.h, rx: 4, ry: 4,
@@ -2117,7 +2221,7 @@ function renderLrOverlay() {
   if (!overlay || !lrState) return;
   overlay.innerHTML = "";
 
-  for (const b of LR_BOXES) {
+  for (const b of lrBoxes()) {
     if (b.role !== "agent") continue;
     const a = lrState.agents.find((x) => x.key === b.key);
     if (!a) continue;
@@ -2299,6 +2403,74 @@ function applyLrPreset(wf) {
 
 // ---- Global LLM controls + banner ----------------------------------------
 
+// ---------------------------------------------------------------------------
+// Agent-count toggle (7 / 5 / 3)
+//
+// This IS the SYSTEM_TOPOLOGY setting, not a separate view state.  Clicking
+// a button saves the setting and redraws the chart, so the chart can never
+// show one topology while a different one is what actually runs.
+//
+// Per-agent model assignments are NOT affected by switching: they live in
+// agents/<agent>/.env, one file per agent key, and the merged agents have
+// distinct keys (conductor, creator, architect, designer).  So each
+// topology keeps its own assignments and switching back restores them.
+// ---------------------------------------------------------------------------
+
+function renderLrTopology() {
+  const wrap = lrEl("lr-topology-toggle");
+  if (!wrap) return;
+  for (const btn of wrap.querySelectorAll("button[data-topo]")) {
+    const on = Number(btn.dataset.topo) === lrTopology;
+    btn.classList.toggle("active", on);
+    btn.setAttribute("aria-pressed", on ? "true" : "false");
+  }
+  const note = lrEl("lr-topology-note");
+  if (note) {
+    note.textContent =
+      "The next session will run the " + lrTopology + "-agent system.";
+  }
+}
+
+async function setLrTopology(topo) {
+  if (topo === lrTopology) return;
+  const prev = lrTopology;
+  lrTopology = topo;
+  renderLrTopology();
+  buildLrChart();
+  renderLrOverlay();
+  setLrStatus("Saving agent count\u2026", "");
+  try {
+    const res = await fetch("/api/settings", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ values: { SYSTEM_TOPOLOGY: topo } }),
+    });
+    if (res.status === 401) { showGate(); return; }
+    if (!res.ok) throw new Error("HTTP " + res.status);
+    setLrStatus(
+      "Agent count set to " + topo + ".  Takes effect on the NEXT session.",
+      "ok",
+    );
+  } catch (err) {
+    // Roll the view back so it keeps matching what is actually saved.
+    lrTopology = prev;
+    renderLrTopology();
+    buildLrChart();
+    renderLrOverlay();
+    setLrStatus("Could not save agent count: " + err.message, "err");
+  }
+}
+
+function wireLrTopologyToggle() {
+  const wrap = lrEl("lr-topology-toggle");
+  if (!wrap || wrap.dataset.wired === "1") return;
+  wrap.dataset.wired = "1";
+  wrap.addEventListener("click", (ev) => {
+    const btn = ev.target.closest("button[data-topo]");
+    if (btn) setLrTopology(Number(btn.dataset.topo));
+  });
+}
+
 function renderLrGlobal() {
   const provSel = lrEl("lr-global-provider");
   const modelInp = lrEl("lr-global-model");
@@ -2418,6 +2590,13 @@ async function loadLrRouting() {
     await loadDbAccessState();
     await loadOcrAccessState();
     await loadCropsAccessState();
+    // Topology comes from the same payload, so the chart is drawn
+    // for whichever agent set will actually run.
+    if (lrState && Number(lrState.topology)) {
+      lrTopology = Number(lrState.topology);
+    }
+    wireLrTopologyToggle();
+    renderLrTopology();
     buildLrChart();
     renderLrGlobal();
     renderLrPresets();

@@ -23,6 +23,7 @@ from __future__ import annotations
 
 import os
 import re
+import ast
 from pathlib import Path
 from typing import Any
 
@@ -154,6 +155,24 @@ def _shared_provider_model() -> tuple[str, str]:
     return provider, model
 
 
+def _topology_now() -> int:
+    """SYSTEM_TOPOLOGY, parsed off disk.
+
+    This module deliberately re-reads settings.py rather than
+    importing the cached module (see the note on read_state), so the
+    topology is read the same way for the same reason: a value saved
+    moments ago through the editor must be visible immediately.
+    """
+    try:
+        nodes = _editor._parse_nodes()[1]
+        for node in nodes:
+            if getattr(node.target, "id", None) == "SYSTEM_TOPOLOGY":
+                return int(ast.literal_eval(node.value))
+    except Exception:
+        pass
+    return 7
+
+
 def read_state() -> dict[str, Any]:
     """Return the full read payload consumed by the routing UI.
 
@@ -279,6 +298,11 @@ def read_state() -> dict[str, Any]:
 
     return {
         "mode": mode,
+        # Which agent set the UI should show.  Read fresh from disk
+        # like everything else here, so the chart and the running
+        # topology cannot disagree.  The toggle in the LLM-routing
+        # section writes this via /api/settings.
+        "topology": _topology_now(),
         "providers": providers_out,
         "shared": {"provider": shared_provider, "model": shared_model},
         "agents": agents_out,

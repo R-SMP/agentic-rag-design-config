@@ -1159,6 +1159,48 @@ button.danger:hover { background: #3a1d1d; }
 }
 
 /* Global LLM card */
+/* Agent-count toggle (7 / 5 / 3).  Sits directly above the Global LLM
+   row so the agent set is chosen before the models are assigned to it.
+   Styled as a segmented control: this is a single setting with three
+   mutually exclusive values, not three independent buttons. */
+.lr-topology {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin: 0 0 10px;
+}
+.lr-topo-toggle {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.lr-topo-toggle button {
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  border: 0;
+  border-right: 1px solid var(--border);
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.lr-topo-toggle button:last-child { border-right: 0; }
+.lr-topo-toggle button:hover { background: rgba(127, 127, 127, 0.12); }
+.lr-topo-toggle button.active {
+  background: var(--accent, #3b82f6);
+  color: #fff;
+}
+.lr-topo-note {
+  font-size: 12px;
+  opacity: 0.75;
+}
+
 .lr-global {
   display: flex;
   align-items: center;

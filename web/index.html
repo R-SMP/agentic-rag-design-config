@@ -886,6 +886,24 @@
                 <em>End Session</em>).
               </p>
             </div>
+            <!-- Agent-count toggle.  This IS the SYSTEM_TOPOLOGY setting,
+                 not a separate view state: clicking a button saves the
+                 setting and redraws the chart, so the chart can never show
+                 one topology while a different one actually runs.  Each
+                 topology keeps its own per-agent model assignments — they
+                 live in agents/<agent>/.env, one file per agent key, and
+                 the merged agents have distinct keys — so switching back
+                 and forth loses nothing. -->
+            <div class="lr-topology">
+              <span class="lr-global-label">Agent count</span>
+              <div id="lr-topology-toggle" class="lr-topo-toggle"
+                   role="group" aria-label="Agent-count topology">
+                <button type="button" data-topo="7">7-agents</button>
+                <button type="button" data-topo="5">5-agents</button>
+                <button type="button" data-topo="3">3-agents</button>
+              </div>
+              <span id="lr-topology-note" class="lr-topo-note"></span>
+            </div>
             <div class="lr-global">
               <span class="lr-global-label">Global LLM</span>
               <select id="lr-global-provider">
