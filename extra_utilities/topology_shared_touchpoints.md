@@ -176,6 +176,15 @@ Cheap, and it caught real issues before the first run:
 
 * AST-check that every `self.<subagent>.<method>()` the hub calls exists on
   that class with a compatible signature (11 calls checked for the Conductor).
+  **Check EVERY `self.X.Y()`, not just the sub-agents you expect.**  Written
+  the narrow way for the Architect it reported "problems: none" while the
+  class still called `self.tool_caller`, `self.creator` and
+  `self.user_input_inspector` — agents that topology never builds, so every
+  one was an `AttributeError` waiting for `reset()`, the step-limit summary
+  or the end-of-session history dump.  The check only looked at the four
+  attributes it had been *told* about, so the three it had not been told
+  about were invisible.  Enumerate `self.<attr>.<method>()` for ALL attrs
+  and flag any attr that is not assigned in `__init__`.
 * Confirm the hub wires **every** sub-agent (`set_tools` / `set_routing_tools`)
   — one missed agent has no routing tools and dead-ends.
 * Confirm the hub binds its own tools, and that `_agents_by_key` lists every

@@ -158,6 +158,16 @@ adds work inside ONE visit, not extra visits.  Tunable — see
 settings.py §28."""
 
 MAX_DESIGNER_STEPS = _ws.MAX_DESIGNER_STEPS
+
+MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT = (
+    _ws.MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT
+)
+"""Consecutive Designer <-> Critic rounds allowed before the dispatcher
+forces a hop to the Architect (3-agent only).  The Critic refines directly
+with the Designer, so this is the backstop that keeps the brain from being
+shut out of a long loop.  A REPORTING CADENCE, not a stopping condition --
+``MAX_SECTIONS_REFINE_ROUNDS`` remains the per-phase ceiling.  Tunable --
+see settings.py section 28."""
 """LLM turns allowed inside ONE ``Designer.run()`` invocation
 (3-agent).  BELOW ``MAX_CREATOR_STEPS`` despite merging one more
 agent: the Designer drops validation entirely, so it carries the

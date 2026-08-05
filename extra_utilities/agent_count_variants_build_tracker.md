@@ -1161,11 +1161,21 @@ Scope: **pipeline agents ONLY.** Does NOT apply to the **Context Pruner**
 or the **Database Handler**. (Today all agents are effectively stateful;
 this makes it a per-agent choice.)
 
-## 3-agent variant (LATER)
-- Brain = **Architect** (perceive+plan+route+approve = UII + Conductor
-  merged). Plus a Designer (Creator-like) and a Critic (DCOI-like); see
-  `design_agent_count_variants.md` §7. Strip-down validation (none).
-  Receptionist still extra. Own fragment copies tailored to 3 agents.
+## 3-agent variant — IN PROGRESS (Stages A+B done, C not started)
+
+**FULL SPEC LIVES IN `extra_utilities/design_3agent_architecture.md`.**
+That file is authoritative for the roster, the edge set, the refine loop,
+every settled decision with its rationale, the three build stages and six
+numbered Warnings.  Do not plan 3-agent work from this section or from
+`design_agent_count_variants.md` alone -- both predate the decisions taken
+2026-08-04 and the second one now CONTRADICTS what was built (see that
+file's section 4.1).
+
+One-line summary: Receptionist / **Architect** (UII+Planner+Orchestrator) /
+**Designer** (DCIC+Tool Caller, NO validation) / **Critic** (the DCOI,
+key unchanged).  The Critic refines DIRECTLY with the Designer; the
+Architect is called on escalation, on phase change, and on a dispatcher-
+enforced checkpoint.
 
 ## Topology selector (SEPARATE — discuss first)
 - A `SYSTEM_TOPOLOGY = 7 | 5 | 3` mechanism to select which prompt +

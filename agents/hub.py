@@ -33,5 +33,8 @@ def build_hub(session, *, llm_cache=None):
     if topology() == 5:
         from agents.conductor import Conductor
         return Conductor(session=session, llm_cache=llm_cache)
+    if topology() == 3:
+        from agents.architect import Architect
+        return Architect(session=session, llm_cache=llm_cache)
     from agents.orchestrator import Orchestrator
     return Orchestrator(session=session, llm_cache=llm_cache)

@@ -311,6 +311,16 @@ flowchart TD
 
 ### 7.4 The 3-agent system (strip-down)
 
+> **⚠ SUPERSEDED (2026-08-04) — the refine loop below is out of date.**
+> The diagram shows `Cri -->|refine| Des` (always direct) while W3 in §9
+> says the relay goes `Critic -> Interpreter-Conductor -> Designer`
+> (always through the brain).  Those contradict each other, and the system
+> as built does NEITHER: the Critic refines directly with the Designer,
+> and the Architect is called on escalation, on phase change, and on a
+> dispatcher-enforced checkpoint.  See
+> `design_3agent_architecture.md` §4, which is authoritative.  The brain is
+> named **Architect**, not "Interpreter-Conductor".
+
 `Receptionist · Interpreter-Conductor · Designer · Critic`
 
 * **Interpreter-Conductor** = UII + Planner + Orchestrator (perceive · plan · route · approve).

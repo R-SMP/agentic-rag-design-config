@@ -75,10 +75,10 @@ AGENT_SPEC: list[tuple[str, str, bool]] = [
     # a 5-agent run routes through them and nothing else.
     ("conductor",             "Conductor",             True),
     ("creator",               "Creator",               True),
-    # 3-agent topology.  wired_into_dispatcher=False until the agent
-    # classes exist and build_hub constructs them (Stage B).
-    ("architect",             "Architect",             False),
-    ("designer",              "Designer",              False),
+    # 3-agent topology.  Constructed by ``agents/hub.py:build_hub`` when
+    # SYSTEM_TOPOLOGY is 3.
+    ("architect",             "Architect",             True),
+    ("designer",              "Designer",              True),
 ]
 AGENT_KEYS = [k for k, _, _ in AGENT_SPEC]
 

@@ -451,16 +451,25 @@ class _SentinelConductor:
         self.which = "conductor"
 
 
+class _SentinelArchitect:
+    def __init__(self, session=None, llm_cache=None):
+        self.which = "architect"
+
+
 _mo = types.ModuleType("agents.orchestrator")
 _mo.Orchestrator = _SentinelOrchestrator
 _mc = types.ModuleType("agents.conductor")
 _mc.Conductor = _SentinelConductor
+_ma = types.ModuleType("agents.architect")
+_ma.Architect = _SentinelArchitect
 sys.modules["agents.orchestrator"] = _mo
 sys.modules["agents.conductor"] = _mc
+sys.modules["agents.architect"] = _ma
 
 from agents.hub import build_hub  # noqa: E402
 
-for _topo, _expect in ((7, "orchestrator"), (5, "conductor"), (3, "orchestrator")):
+for _topo, _expect in ((7, "orchestrator"), (5, "conductor"),
+                       (3, "architect"), (99, "orchestrator")):
     prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
     got = build_hub(session=None).which
     if got != _expect:
