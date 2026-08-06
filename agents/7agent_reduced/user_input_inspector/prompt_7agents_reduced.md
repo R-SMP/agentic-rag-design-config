@@ -89,7 +89,7 @@ quantitative constraints at all.
   allowed range in the parameter list above.  If it falls outside, record the
   user's value unchanged and append the fact:
 
-      - outerRadius: 160 mm — OUT OF RANGE (allowed [10; 140])
+      - impellerRadius: 160 mm — OUT OF RANGE (allowed [60; 80])
 
   You do NOT correct it, clamp it, or drop it — you only make the breach
   visible, so a downstream agent does not have to rediscover it and an

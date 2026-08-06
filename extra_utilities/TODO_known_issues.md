@@ -3718,3 +3718,80 @@ for.
 
 **Where.** `agents/shared/routing.py:53-70`; the risk lands in any cut whose
 replacement text quotes the permission paragraph, `UII-40` most directly.
+
+---
+
+### F62. The UII prompt teaches "never invent a parameter" using an invented parameter
+
+**Status.** OPEN in the standard 7-agent and the 5-agent prompts.  FIXED in the
+7-agent reduced variant (both instances).  Found 2026-08-06 while applying the
+shrink proposal's UII cuts; not in the proposal, though one of its cuts happens
+to correct one instance in passing.
+
+**The defect.** `outerRadius` is NOT one of the 16 configurator parameters.  The
+canonical list is `bladeCount, impellerRadius, impellerThickness,
+innerThickness, innerMaxPos, innerCamber, innerChord, innerAngle, middlePos,
+middleChord, middleAngle, outerThickness, outerMaxPos, outerCamber, outerChord,
+outerAngle` — there is no `outerRadius`.  Yet the UII prompt uses it in BOTH of
+its worked examples:
+
+| file | line | text |
+|---|---|---|
+| `agents/user_input_inspector/prompt.md` | 212 | `- outerRadius: 160 mm — OUT OF RANGE (allowed [10; 140])` |
+| `agents/user_input_inspector/prompt.md` | 247 | `- outerRadius: ~140 mm — SOFT TARGET (goal: match the sketched blade …)` |
+| `agents/5agent/user_input_inspector/prompt_5agents.md` | 218 | same OUT OF RANGE line |
+| `agents/5agent/user_input_inspector/prompt_5agents.md` | 253 | same SOFT TARGET line |
+
+The RANGES are wrong too.  `[10; 140]` is not any parameter's range; the closest
+real parameter, `impellerRadius`, is `[60; 80]` mm.  So the SOFT TARGET example's
+`~140 mm` is also outside the range of the parameter it is presumably meant to
+illustrate.
+
+**Why it matters.** These examples sit a few lines below hard rules the same
+prompt carries: "Reject invented parameters (hub_radius, fillet_radius,
+tip_clearance, any 'supplemental' value) — they do not exist", and
+"$parameter_list" itself.  The prompt demonstrates its output format with
+exactly the kind of value it forbids, and an agent copying the shape of a worked
+example is doing the reasonable thing.  The OUT OF RANGE example is the worse of
+the two: it teaches the agent to compare a value against a range, using a range
+that does not exist.
+
+**The fix**, per instance:
+
+```
+- impellerRadius: 160 mm — OUT OF RANGE (allowed [60; 80])
+- impellerRadius: ~75 mm — SOFT TARGET (goal: match the sketched blade
+  shape; keep near 75 mm if free, but vary freely to fit the shape)
+```
+
+(160 is kept in the first: it is clearly outside [60; 80], and the number may
+echo the Ø160-vs-Ø140 form incident this rule family came from.)
+
+**Where the reduced variant already has it.**
+`agents/7agent_reduced/user_input_inspector/prompt_7agents_reduced.md` — the
+SOFT TARGET example was corrected as part of cut UII-05, the OUT OF RANGE one
+as a standalone fix.  Not ported to the shared tree per the standing decision
+that section-8-class repairs land in the variant only.
+
+**Scope — SCANNED, and it is contained.**  Found by eye, so the obvious worry
+was more of the same elsewhere.  Scanned every `agents/**/prompt*.md` and
+`DC_prompt_fragments/**/*.md` for camelCase identifier-shaped tokens and
+compared them against the 77 keys in
+`DC_prompt_fragments/dc_config/parameter_keys.txt`.  Result: exactly two
+non-canonical tokens in the whole tree —
+
+* `outerRadius` x4 — the four instances tabulated above, and nothing else;
+* `camelCase` x2 — the literal word, in `agents/database_handler/prompt.md`
+  (false positive).
+
+So no other prompt invents a parameter name.  Fixing the four lines closes it
+entirely.
+
+**Worth turning into a check?**  Probably not on its own — a one-off scan found
+a bounded problem.  But if a `parameter_keys.txt`-versus-prompts assertion is
+ever added to the smoke suite, note the two false-positive classes it must
+tolerate: prose words that happen to be camelCase, and tool/field names
+(`view_images`, `parameters.json`) that are not parameters.
+
+Related: F57 (the DCOI is asked to name parameters it is never shown — same
+family, opposite direction).
