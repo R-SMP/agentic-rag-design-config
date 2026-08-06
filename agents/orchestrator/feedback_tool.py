@@ -34,24 +34,44 @@ from langchain_core.tools import tool
 SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME = "submit_feedback_dispatch"
 
 
-# Prepended to every forwarded feedback message, by all three hubs.
-#
-# This instruction used to live in each chain agent's SYSTEM PROMPT, in a
-# "## End-of-session feedback message (read-only)" section.  That is the wrong
-# home: the message it describes exists ONLY when the user ends a session WITH
-# SAVE, so in every session that does not save — most of them — the explanation
-# is dead text carried by eight prompts for a message that never arrives.
-#
-# Carried on the message instead, it costs nothing until there is something to
-# explain, and it arrives attached to the very thing it is explaining.  Defined
-# here rather than in each hub because all three (Orchestrator, Conductor,
-# Architect) already import this module for the dispatch tool, and three copies
-# of one sentence is how they drift apart.
-FEEDBACK_ENVELOPE = (
-    "End-of-session user feedback relevant to your scope.  Treat it as ground "
-    "truth and fold it into your answers if the Database Handler interviews "
-    "you about this session.\n\n"
-)
+def feedback_envelope() -> str:
+    """Text prepended to a forwarded feedback message — or "" for most systems.
+
+    In the 7-agent REDUCED variant the "## End-of-session feedback message
+    (read-only)" section is deleted from the chain agents' prompts, because the
+    message it describes exists ONLY when the user ends a session WITH SAVE:
+    in every session that does not save — most of them — that explanation is
+    dead text carried by eight prompts for a message that never arrives.  The
+    instruction travels with the message instead, so it costs nothing until
+    there is something to explain and it arrives attached to the thing it
+    explains.
+
+    Systems that KEEP the prompt section must not also get the envelope, or
+    they are told the same thing twice.  So the text is a variant fragment and
+    this returns "" whenever the active topology + variant has not written one
+    — which is every topology today except 7-agent reduced.
+
+    Resolved through ``prompts._topology_override`` rather than an explicit
+    ``PROMPT_VARIANT`` test: that machinery already exists, is already covered
+    by smoke_test_prompt_variant, and keeps this module free of a second place
+    in the codebase that branches on the variant.  There is deliberately NO
+    shared original — an absent override is the correct signal for "no
+    envelope", exactly as an absent prompt override means "use the standard
+    text".
+
+    Read fresh per call, never cached: the Sessions Queue switches settings
+    between runs inside one process.
+
+    Defined here because all three hubs (Orchestrator, Conductor, Architect)
+    already import this module for the dispatch tool, and three copies of one
+    sentence is how they drift apart.
+    """
+    from agents.shared.prompts import _topology_override
+
+    path = _topology_override("prompt_fragments/feedback_envelope.md")
+    if path is None:
+        return ""
+    return path.read_text(encoding="utf-8").rstrip() + "\n\n"
 
 
 @tool(SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME)

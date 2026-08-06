@@ -103,6 +103,23 @@ VARIANTS = ["reduced"]
 
 failures: list[str] = []
 notes: list[str] = []
+
+# Variant files with NO shared original, consumed by CODE rather than spliced
+# into a prompt — e.g. the end-of-session feedback envelope, which is prepended
+# to a runtime message by feedback_tool.feedback_envelope().  They shadow
+# nothing, so they must not be expected to move any assembled prompt.
+#
+# DECLARED in extra_utilities/fork_manifest.json (relation "new"), never
+# inferred from "the base file is missing": a typo in an override's basename
+# also makes its base look missing, and inferring would silently reclassify
+# that typo as intentional — the exact failure the REACHED check exists for.
+_RUNTIME_ONLY: set[str] = set()
+_MANIFEST = ROOT / "extra_utilities" / "fork_manifest.json"
+if _MANIFEST.is_file():
+    import json as _json
+    for _e in _json.loads(_MANIFEST.read_text(encoding="utf-8")).get("forks", []):
+        if _e.get("relation") == "new" or _e.get("origin") is None:
+            _RUNTIME_ONLY.add(_e["fork"])
 # (topo, variant, override filename, affected agents, text it deleted)
 consumed_probes: list[tuple[int, str, str, list[str], str]] = []
 
@@ -182,6 +199,24 @@ def expected_differing(topo: int, variant: str) -> tuple[set[str], list[str]]:
     expected: set[str] = set()
     lines: list[str] = []
     for f in sorted(topo_dir.rglob("*.md")):
+        if f.relative_to(ROOT).as_posix() in _RUNTIME_ONLY:
+            # Still must RESOLVE — a runtime-only override that the resolver
+            # cannot find is as broken as any other, it just fails silently in
+            # code rather than in a prompt.
+            rel_name = f.name.replace(f"_{topo}agents_{variant}", "")
+            sub = f.parent.relative_to(topo_dir).as_posix()
+            lookup = (f"{sub}/{rel_name}" if sub != "." else rel_name)
+            prompts._workflow_settings.SYSTEM_TOPOLOGY = topo
+            prompts._workflow_settings.PROMPT_VARIANT = variant
+            got = prompts._topology_override(lookup)
+            if got is None or Path(got).resolve() != f.resolve():
+                failures.append(
+                    f"[REACHED] {f.relative_to(ROOT)} (runtime-only) is never "
+                    f"resolved: _topology_override({lookup!r}) -> {got}"
+                )
+            else:
+                lines.append(f"{f.name} -> (runtime-only; shadows no prompt)")
+            continue
         base = _base_of(f, topo, variant)
         if base is None:
             failures.append(

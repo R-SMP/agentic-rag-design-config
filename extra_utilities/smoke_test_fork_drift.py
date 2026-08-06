@@ -88,10 +88,26 @@ def main() -> int:
         )
 
     for entry in forks:
-        fork_rel, origin_rel = entry["fork"], entry["origin"]
-        recorded_sha = entry["origin_commit"]
+        fork_rel, origin_rel = entry["fork"], entry.get("origin")
+        recorded_sha = entry.get("origin_commit")
         relation = entry.get("relation", "copy")
-        fork_p, origin_p = ROOT / fork_rel, ROOT / origin_rel
+        fork_p = ROOT / fork_rel
+
+        # relation "new": a variant file with no shared original — nothing
+        # upstream to drift FROM.  Still recorded, so the UNRECORDED check
+        # above stays meaningful and a reader can see it was a deliberate
+        # addition rather than an unfiled fork.
+        if relation == "new" or origin_rel is None:
+            if not fork_p.is_file():
+                failures.append(
+                    f"[STALE ENTRY] {fork_rel} is in the manifest but not on "
+                    "disk — if it was removed, delete its entry"
+                )
+            else:
+                notes.append(f"{fork_rel.split('/')[-1]:52s} <- (new; no origin)")
+            continue
+
+        origin_p = ROOT / origin_rel
 
         if not fork_p.is_file():
             failures.append(

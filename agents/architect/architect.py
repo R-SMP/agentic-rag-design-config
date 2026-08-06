@@ -1020,7 +1020,7 @@ class Architect(BaseChainAgent):
         by ``_wire_routing`` untouched.
         """
         from agents.orchestrator.feedback_tool import (
-            FEEDBACK_ENVELOPE,
+            feedback_envelope,
             submit_feedback_dispatch,
             SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME,
         )
@@ -1146,7 +1146,7 @@ class Architect(BaseChainAgent):
                 continue
             try:
                 target.messages.append(
-                    HumanMessage(content=FEEDBACK_ENVELOPE + msg,
+                    HumanMessage(content=feedback_envelope() + msg,
                                   name="architect")
                 )
                 self.session.agent_states[ak] = target.snapshot_state()

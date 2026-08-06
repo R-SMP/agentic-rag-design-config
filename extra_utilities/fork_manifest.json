@@ -23,7 +23,11 @@
     "               no text with it; an origin change may still alter what the",
     "               rewrite needs to say, so it is still tracked.",
     "  partial-fork only part of the origin is re-implemented; the rest is imported",
-    "               live, so only changes to the forked part matter."
+    "               live, so only changes to the forked part matter.",
+    "  new          a variant file with NO shared original — nothing to drift from.",
+    "               Recorded anyway so the 'fork on disk with no entry' check stays",
+    "               meaningful, and so a reader can tell a deliberate addition from",
+    "               an unfiled fork.  origin and origin_commit are null."
   ],
   "forks": [
     {
@@ -53,6 +57,13 @@
       "origin_commit": "e46b1945ed1b8c2a793506c85560fa03163459a5",
       "relation": "copy",
       "note": "Batch 1: 11 reviewed compressions, 25,677 -> 18,877 chars. Includes the F58 fix (third categorisation bucket) and an unconditional 'view_images on EVERY image'. The standard prompt is actively worked on, so this is the highest-drift-risk fork in the set."
+    },
+    {
+      "fork": "agents/7agent_reduced/prompt_fragments/feedback_envelope_7agents_reduced.md",
+      "origin": null,
+      "origin_commit": null,
+      "relation": "new",
+      "note": "Prepended to a forwarded end-of-session feedback message by agents/orchestrator/feedback_tool.py::feedback_envelope(). No shared original EXISTS BY DESIGN: an absent override is the signal for 'no envelope', so every topology except 7-agent reduced gets \"\" and is behaviourally unchanged. Pairs with UII-20, which deletes the '## End-of-session feedback message (read-only)' section from the reduced prompts — the instruction travels with the message instead of sitting in eight prompts for a message that only exists at session save."
     },
     {
       "fork": "reduced7/agents/shared/routing.py",
