@@ -1,9 +1,14 @@
 """Reduced-variant routing block.
 
-FORKED FROM: agents/shared/routing.py @ e31acc0
+FORKED FROM: agents/shared/routing.py
 FORKS:       routing_instructions()  — only this function
 IMPORTS UNCHANGED: natural_pipeline, _authorisation_sources,
                    _load_routing_fragment, _PIPELINE_BY_TOPOLOGY
+
+The COMMIT this was forked at lives in extra_utilities/fork_manifest.json, not
+here — one recorded version, checked by smoke_test_fork_drift.py.  A SHA in
+this docstring as well would be a second copy to keep in sync, and the one
+that goes stale is always the one nobody runs a test against.
 
 Only ``routing_instructions`` is re-implemented, because only its TEXT differs.
 ``_authorisation_sources`` in particular MUST NOT be copied: it drops the

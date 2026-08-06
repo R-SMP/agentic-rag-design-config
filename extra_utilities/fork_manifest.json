@@ -1,0 +1,65 @@
+{
+  "_readme": [
+    "Provenance for every file the 7-agent REDUCED variant forks from the shared",
+    "tree.  Read by extra_utilities/smoke_test_fork_drift.py, which FAILS when an",
+    "origin file has been committed to since its fork was taken — that is the",
+    "whole point: drift here is otherwise invisible, because a stale fork produces",
+    "a plausible prompt rather than an error.",
+    "",
+    "WHY A SIDECAR AND NOT A HEADER COMMENT.  Most forks are .md prompt files, and",
+    "a prompt has no comment syntax — every byte in it becomes system-prompt text",
+    "the model reads.  A provenance header would be tokens spent telling the model",
+    "about the repository.  Keeping it here costs the model nothing.",
+    "",
+    "WHEN THE TEST FAILS, do not just bump the SHA.  Read what changed in the",
+    "origin (the test prints the exact git command), decide whether the fork needs",
+    "the same change, apply it if so, and only then record the new commit.  Bumping",
+    "without looking converts a loud check into a silent one.",
+    "",
+    "relation:",
+    "  copy         the fork began as a byte copy of the origin and was then edited;",
+    "               any origin change is a candidate for porting.",
+    "  rewrite      the fork REPLACES the origin's content for one agent and shares",
+    "               no text with it; an origin change may still alter what the",
+    "               rewrite needs to say, so it is still tracked.",
+    "  partial-fork only part of the origin is re-implemented; the rest is imported",
+    "               live, so only changes to the forked part matter."
+  ],
+  "forks": [
+    {
+      "fork": "agents/7agent_reduced/dc_config/hard_constraints_dc_7agents_reduced.md",
+      "origin": "DC_prompt_fragments/dc_config/hard_constraints_dc.md",
+      "origin_commit": "97b2a0f1be8111a9f35e9928d02396b7abf9281e",
+      "relation": "copy",
+      "note": "TC-32 compression; the CANNOT catalogue moved out to capabilities_cannot; metrics bullet gated behind <<MESH_ON>>. Reaches all 8 chain/hub agents."
+    },
+    {
+      "fork": "agents/7agent_reduced/dc_config/capabilities_cannot_7agents_reduced.md",
+      "origin": "DC_prompt_fragments/dc_config/capabilities_cannot.md",
+      "origin_commit": "e16d20eb46fe8875568f39d9f94781094dbb2c6d",
+      "relation": "copy",
+      "note": "RCP-20 compression, plus the catalogue received from hard_constraints_dc. Two live defects fixed here: 'cross-sections' -> 'arbitrary section cuts through the mesh' (CON-30), and the false downloads/uploads/cloud-storage bullet deleted. Reaches Receptionist + Orchestrator."
+    },
+    {
+      "fork": "agents/7agent_reduced/dc_config/hard_constraints_dc_user_input_inspector_7agents_reduced.md",
+      "origin": "DC_prompt_fragments/dc_config/hard_constraints_dc.md",
+      "origin_commit": "97b2a0f1be8111a9f35e9928d02396b7abf9281e",
+      "relation": "rewrite",
+      "note": "Per-agent scoped copy (prompts.SCOPED_FRAGMENTS). Shares no text with the origin: it states the one rule the UII can act on (the vocabulary constrains LABELLING, not RECORDING), resolving the standing conflict with 'Capture, do not filter'. Tracked because a change to the shared DC hard rules may still change what the UII needs told."
+    },
+    {
+      "fork": "agents/7agent_reduced/user_input_inspector/prompt_7agents_reduced.md",
+      "origin": "agents/user_input_inspector/prompt.md",
+      "origin_commit": "e46b1945ed1b8c2a793506c85560fa03163459a5",
+      "relation": "copy",
+      "note": "Batch 1: 11 reviewed compressions, 25,677 -> 18,877 chars. Includes the F58 fix (third categorisation bucket) and an unconditional 'view_images on EVERY image'. The standard prompt is actively worked on, so this is the highest-drift-risk fork in the set."
+    },
+    {
+      "fork": "reduced7/agents/shared/routing.py",
+      "origin": "agents/shared/routing.py",
+      "origin_commit": "e31acc00120061eb6037ea27b4aeaca333d1818c",
+      "relation": "partial-fork",
+      "note": "Only routing_instructions() is re-implemented (F59: the CLARIFY bullet names its own target instead of leaving each first-agent fragment to patch it). natural_pipeline, _authorisation_sources and _load_routing_fragment are IMPORTED live and must never be copied — _authorisation_sources drops the Planner when topology != 7 (F61)."
+    }
+  ]
+}
