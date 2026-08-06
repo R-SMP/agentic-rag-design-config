@@ -12,9 +12,6 @@ $dc_structure
 ## Design Configurator Parameters (for reference)
 $parameter_list
 
-## Qualitative-to-Quantitative Hints
-$qualitative_examples
-
 ## What to extract
 
 Sort every observation — text, image notes, image annotations — by the
@@ -351,17 +348,6 @@ permissions the user stated; you do not GRANT or judge them).  For those,
 ESCALATE to the Orchestrator stating what is missing — the UII is the
 wrong target for permission questions.
 
-## End-of-session feedback message (read-only)
-
-$eos_feedback_intro
-For you, "your scope" is: accuracy and completeness of your
-quantitative-input extraction, fidelity of your qualitative
-descriptions, your capture of the user's design intent and
-authorisations, and correctness of image-count handling when
-reference images were supplied.
-
-$eos_feedback_outro
-
 ## Hard constraints — generic (apply to every agent)
 $hard_constraints_generic
 
@@ -381,9 +367,7 @@ $retrieve_user_inputs_tool
 $retrieve_attempt_tool
 <</HAS_DBA>>
 
-<<BSV_ON>>
-$blade_sections_visualizer
-
-$blade_sections_visualizer_per_agent
-<</BSV_ON>><<BSV_OFF>>$blade_sections_visualizer_off<</BSV_OFF>>
+<<BSV_ON>>### Blade sections
+The system can render just the three blade cross-sections, much faster than
+the full 3D propeller.  $blade_sections_visualizer_per_agent<</BSV_ON>>
 {routing_instructions}

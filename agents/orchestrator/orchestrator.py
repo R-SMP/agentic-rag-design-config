@@ -939,6 +939,7 @@ class Orchestrator(BaseChainAgent):
             parsing fails, ``ok`` is False and ``decisions`` is empty.
         """
         from agents.orchestrator.feedback_tool import (
+            FEEDBACK_ENVELOPE,
             submit_feedback_dispatch,
             SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME,
         )
@@ -1078,7 +1079,8 @@ class Orchestrator(BaseChainAgent):
                 continue
             try:
                 target.messages.append(
-                    HumanMessage(content=msg, name="orchestrator")
+                    HumanMessage(content=FEEDBACK_ENVELOPE + msg,
+                                  name="orchestrator")
                 )
                 self.session.agent_states[ak] = target.snapshot_state()
             except Exception as exc:

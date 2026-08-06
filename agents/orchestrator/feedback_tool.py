@@ -34,6 +34,26 @@ from langchain_core.tools import tool
 SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME = "submit_feedback_dispatch"
 
 
+# Prepended to every forwarded feedback message, by all three hubs.
+#
+# This instruction used to live in each chain agent's SYSTEM PROMPT, in a
+# "## End-of-session feedback message (read-only)" section.  That is the wrong
+# home: the message it describes exists ONLY when the user ends a session WITH
+# SAVE, so in every session that does not save — most of them — the explanation
+# is dead text carried by eight prompts for a message that never arrives.
+#
+# Carried on the message instead, it costs nothing until there is something to
+# explain, and it arrives attached to the very thing it is explaining.  Defined
+# here rather than in each hub because all three (Orchestrator, Conductor,
+# Architect) already import this module for the dispatch tool, and three copies
+# of one sentence is how they drift apart.
+FEEDBACK_ENVELOPE = (
+    "End-of-session user feedback relevant to your scope.  Treat it as ground "
+    "truth and fold it into your answers if the Database Handler interviews "
+    "you about this session.\n\n"
+)
+
+
 @tool(SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME)
 def submit_feedback_dispatch(dispatches: list[dict]) -> str:
     """Distribute the user's end-of-session feedback to the chain agents.

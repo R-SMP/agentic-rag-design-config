@@ -756,6 +756,7 @@ class Conductor(BaseChainAgent):
         by ``_wire_routing`` untouched.
         """
         from agents.orchestrator.feedback_tool import (
+            FEEDBACK_ENVELOPE,
             submit_feedback_dispatch,
             SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME,
         )
@@ -881,7 +882,8 @@ class Conductor(BaseChainAgent):
                 continue
             try:
                 target.messages.append(
-                    HumanMessage(content=msg, name="conductor")
+                    HumanMessage(content=FEEDBACK_ENVELOPE + msg,
+                                  name="conductor")
                 )
                 self.session.agent_states[ak] = target.snapshot_state()
             except Exception as exc:
