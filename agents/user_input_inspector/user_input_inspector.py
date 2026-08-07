@@ -75,7 +75,7 @@ logger = logging.getLogger("propeller_agent")
 _READ_INPUTS_DOC = (
     "Read a user-inputs directory: TEXT plus a LIST of its images (it does "
     "NOT load the images themselves).\n\n"
-    "Pass the absolute path of the inputs directory supplied by the Planner "
+    "Pass the absolute path of the inputs directory supplied in your hand-off "
     "under the ``Input directory:`` label (do NOT guess).  The output is a "
     "summary plus the concatenated contents of all text/JSON files — "
     "including every image's ``_note.txt`` — followed by a list of the "
@@ -104,7 +104,7 @@ def write_extraction(
 ) -> str:
     """Persist the structured user-input extraction to a file.
 
-    Pass the absolute file path supplied by the Planner under the
+    Pass the absolute file path supplied in your hand-off under the
     ``Extraction output file:`` label, plus three strings (one per
     section).  Use "None specified." for any section with no content.
     The tool formats the file with canonical section headers and writes
@@ -200,7 +200,12 @@ class UserInputInspector(BaseChainAgent):
         """Process one hand-off message and return the chosen hop."""
         token_usage.begin_turn("UII")
         self._pending_hop = None
-        text = f"Hand-off from Planner:\n{message}"
+        # The routing tool already prefixes "[Incoming from: <sender>]"
+        # (routing_tools.py:311), so naming a sender here can only
+        # contradict it — under PLANNER_FIRST=False the UII is called by
+        # the Orchestrator, not the Planner.  Same agnostic form as
+        # tool_caller.py:168, the one agent that already gets this right.
+        text = f"Hand-off from previous agent:\n{message}"
         self.messages.append(HumanMessage(content=text))
 
         seen_sigs: set[tuple[str, str]] = set()
@@ -319,7 +324,8 @@ class UserInputInspector(BaseChainAgent):
         if not raw_path or not isinstance(raw_path, str):
             summary = (
                 "Error: no directory path provided.  Call this tool with "
-                "the absolute path supplied by the Planner."
+                "the absolute path supplied in your hand-off under the "
+                "'Input directory:' label."
             )
         else:
             directory = Path(raw_path)
@@ -407,7 +413,7 @@ class UserInputInspector(BaseChainAgent):
         if not isinstance(raw_path, str) or not raw_path.strip():
             summary = (
                 "Error: missing or non-string 'path' argument.  Call this "
-                "tool with the absolute path supplied by the Planner under "
+                "tool with the absolute path supplied in your hand-off under "
                 "the 'Extraction output file:' label."
             )
         else:

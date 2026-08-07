@@ -3863,3 +3863,60 @@ UPDATE dc_parameter_schemas
 
 Related: F62 (a prompt example naming a parameter that does not exist — same
 family, and both were found by comparing a stated formula against the code).
+
+---
+
+### F64. Six agents hard-code the sender of their incoming hand-off; only the Tool Caller gets it right
+
+**Status.** FIXED for the User Input Inspector 2026-08-06.  OPEN for five other
+agents — to be fixed as each one's turn comes up in the prompt-reduction pass.
+
+**The pattern.** Every chain agent's `run()` prepends a sender label to the
+incoming message:
+
+| file:line | current text | correct today? |
+|---|---|---|
+| `agents/tool_caller/tool_caller.py:168` | `"Hand-off from previous agent:"` | **yes — the model to copy** |
+| `agents/user_input_inspector/user_input_inspector.py:203` | ~~`"Hand-off from Planner:"`~~ → `"previous agent"` | FIXED |
+| `agents/dc_input_creator/dc_input_creator.py:201` | `"Hand-off from User Input Inspector:"` | **NO** — under `PLANNER_FIRST=False` the **Planner** hands to the DCIC |
+| `agents/dc_input_inspector/dc_input_inspector.py:167` | `"Hand-off from DC Input Creator:"` | yes, but by luck |
+| `agents/dc_output_inspector/dc_output_inspector.py:298` | `"Hand-off from Tool Caller:"` | yes, but by luck |
+| `agents/creator/creator.py:231` | `"Hand-off from Conductor:"` | yes, but by luck (5-agent) |
+| `agents/designer/designer.py:234` | `"Hand-off from Architect:"` | yes, but by luck (3-agent) |
+
+**Why all six are wrong even when the name is right.**  `agents/shared/routing_tools.py:311`
+already does this, for every hop, in one place:
+
+```python
+labeled_message = f"[Incoming from: {caller_display}]\n\n{message}"
+```
+
+with the comment *"Label the hand-off with its sender so the target agent can
+never mis-attribute the content (e.g. mistake a Planner plan for a user
+request)."*  So the `run()` prefix is redundant at best.  When it disagrees —
+as the UII's did — the agent reads a self-contradicting header:
+
+```
+Hand-off from Planner:
+[Incoming from: Orchestrator]
+
+<the message>
+```
+
+which defeats the exact guard the routing prefix was added to provide.  The
+four "correct by luck" cases are correct only because their upstream happens
+not to vary with `PLANNER_FIRST`; none of them is correct *by construction*,
+and any topology or routing change silently falsifies them.
+
+**The fix**, per agent: replace the hard-coded name with `previous agent`, as
+`tool_caller.py:168` already does.  Consider whether the prefix is worth
+keeping at all, given `routing_tools.py` supplies a better one unconditionally
+— deleting the line entirely may be the cleaner end state.
+
+**Same root cause as F63.** A wrong statement that lives in Python rather than
+in a prompt, because Python has no `<<PF_ON>>` mechanism to make it
+conditional.  The fleet-wide policy that came out of the tool-schema audit
+covers this: *a docstring — or any model-facing Python string — may not name an
+agent, a flag, or a count.*
+
+Related: F63 (`middlePos` schema), F62 (invented parameter in a prompt example).
