@@ -3795,3 +3795,71 @@ tolerate: prose words that happen to be camelCase, and tool/field names
 
 Related: F57 (the DCOI is asked to name parameters it is never shown — same
 family, opposite direction).
+
+---
+
+### F63. `middlePos` schema said the opposite of the prompts — fixed in the tool, NOT in the DB seeder
+
+**Status.** Tool schema FIXED 2026-08-06 (shared tree, all topologies).  The DB
+seeder and any already-seeded rows are DELIBERATELY LEFT ALONE — owner's call.
+
+**What was wrong.** `tools/generate_mesh/generate_mesh.py` described the
+parameter as:
+
+    middlePos: Annotated[float, "Middle-section radial position
+                                 (x impellerRadius, dimensionless)"]
+
+That is the formula the prompts explicitly FORBID.  Three sources agree against
+it:
+
+* `DC_prompt_fragments/dc_config/modelling_notes.md:5-9` — "radius =
+  ``4 + middlePos·(impellerRadius − 4)`` mm — **NOT** ``middlePos ×
+  impellerRadius``"
+* `DC_prompt_fragments/dc_config/parameters.md:16` — "(fraction of blade span,
+  unitless)"
+* `web/feg/profiles.js:19` — the code that actually runs:
+  `radius: 4.0 + (impellerRadius - 4.0) * t`
+
+The Annotated description is sent to the **Tool Caller on every turn**, and the
+Tool Caller is the last agent before geometry generation.  This is the same
+misunderstanding that corrupted a test deck once already (fixed in the prompts
+and the deck; the tool schema and the DB seeder were missed).
+
+**Why a schema and not a prompt.** A prompt can carry a conditional or be
+corrected per agent; a docstring is a plain Python string.  This is the worst
+instance of the general finding that in this codebase the SCHEMAS, not the
+prompts, are where stale statements accumulate — see the tool-schema audit
+summarised in the commit for this fix.
+
+**LEFT ALONE, deliberately:**
+
+* `extra_utilities/db_design/populate_dc_parameter_schemas.py:64` still reads
+  `"unit": "x impellerRadius"` / `"...as multiplier of propeller radius"`, in
+  the V1 list (V2 derives from V1 by comprehension, so it inherits it).
+* Any already-seeded database therefore holds the wrong text for BOTH
+  `schema_version` 1 and 2.
+
+Two reasons this is acceptable rather than sloppy.  **Nothing reads
+`dc_parameter_schemas` at runtime** — verified by grep; the only references are
+the seeder, a row-count in `smoke_test_postgres_pool.py`, and TRUNCATE comments
+in `web_app.py`.  No agent has ever seen it.  And the file's header states the
+V1 list is immutable history, so correcting it in place would violate the
+table's own append-only contract.
+
+**If it ever needs correcting** (e.g. a future feature starts reading the
+table), note that re-running the seeder will NOT help: it is
+`INSERT ... ON CONFLICT (schema_version, param_name) DO NOTHING`, so it is a
+no-op on existing rows.  It needs a manual statement, the same shape the file's
+header prescribes for retirements:
+
+```sql
+UPDATE dc_parameter_schemas
+   SET unit = 'fraction of blade span',
+       description = 'Middle blade section position along the blade span from
+                      the 4 mm root: radius = 4 + middlePos*(impellerRadius - 4)
+                      mm, NOT a multiplier of impellerRadius'
+ WHERE param_name = 'middlePos';   -- applies to schema_version 1 AND 2
+```
+
+Related: F62 (a prompt example naming a parameter that does not exist — same
+family, and both were found by comparing a stated formula against the code).

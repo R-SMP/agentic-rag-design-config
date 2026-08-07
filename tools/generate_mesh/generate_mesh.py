@@ -624,7 +624,9 @@ def generate_and_render_propeller(
     innerCamber: Annotated[float, "Inner-section camber (% of chord)"],
     innerChord: Annotated[float, "Inner-section chord length (mm)"],
     innerAngle: Annotated[float, "Inner-section angle of attack (degrees)"],
-    middlePos: Annotated[float, "Middle-section radial position (x impellerRadius, dimensionless)"],
+    middlePos: Annotated[float, "Middle-section position as a fraction of blade span from the "
+                                "4 mm root: radius = 4 + middlePos*(impellerRadius - 4) mm, "
+                                "NOT middlePos*impellerRadius"],
     middleChord: Annotated[float, "Middle-section chord length (mm)"],
     middleAngle: Annotated[float, "Middle-section angle of attack (degrees)"],
     outerThickness: Annotated[float, "Outer-section profile thickness (% of chord)"],
