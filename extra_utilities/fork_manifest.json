@@ -80,6 +80,13 @@
       "note": "DELIBERATELY EMPTY (0 bytes) — see the DCII entry. DCOI-05's rationale: 'its one DCOI-relevant point — artifacts are not defects — is already in REC-01's replacement', and the DCOI-scoped sketch_handling now states exactly that ('Imperfections are drawing artifacts, not design intent ... all NOISE'). 1,736 -> 0."
     },
     {
+      "fork": "agents/7agent_reduced/dc_config/user_input_types/sketch_handling_user_input_inspector_7agents_reduced.md",
+      "origin": "DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md",
+      "origin_commit": "48a7e92935afc8320f7199ebb27bab7af545fa76",
+      "relation": "rewrite",
+      "note": "8,594 -> ~1,960. The UII is the last topology-7 consumer (the DCII and DCOI already have scoped copies), so this replaces the file rather than trimming it. DELETED: the ROUGH/PRECISE matching contract (revision-ordering and value-authoring, held by the DCOI copy), and the SUGGESTED SECTION SHAPES warm-start block — owner's call, it over-prescribed how to report sketch inputs. DC-specific example text is now imported via $sketch_precision_examples and $sketch_crop_example so the surrounding guidance stays configurator-agnostic. Both proposal candidates for the warm-start emitted middleThickness / middleCamber / middleMaxPos, none of which exist (parameter_keys.txt gives the middle only middlePos / middleChord / middleAngle)."
+    },
+    {
       "fork": "agents/7agent_reduced/user_input_inspector/prompt_7agents_reduced.md",
       "origin": "agents/user_input_inspector/prompt.md",
       "origin_commit": "e46b1945ed1b8c2a793506c85560fa03163459a5",

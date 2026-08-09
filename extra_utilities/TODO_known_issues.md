@@ -3920,3 +3920,53 @@ covers this: *a docstring — or any model-facing Python string — may not name
 agent, a flag, or a count.*
 
 Related: F63 (`middlePos` schema), F62 (invented parameter in a prompt example).
+
+---
+
+### F65. SUGGESTED SECTION SHAPES has no producer in the 7-agent reduced variant
+
+**Status.** OPEN by design — owner's decision 2026-08-07, taken knowingly.  Only
+the reduced variant is affected; standard-7 and the 5-agent are unchanged.
+
+**What happened.** The UII-scoped `sketch_handling` deletes the warm-start block
+that told the UII to emit a `SUGGESTED SECTION SHAPES` estimate.  The owner's
+reason: it over-prescribed how to report sketch inputs, and it was heavily
+DC-specific.  The block was Phase 3 of the precision sections-matching work
+(F51), but its production record is poor — the two live runs analysed in
+`design_precision_sections_match.md` found the DCIC froze levers, and BOTH
+competing rewrites in the shrink proposal still emitted `middleThickness` /
+`middleCamber` / `middleMaxPos`, none of which exist (`parameter_keys.txt` gives
+the middle section only `middlePos`, `middleChord`, `middleAngle`).
+
+**Two prompts now reference a block that never arrives** — in the REDUCED
+variant only:
+
+* `agents/dc_input_creator/prompt.md:23-26` — Guidelines item 3: "pick a
+  reasonable mid-range default — EXCEPT: if QUALITATIVE DESCRIPTIONS carries a
+  ``SUGGESTED SECTION SHAPES`` block … SEED the section-shape parameters".  The
+  EXCEPT branch simply never fires; the DCIC falls back to mid-range defaults.
+  Also `:157`, "your FIRST attempt should already be seeded from it".
+* `agents/planner/prompt.md:78` — one of THREE signals for detecting a precision
+  job: "a ``PRECISION DEMAND`` line in DESIGN INTENT, a PRECISE SKETCH carrying a
+  ``SUGGESTED SECTION SHAPES`` block, or wording like …".  The other two signals
+  still work, so precision jobs are still detected.
+
+Neither is a hard failure: one is a fallback, the other is one signal of three.
+Both are DEGRADATIONS, and both leave dead text in a prompt.
+
+**To resolve, when the DCIC and Planner get their own reduced prompts:** delete
+the `SUGGESTED SECTION SHAPES` clauses from both, so no reduced prompt references
+a marker no reduced agent produces.  Do NOT delete them from the shared prompts —
+the 5-agent Creator and Conductor still consume the marker and the 5-agent UII
+still produces it via the shared `sketch_handling`.
+
+**If instead the warm-start is ever wanted back**, note what the deletion also
+removed: the guard "record it in QUALITATIVE DESCRIPTIONS, never in QUANTITATIVE
+INPUTS, where an unmarked value is read as user-locked".  `value_states.md:4-5`
+defines LOCKED as "a value the user stated plainly there, with no marker", so a
+warm start written to QUANTITATIVE INPUTS arrives locked and freezes the very
+levers the refine loop moves.  Neither proposal candidate carried that guard;
+it was added during this review and would need re-adding.
+
+Related: F62 (a prompt example naming a parameter that does not exist — the
+`middle*` rows are the same defect, caught before shipping this time).

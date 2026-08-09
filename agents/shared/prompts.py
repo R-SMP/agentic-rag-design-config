@@ -636,6 +636,13 @@ FRAGMENT_TO_SLOT: dict[str, str] = {
     # User-input-type fragments
     "DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md": "sketch_handling",
     "DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md":    "sketch_notes",
+    # DC-SPECIFIC EXAMPLES split out of sketch_handling so the surrounding
+    # guidance can stay configurator-agnostic: the verdict wording a sketch
+    # precision statement uses, and a worked crop-box example.  Referenced
+    # today only by the 7-agent reduced variant's scoped sketch_handling; the
+    # shared originals exist so the slots always resolve.
+    "DC_prompt_fragments/dc_config/user_input_types/sketch_precision_examples.md": "sketch_precision_examples",
+    "DC_prompt_fragments/dc_config/user_input_types/sketch_crop_example.md":       "sketch_crop_example",
     # Tools-config fragments
     "DC_prompt_fragments/tools_config/tool_inventory.md":             "tool_inventory",
     "DC_prompt_fragments/tools_config/tool_caller_instructions.md":   "tool_caller_instructions",
@@ -852,6 +859,10 @@ def _build_slots() -> dict[str, str]:
         # User-input-type fragments (one pair per accepted type)
         "sketch_handling": _read_dc_fragment("dc_config/user_input_types/sketch_handling.md"),
         "sketch_notes": _read_dc_fragment("dc_config/user_input_types/sketch_notes.md"),
+        "sketch_precision_examples": _read_dc_fragment(
+            "dc_config/user_input_types/sketch_precision_examples.md"),
+        "sketch_crop_example": _read_dc_fragment(
+            "dc_config/user_input_types/sketch_crop_example.md"),
         # Tool-specific
         "tool_inventory": _read_dc_fragment("tools_config/tool_inventory.md"),
         "tool_caller_instructions": _read_dc_fragment("tools_config/tool_caller_instructions.md"),
