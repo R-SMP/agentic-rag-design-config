@@ -52,6 +52,20 @@
       "note": "Per-agent scoped copy (prompts.SCOPED_FRAGMENTS). Shares no text with the origin: it states the one rule the UII can act on (the vocabulary constrains LABELLING, not RECORDING), resolving the standing conflict with 'Capture, do not filter'. Tracked because a change to the shared DC hard rules may still change what the UII needs told."
     },
     {
+      "fork": "agents/7agent_reduced/dc_config/user_input_types/sketch_handling_dc_input_inspector_7agents_reduced.md",
+      "origin": "DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md",
+      "origin_commit": "48a7e92935afc8320f7199ebb27bab7af545fa76",
+      "relation": "rewrite",
+      "note": "DCII-01. The shared guide is 8,605 chars, of which 3,851 sit under headings literally titled '### UII' — and the DCII's own prompt refers to a sketch in exactly three places, all of which ARE the splice. Keeps only the ROUGH-vs-PRECISE strictness verdict, which it needs for axis 2 of its job (consistency with the user's stated inputs). 8,605 -> 331."
+    },
+    {
+      "fork": "agents/7agent_reduced/dc_config/user_input_types/sketch_handling_dc_output_inspector_7agents_reduced.md",
+      "origin": "DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md",
+      "origin_commit": "48a7e92935afc8320f7199ebb27bab7af545fa76",
+      "relation": "rewrite",
+      "note": "DCOI-01. Keeps the three things the DCOI acts on: the CONVERGED rule (it is the agent that orders another refine cycle), the rough-vs-precise asymmetry it judges by, and the form-scaffolding rule. Drops the authoring guidance (it judges, it does not author) and the SOFT TARGET bullet (covered by $value_states, which it splices). Uses $parameter_count instead of the shared file's literal, which says '17' on one line and '16' four lines later. 8,605 -> 1,298."
+    },
+    {
       "fork": "agents/7agent_reduced/user_input_inspector/prompt_7agents_reduced.md",
       "origin": "agents/user_input_inspector/prompt.md",
       "origin_commit": "e46b1945ed1b8c2a793506c85560fa03163459a5",
