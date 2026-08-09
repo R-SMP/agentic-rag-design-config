@@ -3923,10 +3923,14 @@ Related: F63 (`middlePos` schema), F62 (invented parameter in a prompt example).
 
 ---
 
-### F65. SUGGESTED SECTION SHAPES has no producer in the 7-agent reduced variant
+### F65. SUGGESTED SECTION SHAPES has no producer in the REDUCED prompt variants
 
-**Status.** OPEN by design — owner's decision 2026-08-07, taken knowingly.  Only
-the reduced variant is affected; standard-7 and the 5-agent are unchanged.
+**Status.** OPEN by design — owner's decision 2026-08-07, taken knowingly and
+reaffirmed.  Scope: the REDUCED prompts of the 7-, 5- and 3-agent systems.  The
+ORIGINAL (standard) prompts of all three topologies KEEP the feature and are
+unchanged.  Only the 7-agent reduced variant exists so far; the 5- and 3-agent
+reduced equivalents are to come, and must make the same removal to stay
+consistent.
 
 **What happened.** The UII-scoped `sketch_handling` deletes the warm-start block
 that told the UII to emit a `SUGGESTED SECTION SHAPES` estimate.  The owner's
@@ -3938,8 +3942,19 @@ competing rewrites in the shrink proposal still emitted `middleThickness` /
 `middleCamber` / `middleMaxPos`, none of which exist (`parameter_keys.txt` gives
 the middle section only `middlePos`, `middleChord`, `middleAngle`).
 
+**The phantom middle row is FIXED in the shared tree** (2026-08-07), separately
+from this decision: the block instructed the UII to estimate thickness / camber
+/ max-thickness position "per section (inner / middle / outer)" and printed a
+`middle ≈ 14% thick, 4% camber ...` example row, but `middleThickness`,
+`middleCamber` and `middleMaxPos` do not exist — `parameter_keys.txt` gives the
+middle only `middlePos`, `middleChord`, `middleAngle`, and
+`web/feg/profiles.js::interpolateMiddleParams` interpolates its shape from
+inner and outer.  That defect had shipped since the block was written and both
+competing rewrites in the shrink proposal copied it faithfully.  The standard
+prompts, which keep the feature, now ask only for inner and outer.
+
 **Two prompts now reference a block that never arrives** — in the REDUCED
-variant only:
+variants only:
 
 * `agents/dc_input_creator/prompt.md:23-26` — Guidelines item 3: "pick a
   reasonable mid-range default — EXCEPT: if QUALITATIVE DESCRIPTIONS carries a

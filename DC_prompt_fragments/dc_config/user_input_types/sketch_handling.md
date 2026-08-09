@@ -106,9 +106,12 @@ So when a reference image contains a precise blade-section (airfoil) drawing, tw
 extra records make the downstream section-matching far more efficient:
 
 1. **A rough shape estimate (warm start).**  Read the drawn airfoil proportions
-   into a ROUGH numeric estimate of the section-shape parameters, per section
-   (inner / middle / outer): profile **thickness** (% of chord), **camber**
+   into a ROUGH numeric estimate of the section-shape parameters, for the INNER
+   and OUTER sections only: profile **thickness** (% of chord), **camber**
    (% of chord), and the chordwise **max-thickness position** (tenths of chord).
+   The middle section has no profile-shape parameters of its own — its shape is
+   interpolated from inner and outer; only its chord, angle and radial position
+   are settable.
    Record it in QUALITATIVE DESCRIPTIONS under a clear label so the DC Input
    Creator seeds its first attempt close to the drawing instead of from defaults:
 
@@ -116,7 +119,6 @@ extra records make the downstream section-matching far more efficient:
        STARTING POINT for the DC Input Creator, NOT a user-locked value; refine
        within ranges):
          inner  ≈ 8% thick, 3% camber, max-thickness at ~3/10 chord
-         middle ≈ 14% thick, 4% camber, max-thickness at ~3/10 chord
          outer  ≈ 10% thick, 3% camber, max-thickness at ~4/10 chord
 
    This is your READING of the user's own drawing (they DID draw the shape), not
