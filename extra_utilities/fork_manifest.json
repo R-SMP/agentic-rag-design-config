@@ -66,6 +66,20 @@
       "note": "DCOI-01. Keeps the three things the DCOI acts on: the CONVERGED rule (it is the agent that orders another refine cycle), the rough-vs-precise asymmetry it judges by, and the form-scaffolding rule. Drops the authoring guidance (it judges, it does not author) and the SOFT TARGET bullet (covered by $value_states, which it splices). Uses $parameter_count instead of the shared file's literal, which says '17' on one line and '16' four lines later. 8,605 -> 1,298."
     },
     {
+      "fork": "agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_input_inspector_7agents_reduced.md",
+      "origin": "DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md",
+      "origin_commit": "0af4839bb5d51eaaeb66a418abc55f4999b1ae5b",
+      "relation": "rewrite",
+      "note": "DELIBERATELY EMPTY (0 bytes) — the file being empty IS the override. Section 2's census verdict on sketch_notes is DELETE_EVERYWHERE. $sketch_notes has no heading of its own (it is spliced under '## Sketch handling' right after $sketch_handling), so an empty resolution leaves nothing dangling. The DCII references a sketch in exactly three places, all of which ARE the splice. 1,736 -> 0."
+    },
+    {
+      "fork": "agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_output_inspector_7agents_reduced.md",
+      "origin": "DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md",
+      "origin_commit": "0af4839bb5d51eaaeb66a418abc55f4999b1ae5b",
+      "relation": "rewrite",
+      "note": "DELIBERATELY EMPTY (0 bytes) — see the DCII entry. DCOI-05's rationale: 'its one DCOI-relevant point — artifacts are not defects — is already in REC-01's replacement', and the DCOI-scoped sketch_handling now states exactly that ('Imperfections are drawing artifacts, not design intent ... all NOISE'). 1,736 -> 0."
+    },
+    {
       "fork": "agents/7agent_reduced/user_input_inspector/prompt_7agents_reduced.md",
       "origin": "agents/user_input_inspector/prompt.md",
       "origin_commit": "e46b1945ed1b8c2a793506c85560fa03163459a5",

@@ -95,11 +95,13 @@ quantitative constraints at all.
 
 **Count countable features explicitly.**  When an image shows discrete
 elements mapping to an integer-count parameter, load the image and count
-them one by one, traversing every instance once — never from a glance, and
-never from the note text when the image itself is loaded.  Record the count
-under the parameter name (a descriptive label when it maps to no parameter).
-If your count and the note disagree, use yours and record both in
-QUALITATIVE DESCRIPTIONS.
+them one by one, traversing every instance once — never from a glance.
+Record the count under the parameter name (a descriptive label when it maps
+to no parameter).  If the drawing is not trying to SHOW the count — one
+element with a "×6" label, or "6 blades" written beside a single
+representative — the stated number wins.  Otherwise the drawing wins: if
+your count and a note disagree, use yours and record both in QUALITATIVE
+DESCRIPTIONS.
 
 **SOFT TARGET — a value the user subordinated to a goal.**  When the user
 gives a value but says it is secondary to a qualitative goal ("here are
@@ -156,8 +158,6 @@ complex.
 
 ## Sketch handling (when the user supplied a sketch)
 $sketch_handling
-
-$sketch_notes
 
 ## Your tools
 Mechanics are in each tool's schema.  What is not:
