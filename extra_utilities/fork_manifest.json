@@ -54,16 +54,16 @@
     {
       "fork": "agents/7agent_reduced/dc_config/user_input_types/sketch_handling_dc_input_inspector_7agents_reduced.md",
       "origin": "DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md",
-      "origin_commit": "48a7e92935afc8320f7199ebb27bab7af545fa76",
+      "origin_commit": "041b38bb9ad027a45964725541e27e5a579703f0",
       "relation": "rewrite",
-      "note": "DCII-01. The shared guide is 8,605 chars, of which 3,851 sit under headings literally titled '### UII' — and the DCII's own prompt refers to a sketch in exactly three places, all of which ARE the splice. Keeps only the ROUGH-vs-PRECISE strictness verdict, which it needs for axis 2 of its job (consistency with the user's stated inputs). 8,605 -> 331."
+      "note": "DCII-01. The shared guide is 8,605 chars, of which 3,851 sit under headings literally titled '### UII' — and the DCII's own prompt refers to a sketch in exactly three places, all of which ARE the splice. Keeps only the ROUGH-vs-PRECISE strictness verdict, which it needs for axis 2 of its job (consistency with the user's stated inputs). 8,605 -> 331. ORIGIN MOVED at 041b38b (the phantom middle-section row removed from the warm-start block); reviewed, nothing to port — this copy does not carry the warm-start at all."
     },
     {
       "fork": "agents/7agent_reduced/dc_config/user_input_types/sketch_handling_dc_output_inspector_7agents_reduced.md",
       "origin": "DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md",
-      "origin_commit": "48a7e92935afc8320f7199ebb27bab7af545fa76",
+      "origin_commit": "041b38bb9ad027a45964725541e27e5a579703f0",
       "relation": "rewrite",
-      "note": "DCOI-01. Keeps the three things the DCOI acts on: the CONVERGED rule (it is the agent that orders another refine cycle), the rough-vs-precise asymmetry it judges by, and the form-scaffolding rule. Drops the authoring guidance (it judges, it does not author) and the SOFT TARGET bullet (covered by $value_states, which it splices). Uses $parameter_count instead of the shared file's literal, which says '17' on one line and '16' four lines later. 8,605 -> 1,298."
+      "note": "DCOI-01. Keeps the three things the DCOI acts on: the CONVERGED rule (it is the agent that orders another refine cycle), the rough-vs-precise asymmetry it judges by, and the form-scaffolding rule. Drops the authoring guidance (it judges, it does not author) and the SOFT TARGET bullet (covered by $value_states, which it splices). Uses $parameter_count instead of the shared file's literal, which says '17' on one line and '16' four lines later. 8,605 -> 1,298. ORIGIN MOVED at 041b38b (the phantom middle-section row removed from the warm-start block); reviewed, nothing to port — this copy does not carry the warm-start at all."
     },
     {
       "fork": "agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_input_inspector_7agents_reduced.md",
@@ -82,9 +82,9 @@
     {
       "fork": "agents/7agent_reduced/dc_config/user_input_types/sketch_handling_user_input_inspector_7agents_reduced.md",
       "origin": "DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md",
-      "origin_commit": "48a7e92935afc8320f7199ebb27bab7af545fa76",
+      "origin_commit": "041b38bb9ad027a45964725541e27e5a579703f0",
       "relation": "rewrite",
-      "note": "8,594 -> ~1,960. The UII is the last topology-7 consumer (the DCII and DCOI already have scoped copies), so this replaces the file rather than trimming it. DELETED: the ROUGH/PRECISE matching contract (revision-ordering and value-authoring, held by the DCOI copy), and the SUGGESTED SECTION SHAPES warm-start block — owner's call, it over-prescribed how to report sketch inputs. DC-specific example text is now imported via $sketch_precision_examples and $sketch_crop_example so the surrounding guidance stays configurator-agnostic. Both proposal candidates for the warm-start emitted middleThickness / middleCamber / middleMaxPos, none of which exist (parameter_keys.txt gives the middle only middlePos / middleChord / middleAngle)."
+      "note": "8,594 -> ~1,960. The UII is the last topology-7 consumer (the DCII and DCOI already have scoped copies), so this replaces the file rather than trimming it. DELETED: the ROUGH/PRECISE matching contract (revision-ordering and value-authoring, held by the DCOI copy), and the SUGGESTED SECTION SHAPES warm-start block — owner's call, it over-prescribed how to report sketch inputs. DC-specific example text is now imported via $sketch_precision_examples and $sketch_crop_example so the surrounding guidance stays configurator-agnostic. Both proposal candidates for the warm-start emitted middleThickness / middleCamber / middleMaxPos, none of which exist (parameter_keys.txt gives the middle only middlePos / middleChord / middleAngle). ORIGIN MOVED at 041b38b (the phantom middle-section row removed from the warm-start block); reviewed, nothing to port — this copy does not carry the warm-start at all."
     },
     {
       "fork": "agents/7agent_reduced/user_input_inspector/prompt_7agents_reduced.md",
