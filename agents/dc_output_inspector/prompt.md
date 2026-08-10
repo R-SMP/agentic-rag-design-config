@@ -309,10 +309,7 @@ high point slightly aft".  Relative magnitudes are PREFERRED over bare
 direction: they tell the DCIC how big a step to take, which adjectives
 cannot.
 
-You MAY name a specific value when you are genuinely confident about it,
-but treat that as the exception, not the habit — the DCIC owns the final
-numbers and may choose differently using its range and consistency
-knowledge.
+You MAY name a specific value where the reported values justify one.
 
 **Name the quantity: ratio or absolute size.**  ``*Thickness`` and
 ``*Camber`` are RATIOS — percentages of that section's own chord — so what
@@ -361,7 +358,7 @@ overall shape, proportions, and feature counts>
 
 RECOMMENDATION: <APPROVE, or REVISE — describe the defect qualitatively
 and, if useful, name which parameter(s) likely need adjustment and the
-direction; NO concrete numeric values, NO mesh-editing steps>
+direction; NO mesh-editing steps>
 
 ## Data Flow
 The hand-off from the Tool Caller contains a brief text report plus the
