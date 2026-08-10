@@ -3985,3 +3985,102 @@ it was added during this review and would need re-adding.
 
 Related: F62 (a prompt example naming a parameter that does not exist — the
 `middle*` rows are the same defect, caught before shipping this time).
+
+---
+
+### F66. Is the DCOI's "don't dictate exact params" bullet a repetition? — check when the DCOI is reduced
+
+**Status.** OPEN — owner's note 2026-08-10, raised while approving the C2a
+citation fix.
+
+The citation error is FIXED: `agents/dc_output_inspector/prompt.md:129-131` no
+longer cites "the HARD RULES below", a section which contained the OPPOSITE rule.
+What was NOT decided is whether the bullet's *content* already reaches the DCOI
+from elsewhere.  Candidate carriers, all of which the DCOI receives:
+
+| where | text |
+|---|---|
+| `prompt.md:298-302` | "Setting the parameter VALUES is not your job — that is the DC Input Creator's.  Your feedback stays primarily QUALITATIVE" |
+| `prompt.md:312-315` | "You MAY name a specific value when you are genuinely confident about it, but treat that as the exception" |
+| `prompt.md:362-364` | the RECOMMENDATION template's "NO concrete numeric values" |
+
+If it IS a repetition, `:129-131` is the copy to drop — the HARD RULES section is
+the natural owner.  Decide it when the DCOI's prompt comes up in the reduction.
+
+### F67. The Orchestrator has a soft "should" for turn-ending, and NO anti-loop rule at all
+
+**Status.** OPEN — deferred 2026-08-10 to the Orchestrator's own fork turn.
+
+Two separate gaps, both verified by execution:
+
+1. **"should" vs MUST.**  `agents/orchestrator/prompt.md:530` says "Every response
+   *should* end with your next tool call", under a `## Output format` heading.
+   The fragment it also receives (`generic_constraints.md:46-55` — outside both
+   `<<CHAIN_ONLY>>` regions, so it DOES reach the hub) states the hard version
+   plus the consequence.  The only dispatching agent in the system gets the
+   weaker wording in its own prompt.
+
+2. **No anti-loop remedy anywhere.**  A grep of `agents/orchestrator/prompt.md`
+   for "do not loop" / "same tool with the same" / "same arguments you already" /
+   "stuck" returns ZERO hits.  The operational long form lives in
+   `agents/shared/routing.py:222-231` and the Orchestrator never calls
+   `routing_instructions()` (verified: 0 occurrences in `orchestrator.py`).
+   `generic_constraints.md:34-36` gives it the prohibition but no remedy.
+
+Owner's decision 2026-08-10: the routing MUST, the halt consequence and the
+anti-loop rule STAY unconditional in the shared core rather than move down.  The
+missing remedy is a separate, deliberate fix.
+
+### F68. The DCIC is told the UII both is and is not an authorisation source
+
+**Status.** OPEN — deferred 2026-08-10 to the DCIC's own fork turn.
+
+`agents/dc_input_creator/prompt.md:63-64`: "An authorisation reaches you from the
+Orchestrator, the Planner relayed through the Orchestrator, **the UII**, or a
+CLARIFY bounce".  Six lines later, `:66-69`: "only it (relaying the user /
+Planner) or the user can GRANT authorisation, **NOT the User Input Inspector**".
+
+Reconcilable as relay-vs-grant, but stated as a flat contradiction.  The fix is
+one sentence: an authorisation may REACH the DCIC via the UII, but only the
+Orchestrator or the user can GRANT one.
+
+### F69. `smoke_test_prompt_variant.py` cannot classify a routing-fragment override
+
+**Status.** OPEN — blocks a whole class of variant override.  REPRODUCED
+2026-08-10 (probe written, gate run, probe removed, tree verified clean).
+
+Dropping any `routing_*_7agents_reduced.md` into
+`agents/7agent_reduced/prompt_fragments/` turns the gate RED:
+
+    FAIL — 1 problem(s):
+      [UNKNOWN] ...routing_user_input_inspector_uii_first_7agents_reduced.md
+      shadows agents/shared/prompt_fragments/routing_user_input_inspector_uii_first.md,
+      which is neither a prompt.md, a FRAGMENT_TO_SLOT entry, nor a recognised
+      per-agent scoped copy
+
+Cause: the six chain routing fragments are deliberately ABSENT from
+`FRAGMENT_TO_SLOT` (`prompts.py:544-549`) because they load at WIRING time via
+`_load_routing_fragment`, not at template-build time.  The test's classifier only
+knows the three build-time categories.
+
+Consequence already felt: the two conflicts that wanted a routing-fragment
+override (the DCIC's missing `call_tool_caller`, the UII's CLARIFY collision) had
+to be fixed elsewhere — in the shared fragment and in the existing `reduced7/`
+fork respectively.  Any future routing override needs the classifier taught first.
+
+### F70. `smoke_test_prompt_format.py` skips the Receptionist on a false premise — a possible brace hole
+
+**Status.** OPEN — reported by audit 2026-08-10, NOT yet verified by execution:
+`langchain_core` is absent in this worktree, so that test cannot run here.
+
+Its docstring (`:10-13`) and comment (`:54-58`) state that the Receptionist
+"assign[s] their TEMPLATE directly to `self.system_prompt` with no `.format()`
+call", and exclude it from brace coverage on that basis.  The audit reports that
+`agents/receptionist/receptionist.py:99-104` DOES call `.format()`.
+
+If that holds, the Receptionist is the one `.format()`ed agent with ZERO brace
+coverage — a literal `{` or `}` in any fragment it receives would raise
+`KeyError` at agent construction, in the exact place the harness assumes is safe.
+That is the ⚠3 failure mode the harness exists to prevent.
+
+VERIFY BY EXECUTION in an environment that has the dependencies before acting.

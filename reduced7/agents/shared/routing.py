@@ -84,12 +84,20 @@ def routing_instructions(
 
     # THE ONE CHANGE (F59).  "Previous" means whoever handed you this work, so
     # the bullet names its own target instead of leaving the per-agent fragment
-    # to patch it.  A first-in-pipeline agent still has a caller — it is the
-    # hub — so CLARIFY stays available to it rather than pointing at nobody.
+    # to patch it.
+    #
+    # ONLY when there IS a previous agent.  A first-in-pipeline agent is
+    # already told where a "back" goes twice — by the bullet above (same
+    # ``else`` branch as this one) and by its own routing fragment.  Naming
+    # the hub a third time here produced a statement that CONTRADICTED the
+    # fragment: this said "route back ... for you that is the Orchestrator",
+    # while e.g. routing_user_input_inspector_uii_first.md says "there is no
+    # 'previous' agent in the chain for you to CLARIFY back to".  Same
+    # destination, opposite claim about whether CLARIFY applies at all.
     if prev_agent:
-        clarify_target = f"normally the **{prev_agent}**"
+        clarify_clause = f" — normally the **{prev_agent}** — "
     else:
-        clarify_target = f"for you that is the {hub}"
+        clarify_clause = " "
 
     lines += [
         "",
@@ -103,8 +111,8 @@ def routing_instructions(
         "is done.",
         "- If you cannot do your job because the incoming hand-off is "
         "ambiguous, missing data, or contains an error the sender can fix, "
-        "route back to the agent that handed you this work — "
-        f"{clarify_target} — with a clear clarification request (CLARIFY).",
+        "route back to the agent that handed you this work"
+        f"{clarify_clause}with a clear clarification request (CLARIFY).",
         "- If something is fundamentally wrong and no agent in the chain "
         f"can fix it, route to the {hub} (ESCALATE).",
         "",

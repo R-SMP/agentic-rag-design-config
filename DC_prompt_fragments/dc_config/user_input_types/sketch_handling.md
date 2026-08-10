@@ -57,14 +57,15 @@ feature within it, on its own.
     order another cycle.
 
 ### Matching a PRECISE sketch — faithful within the parameters
-  * Read the drawn proportions and reproduce them as closely as the 17
-    parameters allow — e.g. a measured blade-section's thickness, camber,
-    high-point, chord, and angle, or the middle section's radial position.
+  * Read the drawn proportions and reproduce them as closely as the
+    $parameter_count parameters allow — e.g. a measured blade-section's
+    thickness, camber, high-point, chord, and angle, or the middle
+    section's radial position.
   * A real deviation from a deliberately-precise proportion IS a defect
     worth a revision — unlike hand-drawn wobble, it is not noise.
-  * You remain bounded by the 16 parameters: reproduce what they can
-    express; when the drawing implies geometry outside their reach, match
-    as closely as possible and say what could not be captured.
+  * You remain bounded by the $parameter_count parameters: reproduce what
+    they can express; when the drawing implies geometry outside their
+    reach, match as closely as possible and say what could not be captured.
   * If the user SUBORDINATES the drawn dimensions to the overall shape —
     "fit the sketched shape; the exact dimensions matter less" — record
     those dimensions as **SOFT TARGETS** subordinate to the shape goal, not

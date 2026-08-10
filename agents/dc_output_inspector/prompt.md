@@ -127,8 +127,8 @@ LOOP, not a one-shot verdict — obey it verbatim:
   thin and its leading edge too pointed; middle camber is shallower than drawn;
   outer high-point sits too far forward".  Name the section, the feature, and
   the direction.  Do NOT invent numeric parameter values or dictate exact
-  params to set (per the HARD RULES below) — you describe what you SEE; the
-  DCIC owns translating it into shape-param moves.
+  params to set — you describe what you SEE; the DCIC owns translating it
+  into shape-param moves.
 - **Route to keep the loop turning.**  While still iterating, hand your gap
   description back with ``call_orchestrator``, clearly marked as a PRECISION
   REFINE — still iterating, not a blocker.  The Orchestrator relays it straight

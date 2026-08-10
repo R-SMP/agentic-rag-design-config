@@ -1,6 +1,9 @@
 ### Available routing tools
 <<DCII_ONLY>>- ``call_dc_input_inspector(message)`` — FORWARD to the DC Input
   Inspector (the next step in the natural pipeline).
+- ``call_tool_caller(message)`` — the precision tight-loop edge: FORWARD
+  straight to render, skipping the DC Input Inspector.  Use it only on a
+  precision refine round, as described in your prompt.
 <</DCII_ONLY>><<DCII_OFF>>- ``call_tool_caller(message)`` — FORWARD to the Tool Caller (the
   next step in the natural pipeline).
 <</DCII_OFF>>
