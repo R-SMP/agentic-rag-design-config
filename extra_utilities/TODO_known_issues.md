@@ -4084,3 +4084,114 @@ coverage — a literal `{` or `}` in any fragment it receives would raise
 That is the ⚠3 failure mode the harness exists to prevent.
 
 VERIFY BY EXECUTION in an environment that has the dependencies before acting.
+
+---
+
+### F71. The Orchestrator is ordered THREE TIMES to call a tool it does not hold
+
+**Status.** OPEN — found 2026-08-10 during the `hard_constraints_tools` audit.
+Verified by reading the wiring, not the prompts.
+
+`agents/orchestrator/orchestrator.py:439-452` builds `orch_tools` as: six
+routing tools, `calculate`, `list_attempts`, `read_attempt`, `new_attempt`
+(plus three DBa tools when RAG is on).  **`read_agent_history` is not in it.**
+It is built once at `:287` and handed only to the Planner (`:310`) and the
+Receptionist (`:318`).
+
+The Orchestrator's prompt orders it anyway:
+
+| line | text |
+|---|---|
+| `:119` | "``read_agent_history('dc_output_inspector')``" |
+| `:348` | "confirm it via ``read_agent_history`` (the Tool Caller / DCIC / …)" |
+| `:386` | "``read_agent_history(<the escalating agent>)`` and read the failing tool's …" |
+
+`:348` is inside a rule that says to confirm something BEFORE calling the
+Planner or Receptionist — so the hub is told to gate a routing decision on a
+tool call it cannot make.  Worse than a duplicate: the model either invents the
+call and fails, or silently skips the confirmation step.
+
+**Fix is a choice, not a wording change:** either add `read_agent_history` to
+`orch_tools`, or reword all three sites to `list_attempts` / `read_attempt`,
+which the Orchestrator does hold.  Decide when the Orchestrator's prompt comes
+up in the reduction (it is also F67's file).
+
+### F72. Receptionist Situation B forbids `calculate` while a hard rule orders it
+
+**Status.** OPEN — this is the repo's own CON-25, still live.  Re-confirmed
+2026-08-10.
+
+`DC_prompt_fragments/tools_config/hard_constraints_tools.md` (and its reduced
+override) says "route EVERY arithmetic operation through the ``calculate``
+tool".  `agents/receptionist/prompt.md:216-219` says "The **ONLY** tools
+permitted here are the read-only / display ones that do not loop control back:
+``read_attempt``, ``list_attempts``, ``visualize_3d_model`` and
+``propose_attempt``".  `calculate` IS bound (`receptionist.py:126`, bound at
+`:145`) but excluded from that whitelist.  Both statements are absolutes.
+
+Situation B is where a number reaches the user unreviewed ("70 mm -> 65 mm"),
+so this is the worst possible place for the arithmetic rule to be voided.
+
+**Fix: add ``calculate`` to the Situation B list.**  It does not loop control
+back, so it belongs there on the whitelist's own stated criterion.
+
+### F73. The DCII is told `parameters.json` is "overwritten".  It never is.
+
+**Status.** OPEN — one word.  Deferred to the DCII's fork turn.
+
+`agents/dc_input_inspector/prompt.md:76`: "``parameters.json`` has just been
+**overwritten**".  The byte-parallel paragraph in the Tool Caller's prompt gets
+it right — `tool_caller/prompt.md:48`: "the parameter set has just been
+**written** by the DCIC".
+
+The code refuses an overwrite: `dc_input_creator.py:99-103`, "the write refuses
+if it already contains a ``parameters.json`` (attempt folders are append-only)".
+
+So the DCII is told the file was mutated in place when in fact a NEW attempt
+folder was opened.  **Fix: `overwritten` -> `written`.**
+
+### F74. The "only these five" path-label list is incomplete — still live in standard + 5-agent
+
+**Status.** CUT in the 7-agent reduced variant 2026-08-10.  OPEN everywhere
+else.
+
+`DC_prompt_fragments/tools_config/hard_constraints_tools.md:2-5` states that
+read tools take "only" the paths given by five named labels.  At least these
+live labels are missing:
+
+  * ``Extraction output file:``  — the UII's own WRITE target
+    (`user_input_inspector.py:107-108`)
+  * ``Input file directory:``    — the Orchestrator's incoming label
+  * ``Attempts this cycle:`` / ``Show to user:`` — Receptionist
+
+An exhaustive list that omits four live labels, one of them an agent's own
+write destination, is worse than no list.  The reduced variant deletes it (each
+label lives in its consuming tool's schema).  The standard and 5-agent trees
+still carry it and must either complete it or drop it the same way.
+
+Related: it is ALSO wrong for the Receptionist, which receives NONE of the five
+— see the hard_constraints_tools fork note.
+
+### F75. Attempt-folder coherence is an invariant nothing enforces
+
+**Status.** OPEN — the durable fix for a rule just removed from prose.
+
+The removed clause said a folder's mesh and ``render_*.png`` must have come
+from that folder's own ``parameters.json``.  Nothing checks it:
+
+  * `tools/generate_mesh/generate_mesh.py:177-213` (`_validate_output_dir`)
+    checks only that `output_dir` exists under the attempts root — never that
+    the parameters passed in match the folder's `parameters.json`.
+  * `generate_and_render_propeller` REUSES any pre-existing
+    `propeller_mesh.obj` without comparing it to the 16 values in the same
+    call.
+  * `render_blade_sections.py:112-113` writes into `src.parent`, guarded only
+    by "somewhere under the attempts tree".
+
+Prose was removed because the actionable core is stated more strongly in
+`agents/tool_caller/prompt.md:11-13` ("that path is the only folder you may
+write into this cycle"), in the prompt of the only agent that can violate it.
+What remains is a system invariant no agent acts on — which belongs in code.
+
+**Fix: have `_validate_output_dir` compare the passed parameters against the
+target folder's `parameters.json` and refuse on mismatch.**
