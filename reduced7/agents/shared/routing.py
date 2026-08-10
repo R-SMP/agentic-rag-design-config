@@ -15,26 +15,42 @@ Only ``routing_instructions`` is re-implemented, because only its TEXT differs.
 Planner from the grantor list when the topology is not 7, and a stale duplicate
 would name an agent that does not exist in the 5- and 3-agent systems (F61).
 
-WHAT DIFFERS FROM THE ORIGINAL — one change, see F59:
+WHAT DIFFERS FROM THE ORIGINAL — still exactly one change (F59).  Verified by
+diffing the EMITTED text against the original for both a first-in-pipeline and a
+mid-chain agent: one bullet differs, nothing else.
 
-The original guards only the POSITION line on ``prev_agent`` (origin lines
-190-196) and then appends the "How to decide where to route" block
-unconditionally, including "route to the previous agent with a clear
-clarification request (CLARIFY)".  For an agent with ``prev_agent=None`` that
-bullet points at nobody, so every first-agent fragment has to carry a paragraph
-patching it afterwards — see
-``agents/shared/prompt_fragments/routing_user_input_inspector_uii_first.md``,
-whose closing paragraph exists solely to say "anything that would otherwise be a
-'back' routes to the Orchestrator instead".
+The original appends the "How to decide where to route" block unconditionally,
+including "route to the previous agent with a clear clarification request
+(CLARIFY)" — naming no target.  Here that bullet names its own, defining
+"previous" as *whoever handed you this work* rather than a pipeline position.
 
-This is NOT a contradiction in the original: "previous agent" legitimately means
-*whoever handed you this work*, and a first-in-pipeline agent still has a
-caller.  The defect is that the generator already knows ``prev_agent is None``
-and could say so itself instead of making each fragment correct it.
+BUT ONLY WHERE THERE IS ONE (C6, 2026-08-10).  An earlier version of this fork
+also named the hub when ``prev_agent is None``.  That was the THIRD statement of
+the same thing for a first agent — the position bullet a few lines above already
+says "You are the first agent in the natural flow; if you need to go 'back',
+that means handing control to the {hub}" under the identical condition — and it
+was worded so as to CONTRADICT the agent's own routing fragment, which says
+"there is no 'previous' agent in the chain for you to CLARIFY back to"
+(``agents/shared/prompt_fragments/routing_user_input_inspector_uii_first.md``).
+Same destination, opposite claim about whether CLARIFY applies at all.
 
-So here the CLARIFY bullet names its own target, defining "previous" as the
-sender rather than a pipeline position.  The fragment's patch paragraph then
-becomes redundant, which is what makes the proposal's UII-44 cut safe.
+That fragment paragraph is the SOLE authority for the first-agent case and must
+not be cut.  The proposal's UII-44 assumes this fork made it redundant.  It did
+not, and that cut is unsafe as written.
+
+WHAT DEPENDS ON THIS BLOCK — read before deleting any string below.
+
+Deleting this fork wholesale is safe: the original emits the same rules, and all
+that is lost is the F59 wording.  EDITING these strings is NOT safe.  Under
+PROMPT_VARIANT=reduced, ``generic_constraints_7agents_reduced.md`` deliberately
+no longer states FORWARD-is-default, ESCALATE-when-blocked or permissions->hub.
+That cut was sound precisely BECAUSE this block states all three to exactly the
+same audience: ``<<CHAIN_ONLY>>``'s audience is identical to this function's,
+since ``_NON_CHAIN_AGENTS`` (prompts.py:228-230) is precisely the set of agents
+that never call it — see the four hub files, incl. the explicit comments at
+conductor.py:230 and architect.py:301.  So for the reduced variant those three
+rules now have exactly ONE delivery each, and it is the "How to decide where to
+route" and "Permission / authorisation issues" sections below.
 """
 
 from agents.shared import topology as _topology
