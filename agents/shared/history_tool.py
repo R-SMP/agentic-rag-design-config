@@ -1,8 +1,9 @@
 """Shared ``read_agent_history`` tool.
 
-Lets an agent (currently the Receptionist and the Planner) inspect
-another agent's live ``self.messages`` list and answer questions about
-prior pipeline runs without re-running anything.
+Lets an agent (currently the Receptionist, the Planner and — since F71 —
+the Orchestrator itself) inspect another agent's live ``self.messages``
+list and answer questions about prior pipeline runs without re-running
+anything.
 
 Each calling agent gets its own copy of the tool built via
 :func:`build_read_agent_history_tool`, bound to
