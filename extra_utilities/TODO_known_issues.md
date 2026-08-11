@@ -4009,9 +4009,39 @@ the natural owner.  Decide it when the DCOI's prompt comes up in the reduction.
 
 ### F67. The Orchestrator has a soft "should" for turn-ending, and NO anti-loop rule at all
 
-**Status.** OPEN — deferred 2026-08-10 to the Orchestrator's own fork turn.
+**Status.** FIXED 2026-08-11 in the Orchestrator fork, `56fab8b` (batch 1) —
+7-agent REDUCED variant only; the shared prompt still carries both gaps for the
+standard build.
 
-Two separate gaps, both verified by execution:
+**Part 1 turned out to be worse than "weak wording".**  The plan was to promote
+"should" to MUST so it matched the delivered hard rule.  Reading the dispatcher
+first showed the hard rule is FALSE for this reader:
+`agents/orchestrator/orchestrator.py:502-511` — when the hub emits no tool call,
+`final = rendered_content` and it returns `AgentHop(DONE, final)`.  The text is
+DELIVERED TO THE USER as the final answer.  Nothing is discarded and no pipeline
+halts.  So `generic_constraints_7agents_reduced.md` was telling the hub a
+consequence that does not apply to it, while its own carve-out names "the
+Orchestrator's final user-facing wrap-up" and defines it nowhere.
+
+The same section also instructed an UNREACHABLE state — "when the cycle is
+complete (after ``call_receptionist``), produce no further tool call".
+`agents/receptionist/receptionist.py:437-440` returns `AgentHop(DONE, ...)` and
+`orchestrator.py:690-691` returns `hop.message` immediately, so the hub is never
+re-entered after that call.
+
+The fork rewrites `## Output format` to state the true mechanism, define the
+wrap-up the carve-out names, and drop the unreachable instruction.
+
+**Part 2 was narrower than recorded here.**  The hub is not remedy-less on every
+axis: `prompt.md:474-487` covers failure-retry and `:399-409` covers Planner
+ping-pong.  What was genuinely absent is the SAME-READ-TWICE case, and the hub
+holds four repeatable read tools (`orchestrator.py:447-461`).  The new bullet
+lives in `## Escalation Hierarchy`, which already owns both exits, and its
+discriminator is **"has any agent RUN since"** — NOT "the answer will not
+change", which is false across a chain excursion: F71 bound `read_agent_history`
+precisely so `prompt.md:386` could re-verify after one.
+
+Original finding follows.
 
 1. **"should" vs MUST.**  `agents/orchestrator/prompt.md:530` says "Every response
    *should* end with your next tool call", under a `## Output format` heading.
