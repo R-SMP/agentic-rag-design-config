@@ -46,6 +46,7 @@ below is the shipping resolver.
 """
 
 import hashlib
+import re
 import sys
 import types
 from pathlib import Path
@@ -146,6 +147,27 @@ def assemble(topo: int, planner_first: bool, variant: str, agent: str):
 # Deriving the expected blast radius from the override files on disk
 # ---------------------------------------------------------------------------
 
+def _mentions_slot(text: str, slot: str) -> bool:
+    """True when *text* references ``$slot`` as a WHOLE identifier.
+
+    A bare ``f"${slot}" in text`` is wrong whenever one slot name is a PREFIX
+    of another.  Live case: ``$agent_tools_overview`` is a prefix of
+    ``$agent_tools_overview_brief``, so agents/database_handler/prompt.md —
+    which references only the _brief slot — matched BOTH.  The test then put
+    the Database Handler in the expected blast radius of an
+    agent_tools_overview override, saw its prompt (correctly) not change, and
+    failed with [BLAST] on a change that was right.  Reproduced before this
+    fix; the same hazard sits on the nested-slot loop below.
+
+    Production is unaffected: ``string.Template.safe_substitute``
+    (prompts.py:1000-1001) matches the longest identifier, and the admin UI
+    scans with ``\\$([a-z_][a-z0-9_]*)``.  This was a test-only defect — which
+    is worse than it sounds, because the gate is the thing that decides a
+    prompt change is safe.
+    """
+    return re.search(rf"\${re.escape(slot)}(?![A-Za-z0-9_])", text) is not None
+
+
 def _prompt_md_slot_users() -> dict[str, set[str]]:
     """$slot -> agents whose own prompt.md references it, one nesting level
     resolved (available_agents.md itself references $tool_inventory, and
@@ -157,7 +179,7 @@ def _prompt_md_slot_users() -> dict[str, set[str]]:
             continue
         text = md.read_text(encoding="utf-8")
         for path, slot in prompts.FRAGMENT_TO_SLOT.items():  # noqa: B007
-            if f"${slot}" in text:
+            if _mentions_slot(text, slot):
                 direct.setdefault(slot, set()).add(agent_dir.name)
     # Propagate one level: a fragment that mentions $inner is read by everyone
     # who reads the outer fragment.
@@ -167,7 +189,7 @@ def _prompt_md_slot_users() -> dict[str, set[str]]:
             continue
         body = p.read_text(encoding="utf-8")
         for inner_slot in set(prompts.FRAGMENT_TO_SLOT.values()):
-            if f"${inner_slot}" in body and slot in direct:
+            if _mentions_slot(body, inner_slot) and slot in direct:
                 direct.setdefault(inner_slot, set()).update(direct[slot])
     return direct
 
