@@ -4089,8 +4089,32 @@ VERIFY BY EXECUTION in an environment that has the dependencies before acting.
 
 ### F71. The Orchestrator is ordered THREE TIMES to call a tool it does not hold
 
-**Status.** OPEN — found 2026-08-10 during the `hard_constraints_tools` audit.
-Verified by reading the wiring, not the prompts.
+**Status.** FIXED 2026-08-11 in `ed8569a` (shared tree, topology 7 — the 5-
+and 3-agent hubs use `cond_tools` / `arch_tools` and are unaffected).
+
+**Correction to the finding below: it was TWO sites, not three.**  `:119` is
+correct as written — in context the Orchestrator is quoting an instruction to
+HAND TO the Planner ("point the Planner at the source"), and the Planner does
+hold the tool.  Only `:348` and `:386` were real, and they needed different
+fixes:
+
+  * `:386` — BOUND the tool.  Nothing else could serve it: the chain-access
+    block (default ON, `session.py:41`) injects hand-off PROSE
+    (`[FROM x, TO y]: <message>`), never tool results, and
+    `list_attempts` / `read_attempt` read attempt FOLDERS, not message history.
+    Precedent, not judgement, decided this: the same bug class was already
+    found and fixed by BINDING in the 5-agent Conductor, whose comment at
+    `conductor.py:350-357` records the live consequence of a hub prompt naming
+    unbound tools — a wrong call, an error, then a wasted routing hop.
+  * `:348` — DELETED, along with the bullet after it.  Its three clauses were
+    (a) mechanics the tool schema owns, (b) "never guess a path", already owned
+    fleet-wide by `hard_constraints_tools` bullet 1, and (c) a numbered pointer
+    to a list 160 lines below in the same prompt, plus an inline restatement of
+    the rule it pointed at.  The one non-redundant clause — "never omit an
+    attempt", the completeness lower bound to rule 4's upper bound — survives
+    with the tension resolved inside the sentence instead of by footnote.
+
+Original finding follows.
 
 `agents/orchestrator/orchestrator.py:439-452` builds `orch_tools` as: six
 routing tools, `calculate`, `list_attempts`, `read_attempt`, `new_attempt`
