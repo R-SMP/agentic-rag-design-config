@@ -425,7 +425,7 @@ change originated is your job.
 
 ### Attempt folders and ``Current attempt:`` propagation
 Every design generation lives in an attempt folder under
-``logs/attempts/`` (canonical home for that cycle's ``parameters.json``,
+``attempts/`` (canonical home for that cycle's ``parameters.json``,
 mesh, and renders).  The **Creator creates the folder** for each new
 generation (it holds ``new_attempt``); everyone else uses the folder named
 in its hand-off.  Default: you name the slug + intent and the Creator
@@ -868,7 +868,7 @@ request genuinely requires producing (or re-producing) geometry.
 ## Attempt folders and the attempt tools (list_attempts / read_attempt)
 
 Each design generation lives in an attempt folder under
-``logs/attempts/`` — the canonical home for that cycle's
+``attempts/`` — the canonical home for that cycle's
 ``parameters.json``, mesh, renders, and optional ``description.txt``.
 The **Creator creates the folder** for each new generation.  You do NOT
 have a tool to create attempt folders and must NOT try to open one

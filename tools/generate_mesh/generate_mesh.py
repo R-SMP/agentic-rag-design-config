@@ -181,7 +181,7 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
 
     Returns ``(path, None)`` on success, ``(None, error_message)`` on
     failure.  The folder must already exist (created by ``new_attempt``)
-    and live under ``logs/attempts/``.  A pre-existing
+    and live under ``attempts/``.  A pre-existing
     ``propeller_mesh.obj`` is NOT rejected — the merged tool reuses it in
     place (append-only; never overwritten) and proceeds to the render
     step.

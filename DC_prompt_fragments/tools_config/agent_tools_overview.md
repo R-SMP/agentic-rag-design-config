@@ -1,7 +1,7 @@
 Universal utilities: ``calculate`` (numeric answers — batch every
 expression you need into ONE call), ``list_attempts`` and
 ``read_attempt(n, file)`` (inspect the per-attempt folders under
-``logs/attempts/``) are bound to every agent; ``database_search``
+``attempts/``) are bound to every agent; ``database_search``
 (semantic search over past saved sessions) to the DBa-enabled agents.
 ``new_attempt(slug, description)`` — the only way to open a fresh attempt
 folder — is bound to the **DCIC** (which owns attempt creation) and to

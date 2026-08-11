@@ -133,7 +133,7 @@ no fixed template and no menu of allowed phrasings.  Concrete guidance:
 
 ### Attempt folders and ``Current attempt:`` propagation
 Every design generation lives in an attempt folder under
-``logs/attempts/`` (canonical home for that cycle's ``parameters.json``,
+``attempts/`` (canonical home for that cycle's ``parameters.json``,
 mesh, and renders).  The **DCIC creates the folder** for each new
 generation (it holds ``new_attempt``); everyone else uses the folder
 named in its hand-off.  Default: the Planner names the slug + intent and

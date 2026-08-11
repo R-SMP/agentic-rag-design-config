@@ -219,7 +219,7 @@ parameter validation there is.<</DCII_ONLY>>
 ## Attempt folders + reusing history (read before writing)
 
 Each generation cycle is anchored on an attempt folder under
-``logs/attempts/`` — the canonical home for that cycle's
+``attempts/`` — the canonical home for that cycle's
 ``parameters.json``, mesh, and renders (filenames: ``$output_file_locations``).
 ``parameters.json`` and the mesh are append-only: once written, no one
 (including you) overwrites them; existing renders are reused in place.

@@ -526,7 +526,7 @@ workflow.
 ## Attempt folders and the attempt tools (list_attempts / read_attempt)
 
 Each design generation lives in an attempt folder under
-``logs/attempts/`` — the canonical home for that cycle's
+``attempts/`` — the canonical home for that cycle's
 ``parameters.json``, mesh, renders, and optional ``description.txt``.
 The **DCIC creates the folder** for each new generation (the Orchestrator
 may, only as a fallback when the DCIC cannot).  You do NOT have a tool to

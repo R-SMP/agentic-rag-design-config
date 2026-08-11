@@ -1,5 +1,5 @@
 All artifacts produced for a single design generation live INSIDE a
-per-attempt folder under ``logs/attempts/<TS>_<NNN>_<slug>/``.  The
+per-attempt folder under ``attempts/<TS>_<NNN>_<slug>/``.  The
 folder is created via ``new_attempt`` by the DC Input Creator (or, only
 as a special-case fallback, the Orchestrator); downstream agents target
 the same folder by reading the ``Current attempt:`` label in their hand-

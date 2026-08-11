@@ -4245,3 +4245,40 @@ What remains is a system invariant no agent acts on — which belongs in code.
 
 **Fix: have `_validate_output_dir` compare the passed parameters against the
 target folder's `parameters.json` and refuse on mismatch.**
+
+---
+
+### F76. `logs/attempts/` does not exist — 15 stale sites, fleet-wide
+
+**Status.** FIXED 2026-08-11.  All 15 sites rewritten to `attempts/`.
+
+**The fact.** `config.py:38` is the SOLE assignment in the repo:
+`ATTEMPTS_DIR = PROJECT_ROOT / "attempts"`.  `LOGS_DIR` is a separate
+constant at `config.py:33`, and nothing anywhere creates a `logs/attempts`
+directory.  `docker-compose.yml:101` mounts `./attempts:/app/attempts`.
+
+**Why it mattered more than prose.** Three of the fifteen were TOOL SCHEMAS —
+`generate_mesh.py:184`, `render_mesh.py:37`, `render_mesh_pyvista.py:45` —
+which ship to the Tool Caller every turn on the tool-definition channel.  An
+agent sanity-checking or reconstructing a path against that text would have
+built one `_validate_output_dir` (`generate_mesh.py:177-213`) then rejects.
+The hand-off-label discipline normally prevents construction, which is why
+this never surfaced as a visible failure.
+
+**Sites fixed:** `agents/orchestrator/prompt.md:136`,
+`agents/planner/prompt.md:529`, `agents/dc_input_creator/prompt.md:222`,
+`agents/tool_caller/prompt.md:11,120`,
+`DC_prompt_fragments/dc_config/output_file_locations.md:2`,
+`DC_prompt_fragments/tools_config/agent_tools_overview.md:4`, the three tool
+schemas above, plus the 5-agent tree —
+`agents/conductor/prompt_5agents.md:428,871`,
+`agents/creator/prompt_5agents.md:444`,
+`agents/5agent/tool_caller/prompt_5agents.md:11,120`.
+
+**Deliberately NOT changed:** `agents/loader.py:227`.  Its
+`"logs/attempts/inputs"` is a prose list of THREE directories inside an EXDEV
+comment, not a path.
+
+Found while auditing `agent_tools_overview.md`, which carried one of the
+fifteen.  Cutting that fragment would have fixed nothing on its own — the
+copy the hub actually quotes into hand-offs is `orchestrator/prompt.md:136`.

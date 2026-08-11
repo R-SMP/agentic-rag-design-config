@@ -34,7 +34,7 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
     """Resolve and validate an attempt folder for writing renders.
 
     The folder must exist (created by ``new_attempt``) and live under
-    ``logs/attempts/``.  Pre-existing render PNGs are NOT an error — the
+    ``attempts/``.  Pre-existing render PNGs are NOT an error — the
     caller reuses them in place (identical parameters give identical
     geometry, so re-running this tool needs no new attempt).
     """

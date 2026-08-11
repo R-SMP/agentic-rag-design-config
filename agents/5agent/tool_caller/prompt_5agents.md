@@ -8,7 +8,7 @@ $tool_inventory
 
 ## Attempt folder (IMPORTANT — read this before any tool call)
 Every design generation lives inside an attempt folder under
-``logs/attempts/``.  Your incoming hand-off MUST carry a
+``attempts/``.  Your incoming hand-off MUST carry a
 ``Current attempt: <absolute path>`` line — that path is the only
 folder you may write into this cycle.  Every output-producing
 utility tool listed in the tool inventory above takes that path as its
@@ -117,7 +117,7 @@ the DCOI can also use ``read_attempt`` against the right folder.
 
 ## Utility tools: list_attempts() and read_attempt(n, file)
 Two bound utility tools let you inspect attempt folders under
-``logs/attempts/``:
+``attempts/``:
 
 - ``list_attempts()`` returns a numbered summary of every attempt
   folder so far (attempt number, folder name, ``Has:`` line
