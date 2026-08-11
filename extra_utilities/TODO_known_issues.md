@@ -4142,8 +4142,34 @@ up in the reduction (it is also F67's file).
 
 ### F72. Receptionist Situation B forbids `calculate` while a hard rule orders it
 
-**Status.** OPEN — this is the repo's own CON-25, still live.  Re-confirmed
-2026-08-10.
+**Status.** FIXED 2026-08-11 (shared tree, all topologies read this prompt).
+CON-25 is closed — but its stated risk was OVERSTATED, and the fix that
+shipped is not the one it proposed.
+
+**CON-25 said "Situation B is exactly where arithmetic shows up", citing two
+sections.  Both of them FORBID the Receptionist from computing:**
+`prompt.md:316` — "this must come FROM the hand-off — do not work it out
+yourself"; `:324` — "the fidelity / ceiling wording must come from the
+hand-off".  Situation B is relay-only by design, so the clash fires only on
+arithmetic the Receptionist performs incidentally.  Still a real conflict —
+two absolutes, and any incidental sum forces a violation — but rarer than
+the finding implied.
+
+**The deeper defect was the whitelist's own incoherence.**  It claimed its
+criterion was "the read-only / display ones that do not loop control back",
+then banned `read_agent_history` two lines earlier — which is read-only and
+does not loop.  The criterion did not produce the list, so a model applying
+it as written would conclude `read_agent_history` was allowed.
+
+The real criterion, visible once the relay-only design is seen, is: tools
+that DISPLAY what the hand-off designates, or COMPUTE on numbers it already
+carries — not tools that gather new material.  That explains every entry,
+gives the `read_agent_history` ban an actual reason (tying it to the
+never-invent rule the rest of Situation B rests on), and places `calculate`
+on the permitted side.  Shipped as a restatement rather than CON-25's
+one-word insertion, +85 chars.  Also rewrapped a 108-column line.
+
+Original finding follows.
 
 `DC_prompt_fragments/tools_config/hard_constraints_tools.md` (and its reduced
 override) says "route EVERY arithmetic operation through the ``calculate``
