@@ -344,13 +344,8 @@ Rules:
     to see a specific or different attempt.  When that happens, the
     user's preference is part of the evidence you passed to the
     Planner — it will factor it into the pick.
-  * If you are not certain of an attempt's number or absolute path,
-    confirm it via ``read_agent_history`` (the Tool Caller / DCIC /
-    DCOI hand-offs carry ``Current attempt:`` lines) BEFORE calling
-    the Planner / Receptionist — never guess a path and never omit
-    an attempt.
-  * This does not relax Anti-Hallucination rule 4: list only attempts
-    whose artefacts were actually produced/observed this run.
+  * Never omit an attempt whose artefacts you observed being produced
+    this run.
 
 ### Do NOT seed follow-ups the system cannot deliver
 Your technical summary must not propose or hint at capabilities this

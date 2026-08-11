@@ -449,6 +449,16 @@ class Orchestrator(BaseChainAgent):
             list_attempts,
             read_attempt,
             new_attempt,
+            # F71.  prompt.md:386 has always told the hub to verify a
+            # failing agent's account against the tool's LITERAL result
+            # ("The agent's prose is one account; the tool's actual return
+            # string is the truth") — but this tool was built at :287 and
+            # handed only to the Planner and the Receptionist.  The
+            # chain-access block cannot cover it: it injects hand-off prose
+            # ([FROM x, TO y]), never tool results.  Same bug class, and
+            # same fix, as the Conductor's read_extracted_inputs /
+            # read_user_queries (conductor.py:350-357).
+            history_tool,
         ]
         if database_access.is_enabled_for("orchestrator"):
             orch_tools.append(make_database_search_tool("orchestrator"))
