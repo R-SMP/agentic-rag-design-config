@@ -4100,8 +4100,34 @@ fork respectively.  Any future routing override needs the classifier taught firs
 
 ### F70. `smoke_test_prompt_format.py` skips the Receptionist on a false premise — a possible brace hole
 
-**Status.** OPEN — reported by audit 2026-08-10, NOT yet verified by execution:
-`langchain_core` is absent in this worktree, so that test cannot run here.
+**Status.** CONFIRMED and FIXED 2026-08-11.  `"RECEPTIONIST"` added to
+`TEMPLATE_NAMES`; the comment that justified the exclusion rewritten.
+
+**The premise really was false.**  `agents/receptionist/receptionist.py:99-104`
+calls `.format(user_inputs_dir=..., extraction_output_file=...)`.  The comment
+immediately above that call even concedes it — "the 7-agent prompt references
+neither, so ``.format()`` is a no-op there — but it is still called" — and a
+no-op `.format()` still raises on a malformed brace.  The Database Handler
+exclusion IS correct: `database_handler.py:1022` assigns the template directly.
+
+**Verified without running the harness** (it imports the agent packages, which
+pull `langchain_core`, absent here).  Its check is just
+`TEMPLATE.format_map(StubKwargs())` per name, and `prompts.py` imports fine with
+the stubs used elsewhere in this session.  All 8 templates format clean under
+both variants.  Mutation-tested: a bare `{` and a bare `}` are both caught, and
+both crash `receptionist.py:99` at runtime if shipped.
+
+**RESIDUAL GAP, pre-existing and NOT closed — applies to all 8 agents, not just
+the Receptionist.**  `StubKwargs.__missing__` returns a stub for any key, so a
+well-formed but unknown slot — `{bogus}` — passes the harness while raising
+`KeyError` at agent construction.  That leniency is deliberate and cannot simply
+be removed: legitimate runtime slots exist (the Orchestrator's
+`{chain_access_block}`).  Closing it properly means giving the harness each
+agent's ALLOWED slot set and rejecting anything else.  Worth doing if a
+`{word}`-shaped accident ever ships; the malformed-brace case fixed here is the
+one an author actually makes writing prose.
+
+Original finding follows.
 
 Its docstring (`:10-13`) and comment (`:54-58`) state that the Receptionist
 "assign[s] their TEMPLATE directly to `self.system_prompt` with no `.format()`

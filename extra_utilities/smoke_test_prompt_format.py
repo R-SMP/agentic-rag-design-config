@@ -49,15 +49,22 @@ sys.path.insert(0, str(REPO_ROOT))
 import agents  # noqa: F401, E402
 from agents.shared import prompts  # noqa: E402
 
-# The 7 chain agents that wire their TEMPLATE through ``.format(...)`` at
-# agent-construction time (see ``set_routing_tools`` in each module).  The
-# Receptionist and Database Handler are intentionally EXCLUDED — both
-# assign the TEMPLATE directly to ``self.system_prompt`` with no
-# ``.format()`` call, so literal ``{}`` patterns in their prompt bodies
-# (e.g. JSON tool-result examples in the DH prompt) are harmless at
-# runtime.  If you ever rewire either of these two through ``.format()``,
-# re-add them here so the regression-catcher covers them.
+# Every agent that wires its TEMPLATE through ``.format(...)``.  The Database
+# Handler is the only genuine exclusion — database_handler.py:1022 assigns the
+# template directly to ``self.system_prompt``, so literal ``{}`` patterns in its
+# prompt body (e.g. JSON tool-result examples) are harmless at runtime.  If it is
+# ever rewired through ``.format()``, add it here.
+#
+# THE RECEPTIONIST WAS EXCLUDED ON A FALSE PREMISE until F70.  This comment used
+# to claim it "assigns the TEMPLATE directly ... with no ``.format()`` call".
+# receptionist.py:99-104 DOES call ``.format(user_inputs_dir=...,
+# extraction_output_file=...)``.  The comment above that call concedes the
+# 7-agent prompt references neither slot so the call is "a no-op there" — but a
+# no-op ``.format()`` still raises KeyError on a literal ``{name}`` and
+# ValueError on a bare ``{``.  It was the one ``.format()``ed agent with zero
+# brace coverage, in the exact place everyone assumed was safe.
 TEMPLATE_NAMES = (
+    "RECEPTIONIST",
     "ORCHESTRATOR",
     "PLANNER",
     "UII",
