@@ -34,7 +34,8 @@ agent's scope):
   * **Tool Caller** — tool-execution reporting (correct paths,
     NEW-vs-carried freshness, escalations on failure).
   * **DC Output Inspector** — visual / QC verdicts, countable-feature
-    checks, comparison-source claims, override decisions.
+    checks, comparison-source claims, override decisions, and whether
+    visual claims were grounded in images loaded that turn.
 
 When NO part of the feedback applies to an agent — the most common case —
 emit ``send=false`` with an empty message.  That is the correct default.
