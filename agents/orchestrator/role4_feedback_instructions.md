@@ -30,7 +30,8 @@ agent's scope):
     qualitative-to-numeric translations, real-world-quantity conversions,
     whether user-locked values were honoured.
   * **DC Input Inspector** — parameter-validation judgement
-    (APPROVE/REVISE/ESCALATE), range / locked-value checks.
+    (APPROVE/REVISE/ESCALATE), range / locked-value checks, and its
+    engineering-soundness assessment of the parameter set.
   * **Tool Caller** — tool-execution reporting (correct paths,
     NEW-vs-carried freshness, escalations on failure).
   * **DC Output Inspector** — visual / QC verdicts, countable-feature
