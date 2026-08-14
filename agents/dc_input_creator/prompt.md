@@ -220,7 +220,7 @@ parameter validation there is.<</DCII_ONLY>>
 
 Each generation cycle is anchored on an attempt folder under
 ``attempts/`` — the canonical home for that cycle's
-``parameters.json``, mesh, and renders (filenames: ``$output_file_locations``).
+``parameters.json``, mesh, and renders.
 ``parameters.json`` and the mesh are append-only: once written, no one
 (including you) overwrites them; existing renders are reused in place.
 

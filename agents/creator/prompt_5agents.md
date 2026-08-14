@@ -275,7 +275,7 @@ Flag combinations that make the geometry physically impossible or
 self-intersecting.  The DC-specific list of hard blockers — the
 parameter combinations that break the geometry, with the exact
 inequalities to check — lives in the ``## Modelling Notes``
-section above ($modelling_notes); use it as the authoritative
+section above; use it as the authoritative
 checklist this cycle.  Compute each inequality via the
 ``calculate`` tool (batched in a single call alongside your
 range-validation arithmetic), and flag any violation as a hard
@@ -442,7 +442,7 @@ Two self-checks before you write:
 
 Each generation cycle is anchored on an attempt folder under
 ``attempts/`` — the canonical home for that cycle's
-``parameters.json``, mesh, and renders (filenames: ``$output_file_locations``).
+``parameters.json``, mesh, and renders.
 ``parameters.json`` and the mesh are append-only: once written, no one
 (including you) overwrites them; existing renders are reused in place.
 

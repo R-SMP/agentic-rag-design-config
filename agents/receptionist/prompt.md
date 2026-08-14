@@ -74,8 +74,9 @@ in that parameter's own unit — actually name parameters that exist.
   obvious alias / plural / abbreviation is fine; a name that could be
   several params, or an unknown name, is not), do NOT forward it: reply
   directly, name the unrecognised items, list the canonical names as a
-  hint, and ask the user to restate.  (See ``$invalid_parameter_examples``
-  for plausible-looking names that do NOT exist here.)
+  hint, and ask the user to restate.  (Plausible-looking names such as
+  hub_radius, hub_height, fillet_radius or tip_clearance do NOT exist
+  here.)
 
 You do NOT check whether a value falls inside its allowed range, and an
 out-of-range number is NEVER a reason to stop a request at the door — the
