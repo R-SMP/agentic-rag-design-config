@@ -12,7 +12,8 @@ thousands of characters later.
 Nothing else catches it.  The prompt still assembles, every slot still
 resolves, no marker is unbalanced, and no other test compares occurrence
 counts.  Six live instances were found across four files in one sweep,
-costing ~9,450 delivered characters:
+costing ~9,450 delivered characters — and THREE MORE a layer down, in
+fragments that splice fragments (see ``_scan_targets``), costing 2,643:
 
     dc_input_inspector/prompt.md      $modelling_notes             2,659
     creator/prompt_5agents.md         $modelling_notes             2,659
@@ -20,6 +21,8 @@ costing ~9,450 delivered characters:
     creator/prompt_5agents.md         $output_file_locations       1,670
     receptionist/prompt.md            $invalid_parameter_examples    396
     5agent/receptionist/prompt_*.md   $invalid_parameter_examples    396
+    shared/…/available_agents.md      $tool_inventory                881
+    5agent/…/available_agents_5*.md   $tool_inventory (twice)      1,762
 
 THE RULE, and why it is objective.  A slot that resolves to MULTI-LINE content
 must stand alone on its line.  Scalars are exempt — ``$parameter_count``
@@ -70,9 +73,40 @@ def _is_alone(line: str, slot: str) -> bool:
     return bare == "$" + slot
 
 
+def _scan_targets() -> list:
+    """Every file that gets $slots substituted into it.
+
+    Prompts are the obvious ones.  FRAGMENTS ARE NOT: a fragment may itself
+    reference a slot, and ``_build_template`` runs a SECOND substitution pass
+    (``prompts.py:1000-1001``) that expands it.  Scanning prompts alone reported
+    PASS while three live splices sat one layer down — all three of
+    ``$tool_inventory`` (881 chars) exploding inside an ``Available Agents``
+    roster sentence, in the 7-agent shared copy and twice in the 5-agent one.
+
+    Variant dirs (``agents/5agent``, ``agents/7agent_reduced``) are included:
+    that is where two of the three lived.  Shape lookup still comes from the
+    canonical dirs only — override files carry suffixed stems, so they define
+    no slot of their own and would add nothing.
+    """
+    targets = set(ROOT.glob("agents/**/prompt*.md"))
+    for d in list(FRAGMENT_DIRS) + sorted(
+        p for p in ROOT.rglob("prompt_fragments") if p.is_dir()
+    ) + sorted(
+        p for p in ROOT.rglob("tools_config") if p.is_dir()
+    ) + sorted(
+        p for p in ROOT.rglob("dc_config") if p.is_dir()
+    ):
+        for f in d.rglob("*"):
+            # README.md documents the slot syntax; it is prose ABOUT slots,
+            # never a substitution target.
+            if f.is_file() and f.suffix in (".md", ".txt") and f.name != "README.md":
+                targets.add(f)
+    return sorted(targets)
+
+
 def main() -> int:
     shapes = _fragment_shapes()
-    prompts = sorted(ROOT.glob("agents/**/prompt*.md"))
+    prompts = _scan_targets()
     failures = []
     checked = 0
 
@@ -95,8 +129,8 @@ def main() -> int:
                             rel, n, slot, chars, lines, line.strip()[:100])
                     )
 
-    print("scanned %d prompt file(s); %d multi-line slot reference(s) checked"
-          % (len(prompts), checked))
+    print("scanned %d substitution target(s) (prompts + fragments); "
+          "%d multi-line slot reference(s) checked" % (len(prompts), checked))
     if failures:
         print("\nFAIL — %d problem(s):" % len(failures))
         for f in failures:

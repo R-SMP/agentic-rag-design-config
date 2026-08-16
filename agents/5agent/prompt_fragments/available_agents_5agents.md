@@ -31,8 +31,7 @@
     * **``generate_and_render_propeller``** — the $parameter_count parameters
       + the attempt-folder path → it builds the mesh AND, as its built-in
       final step, renders the views and runs the QC checks, all written into
-      that folder; returns the mesh path and the render paths (see
-      ``$tool_inventory`` for the exact behaviour).
+      that folder; returns the mesh path and the render paths.
     * **``render_blade_sections``** — renders JUST the three blade
       cross-sections (Inner / Middle / Outer, each at its true angle of
       attack) from an attempt's parameters file, with no 3D mesh at all.
@@ -50,10 +49,10 @@
   (the $parameter_count parameters + the attempt-folder path → it builds
   the mesh AND, as its built-in final step, renders the views and runs the
   QC checks, all written into that folder; returns the mesh path and the
-  render paths — see ``$tool_inventory`` for the exact behaviour) and
-  ``calculate`` (arithmetic only).  The blade-sections visualizer is turned
-  OFF this session, so there is NO way to render the cross-sections on their
-  own — anything section-related must be judged from the full 3D renders.
+  render paths) and ``calculate`` (arithmetic only).  The blade-sections
+  visualizer is turned OFF this session, so there is NO way to render the
+  cross-sections on their own — anything section-related must be judged
+  from the full 3D renders.
   It REUSES an existing mesh / renders in
   place (mesh + parameters are append-only, never overwritten), so
   re-running it on an already-built attempt needs no new attempt.  It
