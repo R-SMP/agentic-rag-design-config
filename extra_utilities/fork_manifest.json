@@ -162,6 +162,20 @@
       "origin_commit": "e31acc00120061eb6037ea27b4aeaca333d1818c",
       "relation": "partial-fork",
       "note": "Only routing_instructions() is re-implemented (F59: the CLARIFY bullet names its own target instead of leaving each first-agent fragment to patch it). natural_pipeline, _authorisation_sources and _load_routing_fragment are IMPORTED live and must never be copied — _authorisation_sources drops the Planner when topology != 7 (F61)."
+    },
+    {
+      "fork": "agents/7agent_reduced/planner/prompt_7agents_reduced.md",
+      "origin": "agents/planner/prompt.md",
+      "origin_commit": "107536e09e68298906ecac66a67375586a6a2294",
+      "relation": "copy",
+      "note": "Batch 1 (defects), 17 hunks, +217 chars. Caller attribution (UII forwards here + DCIC CLARIFYs back under PLANNER_FIRST=False); standing-directive lifecycle (omission does NOT retract); image capability restored; dead 'inspection tool' replaced and rule 5 now anchors the LEVERS (parameters.json) so batch 2's rule-6 cut is safe; SOFT TARGET named as its own lever kind rather than reclassified as unlocked; two wrong file/tool enumerations deleted; F65 dead SUGGESTED SECTION SHAPES marker. Compressions deferred to batch 2. Two-part output contract and per-phase residual rule preserved byte-exact (the DCOI and Receptionist forks depend on them)."
+    },
+    {
+      "fork": "agents/7agent_reduced/tools_config/blade_sections_visualizer_planner_7agents_reduced.md",
+      "origin": "DC_prompt_fragments/tools_config/blade_sections_visualizer_planner.md",
+      "origin_commit": "512eb868d8a04103b5eb1e4fbf74d85953b101bc",
+      "relation": "copy",
+      "note": "Attempt policy re-aimed: planner.py binds only list_attempts/read_attempt, never new_attempt (cf4b900 made the DCIC sole creator), so the overlay was instructing a capability the Planner lacks. States the fact instead. NOTE this is the Planner's ONLY attempt-policy text and it sits inside <<BSV_ON>>."
     }
   ]
 }

@@ -271,21 +271,33 @@ def expected_differing(topo: int, variant: str) -> tuple[set[str], list[str]]:
             if slot is None:
                 found = _scoped_slot_owner(base_posix)
                 if found is None:
-                    failures.append(
-                        f"[UNKNOWN] {f.relative_to(ROOT)} shadows {base_posix}, "
-                        "which is neither a prompt.md, a FRAGMENT_TO_SLOT entry, "
-                        "nor a recognised per-agent scoped copy"
-                    )
-                    continue
-                scoped_slot, owner = found
-                who = {owner}
-                # A scoped copy shadows no file of its own — the text it
-                # REPLACES is whatever that agent would otherwise receive for
-                # the slot (this variant's override of it, else the shared
-                # original).  Without this, the copy gets no CONSUMED probe,
-                # and because a sibling override already moves the same agent
-                # a DEAD scoped copy would sail through REACHED and BLAST.
-                probe_base = _effective_slot_file(scoped_slot, topo, variant)
+                    overlay = _overlay_owner(base_posix)
+                    if overlay is None:
+                        failures.append(
+                            f"[UNKNOWN] {f.relative_to(ROOT)} shadows {base_posix}, "
+                            "which is neither a prompt.md, a FRAGMENT_TO_SLOT entry, "
+                            "a recognised per-agent scoped copy, nor a per-agent "
+                            "overlay"
+                        )
+                        continue
+                    # An overlay DOES shadow a real shared file of its own, so
+                    # the default probe_base (ROOT / base) is already correct —
+                    # unlike a scoped copy, which shadows nothing.  Fall
+                    # THROUGH rather than continue, so the overlay still gets
+                    # its CONSUMED probe; that probe is the only thing standing
+                    # between a DEAD overlay and a green run.
+                    who = {overlay[1]}
+                else:
+                    scoped_slot, owner = found
+                    who = {owner}
+                    # A scoped copy shadows no file of its own — the text it
+                    # REPLACES is whatever that agent would otherwise receive
+                    # for the slot (this variant's override of it, else the
+                    # shared original).  Without this, the copy gets no
+                    # CONSUMED probe, and because a sibling override already
+                    # moves the same agent a DEAD scoped copy would sail
+                    # through REACHED and BLAST.
+                    probe_base = _effective_slot_file(scoped_slot, topo, variant)
             else:
                 who = set(slot_users.get(slot, set()))
         who &= agents_here
@@ -338,6 +350,36 @@ def _scoped_slot_owner(base_posix: str) -> tuple[str, str] | None:
         name = base_posix[len(want):]
         if name.startswith(b.stem + "_") and name.endswith(b.suffix):
             agent = name[len(b.stem) + 1: len(name) - len(b.suffix)]
+            if agent in prompts.PROMPT_MD_RUNTIME_SLOTS:
+                return slot, agent
+    return None
+
+
+# Per-agent OVERLAY families.  Distinct from a SCOPED_FRAGMENTS copy: a scoped
+# copy replaces the value of a SHARED slot and falls back to the shared file,
+# whereas an overlay has its OWN slot that resolves to "" for any agent with no
+# file — see ``_build_template``'s ``$database_search_per_agent`` and
+# ``$blade_sections_visualizer_per_agent`` handling.  They appear in neither
+# FRAGMENT_TO_SLOT nor SCOPED_FRAGMENTS, so without this table the gate cannot
+# classify a variant override of one and reports [UNKNOWN].
+_PER_AGENT_OVERLAYS = {
+    "DC_prompt_fragments/tools_config/database_search_":
+        "database_search_per_agent",
+    "DC_prompt_fragments/tools_config/blade_sections_visualizer_":
+        "blade_sections_visualizer_per_agent",
+}
+
+
+def _overlay_owner(base_posix: str) -> tuple[str, str] | None:
+    """(slot, agent) for a per-agent overlay path, or None.
+
+    The agent-name test also rejects same-prefix siblings that are NOT
+    overlays — ``blade_sections_visualizer_off.md`` yields "off", which is no
+    agent, so it falls through rather than being mis-attributed.
+    """
+    for prefix, slot in _PER_AGENT_OVERLAYS.items():
+        if base_posix.startswith(prefix) and base_posix.endswith(".md"):
+            agent = base_posix[len(prefix):-len(".md")]
             if agent in prompts.PROMPT_MD_RUNTIME_SLOTS:
                 return slot, agent
     return None
