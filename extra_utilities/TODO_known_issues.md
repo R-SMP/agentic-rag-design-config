@@ -4338,3 +4338,54 @@ comment, not a path.
 Found while auditing `agent_tools_overview.md`, which carried one of the
 fifteen.  Cutting that fragment would have fixed nothing on its own — the
 copy the hub actually quotes into hand-offs is `orchestrator/prompt.md:136`.
+
+---
+
+### F77
+**`{render_check_library_block}` is dead under the shipped default — code fix,
+not a prompt fix.**  `agents/tool_caller/tool_caller.py:148-152` picks
+`RENDER_CHECK_LIBRARY_PYVISTA` / `_TRIMESH` by render library alone; there is no
+mesh-checks gate (`self.mesh_checks` is stored at `:119` and never consulted
+here).  The block is 1,306 chars (`trimesh.md`) / 1,988 (`pyvista.md`) and is
+almost entirely metric semantics — how watertightness, signed volume and the
+`< 1e-10` mm² degenerate-face threshold are computed — introduced as "a few
+specifics worth keeping in mind so you read the tool's return text correctly".
+
+But `workflow_settings/settings.py:33` ships `MESH_CHECKS: bool = False`, and
+with it off the backend emits none of it: `tools/render_mesh/render_mesh.py:281`
+guards the Watertight / Volume / WARNING findings and `:329` guards the summary,
+mirrored at `render_mesh_pyvista.py:209`.  So by default the Tool Caller is told
+how to read a report it never receives — 14-21% of its 9,321-char prompt again.
+
+**Why the reduced fork could not fix it.**  `.format()` runs AFTER
+`_build_template`, so `apply_flag_filters` has already run and `<<MESH_ON>>`
+markers placed inside the injected fragment would NOT be filtered.  Dropping the
+placeholder from the prompt is the WRONG fix — it removes the block even when
+mesh checks ARE on, and it would not error, because `.format()` tolerates the
+now-unused kwarg.  The gate belongs in `tool_caller.py`: pass `""` when
+`session.mesh_checks` is False.
+
+### F78
+**The `Mesh file:` label has no reader.**  `agents/tool_caller/prompt.md:105`
+makes it one of three labels that MUST appear on every routing call, but the
+string occurs repo-wide only there and at
+`agents/5agent/tool_caller/prompt_5agents.md:105`.  The DC Output Inspector
+binds no mesh-consuming tool (`dc_output_inspector.py:240-251`), the
+Orchestrator's hand-off block asks for attempt number + folder path, the
+Receptionist derives `<attempt>/propeller_mesh.obj` itself, and no Python parses
+it.  ~60 chars.
+
+**KEPT deliberately** in the reduced fork (owner's call): it is the hand-off's
+only human-readable proof the mesh reached disk, and cutting a label with no
+reader is only safe if nothing downstream ever starts reading one.  Recorded
+rather than removed.
+
+### F79
+**`tool_inventory.md:11-13` points the Tool Caller at a tool it does not hold.**
+`read_attempt`'s entry ends "an image or mesh returns a path to hand on, e.g. to
+``view_images``" — but `agents/tool_caller/tool_caller.py` never calls
+`build_user_inputs_tools`, so this agent has no `view_images`.  The fragment is
+shared and the pointer is correct for the agents that do bind it (Planner, UII,
+DCII, DCOI), so this is a per-agent-accuracy issue, not a straight defect.  Low
+priority; noted while cutting the Tool Caller's duplicate copy of the same
+mechanics (E14).
