@@ -176,6 +176,13 @@
       "origin_commit": "512eb868d8a04103b5eb1e4fbf74d85953b101bc",
       "relation": "copy",
       "note": "Attempt policy re-aimed: planner.py binds only list_attempts/read_attempt, never new_attempt (cf4b900 made the DCIC sole creator), so the overlay was instructing a capability the Planner lacks. States the fact instead. NOTE this is the Planner's ONLY attempt-policy text and it sits inside <<BSV_ON>>."
+    },
+    {
+      "fork": "agents/7agent_reduced/tool_caller/prompt_7agents_reduced.md",
+      "origin": "agents/tool_caller/prompt.md",
+      "origin_commit": "107536e09e68298906ecac66a67375586a6a2294",
+      "relation": "copy",
+      "note": "Batch 1 (defects), 9 hunks, 9,321 -> 8,277 source; full system prompt 23,967 -> 19,405 (-19.0%). Fixes: 'every output-producing tool takes output_dir' (only 1 of 4 does, and render_blade_sections has none); the missing-label rule (owner chose to name NO verb - the case splits, since the DCII can re-emit a dropped label but only the Orchestrator can open a missing folder); the blade-sections PNG now reported under 'Render images:' (the DCOI fork reads sections from that label and escalates without it, so the BSV fast path ended in a guaranteed escalation); 'the only one that re-reads it from disk' (the DCII holds read_parameters too); a range-STOP routed to an agent not in this agent's routing set; 'only a brief report (success/failure + paths)' which excluded the QC numbers the same prompt and the DCOI both require; read_attempt 'against the right folder' (it takes a 1-based number, not a folder); and the stale-IMAGE premise (KEEP_IMAGES_IN_CONTEXT=False strips image bytes - the real hazard is stale text records). E9 also gained the owner-approved FEG model: an out-of-range value is not rejected, it is silently accepted or clamped, so the mesh stops matching parameters.json. KEPT: the range re-check (verified write_parameters checks presence+numeric only, never ranges - it is the pipeline's only range validation), 'You do NOT fix it', and {render_check_library_block}. OPEN, code-level: that injected block is 1,306-1,988 chars of metric semantics selected purely by render library with no mesh-checks gate, while MESH_CHECKS defaults False and render_mesh.py:281/:329 suppress every metric - dead by default, and NOT fixable from a prompt because .format() runs after apply_flag_filters."
     }
   ]
 }
