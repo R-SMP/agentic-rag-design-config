@@ -4389,3 +4389,19 @@ shared and the pointer is correct for the agents that do bind it (Planner, UII,
 DCII, DCOI), so this is a per-agent-accuracy issue, not a straight defect.  Low
 priority; noted while cutting the Tool Caller's duplicate copy of the same
 mechanics (E14).
+
+### F80
+**The UII does not signal how hard the extraction was.**  The DC Input
+Inspector fork now tells the DCII to re-check the raw user inputs when "the
+extraction or an incoming hand-off reports that the user's inputs were hard to
+interpret" (E7, DCII batch 2) — but nothing currently produces that signal.
+The User Input Inspector writes no interpretation-difficulty marker into
+`extracted_inputs.txt`, and no hand-off carries one.
+
+**To do, inside this prompt-reduction task:** have the UII state, in the
+extraction, whether interpreting the user's inputs was straightforward or
+genuinely ambiguous — and on WHAT (a unit, a sketch callout, a qualitative
+phrase that could map several ways).  Until then E7's fourth trigger fires only
+when an agent volunteers the difficulty in prose.
+
+Owner's instruction when approving DCII batch 2.
