@@ -429,11 +429,23 @@ work (F4).  This warning stays in force until F4 lands; at that
 point replace it with an "obsolete" note like W6/W7.
 
 
-## W18. The DH's `save_attempt_data` tool is bound ONLY during the force-tool turn.
+## W18. Every DH tool is bound for ONE turn only, never left on `self.llm`.
 
-The Database Handler is otherwise tool-less, and its prompt says
-so explicitly.  The single exception is the **force-tool turn**
-that fires once per identifying attempt-specific schedule row
+The Database Handler's ``self.llm`` is tool-LESS, and its prompt says so
+explicitly.  Each of its four tools is bound for a single turn with
+``tool_choice`` and then discarded:
+
+| tool | bound on |
+|---|---|
+| ``submit_batch_plan`` | the one planning turn per save |
+| ``submit_questions`` | the question-writing turn of each batch |
+| ``submit_batch`` | each save-decision turn (and the cap-compression turn) |
+| ``save_attempt_data`` | the force-tool turn of an identifying row |
+
+The three batching tools go through ``_force_tool_args``, which binds,
+invokes, reads the arguments off ``tool_calls`` and drops the binding.
+The original and still-canonical example is the **force-tool turn** that
+fires once per identifying attempt-specific schedule row
 (``scope="attempt"`` AND ``parent_id is None``).  On that turn,
 ``_run_force_tool_phase`` calls
 ``self.llm.bind_tools([save_attempt_data],
@@ -443,11 +455,18 @@ and the next turn uses ``self.llm`` unbound.
 
 ### Why this matters
 
-* The DH's prompt is calibrated against a tool-less default.  If
-  ``save_attempt_data`` were bound to ``self.llm`` for every
-  turn (rather than per-force-tool-turn), the model would emit
-  spurious tool calls on session-scoped rows and sub-rows,
-  breaking the ASK:/SAVE: protocol.
+* ``self.llm`` on the DH is deliberately tool-LESS, and every tool the
+  DH has is bound the same way: for one turn, with ``tool_choice``,
+  then discarded.  As of the batching work (F33) there are four —
+  ``submit_batch_plan``, ``submit_questions``, ``submit_batch`` and
+  ``save_attempt_data`` — and the invariant is what keeps them from
+  interfering: the DH's LLM sees EXACTLY ONE tool schema per turn, so
+  there is never a choice of which to call, and a turn cannot answer
+  with the wrong tool.  Binding any of them permanently would put four
+  schemas in front of the model on every turn and invite exactly that.
+* In particular, binding ``save_attempt_data`` permanently would make
+  the model emit spurious attempt-binding calls on session-scoped rows
+  and sub-rows, where no attempt exists to bind.
 * The force-tool's ``tool_choice="save_attempt_data"``
   *forces* the LLM to call the named tool on its next response.
   Using this binding outside the force-tool turn would also force

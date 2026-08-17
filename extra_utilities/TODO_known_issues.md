@@ -1299,9 +1299,22 @@ batching with F15 (DH response safety net) since both change the
 DH's response handling and both benefit from real-session
 examples to calibrate against.
 
-**Status.** Open.  Pairs with F15 (DH response safety net) —
-both reshape DH save behaviour around "what content actually
-deserves to land in the database".
+**Status.** **LARGELY ADDRESSED 2026-08-04** by the batching work's
+SKIP path.  `submit_batch` now has a `skips` list, and the DH's prompt
+tells it to skip rather than save a negation ("nothing went wrong" is a
+skip; "nothing went wrong BECAUSE the extraction pinned the ambiguity
+early" is worth saving).  A skipped row writes its `.txt` with a
+`SKIPPED` marker — so the per-session folder stays complete and
+auditable — and writes **no `chunks` row**, which is the half that
+matters: the negation never gets embedded and so never competes with
+real content at search time.
+
+What remains open is the RETROSPECTIVE half: sessions already saved
+still carry canonical negation sentences in `chunks`, and nothing
+sweeps them.  Also unaddressed: an agent that answers with a negation
+where the DH nevertheless judges it worth saving is not second-guessed
+— by design, but it means the corpus quality now depends on the DH's
+judgement rather than on a filter.  Still pairs with F15.
 
 ### F18. UII / Receptionist: don't treat session-level numeric requests as design parameters
 
@@ -2464,10 +2477,37 @@ agent's context is loaded once per batched call.
      downstream path as today, so retry / safety folder /
      embedding flow are unchanged).
 
-**Status.**  Open.  Cost optimisation only — no behavioural
-change visible to the user.  Best landed alongside any future
-work on `dh_schedule.json` schema (so the batched-group
-metadata can ride in on a coordinated schema bump).
+**Status.**  **DONE 2026-08-04.**  Built in three steps.  The shape
+differs from the sketch above in one important way: the grouping is NOT
+computed from the schedule by code, it is DECIDED BY THE DH in one
+planning call per save (`submit_batch_plan`), because "would these two
+questions be answered well together?" is a judgement — the owner's
+example being that a best-case and a worst-case question must never
+share a reply.  Code only fixes the boundaries a group may not cross
+(same `agent_key`, `scope` and `parent_id`; identifying rows always
+alone).
+
+The four listed risks were handled as follows:
+
+1. *Output-token quality* — per-entry token cap unchanged and still
+   enforced, now re-emitted BY LABEL rather than by position.
+2. *Schedule-order semantics* — groups may only form inside a candidate
+   run, and sub-rows still run per resolved attempt in schedule order.
+3. *Parsing brittleness* — solved by construction: the whole text
+   protocol is gone.  Every decision is a forced tool call with a
+   schema, and coverage (every row in exactly one of
+   `saves`/`followups`/`skips`) is validated before anything is
+   written, with one retry then a per-row fallback.
+4. *Per-agent context size* — a batch sends ONE copy of the agent's
+   frozen history for N rows instead of N copies, so batching REDUCES
+   this pressure rather than adding to it.
+
+Measured on the shipped 36-row schedule: 36 rows → 15 batches, 42 fewer
+LLM calls per pass, before the per-attempt multiplier on sub-rows.  The
+real per-save cost is still unmeasured — that needs one live save.
+
+Documented in the README ("Database Handler: the batched interview").
+Covered by `extra_utilities/smoke_test_dh_batching.py` (80 checks).
 
 
 ### F34. Compress user-input images before save / retrieval / LLM-pass
@@ -3401,3 +3441,371 @@ written — only the verdict changes.
 `agents/shared/llm_provider.py` (a new marker helper alongside `system_cache_control`).
 Mechanics: `extra_utilities/design_prompt_caching.md` § "The session-save phase".
 Related: F54 (live verification on a real save).
+
+
+
+### F56. `SYSTEM_TOPOLOGY` is read fresh mid-turn, so a run in flight is not pinned
+
+
+
+**Where.** `agents/shared/topology.py` (`topology()` / `hub_key()` /
+
+`hub_display()`), consumed at `agents/dispatch.py:292` + `:298`,
+
+`agents/shared/routing_tools.py:267` + `:284`, and
+
+`agents/shared/routing.py` (`natural_pipeline`, `_authorisation_sources`,
+
+`routing_instructions`).
+
+
+
+**What.** `topology.py` reads `SYSTEM_TOPOLOGY` FRESH on every call and
+
+deliberately never captures it at import — correct for prompt assembly,
+
+because `web_app._build_session` reloads the settings module in place and
+
+the Sessions Queue switches topology between runs inside one process.
+
+
+
+But the same fresh read also happens DURING a live turn. `dispatch_turn`
+
+resolves the start agent with `hub_key()` after the Receptionist has
+
+already run; `build_routing_tool._invoke` calls `hub_key()` on every
+
+hand-off. The hub object itself, and every agent's system prompt, were
+
+built once at session start.
+
+
+
+So if `SYSTEM_TOPOLOGY` changes on disk while a turn is in flight, that
+
+turn's routing starts resolving against the NEW topology while the agents
+
+it is driving belong to the OLD one: hops address an agent key the live
+
+hub does not hold (`"Dispatch error: unknown agent key"`), and the
+
+chain-log / trace suppression keyed on `target_key == hub_key()` silently
+
+picks the wrong branch.
+
+
+
+`workflow_settings/settings.py` §27 states the intended contract
+
+explicitly — *"Changing this takes effect on the NEXT session; a run
+
+already in flight keeps the topology it started with"* — and nothing
+
+enforces it today.
+
+
+
+**Why it has not bitten.** The only writer that switches topology between
+
+runs is the Sessions Queue, which does so while no turn is running. The
+
+window is real but narrow: a Workflow-Settings save during an active turn.
+
+
+
+**Proper fix.** Carry the topology on `Session` the way
+
+`dcoi_comparison_mode` is (set once in `web_app._build_session`, read by
+
+the hub/routing helpers), so a live turn is pinned to the topology it
+
+started with by construction rather than by timing. This is also decision
+
+T1/T2 of `extra_utilities/design_topology_selector.md` — the Sessions
+
+Queue's per-run topology field needs a per-session carrier anyway, so the
+
+two land naturally together.
+
+
+
+**Status.** Open. Raised 2026-08-04 during an architecture read; not
+
+observed in a run.
+
+
+
+
+
+### F57. The two hubs differ in chain access, which confounds a 7-vs-5 comparison
+
+
+
+**Where.** `workflow_settings/settings.py` §5 (`CHAIN_ACCESS`, default
+
+`True`), `agents/orchestrator/orchestrator.py` (`_CHAIN_ACCESS_ON` /
+
+`_CHAIN_ACCESS_OFF` + the block `dispatch` prepends), and
+
+`agents/conductor/conductor.py:163` + `:470` (no such block, by design).
+
+
+
+**What.** The 7-agent Orchestrator ships with chain access ON: every
+
+inter-agent exchange that happened while it was waiting is prepended to
+
+its next incoming message. The 5-agent Conductor has no chain-access block
+
+at all — it was dropped from its prompt on purpose, so it pulls history on
+
+demand via `read_agent_history` (the Planner's model) instead of being fed
+
+it.
+
+
+
+Both choices are defensible on their own. The problem is comparing them:
+
+a 7-vs-5 benchmark run then differs in TWO variables at once — how many
+
+agents there are, AND how much of the chain the hub sees — so a difference
+
+in quality or token cost cannot be attributed to agent count alone, which
+
+is the whole point of the Test-2 comparison.
+
+
+
+**Options.** (a) Give the Conductor the chain-access block, so both hubs
+
+see the same traffic. (b) Run the 7-agent with `CHAIN_ACCESS=False` for
+
+comparison runs, so both hubs pull on demand — cheapest, no prompt change
+
+to either topology. (c) Keep the asymmetry and treat "the hub pulls rather
+
+than is pushed" as part of what the 5-agent variant IS — in which case say
+
+so explicitly wherever the comparison is reported, so the result is not
+
+read as a pure agent-count effect.
+
+
+
+**Status.** Open. Raised 2026-08-04 during an architecture read. Decide
+
+before the first 7-vs-5 comparison run, not after.
+
+
+
+
+### F58. A 5-agent save loses 17 of the 36 default schedule rows, three different ways
+
+
+
+**Where.** `agents/database_handler/database_handler.py` `populate_database`
+
+(the agent-resolution guard, the sub-row collector and the `parent_id`
+
+guard), `workflow_settings/dh_schedule.py` `AGENT_KEYS`, and the two hub
+
+registries `agents/orchestrator/orchestrator.py` / `agents/conductor/conductor.py`.
+
+
+
+**What.** `dh_schedule.AGENT_KEYS` is a deliberate SUPERSET across topologies —
+
+it has to be, or a schedule naming the Conductor could not be saved at all. But
+
+the DH resolves each row's agent against `hub._agents_by_key`, which holds only
+
+the agents the ACTIVE topology actually built. Under `SYSTEM_TOPOLOGY = 5` the
+
+default 36-row schedule names four agents that no longer exist (planner ×7,
+
+dc_input_creator ×3, dc_input_inspector ×3, orchestrator ×1).
+
+
+
+Verified breakdown for a 5-agent run on default settings — **17 rows yield
+
+nothing, but only 12 leave any trace**:
+
+
+
+* **12 rows** hit the agent-resolution guard and produce an ERROR `.txt` plus an
+
+  `is_error=True` chunks row. Visible, if ugly.
+
+* **2 rows** (`Bad attempt Suggested solution`, `Useful Attempt planner
+
+  observations`) are Planner SUB-rows of DCOI parents. The DCOI exists in the
+
+  5-agent topology, so their parent runs normally and consumes them inside the
+
+  attempt-major loop, where an unresolvable sub-agent hits a bare `continue`
+
+  with a log warning — **no error entry, no chunks row, nothing on disk.**
+
+* **3 rows** are collateral. Row 20 (`Final Design Output`) is a PLANNER
+
+  identifying row whose three children all name the DC Output Inspector — an
+
+  agent the Conductor does have. But the parent errors out and does
+
+  `i += 1; continue`, so the sub-row collector never runs, and those three
+
+  perfectly-valid children fall through to the main loop where the
+
+  `if parent_id is not None:` guard — which sits ABOVE agent resolution —
+
+  drops them silently.
+
+
+
+So one unresolvable PARENT silently costs every child under it, whatever agent
+
+those children name.
+
+
+
+**A topology-independent hole in the same area.** Neither hub registers
+
+`database_handler` or `context_pruner`, yet `dh_schedule.py` offers both in the
+
+editor's agent dropdown. A row naming either takes the error path in EVERY
+
+topology, 7-agent included.
+
+
+
+**Why it matters now.** This is not cosmetic: it silently halves the corpus a
+
+5-agent session contributes, and the rows it drops are not a random sample —
+
+they are every planning and parameter-authoring question. Any Test-2
+
+(agent-count) comparison drawn from saved sessions would be comparing a full
+
+7-agent corpus against a mutilated 5-agent one.
+
+
+
+**Options, none chosen yet.**
+
+
+
+1. **Map retired agents onto their merged successor** at save time —
+
+   planner/orchestrator → conductor, dc_input_creator/dc_input_inspector →
+
+   creator. One schedule keeps working across topologies. Needs a per-row
+
+   judgement about whether the merged agent can answer that question
+
+   meaningfully.
+
+2. **Make the schedule topology-aware** — a per-topology file, or a per-row
+
+   topology filter, so a run only asks what its agents can answer. Cleanest
+
+   semantically, most work, two question sets to maintain.
+
+3. **At minimum, make the failure uniform and loud**: the three dispositions
+
+   above (error entry / silent continue / silent parent-cascade drop) should be
+
+   one disposition, and a save whose schedule names agents the active topology
+
+   does not build should say so up front rather than 12 times in the middle.
+
+
+
+**Status.** Open, logged 2026-08-04 from a verified multi-agent audit of the DH
+
+save path (run `wf_ae8569ed-087`). Owner's call: log now, decide later.
+
+
+### F59. Six verified defects in the DH save path (from the 2026-08-04 audit)
+
+Found by a 23-agent audit of the save path (run `wf_ae8569ed-087`), each
+adversarially verified against the code.  Grouped into one entry because they
+share a cause — the save path trusts its inputs and reports its failures at
+INFO — not because they must be fixed together.  **None of these is fixed by
+the DH-batching work**; the batching design fixes a different set (the
+free-text SAVE parsing layer).  Ordered worst-first.
+
+**1. Slug collisions silently overwrite a saved answer.**  `dh_schedule._validate`
+guarantees `name` is globally unique, but compares RAW STRIPPED STRINGS, while
+the DH derives the filename via `_slugify`, which lowercases, strips a leading
+parenthetical, collapses punctuation runs to `_` and truncates at 80 chars.  So
+`Bad Attempt` / `bad attempt`, and `(Not yet implemented) Plan` / `Plan`, both
+pass validation and then write to the SAME `.txt`.  `_entry_path` has no
+existence check and `_write_entry` writes unconditionally, so the second write
+silently replaces the first, sidecar included.  A third divergent slug
+implementation in the editor UI means the filename hint the user sees is not the
+filename the DH writes, so the UI cannot warn either.  *Fix: validate on the
+slug, not the name — or derive the filename from the row id.*
+
+**2. The `chunks` UNIQUE constraint is not a backstop, and is asymmetric.**
+`UNIQUE (session_id, agent_from, field, attempt_id, item_index, embedding_model)`
+with Postgres' default NULLS-DISTINCT semantics.  Session-scoped rows always
+carry `attempt_id = NULL`, so a duplicate **inserts twice**; Quantitative rows
+also carry `embedding_model = NULL`, same result.  Attempt-scoped Semantic rows
+DO collide — and are then discarded as `SKIPPED_UNIQUE` at **INFO** level with
+no safety-folder write.  So the same mistake either doubles a row or deletes it
+depending on scope, and neither is visible above INFO.  Recorded as intended
+behaviour in W28, but it means the database cannot be relied on to catch a
+mapping error upstream.
+
+**3. A child interview that raises leaves NO artefact at all.**  In the
+attempt-major sub-row loop an exception is caught with a log warning and a bare
+`continue` — no error `.txt`, no `is_error` chunks row, no placeholder.  This
+diverges from the session-scoped path, which writes both.  Hole probability
+scales linearly with the number of resolved attempts.
+
+**4. Grandchildren pass validation and are then silently dropped.**  A row whose
+`parent_id` points at a row that ITSELF has a `parent_id` satisfies every rule in
+`_validate` (its parent exists and is attempt-scoped).  The DH only ever collects
+rows whose `parent_id` equals an IDENTIFYING row's id, so a grandchild is never
+collected, and the `if parent_id is not None:` guard in the main loop drops it
+without a file or a row.  *Fix: reject depth > 1 in `_validate` — the contiguity
+pass added 2026-08-04 sits right beside where this check belongs.*
+
+**5. Resolved attempts are uncapped and undeduped.**  `save_attempt_data` accepts
+an arbitrary-length list and nothing dedupes it, so `["002", "2"]` normalises to
+the same attempt twice and the entire child set runs twice for it, at full LLM
+cost.  Nothing caps N either: with N=10 across the default schedule's three
+identifying blocks that is 90 child interviews, ~270 LLM calls at the floor.
+
+**6. The only smoke test for schedule iteration is dead.**  It patches the
+in-code `SCHEDULE` constant, which `populate_database` no longer reads on the
+happy path (it loads `dh_schedule.json` and only falls back to the constant when
+that read fails).  The test therefore passes while exercising nothing the DH
+actually runs.  Related: when that fallback DOES fire it silently flattens every
+attempt-scoped row to session scope, replacing the user's edited structure with a
+different 29-row question set.
+
+**Fixed on 2026-08-04, listed here so the audit's record is complete:** sub-row
+contiguity is now enforced in `_validate` and repaired in `read_for_dh`;
+`read_for_dh` now validates at all (it never did, and it is the only path the DH
+reads); the editor's `moveRow` no longer drops a row between a parent and its
+first child; and `_AGENT_FACING_TAIL` derives the parameter count from
+`PARAMETER_NAMES` instead of claiming "17" when the DC has 16.
+
+**Also removed by the batching work (F33), since it deleted the layer they
+lived in:** the sticky `ATTEMPT:` tag; the `by_attempt` fallback that wrote one
+attempt's answer into another's file, sidecar and `chunks` row with
+`is_error=False`; the markdown-fragile header regex; the positional
+re-emit merge in the token-cap pass (now keyed by label, so a count drift
+cannot re-assign an answer) and its `max(len, len)` bound that could append an
+empty pair and write it as an empty `.txt` plus a database row.
+
+**Item 3 is narrowed, not closed.**  A sub-row whose batch raises now falls
+back to a single-row batch, and a row that still will not settle is written as
+a SKIP — so the common paths leave an artefact.  The hole survives only if the
+FALLBACK call itself raises, which is logged but still writes nothing.
+
+**Status.** Open.

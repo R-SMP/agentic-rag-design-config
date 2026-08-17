@@ -1404,6 +1404,14 @@ answers dict.
 **Out of scope for Phase 3C.**
 
   - Per-Q+A save tool (Q-3C-7 = A: keep the SAVE: marker path).
+    **SUPERSEDED 2026-08-04** — the save tool was built after all, as
+    part of the DH batching work (F33).  ``submit_batch`` replaces the
+    ``SAVE:`` marker path entirely; the text protocol and its two
+    parsers are deleted.  Q-3C-7's reasoning still holds for its own
+    time (a per-Q+A tool was not worth it for ONE Q+A per turn); it
+    stopped holding once one turn had to carry several Q+A belonging to
+    DIFFERENT schedule rows, because then the answer→row mapping has to
+    be schema-checked rather than parsed out of prose.  See §9.16.
   - UI changes (Proposal 6) — separate sequence.
   - Anthropic / Google stitching providers (T16 / T17).
 
@@ -1938,3 +1946,63 @@ routing to `chunks_mm`, `<image_ref>` hits, logged text-only fallback)
 plus the existing `smoke_test_database_search.py` (no text-only
 regression).  Extension point for future backends: W39.  NOT yet
 committed / deployed.
+### 9.16 DH batched interview — the save path today  (BUILT 2026-08-04; uncommitted)
+
+Replaces the per-row `ASK:` / `SAVE:` text protocol described throughout
+§9.4-§9.5.  Those sections stay as the historical record of how ingest
+was built; this is how a save actually runs now.
+
+**Why.**  A save cost three LLM calls per schedule row (write the
+question, ask the agent, decide what to save), so its cost scaled
+linearly with a schedule the operator is free to grow.  Batching asks
+several rows in one call.  Measured on the shipped 36-row schedule:
+36 rows → 15 batches, 42 fewer calls per pass, before the per-attempt
+multiplier on sub-rows.
+
+**Grouping.**  Code computes *candidate runs* — consecutive rows
+agreeing on `agent_key`, `scope` and `parent_id` — and forces
+identifying rows into runs of their own.  Those are structural: a
+different agent cannot answer the same call; the two scopes take
+different write paths; a sub-row cannot be asked before its parent binds
+an attempt.  WHICH rows inside a run actually travel together is decided
+by the DH, once per save, via `submit_batch_plan`.
+
+**Tools** (all forced, each bound for one turn only, W18):
+`submit_batch_plan` → `submit_questions` → agent reply →
+`submit_batch(saves, followups, skips)`, plus `save_attempt_data`
+unchanged for identifying rows.
+
+**Answer→row mapping** is by short per-call LABEL (`R1…` in the plan,
+`A`/`B`/`C` in a batch), resolved DH-side to the row's `id`.  Not by
+name: `_validate` guarantees names unique as STRINGS, but the DH files
+by `_slugify`, so `Bad Attempt` and `bad attempt` are two names and one
+file.  Coverage — every open label in exactly one of the three lists —
+is checked BEFORE any write, with one retry then a per-row fallback.
+This matters because `chunks` is not a backstop for a mapping error:
+a session-scoped duplicate inserts twice (NULL `attempt_id` under
+NULLS-DISTINCT), an attempt-scoped one is discarded as
+`SKIPPED_UNIQUE` at INFO (§3.1, W28).
+
+**Attempt scoping** is now a per-entry `attempt` field on each `saves`
+entry, not an `ATTEMPT:` header. The header was sticky across blocks and
+broke on markdown, so an untagged block inherited the previous attempt
+and one attempt's answer could be written into another's file, sidecar
+and `chunks` row with `is_error=False`.
+
+**Writes** happen the moment a row resolves, not at the end of a batch —
+matching the per-entry-immediate property §9.5 relies on, so a crash
+costs the rows still open rather than the group.
+
+**New disposition: SKIP.**  A row with nothing worth storing gets its
+`.txt` with a `SKIPPED` marker and **no `chunks` row** (partially closes
+F17).  Consumers counting files against rows must expect this third
+outcome alongside a normal entry and an `is_error` entry.
+
+**Token cap** is unchanged in value and still per saved pair, but the
+over-cap re-emission is keyed by label instead of merged positionally —
+the positional merge could re-assign an answer to the wrong attempt on a
+count drift, and its `max(len, len)` bound could append an empty pair
+that was written as an empty `.txt` plus a `chunks` row.
+
+Verified by `extra_utilities/smoke_test_dh_batching.py` (80 checks,
+stdlib-only).  NOT yet exercised against a live save.

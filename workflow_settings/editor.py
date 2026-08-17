@@ -42,6 +42,14 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
     "SYSTEM_TOPOLOGY": [7, 5, 3],
     "PROMPT_VARIANT": ["standard", "reduced"],
     "EMBEDDING_PROVIDER": ["OpenAI"],
+    # Which LLM answers when the Database Handler interviews an agent.
+    # "Original Agent" is a SENTINEL, not a provider: it means "each
+    # agent answers on its own live model" (the historic behaviour) and
+    # makes DH_INTERVIEW_MODEL inert.  The other four are the real
+    # providers, matching agents/shared/llm_provider._API_KEY_ENV_VARS.
+    "DH_INTERVIEW_PROVIDER": [
+        "Original Agent", "openai", "anthropic", "google", "openrouter",
+    ],
     # STITCHING_PROVIDER is locked to a single-option dropdown
     # (matches EMBEDDING_PROVIDER's pattern).  The Anthropic and
     # Google branches in db_writer.stitch_for_embedding are T16 /

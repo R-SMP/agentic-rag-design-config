@@ -34,12 +34,17 @@ layer; this module assumes single-writer.
 from __future__ import annotations
 
 import json
+import logging
 import os
 import re
 import tempfile
 import uuid
 from pathlib import Path
 from typing import Any
+
+# The session logger, so a schedule defect surfaces in the session log
+# (and therefore in the R2-archived copy) rather than only on stderr.
+logger = logging.getLogger("propeller_agent")
 
 _THIS_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _THIS_DIR.parent
@@ -318,6 +323,56 @@ def read_state() -> dict[str, Any]:
     }
 
 
+def _schedule_problem(questions: list[dict]) -> str | None:
+    """The first contract violation in *questions*, or None when clean.
+
+    :func:`_validate` raises on the first problem it finds; this wraps it
+    so a caller can REPORT rather than refuse.
+    """
+    try:
+        _validate(questions)
+    except ScheduleError as exc:
+        return str(exc)
+    except Exception as exc:  # pragma: no cover — defensive
+        return f"{type(exc).__name__}: {exc}"
+    return None
+
+
+def _reorder_children(questions: list[dict]) -> tuple[list[dict], int]:
+    """Move every sub-row to sit directly below its parent.
+
+    Returns ``(rows, n_shifted)``.  Stable: top-level rows keep their
+    order, and a parent's children keep their order among themselves.
+    A sub-row whose ``parent_id`` matches no row is left exactly where
+    it is — quietly relocating an orphan would hide a real defect that
+    :func:`_schedule_problem` has already reported.
+
+    This is a REPAIR, not a validation: it recovers the sub-rows that
+    the DH's forward-scanning collector would otherwise skip, and it
+    cannot change meaning, because a schedule's row order carries no
+    information beyond block membership and iteration sequence.
+    """
+    ids = {q.get("id") for q in questions}
+    by_parent: dict[str, list[dict]] = {}
+    for q in questions:
+        pid = q.get("parent_id")
+        if pid and pid in ids:
+            by_parent.setdefault(pid, []).append(q)
+    if not by_parent:
+        return list(questions), 0
+
+    out: list[dict] = []
+    for q in questions:
+        pid = q.get("parent_id")
+        if pid and pid in ids:
+            continue                      # emitted under its parent below
+        out.append(q)
+        out.extend(by_parent.get(q.get("id")) or [])
+
+    shifted = sum(1 for a, b in zip(questions, out) if a is not b)
+    return out, shifted
+
+
 def read_for_dh() -> list[dict]:
     """Return the schedule entries in DH-iteration form.
 
@@ -326,10 +381,53 @@ def read_for_dh() -> list[dict]:
     ``requires_dcii_enabled``) plus the new ``scope`` /
     ``to_agents`` / ``parent_id`` / ``sub_index`` / ``id`` fields the
     attempt-binding logic uses.
+
+    THIS IS THE ONLY PATH THE DH READS, and until now it was the only
+    path with no validation at all: ``_validate`` runs on
+    :func:`write_updates` and :func:`parse_uploaded` — the two HTTP
+    write paths — so a hand-edited, migrated or freshly-seeded
+    ``dh_schedule.json`` reached the DH completely unchecked.
+
+    Two deliberate choices here:
+
+    * **Report, never raise.**  A malformed schedule must not be able to
+      block a save outright; losing one row's contract is bad, losing
+      the whole session's answers is worse.  The problem is logged at
+      ERROR so it is visible in the session log and in the R2-archived
+      copy.
+    * **Repair the one defect that silently destroys data.**
+      Non-contiguous sub-rows are moved back under their parent (see
+      :func:`_reorder_children`).  Every other violation is reported and
+      left alone — repairing a bad ``scope`` or ``type`` would change
+      which write path a row takes, which is a decision for the author,
+      not for the loader.
+
+    The file on disk is never modified by this function.
     """
     state = read_state()
+    rows = state["questions"]
+
+    problem = _schedule_problem(rows)
+    if problem:
+        logger.error(
+            "[DH-SCHEDULE]  the schedule on disk violates its own "
+            "contract: %s  Continuing with the rows as they are — fix "
+            "this in the “Questions for Saved Sessions” view.",
+            problem,
+        )
+
+    rows, n_shifted = _reorder_children(rows)
+    if n_shifted:
+        logger.warning(
+            "[DH-SCHEDULE]  repaired sub-row placement: %d row(s) were "
+            "not directly below their parent and would have been "
+            "SILENTLY DROPPED from this save.  Moved back under their "
+            "parent in memory; the file on disk is unchanged.",
+            n_shifted,
+        )
+
     out: list[dict] = []
-    for q in state["questions"]:
+    for q in rows:
         out.append({
             "id":          q["id"],
             "agent_key":   q["from_agent"],
@@ -459,6 +557,32 @@ def _validate(questions: list[dict]) -> None:
                     f"not attempt-scoped — sub-row would be "
                     f"orphaned."
                 )
+
+    # Third pass — sub-rows must be CONTIGUOUS, immediately below their
+    # parent.
+    #
+    # The Database Handler collects a block's sub-rows by walking
+    # FORWARD from the parent and stopping at the first row whose
+    # parent_id does not match.  So a row wedged into a Q(N) block makes
+    # every sub-row from that point on invisible at save time: no .txt,
+    # no chunks row, a single INFO line.  The DH's own comment claims
+    # this validator enforces contiguity; until now it did not.
+    for pid, child_idxs in parent_children.items():
+        parent_idx = next(
+            i for i, q in enumerate(questions) if q.get("id") == pid
+        )
+        expected = list(
+            range(parent_idx + 1, parent_idx + 1 + len(child_idxs))
+        )
+        if sorted(child_idxs) != expected:
+            raise ScheduleError(
+                f"Row {parent_idx} ({questions[parent_idx].get('name')!r}): "
+                f"its {len(child_idxs)} sub-row(s) must sit immediately "
+                f"below it with nothing in between — found at rows "
+                f"{sorted(child_idxs)}, expected {expected}.  A row "
+                f"wedged into a Q(N) block makes the Database Handler "
+                f"skip every sub-row from that point on."
+            )
 
 
 # ---------------------------------------------------------------------------

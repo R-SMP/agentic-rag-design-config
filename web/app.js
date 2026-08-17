@@ -3596,6 +3596,30 @@ function moveRow(srcId, targetId) {
     return;
   }
 
+  // Index to insert AFTER, for a drop onto targetId.  When the target
+  // is an attempt PARENT, skip past its children.
+  //
+  // Landing between a parent and its first child breaks the contiguity
+  // the Database Handler depends on: its sub-row collector walks
+  // forward from the parent and stops at the first row whose parent_id
+  // does not match, so every sub-row from the intruder onward becomes
+  // invisible at save time — no .txt, no database row, one INFO log.
+  // The block-move branch below always had this guard; the single-row
+  // branch did not, which is how an ordinary drag of a session row onto
+  // an attempt parent could silently cost that block its children.
+  const landingAfterTarget = () => {
+    let n = qState.questions.findIndex((q) => q.id === targetId);
+    if (n < 0) return qState.questions.length;
+    const row = qState.questions[n];
+    if (row && row.scope === "attempt" && !row.parent_id) {
+      for (let i = n + 1; i < qState.questions.length; i++) {
+        if (qState.questions[i].parent_id === row.id) n = i;
+        else break;
+      }
+    }
+    return n;
+  };
+
   // Splice out and re-insert at the target's position.  For top-level
   // rows that own children, also drag the children along so the block
   // stays contiguous.
@@ -3607,24 +3631,11 @@ function moveRow(srcId, targetId) {
       else break;
     }
     const block = qState.questions.splice(srcIdx, endIdx - srcIdx + 1);
-    // Find the new target index after splice (may have shifted).
-    let newTgt = qState.questions.findIndex((q) => q.id === targetId);
-    if (newTgt < 0) newTgt = qState.questions.length;
-    // If target itself is part of another block, jump to that block's end.
-    const tgtRow = qState.questions[newTgt];
-    if (tgtRow && tgtRow.scope === "attempt" && !tgtRow.parent_id) {
-      for (let i = newTgt + 1; i < qState.questions.length; i++) {
-        if (qState.questions[i].parent_id === tgtRow.id) newTgt = i;
-        else break;
-      }
-    }
-    qState.questions.splice(newTgt + 1, 0, ...block);
+    qState.questions.splice(landingAfterTarget() + 1, 0, ...block);
   } else {
     // Single-row move (top-level non-attempt, or sub-row).
     qState.questions.splice(srcIdx, 1);
-    let newTgt = qState.questions.findIndex((q) => q.id === targetId);
-    if (newTgt < 0) newTgt = qState.questions.length;
-    qState.questions.splice(newTgt + 1, 0, src);
+    qState.questions.splice(landingAfterTarget() + 1, 0, src);
   }
   renderQuestions();
   qSetStatus("", "");

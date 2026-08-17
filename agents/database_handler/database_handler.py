@@ -11,27 +11,48 @@ order) about a list of database fields drawn from the
 ``forClaude`` schema, and to write each (question, answer) pair to
 disk under ``database/<session_name>/<agent>/<field>.txt``.
 
-Per-field interview protocol
-----------------------------
-For every field:
+Interview protocol
+------------------
+Rows are asked in BATCHES: neighbouring rows going to the same agent
+can share one call, which is what makes a save affordable (roughly
+half the LLM calls on the shipped schedule).  Which rows travel
+together is the DH's decision, taken once per save; code only fixes
+the boundaries a batch may not cross (see
+``batch_tools.candidate_runs``).
 
-* The DH formulates a question and the system delivers it to the
-  target agent (in this module called *Agent A*).
-* Agent A replies in plain text.
-* The DH decides what to do next by emitting ONE of two prefixes:
+Every DH decision is a FORCED TOOL CALL — never prose:
 
-      ASK: <follow-up question for Agent A>
-      SAVE: <final body to be written to the .txt file>
+* ``submit_batch_plan`` — once per save; which rows are asked together.
+* ``submit_questions`` — once per batch; one question per row.
+* ``submit_batch``     — after each reply; per row, what to save, what
+  to ask again (``followups``), what to drop (``skips``).
+* ``save_attempt_data`` — binds which design attempt(s) an
+  attempt-identifying row is about, before anything attempt-scoped
+  is written.
 
-  ``ASK:`` runs another round of the conversation; ``SAVE:`` ends
-  the loop and the system writes the body to disk.  The cap is
-  ``MAX_DH_TURNS_PER_FIELD`` rounds.
+Each tool is bound for ONE turn and discarded, so the DH's LLM never
+sees more than one tool schema at a time (the W18 / W20 invariant).
 
-* For SEMANTIC fields the DH must keep the saved body within
-  ``EMBEDDING_MAX_RESPONSE_TOKENS`` tokens (counted with
-  ``cl100k_base``).  When the body exceeds the cap, the DH is asked
-  for a shorter version — once.  Quantitative fields are saved
-  verbatim with no cap.
+Answers map back to rows by short per-call LABELS (``A``, ``B``, …),
+checked for full coverage before anything is written.  This replaced a
+text protocol (``ASK:`` / ``SAVE:`` with ``QUESTION:`` / ``ANSWER:`` /
+``ATTEMPT:`` headers) whose failures were silent: a header carrying
+markdown became answer text, and an untagged block inherited the
+previous block's attempt id, so one attempt's answer could be written
+into another's file and database row with nothing marking it wrong.
+
+Follow-up rounds are capped at ``MAX_DH_TURNS_PER_FIELD`` per batch;
+on exhaustion one final forced turn must save or skip.  For SEMANTIC
+rows each saved question+answer pair must fit
+``EMBEDDING_MAX_RESPONSE_TOKENS`` (``cl100k_base``) on its own, since
+each becomes its own file and its own embedding; over-cap pairs are
+re-emitted once, keyed by label.  Quantitative rows are saved verbatim
+and uncapped.
+
+A row with nothing worth storing is SKIPPED: its ``.txt`` is written
+with a ``SKIPPED`` marker and no database row, rather than saving a
+"no problem occurred this session" sentence that would be embedded and
+would then compete with real content at search time.
 
 Memory model
 ------------
@@ -65,7 +86,7 @@ from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
 from agents.shared.llm_provider import history_cache_control, make_system_message
 from agents.shared.llm_retry import invoke_with_retry
-from agents.shared.prompts import _build_template
+from agents.shared.prompts import PARAMETER_NAMES, _build_template
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_DH_STEPS, MAX_DH_TURNS_PER_FIELD
 from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
@@ -449,6 +470,54 @@ _LEADING_PAREN_RE = re.compile(r"^\s*\([^)]*\)\s*")
 _NON_ALNUM_RE = re.compile(r"[^a-z0-9]+")
 
 
+_IMAGE_BLOCK_TYPES = frozenset({"image", "image_url"})
+
+
+def _without_image_blocks(messages: list) -> tuple[list, int]:
+    """Copy *messages*, dropping every image content block.
+
+    Returns ``(messages, n_removed)``.  Messages carrying no image block
+    are passed through by reference; only the ones that change are
+    copied, so the common case allocates nothing.
+
+    NON-MUTATING on purpose.  ``shared/file_utils.strip_image_blocks_
+    from_messages`` does the same job in place, but the DH seeds its
+    conversation from ``list(session.agent_states[k].messages)`` — a
+    SHALLOW copy, whose elements are the very objects the session holds.
+    Stripping those in place would permanently delete image blocks from
+    the saved session state as a side effect of a save.
+
+    Why strip at all: the interview asks an agent to recall and explain
+    its own reasoning, never to look at a picture again, and the paired
+    ``Loaded image (path: …):`` text blocks survive as a record of what
+    it had seen.  Removing the bytes lets the interview run on a small
+    text-only model and drops a large share of its input tokens.
+    """
+    out: list = []
+    removed = 0
+    for m in messages:
+        content = getattr(m, "content", None)
+        if not isinstance(content, list):
+            out.append(m)
+            continue
+        kept = [
+            b for b in content
+            if not (isinstance(b, dict) and b.get("type") in _IMAGE_BLOCK_TYPES)
+        ]
+        if len(kept) == len(content):
+            out.append(m)
+            continue
+        removed += len(content) - len(kept)
+        try:
+            out.append(m.model_copy(update={"content": kept}))
+        except Exception:
+            # Not a pydantic message (or a frozen one) — keep the
+            # original rather than lose the turn.  Worst case the
+            # interview model sees the images it would have seen before.
+            out.append(m)
+    return out, removed
+
+
 def _slugify(text: str, max_len: int = 80) -> str:
     """Make ``text`` safe for use as a filename component.
 
@@ -522,152 +591,6 @@ def _format_block(label: str, body: str) -> str:
     indented = "\n".join(_LOG_INDENT + line for line in body.split("\n"))
     return f"{label}\n{indented}"
 
-
-# Protocol prefixes the DH must use after each Agent-A reply.
-_ASK_PREFIX = "ASK:"
-_SAVE_PREFIX = "SAVE:"
-
-
-def _parse_dh_decision(text: str) -> tuple[str, str]:
-    """Parse a DH decision into ``(kind, payload)``.
-
-    *kind* is one of ``"ASK"``, ``"SAVE"``, or ``"PROTOCOL_ERROR"``.
-    *payload* is the trimmed text after the prefix (or the raw text on
-    a protocol error, for fallback handling).
-    """
-    stripped = (text or "").lstrip()
-    if stripped.upper().startswith(_ASK_PREFIX):
-        return "ASK", stripped[len(_ASK_PREFIX):].lstrip()
-    if stripped.upper().startswith(_SAVE_PREFIX):
-        return "SAVE", stripped[len(_SAVE_PREFIX):].lstrip()
-    return "PROTOCOL_ERROR", stripped
-
-
-# ---------------------------------------------------------------------------
-# SEMANTIC SAVE body: QUESTION: / ANSWER: headers
-# ---------------------------------------------------------------------------
-#
-# For SEMANTIC fields the DH's SAVE body must itself carry two
-# headers:
-#
-#   QUESTION: <short embedding-friendly question>
-#   ANSWER:   <embedding-friendly final answer>
-#
-# Both blocks may span multiple lines.  The headers are case-
-# insensitive and tolerate whitespace before the colon.  When either
-# header is missing the parser returns ``(None, None)`` and the caller
-# falls back to a defensive behaviour (treat the whole body as the
-# answer; reuse the asked question as the saved question).
-# ---------------------------------------------------------------------------
-
-# Multi-pair SAVE-body parser.  A SEMANTIC SAVE body may contain N
-# pairs (multi-answer split) and/or ``ATTEMPT: <NNN>`` headers
-# preceding each pair (multi-attempt identifying-Q case).  We walk
-# the body line-by-line and accumulate ``(attempt_id_or_None, Q, A)``
-# triples in order.  Each Q/A pair becomes one ``.txt`` file at
-# write time, with naming controlled by the caller (single-pair vs
-# multi-pair vs multi-attempt — see :meth:`_write_entry`).
-_SAVE_LINE_RE = re.compile(
-    r"^\s*(ATTEMPT|QUESTION|ANSWER)\s*:\s*(.*)$",
-    re.IGNORECASE,
-)
-
-
-def _parse_save_body_semantic(
-    text: str,
-) -> list[tuple[str | None, str, str]]:
-    """Split a SEMANTIC SAVE body into a list of ``(attempt_id, Q, A)``
-    triples in order.
-
-    Supported shapes:
-
-    * Single Q/A pair (legacy single-answer)::
-
-          QUESTION: ...
-          ANSWER: ...
-
-      → returns ``[(None, q, a)]``.
-
-    * N Q/A pairs back-to-back (multi-answer split, Extension A)::
-
-          QUESTION: q1
-          ANSWER: a1
-          QUESTION: q2
-          ANSWER: a2
-
-      → returns ``[(None, q1, a1), (None, q2, a2)]``.
-
-    * N attempt-tagged blocks (multi-attempt identifying-Q,
-      Extension B)::
-
-          ATTEMPT: 002
-          QUESTION: q1
-          ANSWER: a1
-          ATTEMPT: 005
-          QUESTION: q2
-          ANSWER: a2
-
-      → returns ``[("002", q1, a1), ("005", q2, a2)]``.  The attempt
-      id is normalised through ``_normalise_attempt_input`` so a
-      slug or "attempt NNN" prefix is also accepted.
-
-    * Mixed (illegal — some pairs have ATTEMPT, others don't) — the
-      parser preserves the per-pair attempt_id (``None`` for pairs
-      lacking the header), letting the caller decide how to handle
-      the inconsistency.
-
-    Returns an empty list when the body has no recognisable QUESTION /
-    ANSWER headers — the caller treats that as a protocol slip and
-    falls back to a single-pair best-effort.
-    """
-    if not text:
-        return []
-
-    triples: list[tuple[str | None, str, str]] = []
-    current_attempt: str | None = None
-    current_q: str | None = None
-    current_a_buf: list[str] | None = None
-    in_answer = False
-
-    def _flush() -> None:
-        nonlocal current_q, current_a_buf, current_attempt, in_answer
-        if current_q is not None and current_a_buf is not None:
-            ans = "\n".join(current_a_buf).strip()
-            q = current_q.strip()
-            if q or ans:
-                triples.append((current_attempt, q, ans))
-        current_q = None
-        current_a_buf = None
-        in_answer = False
-
-    for line in text.splitlines():
-        m = _SAVE_LINE_RE.match(line)
-        if m:
-            tag = m.group(1).upper()
-            body = m.group(2).strip()
-            if tag == "ATTEMPT":
-                _flush()
-                # Normalise inline so the caller doesn't have to.
-                norm = _normalise_attempt_input(body)
-                current_attempt = norm if norm is not None else body
-                continue
-            if tag == "QUESTION":
-                _flush()
-                current_q = body
-                in_answer = False
-                continue
-            if tag == "ANSWER":
-                current_a_buf = [body] if body else []
-                in_answer = True
-                continue
-        # Continuation line — append to whichever buffer is active.
-        if in_answer and current_a_buf is not None:
-            current_a_buf.append(line)
-        elif current_q is not None and not in_answer:
-            # multi-line question continuation
-            current_q = (current_q + "\n" + line).rstrip()
-    _flush()
-    return triples
 
 
 # ---------------------------------------------------------------------------
@@ -1026,6 +949,88 @@ class DatabaseHandler(BaseChainAgent):
             workflow_settings.EMBEDDING_MAX_RESPONSE_TOKENS
         )
 
+        # Resolved once per save by :meth:`_interview_llm` and reused for
+        # every interviewed agent.  ``None`` = not resolved yet; the
+        # sentinel below = resolved to "each agent's own model".
+        self._interview_llm_cache: tuple | None = None
+
+    # ------------------------------------------------------------------
+    # Which LLM answers the interview
+    # ------------------------------------------------------------------
+
+    # DH_INTERVIEW_PROVIDER value meaning "leave every agent on its own
+    # live model" — the historic behaviour.  Compared case-insensitively
+    # so a hand-edited settings.py cannot miss it on capitalisation.
+    _ORIGINAL_AGENT = "original agent"
+
+    def _interview_llm(self, agent) -> tuple:
+        """The ``(llm, provider)`` pair that answers this agent's questions.
+
+        By default (``DH_INTERVIEW_PROVIDER = "Original Agent"``) this is
+        the agent's own bare LLM and its own provider tag — exactly what
+        the DH used before the setting existed.  When the setting names a
+        real provider, EVERY interviewed agent answers on that one model
+        instead, which is where a save's cost mostly goes: ~36 answers,
+        each re-sending a full session history, billed at the strongest
+        models in the workflow.
+
+        The provider tag travels WITH the llm on purpose.  ``_ask_agent``
+        passes it to ``make_system_message``, which emits an Anthropic
+        ``cache_control`` block for Anthropic and a plain string
+        otherwise — swapping the model without the tag would send an
+        Anthropic-shaped system block to OpenAI.
+
+        Read fresh from settings at the first call of each save (the same
+        contract as every other setting: an edit applies to the next
+        session), then memoised for the rest of the save.
+
+        Fail-open: any resolution error (unknown provider, missing API
+        key, a model the client rejects at construction) logs a warning
+        and falls back to the agent's own LLM.  A misconfigured setting
+        must never cost a whole session's worth of answers.
+        """
+        agent_own = (
+            getattr(agent, "base_llm", None) or agent.llm,
+            getattr(agent, "provider", self.provider),
+        )
+
+        if self._interview_llm_cache is None:
+            provider = str(
+                getattr(workflow_settings, "DH_INTERVIEW_PROVIDER",
+                        "Original Agent")
+            ).strip()
+            model = str(
+                getattr(workflow_settings, "DH_INTERVIEW_MODEL", "")
+            ).strip()
+            if provider.lower() == self._ORIGINAL_AGENT or not provider:
+                logger.info(
+                    "[DH]  interview model: each agent's own "
+                    "(DH_INTERVIEW_PROVIDER = 'Original Agent')"
+                )
+                self._interview_llm_cache = ()
+            else:
+                try:
+                    from agents.shared.llm_provider import build_llm_for
+                    llm, resolved_provider, resolved_model = build_llm_for(
+                        provider, model,
+                    )
+                    self._interview_llm_cache = (llm, resolved_provider)
+                    logger.info(
+                        f"[DH]  interview model: {resolved_provider}/"
+                        f"{resolved_model} for EVERY interviewed agent "
+                        f"(overrides each agent's own model)"
+                    )
+                except Exception as exc:
+                    logger.warning(
+                        f"[DH]  could not build the configured interview "
+                        f"model {provider}/{model or '(default)'}: "
+                        f"{type(exc).__name__}: {exc}.  Falling back to "
+                        f"each agent's own model for this save."
+                    )
+                    self._interview_llm_cache = ()
+
+        return self._interview_llm_cache or agent_own
+
     # ------------------------------------------------------------------
     # Public API — called once by loader after user confirms "save"
     # ------------------------------------------------------------------
@@ -1165,6 +1170,29 @@ class DatabaseHandler(BaseChainAgent):
             # of that parent are silently skipped (no .txt, no
             # placeholder).  Multi-attempt parents land here with
             # ``len(value) >= 2``.
+            # Decide, in ONE call, which rows are asked together.  Skipped
+            # entirely when no run holds more than one row — there would be
+            # nothing to decide, and the call is not free.  ``handled_ids``
+            # then keeps the main loop from re-asking a row that an earlier
+            # batch already settled.
+            from agents.database_handler import batch_tools as _bt
+            batch_group_of: dict[str, list[dict]] = {}
+            handled_ids: set[str] = set()
+            if any(len(r) > 1 for r in _bt.candidate_runs(schedule_entries)):
+                try:
+                    batch_group_of = self._plan_batches(schedule_entries)
+                except Exception as exc:  # pragma: no cover — defensive
+                    logger.warning(
+                        f"[DH]  batch planning raised "
+                        f"{type(exc).__name__}: {exc}; asking every row "
+                        f"on its own."
+                    )
+            else:
+                logger.info(
+                    "[DH]  no run holds more than one row; nothing to "
+                    "batch, skipping the planning call."
+                )
+
             attempt_ids_by_parent: dict[str, list[str]] = {}
 
             # Session-id slug embedded in every saved .txt and used
@@ -1407,8 +1435,11 @@ class DatabaseHandler(BaseChainAgent):
                             self._run_identifying_conversation(
                                 agent_key=agent_key,
                                 agent_system_prompt=getattr(agent, "system_prompt", "") or "",
-                                agent_provider=getattr(agent, "provider", self.provider),
-                                agent_base_llm=getattr(agent, "base_llm", None) or agent.llm,
+                                # (llm, provider) resolved together — see
+                                # _interview_llm; the provider tag must
+                                # match the model that receives it.
+                                agent_provider=self._interview_llm(agent)[1],
+                                agent_base_llm=self._interview_llm(agent)[0],
                                 agent_messages=list(agent_state.messages),
                                 field=field,
                                 description=effective_description,
@@ -1599,84 +1630,91 @@ class DatabaseHandler(BaseChainAgent):
                         norm = _normalise_attempt_input(attempt_str)
                         if not norm:
                             continue
-                        for sub_entry in sub_rows:
-                            sub_agent_key = sub_entry["agent_key"]
-                            sub_field = sub_entry["field"]
-                            sub_agent = orchestrator._agents_by_key.get(sub_agent_key)
-                            sub_state = self.session.agent_states.get(sub_agent_key)
-                            if sub_agent is None or sub_state is None:
-                                logger.warning(
-                                    f"[DH]  sub-row agent "
-                                    f"{sub_agent_key!r} not in registry; "
-                                    f"skipping for attempt {norm}."
-                                )
-                                continue
-                            sub_desc = (
-                                f"For {attempt_str}: "
-                                f"{sub_entry.get('description', '')}"
-                            )
-                            try:
-                                sub_triples, _sub_raw = (
-                                    self._run_one_conversation(
-                                        agent_key=sub_agent_key,
-                                        agent_system_prompt=getattr(sub_agent, "system_prompt", "") or "",
-                                        agent_provider=getattr(sub_agent, "provider", self.provider),
-                                        agent_base_llm=getattr(sub_agent, "base_llm", None) or sub_agent.llm,
-                                        agent_messages=list(sub_state.messages),
-                                        field=sub_field,
-                                        description=sub_desc,
-                                        field_type=sub_entry.get("type", "Semantic"),
-                                    )
-                                )
-                            except Exception as exc:  # pragma: no cover
-                                logger.warning(
-                                    f"[DH]  sub-row conversation for "
-                                    f"{sub_agent_key}/{sub_field} "
-                                    f"(attempt {norm}) raised "
-                                    f"{type(exc).__name__}: {exc}; "
-                                    f"skipping."
-                                )
-                                continue
 
-                            # Multi-attempt → always use the __NNN
-                            # suffix on sub-row files so they don't
-                            # collide across attempts.
-                            attempt_suffix = norm if n_attempts >= 2 else None
-                            for idx, (_t, sq, sa) in enumerate(sub_triples):
+                        # Multi-attempt → always use the __NNN suffix on
+                        # sub-row files so they don't collide across
+                        # attempts.
+                        attempt_suffix = norm if n_attempts >= 2 else None
+
+                        def _persist_sub(
+                            sub_entry: dict, result,
+                            _attempt_str=attempt_str, _norm=norm,
+                            _suffix=attempt_suffix,
+                        ) -> None:
+                            """Write one settled sub-row for ONE attempt.
+
+                            The attempt is bound through the default
+                            arguments rather than read from the enclosing
+                            scope: this closure outlives the loop
+                            iteration that made it (``_run_batch`` calls
+                            it later), and a late read would file every
+                            attempt's answers under the last one.
+                            """
+                            nonlocal written
+                            if result == "unsettled":
+                                sub_unsettled.append(sub_entry)
+                                return
+                            if result is None:
+                                try:
+                                    spath = self._write_skipped_entry(
+                                        session_dir=session_dir,
+                                        agent_key=sub_entry["agent_key"],
+                                        field=sub_entry["field"],
+                                        session_id=session_id,
+                                        attempt_id=_attempt_str,
+                                        attempt_suffix=_suffix,
+                                    )
+                                    self._write_sidecar_meta(
+                                        spath, entry=sub_entry,
+                                        attempt_id=_attempt_str,
+                                    )
+                                    logger.info(
+                                        f"[DH]  skipped sub-row "
+                                        f"{spath.name} (attempt {_norm}, "
+                                        f"no database row)"
+                                    )
+                                    written += 1
+                                except OSError as exc:
+                                    logger.warning(
+                                        f"[DH]  failed to write sub-row "
+                                        f"skip placeholder: {exc}"
+                                    )
+                                return
+                            for idx, item in enumerate(result):
                                 item_index = (
-                                    idx + 1 if len(sub_triples) > 1 else None
+                                    idx + 1 if len(result) > 1 else None
                                 )
                                 try:
                                     spath = self._write_entry(
                                         session_dir=session_dir,
-                                        agent_key=sub_agent_key,
-                                        field=sub_field,
-                                        question=sq,
-                                        answer=sa,
+                                        agent_key=sub_entry["agent_key"],
+                                        field=sub_entry["field"],
+                                        question=item["question"],
+                                        answer=item["answer"],
                                         session_id=session_id,
-                                        attempt_id=attempt_str,
-                                        attempt_suffix=attempt_suffix,
+                                        attempt_id=_attempt_str,
+                                        attempt_suffix=_suffix,
                                         item_index=item_index,
                                     )
                                     self._write_sidecar_meta(
                                         spath, entry=sub_entry,
-                                        attempt_id=attempt_str,
+                                        attempt_id=_attempt_str,
                                     )
                                     logger.info(
                                         f"[DH]  wrote sub-row {spath.name} "
-                                        f"(attempt {norm})"
+                                        f"(attempt {_norm})"
                                     )
                                     written += 1
                                     # Phase 3C — sub-row, attempt-scoped.
                                     self._phase_3c_persist_chunk(
                                         session_id=session_id,
-                                        nnn=norm,
-                                        agent_key=sub_agent_key,
+                                        nnn=_norm,
+                                        agent_key=sub_entry["agent_key"],
                                         agents_to=list(sub_entry.get("to_agents") or []),
-                                        field=sub_field,
+                                        field=sub_entry["field"],
                                         field_type=sub_entry.get("type", "Semantic"),
-                                        question=sq,
-                                        body=sa,
+                                        question=item["question"],
+                                        body=item["answer"],
                                         item_index=item_index,
                                         is_error=False,
                                         is_identifying=False,
@@ -1688,55 +1726,274 @@ class DatabaseHandler(BaseChainAgent):
                                 except OSError as exc:
                                     logger.warning(
                                         f"[DH]  failed to write sub-row "
-                                        f"for {sub_agent_key}/{sub_field} "
-                                        f"(attempt {norm}): {exc}"
+                                        f"for {sub_entry['agent_key']}/"
+                                        f"{sub_entry['field']} "
+                                        f"(attempt {_norm}): {exc}"
                                     )
+
+                        # Sub-rows are batched per attempt, using the
+                        # groups the planning call already decided; the
+                        # same grouping is reused for every attempt.
+                        # Rows whose agent this topology never built are
+                        # dropped here rather than inside a batch.
+                        sub_done: set[str] = set()
+                        sub_unsettled: list[dict] = []
+                        for sub_entry in sub_rows:
+                            if sub_entry["id"] in sub_done:
+                                continue
+                            sub_agent_key = sub_entry["agent_key"]
+                            sub_agent = orchestrator._agents_by_key.get(sub_agent_key)
+                            sub_state = self.session.agent_states.get(sub_agent_key)
+                            if sub_agent is None or sub_state is None:
+                                logger.warning(
+                                    f"[DH]  sub-row agent "
+                                    f"{sub_agent_key!r} not in registry; "
+                                    f"skipping for attempt {norm}."
+                                )
+                                sub_done.add(sub_entry["id"])
+                                continue
+
+                            sub_group = [
+                                r for r in batch_group_of.get(
+                                    sub_entry["id"], [sub_entry],
+                                )
+                                if r["id"] not in sub_done
+                                and r.get("parent_id") == entry["id"]
+                                and r["agent_key"] == sub_agent_key
+                            ] or [sub_entry]
+
+                            # The attempt is stated in the question the
+                            # agent sees — its own reply is what pins the
+                            # answer to the right design — while the
+                            # FILING comes from the closure above, never
+                            # from the model.
+                            asked_rows = [
+                                {**r, "description": (
+                                    f"For {attempt_str}: "
+                                    f"{r.get('description', '')}"
+                                )}
+                                for r in sub_group
+                            ]
+                            for r in sub_group:
+                                sub_done.add(r["id"])
+
+                            try:
+                                self._run_batch(
+                                    rows=asked_rows,
+                                    agent_key=sub_agent_key,
+                                    agent_system_prompt=getattr(sub_agent, "system_prompt", "") or "",
+                                    agent_provider=self._interview_llm(sub_agent)[1],
+                                    agent_base_llm=self._interview_llm(sub_agent)[0],
+                                    agent_messages=list(sub_state.messages),
+                                    on_resolved=_persist_sub,
+                                )
+                            except Exception as exc:  # pragma: no cover
+                                logger.warning(
+                                    f"[DH]  sub-row batch for "
+                                    f"{sub_agent_key} (attempt {norm}) "
+                                    f"raised {type(exc).__name__}: {exc}; "
+                                    f"falling back to one row at a time."
+                                )
+                                sub_unsettled.extend(asked_rows)
+
+                        # Per-row fallback, one attempt's worth at a time.
+                        for sub_entry in sub_unsettled:
+                            sub_agent = orchestrator._agents_by_key.get(
+                                sub_entry["agent_key"])
+                            sub_state = self.session.agent_states.get(
+                                sub_entry["agent_key"])
+                            if sub_agent is None or sub_state is None:
+                                continue
+                            logger.info(
+                                f"[DH]  falling back to a single "
+                                f"conversation for "
+                                f"{sub_entry['agent_key']}/"
+                                f"{sub_entry['field']} (attempt {norm})"
+                            )
+                            try:
+                                self._run_batch(
+                                    rows=[sub_entry],
+                                    agent_key=sub_entry["agent_key"],
+                                    agent_system_prompt=getattr(sub_agent, "system_prompt", "") or "",
+                                    agent_provider=self._interview_llm(sub_agent)[1],
+                                    agent_base_llm=self._interview_llm(sub_agent)[0],
+                                    agent_messages=list(sub_state.messages),
+                                    on_resolved=lambda r, res: (
+                                        _persist_sub(r, None)
+                                        if res == "unsettled"
+                                        else _persist_sub(r, res)
+                                    ),
+                                )
+                            except Exception as exc:  # pragma: no cover
+                                logger.warning(
+                                    f"[DH]  fallback sub-row conversation "
+                                    f"failed: {type(exc).__name__}: {exc}"
+                                )
 
                     i = j  # skip past the sub-rows the inner loop just handled
                     continue
 
                 # ----- SESSION-SCOPED ROW (or QUANT) -----------------
-                try:
-                    triples, raw_answer = self._run_one_conversation(
-                        agent_key=agent_key,
-                        agent_system_prompt=getattr(agent, "system_prompt", "") or "",
-                        agent_provider=getattr(agent, "provider", self.provider),
-                        agent_base_llm=getattr(agent, "base_llm", None) or agent.llm,
-                        agent_messages=list(agent_state.messages),
-                        field=field,
-                        description=effective_description,
-                        field_type=entry.get("type", "Semantic"),
+                #
+                # This row may be asked together with its neighbours.  The
+                # batch is driven from whichever of its rows the loop
+                # reaches FIRST; the rest are settled inside that call and
+                # skipped when the loop walks over them.
+                if entry["id"] in handled_ids:
+                    i += 1
+                    continue
+
+                def _eligible(r: dict) -> bool:
+                    """Rows this loop would itself reach and interview.
+
+                    A planned group is computed over the WHOLE schedule,
+                    so it can name rows that take another path entirely
+                    (sub-rows, identifying rows) or that the loop has
+                    already disposed of (a DCII row with the inspector
+                    off gets an empty placeholder above).  Asking those
+                    inside a batch would interview them twice.
+                    """
+                    return (
+                        r["id"] not in handled_ids
+                        and r.get("parent_id") is None
+                        and r.get("scope") == "session"
+                        and not (
+                            r.get("requires_dcii_enabled")
+                            and not dc_inspector_enabled
+                        )
                     )
-                except Exception as exc:  # pragma: no cover — defensive
-                    logger.warning(
-                        f"[DH]  conversation with {agent_key} failed: {exc}"
-                    )
+
+                group = [
+                    r for r in batch_group_of.get(entry["id"], [entry])
+                    if _eligible(r)
+                ] or [entry]
+
+                unsettled: list[dict] = []
+
+                def _persist(row: dict, result) -> None:
+                    """Write one settled row — entries, a skip, or neither.
+
+                    Called the moment a row is settled rather than at the
+                    end of the batch, so a crash costs the rows still
+                    open, not the ones already answered.  That matches
+                    the per-row path, which writes as each conversation
+                    returns.
+                    """
+                    nonlocal written
+                    if result == "unsettled":
+                        unsettled.append(row)
+                        return
+                    handled_ids.add(row["id"])
+                    r_field = row["field"]
+                    r_agent = row["agent_key"]
+
+                    if result is None:
+                        # SKIPPED: keep the .txt so the session folder
+                        # stays complete and auditable, write NO database
+                        # row — a "nothing to report" sentence would be
+                        # embedded and would then compete with real
+                        # content at search time (F17).
+                        try:
+                            path = self._write_skipped_entry(
+                                session_dir=session_dir,
+                                agent_key=r_agent,
+                                field=r_field,
+                                session_id=session_id,
+                            )
+                            self._write_sidecar_meta(
+                                path, entry=row, attempt_id=None,
+                            )
+                            logger.info(
+                                f"[DH]  skipped {path.name} "
+                                f"(no database row written)"
+                            )
+                            written += 1
+                        except OSError as exc:
+                            logger.warning(
+                                f"[DH]  failed to write skip placeholder "
+                                f"for {r_agent}/{r_field}: {exc}"
+                            )
+                        return
+
+                    for idx, item in enumerate(result):
+                        item_index = idx + 1 if len(result) > 1 else None
+                        try:
+                            path = self._write_entry(
+                                session_dir=session_dir,
+                                agent_key=r_agent,
+                                field=r_field,
+                                question=item["question"],
+                                answer=item["answer"],
+                                session_id=session_id,
+                                attempt_id=None,
+                                attempt_suffix=None,
+                                item_index=item_index,
+                            )
+                            self._write_sidecar_meta(
+                                path, entry=row, attempt_id=None,
+                            )
+                            logger.info(
+                                f"[DH]  wrote {path.name}"
+                                + (f" (item {item_index}/{len(result)})"
+                                   if item_index else "")
+                            )
+                            written += 1
+                            # Phase 3C — session-scoped row (or Quant).
+                            # item_index stays as-is (None for
+                            # single-pair): the schema's NULL-distinct
+                            # semantics on session-scoped rows is
+                            # intentional; no forcing to 1 (see W28 +
+                            # chunks table NOTE).
+                            self._phase_3c_persist_chunk(
+                                session_id=session_id,
+                                nnn=None,
+                                agent_key=r_agent,
+                                agents_to=list(row.get("to_agents") or []),
+                                field=r_field,
+                                field_type=row.get("type", "Semantic"),
+                                question=item["question"],
+                                body=item["answer"],
+                                item_index=item_index,
+                                is_error=False,
+                                is_identifying=False,
+                                safety_filename=path.name,
+                                attempt_id_by_nnn=attempt_id_by_nnn,
+                                cascaded_attempt_nnns=cascaded_attempt_nnns,
+                                db_writer_available=db_writer_available,
+                            )
+                        except OSError as exc:
+                            logger.warning(
+                                f"[DH]  failed to write entry for "
+                                f"{r_agent}: {exc}"
+                            )
+
+                def _write_row_error(row: dict, exc: Exception) -> None:
+                    nonlocal written
+                    handled_ids.add(row["id"])
                     error_msg = (
-                        f"the DH conversation with {agent_key} "
+                        f"the DH conversation with {row['agent_key']} "
                         f"raised an exception: "
                         f"{type(exc).__name__}: {exc}"
                     )
                     err_path = self._write_error_entry(
                         session_dir=session_dir,
-                        agent_key=agent_key,
-                        field=field,
+                        agent_key=row["agent_key"],
+                        field=row["field"],
                         error_message=error_msg,
                         session_id=session_id,
                         attempt_id=None,
                     )
                     self._write_sidecar_meta(
-                        err_path, entry=entry, attempt_id=None,
+                        err_path, entry=row, attempt_id=None,
                     )
                     # Phase 3C — error rows also land in chunks
-                    # (is_error=True).  Session-scoped (this branch is
-                    # only reached for non-identifying rows; sub-row
-                    # exceptions land in the sub-row's own try-block).
+                    # (is_error=True), session-scoped.
                     self._phase_3c_persist_chunk(
                         session_id=session_id,
                         nnn=None,
-                        agent_key=agent_key,
-                        agents_to=list(entry.get("to_agents") or []),
-                        field=field,
+                        agent_key=row["agent_key"],
+                        agents_to=list(row.get("to_agents") or []),
+                        field=row["field"],
                         field_type="Semantic",
                         question=None,
                         body=f"ERROR: {error_msg}",
@@ -1748,59 +2005,67 @@ class DatabaseHandler(BaseChainAgent):
                         cascaded_attempt_nnns=cascaded_attempt_nnns,
                         db_writer_available=db_writer_available,
                     )
-                    i += 1
-                    continue
 
-                for idx, (_t, q, a) in enumerate(triples):
-                    item_index = idx + 1 if len(triples) > 1 else None
+                if len(group) > 1:
+                    logger.info(
+                        f"[DH]  batch for {agent_key}: "
+                        + ", ".join(r["field"] for r in group)
+                    )
+                try:
+                    self._run_batch(
+                        rows=group,
+                        agent_key=agent_key,
+                        agent_system_prompt=getattr(agent, "system_prompt", "") or "",
+                        agent_provider=self._interview_llm(agent)[1],
+                        agent_base_llm=self._interview_llm(agent)[0],
+                        agent_messages=list(agent_state.messages),
+                        on_resolved=_persist,
+                    )
+                except Exception as exc:  # pragma: no cover — defensive
+                    logger.warning(
+                        f"[DH]  batch with {agent_key} failed "
+                        f"({type(exc).__name__}: {exc}); falling back to "
+                        f"one conversation per unsettled row."
+                    )
+                    unsettled.extend(
+                        r for r in group if r["id"] not in handled_ids
+                    )
+
+                # Per-row fallback.  A row the batch could not settle is
+                # asked on its own, with its own fresh budget — the
+                # pre-batching path, unchanged.  Only these rows pay for
+                # it, so one difficult question cannot cost the batch.
+                for row in unsettled:
+                    if row["id"] in handled_ids:
+                        continue
+                    logger.info(
+                        f"[DH]  falling back to a single conversation "
+                        f"for {row['agent_key']}/{row['field']}"
+                    )
                     try:
-                        path = self._write_entry(
-                            session_dir=session_dir,
-                            agent_key=agent_key,
-                            field=field,
-                            question=q,
-                            answer=a,
-                            session_id=session_id,
-                            attempt_id=None,
-                            attempt_suffix=None,
-                            item_index=item_index,
+                        # A batch of ONE.  Coverage is trivial with a
+                        # single label, so the mapping problem that sent
+                        # the row here cannot recur; and a second failure
+                        # resolves as a skip rather than recursing.
+                        self._run_batch(
+                            rows=[row],
+                            agent_key=row["agent_key"],
+                            agent_system_prompt=getattr(agent, "system_prompt", "") or "",
+                            agent_provider=self._interview_llm(agent)[1],
+                            agent_base_llm=self._interview_llm(agent)[0],
+                            agent_messages=list(agent_state.messages),
+                            on_resolved=lambda r, res: _persist(
+                                r, None if res == "unsettled" else res,
+                            ),
                         )
-                        self._write_sidecar_meta(
-                            path, entry=entry, attempt_id=None,
-                        )
-                        logger.info(
-                            f"[DH]  wrote {path.name}"
-                            + (f" (item {item_index}/{len(triples)})"
-                               if item_index else "")
-                        )
-                        written += 1
-                        # Phase 3C — session-scoped row (or Quant).
-                        # item_index stays as-is (None for single-pair):
-                        # the schema's NULL-distinct semantics on
-                        # session-scoped rows is intentional; no
-                        # forcing to 1 (see W28 + chunks table NOTE).
-                        self._phase_3c_persist_chunk(
-                            session_id=session_id,
-                            nnn=None,
-                            agent_key=agent_key,
-                            agents_to=list(entry.get("to_agents") or []),
-                            field=field,
-                            field_type=entry.get("type", "Semantic"),
-                            question=q,
-                            body=a,
-                            item_index=item_index,
-                            is_error=False,
-                            is_identifying=False,
-                            safety_filename=path.name,
-                            attempt_id_by_nnn=attempt_id_by_nnn,
-                            cascaded_attempt_nnns=cascaded_attempt_nnns,
-                            db_writer_available=db_writer_available,
-                        )
-                    except OSError as exc:
+                    except Exception as exc:  # pragma: no cover — defensive
                         logger.warning(
-                            f"[DH]  failed to write entry for "
-                            f"{agent_key}: {exc}"
+                            f"[DH]  fallback conversation with "
+                            f"{row['agent_key']} failed: {exc}"
                         )
+                        _write_row_error(row, exc)
+                        continue
+
                 i += 1
 
             logger.info(
@@ -1908,206 +2173,664 @@ class DatabaseHandler(BaseChainAgent):
                 pass
             close_dh_logging()
 
-    # ------------------------------------------------------------------
-    # Conversation primitives
-    # ------------------------------------------------------------------
-
-    def _run_one_conversation(
-        self,
-        agent_key: str,
-        agent_system_prompt: str,
-        agent_provider: str,
-        agent_base_llm,
-        agent_messages: list,
-        field: str,
-        description: str,
-        field_type: str,
-    ) -> tuple[list[tuple[str | None, str, str]], str]:
-        """Run one DH-driven conversation about *field* with the named agent.
-
-        Returns ``(triples, raw_last_answer)`` where ``triples`` is a
-        list of ``(attempt_id, question, answer)`` items in DH-emitted
-        order.  For non-identifying conversations the attempt_id slot
-        is ``None``; the multi-attempt SAVE format only fires from
-        :meth:`_run_identifying_conversation`.  Multi-answer split
-        (Extension A) is supported here: when the DH emits N
-        QUESTION:/ANSWER: pairs, all N show up in the returned list.
-
-        Loop:
-          1. DH formulates an initial question and the system delivers
-             it to Agent A.
-          2. Agent A replies.
-          3. DH emits ``ASK: ...`` (loop) or ``SAVE: ...`` (terminate).
-          4. For SEMANTIC fields, EACH pair is checked against the
-             per-pair token cap; pairs over cap get a one-shot retry.
-
-        v3 Phase 1 commit 6: the conversation runs entirely in a local
-        ``convo_buffer`` list seeded from *agent_messages* (a copy of
-        ``session.agent_states[agent_key].messages``).  Neither the
-        live agent (if one even exists at this point) nor the
-        AgentState is mutated.  Each call to this method starts from
-        a fresh seed of session-time messages, so a per-field
-        deepcopy/restore pump is no longer needed — the W6 / O4
-        invariants hold by construction.
-        """
-        # Local conversation buffer.  The DH appends its question and
-        # the agent's reply here; nothing is written back to the
-        # AgentState or to any live agent instance.
-        convo_buffer: list = list(agent_messages)
-
-        is_semantic = (field_type or "Semantic").strip().lower() == "semantic"
-
-        # Step 1: DH formulates the initial question.
-        first_question = self._formulate_question(
-            agent_key=agent_key,
-            field=field,
-            description=description,
-            field_type=field_type,
-        )
-        logger.info(
-            f"[DH]  initial question for {agent_key}/{field}\n"
-            f"{_format_block('DH -> ' + agent_key + ':', first_question)}"
-        )
-
-        # Step 2+: alternate Agent A reply / DH decision until the DH
-        # emits SAVE or the per-field cap is hit.
-        last_question = first_question
-        last_answer = ""
-        final_body: str | None = None
-
-        for round_idx in range(MAX_DH_TURNS_PER_FIELD):
-            # ---- Agent A turn -----------------------------------------
-            answer = self._ask_agent(
-                agent_key=agent_key,
-                agent_system_prompt=agent_system_prompt,
-                agent_provider=agent_provider,
-                agent_base_llm=agent_base_llm,
-                convo_buffer=convo_buffer,
-                field=field,
-                question=last_question,
-            )
-            last_answer = answer
-
-            # Record the round in the DH's own running history so
-            # subsequent fields can reference what was just said.
-            self.messages.append(
-                HumanMessage(
-                    content=(
-                        f"Agent: {agent_key}\nField: {field}\n"
-                        f"Field type: {field_type}\n"
-                        f"My question to {agent_key}: {last_question}\n"
-                        f"{agent_key}'s reply: {answer}"
-                    )
-                )
-            )
-
-            # ---- DH decision turn -------------------------------------
-            decision_kind, decision_payload = self._decide_next(
-                agent_key=agent_key,
-                field=field,
-                field_type=field_type,
-                description=description,
-                last_question=last_question,
-                last_answer=answer,
-                round_idx=round_idx,
-            )
-
-            if decision_kind == "SAVE":
-                final_body = decision_payload
-                break
-            if decision_kind == "ASK":
-                last_question = decision_payload
-                logger.info(
-                    f"[DH]  follow-up #{round_idx + 1} for "
-                    f"{agent_key}/{field}\n"
-                    f"{_format_block('DH -> ' + agent_key + ':', last_question)}"
-                )
-                continue
-            # PROTOCOL_ERROR — log and bail with the agent's last
-            # answer as the body.  Better to save something than
-            # nothing.
-            logger.warning(
-                f"[DH]  protocol error from DH for "
-                f"{agent_key}/{field} (no ASK:/SAVE: prefix); "
-                f"using agent's last answer as body."
-            )
-            final_body = answer
-            break
-
-        # If the per-field cap was reached without a SAVE, fall back
-        # to the agent's last answer.
-        if final_body is None:
-            logger.warning(
-                f"[DH]  per-field turn cap "
-                f"({MAX_DH_TURNS_PER_FIELD}) reached for "
-                f"{agent_key}/{field} without SAVE; using last answer."
-            )
-            final_body = last_answer
-
-        if not (final_body or "").strip():
-            final_body = "(no usable content was produced for this field this session)"
-
-        if is_semantic:
-            # SEMANTIC SAVE shape (v9.1+): one or more QUESTION:/
-            # ANSWER: pairs back-to-back (multi-answer split is
-            # allowed when the agent's reply covers N distinct
-            # items).  Defensive: when no pairs parse, fall back to
-            # a single pair built from the asked question + the
-            # whole body.
-            triples = _parse_save_body_semantic(final_body)
-            if not triples:
-                logger.warning(
-                    f"[DH]  SAVE body for {agent_key}/{field} did not "
-                    f"contain QUESTION:/ANSWER: headers; using asked "
-                    f"question + whole body as a single-pair fallback."
-                )
-                triples = [(None, first_question, final_body)]
-
-            # Safety-net cleanup BEFORE the cap check so the cap
-            # measures what will actually be written.  Strip the
-            # ATTEMPT tag here — non-identifying conversations don't
-            # honour it, but a stray one in the prose shouldn't break
-            # the embedding either.
-            cleaned: list[tuple[str | None, str, str]] = []
-            for (_attempt, q, a) in triples:
-                cq = _clean_semantic_body(q) or q
-                ca = _clean_semantic_body(a) or a
-                cleaned.append((None, cq, ca))
-
-            cleaned = self._enforce_semantic_cap_pairs(
-                agent_key=agent_key,
-                field=field,
-                description=description,
-                triples=cleaned,
-            )
-            # Return shape: (triples, raw_last_answer).  The raw last
-            # answer is preserved so any future extension that needs
-            # the un-cleaned reply (none today; identifying-Q used to)
-            # can still reach it.
-            return cleaned, last_answer
-
-        # QUANTITATIVE — single-body path.  Wrap as a one-element
-        # list of triples with attempt_id=None so the caller has a
-        # uniform interface.
-        return [(None, first_question, final_body)], last_answer
-
     # Mechanical tail clause appended to every DH question sent to an
     # agent.  Reduces the cleanup burden by asking the agent up-front
     # NOT to surface artefacts the DH would otherwise have to strip.
     # Independent of the DH's own wording so it cannot be "forgotten":
     # Option 1 in the user's design notes, layered on top of Option 2
     # (the SEMANTIC safety net in _clean_semantic_body).
+    # The parameter COUNT is derived from the live parameter set rather
+    # than written as a literal.  It read "17" for months after
+    # impellerHeight was dropped and the set became 16 — in text
+    # appended to every question the DH sends every agent.  Deriving it
+    # means the same drift cannot recur the next time the DC's
+    # parameter list changes.
     _AGENT_FACING_TAIL = (
         "\n\n[Reminder for your reply, from the Database Handler:\n"
         "Do not include file paths, directory names, or absolute "
         "paths of any kind (no /app/... paths, no render PNG paths, "
         "no parameters.json references, no attempt-folder slugs).  "
-        "Do not enumerate the 17 design parameters as a value list — "
+        f"Do not enumerate the {len(PARAMETER_NAMES)} design parameters "
+        "as a value list — "
         "instead, describe the REASONING you applied (which checks, "
         "which heuristics, which trade-offs).  Do not address any "
         "other agent or the user; the chain is over and your reply "
         "is consumed only by me.]"
     )
+
+    # ------------------------------------------------------------------
+    # Batched interview
+    # ------------------------------------------------------------------
+    #
+    # A BATCH is a group of schedule rows asked to one agent in ONE call.
+    # Where the per-row path costs three LLM calls per row (write the
+    # question, ask the agent, decide what to save), a batch of N costs
+    # three for the whole group.
+    #
+    # Every DH decision here is a FORCED TOOL CALL, never prose.  The old
+    # text protocol could fail invisibly — a header with markdown on it
+    # became answer text, an untagged block inherited the previous
+    # block's attempt — and with several rows riding on one reply those
+    # failures stop being cosmetic: a mis-mapped answer is filed under
+    # the wrong row, and the database will not catch it (a session-scoped
+    # duplicate inserts twice, an attempt-scoped one is discarded at
+    # INFO — see F59).  So the mapping is carried by short labels the
+    # schema requires, and checked here before anything is written.
+    # ------------------------------------------------------------------
+
+    def _force_tool_args(
+        self,
+        tool_obj,
+        tool_name: str,
+        instruction: str,
+        log_label: str,
+        *,
+        retries: int = 2,
+    ) -> dict | None:
+        """Bind ONE tool for ONE turn, force it, and return its arguments.
+
+        Returns ``None`` when the binding fails, every attempt raises, or
+        the model returns no tool call despite ``tool_choice``.  Callers
+        must treat ``None`` as "fall back", never as "empty result" — the
+        difference is a whole batch's worth of answers.
+
+        The binding is LOCAL: ``self.llm`` keeps no tools, per the W18 /
+        W20 invariant that a forced tool is never left bound.
+        """
+        try:
+            bound = self.base_llm.bind_tools(
+                [tool_obj], tool_choice=tool_name,
+            )
+        except Exception as exc:  # pragma: no cover — defensive
+            logger.warning(
+                f"[DH]  could not bind {tool_name}: "
+                f"{type(exc).__name__}: {exc}"
+            )
+            return None
+
+        self.messages.append(HumanMessage(content=instruction))
+        for attempt in range(1, retries + 1):
+            try:
+                response = invoke_with_retry(
+                    bound,
+                    [
+                        make_system_message(
+                            self.system_prompt, self.provider, phase="save",
+                        )
+                    ]
+                    + self.messages,
+                    f"{log_label}-{attempt}",
+                    # Every batching tool call comes through here — the
+                    # plan, each batch's questions, every save decision
+                    # and its retry — so this is where most of the DH's
+                    # own token spend now lives.  ``self.messages`` grows
+                    # monotonically across the whole save and is never
+                    # re-seeded, which makes it the ideal cached prefix:
+                    # each call reads back everything the save has said
+                    # so far instead of re-paying for it.  Retries within
+                    # this loop re-send an identical prefix and so hit in
+                    # full.
+                    cache_control=history_cache_control(
+                        self.provider, phase="save",
+                    ),
+                )
+            except Exception as exc:
+                logger.warning(
+                    f"[DH]  {log_label} attempt {attempt} raised "
+                    f"{type(exc).__name__}: {exc}"
+                )
+                continue
+            self.messages.append(response)
+            tool_calls = getattr(response, "tool_calls", None) or []
+            if not tool_calls:
+                logger.warning(
+                    f"[DH]  {log_label} attempt {attempt} returned no "
+                    f"tool call despite tool_choice={tool_name}."
+                )
+                continue
+            first = tool_calls[0]
+            args = (
+                first.get("args") if isinstance(first, dict)
+                else getattr(first, "args", {})
+            )
+            return args or {}
+        return None
+
+    def _plan_batches(self, entries: list[dict]) -> dict[str, list[dict]]:
+        """Decide which schedule rows are asked together.
+
+        ONE LLM call for the whole save.  Returns ``{row_id: group}`` —
+        every row maps to the group it belongs to, and a row asked alone
+        maps to a group of one, so callers need no special case.
+
+        Code decides only what is not a judgement: rows may be grouped
+        solely within a CANDIDATE RUN (same agent, same scope, same
+        parent — see ``batch_tools.candidate_runs``).  Everything else,
+        including whether to batch at all, is the DH's call.
+
+        Fails safe in both directions: a plan that does not validate is
+        repaired by :func:`batch_tools.validate_plan` (cross-run groups
+        split, omitted rows made singletons) after one retry, and a call
+        that fails outright degrades to one row per group — which is
+        exactly the pre-batching behaviour, so a broken planner costs
+        money, never correctness.
+        """
+        from agents.database_handler import batch_tools as bt
+
+        runs = bt.candidate_runs(entries)
+        labels = bt.label_rows(entries, style="plan")
+        label_of = {id(row): label for label, row in labels.items()}
+
+        run_lines: list[str] = []
+        for n, run in enumerate(runs, start=1):
+            head = run[0]
+            kind = (
+                "attempt-identifying" if bt.is_identifying(head)
+                else f"{head.get('scope', 'session')}-scoped"
+            )
+            if head.get("parent_id"):
+                kind += ", sub-rows of an attempt block"
+            run_lines.append(
+                f"\nRUN {n} — agent: {head.get('agent_key')}, {kind}"
+                + ("  [only one row; nothing to decide]" if len(run) == 1 else "")
+            )
+            for row in run:
+                run_lines.append(
+                    f"  {label_of[id(row)]}  {row.get('field')}"
+                    f"\n        {(row.get('description') or '').strip()}"
+                )
+
+        instruction = (
+            "BATCH PLANNING TURN.\n\n"
+            "Below is this session's whole question schedule, split into "
+            "runs.  Decide which rows are asked to their agent TOGETHER, "
+            "in one call, and which are asked alone.\n"
+            + "\n".join(run_lines)
+            + "\n\nGroup only within a run — rows in different runs cannot "
+            "share a call.  Batching a group of N saves 2 x (N-1) LLM "
+            "calls, so group wherever one combined answer would be as "
+            "good as separate ones, and leave apart only what genuinely "
+            "would suffer.  Questions that pull in OPPOSITE directions "
+            "(a best case and a worst case, a success and a failure) "
+            "belong apart: one reply covering both tends to blur them.\n\n"
+            "Call submit_batch_plan now.  Every label above must appear "
+            "in exactly one group."
+        )
+
+        args = self._force_tool_args(
+            bt.submit_batch_plan, bt.SUBMIT_BATCH_PLAN_TOOL_NAME,
+            instruction, "DH-plan",
+        )
+        if args is None:
+            logger.warning(
+                "[DH]  batch planning failed; asking every row on its "
+                "own (the pre-batching behaviour)."
+            )
+            groups = bt.no_batching_plan(runs)
+        else:
+            groups, problems = bt.validate_plan(
+                args.get("batches") or [], runs, labels,
+            )
+            if problems:
+                logger.warning(
+                    "[DH]  batch plan needed fixing: "
+                    + "  ".join(problems)
+                )
+                retry = self._force_tool_args(
+                    bt.submit_batch_plan, bt.SUBMIT_BATCH_PLAN_TOOL_NAME,
+                    "Your plan had problems:\n  - "
+                    + "\n  - ".join(problems)
+                    + "\n\nCall submit_batch_plan again, fixing them.  "
+                    "Group only within a run; cover every label exactly "
+                    "once.",
+                    "DH-plan-retry", retries=1,
+                )
+                if retry is not None:
+                    groups2, problems2 = bt.validate_plan(
+                        retry.get("batches") or [], runs, labels,
+                    )
+                    if len(problems2) <= len(problems):
+                        groups, problems = groups2, problems2
+                if problems:
+                    logger.warning(
+                        "[DH]  proceeding with the repaired plan "
+                        "(remaining: " + "  ".join(problems) + ")"
+                    )
+
+        batched = sum(1 for g in groups if len(g) > 1)
+        logger.info(
+            f"[DH]  batch plan: {len(entries)} row(s) -> {len(groups)} "
+            f"group(s) ({batched} batched); "
+            f"{sum(2 * (len(g) - 1) for g in groups)} fewer LLM calls "
+            f"than asking each row alone"
+        )
+        return {
+            row["id"]: group for group in groups for row in group
+        }
+
+    def _batch_questions(
+        self, agent_key: str, labelled: dict[str, dict],
+    ) -> dict[str, str]:
+        """One question per row in the batch, keyed by label.
+
+        Falls back to the row's own schedule description for any label
+        the DH omits, so a partial response costs wording quality rather
+        than a missing question.
+        """
+        from agents.database_handler import batch_tools as bt
+
+        rows_block = "\n".join(
+            f"  {label}  {row.get('field')} "
+            f"[{row.get('type', 'Semantic')}]"
+            f"\n        {(row.get('description') or '').strip()}"
+            for label, row in labelled.items()
+        )
+        args = self._force_tool_args(
+            bt.submit_questions, bt.SUBMIT_QUESTIONS_TOOL_NAME,
+            "QUESTION-WRITING TURN.\n\n"
+            f"Target agent: {agent_key}\n"
+            f"You are about to ask it these {len(labelled)} database "
+            f"field(s) in ONE message:\n\n{rows_block}\n\n"
+            "Write one question per label.  Stay faithful to each "
+            "field's original intent; you MAY adapt the wording using "
+            "what earlier agents have told you this save, as long as "
+            "that does not drift the question away from its field.  "
+            "Each question is stored verbatim beside its answer, so "
+            "write each one self-contained.\n\n"
+            "Call submit_questions now — one entry per label, no extras.",
+            "DH-questions",
+        )
+
+        out: dict[str, str] = {}
+        for item in (args or {}).get("questions") or []:
+            if not isinstance(item, dict):
+                continue
+            label = str(item.get("label") or "").strip()
+            question = str(item.get("question") or "").strip()
+            if label in labelled and question:
+                out.setdefault(label, question)
+
+        for label, row in labelled.items():
+            if label not in out:
+                logger.warning(
+                    f"[DH]  no question written for {label} "
+                    f"({row.get('field')}); using its schedule "
+                    f"description."
+                )
+                out[label] = (
+                    f"For this session, please describe: "
+                    f"{row.get('field')} — "
+                    f"{(row.get('description') or '').strip()}"
+                )
+        return out
+
+    @staticmethod
+    def _clean_saves(
+        labelled: dict[str, dict], saves: dict[str, list[dict]],
+    ) -> dict[str, list[dict]]:
+        """Run the defensive cleanup over what the DH chose to save.
+
+        The DH's prompt tells it to strip file paths, routing-tool JSON
+        wrappers and literal ``\\n`` escapes itself.  In practice models
+        reliably echo the wrapper they saw in the agent's reply, which is
+        why this backstop exists on the per-row path — a structured tool
+        call changes how the text is DELIVERED, not what the model puts
+        inside the strings, so the same backstop is still needed here.
+
+        Semantic rows only: Quantitative bodies are stored verbatim, and
+        cleaning one could silently alter a number or a unit.
+        """
+        out: dict[str, list[dict]] = {}
+        for label, entries in saves.items():
+            row = labelled.get(label) or {}
+            if (row.get("type") or "Semantic").strip().lower() != "semantic":
+                out[label] = entries
+                continue
+            cleaned: list[dict] = []
+            for e in entries:
+                cleaned.append({
+                    **e,
+                    "question": _clean_semantic_body(e["question"]) or e["question"],
+                    "answer": _clean_semantic_body(e["answer"]) or e["answer"],
+                })
+            out[label] = cleaned
+        return out
+
+    def _shorten_over_cap(
+        self,
+        agent_key: str,
+        labelled: dict[str, dict],
+        saves: dict[str, list[dict]],
+    ) -> dict[str, list[dict]]:
+        """Bring each saved pair under the per-pair token cap.
+
+        Each pair becomes its own file and its own embedding vector, so
+        the cap applies per pair, not per row and not per batch.
+
+        Unlike the per-row path this re-emits by LABEL, not by position.
+        The positional merge there is a live hazard: it pairs the
+        rewritten list against the original index-by-index, so a count
+        drift silently moves an answer onto another row (and its
+        ``max(len, len)`` bound can append an empty pair that gets
+        written as an empty file plus a database row).  Keyed
+        re-emission cannot do either.
+
+        Applies only to Semantic rows; Quantitative bodies are saved
+        verbatim and uncapped.
+        """
+        from agents.database_handler import batch_tools as bt
+
+        cap = self.max_response_tokens
+        over: list[str] = []
+        for label, entries in saves.items():
+            if (labelled[label].get("type") or "Semantic").strip().lower() != "semantic":
+                continue
+            for e in entries:
+                if count_tokens(e["question"]) + count_tokens(e["answer"]) > cap:
+                    over.append(label)
+                    break
+        if not over:
+            return saves
+
+        logger.warning(
+            f"[DH]  {len(over)} row(s) over the {cap}-token per-pair "
+            f"cap for {agent_key}: {', '.join(over)}; asking for "
+            f"shorter versions."
+        )
+        detail = "\n".join(
+            f"  {label} ({labelled[label].get('field')}): "
+            + ", ".join(
+                str(count_tokens(e["question"]) + count_tokens(e["answer"]))
+                + " tokens"
+                for e in saves[label]
+            )
+            for label in over
+        )
+        args = self._force_tool_args(
+            bt.submit_batch, bt.SUBMIT_BATCH_TOOL_NAME,
+            "TOKEN-CAP COMPRESSION TURN.\n\n"
+            "Each saved question+answer pair becomes its own database "
+            f"entry, read independently by the embedding model, so each "
+            f"must stay under {cap} cl100k_base tokens ON ITS OWN "
+            f"(prefer under 600).  These are over:\n\n{detail}\n\n"
+            "Call submit_batch again with ONLY those labels in 'saves', "
+            "shortened, keeping the same number of entries per label "
+            "and the same attempt tags.  Leave 'followups' and 'skips' "
+            "empty.  Apply the embedding-friendly rules from your "
+            "system prompt.",
+            "DH-compress-batch", retries=1,
+        )
+        if args is None:
+            logger.warning(
+                f"[DH]  compression produced nothing for {agent_key}; "
+                f"saving the over-cap pairs as they are."
+            )
+            return saves
+
+        shorter, _f, _s, _p = bt.read_batch_result(args, set(over))
+        out = dict(saves)
+        for label, new_entries in shorter.items():
+            old_entries = saves.get(label) or []
+            if len(new_entries) != len(old_entries):
+                logger.warning(
+                    f"[DH]  compression for {label} returned "
+                    f"{len(new_entries)} entr(ies) for {len(old_entries)}; "
+                    f"keeping the originals rather than guessing which "
+                    f"is which."
+                )
+                continue
+            merged = []
+            for old, new in zip(old_entries, new_entries):
+                old_n = count_tokens(old["question"]) + count_tokens(old["answer"])
+                new_n = count_tokens(new["question"]) + count_tokens(new["answer"])
+                keep = new if new_n < old_n else old
+                if new_n >= old_n:
+                    logger.warning(
+                        f"[DH]  compression made {label} longer; "
+                        f"keeping the original."
+                    )
+                # A re-emit that drops the attempt tag keeps the original's.
+                keep = dict(keep)
+                keep["attempt"] = new.get("attempt") or old.get("attempt")
+                merged.append(keep)
+            out[label] = merged
+        return out
+
+    def _run_batch(
+        self,
+        *,
+        rows: list[dict],
+        agent_key: str,
+        agent_system_prompt: str,
+        agent_provider: str,
+        agent_base_llm,
+        agent_messages: list,
+        on_resolved,
+    ) -> None:
+        """Interview one agent about a whole batch of rows.
+
+        Calls ``on_resolved(row, entries)`` the moment a row is settled —
+        ``entries`` is a list of ``{question, answer, attempt}`` to save,
+        or ``None`` when the DH skipped the row.
+
+        Resolving as we go rather than at the end is deliberate.  The
+        per-row path writes each entry as soon as its conversation
+        returns, so a crash costs one row; accumulating a whole batch
+        would cost the batch.  A row is settled exactly once and never
+        re-asked, so its pairs are final when the cap check runs on them.
+        """
+        from agents.database_handler import batch_tools as bt
+
+        labelled = bt.label_rows(rows, style="batch")
+        convo_buffer, n_img = _without_image_blocks(agent_messages)
+        if n_img:
+            logger.info(
+                f"[DH]  stripped {n_img} image block(s) from the "
+                f"{agent_key} interview buffer ({len(rows)} row(s))"
+            )
+
+        questions = self._batch_questions(agent_key, labelled)
+        open_labels = set(labelled)
+        pending = dict(questions)
+
+        for round_idx in range(MAX_DH_TURNS_PER_FIELD):
+            asked = "\n\n".join(
+                f"[{label}] {pending[label]}"
+                for label in labelled if label in pending
+            )
+            answer = self._ask_agent(
+                agent_key=agent_key,
+                agent_system_prompt=agent_system_prompt,
+                agent_provider=agent_provider,
+                agent_base_llm=agent_base_llm,
+                convo_buffer=convo_buffer,
+                field=", ".join(
+                    labelled[label].get("field", "?") for label in pending
+                ),
+                question=(
+                    "Please answer each of the following, labelled as "
+                    "shown.  Address every one — they are separate "
+                    "database fields.\n\n" + asked
+                    if len(pending) > 1 else asked
+                ),
+            )
+            self.messages.append(HumanMessage(content=(
+                f"Agent: {agent_key}\n"
+                f"Fields in this batch: "
+                + ", ".join(
+                    f"{label}={labelled[label].get('field')}"
+                    for label in pending
+                )
+                + f"\nMy questions:\n{asked}\n\n"
+                f"{agent_key}'s reply: {answer}"
+            )))
+
+            args = self._force_tool_args(
+                bt.submit_batch, bt.SUBMIT_BATCH_TOOL_NAME,
+                self._batch_decision_instruction(
+                    agent_key, labelled, open_labels,
+                    final_round=False,
+                    rounds_left=MAX_DH_TURNS_PER_FIELD - round_idx - 1,
+                ),
+                "DH-batch",
+            )
+            if args is None:
+                logger.warning(
+                    f"[DH]  no batch decision for {agent_key}; falling "
+                    f"back to one conversation per remaining row."
+                )
+                break
+
+            saves, followups, skipped, problems = bt.read_batch_result(
+                args, open_labels,
+            )
+            if problems:
+                logger.warning(
+                    "[DH]  batch decision problems: " + "  ".join(problems)
+                )
+                retry = self._force_tool_args(
+                    bt.submit_batch, bt.SUBMIT_BATCH_TOOL_NAME,
+                    "Your submit_batch call had problems:\n  - "
+                    + "\n  - ".join(problems)
+                    + "\n\nCall submit_batch again.  Every one of these "
+                    "labels must appear in exactly one list: "
+                    + ", ".join(sorted(open_labels)),
+                    "DH-batch-retry", retries=1,
+                )
+                if retry is not None:
+                    s2, f2, k2, p2 = bt.read_batch_result(retry, open_labels)
+                    # Keep whichever attempt SETTLED more rows.  Counting
+                    # problem strings instead would be wrong: a single
+                    # "not covered at all" problem can name any number of
+                    # labels, so a retry that rescued one row but still
+                    # missed another scores equal to the original and
+                    # would be thrown away along with the row it saved.
+                    if len(set(s2) | set(f2) | k2) > len(
+                        set(saves) | set(followups) | skipped
+                    ):
+                        saves, followups, skipped, problems = s2, f2, k2, p2
+
+            saves = self._clean_saves(labelled, saves)
+            saves = self._shorten_over_cap(agent_key, labelled, saves)
+
+            for label in list(saves):
+                on_resolved(labelled[label], saves[label])
+                open_labels.discard(label)
+            for label in sorted(skipped):
+                on_resolved(labelled[label], None)
+                open_labels.discard(label)
+
+            if not open_labels:
+                return
+            pending = {
+                label: q for label, q in followups.items()
+                if label in open_labels
+            }
+            if not pending:
+                # Nothing was saved, skipped OR followed up for these
+                # rows — the coverage check could not be satisfied even
+                # after its retry.  They fall to the caller's per-row
+                # fallback below rather than being guessed at.
+                break
+        else:
+            # The round cap ran out with rows still open, which means the
+            # DH kept asking follow-ups.  ONE more decision turn — no
+            # agent call, so it costs a single DH call — where saving or
+            # skipping are the only options left.  Deliberately NOT the
+            # per-row fallback: the cap was reached by the DH's own
+            # choice to keep digging, and re-running each row with a
+            # fresh budget would reward exactly that.
+            if open_labels:
+                logger.warning(
+                    f"[DH]  round cap reached for {agent_key} with "
+                    f"{len(open_labels)} row(s) open; forcing a final "
+                    f"save-or-skip."
+                )
+                final_args = self._force_tool_args(
+                    bt.submit_batch, bt.SUBMIT_BATCH_TOOL_NAME,
+                    self._batch_decision_instruction(
+                        agent_key, labelled, open_labels,
+                        final_round=True, rounds_left=0,
+                    ),
+                    "DH-batch-final", retries=1,
+                )
+                saves, _f, skipped, _p = (
+                    bt.read_batch_result(final_args, open_labels)
+                    if final_args is not None else ({}, {}, set(), [])
+                )
+                saves = self._clean_saves(labelled, saves)
+                saves = self._shorten_over_cap(agent_key, labelled, saves)
+                for label in list(saves):
+                    on_resolved(labelled[label], saves[label])
+                    open_labels.discard(label)
+                # Anything the DH still would not settle is skipped: it
+                # had its rounds and its forced turn, and a skip leaves a
+                # visible artefact rather than nothing at all.
+                for label in sorted(open_labels):
+                    logger.warning(
+                        f"[DH]  {labelled[label].get('field')!r} was "
+                        f"never settled; recording it as skipped."
+                    )
+                    on_resolved(labelled[label], None)
+                open_labels.clear()
+            return
+
+        # Reached only via ``break`` — the DH's decision could not be
+        # obtained or could not be made to cover these rows.  Report them
+        # by name; the caller re-runs each on its own.
+        for label in sorted(open_labels):
+            logger.warning(
+                f"[DH]  {labelled[label].get('field')!r} was not settled "
+                f"in its batch; it will be asked on its own."
+            )
+            on_resolved(labelled[label], "unsettled")
+
+    def _batch_decision_instruction(
+        self,
+        agent_key: str,
+        labelled: dict[str, dict],
+        open_labels: set[str],
+        final_round: bool,
+        rounds_left: int,
+    ) -> str:
+        """The prompt for one ``submit_batch`` turn."""
+        rows_block = "\n".join(
+            f"  {label}  {labelled[label].get('field')} "
+            f"[{labelled[label].get('type', 'Semantic')}]"
+            for label in sorted(open_labels)
+        )
+        cap_line = (
+            f"Semantic entries: keep each question + answer together "
+            f"under {self.max_response_tokens} cl100k_base tokens "
+            f"(prefer under 600), with the question about one sentence.  "
+            f"Quantitative entries: save the data verbatim, uncapped, "
+            f"and do not paraphrase numbers or units."
+        )
+        if final_round:
+            tail = (
+                "This is the LAST round — 'followups' is not available.  "
+                "Put every label in 'saves' or 'skips'."
+            )
+        else:
+            tail = (
+                f"Follow-up rounds remaining after this one: "
+                f"{rounds_left}.  Use 'followups' only where another "
+                f"question would genuinely change what you save."
+            )
+        return (
+            "SAVE DECISION TURN.\n\n"
+            f"Target agent: {agent_key}\n"
+            f"Still open in this batch:\n{rows_block}\n\n"
+            f"{cap_line}\n\n"
+            "Skip a row rather than saving a 'nothing to report' "
+            "sentence — an empty negation adds nothing to the database "
+            "and competes with real content at search time.  Split one "
+            "row into several 'saves' entries when the reply genuinely "
+            "contains several distinct items worth finding separately.\n\n"
+            f"{tail}\n\n"
+            "Call submit_batch now.  Every label above must appear in "
+            "exactly one of the three lists."
+        )
 
     # ------------------------------------------------------------------
     # Force-tool variant for IDENTIFYING attempt-specific questions
@@ -2155,7 +2878,7 @@ class DatabaseHandler(BaseChainAgent):
         str,
         list[str],
     ]:
-        """Identifying attempt-specific variant of :meth:`_run_one_conversation`.
+        """Interview an agent about an attempt-IDENTIFYING row.
 
         Returns ``(triples, raw_last_answer, resolved_attempt_ids)``.
 
@@ -2170,16 +2893,28 @@ class DatabaseHandler(BaseChainAgent):
         * ``raw_last_answer`` — Agent A's final un-cleaned reply, kept
           for any future extension that needs it.
         """
-        convo_buffer: list = list(agent_messages)
-        is_semantic = (field_type or "Semantic").strip().lower() == "semantic"
+        convo_buffer, _n_img = _without_image_blocks(agent_messages)
+        if _n_img:
+            logger.info(
+                f"[DH]  stripped {_n_img} image block(s) from the "
+                f"{agent_key} interview buffer ({field})"
+            )
+        # The identifying row is a batch of ONE, so it uses the same
+        # tools as every other row — ``submit_questions`` to write the
+        # question, ``submit_batch`` to decide what to store.  What makes
+        # it different is step 3: the attempt ids must be BOUND before
+        # anything attempt-scoped can be written, which is why it is
+        # never grouped with other rows.
+        from agents.database_handler import batch_tools as bt
 
-        # Step 1 — DH formulates the question.
-        first_question = self._formulate_question(
-            agent_key=agent_key,
-            field=field,
-            description=description,
-            field_type=field_type,
-        )
+        row = {
+            "id": "identifying", "field": field, "agent_key": agent_key,
+            "description": description, "type": field_type,
+        }
+        labelled = {"A": row}
+
+        # Step 1 — DH writes the question.
+        first_question = self._batch_questions(agent_key, labelled)["A"]
         logger.info(
             f"[DH]  identifying-Q initial question for {agent_key}/{field}\n"
             f"{_format_block('DH -> ' + agent_key + ':', first_question)}"
@@ -2226,86 +2961,77 @@ class DatabaseHandler(BaseChainAgent):
             )
             return [], first_answer, []
 
-        # Step 4 — DH decide loop (ASK/SAVE).  The ToolMessages from
-        # the force-tool phase are already in self.messages, so the
-        # DH's SAVE: body naturally references the resolved attempts.
-        last_question = first_question
-        last_answer = first_answer
-        final_body: str | None = None
-        for round_idx in range(MAX_DH_TURNS_PER_FIELD):
-            decision_kind, decision_payload = self._decide_next(
-                agent_key=agent_key,
-                field=field,
-                field_type=field_type,
-                description=description,
-                last_question=last_question,
-                last_answer=last_answer,
-                round_idx=round_idx,
+        # Step 4 — the save decision, through ``submit_batch``.  The
+        # force-tool ToolMessages are already in self.messages, so the DH
+        # can see exactly which attempts were resolved.
+        #
+        # Each entry carries its attempt EXPLICITLY, in its own field.
+        # The retired text protocol inferred it from an ``ATTEMPT:``
+        # header, which was sticky across blocks and fragile to any
+        # markdown on the tag line — so an untagged block silently
+        # inherited the previous attempt's id, and attempt A's answer
+        # could be written into attempt B's file, sidecar and database
+        # row with nothing marking it wrong (F59).  A per-entry field
+        # cannot leak between entries.
+        attempts_line = ", ".join(resolved_attempt_ids)
+        args = self._force_tool_args(
+            bt.submit_batch, bt.SUBMIT_BATCH_TOOL_NAME,
+            "SAVE DECISION TURN (attempt-identifying).\n\n"
+            f"Target agent: {agent_key}\n"
+            f"Field: {field}  [label A]\n"
+            f"Attempt(s) just bound: {attempts_line}\n\n"
+            + (
+                "Emit ONE 'saves' entry per attempt, each with label A "
+                "and its own 'attempt' set to that attempt — the entries "
+                "are told apart by that field alone, so an entry without "
+                "it cannot be filed.\n\n"
+                if len(resolved_attempt_ids) > 1 else
+                "Emit a 'saves' entry with label A and 'attempt' set to "
+                f"{attempts_line}.\n\n"
             )
-            if decision_kind == "SAVE":
-                final_body = decision_payload
-                break
-            if decision_kind == "ASK":
-                last_question = decision_payload
-                last_answer = self._ask_agent(
-                    agent_key=agent_key,
-                    agent_system_prompt=agent_system_prompt,
-                    agent_provider=agent_provider,
-                    agent_base_llm=agent_base_llm,
-                    convo_buffer=convo_buffer,
-                    field=field,
-                    question=last_question,
-                )
-                self.messages.append(
-                    HumanMessage(
-                        content=(
-                            f"Agent: {agent_key}\nField: {field}\n"
-                            f"My follow-up to {agent_key}: {last_question}\n"
-                            f"{agent_key}'s reply: {last_answer}"
-                        )
-                    )
-                )
-                continue
+            + "Do not repeat the attempt id inside the question or the "
+            "answer: the saved file already carries it in its name and "
+            "in its header, so repeating it spends embedding budget on "
+            "nothing.  Write as if the reader already knows which "
+            "attempt is meant.\n\n"
+            f"Keep each question + answer under {self.max_response_tokens} "
+            "cl100k_base tokens (prefer under 600).  Leave 'followups' "
+            "and 'skips' empty unless there is genuinely nothing to "
+            "store for this row.",
+            "DH-identifying-save",
+        )
+
+        if args is None:
             logger.warning(
-                f"[DH]  protocol error from DH for {agent_key}/{field} "
-                f"after force-tool; falling back to last agent answer."
+                f"[DH]  no save decision for the identifying row "
+                f"{agent_key}/{field}; the attempts are bound but this "
+                f"row gets no entry of its own."
             )
-            final_body = last_answer
-            break
+            return [], first_answer, resolved_attempt_ids
 
-        if final_body is None:
-            final_body = last_answer
-        if not (final_body or "").strip():
-            final_body = "(no usable content was produced for this field this session)"
-
-        if is_semantic:
-            triples = _parse_save_body_semantic(final_body)
-            if not triples:
-                logger.warning(
-                    f"[DH]  identifying SAVE body for {agent_key}/{field} "
-                    f"did not contain QUESTION:/ANSWER: headers; using "
-                    f"asked question + whole body as single-pair fallback."
-                )
-                triples = [(None, first_question, final_body)]
-
-            cleaned: list[tuple[str | None, str, str]] = []
-            for (attempt_tag, q, a) in triples:
-                cq = _clean_semantic_body(q) or q
-                ca = _clean_semantic_body(a) or a
-                cleaned.append((attempt_tag, cq, ca))
-
-            cleaned = self._enforce_semantic_cap_pairs(
-                agent_key=agent_key,
-                field=field,
-                description=description,
-                triples=cleaned,
+        saves, _followups, skipped, problems = bt.read_batch_result(
+            args, {"A"},
+        )
+        if problems:
+            logger.warning(
+                "[DH]  identifying save problems: " + "  ".join(problems)
             )
-            return cleaned, last_answer, resolved_attempt_ids
+        if "A" in skipped:
+            logger.info(
+                f"[DH]  the DH skipped the identifying row "
+                f"{agent_key}/{field} itself; its attempts stay bound "
+                f"and its sub-rows still run."
+            )
+            return [], first_answer, resolved_attempt_ids
 
-        # QUANTITATIVE identifying Q (uncommon; type is usually Semantic
-        # for identifying questions, but we handle it cleanly anyway):
-        # one pair, no attempt tag.
-        return [(None, first_question, final_body)], last_answer, resolved_attempt_ids
+        saves = self._clean_saves(labelled, saves)
+        saves = self._shorten_over_cap(agent_key, labelled, saves)
+
+        triples = [
+            (e.get("attempt"), e["question"], e["answer"])
+            for e in saves.get("A", [])
+        ]
+        return triples, first_answer, resolved_attempt_ids
 
     def _run_force_tool_phase(
         self,
@@ -2753,324 +3479,6 @@ class DatabaseHandler(BaseChainAgent):
         )
         return answer
 
-    def _decide_next(
-        self,
-        agent_key: str,
-        field: str,
-        field_type: str,
-        description: str,
-        last_question: str,
-        last_answer: str,
-        round_idx: int,
-    ) -> tuple[str, str]:
-        """Ask the DH whether to ASK a follow-up or SAVE the final body.
-
-        Returns ``(kind, payload)`` where *kind* is ``"ASK"``,
-        ``"SAVE"``, or ``"PROTOCOL_ERROR"``.
-        """
-        rounds_left = max(0, MAX_DH_TURNS_PER_FIELD - (round_idx + 1))
-        is_semantic = (field_type or "Semantic").strip().lower() == "semantic"
-        if is_semantic:
-            cap_line = (
-                f"This is a SEMANTIC field.  Your SAVE: body MUST "
-                f"contain a ``QUESTION:`` line and an ``ANSWER:`` line "
-                f"(in that order).  Combined QUESTION + ANSWER token "
-                f"count MUST stay under {self.max_response_tokens} "
-                f"(cl100k_base; prefer <600).  Aim for the saved "
-                f"QUESTION under ~80 tokens (roughly one sentence) so "
-                f"most of the budget goes to the ANSWER.  Apply the "
-                f"embedding-friendly rewrite rules from your system "
-                f"prompt to BOTH the QUESTION and the ANSWER — strip "
-                f"file paths, parameter-value dumps, routing-tool JSON "
-                f"wrappers, literal \\n escapes, and mid-chain "
-                f"narration."
-            )
-            shape_line = (
-                "Reply with EXACTLY ONE of:\n"
-                "  ASK: <a follow-up question for the agent>\n"
-                "  SAVE:\n"
-                "  QUESTION: <short embedding-friendly question>\n"
-                "  ANSWER: <embedding-friendly final body>\n"
-            )
-        else:
-            cap_line = (
-                "This is a QUANTITATIVE field — save the data verbatim, "
-                "no token cap, do not paraphrase numbers or units.  The "
-                "SAVE body is a single prose block (no QUESTION:/"
-                "ANSWER: headers)."
-            )
-            shape_line = (
-                "Reply with EXACTLY ONE of:\n"
-                "  ASK: <a follow-up question for the agent>\n"
-                "  SAVE: <the final body to write to the .txt file>\n"
-            )
-        instruction = (
-            "DECISION TURN.\n\n"
-            f"Target agent: {agent_key}\n"
-            f"Field: {field}\n"
-            f"Field type: {field_type}\n"
-            f"Field description: {description}\n\n"
-            f"You just asked: {last_question}\n"
-            f"{agent_key} replied: {last_answer}\n\n"
-            f"{cap_line}\n"
-            f"Follow-up rounds remaining: {rounds_left}.\n\n"
-            f"{shape_line}"
-            "The very first non-whitespace characters of your reply "
-            "must be either 'ASK:' or 'SAVE:'."
-        )
-        self.messages.append(HumanMessage(content=instruction))
-
-        for _ in range(MAX_DH_STEPS):
-            response = invoke_with_retry(
-                self.llm,
-                [
-                    make_system_message(
-                        self.system_prompt, self.provider, phase="save"
-                    )
-                ]
-                + self.messages,
-                "DH-decide",
-                cache_control=history_cache_control(self.provider, phase="save"),
-            )
-            self.messages.append(response)
-            text = ai_text(getattr(response, "content", "")).strip()
-            if not text:
-                continue
-            kind, payload = _parse_dh_decision(text)
-            logger.info(
-                f"[DH]  decision for {agent_key}/{field} (round "
-                f"{round_idx + 1}): kind={kind}\n"
-                f"{_format_block('DH decision raw:', text)}"
-            )
-            return kind, payload
-
-        # All MAX_DH_STEPS attempts came back empty — treat as protocol
-        # error so the caller falls back to the agent's last answer.
-        logger.warning(
-            f"[DH]  decide_next produced no usable output for "
-            f"{agent_key}/{field} after {MAX_DH_STEPS} attempts."
-        )
-        return "PROTOCOL_ERROR", ""
-
-    def _formulate_question(
-        self,
-        agent_key: str,
-        field: str,
-        description: str,
-        field_type: str,
-    ) -> str:
-        """Ask the DH's own LLM to produce the FIRST question for *agent_key*.
-
-        The DH is shown the field name, the field's "Type" tag, and
-        the schema description.  It is told to STAY FAITHFUL to the
-        original intent of the field.
-        """
-        instruction = (
-            "FIRST QUESTION TURN.\n\n"
-            f"Target agent: {agent_key}\n"
-            f"Database field to fill: {field}\n"
-            f"Field type: {field_type}\n"
-            f"Field description (from the database schema): "
-            f"{description}\n\n"
-            "Write ONE clear, specific question for this agent that "
-            "asks them to fill the named field for this session.  "
-            "Stay faithful to the original intent of the field; do "
-            "not invent details that have no solid grounds.  You "
-            "MAY adapt the wording slightly based on the design "
-            "configurator's goal and on what earlier agents have "
-            "already told you in this same save, IF such adaptation "
-            "is genuinely useful and does not drift the question "
-            "away from the original intent.\n\n"
-            "Reply with the question only — no preamble, no labels, "
-            "no markdown, NO 'ASK:' or 'SAVE:' prefix.  The protocol "
-            "prefixes are only for decision turns AFTER the agent "
-            "has replied."
-        )
-        self.messages.append(HumanMessage(content=instruction))
-
-        for _ in range(MAX_DH_STEPS):
-            response = invoke_with_retry(
-                self.llm,
-                [
-                    make_system_message(
-                        self.system_prompt, self.provider, phase="save"
-                    )
-                ]
-                + self.messages,
-                "DH-formulate",
-                cache_control=history_cache_control(self.provider, phase="save"),
-            )
-            self.messages.append(response)
-            text = ai_text(getattr(response, "content", "")).strip()
-            if text:
-                # If the model accidentally prefixed ASK:/SAVE: on the
-                # FIRST turn, strip it — the protocol only applies to
-                # decision turns.
-                kind, payload = _parse_dh_decision(text)
-                if kind in ("ASK", "SAVE"):
-                    return payload or text
-                return text
-
-        # Fallback when the model produces nothing usable.  Better to
-        # ask a generic question than to skip the entry entirely.
-        fallback = (
-            f"Please describe, for this session, the database "
-            f"field '{field}' — {description}"
-        ).strip()
-        logger.warning(
-            f"[DH]  formulate_question yielded no text for "
-            f"{agent_key}/{field}; using fallback question."
-        )
-        return fallback
-
-    # ------------------------------------------------------------------
-    # SEMANTIC token-cap enforcement
-    # ------------------------------------------------------------------
-
-    def _enforce_semantic_cap_pairs(
-        self,
-        agent_key: str,
-        field: str,
-        description: str,
-        triples: list[tuple[str | None, str, str]],
-    ) -> list[tuple[str | None, str, str]]:
-        """Ensure each ``QUESTION + ANSWER`` pair fits the per-PAIR cap.
-
-        Each pair becomes its own ``.txt`` file (one embedding vector
-        per file), so the cap is enforced PER PAIR — not combined.
-        Counts ``cl100k_base`` tokens on each pair; when one or more
-        pairs are over cap, asks the DH ONCE for a shorter version
-        of the FULL list (the DH may shorten only the offending pairs
-        or all of them — its choice).  If the second attempt is still
-        over the cap on some pair, keeps the shorter of the two
-        versions for that pair.
-
-        The defensive cleanup (:func:`_clean_semantic_body`) is applied
-        to every replacement returned by the DH so artefacts the DH
-        adds during shortening are still stripped.
-        """
-        per_pair_caps = [
-            (count_tokens(q) + count_tokens(a), q, a)
-            for (_aid, q, a) in triples
-        ]
-        cap = self.max_response_tokens
-        over = [
-            (i, total) for i, (total, _q, _a) in enumerate(per_pair_caps)
-            if total > cap
-        ]
-        if not over:
-            logger.info(
-                f"[DH]  semantic pairs within per-pair cap for "
-                f"{agent_key}/{field}: "
-                f"{[t for (t, _q, _a) in per_pair_caps]} <= {cap} each"
-            )
-            return triples
-
-        logger.warning(
-            f"[DH]  {len(over)}/{len(triples)} semantic pair(s) OVER "
-            f"the {cap}-token per-pair cap for {agent_key}/{field} "
-            f"(sizes={[t for (t, _q, _a) in per_pair_caps]}); asking "
-            f"for shorter version(s)."
-        )
-        over_summary = ", ".join(
-            f"pair#{i + 1} = {t} tokens" for i, t in over
-        )
-        instruction = (
-            "TOKEN-CAP COMPRESSION TURN.\n\n"
-            f"Field: {field}\n"
-            f"Field description: {description}\n\n"
-            f"Your last SAVE: body for this field produced "
-            f"{len(triples)} QUESTION/ANSWER pair(s).  Each pair "
-            f"becomes its own .txt that the embedding model reads "
-            f"INDEPENDENTLY, so each pair must stay under "
-            f"{cap} cl100k_base tokens on its own (prefer <600).\n\n"
-            f"Pairs over cap: {over_summary}.\n\n"
-            "Re-emit ALL pairs in the same order, shortening the "
-            "over-cap ones (and any others you want to tighten).  "
-            "Apply the embedding-friendly rules from your system "
-            "prompt.  If any pair carries an ATTEMPT: tag, preserve "
-            "it on the corresponding pair in the same position.\n\n"
-            "Reply with EXACTLY:\n"
-            "  SAVE:\n"
-            "  [ATTEMPT: <NNN>]\n"
-            "  QUESTION: <shorter question>\n"
-            "  ANSWER: <shorter answer>\n"
-            "  ... (repeat the block for every pair)\n"
-            "Do not use ASK: this turn — the system will save "
-            "whatever you produce."
-        )
-        self.messages.append(HumanMessage(content=instruction))
-
-        for _ in range(MAX_DH_STEPS):
-            response = invoke_with_retry(
-                self.llm,
-                [
-                    make_system_message(
-                        self.system_prompt, self.provider, phase="save"
-                    )
-                ]
-                + self.messages,
-                "DH-compress",
-                cache_control=history_cache_control(self.provider, phase="save"),
-            )
-            self.messages.append(response)
-            text = ai_text(getattr(response, "content", "")).strip()
-            if not text:
-                continue
-            kind, payload = _parse_dh_decision(text)
-            payload = payload if kind in ("ASK", "SAVE") else text
-            new_triples = _parse_save_body_semantic(payload)
-            if not new_triples:
-                # DH forgot the headers — fall back to keeping the
-                # original triples (shorter pair beats no pair).
-                logger.warning(
-                    f"[DH]  compression for {agent_key}/{field} "
-                    f"emitted no parseable pairs; keeping originals."
-                )
-                return triples
-            # Pair-wise post-process: clean each, count again, keep
-            # the shorter of (new, old) per index.
-            merged: list[tuple[str | None, str, str]] = []
-            for i in range(max(len(triples), len(new_triples))):
-                old_attempt, old_q, old_a = (
-                    triples[i] if i < len(triples) else (None, "", "")
-                )
-                if i < len(new_triples):
-                    new_attempt, new_q, new_a = new_triples[i]
-                    new_q = _clean_semantic_body(new_q) or new_q
-                    new_a = _clean_semantic_body(new_a) or new_a
-                else:
-                    new_attempt, new_q, new_a = old_attempt, old_q, old_a
-                # The DH may drop the ATTEMPT tag on a re-emit — keep
-                # the original if the new one is None.
-                attempt_to_use = (
-                    new_attempt if new_attempt is not None else old_attempt
-                )
-                old_tokens = count_tokens(old_q) + count_tokens(old_a)
-                new_tokens = count_tokens(new_q) + count_tokens(new_a)
-                if new_tokens <= cap:
-                    merged.append((attempt_to_use, new_q, new_a))
-                elif new_tokens < old_tokens:
-                    merged.append((attempt_to_use, new_q, new_a))
-                    logger.warning(
-                        f"[DH]  pair#{i + 1} for {agent_key}/{field} "
-                        f"still over cap after compression ({new_tokens} "
-                        f"> {cap}); keeping the shorter version."
-                    )
-                else:
-                    merged.append((attempt_to_use, old_q, old_a))
-                    logger.warning(
-                        f"[DH]  pair#{i + 1} for {agent_key}/{field} "
-                        f"compression made it longer; keeping original."
-                    )
-            return merged
-
-        logger.warning(
-            f"[DH]  compression turn produced no output for "
-            f"{agent_key}/{field}; saving original over-cap pairs."
-        )
-        return triples
-
     # ------------------------------------------------------------------
     # Disk I/O
     # ------------------------------------------------------------------
@@ -3210,6 +3618,51 @@ class DatabaseHandler(BaseChainAgent):
         """
         path = self._entry_path(session_dir, agent_key, field)
         path.write_text("", encoding="utf-8")
+        return path
+
+    def _write_skipped_entry(
+        self,
+        session_dir: Path,
+        agent_key: str,
+        field: str,
+        *,
+        session_id: str = "",
+        attempt_id: str | None = None,
+        attempt_suffix: str | None = None,
+    ) -> Path:
+        """Write the ``.txt`` for a row the DH deliberately SKIPPED.
+
+        A skip means "this session produced nothing worth storing for
+        this row" — the agent had no problem to report, no clarification
+        to describe, nothing new.  Today such a row is still saved, as a
+        canonical negation sentence ("no problem occurred this session"),
+        which is then embedded and competes with real content at search
+        time; F17 asks for exactly the opposite.
+
+        So a skip keeps the FILE and drops the DATABASE ROW.  The file
+        keeps the per-session folder complete and auditable — you can see
+        the DH considered the row — while the corpus stays free of empty
+        negations.  The caller is responsible for NOT calling
+        ``_phase_3c_persist_chunk`` for a skipped row.
+
+        Distinct from :meth:`_write_empty_entry`, which writes a
+        zero-byte file for an agent that was not running at all (a DCII
+        row with the inspector disabled).  Both would otherwise be
+        indistinguishable on disk, and they mean different things:
+        "nothing to say" versus "nobody was there to ask".
+        """
+        path = self._entry_path(
+            session_dir, agent_key, field, attempt_suffix=attempt_suffix,
+        )
+        attempt_line = attempt_id if attempt_id else "(session-scope)"
+        path.write_text(
+            f"--- Session ID ---\n{session_id}\n\n"
+            f"--- Attempt ID ---\n{attempt_line}\n\n"
+            f"--- Field ---\n{field}\n\n"
+            "SKIPPED: the Database Handler found nothing worth saving "
+            "for this field this session.  No database row was written.\n",
+            encoding="utf-8",
+        )
         return path
 
     def _write_sidecar_meta(

@@ -21,7 +21,7 @@ Any agent can ESCALATE to the Orchestrator, which calls the Planner for a Proble
 
 **User-provided values — locked, soft, or free.** A value the user gives is treated one of three ways. **LOCKED** (default): an exact number they stated is a hard constraint — nothing changes it without their authorisation. **FREE**: a parameter they never mentioned — the system chooses it within range. **SOFT TARGET**: a value they provided but explicitly *subordinated to a qualitative goal* (e.g. *"here are dimensions, but fit the sketched shape; the exact dimensions matter less"*) — the **goal dominates on conflict** (the system varies the value freely to serve it) while holding it **close when there is slack**. The User Input Inspector records a soft target as a `SOFT TARGET (goal: …; keep near … if free)` marker on its QUANTITATIVE INPUTS line, and every downstream agent honours it (Planner authorisation, Creator generation, DCII validation, DCOI output inspection). Details: [`extra_utilities/design_soft_targets.md`](extra_utilities/design_soft_targets.md).
 
-**Post-session save (opt-in):** when the user types `quit`, the system asks whether to save the session to the database. If yes, the **Database Handler** interviews each in-session agent through a per-field `ASK:`/`SAVE:` protocol and writes one `.txt` file per scheduled field, shaped to be embedding-ready (self-contained, declarative, one topic per file, ≤700 `cl100k_base` tokens for Semantic fields).
+**Post-session save (opt-in):** when the user types `quit`, the system asks whether to save the session to the database. If yes, the **Database Handler** interviews each in-session agent and writes one `.txt` file per saved entry, shaped to be embedding-ready (self-contained, declarative, one topic per file, ≤700 `cl100k_base` tokens for Semantic fields). Rows going to the same agent are asked in **batches** — one message, one reply — and every DH decision is a forced tool call. See [Database Handler: the batched interview](#database-handler-the-batched-interview).
 
 ## Project layout
 
@@ -35,7 +35,7 @@ Any agent can ESCALATE to the Orchestrator, which calls the Planner for a Proble
 ├── config.py                     # paths + RhinoCompute env vars
 ├── requirements.txt
 ├── requirements-web.txt          # FastAPI + uvicorn stack (web_app.py only)
-├── workflow_settings/settings.py # 18 runtime flags (see Configuration)
+├── workflow_settings/settings.py # runtime settings, grouped by area (see Configuration)
 ├── agents/
 │   ├── loader.py                 # session lifecycle, REPL, archival, DH invocation
 │   ├── step_caps.py              # single source of truth for every MAX_*
@@ -265,7 +265,7 @@ Every chain agent (Receptionist, Orchestrator, UII, Planner, DCIC, DCII, DCOI, T
 2. **Triggered** when `count_tokens(self.messages) + count_tokens(self.system_prompt)` exceeds a per-agent threshold derived from the context window of the model *that agent* runs on: `max(MIN, min(WINDOW_FRACTION × window, MAX))` — defaults `0.60`, `150,000`, `20,000`. Counting the system prompt means the threshold is total context sent, not history alone. Windows come from `agents/shared/model_windows.py` (Anthropic Models API when reachable, else a verified static table; unknown models fall back to the smallest window in use). Below the threshold nothing happens.
 3. **Cut point** is computed as `len(self.messages) - CONTEXT_PRUNER_KEEP_LAST_MESSAGES` (default 6), then advanced forward via `_safe_cut_point` so a `ToolMessage` is never separated from its matching `AIMessage(tool_calls=...)` — tool-call pairs are always pruned or kept as a unit.
 
-The Database Handler is intentionally NOT pruned — it iterates ~28 schedule entries per save and relies on accumulated state.
+The Database Handler is intentionally NOT pruned — it iterates its whole schedule in one save and relies on the accumulated state to ask coherent follow-ups.  Its context therefore grows with the schedule's length; see F59.
 
 ### Three-tier escalation
 
@@ -330,11 +330,36 @@ The DH schedule (edited via the **Questions for Saved Sessions** view, persisted
 | **Identifying attempt-specific** | `scope = attempt` + `parent_id = null` (top-level) | "Which attempt best satisfied the user?", "Which attempt led to problems?" | Interview Agent A, **then forced to call `save_attempt_data`** to pin down which attempt. On success, save Q+A AND upload the attempt's artefacts. On failure, drop the whole block (this row + every Q(N).x sub-row). |
 | **Attempt-specific sub-row** | `scope = attempt` + `parent_id = <identifying row's id>` | "Why was that attempt successful?", "What numerical parameters were used?" | Description is auto-prefixed with `"For attempt NNN: "` before the interview, so Agent A knows which attempt to answer about. Saved like any session row. |
 
-The Q-number scheme reflects the structure: `Q1, Q2, Q2.1, Q2.2, Q3` means Q1 and Q3 are session-related, Q2 is identifying, Q2.1 / Q2.2 are sub-rows under Q2.
+The Q-number scheme reflects the structure: `Q1, Q2, Q2.1, Q2.2, Q3` means Q1 and Q3 are session-related, Q2 is identifying, Q2.1 / Q2.2 are sub-rows under Q2. The numbers are a **UI convenience only** — they are computed at render time and never shown to the DH, which recognises each kind from `scope` / `parent_id`.
+
+**Sub-rows must sit immediately below their parent.** The DH collects a block's sub-rows by walking forward from the parent and stopping at the first row that doesn't belong, so a row wedged into a block would make every sub-row after it invisible. This is now enforced by `dh_schedule._validate` (rejected on save/upload) and repaired on load by `read_for_dh`, which also validates — it is the DH's only load path and previously had no validation at all.
+
+## Database Handler: the batched interview
+
+The DH does **not** walk the schedule one row at a time. Neighbouring rows that go to the same agent can be asked **together** — one message, one reply — which roughly halves the LLM calls in a save (on the shipped 36-row schedule: 15 batches, 42 fewer calls per pass).
+
+**What code decides, and what the DH decides.** Code computes *candidate runs* — maximal stretches of consecutive rows agreeing on `agent_key`, `scope` and `parent_id`. None of the three is a judgement: a different agent cannot answer the same call; session- and attempt-scoped rows take different write paths; and a sub-row cannot be asked before its parent has resolved an attempt. Identifying rows are additionally always alone, since they must bind an attempt first. **Everything else — which rows actually travel together — is the DH's decision**, taken once per save.
+
+**The four tools.** Each is bound for ONE turn with `tool_choice` and discarded, so the DH's LLM never sees more than one tool schema at a time (the W18 / W20 invariant). Nothing is called spontaneously, and the interviewed agents have **no tools bound at all** — they only reply in prose.
+
+| Tool | When | What it decides |
+|---|---|---|
+| `submit_batch_plan` | once per save (skipped when no run has >1 row) | which rows are asked together |
+| `submit_questions` | once per batch | one question per row, keyed by label |
+| `save_attempt_data` | once per identifying row, after the agent's reply | which design attempt(s) the block is about |
+| `submit_batch` | after each reply in a batch | per row: `saves` / `followups` / `skips` |
+
+**Labels, not names.** Answers map back to rows by short per-call labels (`R1…` in the plan, `A`/`B`/`C` inside a batch) held in a DH-side map to the row's `id`. Row names are validated unique, but only as *strings* — the DH files by `_slugify`, so `Bad Attempt` and `bad attempt` are two valid names that write to one file. A wrong label fails the coverage check instead of quietly landing under another row, which matters because the database is not a backstop here (a session-scoped duplicate inserts twice; an attempt-scoped one is discarded at INFO — see W28).
+
+**Coverage is checked before anything is written.** Every open label must appear in exactly one of the three lists. A label the DH invented, and one it forgot, are both reported back by name for one retry; rows still unresolved are then asked on their own. Rows are written the **moment they resolve**, not at the end of the batch, so a crash costs the rows still open rather than the whole group.
+
+**Skips.** A row with nothing worth storing gets its `.txt` with a `SKIPPED` marker and **no database row**, instead of a "no problem occurred this session" sentence that would be embedded and then compete with real content at search time.
+
+**Follow-ups** are capped per batch. On exhaustion one final forced turn must save or skip — deliberately not the per-row fallback, since the cap is reached by the DH's own choice to keep digging.
 
 ## Identifying attempt-specific questions — force-tool flow
 
-When the DH reaches an identifying attempt-specific row, the system runs a 5-step protocol that's distinct from the normal ASK/SAVE loop:
+When the DH reaches an identifying attempt-specific row, it is asked alone, and the system runs a 5-step protocol:
 
 1. **DH formulates** the question (e.g. "Which attempt best satisfied the user's request?") and the system delivers it to Agent A.
 2. **Agent A replies** in plain prose.
@@ -346,9 +371,11 @@ When the DH reaches an identifying attempt-specific row, the system runs a 5-ste
    - On a successful resolve, `r2_uploader.upload_attempt_artefacts` pushes `parameters.json` / `propeller_mesh.obj` / `render_*.png` / `description.txt` (whichever exist) to R2 under `<prefix>/<session_id>/attempts/<NNN>/<session_id>__<NNN>__<original_name>`. `propeller_mesh_components.obj` is **explicitly excluded**.
    - On `"none"`, the ToolMessage records `{ok: true, attempt_id: null}` and the system drops the whole block.
    - The DH gets up to **3 retries** to land a valid call (invalid input, or number that resolved to no folder). After 3, the system synthesises `"none"` and drops the block.
-5. **DH continues normally**: if the tool succeeded with a real attempt, the DH emits SAVE: with QUESTION:/ANSWER: as for any SEMANTIC field; the ToolMessage payload is part of the DH's context so the answer naturally references the resolved attempt. If the tool resolved to "none" or 3-failures, the SAVE step is **skipped entirely** — no .txt is written for this row, no placeholders for its children.
+5. **DH saves via `submit_batch`**: if the tool succeeded with a real attempt, the DH's next turn is a forced `submit_batch` whose `saves` entries each carry their **own `attempt` field** — one entry per resolved attempt when several were bound. The ToolMessage payload is in the DH's context, so it can see exactly which attempts exist. If the tool resolved to "none" or 3-failures, the save step is **skipped entirely** — no .txt for this row, no placeholders for its children.
 
-The tool is bound **only** for the force-tool turn — not for the SAVE: emit, not for any other row. The DH's prompt says so explicitly.
+`save_attempt_data` is bound **only** for the force-tool turn — not for the save decision, not for any other row. The DH's prompt says so explicitly.
+
+> **Why the attempt is a per-entry field.** It used to be inferred from an `ATTEMPT:` header in a text body. That header was *sticky* across blocks and broke on any markdown, so an untagged block silently inherited the previous block's attempt and one attempt's answer could be written into another's file, sidecar and database row with nothing marking it wrong. A per-entry field cannot leak between entries. See F59.
 
 ### Live feedback for the force-tool flow
 
@@ -392,7 +419,7 @@ The save flow writes to R2 via **three distinct upload paths** that run at diffe
 
 ### Path 1 — Per-attempt artefacts (during the force-tool turn)
 
-Site: `agents/database_handler/database_handler.py:_run_force_tool_phase`. Fires once per resolved attempt id, **immediately** when the force-tool's `save_attempt_data` tool call succeeds — long before the DH emits its SAVE: body.
+Site: `agents/database_handler/database_handler.py:_run_force_tool_phase`. Fires once per resolved attempt id, **immediately** when the force-tool's `save_attempt_data` tool call succeeds — before the DH's save decision.
 
 Calls `r2_uploader.upload_attempt_artefacts(folder, session_id=…, attempt_id=NNN, global_attempt_id=<bigserial>)` per resolved NNN. Whitelisted files (from `agents/shared/r2_uploader.py:ATTEMPT_ARTEFACT_WHITELIST`): `parameters.json`, `propeller_mesh.obj`, `render_isometric.png`, `render_top.png`, `render_side.png`, `description.txt`. `propeller_mesh_components.obj` is intentionally excluded.
 

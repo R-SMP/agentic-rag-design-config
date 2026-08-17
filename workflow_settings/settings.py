@@ -271,60 +271,6 @@ PLANNER_FIRST: bool = False
 
 
 # ===========================================================
-# 11. Embedding model (used post-session for RAG indexing)
-# ===========================================================
-# The embedding model that the (yet-to-be-implemented) RAG layer
-# will use to turn the saved per-field SEMANTIC answers under
-# ``database/<session>/<agent>/<field>.txt`` into vectors.
-#
-# The Database Handler (DH) is told these values via its system
-# prompt so it can shape SEMANTIC answers to fit the model:
-#   * stay below ``EMBEDDING_MAX_RESPONSE_TOKENS`` (preferring
-#     <600) when the field's Type is Semantic
-#   * apply the embedding-friendly rewrite rules baked into
-#     ``agents/database_handler/prompt.md``
-# Quantitative answers are NOT capped — they are saved verbatim
-# as numerical / structured payloads.
-#
-# ``EMBEDDING_API_KEY`` is read from environment, never hard-coded
-# here.  Set ``OPENAI_API_KEY`` (or change the env var name below)
-# in your shell or in a project .env you load before launching.
-EMBEDDING_PROVIDER: str = "OpenAI"
-EMBEDDING_MODEL: str = "text-embedding-3-large"
-EMBEDDING_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
-
-# Number of dimensions to request from the embedding model.
-# ``text-embedding-3-large`` natively returns 3072-dim vectors but
-# supports MRL truncation via the ``dimensions`` argument; 1024
-# is the recommended storage default for this corpus.
-# Valid values: any positive int the chosen model supports
-EMBEDDING_VECTOR_DIMS: int = 1024
-
-# Maximum number of tokens allowed in the SEMANTIC answer the DH
-# saves into the corresponding ``.txt`` file.  Counted with the
-# ``cl100k_base`` tokenizer (the tokenizer used by
-# ``text-embedding-3-large`` and the GPT-4 family).  The DH's
-# system prompt instructs it to stay below 600 when feasible.
-# Valid values: any positive int (recommended <= 8000, the
-# embedding model's per-input limit)
-EMBEDDING_MAX_RESPONSE_TOKENS: int = 700
-
-# Defensive cap (in characters, NOT tokens) on the stitched paragraph
-# fed to the embedding model.  text-embedding-3-large enforces an
-# 8192-token per-call limit; 30000 characters comfortably stays under
-# that limit while leaving headroom.  Over-cap input is truncated at
-# this length and a WARNING is logged — the row is still embedded
-# (lossy) rather than failing the whole chunks INSERT.  See
-# agents/database_handler/db_writer.py.
-#
-# Hidden from the workflow-settings web UI (internal tuning knob;
-# see HIDDEN_FROM_FLAG_LIST in workflow_settings/editor.py).
-#
-# Valid values: any positive int.  Default 30000 ≈ 7500 cl100k tokens.
-EMBEDDING_INPUT_MAX_CHARS: int = 30000
-
-
-# ===========================================================
 # 12. LLM routing mode
 # ===========================================================
 # Controlled exclusively via the LLM-routing chart at the top of
@@ -369,8 +315,8 @@ LLM_ROUTING_MODE: str = "individual"
 #   False  no pruning; agents accumulate their full message history
 #          until they hit a provider context-window error.
 #
-# The Database Handler is intentionally NOT pruned — it iterates ~28
-# schedule entries in one save and relies on the accumulated state
+# The Database Handler is intentionally NOT pruned — it iterates its
+# whole schedule in one save and relies on the accumulated state
 # to ask coherent follow-ups.
 #
 # Valid values: True, False
@@ -457,110 +403,6 @@ CONTEXT_PRUNER_MAX_INDIVIDUAL_MESSAGE_TOKENS: int = 30000
 # Valid values: any positive int.  0 disables the cap.  Default
 # 60000 leaves headroom for the system prompt + framing on top.
 CONTEXT_PRUNER_TIER2_INPUT_CAP_TOKENS: int = 60000
-
-
-# ===========================================================
-# 16. Database Handler — retry budget for chunks INSERT
-# ===========================================================
-# Maximum number of attempts the Database Handler makes to INSERT a
-# Q+A row into the Postgres ``chunks`` table when the insert fails
-# (CHECK constraint violation, embedding-pipeline error, transient DB
-# error, etc.).  If all attempts are exhausted, the Q+A is written
-# to the R2 safety folder for the session and skipped from the
-# database — no user data is lost.
-#
-# Set higher if you see transient errors frequently; set lower if
-# you want fast failover to safety storage.  UNIQUE violations are
-# treated as "already saved" and do NOT consume a retry — they exit
-# the retry loop immediately and are not counted against this cap.
-#
-# Cascade behaviour: if the failing Q+A is the identifying
-# attempt-related question for an attempt, ALL subsequent attempt-
-# related questions for that same attempt are routed straight to
-# the safety folder (no retries) since the attempt's identity row
-# is not in a consistent state.  See
-# extra_utilities/db_design/database_and_RAG_architecture.md §3.5.
-#
-# Example: a Semantic Q+A is generated but the embedding-API call
-# is rate-limited.  With DATABASE_ENTRY_MAX_RETRIES = 3, the DH
-# retries embed-then-insert up to 3 times.  If still failing on the
-# 3rd retry, the raw Q+A goes to ``<session_id>/safety/.../<filename>.txt``
-# in R2 and the user data is preserved for later recovery.
-#
-# Valid values: any positive int (recommended 3–5)
-DATABASE_ENTRY_MAX_RETRIES: int = 3
-
-# Fixed delay (seconds) between successive chunks-INSERT retry
-# attempts when DATABASE_ENTRY_MAX_RETRIES > 1.  Architecture doc
-# §3.5 locks the backoff strategy as fixed-delay (not exponential).
-#
-# Hidden from the workflow-settings web UI (internal tuning knob;
-# see HIDDEN_FROM_FLAG_LIST in workflow_settings/editor.py).
-#
-# Valid values: any non-negative float (seconds).  Default 1.0.
-DATABASE_ENTRY_RETRY_BACKOFF_SECONDS: float = 1.0
-
-
-# ===========================================================
-# 17. Database Handler — stitching model (Option B embedding input)
-# ===========================================================
-# Cheap LLM the Database Handler calls to rewrite each Q+A into the
-# single coherent prose paragraph that gets fed to the embedding
-# model (``text-embedding-3-large``).  The stitched paragraph lives
-# in ``chunks.embedding_input``; the resulting vector lives in
-# ``chunks.embedding``.  The user-facing text (``chunks.body`` /
-# ``chunks.question``) stays untouched by stitching — see
-# extra_utilities/db_design/database_and_RAG_architecture.md §6.1.
-#
-# The rewrite prompt lives at
-# ``agents/database_handler/stitching_prompt.md`` and is versioned
-# in its own frontmatter.  Treat it like a system prompt.
-#
-# Provider / model are split so the developer can switch one
-# without the other (e.g. keep OpenAI but try a different cheap
-# model).  The provider switch is gated on the matching API key
-# being present in ``.env``:
-#   * OpenAI    → OPENAI_API_KEY
-#   * Anthropic → ANTHROPIC_API_KEY
-#   * Google    → GOOGLE_API_KEY
-# A switch attempt that cannot satisfy the API-key requirement is
-# rejected by the workflow-settings editor with a clear error.
-#
-# Stitching failure (timeout, rate limit, API error) is **not**
-# papered over with a fallback string — it consumes a retry attempt
-# per DATABASE_ENTRY_MAX_RETRIES, and on exhaustion the Q+A is
-# routed to the R2 safety folder.  This keeps the chunks corpus
-# uniform (every row has a real LLM-stitched embedding_input).
-#
-# Cost example: gpt-4o-mini at ~$0.15 / 1M input tokens, ~28 Q+A
-# per session at ~300 input tokens each ≈ $0.0001 per session.
-#
-# >>> Currently only the OpenAI provider is implemented.  The
-# >>> Anthropic and Google branches are TODO items T16 and T17 in
-# >>> the architecture doc.  Until they ship, STITCHING_PROVIDER is
-# >>> locked to "OpenAI" in the workflow-settings editor (the
-# >>> provider input is rendered as a disabled dropdown — see
-# >>> ENUM_OPTIONS in workflow_settings/editor.py).  STITCHING_MODEL
-# >>> stays editable so the developer can try a different OpenAI
-# >>> model (e.g. gpt-4o-mini → gpt-4o) without code edits.
-#
-# Valid values:
-#   STITCHING_PROVIDER ∈ {"OpenAI"}  (Anthropic / Google = T16 / T17, deferred)
-#   STITCHING_MODEL    : any model name the chosen provider exposes
-STITCHING_PROVIDER: str = "OpenAI"
-STITCHING_MODEL: str = "gpt-4o-mini"
-
-# Maximum number of output tokens the cheap stitching LLM is allowed
-# to emit per Q+A rewrite.  Architecture doc §6.1 locks the output
-# to "exactly one paragraph and nothing else" — the stitched
-# paragraph should never need more than this.  Set lower to enforce
-# brevity; set higher only if you see truncation in the embedding
-# inputs (a sign that the stitching model is verbose).
-#
-# Visible in the workflow-settings web UI.
-#
-# Valid values: any positive int (recommended 400–1600).  Default 800.
-STITCHING_MAX_OUTPUT_TOKENS: int = 800
 
 
 # ===========================================================
@@ -680,35 +522,6 @@ RETRIEVE_ATTEMPT_INCLUDE_ISOMETRIC_VIEW: bool = True
 #
 # Valid values: any positive int (cl100k_base tokens).  Default 30000.
 RETRIEVE_MAX_RESPONSE_TOKENS: int = 30_000
-
-
-# ===========================================================
-# 23. Save logs + agent-flow of UNSAVED sessions to R2
-# ===========================================================
-# What happens to the session log (logs/<session>.log), the
-# agent-flow trace (logs/agent_flow_<ts>.txt), the DH flow trace
-# (logs/dh_flow_<ts>.txt), and the per-agent history dumps
-# (logs/agent_histories/) at end of session when the user clicked
-# "No save" at the End Session dialog.
-#
-# Local archival to ``previous_sessions/<session>/`` happens
-# regardless (the worktree must be cleared for the next session);
-# this setting only controls whether those files are ALSO
-# mirrored to R2 under ``<session>/logs/`` in the unsaved case.
-# Saved sessions (the user clicked "Save") always upload — this
-# setting does not affect them.
-#
-#   True   logs + agent-flow + per-agent histories are pushed to
-#          R2 even when the user chose not to save the session.
-#          Useful for diagnostics — every session is recoverable
-#          from R2 regardless of save state.
-#   False  unsaved sessions stay LOCAL ONLY (under
-#          previous_sessions/) and never reach R2.  Saves R2
-#          storage cost for throwaway sessions and prevents test
-#          sessions from polluting the production R2 bucket.
-#
-# Valid values: True, False
-SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
 
 
 # ===========================================================
@@ -1156,6 +969,8 @@ MAX_DESIGNER_STEPS: int = 85
 #
 # Valid values: positive int.
 MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT: int = 3
+
+# ===========================================================
 # 29. Prompt caching (Anthropic only)
 # ===========================================================
 # Anthropic prompt caching stores the model's precomputed state for
@@ -1218,6 +1033,7 @@ MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT: int = 3
 PROMPT_CACHE_SCOPE: str = "system+history"
 PROMPT_CACHE_TTL: str = "5m"
 
+# ===========================================================
 # 30. Prompt caching for the SESSION-SAVE phase (Anthropic only)
 # ===========================================================
 # The Database Handler interview that runs AFTER a session ends uses
@@ -1227,13 +1043,23 @@ PROMPT_CACHE_TTL: str = "5m"
 # tuned WITHOUT disturbing in-session behaviour (and vice versa).
 # The values mean exactly what their §29 counterparts mean.
 #
-# WHY THE SAVE IS WORTH CACHING AT ALL.  SCHEDULE has 29 fields and
-# _ask_agent re-seeds convo_buffer from the agent's FULL in-session
-# history for every one of them, so the User Input Inspector's whole
-# history is re-sent at least 8 times and the Planner's 6, at full
-# price each.  Nothing mutates agent_state.messages during the save
-# (list() copies; appends land on the copy), so that repeated prefix
-# is byte-stable.
+# WHY THE SAVE IS WORTH CACHING AT ALL.  _ask_agent re-seeds
+# convo_buffer from the agent's FULL in-session history every time it
+# opens a conversation, so that whole history is re-sent at full price
+# once per conversation.  Nothing mutates agent_state.messages during
+# the save (list() copies; appends land on the copy, and the image
+# strip returns copies rather than editing in place), so the repeated
+# prefix is byte-stable.
+#
+# BATCHING CHANGED THE ARITHMETIC, NOT THE CONCLUSION.  This note used
+# to count one re-seed PER SCHEDULE FIELD — eight for the User Input
+# Inspector, six for the Planner.  Rows going to one agent are now
+# asked in batches, so it is one re-seed per BATCH: fewer full-price
+# writes to begin with, and the two mechanisms compound rather than
+# overlap (batching removes repeats; caching makes the ones that remain
+# cheap).  The DH's OWN history is the bigger prize now — it grows
+# monotonically across the whole save and every batching tool call
+# reads it back through _force_tool_args.
 #
 # WHAT IS AND IS NOT CACHED TODAY (measured 2026-08-04).  The DH's own
 # self.messages grows monotonically and caches FULLY.  The agent side
@@ -1256,3 +1082,272 @@ PROMPT_CACHE_TTL: str = "5m"
 # PROMPT_CACHE_TTL_SAVE "5m"|"1h".
 PROMPT_CACHE_SCOPE_SAVE: str = "system+history"
 PROMPT_CACHE_TTL_SAVE: str = "5m"
+
+# ===========================================================
+# 31. Session saving — the End-Session save pipeline
+# ===========================================================
+# Everything the save uses once the user confirms "Save" at End
+# Session: how each row is rewritten for embedding, how it is
+# embedded, how hard the writer retries, and what is mirrored to
+# R2 when the user does NOT save.  Assembled from the former
+# blocks 11, 16, 17 and 23 — the settings themselves are
+# unchanged, only their position (and therefore their grouping in
+# the Workflow Settings UI).
+#
+# The blocks are ordered the way a save executes: interview each
+# agent, stitch each Q+A into embedding input, embed it, insert it
+# (retrying on failure), and finally decide what to mirror when the
+# user saves nothing.
+#
+# NOTE: the EMBEDDING_* values below are ALSO read at QUERY time —
+# database_search embeds the user's query with the same model — so
+# a change there affects retrieval, not just saving.
+
+
+# --- Database Handler — interview model ---
+
+# Which LLM answers when the Database Handler interviews an agent
+# about the session.
+#
+# By default every answer is billed at that AGENT's own model — the
+# User Input Inspector answers on its model, the DC Output Inspector
+# on its, and so on — with the agent's entire session history re-sent
+# on every question.  With the standard schedule that is ~36 answers
+# per save, on the strongest models in the workflow, and it is the
+# single largest cost in a save.
+#
+# But a DH interview is not design work: the agent is recalling and
+# summarising its OWN transcript, which a small model does well.  So
+# these two settings let the whole interview run on one cheap model
+# regardless of what each agent ran on live.
+#
+# WHAT IT COVERS.  Every call the Database Handler makes TO an agent:
+# the ordinary per-field answers AND the attempt-identifying calls
+# (which force a ``save_attempt_data`` tool call — so a model chosen
+# here must be able to make a forced tool call, or an identifying
+# question drops its whole block of sub-questions after 3 retries).
+# It does NOT cover the DH's own question-writing / ASK-or-SAVE
+# turns (those follow the ``database_handler`` row of the LLM-routing
+# chart) nor the stitching rewrite below (STITCHING_MODEL).
+#
+# IMAGES.  Image content blocks are stripped from the transcript the
+# interview model sees, so a text-only model is always safe here.
+# The agent's stored history is not modified; only the copy handed to
+# the interview is.  The DH asks about reasoning, not about pixels.
+#
+# THIS SETTING WINS over ``LLM_ROUTING_MODE``: a global provider
+# override (including the Sessions Queue's per-run single-model
+# condition) changes the LIVE session, not the interview.  Set
+# DH_INTERVIEW_PROVIDER to "Original Agent" when you want a run to be
+# single-model end to end.
+#
+#   DH_INTERVIEW_PROVIDER
+#     "Original Agent"  each agent answers on its own live model —
+#                       the historic behaviour, and the setting to
+#                       pick when the saved text must match sessions
+#                       saved before this option existed.
+#     "openai" | "anthropic" | "google" | "openrouter"
+#                       every interview answer uses this provider
+#                       with DH_INTERVIEW_MODEL, whatever the agent
+#                       ran on live.
+#
+#   DH_INTERVIEW_MODEL  the model name, passed verbatim to the
+#                       provider.  Ignored when the provider is
+#                       "Original Agent".  OpenRouter needs a
+#                       vendor-prefixed id (e.g.
+#                       "deepseek/deepseek-chat").
+#
+# The chosen provider's API key must be present the same way every
+# other agent's is (agents/.env or the process environment), or the
+# save falls back to each agent's own model and logs a warning —
+# a missing key must never lose a session's worth of answers.
+#
+# Valid values: DH_INTERVIEW_PROVIDER ∈ {"Original Agent", "openai",
+# "anthropic", "google", "openrouter"}; DH_INTERVIEW_MODEL any model
+# name the chosen provider exposes.
+DH_INTERVIEW_PROVIDER: str = "openai"
+DH_INTERVIEW_MODEL: str = "gpt-5.4-mini"
+
+
+# --- (was 17) Database Handler — stitching model (Option B embedding input) ---
+
+# Cheap LLM the Database Handler calls to rewrite each Q+A into the
+# single coherent prose paragraph that gets fed to the embedding
+# model (``text-embedding-3-large``).  The stitched paragraph lives
+# in ``chunks.embedding_input``; the resulting vector lives in
+# ``chunks.embedding``.  The user-facing text (``chunks.body`` /
+# ``chunks.question``) stays untouched by stitching — see
+# extra_utilities/db_design/database_and_RAG_architecture.md §6.1.
+#
+# The rewrite prompt lives at
+# ``agents/database_handler/stitching_prompt.md`` and is versioned
+# in its own frontmatter.  Treat it like a system prompt.
+#
+# Provider / model are split so the developer can switch one
+# without the other (e.g. keep OpenAI but try a different cheap
+# model).  The provider switch is gated on the matching API key
+# being present in ``.env``:
+#   * OpenAI    → OPENAI_API_KEY
+#   * Anthropic → ANTHROPIC_API_KEY
+#   * Google    → GOOGLE_API_KEY
+# A switch attempt that cannot satisfy the API-key requirement is
+# rejected by the workflow-settings editor with a clear error.
+#
+# Stitching failure (timeout, rate limit, API error) is **not**
+# papered over with a fallback string — it consumes a retry attempt
+# per DATABASE_ENTRY_MAX_RETRIES, and on exhaustion the Q+A is
+# routed to the R2 safety folder.  This keeps the chunks corpus
+# uniform (every row has a real LLM-stitched embedding_input).
+#
+# Cost example: gpt-4o-mini at ~$0.15 / 1M input tokens, one call per
+# SAVED ENTRY at ~300 input tokens each ≈ $0.0001 per session on a
+# schedule of a few dozen rows.
+#
+# >>> Currently only the OpenAI provider is implemented.  The
+# >>> Anthropic and Google branches are TODO items T16 and T17 in
+# >>> the architecture doc.  Until they ship, STITCHING_PROVIDER is
+# >>> locked to "OpenAI" in the workflow-settings editor (the
+# >>> provider input is rendered as a disabled dropdown — see
+# >>> ENUM_OPTIONS in workflow_settings/editor.py).  STITCHING_MODEL
+# >>> stays editable so the developer can try a different OpenAI
+# >>> model (e.g. gpt-4o-mini → gpt-4o) without code edits.
+#
+# Valid values:
+#   STITCHING_PROVIDER ∈ {"OpenAI"}  (Anthropic / Google = T16 / T17, deferred)
+#   STITCHING_MODEL    : any model name the chosen provider exposes
+STITCHING_PROVIDER: str = "OpenAI"
+STITCHING_MODEL: str = "gpt-4o-mini"
+
+# Maximum number of output tokens the cheap stitching LLM is allowed
+# to emit per Q+A rewrite.  Architecture doc §6.1 locks the output
+# to "exactly one paragraph and nothing else" — the stitched
+# paragraph should never need more than this.  Set lower to enforce
+# brevity; set higher only if you see truncation in the embedding
+# inputs (a sign that the stitching model is verbose).
+#
+# Visible in the workflow-settings web UI.
+#
+# Valid values: any positive int (recommended 400–1600).  Default 800.
+STITCHING_MAX_OUTPUT_TOKENS: int = 800
+
+
+# --- (was 11) Embedding model (used post-session for RAG indexing) ---
+
+# The embedding model that the (yet-to-be-implemented) RAG layer
+# will use to turn the saved per-field SEMANTIC answers under
+# ``database/<session>/<agent>/<field>.txt`` into vectors.
+#
+# The Database Handler (DH) is told these values via its system
+# prompt so it can shape SEMANTIC answers to fit the model:
+#   * stay below ``EMBEDDING_MAX_RESPONSE_TOKENS`` (preferring
+#     <600) when the field's Type is Semantic
+#   * apply the embedding-friendly rewrite rules baked into
+#     ``agents/database_handler/prompt.md``
+# Quantitative answers are NOT capped — they are saved verbatim
+# as numerical / structured payloads.
+#
+# ``EMBEDDING_API_KEY`` is read from environment, never hard-coded
+# here.  Set ``OPENAI_API_KEY`` (or change the env var name below)
+# in your shell or in a project .env you load before launching.
+EMBEDDING_PROVIDER: str = "OpenAI"
+EMBEDDING_MODEL: str = "text-embedding-3-large"
+EMBEDDING_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
+
+# Number of dimensions to request from the embedding model.
+# ``text-embedding-3-large`` natively returns 3072-dim vectors but
+# supports MRL truncation via the ``dimensions`` argument; 1024
+# is the recommended storage default for this corpus.
+# Valid values: any positive int the chosen model supports
+EMBEDDING_VECTOR_DIMS: int = 1024
+
+# Maximum number of tokens allowed in the SEMANTIC answer the DH
+# saves into the corresponding ``.txt`` file.  Counted with the
+# ``cl100k_base`` tokenizer (the tokenizer used by
+# ``text-embedding-3-large`` and the GPT-4 family).  The DH's
+# system prompt instructs it to stay below 600 when feasible.
+# Valid values: any positive int (recommended <= 8000, the
+# embedding model's per-input limit)
+EMBEDDING_MAX_RESPONSE_TOKENS: int = 700
+
+# Defensive cap (in characters, NOT tokens) on the stitched paragraph
+# fed to the embedding model.  text-embedding-3-large enforces an
+# 8192-token per-call limit; 30000 characters comfortably stays under
+# that limit while leaving headroom.  Over-cap input is truncated at
+# this length and a WARNING is logged — the row is still embedded
+# (lossy) rather than failing the whole chunks INSERT.  See
+# agents/database_handler/db_writer.py.
+#
+# Hidden from the workflow-settings web UI (internal tuning knob;
+# see HIDDEN_FROM_FLAG_LIST in workflow_settings/editor.py).
+#
+# Valid values: any positive int.  Default 30000 ≈ 7500 cl100k tokens.
+EMBEDDING_INPUT_MAX_CHARS: int = 30000
+
+
+# --- (was 16) Database Handler — retry budget for chunks INSERT ---
+
+# Maximum number of attempts the Database Handler makes to INSERT a
+# Q+A row into the Postgres ``chunks`` table when the insert fails
+# (CHECK constraint violation, embedding-pipeline error, transient DB
+# error, etc.).  If all attempts are exhausted, the Q+A is written
+# to the R2 safety folder for the session and skipped from the
+# database — no user data is lost.
+#
+# Set higher if you see transient errors frequently; set lower if
+# you want fast failover to safety storage.  UNIQUE violations are
+# treated as "already saved" and do NOT consume a retry — they exit
+# the retry loop immediately and are not counted against this cap.
+#
+# Cascade behaviour: if the failing Q+A is the identifying
+# attempt-related question for an attempt, ALL subsequent attempt-
+# related questions for that same attempt are routed straight to
+# the safety folder (no retries) since the attempt's identity row
+# is not in a consistent state.  See
+# extra_utilities/db_design/database_and_RAG_architecture.md §3.5.
+#
+# Example: a Semantic Q+A is generated but the embedding-API call
+# is rate-limited.  With DATABASE_ENTRY_MAX_RETRIES = 3, the DH
+# retries embed-then-insert up to 3 times.  If still failing on the
+# 3rd retry, the raw Q+A goes to ``<session_id>/safety/.../<filename>.txt``
+# in R2 and the user data is preserved for later recovery.
+#
+# Valid values: any positive int (recommended 3–5)
+DATABASE_ENTRY_MAX_RETRIES: int = 3
+
+# Fixed delay (seconds) between successive chunks-INSERT retry
+# attempts when DATABASE_ENTRY_MAX_RETRIES > 1.  Architecture doc
+# §3.5 locks the backoff strategy as fixed-delay (not exponential).
+#
+# Hidden from the workflow-settings web UI (internal tuning knob;
+# see HIDDEN_FROM_FLAG_LIST in workflow_settings/editor.py).
+#
+# Valid values: any non-negative float (seconds).  Default 1.0.
+DATABASE_ENTRY_RETRY_BACKOFF_SECONDS: float = 1.0
+
+
+# --- (was 23) Save logs + agent-flow of UNSAVED sessions to R2 ---
+
+# What happens to the session log (logs/<session>.log), the
+# agent-flow trace (logs/agent_flow_<ts>.txt), the DH flow trace
+# (logs/dh_flow_<ts>.txt), and the per-agent history dumps
+# (logs/agent_histories/) at end of session when the user clicked
+# "No save" at the End Session dialog.
+#
+# Local archival to ``previous_sessions/<session>/`` happens
+# regardless (the worktree must be cleared for the next session);
+# this setting only controls whether those files are ALSO
+# mirrored to R2 under ``<session>/logs/`` in the unsaved case.
+# Saved sessions (the user clicked "Save") always upload — this
+# setting does not affect them.
+#
+#   True   logs + agent-flow + per-agent histories are pushed to
+#          R2 even when the user chose not to save the session.
+#          Useful for diagnostics — every session is recoverable
+#          from R2 regardless of save state.
+#   False  unsaved sessions stay LOCAL ONLY (under
+#          previous_sessions/) and never reach R2.  Saves R2
+#          storage cost for throwaway sessions and prevents test
+#          sessions from polluting the production R2 bucket.
+#
+# Valid values: True, False
+SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False

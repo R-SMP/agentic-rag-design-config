@@ -88,9 +88,17 @@ from agents.database_handler.database_handler import DatabaseHandler  # noqa: E4
 _SUSPECT_METHODS = [
     "populate_database",
     "_run_identifying_conversation",
-    "_run_one_conversation",
     "_run_force_tool_phase",
     "_phase_3c_persist_chunk",
+    # The batched interview replaced ``_run_one_conversation`` (retired
+    # with the text protocol).  These carry the same risk in the same
+    # shape — several of them are called with kwargs assembled from the
+    # caller's locals.
+    "_run_batch",
+    "_plan_batches",
+    "_batch_questions",
+    "_shorten_over_cap",
+    "_force_tool_args",
 ]
 
 
