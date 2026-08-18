@@ -272,12 +272,13 @@ def expected_differing(topo: int, variant: str) -> tuple[set[str], list[str]]:
                 found = _scoped_slot_owner(base_posix)
                 if found is None:
                     overlay = _overlay_owner(base_posix)
-                    if overlay is None:
+                    owner = overlay[1] if overlay else _routing_fragment_owner(base_posix)
+                    if owner is None:
                         failures.append(
                             f"[UNKNOWN] {f.relative_to(ROOT)} shadows {base_posix}, "
                             "which is neither a prompt.md, a FRAGMENT_TO_SLOT entry, "
-                            "a recognised per-agent scoped copy, nor a per-agent "
-                            "overlay"
+                            "a recognised per-agent scoped copy, a per-agent overlay, "
+                            "nor a chain routing fragment"
                         )
                         continue
                     # An overlay DOES shadow a real shared file of its own, so
@@ -285,8 +286,8 @@ def expected_differing(topo: int, variant: str) -> tuple[set[str], list[str]]:
                     # unlike a scoped copy, which shadows nothing.  Fall
                     # THROUGH rather than continue, so the overlay still gets
                     # its CONSUMED probe; that probe is the only thing standing
-                    # between a DEAD overlay and a green run.
-                    who = {overlay[1]}
+                    # between a DEAD override and a green run.
+                    who = {owner}
                 else:
                     scoped_slot, owner = found
                     who = {owner}
@@ -383,6 +384,52 @@ def _overlay_owner(base_posix: str) -> tuple[str, str] | None:
             if agent in prompts.PROMPT_MD_RUNTIME_SLOTS:
                 return slot, agent
     return None
+
+
+# Chain-agent ROUTING fragments.  Deliberately absent from FRAGMENT_TO_SLOT
+# because they load at WIRING time via routing._load_routing_fragment, not at
+# template-build time — so the gate's build-time categories could not see them
+# and any variant override of one was reported [UNKNOWN] (F69).  The owner is
+# fixed by which agent passes that fragment_name at its routing_instructions()
+# call site.  The HUB fragments (routing_orchestrator, routing_receptionist,
+# routing_conductor_5agents) are NOT here — they are real slots, and the
+# FRAGMENT_TO_SLOT branch already classifies them.
+_ROUTING_FRAGMENT_AGENTS = {
+    "routing_dc_input_creator_planner_first":     "dc_input_creator",
+    "routing_dc_input_creator_uii_first":         "dc_input_creator",
+    "routing_dc_input_inspector":                 "dc_input_inspector",
+    "routing_dc_output_inspector":                "dc_output_inspector",
+    "routing_planner_planner_first":              "planner",
+    "routing_planner_uii_first":                  "planner",
+    "routing_tool_caller":                        "tool_caller",
+    "routing_user_input_inspector_planner_first": "user_input_inspector",
+    "routing_user_input_inspector_uii_first":     "user_input_inspector",
+}
+
+
+def _routing_fragment_owner(base_posix: str) -> str | None:
+    """Agent that loads this chain routing fragment, or None."""
+    if not base_posix.startswith("agents/shared/prompt_fragments/routing_"):
+        return None
+    return _ROUTING_FRAGMENT_AGENTS.get(Path(base_posix).stem)
+
+
+def _check_routing_table() -> list:
+    """Every routing_*.md must be classifiable: hub ones via FRAGMENT_TO_SLOT,
+    chain ones via _ROUTING_FRAGMENT_AGENTS.  Without this the table silently
+    goes stale the moment a routing fragment is added or renamed, and the gate
+    quietly returns to reporting [UNKNOWN] for a legitimate override."""
+    problems = []
+    for frag in sorted(GENERIC_FRAGMENTS_DIR.glob("routing_*.md")):
+        rel = frag.relative_to(ROOT).as_posix()
+        if rel in prompts.FRAGMENT_TO_SLOT or frag.stem in _ROUTING_FRAGMENT_AGENTS:
+            continue
+        problems.append(
+            f"[ROUTING TABLE] {rel} is in neither FRAGMENT_TO_SLOT nor "
+            "_ROUTING_FRAGMENT_AGENTS — a variant override of it would be "
+            "reported [UNKNOWN] (F69)"
+        )
+    return problems
 
 
 def _effective_slot_file(slot: str, topo: int, variant: str) -> Path | None:
@@ -536,6 +583,14 @@ if consumed_probes:
     )
 
 # ---------------------------------------------------------------------------
+# The routing-fragment table must stay complete, or the [UNKNOWN] classifier
+# silently regresses to F69 the next time a routing fragment is added.
+_routing_table_problems = _check_routing_table()
+failures.extend(_routing_table_problems)
+notes.append(
+    "routing-fragment table: %d chain fragment(s) classifiable, %d problem(s)"
+    % (len(_ROUTING_FRAGMENT_AGENTS), len(_routing_table_problems))
+)
 
 print("PROMPT_VARIANT resolution summary")
 for n in notes:

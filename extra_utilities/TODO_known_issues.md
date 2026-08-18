@@ -4076,8 +4076,9 @@ Orchestrator or the user can GRANT one.
 
 ### F69. `smoke_test_prompt_variant.py` cannot classify a routing-fragment override
 
-**Status.** OPEN — blocks a whole class of variant override.  REPRODUCED
-2026-08-10 (probe written, gate run, probe removed, tree verified clean).
+**Status.** FIXED (this commit).  Was OPEN — it blocked a whole class of
+variant override.  REPRODUCED 2026-08-10 (probe written, gate run, probe
+removed, tree verified clean).
 
 Dropping any `routing_*_7agents_reduced.md` into
 `agents/7agent_reduced/prompt_fragments/` turns the gate RED:
@@ -4097,6 +4098,27 @@ Consequence already felt: the two conflicts that wanted a routing-fragment
 override (the DCIC's missing `call_tool_caller`, the UII's CLARIFY collision) had
 to be fixed elsewhere — in the shared fragment and in the existing `reduced7/`
 fork respectively.  Any future routing override needs the classifier taught first.
+
+**RESOLVED.**  `_ROUTING_FRAGMENT_AGENTS` maps the nine chain routing
+fragments to their owning agent — the owner being fixed by which agent passes
+that `fragment_name` at its `routing_instructions()` call site.  The three HUB
+fragments (`routing_orchestrator`, `routing_receptionist`,
+`routing_conductor_5agents`) are deliberately NOT in the table: they are real
+slots and the `FRAGMENT_TO_SLOT` branch already classifies them.  A routing
+override shadows a real shared file, so it falls THROUGH to the CONSUMED probe
+rather than short-circuiting — a dead one is still caught.
+
+`_check_routing_table()` keeps the table honest: every `routing_*.md` in the
+shared dir must be classifiable by one branch or the other, or the gate fails
+naming F69.  That matters because this sweep found NINE wrong or incomplete
+enumerations, and each fix was itself a hand-maintained list that can drift
+the same way.  This one polices itself.
+
+Mutation-tested both halves: dropping a real
+`routing_tool_caller_7agents_reduced.md` into the variant dir now turns the
+gate GREEN and attributes it to `['tool_caller']` (it previously went RED with
+[UNKNOWN] — the exact reproduction above); and deleting one table entry makes
+`_check_routing_table` fire.  Probe removed, tree verified clean after both.
 
 ### F70. `smoke_test_prompt_format.py` skips the Receptionist on a false premise — a possible brace hole
 
