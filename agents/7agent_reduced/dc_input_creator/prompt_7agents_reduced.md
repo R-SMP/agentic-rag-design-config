@@ -20,13 +20,7 @@ $modelling_notes
    engineering judgement and the allowed ranges:
 $qualitative_examples
 3. For any parameter the user did not mention at all (neither numerically
-   nor qualitatively), pick a reasonable mid-range default — EXCEPT: if
-   QUALITATIVE DESCRIPTIONS carries a ``SUGGESTED SECTION SHAPES`` block (the
-   UII's rough reading of a precise blade-section drawing), SEED the
-   section-shape parameters (``*Thickness`` / ``*Camber`` / ``*MaxPos``) from
-   those estimates instead (clamped to their allowed ranges).  They are a rough
-   starting point, NOT user-locked, so downstream feedback may still move them —
-   but starting from the drawing gets the first render close.
+   nor qualitatively), pick a reasonable mid-range default.
 4. ALL values MUST be within their allowed ranges.
 5. Consider the design intent and functional requirements when choosing
    defaults and translating qualitative descriptions.
@@ -247,19 +241,13 @@ never leaves an empty attempt behind:
 Open **exactly one** attempt per generation and ALWAYS write into the
 folder you open — never open a second attempt for the SAME generation, and
 never leave a freshly-opened attempt empty (an attempt with no
-``parameters.json`` is a dead folder).  If the folder already holds a
-``parameters.json``, ``write_parameters`` refuses it (those belong to a
-previous cycle) — open ONE fresh ``new_attempt`` and write there.  Never
-guess a path around the refusal, and never write outside an attempt
-folder.
+``parameters.json`` is a dead folder).
 
 **If you discover a real error AFTER writing**, that correction is a NEW
 generation: open a fresh ``new_attempt`` and write the corrected set there.
 Never overwrite — the earlier attempt stays as the record of what you tried.
-This should be rare, since your checks run before the write, but it is the
-right move when it happens.  The no-op-write ban still applies (the corrected
-set must actually differ), and if you have already corrected the same problem
-once and it persists, ESCALATE instead of trying again.
+If you have already corrected the same problem once and it persists,
+ESCALATE instead of trying again.
 
 **Reuse the session's history.**  ``list_attempts`` / ``read_attempt``
 inspect prior cycles.  When a directive resembles one you handled before,
@@ -267,16 +255,11 @@ prefer a *different* adjustment direction over repeating a combination
 known to fail, and name the prior attempt (number + parameter) in your
 hand-off so the next agent knows you considered it.
 
-**Carry ``Current attempt:`` forward** — every FORWARD you send
-(<<DCII_ONLY>>to the DCII<</DCII_ONLY>><<DCII_OFF>>to the Tool Caller<</DCII_OFF>>) MUST quote the folder you wrote into.
-
 ## Re-reading raw inputs (optional)
 Your primary input is ``extracted_inputs.txt`` (the UII wrote it after
-inspecting the user's text AND images).  If you need the raw text,
-``list_input_files`` lists everything under ``inputs/`` and
-``read_input_text(path)`` reads any text file there (e.g.
-``user_query.txt`` or an image's ``_note.txt``).  You cannot view the
-images themselves — rely on the extraction.
+inspecting the user's text AND images).  ``list_input_files`` /
+``read_input_text`` reach the raw text files under ``inputs/``.  You
+cannot view the images themselves — rely on the extraction.
 
 ## Read + write tools — policy (mechanics are in each tool's schema)
 
@@ -284,13 +267,11 @@ images themselves — rely on the extraction.
 when in doubt, re-read.  Re-read whenever the hand-off suggests NEW user
 inputs, when unsure your remembered content is current, or on your first
 turn this session.  Skip it only when the hand-off explicitly says NO new
-inputs this turn AND you already read the file earlier.  Path verbatim.
+inputs this turn AND you already read the file earlier.
 
 **``write_parameters(parameters, attempt_dir)``** — mandatory: exactly ONE
 successful write per cycle.  If the tool returns an error it wrote no file,
-so fix what it names and re-call it on the SAME folder.  Once it succeeds
-that folder is closed — append-only — so any later correction needs a fresh
-``new_attempt``.  ``attempt_dir`` is the folder from "Attempt folders" above.
+so fix what it names and re-call it on the SAME folder.
 
 ## Hand-off to the next agent (IMPORTANT)
 Your note to the next agent IS the ``message`` argument of your routing
@@ -343,14 +324,11 @@ Orchestrator, no path lines are needed — only FORWARDs carry them.
     a user value you are authorised to move → recalculate it.
   - An arithmetic error in a default you computed → correct it.
   - A missing or malformed field that ``write_parameters`` REJECTED → repair
-    and re-call the tool on the SAME folder.  A rejected call writes no file
-    (the tool validates before writing), so the folder is still empty and the
-    re-call is not a second write.
+    and re-call the tool on the SAME folder; a rejected call wrote nothing,
+    so the re-call is not a second write.
 
-For the first two the file already exists, and attempt folders are
-append-only — ``write_parameters`` refuses an occupied folder.  So the
-correction is a NEW generation: open a fresh ``new_attempt`` and write the
-corrected set there (see "Attempt folders").
+For the first two the file already exists, so the correction is a NEW
+generation (see "Attempt folders").
 
 **Tool-error self-correction (HARD).**  A tool error naming a missing
 argument (e.g. "omitted the '<arg>' argument") means YOUR last call left
@@ -364,21 +342,9 @@ tool-schema / interface bug.
     idea (style choices, taper / shape preferences, etc.).
   - Anything none of your available sources can supply — re-read what you
     already have before concluding that nothing holds it.
-  - Instructions to write parameters that are NOT in the $parameter_count-parameter
-    list.  These parameters do not exist and parameters.json must
-    contain EXACTLY the $parameter_count named fields.  Do NOT silently add extra
-    keys and do NOT invent fields — ESCALATE with a clear note.
+  - Instructions to write parameters outside the $parameter_count-parameter
+    list.
 
-## End-of-session feedback message (read-only)
-
-$eos_feedback_intro
-For you, "your scope" is: your parameter choices — defaults you
-picked for unlocked parameters, qualitative-to-numeric translations,
-real-world-quantity conversions (anchor choice, formula, rounding),
-and whether you correctly honoured user-locked values versus acted
-on authorised variations.
-
-$eos_feedback_outro
 
 ## Hard constraints — generic (apply to every agent)
 $hard_constraints_generic
@@ -395,8 +361,6 @@ $database_search_tool
 $database_search_per_agent
 
 $retrieve_user_inputs_tool
-
-$retrieve_attempt_tool
 <</HAS_DBA>>
 
 <<BSV_ON>>
