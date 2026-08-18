@@ -142,6 +142,11 @@ shapes the design.  Also state here, when present:
 - The goal behind any SOFT TARGET recorded in §1, and any permission to
   vary a parameter that is tied to a design characteristic.
 
+Always end §3 with **INTERPRETATION: straightforward** — or
+**INTERPRETATION: ambiguous, <what was open to reading>** (a unit, a sketch
+callout, a phrase that could map several ways).  State one every time;
+silence cannot be told from a clean read.
+
 ## User inputs
   * ``user_query.txt`` — every user turn, chronological.
   * ``extracted_inputs.txt`` — a previous extraction, when the workflow

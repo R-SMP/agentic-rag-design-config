@@ -4341,8 +4341,8 @@ copy the hub actually quotes into hand-offs is `orchestrator/prompt.md:136`.
 
 ---
 
-### F77
-**`{render_check_library_block}` is dead under the shipped default — code fix,
+### F77 — FIXED (`3677f78`)
+**`{render_check_library_block}` was dead under the shipped default — code fix,
 not a prompt fix.**  `agents/tool_caller/tool_caller.py:148-152` picks
 `RENDER_CHECK_LIBRARY_PYVISTA` / `_TRIMESH` by render library alone; there is no
 mesh-checks gate (`self.mesh_checks` is stored at `:119` and never consulted
@@ -4364,6 +4364,19 @@ placeholder from the prompt is the WRONG fix — it removes the block even when
 mesh checks ARE on, and it would not error, because `.format()` tolerates the
 now-unused kwarg.  The gate belongs in `tool_caller.py`: pass `""` when
 `session.mesh_checks` is False.
+
+**RESOLVED** in `3677f78`, and slightly differently from the sketch above.
+The OFF state is a new fragment
+`DC_prompt_fragments/tools_config/render_check_library/off.md` rather than an
+empty string: with checks off nothing else told the agent the metrics were
+absent (`hard_constraints_dc`'s metrics bullet is `<<MESH_ON>>`-gated and
+therefore stripped) while the prompt still asked it to report "the numbers
+from THIS cycle's return".  `off.md` says what the render step DOES return —
+the three views and the bounding box, which `render_mesh.py` appends before
+the gate.  BOTH call sites were fixed: `tool_caller.py` (live) and
+`designer.py:213-218` (latent — `agents/designer/` has no `prompt.md` yet, so
+the path cannot run, but the defect was identical).  Measured: Tool Caller
+full system prompt 15,297 -> 14,220 (trimesh), 15,965 -> 14,220 (pyvista).
 
 ### F78
 **The `Mesh file:` label has no reader.**  `agents/tool_caller/prompt.md:105`
@@ -4390,8 +4403,8 @@ DCII, DCOI), so this is a per-agent-accuracy issue, not a straight defect.  Low
 priority; noted while cutting the Tool Caller's duplicate copy of the same
 mechanics (E14).
 
-### F80
-**The UII does not signal how hard the extraction was.**  The DC Input
+### F80 — FIXED (this commit)
+**The UII did not signal how hard the extraction was.**  The DC Input
 Inspector fork now tells the DCII to re-check the raw user inputs when "the
 extraction or an incoming hand-off reports that the user's inputs were hard to
 interpret" (E7, DCII batch 2) — but nothing currently produces that signal.
@@ -4405,3 +4418,22 @@ phrase that could map several ways).  Until then E7's fourth trigger fires only
 when an agent volunteers the difficulty in prose.
 
 Owner's instruction when approving DCII batch 2.
+
+**RESOLVED.**  §3 DESIGN INTENT of
+`agents/7agent_reduced/user_input_inspector/prompt_7agents_reduced.md` now
+ends with `**INTERPRETATION: straightforward**` or
+`**INTERPRETATION: ambiguous, <what was open to reading>**`.  The owner chose
+the ALWAYS-STATE form over a when-present note, so silence is meaningful
+rather than ambiguous between "clean read" and "never considered" — the same
+failure mode as the Tool Caller's freshness signal, where a reused render and
+a fresh one produced byte-identical hand-offs.
+
+Placed OUTSIDE the "Also state here, when present:" bullet list, since an
+always-stated line under a when-present heading contradicts itself and the two
+sibling bullets (PRECISION DEMAND, SOFT TARGET goal) are genuinely conditional.
+
+Producer and consumer are BOTH reduced-fork-only and stay symmetric: the
+standard DC Input Inspector has no such trigger (`grep` returns 0).  The DC
+Input Creator was deliberately NOT given a consumer — it binds no image tools,
+so its realistic response to an ambiguity note is a CLARIFY it can already
+send for other reasons.
