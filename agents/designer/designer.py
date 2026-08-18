@@ -59,6 +59,7 @@ from agents.shared import token_usage
 from agents.shared.prompts import (
     PARAMETER_NAMES,
     RENDER_CHECK_LIBRARY_PYVISTA,
+    RENDER_CHECK_LIBRARY_OFF,
     RENDER_CHECK_LIBRARY_TRIMESH,
     _build_template,
     routing_instructions,
@@ -210,10 +211,20 @@ class Designer(BaseChainAgent):
             prev_agent="Architect",
             fragment_name="routing_designer.md",
         )
+        # Mesh checks OFF => the render step emits no metrics at all
+        # (render_mesh.py:281 guards the findings, :329 the summary), so a
+        # backend's metric semantics would describe a report this agent
+        # never receives.  Gated HERE rather than with <<MESH_ON>> markers
+        # because .format() runs AFTER apply_flag_filters — a marker inside
+        # the injected fragment would never be filtered.
         render_check_block = (
-            RENDER_CHECK_LIBRARY_PYVISTA
-            if self.render_library == "pyvista"
-            else RENDER_CHECK_LIBRARY_TRIMESH
+            (
+                RENDER_CHECK_LIBRARY_PYVISTA
+                if self.render_library == "pyvista"
+                else RENDER_CHECK_LIBRARY_TRIMESH
+            )
+            if self.mesh_checks
+            else RENDER_CHECK_LIBRARY_OFF
         )
         # Built fresh at construction time so live edits to .md fragments
         # via the System Prompts UI take effect on the NEXT session

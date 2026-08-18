@@ -530,6 +530,11 @@ RENDER_CHECK_LIBRARY_TRIMESH = _read_dc_fragment(
 RENDER_CHECK_LIBRARY_PYVISTA = _read_dc_fragment(
     "tools_config/render_check_library/pyvista.md"
 )
+# Substituted for the backend block when the session has mesh checks OFF —
+# the metrics those fragments describe are then never produced.
+RENDER_CHECK_LIBRARY_OFF = _read_dc_fragment(
+    "tools_config/render_check_library/off.md"
+)
 
 
 # ---------------------------------------------------------------------------

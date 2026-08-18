@@ -89,9 +89,13 @@ _WIRING_TIME_USAGE: dict[str, list[str]] = {
     "agents/shared/prompt_fragments/routing_dc_input_inspector.md":                 ["dc_input_inspector"],
     "agents/shared/prompt_fragments/routing_dc_output_inspector.md":                ["dc_output_inspector"],
     "agents/shared/prompt_fragments/routing_tool_caller.md":                        ["tool_caller"],
-    # Render-check library backends — Tool Caller picks one per session.
+    # Render-check library — the Tool Caller picks one backend per session,
+    # or off.md when that session has mesh checks disabled.  (The 3-agent
+    # Designer selects from the same set, but has no prompt.md yet, so it is
+    # not listed until that template exists.)
     "DC_prompt_fragments/tools_config/render_check_library/trimesh.md": ["tool_caller"],
     "DC_prompt_fragments/tools_config/render_check_library/pyvista.md": ["tool_caller"],
+    "DC_prompt_fragments/tools_config/render_check_library/off.md":     ["tool_caller"],
     # Per-agent database_search overlays (the $database_search_per_agent slot).
     "DC_prompt_fragments/tools_config/database_search_receptionist.md":         ["receptionist"],
     "DC_prompt_fragments/tools_config/database_search_orchestrator.md":         ["orchestrator"],
