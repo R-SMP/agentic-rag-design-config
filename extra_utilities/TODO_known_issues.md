@@ -4278,10 +4278,10 @@ if it already contains a ``parameters.json`` (attempt folders are append-only)".
 So the DCII is told the file was mutated in place when in fact a NEW attempt
 folder was opened.  **Fix: `overwritten` -> `written`.**
 
-### F74. The "only these five" path-label list is incomplete — still live in standard + 5-agent
+### F74. The "only these five" path-label list is incomplete — FIXED
 
-**Status.** CUT in the 7-agent reduced variant 2026-08-10.  OPEN everywhere
-else.
+**Status.** FIXED (this commit).  Was CUT in the 7-agent reduced variant
+2026-08-10 and OPEN everywhere else.
 
 `DC_prompt_fragments/tools_config/hard_constraints_tools.md:2-5` states that
 read tools take "only" the paths given by five named labels.  At least these
@@ -4299,6 +4299,25 @@ still carry it and must either complete it or drop it the same way.
 
 Related: it is ALSO wrong for the Receptionist, which receives NONE of the five
 — see the hard_constraints_tools fork note.
+
+**RESOLVED** by DROPPING the list at source rather than completing it, which
+follows the precedent the reduced override already set.  The bullet now reads
+"DON'T invent or guess a path.  Every path you hand a tool must trace to a
+label in your incoming message or to an upstream tool's return value." —
+wording deliberately close to the reduced override so the trees do not diverge
+in meaning.  Completing it would have meant nine-plus labels and a list free to
+go stale on the next one.
+
+Re-verified before the cut.  The five listed labels are all real (9-21 prompt
+files each).  So are all four omissions — and `Extraction output file:` appears
+in ELEVEN files, as widespread as `Extracted inputs file:`, which IS listed.
+The standard Receptionist receives none of the five and uses two of the
+omissions (`Attempts this cycle:`, `Show to user:`), so the list was wrong in
+both directions at once.
+
+Blast radius: 14 prompts (8 standard, 6 five-agent).  The 8 reduced forks were
+already on their own override.  Bullets 2 and 3 untouched — bullet 3's
+coherence invariant is F75's subject.
 
 ### F75. Attempt-folder coherence is an invariant nothing enforces
 
