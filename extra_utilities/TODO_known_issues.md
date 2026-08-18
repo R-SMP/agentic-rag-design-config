@@ -4393,15 +4393,27 @@ only human-readable proof the mesh reached disk, and cutting a label with no
 reader is only safe if nothing downstream ever starts reading one.  Recorded
 rather than removed.
 
-### F79
-**`tool_inventory.md:11-13` points the Tool Caller at a tool it does not hold.**
+### F79 — FIXED (this commit)
+**`tool_inventory.md:11-13` pointed the Tool Caller at a tool it does not hold.**
 `read_attempt`'s entry ends "an image or mesh returns a path to hand on, e.g. to
 ``view_images``" — but `agents/tool_caller/tool_caller.py` never calls
-`build_user_inputs_tools`, so this agent has no `view_images`.  The fragment is
-shared and the pointer is correct for the agents that do bind it (Planner, UII,
-DCII, DCOI), so this is a per-agent-accuracy issue, not a straight defect.  Low
-priority; noted while cutting the Tool Caller's duplicate copy of the same
-mechanics (E14).
+`build_user_inputs_tools`, so this agent has no `view_images`.
+
+**CORRECTION to this entry's own first reading, and the reason it was worth
+fixing rather than filing:** `$tool_inventory` is NOT shared across agent
+types.  It is spliced into TOOL CALLER prompts only — `agents/tool_caller`,
+`agents/5agent/tool_caller`, `agents/7agent_reduced/tool_caller` — and none of
+them bind `view_images`.  So the pointer was wrong for EVERY consumer of the
+fragment, not correct-elsewhere-and-wrong-here.  "Shared fragment" was read as
+"many agent types read it"; here it means three files that are all the same
+agent.
+
+**FIXED** at source, which repairs all three variants at once: the example now
+reads "a path to hand on to whoever can load it", which for the Tool Caller is
+the DC Output Inspector — exactly what its `Render images:` contract already
+does.  The SCHEMA needed no change: `attempts_tool.py:215-217` says "hand it to
+a tool that loads images (e.g. `view_images`)", which is generic with an
+example and ships to the four agents that genuinely bind it.
 
 ### F80 — FIXED (this commit)
 **The UII did not signal how hard the extraction was.**  The DC Input
