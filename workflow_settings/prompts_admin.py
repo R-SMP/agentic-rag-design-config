@@ -184,7 +184,7 @@ def _scoped_owner(rel_path: str) -> str | None:
     rule is mechanical (``<stem>_<agent><suffix>``) and a hand-maintained
     list is one more thing to forget — the same failure shape as the three
     drifted path patterns 13e0bab had to consolidate, and as the marker list
-    in F56.  A new scoped file is recognised the moment it exists.
+    in F81.  A new scoped file is recognised the moment it exists.
 
     Only slots registered in ``SCOPED_FRAGMENTS`` are considered, so the
     pre-existing ``blade_sections_visualizer_<agent>.md`` and

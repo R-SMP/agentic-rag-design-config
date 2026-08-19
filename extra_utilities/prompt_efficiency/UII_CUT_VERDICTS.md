@@ -51,12 +51,12 @@ instruction, counted (not estimated).
 | cut | target file | copies | verdict | disposition |
 |---|---|---:|---|---|
 | `UII-46` | `prompt.md` | 3 | TRUE_DUPLICATE | **apply as written** |
-| `UII-31` | `routing.py` | 2 | PARTIAL | **apply — but see F59; this is a generator fix, not a prompt cut** |
+| `UII-31` | `routing.py` | 2 | PARTIAL | **apply — but see F84; this is a generator fix, not a prompt cut** |
 | `UII-27` | `routing.py` | 2 | PARTIAL | **apply INVERTED** — see below |
 | `UII-36` | `generic_constraints.md` | 9 restatements / 3 locations | PARTIAL | **repair first** — carries the ⚠5 defect |
 | `UII-47` | `generic_constraints.md` | 2 | PARTIAL | **repair first** |
 | `UII-40` | `generic_constraints.md` | 4 | PARTIAL | **repair first** |
-| `UII-44` | `routing_..._uii_first.md` | 3 | PARTIAL | **safe once F59's generator fix lands** |
+| `UII-44` | `routing_..._uii_first.md` | 3 | PARTIAL | **safe once F84's generator fix lands** |
 | `UII-37` | `prompt.md` | 3 | PARTIAL | **repair first** |
 | `UII-28` | `generic_constraints.md` | 1 | NOT_A_DUPLICATE | **REJECT** |
 | `UII-43` | `prompt.md` | 1 | NOT_A_DUPLICATE | **REJECT** |
@@ -140,7 +140,7 @@ version is the **richer** copy. It uniquely carries
 | `UII-47` | `do not substitute words from other languages or scripts`, and `— and nothing more.` (the only counterweight to the Orchestrator's own "Lose no useful context"). Resolve the span conflict with `UII-28` in the same file. |
 | `UII-40` | `so the Planner can pick a different angle` and the positive destination `Route your content to the Orchestrator`. **See F61** — do not inline "the Planner" as an authorisation source. |
 | `UII-37` | The recorded span runs through `quote_end: "DCIC.<</PF_ON>>"` and silently truncates the `PF_ON` branch. Re-scope the cut to end before `<<PF_ON>>`, or restore "badly ambiguous sketch, contradictory instructions" and "routine extractions go to the DCIC". |
-| `UII-44` | Safe **only after** F59's generator fix; before it, the cut removes the redirect (`anything that would otherwise be a "back" routes to the Orchestrator instead`) with nothing replacing it. Note also that the stated rationale is false: `routing_tools.py::_TOOL_DESCRIPTIONS["call_planner"]` is one sentence carrying no precondition, so the schemas do **not** already cover the fragment's content. |
+| `UII-44` | Safe **only after** F84's generator fix; before it, the cut removes the redirect (`anything that would otherwise be a "back" routes to the Orchestrator instead`) with nothing replacing it. Note also that the stated rationale is false: `routing_tools.py::_TOOL_DESCRIPTIONS["call_planner"]` is one sentence carrying no precondition, so the schemas do **not** already cover the fragment's content. |
 
 ---
 

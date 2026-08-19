@@ -15,7 +15,7 @@ Only ``routing_instructions`` is re-implemented, because only its TEXT differs.
 Planner from the grantor list when the topology is not 7, and a stale duplicate
 would name an agent that does not exist in the 5- and 3-agent systems (F61).
 
-WHAT DIFFERS FROM THE ORIGINAL — still exactly one change (F59).  Verified by
+WHAT DIFFERS FROM THE ORIGINAL — still exactly one change (F84).  Verified by
 diffing the EMITTED text against the original for both a first-in-pipeline and a
 mid-chain agent: one bullet differs, nothing else.
 
@@ -41,7 +41,7 @@ not, and that cut is unsafe as written.
 WHAT DEPENDS ON THIS BLOCK — read before deleting any string below.
 
 Deleting this fork wholesale is safe: the original emits the same rules, and all
-that is lost is the F59 wording.  EDITING these strings is NOT safe.  Under
+that is lost is the F84 wording.  EDITING these strings is NOT safe.  Under
 PROMPT_VARIANT=reduced, ``generic_constraints_7agents_reduced.md`` deliberately
 no longer states FORWARD-is-default, ESCALATE-when-blocked or permissions->hub.
 That cut was sound precisely BECAUSE this block states all three to exactly the
@@ -98,7 +98,7 @@ def routing_instructions(
             f"to go 'back', that means handing control to the {hub}."
         )
 
-    # THE ONE CHANGE (F59).  "Previous" means whoever handed you this work, so
+    # THE ONE CHANGE (F84).  "Previous" means whoever handed you this work, so
     # the bullet names its own target instead of leaving the per-agent fragment
     # to patch it.
     #

@@ -3404,7 +3404,7 @@ Related: F54 (live verification on a real save).
 
 ---
 
-### F56. `prompts_admin._MARKER_PAIRS` validates only 5 of the 8 conditional-region markers
+### F81. `prompts_admin._MARKER_PAIRS` validates only 5 of the 8 conditional-region markers
 
 **Status.** OPEN — found 2026-08-05 while adding the `<<MESH_ON>>` pair.  Low
 severity, zero-cost fix, but it is a *silent* gap and those are the ones that bite.
@@ -3453,7 +3453,7 @@ the authoritative marker list is `agents/shared/prompts.py:151-175`.
 
 ---
 
-### F57. The DC Output Inspector is told to name parameters it is never shown
+### F82. The DC Output Inspector is told to name parameters it is never shown
 
 **Status.** OPEN — fix DECIDED 2026-08-05, not yet implemented.  Found while
 scoping which agents need `$hard_constraints_dc`.  Present in BOTH the 7- and
@@ -3521,11 +3521,11 @@ key, already used by seven prompts).
 `agents/5agent/dc_output_inspector/prompt_5agents.md`;
 the fragment is `DC_prompt_fragments/dc_config/parameters.md` -> slot
 `$parameter_list` (`agents/shared/prompts.py` FRAGMENT_TO_SLOT).
-Related: F56 (also a silent-gap defect found the same way).
+Related: F81 (also a silent-gap defect found the same way).
 
 ---
 
-### F58. The UII's categorisation rule says "two buckets" but there are three sections
+### F83. The UII's categorisation rule says "two buckets" but there are three sections
 
 **Status.** OPEN — found 2026-08-05 while writing the UII-scoped DC hard rules.
 Low severity, but it leaves one output section with no rule routing anything
@@ -3587,12 +3587,12 @@ NOT paper over it: an earlier draft of that fragment enumerated
 inside a hard-constraints fragment — the wrong layer for a routing rule.
 
 **Where.** `agents/user_input_inspector/prompt.md:20-31` (rule), `:143`, `:270`,
-`:287` (the three sections).  Related: F57 (also a UII/DCOI prompt gap found by
+`:287` (the three sections).  Related: F82 (also a UII/DCOI prompt gap found by
 mapping rather than by a proposed cut).
 
 ---
 
-### F59. The generic CLARIFY bullet needs a per-agent patch paragraph in every first-agent fragment
+### F84. The generic CLARIFY bullet needs a per-agent patch paragraph in every first-agent fragment
 
 **Status.** OPEN in the shared tree; fixed in the 7-agent REDUCED variant only
 (owner's call — section-8-class repairs land in the variant, not in standard).
@@ -3677,7 +3677,7 @@ Four duplications, none of which any of the 349 cuts touches:
    restatement from all SIX chain agents at once — the single highest-leverage
    edit found, and no cut proposes it.
 
-3. **The per-agent fragment restates the generator by construction.**  See F59:
+3. **The per-agent fragment restates the generator by construction.**  See F84:
    the fragment's closing paragraph restates the position line the generator
    already emits whenever `prev_agent` is None.
 
@@ -3793,7 +3793,7 @@ ever added to the smoke suite, note the two false-positive classes it must
 tolerate: prose words that happen to be camelCase, and tool/field names
 (`view_images`, `parameters.json`) that are not parameters.
 
-Related: F57 (the DCOI is asked to name parameters it is never shown — same
+Related: F82 (the DCOI is asked to name parameters it is never shown — same
 family, opposite direction).
 
 ---
