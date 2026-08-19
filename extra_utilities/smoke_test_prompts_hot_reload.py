@@ -72,6 +72,13 @@ _DC_CONFIG_FIXTURES = {
 _USER_INPUT_TYPES_FIXTURES = {
     "sketch_handling.md": "[SKETCH_HANDLING]",
     "sketch_notes.md":    "[SKETCH_NOTES]",
+    # The fixture tree must carry EVERY fragment _build_slots() opens, or
+    # this test dies on FileNotFoundError before asserting anything.  It had
+    # drifted behind on THREE dicts at once.  Cross-check with the two
+    # _read_*_fragment call sites in agents/shared/prompts.py when adding a
+    # fragment; a new one is invisible to this test until it is listed here.
+    "sketch_precision_examples.md": "[SKETCH_PRECISION_EXAMPLES]",
+    "sketch_crop_example.md":       "[SKETCH_CROP_EXAMPLE]",
 }
 
 _TOOLS_CONFIG_FIXTURES = {
@@ -86,6 +93,11 @@ _TOOLS_CONFIG_FIXTURES = {
     "database_search.md":            "[DATABASE_SEARCH]",
     "retrieve_user_inputs.md":       "[RETRIEVE_USER_INPUTS]",
     "retrieve_attempt.md":           "[RETRIEVE_ATTEMPT]",
+    "blade_sections_visualizer.md":    "[BSV]",
+    "blade_sections_visualizer_off.md": "[BSV_OFF]",
+    "render_check_library/trimesh.md": "[RCL_TRIMESH]",
+    "render_check_library/pyvista.md": "[RCL_PYVISTA]",
+    "render_check_library/off.md":     "[RCL_OFF]",
 }
 
 _GENERIC_FIXTURES = {
@@ -95,6 +107,9 @@ _GENERIC_FIXTURES = {
     "pipeline_flow_planner_first.md": "[PIPELINE_FLOW_PF]",
     "pipeline_flow_uii_first.md":     "[PIPELINE_FLOW_UII]",
     "available_agents.md":            "[AVAILABLE_AGENTS]",
+    "eos_feedback_intro.md":           "[EOS_INTRO]",
+    "eos_feedback_outro.md":           "[EOS_OUTRO]",
+    "value_states.md":                 "[VALUE_STATES]",
 }
 
 # The stub agent's prompt.md references three $-slots so we can verify
@@ -127,7 +142,11 @@ def _write_fixtures(tmp_root: Path) -> None:
     for name, body in _USER_INPUT_TYPES_FIXTURES.items():
         (user_types / name).write_text(body, encoding="utf-8")
     for name, body in _TOOLS_CONFIG_FIXTURES.items():
-        (tools_config / name).write_text(body, encoding="utf-8")
+        # Some fixture names carry a subdirectory (render_check_library/*.md),
+        # so the parent must be created rather than assumed.
+        dest = tools_config / name
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_text(body, encoding="utf-8")
     for name, body in _GENERIC_FIXTURES.items():
         (generic / name).write_text(body, encoding="utf-8")
 
