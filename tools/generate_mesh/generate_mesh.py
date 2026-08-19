@@ -31,6 +31,7 @@ import base64
 import functools
 import json
 import logging
+import math
 import subprocess
 from pathlib import Path
 from typing import Annotated
@@ -174,6 +175,83 @@ class MeshGenerationError(RuntimeError):
     The agent path catches this and converts it back to a status
     string for the tool's return value; the live-preview HTTP route
     converts it to a 4xx/5xx response."""
+
+
+# --- F75: attempt-folder coherence -----------------------------------------
+# A folder's mesh must come from that folder's own parameters.json.  The
+# tolerance below only absorbs float repr / round-trip noise: parameters.json
+# is written from the same LLM-authored numbers the tool call carries, so any
+# REAL difference is orders of magnitude larger.
+_PARAM_REL_TOL = 1e-9
+_PARAM_ABS_TOL = 1e-12
+
+# The three integer-typed parameters (declared ``Annotated[int, ...]`` on the
+# tool) — compared exactly.  The other 13 are floats.
+_INT_PARAM_NAMES = frozenset({"bladeCount", "innerMaxPos", "outerMaxPos"})
+
+
+def _param_mismatches(out_dir, param_values):
+    """Compare *param_values* against ``<out_dir>/parameters.json``.
+
+    Returns ``None`` when there is NOTHING TO COMPARE — no parameters.json,
+    unreadable, not a JSON object, a non-numeric value, or one of the
+    canonical 16 keys missing.  An absent or incomplete record is NOT a
+    mismatch: legitimate callers reach this tool before any parameters.json
+    exists (the Orchestrator's fallback folder, the 3-agent Designer's call
+    ordering, smoke_test_generate_mesh), and F75 is about a folder whose
+    record DISAGREES with its mesh — which presupposes a complete record.
+
+    Returns ``[]`` when all 16 agree, else a list of readable differences.
+
+    A legacy ``impellerHeight`` key is ignored, mirroring _normalize_params:
+    pre-dda1560 folders still carry the 17th key, and that check runs inside
+    the backends, i.e. after this point.
+    """
+    params_path = out_dir / "parameters.json"
+    if not params_path.is_file():
+        return None
+    try:
+        on_disk = json.loads(params_path.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        logger.warning(
+            "generate_mesh: %s unreadable or not valid JSON (%s) — "
+            "parameter coherence NOT checked.", params_path, exc,
+        )
+        return None
+    if not isinstance(on_disk, dict):
+        return None
+
+    mismatches = []
+    for name in sorted(_CANONICAL_PARAM_NAMES):
+        recorded = on_disk.get(name)
+        if isinstance(recorded, bool) or not isinstance(recorded, (int, float)):
+            logger.warning(
+                "generate_mesh: %s has no usable '%s' value — parameter "
+                "coherence NOT checked.", params_path, name,
+            )
+            return None
+        passed = param_values[name]
+        if isinstance(passed, bool) or not isinstance(passed, (int, float)):
+            # Defensive: args_schema should have coerced this already.  If it
+            # did not, degrade to "proceed" — today's behaviour — never to a
+            # false refusal.
+            logger.warning(
+                "generate_mesh: passed '%s' is %r, not a number — parameter "
+                "coherence NOT checked.", name, passed,
+            )
+            return None
+        if name in _INT_PARAM_NAMES:
+            same = passed == recorded
+        else:
+            same = math.isclose(
+                float(passed), float(recorded),
+                rel_tol=_PARAM_REL_TOL, abs_tol=_PARAM_ABS_TOL,
+            )
+        if not same:
+            mismatches.append(
+                f"{name}: you passed {passed}, the folder holds {recorded}"
+            )
+    return mismatches
 
 
 def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
@@ -670,48 +748,81 @@ def generate_and_render_propeller(
 
     output_path = out_path_dir / _MESH_FILENAME
 
+    # Identity mapping: the @tool's keyword-argument names ARE the
+    # parameter names the Grasshopper definition exposes.  The agent
+    # writes parameters.json with the same camelCase keys, the
+    # ``write_parameters`` / ``read_parameters`` round-trip preserves
+    # them, and RhinoCompute matches them by ParamName against the
+    # .gh definition's input ports — no translation layer anywhere.
+    #
+    # IMPORTANT: this contract requires the .gh definition's input
+    # parameters to be named exactly as below.  The .gh's 17th port,
+    # ``impellerHeight``, is NOT sent from here — render_mesh_obj_text
+    # derives it (the ring auto-fits the outer section) and injects it.
+    # If the names ever drift, either the .gh side must rename to match,
+    # or this dict must become a translation again.
+    param_values: dict[str, int | float] = {
+        "bladeCount": bladeCount,
+        "impellerRadius": impellerRadius,
+        "impellerThickness": impellerThickness,
+        "innerThickness": innerThickness,
+        "innerMaxPos": innerMaxPos,
+        "innerCamber": innerCamber,
+        "innerChord": innerChord,
+        "innerAngle": innerAngle,
+        "middlePos": middlePos,
+        "middleChord": middleChord,
+        "middleAngle": middleAngle,
+        "outerThickness": outerThickness,
+        "outerMaxPos": outerMaxPos,
+        "outerCamber": outerCamber,
+        "outerChord": outerChord,
+        "outerAngle": outerAngle,
+    }
+
+    # F75: the folder's parameters.json is the record of what this attempt
+    # IS.  ``None`` = no complete record to compare against (see helper).
+    mismatches = _param_mismatches(out_path_dir, param_values)
+
     # --- Geometry: reuse an existing mesh in place, else build it. ---
     if output_path.is_file():
-        # Append-only: never overwrite.  Identical parameters give
-        # identical geometry, so reuse the mesh and go straight to the
-        # render step (covers a retry after a render hiccup).
+        # Append-only: never overwrite.  The existing mesh was built from
+        # THIS FOLDER's parameters — not necessarily from the values passed
+        # in THIS call — so say which, rather than implying the reuse
+        # answers the caller's numbers.  Reuse is NOT refused on a mismatch:
+        # this branch never reads param_values, writes nothing, and is the
+        # path every DCOI re-render takes.
         geometry_summary = (
             f"Reused existing mesh at {output_path.resolve()} "
             f"({output_path.stat().st_size} bytes; geometry not "
             f"regenerated)."
         )
+        if mismatches:
+            geometry_summary += (
+                "  WARNING — this mesh does NOT correspond to the values "
+                "you passed in this call.  Nothing was regenerated: the "
+                "mesh was built from "
+                f"{(out_path_dir / 'parameters.json').resolve()}, which "
+                f"differs — {'; '.join(mismatches)}.  If you wanted a "
+                "re-render of THIS attempt, that is what you got, and the "
+                "values you passed were ignored; re-read the file with "
+                "``read_parameters`` so your report quotes the right "
+                "numbers.  If you wanted geometry for the values you "
+                "passed, they belong in a NEW attempt folder."
+            )
     else:
-        # Identity mapping: the @tool's keyword-argument names ARE the
-        # parameter names the Grasshopper definition exposes.  The agent
-        # writes parameters.json with the same camelCase keys, the
-        # ``write_parameters`` / ``read_parameters`` round-trip preserves
-        # them, and RhinoCompute matches them by ParamName against the
-        # .gh definition's input ports — no translation layer anywhere.
-        #
-        # IMPORTANT: this contract requires the .gh definition's input
-        # parameters to be named exactly as below.  The .gh's 17th port,
-        # ``impellerHeight``, is NOT sent from here — render_mesh_obj_text
-        # derives it (the ring auto-fits the outer section) and injects it.
-        # If the names ever drift, either the .gh side must rename to match,
-        # or this dict must become a translation again.
-        param_values: dict[str, int | float] = {
-            "bladeCount": bladeCount,
-            "impellerRadius": impellerRadius,
-            "impellerThickness": impellerThickness,
-            "innerThickness": innerThickness,
-            "innerMaxPos": innerMaxPos,
-            "innerCamber": innerCamber,
-            "innerChord": innerChord,
-            "innerAngle": innerAngle,
-            "middlePos": middlePos,
-            "middleChord": middleChord,
-            "middleAngle": middleAngle,
-            "outerThickness": outerThickness,
-            "outerMaxPos": outerMaxPos,
-            "outerCamber": outerCamber,
-            "outerChord": outerChord,
-            "outerAngle": outerAngle,
-        }
+        if mismatches:
+            return (
+                "Error: the parameters you passed do not match "
+                f"{(out_path_dir / 'parameters.json').resolve()}, which is "
+                "the record of what this attempt is — "
+                f"{'; '.join(mismatches)}.  No mesh was built: an attempt "
+                "folder's mesh must come from that folder's own "
+                "parameters.json.  Either re-read that file with "
+                "``read_parameters`` and re-issue this call with ITS "
+                "values, or open a NEW attempt (``new_attempt`` + "
+                "``write_parameters``) for the values you passed."
+            )
 
         # Delegate to the backend dispatcher (selected backend +
         # bidirectional fallback).  On MeshGenerationError the geometry

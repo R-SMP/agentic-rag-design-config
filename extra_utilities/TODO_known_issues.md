@@ -4321,7 +4321,9 @@ coherence invariant is F75's subject.
 
 ### F75. Attempt-folder coherence is an invariant nothing enforces
 
-**Status.** OPEN — the durable fix for a rule just removed from prose.
+**Status.** FIXED-NARROWED (this commit) in the params-first order.
+The mesh-first order remains open as **F75b** below — F75 is HALF-CLOSED,
+not done.
 
 The removed clause said a folder's mesh and ``render_*.png`` must have come
 from that folder's own ``parameters.json``.  Nothing checks it:
@@ -4342,6 +4344,61 @@ What remains is a system invariant no agent acts on — which belongs in code.
 
 **Fix: have `_validate_output_dir` compare the passed parameters against the
 target folder's `parameters.json` and refuse on mismatch.**
+
+**THAT WORDING IS SUPERSEDED — do not implement it as written.**  Putting the
+comparison in `_validate_output_dir` and refusing on mismatch would, on day
+one: refuse `smoke_test_generate_mesh.py` on 100% of runs (it never writes a
+`parameters.json` — verified, zero occurrences); `TypeError`
+`smoke_test_param_rename.py:92-96`, which patches that function with a
+ONE-ARGUMENT lambda; block the Orchestrator's documented DCIC-failure recovery
+folder (`new_attempt` writes no parameters.json); block the 3-agent Designer
+structurally (it can emit the geometry call before `write_parameters` in one
+response); and wall off the highest-traffic geometry path.
+
+**WHAT SHIPPED INSTEAD.**  A `_param_mismatches` helper called from the tool
+body; `_validate_output_dir` keeps its one-argument signature (asserted
+offline by the new smoke test, since the test that would catch it needs
+langchain and cannot run in a bare worktree).  The BUILD branch REFUSES on a
+mismatch — that is the case that permanently writes a mesh contradicting the
+folder's record, and `/api/download_geometry` regenerates the USER'S
+DELIVERABLE from `parameters.json`, so the file they receive would not be the
+propeller they approved.  The REUSE branch WARNS and proceeds: it never reads
+the passed parameters, usually writes nothing, and is the path every DCOI
+re-render takes, so refusing there would block work on grounds that cannot
+change the outcome.  A missing / empty / unparseable / incomplete
+`parameters.json` always proceeds.  Comparison is numeric only —
+`math.isclose` for the 13 floats, exact `==` for the three ints — and a legacy
+`impellerHeight` key is ignored.  The error quotes the on-disk values so the
+corrective retry carries different arguments and does not trip the identical-
+signature `stuck_escalation` at `tool_caller.py:213-218`.
+
+Covered by `extra_utilities/smoke_test_attempt_coherence.py` (18 assertions,
+fully offline), which proves it fires AND does not over-fire.
+
+### F75b. The mesh-first order is still unguarded
+
+**Status.** OPEN.  Split out of F75 so that row could ship on its own.
+
+F75's guard catches "folder has a record, mesh built from different values".
+Swap the two calls and the identical corruption goes through unseen: build a
+mesh into a folder with no `parameters.json` (the guard correctly proceeds —
+no record to compare), then call `write_parameters`, which SUCCEEDS because
+the append-only check tests only for `parameters.json` and never looks for a
+`propeller_mesh.obj` (`dc_input_creator.py:416`, `creator.py:443`,
+`designer.py:510`).  Reachable via the Orchestrator fallback folder, and
+inside a SINGLE model response in the 3-agent tree.
+
+**Fix sketch:** have the build branch write a provenance sidecar
+(`mesh_params.json`) recording exactly the kwargs that produced the mesh, and
+have the three `write_parameters` handlers refuse when that sidecar exists and
+disagrees.  Four files plus a new artefact in every attempt folder — its own
+approval, not a rider on F75.
+
+**Also still unguarded, smaller:** `render_blade_sections` writes to
+`src.parent` and accepts any JSON under `attempts/` carrying its 13 required
+keys; nothing binds `output_dir` to the CURRENT attempt; and the root cause is
+untouched — `read_parameters` returns raw text and the model retypes 16
+numbers every cycle, so the guard alarms on drift rather than removing it.
 
 ---
 
