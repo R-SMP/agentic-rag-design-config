@@ -418,8 +418,9 @@ def _end_session(was_saved: bool = False) -> None:
     #
     # ``was_saved`` is threaded through to ``_archive_previous_session``
     # so the R2 mirror block there can honour
-    # ``workflow_settings.SAVE_LOGS_FOR_UNSAVED_SESSIONS`` (settings
-    # block #23).  Default ``False`` — a caller that does not know
+    # ``workflow_settings.SAVE_LOGS_FOR_UNSAVED_SESSIONS`` (settings.py,
+    # the "Session saving" section — formerly block #23).  Default
+    # ``False`` — a caller that does not know
     # the save state is treated as "not saved" (safer default; the
     # R2 upload then runs only when the setting allows it).
     logger.info("[WEB] end_session — archiving session, clearing state")

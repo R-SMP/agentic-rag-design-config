@@ -260,7 +260,52 @@ def build_llm(agent_name: str) -> Tuple[object, str, str]:
     ``"anthropic"``, ``"google"``.
     """
     provider, model, api_key = _resolve_config(agent_name)
+    return _construct_llm(provider, model, api_key), provider, model
 
+
+def build_llm_for(provider: str, model: str) -> Tuple[object, str, str]:
+    """Build an LLM from an EXPLICIT ``(provider, model)`` pair.
+
+    For callers that choose the model themselves rather than reading it
+    off an agent's ``.env`` — today the Database Handler's interview
+    model (``DH_INTERVIEW_PROVIDER`` / ``DH_INTERVIEW_MODEL`` in the
+    "Session saving" section of settings.py), which deliberately
+    overrides whatever each interviewed agent runs on live.
+
+    Everything else matches :func:`build_llm`: the API key is resolved
+    from ``agents/.env`` then the process environment, and the client
+    gets the same shared rate limiter and request timeout.  Raises
+    ``ValueError`` on an unknown provider or a missing key, so a
+    mis-typed setting fails with a clear message instead of a provider
+    401 mid-way through a save.
+    """
+    provider = (provider or "").strip().lower()
+    env_var = _API_KEY_ENV_VARS.get(provider)
+    if env_var is None:
+        raise ValueError(
+            f"Unknown provider {provider!r}.  Supported: "
+            f"{', '.join(_API_KEY_ENV_VARS)}."
+        )
+    shared = _read_shared_env()
+    api_key = (shared.get(env_var) or "").strip() or os.getenv(env_var, "")
+    if not api_key:
+        raise ValueError(
+            f"Provider {provider!r} selected but {env_var} is not set in "
+            f"agents/.env or the process environment."
+        )
+    model = (model or "").strip()
+    _require_explicit_openrouter_model(
+        provider, model, "An explicit provider/model selection",
+    )
+    if not model:
+        model = _DEFAULT_MODEL
+    return _construct_llm(provider, model, api_key), provider, model
+
+
+def _construct_llm(provider: str, model: str, api_key: str):
+    """Instantiate the provider client.  Shared by both builders above so
+    the rate limiter, timeout and OpenRouter base-url handling cannot
+    drift between the per-agent path and the explicit-pair path."""
     if provider == "openai":
         from langchain_openai import ChatOpenAI
         llm = ChatOpenAI(
@@ -301,7 +346,7 @@ def build_llm(agent_name: str) -> Tuple[object, str, str]:
         # surfaces as a clear error rather than a silent miss.
         raise ValueError(f"Unsupported LLM_PROVIDER: {provider}")
 
-    return llm, provider, model
+    return llm
 
 
 def list_agent_configs(agent_names: list[str]) -> list[dict]:

@@ -153,8 +153,9 @@ def _archive_previous_session(
     or "No save" at End Session.  Local archival to
     ``previous_sessions/`` runs regardless; the R2 mirror at the
     bottom is gated on ``was_saved=True OR
-    workflow_settings.SAVE_LOGS_FOR_UNSAVED_SESSIONS`` (see settings
-    block #23).  Default ``False`` means: a caller that does not
+    workflow_settings.SAVE_LOGS_FOR_UNSAVED_SESSIONS`` (see the
+    "Session saving" section of settings.py, formerly block #23).
+    Default ``False`` means: a caller that does not
     know save state is treated as "not saved", and the R2 upload
     only happens when the setting allows it.
 
@@ -284,7 +285,8 @@ def _archive_previous_session(
     # ``<sid>/logs/...``.  ``<sid>/logs/`` is disjoint from both
     # other paths' namespaces, so no key collision is possible.
     #
-    # Gated by SAVE_LOGS_FOR_UNSAVED_SESSIONS (settings block #23)
+    # Gated by SAVE_LOGS_FOR_UNSAVED_SESSIONS (settings.py, the
+    # "Session saving" section — formerly block #23)
     # for the not-saved path: when the user clicked "No save" AND
     # the setting is False, this block is skipped entirely and the
     # session lives only in ``previous_sessions/<sid>/`` locally.
