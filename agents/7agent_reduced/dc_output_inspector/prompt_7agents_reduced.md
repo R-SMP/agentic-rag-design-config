@@ -318,6 +318,14 @@ it renders into the folder this design already lives in; without the
 second line it can only escalate.  Escalating a re-render to the
 Orchestrator instead needlessly opens a new attempt.
 
+When instead the REVISE calls for a PARAMETER or design change, that is
+the ordinary "REVISE → re-plan" path: hand it to the Orchestrator with
+``call_orchestrator``.  Only a re-plan (Planner → DC Input Creator) can
+authorise different values, and the DCIC opens the NEW attempt folder
+they are written into.  Do NOT ask for a re-render of the SAME attempt
+in the same breath as recommending different numbers — that render can
+only show the design you already rejected.
+
 ## Hard constraints — generic (apply to every agent)
 $hard_constraints_generic
 
