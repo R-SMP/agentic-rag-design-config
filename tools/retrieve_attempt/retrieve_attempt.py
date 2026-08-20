@@ -518,60 +518,68 @@ def _run_retrieve_attempt(
             render_refs: list[tuple[str, str]] = []
             fetch_failures: list[str] = []
 
-            if bucket is None or client is None:
+            # Bound on EVERY path: the record below reads ``dest``
+            # unconditionally.  Assigning it only inside the fetch branch left
+            # it unbound whenever R2 is unconfigured, so the FIRST attempt
+            # raised UnboundLocalError; the outer handler swallowed that and
+            # the caller got a generic error envelope with no attempts at all
+            # instead of the per-attempt "(R2 not configured)" markers.
+            # Pure Path arithmetic, no I/O, so it is free on every path.
+            dest = _retrieved_dir(gid)
+
+            if dest.is_dir() and any(dest.iterdir()):
+                # Already fetched earlier this session — by THIS agent or
+                # any other.  Do not re-fetch: the artefacts are immutable
+                # and the work would be wasted.  Tested BEFORE the R2 guard,
+                # so a cached attempt is still served when R2 is unreachable.
+                # The response below is identical either way, deliberately: an
+                # agent must never have to reason about cache state.
+                description_text = _read_local(dest, "description.txt")
+                parameters_text = _read_local(dest, "parameters.json")
+                for view in render_views_in_scope:
+                    if (dest / _RENDER_FILES[view]).is_file():
+                        render_refs.append(
+                            (view, str((dest / _RENDER_FILES[view]).resolve()))
+                        )
+            elif bucket is None or client is None:
                 fetch_failures.append(
                     f"{session_id}/attempts/{nnn}__{gid}/ (R2 not configured)"
                 )
             else:
-                dest = _retrieved_dir(gid)
-                if dest.is_dir() and any(dest.iterdir()):
-                    # Already fetched earlier this session — by THIS agent or
-                    # any other.  Do not re-fetch: the artefacts are immutable
-                    # and the work would be wasted.  The response below is
-                    # identical either way, deliberately: an agent must never
-                    # have to reason about cache state.
-                    description_text = _read_local(dest, "description.txt")
-                    parameters_text = _read_local(dest, "parameters.json")
+                base = f"{session_id}/attempts/{nnn}__{gid}"
+                description_text = _r2_get_text(
+                    client, bucket, _r2_key(base, "description.txt"),
+                )
+                parameters_text = _r2_get_text(
+                    client, bucket, _r2_key(base, "parameters.json"),
+                )
+                # The FULL attempt is materialised locally — text and
+                # renders alike — so ``view_images`` can address any of it
+                # by path.  Nothing is attached to the model's context
+                # here; the agent decides what is worth looking at.
+                if description_text is not None:
+                    _write_artefact(dest, "description.txt",
+                                    description_text.encode("utf-8"))
+                if parameters_text is not None:
+                    _write_artefact(dest, "parameters.json",
+                                    parameters_text.encode("utf-8"))
+                if has_renders and render_views_in_scope:
                     for view in render_views_in_scope:
-                        if (dest / _RENDER_FILES[view]).is_file():
-                            render_refs.append(
-                                (view, str((dest / _RENDER_FILES[view]).resolve()))
-                            )
-                else:
-                    base = f"{session_id}/attempts/{nnn}__{gid}"
-                    description_text = _r2_get_text(
-                        client, bucket, _r2_key(base, "description.txt"),
-                    )
-                    parameters_text = _r2_get_text(
-                        client, bucket, _r2_key(base, "parameters.json"),
-                    )
-                    # The FULL attempt is materialised locally — text and
-                    # renders alike — so ``view_images`` can address any of it
-                    # by path.  Nothing is attached to the model's context
-                    # here; the agent decides what is worth looking at.
-                    if description_text is not None:
-                        _write_artefact(dest, "description.txt",
-                                        description_text.encode("utf-8"))
-                    if parameters_text is not None:
-                        _write_artefact(dest, "parameters.json",
-                                        parameters_text.encode("utf-8"))
-                    if has_renders and render_views_in_scope:
-                        for view in render_views_in_scope:
-                            filename = _RENDER_FILES[view]
-                            key = _r2_key(base, filename)
-                            data = _r2_get_bytes(client, bucket, key)
-                            if data is None:
-                                # render expected but not in R2 — emit a
-                                # per-file <missing/> marker
-                                fetch_failures.append(key)
-                                continue
-                            # Full resolution on disk: no downscale here.  The
-                            # per-type compression is applied by ``view_images``
-                            # if and when the agent actually looks.
-                            _write_artefact(dest, filename, data)
-                            render_refs.append(
-                                (view, str((dest / filename).resolve()))
-                            )
+                        filename = _RENDER_FILES[view]
+                        key = _r2_key(base, filename)
+                        data = _r2_get_bytes(client, bucket, key)
+                        if data is None:
+                            # render expected but not in R2 — emit a
+                            # per-file <missing/> marker
+                            fetch_failures.append(key)
+                            continue
+                        # Full resolution on disk: no downscale here.  The
+                        # per-type compression is applied by ``view_images``
+                        # if and when the agent actually looks.
+                        _write_artefact(dest, filename, data)
+                        render_refs.append(
+                            (view, str((dest / filename).resolve()))
+                        )
 
             attempt_records.append({
                 "global_id": gid,

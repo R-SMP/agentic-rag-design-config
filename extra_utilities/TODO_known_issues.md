@@ -4090,6 +4090,57 @@ Reduced-variant fork: `reduced7/agents/shared/routing.py`.
 
 ---
 
+### F85. The prompt sections describing the RAG tools are stale after the retrieval rework
+
+**Status.** OPEN. Raised by the owner 2026-08-20, during the RAG tool
+customization (steps 2a / 2b / 4b).
+
+**Why it matters.** The tools changed shape; the prompts that teach them did
+not.  A prompt that describes a parameter the schema no longer has, or a
+behaviour the code no longer performs, is worse than no guidance: the agent
+reasons from it and the contradiction is invisible at runtime.
+
+**What actually changed underneath the prompts.**
+
+* `retrieve_attempt` and `retrieve_user_inputs` no longer ATTACH anything.
+  Both now materialise artefacts under `attempts/_retrieved/<id>/` and
+  `inputs/_retrieved/<sid>/` respectively, print the local paths, and leave
+  all viewing to `view_images`.
+* `images_flag` is gone from BOTH tools' schemas.
+* `extract_text` is gone from `retrieve_user_inputs`.
+* `retrieve_user_inputs` now prints the UII's `extracted_inputs.txt`, falling
+  back to raw `queries.txt` only for sessions archived before extractions
+  were saved to R2.
+* Every retrieved image is reported with its path whether or not it has a
+  `_note.txt`.
+
+**Known-stale sites found on 2026-08-20** (call forms, whitespace-normalised
+so line wraps do not hide them):
+
+    DC_prompt_fragments/tools_config/database_search.md
+    DC_prompt_fragments/tools_config/database_search_dc_input_inspector.md
+    DC_prompt_fragments/tools_config/database_search_dc_output_inspector.md
+    DC_prompt_fragments/tools_config/database_search_receptionist.md
+    DC_prompt_fragments/tools_config/database_search_user_input_inspector.md
+    DC_prompt_fragments/tools_config/retrieve_user_inputs.md
+    agents/5agent/tools_config/database_search_creator_5agents.md
+    agents/5agent/receptionist/prompt_5agents.md
+
+Five of those still spell a call as `retrieve_user_inputs(session_ids=[<sid>],
+images_flag=True)`.  BOTH halves are wrong: the argument is `sessions_ID_list`
+(the dispatcher reads exactly that key and errors out otherwise), and
+`images_flag` no longer exists.  `retrieve_user_inputs.md` is the tool's own
+fragment and still describes the attach behaviour end to end.
+
+**Do not just delete the mentions.**  Per the shared-fragment rule, a variant
+removes text by not referencing it or via an override file — never by deleting
+a fragment the 5-/3-agent topologies also read.
+
+**Also re-read, not just grep.**  The count above is of explicit CALL FORMS.
+Prose describing these tools ("attaches the images", "the notes are returned
+for every image") is spread across the 7-agent, 5-agent and reduced trees and
+will not show up in a signature grep.
+
 ### F60. Duplications in the assembled prompts that the shrink proposal does not target
 
 **Status.** OPEN — evidence-backed, no fix attempted.  Found 2026-08-05 by a
