@@ -409,6 +409,39 @@ with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
         check("standard %s unchanged (both sections present)" % _a,
               _probe(_a, "standard") == (True, True), _probe(_a, "standard"))
 
+# --- 12. reduced-scoped per-agent fragments -----------------------------
+print("case 12 - the reduced overrides drop tools those agents do not hold")
+# The shared per-agent DBa fragments point the UII at retrieve_attempt and
+# the DCOI at retrieve_user_inputs.  Correct for standard-7, where both hold
+# all three; wrong under 7-reduced, where they do not.  Scoped overrides in
+# agents/7agent_reduced/tools_config/ fix it WITHOUT touching the shared
+# files, which the other topologies still read.
+_UII_ATTEMPT = "Likewise ``retrieve_attempt(...)`` when"
+_DCOI_INPUTS = "how past users' inputs looked"
+
+
+def _assembled(agent: str, variant: str) -> str:
+    st.PROMPT_VARIANT = variant
+    return " ".join(_prompts._build_template(agent).split())
+
+
+with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
+    check("standard UII IS told to use retrieve_attempt",
+          _UII_ATTEMPT in _assembled("user_input_inspector", "standard"))
+    check("reduced UII is NOT (it holds search + user_inputs only)",
+          _UII_ATTEMPT not in _assembled("user_input_inspector", "reduced"))
+    check("standard DCOI IS told to fetch past user inputs",
+          _DCOI_INPUTS in _assembled("dc_output_inspector", "standard"))
+    check("reduced DCOI is NOT (it holds search + attempt only)",
+          _DCOI_INPUTS not in _assembled("dc_output_inspector", "reduced"))
+    # the overrides must not have dropped anything else
+    for _mark, _who in (
+        ("MANDATORY on at least one in-scope session", "user_input_inspector"),
+        ("side_by_side=True", "dc_output_inspector"),
+    ):
+        check("reduced %s keeps '%s'" % (_who, _mark[:34]),
+              _mark in _assembled(_who, "reduced"))
+
 print()
 if _FAILS:
     print("FAIL - %d assertion(s): %s" % (len(_FAILS), _FAILS))
