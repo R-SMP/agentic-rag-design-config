@@ -5091,3 +5091,130 @@ Input Creator was deliberately NOT given a consumer — it binds no image tools,
 so its realistic response to an ambiguity note is a CLARIFY it can already
 send for other reasons.
 
+---
+
+### F86. The reduced tree dropped the per-agent TRIGGERS for the user-input reading tools
+
+**Status.** OPEN — LOW, and a VERIFY item rather than a fix-now item.  Found
+2026-08-20 while analysing the standard-vs-reduced A/B (ID245 / ID246).
+
+**The measurement.** ASSEMBLED prompts, topology 7, RAG off, counting mentions
+of the four on-demand user-input tools (standard -> reduced):
+
+| agent | `ocr_regions` | `read_image_notes` | `list_input_files` | `read_input_text` |
+|---|---|---|---|---|
+| Receptionist | 0 -> 0 | 0 -> 0 | 0 -> 0 | 1 -> 0 |
+| Planner | 0 -> 0 | 1 -> 0 | 1 -> 0 | 1 -> 0 |
+| User Input Inspector | 1 -> 0 | 1 -> 0 | 1 -> 0 | 1 -> 0 |
+| DC Input Inspector | 1 -> 0 | 2 -> 0 | 2 -> 0 | 2 -> 0 |
+| DC Output Inspector | 1 -> 0 | 1 -> 0 | 1 -> 0 | 1 -> 0 |
+
+Sixteen mentions across five agents.  Measured on the ASSEMBLED prompts, not
+the source `.md`, so this is not a shared-fragment artefact.
+
+**Why this is NOT the defect it first looks like.**  The removed text is almost
+entirely a tool CATALOGUE — a name plus a one-line description — and the tools
+stay BOUND, so their schemas ship every turn carrying exactly that.  The one
+piece of real mechanics in the deleted block, the `ocr_regions` batching rule
+("pass every region in ONE call, not one call each"), was confirmed to ship in
+`_OCR_REGIONS_DOC` (`user_inputs_tool.py:173-189`) BEFORE the cut was made —
+that verification is what authorised it.  This is the fleet policy working as
+designed: schema owns mechanics, prompt owns judgement.
+
+**What is genuinely gone** is the per-agent TRIGGER — the sentence saying when
+THIS agent should reach for the tool, which a schema cannot carry:
+
+* UII, standard: "``ocr_regions`` — to confirm small/faint/garbled OCR
+  callouts, re-read them at higher resolution".
+* DCII, standard: the five-tool block is introduced with "when you suspect the
+  UII misread something".
+* DCOI, standard: "use this to discover whether any reference images exist this
+  cycle".
+
+**Evidence it may not matter.**  In the A/B the STANDARD arm — which names
+`ocr_regions` — never called it either: `grep ocr_regions` returns 0 hits in
+BOTH ID245 and ID246.  On the one observation available, naming the tool did
+not drive use of it.  The reduced arm meanwhile DID call `read_image_notes`
+(ID246 line 185), a tool its prompt never names, i.e. it found the tool from
+the schema alone.
+
+**What to do.**  Not a rewrite.  Confirm ONCE, in a run where an image is
+genuinely faint or ambiguous, that a reduced-tree agent still escalates to
+`ocr_regions` / `read_image_notes`.  If it does, close this.  If it does not,
+the fix is one trigger sentence per agent, not the catalogue back.
+
+**Where.** `agents/7agent_reduced/{user_input_inspector,dc_input_inspector,`
+`dc_output_inspector,planner,receptionist}/prompt_7agents_reduced.md`, against
+`agents/<agent>/prompt.md`.
+Related: F65 (also an "open by design" reduced-tree omission).
+
+---
+
+### F87. C3 cannot be tested by the current variant switch, and its original evidence was a counting artefact
+
+**Status.** OPEN as a METHOD item.  The hypothesis as originally stated is
+WITHDRAWN; what replaces it is the experimental design needed to ask the
+question properly.  Logged 2026-08-20 after the ID245 / ID246 A/B.
+
+**What C3 claimed.**  That the reduced User Input Inspector — cut hardest in
+the fleet, assembled 44,476 -> 17,970 chars — had lost the ability to say how
+BINDING each user-supplied value is, and would therefore corrupt
+`extracted_inputs.txt`, the canonical record every downstream agent reads.
+
+**Why the motivating evidence was wrong.**  It rested on case-SENSITIVE counts:
+`LOCKED` 1 -> 0 and `FREE` 1 -> 0.  Those tokens appear exactly ONCE in the
+standard prompt — incidental capitalisation, not reinforcement.  Counted
+case-insensitively the families are lock 15 -> 4 and free 12 -> 5, and the
+reduced prompt still TEACHES all three states, including a rule the standard
+does not phrase at all: "otherwise a stated value stays locked, including a
+UI-pinned (FIXED) one, unless a LATER message subordinates it"
+(`prompt_7agents_reduced.md:113-119`), plus the whole SOFT TARGET block with
+its worked example.  Nothing conceptual about the three states was removed.
+
+**What the A/B actually showed.**  TIE on both scored dimensions.  On the
+predicted failure the reduced arm was BETTER: 15/15 reported quantities carried
+a bindingness label against the standard arm's 11.  The predicted failure mode
+did not appear.
+
+**Two design faults that make the run pair unable to settle it either way:**
+
+1. **`PROMPT_VARIANT` is a FLEET-WIDE switch.**  The treatment is all eight
+   prompts at once, not the UII.  Verified from the cold-call token floors:
+   every agent's floor dropped (Receptionist -1,369 tok, Orchestrator -1,605,
+   Planner -1,464, UII -6,232).  A UII-specific hypothesis cannot be isolated
+   this way, and more runs would not fix it — it is a design confound.
+2. **The stated outcome measure was never captured.**  `extracted_inputs.txt`
+   is written via `write_extraction`, and the session log truncates the tool
+   args (20,917 chars hidden in ID245, 19,867 in ID246), so roughly 91% of both
+   canonical records is unobserved.  Everything scored was the Receptionist's
+   final report — a proxy rewritten twice by agents whose prompts also changed.
+
+**Also confounded, and worth remembering before quoting any efficiency number
+from that pair:** arm B received a SECOND user turn (its classifier ran twice,
+arm A's once), so the headline "+51% input tokens / +87% LLM calls" partly
+measures a classifier verdict rather than a prompt set.  Only the deterministic
+cold-call floors are clean.
+
+**What a real test needs.**
+
+* A PER-AGENT variant selector, so only the UII changes.  `PROMPT_VARIANT` is
+  one global string today; this is the blocking prerequisite.
+* `extracted_inputs.txt` captured as a FILE artefact per run, not read out of a
+  truncated log line.
+* k >= 5 runs per arm, for a noise floor.  At n=1 the two most quotable
+  differences found — a fabricated middle-section position, and a middle angle
+  read as 10 deg where the drawing shows 18 deg — have no variance estimate and
+  no causal path to any deleted text.
+* Counterbalanced run order (A-then-B was run once, unbalanced).
+
+**Genuinely established by the pair, and worth keeping.**  Per-run
+`prompt_variant` pinning WORKS: proven by token floors (arm B's UII floor of
+8,032 tok is below what the standard prompt alone would cost), by a behavioural
+fingerprint ("configurator stores" — 2x in the standard prompt, 2x in ID245, 0x
+in ID246), and by re-running the repo's own assembler under both variants.
+Both arms also correctly honoured an extraction-only task: no DCIC, Tool Caller
+or DCOI ran in either.
+
+**Where.** Runs `ID245` (standard) / `ID246` (reduced), 2026-08-20.
+Related: F56 (`SYSTEM_TOPOLOGY` read fresh mid-turn — the same
+settings-are-global problem, one axis over).
