@@ -16,7 +16,10 @@ Run from the project root:
     .venv/Scripts/python.exe extra_utilities/smoke_test_param_rename.py
 """
 
+import json
+import shutil
 import sys
+import tempfile
 import types
 from pathlib import Path
 from unittest.mock import patch
@@ -69,8 +72,10 @@ def _fake_eval(gh_path, input_trees):
     return {"values": []}
 
 
-sample_args = dict(
-    output_dir="C:\\does\\not\\exist\\so_we_short_circuit_validation",
+# The tool reads the record instead of taking values, so this needs a REAL
+# file on disk.  _validate_output_dir is still patched below — its
+# one-argument contract is unchanged — but the record itself must exist.
+SAMPLE_VALUES = dict(
     bladeCount=3,
     impellerRadius=68.0,
     impellerThickness=3.5,
@@ -88,6 +93,11 @@ sample_args = dict(
     outerChord=24.0,
     outerAngle=8.0,
 )
+
+_tmp = Path(tempfile.mkdtemp(prefix="param_rename_"))
+(_tmp / "parameters.json").write_text(
+    json.dumps(SAMPLE_VALUES, indent=2), encoding="utf-8")
+sample_args = {"parameters_path": str(_tmp / "parameters.json")}
 
 with patch.object(gm.gh_compute, "EvaluateDefinition", _fake_eval):
     with patch.object(
@@ -165,4 +175,5 @@ assert set_captured == expected_camel, (
 print("PASS — captured names match the camelCase GH-internal set exactly")
 print()
 
+shutil.rmtree(_tmp, ignore_errors=True)
 print("Parameter-naming smoke test passed.")
