@@ -5,7 +5,7 @@ Settings LLM-routing chart.  Mirrors ``database_access.py`` (the DBa
 toggle).  Each eligible agent gets one boolean:
 
 * ``True``  — when OCR is globally enabled, that agent's image tools
-  (``view_images`` / ``read_user_inputs`` / ``retrieve_user_inputs``)
+  (``view_images`` / ``read_user_inputs``)
   carry the ``extract_text`` flag and the ``ocr_regions`` tool, and run
   OCR on loaded images;
 * ``False`` — that agent's image tools behave as if OCR were off (no
@@ -21,7 +21,7 @@ Eligible agents
 ---------------
 Only the 5 chain agents that bind the image tools
 (``build_user_inputs_tools`` / ``read_user_inputs`` /
-``retrieve_user_inputs``) are eligible — the other roles have no
+are eligible — the other roles have no
 images to OCR.  See :data:`DEFAULT_AGENTS`.
 
 Persistence
