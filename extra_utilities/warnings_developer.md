@@ -1778,3 +1778,55 @@ latches `_CACHE_KWARG_DISABLED` process-wide, and retries without the kwarg — 
 binding/API that rejects it degrades caching to off instead of killing every
 in-session Anthropic turn. If caching mysteriously stops, grep the session log for
 "prompt-cache kwarg rejected".
+
+## W41. `database_search` no longer exposes `metafilters` or `attempt_specific_flag` — the plumbing is still there
+
+**Changed 2026-08-20** (owner's decision, during the RAG tool customization).
+Both parameters were removed from the LLM-facing `@tool` signature in
+`tools/database_search/database_search.py`.  The tool an agent sees is now
+`database_search(query, n)`.
+
+**The implementation was NOT ripped out.**  `_parse_metafilters`, the
+`_METAFILTER_SPEC` key table, the WHERE-clause builder, the attempt-ranked
+branch of `_database_search_impl`, and their error types are all still present
+and still work.  The stub simply calls the impl with `attempt_specific_flag =
+False` and `metafilters = None`, hard-coded.
+
+**Why:** the two `Annotated` descriptions were the single largest thing the
+tool ships, and a tool schema is re-sent to the model on EVERY turn, for every
+agent that binds it.  Rough estimate ~180 tokens per agent per turn for the
+description text alone, before the JSON-schema wrapper.
+
+**What was actually given up.**  Be honest about this if you are reading it
+back later:
+
+* `attempt_specific_flag` — little real loss.  The replacement path is
+  search sessions, read the `<available_attempts>` ids in the response, then
+  call `retrieve_attempt`.  That is one extra call but returns MORE (the full
+  parameter set and the attempt's description, not a ranked summary).
+* `metafilters` — a REAL capability loss with no replacement anywhere in the
+  system.  An agent can no longer restrict the candidate pool before ranking,
+  e.g. `{"has_renders": true, "satisfaction": ">=7"}` to learn only from
+  sessions the user was actually happy with.  The prompts still tell agents to
+  seek calibration evidence from past sessions; they now do it without any
+  hard filter.  If retrieval quality disappoints, THIS is the first thing to
+  reconsider — re-exposing just `satisfaction` would recover most of it.
+
+**To re-expose either one, undo exactly three things:**
+
+1. the `Annotated[...]` parameter block in the `database_search` stub
+   (`make_database_search_tool`, near the end of the module);
+2. the two hard-coded arguments in the `_database_search_impl(...)` call
+   directly below it;
+3. the one prompt sentence naming the arguments, in
+   `DC_prompt_fragments/tools_config/database_search.md` — the ONLY prompt
+   file in any tree that mentions them.
+
+**Two dead branches this leaves behind**, deliberately not deleted:
+
+* `_emit_no_results(metafilters_applied)` can now only ever be called with
+  `False`, so its "may be related to the metafilters" wording is unreachable.
+* `<search_meta>` no longer emits a `metafilters` attribute (it could only
+  ever have been `{}`).  `attempt_specific` is still emitted and is now
+  likewise always `"false"` — left in place pending a separate decision.
+

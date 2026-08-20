@@ -2,10 +2,9 @@
 
 ``database_search`` runs a semantic vector search over Q+A from past
 saved sessions (the Database Handler's corpus).  Its arguments
-(``query``, ``n``, ``attempt_specific_flag``, and ``metafilters`` —
-including the metafilter syntax and supported keys) and its XML return
-shape are documented on the tool itself; this section is about WHEN to
-call it and HOW to use what comes back.
+(``query`` and ``n``) and its XML return shape are documented on the
+tool itself; this section is about WHEN to call it and HOW to use what
+comes back.
 
 **How to use what you retrieve — IMPORTANT.**  Treat any past-session
 content (here or via ``retrieve_user_inputs`` / ``retrieve_attempt``) as

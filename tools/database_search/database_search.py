@@ -1001,7 +1001,6 @@ def _emit_search_meta(meta: SearchMeta) -> str:
         f'n_requested="{meta.n_requested}" '
         f'n_returned="{meta.n_returned}" '
         f'attempt_specific={quoteattr("true" if meta.attempt_specific else "false")} '
-        f'metafilters={quoteattr(meta.metafilters_repr)} '
         f'embedding_model={quoteattr(meta.embedding_model)} '
         f'mode={quoteattr(meta.selected_mode)} '
         f'db={quoteattr(meta.db_table)} '
@@ -1595,36 +1594,10 @@ def make_database_search_tool(caller_agent: str):
         ],
         n: Annotated[
             int,
-            "Number of distinct ANCHORS to return.  N counts SESSIONS "
-            "by default, or ATTEMPTS when attempt_specific_flag=true.  "
-            "Each returned anchor is expanded to all Q+A within it "
-            "that you're allowed to see.  Typical value: 3-10.",
+            "Number of distinct SESSIONS to return.  Each one is "
+            "expanded to all Q+A within it that you're allowed to see.  "
+            "Typical value: 3-10.",
         ],
-        attempt_specific_flag: Annotated[
-            bool,
-            "When false (default), the search ranks SESSIONS and each "
-            "returned <session> is expanded to all Q+A within it.  "
-            "When true, the search ranks ATTEMPTS only (session-"
-            "generic chunks are excluded) and each returned <attempt> "
-            "is expanded only to Q+A within that attempt.  Use true "
-            "when you want narrow, per-iteration context (e.g. "
-            "'parameters used for the best attempt in similar past "
-            "sessions').",
-        ] = False,
-        metafilters: Annotated[
-            dict | None,
-            "Optional hard filters narrowing the candidate pool.  "
-            "Pass None or {} to skip.  Hybrid string-prefix syntax: "
-            '{"k": V} = equality (primitive value), '
-            '{"k": ">=N"} = comparison (string with op prefix; '
-            "supported ops: =, >=, <=, >, <), "
-            '{"k": [...]} = IN-list (Python list).  Supported keys: '
-            "dc_name, satisfaction, session_ts (ISO 8601), "
-            "schema_version, dc_inspector_enabled, user_id, "
-            "user_provided_images, has_geometry, has_renders, "
-            "agent_from, field.  Combine freely: "
-            '{"has_renders": true, "satisfaction": ">=7"}.',
-        ] = None,
     ) -> str:
         """Semantic search over the saved-sessions RAG corpus.
 
@@ -1635,25 +1608,29 @@ def make_database_search_tool(caller_agent: str):
         in each anchor is marked ``best_match="true"``.
 
         When zero anchors match, returns
-        <search_meta n_returned="0"/> + <no_results>...</no_results>
-        (the wording hints at metafilter relaxation when filters
-        were applied).
+        <search_meta n_returned="0"/> + <no_results>...</no_results>.
 
         When the assembled response would exceed the token cap,
         the lowest-ranked anchors are dropped and a
         <truncated omitted_anchors="K"/> footer is appended.
 
-        Returns TEXT ONLY.  No images.  After reading a text
-        response, a future artefact-fetch tool will let you
-        request specific anchors' user-input images / attempt
-        renders if needed.
+        Returns TEXT ONLY.  No images.  To go deeper on a hit, feed
+        its session_id, or one of its <available_attempts> ids, to
+        your retrieval tools -- they download to a local folder whose
+        paths you can then open with ``view_images``.
         """
+        # Both are PINNED, not exposed.  The impl keeps its plumbing --
+        # attempt-ranked search and the metafilter WHERE builder are intact
+        # -- but neither earns its schema cost on every agent's every turn.
+        # Attempt-level inspection is retrieve_attempt's job now, reached
+        # through the <available_attempts> ids in the response.  See W41
+        # for what to undo if either is ever re-exposed.
         return _database_search_impl(
             caller_agent          = caller_agent,
             query                 = query,
             n                     = n,
-            attempt_specific_flag = attempt_specific_flag,
-            metafilters           = metafilters,
+            attempt_specific_flag = False,
+            metafilters           = None,
             db_mode               = _db_mode,
         )
 
