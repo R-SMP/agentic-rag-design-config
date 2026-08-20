@@ -190,8 +190,17 @@ _PARAM_ABS_TOL = 1e-12
 _INT_PARAM_NAMES = frozenset({"bladeCount", "innerMaxPos", "outerMaxPos"})
 
 
-def _param_mismatches(out_dir, param_values):
-    """Compare *param_values* against ``<out_dir>/parameters.json``.
+# F75b: the mesh-first order.  A mesh may legitimately be built into a folder
+# that has no parameters.json yet (the Orchestrator's fallback folder, the
+# 3-agent Designer's call ordering).  This sidecar records exactly what
+# produced that mesh, so a LATER write_parameters cannot label it with numbers
+# it did not come from — the same corruption F75 blocks in the params-first
+# order, arriving by the other door.
+MESH_PROVENANCE_FILE = "mesh_params.json"
+
+
+def _param_mismatches(out_dir, param_values, record_name="parameters.json"):
+    """Compare *param_values* against ``<out_dir>/<record_name>``.
 
     Returns ``None`` when there is NOTHING TO COMPARE — no parameters.json,
     unreadable, not a JSON object, a non-numeric value, or one of the
@@ -207,7 +216,7 @@ def _param_mismatches(out_dir, param_values):
     pre-dda1560 folders still carry the 17th key, and that check runs inside
     the backends, i.e. after this point.
     """
-    params_path = out_dir / "parameters.json"
+    params_path = out_dir / record_name
     if not params_path.is_file():
         return None
     try:
@@ -252,6 +261,21 @@ def _param_mismatches(out_dir, param_values):
                 f"{name}: you passed {passed}, the folder holds {recorded}"
             )
     return mismatches
+
+
+def mesh_provenance_mismatches(attempt_dir, param_values):
+    """Compare *param_values* against the mesh provenance sidecar.
+
+    Public because the three ``write_parameters`` handlers call it before
+    writing a record into a folder that may already hold a mesh.
+
+    Returns ``None`` when there is NOTHING TO COMPARE — no sidecar, which is
+    every attempt folder built before F75b — so this can never refuse a
+    legacy folder.  ``[]`` when the mesh was built from these very values,
+    else a list of readable differences.
+    """
+    return _param_mismatches(Path(attempt_dir), param_values,
+                             record_name=MESH_PROVENANCE_FILE)
 
 
 def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
@@ -843,6 +867,20 @@ def generate_and_render_propeller(
 
         # Write the primary mesh.
         output_path.write_text(mesh_text, encoding="utf-8")
+
+        # F75b: record what produced it.  Best-effort on purpose — a sidecar
+        # we cannot write must never fail a mesh that built fine; its absence
+        # only means a later write_parameters has nothing to check against,
+        # which is exactly the pre-F75b behaviour.
+        try:
+            (out_path_dir / MESH_PROVENANCE_FILE).write_text(
+                json.dumps(param_values, indent=2, ensure_ascii=False),
+                encoding="utf-8",
+            )
+        except OSError as exc:
+            logger.warning(
+                "[F75b] mesh provenance sidecar not written to %s: %s",
+                out_path_dir, exc)
         file_size = output_path.stat().st_size
 
         # Compute the parts-used summary by re-parsing the OBJ for the
