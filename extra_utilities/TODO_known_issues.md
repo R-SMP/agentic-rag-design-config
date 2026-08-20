@@ -4090,7 +4090,7 @@ Reduced-variant fork: `reduced7/agents/shared/routing.py`.
 
 ---
 
-### F86. Giving the 5-agent / 3-agent / any future reduced system its own DBa distribution is a DATA change, not a code change
+### F88. Giving the 5-agent / 3-agent / any future reduced system its own DBa distribution is a DATA change, not a code change
 
 **Status.** OPEN by design — nothing is broken; this records where the work
 goes when those systems are designed.  Written 2026-08-20 alongside the

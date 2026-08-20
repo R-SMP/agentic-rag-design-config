@@ -41,7 +41,7 @@ exactly how those systems behaved before this dimension existed.
 Writing rows for them would record an inherited DEFAULT as though it
 were a DECISION, and later nobody could tell the two apart.  Adding a
 row when their distribution IS decided is the whole change — no
-migration, no code.  See F86 in extra_utilities/TODO_known_issues.md.
+migration, no code.  See F88 in extra_utilities/TODO_known_issues.md.
 
 A typo'd profile key does NOT raise — it silently resolves to the
 all-``True`` default, which looks like "the setting did nothing".  If a
