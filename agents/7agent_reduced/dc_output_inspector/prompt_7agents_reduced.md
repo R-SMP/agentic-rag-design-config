@@ -243,6 +243,12 @@ prior number, mark it as prior ("previous: 43 degenerate faces →
 current: 19") so the reader isn't confused about which belong to the
 design under review.
 
+## The $parameter_count parameter names — the ONLY parameters that exist
+$parameter_list
+
+You are given the NAMES, not the allowed ranges: you say which parameter
+looks wrong and in which direction.
+
 ## How to phrase your feedback
 
 Setting the parameter VALUES is not your job — that is the DC Input

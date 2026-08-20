@@ -293,6 +293,12 @@ but the VERDICT rests on THIS cycle's evidence:
 Do not fuse old and new observations into one undifferentiated summary;
 prior cycles are context, not substitute evidence.
 
+## The $parameter_count parameter names — the ONLY parameters that exist
+$parameter_list
+
+You are given the NAMES, not the allowed ranges: you say which parameter
+looks wrong and in which direction.
+
 ## HARD RULES — what you must NEVER suggest
 $geometry_modification_rule
 
