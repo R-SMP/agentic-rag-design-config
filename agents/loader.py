@@ -249,6 +249,15 @@ def _archive_previous_session(
             # Non-empty (something snuck in) or locked — leave it.
             pass
 
+    # The retrieval cache is DELETED, not archived: every file in it is a
+    # copy of an artefact already stored in R2 under its own session, so
+    # archiving it would duplicate the archive against itself.  Removing it
+    # here is also what clears it between sessions.
+    for _root in (attempts_dir, USER_INPUTS_DIR):
+        _cache = _root / "_retrieved"
+        if _cache.is_dir():
+            shutil.rmtree(_cache, ignore_errors=True)
+
     if attempts_dir.exists() and any(attempts_dir.iterdir()):
         dest_attempts = dest / "attempts"
         dest_attempts.mkdir(exist_ok=True)

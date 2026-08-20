@@ -2102,6 +2102,7 @@ class DatabaseHandler(BaseChainAgent):
             #
             # BUT the user-input files written by
             # ``_collect_user_inputs`` just above — ``queries.txt``,
+            # ``extracted_inputs.txt``,
             # ``images/<original>.png|.jpg|.jpeg``, and
             # ``images/<original>_note.txt`` — are NOT in Postgres
             # and DO need to reach R2.  Path-scope the mirror to the
@@ -2111,7 +2112,8 @@ class DatabaseHandler(BaseChainAgent):
             #
             #   * keeps per-agent ``<agent>/<field>.txt`` bodies OUT
             #     of R2 (they live outside ``user_inputs/``); and
-            #   * gets ``queries.txt`` and ``_note.txt`` sidecars
+            #   * gets ``queries.txt``, ``extracted_inputs.txt`` and
+            #     the ``_note.txt`` sidecars
             #     UP to R2 regardless of whether any images were
             #     uploaded this session or whether the DH wrote any
             #     attempts.
@@ -3878,6 +3880,12 @@ class DatabaseHandler(BaseChainAgent):
           (``agents/dispatch.py:save_user_input``), so it already
           carries every turn the user submitted this session with a
           ``--- [YYYY-MM-DD HH:MM:SS] ---`` header before each entry.
+        * ``extracted_inputs.txt`` — the User Input Inspector's
+          structured extraction of those inputs (QUANTITATIVE INPUTS /
+          QUALITATIVE DESCRIPTIONS / DESIGN INTENT).  Source is
+          ``inputs/extracted_inputs.txt``, which the UII OVERWRITES on
+          each re-extraction, so this copy is its final state as of
+          save time.  Absent when the UII never ran.
         * ``images/<original_name>`` — every reference image the user
           uploaded via the Image Inputs view, plus its matching
           ``<name>_note.txt`` description sidecar.  Original filenames
@@ -3888,8 +3896,9 @@ class DatabaseHandler(BaseChainAgent):
         files stay in Postgres only and are NOT mirrored to R2;
         the subsequent R2 mirror in :meth:`populate_database` is
         scoped narrowly to ``<session_dir>/user_inputs/`` and
-        uploads its contents (``queries.txt`` + reference images +
-        ``_note.txt`` sidecars) via the
+        uploads its contents (``queries.txt``,
+        ``extracted_inputs.txt``, reference images + ``_note.txt``
+        sidecars) via the
         ``.txt`` / ``.png`` / ``.jpg`` / ``.jpeg`` whitelist.  The
         original ``inputs/`` directory is left intact — End
         Session's archival sweep moves it under
@@ -3926,7 +3935,30 @@ class DatabaseHandler(BaseChainAgent):
                 f"the user issued no text turns this session."
             )
 
-        # 2. Every reference image + its _note.txt sidecar.
+        # 2. The UII's structured extraction of those inputs.
+        src_extraction = USER_INPUTS_DIR / "extracted_inputs.txt"
+        if src_extraction.is_file():
+            try:
+                shutil.copyfile(
+                    src_extraction, target / "extracted_inputs.txt"
+                )
+                written += 1
+                logger.info(
+                    f"[DH]  copied {src_extraction.name} → "
+                    f"user_inputs/{src_extraction.name}"
+                )
+            except OSError as exc:
+                logger.warning(
+                    f"[DH]  failed to copy extracted_inputs.txt: {exc}"
+                )
+        else:
+            logger.info(
+                f"[DH]  no extracted_inputs.txt at "
+                f"{src_extraction.resolve()}; the User Input Inspector "
+                f"never wrote an extraction this session."
+            )
+
+        # 3. Every reference image + its _note.txt sidecar.
         if INPUT_IMAGES_DIR.is_dir():
             images_target = target / "images"
             images_target.mkdir(parents=True, exist_ok=True)

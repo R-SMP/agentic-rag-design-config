@@ -167,6 +167,8 @@ def save_user_input(
 
 
 _ARTEFACT_PATTERNS: tuple[str, ...] = ("render_*.png", "*.obj")
+# Mirrors tools.retrieve_attempt._RETRIEVED_SUBDIR.
+_RETRIEVED_SUBDIR = "_retrieved"
 
 
 def _snapshot_artefact_paths(attempts_dir: Path) -> set[Path]:
@@ -184,8 +186,16 @@ def _snapshot_artefact_paths(attempts_dir: Path) -> set[Path]:
     found: set[Path] = set()
     for pattern in _ARTEFACT_PATTERNS:
         for p in attempts_dir.rglob(pattern):
-            if p.is_file():
-                found.add(p.resolve())
+            if not p.is_file():
+                continue
+            # Skip the retrieval cache: those renders are an agent's private
+            # research material, already archived under their own session, and
+            # surfacing several per retrieval call would drown the turn's real
+            # artefacts.  ``_comparisons`` is NOT skipped — its composites are
+            # deliberately shown (see user_inputs_tool._save_composite).
+            if _RETRIEVED_SUBDIR in p.parts:
+                continue
+            found.add(p.resolve())
     return found
 
 
