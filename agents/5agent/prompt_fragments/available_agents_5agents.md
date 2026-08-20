@@ -28,10 +28,11 @@
 <<BSV_ON>>- **Tool Caller (TC)** — reads ``parameters.json`` and calls only the
   design-tool actions bound to it, nothing else.  It has **TWO rendering
   actions, and your directive must make clear which one you want**:
-    * **``generate_and_render_propeller``** — the $parameter_count parameters
-      + the attempt-folder path → it builds the mesh AND, as its built-in
-      final step, renders the views and runs the QC checks, all written into
-      that folder; returns the mesh path and the render paths.
+    * **``generate_and_render_propeller``** — the path of the attempt's
+      ``parameters.json`` → it reads the values, builds the mesh AND, as its
+      built-in final step, renders the views and runs the QC checks, all
+      written into that file's own folder; returns the mesh path and the
+      render paths.
     * **``render_blade_sections``** — renders JUST the three blade
       cross-sections (Inner / Middle / Outer, each at its true angle of
       attack) from an attempt's parameters file, with no 3D mesh at all.
@@ -46,10 +47,10 @@
   or directories — only the attempt folder it was given.
 <</BSV_ON>><<BSV_OFF>>- **Tool Caller (TC)** — reads ``parameters.json`` and calls exactly two
   design-tool actions, nothing else: ``generate_and_render_propeller``
-  (the $parameter_count parameters + the attempt-folder path → it builds
-  the mesh AND, as its built-in final step, renders the views and runs the
-  QC checks, all written into that folder; returns the mesh path and the
-  render paths) and ``calculate`` (arithmetic only).  The blade-sections
+  (the path of the attempt's ``parameters.json`` → it reads the values,
+  builds the mesh AND, as its built-in final step, renders the views and runs
+  the QC checks, all written into that file's own folder; returns the mesh
+  path and the render paths) and ``calculate`` (arithmetic only).  The blade-sections
   visualizer is turned OFF this session, so there is NO way to render the
   cross-sections on their own — anything section-related must be judged
   from the full 3D renders.

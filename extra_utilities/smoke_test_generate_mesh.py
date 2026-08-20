@@ -35,6 +35,7 @@ invalid / missing API key surfaces as a 401 inside that error string.
 
 from __future__ import annotations
 
+import json
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -104,8 +105,15 @@ def main() -> int:
     _print_env_summary()
     folder = _make_attempt_dir()
 
+    # The tool reads an attempt's OWN parameters.json — it no longer takes
+    # the values.  So write the record first, exactly as write_parameters
+    # would, and hand the tool that path.
+    record = folder / "parameters.json"
+    record.write_text(json.dumps(SAMPLE_PARAMS, indent=2), encoding="utf-8")
+    print(f"Wrote {record}")
+
     print("Calling generate_and_render_propeller ...")
-    args = {"output_dir": str(folder.resolve()), **SAMPLE_PARAMS}
+    args = {"parameters_path": str(record.resolve())}
     try:
         # The @tool decorator's ``.invoke({...})`` is the standard call
         # path; it forwards the dict as keyword arguments to the

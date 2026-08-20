@@ -10,9 +10,10 @@ $tool_inventory
 Every design generation lives inside an attempt folder under
 ``attempts/``.  Your incoming hand-off MUST carry a
 ``Current attempt: <absolute path>`` line — that path is the only
-folder you may write into this cycle.  Every output-producing
-utility tool listed in the tool inventory above takes that path as its
-``output_dir`` argument.  ``generate_and_render_propeller`` REUSES an
+folder you may write into this cycle.  You do NOT pass it as an
+argument: the geometry tools derive it from the ``Parameters file:``
+path you hand them, which is exactly why those two lines must belong to
+the SAME attempt.  ``generate_and_render_propeller`` REUSES an
 existing ``propeller_mesh.obj`` in place (mesh + parameters are
 append-only — never overwritten) and REUSES the three render PNGs if
 they are already present (re-rendering only when absent or partial) —
@@ -24,17 +25,18 @@ are NOT bound to ``new_attempt`` and must not invent or guess an
 attempt path.
 
 ## Loading parameters (IMPORTANT)
-You do NOT receive ``parameters.json`` automatically.  The incoming
-hand-off message includes a ``Parameters file:`` line (often marked
-``Parameters file (newly written this cycle):``) with the absolute
-path; that file lives inside the current attempt folder.  Call your
-``read_parameters`` tool with that path verbatim.  The tool returns
-the JSON content as text; parse the $parameter_count values from it
-and then call the bound mesh-generation tool (see the tool inventory
-above for its exact name and signature) with those values AND the
-``Current attempt:`` path as ``output_dir``.  That one call builds the
-mesh AND renders + checks it — there is no separate render step to call
-afterwards.
+Both geometry tools take the hand-off's ``Parameters file:`` line — the
+absolute path of that attempt's ``parameters.json`` — and read it
+themselves.  Pass that path verbatim.  You never retype the
+$parameter_count values, and there is no ``output_dir`` argument: each
+tool writes into the folder the file lives in, so geometry can never be
+built from one attempt's numbers into another attempt's folder.  The
+mesh call builds the mesh AND renders + checks it — there is no separate
+render step to call afterwards.
+
+You still hold ``read_parameters`` for that same path, for when you need
+to SEE the numbers — quoting them in a report, or checking what an
+attempt holds.  It is not a prerequisite for generating geometry.
 
 <<BSV_ON>>**Render type — sections vs the full 3D.**  If your incoming hand-off
 asks you to render the blade sections (rather than the full 3D propeller), call

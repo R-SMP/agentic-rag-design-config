@@ -177,6 +177,14 @@ class MeshGenerationError(RuntimeError):
     converts it to a 4xx/5xx response."""
 
 
+# F75: attempt-folder coherence.
+# DORMANT since the tool began reading parameters.json itself: the values it
+# builds from now COME from the record, so they cannot disagree with it and
+# this comparison is unreachable via the agent path.  Kept deliberately — it
+# still guards any future caller that reintroduces value-passing, and deleting
+# a working guard in the same change that removes its trigger is how a safety
+# net gets lost twice.  ``mesh_provenance_mismatches`` below is likewise quiet
+# now that a mesh cannot precede its record.
 # --- F75: attempt-folder coherence -----------------------------------------
 # A folder's mesh must come from that folder's own parameters.json.  The
 # tolerance below only absorbs float repr / round-trip noise: parameters.json
@@ -276,6 +284,65 @@ def mesh_provenance_mismatches(attempt_dir, param_values):
     """
     return _param_mismatches(Path(attempt_dir), param_values,
                              record_name=MESH_PROVENANCE_FILE)
+
+
+def _read_param_record(params_file):
+    """Read an attempt's ``parameters.json`` into the 16-key kwargs dict.
+
+    This replaced sixteen tool arguments.  The model used to retype every
+    number into the call, which is the entire reason F75 and F75b exist; the
+    values now come FROM the record, so a mesh cannot disagree with it.
+
+    Returns ``(values, None)`` on success, ``(None, "Error: ...")`` otherwise.
+    Every error is written for the AGENT to act on, not for a log.
+
+    A legacy ``impellerHeight`` key is ignored, mirroring _param_mismatches:
+    pre-dda1560 folders still carry the 17th key and the backends derive it.
+    """
+    if not params_file.is_file():
+        return None, (
+            f"Error: no parameters.json at {params_file}.  An attempt's mesh "
+            f"is built FROM its parameter record, so the record must exist "
+            f"first — call ``write_parameters`` for this attempt (or point "
+            f"this call at the attempt that already has one)."
+        )
+    try:
+        raw_record = json.loads(params_file.read_text(encoding="utf-8"))
+    except (OSError, ValueError) as exc:
+        return None, (
+            f"Error: could not read {params_file}: {exc}.  The file must be "
+            f"a JSON object mapping each parameter name to a number."
+        )
+    if not isinstance(raw_record, dict):
+        return None, (
+            f"Error: {params_file} is not a JSON object.  It must map each "
+            f"parameter name to a number."
+        )
+
+    values = {}
+    missing, non_numeric = [], []
+    for name in _CANONICAL_PARAM_NAMES:
+        if name not in raw_record:
+            missing.append(name)
+            continue
+        v = raw_record[name]
+        if isinstance(v, bool) or not isinstance(v, (int, float)):
+            non_numeric.append(name)
+            continue
+        values[name] = v
+    if missing or non_numeric:
+        parts = [f"Error: {params_file} is not a complete parameter record."]
+        if missing:
+            parts.append(f"Missing keys: {sorted(missing)}")
+        if non_numeric:
+            parts.append(f"Non-numeric values: {sorted(non_numeric)}")
+        parts.append(
+            "No mesh was built.  Fix the record with ``write_parameters`` on "
+            "a NEW attempt rather than editing this one — attempt folders are "
+            "append-only."
+        )
+        return None, "  ".join(parts)
+    return values, None
 
 
 def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
@@ -710,35 +777,18 @@ def _backend_label(backend_used: str) -> str:
 @tool
 @tool_active("Propeller Configurator")
 def generate_and_render_propeller(
-    output_dir: Annotated[
+    parameters_path: Annotated[
         str,
-        "Absolute path of the attempt folder where propeller_mesh.obj and "
-        "the render PNGs should be written (the same path the hand-off "
-        "carries under ``Current attempt:``).  Must already exist (created "
-        "by ``new_attempt``).  If it already contains propeller_mesh.obj "
-        "the existing mesh is reused and the tool goes straight to rendering.",
+        "Absolute path of the attempt's ``parameters.json`` — the same path "
+        "the hand-off carries under ``Parameters file:``.  The mesh and the "
+        "render PNGs are written into that file's OWN attempt folder, so the "
+        "geometry can never be built from one attempt's numbers into another "
+        "attempt's folder.",
     ],
-    bladeCount: Annotated[int, "Number of blades (positive integer)"],
-    impellerRadius: Annotated[float, "Outer radius of the impeller ring (mm)"],
-    impellerThickness: Annotated[float, "Thickness of the outer ring (mm)"],
-    innerThickness: Annotated[float, "Inner-section profile thickness (% of chord)"],
-    innerMaxPos: Annotated[int, "Inner-section max-thickness position (integer, tenths of chord)"],
-    innerCamber: Annotated[float, "Inner-section camber (% of chord)"],
-    innerChord: Annotated[float, "Inner-section chord length (mm)"],
-    innerAngle: Annotated[float, "Inner-section angle of attack (degrees)"],
-    middlePos: Annotated[float, "Middle-section position as a fraction of blade span from the "
-                                "4 mm root: radius = 4 + middlePos*(impellerRadius - 4) mm, "
-                                "NOT middlePos*impellerRadius"],
-    middleChord: Annotated[float, "Middle-section chord length (mm)"],
-    middleAngle: Annotated[float, "Middle-section angle of attack (degrees)"],
-    outerThickness: Annotated[float, "Outer-section profile thickness (% of chord)"],
-    outerMaxPos: Annotated[int, "Outer-section max-thickness position (integer, tenths of chord)"],
-    outerCamber: Annotated[float, "Outer-section camber (% of chord)"],
-    outerChord: Annotated[float, "Outer-section chord length (mm)"],
-    outerAngle: Annotated[float, "Outer-section angle of attack (degrees)"],
 ) -> str:
-    """Generate the propeller 3D geometry for the 16 design parameters, save it
-    to ``<output_dir>/propeller_mesh.obj``, THEN render it (three views —
+    """Generate the propeller 3D geometry from an attempt's own
+    ``parameters.json``, save it to that attempt's ``propeller_mesh.obj``,
+    THEN render it (three views —
     isometric, top, side) and run mesh quality checks, all in one call.  The
     render step is the automatic next step after a successful geometry build
     and is skipped only if the geometry generation itself fails.  (The
@@ -755,10 +805,14 @@ def generate_and_render_propeller(
     built the working mesh here, the user's downloadable deliverable is
     regenerated via RhinoCompute.
 
-    ``output_dir`` MUST be the absolute path of an attempt folder (created
-    earlier by ``new_attempt``).  If it already contains ``propeller_mesh.obj``
-    the existing mesh is REUSED in place (append-only — never overwritten) and
-    the tool proceeds straight to the render step.
+    ``parameters_path`` MUST be the absolute path of an attempt's
+    ``parameters.json`` (written earlier by ``write_parameters``).  You do NOT
+    pass the values themselves and you do NOT pass an output directory: the
+    tool reads the record and writes into that record's own folder, so a mesh
+    can never be built from one attempt's numbers into another attempt's
+    folder.  If that folder already contains ``propeller_mesh.obj`` the
+    existing mesh is REUSED in place (append-only — never overwritten) and the
+    tool proceeds straight to the render step.
 
     Returns a combined status string: the geometry summary (saved/reused mesh
     path, vertex count, parts, backend) followed by the render+check report
@@ -766,88 +820,44 @@ def generate_and_render_propeller(
     failure (both backends) it returns an ``Error:`` / ``RhinoCompute error:``
     / ``FEG error:`` message and does NOT render.
     """
-    out_path_dir, err = _validate_output_dir(output_dir)
+    params_file = Path(parameters_path)
+    # _validate_output_dir keeps its ONE-argument contract deliberately:
+    # smoke_test_param_rename patches it with a one-arg lambda and
+    # smoke_test_attempt_coherence asserts the arity, so the folder is derived
+    # here rather than by giving that helper a second parameter.
+    out_path_dir, err = _validate_output_dir(str(params_file.parent))
+    if err is not None:
+        return err
+
+    param_values, err = _read_param_record(params_file)
     if err is not None:
         return err
 
     output_path = out_path_dir / _MESH_FILENAME
 
-    # Identity mapping: the @tool's keyword-argument names ARE the
-    # parameter names the Grasshopper definition exposes.  The agent
-    # writes parameters.json with the same camelCase keys, the
-    # ``write_parameters`` / ``read_parameters`` round-trip preserves
-    # them, and RhinoCompute matches them by ParamName against the
-    # .gh definition's input ports — no translation layer anywhere.
+    # Identity mapping: the KEYS in parameters.json ARE the parameter names
+    # the Grasshopper definition exposes.  ``write_parameters`` writes those
+    # camelCase keys, ``_read_param_record`` reads them back unchanged, and
+    # RhinoCompute matches them by ParamName against the .gh definition's
+    # input ports — no translation layer anywhere.
     #
-    # IMPORTANT: this contract requires the .gh definition's input
-    # parameters to be named exactly as below.  The .gh's 17th port,
-    # ``impellerHeight``, is NOT sent from here — render_mesh_obj_text
-    # derives it (the ring auto-fits the outer section) and injects it.
-    # If the names ever drift, either the .gh side must rename to match,
-    # or this dict must become a translation again.
-    param_values: dict[str, int | float] = {
-        "bladeCount": bladeCount,
-        "impellerRadius": impellerRadius,
-        "impellerThickness": impellerThickness,
-        "innerThickness": innerThickness,
-        "innerMaxPos": innerMaxPos,
-        "innerCamber": innerCamber,
-        "innerChord": innerChord,
-        "innerAngle": innerAngle,
-        "middlePos": middlePos,
-        "middleChord": middleChord,
-        "middleAngle": middleAngle,
-        "outerThickness": outerThickness,
-        "outerMaxPos": outerMaxPos,
-        "outerCamber": outerCamber,
-        "outerChord": outerChord,
-        "outerAngle": outerAngle,
-    }
-
-    # F75: the folder's parameters.json is the record of what this attempt
-    # IS.  ``None`` = no complete record to compare against (see helper).
-    mismatches = _param_mismatches(out_path_dir, param_values)
+    # IMPORTANT: this contract requires the .gh definition's input parameters
+    # to be named exactly as in _CANONICAL_PARAM_NAMES.  The .gh's 17th port,
+    # ``impellerHeight``, is NOT sent from here — render_mesh_obj_text derives
+    # it (the ring auto-fits the outer section) and injects it.
 
     # --- Geometry: reuse an existing mesh in place, else build it. ---
     if output_path.is_file():
-        # Append-only: never overwrite.  The existing mesh was built from
-        # THIS FOLDER's parameters — not necessarily from the values passed
-        # in THIS call — so say which, rather than implying the reuse
-        # answers the caller's numbers.  Reuse is NOT refused on a mismatch:
-        # this branch never reads param_values, writes nothing, and is the
-        # path every DCOI re-render takes.
+        # Append-only: never overwrite.  The mesh was built from THIS
+        # FOLDER's parameters, which are now the only numbers this tool can
+        # be given, so a reuse can no longer answer a different set by
+        # accident.  This is the path every DCOI re-render takes.
         geometry_summary = (
             f"Reused existing mesh at {output_path.resolve()} "
             f"({output_path.stat().st_size} bytes; geometry not "
             f"regenerated)."
         )
-        if mismatches:
-            geometry_summary += (
-                "  WARNING — this mesh does NOT correspond to the values "
-                "you passed in this call.  Nothing was regenerated: the "
-                "mesh was built from "
-                f"{(out_path_dir / 'parameters.json').resolve()}, which "
-                f"differs — {'; '.join(mismatches)}.  If you wanted a "
-                "re-render of THIS attempt, that is what you got, and the "
-                "values you passed were ignored; re-read the file with "
-                "``read_parameters`` so your report quotes the right "
-                "numbers.  If you wanted geometry for the values you "
-                "passed, they belong in a NEW attempt folder."
-            )
     else:
-        if mismatches:
-            return (
-                "Error: the parameters you passed do not match "
-                f"{(out_path_dir / 'parameters.json').resolve()}, which is "
-                "the record of what this attempt is — "
-                f"{'; '.join(mismatches)}.  No mesh was built: an attempt "
-                "folder's mesh must come from that folder's own "
-                "parameters.json.  Either re-read that file with "
-                "``read_parameters`` and re-issue this call with ITS "
-                "values, or open a NEW attempt (``new_attempt`` + "
-                "``write_parameters``) for the values you passed."
-            )
-
         # Delegate to the backend dispatcher (selected backend +
         # bidirectional fallback).  On MeshGenerationError the geometry
         # failed on BOTH backends — return the error and do NOT render.

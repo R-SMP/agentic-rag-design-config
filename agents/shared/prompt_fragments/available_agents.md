@@ -18,8 +18,9 @@
   extracted_inputs.txt from disk and validates that the parameter
   values are in range, internally consistent, and match the user's
   intent.  Can send corrections back to the DC Input Creator.
-<</DCII_ONLY>>- **Tool Caller (TC)**: reads parameters.json from disk and calls
-  ``generate_and_render_propeller`` once — it produces the mesh file
+<</DCII_ONLY>>- **Tool Caller (TC)**: points ``generate_and_render_propeller``
+  at an attempt's ``parameters.json`` and calls it once — the tool reads
+  that record itself and produces the mesh file
   AND, as its built-in final step, the renders and (if enabled) the
   quality-check numbers.<<BSV_ON>>  It can instead be asked for
   ``render_blade_sections`` — the three blade cross-sections alone,

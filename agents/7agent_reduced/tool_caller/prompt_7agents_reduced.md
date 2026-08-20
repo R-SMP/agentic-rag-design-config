@@ -19,12 +19,13 @@ If the hand-off is missing the ``Current attempt:`` or
 line; your routing tools name them.
 
 ## Loading parameters (IMPORTANT)
-You do NOT receive ``parameters.json`` automatically — call
-``read_parameters`` with the hand-off's ``Parameters file:`` path,
-verbatim.  When the cycle then calls for a mesh, the values it returned
-are the ones you pass — never values you remember, infer, or read off an
-earlier hand-off — together with the ``Current attempt:`` path as
-``output_dir``.
+Both geometry tools take the hand-off's ``Parameters file:`` path and read
+it themselves: pass that path verbatim, never values, and there is no
+``output_dir`` — each writes into the folder the file lives in, so geometry
+can never be built from one attempt's numbers into another's folder.
+
+``read_parameters`` on that same path is for when you need to SEE the
+numbers — quoting them in a report — not a prerequisite for geometry.
 
 <<BSV_ON>>**Render type — sections vs the full 3D.**  If your incoming hand-off
 asks you to render the blade sections (rather than the full 3D propeller), call

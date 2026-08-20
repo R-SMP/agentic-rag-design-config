@@ -1,18 +1,19 @@
-"""F75 — an attempt folder's mesh must come from its own parameters.json.
+"""An attempt's mesh must come from that attempt's own parameters.json.
 
-Proves BOTH directions, which is the whole point: a guard that only fires is
-as bad as one that never does, because this one sits on the path EVERY
-geometry call takes and a false refusal blocks legitimate work unattended.
+Since the tool takes the RECORD'S PATH instead of sixteen values, that is
+enforced by construction rather than checked: there is no way to hand it a
+number that disagrees with the record.  This test therefore proves three
+things.
 
-F75b       a mesh built before any parameters.json records the values that
-           produced it, so a LATER write_parameters cannot label it with
-           numbers it did not come from; folders without a sidecar proceed.
-
-FIRES      build-branch mismatch refuses and builds nothing; reuse-branch
-           mismatch WARNS without refusing and without touching the mesh; a
-           genuinely small difference is still caught.
-DOES NOT   matching params; no parameters.json; ``{}``; a 15-key file; a
-OVER-FIRE  legacy 17-key file; int-vs-float on disk; float repr noise.
+CONTRACT   the tool reads the record and builds from it; a missing,
+           malformed or incomplete record fails CLEANLY, names what is wrong,
+           and builds nothing.
+DORMANT    F75's comparison helper still behaves, tested directly.  It is
+           unreachable through the tool now, and is kept precisely so a
+           regression that reintroduces value-passing is still caught.
+F75b       a mesh records the values that produced it, so a later
+           write_parameters cannot label it with numbers it did not come
+           from; folders without a sidecar proceed untouched.
 
 Fully offline — the geometry backend and the render step are stubbed, so no
 RhinoCompute, no FEG, no Node, no PNGs.
@@ -158,9 +159,11 @@ def _mk(name, params_json=None, with_mesh=False):
     return d
 
 
-def _invoke(d, **over):
-    args = dict(GOOD); args.update(over); args["output_dir"] = str(d)
-    return gm.generate_and_render_propeller.invoke(args)
+def _invoke(d):
+    """Call the tool the only way it can now be called: point it at a
+    parameters.json.  There is no way to hand it values, which is the point."""
+    return gm.generate_and_render_propeller.invoke(
+        {"parameters_path": str(d / "parameters.json")})
 
 
 def check(label, cond, detail=""):
@@ -173,95 +176,110 @@ def check(label, cond, detail=""):
 gm.render_agent_mesh_obj_text = _stub_backend
 gm._render_and_check_fn = _stub_render
 
-print("F75 attempt-folder coherence\n")
-print("MUST FIRE")
+print("attempt-folder coherence\n")
+print("TOOL CONTRACT — the record is the only input")
 
-d = _mk("f75_build_mismatch", GOOD)
-_calls["backend"] = 0
-out = _invoke(d, middleChord=22.0)
-check("build + mismatch -> refuses", out.startswith("Error:"), out[:90])
-check("  names the parameter and BOTH values",
-      "middleChord" in out and "22.0" in out and "20.0" in out)
-check("  backend NOT called", _calls["backend"] == 0)
-check("  no mesh written", not (d / gm._MESH_FILENAME).is_file())
-
-d = _mk("f75_reuse_mismatch", GOOD, with_mesh=True)
-before = (d / gm._MESH_FILENAME).read_bytes(), (d / gm._MESH_FILENAME).stat().st_mtime
-_calls["backend"] = 0
-out = _invoke(d, middleChord=22.0)
-check("reuse + mismatch -> does NOT refuse", not out.startswith("Error:"))
-check("  reuses and WARNS", "Reused existing mesh" in out and "WARNING" in out)
-check("  mesh untouched (bytes + mtime)",
-      ((d / gm._MESH_FILENAME).read_bytes(),
-       (d / gm._MESH_FILENAME).stat().st_mtime) == before)
-check("  backend NOT called", _calls["backend"] == 0)
-
-d = _mk("f75_small_diff", dict(GOOD, middlePos=0.55))
-out = _invoke(d, middlePos=0.56)
-check("small real difference (0.55 vs 0.56) -> refuses", out.startswith("Error:"))
-
-print("\nMUST NOT OVER-FIRE")
-
-for _i, (label, params, over) in enumerate([
-    ("matching params",                 GOOD,                         {}),
-    ("no parameters.json at all",       None,                         {}),
-    ("parameters.json == {}",           {},                           {}),
-    ("15 of 16 keys",                   {k: v for k, v in list(GOOD.items())[:15]}, {}),
-    ("legacy 17-key (impellerHeight)",  dict(GOOD, impellerHeight=12.0), {}),
-    ("int/float on disk (3.0 vs 3)",    dict(GOOD, bladeCount=3.0, impellerRadius=68),
-                                        {"bladeCount": 3, "impellerRadius": 68.0}),
-    ("float repr noise",                dict(GOOD, middlePos=0.30000000000000004),
-                                        {"middlePos": 0.3}),
-]):
-    # index, not hash(): PYTHONHASHSEED randomises str hashes per run, so a
-    # hash-derived folder name would differ between runs and leak temp dirs.
-    d = _mk("f75_ok_%d" % _i, params)
-    _calls["backend"] = 0
-    out = _invoke(d, **over)
-    check(label + " -> proceeds",
-          (not out.startswith("Error:")) and _calls["backend"] == 1, out[:90])
-
-print("")
-print("F75b — MESH-FIRST PROVENANCE")
-
-# Build into a folder with NO parameters.json — the LEGITIMATE mesh-first
-# order (the Orchestrator's fallback folder, the 3-agent Designer).  It must
-# still proceed, and must now record what produced the mesh.
-d = _mk("f75b_sidecar", None)
+d = _mk("g_happy", GOOD)
 _calls["backend"] = 0
 out = _invoke(d)
-side = d / gm.MESH_PROVENANCE_FILE
-check("mesh-first build still proceeds",
+check("complete record -> builds",
       (not out.startswith("Error:")) and _calls["backend"] == 1, out[:90])
-check("  provenance sidecar written", side.is_file())
+check("  mesh landed in the RECORD's own folder",
+      (d / gm._MESH_FILENAME).is_file())
+
+d = _mk("g_legacy17", dict(GOOD, impellerHeight=12.0))
+_calls["backend"] = 0
+out = _invoke(d)
+check("legacy 17-key record -> builds (impellerHeight ignored)",
+      (not out.startswith("Error:")) and _calls["backend"] == 1, out[:90])
+
+for label, params, must_say in [
+    ("no parameters.json",      None,                                  "write_parameters"),
+    ("15 of 16 keys",           {k: v for k, v in list(GOOD.items())[:15]}, "Missing keys"),
+    ("non-numeric value",       dict(GOOD, middleChord="20.0"),        "Non-numeric"),
+    ("boolean value",           dict(GOOD, bladeCount=True),           "Non-numeric"),
+    ("record is a JSON list",   [1, 2, 3],                             "not a JSON object"),
+]:
+    d = _mk("g_bad_" + label.split()[0], params)
+    _calls["backend"] = 0
+    out = _invoke(d)
+    check(label + " -> clean error",
+          out.startswith("Error:") and _calls["backend"] == 0, out[:90])
+    check("  says what is wrong (%r)" % must_say, must_say in out, out[:120])
+    check("  no mesh written", not (d / gm._MESH_FILENAME).is_file())
+
+d = _mk("g_malformed", None)
+(d / "parameters.json").write_text("{not json", encoding="utf-8")
+_calls["backend"] = 0
+out = _invoke(d)
+check("malformed JSON -> clean error",
+      out.startswith("Error:") and _calls["backend"] == 0, out[:90])
+
+d = _mk("g_reuse", GOOD, with_mesh=True)
+_calls["backend"] = 0
+before = (d / gm._MESH_FILENAME).read_bytes()
+out = _invoke(d)
+check("existing mesh -> reused, backend NOT called",
+      "Reused existing mesh" in out and _calls["backend"] == 0, out[:90])
+check("  mesh untouched", (d / gm._MESH_FILENAME).read_bytes() == before)
+
+print("")
+print("F75 COMPARISON — dormant, tested directly")
+
+# Unreachable through the tool now.  Kept so that reintroducing value-passing
+# cannot quietly ship without this firing again.
+d = _mk("f75_unit", GOOD)
+check("mismatch detected", bool(gm._param_mismatches(d, dict(GOOD, middleChord=22.0))))
+_m = gm._param_mismatches(d, dict(GOOD, middleChord=22.0))
+check("  names the parameter and BOTH values",
+      "middleChord" in _m[0] and "22.0" in _m[0] and "20.0" in _m[0], str(_m))
+check("agreement -> []", gm._param_mismatches(d, GOOD) == [])
+check("small real difference (0.55 vs 0.56) caught",
+      bool(gm._param_mismatches(_mk("f75_small", dict(GOOD, middlePos=0.55)),
+                                dict(GOOD, middlePos=0.56))))
+check("no record -> None", gm._param_mismatches(_mk("f75_none", None), GOOD) is None)
+check("empty record -> None", gm._param_mismatches(_mk("f75_empty", {}), GOOD) is None)
+check("15-key record -> None",
+      gm._param_mismatches(_mk("f75_15", {k: v for k, v in list(GOOD.items())[:15]}),
+                           GOOD) is None)
+check("legacy 17-key -> []",
+      gm._param_mismatches(_mk("f75_17", dict(GOOD, impellerHeight=12.0)), GOOD) == [])
+check("int/float on disk (3.0 vs 3) -> []",
+      gm._param_mismatches(_mk("f75_intfloat", dict(GOOD, bladeCount=3.0)),
+                           dict(GOOD, bladeCount=3)) == [])
+check("float repr noise -> []",
+      gm._param_mismatches(_mk("f75_repr", dict(GOOD, middlePos=0.30000000000000004)),
+                           dict(GOOD, middlePos=0.3)) == [])
+
+print("")
+print("F75b — MESH PROVENANCE")
+
+d = _mk("f75b_sidecar", GOOD)
+_invoke(d)
+side = d / gm.MESH_PROVENANCE_FILE
+check("build writes the provenance sidecar", side.is_file())
 if side.is_file():
     rec = json.loads(side.read_text(encoding="utf-8"))
-    check("  sidecar holds the 16 canonical keys",
-          set(rec) == set(GOOD), str(sorted(set(rec) ^ set(GOOD))))
-    check("  sidecar values are the ones passed",
-          all(float(rec[k]) == float(GOOD[k]) for k in GOOD))
+    check("  holds the 16 canonical keys", set(rec) == set(GOOD),
+          str(sorted(set(rec) ^ set(GOOD))))
+    check("  values are the record's", all(float(rec[k]) == float(GOOD[k]) for k in GOOD))
 
-# The decision function the three write_parameters handlers call.
 check("agreeing params -> [] (write allowed)",
       gm.mesh_provenance_mismatches(d, GOOD) == [])
 _diff = gm.mesh_provenance_mismatches(d, dict(GOOD, middleChord=22.0))
 check("contradicting params -> refusal list", bool(_diff))
 check("  names the parameter and BOTH values",
       bool(_diff) and "middleChord" in _diff[0]
-      and "22.0" in _diff[0] and "20.0" in _diff[0])
+      and "22.0" in _diff[0] and "20.0" in _diff[0], str(_diff))
 
-# Every folder that existed before F75b has a mesh and no sidecar.  Those must
-# stay writable, exactly as F75 lets an absent parameters.json proceed.
 d = _mk("f75b_legacy", None, with_mesh=True)
 check("legacy folder (mesh, no sidecar) -> None (write allowed)",
       gm.mesh_provenance_mismatches(d, GOOD) is None)
 
-# The sidecar describes the mesh ON DISK, not whatever numbers a later call
-# happened to carry — so the reuse branch must leave it alone.
-d = _mk("f75b_reuse", None)
+d = _mk("f75b_reuse", GOOD)
 _invoke(d)
 _first = (d / gm.MESH_PROVENANCE_FILE).read_bytes()
-_invoke(d, middleChord=22.0)
+_invoke(d)
 check("reuse leaves the sidecar untouched",
       (d / gm.MESH_PROVENANCE_FILE).read_bytes() == _first)
 
@@ -272,8 +290,7 @@ print("PLACEMENT")
 # checkable offline and is asserted here rather than trusted: smoke_test_param_
 # rename.py patches that function with a ONE-ARGUMENT lambda
 # (``lambda raw: (Path(raw), None)``), so adding a parameter would TypeError it.
-# That test needs langchain_core and cannot run in a bare worktree, so this
-# stands in for it.
+# The tool derives the folder from the record's path for exactly this reason.
 import inspect  # noqa: E402
 
 _sig = inspect.signature(gm._validate_output_dir)
@@ -283,14 +300,26 @@ check("  and still returns via the (path, error) contract",
       gm._validate_output_dir("")[0] is None
       and gm._validate_output_dir("")[1].startswith("Error:"))
 
+# The wrapped function, whichever wrapper is in play: ``_fn`` on this file's
+# stub, ``func`` on a real langchain StructuredTool.
+_tool_obj = gm.generate_and_render_propeller
+_underlying = (getattr(_tool_obj, "_fn", None)
+               or getattr(_tool_obj, "func", None)
+               or _tool_obj)
+_tool_sig = inspect.signature(_underlying)
+check("the tool takes exactly one argument (the record's path)",
+      list(_tool_sig.parameters) == ["parameters_path"], str(_tool_sig))
+
 for d in gm.ATTEMPTS_DIR.glob("f75*"):
+    shutil.rmtree(d, ignore_errors=True)
+for d in gm.ATTEMPTS_DIR.glob("g_*"):
     shutil.rmtree(d, ignore_errors=True)
 
 print()
 if failures:
     print("FAIL — %d problem(s): %s" % (len(failures), failures))
     raise SystemExit(1)
-print("PASS — the guard fires on every incoherent build, warns without "
-      "refusing on reuse, stays silent on all seven legitimate shapes, and "
-      "the mesh-first order now carries provenance that a later "
-      "write_parameters is checked against.")
+print("PASS — the tool builds only from an attempt's own record and fails "
+      "cleanly on every broken one; F75's dormant comparison still behaves; "
+      "and a mesh carries the provenance a later write_parameters is checked "
+      "against.")
