@@ -85,7 +85,6 @@ def _handle_retrieve_user_inputs(agent, tc: dict, agent_key: str) -> None:
         )
         return
     images_flag = bool(args.get("images_flag", False))
-    extract_text = bool(args.get("extract_text", False))
 
     try:
         xml, image_blocks, image_paths = _run_retrieve_user_inputs(
@@ -93,7 +92,6 @@ def _handle_retrieve_user_inputs(agent, tc: dict, agent_key: str) -> None:
             session_ids=[str(sid) for sid in raw_session_ids],
             images_flag=images_flag,
             provider=getattr(agent, "provider", "openai"),
-            extract_text=extract_text,
         )
     except Exception as exc:
         logger.warning(
