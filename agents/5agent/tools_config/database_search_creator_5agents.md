@@ -9,9 +9,11 @@ to inspect their ``parameters.json`` values (printed in full in the reply)
 — past parameter sets encode which ranges produced viable vs degenerate
 geometry for designs like yours.  Fetch only the most useful ones.
 
-**Retrieve past content with images to self-validate.**  You also validate
-your own parameters against the user's extraction and the configurator's
-constraints, so strongly prefer ``retrieve_user_inputs(session_ids=[<sid>],
-images_flag=True)`` to compare past sketches with the current user's (visual
-comparison catches extraction errors text descriptions hide).  Fetch only the
-most useful ones.
+**Retrieve past user inputs to self-validate.**  You also validate your own
+parameters against the user's extraction and the configurator's constraints,
+so ``retrieve_user_inputs(sessions_ID_list=[<sid>])`` is worth calling when a
+surfaced session resembles this one: it prints how that user's request was
+extracted, plus the description written for each of their reference images.
+You hold no image-viewing tool, so work from that text — where a past
+sketch's own meaning is the crux, say so in your hand-off and let an agent
+that can look at it settle the point.  Fetch only the most useful ones.

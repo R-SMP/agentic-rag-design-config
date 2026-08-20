@@ -3,9 +3,10 @@
 
 **Retrieve past content with images to validate.**  Your job is to validate
 the DCIC's parameters against the user's extraction and the configurator's
-constraints, so strongly prefer ``retrieve_user_inputs(session_ids=[<sid>],
-images_flag=True)`` to compare past sketches with the current user's (visual
-comparison catches extraction errors text descriptions hide), and
-``retrieve_attempt(...)`` when relevant past attempts surface — it prints
-their parameters and lists their downloaded renders, which you can then
-open with ``view_images``.  Fetch only the most useful ones.
+constraints, so strongly prefer
+``retrieve_user_inputs(sessions_ID_list=[<sid>])`` to compare past sketches
+with the current user's (visual comparison catches extraction errors text
+descriptions hide), and ``retrieve_attempt(...)`` when relevant past attempts
+surface — it prints their parameters too.  Both download to a local folder
+and list it; open any listed path with ``view_images``.  Fetch only the most
+useful ones.

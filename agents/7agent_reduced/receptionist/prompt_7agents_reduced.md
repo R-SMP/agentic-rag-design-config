@@ -359,9 +359,7 @@ search yourself and pack the results into your summary.  The UII /
 DCIC<<DCII_ONLY>> / DCII<</DCII_ONLY>> / DCOI have these same tools and
 will consult the database from their own context, with their own visual
 capabilities on past sketches / renders.  Pre-cooking wastes tokens (the
-chain re-runs it anyway), strips past images at your ``on_operation_end``
-(so the chain never sees them), and biases the chain toward your
-conclusion.  Forward the user's mandate verbatim (per "Preserve the force
+chain re-runs it anyway) and biases the chain toward your conclusion.  Forward the user's mandate verbatim (per "Preserve the force
 of user directives" above) and let them do the work.
 <</HAS_DBA>>
 

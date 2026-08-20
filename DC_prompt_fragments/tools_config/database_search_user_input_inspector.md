@@ -18,16 +18,16 @@ When it applies:
      the query around what you are extracting ("blade count from a
      hand-drawn sketch", "thickness calibration from blade sections").
   2. Fetch the past user's images to compare
-     (``retrieve_user_inputs(session_ids=[<sid>], images_flag=True)``) —
+     (``retrieve_user_inputs(sessions_ID_list=[<sid>])``) —
      **MANDATORY on at least one in-scope session when the user explicitly
      demanded past-image / past-experience use** (skipping it then is a HARD
      failure); a strong default otherwise when you are extracting from a
      sketch, since past sketches are the best calibration and text alone is
      usually too thin to anchor a numeric extraction.  Likewise
      ``retrieve_attempt(...)`` when ``<available_attempts>`` lists relevant
-     past attempts — it downloads them and lists the files; open any with
-     ``view_images``.  Fetch only the most useful one or two
-     (each image is auto-compressed on load to ~0.6-1k tokens).
+     past attempts.  Both download to a local folder and list it; open any
+     listed path with ``view_images`` — that call, not the retrieval, is what
+     costs vision tokens, so open only the most useful one or two.
   3. In your hand-off, say what you searched for, what you retrieved with
      images, what the comparison showed, and how (if at all) it changed your
      extraction — including "it did not change my conclusion", so the chain

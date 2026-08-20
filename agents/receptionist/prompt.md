@@ -383,15 +383,9 @@ the CHAIN to use past experience ("the agents MUST look at the database",
 the results into your summary.  The UII / DCIC / DCII / DCOI have these
 same tools and will consult the database from their own context, with
 their own visual capabilities on past sketches / renders.  Pre-cooking
-wastes tokens (the chain re-runs it anyway), strips past images at your
-``on_operation_end`` (so the chain never sees them), and biases the chain
-toward your conclusion.  Forward the user's mandate verbatim (per
+wastes tokens (the chain re-runs it anyway) and biases the chain toward
+your conclusion.  Forward the user's mandate verbatim (per
 "Preserve the force of user directives" above) and let them do the work.
-
-Never call ``retrieve_user_inputs`` / ``retrieve_attempt`` with
-``images_flag=True`` — past images are for the UII / DCII / DCOI, which
-compare visual evidence as their core task; in your text-coordination role
-they are wasted tokens.  Use ``images_flag=False``.
 
 ## Routing
 $routing_receptionist
