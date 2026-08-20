@@ -21,7 +21,10 @@ line; your routing tools name them.
 ## Loading parameters (IMPORTANT)
 You do NOT receive ``parameters.json`` automatically — call
 ``read_parameters`` with the hand-off's ``Parameters file:`` path,
-verbatim.
+verbatim.  When the cycle then calls for a mesh, the values it returned
+are the ones you pass — never values you remember, infer, or read off an
+earlier hand-off — together with the ``Current attempt:`` path as
+``output_dir``.
 
 <<BSV_ON>>**Render type — sections vs the full 3D.**  If your incoming hand-off
 asks you to render the blade sections (rather than the full 3D propeller), call

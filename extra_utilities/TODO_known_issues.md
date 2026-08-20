@@ -3861,10 +3861,13 @@ the authoritative marker list is `agents/shared/prompts.py:151-175`.
 
 ### F82. The DC Output Inspector is told to name parameters it is never shown
 
-**Status.** OPEN — fix DECIDED 2026-08-05, not yet implemented.  Found while
-scoping which agents need `$hard_constraints_dc`.  Present in BOTH the 7- and
-5-agent topologies.  Not in the shrink proposal; it surfaced from the
-fragment-audience map, not from a cut.
+**Status.** FIXED 2026-08-20 — the DCOI now holds the parameter NAMES in all
+three trees, delivered as a per-agent scoped copy.  The ranges-or-not question
+this entry left open is CLOSED against ranges; see "Decided: names, not ranges"
+below.  Found while scoping which agents need `$hard_constraints_dc`.  Was
+present in the 7-agent standard AND reduced trees and in the 5-agent tree.  Not
+in the shrink proposal; it surfaced from the fragment-audience map, not from a
+cut.
 
 **The gap.** Every agent that handles parameters splices `$parameter_list` — the
 canonical 16 names with their ranges — **except the DC Output Inspector**:
@@ -3876,11 +3879,15 @@ canonical 16 names with their ranges — **except the DC Output Inspector**:
 
 Yet the DCOI is instructed twice to name them:
 
-* `agents/dc_output_inspector/prompt.md:35` — "diagnose WHY a failure occurred and
+* `agents/dc_output_inspector/prompt.md:34` — "diagnose WHY a failure occurred and
   name which parameters likely need changing"
-* `agents/dc_output_inspector/prompt.md:301` — "name which of the
+* `agents/dc_output_inspector/prompt.md:307` — "name which of the
   `$parameter_count` parameters *seem* to need adjustment and in which direction
   (`"<param X> looks too small / large"`)"
+
+(Both line numbers are POST-fix.  The first was written as `:35` here and was
+already off by one; the second was `:301` before the six-line reference block
+went in above it.)
 
 It splices `$parameter_count` (the number, "16") but never the names.  The only
 literal parameter name anywhere in its prompt is `middlePos`, in an unrelated
@@ -3906,27 +3913,53 @@ names are forbidden.
 Both are incidental.  Neither is a substitute for the agent holding the list.
 
 **The fix — DECIDED by the owner 2026-08-05: the DCOI is to be given the list of
-parameters.**  Add `$parameter_list` to `agents/dc_output_inspector/prompt.md`
-under a "Parameter reference" heading, as the other seven prompts do — roughly
-386 tok for the agent that most needs it.  Do the same for
-`agents/5agent/dc_output_inspector/prompt_5agents.md`.
+parameters.**  Shipped 2026-08-20 as the names-only variant this entry held in
+reserve, in all three trees.
 
-A cheaper variant remains available if the full fragment proves too expensive
-once the per-agent scoped-fragment table exists (see below): a names-only list
-with no ranges.  The DCOI gives DIRECTIONS, not values — "`<param X>` looks too
-small" — so it needs the vocabulary, not the bounds.  That variant becomes a
-natural `_SCOPED_FRAGMENTS` entry (`parameter_list` → a DCOI-scoped file) rather
-than a new slot, so it costs nothing structurally.  **Either way the DCOI gets
-the names; only the question of ranges-or-not is still open.**
+**Decided: names, not ranges** (2026-08-20, on evidence from an adversarial
+review).  This entry left ranges-or-not open.  Three findings closed it:
 
-**Check afterwards.** Re-run the assembled-prompt hash diff and confirm only the
-DCOI moves; then confirm `$parameter_list` resolves (it is a real `_build_slots()`
-key, already used by seven prompts).
+* The 5-agent DCOI's STATED ground for deferring to the value-owner is that the
+  OTHER agent holds the ranges — `agents/5agent/dc_output_inspector/`
+  `prompt_5agents.md:313-316`, "the Creator owns the final numbers and may
+  choose differently using its range and consistency knowledge".  Handing it a
+  bounds table falsifies its own reason to defer: it would close one
+  contradiction by opening another.  (Both 7-agent trees phrase that sentence
+  without the range clause, so this bites the 5-agent tree hardest.)
+* Bounds are unusable without CURRENT values, and for `bladeCount`,
+  `impellerRadius` and `impellerThickness` no tool result the DCOI receives
+  ever states one.  "Read the ranges for headroom" would invite exactly the
+  invention this entry exists to prevent.
+* 222 tok against 386.
 
-**Where.** `agents/dc_output_inspector/prompt.md:35,301`;
-`agents/5agent/dc_output_inspector/prompt_5agents.md`;
-the fragment is `DC_prompt_fragments/dc_config/parameters.md` -> slot
-`$parameter_list` (`agents/shared/prompts.py` FRAGMENT_TO_SLOT).
+**How it was delivered — no new slot, no python.**  `parameter_list` was
+ALREADY registered in `SCOPED_FRAGMENTS` (`agents/shared/prompts.py:721`),
+whose table is deliberately a superset of what has a scoped copy today, and
+`_build_template` splats `_scoped_fragments_for()` LAST so a scoped file wins
+over the shared fragment.  `_build_template` is called with the constant
+`"dc_output_inspector"` in every topology, so ONE file serves all three trees:
+`DC_prompt_fragments/dc_config/parameters_dc_output_inspector.md`.
+
+The scoped fragment also states the two structural facts most likely to be
+invented from a render: the outer-ring HEIGHT is derived rather than a
+parameter, and the middle section has no thickness, camber or high-point of its
+own (only `middlePos` / `middleChord` / `middleAngle` exist).
+
+**Verified.** The DCOI template was assembled under topology 7/reduced,
+7/standard, 5/standard and 5/reduced: `$parameter_list` resolves in all four,
+the names are present, no range bracket leaks, and `scoped_fragment_path`
+returns the scoped copy for `dc_output_inspector` ALONE while the other eight
+agents keep the full-ranges fragment.  `smoke_test_prompt_variant`,
+`_prompts_hot_reload`, `_slot_splices`, `_topology_fragments`, `_fork_drift`,
+`_prompts_admin` and `_attempt_coherence` all pass.
+
+**Where.** `agents/dc_output_inspector/prompt.md:296`;
+`agents/7agent_reduced/dc_output_inspector/prompt_7agents_reduced.md:246`;
+`agents/5agent/dc_output_inspector/prompt_5agents.md:297`;
+the shared full-ranges fragment is `DC_prompt_fragments/dc_config/parameters.md`
+and the DCOI's scoped copy is `.../dc_config/parameters_dc_output_inspector.md`
+-> slot `$parameter_list` (`agents/shared/prompts.py` FRAGMENT_TO_SLOT +
+SCOPED_FRAGMENTS).
 Related: F81 (also a silent-gap defect found the same way).
 
 ---

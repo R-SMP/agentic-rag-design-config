@@ -82,12 +82,10 @@ plan format below is for recovery reasoning.
         DC Input Creator adjusts ANY parameter the user authorised toward that
         feedback — section shapes, CHORDS, angles and middlePos alike — and holds
         fixed ONLY what the user themselves fixed (name it explicitly here).  Do
-        not narrow this to a subset: chord is often the strongest lever, because
-        *Thickness and *Camber are percentages of a section's own chord.  Keep
-        iterating until the sections closely match OR
-        the NACA airfoil model is provably at its limit (a plateau); then
-        finalize and report the residual honestly — do NOT silently approve the
-        first render.
+        not narrow this to a subset.  Keep iterating until the sections closely
+        match OR the NACA airfoil model is provably at its limit (a plateau);
+        then finalize and report the residual honestly — do NOT silently approve
+        the first render.
 
     You decide precision vs. ordinary — a rough freehand doodle is NOT a
     precision job; a measured, to-scale section drawing with a matching user
