@@ -5,17 +5,19 @@ each chain agent's run loop calls
 ``dispatch_retrieve_tool(agent, tc, agent_key)`` after exhausting
 its other tool-call branches.  The dispatcher inspects
 ``tc['name']`` and, when it matches one of the retrieve_* tools,
-invokes the tool's real ``_run_retrieve_*`` function, appends a
-``ToolMessage`` carrying the XML body to ``agent.messages``, and
-(when image bytes are present) buffers image content blocks for
-the next ``HumanMessage`` via ``append_pending_images``.
+invokes the tool's real ``_run_retrieve_*`` function and appends a
+``ToolMessage`` carrying the XML body to ``agent.messages``.
+
+NEITHER retrieve tool attaches image bytes.  Both materialise their
+artefacts on local disk and name the paths in that XML; ``view_images``
+is what actually looks at one, and it can place a retrieved image
+beside any other image the agent chooses.
 
 The split — public ``@tool``-decorated stub returning ``""`` plus a
-private ``_run_retrieve_*`` doing the real work plus this
-dispatcher routing the ``ToolMessage`` — mirrors the existing
-``view_images`` pattern, so each chain agent sees one tool
-call producing two attached pieces of evidence (XML text + image
-content blocks) in its next view.
+private ``_run_retrieve_*`` doing the real work plus this dispatcher
+routing the ``ToolMessage`` — keeps the LLM-facing schema free of the
+``caller_agent`` argument: it is baked into a closure at bind time, so
+an agent cannot claim to be a different one.
 
 Lazy imports
 ------------
@@ -33,7 +35,6 @@ import logging
 
 from langchain_core.messages import ToolMessage
 
-from agents.shared.file_utils import append_pending_images
 from agents.shared.routing_tools import log_tool_call
 
 logger = logging.getLogger("propeller_agent")
@@ -84,14 +85,10 @@ def _handle_retrieve_user_inputs(agent, tc: dict, agent_key: str) -> None:
             "session_id strings.",
         )
         return
-    images_flag = bool(args.get("images_flag", False))
-
     try:
-        xml, image_blocks, image_paths = _run_retrieve_user_inputs(
+        xml = _run_retrieve_user_inputs(
             caller_agent=agent_key,
             session_ids=[str(sid) for sid in raw_session_ids],
-            images_flag=images_flag,
-            provider=getattr(agent, "provider", "openai"),
         )
     except Exception as exc:
         logger.warning(
@@ -117,12 +114,6 @@ def _handle_retrieve_user_inputs(agent, tc: dict, agent_key: str) -> None:
         tool_call_id=tc["id"],
         name=tc["name"],
     ))
-    if image_blocks:
-        # Buffer images for the next HumanMessage so the
-        # tool_use → tool_result contiguity invariant is preserved
-        # when this tool call was batched alongside others.  Same
-        # pattern as view_images.
-        append_pending_images(agent, image_blocks, image_paths)
 
 
 def _handle_retrieve_attempt(agent, tc: dict, agent_key: str) -> None:

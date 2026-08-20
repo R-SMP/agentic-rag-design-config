@@ -1,29 +1,32 @@
 """retrieve_user_inputs — DC-specific R2-backed retrieval tool.
 
-When a chain agent calls ``retrieve_user_inputs(sessions_ID_list,
-images_flag)``, the tool:
+When a chain agent calls ``retrieve_user_inputs(sessions_ID_list)``,
+the tool:
 
 1. Validates each session_id against the Postgres ``sessions`` table
    (and fetches each existing session's ``user_provided_images`` bool).
-2. For each existing session, fetches from R2:
-     * ``<sid>/user_inputs/queries.txt`` (user's chronological text inputs).
-     * ``<sid>/user_inputs/images/<name>_note.txt`` (image notes), when
-       ``user_provided_images=True``.
-     * ``<sid>/user_inputs/images/<name>.{png,jpg,jpeg}`` (image bytes),
-       when ``images_flag=True`` AND ``user_provided_images=True``.
+2. Materialises that session's user inputs into
+   ``inputs/_retrieved/<sid>/`` — the UII's ``extracted_inputs.txt``,
+   the raw ``queries.txt``, every reference image at FULL resolution,
+   each image's ``_note.txt`` description, and each image's
+   ``.compression.json`` degree sidecar (so ``view_images`` applies the
+   degree the image's own author chose).  A folder already populated is
+   served straight from disk: the artefacts are immutable, so a
+   re-retrieval by any agent costs nothing and reads identically.
 3. Assembles an XML response (``<retrieve_user_inputs_meta/>`` +
-   per-session blocks); trims sessions from the end of the input list
-   when the response exceeds ``RETRIEVE_MAX_RESPONSE_TOKENS``.
+   per-session blocks) naming every local path; trims sessions from the
+   end of the input list when the response exceeds
+   ``RETRIEVE_MAX_RESPONSE_TOKENS``.
 4. Logs the call to ``rag_queries`` with
    ``tool_name='retrieve_user_inputs'`` (schema v7).
-5. Returns ``(xml, image_blocks, image_paths)`` to the caller.
+5. Returns the XML string.
 
-The ``@tool``-decorated public stub returns ``""`` — the dispatcher
-in ``agents/shared/retrieve_tool_dispatcher.py`` intercepts and runs
-the real ``_run_retrieve_user_inputs`` function below.  This split
-mirrors the existing ``view_images`` pattern: one LLM-side
-tool call produces both XML evidence (appended as a ``ToolMessage``)
-and image content blocks (buffered for the next ``HumanMessage``).
+NOTHING is attached to the caller's context — not one image byte.
+The agent reads the paths and decides what is worth looking at;
+``view_images`` does the looking, and can place a retrieved image side by
+side with any other.  The ``@tool``-decorated public stub returns ``""``
+— the dispatcher in ``agents/shared/retrieve_tool_dispatcher.py``
+intercepts and runs the real ``_run_retrieve_user_inputs`` below.
 
 Architecture references
 -----------------------
@@ -40,6 +43,7 @@ import base64
 import json
 import logging
 import time
+from pathlib import Path
 from typing import Any
 from xml.sax.saxutils import escape, quoteattr
 
@@ -49,9 +53,8 @@ from psycopg.types.json import Json
 
 from agents.shared import postgres_pool
 from agents.shared.agent_activity import generic_tool
-from agents.shared.image_compression import degree_from_json_text
-from agents.shared.llm_provider import encode_image_bytes, make_image_block
 from agents.shared import r2_uploader
+from config import USER_INPUTS_DIR
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
@@ -70,6 +73,87 @@ _TOKENIZER = tiktoken.get_encoding("cl100k_base")
 # Whitelist of image suffixes considered for retrieval.  Mirrors the
 # pairing convention enforced by the Receptionist (case-insensitive).
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
+
+
+# ============================================================
+# Local retrieval cache
+# ============================================================
+_RETRIEVED_SUBDIR = "_retrieved"
+
+
+def _retrieved_dir(session_id: str) -> Path:
+    """Local folder holding one retrieved session's user inputs.
+
+    Sits BESIDE ``input_images/`` rather than inside it, so nothing that
+    walks the live inputs can mistake a retrieved file for one the user
+    uploaded this session.  Every ``inputs/`` walker in the system goes
+    through ``file_utils.list_files``, which is non-recursive and
+    files-only, so a subdirectory here is invisible to all of them.
+    """
+    return USER_INPUTS_DIR / _RETRIEVED_SUBDIR / session_id
+
+
+def _folder_listing(dest: Path) -> list[tuple[str, int]]:
+    """``(name, size)`` for every file in *dest*, name-sorted."""
+    if not dest.is_dir():
+        return []
+    return sorted(
+        (f.name, f.stat().st_size) for f in dest.iterdir() if f.is_file()
+    )
+
+
+def _write_artefact(dest: Path, name: str, data: bytes) -> None:
+    """Write one fetched artefact into the cache folder.  Best-effort."""
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / name).write_bytes(data)
+    except OSError as exc:
+        logger.warning("[retrieve_user_inputs]  could not write %s: %s",
+                       dest / name, exc)
+
+
+def _read_local(dest: Path, name: str) -> str | None:
+    """Read a cached text artefact back, or None when absent/unreadable."""
+    f = dest / name
+    if not f.is_file():
+        return None
+    try:
+        return f.read_text(encoding="utf-8")
+    except OSError:
+        return None
+
+
+def _local_images(
+    dest: Path,
+) -> tuple[list[tuple[str, str, str | None]], list[tuple[str, str]]]:
+    """Re-read a cached folder into ``(images, orphan_notes)``.
+
+    ``images`` is ``(stem, absolute path, note text or None)`` — the
+    note is optional, the path never is.  ``orphan_notes`` is
+    ``(stem, text)`` for any ``_note.txt`` whose image is not in the folder.
+    """
+    if not dest.is_dir():
+        return [], []
+    files = [f for f in sorted(dest.iterdir()) if f.is_file()]
+    stems: set[str] = set()
+    images: list[tuple[str, str, str | None]] = []
+    for f in files:
+        if f.suffix.lower() not in _IMAGE_SUFFIXES:
+            continue
+        stems.add(f.stem)
+        images.append((f.stem, str(f.resolve()),
+                       _read_local(dest, f"{f.stem}_note.txt")))
+    orphans: list[tuple[str, str]] = []
+    for f in files:
+        if not f.name.lower().endswith("_note.txt"):
+            continue
+        stem = f.name[: -len("_note.txt")]
+        if stem in stems:
+            continue
+        text = _read_local(dest, f.name)
+        if text is not None:
+            orphans.append((stem, text))
+    return images, orphans
 
 
 # ============================================================
@@ -232,46 +316,77 @@ def _wrap_cdata(text: str) -> str:
 
 def _build_session_block(
     session_id: str,
+    extraction_text: str | None,
     queries_text: str | None,
-    image_notes: list[tuple[str, str | None]],
-    image_refs: list[tuple[str, str]],  # (name, r2_key)
+    images: list[tuple[str, str, str | None]],   # (name, local path, note|None)
+    orphan_notes: list[tuple[str, str]],
     fetch_failures: list[str],
+    folder: str | None = None,
+    listing: list[tuple[str, int]] | None = None,
 ) -> str:
     """Render one <session> block."""
     parts: list[str] = []
     parts.append(f"<session id={_attr(session_id)}>")
-    if queries_text is None:
-        # queries.txt missing in R2.  Emit a <missing> marker.
-        parts.append(
-            f"  <missing path={_attr(f'{session_id}/user_inputs/queries.txt')}/>"
-        )
+    if extraction_text is not None:
+        # The UII's interpreted extraction is the primary text: already
+        # structured, so a reading agent does not re-derive it from prose.
+        # queries.txt stays on disk and is listed in <folder> below.
+        parts.append("  <extracted_inputs>")
+        parts.append("    " + _wrap_cdata(extraction_text))
+        parts.append("  </extracted_inputs>")
     else:
-        parts.append("  <user_query>")
-        parts.append("    " + _wrap_cdata(queries_text))
-        parts.append("  </user_query>")
-    if image_notes:
-        parts.append("  <image_notes>")
-        for name, note_text in image_notes:
+        # Sessions archived before extractions were shipped to R2 have none.
+        # Say so, then fall back to the raw text, so one call is still
+        # useful for the whole pre-existing corpus.
+        parts.append(
+            "  <missing path={} note={}/>".format(
+                _attr(f"{session_id}/user_inputs/extracted_inputs.txt"),
+                _attr("no extraction was archived for this session; "
+                      "the raw user text is given below instead"),
+            )
+        )
+        if queries_text is None:
+            parts.append(
+                f"  <missing path={_attr(f'{session_id}/user_inputs/queries.txt')}/>"
+            )
+        else:
+            parts.append("  <user_query>")
+            parts.append("    " + _wrap_cdata(queries_text))
+            parts.append("  </user_query>")
+    if images or orphan_notes:
+        parts.append("  <images>")
+        for name, path, note_text in images:
             if note_text is None:
+                # No note was written for this image.  The PATH is reported
+                # regardless: it is what ``view_images`` needs, and an image
+                # with no description is still worth looking at.
                 parts.append(
-                    f"    <missing path={_attr(f'{session_id}/user_inputs/images/{name}_note.txt')}/>"
+                    f"    <image name={_attr(name)} path={_attr(path)}/>"
                 )
                 continue
-            parts.append(f"    <note name={_attr(name)}>")
-            parts.append("      " + _wrap_cdata(note_text))
+            parts.append(f"    <image name={_attr(name)} path={_attr(path)}>")
+            parts.append("      <note>")
+            parts.append("        " + _wrap_cdata(note_text))
+            parts.append("      </note>")
+            parts.append("    </image>")
+        for name, text in orphan_notes:
+            # A note whose image is absent.  Rare (the Receptionist enforces
+            # pairing) but reported rather than silently dropped.
+            parts.append(f"    <note name={_attr(name)} orphan=\"true\">")
+            parts.append("      " + _wrap_cdata(text))
             parts.append("    </note>")
-        parts.append("  </image_notes>")
-    if image_refs:
-        parts.append("  <images>")
-        for name, key in image_refs:
-            parts.append(
-                f"    <image name={_attr(name)} key={_attr(key)}/>"
-            )
         parts.append("  </images>")
+    if folder:
+        # The full set of user inputs, materialised locally.  Every file is
+        # addressable by ``view_images``; the agent picks what to look at.
+        parts.append(f"  <folder path={_attr(folder)}>")
+        for name, size in (listing or []):
+            parts.append(f"    <file name={_attr(name)} bytes={_attr(size)}/>")
+        parts.append("  </folder>")
     for failure_key in fetch_failures:
         # Catch-all marker for any other unexpected fetch miss
-        # (kept separate from queries/notes-specific markers above
-        # so an operator can distinguish the failure mode).
+        # (kept separate from the specific markers above so an operator
+        # can distinguish the failure mode).
         parts.append(f"  <missing path={_attr(failure_key)}/>")
     parts.append("</session>")
     return "\n".join(parts)
@@ -279,7 +394,6 @@ def _build_session_block(
 
 def _build_xml(
     session_records: list[dict],
-    images_included: bool,
     truncated_count: int,
 ) -> str:
     """Render the full response XML from per-session records."""
@@ -294,7 +408,6 @@ def _build_xml(
         f"<retrieve_user_inputs_meta "
         f"sessions_requested={_attr(n_requested)} "
         f"sessions_returned={_attr(n_returned)} "
-        f"images_included={_attr(str(images_included).lower())} "
         f"truncated={_attr(str(truncated_count > 0).lower())}/>"
     ]
     for r in session_records:
@@ -315,10 +428,13 @@ def _build_xml(
             continue
         parts.append(_build_session_block(
             r["session_id"],
+            r["extraction_text"],
             r["queries_text"],
-            r["image_notes"],
-            r["image_refs"],
+            r["images"],
+            r["orphan_notes"],
             r["fetch_failures"],
+            r.get("folder"),
+            r.get("listing"),
         ))
     if truncated_count > 0:
         parts.append(
@@ -333,7 +449,6 @@ def _count_tokens(text: str) -> int:
 
 def _trim_to_cap(
     session_records: list[dict],
-    images_included: bool,
     cap_tokens: int,
 ) -> tuple[str, int]:
     """Render XML and drop sessions from the END until under *cap_tokens*.
@@ -345,7 +460,7 @@ def _trim_to_cap(
     # Start with all sessions present (none trimmed yet).
     for r in session_records:
         r["trimmed"] = False
-    xml = _build_xml(session_records, images_included, truncated_count=0)
+    xml = _build_xml(session_records, truncated_count=0)
     if cap_tokens <= 0 or _count_tokens(xml) <= cap_tokens:
         return xml, 0
     # Walk backwards through session_records, marking each as
@@ -358,7 +473,7 @@ def _trim_to_cap(
             continue
         r["trimmed"] = True
         trimmed += 1
-        xml = _build_xml(session_records, images_included, truncated_count=trimmed)
+        xml = _build_xml(session_records, truncated_count=trimmed)
         if _count_tokens(xml) <= cap_tokens:
             return xml, trimmed
     # Even after trimming all session blocks we are over cap.
@@ -429,22 +544,15 @@ def _run_retrieve_user_inputs(
     *,
     caller_agent: str,
     session_ids: list[str],
-    images_flag: bool,
-    provider: str = "openai",
-) -> tuple[str, list[dict], list[str]]:
+) -> str:
     """Real retrieval logic.  Called by the dispatcher.
 
-    Returns ``(xml_str, image_blocks, image_paths)``.  ``image_blocks``
-    is a list of provider-shaped image content-block dicts ready to
-    attach via ``append_pending_images``.  ``image_paths`` is the
-    parallel list of R2 keys used as text labels in the next
-    ``HumanMessage`` so the path stays in history even after image
-    bytes are stripped.
+    Returns the XML string.  Every artefact is materialised under
+    ``inputs/_retrieved/<session_id>/`` and referenced there BY PATH;
+    nothing is attached to the model's context.
     """
     start = time.monotonic()
     error_message: str | None = None
-    image_blocks: list[dict] = []
-    image_paths: list[str] = []
     session_records: list[dict] = []
     try:
         existence = _validate_sessions_in_postgres(session_ids)
@@ -489,80 +597,119 @@ def _run_retrieve_user_inputs(
                 })
                 continue
 
+            extraction_text: str | None = None
             queries_text: str | None = None
-            image_notes: list[tuple[str, str | None]] = []
-            image_refs: list[tuple[str, str]] = []
+            images: list[tuple[str, str, str | None]] = []
+            orphan_notes: list[tuple[str, str]] = []
             fetch_failures: list[str] = []
 
-            if bucket is None or client is None:
-                # R2 not configured: emit <missing/> markers and
-                # move on.  Won't return any content.
+            # Bound before any branching: the record below reads it
+            # unconditionally.  Same rule as retrieve_attempt, where binding
+            # it inside one branch cost an UnboundLocalError.
+            dest = _retrieved_dir(sid)
+
+            if dest.is_dir() and any(dest.iterdir()):
+                # Already fetched this session — by THIS agent or any
+                # other.  Immutable artefacts, so serve from disk whatever
+                # R2's state is.  Nothing in the response says "cached": it
+                # reads identically either way, deliberately, so an agent
+                # never has to reason about cache state.
+                extraction_text = _read_local(dest, "extracted_inputs.txt")
+                queries_text = _read_local(dest, "queries.txt")
+                images, orphan_notes = _local_images(dest)
+            elif bucket is None or client is None:
+                # R2 not configured and nothing cached: emit a <missing/>
+                # marker and move on.  Won't return any content.
                 fetch_failures.append(
                     f"{sid}/user_inputs/ (R2 not configured)"
                 )
             else:
-                # queries.txt
+                extraction_text = _r2_get_text(
+                    client, bucket,
+                    _r2_key(sid, "user_inputs", "extracted_inputs.txt"),
+                )
                 queries_text = _r2_get_text(
                     client, bucket,
                     _r2_key(sid, "user_inputs", "queries.txt"),
                 )
-                # Images + notes
+                if extraction_text is not None:
+                    _write_artefact(dest, "extracted_inputs.txt",
+                                    extraction_text.encode("utf-8"))
+                if queries_text is not None:
+                    _write_artefact(dest, "queries.txt",
+                                    queries_text.encode("utf-8"))
                 if has_images:
                     listed = _r2_list_user_images(client, bucket, sid)
                     images_listed, notes_listed = (
                         _split_image_and_note_names(listed)
                     )
-                    # Notes — always fetched if any images exist
-                    for stem, note_name in notes_listed:
+                    paired: set[str] = set()
+                    for stem, img_name in images_listed:
+                        key = _r2_key(
+                            sid, "user_inputs", "images", img_name,
+                        )
+                        data = _r2_get_bytes(client, bucket, key)
+                        if data is None:
+                            fetch_failures.append(key)
+                            continue
+                        # Full resolution on disk — no downscale here.
+                        # The sidecar fetched just below lands BESIDE the
+                        # image, which is exactly where
+                        # ``image_compression.read_degree`` looks, so
+                        # ``view_images`` applies the degree the image's own
+                        # author chose.
+                        _write_artefact(dest, img_name, data)
+                        paired.add(stem)
+                        note_name = f"{stem}_note.txt"
                         note_text = _r2_get_text(
                             client, bucket,
                             _r2_key(sid, "user_inputs", "images", note_name),
                         )
-                        image_notes.append((stem, note_text))
-                    # Images (only when flag set)
-                    if images_flag:
-                        for stem, img_name in images_listed:
-                            key = _r2_key(
-                                sid, "user_inputs", "images", img_name,
-                            )
-                            full_key = (
-                                f"{r2_uploader._key_prefix()}"  # noqa: SLF001
-                                f"{key.lstrip('/')}"
-                            )
-                            data = _r2_get_bytes(client, bucket, key)
-                            if data is None:
-                                fetch_failures.append(key)
-                                continue
-                            # Re-apply the degree its author saved (auto-default
-                            # if no sidecar); the model sees the downscaled copy
-                            # while OCR (below) still reads full-res ``data``.
-                            _istem = img_name.rsplit(".", 1)[0]
-                            _sc = _r2_get_text(
-                                client, bucket,
-                                _r2_key(sid, "user_inputs", "images",
-                                        _istem + ".compression.json"),
-                            )
-                            _deg = degree_from_json_text(_sc) if _sc else None
-                            b64 = encode_image_bytes(data, _deg)
-                            image_blocks.append(
-                                make_image_block(b64, provider)
-                            )
-                            image_paths.append(full_key)
-                            image_refs.append((stem, full_key))
+                        if note_text is not None:
+                            _write_artefact(dest, note_name,
+                                            note_text.encode("utf-8"))
+                        _sc_name = (
+                            f"{img_name.rsplit('.', 1)[0]}.compression.json"
+                        )
+                        _sc_text = _r2_get_text(
+                            client, bucket,
+                            _r2_key(sid, "user_inputs", "images", _sc_name),
+                        )
+                        if _sc_text is not None:
+                            _write_artefact(dest, _sc_name,
+                                            _sc_text.encode("utf-8"))
+                        images.append(
+                            (stem, str((dest / img_name).resolve()), note_text)
+                        )
+                    for stem, note_name in notes_listed:
+                        # A note with no image of its own.  Fetched too, so
+                        # nothing the user wrote is silently lost.
+                        if stem in paired:
+                            continue
+                        text = _r2_get_text(
+                            client, bucket,
+                            _r2_key(sid, "user_inputs", "images", note_name),
+                        )
+                        if text is None:
+                            continue
+                        _write_artefact(dest, note_name, text.encode("utf-8"))
+                        orphan_notes.append((stem, text))
 
             session_records.append({
                 "session_id": sid,
                 "not_found": False,
+                "extraction_text": extraction_text,
                 "queries_text": queries_text,
-                "image_notes": image_notes,
-                "image_refs": image_refs,
+                "images": images,
+                "orphan_notes": orphan_notes,
                 "fetch_failures": fetch_failures,
+                "folder": str(dest.resolve()) if dest.is_dir() else None,
+                "listing": _folder_listing(dest),
             })
 
         # Render + trim
         xml, n_trimmed = _trim_to_cap(
             session_records,
-            images_included=images_flag,
             cap_tokens=_MAX_RESPONSE_TOKENS,
         )
 
@@ -578,7 +725,10 @@ def _run_retrieve_user_inputs(
         _log_to_rag_queries(
             caller_agent=caller_agent,
             session_ids=session_ids,
-            images_flag=images_flag,
+            # The column records whether image BYTES reached the caller's
+            # context.  Nothing is attached any more, so it is always
+            # false — same as retrieve_attempt since step 2a.
+            images_flag=False,
             n_returned=len(returned_sids),
             returned_session_ids=returned_sids,
             skipped_count=not_found_count,
@@ -586,7 +736,7 @@ def _run_retrieve_user_inputs(
             latency_ms=latency_ms,
             error_message=None,
         )
-        return xml, image_blocks, image_paths
+        return xml
     except Exception as exc:  # noqa: BLE001
         # Hard error before / during retrieval.  Build a minimal
         # error envelope; rag_queries logs the failure.
@@ -599,7 +749,6 @@ def _run_retrieve_user_inputs(
             f"<retrieve_user_inputs_meta "
             f"sessions_requested={_attr(len(session_ids))} "
             f"sessions_returned=\"0\" "
-            f"images_included={_attr(str(images_flag).lower())} "
             f"truncated=\"false\" "
             f"error={_attr(error_message)}/>\n"
             f"<error>{escape(error_message)}</error>"
@@ -608,7 +757,7 @@ def _run_retrieve_user_inputs(
         _log_to_rag_queries(
             caller_agent=caller_agent,
             session_ids=session_ids,
-            images_flag=images_flag,
+            images_flag=False,
             n_returned=0,
             returned_session_ids=[],
             skipped_count=len(session_ids),
@@ -616,7 +765,7 @@ def _run_retrieve_user_inputs(
             latency_ms=latency_ms,
             error_message=error_message,
         )
-        return xml, [], []
+        return xml
 
 
 def make_retrieve_user_inputs_tool(caller_agent: str):
@@ -645,28 +794,28 @@ def make_retrieve_user_inputs_tool(caller_agent: str):
     # agents, so nothing is lost — and nothing is read that no one views.
     @tool
     @generic_tool("Retrieve user inputs")
-    def retrieve_user_inputs(
-        sessions_ID_list: list[str],
-        images_flag: bool = False,
-    ) -> str:
-        """Retrieve text and (optionally) image artefacts for past saved sessions.
+    def retrieve_user_inputs(sessions_ID_list: list[str]) -> str:
+        """Fetch a past saved session's user inputs onto local disk.
 
-        Use AFTER ``database_search`` has surfaced a session_id that
-        looks worth a deeper read.  Returns the session's user-supplied
-        text (``user_query.txt``) and per-image notes.  When
-        ``images_flag=True`` it also attaches the user-provided image
-        bytes as content blocks on the next message.
+        Use AFTER ``database_search`` has surfaced a session_id worth a
+        deeper read.  Everything that session's user supplied is written
+        to a local folder, and the response lists that folder's contents.
+
+        The response prints, per session: the User Input Inspector's
+        structured extraction of the inputs (or, for a session archived
+        before extractions were kept, the raw user text instead), and
+        every reference image as an absolute local path — with its
+        description when one was written, and the path alone when none
+        was.
+
+        Nothing is shown to you as an image here.  Pass any of the listed
+        paths to ``view_images`` to actually look at one, alongside
+        images from anywhere else if you want them side by side.
 
         Args:
-            sessions_ID_list: list of session_id strings to retrieve
-                (e.g. from a database_search response's
-                ``<session id="..."/>`` elements).
-            images_flag: when True, attach image bytes; when False,
-                only the text content (image notes are always
-                included if any images exist for that session).
-
-        Returns text-only XML.  Image bytes, when requested, attach
-        separately as content blocks on the next message.
+            sessions_ID_list: session_id strings to retrieve, e.g. from a
+                ``database_search`` response's ``<session id="..."/>``
+                elements.
         """
         # Real work happens in the dispatcher (it has access to the
         # agent's messages buffer + provider info).  This stub just
