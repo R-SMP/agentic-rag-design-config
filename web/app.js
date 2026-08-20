@@ -4534,6 +4534,7 @@ function sqNewRun() {
     stage_id: sqUUID(),
     run_id: "",
     condition: "current",
+    prompt_variant: "",
     single_provider: "openai",
     single_model: "",
     query: "",
@@ -4560,6 +4561,12 @@ function sqRenderRuns() {
         <input class="sq-run-id" type="text" value="${sqEsc(run.run_id)}"
                data-k="run_id" placeholder="run id (optional)" />
         <select class="sq-run-cond" data-k="condition">${sqConditionOptions(run.condition)}</select>
+        <select class="sq-run-pv" data-k="prompt_variant"
+                title="Which PROMPT SET this run uses. 'global' leaves the Workflow-Settings value alone; the others pin it for this run only and are restored when the queue ends.">
+          <option value=""${!run.prompt_variant ? " selected" : ""}>prompts: global</option>
+          <option value="standard"${run.prompt_variant === "standard" ? " selected" : ""}>standard</option>
+          <option value="reduced"${run.prompt_variant === "reduced" ? " selected" : ""}>reduced</option>
+        </select>
         <button class="sq-run-img" type="button" title="Manage this run's images">🖼 ${run._imgCount || 0}</button>
         <button class="sq-run-dup ghost" type="button" title="Duplicate run">⧉</button>
         <button class="sq-run-adv ghost" type="button" title="Per-run overrides">⚙</button>
@@ -4710,6 +4717,7 @@ async function sqFlushDraft() {
       stage_id: r.stage_id,
       run_id: r.run_id || "",
       condition: r.condition || "current",
+      prompt_variant: r.prompt_variant || "",
       single_provider: r.single_provider || "openai",
       single_model: r.single_model || "",
       query: r.query || "",
@@ -4748,6 +4756,7 @@ async function sqDuplicateRun(i) {
     stage_id: sqUUID(),
     run_id: (src.run_id || "").trim() ? src.run_id + " copy" : "",
     condition: src.condition,
+    prompt_variant: src.prompt_variant,
     single_provider: src.single_provider,
     single_model: src.single_model,
     query: src.query,
@@ -5117,6 +5126,7 @@ async function hydrateSessionsQueue() {
             stage_id: r.stage_id || sqUUID(),
             run_id: r.run_id || "",
             condition: r.condition || "current",
+            prompt_variant: r.prompt_variant || "",
             single_provider: r.single_provider || "openai",
             single_model: r.single_model || "",
             query: r.query || "",

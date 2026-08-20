@@ -2176,6 +2176,9 @@ async def _run_queue_in_background(manifest: dict) -> None:
     # and the finally block restores it so the user's next normal chat is
     # unaffected by the last run's condition.
     baseline = manifest.get("baseline_routing")
+    # Restored alongside the routing so a queue that pinned a variant does not
+    # leave the user's next normal chat on the other prompt set.
+    baseline_variant = manifest.get("baseline_prompt_variant")
     halted = False
     # Runs THIS invocation actually executed, in order.  The circuit breaker
     # reads its streak off these and never off the manifest as a whole, so a
@@ -2270,6 +2273,31 @@ async def _run_queue_in_background(manifest: dict) -> None:
                 except Exception as exc:
                     run["status"] = "failed"
                     run["note"] = f"condition write failed: {exc}"
+                    run["finished_at"] = _web_now_iso()
+                    _emit_runner(
+                        manifest,
+                        _queue_progress(manifest, current_index=i, stage="turn",
+                                        in_flight_run_id=run["run_id"], active=True),
+                        f"[{run['run_id']}] FAILED — {run['note']}",
+                    )
+                    continue
+
+            # 2b. Apply the run's PROMPT_VARIANT when it pins one.  Same
+            #     end -> write -> build ordering as the routing condition
+            #     above: _build_session reloads the settings module and
+            #     topology.py reads the attribute fresh per call, so the
+            #     variant binds for THIS run only.  Blank leaves the global
+            #     setting untouched, which is what every pre-existing queue
+            #     does.
+            want_variant = (run.get("prompt_variant") or "").strip()
+            if want_variant:
+                try:
+                    await run_in_threadpool(
+                        settings_editor.write_updates,
+                        {"PROMPT_VARIANT": want_variant})
+                except Exception as exc:
+                    run["status"] = "failed"
+                    run["note"] = f"prompt-variant write failed: {exc}"
                     run["finished_at"] = _web_now_iso()
                     _emit_runner(
                         manifest,
@@ -2525,6 +2553,16 @@ async def _run_queue_in_background(manifest: dict) -> None:
                 logger.info("[QUEUE] restored pre-queue LLM routing")
             except Exception:
                 logger.exception("[QUEUE] failed to restore pre-queue routing")
+        if baseline_variant:
+            try:
+                await run_in_threadpool(
+                    settings_editor.write_updates,
+                    {"PROMPT_VARIANT": baseline_variant})
+                logger.info("[QUEUE] restored pre-queue PROMPT_VARIANT=%s",
+                            baseline_variant)
+            except Exception:
+                logger.exception(
+                    "[QUEUE] failed to restore pre-queue PROMPT_VARIANT")
         _QUEUE_IN_FLIGHT = False
         _runner_halt = False
         orphaned = _live_orphans()
@@ -2717,6 +2755,18 @@ def _normalize_queue_defaults(d: "dict | None") -> dict:
     }
 
 
+def _capture_prompt_variant() -> "str | None":
+    """The PROMPT_VARIANT in force when the queue started, so the finally
+    block can put it back.  ``None`` if it cannot be read, in which case the
+    setting is left exactly as the last run left it."""
+    try:
+        return str(settings_llm_routing.read_state().get("prompt_variant") or "") \
+            or None
+    except Exception:
+        logger.exception("[QUEUE] could not read PROMPT_VARIANT for the baseline")
+        return None
+
+
 def _capture_routing_baseline() -> "dict | None":
     """Snapshot the current LLM routing as a ``write_updates``-shaped
     payload so the runner can resolve ``'current'`` deterministically and
@@ -2805,6 +2855,8 @@ async def api_queue_start(body: QueueStartIn) -> dict:
         # Keep the baseline captured at the original start if present.
         if not manifest.get("baseline_routing"):
             manifest["baseline_routing"] = _capture_routing_baseline()
+        if not manifest.get("baseline_prompt_variant"):
+            manifest["baseline_prompt_variant"] = _capture_prompt_variant()
     else:
         # Fresh start: the persisted draft is the source of truth (its runs
         # match their staged images by stage_id).  The frontend flushes the
@@ -2827,6 +2879,7 @@ async def api_queue_start(body: QueueStartIn) -> dict:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         manifest["baseline_routing"] = _capture_routing_baseline()
+        manifest["baseline_prompt_variant"] = _capture_prompt_variant()
         # GC staging folders no longer referenced by this queue.
         try:
             keep = {r["stage_id"] for r in manifest["runs"] if r.get("stage_id")}
