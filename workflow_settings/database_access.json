@@ -1,10 +1,86 @@
 {
-  "dc_input_creator": true,
-  "dc_input_inspector": true,
-  "dc_output_inspector": true,
-  "orchestrator": false,
-  "planner": true,
-  "receptionist": true,
-  "tool_caller": false,
-  "user_input_inspector": true
+  "7": {
+    "dc_input_creator": {
+      "attempt": true,
+      "search": true,
+      "user_inputs": true
+    },
+    "dc_input_inspector": {
+      "attempt": true,
+      "search": true,
+      "user_inputs": true
+    },
+    "dc_output_inspector": {
+      "attempt": true,
+      "search": true,
+      "user_inputs": true
+    },
+    "orchestrator": {
+      "attempt": false,
+      "search": false,
+      "user_inputs": false
+    },
+    "planner": {
+      "attempt": true,
+      "search": true,
+      "user_inputs": true
+    },
+    "receptionist": {
+      "attempt": true,
+      "search": true,
+      "user_inputs": true
+    },
+    "tool_caller": {
+      "attempt": false,
+      "search": false,
+      "user_inputs": false
+    },
+    "user_input_inspector": {
+      "attempt": true,
+      "search": true,
+      "user_inputs": true
+    }
+  },
+  "7-reduced": {
+    "dc_input_creator": {
+      "attempt": true,
+      "search": true,
+      "user_inputs": false
+    },
+    "dc_input_inspector": {
+      "attempt": true,
+      "search": true,
+      "user_inputs": true
+    },
+    "dc_output_inspector": {
+      "attempt": true,
+      "search": true,
+      "user_inputs": false
+    },
+    "orchestrator": {
+      "attempt": false,
+      "search": false,
+      "user_inputs": false
+    },
+    "planner": {
+      "attempt": false,
+      "search": true,
+      "user_inputs": false
+    },
+    "receptionist": {
+      "attempt": false,
+      "search": false,
+      "user_inputs": false
+    },
+    "tool_caller": {
+      "attempt": false,
+      "search": false,
+      "user_inputs": false
+    },
+    "user_input_inspector": {
+      "attempt": false,
+      "search": true,
+      "user_inputs": true
+    }
+  }
 }

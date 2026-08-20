@@ -1619,6 +1619,11 @@ from workflow_settings import database_access as _db_access
 class _DbAccessBody(BaseModel):
     agent:   str
     enabled: bool
+    # Which of the three database tools to toggle.  Omitted means ALL
+    # THREE, which is exactly what the current single "DBa" button in the
+    # LLM-routing chart means; the per-tool UI arrives with the admin-UI
+    # batch and will start sending this.
+    tool:    str | None = None
 
 
 @app.get("/api/database-access")
@@ -1632,6 +1637,8 @@ def api_database_access_get() -> dict:
     importlib.reload(workflow_settings)
     return {
         "flags":       _db_access.get_all(),
+        "flags_tools": _db_access.get_all_tools(),
+        "profile":     _db_access.profile_key(),
         "rag_enabled": bool(workflow_settings.RAG_ENABLED),
     }
 
@@ -1647,7 +1654,14 @@ def api_database_access_post(body: _DbAccessBody) -> dict:
     _require_auth()
     _require_no_session()
     try:
-        flags_after = _db_access.set_one(body.agent, body.enabled)
+        if body.tool is None:
+            flags_after = _db_access.set_many(
+                {body.agent: {t: body.enabled for t in _db_access.TOOLS}}
+            )
+        else:
+            flags_after = _db_access.set_one(
+                body.agent, body.tool, body.enabled
+            )
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:  # never 500 the editor
@@ -1658,13 +1672,18 @@ def api_database_access_post(body: _DbAccessBody) -> dict:
                    f"({type(exc).__name__}: {exc}).",
         )
     logger.info(
-        "[WEB] database-access updated: %s -> %s",
-        body.agent, body.enabled,
+        "[WEB] database-access updated: %s %s -> %s",
+        body.agent, body.tool or "(all tools)", body.enabled,
     )
     importlib.reload(workflow_settings)
     return {
-        "ok":          True,
-        "flags":       flags_after,
+        "ok": True,
+        # ``flags`` stays the COLLAPSED {agent: bool} view that GET returns
+        # and the chart's single button renders; ``flags_tools`` carries the
+        # per-tool detail for the UI that will replace it.
+        "flags":       _db_access.get_all(),
+        "flags_tools": flags_after,
+        "profile":     _db_access.profile_key(),
         "rag_enabled": bool(workflow_settings.RAG_ENABLED),
     }
 

@@ -4090,6 +4090,43 @@ Reduced-variant fork: `reduced7/agents/shared/routing.py`.
 
 ---
 
+### F86. Giving the 5-agent / 3-agent / any future reduced system its own DBa distribution is a DATA change, not a code change
+
+**Status.** OPEN by design — nothing is broken; this records where the work
+goes when those systems are designed.  Written 2026-08-20 alongside the
+per-tool DBa distribution.
+
+**The shape.**  `workflow_settings/database_access.json` is keyed by SETTINGS
+PROFILE, then agent, then tool:
+
+    {
+      "7":         { "planner": {"search": true, "user_inputs": true, "attempt": true}, ... },
+      "7-reduced": { "planner": {"search": true, "user_inputs": false, "attempt": false}, ... }
+    }
+
+The profile key is `"<topology>"` for the standard prompts and
+`"<topology>-<variant>"` otherwise — e.g. `"7"`, `"7-reduced"`.
+
+**Only profiles someone actually DECIDED are in the file.**  `"5"` and `"3"`
+are deliberately ABSENT.  A missing profile falls back to the in-code default
+(every tool on for every agent), which is exactly how those systems behave
+today, so nothing changes for them until somebody decides otherwise.  This was
+a conscious choice: writing rows for them would have recorded an inherited
+DEFAULT as though it were a DECISION, and six months later nobody could tell
+the two apart.
+
+**So when you design database access for the 5-agent system, the 3-agent
+system, or a future reduced variant of either: ADD ITS ROW.  That is the whole
+change.**  No migration, no code, no new smoke test — the resolver, the
+binding helper, the prompt-slot blanking and the admin UI are all already
+profile-agnostic.  A new key simply starts resolving.
+
+**The one thing to get right** is the key itself: it must match what
+`database_access.profile_key()` computes from `SYSTEM_TOPOLOGY` +
+`PROMPT_VARIANT`.  A typo'd key does NOT error — it silently falls back to the
+all-on default, which looks like "the setting did nothing".  If a distribution
+seems to be ignored, check the key spelling FIRST.
+
 ### F85. The prompt sections describing the RAG tools are stale after the retrieval rework
 
 **Status.** OPEN. Raised by the owner 2026-08-20, during the RAG tool

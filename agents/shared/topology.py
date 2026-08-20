@@ -49,8 +49,12 @@ def prompt_variant() -> str:
     """Which PROMPT set the active agent count runs on.
 
     Orthogonal to :func:`topology`, which is the agent COUNT.  A variant
-    changes only the text the agents read, never which agents exist, so no
-    agent-count logic should branch on this - only prompt resolution does.
+    never changes which agents EXIST, so no agent-count logic should branch
+    on this.  It does change what those agents READ and, since the per-tool
+    DBa distribution landed, which DATABASE TOOLS they hold: the variant is
+    part of the settings-profile key in
+    ``workflow_settings.database_access.profile_key()``.  Nothing else may
+    branch on it without being recorded here.
 
     ``"standard"`` (the default) means the prompts as they are today, and
     resolution behaves exactly as it did before this dimension existed.
