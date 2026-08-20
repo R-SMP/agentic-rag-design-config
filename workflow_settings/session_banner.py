@@ -125,13 +125,30 @@ def _scan_llm_routing() -> dict[str, Any] | None:
         return None
 
 
-def _scan_database_access() -> dict[str, bool] | None:
-    """Return the per-agent DBa flag dict from
-    ``database_access.get_all()`` (pre-master-switch — pure per-agent
-    state), or ``None`` on failure."""
+def _scan_database_access() -> dict[str, dict[str, bool]] | None:
+    """Per-(agent, tool) DBa state for the ACTIVE profile, or ``None``.
+
+    Pre-master-switch: pure stored state, so the banner shows what is
+    configured even when ``RAG_ENABLED`` is off.  Per-tool since the three
+    database tools are gated independently — a collapsed per-agent bool
+    would hide exactly the distribution this banner exists to record.
+    """
     try:
-        from workflow_settings.database_access import get_all
-        return get_all()
+        from workflow_settings.database_access import get_all_tools
+        return get_all_tools()
+    except Exception:
+        return None
+
+
+def _scan_database_profile() -> str | None:
+    """The active DBa settings profile (e.g. ``"7-reduced"``), or ``None``.
+
+    Worth logging on its own line: a typo'd profile silently resolves to
+    the all-on default, and this is where that shows up.
+    """
+    try:
+        from workflow_settings.database_access import profile_key
+        return profile_key()
     except Exception:
         return None
 
@@ -164,6 +181,7 @@ def build_banner_lines() -> list[str]:
     settings_dict = _scan_settings_module()
     routing = _scan_llm_routing()
     dba = _scan_database_access()
+    dba_profile = _scan_database_profile()
     secrets = _scan_secrets_present()
 
     lines.append("=== SESSION CONFIG BANNER ===")
@@ -204,10 +222,14 @@ def build_banner_lines() -> list[str]:
     lines.append("")
 
     # --- [Database access] ---
-    lines.append("[Database access - per-agent DBa flag]")
+    lines.append(
+        f"[Database access - per-agent, per-tool; profile "
+        f"{dba_profile or '?'}]"
+    )
     if dba is not None:
         for k in sorted(dba):
-            lines.append(f"  {k:22}: {dba[k]}")
+            held = [t for t, on in dba[k].items() if on]
+            lines.append(f"  {k:22}: {', '.join(held) if held else '-'}")
     else:
         lines.append("  (could not read database access flags)")
     lines.append("")
@@ -224,6 +246,7 @@ def build_banner_lines() -> list[str]:
         "settings":        settings_dict,
         "llm_routing":     routing,
         "database_access": dba,
+        "database_profile": dba_profile,
         "secrets_present": secrets,
     }
     lines.append("[Machine-readable]")

@@ -349,6 +349,66 @@ if _fn is not None:
         check("master switch off -> every agent binds nothing",
               all(dba_tools_for(a) == [] for a in da.DEFAULT_AGENTS))
 
+# --- 11. the assembled prompt drops sections for tools not held --------
+print("case 11 - prompt slots blank for tools the agent does not hold")
+# agents/__init__ eagerly imports every agent class, and langchain_core is
+# absent here, so stub both the package and the one symbol prompts.py needs
+# -- the same preamble smoke_test_prompt_variant uses.
+import types                                                   # noqa: E402
+
+for _n, _r in (("agents", "agents"), ("agents.shared", "agents/shared")):
+    _m = types.ModuleType(_n)
+    _m.__path__ = [str(ROOT / _r)]
+    sys.modules.setdefault(_n, _m)
+_lc = types.ModuleType("langchain_core")
+_lc.__path__ = []
+_lct = types.ModuleType("langchain_core.tools")
+
+
+class _StubStructuredTool:
+    @staticmethod
+    def from_function(*a, **k):
+        return None
+
+
+_lct.StructuredTool = _StubStructuredTool
+sys.modules.setdefault("langchain_core", _lc)
+sys.modules.setdefault("langchain_core.tools", _lct)
+
+from agents.shared import prompts as _prompts                  # noqa: E402
+
+_SEARCH_MARK = "database_search`` runs a semantic"
+_RETRIEVE_MARK = "Retrieving past saved content"
+
+
+def _probe(agent: str, variant: str) -> tuple[bool, bool]:
+    st.PROMPT_VARIANT = variant
+    flat = " ".join(_prompts._build_template(agent).split())
+    return (_SEARCH_MARK in flat, _RETRIEVE_MARK in flat)
+
+
+with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
+    # reduced: Planner holds search ONLY, so the retrieve fragment must go.
+    check("reduced Planner keeps search, loses the retrieve section",
+          _probe("planner", "reduced") == (True, False),
+          _probe("planner", "reduced"))
+    # reduced: Receptionist holds nothing -> <<HAS_DBA>> strips both.
+    check("reduced Receptionist loses both sections",
+          _probe("receptionist", "reduced") == (False, False),
+          _probe("receptionist", "reduced"))
+    # holding EITHER retrieve tool keeps the shared fragment, which covers
+    # both of them: UII has user_inputs, DCIC and DCOI have attempt.
+    for _a in ("user_input_inspector", "dc_input_creator",
+               "dc_output_inspector", "dc_input_inspector"):
+        check("reduced %s keeps both sections" % _a,
+              _probe(_a, "reduced") == (True, True), _probe(_a, "reduced"))
+    # standard is untouched for every one of them.
+    for _a in ("planner", "receptionist", "user_input_inspector",
+               "dc_input_creator", "dc_output_inspector",
+               "dc_input_inspector"):
+        check("standard %s unchanged (both sections present)" % _a,
+              _probe(_a, "standard") == (True, True), _probe(_a, "standard"))
+
 print()
 if _FAILS:
     print("FAIL - %d assertion(s): %s" % (len(_FAILS), _FAILS))

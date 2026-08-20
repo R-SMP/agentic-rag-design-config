@@ -193,6 +193,18 @@ _PF_OFF_RE = re.compile(r"<<PF_OFF>>(.*?)<</PF_OFF>>", re.DOTALL)
 # time when the agent does NOT have database access; otherwise
 # unwrapped to expose the inner content.  See ``apply_dba_filter``.
 _HAS_DBA_RE = re.compile(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>", re.DOTALL)
+
+
+# Which database tool(s) each DBa slot describes.  A slot is blanked only
+# when the agent holds NONE of its tools -- ``$retrieve_user_inputs_tool``
+# is the "Retrieving past saved content" fragment, which covers BOTH
+# retrieve tools, so an agent holding either one still needs it.
+_DBA_TOOL_SLOTS: tuple[tuple[str, tuple[str, ...]], ...] = (
+    ("database_search_tool",       ("search",)),
+    ("database_search_per_agent",  ("search",)),
+    ("retrieve_user_inputs_tool",  ("user_inputs", "attempt")),
+    ("retrieve_attempt_tool",      ("attempt",)),
+)
 # Global Blade-sections-visualizer filter — mirrors the DCII_ONLY pattern,
 # gated by the ``BLADE_SECTIONS_VISUALIZER_ENABLED`` master switch (read fresh
 # via ``workflow_settings.blade_sections_access`` so a Workflow-Settings edit
@@ -1002,6 +1014,18 @@ def _build_template(agent_dir_name: str) -> str:
         # LAST, so a per-agent scoped copy wins over the shared fragment.
         **_scoped_fragments_for(agent_dir_name),
     }
+    # A database tool this agent does NOT hold must not be described to it.
+    # ``<<HAS_DBA>>`` is all-or-nothing (it asks "holds ANY database tool"),
+    # so the per-TOOL decision lands here: each slot blanks itself when its
+    # tool is off for this (profile, agent).  No prompt file has to change,
+    # because the slots dict is already built per agent.
+    #
+    # Local import for the same reason ``apply_dba_filter`` uses one: it
+    # makes the settings dependency obvious in the import statements.
+    from workflow_settings import database_access as _dba
+    for _slot, _tools in _DBA_TOOL_SLOTS:
+        if not any(_dba.is_enabled_for(agent_dir_name, t) for t in _tools):
+            slots[_slot] = ""
     once = Template(raw).safe_substitute(slots)
     twice = Template(once).safe_substitute(slots)
     filtered = apply_flag_filters(twice)
