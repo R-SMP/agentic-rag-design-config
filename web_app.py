@@ -2025,6 +2025,14 @@ def _emit_runner(manifest: dict, progress: dict, line: "str | None" = None) -> N
 _orphan_tasks: "list[asyncio.Task]" = []
 _ORPHAN_JOIN_TIMEOUT_S: float = 600.0
 
+# Circuit breaker for the overnight runner.  A SYSTEMATIC fault — a typo'd
+# model name, a revoked key, an exhausted quota — fails every run identically,
+# so an unattended queue burns the whole night one error at a time.  This is
+# not hypothetical: one mistyped model id cost an entire overnight batch.
+# After this many CONSECUTIVE failed runs the runner stops and leaves the rest
+# pending, so the morning starts from a Resume instead of 40 corpses.
+QUEUE_FAILURE_STREAK_HALT: int = 3
+
 
 class _OrphanAliveError(RuntimeError):
     """A pipeline could not be joined after a timeout/halt and is still
@@ -2032,6 +2040,23 @@ class _OrphanAliveError(RuntimeError):
     process is unsafe (an uninterruptible turn we cannot kill), so the
     runner stops the queue and the human-control lock stays engaged until
     the orphan drains — see :func:`_live_orphans` / :func:`_require_no_queue`."""
+
+
+class _TurnFailure:
+    """A turn that RAISED, as opposed to timing out.
+
+    ``_drive_one_turn`` returns this instead of ``None`` so the runner can put
+    the REAL provider error in the manifest note.  Previously both outcomes
+    collapsed to ``None`` and every failure was recorded as "turn timed out or
+    errored (> N min)" — so a 404 that came back in under a second read as a
+    40-minute hang, and an overnight batch was diagnosed in the wrong
+    direction for a morning.
+    """
+
+    __slots__ = ("exc",)
+
+    def __init__(self, exc: BaseException) -> None:
+        self.exc = exc
 
 
 def _live_orphans() -> bool:
@@ -2043,10 +2068,12 @@ def _live_orphans() -> bool:
 async def _drive_one_turn(text: str, timeout_s: float):
     """Drive ONE dispatch_turn on the global session with a hard timeout.
 
-    Returns the ``TurnResult`` on normal completion, or ``None`` on a
-    per-turn TIMEOUT (or error).  On HALT the turn unwinds via the stop
-    flag and returns a (possibly interrupted) ``TurnResult``; the caller
-    checks ``_runner_halt`` to treat it as interrupted.
+    Returns the ``TurnResult`` on normal completion, ``None`` on a per-turn
+    TIMEOUT, or a :class:`_TurnFailure` carrying the exception when the turn
+    RAISED — the caller must tell those two apart to write an honest note.
+    On HALT the turn unwinds via the stop flag and returns a (possibly
+    interrupted) ``TurnResult``; the caller checks ``_runner_halt`` to treat
+    it as interrupted.
 
     Cancellation model — JOIN, never orphan-and-cancel.  ``run_in_threadpool``
     runs ``dispatch_turn`` on a REAL OS thread, so cancelling the asyncio
@@ -2134,7 +2161,7 @@ async def _drive_one_turn(text: str, timeout_s: float):
             return task.result()
         except Exception as exc:
             logger.exception("[QUEUE] turn raised: %s", exc)
-            return None
+            return _TurnFailure(exc)
     finally:
         _TURN_IN_FLIGHT = False
         _current_turn_task = None
@@ -2150,6 +2177,11 @@ async def _run_queue_in_background(manifest: dict) -> None:
     # unaffected by the last run's condition.
     baseline = manifest.get("baseline_routing")
     halted = False
+    # Runs THIS invocation actually executed, in order.  The circuit breaker
+    # reads its streak off these and never off the manifest as a whole, so a
+    # Resume is not blocked by the very failures that stopped the last run.
+    processed: "list[dict]" = []
+    fatal_note: "str | None" = None
     try:
         for i, run in enumerate(runs):
             if _runner_halt:
@@ -2157,6 +2189,26 @@ async def _run_queue_in_background(manifest: dict) -> None:
             if run["status"] in sessions_queue.TERMINAL_STATES:
                 continue  # resume: already finished, skip
 
+            # Circuit breaker — see QUEUE_FAILURE_STREAK_HALT.  Counting back
+            # over CONSECUTIVE failures means a one-off flake never trips it:
+            # any run ending in something other than "failed" ends the streak.
+            # Statuses are read off the run dicts the loop mutates in place,
+            # so every exit path above is accounted for without the five
+            # `continue` sites having to maintain a counter of their own.
+            streak = 0
+            for prev in reversed(processed):
+                if prev["status"] != "failed":
+                    break
+                streak += 1
+            if streak >= QUEUE_FAILURE_STREAK_HALT:
+                fatal_note = (
+                    f"{streak} runs failed in a row — stopping so the rest of "
+                    f"the queue is not burned.  Last error: "
+                    f"{processed[-1].get('note') or 'unknown'}")
+                logger.error("[QUEUE] %s", fatal_note)
+                break
+
+            processed.append(run)
             run["status"] = "running"
             run["started_at"] = _web_now_iso()
             run["continues"] = 0
@@ -2319,10 +2371,14 @@ async def _run_queue_in_background(manifest: dict) -> None:
                     run["status"] = "interrupted"
                     run["note"] = "halted by user"
                     break
+                if isinstance(result, _TurnFailure):
+                    exc = result.exc
+                    run["status"] = "failed"
+                    run["note"] = f"{type(exc).__name__}: {exc}"[:300]
+                    break
                 if result is None:
                     run["status"] = "failed"
-                    run["note"] = (f"turn timed out or errored "
-                                   f"(> {timeout_min} min)")
+                    run["note"] = f"turn timed out (> {timeout_min} min)"
                     break
 
                 reply = getattr(result, "reply_text", "") or ""
@@ -2472,7 +2528,9 @@ async def _run_queue_in_background(manifest: dict) -> None:
         _QUEUE_IN_FLIGHT = False
         _runner_halt = False
         orphaned = _live_orphans()
-        if halted:
+        if fatal_note:
+            final_stage, final_line = "stopped", f"[queue] STOPPED — {fatal_note}"
+        elif halted:
             final_stage, final_line = "halted", "[queue] halted by user"
         elif orphaned:
             final_stage, final_line = (
@@ -2488,8 +2546,8 @@ async def _run_queue_in_background(manifest: dict) -> None:
                             in_flight_run_id=None, active=False),
             final_line,
         )
-        logger.info("[QUEUE] finished (halted=%s, orphaned=%s)",
-                    halted, orphaned)
+        logger.info("[QUEUE] finished (halted=%s, orphaned=%s, stopped=%s)",
+                    halted, orphaned, bool(fatal_note))
 
 
 # --------------------------------------------------------------------------
