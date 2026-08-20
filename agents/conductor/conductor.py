@@ -641,8 +641,11 @@ class Conductor(BaseChainAgent):
         summary = "\n".join(summary_lines).rstrip()
         last_attempted = ""
         if exchanges:
-            fa, ta, msg = exchanges[-1]
-            last_attempted = f"{fa} -> {ta}: {_first_line(msg, limit=160)}"
+            ex = exchanges[-1]
+            last_attempted = (
+                f"{ex['from_agent']} -> {ex['to_agent']}: "
+                f"{_first_line(ex['message'], limit=160)}"
+            )
 
         fallback = (
             f"The Conductor could not settle a plan within its step "

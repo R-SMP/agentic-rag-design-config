@@ -719,7 +719,7 @@ class Architect(BaseChainAgent):
             summary_lines.append(_truncate(des_msg, 800))
             summary_lines.append("")
 
-        # The Conductor holds the plan itself — there is no separate
+        # The Architect holds the plan itself — there is no separate
         # Planner to read it from.  The 7-agent equivalent reads
         # ``self.planner.current_plan``, whose getattr guards the
         # attribute rather than the agent and would raise here.
@@ -732,11 +732,14 @@ class Architect(BaseChainAgent):
         summary = "\n".join(summary_lines).rstrip()
         last_attempted = ""
         if exchanges:
-            fa, ta, msg = exchanges[-1]
-            last_attempted = f"{fa} -> {ta}: {_first_line(msg, limit=160)}"
+            ex = exchanges[-1]
+            last_attempted = (
+                f"{ex['from_agent']} -> {ex['to_agent']}: "
+                f"{_first_line(ex['message'], limit=160)}"
+            )
 
         fallback = (
-            f"The Conductor could not settle a plan within its step "
+            f"The Architect could not settle a plan within its step "
             f"budget ({reason_label}); this is likely a coordination bug."
         )
         if last_attempted:

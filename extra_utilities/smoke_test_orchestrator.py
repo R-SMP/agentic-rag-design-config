@@ -22,7 +22,10 @@ Verifies:
 6. format_chain_exchanges renders the dict-list into the same
    "[FROM ..., TO ...]:\\n..." prose block the v4 ChainLog.format()
    produced.
-7. (Live LLM call) Orchestrator's base_llm responds to a one-shot
+7. _surface_limit_to_user() reads the chain exchanges as DICTS and
+   returns its fallback text instead of raising — the step-limit
+   path must actually reach the user.
+8. (Live LLM call) Orchestrator's base_llm responds to a one-shot
    prompt — confirms the LLMClientCache delivers a working LLM
    client to the Orchestrator just like to the chain agents.
    Requires OPENAI_API_KEY.
@@ -172,10 +175,41 @@ print("PASS case 6 — format_chain_exchanges renders the prose block correctly"
 
 
 # ---------------------------------------------------------------------
-# Case 7: live LLM call via Orchestrator.base_llm
+# Case 7: _surface_limit_to_user reads chain exchanges as DICTS
+# ---------------------------------------------------------------------
+# Regression guard.  The exchanges are 4-key dicts, so tuple-unpacking
+# the last one ("fa, ta, msg = exchanges[-1]") raised ValueError, and it
+# did so OUTSIDE the method's try block — every step-limit termination
+# blew up instead of surfacing a message.  The Conductor and Architect
+# hubs carry a textually identical copy of this method.
+#
+# The Receptionist is stubbed to fail so the FALLBACK branch — the one
+# that builds "Last attempted action" from exchanges[-1] — is what gets
+# exercised, with no live LLM call.  Relies on the exchanges accumulated
+# by case 4, so it must stay after it.
+class _FailingReceptionist:
+    def run(self, message):
+        raise RuntimeError("stubbed receptionist failure")
+
+
+_real_receptionist = orch.receptionist
+orch.receptionist = _FailingReceptionist()
+try:
+    surfaced = orch._surface_limit_to_user("max dispatch hops")
+finally:
+    orch.receptionist = _real_receptionist
+
+assert "max dispatch hops" in surfaced
+assert "The Orchestrator could not settle a plan" in surfaced
+assert "Last attempted action: Orchestrator -> Planner: go plan" in surfaced
+print("PASS case 7 — _surface_limit_to_user survives dict-shaped exchanges")
+
+
+# ---------------------------------------------------------------------
+# Case 8: live LLM call via Orchestrator.base_llm
 # ---------------------------------------------------------------------
 if not os.environ.get("OPENAI_API_KEY"):
-    print("SKIP  case 7 — OPENAI_API_KEY not set; skipping live LLM call")
+    print("SKIP  case 8 — OPENAI_API_KEY not set; skipping live LLM call")
 else:
     t0 = time.time()
     response = orch.base_llm.invoke([
@@ -184,7 +218,7 @@ else:
     dt = time.time() - t0
     text = (response.content or "").strip()
     assert isinstance(text, str) and len(text) > 0
-    print(f"PASS case 7 — live LLM call returned {text!r} in {dt:.2f}s")
+    print(f"PASS case 8 — live LLM call returned {text!r} in {dt:.2f}s")
 
 
 print()
