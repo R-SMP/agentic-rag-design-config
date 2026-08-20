@@ -56,13 +56,9 @@ from agents.shared.stop_signal import check_stop_or_raise
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_TC_STEPS
 from tools import get_render_library, get_tools
-from tools.database_search.database_search import make_database_search_tool
-from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
-from tools.retrieve_user_inputs.retrieve_user_inputs import (
-    make_retrieve_user_inputs_tool,
-)
 from tools.render_blade_sections.render_blade_sections import render_blade_sections
-from workflow_settings import blade_sections_access, database_access
+from agents.shared.dba_tools import dba_tools_for
+from workflow_settings import blade_sections_access
 
 logger = logging.getLogger("propeller_agent")
 
@@ -108,10 +104,9 @@ class ToolCaller(BaseChainAgent):
         # is built) and the session-scoped attempt-inspection helpers;
         # both are dispatched the same way so they share one map.
         utility_tools = list(get_tools()) + [list_attempts, read_attempt]
-        if database_access.is_enabled_for("tool_caller"):
-            utility_tools.append(make_database_search_tool("tool_caller"))
-            utility_tools.append(make_retrieve_user_inputs_tool("tool_caller"))
-            utility_tools.append(make_retrieve_attempt_tool("tool_caller"))
+        # Which of the three database tools this agent holds is a
+        # per-(profile, agent, tool) decision; dba_tools_for owns it.
+        utility_tools.extend(dba_tools_for("tool_caller"))
         # Blade-sections visualizer (global toggle, Tool Caller only).  Read
         # fresh so a Workflow-Settings edit takes effect next session.
         if blade_sections_access.is_enabled():

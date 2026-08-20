@@ -279,6 +279,76 @@ for bad_call, label in (
     except Exception as exc:
         check(label + " raises ValueError", False, repr(exc))
 
+# --- 10. dba_tools_for() binds exactly the profile's tools -------------
+print("case 10 - agents/shared/dba_tools.py returns the right tool set")
+# The module imports the three factories, which import langchain, so it
+# cannot be imported here.  ast-extract the function and run the REAL body
+# against stub factories instead.
+import ast                                                    # noqa: E402
+
+_helper_src = (ROOT / "agents" / "shared" / "dba_tools.py").read_text(
+    encoding="utf-8")
+_fn = next(
+    (n for n in ast.parse(_helper_src).body
+     if isinstance(n, ast.FunctionDef) and n.name == "dba_tools_for"),
+    None,
+)
+check("dba_tools_for is extractable", _fn is not None)
+
+if _fn is not None:
+    class _Stub:
+        def __init__(self, name):
+            self.name = name
+
+    _g = {
+        "database_access": da,
+        "_FACTORIES": (
+            ("search",      lambda a: _Stub("database_search")),
+            ("user_inputs", lambda a: _Stub("retrieve_user_inputs")),
+            ("attempt",     lambda a: _Stub("retrieve_attempt")),
+        ),
+    }
+    exec(compile(ast.get_source_segment(_helper_src, _fn),
+                 "<dba_tools>", "exec"), _g)
+    dba_tools_for = _g["dba_tools_for"]
+
+    _NAME = {"search": "database_search",
+             "user_inputs": "retrieve_user_inputs",
+             "attempt": "retrieve_attempt"}
+
+    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7,
+                   PROMPT_VARIANT="reduced"):
+        bad = []
+        for agent, (s_, u_, a_) in _REDUCED_EXPECTED.items():
+            want = [_NAME[k] for k, on in
+                    (("search", s_), ("user_inputs", u_), ("attempt", a_)) if on]
+            got = [t.name for t in dba_tools_for(agent)]
+            if got != want:
+                bad.append((agent, want, got))
+        check("reduced: every agent binds exactly its row", not bad, bad)
+        check("Receptionist binds NOTHING",
+              dba_tools_for("receptionist") == [])
+        check("DCIC binds search + attempt, no user_inputs",
+              [t.name for t in dba_tools_for("dc_input_creator")]
+              == ["database_search", "retrieve_attempt"])
+        check("Planner binds search only",
+              [t.name for t in dba_tools_for("planner")]
+              == ["database_search"])
+
+    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7,
+                   PROMPT_VARIANT="standard"):
+        check("standard: an enabled agent still binds all three",
+              [t.name for t in dba_tools_for("dc_input_inspector")]
+              == ["database_search", "retrieve_user_inputs",
+                  "retrieve_attempt"])
+        check("standard: a disabled agent binds nothing",
+              dba_tools_for("tool_caller") == [])
+
+    with _Settings(RAG_ENABLED=False, SYSTEM_TOPOLOGY=7,
+                   PROMPT_VARIANT="reduced"):
+        check("master switch off -> every agent binds nothing",
+              all(dba_tools_for(a) == [] for a in da.DEFAULT_AGENTS))
+
 print()
 if _FAILS:
     print("FAIL - %d assertion(s): %s" % (len(_FAILS), _FAILS))

@@ -40,12 +40,7 @@ from agents.shared.stop_signal import check_stop_or_raise
 from agents.step_caps import MAX_DCOI_STEPS
 from config import USER_INPUTS_DIR
 from tools.calculate.calculate import calculate
-from tools.database_search.database_search import make_database_search_tool
-from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
-from tools.retrieve_user_inputs.retrieve_user_inputs import (
-    make_retrieve_user_inputs_tool,
-)
-from workflow_settings import database_access
+from agents.shared.dba_tools import dba_tools_for
 
 logger = logging.getLogger("propeller_agent")
 
@@ -242,13 +237,10 @@ class DCOutputInspector(BaseChainAgent):
             read_attempt.name: read_attempt,
             calculate.name: calculate,
         }
-        if database_access.is_enabled_for("dc_output_inspector"):
-            _database_search = make_database_search_tool("dc_output_inspector")
-            self._extra_utility_tools_by_name[_database_search.name] = _database_search
-            _retrieve_user_inputs = make_retrieve_user_inputs_tool("dc_output_inspector")
-            self._extra_utility_tools_by_name[_retrieve_user_inputs.name] = _retrieve_user_inputs
-            _retrieve_attempt = make_retrieve_attempt_tool("dc_output_inspector")
-            self._extra_utility_tools_by_name[_retrieve_attempt.name] = _retrieve_attempt
+        # Which of the three database tools this agent holds is a
+        # per-(profile, agent, tool) decision; dba_tools_for owns it.
+        for _dba_tool in dba_tools_for("dc_output_inspector"):
+            self._extra_utility_tools_by_name[_dba_tool.name] = _dba_tool
         all_tools = (
             list(self._extra_utility_tools_by_name.values())
             + build_user_inputs_tools(self.AGENT_KEY)

@@ -65,12 +65,7 @@ from agents.shared.stop_signal import check_stop_or_raise
 from agents.tool_caller import ToolCaller
 from agents.user_input_inspector import UserInputInspector
 from tools.calculate.calculate import calculate
-from tools.database_search.database_search import make_database_search_tool
-from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
-from tools.retrieve_user_inputs.retrieve_user_inputs import (
-    make_retrieve_user_inputs_tool,
-)
-from workflow_settings import database_access
+from agents.shared.dba_tools import dba_tools_for
 
 logger = logging.getLogger("propeller_agent")
 
@@ -460,10 +455,9 @@ class Orchestrator(BaseChainAgent):
             # read_user_queries (conductor.py:350-357).
             history_tool,
         ]
-        if database_access.is_enabled_for("orchestrator"):
-            orch_tools.append(make_database_search_tool("orchestrator"))
-            orch_tools.append(make_retrieve_user_inputs_tool("orchestrator"))
-            orch_tools.append(make_retrieve_attempt_tool("orchestrator"))
+        # Which of the three database tools this agent holds is a
+        # per-(profile, agent, tool) decision; dba_tools_for owns it.
+        orch_tools.extend(dba_tools_for("orchestrator"))
         if self.dc_inspector_enabled:
             orch_tools.insert(
                 4,

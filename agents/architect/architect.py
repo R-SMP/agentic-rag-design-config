@@ -104,12 +104,7 @@ from agents.step_caps import (
 )
 from config import INPUT_IMAGES_SUBDIR, USER_INPUTS_DIR
 from tools.calculate.calculate import calculate
-from tools.database_search.database_search import make_database_search_tool
-from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
-from tools.retrieve_user_inputs.retrieve_user_inputs import (
-    make_retrieve_user_inputs_tool,
-)
-from workflow_settings import database_access
+from agents.shared.dba_tools import dba_tools_for
 from workflow_settings import settings as workflow_settings
 
 # Pure formatting helpers, IMPORTED rather than duplicated.  They carry
@@ -405,10 +400,9 @@ class Architect(BaseChainAgent):
             self._read_inputs_tool,
             write_extraction,
         ] + build_user_inputs_tools(self.AGENT_KEY)
-        if database_access.is_enabled_for(self.AGENT_KEY):
-            arch_tools.append(make_database_search_tool(self.AGENT_KEY))
-            arch_tools.append(make_retrieve_user_inputs_tool(self.AGENT_KEY))
-            arch_tools.append(make_retrieve_attempt_tool(self.AGENT_KEY))
+        # Which of the three database tools this agent holds is a
+        # per-(profile, agent, tool) decision; dba_tools_for owns it.
+        arch_tools.extend(dba_tools_for(self.AGENT_KEY))
         self._tools_by_name = {t.name: t for t in arch_tools}
         self.llm = self.base_llm.bind_tools(arch_tools)
 
