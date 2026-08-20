@@ -60,9 +60,24 @@ the only tree `view_images` will OCR.
 Note the target code ALREADY EXISTS: the factory's `else:` branch (OCR-off) has
 exactly the signature we want, so this is mostly a deletion of the `if` branch.
 
-### Step 2 — retrieval writes folders and stops attaching images  **TODO**
-The core change.  Removes `images_flag` from both tools, adds the folder write,
-the content listing, and the printed text.  Delivers most of the design above.
+### Step 2a — `retrieve_attempt` writes folders, stops attaching  **DONE**
+`retrieve_attempt(attempts_ID_list)` — one required argument, nothing optional.
+Artefacts materialise under `attempts/_retrieved/<global_id>/`; the reply adds a
+`<folder>` listing every downloaded file with its size, beside the existing
+`<description>` and `<parameters>`.  Re-retrieval within a session is detected
+and skipped, returning the SAME reply — the agent never learns it was cached.
+
+Also: the artefact auto-display scan skips `_retrieved` (but NOT `_comparisons`,
+whose composites are deliberately surfaced); the cache is DELETED rather than
+archived during end-of-session archival, which is also what clears it between
+sessions; and six prompt fragments that taught
+`retrieve_attempt(..., images_flag=True)` were corrected — a prompt teaching a
+removed argument is a defect, and this is the `d5de05c` failure mode.
+
+### Step 2b — `retrieve_user_inputs` writes folders, stops attaching  **TODO**
+Same shape, after step 4b so it can print `extracted_inputs.txt`.  Note the
+`retrieve_user_inputs(..., images_flag=True)` mentions still standing in ~6
+prompt fragments must be corrected in that step.
 
 ### Step 3 — shared implementation module for the two retrieve tools  **TODO**
 Pure refactor, no behaviour change.  After step 2 the two tools are near-twins —
@@ -73,7 +88,7 @@ lines of genuine duplication (R2 access, escaping, token counting,
 tools, so the two names and their typed ID lists stay.
 
 ### Step 4 — exclude `inputs/_retrieved/` from `list_input_files`  **TODO**
-Small guard; belongs with step 2.  Without it the UII would be told a past
+Small guard; belongs with step 2b.  Without it the UII would be told a past
 session's sketch is part of the CURRENT request.
 
 ### Step 4b — add `extracted_inputs.txt` to the R2 save pipeline  **TODO**

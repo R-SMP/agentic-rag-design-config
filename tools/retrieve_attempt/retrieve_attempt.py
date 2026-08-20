@@ -1,7 +1,7 @@
 """retrieve_attempt — DC-specific R2-backed attempt-scoped retrieval tool.
 
 When a chain agent calls ``retrieve_attempt(attempts_ID_list,
-images_flag)``, the tool:
+attempts_ID_list)``, the tool:
 
 1. Resolves each global attempt_id (BIGSERIAL ``dc_attempts.attempt_id``)
    against Postgres to recover ``(session_id, attempt_label, has_renders)``.
@@ -14,13 +14,15 @@ images_flag)``, the tool:
      * ``render_isometric.png`` / ``render_top.png`` / ``render_side.png``
        — filtered by the three workflow flags
        (``RETRIEVE_ATTEMPT_INCLUDE_{ISO,TOP,SIDE}_VIEW``) AND gated by
-       ``has_renders=TRUE`` AND gated by ``images_flag=TRUE``.
+       ``has_renders=TRUE``, written to the local cache folder.
 3. Assembles an XML response (``<retrieve_attempt_meta/>`` + per-attempt
    blocks); trims attempts from the end of the input list when the
    response exceeds ``RETRIEVE_MAX_RESPONSE_TOKENS``.
 4. Logs the call to ``rag_queries`` with
    ``tool_name='retrieve_attempt'`` (schema v7).
-5. Returns ``(xml, image_blocks, image_paths)`` to the dispatcher.
+5. Returns the XML string to the dispatcher.  Nothing is attached to
+   the model's context: artefacts live under
+   ``attempts/_retrieved/<global_id>/`` and are referenced by path.
 
 The ``@tool``-decorated public stub returns ``""`` — the dispatcher in
 ``agents/shared/retrieve_tool_dispatcher.py`` intercepts and runs the
@@ -49,9 +51,11 @@ import tiktoken
 from langchain_core.tools import tool
 from psycopg.types.json import Json
 
+from pathlib import Path
+
 from agents.shared import postgres_pool, r2_uploader
 from agents.shared.agent_activity import generic_tool
-from agents.shared.llm_provider import encode_image_bytes, make_image_block
+from config import ATTEMPTS_DIR
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
@@ -89,6 +93,53 @@ _TOKENIZER = tiktoken.get_encoding("cl100k_base")
 # regex captures the 3+ digit NNN.  Robust to slug content (slugs
 # may themselves contain underscores or digits).
 _ATTEMPT_LABEL_RE = re.compile(r"^\d+_\d+_(\d+)_")
+
+
+# ============================================================
+# Local retrieval cache
+# ============================================================
+_RETRIEVED_SUBDIR = "_retrieved"
+
+
+def _retrieved_dir(global_id: int) -> Path:
+    """Local folder holding one retrieved attempt's artefacts.
+
+    Keyed by GLOBAL attempt id, deliberately unlike a live attempt folder
+    (``YYYYMMDD_HHMMSS_NNN_<slug>``): the two namespaces cannot collide, and
+    ``attempts_tool._list_attempt_folders`` — which matches that pattern —
+    never mistakes a retrieved copy for an attempt of THIS session.
+    """
+    return ATTEMPTS_DIR / _RETRIEVED_SUBDIR / str(global_id)
+
+
+def _folder_listing(dest: Path) -> list[tuple[str, int]]:
+    """``(name, size)`` for every file in *dest*, name-sorted."""
+    if not dest.is_dir():
+        return []
+    return sorted(
+        (f.name, f.stat().st_size) for f in dest.iterdir() if f.is_file()
+    )
+
+
+def _write_artefact(dest: Path, name: str, data: bytes) -> None:
+    """Write one fetched artefact into the cache folder.  Best-effort."""
+    try:
+        dest.mkdir(parents=True, exist_ok=True)
+        (dest / name).write_bytes(data)
+    except OSError as exc:
+        logger.warning("[retrieve_attempt]  could not write %s: %s",
+                       dest / name, exc)
+
+
+def _read_local(dest: Path, name: str) -> str | None:
+    """Read a cached text artefact back, or None when absent/unreadable."""
+    f = dest / name
+    if not f.is_file():
+        return None
+    try:
+        return f.read_text(encoding="utf-8")
+    except OSError:
+        return None
 
 
 # ============================================================
@@ -211,8 +262,10 @@ def _build_attempt_block(
     session_id: str,
     description_text: str | None,
     parameters_text: str | None,
-    render_refs: list[tuple[str, str]],  # (view_name, r2_key)
+    render_refs: list[tuple[str, str]],  # (view_name, local absolute path)
     fetch_failures: list[str],
+    folder: str | None = None,
+    listing: list[tuple[str, int]] | None = None,
 ) -> str:
     """Render one <attempt> block."""
     parts: list[str] = []
@@ -243,6 +296,13 @@ def _build_attempt_block(
                 f"    <render name={_attr(view)} key={_attr(key)}/>"
             )
         parts.append("  </renders>")
+    if folder:
+        # The full attempt, materialised locally.  Every file is addressable
+        # by ``view_images``; the agent picks which view is worth looking at.
+        parts.append(f"  <folder path={_attr(folder)}>")
+        for name, size in (listing or []):
+            parts.append(f"    <file name={_attr(name)} bytes={_attr(size)}/>")
+        parts.append("  </folder>")
     for failure_key in fetch_failures:
         parts.append(f"  <missing path={_attr(failure_key)}/>")
     parts.append("</attempt>")
@@ -251,7 +311,6 @@ def _build_attempt_block(
 
 def _build_xml(
     attempt_records: list[dict],
-    images_included: bool,
     render_views_in_scope: list[str],
     truncated_count: int,
 ) -> str:
@@ -268,7 +327,6 @@ def _build_xml(
         f"<retrieve_attempt_meta "
         f"attempts_requested={_attr(n_requested)} "
         f"attempts_returned={_attr(n_returned)} "
-        f"images_included={_attr(str(images_included).lower())} "
         f"render_views_in_scope={_attr(','.join(render_views_in_scope))} "
         f"truncated={_attr(str(truncated_count > 0).lower())}/>"
     ]
@@ -296,6 +354,8 @@ def _build_xml(
             r["parameters_text"],
             r["render_refs"],
             r["fetch_failures"],
+            r.get("folder"),
+            r.get("listing"),
         ))
     if truncated_count > 0:
         parts.append(
@@ -310,7 +370,6 @@ def _count_tokens(text: str) -> int:
 
 def _trim_to_cap(
     attempt_records: list[dict],
-    images_included: bool,
     render_views_in_scope: list[str],
     cap_tokens: int,
 ) -> tuple[str, int]:
@@ -318,7 +377,7 @@ def _trim_to_cap(
     for r in attempt_records:
         r["trimmed"] = False
     xml = _build_xml(
-        attempt_records, images_included, render_views_in_scope, 0,
+        attempt_records, render_views_in_scope, 0,
     )
     if cap_tokens <= 0 or _count_tokens(xml) <= cap_tokens:
         return xml, 0
@@ -331,7 +390,7 @@ def _trim_to_cap(
         r["trimmed"] = True
         trimmed += 1
         xml = _build_xml(
-            attempt_records, images_included, render_views_in_scope, trimmed,
+            attempt_records, render_views_in_scope, trimmed,
         )
         if _count_tokens(xml) <= cap_tokens:
             return xml, trimmed
@@ -399,20 +458,16 @@ def _run_retrieve_attempt(
     *,
     caller_agent: str,
     global_attempt_ids: list[int],
-    images_flag: bool,
-    provider: str = "openai",
 ) -> tuple[str, list[dict], list[str]]:
     """Real retrieval logic.  Called by the dispatcher.
 
-    Returns ``(xml_str, image_blocks, image_paths)``.  ``image_blocks``
-    is a list of provider-shaped image content-block dicts ready to
-    attach via ``append_pending_images``.  ``image_paths`` is the
+    Returns the XML string.  Artefacts are materialised under
+    ``attempts/_retrieved/<global_id>/`` and referenced there BY PATH;
+    nothing is attached to the model's context.  The
     parallel list of R2 keys used as text labels.
     """
     start = time.monotonic()
     error_message: str | None = None
-    image_blocks: list[dict] = []
-    image_paths: list[str] = []
     attempt_records: list[dict] = []
     render_views_in_scope = _views_in_scope()
 
@@ -468,37 +523,55 @@ def _run_retrieve_attempt(
                     f"{session_id}/attempts/{nnn}__{gid}/ (R2 not configured)"
                 )
             else:
-                base = f"{session_id}/attempts/{nnn}__{gid}"
-                description_text = _r2_get_text(
-                    client, bucket, _r2_key(base, "description.txt"),
-                )
-                parameters_text = _r2_get_text(
-                    client, bucket, _r2_key(base, "parameters.json"),
-                )
-                # Renders — gated by has_renders + images_flag + workflow flags
-                if has_renders and images_flag and render_views_in_scope:
+                dest = _retrieved_dir(gid)
+                if dest.is_dir() and any(dest.iterdir()):
+                    # Already fetched earlier this session — by THIS agent or
+                    # any other.  Do not re-fetch: the artefacts are immutable
+                    # and the work would be wasted.  The response below is
+                    # identical either way, deliberately: an agent must never
+                    # have to reason about cache state.
+                    description_text = _read_local(dest, "description.txt")
+                    parameters_text = _read_local(dest, "parameters.json")
                     for view in render_views_in_scope:
-                        filename = _RENDER_FILES[view]
-                        key = _r2_key(base, filename)
-                        full_key = (
-                            f"{r2_uploader._key_prefix()}"  # noqa: SLF001
-                            f"{key.lstrip('/')}"
-                        )
-                        data = _r2_get_bytes(client, bucket, key)
-                        if data is None:
-                            # render expected but not in R2 — emit a
-                            # per-file <missing/> marker
-                            fetch_failures.append(key)
-                            continue
-                        # Renders reach the model downscaled per the per-type
-                        # degree (``key``'s filename picks cross-section vs 3D);
-                        # ``data`` stays full-res for R2.
-                        b64 = encode_image_bytes(data, is_render=True, name=key)
-                        image_blocks.append(
-                            make_image_block(b64, provider)
-                        )
-                        image_paths.append(full_key)
-                        render_refs.append((view, full_key))
+                        if (dest / _RENDER_FILES[view]).is_file():
+                            render_refs.append(
+                                (view, str((dest / _RENDER_FILES[view]).resolve()))
+                            )
+                else:
+                    base = f"{session_id}/attempts/{nnn}__{gid}"
+                    description_text = _r2_get_text(
+                        client, bucket, _r2_key(base, "description.txt"),
+                    )
+                    parameters_text = _r2_get_text(
+                        client, bucket, _r2_key(base, "parameters.json"),
+                    )
+                    # The FULL attempt is materialised locally — text and
+                    # renders alike — so ``view_images`` can address any of it
+                    # by path.  Nothing is attached to the model's context
+                    # here; the agent decides what is worth looking at.
+                    if description_text is not None:
+                        _write_artefact(dest, "description.txt",
+                                        description_text.encode("utf-8"))
+                    if parameters_text is not None:
+                        _write_artefact(dest, "parameters.json",
+                                        parameters_text.encode("utf-8"))
+                    if has_renders and render_views_in_scope:
+                        for view in render_views_in_scope:
+                            filename = _RENDER_FILES[view]
+                            key = _r2_key(base, filename)
+                            data = _r2_get_bytes(client, bucket, key)
+                            if data is None:
+                                # render expected but not in R2 — emit a
+                                # per-file <missing/> marker
+                                fetch_failures.append(key)
+                                continue
+                            # Full resolution on disk: no downscale here.  The
+                            # per-type compression is applied by ``view_images``
+                            # if and when the agent actually looks.
+                            _write_artefact(dest, filename, data)
+                            render_refs.append(
+                                (view, str((dest / filename).resolve()))
+                            )
 
             attempt_records.append({
                 "global_id": gid,
@@ -509,12 +582,13 @@ def _run_retrieve_attempt(
                 "parameters_text": parameters_text,
                 "render_refs": render_refs,
                 "fetch_failures": fetch_failures,
+                "folder": str(dest.resolve()) if dest.is_dir() else None,
+                "listing": _folder_listing(dest),
             })
 
         # Render + trim
         xml, n_trimmed = _trim_to_cap(
             attempt_records,
-            images_included=images_flag,
             render_views_in_scope=render_views_in_scope,
             cap_tokens=_MAX_RESPONSE_TOKENS,
         )
@@ -531,7 +605,7 @@ def _run_retrieve_attempt(
         _log_to_rag_queries(
             caller_agent=caller_agent,
             global_attempt_ids=global_attempt_ids,
-            images_flag=images_flag,
+            images_flag=False,
             n_returned=len(returned_gids),
             returned_global_ids=returned_gids,
             skipped_count=not_found_count,
@@ -539,7 +613,7 @@ def _run_retrieve_attempt(
             latency_ms=latency_ms,
             error_message=None,
         )
-        return xml, image_blocks, image_paths
+        return xml
 
     except Exception as exc:  # noqa: BLE001
         error_message = f"{type(exc).__name__}: {exc}"
@@ -551,7 +625,6 @@ def _run_retrieve_attempt(
             f"<retrieve_attempt_meta "
             f"attempts_requested={_attr(len(global_attempt_ids))} "
             f"attempts_returned=\"0\" "
-            f"images_included={_attr(str(images_flag).lower())} "
             f"render_views_in_scope={_attr(','.join(render_views_in_scope))} "
             f"truncated=\"false\" "
             f"error={_attr(error_message)}/>\n"
@@ -561,7 +634,7 @@ def _run_retrieve_attempt(
         _log_to_rag_queries(
             caller_agent=caller_agent,
             global_attempt_ids=global_attempt_ids,
-            images_flag=images_flag,
+            images_flag=False,
             n_returned=0,
             returned_global_ids=[],
             skipped_count=len(global_attempt_ids),
@@ -592,36 +665,28 @@ def make_retrieve_attempt_tool(caller_agent: str):
     @generic_tool("Retrieve attempt")
     def retrieve_attempt(
         attempts_ID_list: list[int],
-        images_flag: bool = False,
     ) -> str:
-        """Retrieve description, parameters, and (optionally) renders for past attempts.
+        """Retrieve past attempts in full — description, parameters, renders.
 
         Use AFTER ``database_search`` or ``retrieve_user_inputs`` has
-        surfaced an attempt worth a deeper read.  Returns the
-        attempt's description text, parameter JSON, and (when
-        ``images_flag=True``) the render PNGs admitted by the
-        deployed view-selection policy.
+        surfaced an attempt worth a deeper read.  Get the ids from the
+        ``<available_attempts>`` block of a ``database_search`` response.
+
+        Every artefact of each attempt is downloaded into a LOCAL folder and
+        the response lists that folder's contents, alongside the attempt's
+        full parameter set and its text description.  NO image is placed in
+        your context by this call: to look at one, pass its listed path to
+        ``view_images`` — which can also show several images side by side.
 
         Args:
-            attempts_ID_list: list of GLOBAL attempt_id integers
-                (BIGSERIAL ``dc_attempts.attempt_id`` values from
-                Postgres).  Get these from the ``<available_attempts>``
-                block of a ``database_search`` response — the per-session
-                NNN is for human readability only; the global id is
-                what this tool resolves.
-            images_flag: when True, attach render PNG bytes; when
-                False, the response is text-only.  The deployed
-                view-selection policy (workflow settings) further
-                filters which views are sent.
+            attempts_ID_list: list of GLOBAL attempt ids (integers).
 
-        Returns text-only XML.  The meta header's
-        ``render_views_in_scope`` attribute lists which render views
-        the deployed policy admits.  When ``images_flag=True``,
-        image bytes attach separately as content blocks on the next
-        message.
+        Returns XML: one ``<attempt>`` per id, each with ``<description>``,
+        ``<parameters>``, and a ``<folder>`` listing every downloaded file
+        with its size.  ``<missing/>`` marks an artefact absent from the
+        archive.  Re-requesting an attempt already retrieved this session is
+        free and returns the same thing.
         """
-        # Real work happens in the dispatcher; this stub satisfies
-        # langchain's @tool contract.
         return ""
 
     return retrieve_attempt

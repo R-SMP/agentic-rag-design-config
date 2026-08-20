@@ -167,14 +167,10 @@ def _handle_retrieve_attempt(agent, tc: dict, agent_key: str) -> None:
             f"integer global attempt id; got {raw_attempt_ids!r}.",
         )
         return
-    images_flag = bool(args.get("images_flag", False))
-
     try:
-        xml, image_blocks, image_paths = _run_retrieve_attempt(
+        xml = _run_retrieve_attempt(
             caller_agent=agent_key,
             global_attempt_ids=global_ids,
-            images_flag=images_flag,
-            provider=getattr(agent, "provider", "openai"),
         )
     except Exception as exc:
         logger.warning(
@@ -198,8 +194,6 @@ def _handle_retrieve_attempt(agent, tc: dict, agent_key: str) -> None:
         tool_call_id=tc["id"],
         name=tc["name"],
     ))
-    if image_blocks:
-        append_pending_images(agent, image_blocks, image_paths)
 
 
 _HANDLERS = {
