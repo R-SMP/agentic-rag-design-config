@@ -1,8 +1,7 @@
 ### Retrieving past saved content
 
-``retrieve_user_inputs`` and ``retrieve_attempt`` document their purpose,
-arguments, and return shape on the tools themselves.  Two things they do
-NOT cover:
+Your retrieval tools document their purpose, arguments, and return shape
+on the tools themselves.  Two things they do NOT cover:
 
 - **Don't over-call.**  Never retrieve content the live session already
   holds, and never loop — make ONE call with all the relevant ids.

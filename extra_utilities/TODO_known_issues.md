@@ -4090,6 +4090,39 @@ Reduced-variant fork: `reduced7/agents/shared/routing.py`.
 
 ---
 
+### F89. The STANDARD hub prompt names retrieval tools outside the <<HAS_DBA>> gate
+
+**Status.** OPEN in the standard tree; already fixed in the 7-agent REDUCED
+fork (defect B6 in `extra_utilities/fork_manifest.json`).  Surfaced 2026-08-21
+by the per-tool DBa invariant check, which the manual sweep had missed.
+
+**Where.** `agents/orchestrator/prompt.md:176-177`, inside the worked example
+for relaying a user mandate:
+
+    Call ``database_search`` (and/or ``retrieve_user_inputs`` /
+    ``retrieve_attempt``) before finalising your output.
+
+**Why it is wrong.**  That sentence sits OUTSIDE the
+`<<HAS_DBA>>...<</HAS_DBA>>` region, so it survives even when the hub holds
+no database tool at all — which is its state in the shipped `"7"` profile
+(`orchestrator` is `false` for all three tools) and under `RAG_ENABLED=False`.
+It also scripts the hub to name specific tools in the mouths of DOWNSTREAM
+agents, which may hold a different subset again now that distribution is
+per (profile, agent, tool).
+
+**The fix**, when the standard tree is next worked on: the reduced fork simply
+DELETED the tool names from the example, leaving the mandate-relay principle
+intact.  Porting that is a one-hunk change — but note
+`agents/orchestrator/prompt.md` is a fork ORIGIN, so it needs the usual
+`origin_commit` bump in `fork_manifest.json` afterwards.
+
+**Why it is not fixed now.**  The owner has set the 7-agent standard and
+5-agent systems aside; the reduced system is the one being built.
+`smoke_test_database_access.py` case 13 therefore HARD-asserts the invariant
+for `reduced` and, for `standard`, asserts only that no violation appears
+BEYOND this known pair — so a NEW standard-tree violation still fails the
+test, while this one does not mask it.
+
 ### F88. Giving the 5-agent / 3-agent / any future reduced system its own DBa distribution is a DATA change, not a code change
 
 **Status.** OPEN by design — nothing is broken; this records where the work

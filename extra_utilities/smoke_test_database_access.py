@@ -442,6 +442,57 @@ with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
         check("reduced %s keeps '%s'" % (_who, _mark[:34]),
               _mark in _assembled(_who, "reduced"))
 
+# --- 13. THE INVARIANT --------------------------------------------------
+print("case 13 - an agent only ever reads about tools it HOLDS")
+# The point of everything above.  Cases 11 and 12 check named sections and
+# specific sentences; this one is the property itself, so it keeps holding
+# when the fragments are reworded again.
+#
+# Both shared fragments used to name a fixed pair of retrieve tools --
+# database_search.md in its blueprint / fetch-the-pixels / available_attempts
+# paragraphs, and retrieve_user_inputs.md in its opener -- which no override
+# could fix, because the correct text differs per agent.  They now refer to
+# "whichever retrieval tools you hold" instead, which is true in every
+# profile.  A side benefit: naming no argument means no argument to go stale.
+def _invariant_violations(variant: str) -> list:
+    out = []
+    for _a in da.DEFAULT_AGENTS:
+        st.PROMPT_VARIANT = variant
+        try:
+            _flat = " ".join(_prompts._build_template(_a).split())
+        except Exception:
+            continue              # not every slug has a prompt in topology 7
+        _t = da.get_tools(_a)
+        if _flat.count("retrieve_user_inputs") and not _t["user_inputs"]:
+            out.append((_a, variant, "reads retrieve_user_inputs"))
+        if _flat.count("retrieve_attempt") and not _t["attempt"]:
+            out.append((_a, variant, "reads retrieve_attempt"))
+    return out
+
+
+with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
+    # HARD for the reduced system -- the one this distribution is built for.
+    check("reduced: no agent is told about a tool it does not hold",
+          not _invariant_violations("reduced"),
+          _invariant_violations("reduced"))
+
+    # STANDARD is reported, not asserted.  It carries one PRE-EXISTING
+    # violation that predates per-tool flags: orchestrator/prompt.md's
+    # worked example scripts the hub to say "Call database_search (and/or
+    # retrieve_user_inputs / retrieve_attempt)", and that sentence sits
+    # OUTSIDE <<HAS_DBA>>, so it survives even for a hub holding nothing.
+    # The reduced fork already deleted it (defect B6 in fork_manifest.json).
+    # Tracked as F89; the owner has set the standard tree aside for now.
+    _std = _invariant_violations("standard")
+    _expected_std = {("orchestrator", "standard", "reads retrieve_user_inputs"),
+                     ("orchestrator", "standard", "reads retrieve_attempt")}
+    check("standard: no violation BEYOND the known ungated hub example "
+          "(F89)", set(_std) <= _expected_std,
+          sorted(set(_std) - _expected_std))
+    if _std:
+        print("          note: standard still carries %d known violation(s) "
+              "- see F89" % len(_std))
+
 print()
 if _FAILS:
     print("FAIL - %d assertion(s): %s" % (len(_FAILS), _FAILS))

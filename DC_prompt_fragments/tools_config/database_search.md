@@ -7,7 +7,7 @@ tool itself; this section is about WHEN to call it and HOW to use what
 comes back.
 
 **How to use what you retrieve — IMPORTANT.**  Treat any past-session
-content (here or via ``retrieve_user_inputs`` / ``retrieve_attempt``) as
+content — from here, or from whichever retrieval tools you hold — as
 a **blueprint for HOW to act, NOT as values to copy**.  Past sessions
 answered DIFFERENT requests under DIFFERENT constraints.
 
@@ -31,14 +31,13 @@ differ at all, keep only the PRINCIPLE (what the past agent checked, which
 defects they watched for, why) and drop the literal values.  For any visual
 or geometric judgement — a past sketch vs the current one, how a past blade
 rendered, whether a parameter set produced the expected shape — fetch the
-pixels: ``retrieve_user_inputs(sessions_ID_list=[...])`` for past user
-images, ``retrieve_attempt(...)`` for attempt renders — each downloads to a
-local folder and lists it, then pass a listed path to ``view_images`` to
+pixels with whichever retrieval tool covers that artefact: it downloads to
+a local folder and lists it, then pass a listed path to ``view_images`` to
 actually look.
 ``database_search`` itself returns TEXT ONLY — each ``<session>`` lists
-``<available_attempts>`` global_ids you can feed to ``retrieve_attempt``,
-and in multimodal mode a match may also carry ``<image_ref>`` elements to
-fetch the same way.
+``<available_attempts>`` global_ids for attempt retrieval, and in
+multimodal mode a match may also carry ``<image_ref>`` elements to fetch
+the same way.
 
 **When to call it** — when a question or doubt could plausibly be
 answered by prior sessions: an obstacle you have hit, background on what
