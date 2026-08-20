@@ -60,6 +60,9 @@ from agents.step_caps import MAX_DCIC_STEPS
 from config import ATTEMPTS_DIR
 from tools.calculate.calculate import calculate
 from tools.database_search.database_search import make_database_search_tool
+from tools.generate_mesh.generate_mesh import (
+    mesh_provenance_mismatches,
+)
 from tools.retrieve_attempt.retrieve_attempt import make_retrieve_attempt_tool
 from tools.retrieve_user_inputs.retrieve_user_inputs import (
     make_retrieve_user_inputs_tool,
@@ -457,6 +460,15 @@ class DCInputCreator(BaseChainAgent):
                 or isinstance(params.get(k), bool)
             ]
 
+            # F75b: this folder may already hold a mesh built BEFORE any
+            # parameters.json existed.  Writing a record that CONTRADICTS
+            # that mesh would label it with a parameter set it did not come
+            # from.  ``None`` when there is nothing to compare, so folders
+            # without a provenance sidecar behave exactly as before.
+            mesh_diff = (
+                None if (missing or extra or non_numeric)
+                else mesh_provenance_mismatches(
+                    attempt_path, {k: params[k] for k in PARAMETER_NAMES}))
             if missing or extra or non_numeric:
                 parts = ["Error: parameters.json not written."]
                 if missing:
@@ -469,6 +481,15 @@ class DCInputCreator(BaseChainAgent):
                         f"{non_numeric}"
                     )
                 summary = "  ".join(parts)
+            elif mesh_diff:
+                summary = (
+                    f"Error: parameters.json not written.  "
+                    f"'{attempt_path}' already holds a mesh that was built "
+                    f"from different values — {'; '.join(mesh_diff)}.  "
+                    f"Writing these numbers would label that mesh with a "
+                    f"parameter set it did not come from.  Open a NEW "
+                    f"attempt (``new_attempt``) for these values."
+                )
             else:
                 ordered = {k: params[k] for k in PARAMETER_NAMES}
                 path = attempt_path / "parameters.json"

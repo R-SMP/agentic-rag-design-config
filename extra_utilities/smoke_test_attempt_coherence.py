@@ -4,6 +4,10 @@ Proves BOTH directions, which is the whole point: a guard that only fires is
 as bad as one that never does, because this one sits on the path EVERY
 geometry call takes and a false refusal blocks legitimate work unattended.
 
+F75b       a mesh built before any parameters.json records the values that
+           produced it, so a LATER write_parameters cannot label it with
+           numbers it did not come from; folders without a sidecar proceed.
+
 FIRES      build-branch mismatch refuses and builds nothing; reuse-branch
            mismatch WARNS without refusing and without touching the mesh; a
            genuinely small difference is still caught.
@@ -218,6 +222,50 @@ for _i, (label, params, over) in enumerate([
           (not out.startswith("Error:")) and _calls["backend"] == 1, out[:90])
 
 print("")
+print("F75b — MESH-FIRST PROVENANCE")
+
+# Build into a folder with NO parameters.json — the LEGITIMATE mesh-first
+# order (the Orchestrator's fallback folder, the 3-agent Designer).  It must
+# still proceed, and must now record what produced the mesh.
+d = _mk("f75b_sidecar", None)
+_calls["backend"] = 0
+out = _invoke(d)
+side = d / gm.MESH_PROVENANCE_FILE
+check("mesh-first build still proceeds",
+      (not out.startswith("Error:")) and _calls["backend"] == 1, out[:90])
+check("  provenance sidecar written", side.is_file())
+if side.is_file():
+    rec = json.loads(side.read_text(encoding="utf-8"))
+    check("  sidecar holds the 16 canonical keys",
+          set(rec) == set(GOOD), str(sorted(set(rec) ^ set(GOOD))))
+    check("  sidecar values are the ones passed",
+          all(float(rec[k]) == float(GOOD[k]) for k in GOOD))
+
+# The decision function the three write_parameters handlers call.
+check("agreeing params -> [] (write allowed)",
+      gm.mesh_provenance_mismatches(d, GOOD) == [])
+_diff = gm.mesh_provenance_mismatches(d, dict(GOOD, middleChord=22.0))
+check("contradicting params -> refusal list", bool(_diff))
+check("  names the parameter and BOTH values",
+      bool(_diff) and "middleChord" in _diff[0]
+      and "22.0" in _diff[0] and "20.0" in _diff[0])
+
+# Every folder that existed before F75b has a mesh and no sidecar.  Those must
+# stay writable, exactly as F75 lets an absent parameters.json proceed.
+d = _mk("f75b_legacy", None, with_mesh=True)
+check("legacy folder (mesh, no sidecar) -> None (write allowed)",
+      gm.mesh_provenance_mismatches(d, GOOD) is None)
+
+# The sidecar describes the mesh ON DISK, not whatever numbers a later call
+# happened to carry — so the reuse branch must leave it alone.
+d = _mk("f75b_reuse", None)
+_invoke(d)
+_first = (d / gm.MESH_PROVENANCE_FILE).read_bytes()
+_invoke(d, middleChord=22.0)
+check("reuse leaves the sidecar untouched",
+      (d / gm.MESH_PROVENANCE_FILE).read_bytes() == _first)
+
+print("")
 print("PLACEMENT")
 
 # The guard deliberately did NOT go into _validate_output_dir.  One reason is
@@ -235,7 +283,7 @@ check("  and still returns via the (path, error) contract",
       gm._validate_output_dir("")[0] is None
       and gm._validate_output_dir("")[1].startswith("Error:"))
 
-for d in gm.ATTEMPTS_DIR.glob("f75_*"):
+for d in gm.ATTEMPTS_DIR.glob("f75*"):
     shutil.rmtree(d, ignore_errors=True)
 
 print()
@@ -243,4 +291,6 @@ if failures:
     print("FAIL — %d problem(s): %s" % (len(failures), failures))
     raise SystemExit(1)
 print("PASS — the guard fires on every incoherent build, warns without "
-      "refusing on reuse, and stays silent on all seven legitimate shapes.")
+      "refusing on reuse, stays silent on all seven legitimate shapes, and "
+      "the mesh-first order now carries provenance that a later "
+      "write_parameters is checked against.")
