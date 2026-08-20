@@ -4760,9 +4760,14 @@ coherence invariant is F75's subject.
 
 ### F75. Attempt-folder coherence is an invariant nothing enforces
 
-**Status.** FIXED-NARROWED (this commit) in the params-first order.
-The mesh-first order remains open as **F75b** below — F75 is HALF-CLOSED,
-not done.
+**Status.** FIXED-NARROWED in the params-first order; the mesh-first order
+was closed separately as **F75b** below.  **DORMANT since 2026-08-20**:
+`generate_and_render_propeller` now takes the attempt's `parameters.json` PATH
+instead of 16 values, so the numbers it builds from COME from the record and
+cannot disagree with it.  This comparison is unreachable through the agent path.
+KEPT, not deleted — it still guards any future caller that reintroduces
+value-passing, and `smoke_test_attempt_coherence` now exercises it directly
+instead of through the tool.
 
 The removed clause said a folder's mesh and ``render_*.png`` must have come
 from that folder's own ``parameters.json``.  Nothing checks it:
@@ -4816,7 +4821,18 @@ fully offline), which proves it fires AND does not over-fire.
 
 ### F75b. The mesh-first order is still unguarded
 
-**Status.** OPEN.  Split out of F75 so that row could ship on its own.
+**Status.** FIXED 2026-08-20 — the build branch writes a `mesh_params.json`
+provenance sidecar recording exactly what produced the mesh, and the three
+`write_parameters` handlers refuse a record that contradicts it.  Fails open:
+no sidecar means nothing to compare, so every folder that predates the fix
+stays writable.
+
+**DORMANT the same day**, for the same reason as F75: the tool now READS the
+parameter record, so it cannot run before one exists and a mesh can no longer
+precede its parameters.  The guard should never fire again.  Kept for the same
+reason — see F75's note.
+
+Split out of F75 so that row could ship on its own.
 
 F75's guard catches "folder has a record, mesh built from different values".
 Swap the two calls and the identical corruption goes through unseen: build a
