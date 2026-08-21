@@ -14,12 +14,26 @@ A propeller with correct geometry should show:
   * Broad vs. narrow blade planform; rounded vs. squared tips.
   * Blade-to-ring connection vs. detached blade tips.
 
+### The three shape levers, and what each one actually moves
+
+  * ``*Thickness`` (% of chord) — how thick the section is.  Its THICKEST
+    POINT is FIXED at ~30% chord and no parameter can move it.
+  * ``*Camber`` (% of chord) — how curved the mean line is; 0 = a symmetric
+    section with no crest at all.
+  * ``*MaxPos`` (tenths of chord) — where the CAMBER CREST sits along the
+    chord.  It does not move the thickest point, and does nothing when
+    camber is 0.
+
+So "the high point is too far forward" is a statement about the CAMBER
+crest.  If a section instead looks thickest in the wrong place, NO parameter
+can fix it — say so plainly rather than asking for a ``*MaxPos`` change.
+
 ### What is typically NOT resolvable at render resolution
 
   * Sub-millimetre thicknesses (ring or blade section).
   * Exact twist angles in degrees.
   * Exact chord lengths within ~1 mm.
-  * Camber / highpoint percentages.
+  * Camber percentages and the high-point (camber-crest) position.
 
 When a claim falls in the "not resolvable" bucket, mark it as
 such and trust falls on the DCIC's parameter choice<<DCII_ONLY>> and the

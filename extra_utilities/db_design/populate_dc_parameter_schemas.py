@@ -56,7 +56,7 @@ PROPELLER_DC_PARAMETERS_V1 = [
     {"param_name": "impellerThickness", "min_value": 1,    "max_value": 5,    "unit": "mm",               "description": "Wall thickness of the outer ring"},
     # Inner blade section
     {"param_name": "innerThickness",    "min_value": 3,    "max_value": 24,   "unit": "% of chord",       "description": "Inner blade section profile thickness"},
-    {"param_name": "innerMaxPos",       "min_value": 2,    "max_value": 8,    "unit": "tenths of chord",  "description": "Inner blade section chordwise position of max thickness"},
+    {"param_name": "innerMaxPos",       "min_value": 2,    "max_value": 8,    "unit": "tenths of chord",  "description": "Inner blade section chordwise position of max camber (high-point)"},
     {"param_name": "innerCamber",       "min_value": 0,    "max_value": 9,    "unit": "% of chord",       "description": "Inner blade section profile camber"},
     {"param_name": "innerChord",        "min_value": 3,    "max_value": 11,   "unit": "mm",               "description": "Inner blade section chord length"},
     {"param_name": "innerAngle",        "min_value": 2,    "max_value": 25,   "unit": "degrees",          "description": "Inner blade section angle of attack"},
@@ -66,7 +66,7 @@ PROPELLER_DC_PARAMETERS_V1 = [
     {"param_name": "middleAngle",       "min_value": 2,    "max_value": 25,   "unit": "degrees",          "description": "Middle blade section angle of attack"},
     # Outer blade section
     {"param_name": "outerThickness",    "min_value": 3,    "max_value": 24,   "unit": "% of chord",       "description": "Outer blade section profile thickness"},
-    {"param_name": "outerMaxPos",       "min_value": 2,    "max_value": 8,    "unit": "tenths of chord",  "description": "Outer blade section chordwise position of max thickness"},
+    {"param_name": "outerMaxPos",       "min_value": 2,    "max_value": 8,    "unit": "tenths of chord",  "description": "Outer blade section chordwise position of max camber (high-point)"},
     {"param_name": "outerCamber",       "min_value": 0,    "max_value": 9,    "unit": "% of chord",       "description": "Outer blade section profile camber"},
     {"param_name": "outerChord",        "min_value": 10,   "max_value": 30,   "unit": "mm",               "description": "Outer blade section chord length"},
     {"param_name": "outerAngle",        "min_value": 2,    "max_value": 25,   "unit": "degrees",          "description": "Outer blade section angle of attack"},

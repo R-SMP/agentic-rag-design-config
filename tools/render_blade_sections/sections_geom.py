@@ -171,7 +171,7 @@ def rendered_params_block(params):
             f"  {label}: chord {c:g} mm, angle {float(sp['angleDeg']):g} deg, "
             f"thickness {t:g}% of chord (= {t * c / 100.0:.2f} mm), "
             f"camber {cam:g}% (= {cam * c / 100.0:.2f} mm), "
-            f"max-thickness at {hp:g}/10 chord"
+            f"camber crest at {hp:g}/10 chord"
         )
     lines.append(
         "  MIDDLE SECTION: to fatten or reshape it, raise innerThickness / "

@@ -109,7 +109,8 @@ extra records make the downstream section-matching far more efficient:
 1. **A rough shape estimate (warm start).**  Read the drawn airfoil proportions
    into a ROUGH numeric estimate of the section-shape parameters, for the INNER
    and OUTER sections only: profile **thickness** (% of chord), **camber**
-   (% of chord), and the chordwise **max-thickness position** (tenths of chord).
+   (% of chord), and the chordwise **camber-crest position** (high-point,
+   tenths of chord).
    The middle section has no profile-shape parameters of its own — its shape is
    interpolated from inner and outer; only its chord, angle and radial position
    are settable.
@@ -119,8 +120,8 @@ extra records make the downstream section-matching far more efficient:
        SUGGESTED SECTION SHAPES (rough estimate read from the precise drawing — a
        STARTING POINT for the DC Input Creator, NOT a user-locked value; refine
        within ranges):
-         inner  ≈ 8% thick, 3% camber, max-thickness at ~3/10 chord
-         outer  ≈ 10% thick, 3% camber, max-thickness at ~4/10 chord
+         inner  ≈ 8% thick, 3% camber, camber crest at ~3/10 chord
+         outer  ≈ 10% thick, 3% camber, camber crest at ~4/10 chord
 
    This is your READING of the user's own drawing (they DID draw the shape), not
    an invented number — a rough eyeball is enough; mark it clearly as an estimate

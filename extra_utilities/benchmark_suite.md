@@ -56,7 +56,7 @@ The seven case-study numbers correspond to the `benchmark<N>/` folders on disk.
 | **M3** | Count discrete features in images | number of blades read from a sketch | **Absolute error** |
 | **M4** | Distinguish object orientation | recognise the orientation of a freely-drawn sketch | **Binary** |
 | **M5** | Extract explicit dimensions from sketches | arrows, circles, written dims on the student's sketches | **Binary** |
-| **M6** | Infer dimensions from relative size relations | estimate thickness, camber, max-thickness position | **Relative error** |
+| **M6** | Infer dimensions from relative size relations | estimate thickness, camber, camber-crest position | **Relative error** |
 | **M7** | 3D model geometry correctness | volume + point-cloud difference after 3D normalization | **Relative error** |
 
 ## A.3 The output space — 16 parameters

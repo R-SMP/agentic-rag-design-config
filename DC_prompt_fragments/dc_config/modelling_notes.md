@@ -1,7 +1,7 @@
 - Blade profiles are NACA-style airfoils parameterised by thickness, camber,
   and high-point.
-- "High-point" is the chordwise location of maximum thickness, given in
-  tenths of chord (e.g. a value of 3 means 30% chord from the leading edge).
+- "High-point" is the camber crest: ``innerMaxPos`` / ``outerMaxPos``, in
+  tenths of chord (3 = crest at 30% chord from the leading edge).
 - ``middlePos`` (the middle section's radial position) is a fraction of the BLADE
   SPAN measured from the blade root: 0 = root (the central hub, radius 4 mm), 1 = tip
   (impellerRadius), 0.5 = the blade's exact midpoint.  The middle section's actual
@@ -21,8 +21,9 @@ this propeller DC are:
     corresponding chord).
   * Camber in mm ↔ percent of chord
     (``innerCamber`` / ``outerCamber``).
-  * Highpoint in mm ↔ integer percent of chord
-    (``innerMaxPos`` / ``outerMaxPos`` — round after conversion).
+  * Camber-crest position along the chord (mm or % of chord) ↔ tenths of
+    chord (``innerMaxPos`` / ``outerMaxPos``: value = 10 × crest-position /
+    chord, rounded to an integer in [2; 8]).
   * Distance along the blade ↔ ``middlePos`` (a fraction of the blade SPAN, root→tip,
     NOT of ``impellerRadius``): ``middlePos = (r − 4) / (impellerRadius − 4)``, with
     ``r`` the desired middle-section radius in mm and 4 mm the hub radius.
