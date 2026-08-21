@@ -35,9 +35,7 @@ pixels with whichever retrieval tool covers that artefact: it downloads to
 a local folder and lists it, then pass a listed path to ``view_images`` to
 actually look.
 ``database_search`` itself returns TEXT ONLY — each ``<session>`` lists
-``<available_attempts>`` global_ids for attempt retrieval, and in
-multimodal mode a match may also carry ``<image_ref>`` elements to fetch
-the same way.
+``<available_attempts>`` global_ids for attempt retrieval.
 
 **When to call it** — when a question or doubt could plausibly be
 answered by prior sessions: an obstacle you have hit, background on what
