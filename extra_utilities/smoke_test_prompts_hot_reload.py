@@ -2,9 +2,12 @@
 
 Verifies that ``agents.shared.prompts._build_slots`` and
 ``agents.shared.prompts._build_template`` re-read fragment files from
-disk on every call, so edits saved via the System Prompts UI's
-``/api/prompts/save`` endpoint take effect on the NEXT session's
-agent construction without a Python restart.
+disk on every call, so an edit to a fragment .md takes effect on the
+NEXT session's agent construction without a Python restart.  (This
+mattered for the System Prompts UI, removed 2026-08-21; it matters
+just as much now that fragments are edited as files, and it is what
+lets the Sessions Queue switch prompt variants between runs inside
+one process.)
 
 Safe-by-construction: a temp directory mirrors the 4 source roots
 with minimal fixture .md files; the test monkeypatches the path

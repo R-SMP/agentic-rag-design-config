@@ -620,14 +620,13 @@ EMBEDDING_MAX_RESPONSE_TOKENS = str(
 
 
 # ---------------------------------------------------------------------------
-# Reverse indices for the System Prompts UI
+# Reverse index: fragment FILE -> the $slot it feeds
 #
-# Source-of-truth that the editor in workflow_settings/prompts_admin.py
-# consults when computing "this fragment is used by N agents" badges
-# and when validating $-slot references in edited fragments.  Lives
-# here (not in prompts_admin.py) so a future edit to _build_slots
-# below has the matching reverse-index entry one screen away — if you
-# add a new $slot, add the FRAGMENT_TO_SLOT entry in the same commit.
+# Consumed by extra_utilities/smoke_test_prompt_variant.py, which uses it to
+# decide which fragments a variant may override.  Lives HERE, next to
+# _build_slots below, so a new $slot and its reverse-index entry are one
+# screen apart — if you add a $slot, add the FRAGMENT_TO_SLOT entry in the
+# same commit.
 # ---------------------------------------------------------------------------
 
 # Path → $-slot name.  Paths are RELATIVE to the repo root.  Every
@@ -742,7 +741,8 @@ def scoped_fragment_path(slot: str, agent_dir_name: str) -> Path | None:
     ``agents/7agent_reduced/dc_config/hard_constraints_dc_<agent>_7agents_reduced.md``
     and a 5-agent Creator could ship its own twin.
 
-    Public because ``workflow_settings/prompts_admin.py`` resolves the same
+    Public because ``extra_utilities/smoke_test_topology_fragments.py``
+    resolves the same
     question for the System Prompts UI's "used by" badge; a second copy of this
     naming rule there is exactly the drift 13e0bab had to consolidate away.
     """

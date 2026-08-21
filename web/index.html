@@ -63,9 +63,6 @@
         <button class="nav-item" type="button" data-view="logstatus">
           <span class="nav-ico">📊</span><span>LOG and Status</span>
         </button>
-        <button class="nav-item" type="button" data-view="prompts">
-          <span class="nav-ico">📝</span><span>System prompts</span>
-        </button>
         <button class="nav-item" type="button" data-view="questions">
           <span class="nav-ico">❓</span><span>Questions for Saved Sessions</span>
         </button>
@@ -766,100 +763,6 @@
            fragment sources every chain agent reads.  Tree on the
            left, monospace editor on the right.  Read-only browse;
            Save click reveals an inline auth row.  See web/app.js. -->
-      <section class="view prompts-view" data-view="prompts" hidden>
-        <div class="prompts-scroll" id="prompts-scroll">
-
-          <!-- Lock banner — mirrors the Workflow Settings / Questions
-               one.  Backend also rejects writes with HTTP 409. -->
-          <div id="prompts-lock-banner" class="settings-lock-banner" hidden>
-            A session is active — system prompts are locked.  End the
-            session to edit them.
-          </div>
-
-          <div class="prompts-head">
-            <h2>System prompts</h2>
-            <p class="prompts-note">
-              Developer tool — edit every
-              <strong>system prompt fragment</strong> the chain agents
-              read.  Saves take effect on the
-              <strong>next session</strong>; templates are rebuilt
-              fresh at agent construction time.  Reading is open;
-              editing is password-gated (same password as
-              <em>Database</em>).
-            </p>
-          </div>
-
-          <!-- Main split: tree on left, editor on right -->
-          <div class="prompts-main">
-
-            <!-- Left: search box + tree -->
-            <aside class="prompts-tree-pane">
-              <div class="prompts-tree-search">
-                <input id="prompts-search" type="text" autocomplete="off"
-                       placeholder="Filter file name…" />
-              </div>
-              <div id="prompts-tree" class="prompts-tree" role="tree">
-                <p class="prompts-tree-loading">Loading file tree…</p>
-              </div>
-            </aside>
-
-            <!-- Right: file viewer / editor -->
-            <main class="prompts-editor-pane">
-              <div id="prompts-editor-header"
-                   class="prompts-editor-header" hidden>
-                <div id="prompts-editor-path"
-                     class="prompts-editor-path"></div>
-                <div id="prompts-editor-usedby"
-                     class="prompts-editor-usedby"></div>
-                <div id="prompts-editor-flags"
-                     class="prompts-editor-flags" hidden></div>
-              </div>
-              <!-- Overlay-hack wrapper.  The <pre> overlay sits
-                   behind a transparent-text textarea so that
-                   <<…>> conditional regions can be tinted by JS
-                   without abandoning the plain-textarea editor
-                   (round 4 Q13).  When no conditional regions are
-                   present the overlay is left empty and ignored. -->
-              <div id="prompts-editor-container"
-                   class="prompts-editor-container" hidden>
-                <pre id="prompts-editor-overlay"
-                     class="prompts-editor-overlay"
-                     aria-hidden="true"></pre>
-                <textarea id="prompts-editor" class="prompts-editor"
-                          spellcheck="false"></textarea>
-              </div>
-              <div id="prompts-editor-placeholder"
-                   class="prompts-editor-placeholder">
-                Select a file from the tree to view or edit its content.
-              </div>
-            </main>
-          </div>
-
-          <!-- Bottom action row -->
-          <div class="prompts-bottom">
-            <button id="prompts-save" class="primary"
-                    type="button" disabled>Save all changes</button>
-            <button id="prompts-discard" class="ghost"
-                    type="button" disabled>Discard all changes</button>
-
-            <!-- Inline auth row — slides in on Save click when not
-                 yet authenticated.  Password held in JS memory until
-                 page refresh (matches Database admin). -->
-            <div id="prompts-auth-row" class="prompts-auth-row" hidden>
-              <input id="prompts-password" type="password"
-                     autocomplete="off" placeholder="Password" />
-              <button id="prompts-unlock" class="primary"
-                      type="button">Unlock &amp; save</button>
-              <button id="prompts-auth-cancel" class="ghost"
-                      type="button">Cancel</button>
-            </div>
-
-            <p id="prompts-status" class="prompts-status" role="status"></p>
-          </div>
-
-        </div>
-      </section>
-
       <!-- 6. Workflow Settings: LLM routing chart + live editor over
            workflow_settings/settings.py -->
       <section class="view settings-view" data-view="settings" hidden>
