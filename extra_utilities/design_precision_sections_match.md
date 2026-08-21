@@ -324,3 +324,126 @@ Each phase shipped and was adversarially reviewed on its own (6 confirmed defect
 the five). Also landed: the `middlePos` correction (blade-span fraction; 4 mm hub) — commit
 `9ed7c2a`. **Outstanding:** a prod (py3.13) end-to-end run with a real precision sketch — the
 only validation the py3.8 worktree could not perform.
+
+---
+
+## 10. Post-ship: the two production runs of 2026-07-18 and what they changed
+
+*(Appended 2026-08-21 while archiving this document.  The five phases above end
+with "Outstanding: a prod (py3.13) end-to-end run with a real precision sketch".
+Those runs happened on 2026-07-18.  This section records what they showed and
+the three fixes that followed, so the document does not stop mid-story.)*
+
+**Headline: the plumbing worked, the content did not.**  Every mechanism the
+five phases built — the standing directives, the unified crop-and-stitch
+`view_images`, the UII warm start, the forced refine loop, the 3D precision
+check — behaved as designed.  What failed was what the agents *did* with them:
+the chain froze its own strongest levers and then reported the resulting
+plateau as a limit of the configurator.
+
+### 10.1 Run 1 — `web_20260718_094828`
+
+**The DCOI was steering parameters it could not see.**  It viewed a
+blade-sections render with no numeric context, repeated the same "inner section
+too thin" complaint six times, and the loop finalised on a false "configurator
+limit" verdict.
+
+**Root cause: `*Thickness` / `*Camber` are percentages of that section's OWN
+chord.**  `innerChord` stayed pinned at 5 mm while the DCIC pushed
+`innerThickness`, so the inner section grew 0.60 mm → 0.65 mm across six rounds
+while the others doubled.  A section with a pinned chord cannot grow in mm
+however far its ratio is pushed — and nothing in the chain said so.
+
+**Second finding: the MIDDLE section has no independent shape parameters at
+all.**  Its thickness / camber / max-position are interpolated between inner and
+outer at `middlePos`.  The whole chain had been treating them as directly
+controllable.
+
+**Two honesty gaps.**  (a) The sections phase ended on a "partially matched /
+plateaued" verdict, then the full-3D phase ran and only the LAST phase's
+residual survived into the final message — which told the user the sections
+"closely match your three drawn sections".  In that run all three section
+angles, `innerChord` and `middlePos` were never moved once despite an explicit
+authorisation, so the reported "configurator limit" was a **self-imposed
+freeze**, not a tool ceiling.  (b) The Receptionist invented a constraint the
+user never stated ("the Parameters Inputs interface shows middlePos fixed at
+0.55 × impellerRadius"), attributed it to them, and it propagated through the
+Planner and back to the user as a real conflict.
+
+**Fixes — `6b3919a` and `567880a`:**
+
+- `sections_geom.rendered_params_block()` renders a per-section summary of the
+  values a render was drawn from, giving each shape value BOTH as the parameter
+  (ratio: % of chord) and as the absolute size it produces (mm) — the two move
+  independently once the chord changes.  It also states that the middle section
+  has no independent thickness/camber/max-position parameters.
+- `view_images` attaches that block for any viewed image inside an attempt
+  folder, so it reaches the inspector at view time for section AND 3D renders,
+  without depending on the Tool Caller to relay it (it does not).  Imported
+  lazily to keep the heavy 3D render stack out of that module's import path.
+- DCOI prompt: feedback stays qualitative-first — the DCIC still owns the
+  numbers — but relative magnitudes are now PREFERRED ("roughly twice as thick",
+  "increase by ~30%"), specific values are allowed when genuinely confident, and
+  a new rule requires naming WHICH quantity is meant (thickness-to-chord ratio
+  vs absolute mm), since a bare "keep the thickness the same" has two opposite
+  readings once the chord moves.  DCIC prompt: state which reading was used when
+  a request is ambiguous.
+- The Planner's APPROVE move must now report the residual for EACH precision
+  phase, must not restate a plateau as a match, and must name any parameter the
+  user authorised to vary that was never actually varied across the run (first
+  vs last attempt).
+- The Receptionist's hand-off must quote the user's actual request and keep any
+  inferred context in a separately-marked sentence, never attributed to the user.
+
+### 10.2 Run 2 — `web-v1_ID167` (2026-07-18 13:55) — a regression caused by the run-1 fixes
+
+The second run did **worse**: 3 attempts instead of 10, stopping on a confident
+but false "NACA model limit" with half the camber range and every chord and
+angle untouched.  Both causes were introduced by the two commits above.
+
+**Cause 1 — a directive that restated a SUBSET silently revoked an
+authorisation.**  The Phase-4 standing-directive template said the DCIC "adjusts
+ONLY the unlocked shape params (`*Thickness` / `*Camber` / `*MaxPos` + section
+angles)" — a closed list that omits the CHORDS.  The Planner copied it
+near-verbatim, it was re-stamped **14 times** into the DCIC's context against a
+single prose mention of the user's authorisation, and the DCIC cited it as
+binding: *"I could not directly deepen its section without violating the
+standing directive to change only shape params."*  The chords froze even though
+the user had explicitly authorised varying them.
+
+**Cause 2 — the middle-section note read as a ceiling, not a direction.**  It
+led with the missing parameter and ended in a closed lever list, so the DCOI
+quoted it to justify finalising ("there is no independent middle
+thickness/camber/high-point control").  Worse, it steered the DCIC to
+`middlePos` as "the last plausible unlocked lever" — a move **mathematically
+incapable of helping**, because the middle is the inner/outer weighted average
+and `innerCamber == outerCamber == 4.5` made middle camber invariant under
+`middlePos`, while middle thickness actually FELL from 15.5% to 14.9%.  The DCOI
+read that self-inflicted flatness as proof of a model ceiling.
+
+**Fix — `b6cd5ee`:**
+
+- The directive template now **mirrors the authorisation instead of restating a
+  subset**: adjust ANY authorised parameter, hold fixed only what the user
+  fixed, and do not narrow to a subset — chord is often the strongest lever
+  because `*Thickness` and `*Camber` are percentages of a section's own chord.
+- The middle-section note is now **action-first**: raise inner AND outer
+  thickness/camber, the middle reaches any value they both reach, and
+  `middlePos` only slides between them and cannot exceed either.
+
+### 10.3 The transferable lessons
+
+1. **A directive that restates a subset of an authorisation revokes the rest of
+   it.**  Repetition beats prose: 14 re-stamps of a closed list overrode one
+   prose sentence granting more.  Mirror authorisations; never re-enumerate them.
+2. **A ratio parameter cannot grow an absolute size when its denominator is
+   pinned.**  Any agent steering `*Thickness` / `*Camber` needs the chord in
+   view, in mm, or it will push a lever that does nothing.
+3. **A "missing capability" note phrased as a limit will be quoted back as a
+   reason to stop.**  Phrase such notes action-first.
+4. **Report the residual of every phase, not just the last one** — otherwise a
+   later phase's success overwrites an earlier phase's plateau in the story the
+   user is told.
+5. **Naming untried-but-authorised levers is what distinguishes a real ceiling
+   from a self-imposed freeze.**  Nothing in the chain surfaced that until it was
+   made an explicit reporting duty.

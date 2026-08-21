@@ -624,7 +624,7 @@ The LOCKED / SOFT TARGET / FREE explanation is being **restructured for
 clarity** (model-first, fluid prose — NOT a rigid table) and pulled into a
 **single topology-agnostic shared fragment `$value_states`**, LIVE at
 `agents/shared/prompt_fragments/value_states.md` and **SHARED by both
-topologies** (the 5-agent draft copy was deleted 2026-07-31 — see F4). It
+topologies** (the 5-agent draft copy was deleted 2026-07-31 — see A4). It
 states the model +
 recognition + the three authorisation sources (A hand-off / B DESIGN INTENT
 / **C `(unlocked by user)` inline annotation**) + the "as needed vs freely"
@@ -858,7 +858,7 @@ prompt-side remains**: 6 prompts + 17 fragments.
 ## ✅ TOPOLOGY LAYOUT DECIDED + DRAFTS PROMOTED (2026-08-01)
 
 **Owner's decision: separate folder per topology, SHARED FILES STAY SHARED.**
-The second half is what prevents another F4 (the stale `value_states` copy).
+The second half is what prevents another A4 (the stale `value_states` copy).
 Also decided: **leave the 7-agent where it is** — it is the incumbent, working
 system, and moving 8 live prompts buys symmetry while risking a system that
 runs today. `SYSTEM_TOPOLOGY` will default to 7.
@@ -888,7 +888,7 @@ wired.**
 
 **WHAT REMAINS IS CODE + THE TOPOLOGY SELECTOR** (no prompt work):
 `agents/conductor/` and `agents/creator/` packages; `prompts.py` templates +
-allow-lists (incl. the F1 Receptionist runtime slots); a `routing.py` variant
+allow-lists (incl. the A1 Receptionist runtime slots); a `routing.py` variant
 (strings already recorded in `routing_boilerplate.md`); dispatch registration
 and `call_conductor` / `call_creator` tool bindings; then a validation run.
 **The selector governs where all of it lives and is still undiscussed.**
@@ -899,14 +899,25 @@ declaring done:** check for (1) anything missed, (2) useless repetitions,
 count reducible without impacting effectiveness, (5) inconsistencies or
 conflicts between the 7-agent and 5-agent systems.
 
-## Stage-4 AUDIT + fix set F1–F7 (2026-07-31) — CLOSED
+## Stage-4 AUDIT + fix set A1–A7 (2026-07-31) — CLOSED
+
+> **Numbering note (added 2026-08-21 when this file was archived).**  These
+> seven labels were written as `F1`-`F7` and are **file-local**: they are the
+> Stage-4 cross-file audit fix set, and have nothing to do with the global
+> `F1`-`F7` in `extra_utilities/TODO_known_issues.md` (which are
+> `dc_parameter_schemas` auto-loader, masked-RMSE weights, the HNSW upgrade,
+> the Streamlit shift, LOG colourisation, tool-call payloads, and the Context
+> Pruner).  They were renamed here to `A1`-`A7` to end that collision.  The
+> mapping is exactly `F1->A1 ... F7->A7`; no other text was changed.  Three
+> back-references elsewhere in this file (lines ~627, ~861, ~891) were
+> renamed to match.
 
 **29-agent whole-set audit: 0 confirmed losses**, filters all correct
 (including the Creator PF pair mis-resolved earlier — now right), no stale
 agent names in any body. But the CROSS-FILE pass found what per-file review
 structurally cannot — gaps that would break a run:
 
-- **F1 — the UII would get NO paths.** It needs `Input directory:` /
+- **A1 — the UII would get NO paths.** It needs `Input directory:` /
   `Extraction output file:` "verbatim; don't guess"; its tool handlers ERROR
   without them. Fixed: the Receptionist now emits both.
   **⚠ LIVE FINDING (code-conclusive, own section in `routing_boilerplate.md`):
@@ -914,13 +925,13 @@ structurally cannot — gaps that would break a run:
   live default is PF_OFF, so the block is STRIPPED and NO live agent emits
   them.** Runs succeed only because the UII infers the conventional paths.
   Latent live fragility; a 7-agent fix is NOT yet proposed.
-- **F2 — the Receptionist's second door was invisible.** The Conductor said
+- **A2 — the Receptionist's second door was invisible.** The Conductor said
   raw user input "never" reaches it (3 places + 2 fragments). Fixed across
   all 5, plus a Role-1 clause, plus a **light CLARIFY path in Role 2** (a
   chain agent asking what you meant gets a sharpened directive, NOT a full
   Recovery PLAN). This also resolved a contradiction that PREDATED the audit
   (conductor :194 "not to fetch new content" vs :480 "route through the UII").
-- **F3 — the Receptionist's context died at the UII.** Owner corrected my
+- **A3 — the Receptionist's context died at the UII.** Owner corrected my
   first proposal: DESIGN INTENT is about the PIECE, not the system's modus
   operandi, and the 7-agent conveys this by **verbatim relay**
   (orchestrator:90/93, planner:158 — verified). My persistence argument was
@@ -932,21 +943,21 @@ structurally cannot — gaps that would break a run:
   incoming hand-off is a source too".
   *Checked:* the `Reporting preferences` bullet is NOT mine — it dates to the
   initial commit `e16d20e`.
-- **F4 — deleted the stale `draft_shared_fragments/value_states.md`.** It
+- **A4 — deleted the stale `draft_shared_fragments/value_states.md`.** It
   predated the live `8ebfe5f` fix and would have REGRESSED "goal governs" on
   promotion. Root cause was copying a fragment that never needed copying (its
   only agent reference is the UII, which survives), so the fix kills the
   staleness CLASS: value_states is SHARED, like `capabilities_can/cannot`.
-- **F5** — conductor "the Receptionist splices those from the extraction" →
+- **A5** — conductor "the Receptionist splices those from the extraction" →
   the Receptionist CANNOT read it; the Conductor can, so it includes the
   values itself. (The live Planner hedged "Orchestrator / Receptionist"; the
   merge kept the wrong one.)
-- **F6** — dropped the "Conductor's final user-facing wrap-up" exception.
+- **A6** — dropped the "Conductor's final user-facing wrap-up" exception.
   **It was already wrong LIVE**: the Orchestrator's own prompt says "do NOT
   write the final user message yourself". Confirmed rule: every agent ends
   with a routing call; the ONLY exception is the Receptionist replying to the
   user. Worth fixing live separately.
-- **F7** — `available_agents` said the Tool Caller does "exactly two
+- **A7** — `available_agents` said the Tool Caller does "exactly two
   design-tool actions", which literally BLOCKS the `render_blade_sections`
   the Conductor's own precision directive requires. Now split by
   `<<BSV_ON>>`/`<<BSV_OFF>>`: the ON variant (the DEFAULT) emphasises BOTH

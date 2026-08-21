@@ -5251,3 +5251,193 @@ or DCOI ran in either.
 **Where.** Runs `ID245` (standard) / `ID246` (reduced), 2026-08-20.
 Related: F56 (`SYSTEM_TOPOLOGY` read fresh mid-turn — the same
 settings-are-global problem, one axis over).
+
+---
+
+### F90. The eager `*_TEMPLATE` block in `prompts.py` — nine import-time, topology-frozen constants
+
+**Status.** OPEN. Not a live defect today; a latent trap. Raised 2026-08-02
+during the topology-resolution step and deliberately NOT touched then, to keep
+that step's blast radius small. **Decide before the 3-agent variant.**
+Re-verified live 2026-08-21: still eager at `agents/shared/prompts.py:1045-1053`.
+
+**Where.** `agents/shared/prompts.py:1045-1053` builds nine module-level
+constants at **import** time — `RECEPTIONIST_TEMPLATE`, `ORCHESTRATOR_TEMPLATE`,
+`PLANNER_TEMPLATE`, `UII_TEMPLATE`, `DCIC_TEMPLATE`, `DCII_TEMPLATE`,
+`TOOL_CALLER_TEMPLATE`, `DCOI_TEMPLATE`, `DH_TEMPLATE` — each a
+`_build_template(...)` call. They are the **7-agent** set, they run exactly once
+when the module is first imported, and all nine are listed in `__all__`.
+
+**The problem, in ascending severity.**
+
+1. **Wasted startup work.** Under topology 5 all nine still build, including
+   Planner, Orchestrator, DCIC and DCII, which that topology never constructs.
+   Each `_build_template` call re-reads ~40 fragment files, so this is ~360 file
+   reads at import for ~4/9 no reason. A cost, not a correctness issue.
+
+1b. **What those four builds CONTAIN is incoherent** — the sharper form of 1,
+   and the same defect as `O9` in the topology-selector design notes. Under
+   topology 5, `_build_template("planner")` reads the 7-agent
+   `agents/planner/prompt.md` but fills it from a topology-5 slot map, so
+   `PLANNER_TEMPLATE` becomes the 7-agent Planner prompt with **5-agent
+   fragments spliced into it**: `generic_constraints_5agents.md` telling it to
+   escalate to a Conductor, `hard_constraints_dc_5agents.md`, and so on. A
+   topology-MIXED prompt, not merely a wasted one. Harmless only because nothing
+   reads it — which is exactly the assumption problem 3 says will not hold.
+
+2. **Topology-frozen and hot-reload-stale.** `_topology()` is read fresh per
+   call precisely because the Sessions Queue switches topology between runs
+   inside one process. These nine capture whatever `SYSTEM_TOPOLOGY` was on disk
+   when the module was FIRST imported and never update — neither on a topology
+   switch nor on a System-Prompts-UI edit. They are the one place in the module
+   that breaks the fresh-read contract.
+
+3. **They look like the supported API.** Being in `__all__`, a future caller
+   doing `from agents.shared.prompts import DCOI_TEMPLATE` silently gets an
+   import-time, topology-frozen, stale string, while every current agent
+   correctly calls `_build_template(...)` fresh in its own `__init__`.
+
+4. **They become a hard startup failure the moment a topology deletes a prompt.**
+   Each line needs its `agents/<agent>/prompt.md` to resolve. All nine 7-agent
+   files exist today, so under topology 5 the first two `_prompt_path` candidates
+   miss and each falls through to its historic file — fine. But if the 3-agent
+   variant ever REMOVES a 7-agent prompt file, this block raises
+   `FileNotFoundError` **at module import**: the whole app fails to boot rather
+   than failing at the one agent that needed it.
+
+**Why it is safe right now.** No production code reads any of the nine.
+Re-grepped 2026-08-21: the only consumer outside the module is
+`extra_utilities/smoke_test_prompt_format.py:95`
+(`getattr(prompts, f"{name}_TEMPLATE")`). (`dc_output_inspector.py:65` mentions
+`DCOI_TEMPLATE` in a comment only.) So today they are dead weight.
+
+**Proposed solutions.**
+
+- **Option A — make them lazy (recommended).** Delete the nine assignments and
+  add a PEP-562 module-level `__getattr__` mapping `<NAME>_TEMPLATE` →
+  `_build_template(<agent_dir>)` on attribute access. Fixes 1, 2 and 4 at once:
+  nothing is built until asked for, and what is built is topology-correct and
+  disk-fresh. `__all__` is unchanged and `smoke_test_prompt_format.py` needs no
+  edit, so call-site churn is zero.
+- **Option B — remove them.** Delete the nine constants and their `__all__`
+  entries; change the one harness to call `_build_template` directly. Cleanest
+  end state and kills 3 outright, but it is a public-API removal.
+- **Option C — guard only.** Wrap the block in a topology check or a
+  try/except. Addresses 4 alone, leaves 1, 2 and 3 in place. Not recommended —
+  it hides the staleness rather than fixing it.
+
+**Recommendation:** A now (zero call-site churn, fixes three of four), then B
+later if the API surface is ever worth removing outright.
+
+**Provenance.** Lifted verbatim from
+`extra_utilities/docs/archive/agent_count_variants_build_tracker.md` (section
+"🔶 OPEN — the eager `*_TEMPLATE` block in `prompts.py`") when that file was
+archived, so the item stays visible in the live tracker. Same subject as the
+topology-selector `O9` obstacle, now folded into
+`extra_utilities/docs/active/topology_shared_touchpoints.md` §G.
+
+---
+
+### F91. Per-agent STATEFUL / STATELESS toggle in the Workflow-Settings agent flow chart
+
+**Status.** OPEN — a feature request, never started. Surfaced 2026-07-26. It was
+recorded in the reduced-agent build tracker under a heading that explicitly said
+"**NOT part of the reduced-agent build**", i.e. it has been sitting in the wrong
+file since it was raised. Re-grepped 2026-08-21: it appears in no other tracker.
+
+**What to build.** For every PIPELINE agent shown in the Workflow-Settings agent
+flow chart, add a button/tick:
+
+- **ticked = STATEFUL (DEFAULT for every agent)** — the agent remembers its own
+  previous messages (its message history persists across its invocations within
+  the session, exactly as today).
+- **un-ticked = STATELESS** — the agent's only context is its initial system
+  prompt; it does NOT remember its previous conversations (fresh each
+  invocation).
+
+**Scope: pipeline agents ONLY.** Does NOT apply to the **Context Pruner** or the
+**Database Handler**. (Today all agents are effectively stateful; this makes it a
+per-agent choice.)
+
+**Provenance.** Lifted verbatim from
+`extra_utilities/docs/archive/agent_count_variants_build_tracker.md`, section
+"Separate feature TODO (surfaced 2026-07-26 — NOT part of the reduced-agent
+build)".
+
+---
+
+### F92. Four defects the 5-agent merge inherited from the 7-agent system — status re-checked 2026-08-21
+
+**Status.** PARTIALLY CLOSED. Two of the four were fixed after they were
+recorded; two are unverified and still stand as claims.
+
+**Why this entry exists.** The reduced-agent build tracker recorded four defects
+as "Deferred, INHERITED from the 7-agent (not merge-introduced)". That file has
+now been archived, and the claims were never re-checked against the code. They
+are reproduced here with a verification status against HEAD so they are not
+silently carried forward as live defects.
+
+**(a) "The DCOI cannot supply the `Parameters file:` line it is told to carry."**
+NOT VERIFIED. The line is referenced from several prompts
+(`agents/5agent/dc_output_inspector/prompt_5agents.md:385`,
+`agents/5agent/tool_caller/prompt_5agents.md:14,28,43,58`,
+`agents/5agent/tools_config/hard_constraints_tools_5agents.md:4`) but the
+producer/consumer chain was not traced. Treat as an open claim, not a
+confirmed defect.
+
+**(b) "The Creator's DCOI-directed context dies at the Tool Caller."**
+NOT VERIFIED. Same caveat.
+
+**(c) "No `conductor`/`creator` variants of the per-agent database / BSV
+fragments."** **FIXED.** `agents/5agent/tools_config/` now holds all four:
+`database_search_conductor_5agents.md`, `database_search_creator_5agents.md`,
+`blade_sections_visualizer_conductor_5agents.md`,
+`blade_sections_visualizer_creator_5agents.md`.
+
+**(d) "`user_input_inspector.py` still says paths are 'supplied by the
+Planner'."** **FIXED in substance.** `prev_agent="Planner"` at
+`agents/user_input_inspector/user_input_inspector.py:168` is correctly gated
+behind `if PLANNER_FIRST:`, so the live default (`PLANNER_FIRST=False`,
+`workflow_settings/settings.py:270`) never takes it; `:194-200` carries an
+explicit comment that the sender is the Orchestrator, not the Planner, and uses
+the agnostic "Hand-off from previous agent:" form; and the tool-handler error at
+`:318` is path-agnostic ("Error: no directory path provided"). **Residue:** the
+module docstring at `:4` still reads "Receives a short hand-off message from the
+Planner" — cosmetic, one line.
+
+**Next step.** Trace (a) and (b), then either close this entry or split each
+surviving half into its own F-id.
+
+---
+
+### F93. Pending actions embedded inside `warnings_developer.md` — index
+
+**Status.** OPEN as an index. Written 2026-08-21 during the documentation
+reorganisation.
+
+**The problem.** `warnings_developer.md` is an **invariant registry** — its job
+is "do not break this", and most entries are permanent by design. But a dozen
+entries also carry *pending work* (a named fix, a removal trigger that has come
+due, a capability deliberately given up pending a decision). That work is
+invisible from the TODO tracker, so it never gets scheduled.
+
+**Deliberately an index, not a copy.** Duplicating each warning as its own F-id
+would create twelve near-identical entries that then drift apart from their W
+originals. Instead this entry lists them; the authoritative text stays in
+`warnings_developer.md`.
+
+| W-id | Pending action |
+|---|---|
+| `W41` | `metafilters` is a REAL capability loss with no replacement — an agent can no longer restrict the candidate pool before ranking. The 3-step undo recipe is in the entry; re-exposing just `satisfaction` would recover most of it. **First thing to reconsider if retrieval quality disappoints.** |
+| `W40` | The top-level `cache_control` `ttl` assumption is unverified — a `1h` A/B would silently misread. Also records the 3-agent scope gap. |
+| `W38` | `chunks_mm` embedding parameters are LOCKED in code and not modifiable in the UI. |
+| `W29` | Local DH `.txt` writes are transitional; their removal is tracked nowhere else. |
+| `W26` / `W27` | `sessions.notes` and `sessions.user_id` are reserved-but-always-NULL columns. |
+| `W25` | `_slugify_field_for_filename` is duplicated between `db_writer.py` and `database_handler.py`; the entry names the fix. |
+| `W16` | `requirements.txt` pins a numpy newer than some local Pythons can install; three named resolutions, none chosen. |
+| `W13` / `W14` / `W17` | Each carries a **removal trigger** that is arguably now due — all three are Streamlit-era / Stage-A-era constraints. Pairs with the Streamlit-era correction sweep. |
+| `W5` | The `agent.base_llm or agent.llm` rule has no enforcing test. |
+
+**How to use this.** When one of these is actually scheduled, give it its own
+F-id and link back to the W. Do not delete the W entry — the invariant outlives
+the fix.
