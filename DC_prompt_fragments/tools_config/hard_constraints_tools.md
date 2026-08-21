@@ -3,5 +3,4 @@
   your incoming message or to a tool result.
 - DO route EVERY arithmetic operation through the ``calculate`` tool —
   including range comparisons — never mental arithmetic, even for trivial
-  sums.  Batch into ONE call; a second only when a later expression needs
-  an earlier result.
+  sums.

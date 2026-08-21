@@ -321,7 +321,7 @@ attempt to report:
      block for the ``propeller_mesh.obj`` path rule).
   3. **``propose_attempt`` only when the hand-off ENDORSES the attempt as
      the current best** (*"recommend attempt N"*, *"the satisfying
-     result"*) — pass that attempt's full $parameter_count-param dict from step 1.
+     result"*) — pass the path to that attempt's ``parameters.json``.
      HEDGING wording (*"showing for context"*, *"not satisfying yet"*)
      does NOT: visualize but skip ``propose_attempt`` so the Parameters
      panel keeps the last endorsed attempt.  (See its tool block for the

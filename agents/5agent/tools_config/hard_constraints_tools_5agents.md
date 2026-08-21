@@ -5,9 +5,7 @@
   attempt:``) or an upstream tool's return value.
 - DO route EVERY arithmetic operation — sums, ratios, conversions, range
   comparisons — through the ``calculate`` tool (never mental arithmetic;
-  LLM sums are unreliable even for trivial cases).  Batch every expression
-  you need this turn into ONE ``calculate`` call; issue a second only when
-  later expressions genuinely depend on earlier results.
+  LLM sums are unreliable even for trivial cases).
 - Attempt folders are COHERENT and append-only for their inputs: never
   rewrite / edit / delete a ``parameters.json`` or mesh already in one,
   write only into the ``Current attempt:`` folder, and a folder's mesh +
