@@ -4,7 +4,7 @@
 // (_shared/params.js CONSTANTS).  These are NOT exposed in the UI — they
 // come from the underlying Grasshopper scripts and govern the FEG's
 // resolution + ring/hub sizing.  Kept here so the FEG matches the
-// reference exactly.  See extra_utilities/web_interface_notes.md.
+// reference exactly.  See extra_utilities/docs/reference/web_interface_notes.md.
 
 export const CONSTANTS = {
   countI:               25,    // NACA + camber sample count

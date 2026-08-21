@@ -252,10 +252,10 @@ this pattern to add another dedicated logger, do NOT forget to set
 or `config.INPUT_IMAGES_DIR` — i.e. essentially every agent and
 tool that touches user inputs, attempts, or logs.
 
-**Why.** Stage A ships a Streamlit app whose `st.session_state`
+**Why.** Stage A ships a FastAPI + JS web app whose per-browser UI state
 isolates per-browser-session UI state, BUT the agents and tools
 still write to the global on-disk paths from `config.py`.  Two
-users hitting the same Streamlit pod simultaneously will collide:
+users hitting the same pod simultaneously will collide:
 both will append to the same `inputs/user_query.txt`, both will
 write attempts into the same `attempts/<TS>_<NNN>_<slug>/`, both
 will see each other's renders.  The `Session.create_for_v3` factory
@@ -268,7 +268,7 @@ naturally with introducing real per-user identity from Postgres).
     invite-code login screen if user-visible wording is needed.
   * Do NOT silently rely on `Session.inputs_dir` etc. being set —
     they are None in v4 REPL and will also be None in Stage A's
-    Streamlit dispatcher.  The caller passes `config.USER_INPUTS_DIR`
+    web dispatcher.  The caller passes `config.USER_INPUTS_DIR`
     to `dispatch_turn` directly, same as v4.
   * If you find yourself reaching for "let's just namespace one
     path", stop — partial namespacing is worse than none (some
@@ -281,31 +281,22 @@ B lands per-session path namespacing through every agent and tool.
 At that point, replace this entry with a short "obsolete" note
 pointing at the commit that did the threading, like W6/W7 above.
 
-## W14. UI button labels in Stage A must not promise persistence.
+## W14. ~~UI button labels in Stage A must not promise persistence.~~ **OBSOLETE since the save flow landed.**
 
-**Where.** Any Streamlit-side widget that ends or interrupts a
-conversation in the Stage A web app.
+Retired 2026-08-21.  The premise is no longer true: this warning said
+*"Stage A runs without a database.  There is no save flow yet ... Nothing is
+written anywhere."*  Today `web_app.py`'s `/api/end` calls
+`hub.database_handler.populate_database(...)`, which persists the session to
+Postgres and mirrors artefacts to R2.  The rule it enforced — do not label a
+button with a promise the system cannot keep — was satisfied by building the
+capability rather than by renaming the button.
 
-**Why.** Stage A runs without a database.  There is no save flow
-yet — the Database Handler exists in code but is wired only into
-the v4 REPL's end-of-session prompt, not into the Streamlit UI.
-Labelling a Stage A button "Save", "Save & Quit", "Submit",
-"Archive", or anything similar promises persistence the system
-cannot deliver and was a real source of confusion in earlier
-v2 mockups.
+Kept rather than deleted, like W6/W7, so a reader following an older commit
+message or code review that cites W14 still finds out what the concern was.
 
-**Stage A label.** The single available end-of-conversation
-control is **"End Session"**.  It clears `st.session_state` and
-reloads the page with a fresh empty Session.  Nothing is written
-anywhere.
-
-**Future stages.** Stage B introduces a true **"Save"** button
-(persists Session into Postgres via the DH save flow).  When
-Stage B lands, a Stage A-style "End Session" button MAY remain
-alongside Save (as the explicit "discard, don't save" path) or
-be replaced by a Save / Discard pair — this is a Stage B UX
-decision, not a Stage A one.  Until then, do NOT add a "Save"
-button anywhere in the Stage A UI even as a placeholder.
+The genuinely open question it pointed at — whether "End Session" should be
+joined by an explicit Save/Discard pair — survives as **O10** in
+`TODO_known_issues.md`.  Note also **W8**: the save is OPT-IN by default.
 
 ## W15. The project Python is a SHARED interpreter, NOT a venv in the worktree.
 
@@ -355,7 +346,7 @@ environments), update this entry rather than letting it rot.
 **What.** numpy 2.x requires Python 3.9+.  The local Windows
 machine has three Python installs — 3.8 (system), 3.9, and 3.13
 (via py launcher).  Only 3.9+ can install numpy 2.x.  Installing
-streamlit (or any other dep) via `pip install` while running on
+a new dep via `pip install` while running on
 Python 3.8 will downgrade numpy to 1.24.4 to satisfy compatibility
 with 3.8 — and since `python` on this machine resolves to the
 3.8 install (`C:\Program Files\Python38\python.exe`), this is
@@ -379,10 +370,45 @@ project Python can install, or (b) adding a runtime
 toml` — is deliberately deferred.  See also W15 for the venv
 convention that mostly papers over this in day-to-day use.
 
-## W17. Streamlit is an INTERIM web interface — do not over-invest in it.
+## W17. Keep the web layer a THIN SHIM over `dispatch_turn`.
+
+> **Rewritten 2026-08-21.**  This entry was *"Streamlit is an INTERIM web
+> interface — do not over-invest in it"*.  Its own closing line said: *"This
+> warning stays in force until F4 lands; at that point replace it with an
+> 'obsolete' note like W6/W7."*  **F4 has landed** — `web_app.py` + `web/` are
+> the production frontend, and `streamlit_app.py` was deleted on 2026-08-21.
+>
+> It is rewritten rather than tombstoned because the Streamlit-specific half
+> died but the **architectural rule did not**: the web layer must stay a thin
+> I/O surface over `dispatch_turn`.  That rule is what kept the Streamlit ->
+> JS migration cheap, and it is what will keep the next one cheap.  The
+> Streamlit-specific rationale is preserved below under "Historical".
 
 **THIS IS A WEB-INTERFACE DEVELOPER NOTE — read before adding
-anything non-trivial to `streamlit_app.py`.**
+anything non-trivial to `web_app.py` or `web/`.**
+
+**Where.** `web_app.py`, `web/app.js`, and anything that grows around them.
+
+**The rule.**  Keep all agent / pipeline logic behind `dispatch_turn` and the
+`Session` plain-data contract.  The web layer reads input, renders output, and
+manages the gate + session lifecycle — the same role the CLI REPL loader plays.
+A different frontend should be able to replace `web_app.py` by calling the same
+`dispatch_turn`.
+
+  * Do NOT push business rules, parameter validation, artefact resolution, or
+    persistence decisions into the web layer.
+  * If a feature needs a framework-specific hack to work, that is a signal the
+    feature belongs behind `dispatch_turn` / in the agent layer.
+  * Specify new user-facing controls in terms of *what dispatch/session
+    operation they trigger*, so they port to any future frontend as a button
+    that hits the same operation.
+
+**Evidence the rule paid off.**  The Streamlit -> JS migration (F4) changed the
+I/O surface only; no agent or pipeline code moved.
+
+---
+
+### Historical — the original Streamlit-era text
 
 **Where.** `streamlit_app.py` and anything that grows around it.
 
@@ -423,10 +449,10 @@ and makes the migration harder.
     operation they trigger*, so they port to the JS frontend as a
     button that hits the same operation.
 
-**Status.** Streamlit is the Stage A + (likely) Stage B/C
-frontend.  The JS migration is post-Stage-C / productionisation
-work (F4).  This warning stays in force until F4 lands; at that
-point replace it with an "obsolete" note like W6/W7.
+**Status (historical).** Streamlit was the Stage A frontend.  The JS
+migration (F4) landed; `streamlit_app.py` was deleted 2026-08-21 and the
+`streamlit` dependency removed from `requirements.txt`.  The rule above
+survives it.
 
 
 ## W18. Every DH tool is bound for ONE turn only, never left on `self.llm`.
@@ -1762,7 +1788,7 @@ call site must keep the prefix, and no agent may ever be named `DH*`** — other
 writes get priced at the wrong phase's ttl the moment the two ttls diverge.
 
 **Status.** In force from 2026-08-04 (the conversation-history-caching change; the
-Database Handler joined the same day). See `extra_utilities/design_prompt_caching.md`
+Database Handler joined the same day). See `extra_utilities/docs/reference/design_prompt_caching.md`
 and `workflow_settings/settings.py` §29–§30.
 
 **Unverified assumption (2026-08-04).** Whether the **top-level** `cache_control`
@@ -1830,3 +1856,71 @@ back later:
   ever have been `{}`).  `attempt_specific` is still emitted and is now
   likewise always `"false"` — left in place pending a separate decision.
 
+
+## W42. Five 0-byte `.md` fragments are LOAD-BEARING — in two OPPOSITE directions.
+
+**Recorded 2026-08-21** during the documentation audit, after
+`extra_utilities/prompt_efficiency/PROMPT_SHRINK_PROPOSAL_7agent.md:707-708`
+was found prescribing DELETE for three of them.  **That instruction is wrong.**
+An empty file here is not an authoring accident — it is a decision, and in one
+of the two groups it is not even substitutable by absence.
+
+### Group 1 — delete these and the app does not boot
+
+    DC_prompt_fragments/tools_config/retrieve_attempt.md
+    DC_prompt_fragments/tools_config/tool_caller_instructions.md
+
+The loader is `_read_dc_fragment` (`agents/shared/prompts.py:391-395`):
+
+    path = _topology_override(rel_path) or (DC_FRAGMENTS_DIR / rel_path)
+    return path.read_text(encoding="utf-8").rstrip()
+
+There is **no `exists()` / `is_file()` guard**, and both are called at MODULE
+SCOPE — `TOOL_CALLER_INSTRUCTIONS` at `:483`, `RETRIEVE_ATTEMPT_TOOL` at `:531`.
+So a missing file raises `FileNotFoundError` the moment `agents.shared.prompts`
+is imported: every agent, the web app and the CLI all fail to start.
+
+Empty content is the INTENDED state — the slot renders nothing.  Both were
+emptied deliberately (see `design_tool_merges.md`, commit `251ff5b`: "retrieve_*
+fragments — lean fully on the tool schemas"), with `retrieve_user_inputs.md`
+covering both retrieval tools.
+
+**If you genuinely want one gone, you must delete the file AND its
+`_read_dc_fragment` call AND its `_build_slots` entry AND its row in the
+fragment→slot index, in the same commit.**  Never the file alone.
+
+### Group 2 — delete these and the prompt silently changes, with no error
+
+    agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_input_inspector_7agents_reduced.md
+    agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_output_inspector_7agents_reduced.md
+
+These resolve through `scoped_fragment_path` / `_topology_override`
+(`agents/shared/prompts.py:123-164`), which selects with `if cand.is_file()`.
+So **present-and-empty is NOT the same as absent**:
+
+* present + empty → suppresses the shared
+  `DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md` for that agent
+* absent → falls through and silently RESTORES all 1,736 characters of it
+
+`extra_utilities/fork_manifest.json:69-73` states the intent verbatim: *"the
+file being empty IS the override"*.  This is the worse failure mode of the two:
+no crash, no warning, just text quietly reappearing in a prompt the reduced
+variant decided to cut.
+
+### The one that is genuinely optional
+
+    DC_prompt_fragments/tools_config/blade_sections_visualizer_tool_caller.md
+
+A per-agent overlay resolved by naming convention and guarded by `.exists()`
+(`prompts.py:1005-1008`), so missing and empty both yield `""` — deleting it
+changes no assembled prompt byte.  **But leave it.**  Its emptiness marks an
+open documentation gap: `tool_caller.py:116-118` binds `render_blade_sections`
+whenever `blade_sections_access.is_enabled()`, while the Tool Caller prompt
+declares its four-item tool list as exhaustive, and this overlay is where that
+would be patched.  Deleting the file deletes the reminder.
+
+**Rule of thumb.**  A 0-byte file under `DC_prompt_fragments/` or under a
+topology/variant tree is a decision.  Before removing one, find its loader and
+check whether it is read unguarded (Group 1) or selected by `is_file()`
+(Group 2).  `__init__.py` files are a different thing entirely and are not
+covered by this warning.

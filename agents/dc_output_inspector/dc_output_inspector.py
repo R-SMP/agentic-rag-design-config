@@ -271,7 +271,7 @@ class DCOutputInspector(BaseChainAgent):
             user_query_path,
         )
         # Built fresh at construction time so live edits to .md
-        # fragments via the System Prompts UI take effect on the
+        # fragments on disk take effect on the
         # NEXT session without a Python restart.
         self.system_prompt = _build_template("dc_output_inspector").format(
             routing_instructions=routing_block,

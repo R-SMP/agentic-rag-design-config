@@ -475,7 +475,7 @@ def encode_image_bytes(raw: bytes, degree_pct=None, is_render: bool = False,
 
 # ----------------------------------------------------------------------
 # Prompt caching (Anthropic only) — see workflow_settings/settings.py §29
-# and extra_utilities/design_prompt_caching.md
+# and extra_utilities/docs/reference/design_prompt_caching.md
 # ----------------------------------------------------------------------
 # Both breakpoints are built from ONE ttl value here.  Anthropic returns
 # a 400 when the automatic breakpoint lands on a block that already

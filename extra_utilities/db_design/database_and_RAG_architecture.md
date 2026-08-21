@@ -8,7 +8,7 @@ This file captures every architectural decision made during the
 6 March meeting design discussion on the PostgreSQL backend and the
 RAG layer that sits on top of it. It is the single source of truth
 for these choices until they migrate into the project repo
-(`extra_utilities/database_design_notes.md` is the eventual target
+(`extra_utilities/db_design/database_design_notes.md` is the eventual target
 once decisions are locked).
 
 ---
@@ -1061,7 +1061,7 @@ Items deferred to future iterations but recorded so they're not lost:
 These are the rules a developer must respect when touching the
 database or RAG code. Mirror these into
 `extra_utilities/warnings_developer.md` and
-`extra_utilities/database_design_notes.md` when the implementation
+`extra_utilities/db_design/database_design_notes.md` when the implementation
 lands in the repo.
 
 1. **`agents_to` is the only ACL** — never display a chunk to an agent

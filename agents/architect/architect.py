@@ -298,7 +298,7 @@ class Architect(BaseChainAgent):
         # Orchestrator uses $routing_orchestrator.
         #
         # Built fresh at construction time so live edits to .md
-        # fragments via the System Prompts UI take effect on the NEXT
+        # fragments on disk take effect on the NEXT
         # session without a Python restart.
         self.system_prompt = _build_template("architect").format(
             user_inputs_dir=str(USER_INPUTS_DIR.resolve()),

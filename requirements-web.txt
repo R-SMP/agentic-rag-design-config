@@ -1,7 +1,9 @@
-# F4 JavaScript web interface (local / experimental) — the backend
-# bridge for web_app.py.  NOT used by the Stage A Streamlit container
-# (cloud_architecture_notes.md C2 keeps Streamlit as the sole Railway
-# entry point).  Install alongside the main requirements:
+# The web interface — the backend stack for web_app.py, which IS the
+# production entry point (Dockerfile CMD runs `uvicorn web_app:app`,
+# and the Dockerfile installs this file alongside requirements.txt).
+# Streamlit was removed 2026-08-21; cloud_architecture_notes.md C2,
+# which made Streamlit the sole Railway entry point, is superseded.
+# Install alongside the main requirements:
 #
 #   pip install -r requirements.txt -r requirements-web.txt
 #

@@ -736,7 +736,7 @@ def run() -> None:
         # ``_resolve_session_name`` will use at archive time, so logs,
         # archive, and (later) DH save all agree on the identifier.
         # Path fields stay None — v4 keeps using the global config.*
-        # paths, no Streamlit-style namespacing.
+        # paths, no per-session namespacing.
         session = Session(
             session_id=_resolve_session_name(),
             session_ts=datetime.now(timezone.utc),
@@ -794,7 +794,7 @@ def run() -> None:
             logger.info(f"[USER]  {user_input}")
 
             # The per-turn body lives in agents/dispatch.py so the v3
-            # Streamlit handler can reuse it (Phase 3).  Loader's role
+            # web handler can reuse it.  Loader's role
             # here is the I/O surface: read user input, print the
             # reply.  All agent orchestration is inside dispatch_turn.
             result = dispatch_turn(

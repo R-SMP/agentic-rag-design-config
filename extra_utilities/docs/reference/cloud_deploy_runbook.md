@@ -329,8 +329,7 @@ If all five pass, Stage A is live.
 There is NO push-to-deploy (see §1 — the Railway GitHub App is not
 authorised on the `R-SMP` org).  To redeploy: in the
 ``stage-a-web-deploy`` worktree, get the changes you want live
-into the working tree, then re-run ``railway up``.  In-flight
-Streamlit sessions are NOT preserved across deploys (Stage A's
+into the working tree, then re-run ``railway up``.  In-flight web sessions are NOT preserved across deploys (Stage A's
 session state lives in process memory — see
 ``cloud_architecture_notes.md`` C4).  Run ``railway up`` only when
 no invitee is actively demoing.

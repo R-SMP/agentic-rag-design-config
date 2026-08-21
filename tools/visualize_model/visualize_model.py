@@ -6,7 +6,7 @@ decoupled visualization bus) to display it interactively, and returns
 a short success/failure string back to the calling agent.
 
 No web imports here — the tool only touches ``agents.shared.viz_bus``,
-which the web layer subscribes to.  In the REPL / Streamlit (no web
+which the web layer subscribes to.  In the CLI REPL (no web
 viewer) the publish simply reaches zero subscribers and the tool says
 so honestly.
 """
@@ -85,7 +85,7 @@ def visualize_3d_model(obj_path: str) -> str:
     # serve its parameters.json to the Copy parameters list button in
     # the chat viewer footer (otherwise that button returns the
     # canonical reference list).  Done unconditionally on a validated
-    # path — REPL / Streamlit have no SSE subscriber but the cache is
+    # path — the CLI REPL has no SSE subscriber but the cache is
     # still meaningful for any direct /api/parameters reader.
     set_last_visualized_attempt_dir(target.parent)
     if reached:

@@ -20,7 +20,7 @@ Verifies:
 5. populate_database can be invoked from JUST a Session (the
    orchestrator= kwarg is optional; the DH builds one internally
    when the caller doesn't supply it) — the use case Phase 3
-   Streamlit will need.
+   the web app will need.
 
 LLM calls are mocked with a canned-response stub so the test is
 deterministic and fast (no API calls, no spend).
@@ -198,7 +198,7 @@ finally:
 
 # ---------------------------------------------------------------------
 # Case 5: populate_database can be invoked without a pre-built
-# orchestrator (Phase 3 Streamlit use case)
+# orchestrator (web use case)
 # ---------------------------------------------------------------------
 session3 = _build_session()
 dh3 = DatabaseHandler(session=session3)

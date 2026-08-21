@@ -8,7 +8,7 @@ that defines a single agent's current state — chiefly the message
 list, the pending routing hop, and the buffered image blocks.
 
 Why "plain data"?  In v3 the live agent objects are reconstructed
-on every Streamlit turn from this state plus the LLM client cache
+on every web turn from this state plus the LLM client cache
 (``agents/shared/llm_client_cache.py``).  Sessions can also be
 serialised to JSON for an eventual Redis-backed Option-B session
 store (see ``cloud_architecture_notes.md`` C4).  Both flows require
@@ -33,7 +33,7 @@ from agents.shared.routing_tools import AGENT_DISPLAY
 
 
 # Defaults baked from workflow_settings/settings.py (the v4-REPL
-# convention).  Streamlit / v3 callers may override any of these per
+# convention).  Web / API callers may override any of these per
 # Session by passing keyword arguments to the constructor or factory.
 _DEFAULT_RAG_ENABLED                = False
 _DEFAULT_DC_INSPECTOR_ENABLED       = True
@@ -190,7 +190,7 @@ class Session:
     ) -> "Session":
         """Build a Session with v3-style namespaced paths.
 
-        Used by the Streamlit dispatcher to give each user's session
+        Used by the web dispatcher to give each user's session
         its own ``inputs/<session_id>/`` etc., so concurrent users do
         not collide on the same server-local files.  v4 REPL does NOT
         call this — it constructs a plain Session whose path fields

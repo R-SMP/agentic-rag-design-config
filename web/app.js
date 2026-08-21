@@ -5238,7 +5238,7 @@ startEventStream();
 
 // ---------------------------------------------------------------------------
 // Parameters Inputs view  (Step 2 of the redesign — see
-// extra_utilities/web_interface_notes.md §§1-7)
+// extra_utilities/docs/reference/web_interface_notes.md §§1-7)
 // ---------------------------------------------------------------------------
 // Split-pane layout: 3D viewer LEFT (wired in Step 4), scrolling
 // parameter column RIGHT.  All 17 propeller parameters rendered

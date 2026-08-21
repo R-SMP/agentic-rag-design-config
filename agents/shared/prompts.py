@@ -456,7 +456,7 @@ VISUALIZE_3D_MODEL_TOOL = _read_dc_fragment(
 )
 # Web-interface-only UI-update tool.  Bound to the Receptionist alone
 # (Step 9 of the Parameters Inputs redesign — see
-# extra_utilities/web_interface_notes.md §§3-7).  Fires the
+# extra_utilities/docs/reference/web_interface_notes.md §§3-7).  Fires the
 # params_proposed SSE event that updates the Parameters Inputs view's
 # slider colours / labels.  Same templating idiom as
 # VISUALIZE_3D_MODEL_TOOL above.
@@ -641,8 +641,9 @@ FRAGMENT_TO_SLOT: dict[str, str] = {
     "agents/shared/prompt_fragments/available_agents.md":     "available_agents",
     # $pipeline_flow has TWO source files; only the file matching the
     # current PLANNER_FIRST flag is read by _build_slots.  Both are
-    # listed so the System Prompts UI surfaces them as contributing
-    # to the same set of agents.
+    # listed so this map stays complete whichever way the flag is set --
+    # a reader (or a tool) walking it must find both contributors, not
+    # just the one the current flag happens to select.
     "agents/shared/prompt_fragments/pipeline_flow_planner_first.md": "pipeline_flow",
     "agents/shared/prompt_fragments/pipeline_flow_uii_first.md":     "pipeline_flow",
 }
@@ -697,9 +698,10 @@ def scoped_fragment_path(slot: str, agent_dir_name: str) -> Path | None:
     and a 5-agent Creator could ship its own twin.
 
     Public because ``extra_utilities/smoke_test_topology_fragments.py``
-    resolves the same
-    question for the System Prompts UI's "used by" badge; a second copy of this
-    naming rule there is exactly the drift 13e0bab had to consolidate away.
+    resolves the same question; a second copy of this naming rule there is
+    exactly the drift 13e0bab had to consolidate away.  (It was also read by
+    the System Prompts UI's "used by" badge, removed 2026-08-21 -- the smoke
+    test is now the only caller.)
     """
     try:
         root, rel = SCOPED_FRAGMENTS[slot]
@@ -736,12 +738,17 @@ def _scoped_fragments_for(agent_dir_name: str) -> dict[str, str]:
 # Per-agent allow-list of runtime ``{slot}`` names that may appear
 # inside ``agents/<agent>/prompt.md``.  MUST mirror the kwargs passed
 # to ``_build_template(<agent>).format(...)`` in each agent's
-# ``__init__``.  Used by the System Prompts UI's validator (rule "c")
-# to flag any ``{x}`` in a prompt.md whose ``x`` is not allowed for
-# that agent — at runtime ``str.format`` would raise KeyError.
+# ``__init__``.
 #
-# If you add a new format kwarg in an agent's ``__init__``, ADD the
-# same name to this set in the same commit.
+# ⚠ NOTHING ENFORCES THIS ANY MORE.  It was checked by the System Prompts
+# UI's validator (rule "c"), which flagged any ``{x}`` in a prompt.md whose
+# ``x`` is not allowed for that agent.  That UI was removed 2026-08-21, so
+# the check is gone while the failure mode is not: an unlisted ``{x}`` makes
+# ``str.format`` raise KeyError at agent construction, i.e. at RUNTIME.
+#
+# So the discipline matters MORE than it did, not less: if you add a new
+# format kwarg in an agent's ``__init__``, ADD the same name to this set in
+# the same commit.
 PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
     # The 5-agent Receptionist forwards straight to the UII, whose tools
     # refuse to run without explicit paths ("Error: no directory path
@@ -919,9 +926,9 @@ def _build_template(agent_dir_name: str) -> str:
     more passes or a fixed-point loop.
 
     The slot map is rebuilt fresh on every call (via
-    :func:`_build_slots`) so live edits to .md fragments via the
-    System Prompts UI take effect on the next session's agent
-    construction without a Python restart.
+    :func:`_build_slots`) so live edits to .md fragments on disk take
+    effect on the next session's agent construction without a Python
+    restart.
     """
     raw = _prompt_path(agent_dir_name).read_text(encoding="utf-8")
     # Per-agent overlay onto the global slot map: load this agent's

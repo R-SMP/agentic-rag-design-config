@@ -6,7 +6,7 @@
 // rebuild3D()), refactored to return a self-contained Group instead of
 // mutating a shared scene.  The 2D section overlays / slider-graying from the
 // reference are intentionally NOT ported here — those belong to the deferred
-// blade-section views (see extra_utilities/web_interface_notes.md).
+// blade-section views (see extra_utilities/docs/reference/web_interface_notes.md).
 //
 // Built in the GH/Rhino coordinate convention (Z = propeller axis).  The
 // caller (web/viewer.js) applies the same -90° X-rotation it already uses for
