@@ -378,7 +378,9 @@ home for the no-ask-back directive.
 
 ## PART B -- Soft targets: provided values subordinate to a qualitative goal
 
-*Source: `extra_utilities/design_soft_targets.md`, reproduced in full.
+*Source: the former `extra_utilities/design_soft_targets.md` (reproduced in
+full here, then removed -- the path no longer exists; see git history before
+2026-08-21).*
 This is the model Part A's D5 "degrade to soft target" lands in.*
 
 ## Soft targets — provided values subordinate to a qualitative goal
@@ -465,7 +467,9 @@ QUANTITATIVE INPUTS = FREE.
 
 ## PART C -- Out-of-range values: full case matrix + coherence audit
 
-*Source: `extra_utilities/analysis_out_of_range_cases.md`, reproduced in full.
+*Source: the former `extra_utilities/analysis_out_of_range_cases.md`
+(reproduced in full here, then removed -- the path no longer exists; see git
+history before 2026-08-21).*
 This part carries the AUTHORITATIVE close status for the G-items that Part A
 lists as open -- where the two disagree, this one is newer.*
 

@@ -310,7 +310,9 @@ agents share one default" collapse changes its count.  Accepted knowingly.
 
 ## §G — Selector design + obstacle ledger
 
-*Folded in 2026-08-21 from `extra_utilities/design_topology_selector.md`,
+*Folded in 2026-08-21 from the former
+`extra_utilities/design_topology_selector.md` (removed in the same commit --
+the path no longer exists),*
 reproduced in full with heading levels shifted down one.  No prose changed.
 The two files were the design half and the runbook half of one subject and
 were always read together; this is the runbook, so it is the surviving name.*
