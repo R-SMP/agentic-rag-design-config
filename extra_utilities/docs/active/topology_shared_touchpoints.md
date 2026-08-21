@@ -196,7 +196,6 @@ Recommended staging, each stage independently reviewable and committable:
 
 ```bash
 py extra_utilities/smoke_test_topology_fragments.py
-py extra_utilities/smoke_test_prompts_admin.py
 py -m pyflakes agents/ web_app.py workflow_settings/
 ```
 
@@ -421,11 +420,19 @@ Full detail in the wiring map; the ones that survive the O1 correction:
   > make them lazy via a module-level `__getattr__`).  Confirmed dead: no
   > production code reads any of the nine, only
   > `smoke_test_prompt_format.py:88`.
-- **O12 — ALREADY LIVE:** `prompts_admin._agent_for_prompt_md` has a
-  `len(parts) == 3` gate, so it returns `None` for
-  `agents/5agent/<agent>/prompt.md`.  **The unescaped-brace validator therefore
-  never runs on any nested survivor prompt** — and the 5-agent Receptionist now
-  contains `{user_inputs_dir}` / `{extraction_output_file}`.  Fix early.
+- **O12 — MOOT since 2026-08-21.**  This described a gate in
+  `prompts_admin._agent_for_prompt_md` that stopped the unescaped-brace
+  validator running on nested survivor prompts.  The System Prompts UI and
+  `workflow_settings/prompts_admin.py` were **removed entirely** on stage-a
+  (same commit that closed TODO `F81`), so there is no validator left to gate.
+  Prompts are edited as files again.
+
+  > **The underlying hazard did NOT go away — it lost its only detector.**  A
+  > literal `{` or `}` in any `.format()`-spliced fragment still breaks prompt
+  > assembly at import.  Nothing checks for it now.  If a prompt-editing UI is
+  > ever reinstated, its validator must cover nested variant prompts, and its
+  > marker list must cover all nine conditional markers (see the archived
+  > `F81`).
 
 ### Build order — ADDITIVE FIRST (owner's choice)
 

@@ -1469,3 +1469,54 @@ limitations bite" condition above, or by a public-audience
 requirement.  Paired warning: `warnings_developer.md` W17.
 
 ---
+
+### F81. `prompts_admin._MARKER_PAIRS` validates only 5 of the 8 conditional-region markers
+
+**Status.** CLOSED 2026-08-21 — BY DELETION, not by fixing.  The gap only mattered because the System Prompts UI could WRITE prompt files; that UI (and `prompts_admin.py` with it) was removed at the owner's request, so there is nothing left to validate.  Prompts are edited as files again.  If a prompt-editing UI is ever reinstated, its marker list must cover ALL markers in use — at removal time that was nine: BSV_ON, BSV_OFF, CHAIN_ONLY, DCII_ONLY, DCII_OFF, HAS_DBA, MESH_ON, PF_ON, PF_OFF — and the old list checked seven, missing BSV_ON, BSV_OFF and CHAIN_ONLY.
+severity, zero-cost fix, but it is a *silent* gap and those are the ones that bite.
+
+**The gap.** `agents/shared/prompts.py` resolves eight conditional-region marker
+pairs at template-build time:
+
+    DCII_ONLY / DCII_OFF / PF_ON / PF_OFF / HAS_DBA / BSV_ON / BSV_OFF / CHAIN_ONLY
+
+`workflow_settings/prompts_admin.py::_MARKER_PAIRS` lists only five of them.
+Missing: **`<<BSV_ON>>`, `<<BSV_OFF>>` and `<<CHAIN_ONLY>>`**.
+
+**Why it matters.** Rule (b) of the System Prompts validator counts opens vs
+closes per pair and warns on a mismatch.  Every regex in `prompts.py` is greedy
+(`(.*?)` with `re.DOTALL`), so an unbalanced marker does not raise — it silently
+swallows content up to the next close marker, or leaves the literal `<<BSV_ON>>`
+text in the assembled prompt.  For the three unlisted pairs the editor reports
+nothing, so an author editing a BSV or CHAIN_ONLY region in the System Prompts UI
+gets no feedback at all.  `_has_conditional_regions()` reads the same tuple, so
+those files are also mis-reported as having no conditional regions.
+
+`<<CHAIN_ONLY>>` is the higher-risk of the three: it is spliced into
+`generic_constraints.md`, which every chain agent carries, and it has no OFF
+twin — an unbalanced open marker would swallow the rest of the constitution for
+the non-chain agents (Receptionist + each topology's hub) with no error.
+
+**The fix.** Three lines in `workflow_settings/prompts_admin.py`:
+
+```python
+    ("<<BSV_ON>>",     "<</BSV_ON>>"),
+    ("<<BSV_OFF>>",    "<</BSV_OFF>>"),
+    ("<<CHAIN_ONLY>>", "<</CHAIN_ONLY>>"),
+```
+
+**Mutation-test it** (per `topology_shared_touchpoints.md` §D — a check that has
+never failed has not been shown to work): drop one `<</CHAIN_ONLY>>` from
+`generic_constraints.md`, confirm `smoke_test_prompts_admin.py` now reports
+`unbalanced_marker`, then restore.
+
+**Why it was not fixed in the same commit.** It is a pre-existing defect unrelated
+to the 7-agent reduced variant, and folding it into that commit would have made a
+scoped prompt change also a validator change.  Deliberately left standalone.
+
+**Where.** `workflow_settings/prompts_admin.py:304-311` (`_MARKER_PAIRS`);
+the authoritative marker list is `agents/shared/prompts.py:151-175`.
+
+---
+
+---

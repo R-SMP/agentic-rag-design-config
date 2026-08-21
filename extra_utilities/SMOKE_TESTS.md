@@ -28,6 +28,7 @@ that move.
 | `smoke_test_all_chain_agents.py` | llm-api |  | Asserts Orchestrator(session=…) builds all seven chain agents as BaseChainAgent subclasses with the right AGENT_KEYs, materialises one AgentState slot per agent in session.agent_states, and that sn... |
 | `smoke_test_async_turn.py` | none |  | Asserts the /api/turn 202 + SSE turn_done contract with dispatch_turn stubbed: 202 with a 12-hex turn_id, 400 on a blank message, 409 on a concurrent turn, an end-to-end SSE turn_done payload (turn... |
 | `smoke_test_attempt_coherence.py` | none | **writes into the real tree** | Proves generate_and_render_propeller builds ONLY from an attempt's own parameters.json — a missing/malformed/15-key/non-numeric/JSON-list record fails cleanly and writes no mesh, an existing mesh i... |
+| `smoke_test_attempt_renders.py` | none |  | Offline check of the attempt render-view registry and the save-time render-completion pass (render/geometry tools stubbed into sys.modules): enabled_views tracks the settings flags, the R2 attempt... |
 | `smoke_test_base_chain_agent.py` | llm-api |  | Asserts the BaseChainAgent contract through the Receptionist: fresh-construction defaults (empty messages, seeded cycle_start_ts, llm is base_llm), snapshot_state shape, full snapshot→restore round... |
 | `smoke_test_database_access.py` | none | py>=3.10 | Offline check of the per-(profile, agent, tool) DBa store: that profile '7' still resolves byte-for-byte to the pre-profiles flat behaviour, that '7-reduced' matches the owner's decided 24-cell dis... |
 | `smoke_test_database_handler.py` | none as designed | **BROKEN** | Asserts DatabaseHandler is a BaseChainAgent registering its own session slot, that it requires a Session, that populate_database writes one .txt per (agent, field) row of a patched 2-row SCHEDULE,... |
@@ -47,7 +48,6 @@ that move.
 | `smoke_test_prompt_cache.py` | llm-api | **costs money** | Drives real Anthropic calls through the shipped helpers (make_system_message / history_cache_control / invoke_with_retry) to prove the explicit system breakpoint and the top-level automatic breakpo... |
 | `smoke_test_prompt_format.py` | none |  | Pulls each of the 8 .format()-wired agent TEMPLATEs from agents.shared.prompts and calls .format_map() with a stub mapping, catching literal `{}`/unmatched braces/malformed slots that would otherwi... |
 | `smoke_test_prompt_variant.py` | none |  | For each PROMPT_VARIANT, proves every file under agents/<N>agent_<variant>/ is actually REACHED by prompts._topology_override, that the set of agents whose assembled prompt differs equals the BLAST... |
-| `smoke_test_prompts_admin.py` | none | py>=3.10 - **writes into the real tree** | Exercises workflow_settings/prompts_admin.py against a tempdir mirror: build_tree's 4 groups and per-file used_by, read_file's has_conditional_regions flag, save_files' atomic write + affected_agen... |
 | `smoke_test_prompts_hot_reload.py` | none | py>=3.10 | Points prompts.py's 5 path constants at a tempdir fixture tree and proves _build_slots() and _build_template() re-read fragments from disk on EVERY call (mutating name.txt between two rounds), so a... |
 | `smoke_test_r2_upload.py` | r2 |  | Step-by-step live probe of the Cloudflare R2 mirror: env vars, boto3 + r2_uploader import and is_enabled, endpoint/client construction, auth probe, direct put_object, upload_file, upload_directory... |
 | `smoke_test_render_blade_sections.py` | none |  | Asserts the blade-sections geometry (point counts + finiteness for inner/middle/outer), draw.render_png producing valid PNGs at default/min/max params with grid differing from no-grid, and the @too... |
@@ -58,11 +58,10 @@ that move.
 | `smoke_test_slot_splices.py` | none |  | Scans every $-slot substitution target (agent prompt*.md plus every prompt_fragments/, tools_config/ and dc_config/ tree, variants included) and fails when a slot that resolves to MULTI-LINE conten... |
 | `smoke_test_topology_fragments.py` | none | py>=3.10 - **writes into the real tree** | Builds every prompt for topologies 7 and 5 under both PLANNER_FIRST settings and asserts COVERAGE (every agents/<N>agent/ override is read), NO-LEAK, ISOLATION, no unsubstituted $slots, $routing_hu... |
 
-## Root utilities (not tests)  (4)
+## Root utilities (not tests)  (3)
 
 | Script | Needs | Flags | Guards / does |
 |---|---|---|---|
-| `build_agent_table_v5.py` | none |  | One-shot openpyxl generator that writes a 9-row x 7-column agent-description spreadsheet (goal / agent / message-history / inputs / outputs / retrievable DB elements / suggested additional RAG acce... |
 | `check_mesh_components.py` | none |  | Standalone .obj diagnostic: parses a mesh group-by-group and reports verts/faces/watertightness/degenerate-face count/signed volume for each component and for the concatenated whole, both as-writte... |
 | `feg_render_demo.py` | node |  | Manual demo: builds a propeller with the headless-Node FEG exporter (reusing web/feg/* verbatim so the geometry matches the browser preview) and renders it three ways — a self-contained pure-PIL so... |
 | `gen_render_samples.py` | node |  | Generates the fixed sample renders for the 'Render compression' settings panel: three blade-section diagrams via tools/render_blade_sections/draw.render_png (--cross, pure PIL, runs anywhere) and t... |
@@ -99,9 +98,8 @@ that move.
 
 - **The only script that runs as-is in the bare py3.8 worktree** is
   `smoke_test_slot_splices.py` (pure stdlib).
-- **Side effects on the real tree.**  `smoke_test_prompts_admin` writes
-  `DC_prompt_fragments/dc_config/hard_constraints_dc_dc_input_inspector.md`;
-  `smoke_test_topology_fragments` writes that file *and*
+- **Side effects on the real tree.**  `smoke_test_topology_fragments` writes
+  `DC_prompt_fragments/dc_config/hard_constraints_dc_dc_input_inspector.md` and
   `agents/5agent/prompt_fragments/routing_user_input_inspector_uii_first_5agents.md`;
   `smoke_test_attempt_coherence` creates `g_*` / `f75*` folders under the real
   `ATTEMPTS_DIR`.  Check `git status` afterwards.
