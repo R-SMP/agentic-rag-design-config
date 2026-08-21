@@ -2932,7 +2932,7 @@ the hub/routing helpers), so a live turn is pinned to the topology it
 
 started with by construction rather than by timing. This is also decision
 
-T1/T2 of `extra_utilities/design_topology_selector.md` — the Sessions
+T1/T2 of `extra_utilities/docs/active/topology_shared_touchpoints.md` §G — the Sessions
 
 Queue's per-run topology field needs a per-session carrier anyway, so the
 

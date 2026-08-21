@@ -1,6 +1,22 @@
 # Reduced-Agent Architectures — Design Rationale for the 5-Agent and 3-Agent Systems
 
 **Status:** DESIGN / ARCHITECTURE — decisions locked; implementation deliberately out of scope (to be specified separately).
+
+> ### ⚠ PARTLY SUPERSEDED — read this first (added 2026-08-21)
+>
+> This is the **rationale** layer: why the reduction was attempted and how the
+> decisions were reached.  It predates the decisions actually taken on
+> 2026-08-04, and in two places it now **contradicts what was built**:
+>
+> * **§7.4**'s mermaid edge `Cri -->|refine| Des`, and
+> * **W3**'s "the relay" description of the refine loop
+>
+> are both overridden by
+> `extra_utilities/docs/active/design_3agent_architecture.md` **§4.1**
+> ("This overrides BOTH readings in the design doc").  That file is
+> authoritative for the 3-agent roster, edge set and refine loop.
+>
+> Do not plan 3-agent work from this document alone.
 **Date:** 2026-07-26.
 **Purpose:** Document, in full, *why* the propeller-design multi-agent system is being reduced from its 7-agent form into a 5-agent and a 3-agent variant for benchmarking — the goal, the reasoning method, every decision and its justification, the final architectures, and the caveats a reader (or a future implementer) must keep in mind.
 

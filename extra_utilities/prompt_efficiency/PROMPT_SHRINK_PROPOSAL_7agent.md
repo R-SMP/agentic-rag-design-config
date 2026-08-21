@@ -22884,3 +22884,29 @@ as the only one that matters now. Two warnings for whoever does them later:
 - **`PLANNER_FIRST` swaps whole fragments**, not just regions: `pipeline_flow_planner_first.md` vs
   `pipeline_flow_uii_first.md`, and four `routing_*_planner_first.md` variants. A cut anchored in one
   variant has nothing to match in the other, so the anchor check must be run twice, once per mode.
+
+---
+
+## ⚠ Handling notes (APPENDED 2026-08-21 — deliberately at the end)
+
+**DO NOT REFLOW, RE-WRAP, TRUNCATE, RE-SORT, OR INSERT ANYTHING ABOVE THIS
+LINE.**  This file is cited **by exact line number** from
+`extra_utilities/docs/reference/design_tool_merges.md` (12 citations), and
+`prompt_shrink_cuts.json` — the executable input to `verify_prompt_shrink.cjs` —
+is keyed to it.  Any edit that shifts line numbers silently breaks all of them.
+That is why this note is appended rather than placed in the header where it
+would be more visible: adding it at the top would have committed the very
+error it warns about.
+
+**§0's framing is stale.**  It says nothing has been applied.  Since then the
+reduced tree shipped at `agents/7agent_reduced/`, selected by
+`PROMPT_VARIANT=reduced` together with `SYSTEM_TOPOLOGY=7`.
+
+**DO NOT act on the line 707-708 instruction** to delete three 0-byte
+fragments.  Two of them — `DC_prompt_fragments/tools_config/retrieve_attempt.md`
+and `DC_prompt_fragments/tools_config/tool_caller_instructions.md` — are read
+UNGUARDED at module scope by `_read_dc_fragment`
+(`agents/shared/prompts.py:391-395`; call sites `:531` and `:483`).  Deleting
+either raises `FileNotFoundError` on `import agents.shared.prompts`, taking down
+every agent, the web app and the CLI.  Full explanation:
+`extra_utilities/warnings_developer.md` **W42**.

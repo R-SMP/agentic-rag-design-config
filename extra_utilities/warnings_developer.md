@@ -1830,3 +1830,71 @@ back later:
   ever have been `{}`).  `attempt_specific` is still emitted and is now
   likewise always `"false"` — left in place pending a separate decision.
 
+
+## W42. Five 0-byte `.md` fragments are LOAD-BEARING — in two OPPOSITE directions.
+
+**Recorded 2026-08-21** during the documentation audit, after
+`extra_utilities/prompt_efficiency/PROMPT_SHRINK_PROPOSAL_7agent.md:707-708`
+was found prescribing DELETE for three of them.  **That instruction is wrong.**
+An empty file here is not an authoring accident — it is a decision, and in one
+of the two groups it is not even substitutable by absence.
+
+### Group 1 — delete these and the app does not boot
+
+    DC_prompt_fragments/tools_config/retrieve_attempt.md
+    DC_prompt_fragments/tools_config/tool_caller_instructions.md
+
+The loader is `_read_dc_fragment` (`agents/shared/prompts.py:391-395`):
+
+    path = _topology_override(rel_path) or (DC_FRAGMENTS_DIR / rel_path)
+    return path.read_text(encoding="utf-8").rstrip()
+
+There is **no `exists()` / `is_file()` guard**, and both are called at MODULE
+SCOPE — `TOOL_CALLER_INSTRUCTIONS` at `:483`, `RETRIEVE_ATTEMPT_TOOL` at `:531`.
+So a missing file raises `FileNotFoundError` the moment `agents.shared.prompts`
+is imported: every agent, the web app and the CLI all fail to start.
+
+Empty content is the INTENDED state — the slot renders nothing.  Both were
+emptied deliberately (see `design_tool_merges.md`, commit `251ff5b`: "retrieve_*
+fragments — lean fully on the tool schemas"), with `retrieve_user_inputs.md`
+covering both retrieval tools.
+
+**If you genuinely want one gone, you must delete the file AND its
+`_read_dc_fragment` call AND its `_build_slots` entry AND its row in the
+fragment→slot index, in the same commit.**  Never the file alone.
+
+### Group 2 — delete these and the prompt silently changes, with no error
+
+    agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_input_inspector_7agents_reduced.md
+    agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_output_inspector_7agents_reduced.md
+
+These resolve through `scoped_fragment_path` / `_topology_override`
+(`agents/shared/prompts.py:123-164`), which selects with `if cand.is_file()`.
+So **present-and-empty is NOT the same as absent**:
+
+* present + empty → suppresses the shared
+  `DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md` for that agent
+* absent → falls through and silently RESTORES all 1,736 characters of it
+
+`extra_utilities/fork_manifest.json:69-73` states the intent verbatim: *"the
+file being empty IS the override"*.  This is the worse failure mode of the two:
+no crash, no warning, just text quietly reappearing in a prompt the reduced
+variant decided to cut.
+
+### The one that is genuinely optional
+
+    DC_prompt_fragments/tools_config/blade_sections_visualizer_tool_caller.md
+
+A per-agent overlay resolved by naming convention and guarded by `.exists()`
+(`prompts.py:1005-1008`), so missing and empty both yield `""` — deleting it
+changes no assembled prompt byte.  **But leave it.**  Its emptiness marks an
+open documentation gap: `tool_caller.py:116-118` binds `render_blade_sections`
+whenever `blade_sections_access.is_enabled()`, while the Tool Caller prompt
+declares its four-item tool list as exhaustive, and this overlay is where that
+would be patched.  Deleting the file deletes the reminder.
+
+**Rule of thumb.**  A 0-byte file under `DC_prompt_fragments/` or under a
+topology/variant tree is a decision.  Before removing one, find its loader and
+check whether it is read unguarded (Group 1) or selected by `is_file()`
+(Group 2).  `__init__.py` files are a different thing entirely and are not
+covered by this warning.

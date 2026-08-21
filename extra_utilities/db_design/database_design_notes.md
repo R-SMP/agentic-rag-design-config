@@ -344,7 +344,15 @@ discipline for Stage A).
 
 ## Quick-reference DDL
 
-The current authoritative DDL for the five tables. Re-paste here when
+> **⚠ STALE — this DDL is NOT current (flagged 2026-08-21).**  It shows the
+> five-table, roughly v5-era shape.  The live schema is **v8**: it adds
+> `rag_queries` and `chunks_mm`, and columns have moved.  The authoritative
+> DDL is `extra_utilities/db_design/database_PostgreSQL_schema_v8.sql`, with
+> the narrative in `extra_utilities/db_design/database_and_RAG_architecture.md`.
+> The block below is kept as the v5-era record; the D0-D15 doctrine above it
+> is still good.
+
+The DDL for the five tables as of v5. Re-paste here when
 anything changes.
 
 ```sql
