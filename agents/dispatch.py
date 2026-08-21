@@ -1,5 +1,5 @@
 """Per-turn dispatch driver — pure-function entry point shared by
-both the v4 REPL loader and the v3 Streamlit handler.
+both the CLI REPL loader and the web handler (``web_app.py``).
 
 ``dispatch_turn(session, user_input, ...) -> TurnResult`` runs one
 user turn end-to-end:
@@ -18,14 +18,14 @@ user turn end-to-end:
 The function does NOT print to stdout, NOT prompt the user, NOT manage
 the REPL loop, and NOT run any post-session work (DH save, archival).
 Callers wrap it with their own I/O surface — the v4 loader prints to
-the terminal and reads ``input()``; the v3 Streamlit dispatcher feeds
+the terminal and reads ``input()``; the web dispatcher feeds
 chat-message bubbles in and out.
 
 Caller responsibility
 ---------------------
 * The caller manages the hub's lifetime.  The v4 loader holds
   one for the entire REPL session and reuses it across turns; the v3
-  Streamlit dispatcher may rebuild one per turn (cheap with the LLM
+  web dispatcher may rebuild one per turn (cheap with the LLM
   cache) — chain agents are reconstructed from session.agent_states
   in either case so behaviour is identical.
 * The caller chooses ``inputs_dir``.  v4 passes the global
@@ -74,8 +74,8 @@ class TurnResult:
     of this turn, sorted by mtime ascending so the order reflects
     creation order.  Empty when no new artefacts landed (Receptionist
     direct reply, or pipeline that did not call ``new_attempt``).
-    The v3 Streamlit handler renders these inline as chat-bubble
-    images; the v4 REPL caller is free to ignore the field (it does
+    The web handler renders these inline as chat-bubble
+    images; the CLI REPL caller is free to ignore the field (it does
     — terminal output has no concept of inline images).
     """
     reply_text: str
@@ -97,7 +97,7 @@ def save_user_input(
     inputs directory unchanged so callers can chain.
 
     ``fixed_params`` (Step 8 of the Parameters Inputs redesign — see
-    ``extra_utilities/web_interface_notes.md`` §6.D) is the dict of
+    ``extra_utilities/docs/reference/web_interface_notes.md`` §6.D) is the dict of
     user-FIXED slider values from the Parameters Inputs view, with
     values pre-formatted as display strings including units
     (e.g. ``"72 mm"``, ``"5 % of chord"``).  When present and
@@ -176,7 +176,7 @@ def _snapshot_artefact_paths(attempts_dir: Path) -> set[Path]:
     ``attempts_dir`` matching ``_ARTEFACT_PATTERNS``.
 
     Used to diff before vs. after one hub ``dispatch`` so the
-    Streamlit handler can display only the artefacts that were created
+    web handler can display only the artefacts that were created
     during the just-completed turn.  Returns an empty set when
     ``attempts_dir`` does not yet exist (first turn before any
     ``new_attempt`` call).
@@ -214,7 +214,7 @@ def dispatch_turn(
 
     See module docstring for the contract.  ``attempts_dir`` defaults
     to ``config.ATTEMPTS_DIR`` when omitted — both the v4 REPL caller
-    (which uses the global paths) and the Stage A Streamlit handler
+    (which uses the global paths) and the Stage A web handler
     (which also uses the global paths per W13/O9) can rely on the
     default.  Stage B's per-session path threading is the moment to
     start passing ``session.attempts_dir`` explicitly.

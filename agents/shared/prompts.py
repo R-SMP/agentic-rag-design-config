@@ -499,7 +499,7 @@ VISUALIZE_3D_MODEL_TOOL = _read_dc_fragment(
 )
 # Web-interface-only UI-update tool.  Bound to the Receptionist alone
 # (Step 9 of the Parameters Inputs redesign — see
-# extra_utilities/web_interface_notes.md §§3-7).  Fires the
+# extra_utilities/docs/reference/web_interface_notes.md §§3-7).  Fires the
 # params_proposed SSE event that updates the Parameters Inputs view's
 # slider colours / labels.  Same templating idiom as
 # VISUALIZE_3D_MODEL_TOOL above.

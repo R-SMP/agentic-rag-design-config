@@ -17,7 +17,7 @@ Inside the running container::
 Exits 0 when every step passes, 1 otherwise.  Always prints a tail
 summary so the user can paste the output here to debug.
 
-The script does NOT depend on a Session / Orchestrator / Streamlit
+The script does NOT depend on a Session / Orchestrator / web app
 context — it imports only ``agents/shared/r2_uploader.py`` and
 boto3 directly.
 """

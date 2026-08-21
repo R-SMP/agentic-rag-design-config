@@ -3,7 +3,7 @@ Inputs view that a set of 16 parameter values represents the system's
 PROPOSED SATISFYING SOLUTION.
 
 Step 9 of the Parameters Inputs redesign — see
-``extra_utilities/web_interface_notes.md`` §§3-6 (design rationale)
+``extra_utilities/docs/reference/web_interface_notes.md`` §§3-6 (design rationale)
 and §7 step 9 (implementation plan).
 
 What this tool does

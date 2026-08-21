@@ -1,7 +1,7 @@
 """Process-wide LLM client cache.
 
 Memoises ``build_llm`` results by ``(provider, model, api_key)`` so that
-repeatedly constructing agents (e.g. on every Streamlit turn in v3 mode
+repeatedly constructing agents (e.g. on every web turn
 when the live agent objects are rebuilt from ``Session.agent_states``)
 does not pay the LLM-construction cost more than once per unique
 provider/model/key triple.
@@ -10,8 +10,8 @@ The cache is a module-level dict, populated lazily on first
 ``get_for_agent(agent_key)`` call.  Idempotent: repeated calls for the
 same agent_key return the same client instance.
 
-Thread-safe via a module-level ``Lock`` — Streamlit runs each user
-session in its own script-thread, and concurrent first-look-ups for the
+Thread-safe via a module-level ``Lock`` — the web server handles requests
+concurrently, and concurrent first-look-ups for the
 same triple must not both build a client and race the cache write.
 The double-checked-locking pattern keeps the fast path lock-free once
 the entry is populated.
@@ -31,7 +31,7 @@ common case.
 This module is purely additive in v3-Phase-1: existing call sites of
 ``build_llm`` (every chain agent's ``__init__``) are unchanged and
 still construct fresh clients.  Later Phase-1 commits convert those
-sites to ``get_for_agent`` so reconstructing agents on every Streamlit
+sites to ``get_for_agent`` so reconstructing agents on every web
 turn becomes free.
 """
 
@@ -72,7 +72,7 @@ def get_for_agent(agent_key: str) -> tuple[Any, str, str]:
 def reset_for_tests() -> None:
     """Drop all cached clients.  Test-only helper.
 
-    Streamlit's hot-reload swaps modules wholesale, so production runs
+    A dev-server hot-reload swaps modules wholesale, so production runs
     never need this.  Smoke tests that call ``get_for_agent`` with
     stubbed providers should call ``reset_for_tests`` between cases to
     avoid cross-test cache pollution.

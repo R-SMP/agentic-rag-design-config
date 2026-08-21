@@ -3,7 +3,10 @@
 This file records every infrastructure decision made for the v2
 migration from a local-only `python main.py` REPL to a cloud-hosted
 multi-user web service. It is the authoritative reference for hosting,
-frontend, auth, session state, and domain choices.
+auth, session state, and domain choices.  **It is NOT authoritative for the
+frontend any more** — C2's Streamlit decision was reversed on 2026-08-21 (see
+the banner on C2); the current web layer is `web_app.py` + `web/`, documented
+in `web_interface_notes.md`.
 
 For database-specific decisions, see `database_design_notes.md`.
 For runtime invariants, see `warnings_developer.md`.
@@ -50,6 +53,24 @@ and the deployment target. Defer this migration until usage justifies
 ---
 
 ## C2. Frontend: Streamlit-only (no FastAPI front-door for MVP)
+
+> ### ⛔ SUPERSEDED 2026-08-21 — this decision was REVERSED
+>
+> C2 chose Streamlit as the sole Railway entry point and explicitly ruled out a
+> FastAPI front-door.  **Both halves of that are now false.**
+>
+> * The Railway entry point is **FastAPI**: `Dockerfile` ends with
+>   `CMD ... uvicorn web_app:app`.
+> * The frontend is **plain JS** under `web/`, served by `web_app.py`.
+> * `streamlit_app.py` and the `streamlit` dependency were **deleted**
+>   on 2026-08-21.  TODO `F4` ("shift Streamlit -> JavaScript") is DONE
+>   and archived; `warnings_developer.md` W17 was rewritten from
+>   "Streamlit is interim" to the durable thin-shim rule.
+>
+> **The text below is kept as the decision record** — it explains why
+> Streamlit was chosen in the first place and what the migration path was
+> expected to cost, which is the useful part now.  Do not read it as a
+> description of the current system.  C1, C3, C4 and C5 are unaffected.
 
 **Choice.** Frontend is **Streamlit**, run as the Railway service's
 sole entry point.  No FastAPI front-door, no reverse proxy.  The

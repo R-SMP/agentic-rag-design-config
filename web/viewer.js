@@ -5,7 +5,7 @@
 // the compat shim at the bottom of this file.
 //
 // The Parameters Inputs view (added in Step 4 of the redesign — see
-// extra_utilities/web_interface_notes.md §7) instantiates a SECOND
+// extra_utilities/docs/reference/web_interface_notes.md §7) instantiates a SECOND
 // independent viewer against its own container:
 //
 //   import { Viewer } from "./viewer.js";
@@ -490,7 +490,7 @@ if (chatContainer) {
 
 // ---------------------------------------------------------------------------
 // Second Viewer for the Parameters Inputs view  (Step 4 of redesign,
-// see extra_utilities/web_interface_notes.md §7).
+// see extra_utilities/docs/reference/web_interface_notes.md §7).
 //
 // Fully independent of window.modelViewer: its own scene, camera,
 // renderer, controls, ResizeObserver, and requestAnimationFrame loop.

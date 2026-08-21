@@ -1,6 +1,6 @@
 # Local-development stack for v3.
 #
-# Stage A scope: ``app`` (the Streamlit container) + ``db`` (Postgres
+# Stage A scope: ``app`` (the FastAPI web container) + ``db`` (Postgres
 # + pgvector).  The app does NOT depend on the database in Stage A
 # (no save flow yet — see warnings_developer.md W14, cloud_
 # architecture_notes.md C6).  ``db`` is colocated so Stage B's save
@@ -13,7 +13,7 @@
 # Usage:
 #   docker compose up -d        # bring up app + db in the background
 #   docker compose up -d db     # bring up ONLY Postgres (Phase 2 dev)
-#   docker compose logs -f app  # follow Streamlit logs
+#   docker compose logs -f app  # follow web-app logs
 #   docker compose logs -f db   # follow Postgres startup logs
 #   docker compose exec db psql -U postgres -d propeller_dev
 #                               # interactive psql shell into the DB
@@ -54,7 +54,7 @@ services:
       # mapping.
       - "127.0.0.1:8501:8501"
     environment:
-      # Streamlit / app gate.
+      # Web-app invite gate.
       INVITE_CODE: "${INVITE_CODE:-}"
       # LLM provider keys.  Each is forwarded if set in the host
       # env / .env file; absent values pass through as empty so the

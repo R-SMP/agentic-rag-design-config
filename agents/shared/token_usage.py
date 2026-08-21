@@ -202,7 +202,7 @@ def _extract(response: Any, phase: str = "session") -> dict[str, int] | None:
 
 
 # Anthropic prompt-cache multipliers, relative to the base input-token
-# price.  See extra_utilities/design_prompt_caching.md §4.
+# price.  See extra_utilities/docs/reference/design_prompt_caching.md §4.
 _PRICE_CACHE_READ = 0.1
 _PRICE_WRITE_5M = 1.25
 _PRICE_WRITE_1H = 2.0

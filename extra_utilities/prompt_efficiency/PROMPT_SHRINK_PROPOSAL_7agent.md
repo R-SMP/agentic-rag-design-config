@@ -16334,8 +16334,8 @@ Whole paragraphs, all quoted from the live files:
 4. Prompt/fragment edits (3)-(12) above. `$agent_tools_overview` is consumed ONLY by agents/orchestrator/prompt.md (the database_handler match in grep is `$agent_tools_overview_brief`). `$output_file_locations` is consumed by dc_input_creator + receptionist. `$hard_constraints_tools` by all 8.
 5. Registries: NO change needed to agents/shared/prompts.py FRAGMENT_TO_SLOT or `_build_slots` — no fragment is added or deleted, only edited in place.
 6. 5-agent topology: nothing to do. agents/conductor/conductor.py:328-340 already omits `new_attempt`, and agents/5agent/prompt_fragments/available_agents_5agents.md:21,75 already say the Creator is the only holder. This change makes 7-agent match 5-agent rather than diverging from it.
-7. extra_utilities/build_agent_table_v5.py — grep it for an Orchestrator tool row listing `new_attempt` before regenerating the agent table.
-8. Docs: extra_utilities/agent_count_variants_build_tracker.md:141,146,221,252 records "drop the Orchestrator new_attempt fallback" as a 5-agent-only decision; note there that 7-agent now does the same.
+7. extra_utilities/docs/archive/scripts/build_agent_table_v5.py — grep it for an Orchestrator tool row listing `new_attempt` before regenerating the agent table.
+8. Docs: extra_utilities/docs/archive/agent_count_variants_build_tracker.md:141,146,221,252 records "drop the Orchestrator new_attempt fallback" as a 5-agent-only decision; note there that 7-agent now does the same.
 
 **Verify by**
 
@@ -16598,7 +16598,7 @@ SHARED FRAGMENT: DC_prompt_fragments/tools_config/hard_constraints_tools.md:2-5 
 
 REGISTRIES: agents/shared/prompts.py FRAGMENT_TO_SLOT and `_build_slots` need NO change (no fragment added/removed). workflow_settings/ocr_access.py and ocr_region_crops_access.py need no change (neither tool is OCR-gated).
 
-TESTS / TOOLING: extra_utilities/smoke_test_image_buffer.py:38,45,68,101 uses the literal name `read_input_text` as the non-image sibling in its parallel-tool-call test — rename so the test keeps exercising a real tool name. extra_utilities/build_agent_table_v5.py:75, 379, 550 lists these tools per agent. agents/step_caps.py:42-74 documents the per-agent tool sequences by name (MAX_UII_STEPS, MAX_DCIC_STEPS, MAX_DCII_STEPS, MAX_TC_STEPS, MAX_DCOI_STEPS). README.md:151, 196, 230.
+TESTS / TOOLING: extra_utilities/smoke_test_image_buffer.py:38,45,68,101 uses the literal name `read_input_text` as the non-image sibling in its parallel-tool-call test — rename so the test keeps exercising a real tool name. extra_utilities/docs/archive/scripts/build_agent_table_v5.py:75, 379, 550 lists these tools per agent. agents/step_caps.py:42-74 documents the per-agent tool sequences by name (MAX_UII_STEPS, MAX_DCIC_STEPS, MAX_DCII_STEPS, MAX_TC_STEPS, MAX_DCOI_STEPS). README.md:151, 196, 230.
 
 **Verify by**
 
@@ -16793,7 +16793,7 @@ Replacement (the `Extraction output file:` label survives because `write_extract
 7. RUNTIME SLOTS: if `Input directory:` is fully retired, `user_inputs_dir` may become an unused `.format()` kwarg for the Planner and the 5-agent Receptionist/Conductor. Do NOT remove it from `PROMPT_MD_RUNTIME_SLOTS` (agents/shared/prompts.py:584-618) unless you also remove the `{user_inputs_dir}` reference from agents/planner/prompt.md:449 ("The user's input directory ({user_inputs_dir}) contains:"), which is a legitimate remaining use. Leave the slot; only the hand-off label goes.
 8. workflow_settings/ocr_access.py:8 and workflow_settings/ocr_region_crops_access.py — the docstrings name `read_user_inputs` as an OCR-carrying tool. Under this merge `read_user_inputs` no longer loads images and therefore never OCRs; correct both docstrings. No DEFAULT_AGENTS change.
 9. extra_utilities/smoke_test_topology_fragments.py:325 asserts on write_extraction's and read_user_inputs's `path` args — the latter no longer exists; update.
-10. extra_utilities/build_agent_table_v5.py:75, 550; agents/step_caps.py:42-45, 51-52, 74; README.md:196, 495 (the UII_MAY_READ_PREVIOUS_EXTRACTION entry names the `read_user_inputs` bundle — still accurate, but the gating now lives in the shared handler, so update the "Gated in agents/shared/file_utils.py:load_user_inputs_bundle" pointer).
+10. extra_utilities/docs/archive/scripts/build_agent_table_v5.py:75, 550; agents/step_caps.py:42-45, 51-52, 74; README.md:196, 495 (the UII_MAY_READ_PREVIOUS_EXTRACTION entry names the `read_user_inputs` bundle — still accurate, but the gating now lives in the shared handler, so update the "Gated in agents/shared/file_utils.py:load_user_inputs_bundle" pointer).
 
 **Verify by**
 
@@ -17278,7 +17278,7 @@ becomes "… ``read_attempt``, ``list_attempts`` and ``show_attempt``. … (``re
 6. agents/shared/attempts_tool.py:53-55, :222-224 and :287-289 all point a caller at `visualize_3d_model` from `read_attempt`'s mesh/image branches — rename to `show_attempt` (these strings reach the LLM).
 7. extra_utilities/smoke_test_prompts_hot_reload.py:84-85 maps both fragment filenames to sentinels — replace with one `"show_attempt.md": "[SHOW_ATTEMPT]"` entry, or the hot-reload test fails on a missing file.
 8. web_app.py:778, 788, 4082, 4168 and web/app.js:912, 5060, 5144, 5377, 5642 and web/index.html:240 and web/style.css:1988, 2033, 2062 reference the tools BY NAME IN COMMENTS ONLY — the wire contract is the viz_bus `type` key (`"visualize"` / `"params_proposed"`), which this change does NOT touch. Comment-only updates; no functional web change.
-9. extra_utilities/web_interface_notes.md §§C, 67-68, 93-135, 174-284 and extra_utilities/warnings_developer.md:662-702 and extra_utilities/TODO_known_issues.md:1986-1995 are design records naming `propose_attempt` — leave the history, add a note that the tool merged.
+9. extra_utilities/docs/reference/web_interface_notes.md §§C, 67-68, 93-135, 174-284 and extra_utilities/warnings_developer.md:662-702 and extra_utilities/TODO_known_issues.md:1986-1995 are design records naming `propose_attempt` — leave the history, add a note that the tool merged.
 10. README.md:151, 230 list the generic tools by name.
 
 **Verify by**
@@ -22884,3 +22884,29 @@ as the only one that matters now. Two warnings for whoever does them later:
 - **`PLANNER_FIRST` swaps whole fragments**, not just regions: `pipeline_flow_planner_first.md` vs
   `pipeline_flow_uii_first.md`, and four `routing_*_planner_first.md` variants. A cut anchored in one
   variant has nothing to match in the other, so the anchor check must be run twice, once per mode.
+
+---
+
+## ⚠ Handling notes (APPENDED 2026-08-21 — deliberately at the end)
+
+**DO NOT REFLOW, RE-WRAP, TRUNCATE, RE-SORT, OR INSERT ANYTHING ABOVE THIS
+LINE.**  This file is cited **by exact line number** from
+`extra_utilities/docs/reference/design_tool_merges.md` (12 citations), and
+`prompt_shrink_cuts.json` — the executable input to `verify_prompt_shrink.cjs` —
+is keyed to it.  Any edit that shifts line numbers silently breaks all of them.
+That is why this note is appended rather than placed in the header where it
+would be more visible: adding it at the top would have committed the very
+error it warns about.
+
+**§0's framing is stale.**  It says nothing has been applied.  Since then the
+reduced tree shipped at `agents/7agent_reduced/`, selected by
+`PROMPT_VARIANT=reduced` together with `SYSTEM_TOPOLOGY=7`.
+
+**DO NOT act on the line 707-708 instruction** to delete three 0-byte
+fragments.  Two of them — `DC_prompt_fragments/tools_config/retrieve_attempt.md`
+and `DC_prompt_fragments/tools_config/tool_caller_instructions.md` — are read
+UNGUARDED at module scope by `_read_dc_fragment`
+(`agents/shared/prompts.py:391-395`; call sites `:531` and `:483`).  Deleting
+either raises `FileNotFoundError` on `import agents.shared.prompts`, taking down
+every agent, the web app and the CLI.  Full explanation:
+`extra_utilities/warnings_developer.md` **W42**.
