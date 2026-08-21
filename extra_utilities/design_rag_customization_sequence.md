@@ -79,7 +79,7 @@ Same shape, after step 4b so it can print `extracted_inputs.txt`.  Note the
 `retrieve_user_inputs(..., images_flag=True)` mentions still standing in ~6
 prompt fragments must be corrected in that step.
 
-### Step 3 — shared implementation module for the two retrieve tools  **TODO**
+### Step 3 — shared implementation module for the two retrieve tools  **TODO — approved to run after the System-Prompts-UI removal (2026-08-21)**
 Pure refactor, no behaviour change.  After step 2 the two tools are near-twins —
 both resolve IDs, fetch, write a folder, list it, print text; they differ only
 in ID space (`list[str]` vs `list[int]`), folder root, and printed text.  ~90–140
@@ -87,11 +87,17 @@ lines of genuine duplication (R2 access, escaping, token counting,
 `rag_queries` logging).  NOT a merge — the UII and DCIC must hold different
 tools, so the two names and their typed ID lists stay.
 
-### Step 4 — exclude `inputs/_retrieved/` from `list_input_files`  **TODO**
-Small guard; belongs with step 2b.  Without it the UII would be told a past
-session's sketch is part of the CURRENT request.
+### Step 4 — exclude `inputs/_retrieved/` from `list_input_files`  **CLOSED — NO CODE NEEDED**
+The worry was that the UII would be told a past session's sketch is part of
+the CURRENT request.  It cannot happen: EVERY `inputs/` walker in the system
+goes through `file_utils.list_files`, which is non-recursive AND files-only
+(`if p.is_file()`), so the `inputs/_retrieved/<sid>/` SUBDIRECTORY is
+invisible to all of them by construction.  `load_all_inputs` uses the same
+function; `pair_input_images` only ever looks at `inputs/input_images/`.
+Verified 2026-08-20 — no guard written, and none needed.  If a future walker
+is added that DOES recurse, it must skip `_retrieved`.
 
-### Step 4b — add `extracted_inputs.txt` to the R2 save pipeline  **TODO**
+### Step 4b — add `extracted_inputs.txt` to the R2 save pipeline  **DONE (`5c6154b`)**
 NEW, and a PREREQUISITE for step 2's response contract.  The owner wants the
 UII's structured extraction (QUANTITATIVE INPUTS / QUALITATIVE DESCRIPTIONS /
 DESIGN INTENT) printed per retrieved session — it is more useful to a reasoning
@@ -100,13 +106,61 @@ agent than the raw `queries.txt`, because it is already interpreted.  But it is
 whitelist first.  Consequence to accept: only sessions saved AFTER this change
 will have it; already-archived sessions never will.
 
-### Step 5 — save-side work  **TODO — needs its own scoping pass**
-The three-render policy (top / blade sections / isometric), the missing
-blade-sections setting, and generating absent renders from the attempt's
-`parameters.json` at save time.  Touches the DH save pipeline, the R2 artefact
-whitelist, the settings UI, AND requires invoking render/geometry code at save
-time — a failure or slow call there affects the End-Session flow.  Deliberately
-separate: one approval should not cover two subsystems plus a render path.
+### Step 5 — save-side work  **TODO — decisions below are SETTLED (2026-08-21)**
+
+#### The mismatch, measured
+
+|                                          | isometric | top | side | blade sections |
+|------------------------------------------|:---------:|:---:|:----:|:--------------:|
+| saved to R2 (`ATTEMPT_ARTEFACT_WHITELIST`) | yes | yes | yes | **NEVER** |
+| retrieval can request (`_RENDER_FILES`)    | yes | yes | yes | **no entry** |
+| setting exists (`RETRIEVE_ATTEMPT_INCLUDE_*`) | yes, `True` | yes, `False` | yes, `False` | **none** |
+
+`render_blade_sections` writes `render_blade_sections.png` (or
+`..._grid.png`) into the attempt folder correctly — it is simply absent from
+the upload whitelist, so no archived attempt anywhere has one.
+
+#### Owner's decisions — SETTLED
+
+1. **The blade-sections render MUST be uploaded** to R2 with each attempt.
+2. **It MUST be retrieved** when an attempt is retrieved.
+3. **A corresponding setting MUST exist in the workflow UI**, default **True**
+   for both saving and retrieving.
+4. **RENDER COMPLETENESS AT SAVE TIME.**  For any attempt about to be saved,
+   if a `parameters.json` is present, then ALL renders the save policy
+   requires MUST be created — using the SAME tools the live workflow uses —
+   when they are not already there.  This explicitly includes 3D-geometry
+   renders for **every view set to TRUE**, not only the blade sections.
+
+   So a saved attempt is COMPLETE by construction: parameters plus the full
+   set of enabled renders.  An attempt whose Tool Caller never happened to
+   call the blade-sections tool no longer archives as a partial record.
+
+#### What that costs, and why it is still its own step
+
+Decision 4 means invoking render / geometry code INSIDE the End-Session save.
+That is the risk to respect: a slow or failing render there delays or breaks
+the save, which is the one path that must not fail (see W1 — never move
+artefacts to `previous_sessions/` until every post-session task is done).  Any
+implementation needs a per-render timeout, a best-effort failure mode that
+saves what exists rather than aborting, and a log line naming what it
+generated versus what it found.
+
+#### OPEN QUESTION — must be answered before implementing
+
+Do the per-view settings govern SAVING, RETRIEVING, or both?  Today
+`RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW=False` while `render_top.png` IS in the
+save whitelist — i.e. top is saved but not retrieved, and the two sides are
+independent.  Decision 3 says "default True for saving and retrieving", which
+reads as ONE setting per view driving BOTH.  Adopting that would change save
+behaviour for `top` and `side` as a side effect.  Two candidate shapes:
+
+* **One flag per view, governing both.**  Simplest to reason about and to
+  show in the UI; changes what gets archived for top/side.
+* **Two flags per view (save / retrieve).**  Preserves today's independence;
+  doubles the UI surface.
+
+Not guessed — ask the owner.
 
 ### Independent of all of the above
 **Delete `metafilters` and `attempt_specific_flag` from `database_search`** —
