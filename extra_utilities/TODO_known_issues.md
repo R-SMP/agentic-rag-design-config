@@ -2800,8 +2800,10 @@ of the re-seeded base, so `system + base` becomes a matchable entry. Constraints
    the last base message actually is: an `AIMessage` carrying `tool_calls`, a message
    whose content is already a block list, or image placeholders left by the strip.
    Verify how `langchain_anthropic` serialises each of those forms BEFORE changing any.
-3. **Breakpoint budget.** explicit system (1) + top-level automatic (2) + anchor (1)
-   = **4**, the documented maximum. No slot is left for a fifth.
+3. **Breakpoint budget.** Fine: explicit system (1) + top-level automatic (1) +
+   anchor (1) = **3 of the 4** allowed per request, one spare. Extra breakpoints are
+   also nearly free — entries are nested prefixes billed per token, so a third marker
+   does not re-write the history a third time.
 4. Consider whether dropping the top-level automatic on the agent side and hand-placing
    two explicit markers (system + anchor) is simpler — within-field Q/A tails are small,
    so little is lost, and it frees 2 slots.
@@ -4184,3 +4186,49 @@ item runs ~35 lines with nested indented blocks, so its three siblings
 (`Recovery PLAN`, `APPROVE the cycle`, `REPLY DIRECTLY`, `ESCALATE`) are far
 from it even in raw text. Owner declined restructuring it in round 5; if the
 PDF fix lands and it still reads as one bullet, revisit.
+---
+
+### F95. The IN-SESSION briefing anchor: give a stripped agent a fallback entry
+
+**Status.** OPEN, not built. Sibling of F55 — same idea (a third breakpoint), different
+call sites and a different trigger. F55 is about the post-session DH; this one is about
+the live session. Neither depends on the other.
+
+**The problem.** `KEEP_IMAGES_IN_CONTEXT = False` means
+`strip_image_blocks_from_messages` mutates `m.content` **in place** on the agent's own
+`self.messages` at `on_operation_end()` — i.e. the instant the routing tool fires. So an
+agent's history changes retroactively AFTER it has already presented it to the API. On
+its next activation the prefix no longer matches any entry written during the previous
+one, and the fallback is all the way back to the system prompt.
+
+Cost: **one re-write of the post-system history per re-activation of an image-loading
+agent.** Small and flat, but avoidable.
+
+**Blast radius (measured across four production logs).** Only **UII** and **DCOI**
+actually strip. DCOI strips on every activation (1-4 images each); UII on its first.
+The other six agents' histories are stable and already cache perfectly — so this is a
+two-agent fix, not a systemic one.
+
+**The fix.** Place an explicit breakpoint after the task briefing — the stable opening
+stretch of the agent's history that the strip never touches — so a stripped agent falls
+back to the briefing anchor instead of the system prompt. Breakpoint budget is fine:
+explicit system (1) + top-level automatic (1) + anchor (1) = 3 of 4, and extra
+breakpoints are nearly free (nested prefixes, billed per token — design doc §2).
+
+**Do NOT confuse this with flipping the flag.** `KEEP_IMAGES_IN_CONTEXT` stays `False`
+for a model-quality reason (attention on a small, current image set), and the cost
+analysis agrees independently: `False` costs one cheap flat re-write per re-activation,
+while `True` adds stale image tokens to every call and grows with session length.
+Prompt caching narrows that gap (kept images bill at 0.1x) but does not invert it.
+See `settings.py` §6 and `design_prompt_caching.md` §7.
+
+**Sequencing.** Lower value than F55 — F55 recovers ~two thirds of the DH saving,
+whereas this is a flat ~$0.05/session at Opus rates on the measured logs. Worth doing
+when the anchor helper is being written for F55 anyway, since both need the same
+"mark a copy of a message without mutating the original" primitive.
+
+**Where.** `agents/user_input_inspector/user_input_inspector.py` and
+`agents/dc_output_inspector/dc_output_inspector.py` (the two agents whose
+`on_operation_end` actually strips); `agents/shared/llm_provider.py` (shared marker
+helper). Mechanics: `extra_utilities/design_prompt_caching.md` §7 and §9 "Step 2".
+Related: F55 (same primitive, post-session), W40.

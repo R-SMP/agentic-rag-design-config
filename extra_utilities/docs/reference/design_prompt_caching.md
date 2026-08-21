@@ -263,7 +263,9 @@ perfectly.
 
 This is the main argument for keeping a breakpoint anchored **after the task
 briefing**: when the strip invalidates the post-briefing history, the fallback
-is the briefing anchor rather than the system prompt.
+is the briefing anchor rather than the system prompt. Filed as **TODO F90** —
+a two-agent fix (UII and DCOI are the only agents that strip), and deliberately
+NOT a reason to flip the flag.
 
 ### Why `KEEP_IMAGES_IN_CONTEXT` stays `False` — the reason is ATTENTION, not cost
 
@@ -466,8 +468,9 @@ content into block form, and `convo_buffer = list(agent_messages)` is a *shallow
 copy — mutating a message in place would corrupt live session state shared with the
 agent. The anchor must therefore mark a COPY of the last base message, and must
 survive whatever that message is (`AIMessage` with `tool_calls`, image blocks left
-by the strip, etc.). It also consumes the 4th breakpoint slot: explicit system (1)
-+ top-level automatic (2) + anchor (1) = 4, the documented maximum.
+by the strip, etc.). Breakpoint budget is not a constraint: explicit system (1) +
+top-level automatic (1) + anchor (1) = 3 of the 4 allowed, and extra breakpoints are
+nearly free because entries are nested prefixes billed per token (§2).
 
 **`_ask_agent` uses the AGENT's provider**, not the DH's — it invokes
 `agent_base_llm`, which may resolve to a different provider entirely. Passing
@@ -570,9 +573,13 @@ right answer once a live A/B has measured it.
   ttl); only a deliberate >5 min gap would. **Verify before trusting a `1h` A/B.**
 - **⚠ The 3-agent (Architect) topology does NOT have this** — TODO **F53**. The
   5-agent topology (Conductor + Creator) does, as of this change.
-- **Step 2 (not built):** the briefing anchor (marker ②). Only worth adding if
-  measurement shows the post-strip / lookback misses matter; it is the one
-  hand-placed marker and so the only place coercion risk returns.
+- **Step 2 (not built):** the briefing anchor (marker ②) — the one hand-placed
+  marker, and so the only place coercion risk returns. It has **two independent
+  applications**, now filed separately: **F55** (post-session DH, recovers ~two
+  thirds of the save-phase saving — measured, high value) and **F90** (in-session,
+  gives a stripped UII/DCOI a fallback entry — flat ~$0.05/session, low value).
+  Both need the same "mark a copy of a message without mutating the original"
+  primitive, so build them together.
 - **OpenRouter gets no cache marker at all**, including for Anthropic models
   served through it (`provider == "openrouter"`, not `"anthropic"`). A Claude
   model routed via OpenRouter silently forfeits caching.

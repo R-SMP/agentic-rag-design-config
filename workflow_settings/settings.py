@@ -176,16 +176,36 @@ ROUTING_RETRY_ENABLED: bool = True
 # subsequent tool call inside that agent's run, all the way
 # until the routing tool fires.
 #
-#   True   image content blocks persist across hand-offs (along
-#          with their absolute-path text labels); the agent that
-#          receives the hand-off sees the same images without
-#          reloading them; downstream agents inherit them too
-#   False  image bytes are stripped the moment the agent hands
-#          off (the agent's ``on_operation_end`` hook); only
-#          their absolute-path labels remain in history.  Within
-#          one agent's run the image stays loaded for every LLM
-#          call; cheaper across hand-offs but downstream agents
-#          must re-load any image they want to inspect
+# IMAGES NEVER CROSS AGENTS, under EITHER value.  ``AgentHop.message``
+# is a plain ``str`` and no agent's history is ever seeded from
+# another's, so this flag only ever affects the LOADING agent's own
+# history.  An agent that wants to inspect an image must load it
+# itself either way.  (An earlier version of this comment claimed the
+# receiving agent inherits the images; that never matched the code.)
+#
+#   True   image content blocks persist in that agent's own history
+#          after it hands off, so they are still there the next time
+#          the SAME agent is activated
+#   False  image bytes are stripped the moment the agent hands off
+#          (its ``on_operation_end`` hook); only the paired
+#          ``Loaded image (path: ...):`` text labels remain.  Within
+#          one agent's run the image stays loaded for every LLM call
+#
+# WHY THIS STAYS False.  The reason is ATTENTION, not cost: an agent
+# carrying every image it ever loaded gets worse at using them.  The
+# DCOI is the clearest case -- with persistence ON it would hold
+# renders from every previous attempt, and its prompt would then have
+# to warn it that those images describe PAST designs.  Cost agrees as
+# a secondary argument: False costs one cheap text re-write per
+# re-activation (flat), while True adds stale image tokens to EVERY
+# call and grows with session length (~15 stale composites, ~17k
+# tokens, on a 10-attempt run).  Prompt caching does NOT change this
+# -- it narrows the gap by billing kept images at 0.1x, but a growing
+# cost still loses to a flat one.  See design_prompt_caching.md 7.
+#
+# It is also a BEHAVIOURAL switch, so it is deliberately global and
+# not a per-run setting: varying it inside a benchmark set would make
+# the runs non-comparable.
 #
 # Valid values: True, False
 KEEP_IMAGES_IN_CONTEXT: bool = False
