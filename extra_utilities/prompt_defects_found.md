@@ -1,0 +1,928 @@
+# Defects found in the 7-agent prompts (harvested from the fork manifest)
+
+## What this is
+
+Between 2026-08-05 and 2026-08-21 the 7-agent prompts were forked into a
+REDUCED variant.  Forking meant reading each standard prompt closely enough
+to cut it in half — and that reading turned up faults in the standard text:
+rules contradicting each other, instructions naming tools the agent does not
+hold, calls that can never succeed, enumerations that had drifted from the
+code they describe.
+
+Each fault was repaired **in the fork**, and the reasoning was written into
+that fork's `fork_manifest.json` note.  When the reduced variant was promoted
+to become the standard system, those manifest entries were removed — so this
+document lifts the reasoning out first.
+
+## Why you want it
+
+**Read this before writing the 5-agent or 3-agent prompts.**  Every entry
+below is a mistake that was already made once, found the expensive way, and
+explained with the code that proves it.  Rewriting the same prompts from the
+same instincts will reproduce a good share of them.
+
+These are not style notes.  A representative sample:
+
+* a prompt instructing `read_attempt(n, 'render_*.png')`, which can NEVER
+  succeed — `attempts_tool.py` does `target = folder / file_clean` with no
+  globbing, so the call only ever returns an error;
+* a DBa section sitting OUTSIDE its `<<HAS_DBA>>` gate, so at the shipped
+  default the agent received 1,291 characters of rules for three tools it
+  did not hold;
+* the hub ordered THREE TIMES to call a tool it does not have;
+* a rule forbidding the only file path the Receptionist could actually build.
+
+## How to read it
+
+Notes are **verbatim**, not summarised — they are dense with `file:line`
+references and those are the point.  `D-n` / `B-n` markers are the defect
+numbering used while forking that agent; they are local to each file, so
+`D2` under the Receptionist is unrelated to `D2` under the Orchestrator.
+
+Paths named inside a note are as they were AT FORK TIME.  The reduced tree
+(`agents/7agent_reduced/`) no longer exists — its content is now the standard
+`agents/<agent>/prompt.md`.  A note saying "this fork fixes X" therefore
+describes the CURRENT prompts.
+
+## Index
+
+24 files.  35 locally-numbered defects (`D`/`B`), plus fixes described in
+prose in notes that carry no marker at all — the marker column is a
+navigation aid, NOT a count of what was wrong.
+
+`F` entries cross-reference `extra_utilities/TODO_known_issues.md`; `E`
+entries are compression edits from that agent's batch, listed only so a
+reference inside a note can be located.
+
+| file | note | defects (D/B) | tracker (F) | edits (E) |
+|---|---:|---|---|---|
+| receptionist | 6643 ch | B6, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11, D12, D13, D14 | F72, F85 | — |
+| orchestrator | 5081 ch | B6, B10, D1, D2, D3, D4, D6, D7, D8, D9 | F71 | — |
+| planner | 1231 ch | — | F65 | — |
+| user_input_inspector | 254 ch | — | F58 | — |
+| dc_input_creator | 5645 ch | D1, D2, D3, D4, D5, D6, D7, D8, D9, D10, D11 | F65, F68 | — |
+| dc_input_inspector | 6262 ch | — | F73, F80 | 5 |
+| dc_output_inspector | 5375 ch | — | F66, F82 | — |
+| tool_caller | 2321 ch | — | — | 4 |
+| agent_tools_overview_7agents_reduced.md | 2788 ch | — | F67, F76 | — |
+| blade_sections_visualizer_planner_7agents_reduced.md | 301 ch | — | — | — |
+| capabilities_cannot_7agents_reduced.md | 273 ch | — | — | — |
+| database_search_dc_output_inspector_7agents_reduced.md | 618 ch | — | — | — |
+| database_search_user_input_inspector_7agents_reduced.md | 742 ch | — | — | — |
+| feedback_envelope_7agents_reduced.md | 534 ch | — | — | — |
+| generic_constraints_7agents_reduced.md | 2859 ch | — | — | — |
+| hard_constraints_dc_7agents_reduced.md | 146 ch | — | — | — |
+| hard_constraints_dc_user_input_inspector_7agents_reduced.md | 335 ch | — | — | — |
+| hard_constraints_tools_7agents_reduced.md | 3254 ch | — | F74, F75 | — |
+| sketch_handling_dc_input_inspector_7agents_reduced.md | 759 ch | — | — | — |
+| sketch_handling_dc_output_inspector_7agents_reduced.md | 922 ch | — | — | — |
+| sketch_handling_user_input_inspector_7agents_reduced.md | 1143 ch | — | — | — |
+| sketch_notes_dc_input_inspector_7agents_reduced.md | 389 ch | — | — | — |
+| sketch_notes_dc_output_inspector_7agents_reduced.md | 313 ch | — | — | — |
+| reduced7/agents/shared/routing.py | 330 ch | — | F59, F61 | — |
+
+Tracker items referenced across all notes: F58, F59, F61, F65, F66, F67, F68, F71, F72, F73, F74, F75, F76, F80, F82, F85.
+
+---
+
+# Agent prompts
+
+## receptionist
+
+*Fork:* `agents/7agent_reduced/receptionist/prompt_7agents_reduced.md`
+  *Origin:* `agents/receptionist/prompt.md`
+
+ORIGIN MOVED at a6e84b000 (batch 2 of the RAG tool-prompt catch-up, F85).  Two
+changes to the origin, reviewed: (1) the paragraph forbidding
+retrieve_user_inputs / retrieve_attempt "with images_flag=True" was DELETED,
+because the parameter no longer exists on either schema after steps 2a/2b --
+NOTHING TO PORT, this fork had already dropped that paragraph; and (2) the
+pre-cooking rationale lost its middle clause, "strips past images at your
+on_operation_end (so the chain never sees them)", which is now doubly false:
+retrieval attaches nothing to the Receptionist's context, so there is nothing
+to strip, and the downloaded files persist in a folder the whole chain can
+reach.  That one WAS ported -- the identical clause was corrected in this fork
+in the same commit, so the two stay symmetric.  The surviving reasons (the
+chain re-runs the call, and pre-cooking biases it) are unchanged in both.
+ORIGIN MOVED at 712203c — same inverse case as the DCII entry: the shared
+prompt caught up with this fork.  712203c fixed the
+$invalid_parameter_examples inline splice at receptionist/prompt.md:77, which
+this fork had already fixed as D-4 (and which, unrecognised at the time, was
+one instance of a fleet-wide class of six).  Reviewed: NOTHING TO PORT.
+COMPLETE — batch 1 (fourteen defect fixes) + batch 2 (seven further hunks).
+22,682 -> 20,557 source (-9.4%); assembled 36,798 -> 30,3xx.  BATCH 2 was not
+purely compression either: one hunk removed a CONTRADICTION — 'If the user is
+only reacting, clarifying, or asking, reply directly' is stated without
+exception and collides with the HARD RULE at :130-158, which requires
+forwarding an answer to a system-posed question 'even when it is a refusal';
+and one hunk carries a deliberate content ADDITION, 'once per precision phase
+the hand-off reports', closing a consumer-side gap against
+planner/prompt.md:146-148 ('If the run had MORE THAN ONE precision phase ...
+report the residual for EACH phase — a sections plateau must not disappear
+because a later 3D phase ran'), which no layer delivered to the relayer.
+Batch 2's largest single cut (-418) deletes the on-demand tools paragraph; the
+owner accepted the disclosed loss that read_input_text is then named nowhere
+in the prompt, its schema (user_inputs_tool.py:95-102) carrying the usage
+trigger instead.  This agent is ORPHAN-DENSE — it is in _NON_CHAIN_AGENTS, so
+<<CHAIN_ONLY>> strips the shared copies of most generic rules for it, and it
+never receives a generated routing block (0 occurrences of
+routing_instructions in receptionist.py).  Six rules exist ONLY here; none was
+touched.  FIXES: D-2 the prompt instructed read_attempt(n, 'render_*.png'),
+which can never succeed — attempts_tool.py:256 does target = folder /
+file_clean with no glob, so the call only ever returns an error; replaced with
+the three real filenames and 'bare filenames, never a wildcard'.  D-3 '## Your
+DBa scope' sat OUTSIDE <<HAS_DBA>> while its three tools are gated by the same
+predicate (receptionist.py:140-143), so at the shipped default
+RAG_ENABLED=False the agent received 1,291 chars of rules for three UNBOUND
+tools while $hard_constraints_generic told it the tool list is exhaustive —
+measured before and after: 'Your DBa scope' present=True -> False with RAG
+off.  Same defect class as B6 on the hub.  D-4 $invalid_parameter_examples was
+spliced INSIDE a double-backtick inline-code span, so a 7-line 396-char
+fragment rendered inside '(See ``...``)' with the closing text stranded — and
+the injected prose told the Receptionist to 'ask the user via the
+Receptionist' and to 'call the Planner', a tool it does not hold; slot
+dropped, the four names inlined (hub_height, the one name hard_constraints_dc
+omits, survives).  D-5 Situation A's discriminator misdescribed the message it
+discriminates on: receptionist.py:271-277 opens '[Incoming from: User]', has a
+'Files found:' line the prompt never mentioned, and puts the pairing banner
+BEFORE the user text, not after.  D-6 the INVALID-pairing rule told the agent
+to look for orphans only; file_utils.py:216-217 also fails on one stem used by
+two image formats, with zero orphans.  D-7 the reply-direct path forbade
+further tool calls, contradicting two other sections and
+MAX_RECEPTIONIST_STEPS=20; restated around the real discriminator — what makes
+it a direct reply is that call_orchestrator never fires.  D-8 exception 2
+ordered a reminder the forward branch discards (dispatch.py:270-281 surfaces
+validation['message'] only when forward is False); now covers both branches.
+D-9 three unguarded DCII references.  D-10 a 111-column line rewrapped, and
+'effectively end the session' softened — it ends the TURN; histories and the
+session object persist, and overstating a consequence inside a HARD RULE
+invites discounting the rest of it.  D-11 '## Parameter Ranges (validation
+reference)' named the one job the section forbids ('You do NOT check whether a
+value falls inside its allowed range').  D-12 a heading immediately repeated
+by the fragment beneath it.  D-13 $retrieve_attempt_tool is a dead slot — its
+fragment is 0 bytes by design (251ff5b).  D-14 'user-locked' was sourced only
+to extracted_inputs.txt QUANTITATIVE INPUTS, missing UI slider pins, which
+dispatch.py:150-156 appends to user_query.txt and which equally need
+permission to vary.  UII-20 APPLIED: '## End-of-session feedback message'
+deleted — feedback_tool.py:49-52 states outright that a system keeping the
+prompt section 'must not also get the envelope, or they are told the same
+thing twice', and topology-7-reduced DOES get the envelope.  What is lost is
+the Receptionist-specific scope sentence; its better-placed twin survives at
+orchestrator/role4_feedback_instructions.md:22-23, loaded by fixed path with
+no variant override.  COUPLING WORTH KNOWING: the <<HAS_DBA>> opener for D-3
+is inserted by a hunk otherwise belonging to batch 2; taking the closer
+without it would leave an orphan closer as literal prompt text and the gate
+would never fire.  Applied as a targeted one-line post-step.  NOT TOUCHED: the
+F72 whitelist fix (89a85a1) — verified still intact in the assembled fork; and
+the 'legacy DC parameters written this cycle' branch, which is NOT dead —
+receptionist.py:339 gates it on the hand-off NOT naming an attempt, so all
+three branches of that section map to live code paths.  Verified across all 8
+RAG x DCII x BSV combinations: zero leftover markers,
+.format(user_inputs_dir=..., extraction_output_file=...) succeeds on every
+path — this prompt goes through .format() at receptionist.py:99-104, so a
+literal brace is fatal, and until 1a2d880 the format harness did not cover it.
+
+
+## orchestrator
+
+*Fork:* `agents/7agent_reduced/orchestrator/prompt_7agents_reduced.md`
+  *Origin:* `agents/orchestrator/prompt.md`
+
+COMPLETE — batch 1 (defect fixes) + batch 2 (14 further hunks). 28,205 ->
+26,709 source (-5.3%); assembled hub 41,820 -> 35,048 (-16.2%). Nine defects
+closed. FIXES: D1 the '## Output format' section claimed a response with no
+tool call is 'silently discarded and the pipeline halts' — false for THIS
+agent (orchestrator.py:502-511 returns AgentHop(DONE, rendered_content), i.e.
+the text is delivered to the user and ends the dispatch), and it also
+instructed a state that cannot occur ('after call_receptionist, produce no
+further tool call' — receptionist.py:437-440 returns DONE and
+orchestrator.py:690-691 returns immediately, so the hub is never re-entered).
+The rewrite states the true mechanism and DEFINES the 'Orchestrator's final
+user-facing wrap-up' that generic_constraints_7agents_reduced.md:26-27 names
+as a carve-out but leaves undefined anywhere. D2 the hub had no anti-loop
+remedy: the prohibition reaches it via generic_constraints but the operational
+remedy lives in routing.py:141-150, which the hub NEVER receives (0
+occurrences of routing_instructions in orchestrator.py) and which terminates
+in 'ESCALATE to the hub' — nonsense addressed to the hub. The new bullet's
+discriminator is 'has any agent RUN since', NOT 'the answer will not change',
+because F71 bound read_agent_history precisely so prompt.md:386 could
+re-verify after a chain excursion. D3 the '## Agent tools at a glance (what
+each agent reads / writes on its own)' heading now introduced a 4-line
+fragment about one agent; retitled '### Tool reach worth naming in a hand-off'
+under the roster it back-references. D4 '## Agent Capabilities — DO NOT exceed
+these' described the Planner as only handling failures, though it has THREE
+roles including FINAL APPROVER (planner/prompt.md:227-232) which
+prompt.md:252-268 mandates — a literal reader had grounds to skip the approval
+hop; and it OMITTED the Receptionist entirely, while
+role4_feedback_instructions.md:19-23 sends the hub to that heading BY NAME and
+lists the Receptionist first. The heading string must therefore never be
+renamed (orchestrator.py:88 loads that file from a fixed path with no variant
+override). D7 the extraction-only section had no PF guard, so under
+PLANNER_FIRST=True the prompt said BOTH 'kick off the Planner' and 'kick off
+the UII' — and dispatch.py:319-329 deliberately strips the agent name from the
+kickoff because 'the hub's prompt already states exactly who it starts'. D8
+two unguarded DCII references, the only two in the file. D9 the kick-off
+paragraph gave two hand-back conditions where
+routing_dc_output_inspector.md:7-11 binds three; the REVISE case is added as
+an OPEN category, not a closed list. OWNER AMENDMENT: the audit's roster
+called the Planner 'the only agent that DECIDES', which collides with
+dc_output_inspector/prompt.md:33 ('decide a verdict') and
+dc_input_inspector/prompt.md:282 ('Verdict -> routing (STRICT — the tool
+follows your verdict)'); shipped as 'decides STRATEGY'. SLOTS DROPPED (2):
+$geometry_modification_rule — every clause verified still delivered to this
+reader (capabilities_cannot_7agents_reduced.md carries the mesh-editing
+catalogue, hard_constraints_dc the change-via-DCIC rule,
+tool_caller_capabilities.md 'CANNOT edit, repair, remesh ... CANNOT choose
+custom output filenames'); and $invalid_parameter_examples, whose remedy is
+carried into the parameters preamble. BATCH 2 added three more defect fixes
+plus eleven compressions. D6 the attempt-folder subsections told the hub to
+give the DCIC a 'Current attempt:' 'ONLY when reusing an existing attempt' — a
+case that ALWAYS bounces, because dc_input_creator.py:99-103 refuses a write
+into a folder that already holds a parameters.json; the valid case is the
+EMPTY pre-opened fallback, and a genuine re-run goes to the Tool Caller or
+DCOI instead. It also dropped the fallback-trigger sentence, delivered
+word-for-word by routing_orchestrator.md:26-28 via $routing_hub — correcting
+an earlier claim that this prompt was its sole owner. B6 deleted a sentence
+scripting the hub to tell agents to 'Call database_search ... before
+finalising your output' — stated OUTSIDE the <<HAS_DBA>> gate, so with RAG off
+it put a tool nobody holds into the hub's mouth. B10 described the Planner's
+REVISE return as 'a Problem/Solution/Sequence recovery plan';
+planner/prompt.md:20-26 splits its output in two, and Part 1 'stays in your
+history so later turns stay consistent; NO OTHER AGENT READS IT' — the hub
+receives only Part 2, 'who should do what, one line of intent each'.
+Anti-Hallucination went 6 rules -> 4 (rule 1 subsumed by the Planner-framing
+bullet once 'recovery options' was added to it; rule 5 subsumed by the
+Receptionist-composes rule); renumbering verified safe — zero 'rule N'
+cross-references remain in the file, and the one repo referrer is a different
+topology's prompt whose own rules are lettered. HIGHEST-DRIFT-RISK FORK IN THE
+SET, jointly with the UII's: 545 lines against an origin under active edit —
+three commits touched it on the day it was taken (ed8569a, 107536e, and the
+F71 prompt edit).
+
+
+## planner
+
+*Fork:* `agents/7agent_reduced/planner/prompt_7agents_reduced.md`
+  *Origin:* `agents/planner/prompt.md`
+
+Batches 1-2. Source 32,273 -> 29,034 (-10.0%); full system prompt 51,978 ->
+44,547 (-14.3%). Batch 1 = 17 defect rows (caller attribution,
+standing-directive lifecycle, image capability, dead 'inspection tool' with
+rule 5 re-anchored on the parameters.json levers, SOFT TARGET named as its own
+lever kind, two wrong enumerations deleted, F65 dead marker). Batch 2 = 23
+compressions: EOS section (UII-20, orphan-checked clean against
+role4_feedback_instructions.md:24-25), HARD RULES 6+7 deleted and renumbered
+1-8 after rules 4 and 3 absorbed their claims, read_user_queries /
+read_agent_history / attempt-tool schema restatements, Anti-Hallucination C+E
+(delivered by the routing block and the generic override), and the two
+intra-section repeats. NOTE the two big sections were only 4.0% and 5.7%
+self-repeating; HARD RULES 8-10 (69.5% of that section) have no second copy
+anywhere and are untouched. C-pipeflow was PROPOSED and REVERTED:
+natural_pipeline() delivers a one-line chain that omits the Receptionist and
+does NOT carry the recovery-Sequence semantics ('the standard forward chain is
+NOT re-entered'), which exist nowhere else for this reader. Two-part output
+contract and per-phase residual rule preserved byte-exact.
+
+
+## user_input_inspector
+
+*Fork:* `agents/7agent_reduced/user_input_inspector/prompt_7agents_reduced.md`
+  *Origin:* `agents/user_input_inspector/prompt.md`
+
+Batch 1: 11 reviewed compressions, 25,677 -> 18,877 chars. Includes the F58
+fix (third categorisation bucket) and an unconditional 'view_images on EVERY
+image'. The standard prompt is actively worked on, so this is the
+highest-drift-risk fork in the set.
+
+
+## dc_input_creator
+
+*Fork:* `agents/7agent_reduced/dc_input_creator/prompt_7agents_reduced.md`
+  *Origin:* `agents/dc_input_creator/prompt.md`
+
+BATCH 1 ONLY — 10 defect edits, 21,721 -> 21,213 source (-2.3%); assembled
+36,187 -> 32,111 (-11.3%).  ONE DEFECT ROW COLLAPSED BEFORE IT WAS WRITTEN:
+the audit's D1 was a runaway $output_file_locations splice at :223 (1,670
+delivered chars expanding mid-sentence inside an inline code span).
+Generalising that check found six instances fleet-wide and they were fixed AT
+SOURCE in 712203c, so this fork inherits the repair instead of duplicating it.
+FIXES: D2 (F68) deleted BOTH enumerations rather than adding the
+reconcile-two-rules sentence the TODO proposed — the discovery list was a
+lossy copy of $value_states spliced ten lines above (it dropped source (C)),
+the grantor list a weaker copy of the routing block (which also names the
+Receptionist relay leg the prompt omitted), and the anti-bounce clause warned
+against a hop this agent CANNOT make: at the shipped PLANNER_FIRST=False it
+binds routing_dc_input_creator_uii_first.md, which has no
+call_user_input_inspector. D4 the <<DCII_ONLY>> note claimed that on a
+precision refine round the DCIC's own check is 'the only parameter validation
+there is' — false, and false in a way that licenses skipping it:
+tool_caller/prompt.md:61-72 re-reads parameters.json from disk and compares
+EVERY value against its range. Narrowed to what is actually unique to the DCIC
+there — whether it was authorised to move the user values it moved. D5 'use
+quantitative values directly' contradicted SOFT TARGET and real-world
+conversion. D6 'you must act on them' forbade the decline-with-a-reason route
+the same prompt defines 50 lines later. D7 named the Planner as a co-decider
+of actionability, uncorroborated by the Planner's own prompt. D8 'so the DCII
+/ DCOI know' renders 'so the DCOI know' with the inspector off, and the DCOI
+is not the direct recipient — replaced with the role, not the roster. D9 named
+two information sources where the agent has at least five; rewritten
+non-enumerating so it survives a RAG flag change. D10 an Output Format cap of
+'one or two sentences' contradicted the section beneath it mandating three
+labelled lines plus prose; merged, and the 'Extracted inputs file:' line is
+now <<DCII_ONLY>>-gated because with the inspector off the hand-off goes to
+the Tool Caller, WHICH HAS NO EXTRACTION TOOL. D11 same defect from the other
+side: the precision edge promised the Tool Caller all three lines. OWNER
+REWRITE of D3, the logged 'DCIC froze levers' failure. The audit offered
+tactical advice ('chord is often the strongest lever ... a pinned chord caps
+the absolute size however far you push the ratio'), which conflates shape with
+absolute size. The owner supplied the actual model, which is what the agent
+needed: for the INNER and OUTER sections, shape is *Thickness / *Camber /
+*MaxPos and NOTHING ELSE; a *Chord changes SIZE only and does not reshape; the
+MIDDLE section has NO shape parameters at all — its profile is interpolated
+from inner and outer, so it is reshaped only by changing inner and/or outer,
+and it also shifts with middlePos, the radial position the interpolation is
+taken at; angles orient a section without changing shape or size. Units taken
+from parameters.md, which corrected one of mine: *MaxPos is 'integer, tenths
+of chord', NOT a fraction. This also drops the F65-dead SUGGESTED SECTION
+SHAPES warm-start from that paragraph — the second occurrence, in Guidelines
+item 3, is batch 2's C1, and the build asserts the count went 2 -> 1 rather
+than 2 -> 0. Verified: every edit matched EXACTLY once, no slot dropped or
+added, seven marker pairs balanced, brace set unchanged, 12 assertions
+confirmed in the ASSEMBLED prompt, all four DCII x RAG combinations render
+with zero leftover markers and a clean format_map. BATCH 2 APPLIED, TEN rows
+(not the twelve originally scoped): source 21,213 -> 18,995 (-10.5%); full
+system prompt 40,977 -> 34,581 (-15.6%). C1 deletes the SUGGESTED SECTION
+SHAPES seeding branch, CLOSING F65 for the 7-agent reduced variant
+(TODO_known_issues.md:3926-3985 prescribes exactly this and forbids touching
+the shared prompts); deleted rather than narrowed the way the Planner's copy
+was, because a PRECISE SKETCH verdict carries no numbers while item 3 says
+seed FROM those estimates. C3/C4/C6/C7 defer write_parameters and user-input
+mechanics to the schemas and runtime errors. C5 drops a carry-forward bullet
+whose survivor 29 lines below is strictly stronger. C8 is a HYBRID: besides a
+fourth append-only copy it deletes a FALSE claim - 'the folder is still empty'
+- since attempts_tool.py:349-354 writes description.txt and this prompt
+instructs the DCIC to pass one, so an agent seeing that file would wrongly
+infer it must open a new attempt. C9 defers to hard_constraints_dc, spliced 17
+lines below. C10 is UII-20 CASE B - role4_feedback_instructions.md:29-31
+already covers all four scope axes, so NO paired shared-file edit, unlike the
+DCOI and DCII forks which each needed one; the parenthetical sub-terms are
+delivered live at :73-80 and :194-198. C11 drops the 0-byte
+$retrieve_attempt_tool slot. C2 DROPPED BY THE OWNER: 'functional' occurs
+exactly ONCE in this fork - item 5 - while dc_input_inspector:89,
+dc_output_inspector:7 and database_handler.py:377/387 all grade the DCIC on
+functional requirements, so cutting it would remove the only line telling the
+author to weigh what two inspectors and the database judge it on; saving
+forgone -126. C12 DROPPED as refuted earlier. KNOWN CONSEQUENCE, accepted
+deliberately: C3+C8 together leave NO prompt-layer statement of the
+occupied-folder refusal - it survives only in the schema
+(dc_input_creator.py:101-104) and the runtime error (:416-422).
+
+
+## dc_input_inspector
+
+*Fork:* `agents/7agent_reduced/dc_input_inspector/prompt_7agents_reduced.md`
+  *Origin:* `agents/dc_input_inspector/prompt.md`
+
+ORIGIN MOVED at 712203c — the INVERSE of the usual drift case, and worth
+reading as such: the origin caught up with THIS fork, not the other way round.
+712203c fixed the $modelling_notes inline splice in the shared prompt (and
+five siblings fleet-wide) after this fork had already fixed it.  Reviewed:
+NOTHING TO PORT, the fork got there first and its text is identical in effect.
+BATCH 1 — 15 defect edits, 18,751 -> 17,335 source (-7.6%).  THE BIGGEST FIND
+IS A TEMPLATE ACCIDENT: $modelling_notes was spliced TWICE — the legitimate
+slot at :26 under '## Modelling Notes', and again at :143 INSIDE a sentence
+('lives in the ``## Modelling Notes`` section above ($modelling_notes); use it
+as...').  safe_substitute replaces EVERY occurrence, so the 2,659-char
+fragment landed twice and the sentence disintegrated mid-parenthesis into a
+bullet list that closed 2,659 chars later.  The author meant a cross-reference
+and wrote a slot.  A 19-CHARACTER SOURCE EDIT REMOVES 2,662 DELIVERED CHARS
+and repairs the sentence.  Verified by assembly: the fragment's first line now
+appears ONCE (was 2).  F73 FIXED: ':76 parameters.json has just been
+overwritten' — it never is (dc_input_creator.py:99-104 'the write refuses if
+it already contains a parameters.json'; both byte-parallel siblings say
+'written').  The staleness CONCLUSION was right, the MECHANISM wrong: it is a
+new file at a new path, so what you remember describes a DIFFERENT attempt.
+OWNER TRIMS on that fix: dropped '(they are append-only, so an existing
+parameters.json is never rewritten in place)' — the agent never acts on the
+storage model — and 'even if an earlier turn in this conversation already
+shows a parameters block', on the grounds that 'a DIFFERENT attempt' is a more
+concrete reason than the original's 'overwritten', so the reinforcement does
+less work than it did.  OTHER FIXES: the Role section promised five axes 'each
+detailed under What to Check' and the mapping was FALSE (Role axis 5 had no
+section; '### 5.' was a different axis, and BOTH are cited by number at :42
+and :306); Role axis 4 named two of three authorisation sources, omitting THE
+USER, though _authorisation_sources and section 4a both include them; the
+authority order credited only the Planner with directives when the
+Orchestrator dispatches recovery cycles in its own right; the 'source (A)'
+pointer had drifted to 'a user permission' where value_states.md says 'a user
+permission OR a strategy / recovery directive'; the Output Format skeleton
+omitted ESCALATE, which the verdict section requires; the APPROVE rule said
+'NEVER the Orchestrator' with no exception for an instruction to report back;
+a feasibility-violation REVISE trigger was missing; the hand-off rationale
+said 'Both labels are required' where the consumer ESCALATEs without them.
+UII-20 applied, PAIRED: the EOS section is deleted AND its
+engineering-soundness scope item added to
+agents/orchestrator/role4_feedback_instructions.md:32-34 — a shared file,
+correct because the DCII runs that axis in the standard system too.  OWNER
+DECISION — E18 DROPPED ENTIRELY.  The audit proposed a 295-char clause
+reconciling the prompt's 'CLARIFY a LOCKED violation back to the DCIC' with
+routing.py's 'permission questions go to the hub, not the previous agent'.
+Both this session's independent reading and the audit agreed the PROMPT is the
+correct side (routing.py:153 scopes its rule to an authorisation THIS agent
+needs and lacks; here the DCIC already acted and the remedy is its own
+regeneration).  The owner then asked what INSTRUCTION the clause gives — the
+answer is none: it is a lecture on reading two rules together, closing with a
+cross-reference to delivered text, which is the exact pattern this sweep
+removes.  The agent's own routing fragment already resolves it by ORIGIN of
+the bad value ('originated with the DCIC' -> CLARIFY).  OWNER REWRITE of the
+authority-resolution bullets: the bold noun phrase plus arrow read as a
+heading rather than a condition, and one bullet packed four distinct rules
+into a run-on with two em-dash asides.  Reframed as 'If ...' conditionals with
+one rule per line, +170 chars — spent here and nowhere else in this fork,
+because it is a decision procedure run on EVERY parameter.  NOT TOUCHED: the
+designed triple range check (twins at dc_input_creator/prompt.md:179-196 and
+tool_caller/prompt.md:61-80) — deliberate defence in depth.  Verified: every
+edit matched EXACTLY once; the four intended slots dropped; markers balanced;
+brace set unchanged; all 17 assertions confirmed in the ASSEMBLED prompt; all
+four RAG x BSV combinations render with zero leftover markers and a clean
+format_map. BATCH 2 (four rows, not the three originally scoped - E7 was filed
+DEFECT_FIX+COMPRESSION and fell between the batches): 17,335 -> 15,766 source;
+full system prompt 47,231 -> 30,481 (-35.5%). E6 cut §1's self-repetition,
+with the owner cutting further than proposed - the prior-runs anecdote, the
+hard-FAIL label (the next paragraph's MUST NOT APPROVE is strictly stronger),
+the DCIC-runs-its-own-check preamble, the redundant re-check sentence, and the
+routing pointer (## Verdict -> routing at :251 carries the complete rule,
+REVISE at :263 and the range exception at :284). 'Being exactly at min or max
+is acceptable' KEPT, moved beside the out-of-range rule it qualifies. THE
+TRIPLE RANGE CHECK IS NOT TOUCHED - all three layers stay live and
+independently worded. E7 dropped the PRIMARY-reference preamble
+(value_states.md:1-2 delivers it 60 lines earlier) and a four-of-five tool
+list that omitted ocr_regions (bound: ocr_access.json dc_input_inspector=true,
+OCR_ENABLED=True), and gained an OWNER-ADDED fourth trigger: re-check the raw
+inputs when the extraction or a hand-off reports the user's inputs were hard
+to interpret. That forced 'the discrepancy' -> 'the doubt' in the closing
+condition, or the new trigger would have been gated by a condition it can
+never satisfy. See F80 - nothing currently EMITS that signal. E10 deferred the
+how-far gloss to value_states.md:41-45 (more complete - it also covers the
+'nothing said' default) and fixed Planner-only attribution. E12 cut the
+narrowest of three style-notes copies, keeping the superset that also names
+operating-condition assumptions.
+
+
+## dc_output_inspector
+
+*Fork:* `agents/7agent_reduced/dc_output_inspector/prompt_7agents_reduced.md`
+  *Origin:* `agents/dc_output_inspector/prompt.md`
+
+COMPLETE — batch 1 (16 defect edits, +/-210) + batch 2 (12 compressions).
+21,372 -> 17,684 source (-17.3%).  BATCH 2 NOTES: C1 deletes a five-tool
+catalogue (-733) after confirming the ocr_regions BATCHING rule really does
+ship in its schema — _OCR_REGIONS_DOC (user_inputs_tool.py:173-189) says 'pass
+them all in ONE call rather than one call each', and explains why (one shared
+detection pass); an earlier cross-layer audit had called that rule
+prompt-only, which was true of FRAGMENTS but missed the schema.  C9 removes
+'(your message is the final result)', false because call_orchestrator hands to
+the hub which routes onward.  C10 deletes the end-of-session section per
+UII-20 AND, paired with it, adds the one scope item that existed nowhere else
+to agents/orchestrator/role4_feedback_instructions.md:36-37 ('whether visual
+claims were grounded in images loaded that turn') — the two had to move
+together or the fleet lost it.  OWNER OVERRIDE on C5: 'so the Planner / DCIC /
+Orchestrator can cross-reference' -> 'so the other agents can'.  Three
+reasons: the names carry no decision value here; they couple this prompt to
+topology 7, and this file is the origin for a future 5-agent reduced fork
+where the DCIC and Planner do not exist; and the enumeration was WRONG — the
+DCOI's two routing tools are call_orchestrator and call_tool_caller
+(orchestrator.py:432), so it omitted a DIRECT recipient while naming two that
+only read after a relay.  Same shape as capabilities_can naming one engine for
+a two-engine system.  Unlike the Receptionist and Orchestrator this is a CHAIN
+agent: it DOES receive the generated routing block and <<CHAIN_ONLY>> text is
+NOT stripped, so duplication answers run the opposite way — verified by
+assembling, not assumed.  FIXES: a rule at :20 ('Use ONLY paths present in the
+incoming message') forbade the procedure the same prompt orders at :276-278
+(read_attempt to get a render's ABSOLUTE PATH, then view_images it); deleted,
+since the non-colliding form ships from
+hard_constraints_tools_7agents_reduced.md:2-3 and the view_images schema.  The
+anti-fabrication HARD RULE was scoped to 'THIS hand-off's paths', which made
+three REQUIRED claims violations (the precision loop's sketch, a prior
+attempt's render, the 3D check); re-scoped to 'the image you are describing'
+with the stale-path trap kept verbatim for current-design claims.
+Escape-hatch template (b) let the agent describe a previous cycle's renders
+having loaded NOTHING — and at the shipped KEEP_IMAGES_IN_CONTEXT=False those
+bytes are not in history; now requires an image it can still see.  'three
+agents already did' was false in two supported configurations (DCII toggled
+off, and every precision refine round, where
+dc_input_creator/prompt.md:215-217 says the DCIC skips the DCII) -> 'the chain
+already did'.  'never re-count the inputs' forbade the only route to an
+expected count under comparison mode 1, where dc_output_inspector.py:98-100
+bars reading the extraction.  F66 ANSWERED and closed: ':129 Do NOT invent
+numeric parameter values' is NOT a repetition — git provenance shows cce0276
+added it while the HARD RULES section forbade the same thing, 6b3919a then
+DELETED that rule (its message naming the production failure: 'repeated the
+same inner section too thin complaint six times, and the loop finalised on a
+false configurator limit verdict'), and the precision-block twin was never
+updated.  It was the last surviving copy of a deleted rule, sitting 170 lines
+nearer the decision than the permission it undercut — and C2b's own audit
+never counted it.  OWNER DECISION on $geometry_modification_rule: DROPPED
+ENTIRELY, keeping nothing, and the heading renamed '## How to phrase your
+feedback' because it described only the slot.  The audit proposed inlining a
+corrected copy (its shared tail orders 'call the Planner', which
+orchestrator.py:431-434 does not bind — the DCOI holds only call_tool_caller
+and call_orchestrator); the owner judged the eight-item catalogue redundant
+against a prohibition already delivered FOUR ways (hard_constraints_dc 'no
+mesh-editing capability' + 'ONLY design levers'; :299 'Setting the parameter
+VALUES is not your job'; :300 'primarily QUALITATIVE'), and noted the
+catalogue introduces the very vocabulary it forbids into an agent whose job
+never invites it.  The honest-limits case is covered by the routing block's
+ESCALATE rule, which this agent DOES receive.  Net effect: this fork touches
+NO shared module — the SCOPED_FRAGMENTS registration the audit wanted is
+unnecessary.  Verified: every edit matched EXACTLY once, only the three
+intended slots dropped (geometry_modification_rule, sketch_notes,
+retrieve_attempt_tool), marker pairs balanced, and the BRACE SET UNCHANGED —
+this prompt legitimately carries three runtime placeholders
+({image_persistence_block}, {comparison_mode_block}, {routing_instructions})
+filled by .format() at construction, so the test is 'no brace the original
+lacked', not 'no braces'.  All 19 fix assertions confirmed in the ASSEMBLED
+prompt and all 8 RAG x DCII x BSV combinations render with zero leftover
+markers and a clean format_map.  RE-BASELINED 2026-08-20 to 97e8afd: F82 added
+a names-only $parameter_list reference block to the shared origin, and the
+SAME block was ported into this fork in that commit, so the fork is level with
+its origin and nothing is outstanding.
+
+
+## tool_caller
+
+*Fork:* `agents/7agent_reduced/tool_caller/prompt_7agents_reduced.md`
+  *Origin:* `agents/tool_caller/prompt.md`
+
+Batches 1-2 plus owner revisions. Source 9,321 -> 4,955 (-46.8%); full system
+prompt (template + runtime routing block + injected render-check block) 23,967
+-> 15,297 (-36.2%). Batches 1-2: see 3cd3753 / 47004c6. OWNER REVISIONS (this
+commit) narrowed four rows the owner reviewed individually: E1 dropped the
+output_dir binding and the reuse MECHANISM (both duplicated - output_dir at
+generate_mesh.py:611-618 and tool_inventory.md; mesh reuse at :658; render
+reuse stated in the tool's own return text at runtime) but KEPT the re-run
+LICENCE, which has no other delivery in the reduced variant and stands against
+the unscoped 'DON'T repeat a tool call with the same arguments' -
+routing_dc_output_inspector.md:2-4 lets the DCOI ask for a re-render of the
+SAME attempt. E3 became tool-agnostic (the agent may call
+render_blade_sections, or neither) keeping only the FETCH OBLIGATION, the one
+claim no schema carries - the schema says how to call read_parameters, never
+that calling is required. E13 dropped both rules (anti-invention survives at
+fork :83 and hard_constraints_tools:2-3; the failed-render case is handled
+more strongly by routing_tool_caller.md, which prescribes ESCALATE). E16
+deleted the 'State THIS CYCLE' section and moved two clauses into Data Flow.
+NOTE E13's cut is safe ONLY because E16's moved sentence restores
+content-level disclosure - routing_tool_caller.md prescribes the ROUTE, not
+the message content. E16's premise was verified false:
+KEEP_IMAGES_IN_CONTEXT=False (settings.py:165) and
+dc_output_inspector.py:388-403 strip every image block at every hand-off, so
+the DCOI cannot form a verdict from stale images, and its HARD RULE forces a
+this-turn view_images for any visual claim. The two clauses kept are
+load-bearing: the Tool Caller is stateful for the whole session and the
+generic DON'T permits sourcing 'a tool result' including an earlier cycle's,
+while the DCOI has no independent QC source; and without the fresh-vs-reused
+signal a reused-render hand-off is byte-identical to a fresh one, so
+dc_output_inspector fork:33-37 could never fire.  RE-BASELINED 2026-08-20 to
+e6e7874: generate_and_render_propeller now takes the parameters PATH instead
+of 16 values, and the matching prompt change was ported into this fork in that
+same commit, so the fork is level with its origin.
+
+
+---
+
+# Shared fragments
+
+## agent_tools_overview_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/tools_config/agent_tools_overview_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/tools_config/agent_tools_overview.md`
+
+ORIGIN MOVED at 107536e (F76: the stale 'logs/attempts/' locator replaced with
+'attempts/' fleet-wide); reviewed, nothing to port — this copy carries no path
+literal at all. 1,614 -> 271 chars, 34 lines -> 4.  Single reader:
+$agent_tools_overview is referenced ONLY at agents/orchestrator/prompt.md:454.
+(agents/database_handler/prompt.md:20 is $agent_tools_overview_brief — a
+DIFFERENT slot backed by a different file.  That prefix collision also broke
+the variant gate, fixed separately in 3128f37.)  WHY ALMOST EVERYTHING GOES:
+the Orchestrator receives TWO per-agent rosters back to back — '## Agent
+Capabilities — DO NOT exceed these' at prompt.md:431-449 ends FIVE LINES
+before the splice at :454.  Everything else is owned elsewhere in the same
+assembled prompt: the calculate/batching gloss by
+hard_constraints_tools_7agents_reduced.md (which is strictly STRONGER — it
+carries the dependent-second-call exception this copy omitted, so read alone
+this copy forbade a call the system needs) and by calculate.py:15-27;
+list_attempts/read_attempt by their own schemas (attempts_tool.py:162-176,
+:206-226), which say more than the gloss; new_attempt ownership by
+prompt.md:141-146, the only copy naming the fallback TRIGGER CONDITIONS and
+carrying the adjacent re-use rule; the hub's own tool set by
+routing_orchestrator.md via $routing_hub at :521.  THREE DEFECTS DELETED
+RATHER THAN PRESERVED: (1) ':12-13 you never call their tools yourself' is
+FALSE and self-contradicted six lines later at :19 — the hub holds new_attempt
+(orchestrator.py:451), which this same file calls the DCIC's tool at :6-7, and
+read_agent_history (:461), the Planner's and Receptionist's; (2) ':4 bound to
+every agent' is over-broad — false for the Database Handler, which binds only
+save_attempt_data (database_handler.py:2359-2362) to a local and never back to
+self.llm; (3) ':4-5 advertises database_search unconditionally while the hub's
+own $database_search_tool section is <<HAS_DBA>>-gated at prompt.md:530-539,
+so with RAG off it named a tool nobody holds.  ALSO DROPPED AS WRONG: the
+'logs/attempts/' locator — attempts live at PROJECT_ROOT/attempts
+(config.py:38, the sole assignment); see F76 for the other 14 sites.  WHAT
+SURVIVES and why: the roster at :446-449 NARROWS the DCOI to 'given paths in
+the Tool Caller's message', and this is the only text telling the hub
+otherwise — actionable, because it says what to put in the hand-off.  Its only
+other mention (prompt.md:236-238) is a parenthetical side-effect inside the
+precision-refine-loop section.  Opens with 'Beyond the roster above:' so the
+surviving sentence reads coherently under a heading that promises a roster —
+the heading itself (prompt.md:451-452) cannot be touched without forking a
+545-line shared prompt, which F67 defers.
+
+
+## blade_sections_visualizer_planner_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/tools_config/blade_sections_visualizer_planner_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/tools_config/blade_sections_visualizer_planner.md`
+
+Attempt policy re-aimed: planner.py binds only list_attempts/read_attempt,
+never new_attempt (cf4b900 made the DCIC sole creator), so the overlay was
+instructing a capability the Planner lacks. States the fact instead. NOTE this
+is the Planner's ONLY attempt-policy text and it sits inside <<BSV_ON>>.
+
+
+## capabilities_cannot_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/dc_config/capabilities_cannot_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/dc_config/capabilities_cannot.md`
+
+RCP-20 compression, plus the catalogue received from hard_constraints_dc. Two
+live defects fixed here: 'cross-sections' -> 'arbitrary section cuts through
+the mesh' (CON-30), and the false downloads/uploads/cloud-storage bullet
+deleted. Reaches Receptionist + Orchestrator.
+
+
+## database_search_dc_output_inspector_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/tools_config/database_search_dc_output_inspector_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/tools_config/database_search_dc_output_inspector.md`
+
+Scoped override for the REDUCED profile only.  Same shape as the UII entry,
+mirrored: the shared fragment prefers retrieve_user_inputs AND
+retrieve_attempt, but under 7-reduced the DCOI holds search + attempt only.
+The retrieve_user_inputs half is dropped and the paragraph re-centred on past
+renders + the verdict each drew, which is what this agent actually calibrates
+against.  The view_images / side_by_side instruction is unchanged -- it is how
+the DCOI compares a past render with the current one, and it still holds
+attempt retrieval.  Delete this file if the reduced DCOI is ever granted
+user-input retrieval.
+
+
+## database_search_user_input_inspector_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/tools_config/database_search_user_input_inspector_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/tools_config/database_search_user_input_inspector.md`
+
+Scoped override for the REDUCED profile only.  The shared fragment points the
+UII at retrieve_attempt as well as retrieve_user_inputs, which is CORRECT for
+standard-7 -- there the UII holds all three database tools.  Under the
+7-reduced DBa profile it holds search + user_inputs ONLY, so that sentence
+named a tool the agent does not bind.  One sentence dropped ("Likewise
+retrieve_attempt(...) when <available_attempts> lists relevant past
+attempts.") and "Both download" -> "It downloads" to match.  Nothing else
+differs; the HARD trigger, the MANDATORY clause and the hand-off requirement
+are identical.  If the reduced UII is ever granted attempt retrieval, DELETE
+this file rather than editing it -- the shared original is already right.
+
+
+## feedback_envelope_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/prompt_fragments/feedback_envelope_7agents_reduced.md`
+
+Prepended to a forwarded end-of-session feedback message by
+agents/orchestrator/feedback_tool.py::feedback_envelope(). No shared original
+EXISTS BY DESIGN: an absent override is the signal for 'no envelope', so every
+topology except 7-agent reduced gets "" and is behaviourally unchanged. Pairs
+with UII-20, which deletes the '## End-of-session feedback message
+(read-only)' section from the reduced prompts — the instruction travels with
+the message instead of sitting in eight prompts for a message that only exists
+at session save.
+
+
+## generic_constraints_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/prompt_fragments/generic_constraints_7agents_reduced.md`
+  *Origin:* `agents/shared/prompt_fragments/generic_constraints.md`
+
+THE INVARIANT CUT. 24,176 -> 11,514 chars fleet-wide (-52%); per agent 3,370
+-> 1,525 chain, 1,978 -> 1,182 hub. Reaches all 8. The cut rests on a
+structural invariant, not on taste: <<CHAIN_ONLY>>'s audience is EXACTLY the
+set of agents that receive a generated routing block, because
+_NON_CHAIN_AGENTS (prompts.py:228-230) is precisely the set that never calls
+routing_instructions() — verified in all four hub files, including the
+explicit comments at conductor.py:230 and architect.py:301. So a rule inside
+<<CHAIN_ONLY>> that routing.py also states is delivered TWICE to every agent
+that gets it and to nobody else, and cutting one copy is provably lossless.
+Cut on that basis: FORWARD-is-default, ESCALATE-when-blocked, permissions->hub
+(all three owned by reduced7/routing.py). ALSO cut rule 1 (act on the paths
+your hand-off supplies): hard_constraints_tools.md states it for all 8 —
+verified by grep, the audit's claim of six was wrong — so the generic copy was
+a strict subset. NOTE, amended: the original justification here also cited
+that file's ENUMERATION of the five hand-off labels as what made it the
+stronger owner. That enumeration has since been cut (see the
+hard_constraints_tools fork entry) because it was both redundant against the
+tool schemas AND incomplete — it omitted at least 'Extraction output file:',
+the UII's own write target. The surviving owner is that file's bullet 1, the
+PROHIBITION ('DON'T invent or guess a path'), which is deliberately kept there
+precisely because this fork deleted the fleet-wide backstop. KEPT, each the
+sole statement for at least one agent: tool-list-is-exhaustive (sole for 5 of
+8), STANDING DIRECTIVES carry verbatim (sole for the 5 _DIRECTIVE_CARRIERS;
+load-bearing for precision sections), hand-off prose + authorship,
+answer-in-English (sole in the ENTIRE repo), don't-invent MERGED with
+don't-fabricate-observations (the apparent duplicates for UII/DCIC/DCII/TC ban
+inventing PARAMETERS and PATHS, a different rule), anti-loop (the
+Receptionist's only copy — it never sees routing.py:222-231),
+don't-script-the-user-reply, and routing-is-a-tool-call. That last one
+deliberately stays OUTSIDE <<CHAIN_ONLY>> WITH its Receptionist/Orchestrator
+carve-out: generic_constraints.md:49-50 is the ONLY statement of the halt
+consequence anywhere in the system, and the Orchestrator's own replacement
+(prompt.md:530) is a soft 'should' under a '## Output format' heading. Without
+the carve-out the Receptionist would be told its normal mode of operation is
+forbidden. Added a 4-word gloss on ESCALATE's first use outside
+<<CHAIN_ONLY>>: the definition was always chain-only while rules 8 and 10 use
+the term, so both hubs were told to ESCALATE with the word never defined.
+Worded 'hand the problem to whoever can resolve it', NOT 'hand it on' — the
+latter is the plain-English description of FORWARD.
+
+
+## hard_constraints_dc_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/dc_config/hard_constraints_dc_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/dc_config/hard_constraints_dc.md`
+
+TC-32 compression; the CANNOT catalogue moved out to capabilities_cannot;
+metrics bullet gated behind <<MESH_ON>>. Reaches all 8 chain/hub agents.
+
+
+## hard_constraints_dc_user_input_inspector_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/dc_config/hard_constraints_dc_user_input_inspector_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/dc_config/hard_constraints_dc.md`
+
+Per-agent scoped copy (prompts.SCOPED_FRAGMENTS). Shares no text with the
+origin: it states the one rule the UII can act on (the vocabulary constrains
+LABELLING, not RECORDING), resolving the standing conflict with 'Capture, do
+not filter'. Tracked because a change to the shared DC hard rules may still
+change what the UII needs told.
+
+
+## hard_constraints_tools_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/tools_config/hard_constraints_tools_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/tools_config/hard_constraints_tools.md`
+
+1,253 -> 397 chars (-68%), 19 -> 7 lines, x8 agents = -6,848 fleet-wide.
+Reaches all 8 (this file carries NO conditional markers, and routing.py states
+none of its rules, so the <<CHAIN_ONLY>> invariant does not apply here — the
+duplication is against TOOL SCHEMAS, which ship to the model every turn
+through the tool-definition channel). CUT, each with a verified owner: the
+five-label enumeration (each label lives in its consuming tool's schema —
+user_input_inspector.py:78, dc_input_creator.py:80, tool_caller.py:77,
+dc_input_inspector.py:75; no agent consumes more than two of the five and the
+Orchestrator consumes ZERO, holding no path-taking read tool at all); 'sums,
+ratios, conversions' (exemplification); the batching sentence (calculate.py:15
+says it verbatim); 'never rewrite/edit/delete' (TC: prompt.md:15 + the
+generate_mesh schema; DCIC: the write_parameters schema, where the write
+REFUSES in code — and those two are the only agents that can write); the whole
+new_attempt / re-render paragraph (stated 5x elsewhere; best owner
+orchestrator/prompt.md:134-146, the only copy covering the re-use case); and
+the coherence bullet (tool_caller/prompt.md:11-13 states the actionable core
+MORE strongly, in the prompt of the only agent that can violate it — 'that
+path is the only folder you may write into this cycle'; what remained was an
+invariant no agent acts on and no code checks, see F75). DELETED AS WRONG, not
+duplicated: 'write only into the Current attempt: folder' — the DCIC's own
+write_parameters schema calls new_attempt 'the normal case, since you own
+attempt creation'. DEFECT FIXED while here: the old rule said paths come only
+from one of five hand-off labels, but the Receptionist receives NONE of them
+(its hand-off says 'User input files from: <path>', receptionist.py:273, and
+note banners are RELATIVE, file_utils.py:366) — so the rule forbade the only
+path it could build. 'Must trace to your incoming message or to a tool result'
+licenses the join without licensing invention, and 'a tool result'
+(unqualified) also fixes the old 'an UPSTREAM tool's return value', which
+excluded the agent's own tools — the fleet's actual path source. KEPT,
+orphaned for all 8: 'never mental arithmetic, even for trivial sums'
+(calculate.py's schema teaches syntax and batching only; a schema can say how
+to call a tool, never prefer-this-over-doing-it-in-your-head, and the
+trivial-case clause closes the obvious defection) and the
+dependent-second-call carve-out (without it the schema's 'Always ... instead
+of invoking this tool repeatedly' reads as an absolute and forbids a call the
+system needs). NOT prior art:
+agents/5agent/tools_config/hard_constraints_tools_5agents.md differs from the
+origin by a two-line owner RENAME only — no previous pass has deleted a rule
+from this fragment. ORIGIN ADVANCED cf4b90059 -> 563c3a8af (F74): the shared
+file's closed "only these five" path-label list was replaced by the principle
+THIS FORK ALREADY USED, so nothing needed porting - the fork was ahead and the
+shared original caught up.  Wording differs slightly (shared: "a label in your
+incoming message or an upstream tool's return value"; fork: "your incoming
+message or a tool result") and that difference is deliberate, not drift.
+
+
+## sketch_handling_dc_input_inspector_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/dc_config/user_input_types/sketch_handling_dc_input_inspector_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md`
+
+DCII-01. The shared guide is 8,605 chars, of which 3,851 sit under headings
+literally titled '### UII' — and the DCII's own prompt refers to a sketch in
+exactly three places, all of which ARE the splice. Keeps only the
+ROUGH-vs-PRECISE strictness verdict, which it needs for axis 2 of its job
+(consistency with the user's stated inputs). 8,605 -> 331. ORIGIN MOVED at
+041b38b (the phantom middle-section row removed from the warm-start block);
+reviewed, nothing to port — this copy does not carry the warm-start at all.
+ORIGIN MOVED AGAIN at aae8567 (C1b: the two literal parameter counts in the
+PRECISE-sketch section replaced with $parameter_count); reviewed, nothing to
+port — this copy states no parameter total at all (verified by grep for a bare
+16/17).
+
+
+## sketch_handling_dc_output_inspector_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/dc_config/user_input_types/sketch_handling_dc_output_inspector_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md`
+
+DCOI-01. Keeps the three things the DCOI acts on: the CONVERGED rule (it is
+the agent that orders another refine cycle), the rough-vs-precise asymmetry it
+judges by, and the form-scaffolding rule. Drops the authoring guidance (it
+judges, it does not author) and the SOFT TARGET bullet (covered by
+$value_states, which it splices). Uses $parameter_count instead of the shared
+file's literal, which says '17' on one line and '16' four lines later. 8,605
+-> 1,298. ORIGIN MOVED at 041b38b (the phantom middle-section row removed from
+the warm-start block); reviewed, nothing to port — this copy does not carry
+the warm-start at all. ORIGIN MOVED AGAIN at aae8567 (C1b: the two literal
+parameter counts in the PRECISE-sketch section replaced with
+$parameter_count); nothing to port — this copy ALREADY interpolates
+$parameter_count, which is exactly why the shared file's 17-vs-16 split never
+reached the DCOI in this variant.
+
+
+## sketch_handling_user_input_inspector_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/dc_config/user_input_types/sketch_handling_user_input_inspector_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md`
+
+8,594 -> ~1,960. The UII is the last topology-7 consumer (the DCII and DCOI
+already have scoped copies), so this replaces the file rather than trimming
+it. DELETED: the ROUGH/PRECISE matching contract (revision-ordering and
+value-authoring, held by the DCOI copy), and the SUGGESTED SECTION SHAPES
+warm-start block — owner's call, it over-prescribed how to report sketch
+inputs. DC-specific example text is now imported via
+$sketch_precision_examples and $sketch_crop_example so the surrounding
+guidance stays configurator-agnostic. Both proposal candidates for the
+warm-start emitted middleThickness / middleCamber / middleMaxPos, none of
+which exist (parameter_keys.txt gives the middle only middlePos / middleChord
+/ middleAngle). ORIGIN MOVED at 041b38b (the phantom middle-section row
+removed from the warm-start block); reviewed, nothing to port — this copy does
+not carry the warm-start at all. ORIGIN MOVED AGAIN at aae8567 (C1b: the two
+literal parameter counts in the PRECISE-sketch section replaced with
+$parameter_count); reviewed, nothing to port — this copy does not carry the
+PRECISE-matching contract, which the DCOI copy owns.
+
+
+## sketch_notes_dc_input_inspector_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_input_inspector_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md`
+
+DELIBERATELY EMPTY (0 bytes) — the file being empty IS the override. Section
+2's census verdict on sketch_notes is DELETE_EVERYWHERE. $sketch_notes has no
+heading of its own (it is spliced under '## Sketch handling' right after
+$sketch_handling), so an empty resolution leaves nothing dangling. The DCII
+references a sketch in exactly three places, all of which ARE the splice.
+1,736 -> 0.
+
+
+## sketch_notes_dc_output_inspector_7agents_reduced.md
+
+*Fork:* `agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_output_inspector_7agents_reduced.md`
+  *Origin:* `DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md`
+
+DELIBERATELY EMPTY (0 bytes) — see the DCII entry. DCOI-05's rationale: 'its
+one DCOI-relevant point — artifacts are not defects — is already in REC-01's
+replacement', and the DCOI-scoped sketch_handling now states exactly that
+('Imperfections are drawing artifacts, not design intent ... all NOISE').
+1,736 -> 0.
+
+
+---
+
+# Code
+
+## reduced7/agents/shared/routing.py
+
+*Fork:* `reduced7/agents/shared/routing.py`
+  *Origin:* `agents/shared/routing.py`
+
+Only routing_instructions() is re-implemented (F59: the CLARIFY bullet names
+its own target instead of leaving each first-agent fragment to patch it).
+natural_pipeline, _authorisation_sources and _load_routing_fragment are
+IMPORTED live and must never be copied — _authorisation_sources drops the
+Planner when topology != 7 (F61).
+
+
