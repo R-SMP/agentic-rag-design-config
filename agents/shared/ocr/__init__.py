@@ -3,7 +3,7 @@
 v1 engine: **Google Cloud Vision** (``google_vision.py``).
 
 This package is the seam described in
-``extra_utilities/OCR_technology_notes.md`` §5: the OCR engine is
+``extra_utilities/docs/reference/OCR_technology_notes.md`` §5: the OCR engine is
 chosen via a workflow setting, and a different engine (Azure / AWS /
 a future self-hosted model) can slot in behind the same
 ``detect_text`` contract without touching the tool or agent layer.

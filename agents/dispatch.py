@@ -97,7 +97,7 @@ def save_user_input(
     inputs directory unchanged so callers can chain.
 
     ``fixed_params`` (Step 8 of the Parameters Inputs redesign — see
-    ``extra_utilities/web_interface_notes.md`` §6.D) is the dict of
+    ``extra_utilities/docs/reference/web_interface_notes.md`` §6.D) is the dict of
     user-FIXED slider values from the Parameters Inputs view, with
     values pre-formatted as display strings including units
     (e.g. ``"72 mm"``, ``"5 % of chord"``).  When present and

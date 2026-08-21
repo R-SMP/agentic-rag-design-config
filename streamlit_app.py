@@ -1,7 +1,7 @@
 """Stage A Streamlit entry point — Phase 3 chat UI.
 
 This file is the sole entry point of the deployed web app (no
-FastAPI front-door — see ``extra_utilities/cloud_architecture_notes.md``
+FastAPI front-door — see ``extra_utilities/docs/reference/cloud_architecture_notes.md``
 C2).  Streamlit's ``streamlit run streamlit_app.py`` launches the
 HTTP server, renders the page on every interaction, and re-runs
 this script top-to-bottom each time.

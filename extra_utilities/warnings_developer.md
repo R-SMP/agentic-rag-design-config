@@ -1762,7 +1762,7 @@ call site must keep the prefix, and no agent may ever be named `DH*`** — other
 writes get priced at the wrong phase's ttl the moment the two ttls diverge.
 
 **Status.** In force from 2026-08-04 (the conversation-history-caching change; the
-Database Handler joined the same day). See `extra_utilities/design_prompt_caching.md`
+Database Handler joined the same day). See `extra_utilities/docs/reference/design_prompt_caching.md`
 and `workflow_settings/settings.py` §29–§30.
 
 **Unverified assumption (2026-08-04).** Whether the **top-level** `cache_control`

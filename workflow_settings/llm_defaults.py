@@ -92,7 +92,7 @@ def model_for(agent_key: str) -> str:
 # JS / HTML change needed.
 #
 # These two presets ARE Test 1 "Experiment Subject 5" — the per-agent
-# LLM mix (see extra_utilities/benchmark_suite.md, Part B).  The tier of
+# LLM mix (see extra_utilities/docs/reference/benchmark_suite.md, Part B).  The tier of
 # each agent is chosen by REASONING demand (context window is not a
 # binding constraint: every tier is >= 200k and observed peak usage was
 # ~30k).  The SAME tier assignment is instantiated for both providers, so

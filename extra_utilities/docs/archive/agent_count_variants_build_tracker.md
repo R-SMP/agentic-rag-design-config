@@ -686,7 +686,7 @@ extent — ONCE. Each consumer keeps only its role-specific ACTION.
   fragments + 5-agent drafts + a Python-embedded-prompt critic) for the same
   "locked-by-source" defect class.
 - **⚠ NEW FEATURE SPUN OUT (2026-07-28) — see
-  `extra_utilities/design_no_ask_back_and_range_degrade.md`.** Benchmark 6
+  `extra_utilities/docs/active/value_states_and_out_of_range.md`.** Benchmark 6
   (user states an OUT-OF-RANGE value, asks to keep it, asks the system NOT to
   ask back) exposed that the Receptionist hard-gates out-of-range values at the
   front door and no "don't ask back" support exists anywhere. Owner signed off
@@ -1174,7 +1174,7 @@ this makes it a per-agent choice.)
 
 ## 3-agent variant — IN PROGRESS (Stages A+B done, C not started)
 
-**FULL SPEC LIVES IN `extra_utilities/design_3agent_architecture.md`.**
+**FULL SPEC LIVES IN `extra_utilities/docs/active/design_3agent_architecture.md`.**
 That file is authoritative for the roster, the edge set, the refine loop,
 every settled decision with its rationale, the three build stages and six
 numbered Warnings.  Do not plan 3-agent work from this section or from

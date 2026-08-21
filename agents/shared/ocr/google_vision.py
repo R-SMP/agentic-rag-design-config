@@ -6,7 +6,7 @@ No SDK / service-account machinery — a single HTTPS POST, so it runs
 identically on the CPU Railway container and locally.
 
 This is the first concrete implementation behind the swappable OCR
-engine interface in ``extra_utilities/OCR_technology_notes.md`` §5.
+engine interface in ``extra_utilities/docs/reference/OCR_technology_notes.md`` §5.
 Other engines (Azure, AWS, a future self-hosted model) can implement
 the same :func:`detect_text` contract and be selected via the OCR
 engine workflow setting.
@@ -52,7 +52,7 @@ def _api_key() -> str:
         raise OCRConfigError(
             "GOOGLE_CLOUD_VISION_API_KEY is not set in the environment. "
             "Set it in the Railway dashboard Variables (and local .env "
-            "for dev). See extra_utilities/OCR_technology_notes.md §7."
+            "for dev). See extra_utilities/docs/reference/OCR_technology_notes.md §7."
         )
     return key
 

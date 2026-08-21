@@ -8,7 +8,7 @@ dropped it.  This module holds only the pure text helpers; the wiring lives in
 ``orchestrator.dispatch`` (capture + re-stamp) and the agent prompts (the
 "copy verbatim" rule for every chain agent + the Planner's "how to issue" rule).
 
-Design decisions this implements (see extra_utilities/design_precision_sections_match.md §C):
+Design decisions this implements (see extra_utilities/docs/archive/design_precision_sections_match.md §C):
   * Only the Planner registers directives; every other agent copies the block
     forward verbatim.
   * The Orchestrator/dispatcher backstop re-stamps ONLY on detected loss (it

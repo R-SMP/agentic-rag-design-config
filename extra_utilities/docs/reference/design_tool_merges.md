@@ -368,7 +368,7 @@ The proposal was to drop the `Files:` line as redundant with `Has:`. **Two probl
 read_attempt(n: int, role: Literal['parameters','description','mesh','renders']) -> str
 ```
 
-*Replacement form:* both arguments stay required and the wrong-filename error class disappears — but it forecloses reading anything outside four canonical roles, in a folder whose contents are explicitly allowed to grow (`extra_utilities/database_design_notes.md` enumerates it as a schema; the module docstring `:6-8` says "and any further metrics produced for the same set of inputs"). *Additive form* (`file=None, role=None`): both become optional — option (a)'s requiredness loss wearing a different hat. Same 25-file fan-out either way, because every prompt names `file` by example.
+*Replacement form:* both arguments stay required and the wrong-filename error class disappears — but it forecloses reading anything outside four canonical roles, in a folder whose contents are explicitly allowed to grow (`extra_utilities/db_design/database_design_notes.md` enumerates it as a schema; the module docstring `:6-8` says "and any further metrics produced for the same set of inputs"). *Additive form* (`file=None, role=None`): both become optional — option (a)'s requiredness loss wearing a different hat. Same 25-file fan-out either way, because every prompt names `file` by example.
 
 **Verdict: NO in both forms.**
 

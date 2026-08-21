@@ -33,7 +33,7 @@ on my machine" and "invited-only cloud URL" is this deploy.
     `R-SMP` org and that needs an org-owner approval we do not
     control.  No push-to-deploy; each deploy is a manual
     `railway up` from the `stage-a-web-deploy` worktree.
-  * Follow `extra_utilities/cloud_deploy_runbook.md` end to end:
+  * Follow `extra_utilities/docs/reference/cloud_deploy_runbook.md` end to end:
     §1 open the existing empty (Pro-workspace) Railway project
     `agentic-rag-design-config`
     (id `644e017b-b027-455a-b1f8-5a86952feae5`), create the
@@ -2846,7 +2846,7 @@ rationale also recorded in
 > on `stage-a-web-deploy`).  This entry is therefore **F38**.
 
 **Where.**  The not-yet-built OCR feature — see
-`extra_utilities/OCR_technology_notes.md` (the region / crop re-OCR
+`extra_utilities/docs/reference/OCR_technology_notes.md` (the region / crop re-OCR
 escalation tier, §3 Decision 3 + §4).  No code exists yet; this
 records a design assumption to validate before / during build.
 
@@ -3203,7 +3203,7 @@ ordering + proportions (explicitly declining shape) and went straight to 3D. Roo
 causes: DCOI bar too low (A), section-shape params never extracted from the drawing (B),
 "many attempts" recorded as permission not mandate (D); compounded by a small /
 compressed comparison render (C) and the NACA airfoil ceiling (E). Full design:
-`extra_utilities/design_precision_sections_match.md` (31 decisions; 3 components).
+`extra_utilities/docs/archive/design_precision_sections_match.md` (31 decisions; 3 components).
 
 **Fix (3 components, 5 phases).**
   * **C — standing directives (P1).** A verbose Planner-issued instruction survives the
@@ -3332,8 +3332,8 @@ still passes no phase, i.e. the `"session"` default.
 
 **Where.** `agents/<each reduced-topology agent>/*.py`. Reference implementation: the 8
 in-session agents on the current topology. Mechanics + measured rationale:
-`extra_utilities/design_prompt_caching.md`. Settings: `workflow_settings/settings.py` §29.
-Related: the agent-count work in `extra_utilities/design_agent_count_variants.md` and
+`extra_utilities/docs/reference/design_prompt_caching.md`. Settings: `workflow_settings/settings.py` §29.
+Related: the agent-count work in `extra_utilities/docs/reference/design_agent_count_variants.md` and
 `agent_count_variants_build_tracker.md`.
 
 ---
@@ -3375,7 +3375,7 @@ independent of the session's, so it can be changed without re-measuring the sess
 
 **Where.** `workflow_settings/settings.py` §30; `agents/database_handler/database_handler.py`
 (5 call sites); `agents/shared/token_usage.py` (`_phase_for`, `_configured_ttl`).
-Mechanics: `extra_utilities/design_prompt_caching.md` § "The session-save phase".
+Mechanics: `extra_utilities/docs/reference/design_prompt_caching.md` § "The session-save phase".
 
 ---
 
@@ -3439,7 +3439,7 @@ written — only the verdict changes.
 
 **Where.** `agents/database_handler/database_handler.py` `_ask_agent` (~line 2733);
 `agents/shared/llm_provider.py` (a new marker helper alongside `system_cache_control`).
-Mechanics: `extra_utilities/design_prompt_caching.md` § "The session-save phase".
+Mechanics: `extra_utilities/docs/reference/design_prompt_caching.md` § "The session-save phase".
 Related: F54 (live verification on a real save).
 
 ### F56. `SYSTEM_TOPOLOGY` is read fresh mid-turn, so a run in flight is not pinned

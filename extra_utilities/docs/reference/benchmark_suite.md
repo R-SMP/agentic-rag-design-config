@@ -14,7 +14,7 @@ producing one session log that the analysis scripts score.
 
 > **Sources.** This document is reconstructed from
 > `…/28.07 Benchmark2 Setup/20260728_Benchmark2_SetUps.pptx` (the plan — case
-> studies, metrics, Test 1 conditions), `extra_utilities/design_agent_count_variants.md`
+> studies, metrics, Test 1 conditions), `extra_utilities/docs/reference/design_agent_count_variants.md`
 > (Test 2 architectures), and the as-run data in `…/21.07/testResults/`.
 > Where the **plan** and what is **built/run** differ, the gap is flagged
 > explicitly — see the "As-built" notes and §A.8.
@@ -535,7 +535,7 @@ subjects: `CLAUDE_OPUS_4_8` = Subj 1, `GPT_5_4` = Subj 2, `CLAUDE_HAIKU_4_5` +
 **Question.** Does reducing the agent count hurt? The Receptionist is an
 interface add-on kept in every configuration; the *chain* is what shrinks.
 
-**Full rationale + diagrams:** `extra_utilities/design_agent_count_variants.md`.
+**Full rationale + diagrams:** `extra_utilities/docs/reference/design_agent_count_variants.md`.
 The three architectures (its §7):
 
 | Function | 7-agent (baseline) | 5-agent (merge-only) | 3-agent (strip-down) |

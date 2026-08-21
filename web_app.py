@@ -479,7 +479,7 @@ class TurnIn(BaseModel):
     message: str
     # Optional dict of FIXED parameter values from the Parameters Inputs
     # view (Step 8 of the redesign — see
-    # extra_utilities/web_interface_notes.md §6.D).  Values are
+    # extra_utilities/docs/reference/web_interface_notes.md §6.D).  Values are
     # pre-formatted display strings with units (e.g. "72 mm",
     # "5 % of chord") computed by the frontend so the backend has no
     # unit table to maintain.  Frontend sends this only when the FIXED

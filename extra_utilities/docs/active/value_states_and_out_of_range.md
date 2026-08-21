@@ -11,7 +11,7 @@ back.  The pipeline had no answer for this — worse, it had a hard gate at the
 front door that would violate the directive outright (see "The blocker").
 
 Related: [[v9_soft_targets]] (the three-state model this builds on),
-`extra_utilities/agent_count_variants_build_tracker.md` (the rewiring work this
+`extra_utilities/docs/archive/agent_count_variants_build_tracker.md` (the rewiring work this
 interrupted).
 
 ---
