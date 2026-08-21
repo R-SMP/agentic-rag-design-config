@@ -11,7 +11,7 @@ inputs, and `fork_manifest.json`, which `smoke_test_fork_drift.py` reads.
 
 | I want to… | Go to |
 |---|---|
-| see what is broken or missing | `TODO_known_issues.md` — **read its index, don't `cat` it** (220 KB) |
+| see what is broken or missing | `TODO_known_issues.md` — **read its index, don't `cat` it** (~210 KB) |
 | know what I must not break | `warnings_developer.md` — W1–W42, the invariant registry |
 | run or understand a script | `SMOKE_TESTS.md` — all 54, what each guards, what each costs |
 | know how the owner wants work done | `working_agreements.md` — the six standing rules |
@@ -23,8 +23,8 @@ inputs, and `fork_manifest.json`, which `smoke_test_fork_drift.py` reads.
 ```
 extra_utilities/
 ├── README.md                 this file
-├── TODO_known_issues.md      LIVE tracker — 77 open entries + a grep index
-├── TODO_archive.md           31 closed entries, verbatim.  Ids are retired, never reused.
+├── TODO_known_issues.md      LIVE tracker — open entries + a grep index at the top
+├── TODO_archive.md           closed entries, verbatim.  Ids are retired, never reused.
 ├── warnings_developer.md     LIVE invariant registry — W1–W42
 ├── SMOKE_TESTS.md            index of the 54 hand-run scripts
 ├── working_agreements.md     the owner's standing rules for how work is done
