@@ -13,7 +13,7 @@ attempts_ID_list)``, the tool:
      * ``parameters.json`` — JSON parameter snapshot.
      * ``render_isometric.png`` / ``render_top.png`` / ``render_side.png``
        — filtered by the three workflow flags
-       (``RETRIEVE_ATTEMPT_INCLUDE_{ISO,TOP,SIDE}_VIEW``) AND gated by
+       (``ATTEMPT_VIEW_<VIEW>``) AND gated by
        ``has_renders=TRUE``, written to the local cache folder.
 3. Assembles an XML response (``<retrieve_attempt_meta/>`` + per-attempt
    blocks); trims attempts from the end of the input list when the
@@ -52,6 +52,7 @@ from langchain_core.tools import tool
 from pathlib import Path
 
 from agents.shared import postgres_pool
+from agents.shared import attempt_views
 from tools import retrieval_common
 from agents.shared.agent_activity import generic_tool
 from config import ATTEMPTS_DIR
@@ -73,20 +74,19 @@ _MAX_RESPONSE_TOKENS = int(workflow_settings.RETRIEVE_MAX_RESPONSE_TOKENS)
 # is the single most informative single-view render for propeller
 # geometry; top and side follow.  The render_views_in_scope meta
 # attribute joins the enabled names in this order.
-_RENDER_VIEWS = (
-    ("isometric", "RETRIEVE_ATTEMPT_INCLUDE_ISOMETRIC_VIEW"),
-    ("top",       "RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW"),
-    ("side",      "RETRIEVE_ATTEMPT_INCLUDE_SIDE_VIEW"),
+# Views and their flags live in ONE registry shared with the uploader and
+# the save-time render-completion pass -- see agents/shared/attempt_views.py.
+# They used to disagree: render_blade_sections.png was written by its tool
+# but was in neither the upload whitelist nor this map, so no archived
+# attempt anywhere had one.
+_RENDER_VIEWS = tuple(
+    (name, flag) for name, flag, _f in attempt_views.VIEWS
 )
 
-# Maps view name → R2 filename (matches ATTEMPT_ARTEFACT_WHITELIST in
-# r2_uploader.py).  Filenames stay as the originals in Phase 5A
+# Maps view name → R2 filename.  Sourced from the shared registry, so
+# it cannot drift from what the uploader archives.  Filenames stay as the originals in Phase 5A
 # (no <sid>__<NNN>__ rename).
-_RENDER_FILES = {
-    "isometric": "render_isometric.png",
-    "top":       "render_top.png",
-    "side":      "render_side.png",
-}
+_RENDER_FILES = dict(attempt_views.VIEW_FILES)
 
 
 # attempt_label format is ``<YYYYMMDD>_<HHMMSS>_<NNN>_<slug>``.  This

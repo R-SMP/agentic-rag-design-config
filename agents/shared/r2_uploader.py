@@ -242,14 +242,27 @@ def upload_bytes(
 # ``save_attempt_data`` tool.  ``propeller_mesh_components.obj``
 # is intentionally NOT on the list (the user spec explicitly excludes
 # it).  Files outside this set are ignored even if they exist.
-ATTEMPT_ARTEFACT_WHITELIST: tuple[str, ...] = (
+# Artefacts every attempt carries regardless of which views are enabled.
+_ATTEMPT_BASE_ARTEFACTS: tuple[str, ...] = (
     "parameters.json",
     "propeller_mesh.obj",
-    "render_isometric.png",
-    "render_top.png",
-    "render_side.png",
     "description.txt",
 )
+
+
+def attempt_artefact_whitelist() -> tuple[str, ...]:
+    """Base artefacts plus the render of every ENABLED view.
+
+    A FUNCTION, not a constant: a module-level tuple is evaluated at import
+    and could never see a settings change.  ``agents.shared.attempt_views``
+    is the single registry of which views exist and which are on -- the
+    uploader, the retrieve tool and the save-time render-completion pass all
+    read it, which is what stops them drifting apart again (blade sections
+    used to be written by its tool but archived by nobody).
+    """
+    from agents.shared import attempt_views
+    return _ATTEMPT_BASE_ARTEFACTS + tuple(attempt_views.enabled_view_files())
+
 
 
 def upload_attempt_artefacts(
@@ -258,7 +271,7 @@ def upload_attempt_artefacts(
     session_id: str,
     attempt_id: str,
     global_attempt_id: int | None = None,
-    whitelist: Iterable[str] = ATTEMPT_ARTEFACT_WHITELIST,
+    whitelist: Iterable[str] | None = None,
 ) -> tuple[list[str], list[str]]:
     """Upload the whitelisted files from one *attempt_folder* to R2.
 
@@ -289,6 +302,8 @@ def upload_attempt_artefacts(
     DH still sees an unambiguous "nothing was saved" signal and the
     cascade-drop branch fires.
     """
+    whitelist = (tuple(whitelist) if whitelist is not None
+                 else attempt_artefact_whitelist())
     if not is_enabled():
         logger.warning(
             "[R2]  not configured; skipping attempt-artefact upload "

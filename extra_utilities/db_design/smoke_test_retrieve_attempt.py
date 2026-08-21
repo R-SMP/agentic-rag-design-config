@@ -208,9 +208,9 @@ def main() -> int:
     print(f"[smoke-retrieve-attempt]  TS suffix = {_TS}")
 
     # Save originals so render-view flag patching can be reverted.
-    _orig_iso = workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_ISOMETRIC_VIEW
-    _orig_top = workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW
-    _orig_side = workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_SIDE_VIEW
+    _orig_iso = workflow_settings.ATTEMPT_VIEW_ISOMETRIC
+    _orig_top = workflow_settings.ATTEMPT_VIEW_TOP
+    _orig_side = workflow_settings.ATTEMPT_VIEW_SIDE
     _orig_cap = mod._MAX_RESPONSE_TOKENS
 
     exit_code = 0
@@ -260,9 +260,9 @@ def main() -> int:
         # ============================================================
         # Test 1: happy_path_with_renders (all 3 views ON in policy)
         # ============================================================
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_ISOMETRIC_VIEW = True
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW = True
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_SIDE_VIEW = True
+        workflow_settings.ATTEMPT_VIEW_ISOMETRIC = True
+        workflow_settings.ATTEMPT_VIEW_TOP = True
+        workflow_settings.ATTEMPT_VIEW_SIDE = True
         xml, image_blocks, image_paths = _run_retrieve_attempt(
             caller_agent=CALLER,
             global_attempt_ids=[GID_A],
@@ -304,9 +304,9 @@ def main() -> int:
         # ============================================================
         # Test 3: render_view_policy_filter (only isometric ON)
         # ============================================================
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_ISOMETRIC_VIEW = True
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW = False
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_SIDE_VIEW = False
+        workflow_settings.ATTEMPT_VIEW_ISOMETRIC = True
+        workflow_settings.ATTEMPT_VIEW_TOP = False
+        workflow_settings.ATTEMPT_VIEW_SIDE = False
         xml, image_blocks, image_paths = _run_retrieve_attempt(
             caller_agent=CALLER,
             global_attempt_ids=[GID_A],
@@ -328,9 +328,9 @@ def main() -> int:
         # Test 4: no_renders_attempt (has_renders=FALSE in Postgres)
         # ============================================================
         # Reset views back to all-on so the filter doesn't mask the test
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_ISOMETRIC_VIEW = True
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW = True
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_SIDE_VIEW = True
+        workflow_settings.ATTEMPT_VIEW_ISOMETRIC = True
+        workflow_settings.ATTEMPT_VIEW_TOP = True
+        workflow_settings.ATTEMPT_VIEW_SIDE = True
         xml, image_blocks, _ = _run_retrieve_attempt(
             caller_agent=CALLER,
             global_attempt_ids=[GID_B],
@@ -445,9 +445,9 @@ def main() -> int:
         exit_code = 1
     finally:
         # Restore patched settings even if a test crashed mid-patch
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_ISOMETRIC_VIEW = _orig_iso
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW = _orig_top
-        workflow_settings.RETRIEVE_ATTEMPT_INCLUDE_SIDE_VIEW = _orig_side
+        workflow_settings.ATTEMPT_VIEW_ISOMETRIC = _orig_iso
+        workflow_settings.ATTEMPT_VIEW_TOP = _orig_top
+        workflow_settings.ATTEMPT_VIEW_SIDE = _orig_side
         mod._MAX_RESPONSE_TOKENS = _orig_cap
 
         if os.environ.get("SMOKE_NO_CLEANUP") == "1":

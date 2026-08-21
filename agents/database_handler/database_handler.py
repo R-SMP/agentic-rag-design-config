@@ -3350,6 +3350,7 @@ class DatabaseHandler(BaseChainAgent):
             uploaded_per_attempt: dict[str, dict] = {}
             try:
                 from agents.shared import r2_uploader as _r2
+                from agents.shared import attempt_renders as _renders
                 for nnn in normalised:
                     folder, _ = _resolve_attempt_folder(
                         nnn, attempts_root, session_start_ts,
@@ -3364,6 +3365,13 @@ class DatabaseHandler(BaseChainAgent):
                     # uploader falls back to the pre-5A key shape with
                     # a warning, which is acceptable for the rare
                     # cascade case.
+                    # Complete the attempt's render set BEFORE archiving
+                    # it.  Saving is irreversible: whatever is missing here
+                    # is missing from that attempt for good.  Best-effort by
+                    # construction -- ensure_renders never raises, so a dead
+                    # geometry backend costs renders, never the save (W1).
+                    _rep = _renders.ensure_renders(folder)
+                    _renders.log_report(folder, _rep)
                     uploaded, missing = _r2.upload_attempt_artefacts(
                         folder,
                         session_id=session_id,

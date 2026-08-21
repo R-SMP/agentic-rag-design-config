@@ -482,27 +482,52 @@ DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER: int = 10
 
 
 # ===========================================================
-# 21. Retrieve attempt — render views included by default
+# 21. Attempt render views — generate, save AND retrieve
 # ===========================================================
-# When an agent calls ``retrieve_attempt(attempts_ID_list, images_flag=True)``,
-# the tool consults these three flags to decide which of the saved render
-# PNGs (top / side / isometric) to attach to the response.  Per-view flags
-# rather than a single multi-select because the workflow-settings UI
-# renders booleans cleanly.
+# ONE flag per view.  A flag ON means that view's render is:
+#   * CREATED at save time if it is missing (from the attempt's
+#     parameters.json, using the same tools the live workflow uses);
+#   * UPLOADED to R2 with the attempt;
+#   * FETCHED when an agent calls retrieve_attempt.
 #
-# Default is isometric only — the single most informative single-view
-# render for propeller geometry.  Top and side are off so a default
-# retrieve_attempt call does not balloon the agent's context window with
-# three nearly-redundant renders.
+# SAVING IS IRREVERSIBLE, RETRIEVAL IS NOT.  A view left OFF is
+# unrecoverable for every attempt archived while it was off — turning
+# it back ON cannot reach back.  Turning a view OFF is a decision about
+# the PERMANENT RECORD, not a display preference.  Turning one ON only
+# affects attempts saved from then on.
 #
-# Future work: F30 in TODO_known_issues.md tracks the path to letting
-# the calling agent choose views per-call (rather than the developer
-# choosing globally), once the visual-rendering tool design firms up.
+# (These replaced RETRIEVE_ATTEMPT_INCLUDE_<VIEW>_VIEW, whose name became
+# misleading once the flag governed saving too.)
+#
+# Blade sections render from parameters.json ALONE — no mesh needed —
+# which is why that one is always attemptable.  The other three come from
+# the 3D render core, which writes all three in ONE call, so enabling any
+# of them generates the set; the flags then govern upload and retrieval.
+#
+# Future work: F30 tracks letting the calling agent choose views per-call
+# rather than the developer choosing globally.
 #
 # Valid values: True, False
-RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW: bool = False
-RETRIEVE_ATTEMPT_INCLUDE_SIDE_VIEW: bool = False
-RETRIEVE_ATTEMPT_INCLUDE_ISOMETRIC_VIEW: bool = True
+ATTEMPT_VIEW_ISOMETRIC:      bool = True
+ATTEMPT_VIEW_TOP:            bool = True
+ATTEMPT_VIEW_BLADE_SECTIONS: bool = True
+ATTEMPT_VIEW_SIDE:           bool = False
+
+# Master off-switch for the save-time render-completion pass.  When False,
+# attempts are archived with whatever renders they happen to have — the
+# behaviour before completion existed.  Turn it off if End Session becomes
+# slow; the cost is incomplete archives, permanently.
+#
+# Valid values: True, False
+ATTEMPT_RENDER_COMPLETION_ON_SAVE: bool = True
+
+# Per-attempt budget for that pass.  Completing a 3D view when the mesh is
+# absent means invoking the geometry backend inside the save — an external
+# call on the one path that must not fail — so it is bounded.  On timeout
+# the pass gives up on the remaining renders and the save CONTINUES.
+#
+# Valid values: any positive int (seconds).  Default 120.
+ATTEMPT_RENDER_COMPLETION_TIMEOUT_S: int = 120
 
 
 # ===========================================================

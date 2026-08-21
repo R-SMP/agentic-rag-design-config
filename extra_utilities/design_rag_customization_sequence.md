@@ -106,7 +106,7 @@ agent than the raw `queries.txt`, because it is already interpreted.  But it is
 whitelist first.  Consequence to accept: only sessions saved AFTER this change
 will have it; already-archived sessions never will.
 
-### Step 5 — save-side work  **TODO — decisions below are SETTLED (2026-08-21)**
+### Step 5 — save-side work  **DONE 2026-08-21**
 
 #### The mismatch, measured
 
@@ -119,6 +119,32 @@ will have it; already-archived sessions never will.
 `render_blade_sections` writes `render_blade_sections.png` (or
 `..._grid.png`) into the attempt folder correctly — it is simply absent from
 the upload whitelist, so no archived attempt anywhere has one.
+
+#### Implemented
+
+`agents/shared/attempt_views.py` is now the ONE registry of which views
+exist, which are on, and what each render is called.  Three consumers read
+it — the uploader's whitelist, the retrieve tool's view map, and the new
+save-time completion pass — so they cannot drift apart again, which is
+exactly how blade sections came to be written by their tool and archived by
+nobody.
+
+`agents/shared/attempt_renders.ensure_renders()` runs in the DH loop
+immediately before `upload_attempt_artefacts`.  Blade sections first (they
+need only `parameters.json`, so a dead geometry backend cannot block them),
+then the 3D set.  It NEVER raises.
+
+Settings renamed `RETRIEVE_ATTEMPT_INCLUDE_<VIEW>_VIEW` →
+`ATTEMPT_VIEW_<VIEW>`, plus `ATTEMPT_RENDER_COMPLETION_ON_SAVE` and
+`ATTEMPT_RENDER_COMPLETION_TIMEOUT_S`.  The Workflow Settings UI needed NO
+code: `/api/settings` parses `settings.py`, so declaring them there is
+enough.
+
+One deviation from "one flag governs generate + save + retrieve", forced by
+the existing tool: the 3D render core writes isometric + top + side in ONE
+call, so generation produces the set whenever any of them is enabled and
+missing; the flags then govern upload and retrieval.  Not worth forking the
+core over one extra camera angle on an already-loaded mesh.
 
 #### Owner's decisions — SETTLED
 
