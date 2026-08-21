@@ -45,20 +45,23 @@ import logging
 import re
 import time
 from typing import Any
-from xml.sax.saxutils import escape, quoteattr
+from xml.sax.saxutils import escape
 
-import tiktoken
 from langchain_core.tools import tool
-from psycopg.types.json import Json
 
 from pathlib import Path
 
-from agents.shared import postgres_pool, r2_uploader
+from agents.shared import postgres_pool
+from tools import retrieval_common
 from agents.shared.agent_activity import generic_tool
 from config import ATTEMPTS_DIR
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
+
+# Log prefix: the two retrieve tools are told apart in the session
+# log by this, which is why the shared helpers take a ``tag``.
+_TAG = "retrieve_attempt"
 
 
 # ============================================================
@@ -85,9 +88,6 @@ _RENDER_FILES = {
     "side":      "render_side.png",
 }
 
-# cl100k_base matches database_search and retrieve_user_inputs for
-# consistency in observability data.
-_TOKENIZER = tiktoken.get_encoding("cl100k_base")
 
 # attempt_label format is ``<YYYYMMDD>_<HHMMSS>_<NNN>_<slug>``.  This
 # regex captures the 3+ digit NNN.  Robust to slug content (slugs
@@ -109,37 +109,22 @@ def _retrieved_dir(global_id: int) -> Path:
     ``attempts_tool._list_attempt_folders`` — which matches that pattern —
     never mistakes a retrieved copy for an attempt of THIS session.
     """
-    return ATTEMPTS_DIR / _RETRIEVED_SUBDIR / str(global_id)
+    return retrieval_common.retrieved_dir(ATTEMPTS_DIR, global_id)
 
 
 def _folder_listing(dest: Path) -> list[tuple[str, int]]:
     """``(name, size)`` for every file in *dest*, name-sorted."""
-    if not dest.is_dir():
-        return []
-    return sorted(
-        (f.name, f.stat().st_size) for f in dest.iterdir() if f.is_file()
-    )
+    return retrieval_common.folder_listing(dest)
 
 
 def _write_artefact(dest: Path, name: str, data: bytes) -> None:
     """Write one fetched artefact into the cache folder.  Best-effort."""
-    try:
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / name).write_bytes(data)
-    except OSError as exc:
-        logger.warning("[retrieve_attempt]  could not write %s: %s",
-                       dest / name, exc)
+    retrieval_common.write_artefact(dest, name, data, tag=_TAG)
 
 
 def _read_local(dest: Path, name: str) -> str | None:
     """Read a cached text artefact back, or None when absent/unreadable."""
-    f = dest / name
-    if not f.is_file():
-        return None
-    try:
-        return f.read_text(encoding="utf-8")
-    except OSError:
-        return None
+    return retrieval_common.read_local(dest, name)
 
 
 # ============================================================
@@ -205,55 +190,35 @@ def _resolve_global_attempt_ids(
 # ============================================================
 def _r2_key(*parts: str) -> str:
     """Build a slash-joined R2 key (prefix-free; client adds prefix)."""
-    return "/".join(p.strip("/") for p in parts if p)
+    return retrieval_common.r2_key(*parts)
 
 
 def _r2_bucket_and_client() -> tuple[str | None, Any]:
-    if not r2_uploader.is_enabled():
-        return None, None
-    client = r2_uploader._client()  # noqa: SLF001
-    if client is None:
-        return None, None
-    return r2_uploader._env("R2_BUCKET_NAME"), client  # noqa: SLF001
+    """``(bucket_name, boto3_client)``, or ``(None, None)`` when R2 is off."""
+    return retrieval_common.r2_bucket_and_client()  # noqa: SLF001
 
 
 def _r2_get_text(client, bucket: str, key: str) -> str | None:
-    full_key = f"{r2_uploader._key_prefix()}{key.lstrip('/')}"  # noqa: SLF001
-    try:
-        resp = client.get_object(Bucket=bucket, Key=full_key)
-        return resp["Body"].read().decode("utf-8", errors="replace")
-    except Exception as exc:  # noqa: BLE001
-        logger.info(
-            f"[retrieve_attempt]  R2 GET miss for {full_key}: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        return None
+    """GET *key* from R2 and decode as UTF-8.  None on miss / error."""
+    return retrieval_common.r2_get_text(client, bucket, key, tag=_TAG)
 
 
 def _r2_get_bytes(client, bucket: str, key: str) -> bytes | None:
-    full_key = f"{r2_uploader._key_prefix()}{key.lstrip('/')}"  # noqa: SLF001
-    try:
-        resp = client.get_object(Bucket=bucket, Key=full_key)
-        return resp["Body"].read()
-    except Exception as exc:  # noqa: BLE001
-        logger.info(
-            f"[retrieve_attempt]  R2 GET miss for {full_key}: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        return None
+    """GET *key* from R2 and return the raw bytes.  None on miss / error."""
+    return retrieval_common.r2_get_bytes(client, bucket, key, tag=_TAG)
 
 
 # ============================================================
 # XML build + trim
 # ============================================================
 def _attr(value: Any) -> str:
-    return quoteattr(str(value))
+    """Render *value* as an XML attribute (already quoted)."""
+    return retrieval_common.attr(value)
 
 
 def _wrap_cdata(text: str) -> str:
-    if "]]>" in text:
-        text = text.replace("]]>", "]]]]><![CDATA[>")
-    return f"<![CDATA[{text}]]>"
+    """Wrap *text* in a CDATA section, splitting if it contains ``]]>``."""
+    return retrieval_common.wrap_cdata(text)
 
 
 def _build_attempt_block(
@@ -365,7 +330,7 @@ def _build_xml(
 
 
 def _count_tokens(text: str) -> int:
-    return len(_TOKENIZER.encode(text, disallowed_special=()))
+    return retrieval_common.count_tokens(text)
 
 
 def _trim_to_cap(
@@ -413,42 +378,21 @@ def _log_to_rag_queries(
     error_message: str | None,
 ) -> None:
     """Best-effort INSERT into rag_queries.  Never raises."""
-    if not postgres_pool.is_enabled():
-        return
-    try:
-        with postgres_pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO rag_queries ("
-                    "  caller_agent, tool_name, query_params, "
-                    "  n_requested, images_flag, "
-                    "  n_returned, returned_anchor_ids, skipped_count, "
-                    "  truncated_anchors, latency_ms, error_message"
-                    ") VALUES ("
-                    "  %s, %s, %s, "
-                    "  %s, %s, "
-                    "  %s, %s, %s, "
-                    "  %s, %s, %s"
-                    ")",
-                    (
-                        caller_agent,
-                        "retrieve_attempt",
-                        Json({"attempts_ID_list": global_attempt_ids}),
-                        len(global_attempt_ids),
-                        images_flag,
-                        n_returned,
-                        Json([{"attempt_id": gid} for gid in returned_global_ids]),
-                        skipped_count,
-                        truncated_anchors,
-                        latency_ms,
-                        error_message,
-                    ),
-                )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            f"[retrieve_attempt]  rag_queries log failed: "
-            f"{type(exc).__name__}: {exc}"
-        )
+    retrieval_common.log_to_rag_queries(
+        caller_agent=caller_agent,
+        tool_name="retrieve_attempt",
+        params_key="attempts_ID_list",
+        requested_ids=global_attempt_ids,
+        returned_ids=returned_global_ids,
+        returned_id_key="attempt_id",
+        images_flag=images_flag,
+        n_returned=n_returned,
+        skipped_count=skipped_count,
+        truncated_anchors=truncated_anchors,
+        latency_ms=latency_ms,
+        error_message=error_message,
+        tag=_TAG,
+    )
 
 
 # ============================================================

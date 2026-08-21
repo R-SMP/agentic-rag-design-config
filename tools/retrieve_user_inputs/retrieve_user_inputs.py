@@ -45,19 +45,22 @@ import logging
 import time
 from pathlib import Path
 from typing import Any
-from xml.sax.saxutils import escape, quoteattr
+from xml.sax.saxutils import escape
 
-import tiktoken
 from langchain_core.tools import tool
-from psycopg.types.json import Json
 
 from agents.shared import postgres_pool
 from agents.shared.agent_activity import generic_tool
 from agents.shared import r2_uploader
+from tools import retrieval_common
 from config import USER_INPUTS_DIR
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
+
+# Log prefix: the two retrieve tools are told apart in the session
+# log by this, which is why the shared helpers take a ``tag``.
+_TAG = "retrieve_user_inputs"
 
 
 # ============================================================
@@ -65,10 +68,6 @@ logger = logging.getLogger("propeller_agent")
 # ============================================================
 _MAX_RESPONSE_TOKENS = int(workflow_settings.RETRIEVE_MAX_RESPONSE_TOKENS)
 
-# cl100k_base is the tokenizer used by the GPT-4 family and
-# text-embedding-3-large; matches database_search's token-cap
-# accounting for consistency in observability data.
-_TOKENIZER = tiktoken.get_encoding("cl100k_base")
 
 # Whitelist of image suffixes considered for retrieval.  Mirrors the
 # pairing convention enforced by the Receptionist (case-insensitive).
@@ -90,37 +89,22 @@ def _retrieved_dir(session_id: str) -> Path:
     through ``file_utils.list_files``, which is non-recursive and
     files-only, so a subdirectory here is invisible to all of them.
     """
-    return USER_INPUTS_DIR / _RETRIEVED_SUBDIR / session_id
+    return retrieval_common.retrieved_dir(USER_INPUTS_DIR, session_id)
 
 
 def _folder_listing(dest: Path) -> list[tuple[str, int]]:
     """``(name, size)`` for every file in *dest*, name-sorted."""
-    if not dest.is_dir():
-        return []
-    return sorted(
-        (f.name, f.stat().st_size) for f in dest.iterdir() if f.is_file()
-    )
+    return retrieval_common.folder_listing(dest)
 
 
 def _write_artefact(dest: Path, name: str, data: bytes) -> None:
     """Write one fetched artefact into the cache folder.  Best-effort."""
-    try:
-        dest.mkdir(parents=True, exist_ok=True)
-        (dest / name).write_bytes(data)
-    except OSError as exc:
-        logger.warning("[retrieve_user_inputs]  could not write %s: %s",
-                       dest / name, exc)
+    retrieval_common.write_artefact(dest, name, data, tag=_TAG)
 
 
 def _read_local(dest: Path, name: str) -> str | None:
     """Read a cached text artefact back, or None when absent/unreadable."""
-    f = dest / name
-    if not f.is_file():
-        return None
-    try:
-        return f.read_text(encoding="utf-8")
-    except OSError:
-        return None
+    return retrieval_common.read_local(dest, name)
 
 
 def _local_images(
@@ -195,48 +179,22 @@ def _validate_sessions_in_postgres(
 # ============================================================
 def _r2_key(*parts: str) -> str:
     """Build a slash-joined R2 key (prefix-free; client adds prefix)."""
-    return "/".join(p.strip("/") for p in parts if p)
+    return retrieval_common.r2_key(*parts)
 
 
 def _r2_bucket_and_client() -> tuple[str | None, Any]:
-    """Return ``(bucket_name, boto3_client)`` or ``(None, None)`` when
-    R2 is not configured.  The client is per-call (matches the
-    pattern used by ``r2_uploader``).
-    """
-    if not r2_uploader.is_enabled():
-        return None, None
-    client = r2_uploader._client()  # noqa: SLF001 — single source of truth
-    if client is None:
-        return None, None
-    return r2_uploader._env("R2_BUCKET_NAME"), client  # noqa: SLF001
+    """``(bucket_name, boto3_client)``, or ``(None, None)`` when R2 is off."""
+    return retrieval_common.r2_bucket_and_client()  # noqa: SLF001
 
 
 def _r2_get_text(client, bucket: str, key: str) -> str | None:
-    """GET *key* from R2 and decode as UTF-8.  Returns None on miss / error."""
-    full_key = f"{r2_uploader._key_prefix()}{key.lstrip('/')}"  # noqa: SLF001
-    try:
-        resp = client.get_object(Bucket=bucket, Key=full_key)
-        return resp["Body"].read().decode("utf-8", errors="replace")
-    except Exception as exc:  # noqa: BLE001 — R2 surfaces many error classes
-        logger.info(
-            f"[retrieve_user_inputs]  R2 GET miss for {full_key}: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        return None
+    """GET *key* from R2 and decode as UTF-8.  None on miss / error."""
+    return retrieval_common.r2_get_text(client, bucket, key, tag=_TAG)
 
 
 def _r2_get_bytes(client, bucket: str, key: str) -> bytes | None:
-    """GET *key* from R2 and return the raw bytes.  Returns None on miss / error."""
-    full_key = f"{r2_uploader._key_prefix()}{key.lstrip('/')}"  # noqa: SLF001
-    try:
-        resp = client.get_object(Bucket=bucket, Key=full_key)
-        return resp["Body"].read()
-    except Exception as exc:  # noqa: BLE001
-        logger.info(
-            f"[retrieve_user_inputs]  R2 GET miss for {full_key}: "
-            f"{type(exc).__name__}: {exc}"
-        )
-        return None
+    """GET *key* from R2 and return the raw bytes.  None on miss / error."""
+    return retrieval_common.r2_get_bytes(client, bucket, key, tag=_TAG)
 
 
 def _r2_list_user_images(
@@ -302,16 +260,12 @@ def _split_image_and_note_names(
 # ============================================================
 def _attr(value: Any) -> str:
     """Render *value* as an XML attribute (already quoted)."""
-    return quoteattr(str(value))
+    return retrieval_common.attr(value)
 
 
 def _wrap_cdata(text: str) -> str:
     """Wrap *text* in a CDATA section, splitting if it contains ``]]>``."""
-    # CDATA cannot contain the literal "]]>" — split into multiple
-    # sections if it does (rare for user prose).
-    if "]]>" in text:
-        text = text.replace("]]>", "]]]]><![CDATA[>")
-    return f"<![CDATA[{text}]]>"
+    return retrieval_common.wrap_cdata(text)
 
 
 def _build_session_block(
@@ -444,7 +398,7 @@ def _build_xml(
 
 
 def _count_tokens(text: str) -> int:
-    return len(_TOKENIZER.encode(text, disallowed_special=()))
+    return retrieval_common.count_tokens(text)
 
 
 def _trim_to_cap(
@@ -499,42 +453,21 @@ def _log_to_rag_queries(
     error_message: str | None,
 ) -> None:
     """Best-effort INSERT into rag_queries.  Never raises."""
-    if not postgres_pool.is_enabled():
-        return
-    try:
-        with postgres_pool.connection() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "INSERT INTO rag_queries ("
-                    "  caller_agent, tool_name, query_params, "
-                    "  n_requested, images_flag, "
-                    "  n_returned, returned_anchor_ids, skipped_count, "
-                    "  truncated_anchors, latency_ms, error_message"
-                    ") VALUES ("
-                    "  %s, %s, %s, "
-                    "  %s, %s, "
-                    "  %s, %s, %s, "
-                    "  %s, %s, %s"
-                    ")",
-                    (
-                        caller_agent,
-                        "retrieve_user_inputs",
-                        Json({"sessions_ID_list": session_ids}),
-                        len(session_ids),
-                        images_flag,
-                        n_returned,
-                        Json([{"session_id": sid} for sid in returned_session_ids]),
-                        skipped_count,
-                        truncated_anchors,
-                        latency_ms,
-                        error_message,
-                    ),
-                )
-    except Exception as exc:  # noqa: BLE001
-        logger.warning(
-            f"[retrieve_user_inputs]  rag_queries log failed: "
-            f"{type(exc).__name__}: {exc}"
-        )
+    retrieval_common.log_to_rag_queries(
+        caller_agent=caller_agent,
+        tool_name="retrieve_user_inputs",
+        params_key="sessions_ID_list",
+        requested_ids=session_ids,
+        returned_ids=returned_session_ids,
+        returned_id_key="session_id",
+        images_flag=images_flag,
+        n_returned=n_returned,
+        skipped_count=skipped_count,
+        truncated_anchors=truncated_anchors,
+        latency_ms=latency_ms,
+        error_message=error_message,
+        tag=_TAG,
+    )
 
 
 # ============================================================
