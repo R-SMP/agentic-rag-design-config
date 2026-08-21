@@ -114,6 +114,16 @@ that move.
   `smoke_test_ring_height` guards the JS-to-Python port of the ring-height fit
   and is named from `tools/generate_mesh/ring_height.py:20,29` -- it is the ONLY
   guard for that drift and must never be removed.
+- **`smoke_test_slot_splices.py` FALSE-FAILS in the main worktree.**  It walks
+  the tree from the repo root, and the main checkout contains
+  `.claude/worktrees/` with every sibling worktree inside it -- so it scans all
+  of them.  Measured 2026-08-21: **987 substitution targets and 23 "problems"
+  from the main worktree, vs 121 targets and a clean PASS from a worktree that
+  has no nested checkouts.**  Every one of the 23 came from a sibling branch.
+  Before believing a FAIL, check whether the reported paths contain
+  `.claude/worktrees/`.  The same trap applies to any repo-root grep run from
+  the main checkout.
+
 - **`db_design/migrations/*.py` are not tests.**  They are an ordered, idempotent
   migration ledger (decision T18 in
   `db_design/database_and_RAG_architecture.md:1051`).  Schema v8 itself still
