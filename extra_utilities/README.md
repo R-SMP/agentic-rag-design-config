@@ -28,6 +28,7 @@ extra_utilities/
 ├── warnings_developer.md     LIVE invariant registry — W1–W42
 ├── SMOKE_TESTS.md            index of the 54 hand-run scripts
 ├── working_agreements.md     the owner's standing rules for how work is done
+├── prompt_defects_found.md   per-agent defect notes harvested from the fork manifest
 │
 ├── smoke_test_*.py           32 hand-run scripts (see SMOKE_TESTS.md)
 ├── check_mesh_components.py  .obj diagnostic
@@ -88,6 +89,7 @@ it cannot reproduce — read its header).
 | `T` | `db_design/database_and_RAG_architecture.md` | deferred DB/RAG items |
 | `D` | `db_design/database_design_notes.md` | DB doctrine decisions |
 | `A` | `docs/archive/agent_count_variants_build_tracker.md` | file-local, closed |
+| `D` / `B` / `E` | `prompt_defects_found.md` | **file-local PER AGENT** — `D2` under the Receptionist is unrelated to `D2` under the Orchestrator. `E` = compression edits. It only *cites* `F` ids, never defines them. |
 
 **Ids are never reused and never renumbered.** ~19 `F`/`O` ids and 24 `W` ids are
 cited from live source, and the `F` counter is a single space reserved across git
@@ -123,6 +125,22 @@ which is why the former is now `A1`.
   `agents/dispatch.py:329`.
 
 ---
+
+## `prompt_defects_found.md` — read the branch caveat first
+
+Harvested 2026-08-21 (`ae4939f`) from the fork manifest: per-agent, verbatim
+defect notes dense with `file:line` references.
+
+⚠ **Its "How to read it" section says the reduced tree
+`agents/7agent_reduced/` "no longer exists". That is not true on this branch.**
+Verified 2026-08-21: `agents/7agent_reduced/` still has 23 tracked files,
+`reduced7/` has 4, and `PROMPT_VARIANT` is still a live setting
+(`workflow_settings/settings.py:741`). The statement describes the state
+created by `b94e07b` ("promote the reduced 7-agent prompts to be the
+standard"), which currently lives only on `claude/7agent-reduced-prompt-429b3a`
+and has **not** merged here. It becomes true when that branch lands — so the
+file is written slightly ahead of itself rather than wrong. Left unedited
+deliberately: it is another session's in-flight work.
 
 ## Five paths named in the docs that are not files
 
