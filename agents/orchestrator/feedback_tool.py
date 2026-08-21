@@ -66,10 +66,20 @@ def feedback_envelope() -> str:
     already import this module for the dispatch tool, and three copies of one
     sentence is how they drift apart.
     """
-    from agents.shared.prompts import _topology_override
+    from agents.shared.prompts import (
+        GENERIC_FRAGMENTS_DIR,
+        _topology_override,
+    )
 
-    path = _topology_override("prompt_fragments/feedback_envelope.md")
-    if path is None:
+    # Fall back to the SHARED fragment, exactly as every other reader does
+    # (``_read_generic_fragment`` is ``_topology_override(...) or SHARED``).
+    # Without that fallback this returned "" whenever no topology override
+    # existed -- which became the NORMAL case the moment the reduced variant
+    # was promoted and its directory removed, silently emptying the envelope.
+    rel = "feedback_envelope.md"
+    path = (_topology_override("prompt_fragments/" + rel)
+            or GENERIC_FRAGMENTS_DIR / rel)
+    if not path.is_file():
         return ""
     return path.read_text(encoding="utf-8").rstrip() + "\n\n"
 

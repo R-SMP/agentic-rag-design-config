@@ -22,6 +22,6 @@ Make the render type explicit when you route a sections-first plan — the chain
 should tell the Tool Caller to render the blade sections, not the full 3D mesh.
 Re-rendering or observing the sections of an attempt that is already fine is
 **in-place work, not a new design**: the DC Output Inspector should send it
-straight back to the Tool Caller (REVISE), and you should NOT open a new
-attempt for it.  Open a new attempt only when the parameter set or design
-direction genuinely changes.
+straight back to the Tool Caller (REVISE).  The DC Input Creator opens attempt
+folders, once per generation.  Only direct a NEW design when the parameter set
+or design direction genuinely changes.

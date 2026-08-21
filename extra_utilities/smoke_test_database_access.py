@@ -410,37 +410,40 @@ with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
               _probe(_a, "standard") == (True, True), _probe(_a, "standard"))
 
 # --- 12. reduced-scoped per-agent fragments -----------------------------
-print("case 12 - the reduced overrides drop tools those agents do not hold")
-# The shared per-agent DBa fragments point the UII at retrieve_attempt and
-# the DCOI at retrieve_user_inputs.  Correct for standard-7, where both hold
-# all three; wrong under 7-reduced, where they do not.  Scoped overrides in
-# agents/7agent_reduced/tools_config/ fix it WITHOUT touching the shared
-# files, which the other topologies still read.
+print("case 12 - no agent is pointed at a retrieval tool it does not hold")
+# The shared per-agent DBa fragments used to point the UII at
+# retrieve_attempt and the DCOI at retrieve_user_inputs.  That was correct
+# only while every agent held all three.  Scoped per-agent overrides fixed
+# it, and those overrides are now the shared text itself.
+#
+# This case used to assert the CONTRAST between the two variants: the
+# "standard" prompts still carry the sentence, the "reduced" ones do not.
+# There is one system now, so that half asserted the promotion had failed.
+# What is worth pinning is the half that protects the fleet -- an agent is
+# not pointed at a tool it lacks -- which is what remains below, and which
+# case 13 re-proves as a property.
 _UII_ATTEMPT = "Likewise ``retrieve_attempt(...)`` when"
 _DCOI_INPUTS = "how past users' inputs looked"
 
 
-def _assembled(agent: str, variant: str) -> str:
-    st.PROMPT_VARIANT = variant
+def _assembled(agent: str) -> str:
     return " ".join(_prompts._build_template(agent).split())
 
 
 with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
-    check("standard UII IS told to use retrieve_attempt",
-          _UII_ATTEMPT in _assembled("user_input_inspector", "standard"))
-    check("reduced UII is NOT (it holds search + user_inputs only)",
-          _UII_ATTEMPT not in _assembled("user_input_inspector", "reduced"))
-    check("standard DCOI IS told to fetch past user inputs",
-          _DCOI_INPUTS in _assembled("dc_output_inspector", "standard"))
-    check("reduced DCOI is NOT (it holds search + attempt only)",
-          _DCOI_INPUTS not in _assembled("dc_output_inspector", "reduced"))
-    # the overrides must not have dropped anything else
+    check("UII is NOT told to use retrieve_attempt (it holds "
+          "search + user_inputs only)",
+          _UII_ATTEMPT not in _assembled("user_input_inspector"))
+    check("DCOI is NOT told to fetch past user inputs (it holds "
+          "search + attempt only)",
+          _DCOI_INPUTS not in _assembled("dc_output_inspector"))
+    # the rework must not have dropped anything else
     for _mark, _who in (
         ("MANDATORY on at least one in-scope session", "user_input_inspector"),
         ("side_by_side=True", "dc_output_inspector"),
     ):
-        check("reduced %s keeps '%s'" % (_who, _mark[:34]),
-              _mark in _assembled(_who, "reduced"))
+        check("%s keeps '%s'" % (_who, _mark[:34]),
+              _mark in _assembled(_who))
 
 # --- 13. THE INVARIANT --------------------------------------------------
 print("case 13 - an agent only ever reads about tools it HOLDS")

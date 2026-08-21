@@ -23,11 +23,10 @@ When it applies:
      demanded past-image / past-experience use** (skipping it then is a HARD
      failure); a strong default otherwise when you are extracting from a
      sketch, since past sketches are the best calibration and text alone is
-     usually too thin to anchor a numeric extraction.  Likewise
-     ``retrieve_attempt(...)`` when ``<available_attempts>`` lists relevant
-     past attempts.  Both download to a local folder and list it; open any
-     listed path with ``view_images`` — that call, not the retrieval, is what
-     costs vision tokens, so open only the most useful one or two.
+     usually too thin to anchor a numeric extraction.  It downloads to a
+     local folder and lists it; open any listed path with ``view_images`` —
+     that call, not the retrieval, is what costs vision tokens, so open only
+     the most useful one or two.
   3. In your hand-off, say what you searched for, what you retrieved with
      images, what the comparison showed, and how (if at all) it changed your
      extraction — including "it did not change my conclusion", so the chain

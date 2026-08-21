@@ -347,16 +347,52 @@ def check_case(topo: int, planner_first: bool) -> None:
                  f"{label!r} line — the UII's tools require an explicit path")
 
     # --- CHAIN_ONLY: the hub must not keep chain-link rules ---------------
-    marker = "FORWARD to your natural"
-    if marker in hub_text:
+    # Anchors are DERIVED from the fragment THIS topology actually resolves
+    # -- one per <<CHAIN_ONLY>> region, the longest line inside it -- rather
+    # than hard-coded.  Hard-coding is what made the previous version of
+    # this check rot: its marker lived in a bullet that was later cut, and a
+    # marker matching nothing makes BOTH halves pass vacuously (the hub is
+    # trivially "clean" of a string no prompt contains).  Deriving also
+    # covers regions added later, and survives a rewording.
+    #
+    # It must stay per-topology: topology 5 keeps its own
+    # generic_constraints_5agents.md, whose regions are worded differently.
+    # Do not shorten an anchor to something both files share -- both hubs
+    # RELAY standing directives, so a short "=== STANDING DIRECTIVES ..."
+    # substring is present in the hub and the absence half would false-fail.
+    #
+    # NOT "FORWARD to your natural": that bullet was cut from the shared
+    # fragment deliberately, as provably duplicated with routing.py, which
+    # owns FORWARD-is-default and states it at routing.py:202-213.  It
+    # reaches agents through the {routing_instructions} slot, filled at
+    # construction -- so it is NOT in _build_template output and a check
+    # here could never see it.  That rule is asserted on the routing block
+    # itself, further down.
+    regions = prompts._CHAIN_ONLY_RE.findall(
+        prompts._read_generic_fragment("generic_constraints.md"))
+    if not regions:
         fail(case, "CHAIN_ONLY",
-             f"the hub ({hub}) kept the chain-link rules: '{marker}'")
-    for agent in AGENTS_BY_TOPOLOGY[topo]:
-        if agent in (hub, "receptionist", "database_handler"):
-            continue
-        if marker not in built[agent]:
+             "generic_constraints.md has no <<CHAIN_ONLY>> region left — "
+             "this check would pass vacuously")
+    for region in regions:
+        lines = [ln.strip() for ln in region.splitlines()
+                 if len(ln.strip()) >= 40]
+        if not lines:
             fail(case, "CHAIN_ONLY",
-                 f"chain agent {agent} LOST the chain-link rules")
+                 "a <<CHAIN_ONLY>> region has no line long enough to anchor "
+                 "on — shorten the threshold or the region is now trivial")
+            continue
+        marker = max(lines, key=len)
+        if marker in hub_text:
+            fail(case, "CHAIN_ONLY",
+                 f"the hub ({hub}) kept a chain-link rule: '{marker[:48]}'")
+        for agent in AGENTS_BY_TOPOLOGY[topo]:
+            if agent in (hub, "receptionist", "database_handler"):
+                continue
+            if marker not in built[agent]:
+                fail(case, "CHAIN_ONLY",
+                     f"chain agent {agent} LOST a chain-link rule: "
+                     f"'{marker[:48]}'")
 
 
 # ---------------------------------------------------------------------------
@@ -415,6 +451,13 @@ for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
                 fail(_case, "HUB",
                      f"{_name}'s routing section names the other hub "
                      f"({_other_display}): {bad[:2]}")
+            # routing.py is now the SOLE owner of FORWARD-is-default:
+            # generic_constraints.md dropped its copy as provably
+            # duplicated, so nothing else in the system states it.
+            if "route FORWARD to the next agent" not in block:
+                fail(_case, "ROUTING",
+                     f"{_name}'s routing block never states FORWARD-is-"
+                     f"default -- generic_constraints.md no longer does")
             if f"the {_hub_disp}" not in block:
                 fail(_case, "HUB",
                      f"{_name}'s routing section never names its own hub "
