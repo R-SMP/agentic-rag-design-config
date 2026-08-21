@@ -247,6 +247,16 @@ class BaseChainAgent:
             _sys_prompt = getattr(self, "system_prompt", "") or ""
             if _sys_prompt:
                 n_before += count_tokens(_sys_prompt)
+            # And the DC-parameter primer, for the agents that receive it:
+            # like the system prompt it is re-sent every turn but lives
+            # OUTSIDE self.messages, so without this term its ~1k tokens
+            # would sit invisibly beyond the threshold arithmetic.  0 for
+            # non-primer agents and when the flag is off.
+            try:
+                from agents.shared.dc_primer import primer_tokens_for
+                n_before += primer_tokens_for(self.AGENT_KEY)
+            except Exception:
+                pass
         except Exception as exc:
             logger.warning(
                 f"[CP]  token count failed for {self.AGENT_KEY}: {exc}"

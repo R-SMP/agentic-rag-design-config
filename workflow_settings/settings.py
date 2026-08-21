@@ -620,6 +620,27 @@ OCR_MAX_TEXT_CHARS: int = 2000
 BLADE_SECTIONS_VISUALIZER_ENABLED: bool = True
 
 
+# DC_PARAMS_PRIMER_ENABLED - the DC-parameter reference diagram.
+#
+# When ON, the DC-side agents (UII, DCIC, DCII, DCOI - plus Creator and
+# Designer in the 5/3-agent systems) receive a fixed reference at every
+# LLM call: one image showing how the parameters couple with the design
+# (top view + the camber / high-point section grid) with a paired text
+# block.  Injected at invoke time between the system prompt and the
+# history by agents/shared/dc_primer.py - it is never part of the
+# stored conversation, so the image stripper, the Context Pruner and
+# the session snapshot never see it.  Costs ~1k tokens per call
+# (~383 image + ~600 text), cached as part of the prompt prefix.
+#
+# CAUTION when OFF is needed: with this ON, DCIC and DCII become VISION
+# consumers.  Routing either to a text-only model (e.g. DeepSeek via
+# OpenRouter) fails while the primer is enabled - turn it OFF for such
+# runs.
+#
+# Valid values: True, False
+DC_PARAMS_PRIMER_ENABLED: bool = True
+
+
 # ===========================================================
 # 26. Image compression (model-facing images)
 # ===========================================================
