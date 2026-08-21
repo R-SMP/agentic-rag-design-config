@@ -9,7 +9,7 @@ not only at end-of-turn.
 Framework-agnostic on purpose: the agents layer must not import the
 web layer (and vice versa).  Both sides depend only on this module
 (same spirit as ``agents/shared/trace.py``).  When nobody is
-subscribed (REPL / Streamlit), :func:`publish` is a harmless no-op.
+subscribed (e.g. the CLI REPL), :func:`publish` is a harmless no-op.
 """
 
 from __future__ import annotations

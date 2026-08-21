@@ -4,7 +4,7 @@ web Workflow Settings editor.
 Only the right-hand side of each top-level ``NAME: type = value``
 assignment is rewritten; the module docstring, every comment, blank
 lines and ordering are preserved verbatim.  ``settings.py`` stays the
-single source of truth (``agents/loader.py`` and the Streamlit / CLI
+single source of truth (``agents/loader.py`` and the web / CLI
 front-ends all keep reading the same file).
 
 ``EMBEDDING_API_KEY`` is derived from the environment

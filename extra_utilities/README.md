@@ -124,13 +124,29 @@ which is why the former is now `A1`.
 
 ---
 
-## Known dangling citations (pre-existing, not yet resolved)
+## Five paths named in the docs that are not files
 
-These paths are referenced from documentation but do not exist. They were
-already dangling before the 2026-08-21 reorganisation:
+Traced 2026-08-21. **None of them is rot to be deleted** — they fall into two
+groups, and each citation now says which.
 
-    extra_utilities/draft_prompt_conductor.md
-    extra_utilities/draft_prompt_creator.md
-    extra_utilities/reembed_corpus.py
-    extra_utilities/smoke_test_context_pruner.py
-    extra_utilities/smoke_test_dh_multi.py
+**Delivered, then removed.** Both were real files, absorbed into the shipped
+5-agent prompts and deleted in `b2f2a31` (2026-08-01):
+
+| Path | Landed as |
+|---|---|
+| `draft_prompt_conductor.md` | `agents/conductor/prompt_5agents.md` |
+| `draft_prompt_creator.md` | `agents/creator/prompt_5agents.md` |
+
+**Planned, never written.** Zero commits have ever touched these paths. They
+are forward references inside open work items — a described intent, not a
+broken link:
+
+| Path | Described in |
+|---|---|
+| `reembed_corpus.py` | `db_design/database_design_notes.md` D14 |
+| `smoke_test_context_pruner.py` | `TODO_known_issues.md`, "Suggested test layout" |
+| `smoke_test_dh_multi.py` | `TODO_known_issues.md`, "Suggested test layout" |
+
+The two smoke tests are already marked `(new)` where they appear. `D14`
+presented `reembed_corpus.py` as an existing standalone CLI and now says
+PLANNED.

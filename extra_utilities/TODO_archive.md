@@ -1410,3 +1410,62 @@ runbook.md` (the step-by-step), project memory
 ---
 
 ---
+
+### F4. Shift from Streamlit to a JavaScript-based web interface
+
+**Where.** Today: `streamlit_app.py` is the entire web layer
+(Stage A, Phase 3).  Target: a JavaScript-based frontend (SPA or
+HTMX-driven) talking to a thin API that calls the existing
+`agents/dispatch.py:dispatch_turn`.
+
+**What to build.** Replace the Streamlit surface with a real web
+frontend.  The agent layer does not change — `dispatch_turn` +
+the `Session` plain-data contract are already the seam.  The work
+is: (1) a small HTTP API (FastAPI) exposing "start session",
+"submit turn", "end session", "fetch artefacts"; (2) a JS
+frontend (framework TBD — plain HTMX over server-rendered
+fragments is the lowest-effort option per
+`cloud_architecture_notes.md` C2's "Future migration" subsection;
+a React/SPA is the heavier option) that consumes it; (3) porting
+the invite-code gate, the chat transcript, inline render display,
+and the "End Session" / future "Save" controls.
+
+**Why deferred.** Streamlit got Stage A to a deployed, gated,
+working chat UI fast and with zero JS.  A JS frontend is only
+worth the 4–7+ days once Streamlit's limitations start to bite on
+real usage — see the eight enumerated limitations in
+`cloud_architecture_notes.md` C2 (whole-script rerun, multi-user
+concurrency, layout rigidity, no real progress streaming for the
+minutes-long pipeline, "Made with Streamlit" branding, awkward
+auth integration, etc.).  Migrate when **two or more** of those
+bite in practice, or when the app needs to face a non-invited
+audience.
+
+**Hard constraint when this is done.** Do not let the migration
+leak agent logic into the frontend.  `warnings_developer.md` W17
+spells out the rule: the web layer stays a thin I/O surface over
+`dispatch_turn`; the JS frontend should be a drop-in replacement
+for `streamlit_app.py`, not a rewrite of the pipeline.  Settle
+the multi-user-concurrency story (Stage B path-namespacing, O9 /
+W13) before or together with this — a real frontend invites real
+concurrent users.
+
+**Status.** **DONE 2026-08-21.**  Delivered, then the old surface was removed.
+
+`web_app.py` (FastAPI) + `web/` (plain JS) are the production frontend --
+`Dockerfile` ends with `CMD ... uvicorn web_app:app`, so this is what Railway
+runs.  `streamlit_app.py` was deleted and `streamlit>=1.39.0` dropped from
+`requirements.txt` (it had been shipping into the Railway image for a process
+that never started).  `warnings_developer.md` W17, whose own closing line said
+to retire it "once F4 lands", was rewritten from "Streamlit is an INTERIM web
+interface" to the durable thin-shim rule.  `cloud_architecture_notes.md` C2,
+which made Streamlit the sole entry point, now carries a SUPERSEDED banner.
+
+The original entry follows, unchanged, as the record of what was planned.
+
+**Superseded status line.** Open, deliberately deferred.  Post-Stage-C /
+productionisation work.  Triggered by the "two or more C2
+limitations bite" condition above, or by a public-audience
+requirement.  Paired warning: `warnings_developer.md` W17.
+
+---

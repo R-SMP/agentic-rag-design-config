@@ -29,7 +29,6 @@ Any agent can ESCALATE to the Orchestrator, which calls the Planner for a Proble
 .
 ├── main.py                       # entrypoint → agents.loader.run()  (REPL)
 ├── web_app.py                    # FastAPI server backing the JS web UI (Stage A)
-├── streamlit_app.py              # legacy Streamlit UI (pre-Stage-A, kept for reference)
 ├── web/                          # hand-written JS frontend (index.html, app.js, viewer.js, style.css, images/)
 ├── Dockerfile  docker-compose.yml  # container build + local stack (matches Railway)
 ├── config.py                     # paths + RhinoCompute env vars
@@ -214,7 +213,7 @@ The LOG and Status view, the live 3D viewer, and the per-agent "last tool used" 
 
 ### The publish/subscribe seam (`agents/shared/viz_bus.py`)
 
-Framework-agnostic by design — agent code calls `publish(event)`, the web layer calls `subscribe()` to get a per-connection event queue. When no subscriber is listening (REPL / Streamlit / tests), `publish` is a no-op. The bus accepts arbitrary dicts; the convention is a `type` field that the web layer routes on.
+Framework-agnostic by design — agent code calls `publish(event)`, the web layer calls `subscribe()` to get a per-connection event queue. When no subscriber is listening (REPL / tests), `publish` is a no-op. The bus accepts arbitrary dicts; the convention is a `type` field that the web layer routes on.
 
 Five event types are in use today:
 

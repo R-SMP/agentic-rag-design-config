@@ -35,7 +35,7 @@ Usage::
                 cur.execute("SELECT 1")
                 print(cur.fetchone())
 
-When the pool is owned by a long-running process (FastAPI, Streamlit),
+When the pool is owned by a long-running process (FastAPI),
 call :func:`close_pool` at shutdown to release sockets cleanly.  In
 short-lived scripts the OS reclaims them on exit and you can skip it.
 """

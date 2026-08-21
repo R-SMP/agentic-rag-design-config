@@ -252,10 +252,10 @@ this pattern to add another dedicated logger, do NOT forget to set
 or `config.INPUT_IMAGES_DIR` — i.e. essentially every agent and
 tool that touches user inputs, attempts, or logs.
 
-**Why.** Stage A ships a Streamlit app whose `st.session_state`
+**Why.** Stage A ships a FastAPI + JS web app whose per-browser UI state
 isolates per-browser-session UI state, BUT the agents and tools
 still write to the global on-disk paths from `config.py`.  Two
-users hitting the same Streamlit pod simultaneously will collide:
+users hitting the same pod simultaneously will collide:
 both will append to the same `inputs/user_query.txt`, both will
 write attempts into the same `attempts/<TS>_<NNN>_<slug>/`, both
 will see each other's renders.  The `Session.create_for_v3` factory
@@ -268,7 +268,7 @@ naturally with introducing real per-user identity from Postgres).
     invite-code login screen if user-visible wording is needed.
   * Do NOT silently rely on `Session.inputs_dir` etc. being set —
     they are None in v4 REPL and will also be None in Stage A's
-    Streamlit dispatcher.  The caller passes `config.USER_INPUTS_DIR`
+    web dispatcher.  The caller passes `config.USER_INPUTS_DIR`
     to `dispatch_turn` directly, same as v4.
   * If you find yourself reaching for "let's just namespace one
     path", stop — partial namespacing is worse than none (some
@@ -281,31 +281,22 @@ B lands per-session path namespacing through every agent and tool.
 At that point, replace this entry with a short "obsolete" note
 pointing at the commit that did the threading, like W6/W7 above.
 
-## W14. UI button labels in Stage A must not promise persistence.
+## W14. ~~UI button labels in Stage A must not promise persistence.~~ **OBSOLETE since the save flow landed.**
 
-**Where.** Any Streamlit-side widget that ends or interrupts a
-conversation in the Stage A web app.
+Retired 2026-08-21.  The premise is no longer true: this warning said
+*"Stage A runs without a database.  There is no save flow yet ... Nothing is
+written anywhere."*  Today `web_app.py`'s `/api/end` calls
+`hub.database_handler.populate_database(...)`, which persists the session to
+Postgres and mirrors artefacts to R2.  The rule it enforced — do not label a
+button with a promise the system cannot keep — was satisfied by building the
+capability rather than by renaming the button.
 
-**Why.** Stage A runs without a database.  There is no save flow
-yet — the Database Handler exists in code but is wired only into
-the v4 REPL's end-of-session prompt, not into the Streamlit UI.
-Labelling a Stage A button "Save", "Save & Quit", "Submit",
-"Archive", or anything similar promises persistence the system
-cannot deliver and was a real source of confusion in earlier
-v2 mockups.
+Kept rather than deleted, like W6/W7, so a reader following an older commit
+message or code review that cites W14 still finds out what the concern was.
 
-**Stage A label.** The single available end-of-conversation
-control is **"End Session"**.  It clears `st.session_state` and
-reloads the page with a fresh empty Session.  Nothing is written
-anywhere.
-
-**Future stages.** Stage B introduces a true **"Save"** button
-(persists Session into Postgres via the DH save flow).  When
-Stage B lands, a Stage A-style "End Session" button MAY remain
-alongside Save (as the explicit "discard, don't save" path) or
-be replaced by a Save / Discard pair — this is a Stage B UX
-decision, not a Stage A one.  Until then, do NOT add a "Save"
-button anywhere in the Stage A UI even as a placeholder.
+The genuinely open question it pointed at — whether "End Session" should be
+joined by an explicit Save/Discard pair — survives as **O10** in
+`TODO_known_issues.md`.  Note also **W8**: the save is OPT-IN by default.
 
 ## W15. The project Python is a SHARED interpreter, NOT a venv in the worktree.
 
@@ -355,7 +346,7 @@ environments), update this entry rather than letting it rot.
 **What.** numpy 2.x requires Python 3.9+.  The local Windows
 machine has three Python installs — 3.8 (system), 3.9, and 3.13
 (via py launcher).  Only 3.9+ can install numpy 2.x.  Installing
-streamlit (or any other dep) via `pip install` while running on
+a new dep via `pip install` while running on
 Python 3.8 will downgrade numpy to 1.24.4 to satisfy compatibility
 with 3.8 — and since `python` on this machine resolves to the
 3.8 install (`C:\Program Files\Python38\python.exe`), this is
@@ -379,10 +370,45 @@ project Python can install, or (b) adding a runtime
 toml` — is deliberately deferred.  See also W15 for the venv
 convention that mostly papers over this in day-to-day use.
 
-## W17. Streamlit is an INTERIM web interface — do not over-invest in it.
+## W17. Keep the web layer a THIN SHIM over `dispatch_turn`.
+
+> **Rewritten 2026-08-21.**  This entry was *"Streamlit is an INTERIM web
+> interface — do not over-invest in it"*.  Its own closing line said: *"This
+> warning stays in force until F4 lands; at that point replace it with an
+> 'obsolete' note like W6/W7."*  **F4 has landed** — `web_app.py` + `web/` are
+> the production frontend, and `streamlit_app.py` was deleted on 2026-08-21.
+>
+> It is rewritten rather than tombstoned because the Streamlit-specific half
+> died but the **architectural rule did not**: the web layer must stay a thin
+> I/O surface over `dispatch_turn`.  That rule is what kept the Streamlit ->
+> JS migration cheap, and it is what will keep the next one cheap.  The
+> Streamlit-specific rationale is preserved below under "Historical".
 
 **THIS IS A WEB-INTERFACE DEVELOPER NOTE — read before adding
-anything non-trivial to `streamlit_app.py`.**
+anything non-trivial to `web_app.py` or `web/`.**
+
+**Where.** `web_app.py`, `web/app.js`, and anything that grows around them.
+
+**The rule.**  Keep all agent / pipeline logic behind `dispatch_turn` and the
+`Session` plain-data contract.  The web layer reads input, renders output, and
+manages the gate + session lifecycle — the same role the CLI REPL loader plays.
+A different frontend should be able to replace `web_app.py` by calling the same
+`dispatch_turn`.
+
+  * Do NOT push business rules, parameter validation, artefact resolution, or
+    persistence decisions into the web layer.
+  * If a feature needs a framework-specific hack to work, that is a signal the
+    feature belongs behind `dispatch_turn` / in the agent layer.
+  * Specify new user-facing controls in terms of *what dispatch/session
+    operation they trigger*, so they port to any future frontend as a button
+    that hits the same operation.
+
+**Evidence the rule paid off.**  The Streamlit -> JS migration (F4) changed the
+I/O surface only; no agent or pipeline code moved.
+
+---
+
+### Historical — the original Streamlit-era text
 
 **Where.** `streamlit_app.py` and anything that grows around it.
 
@@ -423,10 +449,10 @@ and makes the migration harder.
     operation they trigger*, so they port to the JS frontend as a
     button that hits the same operation.
 
-**Status.** Streamlit is the Stage A + (likely) Stage B/C
-frontend.  The JS migration is post-Stage-C / productionisation
-work (F4).  This warning stays in force until F4 lands; at that
-point replace it with an "obsolete" note like W6/W7.
+**Status (historical).** Streamlit was the Stage A frontend.  The JS
+migration (F4) landed; `streamlit_app.py` was deleted 2026-08-21 and the
+`streamlit` dependency removed from `requirements.txt`.  The rule above
+survives it.
 
 
 ## W18. Every DH tool is bound for ONE turn only, never left on `self.llm`.

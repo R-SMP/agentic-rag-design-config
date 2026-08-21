@@ -1,13 +1,16 @@
-"""F4 JavaScript web interface — FastAPI backend (local, experimental).
+"""The web interface — FastAPI backend + plain-JS frontend.
 
-The Stage A "shift Streamlit -> JavaScript" prototype (F4 / W17).
+**This is the production entry point.**  ``Dockerfile`` ends with
+``CMD ... uvicorn web_app:app``, so this module is what Railway runs.
+It delivered TODO F4 ("shift Streamlit -> JavaScript"); the Streamlit
+app it replaced was deleted on 2026-08-21.
+
 This is a **thin shim** over ``agents/dispatch.py:dispatch_turn`` —
-the exact same pipeline wiring as ``streamlit_app.py``; only the I/O
+the exact same pipeline wiring the CLI REPL uses; only the I/O
 surface differs (JSON/HTTP for a browser JS frontend instead of
-Streamlit widgets).  Per W17 NO agent or pipeline logic lives here.
+widgets).  NO agent or pipeline logic lives here.
 
-Local only.  NOT wired into Railway / the Stage A container (still
-Streamlit per cloud_architecture_notes.md C2).  Run:
+Run locally:
 
     pip install -r requirements.txt -r requirements-web.txt
     uvicorn web_app:app --reload --port 8000
@@ -164,7 +167,7 @@ def _check_db_password(submitted: str) -> bool:
 
 
 # --------------------------------------------------------------------------
-# In-process single session (mirrors streamlit_app._ensure_session)
+# In-process single session
 # --------------------------------------------------------------------------
 
 @dataclass
@@ -308,7 +311,7 @@ def _build_session() -> Session:
     try:
         init_trace(LOGS_DIR)
     except Exception:
-        # Trace file is best-effort (same stance as streamlit_app).
+        # Trace file is best-effort (same stance as the CLI loader).
         pass
     session = Session(
         session_id=session_id,
@@ -467,7 +470,7 @@ app = FastAPI(title="Propeller Design Configurator — JS web UI (local)")
 
 @app.on_event("startup")
 def _startup() -> None:
-    # Same global side-effects the v4 loader / streamlit_app apply at
+    # Same global side-effects the CLI loader applies at
     # start so the render & mesh tools see the right configuration.
     set_mesh_checks(workflow_settings.MESH_CHECKS)
     set_render_library(workflow_settings.RENDER_LIBRARY)

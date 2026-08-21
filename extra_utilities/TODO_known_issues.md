@@ -48,7 +48,6 @@ One row per entry in this file, in file order.  Closed entries live in
 | `OPS2` | OPEN | Validate the Database Handler on the cloud deployment |
 | `F1` | OPEN | `dc_parameter_schemas` auto-loader from Grasshopper-side declarations |
 | `F2` | OPEN | Per-parameter weights for masked-RMSE |
-| `F4` | OPEN | Shift from Streamlit to a JavaScript-based web interface |
 | `F5` | OPEN | LOG and Status view: colorise the log and refine its look |
 | `F6` | OPEN | LOG and Status view: show tool-call payloads on the flowchart |
 | `F8` | OPEN | Split tools into generic vs DC-specific and consolidate under `tools/` |
@@ -372,15 +371,15 @@ either:
 paths in `config.py` (`USER_INPUTS_DIR`, `ATTEMPTS_DIR`, `LOGS_DIR`,
 `INPUT_IMAGES_DIR`).  Same surface as `warnings_developer.md` W13.
 
-**What.** Stage A's Streamlit app isolates per-browser-session UI
-state via `st.session_state`, but the agents underneath still
+**What.** Stage A's web app isolates per-browser-session UI
+state client-side, but the agents underneath still
 write to the global on-disk paths.  Two users hitting the same
 pod simultaneously will collide — they will share `inputs/user_
 query.txt`, they will see each other's renders under `attempts/`,
 and their per-agent log files in `logs/agent_histories/` will
 overwrite each other.
 
-**Required behaviour.** Each Streamlit user-session needs its own
+**Required behaviour.** Each web user-session needs its own
 namespaced directory tree under `inputs/<session_id>/`,
 `attempts/<session_id>/`, and `logs/<session_id>/`.  The
 `Session.create_for_v3(...)` factory in `agents/shared/session.py`
@@ -414,8 +413,15 @@ plumbing lands; remove this entry and W13 together at that point.
 
 ### O10. Stage A: "End Session" only — no Save button until Stage B
 
-**Where.** Stage A Streamlit UI (`streamlit_app.py` once it lands
-in Phase 3).
+**Where.** The Stage A web UI (`web_app.py` + `web/app.js`).
+
+> **Partly superseded (2026-08-21).**  This entry says *"Nothing is persisted
+> (no DB in Stage A)"*.  That is no longer true: `/api/end` calls
+> `hub.database_handler.populate_database(...)`, so ending a session DOES run
+> the DH save flow (opt-in by default — see `warnings_developer.md` W8).  What
+> remains genuinely open is the UX question below: whether an explicit
+> **Save** / **Discard** pair should replace or join the single "End Session"
+> control.  Re-scope or close this entry when that is decided.
 
 **What.** The Stage A app exposes exactly one end-of-conversation
 control, labelled **"End Session"**, which clears
@@ -582,50 +588,6 @@ when they want to bias the search.
 weighting would inject bias rather than remove it.
 
 **Status.** Open. Blocks on running the sensitivity analysis itself.
-
-### F4. Shift from Streamlit to a JavaScript-based web interface
-
-**Where.** Today: `streamlit_app.py` is the entire web layer
-(Stage A, Phase 3).  Target: a JavaScript-based frontend (SPA or
-HTMX-driven) talking to a thin API that calls the existing
-`agents/dispatch.py:dispatch_turn`.
-
-**What to build.** Replace the Streamlit surface with a real web
-frontend.  The agent layer does not change — `dispatch_turn` +
-the `Session` plain-data contract are already the seam.  The work
-is: (1) a small HTTP API (FastAPI) exposing "start session",
-"submit turn", "end session", "fetch artefacts"; (2) a JS
-frontend (framework TBD — plain HTMX over server-rendered
-fragments is the lowest-effort option per
-`cloud_architecture_notes.md` C2's "Future migration" subsection;
-a React/SPA is the heavier option) that consumes it; (3) porting
-the invite-code gate, the chat transcript, inline render display,
-and the "End Session" / future "Save" controls.
-
-**Why deferred.** Streamlit got Stage A to a deployed, gated,
-working chat UI fast and with zero JS.  A JS frontend is only
-worth the 4–7+ days once Streamlit's limitations start to bite on
-real usage — see the eight enumerated limitations in
-`cloud_architecture_notes.md` C2 (whole-script rerun, multi-user
-concurrency, layout rigidity, no real progress streaming for the
-minutes-long pipeline, "Made with Streamlit" branding, awkward
-auth integration, etc.).  Migrate when **two or more** of those
-bite in practice, or when the app needs to face a non-invited
-audience.
-
-**Hard constraint when this is done.** Do not let the migration
-leak agent logic into the frontend.  `warnings_developer.md` W17
-spells out the rule: the web layer stays a thin I/O surface over
-`dispatch_turn`; the JS frontend should be a drop-in replacement
-for `streamlit_app.py`, not a rewrite of the pipeline.  Settle
-the multi-user-concurrency story (Stage B path-namespacing, O9 /
-W13) before or together with this — a real frontend invites real
-concurrent users.
-
-**Status.** Open, deliberately deferred.  Post-Stage-C /
-productionisation work.  Triggered by the "two or more C2
-limitations bite" condition above, or by a public-audience
-requirement.  Paired warning: `warnings_developer.md` W17.
 
 ### F5. LOG and Status view: colorise the log and refine its look
 
@@ -4211,7 +4173,8 @@ originals. Instead this entry lists them; the authoritative text stays in
 | `W26` / `W27` | `sessions.notes` and `sessions.user_id` are reserved-but-always-NULL columns. |
 | `W25` | `_slugify_field_for_filename` is duplicated between `db_writer.py` and `database_handler.py`; the entry names the fix. |
 | `W16` | `requirements.txt` pins a numpy newer than some local Pythons can install; three named resolutions, none chosen. |
-| `W13` / `W14` / `W17` | Each carries a **removal trigger** that is arguably now due — all three are Streamlit-era / Stage-A-era constraints. Pairs with the Streamlit-era correction sweep. |
+| `W13` | Removal trigger (Stage B per-session path namespacing) still not met — stays in force. Pairs with `O9`. |
+| ~~`W14`~~ / ~~`W17`~~ | **Done 2026-08-21.** W14 retired (its "no save flow" premise is false — `/api/end` saves). W17 rewritten from "Streamlit is interim" to the durable thin-shim rule. |
 | `W5` | The `agent.base_llm or agent.llm` rule has no enforcing test. |
 
 **How to use this.** When one of these is actually scheduled, give it its own

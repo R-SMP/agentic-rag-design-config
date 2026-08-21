@@ -439,11 +439,21 @@ close as the keep-close strength asks when there's room."
 2. **5-agent** drafts — **Conductor DONE** (2026-07-26): HARD RULE 8 third
    case + HARD RULE 9 soft-target exclusion + the "Relaying user
    authorisations" bullet names soft targets
-   (`extra_utilities/draft_prompt_conductor.md`). The 5-agent **UII**,
-   **Creator** (DCIC+DCII), and **DCOI** drafts do NOT exist yet (build-order
-   stages 3-4); they MUST carry the soft-target handling when authored (UII
-   marker convention + UI-pin-softening; Creator not-locked/start-near +
-   self-validate-no-violation; DCOI not-a-claim).
+   (then `extra_utilities/draft_prompt_conductor.md` -- a draft absorbed into
+   `agents/conductor/prompt_5agents.md` and deleted in `b2f2a31` on
+   2026-08-01; the path no longer exists).
+
+   > **Corrected 2026-08-21.** The original text said the 5-agent UII, Creator
+   > and DCOI drafts "do NOT exist yet". They DO now --
+   > `agents/5agent/user_input_inspector/prompt_5agents.md`,
+   > `agents/creator/prompt_5agents.md`,
+   > `agents/5agent/dc_output_inspector/prompt_5agents.md`. What was NOT
+   > verified is whether each actually carries the soft-target handling; treat
+   > that as the open question.
+
+   The 5-agent **UII**, **Creator** (DCIC+DCII) and **DCOI** prompts MUST carry
+   the soft-target handling (UII marker convention + UI-pin-softening; Creator
+   not-locked/start-near + self-validate-no-violation; DCOI not-a-claim).
 3. Later, the **3-agent** system.
 
 ### Recording format (DECIDED 2026-07-26): Option A — marker on the line

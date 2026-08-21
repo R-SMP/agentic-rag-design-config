@@ -297,7 +297,9 @@ DDL boot order: `sessions → dc_attempts → dc_attempt_parameters → chunks`
 
 ## D14. Re-embedding script
 
-- Standalone CLI: `extra_utilities/reembed_corpus.py`. Run only
+- Standalone CLI: `extra_utilities/reembed_corpus.py` -- **PLANNED, never
+  written** (verified 2026-08-21: zero commits have ever touched that path).
+  This describes the intended tool, not an existing one. Run only
   when the embedding model genuinely changes
   (`EMBEDDING_PROVIDER`, `EMBEDDING_MODEL`, or
   `EMBEDDING_VECTOR_DIMS` in `workflow_settings/settings.py`).
@@ -311,20 +313,22 @@ DDL boot order: `sessions → dc_attempts → dc_attempt_parameters → chunks`
 
 The single-transaction save in D9 is invoked from exactly one user
 action: pressing **"Save"** in the web UI at end-of-session.  This
-button is **not present in Stage A** — Stage A ships a Streamlit
-chat with only an **"End Session"** control that clears
-`st.session_state` and reloads with no DB write.  The "Save"
-button arrives in **Stage B**, alongside Phase 2 (DB schema +
-save flow) and the wiring of the DH into the Streamlit handler.
+button was **not present in Stage A** — Stage A shipped a chat surface with
+only an **"End Session"** control that reloaded with no DB write.
+
+> **Superseded 2026-08-21.**  Ending a session now DOES save: `web_app.py`'s
+> `/api/end` calls `hub.database_handler.populate_database(...)`.  The DH is
+> wired into the web handler.  Whether a separate, explicitly-labelled "Save"
+> button should exist alongside "End Session" is still open — see `O10`.
 
 Implications for the schema:
 
 - **No row in `sessions`, `dc_attempts`, `dc_attempt_parameters`,
   or `chunks` is ever written by Stage A.**  Stage A traffic
   produces no DB activity at all.  This is why Phase 6 brings up
-  Postgres locally but the Stage A Streamlit pod has no
-  `DATABASE_URL` requirement — the connection is provisioned but
-  unused.
+  Postgres locally but the Stage A pod had no `DATABASE_URL`
+  requirement — the connection was provisioned but unused.  (Historical:
+  the save flow is now wired, so this no longer holds.)
 - **The Phase 2 save code can assume the user explicitly opted in.**
   No silent saves on browser close / Ctrl-C / unhandled exception
   in Stage B either, by analogy with `warnings_developer.md` W8.
