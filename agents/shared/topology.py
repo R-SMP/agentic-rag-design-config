@@ -45,24 +45,6 @@ def topology() -> int:
     return int(getattr(_workflow_settings, "SYSTEM_TOPOLOGY", 7))
 
 
-def prompt_variant() -> str:
-    """Which PROMPT set the active agent count runs on.
-
-    Orthogonal to :func:`topology`, which is the agent COUNT.  A variant
-    never changes which agents EXIST, so no agent-count logic should branch
-    on this.  It does change what those agents READ and, since the per-tool
-    DBa distribution landed, which DATABASE TOOLS they hold: the variant is
-    part of the settings-profile key in
-    ``workflow_settings.database_access.profile_key()``.  Nothing else may
-    branch on it without being recorded here.
-
-    ``"standard"`` (the default) means the prompts as they are today, and
-    resolution behaves exactly as it did before this dimension existed.
-    """
-    v = str(getattr(_workflow_settings, "PROMPT_VARIANT", "standard")).strip()
-    return v or "standard"
-
-
 def hub_key() -> str:
     """Agent key of the active topology's hub, e.g. ``"conductor"``."""
     return _HUB_BY_TOPOLOGY.get(topology(), _DEFAULT_HUB)[0]

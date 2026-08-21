@@ -34,9 +34,10 @@ from workflow_settings import database_access as da          # noqa: E402
 from workflow_settings import settings as st                 # noqa: E402
 
 
-# The state of database_access.json IMMEDIATELY BEFORE per-tool flags
-# landed.  Agents absent from that file fell back to _DEFAULT_VALUE=True.
-_PRE_CHANGE_FLAT = {
+# A LEGACY flat ``{agent: bool}`` store, as written before per-tool flags
+# landed.  Kept only as a fixture for case 8: such a file predates profiles
+# and is read as the "7" profile.
+_LEGACY_FLAT = {
     "dc_input_creator":     True,
     "dc_input_inspector":   True,
     "dc_output_inspector":  True,
@@ -47,8 +48,8 @@ _PRE_CHANGE_FLAT = {
     "user_input_inspector": True,
 }
 
-# The owner's decided distribution for the reduced 7-agent system.
-_REDUCED_EXPECTED = {
+# The owner's decided distribution for the 7-agent system.
+_EXPECTED = {
     "receptionist":         (False, False, False),
     "orchestrator":         (False, False, False),
     "planner":              (True,  False, False),
@@ -70,7 +71,7 @@ def check(name: str, cond: bool, detail: object = "") -> None:
 
 
 class _Settings:
-    """Temporarily force RAG_ENABLED / SYSTEM_TOPOLOGY / PROMPT_VARIANT."""
+    """Temporarily force RAG_ENABLED / SYSTEM_TOPOLOGY."""
 
     def __init__(self, **kw):
         self.kw = kw
@@ -120,24 +121,18 @@ print("=" * 68)
 print("PART A - against the real shipped database_access.json")
 print("=" * 68)
 
-# --- 1. standard 7 resolves exactly as it did before profiles ----------
-print("case 1 - profile '7' is byte-for-byte the pre-change behaviour")
-with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7, PROMPT_VARIANT="standard"):
-    mismatches = []
-    for agent in da.DEFAULT_AGENTS:
-        want = _PRE_CHANGE_FLAT.get(agent, True)   # absent -> default True
-        got_any = da.is_enabled_for(agent)
-        tools = da.get_tools(agent)
-        if got_any != want or any(v != want for v in tools.values()):
-            mismatches.append((agent, want, got_any, tools))
-    check("all %d agents match the pre-change values"
-          % len(da.DEFAULT_AGENTS), not mismatches, mismatches)
-
-# --- 2. the reduced profile matches the decided table ------------------
-print("case 2 - profile '7-reduced' matches the decided distribution")
-with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7, PROMPT_VARIANT="reduced"):
+# --- 1. the '7' profile matches the decided table ----------------------
+#
+# There used to be a case here asserting that profile "7" reproduced the
+# pre-per-tool-flags behaviour byte for byte.  That guarantee was given up
+# deliberately: when the reduced prompts were promoted to BE the 7-agent
+# system, its narrower distribution was promoted with them and the old
+# all-on row was discarded.  Asserting the old values now would assert the
+# promotion had not happened.
+print("case 1 - profile '7' matches the decided distribution")
+with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
     bad = []
-    for agent, (s_, u_, a_) in _REDUCED_EXPECTED.items():
+    for agent, (s_, u_, a_) in _EXPECTED.items():
         t = da.get_tools(agent)
         if (t["search"], t["user_inputs"], t["attempt"]) != (s_, u_, a_):
             bad.append((agent, (s_, u_, a_), t))
@@ -156,8 +151,7 @@ with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7, PROMPT_VARIANT="reduced"):
 # --- 3. an ABSENT profile falls back to today's all-on behaviour -------
 print("case 3 - profiles '5' and '3' are absent -> all-on fallback")
 for topo in (5, 3):
-    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=topo,
-                   PROMPT_VARIANT="standard"):
+    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=topo):
         allon = all(
             all(da.get_tools(a).values()) for a in da.DEFAULT_AGENTS
         )
@@ -165,45 +159,35 @@ for topo in (5, 3):
 
 # --- 4. profile_key mapping -------------------------------------------
 print("case 4 - profile_key()")
-cases = [
-    (7, "standard", "7"), (7, "reduced", "7-reduced"),
-    (5, "standard", "5"), (3, "reduced", "3-reduced"),
-    (7, "", "7"), (7, "  ", "7"),
-]
-for topo, variant, want in cases:
-    with _Settings(SYSTEM_TOPOLOGY=topo, PROMPT_VARIANT=variant):
+for topo, want in [(7, "7"), (5, "5"), (3, "3")]:
+    with _Settings(SYSTEM_TOPOLOGY=topo):
         got = da.profile_key()
-        check("(%s, %r) -> %r" % (topo, variant, want), got == want, got)
+        check("topology %s -> %r" % (topo, want), got == want, got)
 
 # --- 5. tool=None is the OR of the three ------------------------------
 print("case 5 - tool=None collapses to 'holds any tool'")
-for variant in ("standard", "reduced"):
-    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7,
-                   PROMPT_VARIANT=variant):
-        wrong = [
-            a for a in da.DEFAULT_AGENTS
-            if da.is_enabled_for(a) != any(da.get_tools(a).values())
-        ]
-        check("%s: OR holds for all agents" % variant, not wrong, wrong)
-        wrong2 = [
-            a for a in da.DEFAULT_AGENTS
-            if da.get_all()[a] != any(da.get_all_tools()[a].values())
-        ]
-        check("%s: get_all() is the collapsed get_all_tools()" % variant,
-              not wrong2, wrong2)
+with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
+    wrong = [
+        a for a in da.DEFAULT_AGENTS
+        if da.is_enabled_for(a) != any(da.get_tools(a).values())
+    ]
+    check("OR holds for all agents", not wrong, wrong)
+    wrong2 = [
+        a for a in da.DEFAULT_AGENTS
+        if da.get_all()[a] != any(da.get_all_tools()[a].values())
+    ]
+    check("get_all() is the collapsed get_all_tools()", not wrong2, wrong2)
 
 # --- 6. the master switch still dominates ------------------------------
 print("case 6 - RAG_ENABLED=False forces everything False")
-for variant in ("standard", "reduced"):
-    with _Settings(RAG_ENABLED=False, SYSTEM_TOPOLOGY=7,
-                   PROMPT_VARIANT=variant):
-        any_on = any(
-            da.is_enabled_for(a, t)
-            for a in da.DEFAULT_AGENTS for t in da.TOOLS
-        ) or any(da.is_enabled_for(a) for a in da.DEFAULT_AGENTS)
-        check("%s: nothing is enabled" % variant, not any_on)
-        check("%s: stored state still readable (get is unmasked)" % variant,
-              da.get("dc_input_inspector", "search") is True)
+with _Settings(RAG_ENABLED=False, SYSTEM_TOPOLOGY=7):
+    any_on = any(
+        da.is_enabled_for(a, t)
+        for a in da.DEFAULT_AGENTS for t in da.TOOLS
+    ) or any(da.is_enabled_for(a) for a in da.DEFAULT_AGENTS)
+    check("nothing is enabled", not any_on)
+    check("stored state still readable (get is unmasked)",
+          da.get("dc_input_inspector", "search") is True)
 
 print()
 print("=" * 68)
@@ -212,58 +196,56 @@ print("=" * 68)
 
 # --- 7. set_one touches exactly one cell -------------------------------
 print("case 7 - set_one writes one cell and nothing else")
+# The second profile is "5" — profile isolation is per TOPOLOGY now that
+# the variant dimension is gone, and a write under topology 7 must not
+# reach it.
 seed = {
-    "7":         {a: {t: True for t in da.TOOLS} for a in da.DEFAULT_AGENTS},
-    "7-reduced": {a: {t: True for t in da.TOOLS} for a in da.DEFAULT_AGENTS},
+    "7": {a: {t: True for t in da.TOOLS} for a in da.DEFAULT_AGENTS},
+    "5": {a: {t: True for t in da.TOOLS} for a in da.DEFAULT_AGENTS},
 }
 with _StoreFile(seed) as path:
-    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7,
-                   PROMPT_VARIANT="reduced"):
+    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
         da.set_one("planner", "attempt", False)
         after = json.loads(path.read_text(encoding="utf-8"))
     check("target cell flipped",
-          after["7-reduced"]["planner"]["attempt"] is False)
+          after["7"]["planner"]["attempt"] is False)
     others = [
         (a, t) for a in da.DEFAULT_AGENTS for t in da.TOOLS
         if not (a == "planner" and t == "attempt")
-        and after["7-reduced"][a][t] is not True
+        and after["7"][a][t] is not True
     ]
     check("the other 35 cells in that profile are untouched",
           not others, others)
     check("the OTHER profile is untouched",
-          all(all(v.values()) for v in after["7"].values()))
+          all(all(v.values()) for v in after["5"].values()))
 
 # --- 8. legacy flat file, and a malformed one --------------------------
 print("case 8 - legacy flat file and malformed file")
-with _StoreFile(_PRE_CHANGE_FLAT):
-    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7,
-                   PROMPT_VARIANT="standard"):
+with _StoreFile(_LEGACY_FLAT):
+    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
         wrong = [
-            a for a in _PRE_CHANGE_FLAT
-            if any(v != _PRE_CHANGE_FLAT[a]
+            a for a in _LEGACY_FLAT
+            if any(v != _LEGACY_FLAT[a]
                    for v in da.get_tools(a).values())
         ]
         check("flat file is read as the '7' profile", not wrong, wrong)
-    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7,
-                   PROMPT_VARIANT="reduced"):
-        check("a flat file does NOT leak into '7-reduced'",
+    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=5):
+        check("a flat file does NOT leak into another topology's profile",
               all(all(da.get_tools(a).values()) for a in da.DEFAULT_AGENTS))
 
 with _StoreFile(None, raw="{ this is not json"):
-    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7,
-                   PROMPT_VARIANT="standard"):
+    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
         check("malformed file falls back to defaults, does not raise",
               all(all(da.get_tools(a).values()) for a in da.DEFAULT_AGENTS))
 
 with _StoreFile(None):   # no file at all
-    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7,
-                   PROMPT_VARIANT="standard"):
+    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
         check("missing file falls back to defaults",
               all(all(da.get_tools(a).values()) for a in da.DEFAULT_AGENTS))
 
 # --- 9. unknown agent / tool ------------------------------------------
 print("case 9 - unknown names")
-with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7, PROMPT_VARIANT="reduced"):
+with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
     check("unknown agent -> False", da.is_enabled_for("nope") is False)
     check("unknown tool -> False",
           da.is_enabled_for("planner", "nope") is False)
@@ -316,16 +298,15 @@ if _fn is not None:
              "user_inputs": "retrieve_user_inputs",
              "attempt": "retrieve_attempt"}
 
-    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7,
-                   PROMPT_VARIANT="reduced"):
+    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
         bad = []
-        for agent, (s_, u_, a_) in _REDUCED_EXPECTED.items():
+        for agent, (s_, u_, a_) in _EXPECTED.items():
             want = [_NAME[k] for k, on in
                     (("search", s_), ("user_inputs", u_), ("attempt", a_)) if on]
             got = [t.name for t in dba_tools_for(agent)]
             if got != want:
                 bad.append((agent, want, got))
-        check("reduced: every agent binds exactly its row", not bad, bad)
+        check("every agent binds exactly its row", not bad, bad)
         check("Receptionist binds NOTHING",
               dba_tools_for("receptionist") == [])
         check("DCIC binds search + attempt, no user_inputs",
@@ -334,18 +315,14 @@ if _fn is not None:
         check("Planner binds search only",
               [t.name for t in dba_tools_for("planner")]
               == ["database_search"])
-
-    with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7,
-                   PROMPT_VARIANT="standard"):
-        check("standard: an enabled agent still binds all three",
+        check("a fully-enabled agent binds all three",
               [t.name for t in dba_tools_for("dc_input_inspector")]
               == ["database_search", "retrieve_user_inputs",
                   "retrieve_attempt"])
-        check("standard: a disabled agent binds nothing",
+        check("a disabled agent binds nothing",
               dba_tools_for("tool_caller") == [])
 
-    with _Settings(RAG_ENABLED=False, SYSTEM_TOPOLOGY=7,
-                   PROMPT_VARIANT="reduced"):
+    with _Settings(RAG_ENABLED=False, SYSTEM_TOPOLOGY=7):
         check("master switch off -> every agent binds nothing",
               all(dba_tools_for(a) == [] for a in da.DEFAULT_AGENTS))
 
@@ -353,7 +330,7 @@ if _fn is not None:
 print("case 11 - prompt slots blank for tools the agent does not hold")
 # agents/__init__ eagerly imports every agent class, and langchain_core is
 # absent here, so stub both the package and the one symbol prompts.py needs
-# -- the same preamble smoke_test_prompt_variant uses.
+# -- the same preamble smoke_test_topology_fragments uses.
 import types                                                   # noqa: E402
 
 for _n, _r in (("agents", "agents"), ("agents.shared", "agents/shared")):
@@ -381,33 +358,24 @@ _SEARCH_MARK = "database_search`` runs a semantic"
 _RETRIEVE_MARK = "Retrieving past saved content"
 
 
-def _probe(agent: str, variant: str) -> tuple[bool, bool]:
-    st.PROMPT_VARIANT = variant
+def _probe(agent: str) -> tuple[bool, bool]:
     flat = " ".join(_prompts._build_template(agent).split())
     return (_SEARCH_MARK in flat, _RETRIEVE_MARK in flat)
 
 
 with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
-    # reduced: Planner holds search ONLY, so the retrieve fragment must go.
-    check("reduced Planner keeps search, loses the retrieve section",
-          _probe("planner", "reduced") == (True, False),
-          _probe("planner", "reduced"))
-    # reduced: Receptionist holds nothing -> <<HAS_DBA>> strips both.
-    check("reduced Receptionist loses both sections",
-          _probe("receptionist", "reduced") == (False, False),
-          _probe("receptionist", "reduced"))
+    # Planner holds search ONLY, so the retrieve fragment must go.
+    check("Planner keeps search, loses the retrieve section",
+          _probe("planner") == (True, False), _probe("planner"))
+    # Receptionist holds nothing -> <<HAS_DBA>> strips both.
+    check("Receptionist loses both sections",
+          _probe("receptionist") == (False, False), _probe("receptionist"))
     # holding EITHER retrieve tool keeps the shared fragment, which covers
     # both of them: UII has user_inputs, DCIC and DCOI have attempt.
     for _a in ("user_input_inspector", "dc_input_creator",
                "dc_output_inspector", "dc_input_inspector"):
-        check("reduced %s keeps both sections" % _a,
-              _probe(_a, "reduced") == (True, True), _probe(_a, "reduced"))
-    # standard is untouched for every one of them.
-    for _a in ("planner", "receptionist", "user_input_inspector",
-               "dc_input_creator", "dc_output_inspector",
-               "dc_input_inspector"):
-        check("standard %s unchanged (both sections present)" % _a,
-              _probe(_a, "standard") == (True, True), _probe(_a, "standard"))
+        check("%s keeps both sections" % _a,
+              _probe(_a) == (True, True), _probe(_a))
 
 # --- 12. reduced-scoped per-agent fragments -----------------------------
 print("case 12 - no agent is pointed at a retrieval tool it does not hold")
@@ -457,48 +425,34 @@ print("case 13 - an agent only ever reads about tools it HOLDS")
 # could fix, because the correct text differs per agent.  They now refer to
 # "whichever retrieval tools you hold" instead, which is true in every
 # profile.  A side benefit: naming no argument means no argument to go stale.
-def _invariant_violations(variant: str) -> list:
+def _invariant_violations() -> list:
     out = []
     for _a in da.DEFAULT_AGENTS:
-        st.PROMPT_VARIANT = variant
         try:
             _flat = " ".join(_prompts._build_template(_a).split())
         except Exception:
             continue              # not every slug has a prompt in topology 7
         _t = da.get_tools(_a)
         if _flat.count("retrieve_user_inputs") and not _t["user_inputs"]:
-            out.append((_a, variant, "reads retrieve_user_inputs"))
+            out.append((_a, "reads retrieve_user_inputs"))
         if _flat.count("retrieve_attempt") and not _t["attempt"]:
-            out.append((_a, variant, "reads retrieve_attempt"))
+            out.append((_a, "reads retrieve_attempt"))
     return out
 
 
 with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
-    # HARD for the reduced system -- the one this distribution is built for.
-    check("reduced: no agent is told about a tool it does not hold",
-          not _invariant_violations("reduced"),
-          _invariant_violations("reduced"))
-
-    # STANDARD is reported, not asserted.  It carries one PRE-EXISTING
-    # violation that predates per-tool flags: orchestrator/prompt.md's
-    # worked example scripts the hub to say "Call database_search (and/or
-    # retrieve_user_inputs / retrieve_attempt)", and that sentence sits
-    # OUTSIDE <<HAS_DBA>>, so it survives even for a hub holding nothing.
-    # The reduced fork already deleted it (defect B6 in fork_manifest.json).
-    # Tracked as F89; the owner has set the standard tree aside for now.
-    _std = _invariant_violations("standard")
-    _expected_std = {("orchestrator", "standard", "reads retrieve_user_inputs"),
-                     ("orchestrator", "standard", "reads retrieve_attempt")}
-    check("standard: no violation BEYOND the known ungated hub example "
-          "(F89)", set(_std) <= _expected_std,
-          sorted(set(_std) - _expected_std))
-    if _std:
-        print("          note: standard still carries %d known violation(s) "
-              "- see F89" % len(_std))
+    # HARD, with no allowance.  This used to exempt the Orchestrator: its
+    # worked example scripted the hub to say "Call database_search (and/or
+    # retrieve_user_inputs / retrieve_attempt)" OUTSIDE <<HAS_DBA>>, so the
+    # sentence survived for a hub holding nothing (F89).  The prompts that
+    # were promoted to BE the 7-agent system had already deleted it, so the
+    # exemption is gone and any violation is now a failure.
+    check("no agent is told about a tool it does not hold",
+          not _invariant_violations(), _invariant_violations())
 
 print()
 if _FAILS:
     print("FAIL - %d assertion(s): %s" % (len(_FAILS), _FAILS))
     sys.exit(1)
-print("PASS - the DBa store resolves per (profile, agent, tool); standard 7 "
-      "is unchanged and undecided profiles fall back to all-on.")
+print("PASS - the DBa store resolves per (profile, agent, tool); profile '7' "
+      "matches the decided table and undecided profiles fall back to all-on.")

@@ -111,7 +111,7 @@ _DEFAULT_VALUE: bool = True
 
 # Profile key used when a LEGACY flat file is found on disk.  A flat
 # ``{agent: bool}`` file predates profiles and can only have described
-# the standard 7-agent system.
+# the 7-agent system.
 _LEGACY_PROFILE: str = "7"
 
 
@@ -120,23 +120,16 @@ _LEGACY_PROFILE: str = "7"
 # ---------------------------------------------------------------------------
 
 def profile_key() -> str:
-    """The active settings profile, e.g. ``"7"`` or ``"7-reduced"``.
+    """The active settings profile — the agent count, e.g. ``"7"``.
 
-    Reads ``SYSTEM_TOPOLOGY`` / ``PROMPT_VARIANT`` off the settings module
-    DIRECTLY rather than importing ``agents.shared.topology``: this package
-    sits below ``agents`` in the layering, and these are two ``getattr``
-    calls.  They are read FRESH per call for the same reason
-    ``topology.topology()`` reads them fresh — ``web_app._build_session``
-    reloads the settings module in place, and the Sessions Queue switches
-    settings between runs inside one process.
+    Reads ``SYSTEM_TOPOLOGY`` off the settings module DIRECTLY rather than
+    importing ``agents.shared.topology``: this package sits below ``agents``
+    in the layering, and this is one ``getattr`` call.  It is read FRESH per
+    call for the same reason ``topology.topology()`` reads it fresh —
+    ``web_app._build_session`` reloads the settings module in place, and the
+    Sessions Queue switches settings between runs inside one process.
     """
-    topo = int(getattr(_workflow_settings, "SYSTEM_TOPOLOGY", 7))
-    variant = str(
-        getattr(_workflow_settings, "PROMPT_VARIANT", "standard")
-    ).strip()
-    if variant in ("", "standard"):
-        return str(topo)
-    return f"{topo}-{variant}"
+    return str(int(getattr(_workflow_settings, "SYSTEM_TOPOLOGY", 7)))
 
 
 # ---------------------------------------------------------------------------

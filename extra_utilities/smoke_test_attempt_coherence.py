@@ -71,7 +71,7 @@ except ModuleNotFoundError:                                  # pragma: no cover
 # ``agents/__init__.py`` eagerly imports every agent class (and so
 # langchain_core.messages).  Register ``agents`` / ``agents.shared`` as
 # namespace packages so submodule imports resolve WITHOUT running it — the same
-# device smoke_test_prompt_variant and smoke_test_topology_fragments use.
+# device smoke_test_topology_fragments uses.
 # ``tools/__init__.py`` imports every tool eagerly, dragging in trimesh and
 # pyvista.  Same device: make ``tools`` a namespace package so
 # tools.generate_mesh.generate_mesh imports on its own.

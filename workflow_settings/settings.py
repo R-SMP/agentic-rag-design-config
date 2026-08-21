@@ -705,42 +705,6 @@ IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320
 SYSTEM_TOPOLOGY: int = 7
 
 
-# PROMPT_VARIANT - which set of PROMPTS the selected agent count runs on.
-#
-# A second, independent dimension.  SYSTEM_TOPOLOGY says how many agents
-# there are and therefore which hub, which edges, which step caps and which
-# identity rows apply; PROMPT_VARIANT says which prompts those same agents
-# are given.  The two are orthogonal on purpose: a "7-agent reduced" system
-# is the SAME seven agents with the same wiring, differing only in the text
-# they read, so nothing about agent-count logic should have to know it
-# exists.
-#
-#   standard   the prompts as they are today.
-#   reduced    the shrunk / de-contradicted rewrite proposed in
-#              extra_utilities/prompt_efficiency/PROMPT_SHRINK_PROPOSAL_7agent.md
-#
-# HOW IT RESOLVES.  A variant owns agents/<N>agent_<variant>/, holding ONLY
-# the files that differ, suffixed _<N>agents_<variant>.  Resolution tries
-# the variant folder, then the plain topology folder, then the shared
-# original - so an override that has not been written yet simply falls
-# through and the prompt is byte-identical to the standard one.  That is
-# what makes the variant safe to select before it is finished, and it lets
-# the proposal's 349 cuts be applied ONE AT A TIME.
-#
-# WHY NOTHING IS EVER DELETED.  The proposal removes fragments as well as
-# shrinking them.  Deleting a shared fragment would break the 5- and
-# 3-agent topologies, which read the same files - the proposal says so
-# itself.  So a "deleted" fragment is simply no longer referenced by the
-# variant's prompts; the file stays for everyone else, and _build_slots
-# stays a superset.  New fragments are added additively for the same
-# reason.
-#
-# Changing this takes effect on the NEXT session.
-#
-# Valid values: standard, reduced
-PROMPT_VARIANT: str = "standard"
-
-
 # ===========================================================
 # 28. Step budgets - every agent and the dispatcher
 # ===========================================================

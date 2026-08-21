@@ -35,29 +35,21 @@ SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME = "submit_feedback_dispatch"
 
 
 def feedback_envelope() -> str:
-    """Text prepended to a forwarded feedback message — or "" for most systems.
+    """Text prepended to a forwarded feedback message.
 
-    In the 7-agent REDUCED variant the "## End-of-session feedback message
-    (read-only)" section is deleted from the chain agents' prompts, because the
-    message it describes exists ONLY when the user ends a session WITH SAVE:
-    in every session that does not save — most of them — that explanation is
-    dead text carried by eight prompts for a message that never arrives.  The
-    instruction travels with the message instead, so it costs nothing until
-    there is something to explain and it arrives attached to the thing it
-    explains.
+    The 7-agent prompts do NOT carry a "## End-of-session feedback message
+    (read-only)" section, because the message it describes exists ONLY when
+    the user ends a session WITH SAVE: in every session that does not save —
+    most of them — that explanation would be dead text carried by eight
+    prompts for a message that never arrives.  The instruction travels with
+    the message instead, so it costs nothing until there is something to
+    explain and it arrives attached to the thing it explains.
 
-    Systems that KEEP the prompt section must not also get the envelope, or
-    they are told the same thing twice.  So the text is a variant fragment and
-    this returns "" whenever the active topology + variant has not written one
-    — which is every topology today except 7-agent reduced.
-
-    Resolved through ``prompts._topology_override`` rather than an explicit
-    ``PROMPT_VARIANT`` test: that machinery already exists, is already covered
-    by smoke_test_prompt_variant, and keeps this module free of a second place
-    in the codebase that branches on the variant.  There is deliberately NO
-    shared original — an absent override is the correct signal for "no
-    envelope", exactly as an absent prompt override means "use the standard
-    text".
+    A topology that KEEPS the prompt section must not also get the envelope,
+    or it is told the same thing twice; such a topology overrides this
+    fragment with an empty one.  Resolution goes through
+    ``prompts._topology_override`` falling back to the shared file, exactly
+    as every other fragment reader does.
 
     Read fresh per call, never cached: the Sessions Queue switches settings
     between runs inside one process.

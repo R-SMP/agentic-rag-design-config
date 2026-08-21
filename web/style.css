@@ -4288,9 +4288,6 @@ button.danger:hover { background: #3a1d1d; }
 .sq-run-top { display: flex; gap: 8px; align-items: center; margin-bottom: 8px; }
 .sq-run-id { width: 100px; flex: 0 0 auto; }
 .sq-run-cond { flex: 1 1 auto; min-width: 0; }
-/* Per-run PROMPT_VARIANT.  Shrinks before the condition select does, so
-   a narrow panel loses width here rather than clipping the run id. */
-.sq-run-pv { flex: 0 1 auto; min-width: 0; max-width: 140px; }
 .sq-run-img {
   flex: 0 0 auto;
   background: var(--panel-2);

@@ -40,7 +40,6 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
     # Agent topology — the value IS the agent count.  Adding a further
     # variant needs only a new agents/<N>agent/ folder and N here.
     "SYSTEM_TOPOLOGY": [7, 5, 3],
-    "PROMPT_VARIANT": ["standard", "reduced"],
     "EMBEDDING_PROVIDER": ["OpenAI"],
     # Which LLM answers when the Database Handler interviews an agent.
     # "Original Agent" is a SENTINEL, not a provider: it means "each

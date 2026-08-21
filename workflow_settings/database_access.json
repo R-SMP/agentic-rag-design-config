@@ -3,48 +3,6 @@
     "dc_input_creator": {
       "attempt": true,
       "search": true,
-      "user_inputs": true
-    },
-    "dc_input_inspector": {
-      "attempt": true,
-      "search": true,
-      "user_inputs": true
-    },
-    "dc_output_inspector": {
-      "attempt": true,
-      "search": true,
-      "user_inputs": true
-    },
-    "orchestrator": {
-      "attempt": false,
-      "search": false,
-      "user_inputs": false
-    },
-    "planner": {
-      "attempt": true,
-      "search": true,
-      "user_inputs": true
-    },
-    "receptionist": {
-      "attempt": true,
-      "search": true,
-      "user_inputs": true
-    },
-    "tool_caller": {
-      "attempt": false,
-      "search": false,
-      "user_inputs": false
-    },
-    "user_input_inspector": {
-      "attempt": true,
-      "search": true,
-      "user_inputs": true
-    }
-  },
-  "7-reduced": {
-    "dc_input_creator": {
-      "attempt": true,
-      "search": true,
       "user_inputs": false
     },
     "dc_input_inspector": {

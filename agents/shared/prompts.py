@@ -47,7 +47,6 @@ from agents.shared.routing import natural_pipeline, routing_instructions
 # names this module has always used, so call sites below are unchanged.
 from agents.shared.topology import (
     hub_key as _hub_agent,
-    prompt_variant as _prompt_variant,
     topology as _topology,
 )
 from workflow_settings import settings as _workflow_settings
@@ -102,25 +101,16 @@ def _topology_override(rel_path: str) -> Path | None:
 
     # Two layers, most specific first:
     #
-    #   agents/<N>agent_<variant>/…/<name>_<N>agents_<variant>.md
     #   agents/<N>agent/…/<name>_<N>agents.md
     #
-    # then the shared original.  A variant that has not written an override
-    # for this file falls through to the topology folder, and a topology
-    # with no folder falls through to the shared file — which is why
-    # selecting a half-finished variant is safe: every unwritten override is
-    # simply the standard text.
-    variant = _prompt_variant()
-    candidates = []
-    if variant and variant != "standard":
-        candidates.append((
-            AGENTS_DIR / f"{topo}agent_{variant}",
-            f"{rel.stem}_{topo}agents_{variant}{rel.suffix}",
-        ))
-    candidates.append((
+    # then the shared original.  A topology with no folder, or one that has
+    # not written an override for this file, falls through to the shared
+    # file — which is why a half-finished topology is safe to select: every
+    # unwritten override is simply the shared text.
+    candidates = [(
         AGENTS_DIR / f"{topo}agent",
         f"{rel.stem}_{topo}agents{rel.suffix}",
-    ))
+    )]
 
     for topo_dir, name in candidates:
         if not topo_dir.is_dir():
@@ -589,10 +579,8 @@ EMBEDDING_MAX_RESPONSE_TOKENS = str(
 # ---------------------------------------------------------------------------
 # Reverse index: fragment FILE -> the $slot it feeds
 #
-# Consumed by extra_utilities/smoke_test_prompt_variant.py, which uses it to
-# decide which fragments a variant may override.  Lives HERE, next to
-# _build_slots below, so a new $slot and its reverse-index entry are one
-# screen apart — if you add a $slot, add the FRAGMENT_TO_SLOT entry in the
+# Lives HERE, next to _build_slots below, so a new $slot and its
+# reverse-index entry are one screen apart — if you add a $slot, add the FRAGMENT_TO_SLOT entry in the
 # same commit.
 # ---------------------------------------------------------------------------
 
@@ -909,14 +897,8 @@ def _prompt_path(agent_dir_name: str) -> Path:
     if override is not None:
         return override
     # An agent that exists ONLY in this topology keeps a normal package, so
-    # its prompt sits beside its code.  A variant of such an agent is named
-    # with the variant suffix in the same folder.
-    variant = _prompt_variant()
+    # its prompt sits beside its code.
     here = AGENTS_DIR / agent_dir_name
-    if variant and variant != "standard":
-        own_v = here / f"prompt_{_topology()}agents_{variant}.md"
-        if own_v.is_file():
-            return own_v
     own = here / f"prompt_{_topology()}agents.md"
     return own if own.is_file() else here / "prompt.md"
 

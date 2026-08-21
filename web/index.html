@@ -796,25 +796,14 @@
                  topology keeps its own per-agent model assignments — they
                  live in agents/<agent>/.env, one file per agent key, and
                  the merged agents have distinct keys — so switching back
-                 and forth loses nothing.
-
-                 The two 7-agent buttons are the SAME seven agents on
-                 different PROMPTS (PROMPT_VARIANT), so they deliberately
-                 share one chart and one set of model assignments — which
-                 is also what makes a full-vs-reduced prompt comparison
-                 clean, since the model is held constant. -->
+                 and forth loses nothing. -->
             <div class="lr-topology">
               <span class="lr-global-label">Agent count</span>
               <div id="lr-topology-toggle" class="lr-topo-toggle"
                    role="group" aria-label="Agent-count topology">
-                <button type="button" data-topo="7" data-variant="standard"
-                        >7-agents</button>
-                <button type="button" data-topo="7" data-variant="reduced"
-                        >7-agents (reduced)</button>
-                <button type="button" data-topo="5" data-variant="standard"
-                        >5-agents</button>
-                <button type="button" data-topo="3" data-variant="standard"
-                        >3-agents</button>
+                <button type="button" data-topo="7">7-agents</button>
+                <button type="button" data-topo="5">5-agents</button>
+                <button type="button" data-topo="3">3-agents</button>
               </div>
               <span id="lr-topology-note" class="lr-topo-note"></span>
             </div>

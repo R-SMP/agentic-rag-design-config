@@ -134,26 +134,6 @@ def single_model_payload(provider: str, model: str) -> dict:
     return {"mode": p, "shared": {"provider": p, "model": m}, "agents": []}
 
 
-# The PROMPT_VARIANT values a run may pin.  Mirrors the allow-list in
-# ``workflow_settings/editor.py`` (``"PROMPT_VARIANT": ["standard",
-# "reduced"]``); blank means "leave whatever the global is set to".
-PROMPT_VARIANTS: "frozenset[str]" = frozenset({"standard", "reduced"})
-
-
-def validate_prompt_variant(value: str) -> str:
-    """Normalise a run's ``prompt_variant``.  Returns "" for "leave alone".
-
-    Raises ``ValueError`` on anything else, so a typo is caught at Start
-    rather than silently running the wrong prompts all night.
-    """
-    v = (value or "").strip().lower()
-    if v and v not in PROMPT_VARIANTS:
-        raise ValueError(
-            f"prompt_variant must be one of {sorted(PROMPT_VARIANTS)} or blank, "
-            f"got {value!r}.")
-    return v
-
-
 def _conditions() -> "list[dict[str, Any]]":
     """Build the ordered condition list (id, label, payload).
 
@@ -499,7 +479,7 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
     manifest run (its own session / log / R2 key), tagged with ``base_run_id``
     / ``iteration`` / ``iterations_total`` so the morning scoring can group
     the repeats.  Raises ``ValueError`` on an empty query, unknown condition,
-    an invalid single-model spec, or an unknown prompt_variant.
+    or an invalid single-model spec.
     """
     default_iter = _pos_int_or_none(defaults.get("iterations")) or 1
     out_runs: list[dict] = []
@@ -521,10 +501,6 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
                 single_model_payload(single_provider, single_model)
             except ValueError as exc:
                 raise ValueError(f"Run #{i + 1}: {exc}")
-        try:
-            prompt_variant = validate_prompt_variant(r.get("prompt_variant"))
-        except ValueError as exc:
-            raise ValueError(f"Run #{i + 1}: {exc}")
         rid = (r.get("run_id") or "").strip() or f"run-{i + 1:02d}"
         stage_id = (r.get("stage_id") or "").strip() or None
 
@@ -537,7 +513,6 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
             "stage_id":         stage_id,
             "single_provider":  single_provider or None,
             "single_model":     single_model or None,
-            "prompt_variant":   prompt_variant or None,
             "expected_output":  (r.get("expected_output") or "").strip() or None,
             "continue_message": (r.get("continue_message") or "").strip() or None,
             "timeout_min":      _pos_int_or_none(r.get("timeout_min")),

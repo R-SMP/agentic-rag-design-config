@@ -626,7 +626,6 @@ finally:
 # $hard_constraints_dc and is not the hub, so a leak would show up in seven
 # sibling prompts.
 prompts._workflow_settings.SYSTEM_TOPOLOGY = 7
-prompts._workflow_settings.PROMPT_VARIANT = "standard"
 prompts.PLANNER_FIRST = False
 
 _SCOPE_AGENTS = [

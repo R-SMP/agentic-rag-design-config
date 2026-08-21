@@ -2027,7 +2027,6 @@ const LR_BOXES_BY_TOPOLOGY = { 7: LR_BOXES_7, 5: LR_BOXES_5, 3: LR_BOXES_3 };
 let lrTopology = 7;
 // Which PROMPT set that agent count runs on.  Orthogonal to the count:
 // the two 7-agent buttons share a chart because they are the same agents.
-let lrVariant = "standard";
 
 function lrBoxes() {
   return LR_BOXES_BY_TOPOLOGY[lrTopology] || LR_BOXES_7;
@@ -2423,26 +2422,21 @@ function renderLrTopology() {
   const wrap = lrEl("lr-topology-toggle");
   if (!wrap) return;
   for (const btn of wrap.querySelectorAll("button[data-topo]")) {
-    const on = Number(btn.dataset.topo) === lrTopology
-      && (btn.dataset.variant || "standard") === lrVariant;
+    const on = Number(btn.dataset.topo) === lrTopology;
     btn.classList.toggle("active", on);
     btn.setAttribute("aria-pressed", on ? "true" : "false");
   }
   const note = lrEl("lr-topology-note");
   if (note) {
     note.textContent =
-      "The next session will run the " + lrTopology + "-agent system"
-      + (lrVariant === "standard" ? "." : " on " + lrVariant + " prompts.");
+      "The next session will run the " + lrTopology + "-agent system.";
   }
 }
 
-async function setLrTopology(topo, variant) {
-  variant = variant || "standard";
-  if (topo === lrTopology && variant === lrVariant) return;
+async function setLrTopology(topo) {
+  if (topo === lrTopology) return;
   const prev = lrTopology;
-  const prevVariant = lrVariant;
   lrTopology = topo;
-  lrVariant = variant;
   renderLrTopology();
   buildLrChart();
   renderLrOverlay();
@@ -2452,21 +2446,18 @@ async function setLrTopology(topo, variant) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        values: { SYSTEM_TOPOLOGY: topo, PROMPT_VARIANT: variant },
+        values: { SYSTEM_TOPOLOGY: topo },
       }),
     });
     if (res.status === 401) { showGate(); return; }
     if (!res.ok) throw new Error("HTTP " + res.status);
     setLrStatus(
-      "Set to " + topo + "-agents"
-      + (variant === "standard" ? "" : " (" + variant + " prompts)")
-      + ".  Takes effect on the NEXT session.",
+      "Set to " + topo + "-agents.  Takes effect on the NEXT session.",
       "ok",
     );
   } catch (err) {
     // Roll the view back so it keeps matching what is actually saved.
     lrTopology = prev;
-    lrVariant = prevVariant;
     renderLrTopology();
     buildLrChart();
     renderLrOverlay();
@@ -2480,7 +2471,7 @@ function wireLrTopologyToggle() {
   wrap.dataset.wired = "1";
   wrap.addEventListener("click", (ev) => {
     const btn = ev.target.closest("button[data-topo]");
-    if (btn) setLrTopology(Number(btn.dataset.topo), btn.dataset.variant);
+    if (btn) setLrTopology(Number(btn.dataset.topo));
   });
 }
 
@@ -2607,9 +2598,6 @@ async function loadLrRouting() {
     // for whichever agent set will actually run.
     if (lrState && Number(lrState.topology)) {
       lrTopology = Number(lrState.topology);
-    }
-    if (lrState && lrState.prompt_variant) {
-      lrVariant = String(lrState.prompt_variant);
     }
     wireLrTopologyToggle();
     renderLrTopology();
@@ -4534,7 +4522,6 @@ function sqNewRun() {
     stage_id: sqUUID(),
     run_id: "",
     condition: "current",
-    prompt_variant: "",
     single_provider: "openai",
     single_model: "",
     query: "",
@@ -4561,12 +4548,6 @@ function sqRenderRuns() {
         <input class="sq-run-id" type="text" value="${sqEsc(run.run_id)}"
                data-k="run_id" placeholder="run id (optional)" />
         <select class="sq-run-cond" data-k="condition">${sqConditionOptions(run.condition)}</select>
-        <select class="sq-run-pv" data-k="prompt_variant"
-                title="Which PROMPT SET this run uses. 'global' leaves the Workflow-Settings value alone; the others pin it for this run only and are restored when the queue ends.">
-          <option value=""${!run.prompt_variant ? " selected" : ""}>prompts: global</option>
-          <option value="standard"${run.prompt_variant === "standard" ? " selected" : ""}>standard</option>
-          <option value="reduced"${run.prompt_variant === "reduced" ? " selected" : ""}>reduced</option>
-        </select>
         <button class="sq-run-img" type="button" title="Manage this run's images">🖼 ${run._imgCount || 0}</button>
         <button class="sq-run-dup ghost" type="button" title="Duplicate run">⧉</button>
         <button class="sq-run-adv ghost" type="button" title="Per-run overrides">⚙</button>
@@ -4717,7 +4698,6 @@ async function sqFlushDraft() {
       stage_id: r.stage_id,
       run_id: r.run_id || "",
       condition: r.condition || "current",
-      prompt_variant: r.prompt_variant || "",
       single_provider: r.single_provider || "openai",
       single_model: r.single_model || "",
       query: r.query || "",
@@ -4756,7 +4736,6 @@ async function sqDuplicateRun(i) {
     stage_id: sqUUID(),
     run_id: (src.run_id || "").trim() ? src.run_id + " copy" : "",
     condition: src.condition,
-    prompt_variant: src.prompt_variant,
     single_provider: src.single_provider,
     single_model: src.single_model,
     query: src.query,
@@ -5126,7 +5105,6 @@ async function hydrateSessionsQueue() {
             stage_id: r.stage_id || sqUUID(),
             run_id: r.run_id || "",
             condition: r.condition || "current",
-            prompt_variant: r.prompt_variant || "",
             single_provider: r.single_provider || "openai",
             single_model: r.single_model || "",
             query: r.query || "",

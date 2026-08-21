@@ -173,17 +173,6 @@ def _topology_now() -> int:
     return 7
 
 
-def _prompt_variant_now() -> str:
-    """PROMPT_VARIANT, parsed off disk — same disk-fresh reason as above."""
-    try:
-        for node in _editor._parse_nodes()[1]:
-            if getattr(node.target, "id", None) == "PROMPT_VARIANT":
-                return str(ast.literal_eval(node.value))
-    except Exception:
-        pass
-    return "standard"
-
-
 def read_state() -> dict[str, Any]:
     """Return the full read payload consumed by the routing UI.
 
@@ -314,7 +303,6 @@ def read_state() -> dict[str, Any]:
         # topology cannot disagree.  The toggle in the LLM-routing
         # section writes this via /api/settings.
         "topology": _topology_now(),
-        "prompt_variant": _prompt_variant_now(),
         "providers": providers_out,
         "shared": {"provider": shared_provider, "model": shared_model},
         "agents": agents_out,
