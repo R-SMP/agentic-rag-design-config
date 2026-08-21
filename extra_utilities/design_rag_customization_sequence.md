@@ -146,21 +146,53 @@ implementation needs a per-render timeout, a best-effort failure mode that
 saves what exists rather than aborting, and a log line naming what it
 generated versus what it found.
 
-#### OPEN QUESTION — must be answered before implementing
+#### The per-view flags — SETTLED 2026-08-21
 
-Do the per-view settings govern SAVING, RETRIEVING, or both?  Today
-`RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW=False` while `render_top.png` IS in the
-save whitelist — i.e. top is saved but not retrieved, and the two sides are
-independent.  Decision 3 says "default True for saving and retrieving", which
-reads as ONE setting per view driving BOTH.  Adopting that would change save
-behaviour for `top` and `side` as a side effect.  Two candidate shapes:
+**ONE flag per view, governing generate + save + retrieve.**  Four flags:
+isometric, top, blade sections, side.  A flag ON means that view is
+generated at save time when missing, uploaded to R2, AND fetched on
+retrieval.  Defaults follow the decided policy:
 
-* **One flag per view, governing both.**  Simplest to reason about and to
-  show in the UI; changes what gets archived for top/side.
-* **Two flags per view (save / retrieve).**  Preserves today's independence;
-  doubles the UI surface.
+| view           | default |
+|----------------|---------|
+| isometric      | **ON**  |
+| top            | **ON**  |
+| blade sections | **ON**  |
+| side           | **OFF** |
 
-Not guessed — ask the owner.
+Chosen over two-flags-per-view (save / retrieve separately) because one flag
+cannot disagree with itself, it halves the settings surface, and it matches
+the decision's own wording — "renders of 3D geometry (from the views that
+were set to TRUE)" already scopes GENERATION by the flag.
+
+**The accepted cost, stated so nobody rediscovers it as a bug:** saving is
+IRREVERSIBLE, retrieval is not.  A view left OFF is unrecoverable for every
+attempt archived while it was off — flipping it ON later cannot reach back.
+Turning a view OFF is therefore a decision about the permanent record, not a
+display preference.  Turning one ON only affects attempts saved afterwards.
+
+**Renaming needed.**  The settings are currently
+`RETRIEVE_ATTEMPT_INCLUDE_<VIEW>_VIEW`.  That name becomes actively
+misleading once they govern saving too — someone reading
+`RETRIEVE_ATTEMPT_INCLUDE_TOP_VIEW=False` would not guess it stops the top
+render being archived.  Rename as part of the implementation; the exact name
+is an implementation detail, but it must not say "retrieve".
+
+#### Failure at save time — SETTLED 2026-08-21
+
+**Best-effort: save what exists, log what failed.**  Upload every render that
+is present or was successfully generated, emit a warning naming each one that
+could not be made, and let the save COMPLETE.
+
+Chosen over aborting the attempt's upload because End Session must not fail
+(W1): one bad render must not cost the whole attempt, and a systematic render
+failure must not silently archive nothing.  An incomplete archive beats a lost
+one.  Chosen over retry-once because a retry doubles the worst-case save time
+exactly when the backend is down — which is when the save most needs to
+finish.
+
+The log line must name generated vs found vs failed, per view, so a thin
+archive is diagnosable after the fact rather than mysterious.
 
 ### Independent of all of the above
 **Delete `metafilters` and `attempt_specific_flag` from `database_search`** —
