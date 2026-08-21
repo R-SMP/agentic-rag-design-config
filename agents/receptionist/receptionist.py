@@ -82,7 +82,7 @@ class Receptionist(BaseChainAgent):
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
         # Built fresh at construction time so live edits to .md
-        # fragments via the System Prompts UI take effect on the
+        # fragments on disk take effect on the
         # NEXT session without a Python restart.
         #
         # The two path slots are consumed only by the 5-agent prompt,

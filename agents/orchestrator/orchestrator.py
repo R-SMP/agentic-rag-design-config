@@ -234,7 +234,7 @@ class Orchestrator(BaseChainAgent):
             _CHAIN_ACCESS_ON if session.chain_access else _CHAIN_ACCESS_OFF
         )
         # Built fresh at construction time so live edits to .md
-        # fragments via the System Prompts UI take effect on the
+        # fragments on disk take effect on the
         # NEXT session without a Python restart.
         self.system_prompt = _build_template("orchestrator").format(
             chain_access_block=chain_access_block,

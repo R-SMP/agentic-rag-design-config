@@ -940,7 +940,7 @@ class DatabaseHandler(BaseChainAgent):
         super().__init__(state=state, session=session, llm_cache=llm_cache)
         # The DH binds no tools — it only emits plain text.
         # Built fresh at construction time so live edits to .md
-        # fragments via the System Prompts UI take effect on the
+        # fragments on disk take effect on the
         # NEXT session without a Python restart.
         self.system_prompt: str = _build_template("database_handler")
 

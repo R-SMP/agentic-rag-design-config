@@ -179,7 +179,7 @@ class DCInputCreator(BaseChainAgent):
                     "routing_dc_input_creator_uii_first.md",
             )
         # Built fresh at construction time so live edits to .md
-        # fragments via the System Prompts UI take effect on the
+        # fragments on disk take effect on the
         # NEXT session without a Python restart.
         self.system_prompt = _build_template("dc_input_creator").format(
             routing_instructions=routing_block,
