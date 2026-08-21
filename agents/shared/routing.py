@@ -195,6 +195,24 @@ def routing_instructions(
             f"to go 'back', that means handing control to the {hub}."
         )
 
+    # "Previous" means whoever handed you this work, so the CLARIFY bullet
+    # below names its own target instead of leaving the per-agent fragment
+    # to patch it (F84).
+    #
+    # ONLY when there IS a previous agent.  A first-in-pipeline agent is
+    # already told where a "back" goes by the position bullet above (same
+    # ``else`` branch), and naming the hub again here once produced a
+    # statement that CONTRADICTED the agent's own routing fragment: it said
+    # "route back ... for you that is the Orchestrator", while
+    # routing_user_input_inspector_uii_first.md says "there is no 'previous'
+    # agent in the chain for you to CLARIFY back to" — same destination,
+    # opposite claim about whether CLARIFY applies at all.  That fragment
+    # paragraph is the SOLE authority for the first-agent case.
+    if prev_agent:
+        clarify_clause = f" — normally the **{prev_agent}** — "
+    else:
+        clarify_clause = " "
+
     lines += [
         "",
         "### How to decide where to route",
@@ -205,10 +223,10 @@ def routing_instructions(
         f"- If the {hub}'s instruction told you to *report back* or "
         f"to *do X and return*, route to the {hub} once your work "
         "is done.",
-        "- If you cannot do your job because the upstream message is "
-        "ambiguous, missing data, or contains an error that the previous "
-        "agent can fix, route to the previous agent with a clear "
-        "clarification request (CLARIFY).",
+        "- If you cannot do your job because the incoming hand-off is "
+        "ambiguous, missing data, or contains an error the sender can fix, "
+        "route back to the agent that handed you this work"
+        f"{clarify_clause}with a clear clarification request (CLARIFY).",
         "- If something is fundamentally wrong and no agent in the chain "
         f"can fix it, route to the {hub} (ESCALATE).",
         "",
