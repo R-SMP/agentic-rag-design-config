@@ -284,8 +284,8 @@ attempt to report:
      wildcard — to confirm render paths.
   2. Show the designated model with ``visualize_3d_model`` (see its tool
      block for the ``propeller_mesh.obj`` path rule).
-  3. ``propose_attempt`` with that attempt's full $parameter_count-param
-     dict from step 1 — but ONLY when the ``Show to user:`` line ENDORSES
+  3. ``propose_attempt`` with the path to that attempt's
+     ``parameters.json`` — but ONLY when the ``Show to user:`` line ENDORSES
      it as the current best; on hedging wording, visualize and leave the
      panel alone.  Its tool block above carries the endorsing and hedging
      wordings and the manual trigger.

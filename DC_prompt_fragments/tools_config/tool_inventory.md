@@ -5,8 +5,7 @@
    and — when mesh checks are enabled — the quality metrics.  ONE call does
    both; there is no separate render tool to call.  Returns the mesh path
    followed by the render+check report (the three render paths + any warnings).
-2. **calculate** — evaluate arithmetic / boolean expressions; batch every
-   expression you need this turn into ONE call.
+2. **calculate** — evaluate arithmetic / boolean expressions.
 3. **list_attempts** — numbered summary of every attempt folder and which
    roles (parameters / mesh / renders / description) each holds.
 4. **read_attempt(n, file)** — read one file from the n-th attempt (text
