@@ -52,7 +52,7 @@ from agents.creator import Creator
 from agents.database_handler import DatabaseHandler
 from agents.dc_output_inspector import DCOutputInspector
 from agents.receptionist import Receptionist
-from agents.shared.attempts_tool import list_attempts, read_attempt
+from agents.shared.attempts_tool import read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.context_pruner import ContextPruner
 from agents.shared.file_utils import ai_text
@@ -104,10 +104,10 @@ from agents.orchestrator.orchestrator import (
 # being stubs backed by a handler — so binding them is all that is
 # required; there is no dispatch code to port.  Imported for the same
 # reason as the helpers above: a second copy would drift.
-from agents.planner.planner import (
-    read_extracted_inputs,
-    read_user_queries,
-)
+# (``read_user_queries`` moved to agents/shared/user_queries_tool.py when
+# the 7-agent Planner dropped it, 2026-08-22.)
+from agents.planner.planner import read_extracted_inputs
+from agents.shared.user_queries_tool import read_user_queries
 
 logger = logging.getLogger("propeller_agent")
 
@@ -340,8 +340,7 @@ class Conductor(BaseChainAgent):
             build_routing_tool("conductor", "tool_caller", self, cl),
             build_routing_tool("conductor", "dc_output_inspector", self, cl),
             calculate,
-            list_attempts,
-            read_attempt,
+            read_attempts,
             # Role 1 (read the extraction, THEN plan) is the Conductor's
             # first act on a design turn, and its prompt has always told
             # it to use these two — but they were never bound.  Live

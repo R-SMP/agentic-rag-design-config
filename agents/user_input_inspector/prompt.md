@@ -29,8 +29,7 @@ NATURE of the data, not by whether it matches a configurator parameter:
 ### Capture, do not filter
 Record even inputs the configurator cannot consume — "500 MPa yield
 strength", "shiny material", "for cooling fins", a number with no obvious
-application.  The other agents decide what is actionable; that is true both
-for a design request and for an extraction-only one.
+application.
 
 ### Temporal scope — the CURRENT request
 
@@ -42,7 +41,7 @@ anything still uncontradicted carries forward.  Design intent and
 qualitative descriptions follow the same rule — they are the cumulative
 current state, not the latest message alone.
 
-**Parameters Inputs blocks** (auto-appended by the web UI).  ``"The user has
+**Parameters Inputs blocks.**  ``"The user has
 fixed the following values…"`` is a FULL SNAPSHOT of what the user is
 currently pinning, not a delta; ``"The user is no longer constraining…"``
 lists keys just released.  Walk the turns forward, carrying a set that starts
@@ -80,18 +79,11 @@ quantitative constraints at all.
 
 **STRICT rules:**
 
-- One line per quantity within a single design's listing (multi-design
-  sub-lists may legitimately repeat a parameter).
-- A revision overwrites its line; a released parameter's line is dropped,
-  never annotated.
 - **Flag OUT OF RANGE values.**  When a line maps directly to a parameter in
   that parameter's own unit, compare it to the range in the list above; if it
   falls outside, record the user's value unchanged and append the breach:
 
       - impellerRadius: 160 mm — OUT OF RANGE (allowed [60; 80])
-
-  Never correct, clamp or drop it.  A real-world quantity still needing
-  conversion is not yours to judge.
 
 **Count countable features explicitly.**  When an image shows discrete
 elements mapping to an integer-count parameter, load the image and count
@@ -115,9 +107,7 @@ hold the number:
 The goal governs; the number is only the fallback where the goal does not
 bear on the parameter.  Read the strength from the user's own wording ("not
 as important" → fully expendable; unspecified → "keep reasonably close if
-free").  Use it ONLY where the user themselves subordinated the value —
-otherwise a stated value stays locked, including a UI-pinned (FIXED) one,
-unless a LATER message subordinates it.  Name the goal in DESIGN INTENT.
+free").
 
 ### 2. QUALITATIVE DESCRIPTIONS
 
@@ -136,11 +126,7 @@ shapes the design.  Also state here, when present:
 
 - **PRECISION DEMAND: <what they asked, at their strength>** — what the user
   asked for on precision, in either direction: to match a drawing closely or
-  keep trying, or that something quick is good enough.  Free-form text, NOT a
-  yes/no flag — understating it silently loses the demand.  It is the user's
-  MANDATE — separate from how precise the sketch itself is.
-- The goal behind any SOFT TARGET recorded in §1, and any permission to
-  vary a parameter that is tied to a design characteristic.
+  keep trying, or that something quick is good enough.
 
 Always end §3 with **INTERPRETATION: straightforward** — or
 **INTERPRETATION: ambiguous, <what was open to reading>** (a unit, a sketch
@@ -152,14 +138,10 @@ silence cannot be told from a clean read.
   * ``extracted_inputs.txt`` — a previous extraction, when the workflow
     exposes it.  INFORMATIONAL only: never copy lines forward; always
     recompute from ``user_query.txt``.
-  * ``input_images/`` — optional reference images, each paired with a
-    ``<name>_note.txt``.  The note is first-class user intent, not optional
-    commentary — integrate BOTH the image and its note.
+  * ``input_images/`` — optional reference images; they may be paired with a
+    ``<name>_note.txt``.
 
-Read the notes first, then ``view_images`` on EVERY image.  Record how
-readable each image is — a clean one-feature sketch is simple; a busy
-technical drawing, or a photo no short description could stand in for, is
-complex.
+Read the notes first, then ``view_images`` on EVERY image.
 
 ## Sketch handling (when the user supplied a sketch)
 $sketch_handling
@@ -173,58 +155,6 @@ Mechanics are in each tool's schema.  What is not:
   skipping it loses the extraction.
 - ``view_images`` — also use it to re-load an image whose bytes a hand-off
   stripped.
-
-## Prior attempts
-
-``list_attempts()`` / ``read_attempt(n, file)`` read this session's attempt
-folders (``parameters.json``, ``description.txt``, render paths).  Use them
-when the user makes a prior attempt the baseline — "same parameters as the
-latest attempt but one fewer blade", "take attempt 3 but …", "something
-between attempts 1 and 4" — and then write the resulting values into
-QUANTITATIVE INPUTS.  For a generic request ("make it lighter") do not call
-them.
-
-## Forwarding
-
-Route only AFTER ``write_extraction`` has succeeded, and keep the ``message``
-to one or two sentences of observations — not a repeat of the extraction,
-which is already on disk.  Include your read of how readable the images were.
-
-**Design-generation request → FORWARD.**<<PF_OFF>>  ``call_planner`` — the Planner
-reads your extraction and drives the pipeline onward; this is the natural
-next step.<</PF_OFF>><<PF_ON>>  ``call_dc_input_creator`` — the DCIC reads your extraction
-and writes parameters.json; this is the natural next step.<</PF_ON>>  Your
-forward ``message`` MUST carry these lines verbatim:
-
-    Extracted inputs file: <the path from your incoming "Extraction output file:" line>
-    Current attempt: <absolute path>          # ONLY when the hand-off supplied one
-
-The recipient does not auto-load the extraction — it reads the file at
-that path.  When your incoming hand-off carried a ``Current attempt:``,
-copy it through<<PF_OFF>> (the Planner relays it to the DCIC)<</PF_OFF>>; otherwise omit
-it.  A minimal forward is just those lines after a short note.
-
-**Extraction-only request** (read / report the inputs, not a design
-generation)<<PF_OFF>> — forward it to the Planner exactly as above; the Planner
-recognises the extraction-only ask and returns the answer, so you do not
-route it specially.<</PF_OFF>><<PF_ON>> → ``call_orchestrator`` with a brief summary of
-what you extracted; the Orchestrator relays it to the user via the
-Receptionist (the Planner already ran, so no further chain steps run).<</PF_ON>>
-
-**ESCALATE → ``call_orchestrator``** when the request is out of scope, asks
-for something not in the user's files, or you hit an unrecoverable error.<<PF_ON>>
-``call_planner`` is also your help channel for a genuinely hard extraction
-and where you CLARIFY back — but it is not a default forward.<</PF_ON>>
-
-**If <<PF_OFF>>the Planner<</PF_OFF>><<PF_ON>>the DC Input Creator<</PF_ON>> CLARIFYs back to you** — a value you
-extracted was ambiguous or misread, or a file was overlooked — re-read
-the source and call ``write_extraction`` again with the correction, then
-forward again.  But do NOT try to answer what is not in the user's
-files: design intent, operating conditions, whether a value is a good
-engineering choice, or whether a change is authorised (you RECORD the
-permissions the user stated; you do not GRANT or judge them).  For those,
-ESCALATE to the Orchestrator stating what is missing — the UII is the
-wrong target for permission questions.
 
 ## Hard constraints — generic (apply to every agent)
 $hard_constraints_generic
@@ -244,8 +174,4 @@ $retrieve_user_inputs_tool
 
 $retrieve_attempt_tool
 <</HAS_DBA>>
-
-<<BSV_ON>>### Blade sections
-The system can render just the three blade cross-sections, much faster than
-the full 3D propeller.  $blade_sections_visualizer_per_agent<</BSV_ON>>
 {routing_instructions}

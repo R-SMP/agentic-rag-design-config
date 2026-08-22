@@ -48,6 +48,7 @@ from agents.shared.file_utils import (
     append_pending_images,
     list_files,
     load_text_file,
+    load_user_inputs_bundle,
     pair_input_images,
 )
 from agents.shared.image_stitch import crop_to_region, stitch, to_rgb
@@ -207,7 +208,9 @@ USER_INPUTS_TOOL_NAMES = {
 
 
 def build_user_inputs_tools(
-    agent_key: str, include_image_tools: bool = True
+    agent_key: str,
+    include_image_tools: bool = True,
+    include_text_tools: bool = True,
 ) -> list:
     """Return the user-inputs tool objects to bind to *agent_key*.
 
@@ -225,16 +228,157 @@ def build_user_inputs_tools(
     tools (``read_image_notes`` / ``view_images`` / ``ocr_regions``)
     are withheld.  The DC Input Creator uses this — it works from
     ``extracted_inputs.txt`` and does not view raw images.
+
+    When *include_text_tools* is False the three text-file tools
+    (``list_input_files`` / ``read_input_text`` / ``read_image_notes``)
+    are withheld and only the image tools are returned.  The UII uses
+    this — its ``read_user_inputs`` already reads every text file at
+    once, image notes included, and lists the image paths.
     """
-    tools = [list_input_files, read_input_text]
+    tools = [list_input_files, read_input_text] if include_text_tools else []
     if include_image_tools:
         on = ocr_access.is_enabled_for(agent_key)
-        tools.append(read_image_notes)
+        if include_text_tools:
+            tools.append(read_image_notes)
         tools.append(_build_view_images(on))
         if on:
             # The region zoom-in tool exists only when OCR is enabled.
             tools.append(_build_ocr_regions())
     return tools
+
+
+# ---------------------------------------------------------------------------
+# ``read_user_inputs`` — the whole-directory reader (UII + Planner)
+#
+# Historically defined inside the UII's module; hoisted here (2026-08-22)
+# because the Planner now binds it too (it replaced the Planner's
+# ``read_user_queries``).  The UII keeps its stub + in-agent handler
+# (which routes through ``read_user_inputs_summary`` below); the Planner
+# binds a directly-invokable tool built by ``build_read_user_inputs``
+# with ``direct=True``.
+# ---------------------------------------------------------------------------
+
+# The UII's wording — unchanged from when this tool lived in its module.
+READ_INPUTS_DOC_UII = (
+    "Read a user-inputs directory: TEXT plus a LIST of its images (it does "
+    "NOT load the images themselves).\n\n"
+    "Pass the absolute path of the inputs directory supplied in your hand-off "
+    "under the ``Input directory:`` label (do NOT guess).  The output is a "
+    "summary plus the concatenated contents of all text/JSON files — "
+    "including every image's ``_note.txt`` — followed by a list of the "
+    "reference images present with their paths.  To actually SEE an image "
+    "(and get its OCR-recognised text: dimension callouts, labels), call "
+    "``view_images`` with the path(s) you need."
+)
+
+# The Planner's wording — no ``Input directory:`` label reaches it and it
+# holds no image tools, so the pointers differ.
+READ_INPUTS_DOC_PLANNER = (
+    "Read the user-inputs directory: TEXT plus a LIST of its images (it "
+    "does NOT load the images themselves).\n\n"
+    "Pass the absolute path of the user-inputs directory — the folder "
+    "holding ``user_query.txt`` and ``extracted_inputs.txt``; when your "
+    "hand-off names an ``Extracted inputs file:``, it is that file's parent "
+    "directory (do NOT guess a path).  The output is a summary plus the "
+    "concatenated contents of all text/JSON files — the user's queries, the "
+    "current extraction and every image's ``_note.txt`` — followed by a "
+    "list of the reference images present with their paths."
+)
+
+
+def read_user_inputs_summary(
+    raw_path,
+    provider: str = "openai",
+    exclude_root_files: tuple[str, ...] = (),
+    can_view_images: bool = False,
+) -> str:
+    """The ``read_user_inputs`` result text for *raw_path*.
+
+    Shared by the UII's in-agent handler and the Planner's directly-
+    invokable binding, so the two agents read exactly the same view of
+    the inputs directory.  *can_view_images* adds the "call view_images
+    to SEE an image" pointer — only for an agent that actually binds
+    ``view_images`` (the UII; the Planner has no image tools).
+    """
+    if not raw_path or not isinstance(raw_path, str):
+        return (
+            "Error: no directory path provided.  Call this tool with "
+            "the absolute path of the user-inputs directory."
+        )
+    directory = Path(raw_path)
+    if not directory.is_dir():
+        return (
+            f"Error: '{raw_path}' is not an existing directory.  "
+            f"Do not retry with a guessed path."
+        )
+    # Images are NOT loaded here — the caller loads the specific
+    # image(s) it needs on demand via view_images (where bound).
+    # read_user_inputs stays cheap: text + notes + a list of the
+    # images present.
+    loaded = load_user_inputs_bundle(
+        directory,
+        provider,
+        include_image_bytes=False,
+        exclude_root_files=exclude_root_files,
+    )
+    image_paths = loaded["image_paths"]
+    pairing = loaded["pairing"]
+    summary_parts = [
+        f"Loaded inputs from {directory.resolve()}.",
+        f"Files: {loaded['summary']}",
+    ]
+    if not pairing["ok"]:
+        summary_parts.append(
+            "WARNING: image+note pairing is INVALID.  "
+            "The Receptionist should have caught this — "
+            "ESCALATE so the user can be asked to fix the "
+            "uploads.  Pairing report:\n" + pairing["report"]
+        )
+    if loaded["text_content"]:
+        summary_parts.append(
+            "--- File contents ---\n" + loaded["text_content"]
+        )
+    else:
+        summary_parts.append("(no text or JSON files found)")
+    if image_paths:
+        listing = "\n".join(
+            f"  - {Path(p).name}   (path: {p})"
+            for p in image_paths
+        )
+        hint = (
+            "  To SEE an image and get its OCR text, call "
+            "view_images with the path(s) you need:"
+            if can_view_images else
+            "  Their paths, for relaying to an agent that can view them:"
+        )
+        summary_parts.append(
+            f"{len(image_paths)} reference image(s) are available "
+            f"but NOT loaded here (their notes are in the file "
+            f"contents above).{hint}\n" + listing
+        )
+    return "\n\n".join(summary_parts)
+
+
+def build_read_user_inputs(
+    doc: str = READ_INPUTS_DOC_UII,
+    direct_provider: str | None = None,
+):
+    """Build a ``read_user_inputs`` tool object.
+
+    With *direct_provider* None the tool is a SCHEMA-ONLY stub (returns
+    ``""``) for an agent whose run loop handles the call itself — the
+    UII.  With a provider string it is directly invokable and returns
+    :func:`read_user_inputs_summary` — the Planner's binding, whose run
+    loop invokes unknown tools generically.
+    """
+    if direct_provider is None:
+        def _impl(path: str) -> str:
+            return ""  # handled by the binding agent's own handler
+    else:
+        def _impl(path: str) -> str:
+            return read_user_inputs_summary(path, direct_provider)
+    _impl.__doc__ = doc
+    return tool("read_user_inputs")(_impl)
 
 
 # ---------------------------------------------------------------------------

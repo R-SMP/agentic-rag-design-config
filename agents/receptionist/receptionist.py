@@ -22,7 +22,7 @@ from pathlib import Path
 
 from langchain_core.messages import HumanMessage, ToolMessage
 
-from agents.shared.attempts_tool import list_attempts, read_attempt
+from agents.shared.attempts_tool import read_attempts
 from agents.step_caps import MAX_RECEPTIONIST_STEPS
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
@@ -45,10 +45,6 @@ from agents.shared.routing_tools import (
     log_tool_call,
 )
 from agents.shared.session import AgentState, Session
-from agents.shared.user_inputs_tool import (
-    dispatch_user_inputs_tool,
-    read_input_text,
-)
 from config import ATTEMPTS_DIR, USER_INPUTS_DIR
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
@@ -112,16 +108,14 @@ class Receptionist(BaseChainAgent):
     # ------------------------------------------------------------------
 
     def set_tools(self, tools: list) -> None:
-        """Bind ``read_agent_history``, ``calculate``, ``list_attempts``,
-        ``read_attempt``, ``read_input_text`` (re-read a specific input
-        note; the Receptionist does not load image bytes or analyse
-        images itself), ``visualize_3d_model`` (push a generated mesh to
-        the web viewer), plus the ``call_orchestrator`` routing tool."""
+        """Bind ``read_agent_history``, ``calculate``, ``read_attempts``
+        (attempt summaries + artefact paths — the source of the mesh
+        path for ``visualize_3d_model``), ``visualize_3d_model`` (push a
+        generated mesh to the web viewer), plus the
+        ``call_orchestrator`` routing tool."""
         all_tools = list(tools) + [
             calculate,
-            list_attempts,
-            read_attempt,
-            read_input_text,
+            read_attempts,
             visualize_3d_model,
             # Step 9 of the Parameters Inputs redesign — UI-update
             # side-effect tool.  Receptionist calls this to surface a
@@ -171,8 +165,6 @@ class Receptionist(BaseChainAgent):
             for i, tc in enumerate(response.tool_calls):
                 check_stop_or_raise()
                 name = tc["name"]
-                if dispatch_user_inputs_tool(self, tc, "receptionist"):
-                    continue
                 if dispatch_retrieve_tool(self, tc, "receptionist"):
                     continue
                 tool_fn = self._tools_by_name.get(name)
@@ -321,7 +313,7 @@ class Receptionist(BaseChainAgent):
         The Orchestrator's hand-off now names the attempt folder(s)
         this cycle and which to show the user; the Receptionist pulls
         each one's parameters / render paths itself via its
-        ``read_attempt`` / ``list_attempts`` tools (see prompt).  Only
+        ``read_attempts`` tool (see prompt).  Only
         when the hand-off carries NO attempt-folder reference do we
         fall back to the legacy behaviour of auto-attaching the single
         most-recently-touched attempt's fresh artifacts, so a summary
@@ -411,7 +403,7 @@ class Receptionist(BaseChainAgent):
     def _handoff_names_attempt(system_result: str) -> bool:
         """True if the Orchestrator's hand-off references an attempt
         folder path.  When so, the Receptionist pulls each attempt's
-        details via its ``read_attempt`` / ``list_attempts`` tools per
+        details via its ``read_attempts`` tool per
         the prompt, and the legacy single-newest-attempt auto-attach
         in ``format_outgoing`` is skipped.  Detected by the
         ATTEMPTS_DIR path appearing in the summary — robust to wording

@@ -6,7 +6,7 @@ Stateful agent with THREE kinds of tools bound to its LLM:
   from the path supplied in the incoming hand-off.  Non-terminal.
 - **Utility tools** (``generate_and_render_propeller`` — builds the
   mesh AND renders/checks it in one call — ``calculate``,
-  ``list_attempts``, ``read_attempt``) — these do actual work and the
+  ``read_attempts``) — these do actual work and the
   run loop keeps going after them, letting the LLM call more tools
   before finally producing a response + routing call.
 - **Routing tools** (``call_dc_output_inspector``,
@@ -27,7 +27,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
-from agents.shared.attempts_tool import list_attempts, read_attempt
+from agents.shared.attempts_tool import read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
 from agents.shared.llm_provider import (
@@ -103,7 +103,7 @@ class ToolCaller(BaseChainAgent):
         # library is picked by ``set_render_library`` before this agent
         # is built) and the session-scoped attempt-inspection helpers;
         # both are dispatched the same way so they share one map.
-        utility_tools = list(get_tools()) + [list_attempts, read_attempt]
+        utility_tools = list(get_tools()) + [read_attempts]
         # Which of the three database tools this agent holds is a
         # per-(profile, agent, tool) decision; dba_tools_for owns it.
         utility_tools.extend(dba_tools_for("tool_caller"))

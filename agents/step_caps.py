@@ -35,16 +35,15 @@ already comfortable for that pattern."""
 
 MAX_PLANNER_STEPS = _ws.MAX_PLANNER_STEPS
 """Planner's ``run()``.  Used both for Role 1 (kickoff) and Role 2
-(recovery planning).  Recovery turns may call ``read_user_queries``
+(recovery planning).  Recovery turns may call ``read_user_inputs``
 and ``read_agent_history`` before producing the routing call, so the
 budget needs ~3-4 utility calls plus the routing tool."""
 
 MAX_UII_STEPS = _ws.MAX_UII_STEPS
 """User Input Inspector's ``run()``.  Standard flow is
 ``read_user_inputs`` → ``write_extraction`` → routing call (3 turns).
-Extra slack covers the post-image-loading user-input tools
-(``list_input_files`` / ``read_image_notes`` / ``read_input_text`` /
-``view_images``) and the occasional ``calculate``."""
+Extra slack covers image loading (``view_images`` /
+``ocr_regions``) and the occasional ``calculate``."""
 
 MAX_DCIC_STEPS = _ws.MAX_DCIC_STEPS
 """DC Input Creator's ``run()``.  Standard flow is
@@ -75,7 +74,7 @@ MAX_DCOI_STEPS = _ws.MAX_DCOI_STEPS
 covers reference-image comparison cycles
 (``list_input_files`` / ``read_image_notes`` /
 ``view_images``) and looking up prior attempts via
-``list_attempts`` / ``read_attempt``."""
+``read_attempts``."""
 
 MAX_DH_STEPS = _ws.MAX_DH_STEPS
 """Database Handler's per-question turn budget.  The DH runs once per
@@ -110,8 +109,8 @@ Receptionist composes a polite "the workflow stopped" message."""
 MAX_ORCH_INNER_STEPS = _ws.MAX_ORCH_INNER_STEPS
 """Maximum number of LLM turns inside ONE ``Orchestrator.run()``
 invocation.  Lets the Orchestrator chain a couple of utility calls
-(e.g. ``new_attempt`` to mint an attempt path) before invoking its
-final routing tool.  Kept tight because the Orchestrator should
+(e.g. ``read_attempts`` to look up an attempt path) before invoking
+its final routing tool.  Kept tight because the Orchestrator should
 relay, not deliberate."""
 
 

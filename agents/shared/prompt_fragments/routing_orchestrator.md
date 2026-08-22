@@ -14,16 +14,11 @@ You can dispatch to every agent in the system:
 <<DCII_ONLY>>- ``call_dc_input_inspector(message)`` — re-validate
   ``parameters.json`` for an existing attempt.
 <</DCII_ONLY>>- ``call_tool_caller(message)`` — (re-)run mesh generation and
-  rendering for an existing attempt.
+  rendering for an existing attempt<<BSV_ON>>, or render just its blade
+  sections (``render_blade_sections``)<</BSV_ON>>.
 - ``call_dc_output_inspector(message)`` — (re-)judge the renders for
   an existing attempt.
 
 Each tool records a hand-off; your turn ends when you issue one.  The
-agent you called will either hand further down the chain (the
-dispatcher delivers their eventual report back to you in your next
-turn) or reply to you directly.
-
-You also have ``new_attempt(slug, description)`` to allocate a fresh
-attempt folder, but ONLY as a special-case fallback for when the DCIC
-cannot open its own attempt (it blocks, loops, or errors on creation).
-Normally the DCIC opens the attempt itself — do not pre-open one.
+agent you called will either hand further down the chain or reply to
+you directly.

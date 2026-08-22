@@ -113,7 +113,7 @@ def save_user_input(
 
     The Receptionist re-reads ``user_query.txt`` from disk on every
     turn (no args-based path), so this single injection covers all
-    downstream consumers — the Planner's ``read_user_queries`` tool
+    downstream consumers — the Planner's ``read_user_inputs`` tool
     and the UII both parse the same file.
 
     ``fixed_params=None`` or ``fixed_params={}`` (empty dict) leaves

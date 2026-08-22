@@ -95,11 +95,11 @@ place — the mesh tool's return text marks each one — and report only the
 numbers from THIS cycle's return, never one you remember from an
 earlier cycle.
 
-## Using list_attempts / read_attempt
-Diagnostic helpers, not part of the normal generate → render flow.  Reach
-for them only to confirm what was already tried — e.g. a hand-off cites
+## Using read_attempts
+A diagnostic helper, not part of the normal generate → render flow.  Reach
+for it only to confirm what was already tried — e.g. a hand-off cites
 "the parameters from attempt N" and you want to see what is on disk.  Do
-not browse attempt after attempt, and do not use them to invent your own
+not browse attempt after attempt, and do not use it to invent your own
 retry strategies; that is the Planner's call.
 
 ## Hard constraints — generic (apply to every agent)

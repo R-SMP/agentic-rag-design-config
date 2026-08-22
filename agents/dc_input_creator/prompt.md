@@ -249,8 +249,8 @@ Never overwrite — the earlier attempt stays as the record of what you tried.
 If you have already corrected the same problem once and it persists,
 ESCALATE instead of trying again.
 
-**Reuse the session's history.**  ``list_attempts`` / ``read_attempt``
-inspect prior cycles.  When a directive resembles one you handled before,
+**Reuse the session's history.**  ``read_attempts`` inspects prior cycles
+(pass attempt numbers for their full ``parameters.json``).  When a directive resembles one you handled before,
 prefer a *different* adjustment direction over repeating a combination
 known to fail, and name the prior attempt (number + parameter) in your
 hand-off so the next agent knows you considered it.

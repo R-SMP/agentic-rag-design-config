@@ -19,8 +19,8 @@ effective access is ``False`` regardless of the per-agent flag — see
 
 Eligible agents
 ---------------
-Only the 5 chain agents that bind the image tools
-(``build_user_inputs_tools`` / ``read_user_inputs`` /
+Only the chain agents that bind the image tools
+(``build_user_inputs_tools`` / ``read_user_inputs``)
 are eligible — the other roles have no
 images to OCR.  See :data:`DEFAULT_AGENTS`.
 
@@ -68,7 +68,9 @@ _LOCK = threading.Lock()
 # consults its entry.
 DEFAULT_AGENTS: tuple[str, ...] = (
     "user_input_inspector",
-    "planner",
+    # "planner" was dropped 2026-08-22: the Planner no longer binds any
+    # image tool (view_images / ocr_regions unbound in the prompt
+    # reduction), so an OCR toggle for it would be a dead switch.
     "dc_input_creator",
     "dc_input_inspector",
     "dc_output_inspector",

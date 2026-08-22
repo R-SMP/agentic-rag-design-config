@@ -389,6 +389,14 @@ def check_case(topo: int, planner_first: bool) -> None:
         for agent in AGENTS_BY_TOPOLOGY[topo]:
             if agent in (hub, "receptionist", "database_handler"):
                 continue
+            # An agent with its OWN scoped copy of the generic constraints
+            # is no longer governed by the shared file's regions — the
+            # 2026-08-22 prompt reduction cuts them per agent (e.g. the
+            # Planner ISSUES standing directives, so its copy drops the
+            # copy-verbatim rule).  The scoped copy is the authority there.
+            if prompts.scoped_fragment_path(
+                    "hard_constraints_generic", agent) is not None:
+                continue
             if marker not in built[agent]:
                 fail(case, "CHAIN_ONLY",
                      f"chain agent {agent} LOST a chain-link rule: "
@@ -451,10 +459,18 @@ for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
                 fail(_case, "HUB",
                      f"{_name}'s routing section names the other hub "
                      f"({_other_display}): {bad[:2]}")
+            # The 2026-08-22 prompt reduction cut most routing boilerplate
+            # for some agents (routing._ROUTING_SECTIONS_BY_AGENT) — assert
+            # each section's content only where that section is still
+            # emitted, deriving the expectation from the same allow-list
+            # the builder uses.
+            _sections = routing._ROUTING_SECTIONS_BY_AGENT.get(
+                _name, routing._ROUTING_SECTIONS_DEFAULT)
             # routing.py is now the SOLE owner of FORWARD-is-default:
             # generic_constraints.md dropped its copy as provably
             # duplicated, so nothing else in the system states it.
-            if "route FORWARD to the next agent" not in block:
+            if ("decide" in _sections
+                    and "route FORWARD to the next agent" not in block):
                 fail(_case, "ROUTING",
                      f"{_name}'s routing block never states FORWARD-is-"
                      f"default -- generic_constraints.md no longer does")
@@ -462,9 +478,11 @@ for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
                 fail(_case, "HUB",
                      f"{_name}'s routing section never names its own hub "
                      f"({_hub_disp})")
-            # The Planner is a distinct grantor ONLY in the 7-agent system.
+            # The Planner is a distinct grantor ONLY in the 7-agent system,
+            # and the grantor list lives in the permission section.
             has_planner_grantor = "from the Planner" in block
-            if _topo == 7 and not has_planner_grantor:
+            if (_topo == 7 and "permission" in _sections
+                    and not has_planner_grantor):
                 fail(_case, "HUB",
                      f"{_name}: 7-agent lost the Planner as an "
                      f"authorisation source")

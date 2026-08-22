@@ -6,8 +6,9 @@
    both; there is no separate render tool to call.  Returns the mesh path
    followed by the render+check report (the three render paths + any warnings).
 2. **calculate** — evaluate arithmetic / boolean expressions.
-3. **list_attempts** — numbered summary of every attempt folder and which
-   roles (parameters / mesh / renders / description) each holds.
-4. **read_attempt(n, file)** — read one file from the n-th attempt (text
-   inline; an image or mesh returns a path to hand on to whoever can
-   load it).
+3. **read_attempts(attempt_numbers=None)** — with no argument, a numbered
+   summary of every attempt folder: which roles (parameters / mesh /
+   renders / description) each holds, plus its ``description.txt``.  Given
+   attempt numbers, the same for just those, each with its full
+   ``parameters.json``.  Either way every render and mesh file is listed as
+   an absolute path to hand on to whoever can load it.

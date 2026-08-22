@@ -10,7 +10,7 @@ import logging
 
 from langchain_core.messages import HumanMessage, ToolMessage
 
-from agents.shared.attempts_tool import list_attempts, read_attempt
+from agents.shared.attempts_tool import read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
@@ -234,8 +234,7 @@ class DCOutputInspector(BaseChainAgent):
     def set_routing_tools(self, tools: list) -> None:
         """Bind routing tools (plus the utility image-loading tool)."""
         self._extra_utility_tools_by_name = {
-            list_attempts.name: list_attempts,
-            read_attempt.name: read_attempt,
+            read_attempts.name: read_attempts,
             calculate.name: calculate,
         }
         # Which of the three database tools this agent holds is a

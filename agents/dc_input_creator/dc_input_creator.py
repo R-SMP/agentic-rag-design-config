@@ -22,7 +22,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
-from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
+from agents.shared.attempts_tool import new_attempt, read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
@@ -146,8 +146,7 @@ class DCInputCreator(BaseChainAgent):
     ) -> None:
         """Bind the DC Input Creator's allowed routing tools."""
         self._extra_utility_tools_by_name = {
-            list_attempts.name: list_attempts,
-            read_attempt.name: read_attempt,
+            read_attempts.name: read_attempts,
             new_attempt.name: new_attempt,
             calculate.name: calculate,
         }

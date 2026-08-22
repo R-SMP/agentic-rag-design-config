@@ -21,12 +21,10 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
-from agents.shared.attempts_tool import list_attempts, read_attempt
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
     flush_pending_image_blocks,
-    load_user_inputs_bundle,
     strip_image_blocks_from_messages,
 )
 from agents.shared.llm_provider import (
@@ -53,8 +51,10 @@ from agents.shared.routing_tools import (
 )
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
+    build_read_user_inputs,
     build_user_inputs_tools,
     dispatch_user_inputs_tool,
+    read_user_inputs_summary,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
@@ -66,32 +66,21 @@ logger = logging.getLogger("propeller_agent")
 
 # ---------------------------------------------------------------------------
 # Utility tool schemas (actual I/O handled by UserInputInspector)
+#
+# ``read_user_inputs``'s doc + builder + summary logic live in
+# ``agents/shared/user_inputs_tool.py`` since the Planner binds the same
+# tool (2026-08-22); the UII keeps its stub-plus-handler flow.
 # ---------------------------------------------------------------------------
-
-_READ_INPUTS_DOC = (
-    "Read a user-inputs directory: TEXT plus a LIST of its images (it does "
-    "NOT load the images themselves).\n\n"
-    "Pass the absolute path of the inputs directory supplied in your hand-off "
-    "under the ``Input directory:`` label (do NOT guess).  The output is a "
-    "summary plus the concatenated contents of all text/JSON files — "
-    "including every image's ``_note.txt`` — followed by a list of the "
-    "reference images present with their paths.  To actually SEE an image "
-    "(and get its OCR-recognised text: dimension callouts, labels), call "
-    "``view_images`` with the path(s) you need."
-)
 
 
 def _build_read_user_inputs():
-    """Build the ``read_user_inputs`` tool.
+    """Build the UII's ``read_user_inputs`` stub.
 
     Returns text + an image LIST only; the real work happens in
     ``_handle_read_inputs_tool``.  Images (and their OCR) are loaded on
     demand via ``view_images``.
     """
-    def _impl(path: str) -> str:
-        return ""  # handled by _handle_read_inputs_tool
-    _impl.__doc__ = _READ_INPUTS_DOC
-    return tool("read_user_inputs")(_impl)
+    return build_read_user_inputs()
 
 
 @tool
@@ -147,17 +136,19 @@ class UserInputInspector(BaseChainAgent):
         """Bind the UII's utility + routing tools."""
         self._extra_utility_tools_by_name = {
             calculate.name: calculate,
-            list_attempts.name: list_attempts,
-            read_attempt.name: read_attempt,
         }
         # Which of the three database tools this agent holds is a
         # per-(profile, agent, tool) decision; dba_tools_for owns it.
         for _dba_tool in dba_tools_for("user_input_inspector"):
             self._extra_utility_tools_by_name[_dba_tool.name] = _dba_tool
+        # No text-file tools: ``read_user_inputs`` already reads every
+        # text file at once (image notes included) and lists the image
+        # paths, so only ``view_images`` (+ ``ocr_regions`` when OCR is
+        # on) come from the shared builder.
         all_tools = (
             [self._read_tool, self._write_tool]
             + list(self._extra_utility_tools_by_name.values())
-            + build_user_inputs_tools(self.AGENT_KEY)
+            + build_user_inputs_tools(self.AGENT_KEY, include_text_tools=False)
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)
@@ -312,74 +303,28 @@ class UserInputInspector(BaseChainAgent):
     def _handle_read_inputs_tool(self, tc: dict) -> None:
         """Load everything in the requested directory and feed it to the LLM."""
         raw_path = tc.get("args", {}).get("path")
-        summary_parts: list[str] = []
-        image_paths: list[str] = []
 
+        # Workflow setting (block #18) lets the developer filter the
+        # prior extracted_inputs.txt out of the bundle when they suspect
+        # the UII is carrying stale state forward despite the prompt's
+        # "do not copy forward" rule.  Read disk-fresh per the standard
+        # workflow_settings pattern.
+        exclude_root: tuple[str, ...] = ()
+        if not workflow_settings.UII_MAY_READ_PREVIOUS_EXTRACTION:
+            exclude_root = ("extracted_inputs.txt",)
+        summary = read_user_inputs_summary(
+            raw_path,
+            self.provider,
+            exclude_root_files=exclude_root,
+            can_view_images=True,
+        )
         if not raw_path or not isinstance(raw_path, str):
+            # Keep the UII-specific pointer at its hand-off label.
             summary = (
                 "Error: no directory path provided.  Call this tool with "
                 "the absolute path supplied in your hand-off under the "
                 "'Input directory:' label."
             )
-        else:
-            directory = Path(raw_path)
-            if not directory.is_dir():
-                summary = (
-                    f"Error: '{raw_path}' is not an existing directory.  "
-                    f"Do not retry with a guessed path."
-                )
-            else:
-                # Workflow setting (block #18) lets the developer
-                # filter the prior extracted_inputs.txt out of the
-                # bundle when they suspect the UII is carrying stale
-                # state forward despite the prompt's "do not copy
-                # forward" rule.  Read disk-fresh per the standard
-                # workflow_settings pattern.
-                exclude_root: tuple[str, ...] = ()
-                if not workflow_settings.UII_MAY_READ_PREVIOUS_EXTRACTION:
-                    exclude_root = ("extracted_inputs.txt",)
-                # Images are NOT loaded here — the UII loads the specific
-                # image(s) it needs on demand via view_images (which
-                # also runs OCR per image).  read_user_inputs stays cheap:
-                # text + notes + a list of the images present.
-                loaded = load_user_inputs_bundle(
-                    directory,
-                    self.provider,
-                    include_image_bytes=False,
-                    exclude_root_files=exclude_root,
-                )
-                image_paths = loaded["image_paths"]
-                pairing = loaded["pairing"]
-                summary_parts.append(
-                    f"Loaded inputs from {directory.resolve()}."
-                )
-                summary_parts.append(f"Files: {loaded['summary']}")
-                if not pairing["ok"]:
-                    summary_parts.append(
-                        "WARNING: image+note pairing is INVALID.  "
-                        "The Receptionist should have caught this — "
-                        "ESCALATE so the user can be asked to fix the "
-                        "uploads.  Pairing report:\n" + pairing["report"]
-                    )
-                if loaded["text_content"]:
-                    summary_parts.append(
-                        "--- File contents ---\n" + loaded["text_content"]
-                    )
-                else:
-                    summary_parts.append("(no text or JSON files found)")
-                if image_paths:
-                    listing = "\n".join(
-                        f"  - {Path(p).name}   (path: {p})"
-                        for p in image_paths
-                    )
-                    summary_parts.append(
-                        f"{len(image_paths)} reference image(s) are available "
-                        f"but NOT loaded here (their notes are in the file "
-                        f"contents above).  To SEE an image and get its OCR "
-                        f"text, call view_images with the path(s) you "
-                        f"need:\n" + listing
-                    )
-                summary = "\n\n".join(summary_parts)
 
         log_tool_call(
             "user_input_inspector", tc["name"], tc.get("args"), summary,

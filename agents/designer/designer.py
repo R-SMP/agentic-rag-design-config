@@ -20,7 +20,7 @@ gradient the benchmark exists to measure: independent (7) -> self-check
 Tools are the union of both parents, minus one deliberate omission:
   * from the DCIC - ``read_extracted_inputs``, ``write_parameters``,
     ``new_attempt`` (it remains the ONLY holder of attempt creation),
-    ``list_attempts``, ``read_attempt``, ``calculate``;
+    ``read_attempts``, ``calculate``;
   * from the Tool Caller - ``read_parameters``, the geometry generators
     from ``get_tools()``, and ``render_blade_sections`` when the
     visualizer toggle is on;
@@ -43,7 +43,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
-from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
+from agents.shared.attempts_tool import new_attempt, read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
@@ -174,8 +174,7 @@ class Designer(BaseChainAgent):
         CLARIFY and ESCALATE go to the Architect via the same tool.
         """
         self._extra_utility_tools_by_name = {
-            list_attempts.name: list_attempts,
-            read_attempt.name: read_attempt,
+            read_attempts.name: read_attempts,
             new_attempt.name: new_attempt,
             calculate.name: calculate,
         }

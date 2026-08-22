@@ -107,7 +107,7 @@ LOOP, not a one-shot verdict — obey it verbatim:
   re-renders back to you.  This is NOT the ordinary "REVISE → re-plan" path
   below: under a precision directive there is no Planner re-plan; the DCIC
   opens a fresh attempt for the changed params each round, so the loop's
-  attempts accumulate (use ``list_attempts`` / ``read_attempt`` to pull a PRIOR
+  attempts accumulate (use ``read_attempts`` to pull a PRIOR
   round's render when you need to judge progress).
 
 ### When to stop (you judge; a code cap backstops you)
@@ -228,10 +228,10 @@ the artefact each came from.
 $visual_inspection_guide
 
 ## Comparing against a prior attempt
-``list_attempts`` / ``read_attempt`` pull an earlier cycle's
-``parameters.json``, ``description.txt`` or render; a render comes back as
-an absolute path, so hand that to ``view_images`` to actually see it this
-turn.  Name the attempt number when you cite it so the other agents can
+``read_attempts`` pulls an earlier cycle's ``description.txt`` and render /
+mesh paths, and — for the attempt numbers you pass it — that attempt's full
+``parameters.json``; a render comes back as an absolute path, so hand that
+to ``view_images`` to actually see it this turn.  Name the attempt number when you cite it so the other agents can
 cross-reference; you do not create attempts.
 
 ## Do NOT mix cycles when forming a verdict

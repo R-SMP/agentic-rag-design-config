@@ -28,9 +28,10 @@ INPUT_IMAGES_SUBDIR = "input_images"
 
 from agents.shared import prompts as P
 from agents.shared.dba_tools import dba_tools_for
-from agents.shared.attempts_tool import list_attempts, read_attempt, new_attempt
+from agents.shared.attempts_tool import new_attempt, read_attempts
+from agents.shared.dc_params_tool import dc_params_list
 from agents.shared.user_inputs_tool import (
-    build_user_inputs_tools, read_input_text,
+    READ_INPUTS_DOC_PLANNER, build_read_user_inputs, build_user_inputs_tools,
 )
 from agents.shared.history_tool import build_read_agent_history_tool
 from agents.shared.routing_tools import build_routing_tool
@@ -160,8 +161,8 @@ def tools_for(agent):
     if agent == "receptionist":
         routing = [build_read_agent_history_tool(lambda *a, **k: []),
                    rt("receptionist", "orchestrator")]
-        return (list(routing) + [calculate, list_attempts, read_attempt,
-                                 read_input_text, visualize_3d_model,
+        return (list(routing) + [calculate, read_attempts,
+                                 visualize_3d_model,
                                  propose_attempt]
                 + dba_tools_for("receptionist"))
 
@@ -172,7 +173,7 @@ def tools_for(agent):
              rt("orchestrator", "tool_caller"),
              rt("orchestrator", "dc_output_inspector"),
              rt("orchestrator", "receptionist"),
-             calculate, list_attempts, read_attempt, new_attempt,
+             read_attempts, dc_params_list,
              build_read_agent_history_tool(lambda *a, **k: [])]
         t.extend(dba_tools_for("orchestrator"))
         if DCII_ON:
@@ -185,16 +186,17 @@ def tools_for(agent):
                     rt("planner", "orchestrator")] if not PF else
                    [rt("planner", "user_input_inspector"),
                     rt("planner", "orchestrator")])
-        t = ([PLAN.read_user_queries, PLAN.read_extracted_inputs, calculate]
+        t = ([build_read_user_inputs(doc=READ_INPUTS_DOC_PLANNER,
+                                     direct_provider="openai"),
+              PLAN.read_extracted_inputs, calculate]
              + [build_read_agent_history_tool(lambda *a, **k: [])]
-             + [list_attempts, read_attempt]
-             + build_user_inputs_tools("planner")
+             + [read_attempts, dc_params_list]
              + routing)
         t.extend(dba_tools_for("planner"))
         return t
 
     if agent == "user_input_inspector":
-        extra = [calculate, list_attempts, read_attempt]
+        extra = [calculate]
         extra += dba_tools_for("user_input_inspector")
         routing = ([rt("user_input_inspector", "planner"),
                     rt("user_input_inspector", "orchestrator")] if not PF else
@@ -203,11 +205,12 @@ def tools_for(agent):
                     rt("user_input_inspector", "orchestrator")])
         return ([UII_M._build_read_user_inputs(), UII_M.write_extraction]
                 + extra
-                + build_user_inputs_tools("user_input_inspector")
+                + build_user_inputs_tools("user_input_inspector",
+                                          include_text_tools=False)
                 + routing)
 
     if agent == "dc_input_creator":
-        extra = [list_attempts, read_attempt, new_attempt, calculate]
+        extra = [read_attempts, new_attempt, calculate]
         extra += dba_tools_for("dc_input_creator")
         routing = [rt("dc_input_creator",
                       "dc_input_inspector" if DCII_ON else "tool_caller"),
@@ -223,7 +226,7 @@ def tools_for(agent):
                 + routing)
 
     if agent == "dc_input_inspector":
-        extra = [calculate, list_attempts, read_attempt]
+        extra = [calculate, read_attempts]
         extra += dba_tools_for("dc_input_inspector")
         routing = [rt("dc_input_inspector", "tool_caller"),
                    rt("dc_input_inspector", "dc_input_creator"),
@@ -234,7 +237,7 @@ def tools_for(agent):
                 + routing)
 
     if agent == "tool_caller":
-        utility = list(get_tools()) + [list_attempts, read_attempt]
+        utility = list(get_tools()) + [read_attempts]
         utility += dba_tools_for("tool_caller")
         if blade_sections_access.is_enabled():
             utility.append(render_blade_sections)
@@ -245,7 +248,7 @@ def tools_for(agent):
         return [TC_M.read_parameters] + utility + routing
 
     if agent == "dc_output_inspector":
-        extra = [list_attempts, read_attempt, calculate]
+        extra = [read_attempts, calculate]
         extra += dba_tools_for("dc_output_inspector")
         routing = [rt("dc_output_inspector", "tool_caller"),
                    rt("dc_output_inspector", "orchestrator")]
