@@ -1,10 +1,13 @@
 """Persisted state for the "Database options" panel.
 
 Stores the 3-way database-mode toggle (Text-only / single-vector
-multimodal / late-interaction multimodal).  This RECORDS the operator's
-choice only — at this phase nothing in the chain reads it to route
-reads or writes (the multimodal `chunks_mm` table is dual-written on
-every save regardless; see architecture doc §6.3).
+multimodal / late-interaction multimodal).  ``database_search`` reads it
+to route READS — see ``_resolve_search_backend``, which maps
+``single-vector-multimodal`` to the Voyage ``chunks_mm`` table and every
+other mode to the text ``chunks`` table.  WRITES are unaffected:
+``chunks_mm`` is dual-written on every save whatever the mode
+(architecture doc §6.3), so flipping the toggle never leaves the other
+table stale.
 
 Mirrors the read/write shape of ``workflow_settings/database_access.py``
 and ``db_search_ignore_list.py``: a small JSON file + atomic writes +
@@ -37,7 +40,7 @@ VALID_MODES: tuple[str, ...] = (
     MODE_SINGLE_VECTOR,
     MODE_LATE_INTERACTION,
 )
-DEFAULT_MODE = MODE_TEXT_ONLY
+DEFAULT_MODE = MODE_SINGLE_VECTOR
 
 
 def _read_raw() -> dict:
