@@ -20,7 +20,10 @@ import math
 
 from PIL import Image, ImageDraw, ImageFont
 
-from tools.render_blade_sections.sections_geom import build_section_points
+from tools.render_blade_sections.sections_geom import (
+    build_section_overlays,
+    build_section_points,
+)
 
 try:  # Pillow >= 9.1 moved the resampling enum
     _LANCZOS = Image.Resampling.LANCZOS
@@ -61,6 +64,23 @@ _FONT_LABEL = 36       # Inner / Middle / Outer name labels
 _FONT_TITLE = 29       # protractor "Angle of attack" title
 _FONT_ANGLE = 26       # per-ray angle values
 
+# Chord + camber overlay.  Magenta rather than the reference figure's red:
+# the Outer section is already drawn red, and a red mean line on a red
+# outline is unreadable -- magenta is distinct from all three section colours.
+_CHORD_COLOR = (20, 20, 20)
+_CAMBER_COLOR = (198, 12, 140)
+
+# Overlay widths in SUPERSAMPLED px -- NOT the "* _SUPERSAMPLE" convention the
+# rest of this file uses, because these are deliberately BELOW 1 final px per
+# step: 4/3 = 1.33 px chord, 5/3 = 1.67 px camber, both under the 2 px section
+# outline.  The chord is the thinner of the two: it is the datum, while the
+# camber line is the curve actually being judged.  Verified legible after the
+# model-facing downscale (505 px at IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE=35).
+_CHORD_W_SS = 4
+_CAMBER_W_SS = 5
+_CAMBER_DASH = 10      # final px, scaled by ss at the call site
+_CAMBER_GAP = 6
+
 
 def _load_font(size):
     for name in ("DejaVuSans.ttf", "arial.ttf", "Arial.ttf"):
@@ -69,6 +89,31 @@ def _load_font(size):
         except Exception:
             continue
     return ImageFont.load_default()
+
+
+def _dashed(draw, pts, fill, width, dash, gap):
+    """Polyline drawn as dashes, walked by ARC LENGTH so the dash pitch is
+    uniform along a curve whose samples are not evenly spaced (the NACA mean
+    line is cos-clustered toward the leading edge)."""
+    carry, on = 0.0, True
+    for i in range(len(pts) - 1):
+        (x0, y0), (x1, y1) = pts[i], pts[i + 1]
+        seg = math.hypot(x1 - x0, y1 - y0)
+        if seg <= 0:
+            continue
+        t = 0.0
+        while t < seg:
+            step = min((dash if on else gap) - carry, seg - t)
+            if on:
+                draw.line(
+                    [(x0 + (x1 - x0) * (t / seg), y0 + (y1 - y0) * (t / seg)),
+                     (x0 + (x1 - x0) * ((t + step) / seg),
+                      y0 + (y1 - y0) * ((t + step) / seg))],
+                    fill=fill, width=width)
+            t += step
+            carry += step
+            if carry >= (dash if on else gap) - 1e-9:
+                on, carry = not on, 0.0
 
 
 def _bbox(pts):
@@ -143,11 +188,13 @@ def render_png(params, grid, out_path):
     secs = []
     for kind, label, anglekey, color in SECTIONS:
         pts = build_section_points(kind, params)
+        chord_pts, camber_pts = build_section_overlays(kind, params)
         xmin, xmax, zmin, zmax = _bbox(pts)
         secs.append({
             "label": label, "color": color, "angle": float(params[anglekey]),
             "pts": pts, "w": xmax - xmin, "h": zmax - zmin,
             "cx": (xmin + xmax) / 2.0, "cz": (zmin + zmax) / 2.0,
+            "chord": chord_pts, "camber": camber_pts,
         })
 
     # Render at SUPERSAMPLE x, then downscale (LANCZOS) for crisp antialiasing.
@@ -177,10 +224,17 @@ def render_png(params, grid, out_path):
         bh = band_h[i]
         cy = y + bh / 2.0
         s["cy"] = cy
-        s["px"] = [
-            (sec_cx + (px - s["cx"]) * ppm, cy - (pz - s["cz"]) * ppm)
-            for (px, pz) in s["pts"]
-        ]
+        # The overlays go through the SAME mapping as the airfoil, so they
+        # cannot land anywhere but on the section they describe.
+        def _to_px(seq, _s=s, _cy=cy):
+            return [
+                (sec_cx + (px - _s["cx"]) * ppm, _cy - (pz - _s["cz"]) * ppm)
+                for (px, pz) in seq
+            ]
+
+        s["px"] = _to_px(s["pts"])
+        s["chord_px"] = _to_px(s["chord"])
+        s["camber_px"] = _to_px(s["camber"])
         y += bh + gap
 
     base = Image.new("RGBA", (w, h), _BG + (255,))
@@ -200,6 +254,11 @@ def render_png(params, grid, out_path):
     font_small = _load_font(_FONT_ANGLE * ss)
     for s in secs:
         draw.line(s["px"] + [s["px"][0]], fill=s["color"], width=2 * ss, joint="curve")
+        # Chord + camber on TOP of the outline, so neither is hidden by it.
+        draw.line(s["chord_px"], fill=_CHORD_COLOR, width=_CHORD_W_SS)
+        if s["camber_px"]:
+            _dashed(draw, s["camber_px"], _CAMBER_COLOR, _CAMBER_W_SS,
+                    _CAMBER_DASH * ss, _CAMBER_GAP * ss)
         # Label in the left gutter, vertically centred on the section.
         lb = font.getbbox(s["label"])
         draw.text((margin, s["cy"] - (lb[1] + lb[3]) / 2.0), s["label"],

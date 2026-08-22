@@ -184,6 +184,31 @@ def rendered_params_block(params):
     return "\n".join(lines)
 
 
+def _placer(sp):
+    """Map a profile-space (y, z) into the placed 2D world, in mm.
+
+    ``y`` is the NACA chordwise coordinate (0 = LEADING edge, 1 = trailing)
+    and ``z`` the offset normal to the chord, both as fractions of chord.
+    The result is scaled by the chord and rotated by the angle of attack,
+    which puts the LE at +x and the TE on the left.
+
+    Extracted so the airfoil and its chord / camber overlays are placed by
+    ONE transform: a second copy would drift, and an overlay that no longer
+    lands on the section it describes is worse than no overlay at all.
+    """
+    chord = sp["chord"]
+    angle = sp["angleDeg"] * math.pi / 180.0
+    ca = math.cos(angle)
+    sa = math.sin(angle)
+
+    def place(y, z):
+        xw = (0.5 - y) * chord
+        zw = z * chord
+        return (xw * ca - zw * sa, xw * sa + zw * ca)
+
+    return place
+
+
 def build_section_points(kind, params, count_i=COUNT_I):
     """The placed 2D airfoil for ``kind`` as a list of (x, z) points in mm,
     TE on the left and rotated by the section's angle of attack (mirrors
@@ -193,14 +218,27 @@ def build_section_points(kind, params, count_i=COUNT_I):
     cam = build_camber_curve(sp["highPt"], sp["camber"])
     morphed = morph_profile_onto_camber(sym, cam)
 
-    angle = sp["angleDeg"] * math.pi / 180.0
-    ca = math.cos(angle)
-    sa = math.sin(angle)
-    chord = sp["chord"]
+    place = _placer(sp)
+    return [place(y, z) for (y, z) in morphed]
 
-    pts = []
-    for (y, z) in morphed:
-        xw = (0.5 - y) * chord
-        zw = z * chord
-        pts.append((xw * ca - zw * sa, xw * sa + zw * ca))
-    return pts
+
+def build_section_overlays(kind, params):
+    """``(chord_pts, camber_pts)`` for ``kind``, in the SAME placed world as
+    ``build_section_points``.
+
+    The chord is the straight LE-to-TE datum; the camber line is the NACA
+    mean line, whose crest is the station ``innerMaxPos`` / ``outerMaxPos``
+    sets.  Both are drawn on the render so the shape parameters are readable
+    off the picture instead of only inferable from it.
+
+    ``camber_pts`` is EMPTY when the section has no camber: the mean line
+    would then lie exactly on the chord, so drawing it would put a second
+    line on top of the first and say nothing.
+    """
+    sp = section_params(kind, params)
+    place = _placer(sp)
+    chord_pts = [place(0.0, 0.0), place(1.0, 0.0)]
+    if float(sp["camber"]) <= 0:
+        return chord_pts, []
+    return chord_pts, [place(y, z) for (y, z)
+                       in build_camber_curve(sp["highPt"], sp["camber"])]
