@@ -54,6 +54,7 @@ from agents.shared.llm_provider import (
     history_cache_control,
     make_system_message,
 )
+from agents.shared.dc_primer import dc_primer_messages
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import (
@@ -248,6 +249,7 @@ class Designer(BaseChainAgent):
             response = invoke_with_retry(
                 self.llm,
                 [make_system_message(self.system_prompt, self.provider)]
+                + dc_primer_messages(self.provider)
                 + self.messages,
                 "Designer",
                 cache_control=history_cache_control(self.provider),
