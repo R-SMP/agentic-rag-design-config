@@ -329,6 +329,15 @@ def routing_instructions(
     if "fragment" in sections:
         # The per-agent "Available routing tools" subsection comes from the
         # markdown fragment.  The fragment supplies its own ``###`` heading.
+        if "header" not in sections:
+            # The reduction drops the header block, but the fragment's
+            # ``###`` subsections still need a ``##`` parent — without one
+            # they render as part of whichever section the prompt happened
+            # to end on (the Planner's "Attempt folders", the UII's "Hard
+            # constraints — tool-specific").  Emit the bare title only: what
+            # the markup removed as duplicated is the flow string and the
+            # position bullets, now carried at the top of those prompts.
+            lines += ["## Routing", ""]
         lines.append(_load_routing_fragment(fragment_name))
 
     if "loop" in sections:
