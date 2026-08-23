@@ -33,6 +33,12 @@ extra_utilities/
 │                          the owner's PDF markup of the Receptionist / Orchestrator /
 │                          Planner / UII prompts, as file+line changes.  §0.1 FIRST:
 │                          its paths are the pre-promotion layout.
+├── prompt_reduction_3agents_changes.md
+│                          round 2 of the same review — DCIC / DCII / Tool Caller,
+│                          plus four changes that apply to ALL 9 agents.  Anchored to
+│                          the CURRENT tree, so no path translation.
+├── round2_annotations.json  the raw round-2 highlights; apply from THIS, not from the
+│                          spec's tables
 │
 ├── smoke_test_*.py           32 hand-run scripts (see SMOKE_TESTS.md)
 ├── check_mesh_components.py  .obj diagnostic
