@@ -28,7 +28,7 @@ INPUT_IMAGES_SUBDIR = "input_images"
 
 from agents.shared import prompts as P
 from agents.shared.dba_tools import dba_tools_for
-from agents.shared.attempts_tool import new_attempt, read_attempts
+from agents.shared.attempts_tool import read_attempts
 from agents.shared.dc_params_tool import dc_params_list
 from agents.shared.user_inputs_tool import (
     READ_INPUTS_DOC_PLANNER, build_read_user_inputs, build_user_inputs_tools,
@@ -47,7 +47,6 @@ import agents.user_input_inspector.user_input_inspector as UII_M
 import agents.dc_input_creator.dc_input_creator as DCIC_M
 import agents.dc_input_inspector.dc_input_inspector as DCII_M
 import agents.dc_output_inspector.dc_output_inspector as DCOI_M
-import agents.tool_caller.tool_caller as TC_M
 from agents.database_handler import dh_tools, batch_tools
 
 DCII_ON = bool(S.DC_INSPECTOR_ENABLED)
@@ -210,7 +209,7 @@ def tools_for(agent):
                 + routing)
 
     if agent == "dc_input_creator":
-        extra = [read_attempts, new_attempt, calculate]
+        extra = [read_attempts, calculate]
         extra += dba_tools_for("dc_input_creator")
         routing = [rt("dc_input_creator",
                       "dc_input_inspector" if DCII_ON else "tool_caller"),
@@ -219,10 +218,8 @@ def tools_for(agent):
                    rt("dc_input_creator", "orchestrator")]
         if DCII_ON:
             routing.append(rt("dc_input_creator", "tool_caller"))
-        return ([DCIC_M.read_extracted_inputs, DCIC_M.write_parameters]
+        return ([DCIC_M.read_extracted_inputs, DCIC_M.new_attempt_parameters]
                 + extra
-                + build_user_inputs_tools("dc_input_creator",
-                                          include_image_tools=False)
                 + routing)
 
     if agent == "dc_input_inspector":
@@ -231,9 +228,10 @@ def tools_for(agent):
         routing = [rt("dc_input_inspector", "tool_caller"),
                    rt("dc_input_inspector", "dc_input_creator"),
                    rt("dc_input_inspector", "orchestrator")]
-        return ([DCII_M.read_parameters, DCII_M.read_extracted_inputs]
+        return ([build_read_user_inputs(), DCII_M.read_extracted_inputs]
                 + extra
-                + build_user_inputs_tools("dc_input_inspector")
+                + build_user_inputs_tools("dc_input_inspector",
+                                          include_text_tools=False)
                 + routing)
 
     if agent == "tool_caller":
@@ -245,7 +243,7 @@ def tools_for(agent):
                    rt("tool_caller",
                       "dc_input_inspector" if DCII_ON else "dc_input_creator"),
                    rt("tool_caller", "orchestrator")]
-        return [TC_M.read_parameters] + utility + routing
+        return utility + routing
 
     if agent == "dc_output_inspector":
         extra = [read_attempts, calculate]

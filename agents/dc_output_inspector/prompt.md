@@ -12,7 +12,7 @@ must call the ``view_images`` tool, passing the full file paths
 that were given to you in the incoming message.  The paths are provided
 by the Tool Caller under a ``Render images:`` label in the ``message``
 argument of its routing call; those paths live inside the cycle's
-attempt folder, named under the same hand-off's ``Current attempt:``
+attempt folder, named under the same hand-off's ``Current attempt <N>:``
 line.
 
 Rules:
@@ -332,13 +332,11 @@ they are written into.  Do NOT ask for a re-render of the SAME attempt
 in the same breath as recommending different numbers — that render can
 only show the design you already rejected.
 
-## Hard constraints — generic (apply to every agent)
+## Hard constraints
 $hard_constraints_generic
 
-## Hard constraints — DC-specific
 $hard_constraints_dc
 
-## Hard constraints — tool-specific
 $hard_constraints_tools
 <<HAS_DBA>>
 ## Database tools

@@ -169,7 +169,9 @@ def _load_routing_fragment(fragment_name: str) -> str:
 # Section names:
 #   header         ``## Routing`` + natural-flow string + position bullets
 #   decide         ``### How to decide where to route`` (all four bullets)
-#   fragment       the per-agent "Available routing tools" markdown fragment
+#   fragment       the per-agent routing-tool markdown fragment (round 2
+#                  folded the decision bullets into its tool bullets and
+#                  dropped the "Available routing tools" heading)
 #   loop           ``### Do not loop — ESCALATE when stuck``
 #   permission     ``### Permission / authorisation issues → hub``
 #   mandatory      ``### Routing is a tool call — MANDATORY`` (all three
@@ -189,7 +191,22 @@ _ROUTING_SECTIONS_BY_AGENT: dict[str, tuple[str, ...]] = {
     # absorbed the surviving CLARIFY sentence, the forwarding rules and the
     # mandate remains, so the fragment IS the whole routing section.
     "User Input Inspector": ("fragment",),
+    # Round 2 (prompt_reduction_3agents_changes.md §A2) folded the four
+    # decision bullets into the tool bullets they describe, inside each of
+    # these fragments, and dropped every remaining sub-section.
+    "DC Input Creator": ("fragment", "mandatory_tail"),
+    "DC Input Inspector": ("fragment", "mandatory_tail"),
+    "Tool Caller": ("fragment", "mandatory_tail"),
+    "DC Output Inspector": ("fragment", "mandatory_tail"),
 }
+
+# Agents whose reduction is safe ONLY under PLANNER_FIRST=False.  Round 1
+# moved their suppressed text into the ``*_uii_first`` fragments alone, so
+# the ``*_planner_first`` variants would lose rules with nothing standing in
+# for them.  Round 2 folded the decision bullets into BOTH DC Input Creator
+# variants and into the single DCII / TC / DCOI fragments, so those four are
+# safe under either ordering.
+_PF_SENSITIVE_AGENTS = frozenset({"Planner", "User Input Inspector"})
 
 # The closing paragraph of the mandate section, split so the reduced
 # emission ("mandatory_tail") and the full section stay byte-identical to
@@ -227,7 +244,9 @@ def _sections_for(agent_name: str) -> tuple[str, ...]:
     """
     from agents.shared.prompts import PLANNER_FIRST
 
-    if _topology.topology() != 7 or PLANNER_FIRST:
+    if _topology.topology() != 7:
+        return _ROUTING_SECTIONS_DEFAULT
+    if PLANNER_FIRST and agent_name in _PF_SENSITIVE_AGENTS:
         return _ROUTING_SECTIONS_DEFAULT
     return _ROUTING_SECTIONS_BY_AGENT.get(
         agent_name, _ROUTING_SECTIONS_DEFAULT,
@@ -337,7 +356,8 @@ def routing_instructions(
             # constraints — tool-specific").  Emit the bare title only: what
             # the markup removed as duplicated is the flow string and the
             # position bullets, now carried at the top of those prompts.
-            lines += ["## Routing", ""]
+            # Round 2 §A2 titles the merged section ``## ROUTING``.
+            lines += ["## ROUTING", ""]
         lines.append(_load_routing_fragment(fragment_name))
 
     if "loop" in sections:

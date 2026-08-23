@@ -1,14 +1,16 @@
 """DC Input Inspector agent — validates DC parameters against requirements.
 
-Stateful agent.  Receives a hand-off from the DC Input Creator that
-carries two absolute paths (the parameters file and the extracted-
-inputs file).  The DCII then calls TWO utility tools:
+Stateful agent.  Receives a hand-off from the DC Input Creator naming
+the attempt it authored.  Its readers are:
 
-1. ``read_parameters(path)`` loads the parameter JSON written by the
-   DC Input Creator.
-2. ``read_extracted_inputs(path)`` loads the structured extraction
-   written by the User Input Inspector (relayed through the DCIC's
-   hand-off).
+1. ``read_extracted_inputs(path)`` — the structured extraction written
+   by the User Input Inspector (relayed through the DCIC's hand-off).
+   This is the primary reader: axis 4 is the consistency check between
+   the parameters and that extraction.
+2. ``read_attempts(n)`` — the attempt's own ``parameters.json``.
+3. ``read_user_inputs(path)`` — the raw user inputs (every text file at
+   once, plus the list of image paths) when the extraction is not
+   enough.
 
 This agent is optional and can be skipped at setup time.  When it is
 enabled, it sits between DC Input Creator and Tool Caller in the
@@ -50,8 +52,11 @@ from agents.shared.routing_tools import (
 )
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
+    READ_INPUTS_DOC_DCII,
+    build_read_user_inputs,
     build_user_inputs_tools,
     dispatch_user_inputs_tool,
+    read_user_inputs_summary,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
@@ -65,17 +70,6 @@ logger = logging.getLogger("propeller_agent")
 # ---------------------------------------------------------------------------
 # Utility tool schemas (actual I/O handled by DCInputInspector)
 # ---------------------------------------------------------------------------
-
-@tool
-def read_parameters(path: str) -> str:
-    """Read the parameter JSON written by the DC Input Creator.
-
-    Pass the absolute path supplied by the DCIC under the
-    ``Parameters file:`` label.  Returns the file content as text (the
-    JSON is not parsed — you read it directly).  Do NOT call this tool
-    with a guessed path."""
-    return ""  # Actual read is performed by _handle_read_parameters_tool.
-
 
 @tool
 def read_extracted_inputs(path: str) -> str:
@@ -109,7 +103,7 @@ class DCInputInspector(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        self._read_params_tool = read_parameters
+        self._read_inputs_tool = build_read_user_inputs(doc=READ_INPUTS_DOC_DCII)
         self._read_extraction_tool = read_extracted_inputs
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
@@ -130,9 +124,10 @@ class DCInputInspector(BaseChainAgent):
         for _dba_tool in dba_tools_for("dc_input_inspector"):
             self._extra_utility_tools_by_name[_dba_tool.name] = _dba_tool
         all_tools = (
-            [self._read_params_tool, self._read_extraction_tool]
+            [self._read_inputs_tool, self._read_extraction_tool]
             + list(self._extra_utility_tools_by_name.values())
-            + build_user_inputs_tools(self.AGENT_KEY)
+            + build_user_inputs_tools(self.AGENT_KEY,
+                                      include_text_tools=False)
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)
@@ -202,8 +197,8 @@ class DCInputInspector(BaseChainAgent):
                         )
                         return stuck_escalation("DC Input Inspector", name)
                     seen_sigs.add(sig)
-                if name == "read_parameters":
-                    self._handle_read_parameters_tool(tc)
+                if name == "read_user_inputs":
+                    self._handle_read_inputs_tool(tc)
                     continue
                 if name == "read_extracted_inputs":
                     self._handle_read_extraction_tool(tc)
@@ -272,14 +267,13 @@ class DCInputInspector(BaseChainAgent):
     # Read handlers
     # ------------------------------------------------------------------
 
-    @generic_tool("Read parameters")
-    def _handle_read_parameters_tool(self, tc: dict) -> None:
-        """Read parameters.json at the supplied path and feed it to the LLM."""
-        summary = _read_file_at_path(
+    @generic_tool("Read user inputs")
+    def _handle_read_inputs_tool(self, tc: dict) -> None:
+        """Read the whole user-inputs directory (text + image list)."""
+        summary = read_user_inputs_summary(
             tc.get("args", {}).get("path"),
-            missing_label="Parameters file",
-            content_label="DC Parameters",
-            validate_json=True,
+            getattr(self, "provider", "openai"),
+            can_view_images=True,
         )
         log_tool_call(
             "dc_input_inspector", tc["name"], tc.get("args"), summary,

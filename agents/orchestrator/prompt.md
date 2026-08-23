@@ -93,17 +93,18 @@ their job well.  Concrete guidance:
   JSON, full extractions) lives on disk — reference it, don't
   paste it.
 
-### Attempt folders and ``Current attempt:`` propagation
+### Attempt folders and ``Current attempt <N>:`` propagation
 The **DCIC creates the attempt folder** for each new generation.  The
 Planner names the slug + intent.
 
 Hand-offs YOU originate for an active cycle MUST carry the
 labels the recipient's tools need.  For <<DCII_ONLY>>``call_dc_input_inspector``, <</DCII_ONLY>>``call_tool_caller``
-or ``call_dc_output_inspector``, include ``Current attempt: <absolute
+or ``call_dc_output_inspector``, include ``Current attempt <N>: <absolute
 path>`` — and for ``call_tool_caller`` also ``Parameters file: <Current
 attempt>/parameters.json`` (the Tool Caller ESCALATEs without both).  A
 ``call_dc_input_creator`` hand-off for a NEW generation carries NO
-``Current attempt:``.
+``Current attempt <N>:``.  ``<N>`` is that attempt's number — the integer
+in its folder name, which ``read_attempts`` takes.
 
 ## Preserving user directives in hand-offs (HARD)
 
@@ -157,7 +158,7 @@ for:
 - **Still iterating (REVISE — a shape change)** — relay the DCOI's free-form
   visual-gap description **straight to the DC Input Creator**
   (``call_dc_input_creator``), NOT to the Planner.  The shape params are
-  CHANGING, so this is a new generation: pass NO ``Current attempt:``.
+  CHANGING, so this is a new generation: pass NO ``Current attempt <N>:``.
 - **Finalizing (APPROVE, or a Plateau / model-ceiling report)** — this
   is end-of-cycle: fall back to the normal path and call the **Planner** as
   FINAL APPROVER (below).
@@ -263,10 +264,9 @@ upstream exchanges, and name authorship when you relay a directive.
 Passing on the Receptionist's context, quoting an agent's decision, or
 explaining where a change originated is your job, not a violation.
 
-## Hard constraints — generic (apply to every agent)
+## Hard constraints
 $hard_constraints_generic
 
-## Hard constraints — tool-specific
 $hard_constraints_tools
 
 ## Your tools

@@ -156,13 +156,11 @@ Mechanics are in each tool's schema.  What is not:
 - ``view_images`` — also use it to re-load an image whose bytes a hand-off
   stripped.
 
-## Hard constraints — generic (apply to every agent)
+## Hard constraints
 $hard_constraints_generic
 
-## Hard constraints — DC-specific
 $hard_constraints_dc
 
-## Hard constraints — tool-specific
 $hard_constraints_tools
 <<HAS_DBA>>
 ## Searching past saved sessions

@@ -695,6 +695,10 @@ SCOPED_FRAGMENTS: dict[str, tuple[str, str]] = {
     "pipeline_flow":            ("generic", "pipeline_flow.md"),
     "value_states":             ("generic", "value_states.md"),
     "dc_structure":             ("dc", "dc_config/structure.md"),
+    # Round 2 (prompt_reduction_3agents_changes.md §C1.1 / §C3.1).
+    "modelling_notes":          ("dc", "dc_config/modelling_notes.md"),
+    "qualitative_examples":     ("dc", "dc_config/qualitative_examples.md"),
+    "tool_inventory":           ("dc", "tools_config/tool_inventory.md"),
     # Do NOT register ``blade_sections_visualizer``: its scoped name for the
     # Planner would collide with the existing per-agent OVERLAY file
     # ``blade_sections_visualizer_planner.md``, which feeds the different

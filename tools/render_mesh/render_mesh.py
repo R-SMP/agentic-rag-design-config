@@ -33,7 +33,7 @@ _RENDER_NAMES = ("render_isometric.png", "render_top.png", "render_side.png")
 def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
     """Resolve and validate an attempt folder for writing renders.
 
-    The folder must exist (created by ``new_attempt``) and live under
+    The folder must exist and live under
     ``attempts/``.  Pre-existing render PNGs are NOT an error — the
     caller reuses them in place (identical parameters give identical
     geometry, so re-running this tool needs no new attempt).
@@ -42,14 +42,14 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
         return None, (
             "Error: missing or non-string 'output_dir'.  Pass the "
             "absolute path of the attempt folder created by "
-            "``new_attempt`` (the same path the hand-off carries "
+            "the attempt folder (the same path the hand-off carries "
             "under ``Current attempt:``)."
         )
     path = Path(raw).resolve()
     if not path.is_dir():
         return None, (
             f"Error: '{raw}' is not an existing directory.  Create the "
-            f"attempt folder first via ``new_attempt`` and pass its "
+            f"attempt folder first and pass its "
             f"absolute path."
         )
     try:

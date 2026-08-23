@@ -71,7 +71,7 @@ def visualize_3d_model(obj_path: str) -> str:
 
     # Caption the viewer with the attempt number when the mesh lives
     # inside a canonical ``YYYYMMDD_HHMMSS_NNN_<slug>`` attempt folder
-    # (the standard layout produced by ``new_attempt``).  ``None`` when
+    # (the standard attempt-folder layout).  ``None`` when
     # the mesh sits outside such a folder — viewer.js silently hides
     # the badge then.
     attempt_label = attempt_label_for_path(target)

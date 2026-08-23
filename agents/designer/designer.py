@@ -78,7 +78,6 @@ from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
 from agents.step_caps import MAX_DESIGNER_STEPS
 from config import ATTEMPTS_DIR
-from agents.tool_caller.tool_caller import read_parameters
 from tools import get_render_library, get_tools
 from tools.calculate.calculate import calculate
 from tools.generate_mesh.generate_mesh import (
@@ -91,6 +90,21 @@ from agents.shared.dba_tools import dba_tools_for
 from workflow_settings import blade_sections_access
 
 logger = logging.getLogger("propeller_agent")
+
+
+# Round 2 of the prompt reduction removed ``read_parameters`` from the
+# 7-agent Tool Caller (prompt_reduction_3agents_changes.md §B3), which is
+# where the Designer used to import it from.  The 3-agent topology is out of
+# scope for that reduction, so it keeps its own copy — the same pattern the
+# Creator and the DC Input Creator already use for ``write_parameters``.
+@tool
+def read_parameters(path: str) -> str:
+    """Read the parameter JSON.
+
+    Pass the absolute path supplied by the previous agent under the
+    ``Parameters file:`` label.  Returns the file content as text.  Do
+    NOT call this tool with a guessed path."""
+    return ""  # Actual read is performed by _handle_read_parameters_tool.
 
 
 # ---------------------------------------------------------------------------

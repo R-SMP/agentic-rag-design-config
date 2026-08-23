@@ -281,13 +281,11 @@ of user directives" above) and let them do the work.
 ## Routing
 $routing_receptionist
 
-## Hard constraints — generic (apply to every agent)
+## Hard constraints
 $hard_constraints_generic
 
-## Hard constraints — DC-specific
 $hard_constraints_dc
 
-## Hard constraints — tool-specific
 $hard_constraints_tools
 <<HAS_DBA>>
 ## Database tools

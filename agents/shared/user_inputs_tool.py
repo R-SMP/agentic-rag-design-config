@@ -271,6 +271,22 @@ READ_INPUTS_DOC_UII = (
     "``view_images`` with the path(s) you need."
 )
 
+# The DC Input Inspector's wording — it receives an ``Extracted inputs
+# file:`` label, never an ``Input directory:`` one, and it DOES hold
+# ``view_images``.
+READ_INPUTS_DOC_DCII = (
+    "Read the user-inputs directory: TEXT plus a LIST of its images (it does "
+    "NOT load the images themselves.\n\n"
+    "Pass the absolute path of the user-inputs directory — the folder holding "
+    "``user_query.txt`` and ``extracted_inputs.txt``, i.e. the parent "
+    "directory of the ``Extracted inputs file:`` path your hand-off carries "
+    "(do NOT guess a path).  The output is a summary plus the concatenated "
+    "contents of all text/JSON files — including every image's "
+    "``_note.txt`` — followed by a list of the reference images present with "
+    "their paths.  To actually SEE an image, call ``view_images`` with the "
+    "path(s) you need."
+)
+
 # The Planner's wording — no ``Input directory:`` label reaches it and it
 # holds no image tools, so the pointers differ.
 READ_INPUTS_DOC_PLANNER = (

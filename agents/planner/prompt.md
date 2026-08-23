@@ -241,10 +241,9 @@ A. **Match the remedy to the failure class.**  Content failures need
    content fixes; transport / environment failures do not.
 B. **One path per plan.**  Pick the most defensible single sequence.
 
-## Hard constraints — generic
+## Hard constraints
 $hard_constraints_generic
 
-## Hard constraints — tool-specific
 $hard_constraints_tools
 
 ## Attempt folders (``read_attempts``)

@@ -288,6 +288,30 @@ def read_attempts(attempt_numbers: list[int] | None = None) -> str:
     return "\n".join(lines)
 
 
+def create_attempt(slug: str = "attempt", description: str = ""):
+    """Create a fresh attempt folder; return ``(attempt_number, path)``.
+
+    The mechanism behind both attempt-creating tools: the ``new_attempt``
+    tool below (still bound in the 5- and 3-agent topologies) and the
+    7-agent DC Input Creator's merged ``new_attempt_parameters``, which
+    creates the folder and writes ``parameters.json`` into it in one call.
+    Raises ``OSError`` if the folder cannot be created; the caller decides
+    how to word the failure.
+    """
+    safe_slug = _sanitise_slug(slug or "attempt")
+    ATTEMPTS_DIR.mkdir(parents=True, exist_ok=True)
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    attempt_n = _next_attempt_number()
+    dest = ATTEMPTS_DIR / f"{timestamp}_{attempt_n:03d}_{safe_slug}"
+    dest.mkdir(parents=True, exist_ok=False)
+    desc_text = (description or "").strip()
+    if desc_text:
+        (dest / "description.txt").write_text(
+            desc_text + "\n", encoding="utf-8",
+        )
+    return attempt_n, dest
+
+
 @tool
 @generic_tool("Open new attempt")
 def new_attempt(slug: str = "attempt", description: str = "") -> str:
@@ -318,28 +342,23 @@ def new_attempt(slug: str = "attempt", description: str = "") -> str:
     if not isinstance(description, (str, type(None))):
         return "Error: 'description' must be a string or omitted."
 
-    safe_slug = _sanitise_slug(slug or "attempt")
-
     try:
-        ATTEMPTS_DIR.mkdir(parents=True, exist_ok=True)
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        attempt_n = _next_attempt_number()
-        dest = ATTEMPTS_DIR / f"{timestamp}_{attempt_n:03d}_{safe_slug}"
-        dest.mkdir(parents=True, exist_ok=False)
+        attempt_n, dest = create_attempt(slug, "")
     except OSError as exc:
         return f"Error creating attempt folder: {exc}"
 
-    desc_text = (description or "").strip()
-    if desc_text:
+    if (description or "").strip():
         try:
             (dest / "description.txt").write_text(
-                desc_text + "\n", encoding="utf-8",
+                (description or "").strip() + chr(10), encoding="utf-8",
             )
         except OSError as exc:
             return (
                 f"Attempt folder created at {dest.resolve()} but "
                 f"description.txt could not be written: {exc}"
             )
+
+    desc_text = (description or "").strip()
 
     return (
         f"Created attempt {attempt_n} at {dest.resolve()}."

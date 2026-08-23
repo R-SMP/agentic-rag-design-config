@@ -1,4 +1,3 @@
-### Available routing tools
 - ``call_planner(message)`` — FORWARD to the Planner once
   ``extracted_inputs.txt`` is written and complete.  This is the
   natural next step in the pipeline.
