@@ -46,7 +46,9 @@ from agents.shared.prompts import (
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
+    begin_routing_retry,
     finalize_unanswered_tool_calls,
+    finish_routing_retry,
     log_tool_call,
     stuck_escalation,
     tool_call_signature,
@@ -171,6 +173,7 @@ class ToolCaller(BaseChainAgent):
         """Process one hand-off message."""
         token_usage.begin_turn("ToolCaller")
         self._pending_hop = None
+        self._routing_retry_used = False
         text = f"Hand-off from previous agent:\n{message}"
         self.messages.append(HumanMessage(content=text))
 
@@ -190,6 +193,8 @@ class ToolCaller(BaseChainAgent):
 
             if not response.tool_calls:
                 final = ai_text(response.content)
+                if begin_routing_retry(self, final, "ToolCaller"):
+                    continue
                 return AgentHop(
                     "orchestrator",
                     "Error: Tool Caller produced a response with no routing "
@@ -255,6 +260,7 @@ class ToolCaller(BaseChainAgent):
                     break
 
             if routed:
+                finish_routing_retry(self)
                 return self._pending_hop
 
         return AgentHop(

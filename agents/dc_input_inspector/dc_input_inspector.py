@@ -41,7 +41,9 @@ from agents.shared.prompts import _build_template, routing_instructions
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
+    begin_routing_retry,
     finalize_unanswered_tool_calls,
+    finish_routing_retry,
     log_tool_call,
     stuck_escalation,
     tool_call_signature,
@@ -156,6 +158,7 @@ class DCInputInspector(BaseChainAgent):
         """Process one hand-off message and return the chosen hop."""
         token_usage.begin_turn("DCII")
         self._pending_hop = None
+        self._routing_retry_used = False
         text = f"Hand-off from DC Input Creator:\n{message}"
         self.messages.append(HumanMessage(content=text))
 
@@ -176,6 +179,8 @@ class DCInputInspector(BaseChainAgent):
 
             if not response.tool_calls:
                 final = ai_text(response.content)
+                if begin_routing_retry(self, final, "DCII"):
+                    continue
                 return AgentHop(
                     "orchestrator",
                     "Error: DC Input Inspector produced a response with no "
@@ -255,6 +260,7 @@ class DCInputInspector(BaseChainAgent):
             flush_pending_image_blocks(self)
 
             if routed:
+                finish_routing_retry(self)
                 return self._pending_hop
 
         return AgentHop(

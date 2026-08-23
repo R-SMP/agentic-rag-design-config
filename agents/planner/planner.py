@@ -44,7 +44,9 @@ from agents.shared.prompts import (
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
+    begin_routing_retry,
     finalize_unanswered_tool_calls,
+    finish_routing_retry,
     log_tool_call,
 )
 from agents.shared.session import AgentState, Session
@@ -176,6 +178,7 @@ class Planner(BaseChainAgent):
         """Process one hand-off message and return the chosen hop."""
         token_usage.begin_turn("Planner")
         self._pending_hop = None
+        self._routing_retry_used = False
         self.messages.append(HumanMessage(content=message))
 
         for _ in range(MAX_PLANNER_STEPS):
@@ -192,6 +195,8 @@ class Planner(BaseChainAgent):
 
             if not response.tool_calls:
                 final = ai_text(response.content)
+                if begin_routing_retry(self, final, "Planner"):
+                    continue
                 self._persist_plan(response, pending_hop=None)
                 return AgentHop(
                     "orchestrator",
@@ -240,6 +245,7 @@ class Planner(BaseChainAgent):
             self._persist_plan(response, pending_hop=self._pending_hop)
 
             if routed:
+                finish_routing_retry(self)
                 return self._pending_hop
 
         return AgentHop(

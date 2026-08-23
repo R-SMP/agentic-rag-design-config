@@ -44,7 +44,9 @@ from workflow_settings import settings as workflow_settings
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
+    begin_routing_retry,
     finalize_unanswered_tool_calls,
+    finish_routing_retry,
     log_tool_call,
     stuck_escalation,
     tool_call_signature,
@@ -184,6 +186,7 @@ class UserInputInspector(BaseChainAgent):
         """Process one hand-off message and return the chosen hop."""
         token_usage.begin_turn("UII")
         self._pending_hop = None
+        self._routing_retry_used = False
         # The routing tool already prefixes "[Incoming from: <sender>]"
         # (routing_tools.py:311), so naming a sender here can only
         # contradict it — under PLANNER_FIRST=False the UII is called by
@@ -209,6 +212,8 @@ class UserInputInspector(BaseChainAgent):
 
             if not response.tool_calls:
                 final = ai_text(response.content)
+                if begin_routing_retry(self, final, "UII"):
+                    continue
                 return AgentHop(
                     "orchestrator",
                     "Error: User Input Inspector produced a response with no "
@@ -288,6 +293,7 @@ class UserInputInspector(BaseChainAgent):
             flush_pending_image_blocks(self)
 
             if routed:
+                finish_routing_retry(self)
                 return self._pending_hop
 
         return AgentHop(
