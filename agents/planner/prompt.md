@@ -96,6 +96,10 @@ plan format below is for recovery reasoning.
         Solution: <what to do — qualitative only, no invented numbers>
         Sequence: <Agent A> → <Agent B> → ...
         Reasoning (optional, brief): <why this path, what was ruled out>
+
+    That block is Part 1 — writing it does NOT end the turn.  Part 2 is the
+    ``call_orchestrator`` message that follows it: the agent(s) to call next
+    with one line of intent each, or what the user must be asked.
   * **APPROVE the cycle** — Part 2 to the Orchestrator naming which
     attempt(s) to show the user (number + a one-line reason) and the
     brief technical outcome the Receptionist needs.  Phrase your

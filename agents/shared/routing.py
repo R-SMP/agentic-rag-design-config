@@ -222,6 +222,21 @@ _MANDATORY_TAIL = (
 )
 
 
+# Restored 2026-08-23 for the agents whose reduction dropped the full
+# mandate section: the requirement itself now sits one line above the
+# tool list instead of ~80 lines away in the generic constraints.  The
+# 2026-08-22 runs showed a chain agent writing a complete plan and then
+# stopping, with no statement nearby that a routing call ends the turn.
+# Emitted ONLY on the reduced path -- an agent that still receives the
+# full "mandatory" section already states this in its first paragraph,
+# and the elif below keeps the two mutually exclusive.
+_MANDATORY_LINE_REDUCED = (
+    "Every turn MUST end by invoking exactly one of the routing tools "
+    "above.  Reasoning text alone does not hand off — the turn is not "
+    "complete until the tool call is made."
+)
+
+
 def _sections_for(agent_name: str) -> tuple[str, ...]:
     """Which routing sections *agent_name* gets in the ACTIVE configuration.
 
@@ -422,6 +437,6 @@ def routing_instructions(
             "(one or two lines is plenty).",
         ]
     elif "mandatory_tail" in sections:
-        lines += ["", _MANDATORY_TAIL]
+        lines += ["", _MANDATORY_LINE_REDUCED, "", _MANDATORY_TAIL]
 
     return "\n".join(lines)
