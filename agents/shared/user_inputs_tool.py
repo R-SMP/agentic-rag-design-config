@@ -114,36 +114,83 @@ def read_image_notes() -> str:
     return ""  # handled by dispatch_user_inputs_tool
 
 
-_VIEW_IMAGES_BASE_DOC = (
-    "View one or more images so you can see them — user sketches (under "
-    "``inputs/``) and/or tool-generated renders (under ``attempts/``), "
-    "interchangeably.\n\n"
-    "``paths``: a LIST of absolute image paths (``.png`` / ``.jpg`` / "
-    "``.jpeg``) obtained from ``list_input_files`` or relayed in the hand-off. "
-    "Do NOT guess or fabricate paths.  By default each image is shown "
-    "full-size as its own block; the images are attached in the next user "
-    "message, each preceded by its absolute path.\n\n"
-    "``side_by_side`` (default False): when True, up to THREE images are "
-    "merged into ONE labelled composite image so you can compare them "
-    "directly in a single frame — best for judging shape/detail.  Pass more "
-    "than 3 paths only with ``side_by_side=False``.\n\n"
-    "``layout`` (``'match_height'`` default | ``'native'``): only affects "
-    "``side_by_side`` — ``'match_height'`` scales every panel to the same "
-    "height (best for comparing shapes at a matched scale); ``'native'`` "
-    "keeps native pixels.\n\n"
-    "``crop_regions`` (OPTIONAL): a list aligned by index with ``paths``; "
-    "each entry is a COARSE crop box ``[x0, y0, x1, y1]`` as fractions in "
-    "0..1 (or ``null`` for no crop), so a large sketch is cropped to its "
-    "relevant part before viewing or comparing.  These are picture crops, "
-    "unrelated to the numbered TEXT regions OCR reports.  The User Input "
-    "Inspector identifies them from the raw images and records them in the "
-    "extraction's ``USEFUL INPUT IMAGES`` section; other agents (e.g. the "
-    "DC Output Inspector comparing blade sections) REUSE a recorded crop "
-    "region when it helps.  Prefer a recorded or handed-off crop region "
-    "over one you derive yourself."
+# ``view_images``' path-source clause, per agent.  The default names
+# ``list_input_files``; the agents built with ``include_text_tools=False``
+# do NOT bind it, so each of those names the readers it actually holds.
+# In the live 7-agent system that is EVERY binder of ``view_images`` -- the
+# default is reached only by the dormant 5-agent Creator and the 3-agent
+# Architect, which do bind ``list_input_files``.
+# Prepositional like the per-agent ones below, so it reads correctly both
+# spliced into the schema sentence and after "Get valid paths" in the
+# bad-argument errors.  ("obtained from ...", the pre-2026-08-25 wording,
+# did not.)
+_VIEW_IMAGES_PATHS_DEFAULT = (
+    "from ``list_input_files``, or relayed in the hand-off"
 )
 
-_VIEW_IMAGES_OCR_DOC = _VIEW_IMAGES_BASE_DOC + (
+_VIEW_IMAGES_PATHS_BY_AGENT = {
+    # Runs before any render exists and binds no ``read_attempts``.
+    "user_input_inspector":
+        "from the image listing ``read_user_inputs`` returns",
+    "dc_input_inspector":
+        "from the image listing ``read_user_inputs`` returns, from "
+        "``read_attempts`` for an attempt's renders, or relayed in the "
+        "hand-off",
+    # Its usual case is this cycle's renders, named in the Tool Caller's
+    # hand-off; the extraction's ``USEFUL INPUT IMAGES`` section is NOT a
+    # path source -- it names images by filename and gives crop boxes.
+    "dc_output_inspector":
+        "from the hand-off's ``Render images:`` line, from ``read_attempts`` "
+        "for a PRIOR attempt's renders, or from the image listing "
+        "``read_user_inputs`` returns",
+}
+
+
+def _view_images_paths_clause(agent_key: str) -> str:
+    """Where *agent_key* really gets absolute image paths from."""
+    return _VIEW_IMAGES_PATHS_BY_AGENT.get(
+        agent_key, _VIEW_IMAGES_PATHS_DEFAULT)
+
+
+def _view_images_base_doc(paths_from: str) -> str:
+    """The shared ``view_images`` doc with *paths_from* spliced in.
+
+    Plain concatenation, never ``.format()``: a literal brace anywhere
+    in this text would otherwise have to be doubled, and the next
+    person to edit it would not know that.
+    """
+    return (
+        "View one or more images so you can see them — user sketches (under "
+        "``inputs/``) and/or tool-generated renders (under ``attempts/``), "
+        "interchangeably.\n\n"
+        "``paths``: a LIST of absolute image paths (``.png`` / ``.jpg`` / "
+        "``.jpeg``) " + paths_from + ". "
+        "Do NOT guess or fabricate paths.  By default each image is shown "
+        "full-size as its own block; the images are attached in the next user "
+        "message, each preceded by its absolute path.\n\n"
+        "``side_by_side`` (default False): when True, up to THREE images are "
+        "merged into ONE labelled composite image so you can compare them "
+        "directly in a single frame — best for judging shape/detail.  Pass more "
+        "than 3 paths only with ``side_by_side=False``.\n\n"
+        "``layout`` (``'match_height'`` default | ``'native'``): only affects "
+        "``side_by_side`` — ``'match_height'`` scales every panel to the same "
+        "height (best for comparing shapes at a matched scale); ``'native'`` "
+        "keeps native pixels.\n\n"
+        "``crop_regions`` (OPTIONAL): a list aligned by index with ``paths``; "
+        "each entry is a COARSE crop box ``[x0, y0, x1, y1]`` as fractions in "
+        "0..1 (or ``null`` for no crop), so a large sketch is cropped to its "
+        "relevant part before viewing or comparing.  These are picture crops, "
+        "unrelated to the numbered TEXT regions OCR reports.  The User Input "
+        "Inspector identifies them from the raw images and records them in the "
+        "extraction's ``USEFUL INPUT IMAGES`` section; other agents (e.g. the "
+        "DC Output Inspector comparing blade sections) REUSE a recorded crop "
+        "region when it helps.  Prefer a recorded or handed-off crop region "
+        "over one you derive yourself."
+    )
+
+
+# Appended to the base doc for agents whose OCR is on.
+_VIEW_IMAGES_OCR_TAIL = (
     "\n\nIf OCR is enabled, each USER image (under ``inputs/``) is also passed "
     "through an OCR engine that recognises any text written on it — dimension "
     "callouts, labels, annotations — returned here as one numbered "
@@ -156,26 +203,29 @@ _VIEW_IMAGES_OCR_DOC = _VIEW_IMAGES_BASE_DOC + (
 )
 
 
-def _build_view_images(ocr_on: bool):
+def _build_view_images(ocr_on: bool, agent_key: str = ""):
     """Build the unified ``view_images`` tool (replaces the old
     ``load_input_images`` + ``load_render_images``).
 
     The ``extract_text`` OCR flag is present ONLY when *ocr_on* is True.  The
-    real work happens in ``_handle_view_images`` via the dispatcher; this stub
-    just defines the LLM-facing schema + doc.
+    doc's path-source clause is per *agent_key* -- an agent must not be sent
+    to a reader it does not bind.  The real work happens in
+    ``_handle_view_images`` via the dispatcher; this stub just defines the
+    LLM-facing schema + doc.
     """
+    base = _view_images_base_doc(_view_images_paths_clause(agent_key))
     if ocr_on:
         def _impl(paths: list[str], side_by_side: bool = False,
                   layout: str = "match_height", crop_regions: list = None,
                   extract_text: bool = True) -> str:
             return ""  # handled by dispatch_user_inputs_tool
-        _impl.__doc__ = _VIEW_IMAGES_OCR_DOC
+        _impl.__doc__ = base + _VIEW_IMAGES_OCR_TAIL
     else:
         def _impl(paths: list[str], side_by_side: bool = False,
                   layout: str = "match_height",
                   crop_regions: list = None) -> str:
             return ""  # handled by dispatch_user_inputs_tool
-        _impl.__doc__ = _VIEW_IMAGES_BASE_DOC
+        _impl.__doc__ = base
     return tool("view_images")(_impl)
 
 
@@ -254,7 +304,7 @@ def build_user_inputs_tools(
         on = ocr_access.is_enabled_for(agent_key)
         if include_text_tools:
             tools.append(read_image_notes)
-        tools.append(_build_view_images(on))
+        tools.append(_build_view_images(on, agent_key))
         if on:
             # The text-region zoom-in tool exists only when OCR is on.
             tools.append(_build_reread_text_regions())
@@ -739,8 +789,8 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
     if not isinstance(raw_paths, list) or not raw_paths:
         summary = (
             "Error: 'paths' must be a non-empty list of absolute image paths "
-            "(user images under inputs/ or renders under attempts/).  Discover "
-            "valid paths via list_input_files or the hand-off."
+            "(user images under inputs/ or renders under attempts/).  Get "
+            "valid paths " + _view_images_paths_clause(agent_key) + "."
         )
         log_tool_call(agent_key, tc["name"], tc.get("args"), summary)
         agent.messages.append(ToolMessage(
@@ -910,7 +960,8 @@ def _handle_reread_text_regions(agent, tc: dict, agent_key: str) -> None:
     if not path.is_file() or path.suffix.lower() not in ALLOWED_IMAGE_SUFFIXES:
         _err(
             f"Error: '{raw_path}' is not an existing .png/.jpg/.jpeg "
-            f"image.  Discover valid paths via list_input_files."
+            f"image.  Get valid paths "
+            f"{_view_images_paths_clause(agent_key)}."
         )
         return
 
