@@ -37,6 +37,7 @@ import base64
 import io
 import json
 import logging
+import re
 from pathlib import Path
 
 from PIL import Image
@@ -315,11 +316,40 @@ READ_INPUTS_DOC_PLANNER = (
 )
 
 
+_TURN_HEADER_RE = re.compile(
+    r"^--- \[[^\]]{1,40}\](?:[ \t]+([A-Z]+))?[ \t]*---[ \t]*$",
+    re.MULTILINE,
+)
+
+
+def strip_turn_timestamps(text: str) -> str:
+    """Rewrite conversation headers without their date-and-time stamp.
+
+    ``user_query.txt`` records each turn as ``--- [YYYY-MM-DD HH:MM:SS]
+    USER ---`` / ``--- [...] RECEPTIONIST ---``.  The exact clock time is
+    of no use to the UII — it needs the ORDER and the SPEAKER — so the
+    header collapses to ``--- USER ---`` / ``--- RECEPTIONIST ---``.
+
+    Entries written before the role tag existed carry no role; they were
+    all user turns, so they render as ``--- USER ---``.
+
+    The file itself is never rewritten: timestamps stay on disk as
+    provenance for the Database Handler's archive, and
+    ``_parse_user_query_entries`` (the 5-agent Conductor / 3-agent
+    Architect) still splits on the original header.  This is a
+    presentation-time transform for one reader.
+    """
+    return _TURN_HEADER_RE.sub(
+        lambda m: f"--- {m.group(1) or 'USER'} ---", text,
+    )
+
+
 def read_user_inputs_summary(
     raw_path,
     provider: str = "openai",
     exclude_root_files: tuple[str, ...] = (),
     can_view_images: bool = False,
+    strip_timestamps: bool = False,
 ) -> str:
     """The ``read_user_inputs`` result text for *raw_path*.
 
@@ -328,6 +358,8 @@ def read_user_inputs_summary(
     the inputs directory.  *can_view_images* adds the "call view_images
     to SEE an image" pointer — only for an agent that actually binds
     ``view_images`` (the UII; the Planner has no image tools).
+    *strip_timestamps* collapses each conversation turn header to its
+    speaker — see :func:`strip_turn_timestamps`.
     """
     if not raw_path or not isinstance(raw_path, str):
         return (
@@ -364,9 +396,10 @@ def read_user_inputs_summary(
             "uploads.  Pairing report:\n" + pairing["report"]
         )
     if loaded["text_content"]:
-        summary_parts.append(
-            "--- File contents ---\n" + loaded["text_content"]
-        )
+        body = loaded["text_content"]
+        if strip_timestamps:
+            body = strip_turn_timestamps(body)
+        summary_parts.append("--- File contents ---\n" + body)
     else:
         summary_parts.append("(no text or JSON files found)")
     if image_paths:

@@ -3,7 +3,7 @@
 - "High-point" is the camber crest: ``innerMaxPos`` / ``outerMaxPos``, in
   tenths of chord (3 = crest at 30% chord from the leading edge).
 - ``middlePos`` is a fraction of the BLADE
-  SPAN measured from the blade root: 0 = root (the central hub, radius 4 mm), 1 = tip
+  SPAN measured from the blade root: 0 = root (the INNER BLADE SECTION, radius 4 mm), 1 = tip
   (impellerRadius), 0.5 = the blade's exact midpoint.  The middle section's actual
   radius = ``4 + middlePos·(impellerRadius − 4)`` mm — NOT ``middlePos × impellerRadius``.
   Its range [0.3, 0.7] means the middle section sits 30–70% of the way along the blade.
@@ -26,7 +26,8 @@ this propeller DC are:
     chord, rounded to an integer in [2; 8]).
   * Distance along the blade ↔ ``middlePos`` (a fraction of the blade SPAN, root→tip,
     NOT of ``impellerRadius``): ``middlePos = (r − 4) / (impellerRadius − 4)``, with
-    ``r`` the desired middle-section radius in mm and 4 mm the hub radius.
+    ``r`` the desired middle-section radius in mm and 4 mm the INNER BLADE SECTION's
+    radius — NOT the hub radius, which is 8 mm.
   * Diameter ↔ radius (the configurator parameterises only ``impellerRadius``;
     user-stated diameters convert via ``impellerRadius = diameter / 2``).
 

@@ -103,7 +103,8 @@ FOILL = "1F3A5F"
 FOILF = "E8EEF5"
 BLADE = "EFF2F6"
 BLADL = "9AA4B0"
-HUBF  = "DCE6F5"
+HUBF  = "EDEDED"      # hub fill — NEUTRAL: blue is reserved for the inner
+                      # section, and the hub is not the inner section
 WHITE = "FFFFFF"
 
 # dash patterns: name -> (on, off) in inches, plus the PowerPoint preset
@@ -165,13 +166,35 @@ SLIDE_W, SLIDE_H = 11.4, 3.80
 
 # panel A
 A_X0 = 0.20
-CX, CY = 2.48, 1.90
+CX, CY = 2.70, 1.90            # shifted right: the detail needs the left column
 R_MID = 1.33                      # impellerRadius, at the ring mid-wall
 K = R_MID / 70.0                  # inches per mm
 RING_T = 5.0                      # impellerThickness, mm
-HUB_MM = 4.0
-B1_MM, B2_MM = 4 + 0.3 * 66, 4 + 0.7 * 66
+# TWO DIFFERENT RADII, and conflating them was a real defect in the first
+# version of this drawing:
+#   HUB_MM   the hub cylinder itself (web/feg/constants.js CONSTANTS.hub).
+#   ROOT_MM  the radial station of the INNER BLADE SECTION -- 4.0 mm, from
+#            inner_profile.cs (constants.js innerRadiusFixed).  It sits
+#            INSIDE the hub, and it is the origin middlePos measures from:
+#            profiles.js:19 is `radius = 4.0 + (impellerRadius - 4.0) * t`.
+# Changing ROOT_MM here would put the drawing out of step with the geometry.
+#
+# HUB_MM is 8.0 by the owner's decision (2026-08-22), NOT the 8.28 in
+# constants.js: that value is commented "interface.cs placeholder" and the
+# hub is a cosmetic cylinder that no parameter depends on, so the round
+# number is the one worth teaching.  ROOT_MM is the opposite case -- it IS
+# load-bearing, so it tracks the code exactly and smoke_test_dc_primer
+# asserts the two stay equal.
+HUB_MM = 8.0
+ROOT_MM = 4.0
+B1_MM, B2_MM = ROOT_MM + 0.3 * 66, ROOT_MM + 0.7 * 66
 DIVIDER = 4.90
+
+# Enlarged detail of the centre, bottom-left of panel A.  At the top view's
+# own scale (K = 0.019 in/mm) the two radii are 0.15 and 0.08 inches, far too
+# close to label; the detail redraws them ~2.2x larger with both dimensioned.
+DET_CX, DET_CY = 0.72, 2.75
+DET_K = 0.34 / HUB_MM             # inches per mm inside the detail
 
 # panel B
 B_X0 = 5.05
@@ -214,7 +237,7 @@ def build():
     up, dn = [], []
     for i in range(41):
         t = i / 40.0
-        r = HUB_MM + (70 - HUB_MM) * t
+        r = ROOT_MM + (70 - ROOT_MM) * t
         c = 4.0 + 18.0 * (t ** 0.75)
         ha = math.degrees((c / 2.0) / r)
         up.append(polar(r, 90 + ha))
@@ -225,7 +248,9 @@ def build():
     s.circle((CX, CY), r_out, INK, 1.5)
     s.circle((CX, CY), r_in, INK, 1.5)
     s.circle((CX, CY), R_MID, ORANGE, 1.0, "dash")
-    s.circle((CX, CY), HUB_MM * K, BLUE, 1.25, fill=HUBF)
+    # hub (grey, solid) and the inner-section station inside it (blue, dashed)
+    s.circle((CX, CY), HUB_MM * K, GREY, 1.25, fill=HUBF)
+    s.circle((CX, CY), ROOT_MM * K, BLUE, 1.0, "short")
 
     s.line((CX - R_MID, CY), (CX + R_MID, CY), INK, 1.25,
            arrow_start=True, arrow_end=True)
@@ -251,9 +276,35 @@ def build():
     s.text(1.06, ymid - 0.01, u"middlePos 0.3–0.7", T_LAB, color=GREEN,
            anchor="r")
 
-    s.line((1.26, CY + 0.50), (CX - 0.10, CY + 0.08), BLUE, 0.75)
-    s.text(A_X0, CY + 0.44, "inner section", T_LAB, True, BLUE)
-    s.text(A_X0, CY + 0.58, "at hub (r = 4 mm)", T_LAB, color=BLUE)
+    # ---- enlarged detail: the hub is NOT the inner section ---------------
+    # Both circles are ~1 mm across in the view above, far too close to
+    # label there; drawn again here with each radius dimensioned, because
+    # the two being DIFFERENT is the single fact this corner exists for.
+    # A thin leader ties the detail back to the centre it magnifies.
+    s.line((1.02, 2.62), (CX - 0.13, CY + 0.10), FAINT, 0.75)
+    s.text(A_X0, DET_CY - 0.51, "centre, enlarged", T_ANN, color=GREY)
+    s.circle((DET_CX, DET_CY), HUB_MM * DET_K, GREY, 1.25, fill=HUBF)
+    s.circle((DET_CX, DET_CY), ROOT_MM * DET_K, BLUE, 1.25, "short")
+
+    # Each radius gets its OWN arrow from the centre, at a different angle.
+    # Both on one horizontal line read as a single 4-to-8 span instead of two
+    # radii, which is the opposite of the point.
+    def _spoke(r_mm, deg, color, label, dx, dy, anchor="l"):
+        a = math.radians(deg)
+        ex = DET_CX + r_mm * DET_K * math.cos(a)
+        ey = DET_CY - r_mm * DET_K * math.sin(a)
+        s.line((DET_CX, DET_CY), (ex, ey), color, 1.0, arrow_end=True)
+        s.text(ex + dx, ey + dy, label, T_LAB, True, color, anchor=anchor)
+
+    # 180 and -45: NOT opposite angles.  Two collinear spokes look like one
+    # arrow spanning 4 to 8, which is the opposite of what this shows.
+    _spoke(ROOT_MM, 180, BLUE, "4", -0.03, -0.13, anchor="r")
+    _spoke(HUB_MM, -45, GREY, "8", 0.02, -0.06)
+
+    # Kept SHORT: past x ~1.65 these rows run into the diameter caption.
+    s.text(A_X0, 3.16, "hub  r = 8 mm", T_LAB, True, color=GREY)
+    s.text(A_X0, 3.30, "inner section  r = 4 mm", T_LAB, True, color=BLUE)
+    s.text(A_X0, 3.44, "— inside the hub", T_ANN, color=GREY)
 
     s.text(CX, 3.34, u"Ø = 2 × impellerRadius", T_HEAD, True,
            color=ORANGE, anchor="c")

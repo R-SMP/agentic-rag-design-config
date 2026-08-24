@@ -6,6 +6,10 @@
 (The outer-ring HEIGHT is not a parameter — it is derived automatically to fit
 the outer blade section.)
 
+(The central hub is a FIXED cylinder of radius 8 mm — not a parameter.  It is
+LARGER than the blade root at r = 4 mm, so the hub hides the innermost part of
+each blade; do not confuse the two radii.)
+
 ### Inner blade section
  4. innerThickness  (% of chord)
  5. innerMaxPos     (integer, tenths of chord)
@@ -14,7 +18,8 @@ the outer blade section.)
  8. innerAngle      (degrees)
 
 ### Middle blade section
- 9. middlePos      (fraction of blade span: 0 = root at r = 4 mm, 1 = tip)
+ 9. middlePos      (fraction of blade span: 0 = root, the INNER BLADE SECTION,
+                   at r = 4 mm; 1 = tip)
 10. middleChord    (mm)
 11. middleAngle    (degrees)
 

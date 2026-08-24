@@ -31,6 +31,34 @@ im.resize((930, 309), Image.LANCZOS).save(
     optimize=True)
 ```
 
+## The hub is NOT the inner blade section
+
+Corrected 2026-08-22, after the first version labelled `r = 4 mm` "the hub".
+Two different radii:
+
+| | radius | where it comes from |
+|---|---|---|
+| hub cylinder | **8 mm** | `web/feg/constants.js` `CONSTANTS.hub` |
+| inner blade section | **4 mm** | `constants.js` `innerRadiusFixed` (`inner_profile.cs`) |
+
+The inner section sits **inside** the hub, and `r = 4 mm` — not the hub — is
+the origin `middlePos` measures from (`profiles.js:19`:
+`radius = 4.0 + (impellerRadius - 4.0) * t`).  The drawing shows the hub in
+neutral grey and the inner section as a blue dashed circle inside it, with an
+enlarged corner dimensioning both, because at the top view's own scale the two
+are about a millimetre apart on the page.
+
+`ROOT_MM` in the generator is **load-bearing** and must equal
+`innerRadiusFixed`; `smoke_test_dc_primer.py` asserts it.  `HUB_MM` is 8.0 by
+the owner's decision, deliberately *not* the 8.28 in `constants.js`: that value
+is commented "interface.cs placeholder" and the hub is a cosmetic cylinder no
+parameter depends on, so the round number is the one worth teaching.  The FEG
+preview still draws 8.28.
+
+Note the prompt fragments (`parameters.md`, `structure.md`,
+`modelling_notes.md`) carried the same conflation; correcting those is owned
+elsewhere, so this folder fixes only the diagram and its paired text block.
+
 Two rules the pipeline depends on:
 
 1. The image is deliberately **exempt from `compress_for_model`** — the

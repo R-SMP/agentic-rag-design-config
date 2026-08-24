@@ -33,8 +33,12 @@ application.
 
 ### Temporal scope — the CURRENT request
 
-``user_query.txt`` is an append-only log of every user turn.  Build the
-cumulative current state: a later turn ADDs detail, OVERRIDES a
+``user_query.txt`` is an append-only log of the whole conversation —
+each user turn under ``--- USER ---`` and the reply they were given
+under ``--- RECEPTIONIST ---``.  Only the USER turns state what is
+wanted; a RECEPTIONIST turn is context for reading them (what was
+asked, offered or already ruled out), never an input in its own right.
+Build the cumulative current state: a later turn ADDs detail, OVERRIDES a
 contradicted detail (new wins, old discarded), or REVERTs to an earlier
 one; "start over" / "ignore the above" discards everything before it;
 anything still uncontradicted carries forward.  Design intent and
@@ -164,7 +168,8 @@ to isolate the right part of the page, never a pixel-accurate outline.  If
 there were no reference images at all, write "None specified."
 
 ## User inputs
-  * ``user_query.txt`` — every user turn, chronological.
+  * ``user_query.txt`` — the conversation, chronological: every user
+    turn and the Receptionist's reply to it.
   * ``extracted_inputs.txt`` — a previous extraction, when the workflow
     exposes it.  INFORMATIONAL only: never copy lines forward; always
     recompute from ``user_query.txt``.

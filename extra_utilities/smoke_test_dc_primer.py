@@ -163,6 +163,44 @@ if m:
     check("text block quotes it verbatim (whitespace-normalised)",
           canonical in body, canonical)
 
+# --- 2b. the hub is NOT the inner blade section -----------------------------
+print("case 2b - hub 8 mm vs inner section 4 mm, kept distinct")
+# The first version of this drawing labelled r = 4 mm "the hub".  They are
+# two different things: the hub cylinder is ~8 mm (constants.js CONSTANTS.hub)
+# and 4 mm is the inner blade section's station (innerRadiusFixed), which
+# sits inside it and is the origin middlePos measures from.
+body = norm(dc_primer.TEXT_PATH.read_text(encoding="utf-8"))
+check("text names the hub as 8 mm", "radius 8 mm" in body, body[:160])
+check("text puts the inner section at 4 mm",
+      # body is whitespace-normalised, so the file's column alignment
+      # ("inner section  = ...") collapses to one space here
+      "inner section = blade root, at r = 4 mm" in body)
+check("text says the inner section is NOT the hub radius",
+      "NOT the hub radius" in body)
+check("text no longer calls r = 4 mm 'the hub'",
+      "0 = hub" not in body and "fixed at the hub" not in body, body[:200])
+check("middlePos formula still measured from 4",
+      "radius = 4 + middlePos x (impellerRadius - 4) mm" in body)
+
+# The generator's ROOT_MM is load-bearing: it must equal the geometry's
+# innerRadiusFixed, or the drawing teaches a span origin the code does not use.
+gen = (ROOT / "extra_utilities" / "dc_params_primer"
+       / "make_dc_params_primer.py").read_text(encoding="utf-8")
+consts = (ROOT / "web" / "feg" / "constants.js").read_text(encoding="utf-8")
+m_root = re.search(r"^ROOT_MM = ([\d.]+)", gen, re.M)
+m_hub = re.search(r"^HUB_MM = ([\d.]+)", gen, re.M)
+m_code = re.search(r"innerRadiusFixed:\s*([\d.]+)", consts)
+check("generator defines ROOT_MM and HUB_MM",
+      m_root is not None and m_hub is not None)
+if m_root and m_code:
+    check("ROOT_MM (%s) == constants.js innerRadiusFixed (%s)"
+          % (m_root.group(1), m_code.group(1)),
+          float(m_root.group(1)) == float(m_code.group(1)))
+if m_root and m_hub:
+    check("HUB_MM (%s) is larger than ROOT_MM (%s)"
+          % (m_hub.group(1), m_root.group(1)),
+          float(m_hub.group(1)) > float(m_root.group(1)))
+
 # --- 3 + 4. message shape and gating ----------------------------------------
 print("case 3 - message shape per provider")
 st.DC_PARAMS_PRIMER_ENABLED = True

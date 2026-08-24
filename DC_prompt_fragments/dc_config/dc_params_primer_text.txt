@@ -3,10 +3,13 @@ A fixed reference supplied with your instructions. It is NOT a user input: never
 describe it back to the user, and never count it among the user's uploaded images.
 
 LEFT - top view, looking along the rotation axis.
-  - inner section  = blade root, fixed at the hub, r = 4 mm.
+  - hub            = the central cylinder, radius 8 mm.
+  - inner section  = blade root, at r = 4 mm.  This is NOT the hub radius:
+    the inner section sits INSIDE the hub, and r = 4 mm is where the blade
+    span starts.  The enlarged corner of the diagram dimensions both.
   - middle section = anywhere in the green band. middlePos is a fraction of the
     BLADE SPAN, not of the radius: radius = 4 + middlePos x (impellerRadius - 4) mm,
-    so 0 = hub and 1 = tip. Its range 0.3-0.7 is the band shown.
+    so 0 = the r = 4 mm root and 1 = tip. Its range 0.3-0.7 is the band shown.
   - outer section  = blade tip, at impellerRadius.
   - Diameter = 2 x impellerRadius, measured on the ring MID-WALL (orange dashes),
     not on either wall face. Ring wall thickness = impellerThickness.
