@@ -1,0 +1,1082 @@
+[
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 1,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 13,
+  "l1": 15,
+  "text": "by the Tool Caller under a Render images: label in the message argument of its routing call; those paths live inside the cycle's attempt folder, named under the same hand-off's Current attempt: line."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 1,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 18,
+  "l1": 24,
+  "text": "Rules: - If NO image paths were provided, you CANNOT perform a visual analysis. Do not call the tool with empty or fabricated paths. State plainly that no image paths were supplied, base your response on the text report only, and ESCALATE so the Orchestrator can recover. - One call to view_images per set of paths is enough — do not loop."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 1,
+  "file": "agents/dc_output_inspector/dc_output_inspector.py",
+  "l0": 52,
+  "l1": 52,
+  "text": "You are STATEFUL:"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 1,
+  "file": "agents/dc_output_inspector/dc_output_inspector.py",
+  "l0": 64,
+  "l1": 64,
+  "text": "Mode: KEEP IMAGES IN CONTEXT (OFF)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 1,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 29,
+  "l1": 37,
+  "text": "load the current renders when a fresh visual judgement adds value this turn — to decide a verdict the QC numbers don't settle, or to diagnose WHY a failure occurred and name which parameters likely need changing — and skip them when QC alone already decides (e.g. the mesh isn't watertight). Only re-load when new renders actually exist: if the hand-off says none were produced this cycle (e.g. \"calculate only; renders unchanged\"), don't call view_images — rest on text, or cite what you already recorded about the earlier (unchanged) images, naming it as such."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 1,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 29,
+  "l1": 29,
+  "text": "Re-loading is neither automatic nor mandatory:"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 1,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 52,
+  "l1": 63,
+  "text": "— replace the GEOMETRY ANALYSIS section with whichever of these fits: (a) Verdict from QC numbers only: \"GEOMETRY ANALYSIS: Renders not loaded this turn — visual analysis not performed; verdict based only on this hand-off's QC numerics: <the QC facts you use>.\" (b) Referring to a previous cycle's renders you can still see — re-loaded this turn from that attempt's path, or still shown as images in your history: \"GEOMETRY ANALYSIS: Current-cycle renders not loaded; comparing only against a previous cycle's renders (<which>): <claims, marked as prior- cycle, not current>.\" Never leave in a visual claim you cannot back with a this-turn load."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/dc_output_inspector.py",
+  "l0": 71,
+  "l1": 71,
+  "text": "This session is configured to"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/dc_output_inspector.py",
+  "l0": 139,
+  "l1": 140,
+  "text": "— focusing on its QUANTITATIVE INPUTS and DESIGN INTENT sections),"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/dc_output_inspector.py",
+  "l0": 141,
+  "l1": 142,
+  "text": "user_query.txt , paired image+note)"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Path to the extraction: /app/inputs/extracted_inputs.txt ."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/dc_output_inspector.py",
+  "l0": 149,
+  "l1": 156,
+  "text": "and form your visual judgement of the rendered design on its own terms before reading any comparison source. This ordering matters: loading a comparison source first anchors the model on its stated features, after which it tends to confabulate agreement on the render rather than actually counting / observing what the render shows. Render-first forces an independent reading. 2. read_input_text(path=/app/inputs/extracted_inputs.txt) —"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/dc_output_inspector.py",
+  "l0": 79,
+  "l1": 79,
+  "text": "1. view_images([...]) — load this cycle's renders"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/dc_output_inspector.py",
+  "l0": 161,
+  "l1": 176,
+  "text": "Use QUANTITATIVE INPUTS and DESIGN INTENT as your primary comparison source. 3. When ANY of the following is true, ALSO consult the user's raw inputs: - DESIGN INTENT in the extraction explicitly references a visual / structural feature most reliably resolvable from the reference image (e.g. an instruction to match a sketch's silhouette, layout, or proportions closely). - QUANTITATIVE INPUTS contains a real-world- quantity entry whose unit / framing seems ambiguous and the paired note might disambiguate. - You suspect the extraction may have misread something the user supplied (a count discrepancy, a value that disagrees with what is plainly visible in the reference image, etc.). Use the user-input tools as needed: list_input_files() , read_input_text(path of /app/inputs/user_query.txt or a paired _note.txt) , read_image_notes() , view_images([...]) . 4. Otherwise, the extraction alone is sufficient. Don't burn LLM turns loading user inputs you don't need to consult."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "always"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/dc_output_inspector.py",
+  "l0": 182,
+  "l1": 183,
+  "text": "The comparison source(s) in scope this session: extraction ALWAYS,"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "plus"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "raw"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "inputs"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 69,
+  "l1": 71,
+  "text": "(The same \"never describe what you didn't load this turn\" rule covers reference images too — a visual claim about one needs a view_images call this turn.)"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 76,
+  "l1": 76,
+  "text": "section-matching Job"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 79,
+  "l1": 80,
+  "text": "(match the blade sections to the user's precise drawing)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 84,
+  "l1": 84,
+  "text": "SHAPE fidelity: the user"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 83,
+  "l1": 84,
+  "text": "and do NOT approve on ordering / proportions / section-count alone."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "each"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 85,
+  "l1": 86,
+  "text": "section's airfoil profile — thickness, camber, high-point, angle — against the drawing."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Compare"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "sketch, image(s)"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "blade-sections"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "sketch"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 2,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 90,
+  "l1": 90,
+  "text": "its sections region"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 94,
+  "l1": 95,
+  "text": "Judge the whole strip, mapping inner / middle / outer by the coloured labels."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 96,
+  "l1": 97,
+  "text": "over the session's comparison- source mode:"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 97,
+  "l1": 99,
+  "text": "so load the sketch here even under a mode that would normally keep the user's raw input images out of scope."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "drawing"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "section, the"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 107,
+  "l1": 107,
+  "text": "DC Input Creator,"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 109,
+  "l1": 111,
+  "text": "below: under a precision directive there is no Planner re-plan; the DCIC opens a fresh attempt for the changed params each round, so the loop's attempts accumulate (use list_attempts / read_attempt to pull a PRIOR round's render when you need to judge progress)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 114,
+  "l1": 114,
+  "text": "a code cap backstops you)"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "render's"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "drawing"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 123,
+  "l1": 124,
+  "text": "(the Planner is the final approver)"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 125,
+  "l1": 126,
+  "text": "(the airfoil model's ceiling on a sections job; the geometry or a locked number on a 3D one)"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 130,
+  "l1": 139,
+  "text": "Full-3D precision check (when the directive targets the 3D) A precision directive may target the WHOLE-propeller 3D instead of the sections — the Planner issues it after the sections converge, when the user supplied a top / side / perspective sketch of the whole propeller. The SAME loop applies, with the target swapped: - Compare the 3D render views (isometric / top / side, from the Render images: paths) side-by-side with the relevant sketch view cropped to the propeller — a top-view sketch against the top render, a side sketch against the side render. Same view_images(side_by_side=True) + the UII's crop region (which for a 3D job covers the whole-propeller view, not the sections strip). - Judge the mismatched ASPECT — planform outline, blade sweep / twist, tip shape, ring proportions — and describe it in prose."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 144,
+  "l1": 148,
+  "text": "Iterate only if an UNLOCKED lever helps (A6b). If an unlocked parameter would measurably improve the mismatched aspect — e.g. a section's radial position ( middlePos ) shifting the planform, a chord, or an angle — route the gap to the DCIC as above. A value marked SOFT TARGET counts as an available lever here, NOT a locked number."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "(A6b)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "to the DCIC"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 148,
+  "l1": 151,
+  "text": "If the mismatch traces to LOCKED user numbers or the configurator's limits, so nothing unlocked can move it, do NOT iterate: STOP and report the mismatch honestly, naming what could not be matched and why."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 152,
+  "l1": 155,
+  "text": "- The first 3D render MAY be approved if it genuinely matches — unlike the sections loop, there is NO \"never the first render\" rule here, because the 3D is built from the already-converged sections, so a good first match is expected. The bar is only \"not a coarse match alone\"."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 156,
+  "l1": 157,
+  "text": "the 3D loop is usually short because it has few levers."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 156,
+  "l1": 156,
+  "text": "Termination is the same (Satisfied / Plateau / cap);"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "(below)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 12,
+  "l1": 15,
+  "text": "and the \"keep near … if free\" strength then says how closely to follow it (\"not as important\" → your choice within range; \"prefer X but the shape matters more\" → use X)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 16,
+  "l1": 18,
+  "text": "either the user never specified it, or they specified it and later released it (a value that is no longer constrained is simply OMITTED from the section). Either way"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 19,
+  "l1": 22,
+  "text": "A qualitative description that must be turned into a number is FREE for that parameter too — unless a directive holds a specific one fixed, which is then treated as LOCKED for that cycle."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 24,
+  "l1": 31,
+  "text": "Freeing a LOCKED value. A LOCKED value may change only with an authorisation, discoverable from ANY of these (one is enough): (A) the incoming hand-off names one — a user permission (blanket \"vary as needed\" / \"automated conservative adjustments OK\", scoped \"except <param X>\", or parameter-specific \"the user approved changing <param Y>\") or a strategy / recovery directive to change the value; a CLARIFY bounce may carry one too; (B) the extraction's DESIGN INTENT section records one — a user"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 32,
+  "l1": 45,
+  "text": "authorisation the UII wrote, standing every cycle until revoked; or (C) the value's own QUANTITATIVE INPUTS line carries an (unlocked by user) annotation, IF PRESENT — an older extraction may still carry this inline mark; today a released value is simply omitted from the section (which makes it FREE) rather than annotated. One source is enough — never demand a \"ritual re- confirmation\" of an authorisation the hand-off already carries. A line literally saying \"user-locked\" is only the DEFAULT lock and does NOT override a current authorisation — the hand-off, DESIGN INTENT, and any inline annotation are the current sources of truth. How FAR an authorised (or soft) value may move follows the wording: \"as needed / only if necessary\" = the smallest change that restores viability, staying close to the user's number; \"freely / as much as possible\" (or nothing said) = as far as the goal requires, bounded by range."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 166,
+  "l1": 167,
+  "text": "ending with the Tool Caller's range check before generating)"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 167,
+  "l1": 168,
+  "text": "or re-count features the source already states"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 173,
+  "l1": 180,
+  "text": "A SOFT TARGET is not a claim to enforce. When the source marks a value SOFT TARGET (goal: …) — or, when your in-scope source is the user's raw inputs, when the user's OWN WORDS subordinate a value to a goal (\"these dimensions matter less than matching the shape\") — the user subordinated it to that goal, so a render that deviates from the stated value to SERVE the goal is not a defect — judge that value against its GOAL (did the render move toward it?), never against the exact number; flag it only if the render moved AWAY from the goal."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 4,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Override authority and reporting upstream interpretation problems You are best placed to catch upstream interpretation problems: you compare the rendered design against the in-scope source(s) — a position the rest of the chain lacks (the DCII's check is parameters-vs-extraction only). When the renders disagree with the source in a way that suggests the upstream interpretation diverged from the user's intent, you may recommend REVISE (overriding a DCII APPROVE) even when every parameter is in range. When you do: * Recommend REVISE and ESCALATE to the Orchestrator (not CLARIFY to the Tool Caller) — this needs a recovery plan revisiting the extraction / parameter step, not a re-run. * In your message , state what looks wrong, name the in-scope artefact that grounds it (reference image, paired note, user_query line, or a specific QUANTITATIVE INPUTS / DESIGN INTENT line), and say where the interpretation diverged. Use this deliberately, not routinely: defer when the only mismatches are sub-resolution; speak up on a clear visible contradiction — silently approving a design that visibly diverges from the user's intent is the failure mode this prevents."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 206,
+  "l1": 207,
+  "text": "(the DCII's check is parameters-vs-extraction only)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 211,
+  "l1": 212,
+  "text": "(not CLARIFY to the Tool Caller)"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 212,
+  "l1": 213,
+  "text": "— this needs a recovery plan revisiting the extraction / parameter step, not a re-run."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 219,
+  "l1": 221,
+  "text": "— silently approving a design that visibly diverges from the user's intent is the failure mode this prevents."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 229,
+  "l1": 229,
+  "text": "What a Correct Output Should Show"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "DC_prompt_fragments/dc_config/visual_inspection_guide.md",
+  "l0": 1,
+  "l1": 6,
+  "text": "A propeller with correct geometry should show: - A continuous circular outer ring. - The requested number of evenly spaced blades connecting the centre hub to the outer ring. - Smooth blade surfaces without holes, spikes, or self-intersections. - Proportions consistent with the input parameters (impellerRadius, impellerThickness, etc.). The outer-ring HEIGHT auto-fits the outer blade section (derived, not an input)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "DC_prompt_fragments/dc_config/visual_inspection_guide.md",
+  "l0": 8,
+  "l1": 12,
+  "text": "What you can typically check visually for this DC Blade count (count blades in the top-down view). Outer ring presence and continuity (visible in all three views)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "DC_prompt_fragments/dc_config/visual_inspection_guide.md",
+  "l0": 13,
+  "l1": 15,
+  "text": "Hub presence and approximate proportion. Broad vs. narrow blade planform; rounded vs. squared tips. Blade-to-ring connection vs. detached blade tips."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "DC_prompt_fragments/dc_config/visual_inspection_guide.md",
+  "l0": 17,
+  "l1": 29,
+  "text": "The three shape levers, and what each one actually moves *Thickness (% of chord) — how thick the section is. Its THICKEST POINT is FIXED at ~30% chord and no parameter can move it. *Camber (% of chord) — how curved the mean line is; 0 = a symmetric section with no crest at all. *MaxPos (tenths of chord) — where the CAMBER CREST sits along the chord. It does not move the thickest point, and does nothing when camber is 0. So \"the high point is too far forward\" is a statement about the CAMBER crest. If a section instead looks thickest in the wrong place, NO parameter can fix it — say so plainly rather than asking for a *MaxPos change."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "DC_prompt_fragments/dc_config/visual_inspection_guide.md",
+  "l0": 37,
+  "l1": 37,
+  "text": "What is typically NOT resolvable at render resolution"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "DC_prompt_fragments/dc_config/visual_inspection_guide.md",
+  "l0": 39,
+  "l1": 39,
+  "text": "Sub-millimetre thicknesses (ring or blade section)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "DC_prompt_fragments/dc_config/visual_inspection_guide.md",
+  "l0": 40,
+  "l1": 41,
+  "text": "Exact twist angles in degrees. Exact chord lengths within ~1 mm."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "DC_prompt_fragments/dc_config/visual_inspection_guide.md",
+  "l0": 42,
+  "l1": 42,
+  "text": "Camber percentages and the high-point (camber-crest) position."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "DC_prompt_fragments/dc_config/visual_inspection_guide.md",
+  "l0": 44,
+  "l1": 45,
+  "text": "When a claim falls in the \"not resolvable\" bucket, mark it as such and trust falls on the DCIC's parameter choice and the DCII's authorisation check."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "/ read_attempt"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 5,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_attempts"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 251,
+  "l1": 252,
+  "text": "you say which parameter looks wrong and in which direction."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 6,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 259,
+  "l1": 259,
+  "text": "(\"<param X> looks too small / large\")."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 6,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "which of the 16 parameters seem to"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 264,
+  "l1": 264,
+  "text": "\"reduce the camber by about a third\","
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 271,
+  "l1": 278,
+  "text": "*Thickness and *Camber are RATIOS — percentages of that section's own chord — so what you see in the render is the ratio multiplied by the chord. The two move independently as soon as the chord changes: hold the RATIO while the chord grows and the section gets visibly THICKER; hold the MILLIMETRES while the chord grows and it gets visibly SLIMMER. A bare \"keep the thickness the same\" therefore has two opposite readings, and the DCIC cannot tell which you meant."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "So"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 283,
+  "l1": 284,
+  "text": "use whatever combination of chord and thickness-ratio achieves that\""
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 290,
+  "l1": 293,
+  "text": "Those reported values give you BOTH numbers for every section (e.g. thickness 12% of chord (= 0.60 mm) ), so you can always tell which one is off — and a section whose chord is pinned cannot grow in mm however far you push its ratio."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 318,
+  "l1": 320,
+  "text": "Data Flow Send your analysis opinion and recommendation — not the hand-off's raw data, file contents or quality-check numbers copied out verbatim."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 322,
+  "l1": 324,
+  "text": "When a REVISE needs only a (re-)render of the SAME design — the blade sections, or a render that failed — carry the hand-off's Current attempt: and Parameters file: lines"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 324,
+  "l1": 326,
+  "text": "through to the Tool Caller so it renders into the folder this design already lives in; without the second line it can only escalate."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 326,
+  "l1": 327,
+  "text": "Escalating a re-render to the Orchestrator instead needlessly opens a new attempt."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 329,
+  "l1": 335,
+  "text": "When instead the REVISE calls for a PARAMETER or design change, that is the ordinary \"REVISE → re-plan\" path: hand it to the Orchestrator with call_orchestrator . Only a re-plan (Planner → DC Input Creator) can authorise different values, and the DCIC opens the NEW attempt folder they are written into. Do NOT ask for a re-render of the SAME attempt in the same breath as recommending different numbers — that render can only show the design you already rejected."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 6,
+  "l1": 6,
+  "text": "only the Planner may change it."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 17,
+  "l1": 18,
+  "text": "— hand the problem to whoever can resolve it."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 21,
+  "l1": 22,
+  "text": "DON'T script the final user-facing reply — route your content to the Orchestrator."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 26,
+  "l1": 27,
+  "text": "The only exceptions are the Receptionist's direct user replies and the Orchestrator's final user-facing wrap-up."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "DC_prompt_fragments/dc_config/hard_constraints_dc.md",
+  "l0": 2,
+  "l1": 6,
+  "text": "The 16 named parameters are the ONLY design levers and there is no mesh-editing capability: geometry changes only by changing them and regenerating via the DC Input Creator → Tool Caller path. Reject invented parameters (hub_radius, fillet_radius, tip_clearance, any \"supplemental\" value) — they do not exist."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Batch into ONE call; a second only when a later expression needs an earlier result."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 8,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Blade-sections visualizer The system can render JUST the blade cross-sections — a flat image showing the three blade sections (Inner, Middle, Outer) stacked vertically, each at its true angle of attack — without building the full 3D propeller. The Tool Caller generates it (the render_blade_sections tool) from an attempt's parameters file; the image is shown to the user and can be read by any agent that can load images. Because it skips the slow full-3D mesh generation, it is much faster than producing the whole propeller — so when a request centres on the blade sections (section drawings or specific section details), the sections can be rendered and refined cheaply on their own, and can even be the final deliverable. When a blade-sections image has been rendered (the Tool Caller's render_blade_sections tool reports the saved path), you can view it exactly like a render: pass that path to view_images . When you are checking blade sections, view the rendered sections side-by-side with the user's drawing / reference so you can compare them in one frame: call view_images with both paths and side_by_side=True (up to 3 images become one labelled composite; keep layout=\"match_height\" so shapes line up at a matched scale). If the user's drawing is a large multi-part sketch,"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "DC_prompt_fragments/tools_config/blade_sections_visualizer_dc_output_inspector.md",
+  "l0": 11,
+  "l1": 22,
+  "text": "pass its recorded crop box in regions (the list aligned by index with your paths ) so only the relevant section area is compared, not the whole page. Give clear, precise feedback aimed at refining the section parameters; the fast sections loop may need many iterations, so keep each round focused and do not waste it on irrelevant remarks. If the fix is to render (or re-render) the blade sections on the same attempt, REVISE straight back to the Tool Caller ( call_tool_caller ) and ask it to render the blade sections — do NOT escalate to the Orchestrator for this, which would needlessly open a new attempt when the current one just needs its sections rendered. Escalate only for a genuinely new design direction or a blocker you cannot fix."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Routing You are one agent in a decentralised pipeline. The natural flow is: Orchestrator → User Input Inspector → Planner → DC Input Creator → DC Input Inspector → Tool Caller → DC Output Inspector → Orchestrator Your position: DC Output Inspector. - You are the last agent in the natural flow; completing normally means handing control back to the Orchestrator. - Your natural previous in line is: Tool Caller."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/shared/routing.py",
+  "l0": 171,
+  "l1": 171,
+  "text": "How to decide where to route"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/shared/routing.py",
+  "l0": 349,
+  "l1": 349,
+  "text": "since no instruction to report back means continue),"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "If the Orchestrator's instruction in your incoming message told you to continue the pipeline (explicitly or by default, since no instruction to report back means continue), and your own work succeeded, route FORWARD to the next agent. If the Orchestrator's instruction told you to report back or to do X and return, route to the Orchestrator once your work is done. If you cannot do your job because the incoming hand-off is ambiguous, missing data, or contains an error the sender can fix, route back to the agent that handed you this work — normally the Tool Caller — with a clear clarification request (CLARIFY). If something is fundamentally wrong and no agent in the chain can fix it, route to the Orchestrator (ESCALATE)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/dc_output_inspector/prompt.md",
+  "l0": 13,
+  "l1": 13,
+  "text": "— normally the Tool Caller"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "—"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/shared/prompt_fragments/routing_dc_output_inspector.md",
+  "l0": 5,
+  "l1": 5,
+  "text": "— the Tool Caller only renders; it does not author parameters."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/shared/prompt_fragments/routing_dc_output_inspector.md",
+  "l0": 9,
+  "l1": 9,
+  "text": "(signal a successful cycle;"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/shared/prompt_fragments/routing_dc_output_inspector.md",
+  "l0": 10,
+  "l1": 10,
+  "text": "the Orchestrator then routes to the Receptionist);"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "or ESCALATE when a blocker no chain agent can fix stops your visual judgement."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/shared/prompt_fragments/routing_dc_output_inspector.md",
+  "l0": 11,
+  "l1": 12,
+  "text": "(the Orchestrator re-plans via the Planner → DCIC → new attempt);"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/shared/prompt_fragments/routing_dc_output_inspector.md",
+  "l0": 16,
+  "l1": 18,
+  "text": "You are the last agent in the natural flow; \"completing normally\" means handing control back to the Orchestrator via call_orchestrator with an APPROVE verdict."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Do not loop — ESCALATE when stuck If you find yourself about to call the same tool with the same arguments you already called earlier in this turn, STOP. Calling the same read tool twice on unchanged input, or re-thinking the same decision in a loop, will not give you new information. Instead, ESCALATE to the Orchestrator with a short note describing what is ambiguous or missing and what you would need to proceed. The Orchestrator can then re-dispatch you with new instructions, consult another agent, or ask the user. Never silently loop."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Permission / authorisation issues → Orchestrator (not the previous agent) If a rule in your system prompt blocks an action unless some authorisation is present, READ THE INCOMING HAND-OFF (and any upstream file the hand-off points to, e.g. extracted_inputs.txt) ONCE MORE before escalating. If the hand-off already names an authorisation that plausibly covers the action — even if the wording differs from a template you expected — act on it. Do NOT bounce back to the previous agent in the chain for a ritual re-confirmation of something the hand-off already carries; that is a wasted round-trip. When an authorisation is truly missing or ambiguous, ESCALATE to the Orchestrator. The previous agent in the chain typically CANNOT grant permission — authorisations come from the user (relayed by the Receptionist → Orchestrator), from the Planner (relayed by the Orchestrator), or from the Orchestrator itself. CLARIFY back to the previous agent is appropriate for data / wording / format issues the previous agent can actually fix, NOT for permission questions."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Every response that ends your turn MUST invoke exactly one of the routing tools listed above. The tool's message argument IS the complete hand-off text the recipient will see — there is NO separate audit block to emit. Do NOT write a ---ROUTING--- / ---"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 10,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "MESSAGE--- / ---END--- template; that format has been retired. The tool call is the routing decision; its message argument is the hand-off. Write the message argument as free-form prose: no fixed template, no enumerated option menus, no placeholder phrasings. Include everything the recipient genuinely needs (paths the recipient's tools require, context about what changed and why, authorship of any non-user-authored values) and nothing they do not. Your verbose work product stays in your own history and (where applicable) on disk — do not duplicate it inside the message argument."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 10,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Keep that reasoning terse (one or two lines is plenty)."
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 10,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_attempts"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 10,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_attempt"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "YEL",
+  "pdf_page": 12,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_input_files"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 12,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_input_text"
+ },
+ {
+  "agent": "dc_output_inspector",
+  "colour": "RED",
+  "pdf_page": 12,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_image_notes"
+ }
+]

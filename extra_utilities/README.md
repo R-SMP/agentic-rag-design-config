@@ -39,6 +39,11 @@ extra_utilities/
 │                          the CURRENT tree, so no path translation.
 ├── round2_annotations.json  the raw round-2 highlights; apply from THIS, not from the
 │                          spec's tables
+├── prompt_reduction_dcoi_changes.md
+│                          round 3 — the DC Output Inspector.  DCOI-only; the two
+│                          all-agent items it asks for already shipped in round 2.
+├── round3_annotations.json   the raw round-3 highlights; apply from THIS, not from the
+│                          spec's tables
 │
 ├── smoke_test_*.py           32 hand-run scripts (see SMOKE_TESTS.md)
 ├── check_mesh_components.py  .obj diagnostic
