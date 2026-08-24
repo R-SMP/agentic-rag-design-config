@@ -22,8 +22,9 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
-from agents.shared.attempts_tool import list_attempts, read_attempt
+from agents.shared.attempts_tool import read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
+from agents.shared.dc_params_tool import dc_params_list
 from agents.shared.file_utils import (
     ai_text,
     flush_pending_image_blocks,
@@ -43,14 +44,15 @@ from agents.shared.prompts import (
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
+    begin_routing_retry,
     finalize_unanswered_tool_calls,
+    finish_routing_retry,
     log_tool_call,
 )
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
-    USER_INPUTS_TOOL_NAMES,
-    build_user_inputs_tools,
-    dispatch_user_inputs_tool,
+    READ_INPUTS_DOC_PLANNER,
+    build_read_user_inputs,
 )
 from agents.step_caps import MAX_PLANNER_STEPS
 from config import INPUT_IMAGES_SUBDIR, LOGS_DIR, USER_INPUTS_DIR
@@ -60,29 +62,6 @@ from tools.calculate.calculate import calculate
 from agents.shared.dba_tools import dba_tools_for
 
 logger = logging.getLogger("propeller_agent")
-
-
-# ---------------------------------------------------------------------------
-# Utility tool — read user_query.txt entries
-# ---------------------------------------------------------------------------
-
-_QUERY_HEADER_PREFIX = "--- ["
-
-
-def _parse_user_query_entries(text: str) -> list[str]:
-    """Split ``user_query.txt`` content into individual entries."""
-    entries: list[str] = []
-    current: list[str] | None = None
-    for line in text.splitlines():
-        if line.startswith(_QUERY_HEADER_PREFIX):
-            if current is not None:
-                entries.append("\n".join(current).strip())
-            current = [line]
-        elif current is not None:
-            current.append(line)
-    if current is not None:
-        entries.append("\n".join(current).strip())
-    return [e for e in entries if e]
 
 
 @tool
@@ -108,47 +87,6 @@ def read_extracted_inputs(path: str) -> str:
         return p.read_text(encoding="utf-8")
     except OSError as exc:
         return f"Error reading extracted_inputs.txt: {exc}"
-
-
-@tool
-@generic_tool("Read user queries")
-def read_user_queries(n: int = 1, from_start: bool = False) -> str:
-    """Return selected entries from user_query.txt.
-
-    ``n`` (int, ≥ 1): number of entries to return.
-    ``from_start`` (bool, default False): when False return the latest
-    ``n`` entries; when True return the first ``n`` (oldest) entries.
-
-    Entries are returned in chronological order, each preceded by its
-    original ``--- [timestamp] ---`` header.  Returns a short message
-    if the file does not exist, is empty, or has no parsable entries.
-    """
-    try:
-        n_int = int(n)
-    except (TypeError, ValueError):
-        return "Error: 'n' must be an integer >= 1."
-    if n_int < 1:
-        return "Error: 'n' must be >= 1."
-
-    path = USER_INPUTS_DIR / "user_query.txt"
-    if not path.exists():
-        return f"user_query.txt not found at {path.resolve()}."
-    try:
-        content = path.read_text(encoding="utf-8")
-    except OSError as exc:
-        return f"Error reading user_query.txt: {exc}"
-
-    entries = _parse_user_query_entries(content)
-    if not entries:
-        return "user_query.txt contains no parsable entries."
-
-    selected = entries[:n_int] if from_start else entries[-n_int:]
-    label = "first" if from_start else "latest"
-    header = (
-        f"Showing {len(selected)} of {len(entries)} entries "
-        f"({label} {n_int} requested):"
-    )
-    return header + "\n\n" + "\n\n".join(selected)
 
 
 class Planner(BaseChainAgent):
@@ -188,12 +126,17 @@ class Planner(BaseChainAgent):
     ) -> None:
         """Bind this Planner's utility + routing tools."""
         extra_utility = [history_tool] if history_tool is not None else []
-        attempts_utility = [list_attempts, read_attempt]
+        # ``read_user_inputs`` is bound directly-invokable (the run loop
+        # below resolves it via _tools_by_name like any utility tool);
+        # the Planner holds NO image tools and no per-file text tools.
+        read_user_inputs = build_read_user_inputs(
+            doc=READ_INPUTS_DOC_PLANNER,
+            direct_provider=getattr(self, "provider", "openai"),
+        )
         all_tools = (
-            [read_user_queries, read_extracted_inputs, calculate]
+            [read_user_inputs, read_extracted_inputs, calculate]
             + extra_utility
-            + attempts_utility
-            + build_user_inputs_tools(self.AGENT_KEY)
+            + [read_attempts, dc_params_list]
             + list(tools)
         )
         # Which of the three database tools this agent holds is a
@@ -235,6 +178,7 @@ class Planner(BaseChainAgent):
         """Process one hand-off message and return the chosen hop."""
         token_usage.begin_turn("Planner")
         self._pending_hop = None
+        self._routing_retry_used = False
         self.messages.append(HumanMessage(content=message))
 
         for _ in range(MAX_PLANNER_STEPS):
@@ -251,6 +195,8 @@ class Planner(BaseChainAgent):
 
             if not response.tool_calls:
                 final = ai_text(response.content)
+                if begin_routing_retry(self, final, "Planner"):
+                    continue
                 self._persist_plan(response, pending_hop=None)
                 return AgentHop(
                     "orchestrator",
@@ -265,9 +211,6 @@ class Planner(BaseChainAgent):
             for i, tc in enumerate(response.tool_calls):
                 check_stop_or_raise()
                 name = tc["name"]
-                if name in USER_INPUTS_TOOL_NAMES:
-                    dispatch_user_inputs_tool(self, tc, "planner")
-                    continue
                 if dispatch_retrieve_tool(self, tc, "planner"):
                     continue
                 tool_fn = self._tools_by_name.get(name)
@@ -302,6 +245,7 @@ class Planner(BaseChainAgent):
             self._persist_plan(response, pending_hop=self._pending_hop)
 
             if routed:
+                finish_routing_retry(self)
                 return self._pending_hop
 
         return AgentHop(
@@ -372,10 +316,10 @@ class Planner(BaseChainAgent):
         """End-of-operation hook called by the dispatcher.
 
         With ``keep_images_in_context=False`` strip every image content
-        block from this agent's history (the Planner can load user
-        input images via ``view_images`` for special reasoning),
-        leaving the paired ``Loaded image (path: …):`` text blocks
-        behind.  No-op when ``keep_images_in_context=True``.
+        block from this agent's history (a retrieve tool can still
+        attach past-session images), leaving the paired
+        ``Loaded image (path: …):`` text blocks behind.  No-op when
+        ``keep_images_in_context=True``.
         """
         if self.keep_images_in_context:
             return

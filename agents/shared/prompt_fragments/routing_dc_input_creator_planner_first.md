@@ -1,13 +1,17 @@
-### Available routing tools
-<<DCII_ONLY>>- ``call_dc_input_inspector(message)`` — FORWARD to the DC Input
-  Inspector (the next step in the natural pipeline).
-<</DCII_ONLY>><<DCII_OFF>>- ``call_tool_caller(message)`` — FORWARD to the Tool Caller (the
-  next step in the natural pipeline).
+<<DCII_ONLY>>- ``call_dc_input_inspector(message)`` — If the Orchestrator's instruction in
+  your incoming message told you to continue the pipeline (explicitly or by
+  default), and your own work succeeded, route FORWARD to the DC Input
+  Inspector.
+<</DCII_ONLY>><<DCII_OFF>>- ``call_tool_caller(message)`` — If the Orchestrator's instruction in
+  your incoming message told you to continue the pipeline (explicitly or by
+  default), and your own work succeeded, route FORWARD to the Tool Caller.
 <</DCII_OFF>>
-- ``call_user_input_inspector(message)`` — CLARIFY back to the User
-  Input Inspector if ``extracted_inputs.txt`` is missing required
-  information or contains an inconsistency only the UII can resolve.
+- ``call_user_input_inspector(message)`` — If you cannot do your job because the
+  incoming hand-off is ambiguous, missing data, or contains an error the sender
+  can fix, route back to the User Input Inspector with a clear clarification
+  request (CLARIFY).
 
-- ``call_orchestrator(message)`` — ESCALATE when stuck (locked-value
-  collision, qualitative directive with no quantitative expression,
-  or a budgeted attempt cap reached).
+- ``call_orchestrator(message)`` — If the Orchestrator's instruction told you to
+  report back or to do X and return, route to the Orchestrator once your work is
+  done.  If something is fundamentally wrong and you cannot fix it, route to the
+  Orchestrator (ESCALATE).

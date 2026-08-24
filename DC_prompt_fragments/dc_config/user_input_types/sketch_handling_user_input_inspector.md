@@ -1,4 +1,4 @@
-A "sketch" is any USER-SUPPLIED reference image conveying design intent.
+A "sketch" is any USER-SUPPLIED drawing containing design details.
 Its PRECISION varies — do NOT assume it is rough.
 
 ### Filled-in templates and forms
@@ -14,11 +14,9 @@ BLANK copy of the same template would already show; that part is scaffolding.
 Judge each image, and each feature within it, on its own — one input can be
 MIXED.  Weigh what the user says ("rough" / "just an idea" vs "to scale" /
 "match exactly"), line quality (wobbly freehand vs crisp and controlled),
-image character (dimensions, a scale bar, gridlines or CAD-like geometry
-point to precise; no dimensioning, and asymmetry between elements meant to
-be identical, point to rough), and view type (a whole-propeller doodle is
-usually rough; a dedicated blade top-view or a blade-section profile often
-carries proportions meant to be reproduced).
+and image character (dimensions, a scale bar, gridlines
+point to precise; asymmetry between elements meant to
+be identical points to rough).
 
 ### Always true, regardless of precision
 Honor the INTENDED geometry, never literal pixels — even a precise drawing

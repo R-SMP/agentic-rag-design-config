@@ -138,6 +138,32 @@ CHAIN_ACCESS: bool = True
 
 
 # ===========================================================
+# 5b.  Routing retry after a prose-only turn
+# ===========================================================
+# The six CHAIN agents (Planner, UII, DC Input Creator, DC Input
+# Inspector, Tool Caller, DC Output Inspector) must end every turn with
+# a ``call_<agent>`` routing tool call -- prose alone is never delivered.
+# When one ends in prose instead, the turn used to abort immediately
+# with an error hop to the hub: the agent was never told, got no second
+# chance, and whatever it had written was demoted to an error string.
+# (2026-08-22 test runs: one agent did this seven times in one session,
+# roughly tripling the hop count.)
+#
+#   True   send the agent a one-line reminder and re-invoke it ONCE.
+#          If it still does not route, the original error hop is sent
+#          exactly as before -- so this can only improve on the old
+#          behaviour, never degrade it.
+#   False  historic behaviour: abort the turn on the first prose reply.
+#
+# The Receptionist and the Orchestrator are deliberately NOT covered:
+# for them a response with no tool call IS the user-facing reply, not a
+# fault.
+#
+# Valid values: True, False
+ROUTING_RETRY_ENABLED: bool = True
+
+
+# ===========================================================
 # 6.  Keep loaded images in agent context
 # ===========================================================
 # What happens to image bytes loaded via view_images /

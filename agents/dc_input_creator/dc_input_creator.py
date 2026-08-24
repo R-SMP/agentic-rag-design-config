@@ -6,8 +6,8 @@ calls TWO utility tools:
 
 1. ``read_extracted_inputs(path)`` loads the structured extraction
    written by the UII.
-2. ``write_parameters(parameters, attempt_dir)`` persists the full
-   parameter JSON to ``parameters.json`` inside the attempt folder.
+2. ``new_attempt_parameters(parameters, slug, description)`` opens the
+   attempt folder and writes the full parameter JSON into it, in one call.
 
 Next in the natural pipeline is either the DC Input Inspector (when
 enabled) or the Tool Caller (when DCII is skipped).  The wiring is
@@ -22,7 +22,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
-from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
+from agents.shared.attempts_tool import create_attempt, read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
@@ -45,24 +45,18 @@ from agents.shared.prompts import (
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
+    begin_routing_retry,
     finalize_unanswered_tool_calls,
+    finish_routing_retry,
     log_tool_call,
     stuck_escalation,
     tool_call_signature,
 )
 from agents.shared.session import AgentState, Session
-from agents.shared.user_inputs_tool import (
-    build_user_inputs_tools,
-    dispatch_user_inputs_tool,
-)
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
 from agents.step_caps import MAX_DCIC_STEPS
-from config import ATTEMPTS_DIR
 from tools.calculate.calculate import calculate
-from tools.generate_mesh.generate_mesh import (
-    mesh_provenance_mismatches,
-)
 from agents.shared.dba_tools import dba_tools_for
 
 logger = logging.getLogger("propeller_agent")
@@ -84,28 +78,36 @@ def read_extracted_inputs(path: str) -> str:
 
 
 @tool
-def write_parameters(parameters: dict, attempt_dir: str) -> str:
-    """Persist the complete parameter set to
-    ``<attempt_dir>/parameters.json``.
+def new_attempt_parameters(parameters: dict,
+                           slug: str = "attempt",
+                           description: str = "") -> str:
+    """Open a NEW attempt folder and write the complete parameter set into it.
 
-    Both arguments are REQUIRED.
+    One call does both, in this order: the parameter set is validated,
+    then the attempt folder is created (timestamp + sequence number +
+    ``slug``), then ``description.txt`` is recorded when a description is
+    given, and finally the values are written to ``parameters.json``
+    inside that same folder.
 
-    - ``parameters``: a dict containing all design-configurator keys
-      nested inside it (see the call shape below).
-    - ``attempt_dir``: absolute path of the attempt folder this
-      parameter set belongs to.  This is either the path the
-      hand-off carries under ``Current attempt:`` (when the
-      Orchestrator created the folder for you as a fallback), or the
-      path you obtained by calling ``new_attempt`` yourself — the
-      normal case, since you own attempt creation.  The folder must already exist; the
-      write refuses if it already contains a ``parameters.json``
-      (attempt folders are append-only — start a new attempt if
-      this set of parameters needs to differ from the existing one).
+    There is no path argument — the folder this tool creates is the folder
+    it writes into, so the two can never disagree.  Because validation
+    happens first, a rejected call creates nothing and leaves no empty
+    attempt behind.
 
-    Returns a short confirmation (file path + field count) on success
-    or an error describing missing / extra / non-numeric fields, or a
-    bad / already-occupied attempt folder."""
-    return ""  # Actual write is performed by _handle_write_tool.
+    Args:
+      parameters:  dict carrying ALL the design parameters listed in your
+                   prompt, each mapped to a number.
+      slug:        short, filename-safe label that appears in the folder
+                   name after the timestamp + sequence number (e.g.
+                   ``'4blades_thick_ring'``).  Optional.
+      description: optional one-paragraph note explaining what this
+                   attempt is for; written to ``description.txt``.
+
+    Returns the new attempt's NUMBER and absolute folder path on success —
+    put both on the ``Current attempt <N>:`` line of your hand-off — or an
+    error naming the missing / unexpected / non-numeric fields, in which
+    case nothing was created and nothing was written."""
+    return ""  # Actual work is performed by _handle_write_tool.
 
 
 class DCInputCreator(BaseChainAgent):
@@ -130,7 +132,7 @@ class DCInputCreator(BaseChainAgent):
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
         self._read_tool = read_extracted_inputs
-        self._write_tool = write_parameters
+        self._write_tool = new_attempt_parameters
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
         self.system_prompt: str = ""
@@ -146,9 +148,7 @@ class DCInputCreator(BaseChainAgent):
     ) -> None:
         """Bind the DC Input Creator's allowed routing tools."""
         self._extra_utility_tools_by_name = {
-            list_attempts.name: list_attempts,
-            read_attempt.name: read_attempt,
-            new_attempt.name: new_attempt,
+            read_attempts.name: read_attempts,
             calculate.name: calculate,
         }
         # Which of the three database tools this agent holds is a
@@ -158,7 +158,6 @@ class DCInputCreator(BaseChainAgent):
         all_tools = (
             [self._read_tool, self._write_tool]
             + list(self._extra_utility_tools_by_name.values())
-            + build_user_inputs_tools(self.AGENT_KEY, include_image_tools=False)
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)
@@ -194,6 +193,7 @@ class DCInputCreator(BaseChainAgent):
         """Process one hand-off message and return the chosen hop."""
         token_usage.begin_turn("DCIC")
         self._pending_hop = None
+        self._routing_retry_used = False
         text = f"Hand-off from User Input Inspector:\n{message}"
         self.messages.append(HumanMessage(content=text))
 
@@ -214,6 +214,8 @@ class DCInputCreator(BaseChainAgent):
 
             if not response.tool_calls:
                 raw = ai_text(response.content)
+                if begin_routing_retry(self, raw, "DCIC"):
+                    continue
                 return AgentHop(
                     "orchestrator",
                     "Error: DC Input Creator produced a response with no "
@@ -238,10 +240,8 @@ class DCInputCreator(BaseChainAgent):
                 if name == "read_extracted_inputs":
                     self._handle_read_tool(tc)
                     continue
-                if name == "write_parameters":
+                if name == "new_attempt_parameters":
                     self._handle_write_tool(tc)
-                    continue
-                if dispatch_user_inputs_tool(self, tc, "dc_input_creator"):
                     continue
                 if dispatch_retrieve_tool(self, tc, "dc_input_creator"):
                     continue
@@ -293,6 +293,7 @@ class DCInputCreator(BaseChainAgent):
             flush_pending_image_blocks(self)
 
             if routed:
+                finish_routing_retry(self)
                 return self._pending_hop
 
         return AgentHop(
@@ -354,95 +355,46 @@ class DCInputCreator(BaseChainAgent):
         ))
 
     # ------------------------------------------------------------------
-    # write_parameters handler
+    # new_attempt_parameters handler
     # ------------------------------------------------------------------
 
-    @generic_tool("Write parameters")
+    @generic_tool("Open attempt + write parameters")
     def _handle_write_tool(self, tc: dict) -> None:
-        """Validate and persist the parameter set to
-        ``<attempt_dir>/parameters.json``.
+        """Validate the parameter set, then create the attempt folder and
+        write ``parameters.json`` into it.
 
-        Refuses when ``parameters.json`` already exists in the target
-        folder — attempt folders are append-only.
+        Validation runs FIRST so a rejected call never leaves an empty
+        attempt folder behind.  There is no target-folder argument: this
+        tool always writes into the folder it just created, so the
+        append-only guarantee holds by construction.
         """
         args = tc.get("args", {}) or {}
         params = args.get("parameters")
-        raw_attempt_dir = args.get("attempt_dir")
-        # Names the LLM actually passed in this call — quoted back in
+        slug = args.get("slug") or "attempt"
+        description = args.get("description") or ""
+        # Names the LLM actually passed in this call - quoted back in
         # error messages so the LLM cannot mistake a missing-argument
         # error for a tool-schema mismatch and externalise blame.
         provided_arg_names = sorted(args.keys())
 
-        attempt_dir_err: str | None = None
-        attempt_path: Path | None = None
-        if not isinstance(raw_attempt_dir, str) or not raw_attempt_dir.strip():
-            attempt_dir_err = (
-                f"Error: YOUR call to write_parameters omitted the "
-                f"'attempt_dir' argument (you passed only "
-                f"{provided_arg_names}).  This is NOT a tool-schema "
-                f"problem — write_parameters accepts BOTH "
-                f"'parameters' and 'attempt_dir', and BOTH are "
-                f"REQUIRED.  RE-ISSUE the call with 'attempt_dir' "
-                f"set to the absolute path the hand-off carries "
-                f"under ``Current attempt:``, or call "
-                f"``new_attempt`` first and pass its returned path. "
-                f"Do NOT report this as a tool-interface bug; the "
-                f"omission is in your previous call's arguments."
-            )
-        else:
-            attempt_path = Path(raw_attempt_dir).resolve()
-            try:
-                attempts_root = ATTEMPTS_DIR.resolve()
-            except OSError:
-                attempts_root = ATTEMPTS_DIR
-            if not attempt_path.is_dir():
-                attempt_dir_err = (
-                    f"Error: '{raw_attempt_dir}' is not an existing "
-                    f"directory.  Create the attempt folder first via "
-                    f"``new_attempt`` and pass its absolute path."
-                )
-            elif (
-                attempts_root not in attempt_path.parents
-                and attempt_path != attempts_root
-            ):
-                attempt_dir_err = (
-                    f"Error: '{attempt_path}' is not an attempt folder "
-                    f"under {attempts_root}.  ``write_parameters`` only "
-                    f"writes inside an attempt folder."
-                )
-            elif (attempt_path / "parameters.json").exists():
-                attempt_dir_err = (
-                    f"Error: '{attempt_path}/parameters.json' already "
-                    f"exists.  Attempt folders are append-only — call "
-                    f"``new_attempt`` to create a fresh folder for a "
-                    f"new parameter set."
-                )
-
         if not isinstance(params, dict):
-            # Hardened error message: name the omitted arg explicitly,
-            # list the keys that the new dict must contain, and
-            # explicitly forbid the LLM from blaming the tool.  The
-            # original ``'parameters' must be a dict with all named
-            # keys`` was ambiguous enough that the DCIC's LLM in
-            # session ID003 hallucinated a "tool-schema mismatch"
-            # rather than recognising it had simply forgotten to pass
-            # the dict.  See extra_utilities/warnings_developer.md
-            # (W13) and the corresponding TODO entry.
             summary = (
-                f"Error: YOUR call to write_parameters omitted the "
+                f"Error: YOUR call to new_attempt_parameters omitted the "
                 f"'parameters' argument (you passed only "
                 f"{provided_arg_names}).  This is NOT a tool-schema "
-                f"problem — write_parameters accepts BOTH "
-                f"'parameters' and 'attempt_dir', and BOTH are "
-                f"REQUIRED.  RE-ISSUE the call with 'parameters' "
-                f"set to a dict containing exactly these "
+                f"problem - 'parameters' is REQUIRED; 'slug' and "
+                f"'description' are optional.  RE-ISSUE the call with "
+                f"'parameters' set to a dict containing exactly these "
                 f"{len(PARAMETER_NAMES)} keys, each mapped to a "
                 f"numeric value: {list(PARAMETER_NAMES)}.  Do NOT "
                 f"report this as a tool-interface bug; the omission "
                 f"is in your previous call's arguments."
             )
-        elif attempt_dir_err is not None:
-            summary = attempt_dir_err
+        elif not isinstance(slug, str) or not isinstance(description, str):
+            summary = (
+                "Error: 'slug' and 'description' must be strings when "
+                "given.  Nothing was created."
+            )
         else:
             provided = set(params.keys())
             expected = set(PARAMETER_NAMES)
@@ -453,18 +405,11 @@ class DCInputCreator(BaseChainAgent):
                 if k in params and not isinstance(params[k], (int, float))
                 or isinstance(params.get(k), bool)
             ]
-
-            # F75b: this folder may already hold a mesh built BEFORE any
-            # parameters.json existed.  Writing a record that CONTRADICTS
-            # that mesh would label it with a parameter set it did not come
-            # from.  ``None`` when there is nothing to compare, so folders
-            # without a provenance sidecar behave exactly as before.
-            mesh_diff = (
-                None if (missing or extra or non_numeric)
-                else mesh_provenance_mismatches(
-                    attempt_path, {k: params[k] for k in PARAMETER_NAMES}))
             if missing or extra or non_numeric:
-                parts = ["Error: parameters.json not written."]
+                parts = [
+                    "Error: no attempt was created and no parameters.json "
+                    "was written."
+                ]
                 if missing:
                     parts.append(f"Missing keys: {missing}")
                 if extra:
@@ -475,32 +420,35 @@ class DCInputCreator(BaseChainAgent):
                         f"{non_numeric}"
                     )
                 summary = "  ".join(parts)
-            elif mesh_diff:
-                summary = (
-                    f"Error: parameters.json not written.  "
-                    f"'{attempt_path}' already holds a mesh that was built "
-                    f"from different values — {'; '.join(mesh_diff)}.  "
-                    f"Writing these numbers would label that mesh with a "
-                    f"parameter set it did not come from.  Open a NEW "
-                    f"attempt (``new_attempt``) for these values."
-                )
             else:
                 ordered = {k: params[k] for k in PARAMETER_NAMES}
-                path = attempt_path / "parameters.json"
                 try:
-                    path.write_text(
-                        json.dumps(ordered, indent=2, ensure_ascii=False),
-                        encoding="utf-8",
-                    )
-                    summary = (
-                        f"Wrote parameters.json ({len(ordered)} fields) "
-                        f"to {path.resolve()}.  Attempt folder: "
-                        f"{attempt_path.resolve()}."
-                    )
-                    logger.info(f"[DCIC] {summary}")
+                    attempt_n, dest = create_attempt(slug, description)
                 except OSError as exc:
-                    summary = f"Error writing parameters.json: {exc}"
+                    summary = f"Error creating attempt folder: {exc}"
                     logger.warning(f"[DCIC] {summary}")
+                else:
+                    path = dest / "parameters.json"
+                    try:
+                        path.write_text(
+                            json.dumps(ordered, indent=2, ensure_ascii=False),
+                            encoding="utf-8",
+                        )
+                        summary = (
+                            f"Created attempt {attempt_n} at "
+                            f"{dest.resolve()} and wrote parameters.json "
+                            f"({len(ordered)} fields) into it.  Hand this "
+                            f"on as: Current attempt {attempt_n}: "
+                            f"{dest.resolve()}"
+                        )
+                        logger.info(f"[DCIC] {summary}")
+                    except OSError as exc:
+                        summary = (
+                            f"Attempt {attempt_n} was created at "
+                            f"{dest.resolve()} but parameters.json could "
+                            f"not be written: {exc}"
+                        )
+                        logger.warning(f"[DCIC] {summary}")
 
         log_tool_call(
             "dc_input_creator", tc["name"], tc.get("args"), summary,

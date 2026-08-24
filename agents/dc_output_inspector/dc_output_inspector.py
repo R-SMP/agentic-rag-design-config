@@ -10,7 +10,7 @@ import logging
 
 from langchain_core.messages import HumanMessage, ToolMessage
 
-from agents.shared.attempts_tool import list_attempts, read_attempt
+from agents.shared.attempts_tool import read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
@@ -28,7 +28,9 @@ from agents.shared.prompts import _build_template, routing_instructions
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
+    begin_routing_retry,
     finalize_unanswered_tool_calls,
+    finish_routing_retry,
     log_tool_call,
 )
 from agents.shared.session import AgentState, Session
@@ -234,8 +236,7 @@ class DCOutputInspector(BaseChainAgent):
     def set_routing_tools(self, tools: list) -> None:
         """Bind routing tools (plus the utility image-loading tool)."""
         self._extra_utility_tools_by_name = {
-            list_attempts.name: list_attempts,
-            read_attempt.name: read_attempt,
+            read_attempts.name: read_attempts,
             calculate.name: calculate,
         }
         # Which of the three database tools this agent holds is a
@@ -288,6 +289,7 @@ class DCOutputInspector(BaseChainAgent):
         """Process one hand-off message."""
         token_usage.begin_turn("DCOI")
         self._pending_hop = None
+        self._routing_retry_used = False
         text = f"Hand-off from Tool Caller:\n{message}"
         self.messages.append(HumanMessage(content=text))
 
@@ -306,6 +308,8 @@ class DCOutputInspector(BaseChainAgent):
 
             if not response.tool_calls:
                 final = ai_text(response.content)
+                if begin_routing_retry(self, final, "DCOI"):
+                    continue
                 return AgentHop(
                     "orchestrator",
                     "Error: DC Output Inspector produced a response with no "
@@ -372,6 +376,7 @@ class DCOutputInspector(BaseChainAgent):
             flush_pending_image_blocks(self)
 
             if routed:
+                finish_routing_retry(self)
                 return self._pending_hop
 
         return AgentHop(

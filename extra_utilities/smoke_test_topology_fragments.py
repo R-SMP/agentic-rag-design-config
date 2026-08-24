@@ -389,6 +389,14 @@ def check_case(topo: int, planner_first: bool) -> None:
         for agent in AGENTS_BY_TOPOLOGY[topo]:
             if agent in (hub, "receptionist", "database_handler"):
                 continue
+            # An agent with its OWN scoped copy of the generic constraints
+            # is no longer governed by the shared file's regions — the
+            # 2026-08-22 prompt reduction cuts them per agent (e.g. the
+            # Planner ISSUES standing directives, so its copy drops the
+            # copy-verbatim rule).  The scoped copy is the authority there.
+            if prompts.scoped_fragment_path(
+                    "hard_constraints_generic", agent) is not None:
+                continue
             if marker not in built[agent]:
                 fail(case, "CHAIN_ONLY",
                      f"chain agent {agent} LOST a chain-link rule: "
@@ -451,10 +459,19 @@ for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
                 fail(_case, "HUB",
                      f"{_name}'s routing section names the other hub "
                      f"({_other_display}): {bad[:2]}")
+            # The 2026-08-22 prompt reduction cut most routing boilerplate
+            # for some agents (routing._ROUTING_SECTIONS_BY_AGENT) — assert
+            # each section's content only where that section is still
+            # emitted, deriving the expectation from the same allow-list
+            # the builder uses.
+            # Ask the BUILDER, not the raw table: _sections_for applies the
+            # topology / PLANNER_FIRST gate the builder actually uses.
+            _sections = routing._sections_for(_name)
             # routing.py is now the SOLE owner of FORWARD-is-default:
             # generic_constraints.md dropped its copy as provably
             # duplicated, so nothing else in the system states it.
-            if "route FORWARD to the next agent" not in block:
+            if ("decide" in _sections
+                    and "route FORWARD to the next agent" not in block):
                 fail(_case, "ROUTING",
                      f"{_name}'s routing block never states FORWARD-is-"
                      f"default -- generic_constraints.md no longer does")
@@ -462,9 +479,11 @@ for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
                 fail(_case, "HUB",
                      f"{_name}'s routing section never names its own hub "
                      f"({_hub_disp})")
-            # The Planner is a distinct grantor ONLY in the 7-agent system.
+            # The Planner is a distinct grantor ONLY in the 7-agent system,
+            # and the grantor list lives in the permission section.
             has_planner_grantor = "from the Planner" in block
-            if _topo == 7 and not has_planner_grantor:
+            if (_topo == 7 and "permission" in _sections
+                    and not has_planner_grantor):
                 fail(_case, "HUB",
                      f"{_name}: 7-agent lost the Planner as an "
                      f"authorisation source")
@@ -622,9 +641,11 @@ finally:
 #       prompt is byte-identical to what it was before the table existed;
 #   (2) a scoped file wins for its OWN agent and for no other.
 #
-# The probe uses the 7-agent DC Input Inspector because it splices
+# The probe uses the 7-agent DC Output Inspector because it splices
 # $hard_constraints_dc and is not the hub, so a leak would show up in seven
-# sibling prompts.
+# sibling prompts.  (It was the DC Input Inspector until round 2 of the
+# prompt reduction gave that agent a REAL scoped copy of this slot — the
+# probe must target a (slot, agent) pair that is still free on disk.)
 prompts._workflow_settings.SYSTEM_TOPOLOGY = 7
 prompts.PLANNER_FIRST = False
 
@@ -647,7 +668,7 @@ if _live:
 
 # (2) precedence + isolation.
 _probe = (ROOT / "DC_prompt_fragments" / "dc_config"
-          / "hard_constraints_dc_dc_input_inspector.md")
+          / "hard_constraints_dc_dc_output_inspector.md")
 if _probe.exists():
     failures.append(
         f"[SCOPED] probe path {_probe.name} already exists — refusing to "
@@ -657,23 +678,23 @@ else:
     try:
         _probe.write_text("### SCOPED PROBE\n", encoding="utf-8")
         _after = {a: prompts._build_template(a) for a in _SCOPE_AGENTS}
-        if "SCOPED PROBE" not in _after["dc_input_inspector"]:
+        if "SCOPED PROBE" not in _after["dc_output_inspector"]:
             failures.append(
-                "[SCOPED] dc_input_inspector has its own hard_constraints_dc "
+                "[SCOPED] dc_output_inspector has its own hard_constraints_dc "
                 "copy on disk but assembled the SHARED fragment instead"
             )
-        if "Domain hard rules" in _after["dc_input_inspector"]:
+        if "Domain hard rules" in _after["dc_output_inspector"]:
             failures.append(
                 "[SCOPED] the scoped copy was ADDED alongside the shared "
                 "fragment instead of REPLACING it"
             )
         _leaked = [
             a for a in _SCOPE_AGENTS
-            if a != "dc_input_inspector" and _after[a] != _before[a]
+            if a != "dc_output_inspector" and _after[a] != _before[a]
         ]
         if _leaked:
             failures.append(
-                f"[SCOPED] a dc_input_inspector-scoped fragment changed other "
+                f"[SCOPED] a dc_output_inspector-scoped fragment changed other "
                 f"agents' prompts: {_leaked}"
             )
     finally:

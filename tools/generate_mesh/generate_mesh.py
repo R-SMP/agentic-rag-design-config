@@ -201,7 +201,7 @@ _INT_PARAM_NAMES = frozenset({"bladeCount", "innerMaxPos", "outerMaxPos"})
 # F75b: the mesh-first order.  A mesh may legitimately be built into a folder
 # that has no parameters.json yet (the Orchestrator's fallback folder, the
 # 3-agent Designer's call ordering).  This sidecar records exactly what
-# produced that mesh, so a LATER write_parameters cannot label it with numbers
+# produced that mesh, so a LATER parameter write cannot label it with numbers
 # it did not come from — the same corruption F75 blocks in the params-first
 # order, arriving by the other door.
 MESH_PROVENANCE_FILE = "mesh_params.json"
@@ -274,7 +274,7 @@ def _param_mismatches(out_dir, param_values, record_name="parameters.json"):
 def mesh_provenance_mismatches(attempt_dir, param_values):
     """Compare *param_values* against the mesh provenance sidecar.
 
-    Public because the three ``write_parameters`` handlers call it before
+    Public because the parameter-writing handlers call it before
     writing a record into a folder that may already hold a mesh.
 
     Returns ``None`` when there is NOTHING TO COMPARE — no sidecar, which is
@@ -303,8 +303,7 @@ def _read_param_record(params_file):
         return None, (
             f"Error: no parameters.json at {params_file}.  An attempt's mesh "
             f"is built FROM its parameter record, so the record must exist "
-            f"first — call ``write_parameters`` for this attempt (or point "
-            f"this call at the attempt that already has one)."
+            f"first — point this call at an attempt that has one."
         )
     try:
         raw_record = json.loads(params_file.read_text(encoding="utf-8"))
@@ -337,9 +336,8 @@ def _read_param_record(params_file):
         if non_numeric:
             parts.append(f"Non-numeric values: {sorted(non_numeric)}")
         parts.append(
-            "No mesh was built.  Fix the record with ``write_parameters`` on "
-            "a NEW attempt rather than editing this one — attempt folders are "
-            "append-only."
+            "No mesh was built.  Fix the record on a NEW attempt rather than "
+            "editing this one — attempt folders are append-only."
         )
         return None, "  ".join(parts)
     return values, None
@@ -349,8 +347,7 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
     """Resolve and validate an attempt folder for writing the mesh.
 
     Returns ``(path, None)`` on success, ``(None, error_message)`` on
-    failure.  The folder must already exist (created by ``new_attempt``)
-    and live under ``attempts/``.  A pre-existing
+    failure.  The folder must already exist and live under ``attempts/``.  A pre-existing
     ``propeller_mesh.obj`` is NOT rejected — the merged tool reuses it in
     place (append-only; never overwritten) and proceeds to the render
     step.
@@ -358,16 +355,14 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
     if not isinstance(raw, str) or not raw.strip():
         return None, (
             "Error: missing or non-string 'output_dir'.  Pass the "
-            "absolute path of the attempt folder created by "
-            "``new_attempt`` (the same path the hand-off carries "
-            "under ``Current attempt:``)."
+            "absolute path of the attempt folder (the same path the "
+            "hand-off carries under ``Current attempt <N>:``)."
         )
     path = Path(raw).resolve()
     if not path.is_dir():
         return None, (
             f"Error: '{raw}' is not an existing directory.  Create the "
-            f"attempt folder first via ``new_attempt`` and pass its "
-            f"absolute path."
+            f"attempt folder first and pass its absolute path."
         )
     try:
         attempts_root = ATTEMPTS_DIR.resolve()
@@ -806,7 +801,7 @@ def generate_and_render_propeller(
     regenerated via RhinoCompute.
 
     ``parameters_path`` MUST be the absolute path of an attempt's
-    ``parameters.json`` (written earlier by ``write_parameters``).  You do NOT
+    ``parameters.json`` (written earlier by the agent that authored the attempt).  You do NOT
     pass the values themselves and you do NOT pass an output directory: the
     tool reads the record and writes into that record's own folder, so a mesh
     can never be built from one attempt's numbers into another attempt's
@@ -836,7 +831,7 @@ def generate_and_render_propeller(
     output_path = out_path_dir / _MESH_FILENAME
 
     # Identity mapping: the KEYS in parameters.json ARE the parameter names
-    # the Grasshopper definition exposes.  ``write_parameters`` writes those
+    # the Grasshopper definition exposes.  The parameter write emits those
     # camelCase keys, ``_read_param_record`` reads them back unchanged, and
     # RhinoCompute matches them by ParamName against the .gh definition's
     # input ports — no translation layer anywhere.
@@ -880,7 +875,7 @@ def generate_and_render_propeller(
 
         # F75b: record what produced it.  Best-effort on purpose — a sidecar
         # we cannot write must never fail a mesh that built fine; its absence
-        # only means a later write_parameters has nothing to check against,
+        # only means a later parameter write has nothing to check against,
         # which is exactly the pre-F75b behaviour.
         try:
             (out_path_dir / MESH_PROVENANCE_FILE).write_text(

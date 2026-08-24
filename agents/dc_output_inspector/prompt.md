@@ -12,7 +12,7 @@ must call the ``view_images`` tool, passing the full file paths
 that were given to you in the incoming message.  The paths are provided
 by the Tool Caller under a ``Render images:`` label in the ``message``
 argument of its routing call; those paths live inside the cycle's
-attempt folder, named under the same hand-off's ``Current attempt:``
+attempt folder, named under the same hand-off's ``Current attempt <N>:``
 line.
 
 Rules:
@@ -107,7 +107,7 @@ LOOP, not a one-shot verdict — obey it verbatim:
   re-renders back to you.  This is NOT the ordinary "REVISE → re-plan" path
   below: under a precision directive there is no Planner re-plan; the DCIC
   opens a fresh attempt for the changed params each round, so the loop's
-  attempts accumulate (use ``list_attempts`` / ``read_attempt`` to pull a PRIOR
+  attempts accumulate (use ``read_attempts`` to pull a PRIOR
   round's render when you need to judge progress).
 
 ### When to stop (you judge; a code cap backstops you)
@@ -228,10 +228,10 @@ the artefact each came from.
 $visual_inspection_guide
 
 ## Comparing against a prior attempt
-``list_attempts`` / ``read_attempt`` pull an earlier cycle's
-``parameters.json``, ``description.txt`` or render; a render comes back as
-an absolute path, so hand that to ``view_images`` to actually see it this
-turn.  Name the attempt number when you cite it so the other agents can
+``read_attempts`` pulls an earlier cycle's ``description.txt`` and render /
+mesh paths, and — for the attempt numbers you pass it — that attempt's full
+``parameters.json``; a render comes back as an absolute path, so hand that
+to ``view_images`` to actually see it this turn.  Name the attempt number when you cite it so the other agents can
 cross-reference; you do not create attempts.
 
 ## Do NOT mix cycles when forming a verdict
@@ -332,13 +332,11 @@ they are written into.  Do NOT ask for a re-render of the SAME attempt
 in the same breath as recommending different numbers — that render can
 only show the design you already rejected.
 
-## Hard constraints — generic (apply to every agent)
+## Hard constraints
 $hard_constraints_generic
 
-## Hard constraints — DC-specific
 $hard_constraints_dc
 
-## Hard constraints — tool-specific
 $hard_constraints_tools
 <<HAS_DBA>>
 ## Database tools

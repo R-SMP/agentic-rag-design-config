@@ -1,4 +1,3 @@
-### Available routing tools
 - ``call_dc_input_creator(message)`` — FORWARD to the DC Input Creator
   once ``extracted_inputs.txt`` is written and complete.  This is the
   natural next step in the pipeline.

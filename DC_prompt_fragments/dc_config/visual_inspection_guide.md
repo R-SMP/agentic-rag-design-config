@@ -28,6 +28,12 @@ So "the high point is too far forward" is a statement about the CAMBER
 crest.  If a section instead looks thickest in the wrong place, NO parameter
 can fix it — say so plainly rather than asking for a ``*MaxPos`` change.
 
+On a blade-sections render each section also carries two construction
+lines: a THIN BLACK straight line from leading to trailing edge — the chord
+— and a MAGENTA DASHED curve — the camber (mean) line, whose high point is
+the crest ``*MaxPos`` sets.  A section with zero camber shows the chord
+alone, because its mean line would lie exactly on it.
+
 ### What is typically NOT resolvable at render resolution
 
   * Sub-millimetre thicknesses (ring or blade section).

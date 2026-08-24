@@ -1,0 +1,2243 @@
+[
+ {
+  "agent": "dc_input_creator",
+  "colour": "YEL",
+  "pdf_page": 1,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "its radius"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "YEL",
+  "pdf_page": 1,
+  "file": "DC_prompt_fragments/dc_config/structure.md",
+  "l0": 8,
+  "l1": 8,
+  "text": "middlePos·(impellerRadius"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "DC_prompt_fragments/dc_config/modelling_notes.md",
+  "l0": 5,
+  "l1": 5,
+  "text": "(the middle section's radial position)"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "DC_prompt_fragments/dc_config/modelling_notes.md",
+  "l0": 32,
+  "l1": 35,
+  "text": "Absolute mm ↔ fraction / percent of an overall scale parameter (when the user expresses a chord, height, or similar absolute- unit value as a fraction of diameter or radius, multiply by the corresponding scale)."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "DC_prompt_fragments/dc_config/modelling_notes.md",
+  "l0": 43,
+  "l1": 53,
+  "text": "Hard engineering blockers (parameter combinations that break the geometry) These combinations make the geometry physically impossible or self-intersecting — flag them as hard blockers wherever you check parameter consistency: innerThickness ≤ 0 or outerThickness ≤ 0 → degenerate blade section. These are physics-derived blockers, not style preferences; treat any violation as a non-negotiable fail."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 17,
+  "l1": 18,
+  "text": "1. Never replace a value the user gave with a default of your own — write what its LOCKED / SOFT TARGET / FREE state calls for."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "DC_prompt_fragments/dc_config/qualitative_examples.md",
+  "l0": 5,
+  "l1": 5,
+  "text": "\"blades closer to center\"→ middlePos toward 0.3"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 2,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 22,
+  "l1": 23,
+  "text": "3. For any parameter the user did not mention at all (neither numerically nor qualitatively), pick a reasonable mid-range default."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "YEL",
+  "pdf_page": 2,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "defaults"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "YEL",
+  "pdf_page": 2,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 30,
+  "l1": 30,
+  "text": "User Input Inspector"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 36,
+  "l1": 38,
+  "text": "Whether you may then move it off the user's number is set by its state (LOCKED / SOFT TARGET / FREE — see the next section)."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 12,
+  "l1": 15,
+  "text": "and the \"keep near … if free\" strength then says how closely to follow it (\"not as important\" → your choice within range; \"prefer X but the shape matters more\" → use X)."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 16,
+  "l1": 18,
+  "text": "either the user never specified it, or they specified it and later released it (a value that is no longer constrained is simply OMITTED from the section)."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 19,
+  "l1": 22,
+  "text": "A qualitative description that must be turned into a number is FREE for that parameter too — unless a directive holds a specific one fixed, which is then treated as LOCKED for that cycle."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Either way"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "YEL",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "the system's"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 27,
+  "l1": 28,
+  "text": "scoped \"except <param X>\","
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 31,
+  "l1": 32,
+  "text": "— a user authorisation the UII wrote, standing every cycle until revoked;"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 29,
+  "l1": 30,
+  "text": "a CLARIFY bounce may carry one too;"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 34,
+  "l1": 36,
+  "text": "IF PRESENT — an older extraction may still carry this inline mark; today a released value is simply omitted from the section (which makes it FREE) rather than annotated."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 38,
+  "l1": 40,
+  "text": "A line literally saying \"user-locked\" is only the DEFAULT lock and does NOT override a current authorisation —"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "DKYEL",
+  "pdf_page": 3,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 41,
+  "l1": 45,
+  "text": "How FAR an authorised (or soft) value may move follows the wording: \"as needed / only if necessary\" = the smallest change that restores viability, staying close to the user's number; \"freely / as much as possible\" (or nothing said) = as far as the goal requires, bounded by range."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "\"as needed /"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "round,"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "re-scale,"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 3,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 52,
+  "l1": 54,
+  "text": "from the first attempt onward — do NOT anchor on the user's number and argue your way off it; fall back to that number only when the goal does not bear on that parameter."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 86,
+  "l1": 87,
+  "text": "silently omitting an input you could act on (honour it or decline with a reason);"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 102,
+  "l1": 103,
+  "text": "(distributing would meaningfully diverge AND no single parameter is more plausible),"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 105,
+  "l1": 107,
+  "text": "Avoid silently duplicating the same value across all candidate parameters — that fabricates lock-in the user never specified. When you distribute, do so deliberately and say so."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 120,
+  "l1": 120,
+  "text": "without a specific parameter named"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 134,
+  "l1": 136,
+  "text": "— list which parameters you would have wanted to change and exactly why you cannot."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 138,
+  "l1": 140,
+  "text": "Move ANY parameter the directive authorises in the direction the DCOI described, holding fixed only what the user fixed — a SOFT TARGET is not locked, it is an available lever."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "YEL",
+  "pdf_page": 4,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 140,
+  "l1": 140,
+  "text": "Which lever moves what:"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "YEL",
+  "pdf_page": 4,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Shape,"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "YEL",
+  "pdf_page": 4,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Size"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 155,
+  "l1": 156,
+  "text": "Each later round nudges toward the DCOI's newest feedback, and every round is a fresh generation — a new attempt."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 4,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 165,
+  "l1": 173,
+  "text": "When the directive instead targets the FULL 3D (matching a top / side sketch of the whole propeller), the lever set WIDENS to whatever UNLOCKED parameter moves the mismatched aspect the DCOI named — a section's radial position ( middlePos ), a chord, an angle, or the ring proportions — still leaving every locked user number untouched. If NO unlocked parameter can move the mismatched aspect (the levers that would help are all locked — remembering that a SOFT TARGET counts as available, NOT locked), do not touch a locked value: ESCALATE with a concrete note on which locked parameters would have to change, so the DCOI reports the limit honestly."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 182,
+  "l1": 183,
+  "text": "Not a glance and not a blanket \"all 16 are in bounds\" — compare each value to the range printed in the parameter list above."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 185,
+  "l1": 187,
+  "text": "2. The hard-blocker inequalities from ## Modelling Notes — compute them with calculate (batch them in one call alongside your range arithmetic) and fix any violation."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 194,
+  "l1": 195,
+  "text": "so item 1 says fix it and item 3 says restore it."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 199,
+  "l1": 200,
+  "text": "naming the parameter, its value and its allowed range — only the user can revise their own number."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 202,
+  "l1": 205,
+  "text": "Fix what you find in the DRAFT and re-check. Only a draft that passes gets an attempt folder and a write. If a problem needs the user or a decision only the Planner can make, ESCALATE — do not write a set you know to be wrong."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 207,
+  "l1": 214,
+  "text": "The DC Input Inspector independently re-checks EVERYTHING you just checked — every range, every inequality, every moved user value — and adds the deeper checks on top. That redundancy is deliberate: you can make a mistake reviewing your own work, so your check NEVER substitutes for the DCII's. Yours exists to catch your slips early, and because on a precision refine round you forward straight to the Tool Caller — which re-checks the ranges but nothing else — yours is then the only check on whether you were authorised to move the user values you moved."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 221,
+  "l1": 222,
+  "text": "parameters.json and the mesh are append-only: once written, no one (including you) overwrites them; existing renders are reused in place."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 225,
+  "l1": 226,
+  "text": "You are stateful — before each write, check your prior write_parameters calls;"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 228,
+  "l1": 229,
+  "text": "A no-op tells the pipeline you \"did something\" when you did not and wastes a downstream cycle."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 231,
+  "l1": 240,
+  "text": "Open the folder only once your draft has PASSED the checks above, so a check that escalates never leaves an empty attempt behind: (A) The hand-off carries Current attempt: <path> (rare — an empty folder the Orchestrator pre-opened for you as a fallback when you could not open one) → write into that folder. (B) No such label (a NEW generation — the normal case; the Planner names the slug + intent but does NOT open the folder) → call new_attempt (short descriptive slug + one-line intent) ONCE, then write parameters.json into the path it returns."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 231,
+  "l1": 231,
+  "text": "Which folder to write into —"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 242,
+  "l1": 244,
+  "text": "and never leave a freshly-opened attempt empty (an attempt with no parameters.json is a dead folder)."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 241,
+  "l1": 242,
+  "text": "and ALWAYS write into the folder you open"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 249,
+  "l1": 250,
+  "text": "If you have already corrected the same problem once and it persists, ESCALATE instead of trying again."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 248,
+  "l1": 248,
+  "text": "Never overwrite — the earlier attempt stays as the record of what you tried."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 253,
+  "l1": 256,
+  "text": "Reuse the session's history. list_attempts / read_attempt inspect prior cycles. When a directive resembles one you handled before, prefer a different adjustment direction over repeating a combination known to fail, and name the prior attempt (number + parameter) in your hand-off so the next agent knows you considered it."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "/ read_attempt"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "YEL",
+  "pdf_page": 5,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_input_files"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 262,
+  "l1": 262,
+  "text": "themselves — rely on the extraction."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 5,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_input_text"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 266,
+  "l1": 267,
+  "text": "but when in doubt, re-read."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 273,
+  "l1": 274,
+  "text": "If the tool returns an error it wrote no file, so fix what it names and re-call it on the SAME folder."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "mandatory:"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_inspector/dc_input_inspector.py",
+  "l0": 64,
+  "l1": 64,
+  "text": "(DC Input Inspector),"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "is REQUIRED — it"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 294,
+  "l1": 295,
+  "text": "or another agent asked for a specific value outside the extraction"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Planner"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 298,
+  "l1": 300,
+  "text": "This context matters to the DC Input Inspector, which weighs whether the change is appropriate and whether the agent that asked for it has the authority to do so."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 300,
+  "l1": 301,
+  "text": "There is no fixed phrasing for this — talk normally, but name the source."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 311,
+  "l1": 314,
+  "text": "the direct-to-Tool-Caller edge is for precision refine rounds only. The Tool Caller needs the Current attempt: and Parameters file: lines; it has no tool for the extraction."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 317,
+  "l1": 318,
+  "text": "If you CLARIFY back to the Planner or ESCALATE to the Orchestrator, no path lines are needed — only FORWARDs carry them."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 327,
+  "l1": 328,
+  "text": "on the SAME folder; a rejected call wrote nothing, so the re-call is not a second write."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 330,
+  "l1": 331,
+  "text": "For the first two the file already exists, so the correction is a NEW generation (see \"Attempt folders\")."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 335,
+  "l1": 336,
+  "text": "it is never a tool-schema / interface bug."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 343,
+  "l1": 344,
+  "text": "— re-read what you already have before concluding that nothing holds it."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 345,
+  "l1": 345,
+  "text": "Instructions to write parameters outside the 16-parameter list."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 6,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 349,
+  "l1": 349,
+  "text": "(apply to every agent)"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 6,
+  "l1": 6,
+  "text": "only the Planner may change it."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 17,
+  "l1": 18,
+  "text": "— hand the problem to whoever can resolve it."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 21,
+  "l1": 22,
+  "text": "DON'T script the final user-facing reply — route your content to the Orchestrator."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 26,
+  "l1": 27,
+  "text": "The only exceptions are the Receptionist's direct user replies and the Orchestrator's final user-facing wrap-up."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "DC_prompt_fragments/dc_config/hard_constraints_dc.md",
+  "l0": 1,
+  "l1": 1,
+  "text": "Domain hard rules (every agent)"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "DC_prompt_fragments/dc_config/hard_constraints_dc.md",
+  "l0": 5,
+  "l1": 6,
+  "text": "(hub_radius, fillet_radius, tip_clearance, any \"supplemental\" value)"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "DC_prompt_fragments/dc_config/hard_constraints_dc.md",
+  "l0": 4,
+  "l1": 4,
+  "text": "via the DC Input Creator → Tool Caller path."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": "DC_prompt_fragments/tools_config/hard_constraints_tools.md",
+  "l0": 2,
+  "l1": 3,
+  "text": "Every path you hand a tool must trace to your incoming message or to a tool result."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 7,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Batch into ONE call; a second only when a later expression needs an earlier result."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 8,
+  "file": "DC_prompt_fragments/tools_config/blade_sections_visualizer.md",
+  "l0": 1,
+  "l1": 12,
+  "text": "Blade-sections visualizer The system can render JUST the blade cross-sections — a flat image showing the three blade sections (Inner, Middle, Outer) stacked vertically, each at its true angle of attack — without building the full 3D propeller. The Tool Caller generates it (the render_blade_sections tool) from an attempt's parameters file; the image is shown to the user and can be read by any agent that can load images. Because it skips the slow full-3D mesh generation, it is much faster than producing the whole propeller — so when a request centres on the blade sections (section drawings or specific section details), the sections can be rendered and refined cheaply on their own, and can even be the final deliverable. When the plan is a blade-sections task — render the sections, not the full 3D propeller — say so explicitly in your hand-off to the Tool Caller: tell it to render the blade sections. Write parameters.json and create the attempt as usual; the Tool Caller will render the sections from that file instead of generating the mesh."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 8,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Routing You are one agent in a decentralised pipeline. The natural flow is: Orchestrator → User Input Inspector → Planner → DC Input Creator → DC Input Inspector → Tool Caller → DC Output Inspector → Orchestrator Your position: DC Input Creator. - Your natural next in line is: DC Input Inspector. - Your natural previous in line is: Planner."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 8,
+  "file": "agents/shared/routing.py",
+  "l0": 315,
+  "l1": 315,
+  "text": "since no instruction to report back means continue),"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 8,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "— normally the Planner —"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "YEL",
+  "pdf_page": 8,
+  "file": "agents/shared/routing.py",
+  "l0": 324,
+  "l1": 324,
+  "text": "no agent in the chain can"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/shared/prompt_fragments/routing_dc_input_creator_uii_first.md",
+  "l0": 6,
+  "l1": 6,
+  "text": "as described in your prompt."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/shared/prompt_fragments/routing_dc_input_creator_uii_first.md",
+  "l0": 10,
+  "l1": 12,
+  "text": "if its hand-off was ambiguous, or if the qualitative directive it gave cannot be expressed in concrete parameter values."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": "agents/shared/prompt_fragments/routing_dc_input_creator_uii_first.md",
+  "l0": 14,
+  "l1": 16,
+  "text": "(locked-value collision, qualitative directive with no quantitative expression, or a budgeted attempt cap reached)."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Do not loop — ESCALATE when stuck If you find yourself about to call the same tool with the same arguments you already called earlier in this turn, STOP. Calling the same read tool twice on unchanged input, or re-thinking the same decision in a loop, will not give you new information. Instead, ESCALATE to the Orchestrator with a short note describing what is ambiguous or missing and what you would need to proceed. The Orchestrator can then re-dispatch you with new instructions, consult another agent, or ask the user. Never silently loop."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Permission / authorisation issues → Orchestrator (not the previous agent) If a rule in your system prompt blocks an action unless some authorisation is present, READ THE INCOMING HAND-OFF (and any upstream file the hand-off points to, e.g. extracted_inputs.txt) ONCE MORE before escalating. If the hand-off already names an authorisation that plausibly covers the action — even if the wording differs from a template you expected — act on it. Do NOT bounce back to the previous agent in the chain for a ritual re-confirmation of something the hand-off already carries; that is a wasted round-trip."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "When an authorisation is truly missing or ambiguous, ESCALATE to the Orchestrator. The previous agent in the chain typically CANNOT grant permission — authorisations come from the user (relayed by the Receptionist → Orchestrator), from the Planner (relayed by the Orchestrator), or from the Orchestrator itself. CLARIFY back to the previous agent is appropriate for data / wording / format issues the previous agent can actually fix, NOT for permission questions."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Every response that ends your turn MUST invoke exactly one of the routing tools listed above. The tool's message argument IS the complete hand-off text the recipient will see — there is NO separate audit block to emit. Do NOT write a ---ROUTING--- / --- MESSAGE--- / ---END--- template; that format has been retired. The tool call is the routing decision; its message argument is the hand-off."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Do NOT write a ---ROUTING--- / --- MESSAGE--- / ---END--- template; that format has been retired."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Write the message argument as free-form prose: no fixed template, no enumerated option menus, no placeholder phrasings. Include everything the recipient genuinely needs (paths the recipient's tools require, context about what changed and why, authorship of any non-user-authored values) and nothing they do not. Your verbose work product stays in your own history and (where applicable) on disk — do not duplicate it inside the message argument."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 9,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Keep that reasoning terse (one or two lines is plenty)."
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 10,
+  "file": "agents/dc_input_creator/prompt.md",
+  "l0": 178,
+  "l1": 178,
+  "text": "write_parameters"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "DKYEL",
+  "pdf_page": 10,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_attempts"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 11,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_attempt"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "DKYEL",
+  "pdf_page": 11,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "new_attempt"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 12,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_input_files"
+ },
+ {
+  "agent": "dc_input_creator",
+  "colour": "RED",
+  "pdf_page": 13,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_input_text"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 14,
+  "file": "DC_prompt_fragments/dc_config/parameters.md",
+  "l0": 19,
+  "l1": 19,
+  "text": "radius = 4 + middlePos·(impellerRadius − 4) mm"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 14,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "(hub, r = 4 mm),"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 15,
+  "file": "DC_prompt_fragments/dc_config/modelling_notes.md",
+  "l0": 43,
+  "l1": 53,
+  "text": "Hard engineering blockers (parameter combinations that break the geometry) These combinations make the geometry physically impossible or self-intersecting — flag them as hard blockers wherever you check parameter consistency: innerThickness ≤ 0 or outerThickness ≤ 0 → degenerate blade section. These are physics-derived blockers, not style preferences; treat any violation as a non-negotiable fail."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 15,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 28,
+  "l1": 30,
+  "text": "each with a <name>_note.txt — the Receptionist enforces the pairing before forwarding, so the note FILE always exists, though its written description is optional and may be blank."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 15,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 32,
+  "l1": 32,
+  "text": "— it costs LLM turns and tokens."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 15,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 40,
+  "l1": 43,
+  "text": "(This is also how you carry out the extraction-fidelity half of axis 4 when you suspect the UII misread something: load the image with view_images and compare it against what the extraction claims.)"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 54,
+  "l1": 55,
+  "text": "whenever you are not CERTAIN that what you remember still matches disk, and"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 16,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 53,
+  "l1": 54,
+  "text": "Parameters file: path your incoming hand-off carries, verbatim."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 16,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 53,
+  "l1": 53,
+  "text": "read_parameters(path)"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 57,
+  "l1": 57,
+  "text": "normally in a NEW attempt folder, so what you remember describes a DIFFERENT attempt and is STALE."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 12,
+  "l1": 15,
+  "text": "and the \"keep near … if free\" strength then says how closely to follow it (\"not as important\" → your choice within range; \"prefer X but the shape matters more\" → use X)."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 16,
+  "l1": 18,
+  "text": "either the user never specified it, or they specified it and later released it (a value that is no longer constrained is simply OMITTED from the section). Either way"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 19,
+  "l1": 22,
+  "text": "A qualitative description that must be turned into a number is FREE for that parameter too — unless a directive holds a specific one fixed, which is then treated as LOCKED for that cycle."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 27,
+  "l1": 28,
+  "text": "scoped \"except <param X>\","
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 31,
+  "l1": 32,
+  "text": "— a user authorisation the UII wrote, standing every cycle until revoked;"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 29,
+  "l1": 30,
+  "text": "a CLARIFY bounce may carry one too;"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 34,
+  "l1": 36,
+  "text": "IF PRESENT — an older extraction may still carry this inline mark; today a released value is simply omitted from the section (which makes it FREE) rather than annotated."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 38,
+  "l1": 40,
+  "text": "A line literally saying \"user-locked\" is only the DEFAULT lock and does NOT override a current authorisation —"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/shared/prompt_fragments/value_states.md",
+  "l0": 41,
+  "l1": 45,
+  "text": "How FAR an authorised (or soft) value may move follows the wording: \"as needed / only if necessary\" = the smallest change that restores viability, staying close to the user's number; \"freely / as much as possible\" (or nothing said) = as far as the goal requires, bounded by range."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "A blanket assertion like \"all 16 values are within bounds\" is NOT acceptable."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 77,
+  "l1": 78,
+  "text": "The DC Input Creator can misjudge its own work, and your independent pass is what catches that."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 16,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 81,
+  "l1": 83,
+  "text": "users can and do provide values the generator cannot handle, and it fails or produces degenerate geometry on them."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 93,
+  "l1": 97,
+  "text": "The DC-specific list of hard blockers — the parameter combinations that break the geometry, with the exact inequalities to check — lives in the ## Modelling Notes section above; use it as the authoritative checklist this cycle."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 97,
+  "l1": 99,
+  "text": "Compute each inequality via the calculate tool (batched in a single call alongside your range-validation arithmetic), and"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "If parameters.json silently uses a default or unrelated value for the constrained parameter(s) AND the DCIC's hand-off does not acknowledge the real-world-quantity entry at all, CLARIFY back to the DC Input Creator asking it to honour the entry, apply Add the \"optional reference\" yellow text I had flagged here, after this period in yellow. Instead of \"when...\", use: \"Other reasons to re-check are inconsistencies, such as:\" (use bullet points instead of commas\" \". In such cases, you can and should...\" shouldn't the \"*\" be a \"-\" instead? Also, they are not stacking vertically instead of \"Planner\", should say \"system directive\""
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 109,
+  "l1": 109,
+  "text": "When you have reason to doubt how the UII captured something —"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 17,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "— you can of"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 113,
+  "l1": 114,
+  "text": "or the extraction or an incoming hand-off reports that the user's inputs were hard to interpret"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 17,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "and should"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "sparingly:"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 115,
+  "l1": 116,
+  "text": "only when the doubt cannot be resolved from the extraction alone."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 130,
+  "l1": 130,
+  "text": "when it dispatches a recovery cycle"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 131,
+  "l1": 133,
+  "text": "A directive to change the value AUTHORISES the move, over any user-imposed value. A directive to keep it fixed LOCKS it, even if the user did not."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 135,
+  "l1": 138,
+  "text": "* any authorisation listed above frees it; * a SOFT TARGET marker is itself authorisation to move toward its goal — do NOT flag either of these as a violation; * otherwise its QUANTITATIVE INPUTS value is LOCKED;"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 17,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "*"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 139,
+  "l1": 140,
+  "text": "— never imposed, or imposed and since released —"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 144,
+  "l1": 148,
+  "text": "— but still range-validate the new value (Section 1); authorisation never bypasses [min; max]. When a directive named a specific change, confirm parameters.json reflects it AND respects the \"how far\" wording it used; a missing move, or a clear overshoot, is a REVISE → CLARIFY back to the DCIC."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 17,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Planner"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 152,
+  "l1": 155,
+  "text": "Do NOT escalate to the user; it is a DCIC-fixable slip. Escalate to the Orchestrator only if you CLARIFYed once and it persists, or the design is genuinely infeasible without the change."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 151,
+  "l1": 152,
+  "text": "— name the parameter, the value it must hold, and why."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 157,
+  "l1": 159,
+  "text": "naming the parameter, its value and its range, so whoever imposed it — the Planner, or the user — can revise it."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 165,
+  "l1": 166,
+  "text": "Verify that the DCIC's hand-off message carries one of:"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 168,
+  "l1": 171,
+  "text": "The hand-off should name the user's stated quantity, the anchor parameter(s) chosen, the conversion formula, and the resulting parameter value(s)."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 173,
+  "l1": 176,
+  "text": "— judge the margin from the precision of the user's stated value, the integer / float nature of the affected parameter, and any rounding the conversion required."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 177,
+  "l1": 179,
+  "text": "The hand-off should name the user-stated quantity, the parameters chosen, and"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 17,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 184,
+  "l1": 186,
+  "text": "(the unit cannot be reconciled with any parameter, the value is not relevant to design generation, etc.)."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 192,
+  "l1": 195,
+  "text": "engineering judgement explicitly, or decline with a reason. This is a DCIC-fixable issue (regenerate parameters with the conversion / rationale included), not an Orchestrator escalation."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 200,
+  "l1": 200,
+  "text": "(e.g. a choice like one that failed earlier this session)"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 208,
+  "l1": 209,
+  "text": "to put it to the Planner;"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 209,
+  "l1": 209,
+  "text": "you do not override the Planner yourself."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 226,
+  "l1": 226,
+  "text": "the pairing never changes:"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 229,
+  "l1": 229,
+  "text": "upstream-directed"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 18,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 230,
+  "l1": 234,
+  "text": "and unlikely to repeat a known-bad outcome. An approved set — including a retry set whose authorisation you judged valid — goes to the Tool Caller, never back to the Orchestrator for a second opinion; the sole exception is an incoming instruction that told you to report back rather than continue."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 234,
+  "l1": 235,
+  "text": "Minor engineering opinions or style notes do not block APPROVE."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "a value it generated is out of range; a feasibility inequality from ## Modelling Notes is violated, or a value clearly contradicts a STATED design intent, and different values could fix it; an arithmetic / mapping error, or a missing / malformed field; a change was applied but the DCIC did not say who requested it or why — ask for the missing authorship so you can judge it; a LOCKED value moved with no authorisation, a \"keep fixed\" parameter moved, or an \"as needed\" directive was clearly overshot (§4a) — regenerate respecting the constraint."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "a hard engineering blocker needs user input; you CLARIFYed once and the same problem persists; something is infeasible regardless of the parameters; you have STRONG grounds for a change BEYOND the Planner's directive (§5) — put it to the Planner via the Orchestrator; a required Parameters file: / Extracted inputs file: line is missing."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 257,
+  "l1": 264,
+  "text": "One range exception: an out-of-range value the USER literally provided ESCALATES only when nothing authorises you to move it (only the user can revise their own number). Any authorisation counts — a SOFT TARGET marker, a permission in the hand-off or the extraction's DESIGN INTENT, or a Planner directive; when one applies, CLARIFY back to the DCIC to bring the value into range instead of asking the user. A DCIC-chosen out-of-range value always CLARIFYs back. An unauthorised change is always a DCIC-fixable slip → CLARIFY, never a user escalation."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 18,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 266,
+  "l1": 270,
+  "text": "Two self-checks before you route: 1. If your verdict is APPROVE and you were not told to report back, the tool MUST be call_tool_caller — if you wrote \"proceed to the Tool Caller\" but are about to call anything else, STOP and fix it (a recurring failure"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 271,
+  "l1": 273,
+  "text": "mode). 2. Confirm you compared each of the 16 parameters against its [min; max] individually — never a memory or a blanket claim. A single out-of-range value makes APPROVE invalid."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 275,
+  "l1": 275,
+  "text": "Hand-off to the Tool Caller (IMPORTANT)"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 19,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 276,
+  "l1": 277,
+  "text": "When you FORWARD to the Tool Caller, the message argument of your call_tool_caller tool call MUST include these two lines"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 277,
+  "l1": 279,
+  "text": "with the absolute paths the DCIC gave you, preserving the (newly written this cycle) marker exactly:"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 19,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 281,
+  "l1": 282,
+  "text": "Current attempt: <same path the DCIC gave you> Parameters file (newly written this cycle): <Current attempt>/parameters.json"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 284,
+  "l1": 295,
+  "text": "(If the DCIC's hand-off did NOT carry the (newly written this cycle) marker, drop it and just write Parameters file: — but normally the DCIC opens a NEW attempt for each generation and writes that attempt's parameters.json , so the marker will be present.) The Tool Caller ESCALATEs without both labels. It writes into the attempt folder named under Current attempt: — mesh and renders land there — and reads the JSON from the path on the Parameters file: line. The marker tells it that any parameter content it remembers is stale. If you CLARIFY back to the DCIC or ESCALATE to the Orchestrator, no path lines are needed."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "agents/dc_input_inspector/prompt.md",
+  "l0": 297,
+  "l1": 297,
+  "text": "(apply to every agent)"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 6,
+  "l1": 6,
+  "text": "only the Planner may change it."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 17,
+  "l1": 18,
+  "text": "— hand the problem to whoever can resolve it."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 21,
+  "l1": 22,
+  "text": "DON'T script the final user-facing reply — route your content to the Orchestrator."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 26,
+  "l1": 27,
+  "text": "The only exceptions are the Receptionist's direct user replies and the Orchestrator's final user-facing wrap-up."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "DC_prompt_fragments/dc_config/hard_constraints_dc.md",
+  "l0": 2,
+  "l1": 3,
+  "text": "Hard constraints — DC-specific Domain hard rules (every agent) The 16 named parameters are the ONLY design levers and there is no mesh-editing capability: geometry changes only by changing them"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "DC_prompt_fragments/dc_config/hard_constraints_dc.md",
+  "l0": 3,
+  "l1": 6,
+  "text": "and regenerating via the DC Input Creator → Tool Caller path. Reject invented parameters (hub_radius, fillet_radius, tip_clearance, any \"supplemental\" value) — they do not exist."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 19,
+  "file": "DC_prompt_fragments/tools_config/hard_constraints_tools.md",
+  "l0": 1,
+  "l1": 1,
+  "text": "Tool-use hard rules (every agent)"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 20,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Batch into ONE call; a second only when a later expression needs an earlier result."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 21,
+  "file": "DC_prompt_fragments/tools_config/blade_sections_visualizer.md",
+  "l0": 1,
+  "l1": 12,
+  "text": "Blade-sections visualizer The system can render JUST the blade cross-sections — a flat image showing the three blade sections (Inner, Middle, Outer) stacked vertically, each at its true angle of attack — without building the full 3D propeller. The Tool Caller generates it (the render_blade_sections tool) from an attempt's parameters file; the image is shown to the user and can be read by any agent that can load images. Because it skips the slow full-3D mesh generation, it is much faster than producing the whole propeller — so when a request centres on the blade sections (section drawings or specific section details), the sections can be rendered and refined cheaply on their own, and can even be the final deliverable."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 21,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Routing You are one agent in a decentralised pipeline. The natural flow is: Orchestrator → User Input Inspector → Planner → DC Input Creator → DC Input Inspector → Tool Caller → DC Output Inspector → Orchestrator Your position: DC Input Inspector. - Your natural next in line is: Tool Caller. - Your natural previous in line is: DC Input Creator."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 21,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "How to decide where to route If the Orchestrator's instruction in your incoming message told you to continue the pipeline (explicitly or by default, since no instruction to report back means continue), and your own work succeeded, route FORWARD to the next agent."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 21,
+  "file": "agents/shared/routing.py",
+  "l0": 315,
+  "l1": 315,
+  "text": "since no instruction to report back means continue),"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 21,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "If the Orchestrator's instruction told you to report back or to do X and return, route to the Orchestrator once your work is done. If you cannot do your job because the incoming hand-off is ambiguous, missing data, or contains an error the sender can fix, route back to the agent that handed you this work — normally the DC Input Creator — with a clear clarification request (CLARIFY). If something is fundamentally wrong and no agent in the chain can fix it, route to the Orchestrator (ESCALATE)."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 21,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Available routing tools call_tool_caller(message) — FORWARD when parameters.json passes every check. This is the natural next step in the pipeline. call_dc_input_creator(message) — CLARIFY back to the DC Input Creator when the bad value originated with the DCIC and the DCIC can fix it on its own. call_orchestrator(message) — ESCALATE when the bad value originated with the user (the DCIC cannot unilaterally correct a user-locked value), or when something else blocks the inspection that no chain agent can fix."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 21,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Do not loop — ESCALATE when stuck If you find yourself about to call the same tool with the same arguments you already called earlier in this turn, STOP. Calling the same read tool twice on unchanged input, or re-thinking the same decision in a loop, will not give you new information. Instead, ESCALATE to the Orchestrator with a short note describing what is ambiguous or missing and what you would need to proceed. The Orchestrator can then re-dispatch you with new instructions, consult another agent, or ask the user. Never silently loop."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 21,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Permission / authorisation issues → Orchestrator (not the previous agent) If a rule in your system prompt blocks an action unless some authorisation is present, READ THE INCOMING HAND-OFF (and any upstream file the hand-off points to, e.g. extracted_inputs.txt) ONCE MORE before escalating. If the hand-off already names an authorisation that plausibly covers the action — even if the wording differs from a template you expected — act on it. Do NOT bounce back to the previous agent in the chain for a ritual re-confirmation of something the hand-off already carries; that is a wasted round-trip. When an authorisation is truly missing or ambiguous, ESCALATE to the Orchestrator. The previous agent in the chain typically CANNOT grant permission — authorisations come from the user (relayed by the Receptionist → Orchestrator), from the Planner (relayed by the Orchestrator), or from the Orchestrator itself. CLARIFY back to the previous agent is appropriate for data / wording / format issues the previous agent can actually fix, NOT for permission questions."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 21,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Every response that ends your turn MUST invoke exactly one of the routing tools listed above. The tool's message argument IS the complete hand-off text the recipient will see — there is NO separate audit block to emit. Do NOT write a ---ROUTING--- / --- MESSAGE--- / ---END--- template; that format has been retired. The tool call is the routing decision; its message argument is the hand-off."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 22,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Write the message argument as free-form prose: no fixed template, no enumerated option menus, no placeholder phrasings. Include everything the recipient genuinely needs (paths the recipient's tools require, context about what changed and why, authorship of any non-user-authored values) and nothing they do not. Your verbose work product stays in your own history and (where applicable) on disk — do not duplicate it inside the message argument."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 22,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Keep that reasoning terse (one or two lines is plenty)."
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 22,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_parameters"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 23,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_attempts"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 23,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_attempt"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "YEL",
+  "pdf_page": 24,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_input_files"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 24,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_input_text"
+ },
+ {
+  "agent": "dc_input_inspector",
+  "colour": "RED",
+  "pdf_page": 25,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_image_notes"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": "DC_prompt_fragments/tools_config/tool_inventory.md",
+  "l0": 5,
+  "l1": 6,
+  "text": "ONE call does both; there is no separate render tool to call."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": "DC_prompt_fragments/tools_config/tool_inventory.md",
+  "l0": 5,
+  "l1": 5,
+  "text": "and — when mesh checks are enabled — the quality metrics."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "batch every expression you need this turn into ONE call."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "YEL",
+  "pdf_page": 27,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_attempts — numbered summary of every attempt folder and which roles (parameters / mesh / renders / description) each holds."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "4. read_attempt(n, file) — read one file from the n-th attempt (text inline; an image or mesh returns a path to hand on to whoever can load it)."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "only"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 17,
+  "l1": 18,
+  "text": "— you are NOT bound to new_attempt"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 19,
+  "l1": 19,
+  "text": "your routing tools name them."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "(IMPORTANT)"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "—"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 28,
+  "l1": 28,
+  "text": "quoting them in a report —"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "YEL",
+  "pdf_page": 27,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 31,
+  "l1": 31,
+  "text": "to render the blade sections"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 37,
+  "l1": 40,
+  "text": "Re-read whenever you are not CERTAIN that what you remember still matches disk, and ALWAYS when the label reads Parameters file (newly written this cycle): — that marks a freshly written set, normally in a NEW attempt folder, so anything you remember is STALE."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 27,
+  "file": "DC_prompt_fragments/dc_config/parameters.md",
+  "l0": 6,
+  "l1": 6,
+  "text": "(The outer-ring HEIGHT is not a parameter — it is derived automatically to fit the outer blade section.)"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 28,
+  "file": "DC_prompt_fragments/dc_config/parameters.md",
+  "l0": 15,
+  "l1": 16,
+  "text": "innerMaxPos / outerMaxPos move the CAMBER crest only, and do nothing at zero camber. Maximum THICKNESS is fixed at ~30% chord."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 28,
+  "file": "DC_prompt_fragments/dc_config/parameters.md",
+  "l0": 19,
+  "l1": 19,
+  "text": "radius = 4 + middlePos·(impellerRadius − 4) mm"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 28,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "(hub, r = 4 mm),"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 28,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 51,
+  "l1": 51,
+  "text": "Do this per value, not as a glance — a blanket \"they look fine\" is not a check."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 28,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 54,
+  "l1": 54,
+  "text": "— your routing tools name the agent to return to —"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 28,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 62,
+  "l1": 66,
+  "text": "This check is deliberately redundant: it exists because the agent that wrote these values was checking its own work, and because nothing in the tooling validates ranges. An out-of-range value is not rejected: the FEG backend (the default) silently accepts or clamps it, so the mesh can stop matching parameters.json ."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 28,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "(Mesh quality checks are OFF this session: the render step returns the three views and the mesh's bounding box, but no watertightness / volume / degenerate-face numbers — so there are none to report.)"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 28,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Three"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 28,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "MUST"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 88,
+  "l1": 91,
+  "text": "The DC Output Inspector receives no images automatically: this cycle's renders reach it ONLY as the paths you list under Render images: , and it locates the folder they sit in from your Current attempt: line,"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 91,
+  "l1": 91,
+  "text": "which is REQUIRED on every routing call."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 94,
+  "l1": 94,
+  "text": "— the mesh tool's return text marks each one —"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 94,
+  "l1": 94,
+  "text": "the mesh tool's return text marks each one"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "YEL",
+  "pdf_page": 29,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_attempts"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "/ read_attempt"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 100,
+  "l1": 102,
+  "text": "Reach for them only to confirm what was already tried — e.g. a hand-off cites \"the parameters from attempt N\" and you want to see what is on disk. Do not browse attempt after attempt, and do not use them to invent your own retry strategies; that is the Planner's call."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "— generic"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 105,
+  "l1": 105,
+  "text": "(apply to every agent)"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 6,
+  "l1": 6,
+  "text": "only the Planner may change it."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 21,
+  "l1": 22,
+  "text": "DON'T script the final user-facing reply — route your content to the Orchestrator."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/shared/prompt_fragments/generic_constraints.md",
+  "l0": 26,
+  "l1": 27,
+  "text": "The only exceptions are the Receptionist's direct user replies and the Orchestrator's final user-facing wrap-up."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 108,
+  "l1": 108,
+  "text": "Hard constraints — DC-specific"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "(every agent)"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "DC_prompt_fragments/dc_config/hard_constraints_dc.md",
+  "l0": 3,
+  "l1": 6,
+  "text": "geometry changes only by changing them and regenerating via the DC Input Creator → Tool Caller path. Reject invented parameters (hub_radius, fillet_radius, tip_clearance, any \"supplemental\" value) — they do not exist."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": "agents/tool_caller/prompt.md",
+  "l0": 111,
+  "l1": 111,
+  "text": "Hard constraints — tool-specific"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "(every agent)"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Batch into ONE call; a second only when a later expression needs an earlier result."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 29,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "You are one agent in a decentralised pipeline. The natural flow is: Orchestrator → User Input Inspector → Planner → DC Input Creator → DC Input Inspector → Tool Caller → DC Output Inspector → Orchestrator Your position: Tool Caller. - Your natural next in line is: DC Output Inspector. - Your natural previous in line is: DC Input Inspector."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 30,
+  "file": "agents/shared/routing.py",
+  "l0": 171,
+  "l1": 171,
+  "text": "How to decide where to route"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "YEL",
+  "pdf_page": 30,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "If the Orchestrator's instruction in your incoming message told you to continue the pipeline (explicitly or by default, since no instruction to report back means continue), and your own work succeeded, route FORWARD to the next agent."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "YEL",
+  "pdf_page": 30,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "next agent."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "YEL",
+  "pdf_page": 30,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "If the Orchestrator's instruction told you to report back or to do X and return, route to the Orchestrator once your work is done. If you cannot do your job because the incoming hand-off is ambiguous, missing data, or contains an error the sender can fix, route back to the agent that handed you this work — normally the DC Input Inspector — with a clear clarification request (CLARIFY). If something is fundamentally wrong and no agent in the chain can fix it, route to the Orchestrator (ESCALATE)."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 30,
+  "file": "agents/shared/routing.py",
+  "l0": 322,
+  "l1": 322,
+  "text": "the agent that handed you this work — normally"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 30,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "—"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 30,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "when mesh + renders report all exist."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 30,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Do not loop — ESCALATE when stuck If you find yourself about to call the same tool with the same arguments you already called earlier in this turn, STOP. Calling the same read tool twice on unchanged input, or re-thinking the same decision in a loop, will not give you new information. Instead, ESCALATE to the Orchestrator with a short note describing what is ambiguous or missing and what you would need to proceed. The Orchestrator can then re-dispatch you with new instructions, consult another agent, or ask the user. Never silently loop."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 30,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Permission / authorisation issues → Orchestrator (not the previous agent) If a rule in your system prompt blocks an action unless some authorisation is present, READ THE INCOMING HAND-OFF (and any upstream file the hand-off points to, e.g. extracted_inputs.txt) ONCE MORE before escalating. If the hand-off already names an authorisation that plausibly covers the action — even if the wording differs from a template you expected — act on it. Do NOT bounce back to the previous agent in the chain for a ritual re-confirmation of something the hand-off already carries; that is a wasted round-trip. When an authorisation is truly missing or ambiguous, ESCALATE to the Orchestrator. The previous agent in the chain typically CANNOT grant permission — authorisations come from the user (relayed by the Receptionist → Orchestrator), from the Planner (relayed by the Orchestrator), or from the Orchestrator itself. CLARIFY back to the previous agent is appropriate for data / wording / format issues the previous agent can actually fix, NOT for permission questions."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 30,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Every response that ends your turn MUST invoke exactly one of the routing tools listed above. The tool's message argument IS the complete hand-off text the recipient will see — there is NO separate audit block to emit. Do NOT write a ---ROUTING--- / --- MESSAGE--- / ---END--- template; that format has been retired. The tool call is the routing decision; its message argument is the hand-off. Write the message argument as free-form prose: no fixed template, no enumerated option menus, no placeholder phrasings. Include everything the recipient genuinely needs (paths the recipient's tools require, context about what changed and why, authorship of any non-user-authored values) and nothing they do not. Your verbose work product stays in your own history and (where applicable) on disk — do not duplicate it inside the message argument."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 30,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "Keep that reasoning terse (one or two lines is plenty)."
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "YEL",
+  "pdf_page": 32,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "list_attempts"
+ },
+ {
+  "agent": "tool_caller",
+  "colour": "RED",
+  "pdf_page": 32,
+  "file": null,
+  "l0": null,
+  "l1": null,
+  "text": "read_attempt"
+ }
+]

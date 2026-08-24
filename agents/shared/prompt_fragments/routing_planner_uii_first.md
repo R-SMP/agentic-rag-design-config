@@ -1,4 +1,3 @@
-### Available routing tools
 - ``call_dc_input_creator(message)`` — FORWARD to the DC Input
   Creator.  This is the natural next step in the pipeline whenever
   Part 1 (planning) yields an actionable plan that the chain should

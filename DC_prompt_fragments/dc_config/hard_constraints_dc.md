@@ -1,4 +1,4 @@
-### Domain hard rules (every agent)
+### Domain hard rules
 - The $parameter_count named parameters are the ONLY design levers and there
   is no mesh-editing capability: geometry changes only by changing them and
   regenerating via the DC Input Creator → Tool Caller path.  Reject invented

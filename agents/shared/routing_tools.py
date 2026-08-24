@@ -281,6 +281,7 @@ def build_routing_tool(
     )
 
     def _invoke(message: str) -> str:
+        message = _carry_over_prose(caller_agent, message, caller_display)
         # Returning to the hub is not a chain exchange, so it is not
         # recorded in the chain log.  Resolved per call rather than per
         # build so a topology switch cannot leave a stale hub captured in
@@ -347,6 +348,121 @@ def tool_call_signature(tc: dict) -> tuple[str, str]:
     except (TypeError, ValueError):
         args_str = repr(args)
     return tc.get("name", ""), args_str
+
+
+# ---------------------------------------------------------------------------
+# Routing retry — one second chance after a prose-only turn
+#
+# The six CHAIN agents must end every turn with a routing tool call; prose
+# alone is discarded.  Historically the first prose reply aborted the turn
+# with an error hop and the agent was never told.  These three helpers give
+# it ONE nudge instead, and are called EXPLICITLY from each agent's run
+# loop rather than from BaseChainAgent, so the behaviour stays visible and
+# tunable per agent.  The Receptionist and the Orchestrator do not use them:
+# for those two a prose reply IS the user-facing answer.
+# ---------------------------------------------------------------------------
+
+ROUTING_RETRY_NUDGE = (
+    "Your last response contained no routing tool call, so it was NOT "
+    "delivered to anyone.  End this turn by invoking one of your routing "
+    "tools."
+)
+
+
+def routing_retry_enabled() -> bool:
+    """Whether the one-shot routing retry is on, read disk-fresh.
+
+    Read through ``getattr`` with a default so an older settings.py that
+    predates the flag still imports.
+    """
+    from workflow_settings import settings as _ws
+
+    return bool(getattr(_ws, "ROUTING_RETRY_ENABLED", True))
+
+
+def begin_routing_retry(agent, prose: str, agent_label: str) -> bool:
+    """Start the ONE permitted retry after a prose-only turn.
+
+    Appends the nudge to *agent*'s history and stashes *prose* so the next
+    routing call can fall back to it (see :func:`_carry_over_prose`).
+
+    Returns True when the caller should ``continue`` its run loop, and
+    False when it should fall through to its existing error hop — because
+    the flag is off, or the single retry is already spent this turn.
+    """
+    if not routing_retry_enabled():
+        return False
+    if getattr(agent, "_routing_retry_used", False):
+        return False
+    agent._routing_retry_used = True
+    # Index of the prose AIMessage the caller appended just before its
+    # no-tool-call check; the nudge lands directly after it.  Both are
+    # removed again by ``finish_routing_retry`` once the retry routes.
+    agent._routing_retry_mark = len(agent.messages) - 1
+    agent._routing_retry_prose = prose
+    # Imported here, not at module scope: this module is imported by
+    # langchain-free consumers (extra_utilities/smoke_test_topology_
+    # fragments.py stubs only ``langchain_core.tools``), and a second
+    # top-level langchain_core import would break them.
+    from langchain_core.messages import HumanMessage
+
+    agent.messages.append(HumanMessage(content=ROUTING_RETRY_NUDGE))
+    logger.warning(
+        f"[{agent_label}]  no routing tool call — nudging once and "
+        f"re-invoking (ROUTING_RETRY_ENABLED)."
+    )
+    return True
+
+
+def finish_routing_retry(agent) -> None:
+    """Drop the prose turn and the nudge once the retry has routed.
+
+    Identity-checked rather than index-trusted: the run loop may prune
+    history or flush image blocks between the nudge and the retry, and
+    deleting the wrong two messages would corrupt the tool_call /
+    tool_result pairing.  When the check fails the messages are simply
+    left in place — a slightly longer history is harmless, a broken one
+    is not.
+
+    A no-op for the overwhelming majority of turns, where no retry ran.
+    """
+    mark = getattr(agent, "_routing_retry_mark", None)
+    agent._routing_retry_mark = None
+    agent._routing_retry_prose = None
+    if mark is None or mark < 0 or mark + 1 >= len(agent.messages):
+        return
+    if getattr(agent.messages[mark + 1], "content", None) != ROUTING_RETRY_NUDGE:
+        return
+    del agent.messages[mark:mark + 2]
+
+
+def _carry_over_prose(agent, message: str, caller_display: str) -> str:
+    """Substitute a retried agent's own prose for a thinner hand-off.
+
+    After a prose-only turn the agent is nudged and re-invoked.  It may
+    then route with a ``message`` far thinner than the reasoning it wrote
+    a moment earlier, silently dropping it.  When the new hand-off is
+    shorter than that prose, send the prose instead: the routing tool the
+    agent chose still decides WHERE the hand-off goes, so only the thin
+    sentence is discarded.
+
+    Called at the TOP of the routing tool, before the chain log, the
+    session log and the trace are written, so all three and the recipient
+    agree on what was actually sent.  One-shot, and inert for every agent
+    that did not retry.
+    """
+    prose = getattr(agent, "_routing_retry_prose", None)
+    if not prose:
+        return message
+    agent._routing_retry_prose = None
+    if len(message.strip()) >= len(prose.strip()):
+        return message
+    logger.info(
+        f"[{caller_display}]  retried hand-off ({len(message.strip())} chars) "
+        f"was thinner than the prose it retried from "
+        f"({len(prose.strip())} chars) — sending the prose instead."
+    )
+    return prose
 
 
 def stuck_escalation(agent_label: str, tool_name: str) -> AgentHop:

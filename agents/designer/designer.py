@@ -20,7 +20,7 @@ gradient the benchmark exists to measure: independent (7) -> self-check
 Tools are the union of both parents, minus one deliberate omission:
   * from the DCIC - ``read_extracted_inputs``, ``write_parameters``,
     ``new_attempt`` (it remains the ONLY holder of attempt creation),
-    ``list_attempts``, ``read_attempt``, ``calculate``;
+    ``read_attempts``, ``calculate``;
   * from the Tool Caller - ``read_parameters``, the geometry generators
     from ``get_tools()``, and ``render_blade_sections`` when the
     visualizer toggle is on;
@@ -43,7 +43,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
-from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
+from agents.shared.attempts_tool import new_attempt, read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
@@ -78,7 +78,6 @@ from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
 from agents.step_caps import MAX_DESIGNER_STEPS
 from config import ATTEMPTS_DIR
-from agents.tool_caller.tool_caller import read_parameters
 from tools import get_render_library, get_tools
 from tools.calculate.calculate import calculate
 from tools.generate_mesh.generate_mesh import (
@@ -91,6 +90,21 @@ from agents.shared.dba_tools import dba_tools_for
 from workflow_settings import blade_sections_access
 
 logger = logging.getLogger("propeller_agent")
+
+
+# Round 2 of the prompt reduction removed ``read_parameters`` from the
+# 7-agent Tool Caller (prompt_reduction_3agents_changes.md §B3), which is
+# where the Designer used to import it from.  The 3-agent topology is out of
+# scope for that reduction, so it keeps its own copy — the same pattern the
+# Creator and the DC Input Creator already use for ``write_parameters``.
+@tool
+def read_parameters(path: str) -> str:
+    """Read the parameter JSON.
+
+    Pass the absolute path supplied by the previous agent under the
+    ``Parameters file:`` label.  Returns the file content as text.  Do
+    NOT call this tool with a guessed path."""
+    return ""  # Actual read is performed by _handle_read_parameters_tool.
 
 
 # ---------------------------------------------------------------------------
@@ -174,8 +188,7 @@ class Designer(BaseChainAgent):
         CLARIFY and ESCALATE go to the Architect via the same tool.
         """
         self._extra_utility_tools_by_name = {
-            list_attempts.name: list_attempts,
-            read_attempt.name: read_attempt,
+            read_attempts.name: read_attempts,
             new_attempt.name: new_attempt,
             calculate.name: calculate,
         }

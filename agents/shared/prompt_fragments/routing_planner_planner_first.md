@@ -1,4 +1,3 @@
-### Available routing tools
 - ``call_user_input_inspector(message)`` — FORWARD to the User Input
   Inspector.  This is the natural next step in the pipeline whenever
   Part 1 (planning) yields an actionable plan that the chain should

@@ -29,6 +29,16 @@ extra_utilities/
 ├── SMOKE_TESTS.md            index of the 54 hand-run scripts
 ├── working_agreements.md     the owner's standing rules for how work is done
 ├── prompt_defects_found.md   per-agent defect notes harvested from the fork manifest
+├── prompt_reduction_4agents_changes.md
+│                          the owner's PDF markup of the Receptionist / Orchestrator /
+│                          Planner / UII prompts, as file+line changes.  §0.1 FIRST:
+│                          its paths are the pre-promotion layout.
+├── prompt_reduction_3agents_changes.md
+│                          round 2 of the same review — DCIC / DCII / Tool Caller,
+│                          plus four changes that apply to ALL 9 agents.  Anchored to
+│                          the CURRENT tree, so no path translation.
+├── round2_annotations.json  the raw round-2 highlights; apply from THIS, not from the
+│                          spec's tables
 │
 ├── smoke_test_*.py           32 hand-run scripts (see SMOKE_TESTS.md)
 ├── check_mesh_components.py  .obj diagnostic
@@ -49,6 +59,9 @@ extra_utilities/
 │   └── archive/              schema v1 (the one version no document cites)
 │
 ├── prompt_efficiency/        the 349-cut shrink proposal + its verifier.  APPEND-ONLY.
+├── prompt_pdf/               builds the assembled-prompts PDF, and reads a marked-up
+│                          copy back into source anchors.  Review tooling; the app
+│                          never imports it.
 ├── embedding_tests/          a LIVE web view (8 FastAPI routes) — not a finished experiment
 └── draft_5agent_fragments/   one leftover draft; see the note below
 ```

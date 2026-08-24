@@ -30,7 +30,8 @@ from agents.dc_input_inspector import DCInputInspector
 from agents.dc_output_inspector import DCOutputInspector
 from agents.planner import Planner
 from agents.receptionist import Receptionist
-from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
+from agents.shared.attempts_tool import read_attempts
+from agents.shared.dc_params_tool import dc_params_list
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.context_pruner import ContextPruner
 from agents.shared.file_utils import ai_text
@@ -64,7 +65,6 @@ from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
 from agents.tool_caller import ToolCaller
 from agents.user_input_inspector import UserInputInspector
-from tools.calculate.calculate import calculate
 from agents.shared.dba_tools import dba_tools_for
 
 logger = logging.getLogger("propeller_agent")
@@ -95,15 +95,14 @@ def _load_role4_instructions() -> str:
 
 
 _CHAIN_ACCESS_ON = """\
-## Inter-agent communication visibility (ENABLED)
+## Inter-agent communication visibility
 Whenever control returns to you (a new incoming message from the
 dispatcher), the message is prefixed with every inter-agent exchange
-that took place while you were waiting, under a clearly labelled
+that took place while you were waiting, under a
 ``--- Inter-agent messages recorded while you were waiting ---``
 block, followed by the actual hand-off content.  Use this chain-log
 block to understand the reasoning path the sub-agents took.  Do NOT
-repeat it back verbatim to other agents or to the Receptionist; it is
-for your own situational awareness."""
+repeat it back verbatim to other agents or to the Receptionist."""
 
 _CHAIN_ACCESS_OFF = """\
 ## Inter-agent communication visibility (DISABLED)
@@ -440,10 +439,8 @@ class Orchestrator(BaseChainAgent):
             build_routing_tool("orchestrator", "dc_output_inspector",
                                self, cl),
             build_routing_tool("orchestrator", "receptionist", self, cl),
-            calculate,
-            list_attempts,
-            read_attempt,
-            new_attempt,
+            read_attempts,
+            dc_params_list,
             # F71.  prompt.md:386 has always told the hub to verify a
             # failing agent's account against the tool's LITERAL result
             # ("The agent's prose is one account; the tool's actual return

@@ -686,6 +686,23 @@ SCOPED_FRAGMENTS: dict[str, tuple[str, str]] = {
     "sketch_handling":          ("dc", "dc_config/user_input_types/sketch_handling.md"),
     "sketch_notes":             ("dc", "dc_config/user_input_types/sketch_notes.md"),
     "parameter_list":           ("dc", "dc_config/parameters.md"),
+    # ``pipeline_flow`` is registered under the flag-free name even though
+    # the shared file is ``pipeline_flow_uii_first.md`` /
+    # ``pipeline_flow_planner_first.md`` — the registered name is only used
+    # to BUILD the scoped filename (``pipeline_flow_orchestrator.md``),
+    # never to read the shared file, so it cannot collide with the
+    # flag-suffixed shared pair.
+    "pipeline_flow":            ("generic", "pipeline_flow.md"),
+    "value_states":             ("generic", "value_states.md"),
+    "dc_structure":             ("dc", "dc_config/structure.md"),
+    # Round 2 (prompt_reduction_3agents_changes.md §C1.1 / §C3.1).
+    "modelling_notes":          ("dc", "dc_config/modelling_notes.md"),
+    "qualitative_examples":     ("dc", "dc_config/qualitative_examples.md"),
+    "tool_inventory":           ("dc", "tools_config/tool_inventory.md"),
+    # Do NOT register ``blade_sections_visualizer``: its scoped name for the
+    # Planner would collide with the existing per-agent OVERLAY file
+    # ``blade_sections_visualizer_planner.md``, which feeds the different
+    # ``$blade_sections_visualizer_per_agent`` slot.
 }
 
 

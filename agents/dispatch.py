@@ -113,7 +113,7 @@ def save_user_input(
 
     The Receptionist re-reads ``user_query.txt`` from disk on every
     turn (no args-based path), so this single injection covers all
-    downstream consumers — the Planner's ``read_user_queries`` tool
+    downstream consumers — the Planner's ``read_user_inputs`` tool
     and the UII both parse the same file.
 
     ``fixed_params=None`` or ``fixed_params={}`` (empty dict) leaves
@@ -146,7 +146,7 @@ def save_user_input(
     inputs_dir.mkdir(parents=True, exist_ok=True)
     query_path = inputs_dir / "user_query.txt"
     timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-    parts = [f"\n--- [{timestamp}] ---\n{text}\n"]
+    parts = [f"\n--- [{timestamp}] USER ---\n{text}\n"]
     if fixed_params:
         parts.append(
             "\nThe user has fixed the following values through the "
@@ -164,6 +164,47 @@ def save_user_input(
     with open(query_path, "a", encoding="utf-8") as f:
         f.write("".join(parts))
     return inputs_dir
+
+
+def save_receptionist_reply(text: str, inputs_dir: Path) -> None:
+    """Append the Receptionist's user-facing reply to ``user_query.txt``.
+
+    ``user_query.txt`` is the session's CONVERSATION log, not a user-only
+    log: each turn is written as ``--- [ts] USER ---`` followed by
+    ``--- [ts] RECEPTIONIST ---``, so every agent that reads the inputs
+    directory sees what the user was actually TOLD, not only what they
+    asked.  Without this the UII rebuilt the cumulative request from one
+    half of a dialogue, blind to any value, limit or question the
+    Receptionist had already put to them.
+
+    Only GENUINE replies are recorded — the direct answer and the composed
+    end-of-cycle answer.  Stop-button notices and the empty-response
+    fallback are system notices rather than conversation, and recording
+    them would leave the UII extracting design intent from boilerplate.
+
+    *text* is stored verbatim and is PURE TEXT: the renders and images the
+    user sees beside a reply travel separately as
+    ``TurnResult.new_artefacts_paths`` and never reach this file.
+
+    Best-effort — failing to append must never break a turn that has
+    already produced a good reply for the user.
+    """
+    if not text or not text.strip():
+        return
+    try:
+        inputs_dir.mkdir(parents=True, exist_ok=True)
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        entry = (
+            "\n" + "--- [" + timestamp + "] RECEPTIONIST ---"
+            + "\n" + text + "\n"
+        )
+        with open(inputs_dir / "user_query.txt", "a", encoding="utf-8") as f:
+            f.write(entry)
+    except OSError as exc:
+        logger.warning(
+            f"[DISPATCH]  could not append the Receptionist reply to "
+            f"user_query.txt: {exc}"
+        )
 
 
 _ARTEFACT_PATTERNS: tuple[str, ...] = ("render_*.png", "*.obj")
@@ -281,6 +322,7 @@ def dispatch_turn(
             _trace("Receptionist", "User", "direct")
             reply = validation["message"]
             logger.info(f"[RECEPTIONIST -> USER]  {reply}")
+            save_receptionist_reply(reply, inputs_dir)
             return TurnResult(
                 reply_text=reply,
                 forwarded=False,
@@ -363,6 +405,11 @@ def dispatch_turn(
             logger.error(
                 "[DISPATCH]  empty user-facing message; substituted fallback"
             )
+        else:
+            # Only a real reply joins the conversation log; the
+            # fallback above is a system notice, not something the
+            # user was actually told.
+            save_receptionist_reply(outgoing, inputs_dir)
         _trace("Receptionist", "User", "delivered")
         logger.info(f"[RECEPTIONIST -> USER]  {outgoing}")
         return TurnResult(

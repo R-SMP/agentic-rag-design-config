@@ -1,12 +1,10 @@
 """Tool Caller agent — executes design tools as instructed.
 
-Stateful agent with THREE kinds of tools bound to its LLM:
+Stateful agent with TWO kinds of tools bound to its LLM:
 
-- **Read tool** (``read_parameters``) — loads the parameter JSON
-  from the path supplied in the incoming hand-off.  Non-terminal.
 - **Utility tools** (``generate_and_render_propeller`` — builds the
   mesh AND renders/checks it in one call — ``calculate``,
-  ``list_attempts``, ``read_attempt``) — these do actual work and the
+  ``read_attempts``) — these do actual work and the
   run loop keeps going after them, letting the LLM call more tools
   before finally producing a response + routing call.
 - **Routing tools** (``call_dc_output_inspector``,
@@ -21,13 +19,10 @@ its FORWARD message under a ``Parameters file:`` label.
 """
 
 import logging
-from pathlib import Path
 
 from langchain_core.messages import HumanMessage, ToolMessage
-from langchain_core.tools import tool
 
-from agents.shared.agent_activity import generic_tool
-from agents.shared.attempts_tool import list_attempts, read_attempt
+from agents.shared.attempts_tool import read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
 from agents.shared.llm_provider import (
@@ -46,7 +41,9 @@ from agents.shared.prompts import (
 from agents.shared.routing_tools import (
     AgentHop,
     ROUTING_TOOL_NAMES,
+    begin_routing_retry,
     finalize_unanswered_tool_calls,
+    finish_routing_retry,
     log_tool_call,
     stuck_escalation,
     tool_call_signature,
@@ -66,16 +63,6 @@ logger = logging.getLogger("propeller_agent")
 # ---------------------------------------------------------------------------
 # Read tool schema (actual read handled by ToolCaller)
 # ---------------------------------------------------------------------------
-
-@tool
-def read_parameters(path: str) -> str:
-    """Read the parameter JSON.
-
-    Pass the absolute path supplied by the previous agent under the
-    ``Parameters file:`` label.  Returns the file content as text.  Do
-    NOT call this tool with a guessed path."""
-    return ""  # Actual read is performed by _handle_read_parameters_tool.
-
 
 class ToolCaller(BaseChainAgent):
     """Stateful agent with read + utility + routing tools."""
@@ -98,12 +85,11 @@ class ToolCaller(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        self._read_tool = read_parameters
         # Utility tools span the design generators (the active render
         # library is picked by ``set_render_library`` before this agent
         # is built) and the session-scoped attempt-inspection helpers;
         # both are dispatched the same way so they share one map.
-        utility_tools = list(get_tools()) + [list_attempts, read_attempt]
+        utility_tools = list(get_tools()) + [read_attempts]
         # Which of the three database tools this agent holds is a
         # per-(profile, agent, tool) decision; dba_tools_for owns it.
         utility_tools.extend(dba_tools_for("tool_caller"))
@@ -126,10 +112,9 @@ class ToolCaller(BaseChainAgent):
         tools: list,
         prev_agent: str,
     ) -> None:
-        """Bind read + utility + routing tools and build the system prompt."""
+        """Bind the utility + routing tools and build the system prompt."""
         all_tools = (
-            [self._read_tool]
-            + list(self._extra_utility_tools_by_name.values())
+            list(self._extra_utility_tools_by_name.values())
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)
@@ -171,6 +156,7 @@ class ToolCaller(BaseChainAgent):
         """Process one hand-off message."""
         token_usage.begin_turn("ToolCaller")
         self._pending_hop = None
+        self._routing_retry_used = False
         text = f"Hand-off from previous agent:\n{message}"
         self.messages.append(HumanMessage(content=text))
 
@@ -190,6 +176,8 @@ class ToolCaller(BaseChainAgent):
 
             if not response.tool_calls:
                 final = ai_text(response.content)
+                if begin_routing_retry(self, final, "ToolCaller"):
+                    continue
                 return AgentHop(
                     "orchestrator",
                     "Error: Tool Caller produced a response with no routing "
@@ -211,10 +199,6 @@ class ToolCaller(BaseChainAgent):
                         )
                         return stuck_escalation("Tool Caller", name)
                     seen_sigs.add(sig)
-                if name == "read_parameters":
-                    self._handle_read_parameters_tool(tc)
-                    continue
-
                 # Phase 5E: retrieve_* tools are dispatcher-handled
                 # (their @tool stubs return "" — the dispatcher does
                 # the real R2 work and appends the ToolMessage +
@@ -255,6 +239,7 @@ class ToolCaller(BaseChainAgent):
                     break
 
             if routed:
+                finish_routing_retry(self)
                 return self._pending_hop
 
         return AgentHop(
@@ -262,55 +247,6 @@ class ToolCaller(BaseChainAgent):
             "Error: Tool Caller reached maximum steps without completing.",
         )
 
-    # ------------------------------------------------------------------
-    # read_parameters handler
-    # ------------------------------------------------------------------
-
-    @generic_tool("Read parameters")
-    def _handle_read_parameters_tool(self, tc: dict) -> None:
-        """Read parameters.json at the supplied path."""
-        raw_path = tc.get("args", {}).get("path")
-
-        if not isinstance(raw_path, str) or not raw_path.strip():
-            summary = (
-                "Error: missing or non-string 'path' argument.  Call "
-                "this tool with the absolute path supplied by the "
-                "previous agent under the 'Parameters file:' label."
-            )
-        else:
-            path = Path(raw_path)
-            if not path.is_file():
-                summary = (
-                    f"Error: '{raw_path}' is not an existing file.  Do "
-                    f"not retry with a guessed path; ESCALATE if no "
-                    f"valid path was supplied."
-                )
-            else:
-                try:
-                    content = path.read_text(encoding="utf-8")
-                except OSError as exc:
-                    summary = f"Error reading '{raw_path}': {exc}"
-                else:
-                    if not content.strip():
-                        summary = (
-                            f"Warning: '{raw_path}' exists but is empty.  "
-                            f"ESCALATE."
-                        )
-                    else:
-                        summary = (
-                            f"Loaded parameters from {path.resolve()} "
-                            f"({len(content)} chars).\n\n"
-                            f"--- DC Parameters ---\n{content}"
-                        )
-
-        log_tool_call(
-            "tool_caller", tc["name"], tc.get("args"), summary,
-        )
-        self.messages.append(ToolMessage(
-            content=summary,
-            tool_call_id=tc["id"],
-            name=tc["name"],
-        ))
 
     def reset(self) -> None:
         self.messages.clear()

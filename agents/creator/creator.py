@@ -24,7 +24,7 @@ the file on disk is correct by construction.
 Tools are the union of both parents:
   * from the DCIC — ``read_extracted_inputs``, ``write_parameters``,
     ``new_attempt`` (it remains the ONLY holder of attempt creation),
-    ``list_attempts``, ``read_attempt``, ``calculate``;
+    ``read_attempts``, ``calculate``;
   * from the DCII — the user-input IMAGE tools.  The DCIC bound
     ``build_user_inputs_tools(..., include_image_tools=False)``; the
     Creator does NOT pass that flag, so it inherits the DCII's ability
@@ -32,7 +32,7 @@ Tools are the union of both parents:
 
 There is no ``read_parameters``: the Creator validates the draft before
 anything is written, so there is nothing on disk to re-read.
-``list_attempts`` / ``read_attempt`` still cover inspecting PRIOR
+``read_attempts`` still covers inspecting PRIOR
 cycles.
 
 NOT YET WIRED.  Nothing constructs this class: ``SYSTEM_TOPOLOGY``
@@ -56,7 +56,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
-from agents.shared.attempts_tool import list_attempts, new_attempt, read_attempt
+from agents.shared.attempts_tool import new_attempt, read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
     ai_text,
@@ -183,8 +183,7 @@ class Creator(BaseChainAgent):
         CLARIFY and ESCALATE go to the Conductor via the same tool.
         """
         self._extra_utility_tools_by_name = {
-            list_attempts.name: list_attempts,
-            read_attempt.name: read_attempt,
+            read_attempts.name: read_attempts,
             new_attempt.name: new_attempt,
             calculate.name: calculate,
         }

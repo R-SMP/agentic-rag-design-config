@@ -1,8 +1,8 @@
 """Tool bound to the Orchestrator ONLY during the end-of-session feedback round.
 
 The Orchestrator is otherwise purely a router (its permanent tool set is
-the ``call_<agent>`` routing tools plus ``calculate`` / ``list_attempts``
-/ ``read_attempt`` / ``new_attempt`` / ``read_agent_history``).  At end-of-session-with-save the
+the ``call_<agent>`` routing tools plus ``read_attempts``
+/ ``dc_params_list`` / ``read_agent_history``).  At end-of-session-with-save the
 user supplies a satisfaction marker plus two free-text fields; the
 Orchestrator is given THIS tool in a single per-turn binding (mirroring
 the DH's force-tool W18 pattern) and must use it ONCE to return a list
