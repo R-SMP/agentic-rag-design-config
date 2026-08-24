@@ -699,6 +699,10 @@ SCOPED_FRAGMENTS: dict[str, tuple[str, str]] = {
     "modelling_notes":          ("dc", "dc_config/modelling_notes.md"),
     "qualitative_examples":     ("dc", "dc_config/qualitative_examples.md"),
     "tool_inventory":           ("dc", "tools_config/tool_inventory.md"),
+    # Round 3 (prompt_reduction_dcoi_changes.md A1) -- the DC Output
+    # Inspector cuts 9 spans from the visual-inspection guide; the
+    # 5-agent DCOI reads the shared file and must not move.
+    "visual_inspection_guide":  ("dc", "dc_config/visual_inspection_guide.md"),
     # Do NOT register ``blade_sections_visualizer``: its scoped name for the
     # Planner would collide with the existing per-agent OVERLAY file
     # ``blade_sections_visualizer_planner.md``, which feeds the different

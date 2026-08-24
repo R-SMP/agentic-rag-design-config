@@ -641,11 +641,12 @@ finally:
 #       prompt is byte-identical to what it was before the table existed;
 #   (2) a scoped file wins for its OWN agent and for no other.
 #
-# The probe uses the 7-agent DC Output Inspector because it splices
+# The probe uses the 7-agent Receptionist because it splices
 # $hard_constraints_dc and is not the hub, so a leak would show up in seven
-# sibling prompts.  (It was the DC Input Inspector until round 2 of the
-# prompt reduction gave that agent a REAL scoped copy of this slot — the
-# probe must target a (slot, agent) pair that is still free on disk.)
+# sibling prompts.  (It was the DC Input Inspector until round 2, then the DC
+# Output Inspector until round 3 — each round gave its target a REAL scoped
+# copy of this slot.  The probe must target a (slot, agent) pair that is
+# still free on disk; the Receptionist is the last such splicer.)
 prompts._workflow_settings.SYSTEM_TOPOLOGY = 7
 prompts.PLANNER_FIRST = False
 
@@ -668,7 +669,7 @@ if _live:
 
 # (2) precedence + isolation.
 _probe = (ROOT / "DC_prompt_fragments" / "dc_config"
-          / "hard_constraints_dc_dc_output_inspector.md")
+          / "hard_constraints_dc_receptionist.md")
 if _probe.exists():
     failures.append(
         f"[SCOPED] probe path {_probe.name} already exists — refusing to "
@@ -678,23 +679,23 @@ else:
     try:
         _probe.write_text("### SCOPED PROBE\n", encoding="utf-8")
         _after = {a: prompts._build_template(a) for a in _SCOPE_AGENTS}
-        if "SCOPED PROBE" not in _after["dc_output_inspector"]:
+        if "SCOPED PROBE" not in _after["receptionist"]:
             failures.append(
-                "[SCOPED] dc_output_inspector has its own hard_constraints_dc "
+                "[SCOPED] receptionist has its own hard_constraints_dc "
                 "copy on disk but assembled the SHARED fragment instead"
             )
-        if "Domain hard rules" in _after["dc_output_inspector"]:
+        if "Domain hard rules" in _after["receptionist"]:
             failures.append(
                 "[SCOPED] the scoped copy was ADDED alongside the shared "
                 "fragment instead of REPLACING it"
             )
         _leaked = [
             a for a in _SCOPE_AGENTS
-            if a != "dc_output_inspector" and _after[a] != _before[a]
+            if a != "receptionist" and _after[a] != _before[a]
         ]
         if _leaked:
             failures.append(
-                f"[SCOPED] a dc_output_inspector-scoped fragment changed other "
+                f"[SCOPED] a receptionist-scoped fragment changed other "
                 f"agents' prompts: {_leaked}"
             )
     finally:

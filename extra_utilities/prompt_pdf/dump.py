@@ -31,7 +31,8 @@ from agents.shared.dba_tools import dba_tools_for
 from agents.shared.attempts_tool import read_attempts
 from agents.shared.dc_params_tool import dc_params_list
 from agents.shared.user_inputs_tool import (
-    READ_INPUTS_DOC_PLANNER, build_read_user_inputs, build_user_inputs_tools,
+    READ_INPUTS_DOC_DCOI, READ_INPUTS_DOC_PLANNER, build_read_user_inputs,
+    build_user_inputs_tools,
 )
 from agents.shared.history_tool import build_read_agent_history_tool
 from agents.shared.routing_tools import build_routing_tool
@@ -250,8 +251,11 @@ def tools_for(agent):
         extra += dba_tools_for("dc_output_inspector")
         routing = [rt("dc_output_inspector", "tool_caller"),
                    rt("dc_output_inspector", "orchestrator")]
-        return (extra
-                + build_user_inputs_tools("dc_output_inspector")
+        return ([DCOI_M.read_extracted_inputs,
+                 build_read_user_inputs(doc=READ_INPUTS_DOC_DCOI)]
+                + extra
+                + build_user_inputs_tools("dc_output_inspector",
+                                          include_text_tools=False)
                 + routing)
 
     if agent == "database_handler":

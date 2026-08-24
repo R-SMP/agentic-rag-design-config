@@ -71,10 +71,9 @@ the LLM sometimes inserts intermediate text turns."""
 MAX_DCOI_STEPS = _ws.MAX_DCOI_STEPS
 """DC Output Inspector's ``run()``.  Standard flow is
 ``view_images`` → routing call (2 turns).  Extra slack
-covers reference-image comparison cycles
-(``list_input_files`` / ``read_image_notes`` /
-``view_images``) and looking up prior attempts via
-``read_attempts``."""
+covers comparison cycles (``read_extracted_inputs`` /
+``read_user_inputs`` / ``view_images``) and looking up prior
+attempts via ``read_attempts``."""
 
 MAX_DH_STEPS = _ws.MAX_DH_STEPS
 """Database Handler's per-question turn budget.  The DH runs once per

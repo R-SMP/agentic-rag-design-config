@@ -2,14 +2,27 @@
 
 Stateful agent.  Uses the shared ``view_images`` tool (to load renders /
 user images — optionally cropped and/or side-by-side — into the LLM's view)
-and a set of routing tools.  It is the last agent in the natural pipeline:
-its FORWARD target is the Orchestrator.
+and a set of routing tools.  Its readers are:
+
+1. ``read_extracted_inputs(path)`` — the structured extraction written by
+   the User Input Inspector.  Comparing the render against it is the whole
+   job, so the DCOI reads it directly rather than through a generic
+   text-file reader.
+2. ``read_user_inputs(path)`` — the raw user inputs (every text file at
+   once, plus the list of image paths) when the extraction is not enough.
+3. ``read_attempts(n)`` — an earlier cycle's renders and parameters.
+
+It is the last agent in the natural pipeline: its FORWARD target is the
+Orchestrator.
 """
 
 import logging
+from pathlib import Path
 
 from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
@@ -35,8 +48,11 @@ from agents.shared.routing_tools import (
 )
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
+    READ_INPUTS_DOC_DCOI,
+    build_read_user_inputs,
     build_user_inputs_tools,
     dispatch_user_inputs_tool,
+    read_user_inputs_summary,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
@@ -49,139 +65,99 @@ logger = logging.getLogger("propeller_agent")
 
 
 _IMAGE_PERSISTENCE_ON = """\
-You are STATEFUL: render images loaded in earlier cycles remain in
+Render images loaded in earlier cycles remain in
 your message history as full image blocks AND paired
 ``Loaded image (path: …):`` text blocks (the path block sits
 immediately before each image block).  Those images describe PAST
-designs, not the current one.  Mode: KEEP IMAGES IN CONTEXT (ON)."""
+designs, not the current one."""
 
 _IMAGE_PERSISTENCE_OFF = """\
-You are STATEFUL: render images loaded in earlier cycles have their
+Render images loaded in earlier cycles have their
 image bytes stripped from your history at every operation hand-off;
 only the paired ``Loaded image (path: …):`` text blocks survive as a
 path-only record of which images you had loaded.  To see those earlier
 renders again you must explicitly re-load them from those paths via
-``view_images``.  Mode: KEEP IMAGES IN CONTEXT (OFF)."""
+``view_images``."""
 
 
 # Comparison-source blocks — one per startup choice (1 / 2 / 3).
 # Filled into the {comparison_mode_block} placeholder of DCOI_TEMPLATE.
 
 _COMPARISON_MODE_1 = """\
-This session is configured to compare the generated design DIRECTLY
-against the USER INPUTS — the user's typed prompt
-(``user_query.txt``), the user-supplied reference image(s), and
-their paired ``_note.txt`` description(s).  The UII's
-``extracted_inputs.txt`` is NOT your comparison source in this
-mode; you compare against the user's raw materials.
+Compare the generated design DIRECTLY against the USER INPUTS —
+the user's typed prompt (``user_query.txt``), the user-supplied
+reference image(s), and their paired ``_note.txt`` description(s).
+The UII's ``extracted_inputs.txt`` is NOT your comparison source in
+this mode; you compare against the user's own material.
 
-**Recommended order each cycle:**
-  1. ``view_images([...])`` — load this cycle's renders FIRST,
-     and form your visual judgement of the rendered design on its
-     own terms (counts, presence/absence of features, proportions)
-     before reading any user material.  This ordering matters:
-     loading the user material first anchors the model on the
-     user's stated features, after which it tends to confabulate
-     agreement on the render rather than actually counting /
-     observing what the render shows.  Render-first forces an
-     independent reading.
-  2. ``read_input_text(path={user_query_path})`` — read the user's
-     typed prompt for this design.
-  3. ``read_image_notes()`` — when reference images are present,
-     learn what each one depicts.
-  4. ``view_images([...])`` — load the relevant user reference
-     image(s) so you can compare them against the renders.
+  * ``read_user_inputs()`` — the typed prompt for this design, plus
+    what each reference image depicts and where the images are.
+  * ``view_images([...])`` — load the relevant user reference
+    image(s) so you can compare them against the renders.
 
 The comparison source(s) in scope this session: ``user_query.txt``
 plus any paired image+note in ``inputs/input_images/``.  Do NOT
 read ``extracted_inputs.txt`` in this mode — it is the UII's
-interpretation, not the user's raw input."""
+interpretation, not the user's own input."""
 
 _COMPARISON_MODE_2 = """\
-This session is configured to compare the generated design against
-the UII's STRUCTURED EXTRACTION at ``extracted_inputs.txt`` —
-specifically its ``QUANTITATIVE INPUTS`` and ``DESIGN INTENT``
-sections.  The user's raw inputs (``user_query.txt``, the input
-image(s), their paired note(s)) are NOT in scope for comparison
-in this mode; the extraction IS the comparison source.
+Compare the generated design against the UII's STRUCTURED
+EXTRACTION at ``extracted_inputs.txt``.  The user's own inputs
+(``user_query.txt``, the input image(s), their paired note(s)) are
+NOT in scope for comparison in this mode; the extraction IS the
+comparison source.
 
-Path to read: ``{extracted_inputs_path}``.
+  * ``read_extracted_inputs(path={extracted_inputs_path})`` — read
+    the extraction.  Use its ``QUANTITATIVE INPUTS``, ``QUALITATIVE
+    DESCRIPTIONS`` and ``DESIGN INTENT AND FUNCTIONAL REQUIREMENTS``
+    sections as your comparison source.  Its ``USEFUL INPUT IMAGES``
+    section is not a comparison source — it is navigation: when a
+    precision directive sends you to a user image, that section names
+    the crop region to pass as ``crop_regions`` so you compare
+    against the right part of it.
 
-**Recommended order each cycle:**
-  1. ``view_images([...])`` — load this cycle's renders FIRST,
-     and form your visual judgement of the rendered design on its
-     own terms before reading the extraction.  This ordering
-     matters: loading the extraction first anchors the model on
-     the extraction's stated values, after which it tends to
-     confabulate agreement on the render rather than actually
-     counting / observing what the render shows.  Render-first
-     forces an independent reading.
-  2. ``read_input_text(path={extracted_inputs_path})`` — read the
-     extraction.  Use the ``QUANTITATIVE INPUTS`` section
-     (lock-annotated user-supplied numerics) and the
-     ``DESIGN INTENT`` section (the user's goals and
-     functional requirements) as your comparison source.  Its
-     ``USEFUL INPUT IMAGES`` section is not a comparison source —
-     it is navigation: when a precision directive sends you to a
-     user sketch, that section names the crop region to pass as
-     ``crop_regions`` so you compare against the right part of it.
-
-Do NOT load the user's raw inputs (``user_query.txt``, the input
-image(s), the paired notes) in this mode.  Your comparison
+Do NOT load the user's own inputs in this mode.  Your comparison
 source is the extraction — if the extraction is wrong, that is
 an upstream UII problem to surface via the override-authority
-section below, not something for you to verify against the raw
-materials."""
+section below, not something for you to verify against the user's
+material."""
 
 _COMPARISON_MODE_3 = """\
-This session is configured to compare the generated design
-PRIMARILY against the UII's STRUCTURED EXTRACTION
-(``extracted_inputs.txt`` — focusing on its
-``QUANTITATIVE INPUTS`` and ``DESIGN INTENT`` sections), AND
-SECONDARILY against the user's raw inputs (``user_query.txt``,
-paired image+note) when you judge it necessary OR when the
-extraction's ``DESIGN INTENT`` explicitly calls for it.
+Compare the generated design PRIMARILY against the UII's STRUCTURED
+EXTRACTION (``extracted_inputs.txt``), AND SECONDARILY against the
+user's inputs (``user_query.txt``, image(s) and their paired
+note(s)) when you judge it necessary OR when the extraction's
+``DESIGN INTENT AND FUNCTIONAL REQUIREMENTS`` explicitly calls for
+it.
 
-Path to the extraction: ``{extracted_inputs_path}``.
+  * ``read_extracted_inputs(path={extracted_inputs_path})`` — read
+    the extraction.  Use its ``QUANTITATIVE INPUTS``, ``QUALITATIVE
+    DESCRIPTIONS`` and ``DESIGN INTENT AND FUNCTIONAL REQUIREMENTS``
+    sections as your comparison source, and ``USEFUL INPUT IMAGES``
+    as navigation — it names which reference images carry what, and
+    the crop region to pass as ``crop_regions`` when you load one.
+  * ``read_user_inputs()`` and ``view_images()`` — the user's own
+    material, when you need it.
 
-**Recommended order each cycle:**
-  1. ``view_images([...])`` — load this cycle's renders FIRST,
-     and form your visual judgement of the rendered design on its
-     own terms before reading any comparison source.  This
-     ordering matters: loading a comparison source first anchors
-     the model on its stated features, after which it tends to
-     confabulate agreement on the render rather than actually
-     counting / observing what the render shows.  Render-first
-     forces an independent reading.
-  2. ``read_input_text(path={extracted_inputs_path})`` — always
-     read the extraction.  Use ``QUANTITATIVE INPUTS`` and
-     ``DESIGN INTENT`` as your primary comparison source, and
-     ``USEFUL INPUT IMAGES`` as navigation — it names which
-     reference images carry what, and the crop region to pass as
-     ``crop_regions`` when you load one.
-  3. **When ANY of the following is true, ALSO consult the user's
-     raw inputs**:
-       - ``DESIGN INTENT`` in the extraction explicitly references
-         a visual / structural feature most reliably resolvable
-         from the reference image (e.g. an instruction to match
-         a sketch's silhouette, layout, or proportions closely).
-       - ``QUANTITATIVE INPUTS`` contains a real-world-quantity
-         entry whose unit / framing seems ambiguous and the
-         paired note might disambiguate.
-       - You suspect the extraction may have misread something
-         the user supplied (a count discrepancy, a value that
-         disagrees with what is plainly visible in the
-         reference image, etc.).
-     Use the user-input tools as needed:
-     ``list_input_files()``, ``read_input_text(path of
-     {user_query_path} or a paired _note.txt)``, ``read_image_notes()``,
-     ``view_images([...])``.
-  4. **Otherwise, the extraction alone is sufficient.**  Don't
-     burn LLM turns loading user inputs you don't need to consult.
+The comparison source(s) in scope this session: extraction ALWAYS,
+then inputs (images and/or texts) when your judgement says they are
+needed."""
 
-The comparison source(s) in scope this session: extraction
-ALWAYS, plus the user's raw inputs WHEN your judgement says they
-are needed."""
+
+@tool
+def read_extracted_inputs(path: str) -> str:
+    """Read the structured user-input extraction.
+
+    Pass the absolute path named in your comparison-source
+    instructions above (or under an ``Extracted inputs file:`` label
+    when the hand-off carries one).  Returns the full four-section
+    extraction as text: QUANTITATIVE INPUTS, QUALITATIVE
+    DESCRIPTIONS, DESIGN INTENT AND FUNCTIONAL REQUIREMENTS, and
+    USEFUL INPUT IMAGES — the last naming the reference images that
+    matter and the crop regions identified on each, which you can
+    pass straight to ``view_images`` as ``crop_regions``.  Do NOT
+    call this tool with a guessed path."""
+    return ""  # Actual read is performed by _handle_read_extraction_tool.
 
 
 def _build_comparison_mode_block(
@@ -232,6 +208,9 @@ class DCOutputInspector(BaseChainAgent):
                 f"(got {session.dcoi_comparison_mode!r})"
             )
         self.dcoi_comparison_mode = session.dcoi_comparison_mode
+        self._read_inputs_tool = build_read_user_inputs(
+            doc=READ_INPUTS_DOC_DCOI)
+        self._read_extraction_tool = read_extracted_inputs
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
         self.system_prompt: str = ""
@@ -241,7 +220,7 @@ class DCOutputInspector(BaseChainAgent):
     # ------------------------------------------------------------------
 
     def set_routing_tools(self, tools: list) -> None:
-        """Bind routing tools (plus the utility image-loading tool)."""
+        """Bind routing tools, the two readers and the utility tools."""
         self._extra_utility_tools_by_name = {
             read_attempts.name: read_attempts,
             calculate.name: calculate,
@@ -251,8 +230,10 @@ class DCOutputInspector(BaseChainAgent):
         for _dba_tool in dba_tools_for("dc_output_inspector"):
             self._extra_utility_tools_by_name[_dba_tool.name] = _dba_tool
         all_tools = (
-            list(self._extra_utility_tools_by_name.values())
-            + build_user_inputs_tools(self.AGENT_KEY)
+            [self._read_extraction_tool, self._read_inputs_tool]
+            + list(self._extra_utility_tools_by_name.values())
+            + build_user_inputs_tools(self.AGENT_KEY,
+                                      include_text_tools=False)
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)
@@ -330,6 +311,12 @@ class DCOutputInspector(BaseChainAgent):
             for i, tc in enumerate(response.tool_calls):
                 check_stop_or_raise()
                 name = tc["name"]
+                if name == "read_extracted_inputs":
+                    self._handle_read_extraction_tool(tc)
+                    continue
+                if name == "read_user_inputs":
+                    self._handle_read_inputs_tool(tc)
+                    continue
                 if dispatch_user_inputs_tool(self, tc, "dc_output_inspector"):
                     continue
                 if dispatch_retrieve_tool(self, tc, "dc_output_inspector"):
@@ -390,6 +377,70 @@ class DCOutputInspector(BaseChainAgent):
             "orchestrator",
             "Error: DC Output Inspector reached the step limit without routing.",
         )
+
+    # ------------------------------------------------------------------
+    # Reader handlers
+    # ------------------------------------------------------------------
+
+    @generic_tool("Read extracted inputs")
+    def _handle_read_extraction_tool(self, tc: dict) -> None:
+        """Read extracted_inputs.txt at the supplied path."""
+        raw_path = tc.get("args", {}).get("path")
+        if not isinstance(raw_path, str) or not raw_path.strip():
+            summary = (
+                "Error: missing or non-string 'path' argument.  Call this "
+                "tool with the absolute extraction path named in your "
+                "comparison-source instructions."
+            )
+        else:
+            path = Path(raw_path)
+            if not path.is_file():
+                summary = (
+                    f"Error: '{raw_path}' is not an existing file.  Do not "
+                    f"retry with a guessed path; ESCALATE if no valid path "
+                    f"was supplied."
+                )
+            else:
+                try:
+                    content = path.read_text(encoding="utf-8")
+                except OSError as exc:
+                    summary = f"Error reading '{raw_path}': {exc}"
+                else:
+                    if not content.strip():
+                        summary = (
+                            f"Warning: '{raw_path}' exists but is empty.  "
+                            f"ESCALATE."
+                        )
+                    else:
+                        summary = (
+                            f"Loaded Extracted Inputs from {path.resolve()} "
+                            f"({len(content)} chars).\n\n"
+                            f"--- Extracted Inputs ---\n{content}"
+                        )
+        log_tool_call(
+            "dc_output_inspector", tc["name"], tc.get("args"), summary,
+        )
+        self.messages.append(ToolMessage(
+            content=summary,
+            tool_call_id=tc["id"],
+            name=tc["name"],
+        ))
+
+    def _handle_read_inputs_tool(self, tc: dict) -> None:
+        """Read the whole user-inputs directory (text + image list)."""
+        summary = read_user_inputs_summary(
+            tc.get("args", {}).get("path"),
+            getattr(self, "provider", "openai"),
+            can_view_images=True,
+        )
+        log_tool_call(
+            "dc_output_inspector", tc["name"], tc.get("args"), summary,
+        )
+        self.messages.append(ToolMessage(
+            content=summary,
+            tool_call_id=tc["id"],
+            name=tc["name"],
+        ))
 
     def on_operation_end(self) -> None:
         """End-of-operation hook called by the dispatcher.
