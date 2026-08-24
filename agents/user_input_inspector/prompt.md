@@ -133,6 +133,36 @@ Always end §3 with **INTERPRETATION: straightforward** — or
 callout, a phrase that could map several ways).  State one every time;
 silence cannot be told from a clean read.
 
+### 4. USEFUL INPUT IMAGES
+
+You are the only agent that reads every raw image.  Downstream agents either
+cannot see images at all or pay to load them, so record here what each image
+was worth and where to look on it.
+
+One block per image that actually contributed something — what it shows, why
+it matters to this design, and every crop region you identified on it:
+
+    sketch_2.png — technical template sheet: the three blade-section profiles
+    (inner / middle / outer) drawn to scale across the bottom strip, with a
+    whole-propeller top view above them.
+    Why it matters: the only precise source for section shape; the drawn
+    proportions are the ground truth the render is judged against.
+    Crop regions:
+      - sections (the three airfoil profiles): [0.0, 0.74, 1.0, 1.0]
+      - top view (whole propeller planform): [0.0, 0.0, 1.0, 0.62]
+
+Keep the crop lines in exactly that shape — ``- <label>: [x0, y0, x1, y1]``,
+fractions in 0..1 — so a downstream agent can pick one by label and pass it
+straight to ``view_images`` as ``crop_regions``.  Label each box by WHAT IT
+SHOWS, not by who might use it; the same box often serves several agents.
+
+An image that carried nothing usable still gets a line saying so — that is a
+finding, not an omission.  Record a crop region only for a part of an image a
+downstream agent would plausibly need to look at closely; an image that is
+already just the one thing needs no box.  Coarse is fine — the box only has
+to isolate the right part of the page, never a pixel-accurate outline.  If
+there were no reference images at all, write "None specified."
+
 ## User inputs
   * ``user_query.txt`` — every user turn, chronological.
   * ``extracted_inputs.txt`` — a previous extraction, when the workflow
@@ -151,8 +181,8 @@ Mechanics are in each tool's schema.  What is not:
 
 - ``read_user_inputs`` — call it ONCE per turn; do not loop.  Its listing is
   where your image paths come from.
-- ``write_extraction`` — MANDATORY.  Downstream reads that exact file, so
-  skipping it loses the extraction.
+- ``write_extraction`` — MANDATORY, and all four sections are required.
+  Downstream reads that exact file, so skipping it loses the extraction.
 - ``view_images`` — also use it to re-load an image whose bytes a hand-off
   stripped.
 

@@ -130,20 +130,26 @@ _VIEW_IMAGES_BASE_DOC = (
     "``side_by_side`` — ``'match_height'`` scales every panel to the same "
     "height (best for comparing shapes at a matched scale); ``'native'`` "
     "keeps native pixels.\n\n"
-    "``regions`` (OPTIONAL): a list aligned by index with ``paths``; each "
-    "entry is a COARSE crop box ``[x0, y0, x1, y1]`` as fractions in 0..1 (or "
-    "``null`` for no crop), so a large sketch is cropped to its relevant region "
-    "before viewing or comparing.  The User Input Inspector sets these from a "
-    "raw sketch and records them in the extraction; other agents (e.g. the DC "
-    "Output Inspector comparing blade sections) REUSE a recorded region when it "
-    "helps.  Do NOT invent regions — use only recorded / handed-off ones."
+    "``crop_regions`` (OPTIONAL): a list aligned by index with ``paths``; "
+    "each entry is a COARSE crop box ``[x0, y0, x1, y1]`` as fractions in "
+    "0..1 (or ``null`` for no crop), so a large sketch is cropped to its "
+    "relevant part before viewing or comparing.  These are picture crops, "
+    "unrelated to the numbered TEXT regions OCR reports.  The User Input "
+    "Inspector identifies them from the raw images and records them in the "
+    "extraction's ``USEFUL INPUT IMAGES`` section; other agents (e.g. the "
+    "DC Output Inspector comparing blade sections) REUSE a recorded crop "
+    "region when it helps.  Prefer a recorded or handed-off crop region "
+    "over one you derive yourself."
 )
 
 _VIEW_IMAGES_OCR_DOC = _VIEW_IMAGES_BASE_DOC + (
     "\n\nIf OCR is enabled, each USER image (under ``inputs/``) is also passed "
     "through an OCR engine that recognises any text written on it — dimension "
-    "callouts, labels, annotations — returned here one entry per detected "
-    "region (when a crop region is given, only that region is OCR'd).  It is "
+    "callouts, labels, annotations — returned here as one numbered "
+    "``[text region N]`` entry per detected block of text (when a crop "
+    "region is given, only that crop is OCR'd).  Those numbers are the ids "
+    "you pass to ``reread_text_regions``; they are TEXT blocks, not crop "
+    "regions.  It is "
     "machine-recognised, so check it against the image before relying on a "
     "value.  Renders are never OCR'd.  Pass ``extract_text=False`` to skip OCR."
 )
@@ -159,43 +165,48 @@ def _build_view_images(ocr_on: bool):
     """
     if ocr_on:
         def _impl(paths: list[str], side_by_side: bool = False,
-                  layout: str = "match_height", regions: list = None,
+                  layout: str = "match_height", crop_regions: list = None,
                   extract_text: bool = True) -> str:
             return ""  # handled by dispatch_user_inputs_tool
         _impl.__doc__ = _VIEW_IMAGES_OCR_DOC
     else:
         def _impl(paths: list[str], side_by_side: bool = False,
-                  layout: str = "match_height", regions: list = None) -> str:
+                  layout: str = "match_height",
+                  crop_regions: list = None) -> str:
             return ""  # handled by dispatch_user_inputs_tool
         _impl.__doc__ = _VIEW_IMAGES_BASE_DOC
     return tool("view_images")(_impl)
 
 
-_OCR_REGIONS_DOC = (
-    "Re-read one or more labelled text regions of a user image at higher "
-    "resolution — in a single call.\n\n"
-    "Use this when an image's whole-image OCR (from ``view_images`` "
-    "/ ``read_user_inputs``) shows callouts you want to read more "
-    "confidently — small, faint, or garbled dimensions.  ``image_path`` "
-    "is the absolute path of that user image (under "
-    "``inputs/input_images/``); ``region_ids`` is a LIST of the region "
+_REREAD_TEXT_REGIONS_DOC = (
+    "Re-read one or more blocks of TEXT written on a user image, at "
+    "higher resolution — in a single call.  This is a SECOND pass, never "
+    "a first read: it works only on text blocks an earlier whole-image "
+    "OCR already found and numbered.  Use it when that OCR (from "
+    "``view_images`` / ``read_user_inputs``) shows callouts you want to "
+    "read more confidently — small, faint, or garbled dimensions.  "
+    "``image_path`` is the absolute path of that user image (under "
+    "``inputs/input_images/``); ``text_region_ids`` is a LIST of the "
     "numbers shown for THAT image in its OCR output (e.g. ``[2, 5, 7]`` "
-    "for ``[region 2]`` etc.).  When several callouts look worth a closer "
-    "read, pass them all in ONE call rather than one call each — the tool "
+    "for ``[text region 2]`` etc.).  These are TEXT blocks the OCR engine "
+    "found — NOT the picture crops you pass to ``view_images`` as "
+    "``crop_regions``.  When several callouts look worth a closer read, "
+    "pass them all in ONE call rather than one call each — the tool "
     "re-reads them together (one shared detection pass) and returns every "
-    "result at once.  For each region it crops, zooms in, and re-runs OCR, "
+    "result at once.  For each one it crops, zooms in, and re-runs OCR, "
     "returning the re-read text — machine-recognised, so check it.  "
     "Depending on this agent's settings the tool may also attach the "
-    "zoomed crop image of each region so you can verify against it."
+    "zoomed crop image of each text region so you can verify against it."
 )
 
 
-def _build_ocr_regions():
-    """Build the ``ocr_regions`` tool (only bound when OCR is enabled)."""
-    def _impl(image_path: str, region_ids: list[int]) -> str:
+def _build_reread_text_regions():
+    """Build the ``reread_text_regions`` tool (bound only when OCR is
+    enabled)."""
+    def _impl(image_path: str, text_region_ids: list[int]) -> str:
         return ""  # handled by dispatch_user_inputs_tool
-    _impl.__doc__ = _OCR_REGIONS_DOC
-    return tool("ocr_regions")(_impl)
+    _impl.__doc__ = _REREAD_TEXT_REGIONS_DOC
+    return tool("reread_text_regions")(_impl)
 
 
 USER_INPUTS_TOOL_NAMES = {
@@ -203,7 +214,7 @@ USER_INPUTS_TOOL_NAMES = {
     "read_input_text",
     "read_image_notes",
     "view_images",
-    "ocr_regions",
+    "reread_text_regions",
 }
 
 
@@ -217,7 +228,8 @@ def build_user_inputs_tools(
     Built fresh (not a static list) so the OCR-dependent tools/flags
     appear ONLY when OCR is enabled **for this agent** — when OCR is off
     (globally OR for this agent via the per-agent toggle) the agent
-    never sees the ``extract_text`` flag NOR the ``ocr_regions`` tool.
+    never sees the ``extract_text`` flag NOR the
+    ``reread_text_regions`` tool.
     The gate is ``ocr_access.is_enabled_for(agent_key)`` (master
     ``OCR_ENABLED`` AND the per-agent flag), read as of that session's
     build.  ``list_input_files`` / ``read_input_text`` /
@@ -225,7 +237,8 @@ def build_user_inputs_tools(
 
     When *include_image_tools* is False the agent gets ONLY the text-file
     tools (``list_input_files`` / ``read_input_text``); the image-viewing
-    tools (``read_image_notes`` / ``view_images`` / ``ocr_regions``)
+    tools (``read_image_notes`` / ``view_images`` /
+    ``reread_text_regions``)
     are withheld.  The DC Input Creator uses this — it works from
     ``extracted_inputs.txt`` and does not view raw images.
 
@@ -242,8 +255,8 @@ def build_user_inputs_tools(
             tools.append(read_image_notes)
         tools.append(_build_view_images(on))
         if on:
-            # The region zoom-in tool exists only when OCR is enabled.
-            tools.append(_build_ocr_regions())
+            # The text-region zoom-in tool exists only when OCR is on.
+            tools.append(_build_reread_text_regions())
     return tools
 
 
@@ -689,7 +702,7 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
     layout = args.get("layout") or "match_height"
     if layout not in ("match_height", "native"):
         layout = "match_height"
-    regions = args.get("regions")
+    regions = args.get("crop_regions")
     if not isinstance(regions, list):
         regions = []
     # Per-agent OCR gate: the schema hides ``extract_text`` when THIS agent's
@@ -816,17 +829,17 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
 
 
 @generic_tool("Read text regions (OCR)")
-def _handle_ocr_regions(agent, tc: dict, agent_key: str) -> None:
-    """Re-OCR one or more regions of a user image at higher resolution in
-    a single call.  Validates the path + region_ids, delegates the shared
-    (single) detection + per-region crop/re-read to the engine, and
-    attaches one zoomed crop per region ONLY when crop-attachment is
-    enabled for this agent (else returns the higher-res re-read text
-    only).  Non-fatal throughout — invalid region ids are reported inline
-    without aborting the valid ones."""
+def _handle_reread_text_regions(agent, tc: dict, agent_key: str) -> None:
+    """Re-OCR one or more TEXT regions of a user image at higher
+    resolution in a single call.  Validates the path + text_region_ids,
+    delegates the shared (single) detection + per-region crop/re-read to
+    the engine, and attaches one zoomed crop per text region ONLY when
+    crop-attachment is enabled for this agent (else returns the
+    higher-res re-read text only).  Non-fatal throughout — invalid ids
+    are reported inline without aborting the valid ones."""
     args = tc.get("args", {}) or {}
     raw_path = args.get("image_path")
-    raw_regions = args.get("region_ids")
+    raw_regions = args.get("text_region_ids")
 
     def _err(msg: str) -> None:
         log_tool_call(agent_key, tc["name"], tc.get("args"), msg)
@@ -851,13 +864,14 @@ def _handle_ocr_regions(agent, tc: dict, agent_key: str) -> None:
         )
         return
 
-    # Accept a list of region numbers; forgivingly coerce a bare int/str.
+    # Accept a list of text-region numbers; coerce a bare int/str.
     if isinstance(raw_regions, (int, str)):
         raw_regions = [raw_regions]
     if not isinstance(raw_regions, (list, tuple)) or not raw_regions:
         _err(
-            "Error: 'region_ids' must be a non-empty list of integer "
-            "region numbers from the image's OCR output (e.g. [2, 5, 7])."
+            "Error: 'text_region_ids' must be a non-empty list of "
+            "integer text-region numbers from the image's OCR output "
+            "(e.g. [2, 5, 7])."
         )
         return
     region_ids: list[int] = []
@@ -869,8 +883,8 @@ def _handle_ocr_regions(agent, tc: dict, agent_key: str) -> None:
             bad_ids.append(repr(raw))
     if not region_ids:
         _err(
-            f"Error: 'region_ids' had no valid integer region numbers "
-            f"(got {raw_regions!r})."
+            f"Error: 'text_region_ids' had no valid integer text-region "
+            f"numbers (got {raw_regions!r})."
         )
         return
 
@@ -879,7 +893,7 @@ def _handle_ocr_regions(agent, tc: dict, agent_key: str) -> None:
     # Whole-call failure (engine/PIL import, bad image, detection): stop.
     if not result.get("ok"):
         _err(
-            f"Could not re-read regions on {path.name}: "
+            f"Could not re-read text regions on {path.name}: "
             f"{result.get('error')}."
         )
         return
@@ -889,12 +903,13 @@ def _handle_ocr_regions(agent, tc: dict, agent_key: str) -> None:
     invalid = result.get("invalid") or []
     n_ok = sum(1 for r in results if r.get("ok"))
 
-    # Denominator = the de-duplicated, VALID regions actually attempted
+    # Denominator = the de-duplicated, VALID text regions attempted
     # (``results``), not the raw request list — duplicates are silently
     # collapsed and out-of-range ids are listed separately below.
     parts: list[str] = [
-        f"Re-read {n_ok} of {len(results)} region(s) on {path.name} at "
-        f"higher resolution — machine-read, so check each value:"
+        f"Re-read {n_ok} of {len(results)} text region(s) on "
+        f"{path.name} at higher resolution — machine-read, so check "
+        f"each value:"
     ]
     crop_blocks: list[dict] = []
     crop_labels: list[str] = []
@@ -902,7 +917,7 @@ def _handle_ocr_regions(agent, tc: dict, agent_key: str) -> None:
         rid = r.get("region_id")
         if r.get("ok"):
             reread = (r.get("reread_text") or "").strip()
-            line = f"  [region {rid}] {reread or '(no text detected)'}"
+            line = f"  [text region {rid}] {reread or '(no text detected)'}"
             if r.get("original_text"):
                 line += f"   (whole-image OCR: {r['original_text']!r})"
             parts.append(line)
@@ -911,24 +926,28 @@ def _handle_ocr_regions(agent, tc: dict, agent_key: str) -> None:
                 crop_blocks.append(make_image_block(
                     b64, getattr(agent, "provider", "openai")
                 ))
-                crop_labels.append(f"{path.resolve()} (region {rid} zoom)")
+                crop_labels.append(
+                    f"{path.resolve()} (text region {rid} zoom)")
         else:
             parts.append(
-                f"  [region {rid}] could not re-read: {r.get('error')}"
+                f"  [text region {rid}] could not re-read: "
+                f"{r.get('error')}"
             )
     for inv in invalid:
         parts.append(
-            f"  Invalid: region {inv.get('region_id')} — {inv.get('error')}"
+            f"  Invalid: text region {inv.get('region_id')} — "
+            f"{inv.get('error')}"
         )
     if bad_ids:
         parts.append(
-            "  Ignored non-integer region id(s): " + ", ".join(bad_ids)
+            "  Ignored non-integer text-region id(s): "
+            + ", ".join(bad_ids)
         )
     if crop_blocks:
         parts.append(
-            f"The {len(crop_blocks)} zoomed crop(s) are attached in the next "
-            f"user message, one per region (labelled by region) — verify "
-            f"each value against its crop."
+            f"The {len(crop_blocks)} zoomed crop(s) are attached in the "
+            f"next user message, one per text region (labelled by text "
+            f"region) — verify each value against its crop."
         )
     summary = "\n".join(parts)
 
@@ -945,7 +964,7 @@ _HANDLERS = {
     "read_input_text":   _handle_read_input_text,
     "read_image_notes":  _handle_read_image_notes,
     "view_images":       _handle_view_images,
-    "ocr_regions":       _handle_ocr_regions,
+    "reread_text_regions": _handle_reread_text_regions,
 }
 
 

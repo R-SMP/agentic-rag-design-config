@@ -28,10 +28,10 @@ State each reference image's precision, using this vocabulary:
 $sketch_precision_examples
 
 ### Crop regions for downstream comparison
-Record a COARSE normalized crop box ``[x0, y0, x1, y1]`` (fractions in 0..1 —
-the ``regions`` argument of ``view_images``) for each region a downstream
-agent must compare against, LABELLED accordingly to describe what it shows.
+A multi-part page — section profiles in one strip, a whole-propeller view in
+another — is mostly irrelevant to any single downstream comparison.  Identify
+the parts that carry the design and record a crop box for each in §4 USEFUL
+INPUT IMAGES; that section is where every downstream agent looks for them.
+Label by what the box SHOWS, since one box often serves several agents:
 
 $sketch_crop_example
-
-Coarse is fine; do not attempt a pixel-accurate box.

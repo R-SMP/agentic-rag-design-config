@@ -77,8 +77,12 @@ def read_extracted_inputs(path: str) -> str:
 
     Pass the absolute path supplied by the DCIC under the
     ``Extracted inputs file:`` label (originally written by the UII).
-    Returns the full three-section extraction as text.  Do NOT call
-    this tool with a guessed path."""
+    Returns the full four-section extraction as text: QUANTITATIVE
+    INPUTS, QUALITATIVE DESCRIPTIONS, DESIGN INTENT AND FUNCTIONAL
+    REQUIREMENTS, and USEFUL INPUT IMAGES — the last naming the
+    reference images that matter and the crop regions identified on
+    each, which you can pass straight to ``view_images`` as
+    ``crop_regions``.  Do NOT call this tool with a guessed path."""
     return ""  # Actual read is performed by _handle_read_extraction_tool.
 
 

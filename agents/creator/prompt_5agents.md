@@ -226,9 +226,9 @@ Five tools give you on-demand access:
   * ``read_image_notes()`` — read every ``_note.txt`` at once.
   * ``view_images(paths)`` — load one or more user images so
     you can see them.
-  * ``ocr_regions(image_path, region_ids)`` — re-read small/faint/garbled
-    OCR callouts at higher resolution; pass every region you want in ONE
-    call, not one call each.
+  * ``reread_text_regions(image_path, text_region_ids)`` — re-read
+    small/faint/garbled OCR callouts at higher resolution; pass every
+    ``[text region N]`` number you want in ONE call, not one call each.
 
 ## Sketch handling (when the user supplied a sketch)
 $sketch_handling
@@ -490,7 +490,7 @@ Caller MUST quote the folder you wrote into.
 Your primary input is ``extracted_inputs.txt`` (the UII wrote it after
 inspecting the user's text AND images).  The raw inputs are also available
 to you — ``list_input_files``, ``read_input_text``, ``read_image_notes``,
-``view_images`` and ``ocr_regions``, described under "Optional reference:
+``view_images`` and ``reread_text_regions``, described under "Optional reference:
 user input images" above.
 
 **``read_extracted_inputs(path)``** — reading is at your discretion, but

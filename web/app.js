@@ -2313,7 +2313,7 @@ function renderLrOverlay() {
       ocrBtn.textContent = "OCR";
       ocrBtn.title =
         "OCR = read text on user images.  Toggle whether this agent's " +
-        "image tools run OCR (the extract_text flag + the ocr_regions " +
+        "image tools run OCR (the extract_text flag + the reread_text_regions " +
         "tool).  Takes effect on the next session.";
       const ocrOn = !!ocrState.flags[b.key];
       ocrBtn.classList.toggle("ocr-on",  ocrOn);
@@ -2323,9 +2323,9 @@ function renderLrOverlay() {
     }
 
     // Crops (per-agent OCR-region crop attachment) toggle.  Only the 3
-    // agents that bind the ocr_regions tool are eligible (matches
+    // agents that bind the reread_text_regions tool are eligible (matches
     // ocr_region_crops_access.DEFAULT_AGENTS server-side).  Controls
-    // whether ocr_regions attaches the zoomed crop image(s) it re-reads
+    // whether reread_text_regions attaches the zoomed crop image(s) it re-reads
     // (default OFF = re-read text only).  Dimmed ("inert") while OCR is
     // off for this agent, since crops require OCR.  Distinct purple
     // accent vs. green DBa / blue OCR.
@@ -2335,7 +2335,7 @@ function renderLrOverlay() {
       cropsBtn.type = "button";
       cropsBtn.textContent = "Crops";
       cropsBtn.title =
-        "Crops = attach the zoomed crop image(s) the ocr_regions tool " +
+        "Crops = attach the zoomed crop image(s) the reread_text_regions tool " +
         "re-reads.  OFF (default) = re-read TEXT only (cheaper on vision " +
         "tokens).  Requires OCR on for this agent.  Takes effect on the " +
         "next session.";

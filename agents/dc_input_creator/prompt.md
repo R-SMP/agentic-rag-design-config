@@ -236,7 +236,6 @@ from the user's extracted inputs — for example, the Orchestrator
 relayed a directive to change a specific parameter —
 say so clearly and in your own words: what changed, who asked for
 it, and (if known) why.
-<<DCII_ONLY>>  <</DCII_ONLY>>
 
 <<DCII_ONLY>>**Tight precision loop — when a precision standing directive is active.**
 On a precision refine round you have TWO forward targets: the DC Input

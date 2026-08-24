@@ -43,7 +43,7 @@ MAX_UII_STEPS = _ws.MAX_UII_STEPS
 """User Input Inspector's ``run()``.  Standard flow is
 ``read_user_inputs`` → ``write_extraction`` → routing call (3 turns).
 Extra slack covers image loading (``view_images`` /
-``ocr_regions``) and the occasional ``calculate``."""
+``reread_text_regions``) and the occasional ``calculate``."""
 
 MAX_DCIC_STEPS = _ws.MAX_DCIC_STEPS
 """DC Input Creator's ``run()``.  Standard flow is

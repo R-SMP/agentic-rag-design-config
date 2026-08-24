@@ -2,26 +2,27 @@
 
 Persistent storage for the per-agent "Crops" button in the Workflow
 Settings LLM-routing chart, sitting next to each agent's OCR button.
-Controls ONE thing: whether that agent's ``ocr_regions`` tool ATTACHES
+Controls ONE thing: whether that agent's ``reread_text_regions`` tool ATTACHES
 the zoomed crop image(s) it re-reads, or returns the higher-resolution
 re-read **text only**.
 
-* ``True``  — ``ocr_regions`` attaches one zoomed crop image per region
+* ``True``  — ``reread_text_regions`` attaches one zoomed crop image
+  per region
   (as the tool originally always did), in addition to the re-read text;
-* ``False`` — ``ocr_regions`` still crops + upscales + re-OCRs each
+* ``False`` — ``reread_text_regions`` still crops + upscales + re-OCRs each
   region (so the re-read TEXT is still higher-resolution), but attaches
   **no images** — cheaper on vision tokens.  This is the default.
 
 Sub-feature of OCR
 ------------------
-Crops only make sense where the ``ocr_regions`` tool exists, i.e. where
+Crops only make sense where the ``reread_text_regions`` tool exists, i.e. where
 OCR is enabled for the agent.  So :func:`is_enabled_for` ANDs this
 per-agent flag with :func:`workflow_settings.ocr_access.is_enabled_for`
 — there is no separate master switch; ``OCR_ENABLED`` already gates it.
 
 Eligible agents
 ---------------
-Only the 3 chain agents that actually bind ``ocr_regions`` (via
+Only the 3 chain agents that actually bind ``reread_text_regions`` (via
 ``build_user_inputs_tools`` WITH image tools + OCR on).  The other
 OCR-eligible roles (planner, dc_input_creator) never receive the tool,
 so a crop flag for them would be inert.  See :data:`DEFAULT_AGENTS`.
@@ -51,7 +52,7 @@ from workflow_settings import ocr_access as _ocr_access
 _PATH = Path(__file__).parent / "ocr_region_crops_access.json"
 _LOCK = threading.Lock()
 
-# The 3 chain agents that actually bind the ``ocr_regions`` tool
+# The 3 chain agents that actually bind the ``reread_text_regions`` tool
 # (lowercase_snake slugs).  When the set of agents that bind it changes,
 # edit this tuple.  Must stay a subset of ocr_access.DEFAULT_AGENTS.
 DEFAULT_AGENTS: tuple[str, ...] = (
@@ -115,7 +116,7 @@ def get(agent: str) -> bool:
 
 
 def is_enabled_for(agent: str) -> bool:
-    """True iff *agent*'s ``ocr_regions`` should ATTACH zoomed crops.
+    """True iff *agent*'s ``reread_text_regions`` should ATTACH zoomed crops.
 
     ANDs the per-agent crop flag with the agent's effective OCR access
     (:func:`workflow_settings.ocr_access.is_enabled_for`, itself gated

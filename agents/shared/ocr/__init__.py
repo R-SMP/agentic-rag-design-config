@@ -13,7 +13,8 @@ Public contract
 ``detect_text(image) -> {"full_text": str, "regions": [...],
 "words": [...], "raw": ...}`` where each **region** is callout-level
 ``{"id": int, "text": str, "box": {x0,y0,x1,y1}, "word_ids": [int]}``
-(the ``ocr_regions`` menu) and each **word** is the raw per-word box it
+(the ``reread_text_regions`` menu) and each **word** is the raw
+per-word box it
 was grouped from.  All coordinates are source-image pixels.
 """
 from agents.shared.ocr.feature import (

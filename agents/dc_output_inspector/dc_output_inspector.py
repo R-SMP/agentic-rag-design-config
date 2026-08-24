@@ -120,7 +120,11 @@ Path to read: ``{extracted_inputs_path}``.
      extraction.  Use the ``QUANTITATIVE INPUTS`` section
      (lock-annotated user-supplied numerics) and the
      ``DESIGN INTENT`` section (the user's goals and
-     functional requirements) as your comparison source.
+     functional requirements) as your comparison source.  Its
+     ``USEFUL INPUT IMAGES`` section is not a comparison source —
+     it is navigation: when a precision directive sends you to a
+     user sketch, that section names the crop region to pass as
+     ``crop_regions`` so you compare against the right part of it.
 
 Do NOT load the user's raw inputs (``user_query.txt``, the input
 image(s), the paired notes) in this mode.  Your comparison
@@ -151,7 +155,10 @@ Path to the extraction: ``{extracted_inputs_path}``.
      forces an independent reading.
   2. ``read_input_text(path={extracted_inputs_path})`` — always
      read the extraction.  Use ``QUANTITATIVE INPUTS`` and
-     ``DESIGN INTENT`` as your primary comparison source.
+     ``DESIGN INTENT`` as your primary comparison source, and
+     ``USEFUL INPUT IMAGES`` as navigation — it names which
+     reference images carry what, and the crop region to pass as
+     ``crop_regions`` when you load one.
   3. **When ANY of the following is true, ALSO consult the user's
      raw inputs**:
        - ``DESIGN INTENT`` in the extraction explicitly references

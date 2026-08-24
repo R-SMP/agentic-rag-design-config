@@ -6,10 +6,11 @@ toggle).  Each eligible agent gets one boolean:
 
 * ``True``  — when OCR is globally enabled, that agent's image tools
   (``view_images`` / ``read_user_inputs``)
-  carry the ``extract_text`` flag and the ``ocr_regions`` tool, and run
+  carry the ``extract_text`` flag and the ``reread_text_regions`` tool, and run
   OCR on loaded images;
 * ``False`` — that agent's image tools behave as if OCR were off (no
-  ``extract_text`` flag, no ``ocr_regions`` tool, no OCR pass) even when
+  ``extract_text`` flag, no ``reread_text_regions`` tool, no OCR pass)
+  even when
   the global switch is on.
 
 A global master switch ``workflow_settings.settings.OCR_ENABLED``
@@ -69,7 +70,7 @@ _LOCK = threading.Lock()
 DEFAULT_AGENTS: tuple[str, ...] = (
     "user_input_inspector",
     # "planner" was dropped 2026-08-22: the Planner no longer binds any
-    # image tool (view_images / ocr_regions unbound in the prompt
+    # image tool (view_images / reread_text_regions unbound in the prompt
     # reduction), so an OCR toggle for it would be a dead switch.
     "dc_input_creator",
     "dc_input_inspector",
@@ -141,7 +142,7 @@ def get(agent: str) -> bool:
 
 def is_enabled_for(agent: str) -> bool:
     """True iff *agent* should get OCR (the ``extract_text`` flag +
-    ``ocr_regions`` tool + the OCR pass) for the NEXT session.
+    ``reread_text_regions`` tool + the OCR pass) for the NEXT session.
 
     Combines the global ``OCR_ENABLED`` master switch and the
     per-agent flag with AND semantics:

@@ -71,8 +71,12 @@ def read_extracted_inputs(path: str) -> str:
 
     Pass the absolute path that the UII (or the Orchestrator)
     supplied under the ``Extracted inputs file:`` label.  Returns
-    the full extraction as text.  Returns a short error string if
-    the file does not exist or cannot be read.
+    the full extraction as text — QUANTITATIVE INPUTS, QUALITATIVE
+    DESCRIPTIONS, DESIGN INTENT AND FUNCTIONAL REQUIREMENTS, and
+    USEFUL INPUT IMAGES (which reference images matter, and the crop
+    regions the UII identified on each for the agents that compare
+    against them).  Returns a short error string if the file does not
+    exist or cannot be read.
 
     Use this whenever ``extracted_inputs.txt`` is present in the
     pipeline state.  In UII-first mode (PLANNER_FIRST=False) the

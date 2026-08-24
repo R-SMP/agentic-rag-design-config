@@ -101,7 +101,7 @@ Without this, downstream agents default to one strictness and either chase
 unmeetable proportions on a rough sketch or discard real proportions on a
 precise one.
 
-### UII — for a PRECISE blade-section drawing, add a warm-start estimate + a crop region
+### UII — for a PRECISE blade-section drawing, add a warm-start estimate + crop regions
 The DC Input Creator authors the parameters but CANNOT see the images; you can.
 So when a reference image contains a precise blade-section (airfoil) drawing, two
 extra records make the downstream section-matching far more efficient:
@@ -128,27 +128,17 @@ extra records make the downstream section-matching far more efficient:
    and unlocked, distinct from any explicit user numbers in QUANTITATIVE INPUTS.
    The downstream loop refines it against the drawing, so do not over-invest.
 
-2. **A coarse crop region.**  When the section drawings occupy only part of a
-   larger multi-part sketch (e.g. the bottom strip of a full technical page),
-   record a COARSE normalized crop box ``[x0, y0, x1, y1]`` (fractions in 0..1)
-   for that region, so the DC Output Inspector can crop to it when it compares
-   the rendered sections side-by-side with your sketch:
+2. **Crop regions, recorded in §4 of the extraction.**  When the section
+   drawings occupy only part of a larger multi-part sketch (e.g. the bottom
+   strip of a full technical page), the UII records a COARSE normalized crop
+   box ``[x0, y0, x1, y1]`` (fractions in 0..1) for that part in the
+   extraction's ``USEFUL INPUT IMAGES`` section, labelled by what it shows.
+   A whole-propeller top / side / perspective view — one the 3D geometry, not
+   just the sections, should match — gets its own labelled box there too, so
+   the later 3D precision check knows which sketch view to compare against
+   which render view.
 
-       SKETCH CROP REGION — the blade-section drawings in 0346_3.png occupy roughly
-       the bottom third: crop box [0.0, 0.72, 1.0, 1.0] for that image (pass as
-       ``regions`` to ``view_images`` when comparing the sections).
-
-   Coarse is fine — it only needs to isolate the sections from the rest of the
-   page; do not attempt a tight pixel-accurate box.
-
-   The same applies to a WHOLE-PROPELLER view — a top / side / perspective
-   drawing the 3D geometry (not just the sections) should match.  Record a
-   coarse crop box for it too, LABELLED with which view it is, so the later 3D
-   precision check knows which sketch view to compare against which render view:
-
-       SKETCH CROP REGION (top view) — the top-down propeller drawing in 0346_1.png
-       fills the upper half: crop box [0.0, 0.0, 1.0, 0.55] (compare against the
-       3D top render).
-
-   The precision loop uses the sections crop first (the cheap sections match)
-   and any whole-propeller crop later (the expensive 3D check).
+   Downstream, pass the box straight to ``view_images`` as that image's
+   ``crop_regions`` entry: the sections box for the cheap sections match, the
+   whole-propeller box for the expensive 3D check.  Coarse is fine — a box
+   only has to isolate the right part of the page.

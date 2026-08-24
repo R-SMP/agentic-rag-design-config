@@ -90,7 +90,7 @@ def ocr_summary_if_enabled(
             f"(machine-read — verify against the image):"
         ]
         for r in regions:
-            lines.append(f"  [region {r['id']}] {r['text']}")
+            lines.append(f"  [text region {r['id']}] {r['text']}")
         block = "\n".join(lines)
         if len(block) > cap:
             block = block[:cap] + "\n  ...(OCR text truncated)"

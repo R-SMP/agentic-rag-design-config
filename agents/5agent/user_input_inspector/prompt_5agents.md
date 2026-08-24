@@ -334,6 +334,28 @@ refreshing, summarise into one coherent paragraph; prune any
 previously-recorded text that is no longer load-bearing for the
 current design intent.
 
+### 4. USEFUL INPUT IMAGES
+
+You are the only agent that reads every raw image.  Record here what each
+image was worth and where to look on it — one block per image that
+actually contributed something, giving what it shows, why it matters, and
+every crop region you identified on it:
+
+    sketch_2.png — technical template sheet: the three blade-section
+    profiles drawn to scale across the bottom strip, whole-propeller top
+    view above them.
+    Why it matters: the only precise source for section shape.
+    Crop regions:
+      - sections (the three airfoil profiles): [0.0, 0.72, 1.0, 1.0]
+      - top view (whole propeller planform): [0.0, 0.0, 1.0, 0.62]
+
+Keep the crop lines in exactly that shape — ``- <label>: [x0, y0, x1,
+y1]``, fractions in 0..1 — so a downstream agent can pick one by label
+and pass it straight to ``view_images`` as ``crop_regions``.  Label each
+box by WHAT IT SHOWS.  An image that carried nothing usable still gets a
+line saying so.  If there were no reference images at all, write "None
+specified."
+
 ## User input layout (text + images)
 The user's input directory contains:
   * ``user_query.txt`` — every user-facing turn (chronological log).
@@ -387,20 +409,21 @@ don't loop).  It returns the root text files PLUS every paired
 NOT load the images.  Load the image(s) you need to see with
 ``view_images``.
 
-**``write_extraction(path, quantitative, qualitative, intent)``**
+**``write_extraction(path, quantitative, qualitative, intent, images)``**
 (mandatory) — persist your extraction to the ``Extraction output file:``
 path from your hand-off (verbatim; downstream reads that exact file, so
-skipping this loses the extraction).  Put "None specified." in any empty
-section; the tool adds the headers, so you do not.
+skipping this loses the extraction).  All four sections are required;
+put "None specified." in any empty one.  The tool adds the headers, so
+you do not.
 
 **``view_images(paths)``** — load the actual image(s) you need to
 see, by path (from the ``read_user_inputs`` listing).  Each loaded image
 is attached with its OCR text (dimension callouts, labels); also use it
 to re-load an image after bytes were stripped at a hand-off.
 
-**``ocr_regions(image_path, region_ids)``** — to confirm small/faint/
-garbled OCR callouts, re-read them at higher resolution; pass every
-region number you want in ONE call, not one call each.
+**``reread_text_regions(image_path, text_region_ids)``** — to confirm
+small/faint/garbled OCR callouts, re-read them at higher resolution; pass
+every ``[text region N]`` number you want in ONE call, not one call each.
 
 On demand (for revisiting one file): ``list_input_files`` (listing +
 pairing status), ``read_input_text(path)`` (one text file, e.g. a

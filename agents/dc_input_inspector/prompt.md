@@ -90,6 +90,12 @@ In such cases, you can and should consult the user inputs directly,
 sparingly, with ``read_user_inputs`` — it returns every text file at
 once (image notes included) plus the list of image paths.
 
+When you do load an image, the extraction's ``USEFUL INPUT IMAGES``
+section tells you which images carry what and gives a crop box for each
+part worth looking at closely.  Pass the relevant one to ``view_images``
+as ``crop_regions`` so you read the part in question rather than a whole
+technical page.
+
 QUANTITATIVE INPUTS contains two kinds of entry, and the
 consistency check is different for each:
 

@@ -66,14 +66,32 @@ logger = logging.getLogger("propeller_agent")
 # Utility tool schemas (actual I/O handled by DCInputCreator)
 # ---------------------------------------------------------------------------
 
+# The extraction's final section, ``USEFUL INPUT IMAGES``, records which
+# reference images matter and the crop regions identified on them.  It
+# exists for agents that can SEE images (the DC Input Inspector, the DC
+# Output Inspector); this agent binds no image tools, so the section is
+# stripped before the text reaches it — image navigation it cannot act on
+# is noise it would have to reason past.  The section is written LAST, so
+# removing it is a truncate; absent (older extraction, or a run with no
+# images), this is a no-op.
+_IMAGES_SECTION_HEADER = "USEFUL INPUT IMAGES:"
+
+
+def _strip_images_section(content: str) -> str:
+    """Return *content* without its trailing ``USEFUL INPUT IMAGES``
+    section."""
+    head, sep, _tail = content.partition(_IMAGES_SECTION_HEADER)
+    return head.rstrip() + "\n" if sep else content
+
+
 @tool
 def read_extracted_inputs(path: str) -> str:
     """Read the structured user-input extraction from a file.
 
     Pass the absolute path supplied by the User Input Inspector under
-    the ``Extracted inputs file:`` label.  Returns the full three-
-    section extraction as text.  Do NOT call this tool with a guessed
-    path."""
+    the ``Extracted inputs file:`` label.  Returns the extraction's
+    parameter-relevant sections as text.  Do NOT call this tool with a
+    guessed path."""
     return ""  # Actual read is performed by _handle_read_tool.
 
 
@@ -327,7 +345,8 @@ class DCInputCreator(BaseChainAgent):
                 )
             else:
                 try:
-                    content = path.read_text(encoding="utf-8")
+                    content = _strip_images_section(
+                        path.read_text(encoding="utf-8"))
                 except OSError as exc:
                     summary = f"Error reading '{raw_path}': {exc}"
                 else:

@@ -86,7 +86,10 @@ plan format below is for recovery reasoning.
         the first render.
 
     You decide precision vs. ordinary.  When it is a precision job, issuing the directive is what turns
-    the DCOI's one-shot check into the forced refine loop.
+    the DCOI's one-shot check into the forced refine loop.  You need not tell
+    the DCOI which image to look at or where on it: the extraction's
+    ``USEFUL INPUT IMAGES`` section already names the useful images and the
+    crop region for each part worth comparing, and the DCOI reads it itself.
   * **Recovery PLAN** — write Part 1 in this format, then a short
     Part 2 to the Orchestrator (``call_orchestrator``), which executes
     the sequence by calling each agent itself (the pipeline is NOT

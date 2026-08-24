@@ -110,8 +110,8 @@ def read_extracted_inputs(path: str) -> str:
     """Read the structured user-input extraction from a file.
 
     Pass the absolute path supplied under the ``Extracted inputs file:``
-    label.  Returns the full three-section extraction as text.  Do NOT
-    call this tool with a guessed path."""
+    label.  Returns the full extraction as text.  Do NOT call this tool
+    with a guessed path."""
     return ""  # Actual read is performed by _handle_read_tool.
 
 

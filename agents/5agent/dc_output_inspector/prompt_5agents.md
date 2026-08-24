@@ -82,9 +82,9 @@ block above):
   * ``read_image_notes()`` — read every ``_note.txt`` at once.
   * ``view_images(paths)`` — load one or more user reference
     images so you can see them.
-  * ``ocr_regions(image_path, region_ids)`` — re-read small/faint/garbled
-    OCR callouts at higher resolution; pass every region you want in ONE
-    call, not one call each.
+  * ``reread_text_regions(image_path, text_region_ids)`` — re-read
+    small/faint/garbled OCR callouts at higher resolution; pass every
+    ``[text region N]`` number you want in ONE call, not one call each.
 
 Whichever sources you consult, judge whether the rendered design
 matches the user's intent (proportions, structural-element counts,
@@ -114,10 +114,10 @@ LOOP, not a one-shot verdict — obey it verbatim:
 - **Compare the render against the user's sketch, side by side.**  In ONE
   ``view_images`` call with ``side_by_side=True``, load the current
   blade-sections render (from the ``Render images:`` paths) together with the
-  user's sketch cropped to its sections region — pass the ``SKETCH CROP
-  REGION`` box the UII recorded in the extraction as that image's ``regions``
-  entry (a coarse box is fine; if none was recorded, crop the sections region
-  yourself).  Judge the whole strip, mapping inner / middle / outer by the
+  user's sketch cropped to its sections region — take the sections crop box
+  from the extraction's ``USEFUL INPUT IMAGES`` section and pass it as that
+  image's ``crop_regions`` entry (a coarse box is fine; if none was recorded,
+  crop the sections region yourself).  Judge the whole strip, mapping inner / middle / outer by the
   coloured labels.  This side-by-side sketch comparison is REQUIRED by the
   precision directive and takes PRECEDENCE over the session's comparison-source
   mode: the directive makes the user's drawing the ground truth, so load the
@@ -162,9 +162,9 @@ with the target swapped:
 - Compare the **3D render views** (isometric / top / side, from the ``Render
   images:`` paths) side-by-side with the **relevant sketch view** cropped to
   the propeller — a top-view sketch against the top render, a side sketch
-  against the side render.  Same ``view_images(side_by_side=True)`` + the UII's
-  crop region (which for a 3D job covers the whole-propeller view, not the
-  sections strip).
+  against the side render.  Same ``view_images(side_by_side=True)`` + the
+  UII's crop region from ``USEFUL INPUT IMAGES``, passed as ``crop_regions``
+  — for a 3D job that is the whole-propeller view, not the sections strip.
 - Judge the mismatched ASPECT — planform outline, blade sweep / twist, tip
   shape, ring proportions — and describe it in prose.
 - **Iterate only if an UNLOCKED lever helps (A6b).**  If an unlocked parameter

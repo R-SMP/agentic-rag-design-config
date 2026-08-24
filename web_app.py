@@ -1750,7 +1750,7 @@ def api_ocr_access_post(body: _OcrAccessBody) -> dict:
 
 # Per-agent OCR-region CROP attachment — GET/POST /api/ocr-region-crops
 # (mirrors the OCR endpoints above).  Controls whether an agent's
-# ``ocr_regions`` tool attaches the zoomed crop image(s) it re-reads, or
+# ``reread_text_regions`` tool attaches the zoomed crop image(s) it re-reads, or
 # returns the higher-res re-read text only (default).  GET also returns
 # the per-agent OCR flags + OCR_ENABLED so the editor can dim a Crops
 # button where OCR is off for that agent (crops require OCR).  POST

@@ -584,7 +584,7 @@ RETRIEVE_MAX_RESPONSE_TOKENS: int = 30_000
 # grouped into callout regions — to the tool's result, so the agent
 # gets a clean, quotable reading of any dimension callouts /
 # annotations alongside the image itself.  Also exposes the
-# ``ocr_regions`` zoom-in tool.  See
+# ``reread_text_regions`` zoom-in tool.  See
 # extra_utilities/docs/reference/OCR_technology_notes.md for the full design.
 #
 # Requires GOOGLE_CLOUD_VISION_API_KEY in the environment (Railway
@@ -592,10 +592,11 @@ RETRIEVE_MAX_RESPONSE_TOKENS: int = 30_000
 #
 #   OCR_ENABLED              master switch.  False = the OCR pass
 #                            never runs, the per-call ``extract_text``
-#                            flag + ``ocr_regions`` tool are hidden, and
+#                            flag + ``reread_text_regions`` tool are
+#                            hidden, and
 #                            the image tools behave exactly as before.
 #                            Validated 2026-06-17 (UII whole-image OCR
-#                            + ocr_regions zoom-in confirmed) → now
+#                            + reread_text_regions zoom-in confirmed) → now
 #                            default True; set False to disable OCR
 #                            everywhere.
 #   OCR_ENGINE               which engine backs OCR.  Only

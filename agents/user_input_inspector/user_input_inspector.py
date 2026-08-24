@@ -88,14 +88,22 @@ def _build_read_user_inputs():
 @tool
 def write_extraction(
     path: str, quantitative: str, qualitative: str, intent: str,
+    images: str,
 ) -> str:
     """Persist the structured user-input extraction to a file.
 
     Pass the absolute file path supplied in your hand-off under the
-    ``Extraction output file:`` label, plus three strings (one per
+    ``Extraction output file:`` label, plus four strings (one per
     section).  Use "None specified." for any section with no content.
     The tool formats the file with canonical section headers and writes
-    it to disk."""
+    it to disk.
+
+    ``images`` is the USEFUL INPUT IMAGES section: one block per
+    reference image that actually contributed something, giving what the
+    image shows, why it matters to this design, and every crop region
+    you identified on it as ``- <label>: [x0, y0, x1, y1]``.  Downstream
+    agents cannot re-derive these boxes cheaply (some cannot see the
+    images at all), so this section is where they come from."""
     return ""  # Actual write is performed by _handle_write_extraction_tool.
 
 
@@ -145,7 +153,7 @@ class UserInputInspector(BaseChainAgent):
             self._extra_utility_tools_by_name[_dba_tool.name] = _dba_tool
         # No text-file tools: ``read_user_inputs`` already reads every
         # text file at once (image notes included) and lists the image
-        # paths, so only ``view_images`` (+ ``ocr_regions`` when OCR is
+        # paths, so only ``view_images`` (+ ``reread_text_regions`` when OCR is
         # on) come from the shared builder.
         all_tools = (
             [self._read_tool, self._write_tool]
@@ -348,12 +356,13 @@ class UserInputInspector(BaseChainAgent):
 
     @generic_tool("Write extracted inputs")
     def _handle_write_extraction_tool(self, tc: dict) -> None:
-        """Write the three-section extraction to the path the LLM supplied."""
+        """Write the four-section extraction to the path the LLM supplied."""
         args = tc.get("args", {}) or {}
         raw_path = args.get("path")
         quantitative = args.get("quantitative")
         qualitative = args.get("qualitative")
         intent = args.get("intent")
+        images = args.get("images")
 
         if not isinstance(raw_path, str) or not raw_path.strip():
             summary = (
@@ -367,6 +376,7 @@ class UserInputInspector(BaseChainAgent):
                     ("quantitative", quantitative),
                     ("qualitative", qualitative),
                     ("intent", intent),
+                    ("images", images),
                 ) if not isinstance(val, str)
             ]
             if missing:
@@ -375,14 +385,15 @@ class UserInputInspector(BaseChainAgent):
                     f"strings: {missing}.  File not written."
                 )
             else:
-                q, ql, it = (
+                q, ql, it, im = (
                     quantitative.strip(),
                     qualitative.strip(),
                     intent.strip(),
+                    images.strip(),
                 )
-                if not (q or ql or it):
+                if not (q or ql or it or im):
                     summary = (
-                        "Error: all three sections are empty.  Provide "
+                        "Error: all four sections are empty.  Provide "
                         "at least one non-empty section (use 'None "
                         "specified.' only for truly empty sections when "
                         "at least one other section has content).  File "
@@ -393,7 +404,9 @@ class UserInputInspector(BaseChainAgent):
                         f"QUANTITATIVE INPUTS:\n{q or 'None specified.'}\n\n"
                         f"QUALITATIVE DESCRIPTIONS:\n{ql or 'None specified.'}\n\n"
                         f"DESIGN INTENT AND FUNCTIONAL REQUIREMENTS:\n"
-                        f"{it or 'None specified.'}"
+                        f"{it or 'None specified.'}\n\n"
+                        f"USEFUL INPUT IMAGES:\n"
+                        f"{im or 'None specified.'}"
                     )
                     out_path = Path(raw_path)
                     try:
