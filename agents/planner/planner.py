@@ -79,10 +79,8 @@ def read_extracted_inputs(path: str) -> str:
     exist or cannot be read.
 
     Use this whenever ``extracted_inputs.txt`` is present in the
-    pipeline state.  In UII-first mode (PLANNER_FIRST=False) the
-    Planner ALWAYS reads the extraction first and only consults the
-    raw user inputs (texts + notes) afterwards if more context is
-    needed."""
+    pipeline state: read the extraction first, and consult the raw user
+    inputs (texts + notes) only if you still need more context."""
     from pathlib import Path
     try:
         p = Path(path)

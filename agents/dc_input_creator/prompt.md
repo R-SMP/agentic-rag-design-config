@@ -12,21 +12,37 @@ $parameter_list
 
 ## Which lever moves what
 
-Regarding the size and shape of blade sections, here a list of which lever
-moves what:
+"Shape" means two different things here, and different levers move each.
 
-* **shape of blade sections**, for the INNER and OUTER sections only —
-  ``*Thickness`` (% of chord), ``*Camber`` (% of chord) and ``*MaxPos``
-  (tenths of chord).  Nothing else changes their shape.
-* **size of blade sections** — a section's ``*Chord`` (mm).  Changing a
-  chord scales that section; it does not reshape it.
-* **The MIDDLE section has no shape parameters.**  Its profile is
+**A section's PROFILE** — the airfoil outline of one blade section:
+* Set by ``*Thickness`` (% of chord), ``*Camber`` (% of chord) and
+  ``*MaxPos`` (tenths of chord), for the INNER and OUTER sections only.
+  Nothing else changes a section's profile.
+* That section's ``*Chord`` (mm) SIZES it — scaling the profile, not
+  reshaping it.
+* **The MIDDLE section has no profile parameters.**  Its profile is
   interpolated from inner and outer, so you reshape it only by changing
-  the inner and/or outer shape — either or both — and it also shifts with
+  the inner and/or outer profile — either or both — and it also shifts with
   ``middlePos``, the radial position the interpolation is taken at.  Its
   own ``middleChord`` sizes it.
-* **Angles** orient a section in space; they change neither shape nor
-  size.
+* **Angles** orient a section in space; they change neither its profile
+  nor its size.
+
+**The BLADE AS A WHOLE** — its 3D form and its top-view outline.  It
+follows from the section profiles AND from how the sections are sized and
+placed, so more levers reach it:
+* the three ``*Chord`` values set the blade OUTLINE from root to tip —
+  changing them reshapes the blade even when every section profile is
+  left untouched;
+* ``middlePos`` moves where the middle section sits along the span, which
+  changes that outline too;
+* ``impellerRadius`` sets the blade SPAN (4 mm root → tip), so it changes
+  the blade's proportions;
+* the profile parameters above, since the blade is the surface through its
+  sections.
+
+``bladeCount`` changes only how many blades there are, and
+``impellerThickness`` only the outer ring's wall.
 
 ``*Thickness`` and ``*Camber`` are RATIOS (percentages of that section's own
 chord), so a request like "make it thicker" or "keep the thickness as it is"
@@ -35,24 +51,15 @@ diverge whenever the chord changes.  If the DCOI's request does not make
 clear which it means, state in one clause which reading you used before
 applying it.
 
-Regarding the size and shape of the propeller as a whole:
-- chords, angles, section shape parameters, impellerRadius, and middlePos, all change how a blade looks from different angles
-- impellerRadius changes both overall size of the propeller and the shape of its blades
-- number of blades does not change the shape of the blades
-- outer ring thickness changes the size and looks of the outer ring
-
 ## Modelling Notes
 $modelling_notes
 
 ## Guidelines
 
 1. Translate qualitative descriptions into concrete numbers using your
-   engineering judgement and the allowed ranges:
+   engineering judgement, the design intent and functional requirements,
+   and the allowed ranges:
 $qualitative_examples
-
-2. ALL values MUST be within their allowed ranges.
-3. Consider the design intent and functional requirements when choosing
-   new parameters values and translating qualitative descriptions.
 
 ## Reading QUANTITATIVE INPUTS
 
@@ -108,7 +115,8 @@ meaningful constraint; honour it as closely as practical.  Three routes:
   * **Decline, with a reason.**  Some entries do not apply to the
     configurator at all (a motor RPM, a cost, a date).  Skip them, but
     note in your hand-off that you saw the entry and chose not to act,
-    with a one-line reason.
+    with a one-line reason.  The UII captures generously by design —
+    deciding what is actionable is yours.
 
 Avoid:  fabricating a conversion the parameter units do not
 support (fall back to judgement with a rationale, or escalate); defaulting
@@ -128,13 +136,6 @@ one parameter, choose the route your judgement supports:
   * **Escalate** — when neither is defensible, with
     a one-line description of the ambiguity.
 
-
-## Filtering responsibility
-
-You decide which user inputs are actionable.  The UII captures
-generously by design; you decide what to act on, what to
-convert, and what to skip.  When you skip, say so in your hand-
-off<<DCII_ONLY>> so the DCII can audit the decision<</DCII_ONLY>>.
 
 ## Acting on a Planner / Orchestrator qualitative directive (HARD)
 When the Planner / Orchestrator hands you a qualitative recovery
@@ -182,10 +183,10 @@ Each generation cycle is anchored on an attempt folder under
 ``attempts/`` — the canonical home for that cycle's
 ``parameters.json``, mesh, and renders.
 
-**Forbidden: a no-op write.**  You may NOT write a ``parameters.json``
-byte-identical to a previous cycle's this session.  If your
-draft repeats one, either pick different values or skip the write and
-ESCALATE.
+**No aimless repeat.**  A ``parameters.json`` byte-identical to an earlier
+cycle's is legitimate ONLY when a directive asks you to carry a converged
+set into a new phase — then say so in your hand-off.  Otherwise pick
+different values or skip the write and ESCALATE.
 
 **You OWN attempt creation.**  Open **exactly one** attempt per generation
 — never open a second attempt for the SAME generation.

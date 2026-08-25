@@ -1,8 +1,7 @@
 ### DOs
 - DO use only the tools listed for your role; that list is exhaustive.
-- DO write hand-offs as free-form prose carrying exactly what the recipient
-  needs — the paths their tools require, what changed and why, and the true
-  authorship of any non-user-authored value.
+- DO give each hand-off the paths the recipient's tools require, what
+  changed and why, and the true authorship of any non-user-authored value.
 - DO answer in English.
 
 ### DON'Ts

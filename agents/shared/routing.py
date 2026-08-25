@@ -222,18 +222,22 @@ _MANDATORY_TAIL = (
 )
 
 
-# Restored 2026-08-23 for the agents whose reduction dropped the full
-# mandate section: the requirement itself now sits one line above the
-# tool list instead of ~80 lines away in the generic constraints.  The
-# 2026-08-22 runs showed a chain agent writing a complete plan and then
-# stopping, with no statement nearby that a routing call ends the turn.
-# Emitted ONLY on the reduced path -- an agent that still receives the
-# full "mandatory" section already states this in its first paragraph,
-# and the elif below keeps the two mutually exclusive.
-_MANDATORY_LINE_REDUCED = (
+# The reduced path's single mandate paragraph.  Until 2026-08-25 this was
+# TWO adjacent paragraphs -- a "_MANDATORY_LINE_REDUCED" restored on
+# 2026-08-23 plus _MANDATORY_TAIL -- which said the same thing twice, on
+# top of the generic constraints' "DON'T communicate in plain prose"
+# bullet.  The ID252-262 runs settled it: all three routing failures
+# (254 DCII+DCOI, 261 DCII, all gpt-5.4-mini) happened to agents carrying
+# the mandate THREE times, and the ROUTING_RETRY_ENABLED nudge is what
+# recovered every one.  Merged to one statement; the generic DON'T stays.
+# The full-mandate path keeps _MANDATORY_TAIL unchanged.
+_MANDATORY_TAIL_REDUCED = (
     "Every turn MUST end by invoking exactly one of the routing tools "
-    "above.  Reasoning text alone does not hand off — the turn is not "
-    "complete until the tool call is made."
+    "above, in the same response where you finish your work.  Do NOT "
+    "announce which tool you intend to call, and do NOT substitute "
+    "prose saying \"routing to X\".  Ordinary response text is your own "
+    "brief reasoning; only the tool's ``message`` argument reaches the "
+    "recipient."
 )
 
 
@@ -437,6 +441,6 @@ def routing_instructions(
             "(one or two lines is plenty).",
         ]
     elif "mandatory_tail" in sections:
-        lines += ["", _MANDATORY_LINE_REDUCED, "", _MANDATORY_TAIL]
+        lines += ["", _MANDATORY_TAIL_REDUCED]
 
     return "\n".join(lines)

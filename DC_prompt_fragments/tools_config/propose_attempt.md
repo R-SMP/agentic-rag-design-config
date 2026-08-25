@@ -14,13 +14,12 @@ path to that attempt's ``parameters.json``.  A direct user request ("propose the
 recommendation", "make this the proposed solution") is an unambiguous trigger
 too.
 
-**When NOT to call it.**  When the Planner's wording is non-committal or
-hedging (*"showing attempt N for context"*, *"intermediate result while we
-keep iterating"*, *"not satisfying yet"*), or the user only wants an
-informational look at a non-proposed attempt ("show me the worst one"),
-visualize the attempt but do NOT touch the panel.
+**When NOT to call it.**  Non-committal or hedging Planner wording
+(*"showing attempt N for context"*, *"intermediate result while we keep
+iterating"*, *"not satisfying yet"*) — visualize the attempt and leave the
+panel alone.
 
-**Pair it, and never judge from it.**  ``propose_attempt`` only updates the
+``propose_attempt`` only updates the
 sliders — it does not render the model, create an attempt, or trigger any
 agent.  When the user should both see the model AND have the sliders update,
 call ``visualize_3d_model`` first, then ``propose_attempt`` in the same turn.

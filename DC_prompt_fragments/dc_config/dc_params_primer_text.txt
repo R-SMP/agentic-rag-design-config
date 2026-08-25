@@ -21,7 +21,11 @@ thickness (18 % of chord); only camber and high-point change.
   - camber = innerCamber / outerCamber, in % of chord, increasing left to right.
   - high-point = innerMaxPos / outerMaxPos, in tenths of chord, increasing top to
     bottom. ``innerMaxPos`` / ``outerMaxPos`` move the CAMBER crest only, and do
-    nothing at zero camber.  Maximum THICKNESS is fixed at ~30% chord.
+    nothing at zero camber.
+  - thickness = innerThickness / outerThickness, in % of that section's own
+    chord. They set HOW THICK a section is, not WHERE it is thickest: the
+    chordwise position of maximum thickness is fixed at ~30% of chord and no
+    parameter changes it.
   - angle of attack = innerAngle / middleAngle / outerAngle, measured from the
     horizontal plane. The sections are drawn chord-horizontal so their shapes
     compare directly; the centre cell shows the angle separately.

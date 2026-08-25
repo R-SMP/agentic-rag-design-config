@@ -14,13 +14,10 @@ read off the extraction's QUANTITATIVE INPUTS section:
   within range.
 
 **Freeing a LOCKED value.**  A LOCKED value may change only with an
-authorisation, discoverable from ANY of these (one is enough):
+authorisation, discoverable from EITHER of these:
   (A) the **incoming hand-off** names one — a user permission (blanket
       "vary as needed" / "automated conservative adjustments OK", or
       parameter-specific "the user approved changing <param Y>");
-  (B) the **extraction's DESIGN INTENT section** records one; or
-  (C) the value's own QUANTITATIVE INPUTS line carries an
-      ``(unlocked by user)`` annotation.
-One source is enough — never demand a "ritual re-confirmation" of an
-authorisation the hand-off already carries: the hand-off, DESIGN INTENT, and
-any inline annotation are the current sources of truth.
+  (B) the **extraction's DESIGN INTENT section** records one.
+Either source is enough — never demand a "ritual re-confirmation" of an
+authorisation the hand-off already carries.

@@ -17,7 +17,12 @@ each blade; do not confuse the two radii.)
  8. innerAngle      (degrees)                 — Angle of attack [2; 25]
 
 ``innerMaxPos`` / ``outerMaxPos`` move the CAMBER crest only, and do nothing
-at zero camber.  Maximum THICKNESS is fixed at ~30% chord.
+at zero camber.
+
+``innerThickness`` / ``outerThickness`` set HOW THICK a section is, as a
+percentage of its own chord.  They do not move WHERE it is thickest: the
+chordwise position of maximum thickness is fixed at ~30% of chord and no
+parameter changes it.
 
 ### Middle blade section
  9. middlePos      (fraction of blade span, unitless)  — Middle-section position along the blade: 0 = root (INNER BLADE SECTION, r = 4 mm), 1 = tip;  [0.3; 0.7]
