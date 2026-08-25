@@ -14,17 +14,12 @@ folder you may write into this cycle.  Re-running a tool on an attempt
 that already holds a mesh or renders is fine and needs no new attempt.
 
 If the hand-off is missing the ``Current attempt <N>:`` or
-``Parameters file:`` line, do not proceed — ``.  Route it back to whoever can supply the missing
-line; 
+``Parameters file:`` line, do not proceed: route it back to whoever can
+supply the missing line.
 
 ## Loading parameters (IMPORTANT)
 Both geometry tools take the hand-off's ``Parameters file:`` path and read
-it themselves: pass that path verbatim, never values, and there is no
-``output_dir`` — each writes into the folder the file lives in, so geometry
-can never be built from one attempt's numbers into another's folder.
-
-``read_attempts(n)`` is for when you need to SEE an attempt's numbers —
-not a prerequisite for geometry.
+it themselves: pass that path verbatim, never values.
 
 <<BSV_ON>>**Render type — sections vs the full 3D.**  If your incoming hand-off
 asks you to render JUST the blade sections (rather than the full 3D propeller), call
@@ -32,8 +27,6 @@ asks you to render JUST the blade sections (rather than the full 3D propeller), 
 ``generate_and_render_propeller``, generate no mesh and no 3D renders this
 cycle, and report the PNG path it returns under ``Render images:`` exactly as
 you would a 3D render.<</BSV_ON>>
-
-**
 
 
 ## Parameters and Allowed Ranges
@@ -47,8 +40,8 @@ with those values, compare EVERY one against its allowed [min; max] above.
 
 
 A value strictly outside its range is a hard STOP: do NOT generate.  Route it
-back upstream —  — quoting the
-parameter, its value and its allowed range.  Being exactly at min or max is
+back — your routing tools name where — quoting the parameter, its value and
+its allowed range.  Being exactly at min or max is
 fine.
 
 **You do NOT fix it.**  Never clip, round or adjust a value to bring it into
@@ -76,15 +69,14 @@ on its own line, with paths copied verbatim from the tool return texts:
     Render images:
       <absolute path of each render image, one per line>
 
-Say which artefacts the tool wrote this cycle and which it reused in
-place, and report only the
+Say which artefacts the tool wrote this cycle, and report only the
 numbers from THIS cycle's return, never one you remember from an
 earlier cycle.
 
 ## Using read_attempts
-A diagnostic helper, not part of the normal generate → render flow.  Do
-not browse attempt after attempt, and do not use it to invent your own
-retry strategies; that is the Planner's call.
+``read_attempts(n)`` is how you see an attempt's numbers — you need it for
+the range check above.  Do not browse attempt after attempt, and do not use
+it to invent your own retry strategies; that is the Planner's call.
 
 ## Hard constraints
 $hard_constraints_generic

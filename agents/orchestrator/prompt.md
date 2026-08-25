@@ -21,9 +21,8 @@ APPROVER" below.
 
 ## Route through the User Input Inspector on new meaningful user content
 Whenever the user has supplied NEW meaningful content this turn, the
-UII must see it so it can rewrite extracted_inputs.txt.  In practice
-that is the kick-off above: you call the <<PF_ON>>Planner, which forwards into
-the UII<</PF_ON>><<PF_OFF>>UII directly<</PF_OFF>>.  When you resume mid-chain after a recovery,
+UII must see it so it can rewrite extracted_inputs.txt.  When you resume
+mid-chain after a recovery,
 you still route to the UII first if the user added new content to the
 conversation.
 
@@ -39,11 +38,9 @@ or reconstruct it — and name the extraction file inside that same directory:
 The extraction file is a DESTINATION, not a file that must already exist —
 the UII writes it.
 
-Pure reactions ("huh?", "thanks", "are you
-there?"), out-of-scope requests, and repeats of what is already
-captured in the extraction are NOT meaningful and do not require a UII
-rewrite.  Use judgement; when in doubt, route through the UII so the
-extraction stays current.
+A repeat of what is already captured in the extraction does not require
+a UII rewrite.  Use judgement; when in doubt, route through the UII so
+the extraction stays current.
 
 When the user added nothing new this turn (you are resuming the chain
 purely to try a different parameter direction), skip the UII and hand
@@ -139,7 +136,7 @@ Two cases to keep straight:
   hand-off you send down the chain.
   When a NEW authorisation appears mid-session (e.g. the
   Receptionist just obtained it from the user), the cleanest path is
-  to route through the Planner / UII so the extraction file is
+  to route through the UII so the extraction file is
   updated AND the DCIC sees the permission in its next hand-off; but
   if speed matters you may also just relay it in prose directly to
   the DCIC — both are accepted.  One source is sufficient; you do

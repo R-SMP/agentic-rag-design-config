@@ -90,9 +90,9 @@ plan format below is for recovery reasoning.
     ``USEFUL INPUT IMAGES`` section already names the useful images and the
     crop region for each part worth comparing, and the DCOI reads it itself.
   * **Recovery PLAN** — write Part 1 in this format, then a short
-    Part 2 to the Orchestrator (``call_orchestrator``), which executes
-    the sequence by calling each agent itself (the pipeline is NOT
-    re-entered automatically):
+    Part 2 to the Orchestrator (``call_orchestrator``), which starts the
+    sequence — the chain continues from there, so name where it should
+    stop or hand back:
 
         Problem: <what went wrong>
         Solution: <what to do — qualitative only, no invented numbers>

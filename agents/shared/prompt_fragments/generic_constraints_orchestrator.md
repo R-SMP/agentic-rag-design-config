@@ -4,10 +4,9 @@
   agent) ===`` … ``=== END STANDING DIRECTIVES ===`` block UNCHANGED in your
   own hand-off — never alter, summarise, translate, re-order or omit it;
   only the Planner may change it.
-<</CHAIN_ONLY>>- DO write hand-offs as free-form prose carrying exactly what the recipient
-  needs — the paths their tools require, what changed and why, and the true
-  authorship of any non-user-authored value ("the Planner directed …", "the
-  user asked …"; never relabel one source as another).
+<</CHAIN_ONLY>>- DO name the true authorship of any non-user-authored value you relay
+  ("the Planner directed …", "the user asked …"); never relabel one source
+  as another.
 - DO answer in English.
 
 ### DON'Ts
