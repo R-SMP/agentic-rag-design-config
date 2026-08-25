@@ -30,15 +30,9 @@ this propeller DC are:
     radius — NOT the hub radius, which is 8 mm.
   * Diameter ↔ radius (the configurator parameterises only ``impellerRadius``;
     user-stated diameters convert via ``impellerRadius = diameter / 2``).
-  * Absolute mm ↔ fraction / percent of an overall scale parameter
-    (when the user expresses a chord, height, or similar absolute-
-    unit value as a fraction of diameter or radius, multiply by the
-    corresponding scale).
 
 These are the typical patterns; the user may state quantities in
 other ways too.  When you encounter an unfamiliar unit, derive the
 conversion from the parameter list itself plus standard unit
 algebra, OR fall back to engineering judgement with a stated
 rationale.
-
-### 

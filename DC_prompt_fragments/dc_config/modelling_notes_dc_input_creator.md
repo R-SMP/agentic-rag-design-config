@@ -28,6 +28,10 @@ this propeller DC are:
     NOT of ``impellerRadius``): ``middlePos = (r − 4) / (impellerRadius − 4)``, with
     ``r`` the desired middle-section radius in mm and 4 mm the INNER BLADE SECTION's
     radius — NOT the hub radius, which is 8 mm.
+  * Absolute mm ↔ fraction / percent of an overall scale parameter
+    (when the user expresses a chord, height, or similar absolute-
+    unit value as a fraction of diameter or radius, multiply by the
+    corresponding scale).
   * Diameter ↔ radius (the configurator parameterises only ``impellerRadius``;
     user-stated diameters convert via ``impellerRadius = diameter / 2``).
 

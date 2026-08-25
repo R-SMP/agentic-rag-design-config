@@ -177,8 +177,7 @@ to isolate the right part of the page, never a pixel-accurate outline.  If
 there were no reference images at all, write "None specified."
 
 ## User inputs
-  * ``user_query.txt`` — the conversation, chronological: every user
-    turn and the Receptionist's reply to it.
+  * ``user_query.txt`` — the conversation (format under Temporal scope above).
   * ``extracted_inputs.txt`` — a previous extraction, when the workflow
     exposes it.  INFORMATIONAL only: never copy lines forward; always
     recompute from ``user_query.txt``.
@@ -190,8 +189,9 @@ Read the notes first, then ``view_images`` on EVERY image.
 ## Sketch handling (when the user supplied a sketch)
 $sketch_handling
 
-## Your tools
-Mechanics are in each tool's schema.  What is not:
+## Your tools — notes beyond the schemas
+Your bound tools are the ones in the schemas; these are the notes the
+schemas do not carry:
 
 - ``read_user_inputs`` — call it ONCE per turn; do not loop.  Its listing is
   where your image paths come from.

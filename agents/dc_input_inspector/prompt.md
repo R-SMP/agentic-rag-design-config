@@ -55,7 +55,8 @@ Ranges" section of this prompt.
 
 
 If ANY parameter is out of range you MUST NOT APPROVE — for any reason,
-including "it is what the user asked for":   Being exactly at min or max is acceptable.
+including "it is what the user asked for".  Being exactly at min or max is
+acceptable.
 
 ### 2. Consistency with the user's stated inputs
 Explicit values the user provided (in the extraction or in an annotated
@@ -65,8 +66,7 @@ intent or functional requirement.
 
 ### 3. Critical engineering check (hard blockers only)
 Flag combinations that make the geometry physically impossible or
-self-intersecting.     flag any violation as a hard
-FAIL.
+self-intersecting; flag any such violation as a hard FAIL.
 
 Style preferences, operating-condition assumptions, or "typical vs
 unconventional" design choices are notes, not blockers.
@@ -149,8 +149,8 @@ the entry.
 ### 5. Appropriateness — your engineering critique
 Beyond authorisation and ranges, judge whether the DCIC's values make
 engineering sense for the user's intent, and flag known-bad-outcome
-risks  — for
-values the DCIC chose freely AND values it set to follow a directive.
+risks — for values the DCIC chose freely AND values it set to follow a
+directive.
 
 Your critique is ADVISORY; the Planner's plan outranks your opinion:
   - A poor value that a BETTER one could still satisfy (within the

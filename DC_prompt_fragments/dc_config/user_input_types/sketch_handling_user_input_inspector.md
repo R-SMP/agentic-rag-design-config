@@ -27,11 +27,4 @@ State each reference image's precision, using this vocabulary:
 
 $sketch_precision_examples
 
-### Crop regions for downstream comparison
-A multi-part page — section profiles in one strip, a whole-propeller view in
-another — is mostly irrelevant to any single downstream comparison.  Identify
-the parts that carry the design and record a crop box for each in §4 USEFUL
-INPUT IMAGES; that section is where every downstream agent looks for them.
-Label by what the box SHOWS, since one box often serves several agents:
 
-$sketch_crop_example

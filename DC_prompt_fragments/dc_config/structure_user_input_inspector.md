@@ -8,7 +8,7 @@ The propeller consists of:
      hub radius, so the blade root is buried inside the hub and the hub hides the
      innermost part of each blade — do not confuse the two radii.
    - Middle section: between inner and outer; its radial position along the blade is set
-     by `middlePos` — a fraction of the blade span (0 = root, 0.5 = the blade's exact
-     midpoint, 1 = tip); its radius follows from middlePos and the ring radius, and is
-     not necessarily the blade's midpoint.
+     by `middlePos` — a fraction of the blade SPAN measured from the 4 mm root
+     (0 = root, 0.5 = the span's exact midpoint, 1 = tip); its radius follows from
+     middlePos and the ring radius, and is NOT `middlePos × impellerRadius`.
    - Outer section: the blade tip, at the outer radius (impellerRadius), furthest from the centre.

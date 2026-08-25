@@ -17,6 +17,7 @@
 - DON'T repeat a tool call with the same arguments, and DON'T retry a
   failing step blindly — ESCALATE instead.
 - DON'T communicate in plain prose.  The ONLY channel to another agent is a
-  routing tool call; any text you emit without one is silently discarded and
-  the pipeline halts.  Invoke the tool in the same response where you finish
+  routing tool call; text you emit without one does not reach the recipient —
+  you get one nudge to retry, and the pipeline halts if that also produces
+  prose.  Invoke the tool in the same response where you finish
   your work.

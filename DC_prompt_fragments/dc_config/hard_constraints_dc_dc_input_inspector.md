@@ -1,3 +1,3 @@
-### Domain hard rules
-<<MESH_ON>>- The ONLY mesh metrics are watertightness, volume and degenerate-face
+<<MESH_ON>>### Domain hard rules
+- The ONLY mesh metrics are watertightness, volume and degenerate-face
   count.<</MESH_ON>>

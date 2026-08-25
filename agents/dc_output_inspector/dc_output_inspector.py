@@ -137,11 +137,7 @@ it.
     as navigation — it names which reference images carry what, and
     the crop region to pass as ``crop_regions`` when you load one.
   * ``read_user_inputs()`` and ``view_images()`` — the user's own
-    material, when you need it.
-
-The comparison source(s) in scope this session: extraction ALWAYS,
-then inputs (images and/or texts) when your judgement says they are
-needed."""
+    material, when you need it."""
 
 
 @tool
