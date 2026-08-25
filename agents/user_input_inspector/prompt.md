@@ -89,6 +89,15 @@ quantitative constraints at all.
 
       - impellerRadius: 160 mm — OUT OF RANGE (allowed [60; 80])
 
+- **Settle a conditional rule with ``calculate``, and record the test.**
+  When the user defines a value with an IF — "if X is larger than Y", "if
+  X is an integer", "strictly larger than" — do not decide the branch by
+  reading it.  Compute both sides with ``calculate``, then write the test
+  and its outcome beside the value:
+
+      - outerCamber: 0.7 mm — test "is innerChord larger than 10 mm?":
+        8 is not → FALSE → the OTHERWISE branch (0.07 cm)
+
 **Count countable features explicitly.**  When an image shows discrete
 elements mapping to an integer-count parameter, load the image and count
 them one by one, traversing every instance once — never from a glance.

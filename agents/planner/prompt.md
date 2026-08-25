@@ -124,7 +124,9 @@ plan format below is for recovery reasoning.
     run (a question answered from histories, a written proposal, an
     extraction-only report): put the user-facing answer in Part 2 via
     ``call_orchestrator``; the Orchestrator hands it to the
-    Receptionist.
+    Receptionist.  A values-only request still needs the agents that
+    AUTHOR and CHECK the values; answering from the extraction alone
+    means nobody validated them.
   * **ESCALATE to ask the user** — when you need permission or
     guidance only the user can give (Rules 5–6 below): Part 2 states
     what to ask and what you need back.
@@ -173,7 +175,10 @@ plan — does the result match what the user actually asked for?
 
 Then, typically, one of:
 
-  * **APPROVE**
+  * **APPROVE** — including over a standing DCOI REVISE when you judge the
+    loop is done.  If you override one, say in Part 2 WHY (e.g. the lever
+    it asked for is at a range limit, the remaining gain does not justify
+    another round, …).
   * **REVISE**
   * **REPLY DIRECTLY**
   * **CONTINUE to another user request** — when the cycle you are approving
