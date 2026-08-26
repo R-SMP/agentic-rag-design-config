@@ -18,6 +18,10 @@ Route only AFTER ``write_extraction`` has succeeded, and keep the
 extraction, which is already on disk.  Include your read of how readable
 the images were.
 
+**Pre-route self-check (mandatory).**  Before you invoke a forward route,
+look back at this turn: did ``write_extraction`` return success?  If not,
+call it first — routing now delivers an empty file to the next agent.
+
 **If the Planner CLARIFYs back to you** — a value you extracted was
 ambiguous or misread, or a file was overlooked — re-read the source and
 call ``write_extraction`` again with the correction, then forward again.

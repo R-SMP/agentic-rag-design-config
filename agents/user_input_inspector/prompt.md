@@ -77,17 +77,14 @@ quantitative constraints at all.
 
 **STRICT rules:**
 
-- **Settle a conditional rule with ``calculate``, and record the test.**
-  When the user defines a value with an IF — "if X is larger than Y", "if
-  X is an integer", "strictly larger than" — do not decide the branch by
-  reading it.  Compute both sides with ``calculate``, then write the test
-  and its outcome beside the value:
-
-      - outerCamber: 0.7 mm — test "is innerChord larger than 10 mm?":
-        8 is not → FALSE → the OTHERWISE branch (0.07 cm)
+- **Record relations, do not resolve them.**  When the user makes a value
+  conditional on something else ("if X is larger than Y…"), or ties two
+  inputs together, write the relation out plainly in the section it belongs
+  to — quantitative, qualitative or design intent — disentangled and
+  complete.  Settling it is the DC Input Creator's job, not yours.
 
 - **Count countable features explicitly.**  When an image shows discrete
-  elements mapping to an integer-count parameter, load the image and count
+  elements you can count, load the image and count
   them one by one, traversing every instance once — never from a glance.
   Record the count under a descriptive label.  If the drawing is not trying
   to SHOW the count — one element with a "×6" label, or "6 blades" written

@@ -18,4 +18,6 @@ deliverable.
 
 Make the render type explicit when you route — the chain should tell the Tool
 Caller to render just the blade sections, or just the full 3D geometry, or
-both.  It depends on the current request's needs.
+both.  When both are needed, take them ONE AT A TIME: get one type right
+(generate → the DCOI judges → refine) before deciding whether the other is
+still needed.

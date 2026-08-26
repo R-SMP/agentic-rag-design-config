@@ -189,7 +189,7 @@ def tools_for(agent):
                     rt("planner", "orchestrator")])
         t = ([build_read_user_inputs(doc=READ_INPUTS_DOC_PLANNER,
                                      direct_provider="openai"),
-              PLAN.read_extracted_inputs, calculate]
+              PLAN.read_extracted_inputs]
              + [build_read_agent_history_tool(lambda *a, **k: [])]
              + [read_attempts, dc_params_list]
              + routing)
@@ -197,8 +197,7 @@ def tools_for(agent):
         return t
 
     if agent == "user_input_inspector":
-        extra = [calculate]
-        extra += dba_tools_for("user_input_inspector")
+        extra = list(dba_tools_for("user_input_inspector"))
         routing = ([rt("user_input_inspector", "planner"),
                     rt("user_input_inspector", "orchestrator")] if not PF else
                    [rt("user_input_inspector", "dc_input_creator"),

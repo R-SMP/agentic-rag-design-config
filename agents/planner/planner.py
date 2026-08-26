@@ -58,7 +58,6 @@ from agents.step_caps import MAX_PLANNER_STEPS
 from config import INPUT_IMAGES_SUBDIR, LOGS_DIR, USER_INPUTS_DIR
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
-from tools.calculate.calculate import calculate
 from agents.shared.dba_tools import dba_tools_for
 
 logger = logging.getLogger("propeller_agent")
@@ -136,7 +135,7 @@ class Planner(BaseChainAgent):
             direct_provider=getattr(self, "provider", "openai"),
         )
         all_tools = (
-            [read_user_inputs, read_extracted_inputs, calculate]
+            [read_user_inputs, read_extracted_inputs]
             + extra_utility
             + [read_attempts, dc_params_list]
             + list(tools)

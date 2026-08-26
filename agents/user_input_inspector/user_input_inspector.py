@@ -61,7 +61,6 @@ from agents.shared.user_inputs_tool import (
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
 from agents.step_caps import MAX_UII_STEPS
-from tools.calculate.calculate import calculate
 
 logger = logging.getLogger("propeller_agent")
 
@@ -144,9 +143,10 @@ class UserInputInspector(BaseChainAgent):
         next_agent: str,
     ) -> None:
         """Bind the UII's utility + routing tools."""
-        self._extra_utility_tools_by_name = {
-            calculate.name: calculate,
-        }
+        # ``calculate`` is deliberately NOT bound: the UII records what the
+        # user said and resolves nothing — settling a conditional and
+        # converting a unit both moved to the DC Input Creator (2026-08-26).
+        self._extra_utility_tools_by_name = {}
         # Which of the three database tools this agent holds is a
         # per-(profile, agent, tool) decision; dba_tools_for owns it.
         for _dba_tool in dba_tools_for("user_input_inspector"):

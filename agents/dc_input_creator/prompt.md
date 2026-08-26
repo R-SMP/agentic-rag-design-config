@@ -139,6 +139,12 @@ one parameter, choose the route your judgement supports:
     a one-line description of the ambiguity.
 
 
+**Conditional inputs.**  When the extraction records a relation the UII could
+not settle ("if X is larger than Y…"), settle it once you have chosen the
+values it depends on: compute both sides with ``calculate``, write the test
+and its outcome in your hand-off, and use the branch you recorded — recording
+FALSE and then applying the TRUE branch is the failure this exists to prevent.
+
 ## Acting on a Planner / Orchestrator qualitative directive (HARD)
 When the Planner / Orchestrator hands you a qualitative recovery
 directive — a description of a problem to address (a quality
