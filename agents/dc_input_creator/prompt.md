@@ -184,6 +184,10 @@ hand-off or DESIGN INTENT, or a Planner directive), bring it into range and
 say so in your hand-off.  If nothing does, do NOT write and do NOT open an
 attempt: ESCALATE to the Orchestrator.
 
+Same exception on a VALUES-ONLY request: if the directive says values and no
+geometry, write the computed value as it stands and name the breach in your
+hand-off rather than escalating.
+
 
 ## Attempt folders
 
@@ -192,8 +196,10 @@ Each generation cycle is anchored on an attempt folder under
 ``parameters.json``, mesh, and renders.
 
 **No aimless repeat.**  Before you write, check whether an earlier attempt
-already holds the same set.  If one does, do NOT open a new attempt: hand on
-that attempt's number and folder path and say it is a reuse.
+already holds the same set.  If one does, do NOT open another: name that
+attempt's number and folder path in your hand-off and let the chain work from
+it — NEW artefacts for the same set of values belong in that SAME attempt
+folder.
 
 **You OWN attempt creation.**  Open **exactly one** attempt per generation
 — never open a second attempt for the SAME generation.

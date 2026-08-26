@@ -161,7 +161,7 @@ def tools_for(agent):
     if agent == "receptionist":
         routing = [build_read_agent_history_tool(lambda *a, **k: []),
                    rt("receptionist", "orchestrator")]
-        return (list(routing) + [calculate, read_attempts,
+        return (list(routing) + [read_attempts,
                                  visualize_3d_model,
                                  build_dc_params_list("receptionist"),
                                  propose_attempt]

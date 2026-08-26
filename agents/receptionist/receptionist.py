@@ -48,7 +48,6 @@ from agents.shared.session import AgentState, Session
 from config import ATTEMPTS_DIR, USER_INPUTS_DIR
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
-from tools.calculate.calculate import calculate
 from tools.visualize_model.visualize_model import visualize_3d_model
 from agents.shared.dba_tools import dba_tools_for
 from agents.shared.dc_params_tool import build_dc_params_list
@@ -109,7 +108,7 @@ class Receptionist(BaseChainAgent):
     # ------------------------------------------------------------------
 
     def set_tools(self, tools: list) -> None:
-        """Bind ``read_agent_history``, ``calculate``, ``read_attempts``
+        """Bind ``read_agent_history``, ``read_attempts``
         (attempt summaries + artefact paths — the source of the mesh
         path for ``visualize_3d_model``), ``visualize_3d_model`` (push a
         generated mesh to the web viewer), ``dc_params_list`` (the
@@ -124,7 +123,6 @@ class Receptionist(BaseChainAgent):
         the overlap rather than add the first topology-conditional tool
         binding (round 5)."""
         all_tools = list(tools) + [
-            calculate,
             read_attempts,
             visualize_3d_model,
             build_dc_params_list("receptionist"),

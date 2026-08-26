@@ -59,7 +59,9 @@ plan format below is for recovery reasoning.
     set of parameters, or, if geometry must be created, to impose the ONE
     output this phase creates: the blade-section renders, or the full 3D
     geometry.  Never both in one directive; when a job needs both, finish
-    one and issue a NEW directive for the other.  To
+    one and issue a NEW directive for the other.  Do NOT announce that a
+    directive will be issued, and do NOT describe what it will say — write
+    the block itself, in this message.  To
     CHANGE the directive write the NEW block in place of the old one (never
     stack two).  Dropping the block does NOT retract it: once issued it rides
     every later CHAIN hand-off of this user turn, re-stamped automatically if

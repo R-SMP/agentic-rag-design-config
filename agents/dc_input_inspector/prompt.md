@@ -58,6 +58,11 @@ If ANY parameter is out of range you MUST NOT APPROVE — for any reason,
 including "it is what the user asked for".  Being exactly at min or max is
 acceptable.
 
+ONE exception — a VALUES-ONLY request.  When the active directive says this run
+produces the parameter values and no geometry, an out-of-range value is a
+finding to REPORT, not a blocker: approve the set and name the breach in your
+hand-off.  Nothing is built from it.
+
 ### 2. Consistency with the user's stated inputs
 Explicit values the user provided (in the extraction or in an annotated
 user message) are intentional.  Do NOT request justification for them.
@@ -176,7 +181,9 @@ template:
 
 ## Verdict → routing (STRICT — the tool follows your verdict)
 
-Your verdict fixes the tool.
+Your verdict fixes the tool.  It covers the parameter set: render quality and
+refine-loop rules are for another agent, and a directive clause addressed to it
+is not a precondition on your APPROVE.
 
   * **APPROVE → ``call_tool_caller``.**  All hard checks pass (range +
     feasibility) and any change reads as appropriate and authorised.  OR

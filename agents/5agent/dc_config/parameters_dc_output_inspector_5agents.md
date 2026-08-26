@@ -11,24 +11,24 @@ LARGER than the blade root at r = 4 mm, so the hub hides the innermost part of
 each blade; do not confuse the two radii.)
 
 ### Inner blade section
- 4. innerThickness  (% of chord)
- 5. innerMaxPos     (integer, tenths of chord)
- 6. innerCamber     (% of chord)
- 7. innerChord      (mm)
- 8. innerAngle      (degrees)
+ 4. innerThickness     (% of the INNER chord)
+ 5. innerMaxPos        (tenths of the INNER chord, integer)
+ 6. innerCamber        (% of the INNER chord)
+ 7. innerChord         (mm)
+ 8. innerAngle         (degrees)
 
 ### Middle blade section
  9. middlePos      (fraction of blade span: 0 = root, the INNER BLADE SECTION,
                    at r = 4 mm; 1 = tip)
-10. middleChord    (mm)
-11. middleAngle    (degrees)
+10. middleChord        (mm)
+11. middleAngle        (degrees)
 
 (The middle section has NO thickness, camber or high-point of its own — its
 profile is interpolated between the inner and outer sections.)
 
 ### Outer blade section
-12. outerThickness (% of chord)
-13. outerMaxPos    (integer, tenths of chord)
-14. outerCamber    (% of chord)
-15. outerChord     (mm)
-16. outerAngle     (degrees)
+12. outerThickness     (% of the OUTER chord)
+13. outerMaxPos        (tenths of the OUTER chord, integer)
+14. outerCamber        (% of the OUTER chord)
+15. outerChord         (mm)
+16. outerAngle         (degrees)

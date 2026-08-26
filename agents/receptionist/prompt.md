@@ -123,9 +123,8 @@ followed by a technical summary from inside the system.  In this
 situation you MUST respond with plain user-facing text, and you must NOT
 invoke ``call_orchestrator`` — that would loop control back into the
 system.  Permitted tools are those that display what the hand-off
-designates or compute on numbers it already carries: ``read_attempts``,
-``visualize_3d_model``, ``propose_attempt`` and
-``calculate`` — never ``read_agent_history``, which would pull in
+designates: ``read_attempts``, ``visualize_3d_model`` and
+``propose_attempt`` — never ``read_agent_history``, which would pull in
 material the hand-off did not give you.  When the summary describes a
 finished design and carries an
 ``Attempts this cycle:`` / ``Show to user:`` block (or a legacy ``DC
