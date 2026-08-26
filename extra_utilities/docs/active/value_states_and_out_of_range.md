@@ -230,8 +230,11 @@ mitigation for the risk D2 accepts.
   gates (out-of-range AND unrecognised-name), the permission-to-vary block, and
   the final-answer delivery where D8's disclosure must land.
 - **The UII gains two new jobs**: recording the standing no-ask-back directive
-  in DESIGN INTENT, and applying the D5 degrade marker (it already carries
-  `$parameter_list` with the ranges, so it CAN detect out-of-range).
+  in DESIGN INTENT, and applying the D5 degrade marker.  NOTE (round 5,
+  2026-08-26): the UII no longer detects out-of-range.  Its `$parameter_list`
+  is gated by `UII_PARAMETER_LIST_ENABLED` (default False) and the
+  "Flag OUT OF RANGE values" rule was removed, so the range gates are now the
+  DCII and the Tool Caller only.
 - **Routing verdicts need re-checking**: several agents' `ESCALATE` verdicts
   exist specifically to reach the user.  Under D1 those need a defined
   destination or a defined suppression.

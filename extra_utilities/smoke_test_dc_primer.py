@@ -155,13 +155,25 @@ check("image ~383 anthropic tokens (found %d)" % tok, 380 <= tok <= 390)
 print("case 2 - the high-point sentence is VERBATIM from parameters.md")
 params = (ROOT / "DC_prompt_fragments" / "dc_config" / "parameters.md"
           ).read_text(encoding="utf-8")
-m = re.search(r"``innerMaxPos``[^#]*?~30% chord\.", params)
-check("parameters.md still carries the canonical sentence", m is not None)
+# Round 4 (9d164d2) SPLIT the old one-liner: the ``*MaxPos`` half kept its own
+# paragraph ending "at zero camber.", and the thickness half became a longer
+# paragraph of its own.  This check tracked the pre-split wording and has been
+# failing silently since; it now checks each half where it actually lives.
+m = re.search(r"``innerMaxPos``[^#]*?at zero camber\.", params)
+check("parameters.md still carries the canonical *MaxPos sentence", m is not None)
 if m:
     canonical = norm(m.group(0))
     body = norm(dc_primer.TEXT_PATH.read_text(encoding="utf-8"))
     check("text block quotes it verbatim (whitespace-normalised)",
           canonical in body, canonical)
+# The primer paraphrases the thickness paragraph rather than quoting it, so
+# check the load-bearing FACT rather than the wording — it is the sentence the
+# DCII misread as a constraint in run ID254.
+for what, src in (("parameters.md", params),
+                  ("primer text",
+                   dc_primer.TEXT_PATH.read_text(encoding="utf-8"))):
+    check("%s states max thickness is fixed at ~30%% of chord" % what,
+          "fixed at ~30% of chord" in norm(src))
 
 # --- 2b. the hub is NOT the inner blade section -----------------------------
 print("case 2b - hub 8 mm vs inner section 4 mm, kept distinct")
@@ -255,7 +267,8 @@ print("case 5 - all six agents splice it between system and history")
 SIX = ("user_input_inspector", "dc_input_creator", "dc_input_inspector",
        "dc_output_inspector", "creator", "designer")
 PATTERN = ("[make_system_message(self.system_prompt, self.provider)] "
-           "+ dc_primer_messages(self.provider) + self.messages,")
+           "+ dc_primer_messages(self.provider, self.AGENT_KEY) "
+           "+ self.messages,")
 for a in SIX:
     src = norm((ROOT / "agents" / a / (a + ".py")).read_text(encoding="utf-8"))
     check("%s: splice present, system-first order" % a, PATTERN in src)
@@ -265,9 +278,11 @@ for a in SIX:
 
 # --- 6. token accounting ------------------------------------------------------
 print("case 6 - pruner accounting")
-dc_primer._TOKEN_ESTIMATE = None
+dc_primer._TOKEN_ESTIMATE.clear()
 got = {a: dc_primer.primer_tokens_for(a) for a in SIX}
 check("all six primer agents count >0", all(v > 0 for v in got.values()), got)
+check("UII gets the parameter-free variant, and it is shorter",
+      got["user_input_inspector"] < got["dc_input_creator"], got)
 n = got["user_input_inspector"]
 check("estimate is ~1k (image %d + text; found %d)" % (tok, n),
       tok + 300 <= n <= tok + 900, n)

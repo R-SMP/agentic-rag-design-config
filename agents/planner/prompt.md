@@ -186,14 +186,7 @@ Then, typically, one of:
     approve to the user yet.  E.g.:
 
         PRECISION JOB — full 3D.  The blade sections have converged; now match
-        the WHOLE-propeller geometry to the user's sketch of it.  The DCOI
-        compares the 3D render views side-by-side with the relevant sketch view
-        and must not approve on a coarse match alone.  Iterate any UNLOCKED or
-        SOFT TARGET lever that measurably improves the mismatched aspect while
-        not substantially altering the work of the previous precision job; if
-        the mismatch traces to LOCKED user numbers or
-        the configurator's limits, report it honestly and do NOT touch locked
-        values.  Finalize on a close match or a plateau.
+        the WHOLE-propeller geometry to the user's sketch of it.
 
     Once all the user requests that could have been done with the current
     data have been completed, you can APPROVE to the user.

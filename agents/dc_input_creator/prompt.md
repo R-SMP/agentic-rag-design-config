@@ -67,9 +67,11 @@ The file of extracted user inputs ``extracted_inputs.txt`` records every
 numerical or quantisable input the user supplied.  QUANTITATIVE INPUTS contains two kinds
 of entry:
 
-  * **Verbatim entries.**  The line label matches a configurator
-    parameter exactly and the unit matches — so the value maps DIRECTLY
-    into that parameter's cell.  
+  * **Parameter-level entries.**  The line names a quantity that is
+    plainly one of the configurator's parameters, in that parameter's own
+    unit — whatever words the user used for it ("average outer ring
+    radius: 70 mm" is ``impellerRadius``).  The value maps DIRECTLY into
+    that parameter's cell.  
   * **Real-world-quantity entries.**  The line describes a
     real-world quantity in a unit / frame of reference that does
     not match a configurator parameter directly.  These ARE design

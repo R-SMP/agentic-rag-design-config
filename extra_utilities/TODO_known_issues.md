@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F94**.
+branches (F36 is taken on a sibling branch).  Next free id: **F95**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -110,6 +110,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F91` | OPEN | Per-agent STATEFUL / STATELESS toggle in the Workflow-Settings agent flow chart |
 | `F92` | PARTIALLY CLOSED | Four defects the 5-agent merge inherited from the 7-agent system — status re-checked 2026-08-21 |
 | `F93` | OPEN | Pending actions embedded inside `warnings_developer.md` — index |
+| `F94` | OPEN | Review PDFs render bullet lists as run-on prose — `sane_lists` in `build_html.py` |
 
 ---
 
@@ -4130,3 +4131,56 @@ originals. Instead this entry lists them; the authoritative text stays in
 **How to use this.** When one of these is actually scheduled, give it its own
 F-id and link back to the W. Do not delete the W entry — the invariant outlives
 the fix.
+
+### F94. Review PDFs render bullet lists as run-on prose — `sane_lists` in `build_html.py`
+
+**Status.** OPEN. Filed 2026-08-26 during prompt-reduction round 5.
+
+**The problem.** `extra_utilities/prompt_pdf/build_html.py` sets
+
+    MD_EXT = ["tables", "sane_lists", "fenced_code"]
+
+`sane_lists` makes python-markdown require a **blank line before a list that
+follows a paragraph**. Several prompts splice a bullet-list fragment directly
+under a bold lead-in with no blank line, e.g. `agents/receptionist/prompt.md`:
+
+    **CAN do:**
+    $capabilities_can
+
+so `capabilities_can.md`'s ten `- ` items are absorbed into the preceding
+paragraph and render in the PDF as one run of prose with literal `-`
+characters. Same for `**CANNOT do…**` and for the DC Output Inspector's
+absolute / ratio / held list, which sits directly under
+"say which quantity you mean:".
+
+**Why it matters — it is a REVIEW-FIDELITY bug, not a prompt bug.** The model
+reads the raw markdown and sees a perfectly ordinary list. Only the PDF is
+wrong. But the PDF is what prompt-reduction rounds are reviewed from, and in
+round 5 the reviewer raised the flattening three separate times (Receptionist
+CAN/CANNOT, Planner `Your common moves`, DCOI `Name the quantity`) believing
+the prompts themselves were malformed. Every round pays this tax again.
+
+**Do NOT "fix" it by editing the prompts.** Inserting blank lines before every
+spliced list would change nine assembled prompts to work around a rendering
+bug. The fix belongs in the builder.
+
+**Two candidate fixes, neither chosen.**
+1. Drop `sane_lists` from `MD_EXT`. One-word change. Needs a full re-render and
+   a page-count / spot check first: `sane_lists` also suppresses `1.` lists
+   that start mid-paragraph, so dropping it can turn prose containing an
+   enumeration into an unintended `<ol>`.
+2. Keep `sane_lists` and normalise at render time — in `prompt_html()`, insert
+   a blank line before any line matching `^\s*[-*]\s` whose predecessor is a
+   non-blank, non-list line. Surgical, but it edits the text being reviewed,
+   so the PDF would no longer be byte-faithful to the assembled prompt.
+
+**Check the fix worked** by confirming the Receptionist's CAN list renders as
+`<li>` elements, and re-run the shrink-to-fit check in
+`extra_utilities/prompt_pdf/README.md` (a layout change can silently trip it).
+
+**Related.** The Planner's `## Your common moves` list also reads badly, but
+that one is genuinely long in the source too — the `Issue a STANDING DIRECTIVE`
+item runs ~35 lines with nested indented blocks, so its three siblings
+(`Recovery PLAN`, `APPROVE the cycle`, `REPLY DIRECTLY`, `ESCALATE`) are far
+from it even in raw text. Owner declined restructuring it in round 5; if the
+PDF fix lands and it still reads as one bullet, revisit.

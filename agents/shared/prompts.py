@@ -177,6 +177,21 @@ _BSV_OFF_RE = re.compile(r"<<BSV_OFF>>(.*?)<</BSV_OFF>>", re.DOTALL)
 # between runs inside one process.  See ``apply_mesh_checks_filter``.
 _MESH_ON_RE = re.compile(r"<<MESH_ON>>(.*?)<</MESH_ON>>", re.DOTALL)
 _MESH_OFF_RE = re.compile(r"<<MESH_OFF>>(.*?)<</MESH_OFF>>", re.DOTALL)
+# Global UII-parameter-list filter, gated by ``UII_PARAMETER_LIST_ENABLED``.
+# The markers appear only in the UII's own prompt and its scoped
+# ``parameters_user_input_inspector.md``, so a global filter is safe: no other
+# agent's template carries them.  See ``apply_uii_params_filter``.
+_UII_PARAMS_ON_RE = re.compile(r"<<UII_PARAMS_ON>>(.*?)<</UII_PARAMS_ON>>",
+                               re.DOTALL)
+_UII_PARAMS_OFF_RE = re.compile(r"<<UII_PARAMS_OFF>>(.*?)<</UII_PARAMS_OFF>>",
+                                re.DOTALL)
+# Global DCOI-ranges filter, gated by ``DCOI_KNOWS_PARAMS_RANGES``.  Same
+# reasoning: the markers live only in the DCOI's prompt and its scoped
+# ``parameters_dc_output_inspector.md``.  See ``apply_dcoi_ranges_filter``.
+_DCOI_RANGES_ON_RE = re.compile(r"<<DCOI_RANGES_ON>>(.*?)<</DCOI_RANGES_ON>>",
+                                re.DOTALL)
+_DCOI_RANGES_OFF_RE = re.compile(
+    r"<<DCOI_RANGES_OFF>>(.*?)<</DCOI_RANGES_OFF>>", re.DOTALL)
 # Per-agent chain-only filter — strips ``<<CHAIN_ONLY>>`` regions from the
 # agents that are NOT links in the forward chain, and unwraps them for the
 # ones that are.  See ``apply_chain_only_filter``.
@@ -273,6 +288,36 @@ def apply_mesh_checks_filter(text: str) -> str:
     return text
 
 
+def apply_uii_params_filter(text: str) -> str:
+    """Resolve ``<<UII_PARAMS_ON>>`` / ``<<UII_PARAMS_OFF>>`` regions.
+
+    Gated by ``UII_PARAMETER_LIST_ENABLED``, read fresh so a toggle saved in
+    the Workflow Settings editor takes effect on the next session — the same
+    contract as the BSV / MESH / DBa toggles.
+    """
+    if bool(getattr(_workflow_settings, "UII_PARAMETER_LIST_ENABLED", False)):
+        text = _UII_PARAMS_OFF_RE.sub("", text)
+        text = _UII_PARAMS_ON_RE.sub(lambda m: m.group(1), text)
+    else:
+        text = _UII_PARAMS_ON_RE.sub("", text)
+        text = _UII_PARAMS_OFF_RE.sub(lambda m: m.group(1), text)
+    return text
+
+
+def apply_dcoi_ranges_filter(text: str) -> str:
+    """Resolve ``<<DCOI_RANGES_ON>>`` / ``<<DCOI_RANGES_OFF>>`` regions.
+
+    Gated by ``DCOI_KNOWS_PARAMS_RANGES``, read fresh, same contract as above.
+    """
+    if bool(getattr(_workflow_settings, "DCOI_KNOWS_PARAMS_RANGES", False)):
+        text = _DCOI_RANGES_OFF_RE.sub("", text)
+        text = _DCOI_RANGES_ON_RE.sub(lambda m: m.group(1), text)
+    else:
+        text = _DCOI_RANGES_ON_RE.sub("", text)
+        text = _DCOI_RANGES_OFF_RE.sub(lambda m: m.group(1), text)
+    return text
+
+
 def apply_dba_filter(text: str, agent_dir_name: str) -> str:
     """Resolve ``<<HAS_DBA>>...<</HAS_DBA>>`` conditional regions
     for one agent's template.
@@ -331,16 +376,25 @@ def apply_chain_only_filter(text: str, agent_dir_name: str) -> str:
 
 
 def apply_flag_filters(text: str) -> str:
-    """Apply the DCII, PLANNER_FIRST, BSV and MESH_CHECKS filters in sequence.
+    """Apply the DCII, PLANNER_FIRST, BSV, MESH_CHECKS, UII-parameter-list
+    and DCOI-ranges filters in sequence.
+
+    The last two are global even though their markers appear in only one
+    agent's files each: the marker names are unique, so a template that does
+    not carry them is untouched.
 
     NOTE: per-agent filters (:func:`apply_dba_filter`,
     :func:`apply_chain_only_filter`) are applied separately in
     :func:`_build_template` because they need to know which agent's
     template is being assembled.
     """
-    return apply_mesh_checks_filter(
-        apply_bsv_filter(
-            apply_planner_first_filter(apply_dcii_filter(text))
+    return apply_dcoi_ranges_filter(
+        apply_uii_params_filter(
+            apply_mesh_checks_filter(
+                apply_bsv_filter(
+                    apply_planner_first_filter(apply_dcii_filter(text))
+                )
+            )
         )
     )
 

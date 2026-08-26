@@ -5,6 +5,5 @@
   posed question.
 
 You CANNOT call any other agent in the pipeline directly.  All onward
-dispatch — to the Planner, to the inspectors, to the Tool Caller, to
-the DCOI — goes through the Orchestrator.
+dispatch goes through the Orchestrator.
 

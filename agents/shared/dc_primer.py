@@ -9,7 +9,7 @@ message and the live history:
     invoke_with_retry(
         self.llm,
         [make_system_message(self.system_prompt, self.provider)]
-        + dc_primer_messages(self.provider)
+        + dc_primer_messages(self.provider, self.AGENT_KEY)
         + self.messages,
         ...)
 
@@ -63,6 +63,26 @@ _DC_CONFIG_DIR = (
 TEXT_PATH = _DC_CONFIG_DIR / "dc_params_primer_text.txt"
 IMAGE_PATH = _DC_CONFIG_DIR / "images" / "dc_params_primer.png"
 
+# Agents that get a DIFFERENT primer text.  The IMAGE is always the same.
+#
+# The UII records what the user said in the user's own words and never maps
+# anything onto a configurator parameter, so the default text — which names
+# every parameter, gives the middlePos formula and its 0.3-0.7 band — would
+# hand it back the vocabulary ``UII_PARAMETER_LIST_ENABLED`` exists to remove.
+# Its variant keeps the geometry (hub vs 4 mm root, span-fraction, mid-wall
+# diameter, section orientation) and drops the names, formulas and ranges.
+# Note the diagram itself still carries labels; this narrows the leak, it does
+# not close it.
+_TEXT_PATH_BY_AGENT = {
+    "user_input_inspector":
+        _DC_CONFIG_DIR / "dc_params_primer_text_user_input_inspector.txt",
+}
+
+
+def _text_path(agent_key: "str | None") -> Path:
+    """The primer text this agent gets — its variant, or the default."""
+    return _TEXT_PATH_BY_AGENT.get(agent_key or "", TEXT_PATH)
+
 # The agents that receive the primer.  The injection sites are explicit in
 # each agent file; this set exists for the OTHER consumer — the Context
 # Pruner's token accounting (``primer_tokens_for``), which must know whether
@@ -77,12 +97,15 @@ PRIMER_AGENT_KEYS = frozenset({
     "designer",      # 3-agent: absorbs the Creator
 })
 
-# Filled lazily; keys are provider names, values the single HumanMessage.
+# Filled lazily; keys are (provider, text-file name), values the single
+# HumanMessage.  The text file is part of the key because agents with a
+# variant text must not share the default's cached message.
 # Safe to share one instance across agents and turns: nothing downstream
 # mutates message content (the strippers operate on ``self.messages`` only,
 # which never contains this object).
-_MESSAGE_CACHE: dict[str, HumanMessage] = {}
-_TOKEN_ESTIMATE: "int | None" = None
+_MESSAGE_CACHE: dict[tuple, HumanMessage] = {}
+# Keyed by text-file name, for the same reason as _MESSAGE_CACHE.
+_TOKEN_ESTIMATE: dict[str, int] = {}
 
 
 def _enabled() -> bool:
@@ -100,8 +123,8 @@ def _png_size(path: Path) -> "tuple[int, int]":
     return int(w), int(h)
 
 
-def _build(provider: str) -> HumanMessage:
-    text = TEXT_PATH.read_text(encoding="utf-8").rstrip()
+def _build(provider: str, text_path: Path) -> HumanMessage:
+    text = text_path.read_text(encoding="utf-8").rstrip()
     b64 = base64.b64encode(IMAGE_PATH.read_bytes()).decode()
     content: list[dict] = [
         {"type": "text", "text": text},
@@ -119,7 +142,8 @@ def _build(provider: str) -> HumanMessage:
     return HumanMessage(content=content)
 
 
-def dc_primer_messages(provider: str) -> "list[HumanMessage]":
+def dc_primer_messages(provider: str,
+                       agent_key: "str | None" = None) -> "list[HumanMessage]":
     """The primer as a (possibly empty) message list, ready to splice.
 
     Returns ``[]`` when ``DC_PARAMS_PRIMER_ENABLED`` is off or either asset
@@ -128,11 +152,12 @@ def dc_primer_messages(provider: str) -> "list[HumanMessage]":
     """
     if not _enabled():
         return []
-    key = (provider or "").strip().lower()
+    text_path = _text_path(agent_key)
+    key = ((provider or "").strip().lower(), text_path.name)
     msg = _MESSAGE_CACHE.get(key)
     if msg is None:
         try:
-            msg = _build(key)
+            msg = _build(key[0], text_path)
         except (OSError, ValueError):
             return []
         _MESSAGE_CACHE[key] = msg
@@ -152,19 +177,21 @@ def primer_tokens_for(agent_key: str) -> int:
     bills tiles differently, but the pruner's whole count is an estimate and
     this is the conservative figure.
     """
-    global _TOKEN_ESTIMATE
     if agent_key not in PRIMER_AGENT_KEYS or not _enabled():
         return 0
-    if _TOKEN_ESTIMATE is None:
+    text_path = _text_path(agent_key)
+    cached = _TOKEN_ESTIMATE.get(text_path.name)
+    if cached is None:
         try:
             w, h = _png_size(IMAGE_PATH)
             image_tok = (w * h + 749) // 750
             try:
                 from agents.database_handler.token_utils import count_tokens
-                text_tok = count_tokens(TEXT_PATH.read_text(encoding="utf-8"))
+                text_tok = count_tokens(text_path.read_text(encoding="utf-8"))
             except Exception:  # tokeniser unavailable — cheap fallback
-                text_tok = len(TEXT_PATH.read_text(encoding="utf-8")) // 4
-            _TOKEN_ESTIMATE = image_tok + text_tok
+                text_tok = len(text_path.read_text(encoding="utf-8")) // 4
+            cached = image_tok + text_tok
         except OSError:
             return 0
-    return _TOKEN_ESTIMATE
+        _TOKEN_ESTIMATE[text_path.name] = cached
+    return cached

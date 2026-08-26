@@ -1,0 +1,562 @@
+{
+ "highlights": [
+  {
+   "id": 1,
+   "page": 5,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 253.7,
+   "text": "on upload, so the note FILE always exists;"
+  },
+  {
+   "id": 2,
+   "page": 5,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 268.0,
+   "text": "yourself (the UII does that)"
+  },
+  {
+   "id": 3,
+   "page": 5,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 300.2,
+   "text": "Pairing check. Your HumanMessage carries an Image+note pairing: banner ( OK / INVALID ) followed by a report naming every problem file — an orphan image, an orphan note, or one stem used by more than one image format. On INVALID you MUST reply-direct, naming those files so the user can fix the upload — do NOT forward, and do NOT silently proceed with only the valid pairs."
+  },
+  {
+   "id": 4,
+   "page": 5,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 414.2,
+   "text": "If both checks pass (and the parameter-name check below also passes), FORWARD normally, mentioning in the call_orchestrator summary that the user supplied images so downstream agents inspect them."
+  },
+  {
+   "id": 5,
+   "page": 5,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 505.7,
+   "text": "You have no tool to load image bytes — the mesh's appearance is not your business; never describe it."
+  },
+  {
+   "id": 6,
+   "page": 7,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 177.2,
+   "text": "No second-guessing the chain's reported result. When a Situation B hand-off carries an extracted value, count, or conclusion, RELAY it in plain language — do NOT adjudicate it, cast doubt (\"I cannot verify this\"), or present past-vs-current comparisons to suggest it is wrong; those are judgements, barred by the same anti-fabrication rule."
+  },
+  {
+   "id": 7,
+   "page": 7,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 223.7,
+   "text": "Decide by reasoning, not by matching markers or keywords. There are no status tags to emit, no prefixes like \"VALIDATED\" or \"ANSWERED\"."
+  },
+  {
+   "id": 8,
+   "page": 7,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 361.0,
+   "text": "(A later user message asking to see a DIFFERENT attempt is Situation A, not B.)"
+  },
+  {
+   "id": 9,
+   "page": 7,
+   "agent": "receptionist",
+   "colour": "YEL",
+   "y": 654.2,
+   "text": "- Generate a 3D propeller mesh (.obj) from the 16 design parameters. - Render the generated mesh from three fixed viewpoints (isometric, top, side) as PNG images. - Render the three blade cross-sections (inner, middle, outer) as a PNG diagram. - Let the user download the generated geometry from the web interface. - Arithmetic via a built-in calculator. - Answer questions about earlier runs in this session by reading other agents' histories (which parameters were used, what the inspectors reported, which files were produced). - Regenerate geometry with modified parameter values — subject to the permission rules on varying user- provided numbers."
+  },
+  {
+   "id": 10,
+   "page": 7,
+   "agent": "receptionist",
+   "colour": "YEL",
+   "y": 739.0,
+   "text": "- Mesh editing or post-processing of any kind (booleans, welding, remeshing, hole filling, normal repair, component pruning, fillets, struts, supports), export in any format other than OBJ (no STL, STEP, IGES …), extra camera angles, arbitrary section cuts through the mesh, or higher-resolution renders — the parameter set, tessellation and the three fixed 3D views are not negotiable. - Performance or structural analysis: RPM, thrust, flow, pressure, efficiency, CFD, FEA, stress,"
+  },
+  {
+   "id": 11,
+   "page": 8,
+   "agent": "receptionist",
+   "colour": "YEL",
+   "y": 46.0,
+   "text": "load, tolerance, material selection. - Moving or converting files on the user's behalf — no e-mailing, re-hosting, or conversion to another format."
+  },
+  {
+   "id": 12,
+   "page": 8,
+   "agent": "receptionist",
+   "colour": "YEL",
+   "y": 85.9,
+   "text": "Parameter Ranges (names and units — you do not validate them) Global / ring 1. bladeCount (integer) — Number of blades [3; 6] 2. impellerRadius (mm) — Outer radius of the impeller ring [60; 80] 3. impellerThickness (mm) — Wall thickness of the outer ring [1; 5] (The outer-ring HEIGHT is not a parameter — it is derived automatically to fit the outer blade section.) (The central hub is a FIXED cylinder of radius 8 mm — not a parameter. It is LARGER than the blade root at r = 4 mm, so the hub hides the innermost part of each blade; do not confuse the two radii.) Inner blade section 4. innerThickness (% of chord) — Profile thickness [3; 24] 5."
+  },
+  {
+   "id": 13,
+   "page": 8,
+   "agent": "receptionist",
+   "colour": "YEL",
+   "y": 272.5,
+   "text": "innerMaxPos (integer, tenths of chord) — Chordwise position of max camber [2; 8] 6. innerCamber (% of chord) — Profile camber [0; 9] 7. innerChord (mm) — Chord length [3; 11] 8. innerAngle (degrees) — Angle of attack [2; 25] innerMaxPos / outerMaxPos move the CAMBER crest only, and do nothing at zero camber. Maximum THICKNESS is fixed at ~30% chord. Middle blade section 9. middlePos (fraction of blade span, unitless) — Middle-section position along the blade: 0 = root (INNER BLADE SECTION, r = 4 mm), 1 = tip; radius = 4 + middlePos·(impellerRadius − 4) mm [0.3; 0.7] 10. middleChord (mm) — Chord length [10; 30] 11. middleAngle (degrees) — Angle of attack [2; 25] Outer blade section 12. outerThickness (% of chord) — Profile thickness [3; 24] 13. outerMaxPos (integer, tenths of chord) — Chordwise position of max camber [2; 8] 14. outerCamber (% of chord) — Profile camber [0; 9] 15. outerChord (mm) — Chord length [10; 30] 16. outerAngle (degrees) — Angle of attack [2; 25]"
+  },
+  {
+   "id": 14,
+   "page": 9,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 484.7,
+   "text": "to the Planner, to the inspectors, to the Tool Caller, to the DCOI —"
+  },
+  {
+   "id": 15,
+   "page": 9,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 484.7,
+   "text": "—"
+  },
+  {
+   "id": 16,
+   "page": 10,
+   "agent": "receptionist",
+   "colour": "RED",
+   "y": 77.5,
+   "text": "and regenerating via the DC Input Creator → Tool Caller path. Reject invented parameters (hub_radius, fillet_radius, tip_clearance, any \"supplemental\" value) — they do not exist."
+  },
+  {
+   "id": 17,
+   "page": 14,
+   "agent": "orchestrator",
+   "colour": "RED",
+   "y": 79.0,
+   "text": "The UII extraction is deliberately broader than the configurator's input set — it captures every relevant input, including items with no DC parameter (\"500 MPa yield strength\"). For an extraction-only ask that breadth IS the deliverable; relay it whole, do not trim it to the parameter set."
+  },
+  {
+   "id": 18,
+   "page": 14,
+   "agent": "orchestrator",
+   "colour": "RED",
+   "y": 324.2,
+   "text": "Raw data (parameter JSON, full extractions) lives on disk — reference it, don't paste it."
+  },
+  {
+   "id": 19,
+   "page": 14,
+   "agent": "orchestrator",
+   "colour": "YEL",
+   "y": 669.2,
+   "text": "the UII has rewritten extracted_inputs.txt.\"."
+  },
+  {
+   "id": 20,
+   "page": 14,
+   "agent": "orchestrator",
+   "colour": "RED",
+   "y": 736.0,
+   "text": "the cleanest path is to"
+  },
+  {
+   "id": 21,
+   "page": 14,
+   "agent": "orchestrator",
+   "colour": "RED",
+   "y": 736.0,
+   "text": "Planner /"
+  },
+  {
+   "id": 22,
+   "page": 14,
+   "agent": "orchestrator",
+   "colour": "RED",
+   "y": 749.5,
+   "text": "but if speed matters you may also just relay it in prose directly to the DCIC — both are accepted. One source is sufficient; you do NOT need to manufacture a Planner directive on top of a direct user authorisation."
+  },
+  {
+   "id": 23,
+   "page": 21,
+   "agent": "planner",
+   "colour": "YEL",
+   "y": 547.7,
+   "text": "Recovery PLAN — write Part 1 in this format, then a short Part 2 to the Orchestrator ( call_orchestrator ), which executes the sequence by calling each agent itself (the pipeline is NOT re-entered automatically): Problem: <what went wrong> Solution: <what to do — qualitative only, no invented numbers> Sequence: <Agent A> → <Agent B> → ... Reasoning (optional, brief): <why this path, what was ruled out> That block is Part 1 — writing it does NOT end the turn. Part 2 is the call_orchestrator message that follows it: the agent(s) to call next with one line of intent each, or what the user must be asked. * APPROVE the cycle — Part 2 to the Orchestrator naming which attempt(s) to show the user (number + a one-line reason) and the brief technical outcome the Receptionist needs. Phrase your endorsement level plainly: a satisfying recommendation (\"recommend attempt N as the satisfying solution because …\") vs an interim result (\"showing attempt N for context — not satisfying yet\"). No fixed keyword — clarity in your own words. ALSO carry any USER VALUE THAT WAS NOT HONOURED: for each value the user stated that the endorsed attempt does not match, name the parameter, what they asked for, what was used, and why (out of range, a soft target serving its goal, an authorised change). For a PRECISION job, ALSO carry the DCOI's fidelity/ceiling residual into Part 2 — verbatim or faithfully summarised (how closely it matched the sketch, and any gap it named as the model's / geometry's limit). If the run had MORE THAN ONE precision phase (e.g. the sections, then the full 3D), report the residual for EACH phase. * REPLY DIRECTLY — when the right output is text, not a pipeline run (a question answered from histories, a written proposal, an extraction-only report): put the user-"
+  },
+  {
+   "id": 24,
+   "page": 22,
+   "agent": "planner",
+   "colour": "YEL",
+   "y": 46.0,
+   "text": "facing answer in Part 2 via call_orchestrator ; the Orchestrator hands it to the Receptionist. * ESCALATE to ask the user — when you need permission or guidance only the user can give (Rules 5–6 below): Part 2 states what to ask and what you need back."
+  },
+  {
+   "id": 25,
+   "page": 22,
+   "agent": "planner",
+   "colour": "RED",
+   "y": 556.9,
+   "text": "The DCOI compares the 3D render views side-by-side with the relevant sketch view and must not approve on a coarse match alone. Iterate any UNLOCKED or SOFT TARGET lever that measurably improves the mismatched aspect while not substantially altering the work of the previous precision job; if the mismatch traces to LOCKED user numbers or the configurator's limits, report it honestly and do NOT touch locked values. Finalize on a close match or a plateau."
+  },
+  {
+   "id": 26,
+   "page": 25,
+   "agent": "planner",
+   "colour": "RED",
+   "y": 118.0,
+   "text": "When a request centres on the blade sections — the user provides drawings of sections, or specific section details, or the sections otherwise need to be observed — prefer a sections-first plan: 1. Have the Tool Caller render just the blade sections ( render_blade_sections ) instead of (or before) the full 3D geometry. 2. Have the DC Output Inspector check the rendered sections against the user's inputs / details and report focused feedback. 3. Refine the blade-section parameters on this fast loop. 4. Only then decide whether to generate the full 3D propeller — or stop at the sections if that is all the user wanted (the sections image can be the deliverable). This is a suggestion, not a rule — judge it from the request."
+  },
+  {
+   "id": 27,
+   "page": 25,
+   "agent": "planner",
+   "colour": "RED",
+   "y": 228.2,
+   "text": "If the user wants the actual propeller, continue to the 3D once the sections are right."
+  },
+  {
+   "id": 28,
+   "page": 25,
+   "agent": "planner",
+   "colour": "YEL",
+   "y": 261.2,
+   "text": "the blade sections, not the full 3D geometry."
+  },
+  {
+   "id": 29,
+   "page": 25,
+   "agent": "planner",
+   "colour": "RED",
+   "y": 261.2,
+   "text": "sections-first"
+  },
+  {
+   "id": 30,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 301.0,
+   "text": "It is not a design parameter, and it is NOT where the blade starts — see the inner section below."
+  },
+  {
+   "id": 31,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 314.5,
+   "text": "( impellerRadius — the propeller's overall outer radius),"
+  },
+  {
+   "id": 32,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 328.0,
+   "text": "( impellerThickness ),"
+  },
+  {
+   "id": 33,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 328.0,
+   "text": "(derived automatically, not a parameter)."
+  },
+  {
+   "id": 34,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 367.7,
+   "text": "its radial position along the blade is set by middlePos — a fraction of the blade span (0 = root, 0.5 = the blade's exact midpoint, 1 = tip); its radius follows from middlePos and the ring radius, and is not necessarily the blade's midpoint."
+  },
+  {
+   "id": 35,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 394.0,
+   "text": "(impellerRadius),"
+  },
+  {
+   "id": 36,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "YEL",
+   "y": 433.9,
+   "text": "Design Configurator Parameters (for reference) Global / ring 1. bladeCount (integer) — Number of blades [3; 6] 2. impellerRadius (mm) — Outer radius of the impeller ring [60; 80] 3. impellerThickness (mm) — Wall thickness of the outer ring [1; 5] (The outer-ring HEIGHT is not a parameter — it is derived automatically to fit the outer blade section.) (The central hub is a FIXED cylinder of radius 8 mm — not a parameter. It is LARGER than the blade root at r = 4 mm, so the hub hides the innermost part of each blade; do not confuse the two radii.) Inner blade section 4. innerThickness (% of chord) — Profile thickness [3; 24] 5. innerMaxPos (integer, tenths of chord) — Chordwise position of max camber [2; 8] 6. innerCamber (% of chord) — Profile camber [0; 9] 7. innerChord (mm) — Chord length [3; 11] 8. innerAngle (degrees) — Angle of attack [2; 25] innerMaxPos / outerMaxPos move the CAMBER crest only, and do nothing at zero camber. Maximum THICKNESS is fixed at ~30% chord. Middle blade section 9. middlePos (fraction of blade span, unitless) — Middle-section position along the blade: 0 = root (INNER BLADE SECTION, r = 4 mm), 1 = tip; radius = 4 + middlePos·(impellerRadius − 4) mm [0.3; 0.7] 10. middleChord (mm) — Chord length [10; 30]"
+  },
+  {
+   "id": 37,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 529.7,
+   "text": "(The outer-ring HEIGHT is not a parameter — it is derived automatically to fit the outer blade section.)"
+  },
+  {
+   "id": 38,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 550.0,
+   "text": "It is LARGER than the blade root at r = 4 mm, so the hub hides the innermost part of each blade; do not confuse the two radii.)"
+  },
+  {
+   "id": 39,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 550.0,
+   "text": ""
+  },
+  {
+   "id": 40,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 685.0,
+   "text": "innerMaxPos / outerMaxPos move the CAMBER crest only, and do nothing at zero camber. Maximum THICKNESS is fixed at ~30% chord."
+  },
+  {
+   "id": 41,
+   "page": 29,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 754.0,
+   "text": "radius = 4 + middlePos·(impellerRadius − 4) mm [0.3; 0.7]"
+  },
+  {
+   "id": 42,
+   "page": 30,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 46.0,
+   "text": "11. middleAngle (degrees) — Angle of attack [2; 25] Outer blade section 12. outerThickness (% of chord) — Profile thickness [3; 24] 13. outerMaxPos (integer, tenths of chord) — Chordwise position of max camber [2; 8] 14. outerCamber (% of chord) — Profile camber [0; 9] 15. outerChord (mm) — Chord length [10; 30] 16. outerAngle (degrees) — Angle of attack [2; 25]"
+  },
+  {
+   "id": 43,
+   "page": 30,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 619.7,
+   "text": "Record one quantitative input per line. When the value maps verbatim to a configurator parameter in that parameter's own unit, label the line with the parameter name:"
+  },
+  {
+   "id": 44,
+   "page": 30,
+   "agent": "user_input_inspector",
+   "colour": "YEL",
+   "y": 660.4,
+   "text": "impellerRadius:"
+  },
+  {
+   "id": 45,
+   "page": 30,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 683.5,
+   "text": "Otherwise"
+  },
+  {
+   "id": 46,
+   "page": 30,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 683.5,
+   "text": "and name the parameter(s) it relates to:"
+  },
+  {
+   "id": 47,
+   "page": 30,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 711.4,
+   "text": "(real-world; relates to impellerRadius)"
+  },
+  {
+   "id": 48,
+   "page": 31,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 46.0,
+   "text": "Flag OUT OF RANGE values. When a line maps directly to a parameter in that parameter's own unit, compare it to the range in the list above; if it falls outside, record the user's value unchanged and append the breach: impellerRadius: 160 mm — OUT OF RANGE (allowed [60; 80])"
+  },
+  {
+   "id": 49,
+   "page": 31,
+   "agent": "user_input_inspector",
+   "colour": "YEL",
+   "y": 224.7,
+   "text": "impellerRadius:"
+  },
+  {
+   "id": 50,
+   "page": 31,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 604.2,
+   "text": "with a whole-propeller top view above them."
+  },
+  {
+   "id": 51,
+   "page": 31,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 604.2,
+   "text": "to scale"
+  },
+  {
+   "id": 52,
+   "page": 31,
+   "agent": "user_input_inspector",
+   "colour": "RED",
+   "y": 625.9,
+   "text": "the drawn proportions are the ground truth the render is judged against."
+  },
+  {
+   "id": 53,
+   "page": 41,
+   "agent": "dc_input_creator",
+   "colour": "RED",
+   "y": 172.1,
+   "text": "Reading QUANTITATIVE INPUTS The file of extracted user inputs extracted_inputs.txt records every numerical or quantisable input the user supplied. QUANTITATIVE INPUTS contains two kinds of entry: Verbatim entries. The line label matches a configurator parameter exactly and the unit matches — so the value maps DIRECTLY into that parameter's cell. Real-world-quantity entries. The line describes a real-world quantity in a unit / frame of reference that does not match a configurator parameter directly. These ARE design intent, but they have no single cell in parameters.json — honour each as closely as practical or decline it with a reason, per \"Real-world-quantity QUANTITATIVE INPUTS\" below."
+  },
+  {
+   "id": 54,
+   "page": 42,
+   "agent": "dc_input_creator",
+   "colour": "RED",
+   "y": 112.0,
+   "text": "Multi-parameter constraints. When the entry could constrain more than one parameter, choose the route your judgement supports: * Best-fit one parameter — when context (image position, paired note, prose) makes one target most plausible, honour the value there at the tightest practical precision and say so. * Distribute across the family — when the value plausibly applies to a family of similar parameters without specifying which, pick values that COLLECTIVELY honour the intent, accepting a looser per- parameter tolerance; document the choice and the tolerance in your hand-off so the DCII sees the trade-off. * Escalate — when neither is defensible, with a one-line description of the ambiguity."
+  },
+  {
+   "id": 55,
+   "page": 43,
+   "agent": "dc_input_creator",
+   "colour": "RED",
+   "y": 602.5,
+   "text": "Tool-error self-correction (HARD). A tool error naming a missing argument (e.g. \"omitted the '<arg>' argument\") means YOUR last call left it out — re-issue the SAME call with that argument added."
+  },
+  {
+   "id": 56,
+   "page": 68,
+   "agent": "dc_output_inspector",
+   "colour": "RED",
+   "y": 568.0,
+   "text": "On a blade-sections render each section also carries two construction lines: a THIN BLACK straight line from leading to trailing edge — the chord — and a MAGENTA DASHED curve — the camber (mean) line, whose high point is the crest *MaxPos sets. A section with zero camber shows the chord alone, because its mean line would lie exactly on it."
+  },
+  {
+   "id": 57,
+   "page": 68,
+   "agent": "dc_output_inspector",
+   "colour": "RED",
+   "y": 730.7,
+   "text": "and QC numbers from the CURRENT hand-off."
+  },
+  {
+   "id": 58,
+   "page": 69,
+   "agent": "dc_output_inspector",
+   "colour": "RED",
+   "y": 174.2,
+   "text": "do not confuse the two radii.)"
+  },
+  {
+   "id": 59,
+   "page": 69,
+   "agent": "dc_output_inspector",
+   "colour": "RED",
+   "y": 368.5,
+   "text": "— its profile is interpolated between the inner and outer sections.)"
+  },
+  {
+   "id": 60,
+   "page": 69,
+   "agent": "dc_output_inspector",
+   "colour": "RED",
+   "y": 551.5,
+   "text": "— that is the DC Input Creator's."
+  },
+  {
+   "id": 61,
+   "page": 69,
+   "agent": "dc_output_inspector",
+   "colour": "YEL",
+   "y": 709.7,
+   "text": "Whenever you ask for a thickness / camber change — or ask for one to be HELD — say which quantity you mean: * absolute — \"make the inner section about twice as thick in mm (its size in the render)\" * ratio — \"raise the thickness-to-chord ratio by roughly a third and leave the chord where it is\" * held — \"keep the inner section's absolute thickness in mm as it is now, even if you change its chord\""
+  },
+  {
+   "id": 62,
+   "page": 69,
+   "agent": "dc_output_inspector",
+   "colour": "RED",
+   "y": 735.2,
+   "text": "even if you change its chord\""
+  }
+ ],
+ "comments": {
+  "7": [
+   "is it better to show these CAN and CANNOT like this, or should these \"bullet points\" be shown vertically instead of a single",
+   "paragraph with no \\n?"
+  ],
+  "8": [
+   "Make this \"Parameter ranges\" an optinal retrieval",
+   "using a separate tool, like the planner already does.",
+   "I want this information still available because",
+   "if the user asks a question about the",
+   "capability of the tool, the system must be able to",
+   "respond"
+  ],
+  "14": [
+   "this phrase is to be said ONLY if the UII did in fact update the extracted inputs file! May be not always true",
+   "be careful. Put this sentence in yellow in another phrase, explaining that the orchestrator should tell",
+   "the DCIC the extracted inputs are updated ONLY if the UII updated the file!",
+   "I want to remove the possibility of sending to the DCIC without",
+   "first routing through the UII if thereare new meaningful user input(s)/content/authorization: if new useful user inputs/content/authorization are provided, the extracted inputs file MUST be updated!",
+   "That's a must, and it must happen",
+   "before anything else!"
+  ],
+  "22": [
+   "Digita qui il testo",
+   "I think the \"APPROVE the cycle\" and \"REPLY DIRECTLY\" and \"ESCALATE to ask the user\"",
+   "Should be in separate bullet points, right? Right now, they do not appear as such, instead",
+   "they are all under the bullet point of \"Issue a Standing directive\""
+  ],
+  "25": [
+   "Replace with something like:",
+   "\"just the blade sections, or just the full 3D geometry, or both. It depends on the current",
+   "request's needs.\" Rephrase this accordingly!"
+  ],
+  "27": [
+   "Digita qui il testo",
+   "this set of parameters can be made appear CONDITIONALLY",
+   "Add a setting Still, the red text will not be shown to it anyways."
+  ],
+  "29": [
+   "this set of parameters can be made appear CONDITIONALLY",
+   "Add a setting in the workflow UI interface, toggling whether to",
+   "Show to the UII this set of parameters in the system prompt",
+   "or not. Default: FALSE",
+   "Still, the red text will not be shown to it anyways."
+  ],
+  "30": [
+   "Radius of propeller",
+   "position this example in the same line of example as \"tip speed: 40 m/s ...\", specifically",
+   "BEFORE that example"
+  ],
+  "31": [
+   "Radius of propeller"
+  ],
+  "41": [
+   "this seems like a repetition of what has already been said, what is obvious,",
+   "and of what will be said later in the prompt"
+  ],
+  "69": [
+   "these seem like bullet points,but they are represented as a continuous paragraph. is this intended?",
+   "Show them in the way that is best for a system prompt"
+  ]
+ }
+}

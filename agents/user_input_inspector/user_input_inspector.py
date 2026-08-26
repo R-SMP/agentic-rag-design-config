@@ -211,7 +211,7 @@ class UserInputInspector(BaseChainAgent):
             response = invoke_with_retry(
                 self.llm,
                 [make_system_message(self.system_prompt, self.provider)]
-                + dc_primer_messages(self.provider)
+                + dc_primer_messages(self.provider, self.AGENT_KEY)
                 + self.messages,
                 "UII",
                 cache_control=history_cache_control(self.provider),

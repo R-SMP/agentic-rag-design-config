@@ -51,6 +51,7 @@ from agents.shared.stop_signal import check_stop_or_raise
 from tools.calculate.calculate import calculate
 from tools.visualize_model.visualize_model import visualize_3d_model
 from agents.shared.dba_tools import dba_tools_for
+from agents.shared.dc_params_tool import build_dc_params_list
 from agents.receptionist.propose_attempt_tool import propose_attempt
 
 logger = logging.getLogger("propeller_agent")
@@ -111,12 +112,22 @@ class Receptionist(BaseChainAgent):
         """Bind ``read_agent_history``, ``calculate``, ``read_attempts``
         (attempt summaries + artefact paths — the source of the mesh
         path for ``visualize_3d_model``), ``visualize_3d_model`` (push a
-        generated mesh to the web viewer), plus the
-        ``call_orchestrator`` routing tool."""
+        generated mesh to the web viewer), ``dc_params_list`` (the
+        parameter names, units and ranges on demand — round 5 took the
+        static list out of this prompt), plus the ``call_orchestrator``
+        routing tool.
+
+        NOT topology-branched, deliberately: one ``Receptionist`` class
+        serves the Orchestrator (7), Conductor (5) and Architect (3), so
+        the 5- and 3-agent Receptionists also gain ``dc_params_list``
+        while their prompts still carry the list inline.  Owner accepted
+        the overlap rather than add the first topology-conditional tool
+        binding (round 5)."""
         all_tools = list(tools) + [
             calculate,
             read_attempts,
             visualize_3d_model,
+            build_dc_params_list("receptionist"),
             # Step 9 of the Parameters Inputs redesign — UI-update
             # side-effect tool.  Receptionist calls this to surface a
             # 17-param dict as the system's PROPOSED SATISFYING

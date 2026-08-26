@@ -668,6 +668,41 @@ BLADE_SECTIONS_VISUALIZER_ENABLED: bool = True
 DC_PARAMS_PRIMER_ENABLED: bool = True
 
 
+# UII_PARAMETER_LIST_ENABLED - show the parameter list to the User Input
+# Inspector.
+#
+# The UII records what the USER said, in the user's own words; it does not
+# map anything onto configurator parameters (that is the DC Input Creator's
+# job).  With this OFF - the default - the "Design Configurator Parameters
+# (for reference)" section is stripped from the UII's system prompt, and the
+# UII also receives a parameter-free variant of the DC-parameter primer text
+# (the reference DIAGRAM is unchanged and still carries labels).
+#
+# Turn it ON to put the names, units and ranges back in front of the UII,
+# e.g. to compare extraction behaviour with and without them.
+#
+# Valid values: True, False
+UII_PARAMETER_LIST_ENABLED: bool = False
+
+
+# DCOI_KNOWS_PARAMS_RANGES - show allowed ranges to the DC Output Inspector.
+#
+# The DCOI is given the parameter NAMES and units but, by default, not their
+# allowed ranges: judging the render is its job, not validating numbers.
+#
+# The cost of that is real: without the ranges it cannot tell that a value
+# the user asked for is unreachable, so it can recommend moving a parameter
+# past a bound that no attempt could ever satisfy (e.g. asking for a 100 mm
+# radius when the ring caps at 80).
+#
+# ON  = the bracketed ranges appear beside each parameter in the DCOI's list,
+#       and the prompt says it has the names AND the ranges.
+# OFF = as before: names and units only.
+#
+# Valid values: True, False
+DCOI_KNOWS_PARAMS_RANGES: bool = False
+
+
 # ===========================================================
 # 26. Image compression (model-facing images)
 # ===========================================================

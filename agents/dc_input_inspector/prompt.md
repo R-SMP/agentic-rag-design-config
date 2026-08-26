@@ -99,11 +99,12 @@ technical page.
 QUANTITATIVE INPUTS contains two kinds of entry, and the
 consistency check is different for each:
 
-#### 4a. Verbatim entries — the changeability check
+#### 4a. Parameter-level entries — the changeability check
 
-For each parameter whose QUANTITATIVE INPUTS label matches a configurator
-parameter, check every cycle whether parameters.json was ALLOWED to move
-it off the user's value.  What each state means and what authorises a move
+For each QUANTITATIVE INPUTS line that plainly denotes a configurator
+parameter in that parameter's own unit — whatever words the user used for
+it — check every cycle whether parameters.json was ALLOWED to move it off
+the user's value.  What each state means and what authorises a move
 are set out under "The three states of a user value" above; for this
 check, authority runs **system directive > extraction > DCIC
 discretion**, so resolve each parameter in that order:
@@ -124,9 +125,10 @@ Then check parameters.json:
     order it restored, since no valid set can satisfy it.  ESCALATE to the
     Orchestrator.
 
-#### 4b. Real-world-quantity entries (label is a real-world quantity, unit does not match a configurator parameter directly)
+#### 4b. Real-world-quantity entries
 
-These describe a user-stated value the DCIC was responsible for
+The line describes a different quantity or frame of reference, so it has no
+single parameter cell.  These describe a user-stated value the DCIC was responsible for
 acting on through one of three routes (conversion, engineering
 judgement, or explicit declination).  
 

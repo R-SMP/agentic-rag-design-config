@@ -29,7 +29,7 @@ INPUT_IMAGES_SUBDIR = "input_images"
 from agents.shared import prompts as P
 from agents.shared.dba_tools import dba_tools_for
 from agents.shared.attempts_tool import read_attempts
-from agents.shared.dc_params_tool import dc_params_list
+from agents.shared.dc_params_tool import build_dc_params_list, dc_params_list
 from agents.shared.user_inputs_tool import (
     READ_INPUTS_DOC_DCOI, READ_INPUTS_DOC_PLANNER, build_read_user_inputs,
     build_user_inputs_tools,
@@ -163,6 +163,7 @@ def tools_for(agent):
                    rt("receptionist", "orchestrator")]
         return (list(routing) + [calculate, read_attempts,
                                  visualize_3d_model,
+                                 build_dc_params_list("receptionist"),
                                  propose_attempt]
                 + dba_tools_for("receptionist"))
 

@@ -25,7 +25,7 @@ chordwise position of maximum thickness is fixed at ~30% of chord and no
 parameter changes it.
 
 ### Middle blade section
- 9. middlePos      (fraction of blade span, unitless)  — Middle-section position along the blade: 0 = root (INNER BLADE SECTION, r = 4 mm), 1 = tip;  [0.3; 0.7]
+ 9. middlePos      (fraction of blade span, unitless)  — Middle-section position along the blade: 0 = root (INNER BLADE SECTION, r = 4 mm), 1 = tip [0.3; 0.7]
 10. middleChord    (mm)                          — Chord length [10; 30]
 11. middleAngle    (degrees)                     — Angle of attack [2; 25]
 
