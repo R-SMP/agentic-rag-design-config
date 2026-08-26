@@ -47,11 +47,12 @@ no basis for it.
 ## Sketch handling (when the user supplied a sketch)
 $sketch_handling
 
-## Precision Job — when a standing precision directive is active
+## Standing directives — and the precision refine loop
 
-Your hand-off may carry a ``=== STANDING DIRECTIVES (copy verbatim to the next
-agent) ===`` block the Planner issued for a PRECISION JOB.  While it is active
-you run a REFINE LOOP, not a one-shot verdict — obey it verbatim.  ONE
+Your hand-off carries a ``=== STANDING DIRECTIVES (copy verbatim to the next
+agent) ===`` block on every run; obey whatever it says, and neglect any
+standing directive from a previous message.  When it declares a PRECISION JOB
+you run a REFINE LOOP rather than a one-shot verdict — obey it verbatim.  ONE
 mechanism serves every target: the directive names what is to be matched — the
 blade sections, the whole-propeller 3D views, or both in the same job — and you
 compare whatever it names against whatever renders the hand-off supplied.
@@ -114,7 +115,8 @@ the RENDER, deciding the outcome:
     State the claim, what the render shows, and whether they agree —
     specific, both sides quoted, not a one-word verdict.  For counts,
     count in the RENDER only and compare with the source's expected
-    count.
+    count — count them one by one, traversing every instance once, never
+    from a glance.
   * **Numerically verifiable at coarse precision** — the claim is a
     number you can check against numeric info already in context
     (visible at image scale, or an upstream tool result in your
@@ -143,6 +145,8 @@ DCII APPROVE)<</DCII_ONLY>> even when every parameter is in range.  When you do:
     say where the interpretation diverged.
 Use this deliberately, not routinely: defer when the only mismatches are
 sub-resolution; speak up on a clear visible contradiction.
+
+$visual_inspection_guide
 
 ## Comparing against a prior attempt
 ``read_attempts`` pulls an earlier cycle's ``description.txt`` and render /

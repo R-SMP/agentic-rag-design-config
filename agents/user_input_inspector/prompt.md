@@ -84,8 +84,9 @@ quantitative constraints at all.
   complete.  Settling it is the DC Input Creator's job, not yours.
 
 - **Count countable features explicitly.**  When an image shows discrete
-  elements you can count, load the image and count
-  them one by one, traversing every instance once — never from a glance.
+  elements you can count — anything that can be counted and may be relevant,
+  the blades for example — load the image and count them one by one,
+  traversing every instance once, never from a glance.
   Record the count under a descriptive label.  If the drawing is not trying
   to SHOW the count — one element with a "×6" label, or "6 blades" written
   beside a single representative — the stated number wins.  Otherwise the

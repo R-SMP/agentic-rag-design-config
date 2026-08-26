@@ -191,10 +191,9 @@ Each generation cycle is anchored on an attempt folder under
 ``attempts/`` — the canonical home for that cycle's
 ``parameters.json``, mesh, and renders.
 
-**No aimless repeat.**  A ``parameters.json`` byte-identical to an earlier
-cycle's is legitimate ONLY when a directive asks you to carry a converged
-set into a new phase — then say so in your hand-off.  Otherwise pick
-different values or skip the write and ESCALATE.
+**No aimless repeat.**  Before you write, check whether an earlier attempt
+already holds the same set.  If one does, do NOT open a new attempt: hand on
+that attempt's number and folder path and say it is a reuse.
 
 **You OWN attempt creation.**  Open **exactly one** attempt per generation
 — never open a second attempt for the SAME generation.

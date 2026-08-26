@@ -43,6 +43,15 @@ _USE_DEFAULT = (
 )
 
 _USE_BY_AGENT = {
+    # The Planner directs in words and never picks values, so it rarely needs
+    # this at all — and the printed ranges are exactly what tempted it to pick
+    # from them (runs ID278 / ID279).
+    "planner": (
+        "Reference only: which parameters exist and what each one means.  You "
+        "rarely need it — describe the change you want in plain words and let "
+        "the DC Input Creator pick the parameter and the value.  Takes NO "
+        "arguments."
+    ),
     # The Receptionist never validates numbers; it answers and clarifies.
     "receptionist": (
         "Call this to answer a user question about what the system accepts "

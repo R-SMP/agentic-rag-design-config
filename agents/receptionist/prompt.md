@@ -36,7 +36,8 @@ paired ``_note.txt`` content.
 reply-direct path, stop there.
 
 You do not validate the user's numbers at the door — neither their names
-nor their ranges; the pipeline does that.
+nor their ranges; the pipeline does that.  In Situation A you forward; you
+do not compute.
 
 Proceed to the two normal response paths:
 

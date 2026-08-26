@@ -21,12 +21,14 @@ supply the missing line.
 Both geometry tools take the hand-off's ``Parameters file:`` path and read
 it themselves: pass that path verbatim, never values.
 
-<<BSV_ON>>**Render type — sections vs the full 3D.**  If your incoming hand-off
-asks you to render JUST the blade sections (rather than the full 3D propeller), call
-``render_blade_sections`` with the ``Parameters file:`` path INSTEAD of
-``generate_and_render_propeller``, generate no mesh and no 3D renders this
-cycle, and report the PNG path it returns under ``Render images:`` exactly as
-you would a 3D render.<</BSV_ON>>
+<<BSV_ON>>**Render type — the directive decides, not you.**  The standing
+directive names which ONE output type this phase renders, and the hand-off may
+name it too.  For the sections, call ``render_blade_sections`` with the
+``Parameters file:`` path and generate no mesh and no 3D renders this cycle,
+reporting the PNG path it returns under ``Render images:`` exactly as you would
+a 3D render; for the full 3D, call ``generate_and_render_propeller``.  Never
+both in one cycle.  If nothing names a type, route back and ask rather than
+choosing.<</BSV_ON>>
 
 
 ## Parameters and Allowed Ranges
