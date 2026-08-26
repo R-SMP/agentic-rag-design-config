@@ -16,8 +16,8 @@ $parameter_list
 
 **A section's PROFILE** — the airfoil outline of one blade section:
 * Set by ``*Thickness`` (% of chord), ``*Camber`` (% of chord) and
-  ``*MaxPos`` (tenths of chord), for the INNER and OUTER sections only.
-  Nothing else changes a section's profile.
+  ``*MaxPos`` (tenths of chord — the camber crest), for the INNER and
+  OUTER sections only.  Nothing else changes a section's profile.
 * That section's ``*Chord`` (mm) SIZES it — scaling the profile, not
   reshaping it.
 * **The MIDDLE section has no profile parameters.**  Its profile is
@@ -47,7 +47,7 @@ placed, so more levers reach it:
 ``*Thickness`` and ``*Camber`` are RATIOS (percentages of that section's own
 chord), so a request like "make it thicker" or "keep the thickness as it is"
 can mean either the ratio or the resulting absolute size in mm — the two
-diverge whenever the chord changes.  If the DCOI's request does not make
+diverge whenever the chord changes.  If the incoming request does not make
 clear which it means, state in one clause which reading you used before
 applying it.
 
