@@ -53,6 +53,7 @@ import logging
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.shared import token_usage
+from agents.shared.file_utils import ai_text
 
 logger = logging.getLogger("propeller_agent")
 
@@ -179,4 +180,15 @@ class ContextPruner:
                 "[ContextPruner]  token accounting failed; continuing",
                 exc_info=True,
             )
-        return response.content
+        # ``ai_text`` and not ``response.content``: this method is
+        # declared ``-> str`` and its callers rely on it — the tier-1
+        # path calls ``.strip()`` on the result
+        # (base_chain_agent.py:320) and tier 3 f-strings two summaries
+        # together (:477).  Anthropic already returns a BLOCK LIST when
+        # a turn mixes text with tool_use, and since 2026-08-27 so does
+        # OpenAI on every turn when OPENAI_API_STYLE="responses" (the
+        # default) — the Responses API wraps even a plain text reply as
+        # ``[{"type": "text", "text": ...}]``.  Returning that raw made
+        # the first prune of an OpenAI session die on
+        # ``AttributeError: 'list' object has no attribute 'strip'``.
+        return ai_text(response.content)

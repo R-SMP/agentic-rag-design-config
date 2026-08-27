@@ -594,7 +594,30 @@ def _body_text_of(m) -> str:
                 parts.append(
                     f"[tool_use: {block.get('name', '?')}]"
                 )
+            elif btype == "thinking":
+                # Both the summary text AND the signature are transmitted
+                # back on every subsequent request, so both occupy real
+                # context and both must be measured.  Without this branch a
+                # thinking block falls into the generic ``else`` below and
+                # measures as the ~6-token string "[thinking: ...]" -- so a
+                # 4,000-token block counts as 6, the pruning threshold never
+                # trips, and the run dies on a hard provider context limit
+                # instead of pruning.  The same blindness would disarm
+                # _truncate_oversized_messages, which measures through this
+                # function too.  The signature is an opaque base64 blob, so
+                # counting it is a proxy rather than an exact figure;
+                # under-counting is the failure being fixed here, so the
+                # proxy deliberately errs on the safe side.
+                parts.append(str(block.get("thinking", "")))
+                parts.append(str(block.get("signature", "")))
+            elif btype == "redacted_thinking":
+                # Encrypted -- no readable text, but the blob is still sent.
+                parts.append(str(block.get("data", "")))
             else:
+                # NOTE: any block type not handled above is still measured
+                # as ~6 tokens.  That is the same latent under-count the
+                # thinking branch exists to fix, so a new block type arriving
+                # from a provider needs its own branch here.
                 parts.append(f"[{btype}: ...]")
         return " ".join(parts)
     return str(content)

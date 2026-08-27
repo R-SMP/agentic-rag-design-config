@@ -176,16 +176,36 @@ ROUTING_RETRY_ENABLED: bool = True
 # subsequent tool call inside that agent's run, all the way
 # until the routing tool fires.
 #
-#   True   image content blocks persist across hand-offs (along
-#          with their absolute-path text labels); the agent that
-#          receives the hand-off sees the same images without
-#          reloading them; downstream agents inherit them too
-#   False  image bytes are stripped the moment the agent hands
-#          off (the agent's ``on_operation_end`` hook); only
-#          their absolute-path labels remain in history.  Within
-#          one agent's run the image stays loaded for every LLM
-#          call; cheaper across hand-offs but downstream agents
-#          must re-load any image they want to inspect
+# IMAGES NEVER CROSS AGENTS, under EITHER value.  ``AgentHop.message``
+# is a plain ``str`` and no agent's history is ever seeded from
+# another's, so this flag only ever affects the LOADING agent's own
+# history.  An agent that wants to inspect an image must load it
+# itself either way.  (An earlier version of this comment claimed the
+# receiving agent inherits the images; that never matched the code.)
+#
+#   True   image content blocks persist in that agent's own history
+#          after it hands off, so they are still there the next time
+#          the SAME agent is activated
+#   False  image bytes are stripped the moment the agent hands off
+#          (its ``on_operation_end`` hook); only the paired
+#          ``Loaded image (path: ...):`` text labels remain.  Within
+#          one agent's run the image stays loaded for every LLM call
+#
+# WHY THIS STAYS False.  The reason is ATTENTION, not cost: an agent
+# carrying every image it ever loaded gets worse at using them.  The
+# DCOI is the clearest case -- with persistence ON it would hold
+# renders from every previous attempt, and its prompt would then have
+# to warn it that those images describe PAST designs.  Cost agrees as
+# a secondary argument: False costs one cheap text re-write per
+# re-activation (flat), while True adds stale image tokens to EVERY
+# call and grows with session length (~15 stale composites, ~17k
+# tokens, on a 10-attempt run).  Prompt caching does NOT change this
+# -- it narrows the gap by billing kept images at 0.1x, but a growing
+# cost still loses to a flat one.  See design_prompt_caching.md 7.
+#
+# It is also a BEHAVIOURAL switch, so it is deliberately global and
+# not a per-run setting: varying it inside a benchmark set would make
+# the runs non-comparable.
 #
 # Valid values: True, False
 KEEP_IMAGES_IN_CONTEXT: bool = False
@@ -1476,3 +1496,92 @@ SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
 #
 # Valid values: True, False
 LOG_FULL_TOOL_PAYLOADS: bool = True
+
+
+# ===========================================================
+# 32. OpenAI API style + reasoning effort
+# ===========================================================
+# WHICH OpenAI endpoint the ``openai`` provider talks to, and how
+# hard its reasoning models are allowed to think.  Applies to the
+# nine agents, the Database Handler's interview model, and the
+# Sessions-Queue FINAL/INTERMEDIATE classifier.  It does NOT apply
+# to the ``openrouter`` provider — OpenRouter exposes only the
+# chat/completions shape and has no Responses API.
+#
+# WHY THIS EXISTS.  ``/v1/chat/completions`` rejects the
+# combination "function tools + any reasoning effort above none":
+#
+#     Function tools with reasoning_effort are not supported for
+#     gpt-5.6-luna in /v1/chat/completions.  To use function tools,
+#     use /v1/responses or set reasoning_effort to 'none'.
+#
+# Every agent in this system binds tools, so on chat/completions a
+# model whose server-side default effort is anything but ``none``
+# 400s on its very first call.  Measured 2026-08-27: gpt-5.6-luna
+# and gpt-5.6-terra default to ``medium`` and fail; gpt-5.4
+# defaults to ``none`` and is why the system worked at all.  The
+# corollary is worth stating plainly: on chat/completions this
+# system has only ever run OpenAI models with reasoning OFF.
+#
+#   "responses"  ChatOpenAI(use_responses_api=True) — the
+#                /v1/responses endpoint.  Function tools AND
+#                reasoning both work.  Verified end to end against
+#                the live API: bind_tools, image_url content
+#                blocks (langchain rewrites them to input_image),
+#                a forced tool_choice (the DH batch-save path),
+#                the assistant -> ToolMessage -> assistant
+#                round-trip, and usage_metadata including
+#                output_token_details.reasoning.
+#   "chat"       the historic /v1/chat/completions endpoint, kept
+#                for a like-for-like comparison against older runs.
+#                With OPENAI_REASONING_EFFORT left at "provider
+#                default" this is byte-identical to the pre-2026-08-27
+#                request shape — no endpoint kwarg, no effort field.
+#                Pinning any effort ABOVE "none" here is a guaranteed
+#                400 the moment an agent binds its tools; that is the
+#                bug this section exists to explain, not a mode.
+#
+# COST OF SWITCHING.  The two endpoints COUNT the same request
+# differently: an identical text-only prompt with one tool bound
+# measured 140 input tokens on chat/completions and 59 on
+# responses.  Nothing extra is being sent — but that number feeds
+# token_usage.record(), the cost logs and the Context Pruner's
+# threshold, so token figures from "chat" runs and "responses"
+# runs are not comparable.
+#
+# Valid values: "responses" | "chat"
+OPENAI_API_STYLE: str = "responses"
+
+# How much reasoning the OpenAI model does before answering.
+#
+#   "provider default"  a SENTINEL, not a value: send no effort at
+#                       all and let each model apply its own
+#                       default.  Preserves the historic behaviour
+#                       of every past run (gpt-5.4 -> none) while
+#                       letting the gpt-5.6 family think at its own
+#                       default (medium).
+#   "none"              no reasoning.  The only value chat/
+#                       completions accepts alongside tools — and
+#                       even there only on models that HAVE
+#                       reasoning: gpt-4.1 and gpt-4o reject the
+#                       field outright ("Unrecognized request
+#                       argument supplied: reasoning_effort") and
+#                       gpt-5-mini rejects this particular value
+#                       ("does not support 'none' with this model").
+#                       Leave the sentinel selected for those.
+#   "low"/"medium"/"high"
+#                       pin the SAME effort on every OpenAI model,
+#                       so a benchmark compares models at equal
+#                       effort rather than at whatever each one
+#                       happens to default to.  Note this CHANGES
+#                       gpt-5.4 from its historic no-reasoning
+#                       behaviour: measured on one prompt, gpt-5.4
+#                       spends 0 reasoning tokens at its default,
+#                       59 at "low" and 113 at "high".
+#
+# The sentinel is the only selection guaranteed to work on every
+# OpenAI model under both styles; each pinned value is a deliberate
+# per-benchmark choice you must match to the models in the queue.
+#
+# Valid values: "provider default" | "none" | "low" | "medium" | "high"
+OPENAI_REASONING_EFFORT: str = "provider default"
