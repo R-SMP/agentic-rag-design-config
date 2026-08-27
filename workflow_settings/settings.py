@@ -748,6 +748,29 @@ DCOI_KNOWS_PARAMS_RANGES: bool = False
 IMAGE_COMPRESSION_ENABLED: bool = True
 IMAGE_COMPRESSION_MIN_LONG_EDGE: int = 512
 IMAGE_COMPRESSION_DEFAULT_CAP: int = 1024
+
+# IMAGE_COMPRESSION_HARD_MAX_LONG_EDGE - an ABSOLUTE ceiling on the long edge
+# of every MODEL-FACING image, applied whatever the per-image degree says and
+# even when IMAGE_COMPRESSION_ENABLED is False.  It is an API constraint, not a
+# tuning preference.
+#
+# Anthropic allows 8000 px per dimension in a SINGLE-image request but only
+# 2000 px once a request carries MANY images - and a long agent turn keeps
+# accumulating images until it crosses that line.  Run ID291 died there: the
+# UII made 18 view_images calls in one turn and the request came back
+# "At least one of the image dimensions exceed max allowed size for
+# many-image requests: 2000 pixels".
+#
+# Two paths could exceed it, and this closes both: an image whose sidecar
+# stores an explicit degree of 0 ("no downscale" - what the compression slider
+# writes at 0%), and a side-by-side composite, which is stitched from panels
+# already at the cap and so runs ~3x the cap wide.
+#
+# 1900 rather than 2000 leaves room for rounding in the resize.  OCR and
+# embeddings are unaffected: they read the on-disk original.
+#
+# Valid values: a positive integer, or 0 to disable the ceiling entirely.
+IMAGE_COMPRESSION_HARD_MAX_LONG_EDGE: int = 1900
 IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE: int = 35
 IMAGE_COMPRESSION_3D_RENDER_DEGREE: int = 55
 IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320

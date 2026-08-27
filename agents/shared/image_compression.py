@@ -54,6 +54,7 @@ _DEFAULT_ENABLED = True
 _DEFAULT_MIN_LONG_EDGE = 512   # long edge at 100% ("max compression")
 _DEFAULT_RENDER_MIN_LONG_EDGE = 320   # lower 100% floor for software renders
 _DEFAULT_CAP = 1024            # size-based auto-default target long edge
+_DEFAULT_HARD_MAX = 1900       # absolute ceiling; Anthropic many-image cap is 2000
 _JPEG_QUALITY = 90
 
 SIDECAR_SUFFIX = ".compression.json"
@@ -84,6 +85,20 @@ def _cap() -> int:
         return max(1, int(_get_setting("IMAGE_COMPRESSION_DEFAULT_CAP", _DEFAULT_CAP)))
     except (TypeError, ValueError):
         return _DEFAULT_CAP
+
+
+def _hard_max() -> int:
+    """Absolute long-edge ceiling for a MODEL-FACING image; 0 disables it.
+
+    An API constraint rather than a tuning knob, so it applies even when
+    ``IMAGE_COMPRESSION_ENABLED`` is False and whatever the per-image degree
+    says.  See ``IMAGE_COMPRESSION_HARD_MAX_LONG_EDGE`` in settings.py.
+    """
+    try:
+        return max(0, int(_get_setting("IMAGE_COMPRESSION_HARD_MAX_LONG_EDGE",
+                                       _DEFAULT_HARD_MAX)))
+    except (TypeError, ValueError):
+        return _DEFAULT_HARD_MAX
 
 
 def _render_floor() -> int:
@@ -262,16 +277,28 @@ def compress_for_model(raw: bytes, degree_pct=None, is_render: bool = False,
     the long edge is downscaled per the degree curve.  Returns the ORIGINAL
     bytes unchanged when compression is disabled, no downscale is needed, or
     ANYTHING fails — never raises, never upscales.  OCR / embeddings must NOT
-    call this; they read the full original."""
-    if not bool(_get_setting("IMAGE_COMPRESSION_ENABLED", _DEFAULT_ENABLED)):
+    call this; they read the full original.
+
+    ``IMAGE_COMPRESSION_HARD_MAX_LONG_EDGE`` is an absolute ceiling and applies
+    even with compression disabled and even at degree 0 — it exists to keep a
+    request under Anthropic's 2000 px many-image limit, which a long agent turn
+    reaches by accumulating images."""
+    enabled = bool(_get_setting("IMAGE_COMPRESSION_ENABLED", _DEFAULT_ENABLED))
+    hard = _hard_max()
+    if not enabled and not hard:
         return raw
     try:
         im = Image.open(io.BytesIO(raw))
         w, h = im.size  # header only — passthrough never pays a full decode
         L = max(w, h)
-        chosen = _coerce_degree(degree_pct)
-        pct = suggested_degree(w, h) if chosen is None else chosen
-        target_L = degree_to_long_edge(pct, L, floor=floor)
+        if enabled:
+            chosen = _coerce_degree(degree_pct)
+            pct = suggested_degree(w, h) if chosen is None else chosen
+            target_L = degree_to_long_edge(pct, L, floor=floor)
+        else:
+            target_L = L          # ceiling only
+        if hard:
+            target_L = min(target_L, hard)
         if target_L >= L:
             return raw  # no shrink -> keep the original bytes (and true format)
 

@@ -73,10 +73,13 @@ def main():
     im = Image.open(io.BytesIO(m.compress_for_model(_enc(base, "JPEG", exif=ex, quality=90))))
     ok(im.size[1] > im.size[0] and im.getexif().get(274) in (None, 1), f"EXIF baked -> {im.size}")
 
-    # Degree semantics: None=suggested, explicit 0=passthrough
+    # Degree semantics: None=suggested, explicit 0=skip the degree curve.
+    # ``mid`` sits above the auto-cap but BELOW the absolute ceiling, so it
+    # isolates the degree semantics from the ceiling (which ``big`` would trip).
     big = _enc(Image.new("RGB", (3000, 2000)), "PNG")
+    mid = _enc(Image.new("RGB", (1500, 1000)), "PNG")
     ok(max(_dims(m.compress_for_model(big, None))) <= CAP, "degree None -> compressed")
-    ok(m.compress_for_model(big, 0) == big, "degree 0 -> passthrough")
+    ok(m.compress_for_model(mid, 0) == mid, "degree 0 -> no degree-based downscale")
     # Non-numeric degree must not crash the choke-point
     for bad in ["abc", object(), [1, 2], ""]:
         try:
@@ -114,17 +117,43 @@ def main():
     ok(m.estimate_image_tokens(1024, 768, "openai") == 765, "openai 1024x768 == 765")
     ok(m.estimate_image_tokens(300, 300, "google") == 258, "gemini small == 258")
 
-    # Disabled / undecodable -> passthrough
+    # Disabled / undecodable -> passthrough.  The absolute ceiling is an API
+    # constraint, not a tuning knob, so it OUTLIVES the disabled switch: with
+    # compression off you still get the ceiling and nothing else.
     orig = m._get_setting
-    m._get_setting = lambda n, d: False if n == "IMAGE_COMPRESSION_ENABLED" else orig(n, d)
-    ok(m.compress_for_model(big) == big, "disabled -> passthrough")
+    def _stub(enabled, hard):
+        def f(n, d):
+            if n == "IMAGE_COMPRESSION_ENABLED":
+                return enabled
+            if n == "IMAGE_COMPRESSION_HARD_MAX_LONG_EDGE":
+                return hard
+            return orig(n, d)
+        return f
+
+    m._get_setting = _stub(False, 0)
+    ok(m.compress_for_model(big) == big, "disabled + no ceiling -> passthrough")
+
+    m._get_setting = _stub(False, 1900)
+    out = m.compress_for_model(big)          # big is 3000x2000
+    ok(max(Image.open(io.BytesIO(out)).size) == 1900,
+       "disabled + ceiling -> capped at the ceiling, not passthrough")
+
+    m._get_setting = _stub(True, 1900)
+    out0 = m.compress_for_model(big, degree_pct=0)
+    ok(max(Image.open(io.BytesIO(out0)).size) == 1900,
+       "degree 0 no longer escapes the ceiling")
+
+    small = _enc(Image.new("RGB", (900, 600)), "PNG")
+    ok(m.compress_for_model(small, degree_pct=0) == small,
+       "ceiling never touches an image already under it")
     m._get_setting = orig
     ok(m.compress_for_model(b"not an image") == b"not an image", "undecodable -> passthrough")
 
     # Per-type render compression: explicit degree + a lower render floor.
     ok(max(_dims(m.compress_for_model(big, is_render=True))) <= CAP,
        "render with no explicit degree -> size-based default <= cap")
-    ok(m.compress_for_model(big, degree_pct=0) == big, "degree 0 -> passthrough (no downscale)")
+    ok(m.compress_for_model(mid, degree_pct=0) == mid,
+       "degree 0 -> no degree-based downscale (render path)")
     ok(max(_dims(m.compress_for_model(big, degree_pct=100, floor=320))) == 320,
        "degree 100 + render floor -> long edge == 320")
     ok(m.render_kind("/x/render_blade_sections.png") == "cross", "cross-section render kind by name")

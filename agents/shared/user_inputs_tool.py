@@ -858,7 +858,11 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
                 cbuf = io.BytesIO(); comp.save(cbuf, format="PNG")
                 comp_bytes = cbuf.getvalue()
                 saved = _save_composite(comp_bytes)   # auto-shows in chat
-                # degree_pct=0: the composite is already sized to the vision cap.
+                # degree_pct=0: the panels are already at the cap, so the
+                # composite is not degree-compressed again.  Its WIDTH is the
+                # sum of the panels, though, so the absolute ceiling in
+                # compress_for_model is what keeps it under the API's
+                # many-image limit.
                 b64 = encode_image_bytes(comp_bytes, degree_pct=0)
                 image_blocks.append(make_image_block(b64, provider))
                 image_paths.append(str(saved) if saved else "composite")
