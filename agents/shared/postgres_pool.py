@@ -134,6 +134,24 @@ def get_pool() -> Optional[ConnectionPool]:
                 timeout=_DEFAULT_TIMEOUT_SEC,
                 kwargs={"autocommit": False},
                 configure=_configure_connection,
+                # Verify the connection is ALIVE before handing it out.
+                # psycopg_pool's default is NO check, so a connection the
+                # server has since closed -- Railway drops idle ones, and a
+                # design session can leave the pool untouched for many
+                # minutes -- is handed to the caller dead, and its FIRST
+                # query fails with "consuming input failed: SSL error:
+                # unexpected eof while reading".  That is what pushed
+                # session 378 into the W31 timestamp fallback on
+                # 2026-08-27: nextval('session_counter') was that first
+                # query.  max_idle does not help, because it only trims
+                # connections ABOVE min_size and min_size is 1.
+                #
+                # check_connection sends an EMPTY query: one round-trip, no
+                # parsing.  On failure psycopg_pool discards the dead
+                # connection and loops for another
+                # (ConnectionPool._getconn_with_check_loop), so callers
+                # never see it.
+                check=ConnectionPool.check_connection,
             )
             pool.open(wait=True, timeout=_DEFAULT_TIMEOUT_SEC)
         except Exception as exc:

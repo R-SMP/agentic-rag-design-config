@@ -98,10 +98,28 @@ def _resolve_session_name() -> str:
     log_files = list(LOGS_DIR.glob("*.log")) if LOGS_DIR.exists() else []
     slug = _session_datetime_slug(log_files)
 
-    # Happy path — try Postgres first.
-    try:
-        from agents.shared import postgres_pool
-        if postgres_pool.is_enabled():
+    # Happy path — try Postgres first, TWICE.
+    #
+    # The pool now checks a connection is alive before handing it out
+    # (postgres_pool.get_pool, check=ConnectionPool.check_connection), which
+    # is the real fix for the dead-idle-connection failure.  It narrows the
+    # window but cannot close it: a connection can still die between that
+    # check and this query.  Losing that race is PERMANENT for the session —
+    # it keeps a non-canonical W31 slug for its whole life, and the sessions
+    # it should have sorted between keep theirs.  A retry costs one
+    # round-trip, so it is worth spending.
+    #
+    # A retry can BURN a sequence number when the first nextval committed
+    # server-side and only the reply was lost.  That is deliberate: session
+    # ids must be UNIQUE and INCREASING, not contiguous.  A gap is invisible;
+    # a duplicate would collide two sessions in previous_sessions/ and in the
+    # chunks table.
+    last_exc: "Exception | None" = None
+    for attempt in (1, 2):
+        try:
+            from agents.shared import postgres_pool
+            if not postgres_pool.is_enabled():
+                break               # Postgres disabled — go straight to W31
             with postgres_pool.connection() as conn:
                 with conn.cursor() as cur:
                     cur.execute("SELECT nextval('session_counter')")
@@ -112,10 +130,18 @@ def _resolve_session_name() -> str:
                         )
                     nnn = int(row[0])
             return f"ID{nnn:03d}_{slug}"
-    except Exception as exc:
+        except Exception as exc:
+            last_exc = exc
+            if attempt == 1:
+                logger.warning(
+                    f"[loader] session_counter nextval failed on attempt 1 "
+                    f"({type(exc).__name__}: {exc}); retrying once."
+                )
+
+    if last_exc is not None:
         logger.warning(
             f"[loader] session_counter nextval failed "
-            f"({type(exc).__name__}: {exc}); "
+            f"({type(last_exc).__name__}: {last_exc}); "
             f"falling back to timestamp-with-microseconds slug "
             f"per Q-SID-2 = ii (W31)."
         )
