@@ -77,6 +77,39 @@ def _log_inter_agent_message(caller: str, target: str, message: str) -> None:
 _TOOL_CALL_ARG_TRUNC = 800
 _TOOL_CALL_RESULT_TRUNC = 800
 
+# Tools whose payload goes to the log IN FULL when
+# ``LOG_FULL_TOOL_PAYLOADS`` is on — the ones whose payload IS the
+# evidence a run gets judged on.  RESULT for the readers, ARGS for the
+# writers: a writer's result is a one-line receipt ("Wrote
+# extracted_inputs.txt (7628 chars)") while the content it wrote sits in
+# its args.  ``read_extracted_inputs`` is deliberately absent — its
+# result only re-reads what ``write_extraction`` already logged in full.
+_FULL_RESULT_TOOLS: frozenset[str] = frozenset({
+    "read_attempts",
+    "view_images",
+    "reread_text_regions",
+})
+# ``write_parameters`` is the 5-/3-agent name for ``new_attempt_parameters``.
+_FULL_ARG_TOOLS: frozenset[str] = frozenset({
+    "write_extraction",
+    "new_attempt_parameters",
+    "write_parameters",
+})
+
+
+def _log_full_payloads() -> bool:
+    """True iff the operator wants uncut payloads for the tools above.
+
+    Read fresh on every call so flipping the setting takes effect without
+    a restart, and import-guarded so a settings problem can never break a
+    tool call.
+    """
+    try:
+        from workflow_settings import settings as workflow_settings
+        return bool(getattr(workflow_settings, "LOG_FULL_TOOL_PAYLOADS", True))
+    except Exception:  # noqa: BLE001 — never break a tool over settings
+        return True
+
 
 def _format(obj) -> str:
     """Render *obj* as a readable string for logs."""
@@ -89,8 +122,9 @@ def _format(obj) -> str:
 
 
 def _truncate(obj, limit: int) -> str:
+    """Render *obj* for the log, cut to *limit* chars; ``limit <= 0`` = uncut."""
     text = _format(obj)
-    if len(text) <= limit:
+    if limit <= 0 or len(text) <= limit:
         return text
     return text[:limit] + f"... <truncated, {len(text) - limit} more chars>"
 
@@ -104,8 +138,15 @@ def log_tool_call(caller_key: str, tool_name: str, args, result) -> None:
     # the frontend would clear every real agent's highlight trying to
     # activate the unknown id.  See trace() docstring for the contract.
     _trace(caller_display, tool_name, publish=False)
-    args_str = _truncate(args, _TOOL_CALL_ARG_TRUNC)
-    result_str = _truncate(result, _TOOL_CALL_RESULT_TRUNC)
+    full = _log_full_payloads()
+    args_str = _truncate(
+        args,
+        0 if full and tool_name in _FULL_ARG_TOOLS else _TOOL_CALL_ARG_TRUNC,
+    )
+    result_str = _truncate(
+        result,
+        0 if full and tool_name in _FULL_RESULT_TOOLS else _TOOL_CALL_RESULT_TRUNC,
+    )
     logger.info(
         f"[TOOL CALL]  {caller_display} -> {tool_name}\n"
         f"  args:   {args_str}\n"

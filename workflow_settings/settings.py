@@ -1446,3 +1446,33 @@ DATABASE_ENTRY_RETRY_BACKOFF_SECONDS: float = 1.0
 #
 # Valid values: True, False
 SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
+
+
+# --- Session log — untruncated payloads for the key tools ---
+
+# Every tool call is written to the session log as
+#   [TOOL CALL]  <Agent> -> <tool>
+#     args:   ...
+#     result: ...
+# and both halves are normally cut at 800 characters.  For most tools
+# that is the right amount.  For a handful it hides exactly the part
+# worth reading: what the extraction actually said, what parameters were
+# actually written, what an agent actually saw on an image.
+#
+#   True   these payloads are written IN FULL, uncut:
+#            result  read_attempts, view_images, reread_text_regions
+#            args    write_extraction, new_attempt_parameters
+#                    (write_parameters in the 5-/3-agent topologies)
+#          Every other tool, and the other half of these five, keeps the
+#          800-char cap.  read_extracted_inputs stays capped on purpose:
+#          its result re-reads what write_extraction already logged, so
+#          uncapping it repeats the same text once per read — 35 reads
+#          against 8 writes in one test batch.
+#   False  every tool call keeps the 800-char cap on both halves.
+#
+# ``/api/save_log`` snapshots this same file to R2, so this governs the
+# snapshot too.  Nothing feeds the log back into a model, so the cost is
+# file size only.
+#
+# Valid values: True, False
+LOG_FULL_TOOL_PAYLOADS: bool = True
