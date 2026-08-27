@@ -8,10 +8,12 @@ on Anthropic and OpenRouter models, capture the reasoning text, write it to the
 session log, keep it correctly in the message history, and expose an ON/OFF
 toggle plus a depth control in the Workflow Settings UI.
 
-**Non-goal (deliberate).** OpenAI stays on Chat Completions and stays the
-DEFAULT. Today's behaviour must be unchanged when the feature is off. The
-Responses API migration that would unlock OpenAI reasoning *content* is
-deferred — see §10.
+**Status update 2026-08-08.** The OpenAI half of this plan was overtaken by
+`3f75bcf`, which shipped `OPENAI_API_STYLE` with **`responses` as the default**
+and `chat` retained as a selectable option. D1 below is superseded accordingly.
+The original intent — "today's behaviour must be unchanged when the feature is
+off" — still holds for Anthropic and OpenRouter, which this plan has not yet
+touched.
 
 ---
 
@@ -21,7 +23,7 @@ Each was an explicit choice, recorded so a future session does not re-litigate.
 
 | # | Decision | Why |
 |---|---|---|
-| D1 | **OpenAI stays on Chat Completions, and it stays the default.** Anthropic + OpenRouter first. | Owner requirement: "the default system behaviour must be as it is today". The Responses migration changes every OpenAI agent call including tool loops. |
+| D1 | ~~OpenAI stays on Chat Completions, and it stays the default.~~ **SUPERSEDED 2026-08-08: OpenAI defaults to the Responses API (`OPENAI_API_STYLE = "responses"`); `chat` remains a supported option.** | The original decision aimed to keep today's behaviour unchanged. That proved untenable: chat/completions returns **400** for the GPT-5.6 tiers the moment function tools are bound, and *every* agent binds tools — so "keep Chat Completions" was not preserving today's behaviour, it was preserving a path already broken for any model that reasons by default. Shipped in `3f75bcf`; the `chat` option still reproduces the old behaviour exactly. |
 | D2 | **Global toggle + per-agent override.** | Mirrors the existing LLM-routing pattern. Lets the Planner reason while the Receptionist stays cheap. See §5.3 for the caveat that makes this partly a lie. |
 | D3 | **Keep thinking blocks in the message history.** | Anthropic *requires* verbatim echo inside a tool-use turn; dropping them is a 400. Also preserves the prompt cache. |
 | D4 | **ON/OFF plus one shared `REASONING_DEPTH` dropdown**, translated per provider by an adapter. | One knob a human can reason about; per-provider divergence hidden in a table (§4). |
@@ -57,11 +59,13 @@ A grep for `thinking|reasoning` across `agents/`, `workflow_settings/` and
 This is model-specific and **will change silently if the model changes** —
 `claude-sonnet-5` and `claude-opus-5` think by default.
 
-### 2.3 On OpenAI, thinking is probably ON and invisible
+### 2.3 On OpenAI, thinking is ON — and since `3f75bcf`, no longer invisible
 
-GPT-5-family models default to reasoning at `medium`. The counts are already
-read and printed (`reasoning N` on the `[TOKENS]` line); the content is not
-returned by Chat Completions at all.
+GPT-5-family models default to reasoning at `medium`; the counts were always
+read and printed (`reasoning N` on the `[TOKENS]` line). What changed is the
+endpoint: on Chat Completions the reasoning *content* is not returned at all,
+so every OpenAI benchmark in the archive predating `3f75bcf` is that model's
+no-reasoning number. The Responses default makes the content reachable.
 
 ### 2.4 The Sessions-Queue classifier does NOT read session logs
 
@@ -144,7 +148,11 @@ LangChain specifics:
 - Invalid model/thinking combinations raise a **`ValueError` at payload-build
   time** (`chat_models.py:1304-1347`) — before any HTTP call. See L2.
 
-### 3.2 OpenAI — counts only on the current path
+### 3.2 OpenAI — why the default moved to Responses
+
+> **Shipped state:** `OPENAI_API_STYLE` defaults to `responses`. The facts
+> below about Chat Completions remain accurate for the `chat` option, and are
+> the reason the default moved.
 
 - Chat Completions returns **no** reasoning field on the assistant message.
   `reasoning_content` is a third-party (DeepSeek/vLLM/Grok/OpenRouter)
@@ -157,7 +165,9 @@ LangChain specifics:
   even when no `reasoning_effort` is sent. Because this system is entirely
   tool-driven, adopting any GPT-5.6 tier on the current path would break every
   agent until either `reasoning_effort="none"` or the Responses API is used.
-  **Record this in the model-selection docs.**
+  **This is precisely why `3f75bcf` made `responses` the default** — the queue
+  run that surfaced it stopped after 3 consecutive failures on
+  `gpt-5.6-luna` / `gpt-5.6-terra`.
 - `token_usage.py:186` reads `output_token_details["reasoning"]`, but LangChain
   renames that key to `priority_reasoning` / `flex_reasoning` under the
   priority and flex service tiers — so the counter silently reads zero there.
@@ -199,7 +209,8 @@ resolve_reasoning(provider, model, depth) -> dict of constructor kwargs
 |---|---|
 | anthropic, adaptive-capable (opus-4-8/4-7/4-6, opus-5, sonnet-5, sonnet-4-6) | `thinking={"type":"adaptive","display":"summarized"}` + `output_config={"effort": <mapped>}` |
 | anthropic, `claude-haiku-4-5` | `thinking={"type":"enabled","budget_tokens":<mapped>,"display":"summarized"}` — **no `output_config`** |
-| openai (Chat Completions) | `reasoning_effort=<mapped>` — counts only, no content |
+| openai, `responses` (default) | `reasoning_effort=<mapped>` — content reachable as a summary |
+| openai, `chat` (option) | `reasoning_effort=<mapped>` — counts only, no content; 400s on the GPT-5.6 tiers with tools bound |
 | openrouter | `reasoning={"effort": <mapped>}` via `ChatOpenRouter` |
 | google | `{}` — unsupported, documented as inert |
 
@@ -367,7 +378,13 @@ existing narrowness — the message must still name the kwarg.
 > Same inversion as prompt caching: a green test proves nothing once the latch
 > exists. The smoke test must read the latch directly (§9).
 
-### L3 — The Context Pruner is BLIND to thinking tokens `HIGH`
+### L3 — The Context Pruner is BLIND to thinking tokens `HIGH` — **FIXED 2026-08-08**
+
+> Fixed: `_body_text_of` now has `thinking` and `redacted_thinking` branches
+> that measure the real text, the signature and the encrypted blob. Verified
+> byte-identical output for messages containing no thinking blocks, so the
+> change is inert while reasoning is off. A sample 4,000-token block went
+> from ~22 measured characters to 5,208.
 
 **Where:** `_body_text_of` at `base_chain_agent.py:564`; the generic `else`
 that swallows thinking is `:584-585`. Consumed by the threshold check at
@@ -402,7 +419,12 @@ signed thinking block does not.
 preserve the thinking blocks verbatim alongside the placeholder text, or skip
 truncation for that message. Never emit tool_calls without their thinking.
 
-### L5 — The pruner returns a raw block list into `.strip()` `HIGH`
+### L5 — The pruner returns a raw block list into `.strip()` `HIGH` — **FIXED in `3f75bcf`**
+
+> Fixed independently, and for a different reason: routing OpenAI through the
+> Responses API makes `.content` a block list on *every* call, so this would
+> have crashed the first prune of any OpenAI session rather than only a
+> thinking one. `ContextPruner.run` now returns `ai_text(response.content)`.
 
 **Where:** `context_pruner.py:182` (`return response.content`) →
 `base_chain_agent.py:294-300` / `:308`.
@@ -527,13 +549,13 @@ reasoning on and off.
 
 ## 10. Deferred
 
-- **OpenAI Responses API.** The only route to OpenAI reasoning *content*.
-  Deferred per D1; Chat Completions remains the default and must remain a
-  supported option even after any migration. Structure the OpenAI branch so
-  the endpoint becomes a setting rather than a rewrite.
-- **GPT-5.6 tiers (Sol/Terra/Luna) are currently unusable here** — tools +
-  active reasoning on Chat Completions is a 400, and they default to `medium`.
-  Adopting them requires `reasoning_effort="none"` or the Responses migration.
+- ~~**OpenAI Responses API.**~~ **DONE — shipped in `3f75bcf`**, and it did
+  become a setting rather than a rewrite: `OPENAI_API_STYLE` (`responses`
+  default, `chat` option), with `openai_style_kwargs()` as the single source,
+  applied in `_construct_llm` and `sessions_queue._build_classifier_llm`.
+- ~~**GPT-5.6 tiers (Sol/Terra/Luna) unusable here.**~~ **RESOLVED by the same
+  commit** — they work on the `responses` default. They remain unusable on the
+  `chat` option, which is a property of that endpoint, not of this system.
 - **`db_writer` stitching** (`db_writer.py:275-283`): the one raw-SDK call,
   with `temperature=0.0`, `max_tokens=800` and a free-text UI-editable model.
   Point it at a reasoning model and it either 400s on `temperature` or returns
@@ -546,7 +568,7 @@ reasoning on and off.
 
 | Phase | Content | Gate |
 |---|---|---|
-| **0** | L1-L5 fixes | Each independently reviewed; existing smoke tests green |
+| **0** | L1-L5 fixes — **L3 and L5 done; L1, L2, L4 remain** | Each independently reviewed; existing smoke tests green |
 | **1** | Settings §31 + `ENUM_OPTIONS`; UI verified | Toggle visible, default OFF, behaviour unchanged |
 | **2** | `reasoning_config.py` adapter + offline table tests | All table tests pass |
 | **3** | `build_llm` injection + widened client-cache key | Per-agent config provably not shared |
