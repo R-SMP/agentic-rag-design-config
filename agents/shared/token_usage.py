@@ -294,10 +294,14 @@ def _fmt(counts: dict) -> str:
     chat/completions — OpenAI caches automatically AND reports the read
     (measured: ``cache_read`` 3,712 of 4,475 input tokens on a warm
     gpt-5.4 call, on both endpoints).  So this line DOES print for OpenAI.
-    One consequence is unresolved and deliberately left alone: the read is
-    priced with ``_PRICE_CACHE_READ`` = 0.1, which is Anthropic's
-    multiplier.  Confirm OpenAI's cached-input ratio before trusting the
-    "saves N%" figure on an OpenAI run.
+    The read is priced with ``_PRICE_CACHE_READ`` = 0.1, which is also
+    Anthropic's multiplier -- that looked like an accidental cross-provider
+    borrow, and it is not.  Verified 2026-08-08 against OpenAI's published
+    pricing: cached input is 0.1x standard input on gpt-5.6-sol/terra/luna
+    and gpt-5.4, on the long-context tier as well as the short one.  The
+    "saves N%" figure is therefore correct for OpenAI as it stands.  This
+    does NOT extend to openrouter, which proxies upstream providers with
+    different cache economics -- see warnings_developer.md W43.
     """
     line = f"in={counts['in']:,}  out={counts['out']:,}"
     extras = []

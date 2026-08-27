@@ -2006,13 +2006,29 @@ the same `gpt-5.4` call from 0 to 70 reasoning tokens.
    OpenAI cost) and logged as *"write premium +25%"* on a call that paid no
    premium.  The fallback is now gated on `_is_anthropic(response)`, which reads
    the binding-supplied `response_metadata["model_provider"]`.
-   **Still unresolved, deliberately:** OpenAI cache READS are real and were
+   **RESOLVED 2026-08-08 — the shared 0.1 multiplier is correct for OpenAI
+   too, so no correction was needed.** OpenAI cache READS are real and were
    always being counted (this predates the endpoint switch — chat/completions
-   reports `cache_read` too), but they are priced with `_PRICE_CACHE_READ` =
-   0.1, which is *Anthropic's* multiplier.  Confirm OpenAI's cached-input ratio
-   before trusting a "saves N%" figure on an OpenAI run.  The `_fmt` docstring
-   claiming OpenAI "has no cache fields to read" was simply false and has been
-   corrected.
+   reports `cache_read` too), and they were priced with `_PRICE_CACHE_READ` =
+   0.1, which is also *Anthropic's* multiplier — which looked like an
+   accidental cross-provider borrow.  It is not.  Checked against OpenAI's
+   published pricing: cached input is billed at exactly **0.1x** standard
+   input on gpt-5.6-sol (0.40 vs 4.00), gpt-5.6-terra (0.20 vs 2.00),
+   gpt-5.6-luna (0.02 vs 0.20) and gpt-5.4 (0.25 vs 2.50) — and the ratio
+   holds on the LONG-CONTEXT tier as well, where both numbers double and the
+   proportion does not.  The `saves N%` figure on an OpenAI run is therefore
+   trustworthy as it stands.  The `_fmt` docstring claiming OpenAI "has no
+   cache fields to read" was simply false and has been corrected.
+
+   **Two caveats that are NOT resolved by the above.** (1) There is still no
+   *write* premium on OpenAI — caching there is automatic and uncharged —
+   which is why `_extract`'s write fallback is gated on `_is_anthropic`; do
+   not undo that gate on the strength of the read ratio matching.  (2) The
+   ratio is verified for **openai** only.  `openrouter` proxies many upstream
+   providers whose cache economics differ (some bill cache reads at full
+   price), so a future OpenRouter run that reports `cache_read` would be
+   priced by this same 0.1 constant with nothing behind it.  Verify per
+   upstream provider before trusting a `billed=` line on an OpenRouter run.
 
 **`openrouter` is deliberately excluded** from all of this — it exposes only
 the chat/completions shape and has no Responses API, so its `ChatOpenAI` branch
