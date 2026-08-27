@@ -16,7 +16,7 @@ Nothing here is imported by the application. It is a review tool.
 ## Requirements
 
 ```
-pip install pymupdf markdown pypdf requests
+pip install pymupdf markdown-it-py pypdf requests
 ```
 
 Plus Chrome or Edge for the HTML→PDF step. Everything else the scripts need
@@ -103,6 +103,33 @@ print(sizes.most_common(1))       # must be 8.7 — anything lower means it shra
 
 The `cm[3]` factor is essential. Without it a shrunken and an unshrunken file
 report the same number.
+
+**The renderer must be CommonMark.**  It is `markdown-it-py`, not
+python-markdown.  python-markdown will not let a bullet interrupt a paragraph,
+so a sibling list item written directly under the previous item's closing
+paragraph is absorbed into that item and rendered as prose with a literal
+`*` -- the Planner's `## Your common moves` lost four of its six top-level
+bullets that way, and a bullet list spliced under a bold lead-in
+(`**CAN do:**` + a fragment) lost all of its items.  Both are correct
+CommonMark and the model, which reads the raw markdown, sees ordinary lists.
+Switching parser took the nine prompts from 372 rendered list items to 461,
+with no change to the text handed to the renderer.  If you ever swap the
+parser back, re-check the item count against a CommonMark reference before
+trusting the layout:
+
+```python
+import json, re
+from markdown_it import MarkdownIt
+cm = MarkdownIt("commonmark", {"html": False})
+agents = json.load(open("extra_utilities/prompt_pdf/dump.json",
+                        encoding="utf-8"))["agents"]
+print(sum(len(re.findall(r"<li>", cm.render(a["rag_on"]["prompt"])))
+          for a in agents.values()))        # 461 at the time of writing
+```
+
+`html=False` is what keeps a literal `<param X>` in the prompts visible
+instead of vanishing as an unknown tag, in code spans too.  It replaced an
+earlier private-use-sentinel workaround; do not reintroduce one.
 
 ## Generated files
 

@@ -6,7 +6,7 @@ import json
 import re
 from pathlib import Path
 
-import markdown
+from markdown_it import MarkdownIt
 
 HERE = Path(__file__).resolve().parent
 REPO = Path(__file__).resolve().parents[2]   # <repo>/extra_utilities/prompt_pdf/x.py
@@ -65,27 +65,34 @@ UNDOCUMENTED_TOOL = {
     "dc_output_inspector": "retrieve_attempt",
 }
 
-MD_EXT = ["tables", "sane_lists", "fenced_code"]
-
-# Prompts are markdown, not HTML: a "<name>" in them is literal text, and
-# letting markdown pass it through as a raw tag would delete it.  Escaping to
-# "&lt;" BEFORE the render does not work either -- markdown re-escapes the "&"
-# inside code spans, so "<session>" comes out reading "&lt;session&gt;".  So
-# swap "<" for a private-use sentinel markdown cannot interpret, and turn it
-# into the entity afterwards.  ">" is left alone so blockquote syntax survives.
-_LT = "\ue000"
+# The prompts are CommonMark, and python-markdown is not CommonMark: it will
+# not let a bullet interrupt a paragraph, so a sibling list item written
+# directly under the previous item's closing paragraph -- the Planner's
+# "Your common moves" is the worst case -- was absorbed into that item and
+# rendered as prose with a literal "*".  It also needs a blank line before a
+# list that follows a bold lead-in ("**CAN do:**" + a spliced fragment).
+# Neither is a defect in the prompts: the model reads the raw markdown and
+# sees ordinary lists, and a strict CommonMark parser reads them the same way.
+# So the renderer moves to markdown-it-py, which is CommonMark by construction.
+# 372 list items became 461 -- and, unlike the blank-line normaliser this
+# replaces, the text handed to the renderer is the assembled prompt verbatim,
+# so the PDF stays byte-faithful to what the agent is actually given.
+#
+# html=False makes "<param X>" render as text instead of vanishing as a tag,
+# in code spans too, which is what the old private-use-sentinel dance was for.
+# Tables are enabled although no prompt currently uses one, so a future table
+# in a prompt or a tool description does not silently render as prose.
+_MD = MarkdownIt("commonmark", {"html": False}).enable("table")
 
 
 def md(text):
-    """Markdown -> HTML, with every "<" treated as literal text."""
-    return markdown.markdown(
-        text.replace("<", _LT), extensions=MD_EXT
-    ).replace(_LT, "&lt;")
+    """Markdown -> HTML, CommonMark semantics, "<" treated as literal text."""
+    return _MD.render(text)
 
 
 def md_inline(text):
     """Same, flattened for a table cell: paragraphs become line breaks."""
-    h = md(text)
+    h = md(text).strip()
     h = re.sub(r"</p>\s*<p>", "<br>", h)
     h = re.sub(r"^\s*<p>", "", h)
     h = re.sub(r"</p>\s*$", "", h)

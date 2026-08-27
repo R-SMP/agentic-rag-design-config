@@ -110,7 +110,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F91` | OPEN | Per-agent STATEFUL / STATELESS toggle in the Workflow-Settings agent flow chart |
 | `F92` | PARTIALLY CLOSED | Four defects the 5-agent merge inherited from the 7-agent system — status re-checked 2026-08-21 |
 | `F93` | OPEN | Pending actions embedded inside `warnings_developer.md` — index |
-| `F94` | OPEN | Review PDFs render bullet lists as run-on prose — `sane_lists` in `build_html.py` |
+| `F94` | DONE | Review PDFs render bullet lists as run-on prose — the renderer was not CommonMark |
 
 ---
 
@@ -4134,7 +4134,41 @@ originals. Instead this entry lists them; the authoritative text stays in
 F-id and link back to the W. Do not delete the W entry — the invariant outlives
 the fix.
 
-### F94. Review PDFs render bullet lists as run-on prose — `sane_lists` in `build_html.py`
+### F94. Review PDFs render bullet lists as run-on prose — the renderer was not CommonMark
+
+**Status.** DONE 2026-08-27. Fixed by replacing the markdown renderer in
+`extra_utilities/prompt_pdf/build_html.py` with `markdown-it-py` in CommonMark
+mode. 372 rendered list items -> 461.
+
+**The diagnosis below was wrong, and the wrongness is the lesson.** `sane_lists`
+was not the cause. Dropping it changes nothing for the Receptionist's `CAN do`
+list and introduces 13 spurious `<ol>` that mangle the parameter list into
+numbered items — candidate fix 1 would have made the PDF worse while appearing
+to address the report. The real cause is that **python-markdown is not
+CommonMark**: it refuses to let a bullet interrupt a paragraph. That also
+explains a second symptom filed separately under *Related* below — the
+Planner's `## Your common moves` losing four of its six top-level bullets,
+where `* **Recovery PLAN**` follows the previous item's closing paragraph and
+was rendered as literal `*` mid-sentence. One cause, both symptoms.
+
+Verified with `markdown-it-py` as referee: the Planner section declares 6
+sibling items, CommonMark reads 6, python-markdown reads 2.
+
+Candidate fix 2 (normalise at render time) was built first and shipped
+briefly. It fixed the lead-in case but not the sibling case, and a third rule
+attempted for nested sub-lists detached the blade-sections list *after*
+`</ol>` instead of nesting it. It is gone; nothing now edits the text being
+reviewed, so the objection recorded against it — that the PDF would stop being
+byte-faithful — no longer applies to anything.
+
+Checked after the swap: every one of the 2,992 non-blank prompt lines across
+the nine agents is present in the rendered HTML; no shrink-to-fit (body pages
+8.7 pt, the Appendix A provenance tables 7.6 pt by design, both identical to
+the previous build); 84 -> 85 pages.
+
+---
+
+**Original report, retained for the record.**
 
 **Status.** OPEN. Filed 2026-08-26 during prompt-reduction round 5.
 
