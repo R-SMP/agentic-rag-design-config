@@ -78,14 +78,19 @@ _TOOL_CALL_ARG_TRUNC = 800
 _TOOL_CALL_RESULT_TRUNC = 800
 
 # Tools whose payload goes to the log IN FULL when
-# ``LOG_FULL_TOOL_PAYLOADS`` is on — the ones whose payload IS the
-# evidence a run gets judged on.  RESULT for the readers, ARGS for the
-# writers: a writer's result is a one-line receipt ("Wrote
-# extracted_inputs.txt (7628 chars)") while the content it wrote sits in
-# its args.  ``read_extracted_inputs`` is deliberately absent — its
-# result only re-reads what ``write_extraction`` already logged in full.
+# ``LOG_FULL_TOOL_PAYLOADS`` is on.  The rule: a file's content is logged
+# ONCE, where it is created — never again where it is read back.
+#
+# So the WRITERS get their ARGS.  A writer's result is a one-line receipt
+# ("Wrote extracted_inputs.txt (7628 chars)") while the content it wrote
+# sits in its args, so uncapping a writer's result would achieve nothing.
+# Every reader stays capped: ``read_attempts``, ``read_extracted_inputs``
+# and ``read_user_inputs`` all re-read text the log already holds in full.
+#
+# The two image tools are the exception, because their result is not a
+# re-read of anything — OCR text and the record of what an agent was
+# actually shown exist nowhere else.
 _FULL_RESULT_TOOLS: frozenset[str] = frozenset({
-    "read_attempts",
     "view_images",
     "reread_text_regions",
 })

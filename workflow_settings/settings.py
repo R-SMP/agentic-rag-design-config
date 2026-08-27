@@ -1476,18 +1476,23 @@ SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
 #     result: ...
 # and both halves are normally cut at 800 characters.  For most tools
 # that is the right amount.  For a handful it hides exactly the part
-# worth reading: what the extraction actually said, what parameters were
-# actually written, what an agent actually saw on an image.
+# worth reading: what was written into a file, and what an agent
+# actually saw on an image.
+#
+# The rule is: a file's content is logged ONCE, where it is CREATED, and
+# never again where it is read back.  So the writers get their args (a
+# writer's result is only a one-line receipt) and every reader stays
+# capped — read_attempts, read_extracted_inputs and read_user_inputs all
+# re-read text the log already holds in full, so uncapping them would
+# repeat the same content once per read.  The two image tools are the
+# exception: their result is not a re-read of anything.
 #
 #   True   these payloads are written IN FULL, uncut:
-#            result  read_attempts, view_images, reread_text_regions
+#            result  view_images, reread_text_regions
 #            args    write_extraction, new_attempt_parameters
 #                    (write_parameters in the 5-/3-agent topologies)
-#          Every other tool, and the other half of these five, keeps the
-#          800-char cap.  read_extracted_inputs stays capped on purpose:
-#          its result re-reads what write_extraction already logged, so
-#          uncapping it repeats the same text once per read — 35 reads
-#          against 8 writes in one test batch.
+#          Every other tool, and the other half of these five, keeps
+#          the 800-char cap.
 #   False  every tool call keeps the 800-char cap on both halves.
 #
 # ``/api/save_log`` snapshots this same file to R2, so this governs the
