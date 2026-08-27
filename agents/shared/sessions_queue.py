@@ -280,8 +280,15 @@ def _build_classifier_llm(provider: str, model: str):
     provider = (provider or "openai").strip().lower()
     if provider == "openai":
         from langchain_openai import ChatOpenAI
+        # Same endpoint / effort selection the agents get, so the
+        # classifier cannot end up on a different OpenAI API surface
+        # than the run it is grading.  It binds no tools, so it would
+        # not hit the chat/completions tools-plus-reasoning 400 on its
+        # own — but a queue whose runs and whose verdicts disagree
+        # about the endpoint is a debugging trap, not a saving.
+        from agents.shared.llm_provider import openai_style_kwargs
         return ChatOpenAI(model=model, api_key=os.getenv("OPENAI_API_KEY", ""),
-                          timeout=60)
+                          timeout=60, **openai_style_kwargs())
     if provider == "anthropic":
         from langchain_anthropic import ChatAnthropic
         return ChatAnthropic(model=model,

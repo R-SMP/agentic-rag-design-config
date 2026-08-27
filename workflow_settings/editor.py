@@ -66,6 +66,15 @@ ENUM_OPTIONS: dict[str, list[Any]] = {
     # can be tuned without disturbing the session.  See §30.
     "PROMPT_CACHE_SCOPE_SAVE": ["off", "system", "system+history"],
     "PROMPT_CACHE_TTL_SAVE": ["5m", "1h"],
+    # Which OpenAI endpoint the ``openai`` provider talks to, and how
+    # hard its reasoning models think.  "provider default" is a
+    # SENTINEL, not a value: it sends no effort field at all and lets
+    # each model apply its own.  See workflow_settings/settings.py §32
+    # for why chat/completions cannot carry tools AND reasoning.
+    "OPENAI_API_STYLE": ["responses", "chat"],
+    "OPENAI_REASONING_EFFORT": [
+        "provider default", "none", "low", "medium", "high",
+    ],
 }
 
 # Derived from the environment via os.getenv — show read-only, mask

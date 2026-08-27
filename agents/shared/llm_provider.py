@@ -124,6 +124,67 @@ _DEFAULT_MODEL = "gpt-5-mini"
 _LLM_REQUEST_TIMEOUT_S: float = 180.0
 
 
+# ----------------------------------------------------------------------
+# OpenAI endpoint + reasoning effort — see workflow_settings/settings.py §32
+# ----------------------------------------------------------------------
+# ``/v1/chat/completions`` refuses the combination "function tools +
+# reasoning effort above none", and every agent here binds tools — so a
+# model whose server-side default effort is anything but ``none`` 400s
+# on its first call.  Measured 2026-08-27: gpt-5.6-luna / gpt-5.6-terra
+# default to ``medium`` and fail; gpt-5.4 defaults to ``none``, which is
+# the only reason this system ever worked on chat/completions (and why
+# every OpenAI run to date has had reasoning OFF).  The Responses API
+# accepts tools and reasoning together.
+#
+# ``openrouter`` deliberately does NOT go through here: it exposes only
+# the chat/completions shape and has no Responses API.
+
+_EFFORT_PROVIDER_DEFAULT = "provider default"
+_OPENAI_EFFORTS = (_EFFORT_PROVIDER_DEFAULT, "none", "low", "medium", "high")
+
+
+def openai_style_kwargs() -> dict:
+    """Endpoint + effort kwargs for a ``ChatOpenAI`` aimed at OpenAI itself.
+
+    Read at CALL time off the imported settings module — same reasoning
+    as ``_cache_settings`` below: a Workflow-Settings save that triggers
+    ``web_app._build_session``'s reload is picked up on the next session
+    build without a uvicorn restart.
+
+    Style ``"chat"`` with the effort sentinel returns an EMPTY dict, so
+    that path is byte-identical to the pre-2026-08-27 request shape —
+    including langchain's own auto-routing of the handful of models it
+    knows are Responses-API-only (``gpt-5.4-pro`` and friends), which an
+    explicit ``use_responses_api=False`` would override and break.
+
+    The effort field is only ever sent when explicitly pinned.  Sending
+    it unconditionally is not safe: gpt-4.1 / gpt-4o reject the argument
+    outright and gpt-5-mini rejects the value ``"none"``.
+    """
+    style = str(
+        getattr(_workflow_settings, "OPENAI_API_STYLE", "responses")
+    ).strip()
+    if style not in ("responses", "chat"):
+        style = "responses"
+    effort = str(
+        getattr(
+            _workflow_settings, "OPENAI_REASONING_EFFORT", _EFFORT_PROVIDER_DEFAULT
+        )
+    ).strip()
+    if effort not in _OPENAI_EFFORTS:
+        effort = _EFFORT_PROVIDER_DEFAULT
+
+    kwargs: dict = {}
+    if style == "responses":
+        kwargs["use_responses_api"] = True
+    if effort != _EFFORT_PROVIDER_DEFAULT:
+        # langchain-openai maps ``reasoning_effort`` onto the Responses
+        # API's ``reasoning: {"effort": ...}`` payload field, so the one
+        # setting drives both endpoints.
+        kwargs["reasoning_effort"] = effort
+    return kwargs
+
+
 def _read_shared_env() -> dict:
     """Read ``agents/.env`` fresh; empty dict when missing."""
     if not _SHARED_ENV_PATH.exists():
@@ -313,6 +374,7 @@ def _construct_llm(provider: str, model: str, api_key: str):
             api_key=api_key,
             rate_limiter=_RATE_LIMITER,
             timeout=_LLM_REQUEST_TIMEOUT_S,
+            **openai_style_kwargs(),
         )
     elif provider == "google":
         from langchain_google_genai import ChatGoogleGenerativeAI

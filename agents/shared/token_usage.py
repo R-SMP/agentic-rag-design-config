@@ -128,6 +128,21 @@ def _configured_ttl(phase: str = "session") -> str:
         return "5m"
 
 
+def _is_anthropic(response: Any) -> bool:
+    """True when *response* came from Anthropic.
+
+    Both bindings stamp ``response_metadata["model_provider"]`` themselves
+    (``langchain_anthropic`` sets ``"anthropic"``, ``langchain_openai``
+    ``"openai"``), so this reads a provider-supplied label rather than
+    pattern-matching a model name.  Used for ONE decision: whether a
+    reported ``cache_creation`` count carries Anthropic's write premium.
+    Unknown / missing metadata answers False — the conservative side,
+    since it just leaves the tokens priced at the plain input rate.
+    """
+    meta = getattr(response, "response_metadata", None) or {}
+    return str(meta.get("model_provider", "")).strip().lower() == "anthropic"
+
+
 def _extract(response: Any, phase: str = "session") -> dict[str, int] | None:
     """Pull token counts off an ``AIMessage``-like response.
 
@@ -165,7 +180,18 @@ def _extract(response: Any, phase: str = "session") -> dict[str, int] | None:
             # writes" on a call that plainly wrote — read all three.
             w5 = int(detail_in.get("ephemeral_5m_input_tokens") or 0)
             w1h = int(detail_in.get("ephemeral_1h_input_tokens") or 0)
-            if not (w5 or w1h):
+            if not (w5 or w1h) and _is_anthropic(response):
+                # ANTHROPIC ONLY.  Since 2026-08-27 the OpenAI Responses
+                # API also reports ``cache_creation`` (measured: 4,383 on
+                # a cold gpt-5.6-luna call) — but OpenAI's caching is
+                # AUTOMATIC and carries no write premium: those tokens
+                # are billed at the plain input rate.  Attributing them
+                # here would price them at 1.25x (or 2x, chosen by
+                # PROMPT_CACHE_TTL — an Anthropic-only setting that has
+                # no business moving a reported OpenAI cost) and print
+                # "write premium +25%" on a call that paid none.  For
+                # non-Anthropic the tokens are simply left in the
+                # uncached remainder, which is what they cost.
                 generic = int(detail_in.get("cache_creation") or 0)
                 if generic:
                     # No per-ttl split reported.  Attribute by the ttl THIS
@@ -260,10 +286,18 @@ def _fmt(counts: dict) -> str:
     """``in=12,345  out=678  (cached 8,192 · wrote 49 5m)  billed=1,024 in-eq (-88%)``
 
     The billed figure is shown ONLY when the provider actually reported
-    cache activity.  On OpenAI / Google there are no cache fields to read,
-    and printing "billed = in, saved 0%" there would assert something this
-    module cannot see — OpenAI caches automatically and simply does not
-    report it.  Silence is the honest output.
+    cache activity, so a provider that reports nothing gets silence rather
+    than a fabricated "billed = in, saved 0%".
+
+    NOTE (corrected 2026-08-27): this used to say OpenAI "has no cache
+    fields to read".  That is false and was already false on
+    chat/completions — OpenAI caches automatically AND reports the read
+    (measured: ``cache_read`` 3,712 of 4,475 input tokens on a warm
+    gpt-5.4 call, on both endpoints).  So this line DOES print for OpenAI.
+    One consequence is unresolved and deliberately left alone: the read is
+    priced with ``_PRICE_CACHE_READ`` = 0.1, which is Anthropic's
+    multiplier.  Confirm OpenAI's cached-input ratio before trusting the
+    "saves N%" figure on an OpenAI run.
     """
     line = f"in={counts['in']:,}  out={counts['out']:,}"
     extras = []

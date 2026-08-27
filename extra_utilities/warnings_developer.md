@@ -1924,3 +1924,97 @@ topology/variant tree is a decision.  Before removing one, find its loader and
 check whether it is read unguarded (Group 1) or selected by `is_file()`
 (Group 2).  `__init__.py` files are a different thing entirely and are not
 covered by this warning.
+
+---
+
+## W43. OpenAI runs go through `/v1/responses`, not chat/completions — and every OpenAI run before 2026-08-27 had reasoning OFF.
+
+**Where.** `agents/shared/llm_provider.openai_style_kwargs()`, applied in
+`_construct_llm`'s `openai` branch and in
+`sessions_queue._build_classifier_llm`.  Governed by
+`workflow_settings/settings.py` §32 (`OPENAI_API_STYLE`,
+`OPENAI_REASONING_EFFORT`).
+
+**Recorded 2026-08-27** after a Sessions-Queue run of `gpt-5.6-luna` /
+`gpt-5.6-terra` stopped with three consecutive failures:
+
+    Function tools with reasoning_effort are not supported for gpt-5.6-luna
+    in /v1/chat/completions.  To use function tools, use /v1/responses or
+    set reasoning_effort to 'none'.
+
+**The non-obvious part.**  The code never sent `reasoning_effort` — it still
+doesn't, unless you pin one.  `/v1/chat/completions` rejects "function tools +
+the model's own server-side default effort" whenever that default is above
+`none`.  Every agent in this system binds tools, so the endpoint is unusable
+for any model that thinks by default.  Verified against the live API:
+
+| model | chat/completions + tools | `/v1/responses` + tools |
+|---|---|---|
+| `gpt-5.4` | 200 (default effort **none**) | 200 |
+| `gpt-5.6-luna` | **400** (default effort medium) | 200, 28 reasoning tokens |
+| `gpt-5.6-terra` | **400** (default effort medium) | 200, 9 reasoning tokens |
+
+So the system worked on chat/completions only by accident: `gpt-5.4` defaults
+to no reasoning.  **Every OpenAI benchmark number in the archive is that
+model's non-reasoning number.**  Pinning `OPENAI_REASONING_EFFORT="high"` takes
+the same `gpt-5.4` call from 0 to 70 reasoning tokens.
+
+**Three traps if you touch this.**
+
+1. **Do not "normalise" by always sending `reasoning_effort`.**  `gpt-4.1` and
+   `gpt-4o` reject the argument outright (*"Unrecognized request argument
+   supplied: reasoning_effort"*) and `gpt-5-mini` rejects the value `none`
+   (*"does not support 'none' with this model"*).  The field is sent ONLY when
+   explicitly pinned; the `"provider default"` sentinel sends nothing.
+
+2. **Do not set `use_responses_api=False` on the `"chat"` path.**  langchain
+   auto-routes the models it knows are Responses-API-only
+   (`_RESPONSES_API_ONLY_PREFIXES` — `gpt-5-pro`, `gpt-5.4-pro`, …, plus any
+   name containing `codex`) and an explicit `False` overrides that and breaks
+   them.  `"chat"` + the sentinel returns an EMPTY kwargs dict on purpose, so
+   that path is byte-identical to the pre-2026-08-27 request shape.
+
+3. **Token counts are not comparable across the two endpoints.**  The same
+   text-only prompt with one tool bound measured **140 input tokens on
+   chat/completions and 59 on responses**; with an image, 188 vs 109.  Nothing
+   extra is being sent — the endpoints just count differently.  That number
+   feeds `token_usage.record()`, the cost logs and the Context Pruner's
+   `max(20k, min(0.60×window, 150k))` threshold, so a "chat" run and a
+   "responses" run of the same benchmark cannot be compared on tokens.
+
+4. **On the Responses API `AIMessage.content` is ALWAYS a block list**, even
+   for a plain text reply with no tool call: `[{"type": "text", "text": …,
+   "annotations": [], "id": "msg_…"}]`.  On chat/completions the same reply
+   arrives as a bare `str`.  Anything that touches `.content` must go through
+   `file_utils.ai_text()`.  This already caught one live crash:
+   `ContextPruner.run()` returned `response.content` raw despite being declared
+   `-> str`, and `base_chain_agent.py:320` calls `.strip()` on it — so the
+   FIRST prune of any OpenAI session would have died on `AttributeError: 'list'
+   object has no attribute 'strip'`, which on a long benchmark run is every
+   run.  The 14 agent call sites were already correct; the pruner was the one
+   that was not.  `_format_message_content` (history dumps, `_last_text_message`)
+   and `sessions_queue._content_text` handle both shapes already.
+
+5. **Caching still works — but `cache_creation` on OpenAI is NOT an Anthropic
+   write.**  OpenAI's automatic prompt caching is unaffected by the endpoint
+   switch; measured on a 4.4k-token prefix, the second identical call read
+   3,712/4,475 from cache on chat/completions and 3,584/4,394 on responses.
+   The trap is that the Responses API ALSO reports `cache_creation` (4,383 on a
+   cold gpt-5.6-luna call) — a key `token_usage._extract` used to treat as an
+   Anthropic cache WRITE, priced at 1.25x (or 2x, selected by `PROMPT_CACHE_TTL`
+   — an Anthropic-only setting that would then have silently moved a reported
+   OpenAI cost) and logged as *"write premium +25%"* on a call that paid no
+   premium.  The fallback is now gated on `_is_anthropic(response)`, which reads
+   the binding-supplied `response_metadata["model_provider"]`.
+   **Still unresolved, deliberately:** OpenAI cache READS are real and were
+   always being counted (this predates the endpoint switch — chat/completions
+   reports `cache_read` too), but they are priced with `_PRICE_CACHE_READ` =
+   0.1, which is *Anthropic's* multiplier.  Confirm OpenAI's cached-input ratio
+   before trusting a "saves N%" figure on an OpenAI run.  The `_fmt` docstring
+   claiming OpenAI "has no cache fields to read" was simply false and has been
+   corrected.
+
+**`openrouter` is deliberately excluded** from all of this — it exposes only
+the chat/completions shape and has no Responses API, so its `ChatOpenAI` branch
+takes no endpoint kwargs.  `db_writer.py:294` is also unaffected: it calls the
+raw `openai` SDK's `chat.completions.create` directly, not langchain.

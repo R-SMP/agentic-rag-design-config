@@ -1446,3 +1446,92 @@ DATABASE_ENTRY_RETRY_BACKOFF_SECONDS: float = 1.0
 #
 # Valid values: True, False
 SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
+
+
+# ===========================================================
+# 32. OpenAI API style + reasoning effort
+# ===========================================================
+# WHICH OpenAI endpoint the ``openai`` provider talks to, and how
+# hard its reasoning models are allowed to think.  Applies to the
+# nine agents, the Database Handler's interview model, and the
+# Sessions-Queue FINAL/INTERMEDIATE classifier.  It does NOT apply
+# to the ``openrouter`` provider — OpenRouter exposes only the
+# chat/completions shape and has no Responses API.
+#
+# WHY THIS EXISTS.  ``/v1/chat/completions`` rejects the
+# combination "function tools + any reasoning effort above none":
+#
+#     Function tools with reasoning_effort are not supported for
+#     gpt-5.6-luna in /v1/chat/completions.  To use function tools,
+#     use /v1/responses or set reasoning_effort to 'none'.
+#
+# Every agent in this system binds tools, so on chat/completions a
+# model whose server-side default effort is anything but ``none``
+# 400s on its very first call.  Measured 2026-08-27: gpt-5.6-luna
+# and gpt-5.6-terra default to ``medium`` and fail; gpt-5.4
+# defaults to ``none`` and is why the system worked at all.  The
+# corollary is worth stating plainly: on chat/completions this
+# system has only ever run OpenAI models with reasoning OFF.
+#
+#   "responses"  ChatOpenAI(use_responses_api=True) — the
+#                /v1/responses endpoint.  Function tools AND
+#                reasoning both work.  Verified end to end against
+#                the live API: bind_tools, image_url content
+#                blocks (langchain rewrites them to input_image),
+#                a forced tool_choice (the DH batch-save path),
+#                the assistant -> ToolMessage -> assistant
+#                round-trip, and usage_metadata including
+#                output_token_details.reasoning.
+#   "chat"       the historic /v1/chat/completions endpoint, kept
+#                for a like-for-like comparison against older runs.
+#                With OPENAI_REASONING_EFFORT left at "provider
+#                default" this is byte-identical to the pre-2026-08-27
+#                request shape — no endpoint kwarg, no effort field.
+#                Pinning any effort ABOVE "none" here is a guaranteed
+#                400 the moment an agent binds its tools; that is the
+#                bug this section exists to explain, not a mode.
+#
+# COST OF SWITCHING.  The two endpoints COUNT the same request
+# differently: an identical text-only prompt with one tool bound
+# measured 140 input tokens on chat/completions and 59 on
+# responses.  Nothing extra is being sent — but that number feeds
+# token_usage.record(), the cost logs and the Context Pruner's
+# threshold, so token figures from "chat" runs and "responses"
+# runs are not comparable.
+#
+# Valid values: "responses" | "chat"
+OPENAI_API_STYLE: str = "responses"
+
+# How much reasoning the OpenAI model does before answering.
+#
+#   "provider default"  a SENTINEL, not a value: send no effort at
+#                       all and let each model apply its own
+#                       default.  Preserves the historic behaviour
+#                       of every past run (gpt-5.4 -> none) while
+#                       letting the gpt-5.6 family think at its own
+#                       default (medium).
+#   "none"              no reasoning.  The only value chat/
+#                       completions accepts alongside tools — and
+#                       even there only on models that HAVE
+#                       reasoning: gpt-4.1 and gpt-4o reject the
+#                       field outright ("Unrecognized request
+#                       argument supplied: reasoning_effort") and
+#                       gpt-5-mini rejects this particular value
+#                       ("does not support 'none' with this model").
+#                       Leave the sentinel selected for those.
+#   "low"/"medium"/"high"
+#                       pin the SAME effort on every OpenAI model,
+#                       so a benchmark compares models at equal
+#                       effort rather than at whatever each one
+#                       happens to default to.  Note this CHANGES
+#                       gpt-5.4 from its historic no-reasoning
+#                       behaviour: measured on one prompt, gpt-5.4
+#                       spends 0 reasoning tokens at its default,
+#                       59 at "low" and 113 at "high".
+#
+# The sentinel is the only selection guaranteed to work on every
+# OpenAI model under both styles; each pinned value is a deliberate
+# per-benchmark choice you must match to the models in the queue.
+#
+# Valid values: "provider default" | "none" | "low" | "medium" | "high"
+OPENAI_REASONING_EFFORT: str = "provider default"
