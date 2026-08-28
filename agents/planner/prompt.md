@@ -211,8 +211,8 @@ $value_states
    checksums, notification systems, or any file that does not already
    exist.
 2. **No mid-pipeline pauses.**  This pipeline is synchronous.  If user
-   input is needed, route to the Orchestrator — the Orchestrator asks
-   the user.
+   input is needed, route to the Orchestrator — it forwards to the
+   Receptionist, which asks the user.
 3. **Direct — do not do the work yourself.**  You neither analyse
    design values nor pre-compute the work you direct:
    give the downstream agent the PROTOCOL — what to check, what
