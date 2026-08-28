@@ -4472,6 +4472,22 @@ if (copyParametersBtn) {
 // correctness never depends on this view being open — it is display only.
 // ---------------------------------------------------------------------------
 let sqConditions = [{ id: "current", label: "Current settings (no change)" }];
+// Editor metadata from /api/queue/conditions.  `sqAgentsByTopology` has NO
+// client-side fallback on purpose: the server is the single source of truth
+// for which agents a topology has (it mirrors the hubs), and a second copy
+// here is exactly the thing that would drift.  If that fetch fails the tier
+// panel says so and refuses to guess, rather than rendering a stale roster
+// the operator would assign models to for nothing.
+let sqTopologies = [7, 5, 3];
+let sqTiers = ["low", "mid", "high"];
+let sqAgentsByTopology = {};
+let sqTierDefaults = {
+  openai:     { low: "gpt-5.4-mini",     mid: "gpt-5.4",           high: "gpt-5.5" },
+  anthropic:  { low: "claude-haiku-4-5", mid: "claude-sonnet-4-6", high: "claude-opus-4-8" },
+  google:     { low: "", mid: "", high: "" },
+  openrouter: { low: "", mid: "", high: "" },
+};
+const SQ_PROVIDERS = ["openai", "anthropic", "google", "openrouter"];
 let sqRuns = [];
 let sqQueueActive = false;
 let sqSessionActive = false;
@@ -4507,7 +4523,116 @@ async function loadSqConditions() {
     if (Array.isArray(data.conditions) && data.conditions.length) {
       sqConditions = data.conditions;
     }
-  } catch (_) { /* keep the fallback list */ }
+    if (Array.isArray(data.topologies) && data.topologies.length) {
+      sqTopologies = data.topologies;
+    }
+    if (Array.isArray(data.tiers) && data.tiers.length) sqTiers = data.tiers;
+    if (data.agents_by_topology && typeof data.agents_by_topology === "object") {
+      sqAgentsByTopology = data.agents_by_topology;
+    }
+    if (data.tier_defaults && typeof data.tier_defaults === "object") {
+      sqTierDefaults = data.tier_defaults;
+    }
+  } catch (_) { /* keep the fallback lists */ }
+}
+
+function sqTopologyOptions(selected) {
+  const cur = Number(selected) || 7;
+  return sqTopologies.map((t) =>
+    `<option value="${t}"${Number(t) === cur ? " selected" : ""}>`
+    + `${t}-agent</option>`).join("");
+}
+
+function sqAgentRows(topology) {
+  return sqAgentsByTopology[String(Number(topology) || 7)] || [];
+}
+
+// Overwrite all three model boxes with the provider's pre-fills.  Deliberately
+// an overwrite rather than a fill-if-blank: an OpenAI model id is never valid
+// under Anthropic, so keeping the old strings after a provider switch would
+// preserve values that are certain to be wrong.
+function sqApplyTierDefaults(run) {
+  const d = sqTierDefaults[run.tier_provider || "openai"] || {};
+  run.tier_low = d.low || "";
+  run.tier_mid = d.mid || "";
+  run.tier_high = d.high || "";
+}
+
+function sqTierWarnText(missing) {
+  return `${missing} agent${missing === 1 ? "" : "s"} still unassigned — `
+    + `Start will reject this run until every row has a tier.`;
+}
+
+// Refresh one run's "N unassigned" line without re-rendering the panel
+// (which would drop focus mid-pass over the dropdowns).
+function sqUpdateTierWarn(i) {
+  const run = sqRuns[i];
+  const host = document.getElementById("sq-runs");
+  if (!run || !host) return;
+  const el = host.querySelector(
+    `.sq-run[data-idx="${i}"] .sq-run-tiers .sq-tier-warn`);
+  if (!el) return;
+  const tiers = run.agent_tiers || {};
+  const missing = sqAgentRows(run.topology).filter((a) => !tiers[a.key]).length;
+  el.textContent = sqTierWarnText(missing);
+  el.hidden = !missing;
+}
+
+function sqTierPanel(run) {
+  const rows = sqAgentRows(run.topology);
+  if (!rows.length) {
+    return `
+      <div class="sq-run-tiers">
+        <p class="sq-tier-warn">Could not load the agent list for the
+        ${sqEsc(String(run.topology || 7))}-agent topology — reload the page.
+        Starting the queue with this condition would be rejected anyway.</p>
+      </div>`;
+  }
+  const provOpts = SQ_PROVIDERS.map((p) =>
+    `<option value="${p}"${run.tier_provider === p ? " selected" : ""}>${p}</option>`
+  ).join("");
+  const tiers = run.agent_tiers || {};
+  const agentCells = rows.map((a) => {
+    const cur = tiers[a.key] || "";
+    const opts = `<option value=""${cur ? "" : " selected"}>— pick —</option>`
+      + sqTiers.map((t) =>
+        `<option value="${t}"${cur === t ? " selected" : ""}>${t}</option>`).join("");
+    const hint = a.inert
+      ? ` <span class="sq-tier-inert" title="${sqEsc(a.inert)}">(inert)</span>` : "";
+    return `<label>
+        <span class="sq-tier-name" title="${sqEsc(a.label)}${a.inert ? " — " + sqEsc(a.inert) : ""}">${sqEsc(a.label)}${hint}</span>
+        <select class="sq-tier-pick" data-agent="${sqEsc(a.key)}">${opts}</select>
+      </label>`;
+  }).join("");
+  // Rendered unconditionally (hidden when the count is 0) so the per-agent
+  // handler can update it in place — that handler deliberately does NOT
+  // re-render, and a warning frozen at "10 unassigned" while the operator
+  // fills all ten dropdowns would be worse than none.
+  const missing = rows.filter((a) => !tiers[a.key]).length;
+  const warn = `<p class="sq-tier-warn"${missing ? "" : " hidden"}>`
+    + `${sqTierWarnText(missing)}</p>`;
+  return `
+      <div class="sq-run-tiers">
+        <div class="sq-tier-models">
+          <label>Provider
+            <select class="sq-tier-prov" data-k="tier_provider">${provOpts}</select>
+          </label>
+          <label>Low tier model
+            <input type="text" data-k="tier_low" value="${sqEsc(run.tier_low)}"
+                   placeholder="e.g. gpt-5.4-mini" />
+          </label>
+          <label>Mid tier model
+            <input type="text" data-k="tier_mid" value="${sqEsc(run.tier_mid)}"
+                   placeholder="e.g. gpt-5.4" />
+          </label>
+          <label>High tier model
+            <input type="text" data-k="tier_high" value="${sqEsc(run.tier_high)}"
+                   placeholder="e.g. gpt-5.5" />
+          </label>
+        </div>
+        <div class="sq-tier-agents">${agentCells}</div>
+        ${warn}
+      </div>`;
 }
 
 function sqConditionOptions(selected) {
@@ -4522,8 +4647,14 @@ function sqNewRun() {
     stage_id: sqUUID(),
     run_id: "",
     condition: "current",
+    topology: 7,
     single_provider: "openai",
     single_model: "",
+    tier_provider: "openai",
+    tier_low: "",
+    tier_mid: "",
+    tier_high: "",
+    agent_tiers: {},
     query: "",
     expected_output: "",
     continue_message: "",
@@ -4548,6 +4679,8 @@ function sqRenderRuns() {
         <input class="sq-run-id" type="text" value="${sqEsc(run.run_id)}"
                data-k="run_id" placeholder="run id (optional)" />
         <select class="sq-run-cond" data-k="condition">${sqConditionOptions(run.condition)}</select>
+        <select class="sq-run-topo" data-k="topology"
+                title="Agent topology for this run — applies whatever the condition is">${sqTopologyOptions(run.topology)}</select>
         <button class="sq-run-img" type="button" title="Manage this run's images">🖼 ${run._imgCount || 0}</button>
         <button class="sq-run-dup ghost" type="button" title="Duplicate run">⧉</button>
         <button class="sq-run-adv ghost" type="button" title="Per-run overrides">⚙</button>
@@ -4568,6 +4701,7 @@ function sqRenderRuns() {
                  value="${sqEsc(run.single_model)}" placeholder="e.g. gpt-5.4 or deepseek/deepseek-chat" />
         </label>
       </div>` : ""}
+      ${run.condition === "tiers" ? sqTierPanel(run) : ""}
       <textarea class="sq-run-query" data-k="query" rows="3"
         placeholder="The full prompt to send for this run…">${sqEsc(run.query)}</textarea>
       <div class="sq-run-adv-box" ${run._adv ? "" : "hidden"}>
@@ -4605,11 +4739,53 @@ function sqRenderRuns() {
     const row = ev.target.closest(".sq-run");
     if (!row) return;
     const i = Number(row.dataset.idx);
+    if (!Number.isInteger(i) || !sqRuns[i]) return;
+
+    // Per-agent tier picks live in a nested object, keyed by agent, so they
+    // carry `data-agent` instead of `data-k`.  No re-render: that would blow
+    // away focus mid-pass over ten dropdowns.
+    const ak = ev.target.dataset.agent;
+    if (ak) {
+      const next = Object.assign({}, sqRuns[i].agent_tiers || {});
+      if (ev.target.value) next[ak] = ev.target.value; else delete next[ak];
+      sqRuns[i].agent_tiers = next;
+      sqUpdateTierWarn(i);
+      sqSaveDraftDebounced();
+      return;
+    }
+
     const k = ev.target.dataset.k;
-    if (!Number.isInteger(i) || !k || !sqRuns[i]) return;
+    if (!k) return;
+
+    // Topology decides WHICH agents exist, so a change invalidates every
+    // per-agent pick — the tier assignment is wiped and must be redone.  The
+    // three model strings survive: they are provider-scoped, not topology-
+    // scoped, and retyping them on every topology switch would be busywork.
+    if (k === "topology") {
+      sqRuns[i].topology = Number(ev.target.value) || 7;
+      sqRuns[i].agent_tiers = {};
+      sqSaveDraftDebounced();
+      sqRenderRuns();
+      return;
+    }
+    if (k === "tier_provider") {
+      sqRuns[i].tier_provider = ev.target.value;
+      sqApplyTierDefaults(sqRuns[i]);
+      sqSaveDraftDebounced();
+      sqRenderRuns();
+      return;
+    }
+
     sqRuns[i][k] = ev.target.value;
+    // Switching INTO the tier condition with empty boxes seeds them from the
+    // provider, so the panel opens usable rather than blank.
+    if (k === "condition" && ev.target.value === "tiers"
+        && !sqRuns[i].tier_low && !sqRuns[i].tier_mid && !sqRuns[i].tier_high) {
+      sqRuns[i].tier_provider = sqRuns[i].tier_provider || "openai";
+      sqApplyTierDefaults(sqRuns[i]);
+    }
     sqSaveDraftDebounced();
-    // Changing the condition shows/hides the single-model provider+model row.
+    // Changing the condition shows/hides the single-model row and tier panel.
     if (k === "condition") sqRenderRuns();
   });
   host.addEventListener("click", (ev) => {
@@ -4698,8 +4874,14 @@ async function sqFlushDraft() {
       stage_id: r.stage_id,
       run_id: r.run_id || "",
       condition: r.condition || "current",
+      topology: Number(r.topology) || 7,
       single_provider: r.single_provider || "openai",
       single_model: r.single_model || "",
+      tier_provider: r.tier_provider || "openai",
+      tier_low: r.tier_low || "",
+      tier_mid: r.tier_mid || "",
+      tier_high: r.tier_high || "",
+      agent_tiers: r.agent_tiers || {},
       query: r.query || "",
       expected_output: r.expected_output || "",
       continue_message: r.continue_message || "",
@@ -4736,8 +4918,15 @@ async function sqDuplicateRun(i) {
     stage_id: sqUUID(),
     run_id: (src.run_id || "").trim() ? src.run_id + " copy" : "",
     condition: src.condition,
+    topology: src.topology,
     single_provider: src.single_provider,
     single_model: src.single_model,
+    tier_provider: src.tier_provider,
+    tier_low: src.tier_low,
+    tier_mid: src.tier_mid,
+    tier_high: src.tier_high,
+    // Copy, don't share: the duplicate must be independently editable.
+    agent_tiers: Object.assign({}, src.agent_tiers || {}),
     query: src.query,
     expected_output: src.expected_output,
     continue_message: src.continue_message,
@@ -5105,8 +5294,15 @@ async function hydrateSessionsQueue() {
             stage_id: r.stage_id || sqUUID(),
             run_id: r.run_id || "",
             condition: r.condition || "current",
+            topology: Number(r.topology) || 7,
             single_provider: r.single_provider || "openai",
             single_model: r.single_model || "",
+            tier_provider: r.tier_provider || "openai",
+            tier_low: r.tier_low || "",
+            tier_mid: r.tier_mid || "",
+            tier_high: r.tier_high || "",
+            agent_tiers: (r.agent_tiers && typeof r.agent_tiers === "object")
+              ? r.agent_tiers : {},
             query: r.query || "",
             expected_output: r.expected_output || "",
             continue_message: r.continue_message || "",
@@ -5127,11 +5323,27 @@ async function hydrateSessionsQueue() {
   // so the dropdown matches and Start doesn't 400 on an unknown condition.
   const validCond = new Set(sqConditions.map((c) => c.id));
   let condFixed = false;
+  const droppedConds = [];
   for (const r of sqRuns) {
-    if (!validCond.has(r.condition)) { r.condition = "current"; condFixed = true; }
+    if (!validCond.has(r.condition)) {
+      // A draft or bundle naming a condition this build no longer offers
+      // (e.g. the retired subj5-* presets).  'current' runs on whatever
+      // routing happens to be configured, which is NOT what that run asked
+      // for — so the rewrite is reported, never silent.
+      droppedConds.push(`${sqRunLabel(r, sqRuns.indexOf(r))}: ${r.condition}`);
+      r.condition = "current";
+      condFixed = true;
+    }
+    if (!sqTopologies.map(Number).includes(Number(r.topology))) r.topology = 7;
   }
   sqRenderRuns();
-  if (condFixed) sqFlushDraft();
+  if (condFixed) {
+    sqFlushDraft();
+    sqStatus(
+      `Reset to “current” — this build no longer offers that condition `
+      + `(${droppedConds.join("; ")}). Re-pick a condition before starting.`,
+      "warn");
+  }
   sqRefreshBadges();
   try {
     const cfg = await (await fetch("/api/config")).json();

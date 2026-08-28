@@ -2023,6 +2023,7 @@ def _emit_runner(manifest: dict, progress: dict, line: "str | None" = None) -> N
                 "run_id":     r["run_id"],
                 "status":     r["status"],
                 "condition":  r["condition"],
+                "topology":   r.get("topology"),
                 "continues":  r.get("continues", 0),
                 "note":       r.get("note"),
                 "session_id": r.get("session_id"),
@@ -2198,6 +2199,10 @@ async def _run_queue_in_background(manifest: dict) -> None:
     # and the finally block restores it so the user's next normal chat is
     # unaffected by the last run's condition.
     baseline = manifest.get("baseline_routing")
+    # SYSTEM_TOPOLOGY captured at queue start, restored in the same finally
+    # block.  Topology is per-run and INDEPENDENT of the LLM condition: it
+    # is written before every build, whatever that run's models come from.
+    baseline_topology = manifest.get("baseline_topology")
     halted = False
     # Runs THIS invocation actually executed, in order.  The circuit breaker
     # reads its streak off these and never off the manifest as a whole, so a
@@ -2261,11 +2266,39 @@ async def _run_queue_in_background(manifest: dict) -> None:
                     )
                     continue
 
-            # 2. Apply the LLM condition.  'current' restores the captured
+            # 2a. Apply this run's TOPOLOGY.  Must precede step 3: the hub
+            #     class, the prompt fragments and the routing tool-sets are
+            #     all chosen from SYSTEM_TOPOLOGY at build time, and
+            #     ``_build_session`` reloads workflow_settings in place, so a
+            #     value written here is the one that build sees.  Written for
+            #     EVERY condition, including 'current' and 'single'.
+            try:
+                run_topology = sessions_queue.normalize_topology(
+                    run.get("topology"))
+            except ValueError:
+                run_topology = sessions_queue.DEFAULT_TOPOLOGY
+            try:
+                await run_in_threadpool(
+                    settings_editor.write_internal,
+                    {"SYSTEM_TOPOLOGY": run_topology})
+            except Exception as exc:
+                run["status"] = "failed"
+                run["note"] = f"topology write failed: {exc}"
+                run["finished_at"] = _web_now_iso()
+                _emit_runner(
+                    manifest,
+                    _queue_progress(manifest, current_index=i, stage="turn",
+                                    in_flight_run_id=run["run_id"], active=True),
+                    f"[{run['run_id']}] FAILED — {run['note']}",
+                )
+                continue
+
+            # 2b. Apply the LLM condition.  'current' restores the captured
             #    baseline (deterministic, no drift); 'single' forces one
-            #    provider+model on every agent (built from the run's fields);
-            #    a named condition uses its preset payload.  None (no baseline
-            #    captured) leaves routing untouched.
+            #    provider+model on every agent; 'tiers' resolves each of this
+            #    topology's agents to its low/mid/high model and CLEARS every
+            #    other agent's override.  Both are built from the run's own
+            #    fields.  None (no baseline captured) leaves routing untouched.
             if run["condition"] == "current":
                 payload = baseline
             elif run["condition"] == "single":
@@ -2275,6 +2308,26 @@ async def _run_queue_in_background(manifest: dict) -> None:
                 except Exception as exc:
                     run["status"] = "failed"
                     run["note"] = f"single-model condition invalid: {exc}"
+                    run["finished_at"] = _web_now_iso()
+                    _emit_runner(
+                        manifest,
+                        _queue_progress(manifest, current_index=i, stage="turn",
+                                        in_flight_run_id=run["run_id"], active=True),
+                        f"[{run['run_id']}] FAILED — {run['note']}",
+                    )
+                    continue
+            elif run["condition"] == "tiers":
+                try:
+                    payload = sessions_queue.tier_payload(
+                        provider=run.get("tier_provider") or "",
+                        low=run.get("tier_low") or "",
+                        mid=run.get("tier_mid") or "",
+                        high=run.get("tier_high") or "",
+                        agent_tiers=run.get("agent_tiers") or {},
+                        topology=run_topology)
+                except Exception as exc:
+                    run["status"] = "failed"
+                    run["note"] = f"per-agent tier condition invalid: {exc}"
                     run["finished_at"] = _web_now_iso()
                     _emit_runner(
                         manifest,
@@ -2540,6 +2593,18 @@ async def _run_queue_in_background(manifest: dict) -> None:
         # live orphan: write_updates only rewrites the .env / settings files,
         # which a mid-flight dispatch_turn has already read and will not
         # re-read.  Best-effort — a failure is logged, not fatal.
+        # Same reasoning for SYSTEM_TOPOLOGY: a queue whose last run was
+        # 5-agent must not leave the operator's next normal chat on the
+        # Conductor.  Restored BEFORE the routing so that, if one of the two
+        # writes fails, the system is left on the operator's own topology
+        # rather than on the last run's.
+        if baseline_topology is not None:
+            try:
+                await run_in_threadpool(
+                    settings_editor.write_internal,
+                    {"SYSTEM_TOPOLOGY": int(baseline_topology)})
+            except Exception:
+                logger.exception("[QUEUE] topology restore failed")
         if baseline is not None:
             try:
                 await run_in_threadpool(
@@ -2766,11 +2831,39 @@ def _capture_routing_baseline() -> "dict | None":
         return None
 
 
+def _capture_topology_baseline() -> "int | None":
+    """Snapshot ``SYSTEM_TOPOLOGY`` so the runner can restore it when the
+    queue ends.  Returns ``None`` if it cannot be read (topology is then
+    left wherever the last run put it)."""
+    try:
+        return int(settings_llm_routing.current_topology())
+    except Exception:
+        logger.exception("[QUEUE] could not capture topology baseline")
+        return None
+
+
 @app.get("/api/queue/conditions")
 def api_queue_conditions() -> dict:
-    """LLM-condition dropdown options for the Sessions Queue editor."""
+    """Editor metadata for the Sessions Queue: the condition dropdown, the
+    per-topology agent rows the tier panel renders, and the model pre-fills
+    each provider drops into the three tier boxes.
+
+    Served from ``sessions_queue`` rather than hard-coded in the client so
+    the agent list can never drift from the hubs it mirrors."""
     _require_auth()
-    return {"conditions": sessions_queue.list_conditions()}
+    return {
+        "conditions": sessions_queue.list_conditions(),
+        "topologies": list(sessions_queue.TOPOLOGIES),
+        "default_topology": sessions_queue.DEFAULT_TOPOLOGY,
+        "agents_by_topology": {
+            str(topo): [{"key": k, "label": lab,
+                         "inert": sessions_queue.INERT_IN_QUEUE.get(k, "")}
+                        for k, lab in rows]
+            for topo, rows in sessions_queue.AGENTS_BY_TOPOLOGY.items()
+        },
+        "tiers": list(sessions_queue.TIERS),
+        "tier_defaults": sessions_queue.TIER_DEFAULTS,
+    }
 
 
 @app.get("/api/queue/state")
@@ -2827,6 +2920,8 @@ async def api_queue_start(body: QueueStartIn) -> dict:
         # Keep the baseline captured at the original start if present.
         if not manifest.get("baseline_routing"):
             manifest["baseline_routing"] = _capture_routing_baseline()
+        if manifest.get("baseline_topology") is None:
+            manifest["baseline_topology"] = _capture_topology_baseline()
     else:
         # Fresh start: the persisted draft is the source of truth (its runs
         # match their staged images by stage_id).  The frontend flushes the
@@ -2849,6 +2944,7 @@ async def api_queue_start(body: QueueStartIn) -> dict:
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc))
         manifest["baseline_routing"] = _capture_routing_baseline()
+        manifest["baseline_topology"] = _capture_topology_baseline()
         # GC staging folders no longer referenced by this queue.
         try:
             keep = {r["stage_id"] for r in manifest["runs"] if r.get("stage_id")}
@@ -2865,6 +2961,13 @@ async def api_queue_start(body: QueueStartIn) -> dict:
                 status_code=400,
                 detail=(f"Run {r.get('run_id')!r}: single-model provider "
                         f"{r.get('single_provider')!r} has no API key set in "
+                        f"the environment."))
+        if r.get("condition") == "tiers" and not sessions_queue.provider_key_present(
+                r.get("tier_provider")):
+            raise HTTPException(
+                status_code=400,
+                detail=(f"Run {r.get('run_id')!r}: per-agent tier provider "
+                        f"{r.get('tier_provider')!r} has no API key set in "
                         f"the environment."))
 
     _QUEUE_IN_FLIGHT = True

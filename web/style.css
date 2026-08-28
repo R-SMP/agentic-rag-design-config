@@ -4310,6 +4310,47 @@ button.danger:hover { background: #3a1d1d; }
   color: var(--muted);
 }
 .sq-run-single label:last-child { flex: 1 1 auto; }
+.sq-run-topo { flex: 0 0 auto; }
+/* Per-agent tier panel (condition = "tiers"). */
+.sq-run-tiers {
+  margin-bottom: 8px;
+  padding: 8px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+}
+.sq-tier-models { display: flex; gap: 10px; flex-wrap: wrap; }
+.sq-tier-models label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--muted);
+  flex: 1 1 140px;
+}
+.sq-tier-agents {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+  gap: 6px 12px;
+  margin-top: 10px;
+  padding-top: 8px;
+  border-top: 1px dashed var(--border);
+}
+.sq-tier-agents label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--muted);
+}
+.sq-tier-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sq-tier-inert { font-style: italic; opacity: 0.65; }
+.sq-tier-pick { flex: 0 0 auto; }
+.sq-tier-warn { margin: 8px 0 0; font-size: 12px; color: #ffcf8f; }
 .sq-run-query { width: 100%; box-sizing: border-box; resize: vertical; }
 .sq-run-adv-box {
   display: grid;
@@ -4351,6 +4392,9 @@ button.danger:hover:not(:disabled) { filter: brightness(1.1); }
 .sq-status { font-size: 13px; color: var(--muted); min-height: 18px; }
 .sq-status.ok { color: #4caf78; }
 .sq-status.err { color: var(--error); }
+/* A queue file that named something this build no longer offers: not an
+   error (nothing failed) but the operator must act before starting. */
+.sq-status.warn { color: #ffcf8f; }
 
 .sq-progress-meta { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
 .sq-progress-strip { display: flex; flex-wrap: wrap; gap: 8px; }

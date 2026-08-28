@@ -91,31 +91,195 @@ def _now_iso() -> str:
 # (and any unknown id) maps to ``None`` — leave whatever routing is
 # already configured, change nothing.
 #
-# Representative models for the global-override conditions are the ones
-# Test 1's OpenAI / Anthropic runs use; add rows here (or a full per-agent
-# editor later) when more conditions are needed.  The two Subj-5 presets
-# are built from ``workflow_settings.llm_defaults.PROPOSED_WORKFLOWS`` so
-# they never drift from the Workflow-Settings preset buttons.
+# Every condition other than ``current`` builds its payload PER RUN from
+# that run's own fields, so a queue file is self-describing and no shared
+# preset can silently drift out from under it.
 
 _VALID_PROVIDERS = {"openai", "anthropic", "google", "openrouter"}
 
 
-def _subj5_payload(preset: dict) -> dict:
-    """Per-agent (mode=individual) payload from a PROPOSED_WORKFLOWS entry."""
-    provider = preset["provider"]
-    models: dict[str, str] = preset["models"]
-    agents = [
-        {"key": key, "override_provider": provider, "override_model": model}
-        for key, model in models.items()
-    ]
+# ---------------------------------------------------------------------------
+# Topology + per-agent tiering
+# ---------------------------------------------------------------------------
+# Which agent rows a run shows, per ``SYSTEM_TOPOLOGY``.  Mirrors the
+# ``_agents_by_key`` map each hub builds (orchestrator.py / conductor.py /
+# architect.py) PLUS the two agents that are constructed but never routed to:
+#
+#   * ``context_pruner``  — built in all three hubs from its own
+#     ``build_llm("context_pruner")`` call; fires only when a history crosses
+#     the pruning threshold, and only if ``CONTEXT_PRUNER_ENABLED``.  On a
+#     build error it silently shares the hub's LLM, so an unassigned pruner
+#     is quiet rather than fatal — which is exactly why it needs a row.
+#   * ``database_handler`` — built in all three hubs, but it runs ONLY
+#     post-session on a save.  The queue's stage 6 resets via
+#     ``_end_session(False)``, so a QUEUED run never invokes it.  Its row
+#     exists so a queue file fully specifies the system; the UI labels it
+#     inert (see :data:`INERT_IN_QUEUE`).
+TOPOLOGIES: "tuple[int, ...]" = (7, 5, 3)
+DEFAULT_TOPOLOGY: int = 7
+
+AGENTS_BY_TOPOLOGY: "dict[int, list[tuple[str, str]]]" = {
+    7: [
+        ("receptionist",         "Receptionist"),
+        ("orchestrator",         "Orchestrator (hub)"),
+        ("user_input_inspector", "User Input Inspector"),
+        ("planner",              "Planner"),
+        ("dc_input_creator",     "Input Creator"),
+        ("dc_input_inspector",   "Input Inspector"),
+        ("dc_output_inspector",  "Output Inspector"),
+        ("tool_caller",          "Tool Caller"),
+        ("context_pruner",       "Context Pruner"),
+        ("database_handler",     "Database Handler"),
+    ],
+    5: [
+        ("receptionist",         "Receptionist"),
+        ("conductor",            "Conductor (hub)"),
+        ("user_input_inspector", "User Input Inspector"),
+        ("creator",              "Creator"),
+        ("tool_caller",          "Tool Caller"),
+        ("dc_output_inspector",  "Output Inspector"),
+        ("context_pruner",       "Context Pruner"),
+        ("database_handler",     "Database Handler"),
+    ],
+    3: [
+        ("receptionist",         "Receptionist"),
+        ("architect",            "Architect (hub)"),
+        ("designer",             "Designer"),
+        ("dc_output_inspector",  "Output Inspector"),
+        ("context_pruner",       "Context Pruner"),
+        ("database_handler",     "Database Handler"),
+    ],
+}
+
+# Agents that exist in a topology but are never invoked by a QUEUED run.
+# Surfaced as a hint beside the row so an operator never reads "this agent
+# produced nothing" as a broken assignment.
+INERT_IN_QUEUE: "dict[str, str]" = {
+    "database_handler":
+        "not invoked by queued runs — stage 6 resets without a DH save",
+}
+
+
+def _all_agent_keys() -> "list[str]":
+    """Union of every topology's rows, in first-seen order.
+
+    Equals the 14 keys in ``workflow_settings.llm_routing.AGENT_SPEC``.
+    Built here rather than imported so this module stays importable without
+    dotenv / the settings editor — the same reason the classifier imports
+    its provider lazily.  ``smoke_test_llm_routing.py`` asserts the two
+    lists agree, so they cannot drift silently.
+    """
+    out: "list[str]" = []
+    for topo in TOPOLOGIES:
+        for key, _label in AGENTS_BY_TOPOLOGY[topo]:
+            if key not in out:
+                out.append(key)
+    return out
+
+
+ALL_AGENT_KEYS: "list[str]" = _all_agent_keys()
+
+TIERS: "tuple[str, ...]" = ("low", "mid", "high")
+
+# What the editor drops into the three model boxes when a provider is
+# picked.  Free text thereafter: model names are validated nowhere in this
+# codebase, so a newly-shipped model needs no code change here either.
+TIER_DEFAULTS: "dict[str, dict[str, str]]" = {
+    "openai":     {"low": "gpt-5.4-mini",     "mid": "gpt-5.4",
+                   "high": "gpt-5.5"},
+    "anthropic":  {"low": "claude-haiku-4-5", "mid": "claude-sonnet-4-6",
+                   "high": "claude-opus-4-8"},
+    "google":     {"low": "", "mid": "", "high": ""},
+    "openrouter": {"low": "", "mid": "", "high": ""},
+}
+
+
+def normalize_topology(value: Any, *, label: str = "topology") -> int:
+    """Coerce ``value`` to a supported topology.
+
+    Missing / blank → :data:`DEFAULT_TOPOLOGY`, because a draft or bundle
+    written before the field existed carries none.  Present but unsupported
+    → ``ValueError``: burning a night on the wrong topology because a
+    bundle carried garbage is exactly what this check exists to prevent.
+    """
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return DEFAULT_TOPOLOGY
+    try:
+        n = int(value)
+    except (TypeError, ValueError):
+        raise ValueError(
+            f"{label} must be one of {list(TOPOLOGIES)}, got {value!r}.")
+    if n not in TOPOLOGIES:
+        raise ValueError(
+            f"{label} must be one of {list(TOPOLOGIES)}, got {value!r}.")
+    return n
+
+
+def agent_rows_for(topology: Any) -> "list[tuple[str, str]]":
+    """``[(agent_key, label)]`` for ``topology`` — the rows a run's per-agent
+    tier panel shows, and the only agents that run may assign."""
+    return list(AGENTS_BY_TOPOLOGY[normalize_topology(topology)])
+
+
+def tier_payload(*, provider: str, low: str, mid: str, high: str,
+                 agent_tiers: "dict[str, str] | None",
+                 topology: Any) -> dict:
+    """Per-agent (mode=individual) payload from one run's tier assignment.
+
+    ``agent_tiers`` maps each of ``topology``'s agent keys to one of
+    :data:`TIERS`; that tier then selects one of the three model strings.
+
+    EVERY key in :data:`ALL_AGENT_KEYS` appears in the result — the active
+    topology's agents with their resolved model, all the others with an
+    EMPTY override, which ``llm_routing.write_updates`` treats as "clear
+    it".  Without that, a 7-agent run's Planner / Input-Creator overrides
+    would still be sitting in ``agents/<agent>/.env`` through the next
+    5-agent run: inert there (those agents are never constructed), but live
+    again the moment the operator opens a normal 7-agent chat.
+
+    Raises ``ValueError`` on an unknown provider, an unsupported topology,
+    an agent with no tier chosen, or a chosen tier whose model box is blank.
+    """
+    p = (provider or "").strip().lower()
+    if p not in _VALID_PROVIDERS:
+        raise ValueError(
+            f"tier provider must be one of {sorted(_VALID_PROVIDERS)}, "
+            f"got {provider!r}.")
+    topo = normalize_topology(topology)
+    models = {"low":  (low or "").strip(),
+              "mid":  (mid or "").strip(),
+              "high": (high or "").strip()}
+    tiers = {str(k): str(v or "").strip().lower()
+             for k, v in (agent_tiers or {}).items()}
+
+    rows: "list[dict[str, str]]" = []
+    active = {key for key, _ in AGENTS_BY_TOPOLOGY[topo]}
+    for key, label in AGENTS_BY_TOPOLOGY[topo]:
+        tier = tiers.get(key, "")
+        if tier not in TIERS:
+            raise ValueError(
+                f"{label} has no tier selected — pick low, mid or high for "
+                f"every agent of the {topo}-agent topology.")
+        if not models[tier]:
+            raise ValueError(
+                f"{label} is set to the {tier} tier, but the {tier}-tier "
+                f"model box is empty.")
+        rows.append({"key": key, "override_provider": p,
+                     "override_model": models[tier]})
+    for key in ALL_AGENT_KEYS:
+        if key not in active:
+            rows.append({"key": key, "override_provider": "",
+                         "override_model": ""})
+
     # ``shared`` must be a valid, non-empty provider+model even though the
-    # per-agent overrides govern under mode=individual — use any model
-    # from the preset as the harmless fallback.
-    shared_model = models.get("receptionist") or next(iter(models.values()))
+    # per-agent overrides govern under mode=individual.  At least one tier
+    # model is non-empty — every topology has agents, and each one's tier
+    # was just validated as non-blank.
+    shared_model = models["mid"] or models["low"] or models["high"]
     return {
         "mode":   "individual",
-        "shared": {"provider": provider, "model": shared_model},
-        "agents": agents,
+        "shared": {"provider": p, "model": shared_model},
+        "agents": rows,
     }
 
 
@@ -135,38 +299,24 @@ def single_model_payload(provider: str, model: str) -> dict:
 
 
 def _conditions() -> "list[dict[str, Any]]":
-    """Build the ordered condition list (id, label, payload).
+    """The ordered condition list (id, label, payload).
 
-    Built lazily so a broken/absent ``llm_defaults`` never stops the
-    module importing — the runner degrades to just ``current`` + ``single``.
-    ``single`` carries no static payload: the runner builds it per run from
-    that run's ``single_provider`` / ``single_model`` fields.
+    Neither non-``current`` condition carries a static payload — both are
+    built per run from that run's OWN fields: ``single`` from
+    ``single_provider`` / ``single_model``, ``tiers`` from the run's
+    provider, its three tier models and its per-agent tier picks.  A queue
+    file therefore fully describes the routing it will apply.
     """
-    out: list[dict[str, Any]] = [
-        {"id": "current", "label": "Current settings (no change)", "payload": None},
+    return [
+        {"id": "current", "label": "Current settings (no change)",
+         "payload": None},
         {"id": "single",
          "label": "Single model — all agents (pick provider + model below)",
          "payload": None},
+        {"id": "tiers",
+         "label": "Per-agent tiers — pick provider + low/mid/high models",
+         "payload": None},
     ]
-    try:
-        from workflow_settings.llm_defaults import PROPOSED_WORKFLOWS
-        by_id = {p.get("id"): p for p in PROPOSED_WORKFLOWS}
-        if "openai" in by_id:
-            out.append({
-                "id": "subj5-openai",
-                "label": "Subj 5 · per-agent mix (OpenAI)",
-                "payload": _subj5_payload(by_id["openai"]),
-            })
-        if "anthropic" in by_id:
-            out.append({
-                "id": "subj5-anthropic",
-                "label": "Subj 5 · per-agent mix (Anthropic)",
-                "payload": _subj5_payload(by_id["anthropic"]),
-            })
-    except Exception:
-        # Fall through with just current + single.
-        pass
-    return out
 
 
 def list_conditions() -> "list[dict[str, str]]":
@@ -508,6 +658,32 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
                 single_model_payload(single_provider, single_model)
             except ValueError as exc:
                 raise ValueError(f"Run #{i + 1}: {exc}")
+
+        # Topology is INDEPENDENT of the condition — every run carries one,
+        # including ``current`` and ``single``, because the runner writes
+        # SYSTEM_TOPOLOGY before each build regardless of how that run's
+        # models are chosen.  (Raises with its own "Run #N topology …"
+        # message, so it is deliberately not re-wrapped.)
+        topo = normalize_topology(r.get("topology"),
+                                  label=f"Run #{i + 1} topology")
+
+        tier_provider = (r.get("tier_provider") or "").strip().lower()
+        tier_low = (r.get("tier_low") or "").strip()
+        tier_mid = (r.get("tier_mid") or "").strip()
+        tier_high = (r.get("tier_high") or "").strip()
+        agent_tiers_raw = r.get("agent_tiers") or {}
+        if not isinstance(agent_tiers_raw, dict):
+            raise ValueError(f"Run #{i + 1}: agent_tiers must be an object.")
+        agent_tiers = {str(k): str(v or "") for k, v in agent_tiers_raw.items()}
+        if cond == "tiers":
+            # Validate now: a half-assigned tier panel must fail at Start,
+            # never at 3am on the run that happens to use it.
+            try:
+                tier_payload(provider=tier_provider, low=tier_low,
+                             mid=tier_mid, high=tier_high,
+                             agent_tiers=agent_tiers, topology=topo)
+            except ValueError as exc:
+                raise ValueError(f"Run #{i + 1}: {exc}")
         rid = (r.get("run_id") or "").strip() or f"run-{i + 1:02d}"
         stage_id = (r.get("stage_id") or "").strip() or None
 
@@ -518,8 +694,14 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
             "condition":        cond,
             "query":            query,
             "stage_id":         stage_id,
+            "topology":         topo,
             "single_provider":  single_provider or None,
             "single_model":     single_model or None,
+            "tier_provider":    tier_provider or None,
+            "tier_low":         tier_low or None,
+            "tier_mid":         tier_mid or None,
+            "tier_high":        tier_high or None,
+            "agent_tiers":      agent_tiers or None,
             "expected_output":  (r.get("expected_output") or "").strip() or None,
             "continue_message": (r.get("continue_message") or "").strip() or None,
             "timeout_min":      _pos_int_or_none(r.get("timeout_min")),

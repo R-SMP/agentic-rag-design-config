@@ -173,6 +173,16 @@ def _topology_now() -> int:
     return 7
 
 
+def current_topology() -> int:
+    """Public alias for :func:`_topology_now`.
+
+    The Sessions Queue writes ``SYSTEM_TOPOLOGY`` per run and restores the
+    operator's value when the queue ends, so it needs to read the same
+    disk-fresh value the chart reports — without reaching into a private.
+    """
+    return _topology_now()
+
+
 def read_state() -> dict[str, Any]:
     """Return the full read payload consumed by the routing UI.
 
