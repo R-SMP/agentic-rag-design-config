@@ -415,9 +415,10 @@ CONTEXT_PRUNER_THRESHOLD_TOKENS: int = 80000
 # as-is so the agent still has its live working context.
 #
 # The cut point is automatically extended forward to avoid splitting
-# an ``AIMessage(tool_calls=...)`` from its matching ``ToolMessage``
-# — tool-call pairs are never orphaned, even if that means keeping
-# slightly more than ``CONTEXT_PRUNER_KEEP_LAST_MESSAGES`` messages.
+# an ``AIMessage(tool_calls=...)`` from its matching ``ToolMessage``:
+# the ToolMessage is pulled back into the summarised part, so a pair is
+# never orphaned — even if that means keeping slightly FEWER than
+# ``CONTEXT_PRUNER_KEEP_LAST_MESSAGES`` messages verbatim.
 #
 # Valid values: any positive int (recommended 4-12; 6 covers a
 # typical complete turn)

@@ -65,17 +65,21 @@ logger = logging.getLogger("propeller_agent")
 
 _PRUNER_BASE = """\
 You are the Context Pruner for a propeller design configurator system.
-Your output REPLACES the history you are given, so it must be self-
-contained: a reader seeing only it must be able to make the next correct
-agent decision.
+Your output REPLACES the history you are given: whatever you leave out is
+gone for good, so anything the next decision needs must survive in it.
+(The agent's own system prompt is never part of your input and is never
+lost; each pass below says what else the reader still sees.)
 
 KEEP the signal — current design state (latest parameters, mesh / render,
-assessment), specific values + attempt ids, key decisions and their
-reasoning, the most recent error / unresolved issue, and the pending
-instruction driving the next turn.  DROP or CONDENSE the noise —
-boilerplate and restated instructions, verbose tool arguments / raw
-outputs (keep only key metrics + warnings), file paths, superseded
-attempts, and resolved exchanges.
+assessment), specific values + attempt ids, the CURRENT paths the hand-off
+carries (attempt folder, parameters file, render images, extracted
+inputs) — an agent may not guess a path, so a dropped one is
+unrecoverable — any ``=== STANDING DIRECTIVES ===`` block VERBATIM, key
+decisions and their reasoning, the most recent error / unresolved issue,
+and the pending instruction driving the next turn.  DROP or CONDENSE the
+noise — boilerplate and restated instructions, verbose tool arguments /
+raw outputs (keep only key metrics + warnings), superseded attempts and
+their paths, and resolved exchanges.
 
 Output: keep chronological order; a numbered list of
 ``<role>: <condensed content>`` works well."""
@@ -94,23 +98,25 @@ strokes are fine (e.g. "attempted N fixes; the issue was X; resolution Y")."""
 FINE_SUMMARY_PROMPT = _PRUNER_BASE + """
 
 ## This pass — FINE (tier 2)
-The older history is already coarsely summarised; you get only the MOST
-RECENT window, which drives the imminent decision.  Be PRECISE — keep
-specific values, attempt ids, the last decision, and the last error
-VERBATIM; condense only boilerplate.  When unsure about a value, KEEP it."""
+The older history is already coarsely summarised above your output; you
+get only the MOST RECENT window, which drives the imminent decision.
+Be PRECISE — keep specific values, attempt ids, the last decision, and
+the last error VERBATIM; condense only boilerplate.  When unsure about
+a value, KEEP it."""
 
 # Tier 3 — ultra-compact super-summary; fires when tiers 1+2 together
 # still overflow.  Input is the two prior summaries concatenated.
 ULTRA_COMPACT_SUMMARY_PROMPT = _PRUNER_BASE + """
 
 ## This pass — ULTRA-COMPACT (tier 3, final)
-Two prior summaries (coarse + fine) together STILL overflow; your input is
-both concatenated.  Merge them into ONE ultra-compact summary keeping
-ONLY: (1) current design state, (2) the pending task / question, (3) the
-single most-critical decision, (4) the single most-recent unresolved
-issue.  Drop everything else — earlier attempts, resolved errors,
-superseded decisions, all narrative.  Output terse short paragraphs (your
-input is summaries, not a role-tagged transcript)."""
+Your input is the coarse + fine summaries concatenated; they STILL
+overflow.  Your output is ALL the reader gets, so it must stand alone.
+Merge them into ONE ultra-compact summary keeping ONLY: (1) current design
+state, its current paths, and any standing directive, (2) the pending task
+/ question, (3) the single most-critical decision, (4) the single
+most-recent unresolved issue.  Drop everything else — earlier attempts,
+resolved errors, superseded decisions, all narrative.  Output terse short
+paragraphs."""
 
 
 # Public alias retained for any external caller that imported the previous
@@ -139,23 +145,11 @@ class ContextPruner:
     def run(self, messages_text: str, *, tier: int = 1) -> str:
         if tier == 2:
             system_prompt = FINE_SUMMARY_PROMPT
-            user_content = (
-                "Summarise the following MOST RECENT window of the "
-                "conversation (the rest has already been coarsely "
-                "summarised separately).  Be precise — retain "
-                "specific values, attempt numbers, last decisions, "
-                "and last errors verbatim where possible:\n\n"
-                f"{messages_text}"
-            )
+            user_content = f"MOST RECENT window:\n\n{messages_text}"
         elif tier == 3:
             system_prompt = ULTRA_COMPACT_SUMMARY_PROMPT
             user_content = (
-                "The two summaries below cover the same conversation "
-                "at different granularities.  Merge them into ONE "
-                "ultra-compact super-summary; keep only the four "
-                "items listed in your system prompt and drop "
-                "everything else:\n\n"
-                f"{messages_text}"
+                f"Coarse + fine summaries to merge:\n\n{messages_text}"
             )
         else:
             system_prompt = COARSE_SUMMARY_PROMPT

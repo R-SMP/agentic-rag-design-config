@@ -239,24 +239,27 @@ class BaseChainAgent:
                 )
 
         try:
-            serialised_full = _serialise_messages(self.messages)
-            n_before = count_tokens(serialised_full)
-            # Count the system prompt too: it is re-sent on EVERY turn and is
-            # up to ~30k tokens (Planner), so leaving it out made the same
-            # nominal threshold mean very different real context per agent.
+            # Constant per-turn overhead that lives OUTSIDE self.messages
+            # but is re-sent on EVERY turn: this agent's system prompt (up
+            # to ~30k tokens on the Planner) and the DC-parameter primer
+            # (~1k; 0 for agents that receive none, and when the flag is
+            # off).  Counted ONCE here and added to EVERY history
+            # measurement below, so tiers 1, 2 and 3 all weigh the same
+            # quantity against the same threshold.  Leaving it out of the
+            # post-prune counts made tiers 2 and 3 under-fire and made the
+            # final "still over budget" warning understate real context.
+            overhead_tok = 0
             _sys_prompt = getattr(self, "system_prompt", "") or ""
             if _sys_prompt:
-                n_before += count_tokens(_sys_prompt)
-            # And the DC-parameter primer, for the agents that receive it:
-            # like the system prompt it is re-sent every turn but lives
-            # OUTSIDE self.messages, so without this term its ~1k tokens
-            # would sit invisibly beyond the threshold arithmetic.  0 for
-            # non-primer agents and when the flag is off.
+                overhead_tok += count_tokens(_sys_prompt)
             try:
                 from agents.shared.dc_primer import primer_tokens_for
-                n_before += primer_tokens_for(self.AGENT_KEY)
+                overhead_tok += primer_tokens_for(self.AGENT_KEY)
             except Exception:
                 pass
+            n_before = count_tokens(
+                _serialise_messages(self.messages)
+            ) + overhead_tok
         except Exception as exc:
             logger.warning(
                 f"[CP]  token count failed for {self.AGENT_KEY}: {exc}"
@@ -338,7 +341,9 @@ class BaseChainAgent:
         self.messages = new_history
 
         try:
-            n_after = count_tokens(_serialise_messages(self.messages))
+            n_after = count_tokens(
+                _serialise_messages(self.messages)
+            ) + overhead_tok
         except Exception:
             n_after = -1
 
@@ -440,7 +445,7 @@ class BaseChainAgent:
                         try:
                             n_after_tier2 = count_tokens(
                                 _serialise_messages(self.messages)
-                            )
+                            ) + overhead_tok
                         except Exception:
                             n_after_tier2 = -1
                         logger.info(
@@ -509,7 +514,7 @@ class BaseChainAgent:
                     try:
                         n_after_tier3 = count_tokens(
                             _serialise_messages(self.messages)
-                        )
+                        ) + overhead_tok
                     except Exception:
                         n_after_tier3 = -1
                     logger.info(
