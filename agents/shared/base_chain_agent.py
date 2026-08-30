@@ -330,6 +330,28 @@ class BaseChainAgent:
             _publish_cp_active("Context Pruner", display)
             return
 
+        # Anti-expansion guard, the same one tiers 2 and 3 already apply:
+        # if the summary is not SMALLER than the prefix it would replace,
+        # installing it would grow the context instead of shrinking it.
+        # Tier 1 had no such check, so a pruner LLM that expanded rather
+        # than condensed silently made the history bigger (measured at
+        # ~3.5k -> ~4.7k tokens on a synthetic run).  Fail open: leave
+        # ``self.messages`` untouched, exactly as the empty-summary path
+        # above does.
+        try:
+            n_summary = count_tokens(summary)
+            n_prefix = count_tokens(prefix_text)
+        except Exception:
+            n_summary = n_prefix = -1
+        if not (0 < n_summary < n_prefix):
+            logger.warning(
+                f"[CP]  tier-1 summary REJECTED for {self.AGENT_KEY} "
+                f"(n_summary={n_summary} >= n_prefix={n_prefix}); "
+                f"skipping prune."
+            )
+            _publish_cp_active("Context Pruner", display)
+            return
+
         coarse_block = SystemMessage(
             content=(
                 f"SUMMARY OF EARLIER CONVERSATION (Context Pruner tier 1; "
