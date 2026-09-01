@@ -46,9 +46,11 @@ from agents.shared.routing_tools import (
     finish_routing_retry,
     log_tool_call,
 )
+from agents.shared.topology import hub_key as _hub_key
+from agents.shared.topology import topology as _topology
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
-    READ_INPUTS_DOC_DCOI,
+    read_inputs_doc,
     build_read_user_inputs,
     build_user_inputs_tools,
     dispatch_user_inputs_tool,
@@ -205,7 +207,7 @@ class DCOutputInspector(BaseChainAgent):
             )
         self.dcoi_comparison_mode = session.dcoi_comparison_mode
         self._read_inputs_tool = build_read_user_inputs(
-            doc=READ_INPUTS_DOC_DCOI)
+            doc=read_inputs_doc(self.AGENT_KEY))
         self._read_extraction_tool = read_extracted_inputs
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
@@ -274,7 +276,11 @@ class DCOutputInspector(BaseChainAgent):
         token_usage.begin_turn("DCOI")
         self._pending_hop = None
         self._routing_retry_used = False
-        text = f"Hand-off from Tool Caller:\n{message}"
+        # Under topology 5 the Planner can call the DCOI directly, so the
+        # sender is not always the Tool Caller.  Topology 7's wording is
+        # unchanged.
+        sender = "Tool Caller" if _topology() == 7 else "previous agent"
+        text = f"Hand-off from {sender}:\n{message}"
         self.messages.append(HumanMessage(content=text))
 
         for _ in range(MAX_DCOI_STEPS):
@@ -295,7 +301,7 @@ class DCOutputInspector(BaseChainAgent):
                 if begin_routing_retry(self, final, "DCOI"):
                     continue
                 return AgentHop(
-                    "orchestrator",
+                    _hub_key(),
                     "Error: DC Output Inspector produced a response with no "
                     "routing tool call — it wrote prose but did not invoke "
                     "call_tool_caller / call_orchestrator, so the pipeline "
@@ -370,7 +376,7 @@ class DCOutputInspector(BaseChainAgent):
                 return self._pending_hop
 
         return AgentHop(
-            "orchestrator",
+            _hub_key(),
             "Error: DC Output Inspector reached the step limit without routing.",
         )
 

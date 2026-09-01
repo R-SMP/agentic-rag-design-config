@@ -49,9 +49,10 @@ from agents.shared.routing_tools import (
     finish_routing_retry,
     log_tool_call,
 )
+from agents.shared.topology import hub_key as _hub_key
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
-    READ_INPUTS_DOC_PLANNER,
+    read_inputs_doc,
     build_read_user_inputs,
 )
 from agents.step_caps import MAX_PLANNER_STEPS
@@ -131,7 +132,7 @@ class Planner(BaseChainAgent):
         # below resolves it via _tools_by_name like any utility tool);
         # the Planner holds NO image tools and no per-file text tools.
         read_user_inputs = build_read_user_inputs(
-            doc=READ_INPUTS_DOC_PLANNER,
+            doc=read_inputs_doc(self.AGENT_KEY),
             direct_provider=getattr(self, "provider", "openai"),
         )
         all_tools = (
@@ -200,7 +201,7 @@ class Planner(BaseChainAgent):
                     continue
                 self._persist_plan(response, pending_hop=None)
                 return AgentHop(
-                    "orchestrator",
+                    _hub_key(),
                     "Error: Planner produced a response with no routing tool "
                     "call — it wrote prose but did not invoke "
                     "call_user_input_inspector or call_orchestrator, so the "
@@ -250,7 +251,7 @@ class Planner(BaseChainAgent):
                 return self._pending_hop
 
         return AgentHop(
-            "orchestrator",
+            _hub_key(),
             "Error: Planner reached step limit without routing.",
         )
 

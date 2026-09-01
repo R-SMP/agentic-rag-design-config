@@ -77,8 +77,6 @@ DEFAULT_AGENTS: tuple[str, ...] = (
     "dc_output_inspector",
     # 5-agent topology: the Creator inherits the DCIC's + DCII's image
     # tools; the Conductor inherits the Planner's ``view_images``.
-    "conductor",
-    "creator",
     # 3-agent topology.  The Architect PERCEIVES — it absorbs the UII,
     # so it binds the image tools and needs OCR text with them.
     "architect",

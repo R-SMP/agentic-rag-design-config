@@ -52,6 +52,8 @@ from agents.shared.routing_tools import (
     stuck_escalation,
     tool_call_signature,
 )
+from agents.shared.topology import hub_key as _hub_key
+from agents.shared.topology import topology as _topology
 from agents.shared.session import AgentState, Session
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
@@ -212,7 +214,13 @@ class DCInputCreator(BaseChainAgent):
         token_usage.begin_turn("DCIC")
         self._pending_hop = None
         self._routing_retry_used = False
-        text = f"Hand-off from User Input Inspector:\n{message}"
+        # Topology 7's senders make "User Input Inspector" right often
+        # enough that its wording is left exactly as it was; topology 5's
+        # senders are the Planner, the Tool Caller and the DCOI, so it uses
+        # the agnostic wording the UII and Tool Caller already use.
+        sender = ("User Input Inspector" if _topology() == 7
+                  else "previous agent")
+        text = f"Hand-off from {sender}:\n{message}"
         self.messages.append(HumanMessage(content=text))
 
         seen_sigs: set[tuple[str, str]] = set()
@@ -235,7 +243,7 @@ class DCInputCreator(BaseChainAgent):
                 if begin_routing_retry(self, raw, "DCIC"):
                     continue
                 return AgentHop(
-                    "orchestrator",
+                    _hub_key(),
                     "Error: DC Input Creator produced a response with no "
                     "routing tool call — it wrote prose but did not invoke "
                     "call_dc_input_inspector / call_orchestrator / etc., so "
@@ -315,7 +323,7 @@ class DCInputCreator(BaseChainAgent):
                 return self._pending_hop
 
         return AgentHop(
-            "orchestrator",
+            _hub_key(),
             "Error: DC Input Creator reached step limit without routing.",
         )
 

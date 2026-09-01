@@ -1378,6 +1378,13 @@ function renderSettings(schema) {
     nameEl.textContent = f.name;
     main.appendChild(nameEl);
 
+    if (f.disabled && f.disabled_note) {
+      const note = document.createElement("div");
+      note.className = "setting-inert-note";
+      note.textContent = f.disabled_note;
+      main.appendChild(note);
+    }
+
     const helpText =
       f.help || (f.readonly && f.derived_note ? f.derived_note : "");
     if (helpText) {
@@ -1394,7 +1401,16 @@ function renderSettings(schema) {
 
     const ctrl = document.createElement("div");
     ctrl.className = "setting-control";
-    ctrl.appendChild(buildControl(f));
+    const control = buildControl(f);
+    if (f.disabled) {
+      // The value still PAINTS (so true/false stays readable) but nothing
+      // can change it.  Done here rather than inside buildControl so it
+      // covers every control type from one place.
+      ctrl.classList.add("inert");
+      const parts = [control, ...control.querySelectorAll("button,select,input")];
+      for (const el of parts) if ("disabled" in el) el.disabled = true;
+    }
+    ctrl.appendChild(control);
 
     row.appendChild(main);
     row.appendChild(ctrl);
@@ -1470,7 +1486,7 @@ function buildControl(f) {
 function collectChanges() {
   const values = {};
   for (const f of settingsState) {
-    if (f.readonly) continue;
+    if (f.readonly || f.disabled) continue;
     let cur = f.current;
     if (f.type === "int" || f.type === "float") {
       if (cur === "" || cur == null || isNaN(Number(cur))) {
@@ -1956,25 +1972,27 @@ const LR_BOXES_7 = [
 ];
 
 // 5-agent topology.  The Conductor takes the Orchestrator's central
-// position (it IS the hub) and the Creator takes the Input Creator's; the
-// Planner and Input Inspector boxes are gone, absorbed into them.  Laid
-// out as a straight vertical flow because without the Planner the
-// 7-agent's left column has nothing in it.
+// The Planner sits in the Orchestrator's slot because it IS the hub here,
+// and the UII / Output Inspector keep their 7-agent row beside it.  Only
+// two boxes are missing relative to the 7-agent chart -- the Orchestrator
+// and the Input Inspector -- so the layout is deliberately the 7-agent one
+// with those two removed and the Input Creator pulled into the centre
+// column above the Tool Caller it feeds.
 const LR_BOXES_5 = [
   { key: "user",                  role: "user",  x: 230, y: 10,  w: 140, h: 40,
     label: "User" },
   { key: "receptionist",          role: "agent", x: 230, y: 75,  w: 140, h: 95,
     label: "Receptionist" },
-  { key: "user_input_inspector",  role: "agent", x: 230, y: 200, w: 140, h: 95,
+  { key: "user_input_inspector",  role: "agent", x: 40,  y: 200, w: 140, h: 95,
     label: "User Input Inspector" },
-  { key: "conductor",             role: "agent", x: 230, y: 325, w: 140, h: 95,
-    label: "Conductor" },
-  { key: "creator",               role: "agent", x: 40,  y: 450, w: 140, h: 95,
-    label: "Creator" },
+  { key: "planner",               role: "agent", x: 230, y: 200, w: 140, h: 95,
+    label: "Planner" },
+  { key: "dc_output_inspector",   role: "agent", x: 420, y: 200, w: 140, h: 95,
+    label: "Output Inspector" },
+  { key: "dc_input_creator",      role: "agent", x: 230, y: 325, w: 140, h: 95,
+    label: "Input Creator" },
   { key: "tool_caller",           role: "agent", x: 230, y: 450, w: 140, h: 95,
     label: "Tool Caller" },
-  { key: "dc_output_inspector",   role: "agent", x: 420, y: 450, w: 140, h: 95,
-    label: "Output Inspector" },
   // Tools — display only.
   { key: "propeller_configurator",   role: "tool", x: 610, y: 275, w: 180, h: 60,
     label: "Propeller Configurator", toolPrefix: true },
@@ -2059,16 +2077,25 @@ const LR_ARROWS_7 = [
   { x1: 564, y1: 530, x2: 606, y2: 510 },
 ];
 
-// 5-agent: Receptionist -> UII -> Conductor -> Creator -> Tool Caller ->
-// Output Inspector -> Conductor.
+// 5-agent: the hub is the PLANNER.  Receptionist -> Planner, and the
+// Planner reaches the UII, the Input Creator and the Output Inspector
+// directly.  The chain runs Input Creator -> Tool Caller -> Output
+// Inspector, and the Output Inspector can go back to the Input Creator --
+// that diagonal is the precision-refine loop, which in the 7-agent system
+// went through the Orchestrator.  Note there is deliberately no
+// Planner <-> Tool Caller line: work enters the DC loop via the Input
+// Creator.
 const LR_ARROWS_5 = [
   { x1: 300, y1: 54,  x2: 300, y2: 71  },   // User - Receptionist
-  { x1: 300, y1: 174, x2: 300, y2: 196 },   // Receptionist - UII
-  { x1: 300, y1: 299, x2: 300, y2: 321 },   // UII - Conductor
-  { x1: 262, y1: 422, x2: 130, y2: 448 },   // Conductor - Creator
-  { x1: 184, y1: 497, x2: 226, y2: 497 },   // Creator - Tool Caller
-  { x1: 374, y1: 497, x2: 416, y2: 497 },   // Tool Caller - Output Inspector
-  { x1: 470, y1: 448, x2: 338, y2: 422 },   // Output Inspector - Conductor
+  { x1: 300, y1: 174, x2: 300, y2: 196 },   // Receptionist - Planner
+  { x1: 226, y1: 247, x2: 184, y2: 247 },   // Planner - UII
+  { x1: 374, y1: 247, x2: 416, y2: 247 },   // Planner - Output Inspector
+  { x1: 300, y1: 299, x2: 300, y2: 321 },   // Planner - Input Creator
+  { x1: 300, y1: 424, x2: 300, y2: 446 },   // Input Creator - Tool Caller
+  { x1: 374, y1: 480, x2: 462, y2: 299 },   // Tool Caller - Output Inspector
+  { x1: 416, y1: 270, x2: 374, y2: 330 },   // Output Inspector - Input Creator
+  { x1: 374, y1: 470, x2: 606, y2: 305 },   // Tool Caller - Propeller Configurator
+  { x1: 374, y1: 500, x2: 606, y2: 510 },   // Tool Caller - Blade Sections
 ];
 
 // 3-agent: Receptionist -> Architect -> Designer, and then the Designer

@@ -172,14 +172,14 @@ AGENT_DISPLAY: dict[str, str] = {
     "dc_output_inspector":  "DC Output Inspector",
     "orchestrator":         "Orchestrator",
     "receptionist":         "Receptionist",
-    # 5-agent topology: the Conductor merges Planner + Orchestrator, the
-    # Creator merges DC Input Creator + DC Input Inspector.  Listed here for
-    # EVERY topology because this table is the identity registry
-    # (``ROUTING_TOOL_NAMES`` below and ``session.KNOWN_AGENT_KEYS`` derive
-    # from it).  Nothing iterates it to BUILD agents, so a topology that does
-    # not use them simply never constructs them.
-    "conductor":            "Conductor",
-    "creator":              "Creator",
+    # NOTE this table is the identity registry: ``ROUTING_TOOL_NAMES`` below
+    # and ``session.KNOWN_AGENT_KEYS`` both derive from it, and
+    # ``AgentState`` validates against it.  Nothing iterates it to BUILD
+    # agents, so a topology that does not use a key simply never constructs
+    # it.  The 5-agent Conductor and Creator were removed on 2026-08-31 when
+    # topology 5 was rebuilt around the Planner and the DC Input Creator;
+    # ``session.RETIRED_AGENT_KEYS`` still tolerates them in archived
+    # snapshots.
     # 3-agent topology.  The Architect merges UII + Planner +
     # Orchestrator; the Designer merges DC Input Creator + Tool Caller
     # with NO validation stage.  The critic stays the DC Output
@@ -264,15 +264,6 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "completed, when you cannot proceed, or when the Orchestrator's "
         "incoming instruction told you to report back."
     ),
-    "call_conductor": (
-        "Return control to the Conductor — the hub that plans, routes and "
-        "approves.  The ``message`` argument IS the hand-off text it will "
-        "see — write it as free-form prose.  Use this when the natural "
-        "pipeline has completed, to CLARIFY when its directive was "
-        "ambiguous or could not be expressed in concrete parameter "
-        "values, or to ESCALATE when you are stuck; the Conductor is the "
-        "single point the chain returns to on any failure."
-    ),
     "call_architect": (
         "Return control to the Architect — the brain that reads the "
         "user's inputs, plans, routes and approves.  The ``message`` "
@@ -287,13 +278,6 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "authors the complete parameter set AND runs the generation / "
         "render tools itself, so state the qualitative direction you "
         "want (\"increase <param X>\") rather than concrete numbers."
-    ),
-    "call_creator": (
-        "Call the Creator.  The ``message`` argument IS the hand-off text "
-        "the Creator will see — write it as free-form prose.  It authors "
-        "the complete parameter set AND self-validates it before writing, "
-        "so state the qualitative direction you want (\"increase <param "
-        "X>\") rather than concrete numbers."
     ),
     "call_receptionist": (
         "Hand a user-facing result to the Receptionist, which composes "

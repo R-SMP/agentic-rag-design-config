@@ -26,13 +26,14 @@ def build_hub(session, *, llm_cache=None):
     exactly one of these per session rather than one per call site.
 
     The hub classes are imported lazily so that selecting one topology
-    never imports the other's agent modules — the 5-agent Conductor pulls
-    in the Creator, the 7-agent Orchestrator pulls in the Planner and the
-    two DC inspectors, and neither should pay for the other.
+    never imports the other's agent modules — the 7-agent Orchestrator
+    pulls in the Planner and both DC inspectors, while the 5-agent Planner5
+    pulls in neither of those two, and neither topology should pay for the
+    other.
     """
     if topology() == 5:
-        from agents.conductor import Conductor
-        return Conductor(session=session, llm_cache=llm_cache)
+        from agents.planner5 import Planner5
+        return Planner5(session=session, llm_cache=llm_cache)
     if topology() == 3:
         from agents.architect import Architect
         return Architect(session=session, llm_cache=llm_cache)

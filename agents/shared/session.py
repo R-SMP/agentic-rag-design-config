@@ -25,11 +25,14 @@ itself back, then convert each agent in turn.
 
 from __future__ import annotations
 
+import logging
 from dataclasses import asdict, dataclass, field
 from datetime import datetime, timezone
 from pathlib import Path
 
 from agents.shared.routing_tools import AGENT_DISPLAY
+
+logger = logging.getLogger("propeller_agent")
 
 
 # Defaults baked from workflow_settings/settings.py (the v4-REPL
@@ -45,12 +48,27 @@ _DEFAULT_PLANNER_FIRST              = False
 _DEFAULT_RENDER_LIBRARY             = "trimesh"
 
 
-# Every chain agent + Orchestrator + DH gets one AgentState entry
-# inside Session.agent_states.  These are the legal keys (matches
-# AGENT_DISPLAY in routing_tools.py plus 'database_handler').
+# Every chain agent + hub + DH gets one AgentState entry inside
+# Session.agent_states.  These are the legal keys (matches AGENT_DISPLAY in
+# routing_tools.py plus 'database_handler').
 KNOWN_AGENT_KEYS: frozenset[str] = frozenset(
     list(AGENT_DISPLAY.keys()) + ["database_handler"]
 )
+
+# Agent keys that USED to be legal.  Nothing constructs them any more, but a
+# session snapshot written while they existed still names them, and those
+# snapshots live in R2 for as long as the operator keeps them.  Accepting the
+# key on load is the difference between an old session opening read-only and
+# an old session being permanently unloadable.
+#
+# Retired 2026-08-31: the Conductor and the Creator, when topology 5 was
+# rebuilt as the 7-agent system minus the Orchestrator and minus the DC Input
+# Inspector.  Their work is done by 'planner' and 'dc_input_creator' now.
+#
+# Deliberately SEPARATE from KNOWN_AGENT_KEYS: a retired key must not become
+# a routing target, must not appear in a settings roster, and must not be
+# constructible.  It is only tolerated as inert data on a restored state.
+RETIRED_AGENT_KEYS: frozenset[str] = frozenset({"conductor", "creator"})
 
 
 @dataclass
@@ -94,6 +112,16 @@ class AgentState:
     current_plan: str = ""
 
     def __post_init__(self) -> None:
+        if self.agent_key in RETIRED_AGENT_KEYS:
+            # An archived snapshot naming an agent that no longer exists.
+            # Load it rather than raising: the state is inert (nothing looks
+            # the key up in _agents_by_key), and refusing would make every
+            # session saved before the agent was retired unopenable.
+            logger.warning(
+                "[SESSION]  restoring state for retired agent "
+                f"{self.agent_key!r}; it is inert and will not be invoked."
+            )
+            return
         if self.agent_key not in KNOWN_AGENT_KEYS:
             raise ValueError(
                 f"Unknown agent_key {self.agent_key!r}.  Must be one of "

@@ -140,6 +140,31 @@ def _topology_override(rel_path: str) -> Path | None:
 DCII_ENABLED = bool(_workflow_settings.DC_INSPECTOR_ENABLED)
 PLANNER_FIRST = bool(_workflow_settings.PLANNER_FIRST)
 
+
+# Both constants above are IMPORT-time snapshots, and both describe axes
+# that exist ONLY in the 7-agent system:
+#
+#   * topology 5 has no DC Input Inspector at all -- it was merged away --
+#     so <<DCII_ONLY>> text there names an agent that is never built;
+#   * topology 5's hub IS the Planner, so there is no Planner/UII ordering
+#     to choose and <<PF_ON>>/<<PF_OFF>> has nothing to select between.
+#
+# The two helpers below force both axes off for every topology that is not
+# 7, and read the TOPOLOGY fresh on each call because the Sessions Queue
+# switches topology between runs inside one process (see topology.py).  For
+# topology 7 they return the import-time constants UNCHANGED, so that
+# topology takes byte-for-byte the path it always took.
+
+
+def _dcii_effective() -> bool:
+    """Is the DC Input Inspector present in the ACTIVE topology?"""
+    return DCII_ENABLED if _topology() == 7 else False
+
+
+def _planner_first_effective() -> bool:
+    """Does the ACTIVE topology have a Planner/UII ordering to choose?"""
+    return PLANNER_FIRST if _topology() == 7 else False
+
 _DCII_ONLY_RE = re.compile(r"<<DCII_ONLY>>(.*?)<</DCII_ONLY>>", re.DOTALL)
 _DCII_OFF_RE = re.compile(r"<<DCII_OFF>>(.*?)<</DCII_OFF>>", re.DOTALL)
 _PF_ON_RE = re.compile(r"<<PF_ON>>(.*?)<</PF_ON>>", re.DOTALL)
@@ -198,19 +223,23 @@ _DCOI_RANGES_OFF_RE = re.compile(
 _CHAIN_ONLY_RE = re.compile(r"<<CHAIN_ONLY>>(.*?)<</CHAIN_ONLY>>", re.DOTALL)
 
 # The non-chain agents: the Receptionist, which composes the user's wording
-# rather than passing work along, and each topology's HUB — Orchestrator in
-# the 7-agent system, Conductor in the 5-agent one, Architect in the 3-agent
-# one — which dispatches and receives rather than forwarding to a "next"
-# agent.
+# rather than passing work along, and each topology's HUB — the Orchestrator
+# in the 7-agent system, the Architect in the 3-agent one — which dispatches
+# and receives rather than forwarding to a "next" agent.
+#
+# ⚠ Topology 5's hub is the PLANNER, and it is deliberately NOT listed: this
+# frozenset is keyed by agent name with no topology dimension, so adding
+# "planner" would strip the <<CHAIN_ONLY>> regions from the 7-agent Planner
+# too — a live behaviour change.  Topology 5 therefore keeps those regions,
+# which is also what "identical to topology 7 first" requires.
 #
 # EVERY hub is listed unconditionally.  This is a delete-list keyed by agent
 # name; it is never rendered into any prompt, and each hub is only ever
 # built in its own topology, so the entries for the absent hubs are simply
-# never consulted.  (Verified: adding "conductor" left all nine 7-agent
-# prompts byte-identical.)  Miss a hub here and it KEEPS the
-# ``<<CHAIN_ONLY>>`` rules — i.e. it is told to escalate to itself.
+# never consulted.  Miss a hub here and it KEEPS the ``<<CHAIN_ONLY>>``
+# rules — i.e. it is told to escalate to itself.
 _NON_CHAIN_AGENTS = frozenset({
-    "receptionist", "orchestrator", "conductor", "architect",
+    "receptionist", "orchestrator", "architect",
 })
 
 
@@ -220,7 +249,7 @@ def apply_dcii_filter(text: str) -> str:
     On = strip the OFF blocks, unwrap the ONLY blocks.
     Off = strip the ONLY blocks, unwrap the OFF blocks.
     """
-    if DCII_ENABLED:
+    if _dcii_effective():
         text = _DCII_OFF_RE.sub("", text)
         text = _DCII_ONLY_RE.sub(lambda m: m.group(1), text)
     else:
@@ -235,7 +264,7 @@ def apply_planner_first_filter(text: str) -> str:
     PF_ON  = Planner runs BEFORE the UII (v5 standard flow).
     PF_OFF = UII runs BEFORE the Planner.
     """
-    if PLANNER_FIRST:
+    if _planner_first_effective():
         text = _PF_OFF_RE.sub("", text)
         text = _PF_ON_RE.sub(lambda m: m.group(1), text)
     else:
@@ -609,7 +638,7 @@ def _pipeline_flow_fragment_name() -> str:
     if _topology_override("prompt_fragments/pipeline_flow.md") is not None:
         return "pipeline_flow.md"
     return (
-        "pipeline_flow_planner_first.md" if PLANNER_FIRST
+        "pipeline_flow_planner_first.md" if _planner_first_effective()
         else "pipeline_flow_uii_first.md"
     )
 
@@ -841,16 +870,9 @@ PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
     "user_input_inspector": frozenset({"routing_instructions"}),
     "dc_input_creator":     frozenset({"routing_instructions"}),
     "dc_input_inspector":   frozenset({"routing_instructions"}),
-    # 5-agent topology.  The Conductor inherits the Planner's three path
-    # slots but NOT ``routing_instructions``: being the hub, it uses the
-    # static ``$routing_conductor`` fragment the way the Orchestrator uses
-    # ``$routing_orchestrator``.  It has no ``chain_access_block`` either —
-    # chain access was dropped from its prompt.
-    "conductor":            frozenset({
-        "user_inputs_dir", "input_images_subdir",
-        "extraction_output_file",
-    }),
-    "creator":              frozenset({"routing_instructions"}),
+    # Topology 5 needs no extra rows: its hub is the PLANNER, running the
+    # Planner's prompt with the Planner's four slots (already above), and
+    # every other agent it builds is a 7-agent agent under its own key.
     # 3-agent topology.  The Architect inherits the Planner's three path
     # slots (it perceives, so it reads the input files itself) but NOT
     # ``routing_instructions``: being the hub it uses ``$routing_hub``,

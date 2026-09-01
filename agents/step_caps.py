@@ -114,45 +114,42 @@ relay, not deliberate."""
 
 
 # ---------------------------------------------------------------------------
-# Conductor + Creator caps (5-agent topology)
+# 5-agent hub caps (topology 5)
 #
-# Unlike every cap above, these are USER-TUNABLE from the Workflow
-# Settings UI (section 27 of ``workflow_settings/settings.py``) rather
-# than fixed here.  Neither merged agent can inherit a parent's budget
-# — each does strictly MORE per turn than either agent it replaces —
-# and the right figure is only really learnable from real runs, so the
-# values live where they can be adjusted without a code change.
+# The 5-agent hub is the PLANNER (``agents/planner5/``), which absorbs the
+# Orchestrator.  It therefore needs BOTH an inner-turn cap and a visit cap,
+# and neither may be shared with the 7-agent chain Planner: the two are the
+# same agent key doing different jobs, so one number cannot serve both
+# without a change to topology 5 moving topology 7.
 #
-# Read at import, like the rest of this module.  Changing them in the
-# UI takes effect on the next process start.
+# USER-TUNABLE from the Workflow Settings UI (settings.py section 28), like
+# every other cap in this module.  Read at import.
 # ---------------------------------------------------------------------------
 
+MAX_PLANNER5_STEPS = _ws.MAX_PLANNER5_STEPS
+"""LLM turns allowed inside ONE run of the topology-5 hub.  Defaults to
+the Planner's 40, NOT the Orchestrator's 15: the latter was deliberately
+tight because the Orchestrator should "relay, not deliberate", but this
+agent does both and its deliberating half is what needs the room."""
 
-MAX_CONDUCTOR_STEPS = _ws.MAX_CONDUCTOR_STEPS
-"""LLM turns allowed inside ONE ``Conductor.run()`` invocation.
-Defaults to the Planner's 20, NOT the Orchestrator's 6: the latter was
-deliberately tight because the Orchestrator should "relay, not
-deliberate", but the Conductor does both and its deliberating half is
-what needs the room.  Tunable — see settings.py §27."""
+MAX_PLANNER5_VISITS = _ws.MAX_PLANNER5_VISITS
+"""How many times the dispatcher may RE-ENTER the topology-5 hub during
+a single user turn -- the ``MAX_ORCHESTRATOR_STEPS`` analogue.  Above the
+Orchestrator's 120 because the hub absorbs the Planner: a planning turn
+used to happen INSIDE the Planner and cost the hub nothing, whereas here
+every plan, re-plan and approval is itself a re-entry."""
 
-MAX_CONDUCTOR_VISITS = _ws.MAX_CONDUCTOR_VISITS
-"""How many times the dispatcher may RE-ENTER the Conductor during a
-single user turn — the ``MAX_ORCHESTRATOR_STEPS`` analogue.  Defaults
-above the Orchestrator's 60 because the Conductor absorbs the Planner:
-a planning turn used to happen INSIDE the Planner and cost the hub
-nothing, whereas here every plan, re-plan and approval is itself a
-re-entry.  Tunable — see settings.py §27."""
 
 MAX_ARCHITECT_STEPS = _ws.MAX_ARCHITECT_STEPS
 """LLM turns allowed inside ONE ``Architect.run()`` invocation
-(3-agent).  Above the Conductor's 20 because the Architect also
-PERCEIVES: image reads and OCR dominate its first turn of a design
+(3-agent).  Above a plan-and-route hub's budget because the Architect
+also PERCEIVES: image reads and OCR dominate its first turn of a design
 job.  Tunable — see settings.py §28."""
 
 MAX_ARCHITECT_VISITS = _ws.MAX_ARCHITECT_VISITS
 """How many times the dispatcher may RE-ENTER the Architect during
-a single user turn.  Same as the Conductor's: absorbing perception
-adds work inside ONE visit, not extra visits.  Tunable — see
+a single user turn.  Same as ``MAX_PLANNER5_VISITS``: absorbing
+perception adds work inside ONE visit, not extra visits.  Tunable — see
 settings.py §28."""
 
 MAX_DESIGNER_STEPS = _ws.MAX_DESIGNER_STEPS
@@ -167,16 +164,11 @@ shut out of a long loop.  A REPORTING CADENCE, not a stopping condition --
 ``MAX_SECTIONS_REFINE_ROUNDS`` remains the per-phase ceiling.  Tunable --
 see settings.py section 28."""
 """LLM turns allowed inside ONE ``Designer.run()`` invocation
-(3-agent).  BELOW ``MAX_CREATOR_STEPS`` despite merging one more
-agent: the Designer drops validation entirely, so it carries the
-DCIC's authoring budget plus the Tool Caller's calls but not the
-Creator's self-validation pass.  Tunable — see settings.py §28."""
-
-MAX_CREATOR_STEPS = _ws.MAX_CREATOR_STEPS
-"""LLM turns allowed inside ONE ``Creator.run()`` invocation.  Defaults
-above either parent (DCIC 50 to author, DCII 50 to inspect) but far
-below their sum: the merged agent runs both passes in one loop and
-shares most of their tool calls.  Tunable — see settings.py §27."""
+(3-agent).  Smaller than a create-plus-validate agent would need
+despite merging one more agent: the Designer drops validation
+entirely, so it carries the DCIC's authoring budget plus the Tool
+Caller's calls but no self-validation pass.  Tunable — see
+settings.py §28."""
 
 MAX_DISPATCH_HOPS = _ws.MAX_DISPATCH_HOPS
 """Hard ceiling on the total number of agent hops the dispatcher

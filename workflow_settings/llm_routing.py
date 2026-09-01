@@ -74,8 +74,6 @@ AGENT_SPEC: list[tuple[str, str, bool]] = [
     # 5-agent topology.  Constructed by ``agents/hub.py:build_hub`` when
     # SYSTEM_TOPOLOGY is 5, so they are wired like any other agent —
     # a 5-agent run routes through them and nothing else.
-    ("conductor",             "Conductor",             True),
-    ("creator",               "Creator",               True),
     # 3-agent topology.  Constructed by ``agents/hub.py:build_hub`` when
     # SYSTEM_TOPOLOGY is 3.
     ("architect",             "Architect",             True),

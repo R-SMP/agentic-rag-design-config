@@ -133,9 +133,9 @@ AGENTS_BY_TOPOLOGY: "dict[int, list[tuple[str, str]]]" = {
     ],
     5: [
         ("receptionist",         "Receptionist"),
-        ("conductor",            "Conductor (hub)"),
+        ("planner",              "Planner (hub)"),
         ("user_input_inspector", "User Input Inspector"),
-        ("creator",              "Creator"),
+        ("dc_input_creator",     "Input Creator"),
         ("tool_caller",          "Tool Caller"),
         ("dc_output_inspector",  "Output Inspector"),
         ("context_pruner",       "Context Pruner"),

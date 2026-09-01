@@ -19,7 +19,6 @@ Python call stack never grows.
 """
 
 import logging
-from datetime import datetime, timezone
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, ToolMessage
@@ -864,15 +863,9 @@ class Orchestrator(BaseChainAgent):
         "tc": "tool_caller",
         "receptionist": "receptionist",
         "orchestrator": "orchestrator",
-        # 5-agent topology
-        "conductor": "conductor",
-        "creator": "creator",
         # 3-agent topology
         "architect": "architect",
         "designer": "designer",
-        # 5-agent topology
-        "conductor": "conductor",
-        "creator": "creator",
     }
 
     def get_agent_messages(
@@ -1141,100 +1134,18 @@ class Orchestrator(BaseChainAgent):
 
 
 # ---------------------------------------------------------------------------
-# Limit-surfacing helpers
+# Limit-surfacing + history-formatting helpers
+#
+# Defined in ``agents/shared/hub_format.py`` since 2026-08-31 so the
+# topology-5 hub can use them without forking ~90 lines of live code.
+# Re-exported here because callers (``agents/architect/architect.py``, and
+# historically the Conductor) import them from this module by name.
 # ---------------------------------------------------------------------------
 
-def _first_line(text: str, limit: int = 180) -> str:
-    """Return the first non-empty line of *text*, truncated to *limit*."""
-    if not isinstance(text, str):
-        text = str(text)
-    for line in text.splitlines():
-        line = line.strip()
-        if line:
-            return line[:limit] + ("..." if len(line) > limit else "")
-    return ""
+from agents.shared import hub_format as _hub_format
 
-
-def _truncate(text: str, limit: int) -> str:
-    if not isinstance(text, str):
-        text = str(text)
-    if len(text) <= limit:
-        return text
-    return text[:limit].rstrip() + "\n...[truncated]"
-
-
-def _last_text_message(agent) -> str:
-    """Return the most recent textual content produced by *agent*."""
-    messages = getattr(agent, "messages", None) or []
-    for msg in reversed(messages):
-        content = getattr(msg, "content", "")
-        rendered = _format_message_content(content).strip()
-        if rendered:
-            return rendered
-    return ""
-
-
-# ---------------------------------------------------------------------------
-# History-dump helpers
-# ---------------------------------------------------------------------------
-
-def _format_message_content(content) -> str:
-    if isinstance(content, str):
-        return content
-    if isinstance(content, list):
-        rendered = []
-        for block in content:
-            if isinstance(block, dict):
-                btype = block.get("type", "?")
-                if btype == "text":
-                    rendered.append(block.get("text", ""))
-                elif btype in {"image", "image_url"}:
-                    rendered.append(f"<{btype} block omitted>")
-                else:
-                    rendered.append(f"<{btype} block: {list(block.keys())}>")
-            else:
-                rendered.append(str(block))
-        return "\n".join(rendered)
-    return str(content)
-
-
-def _format_agent_history(agent_name: str, messages: list, sys_prompt) -> str:
-    lines: list = []
-    lines.append(f"=== History for agent: {agent_name} ===")
-    lines.append(f"Dumped at: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}")
-    lines.append(f"Message count: {len(messages)}")
-    lines.append("")
-
-    if sys_prompt:
-        lines.append("--- System Prompt ---")
-        lines.append(str(sys_prompt))
-        lines.append("")
-
-    for i, msg in enumerate(messages, start=1):
-        msg_type = type(msg).__name__
-        lines.append(f"=== Message {i} : {msg_type} ===")
-        tool_calls = getattr(msg, "tool_calls", None)
-        if tool_calls:
-            for tc in tool_calls:
-                tc_name = tc.get("name") if isinstance(tc, dict) else getattr(tc, "name", "?")
-                tc_args = tc.get("args") if isinstance(tc, dict) else getattr(tc, "args", {})
-                lines.append(f"[tool_call] {tc_name}  args={tc_args}")
-        tm_name = getattr(msg, "name", None)
-        tm_id = getattr(msg, "tool_call_id", None)
-        # Disambiguate the label based on the message type:
-        #   * ToolMessage (has tool_call_id) → "[tool_result] name=... id=..."
-        #   * Any other message with name= set (e.g. a HumanMessage
-        #     appended by the Orchestrator at end-of-session feedback
-        #     round) → "[from <name>]" — NOT "[tool_result]", which
-        #     was misleading.
-        if tm_id:
-            lines.append(f"[tool_result] name={tm_name}  id={tm_id}")
-        elif tm_name:
-            lines.append(f"[from {tm_name}]")
-
-        content = _format_message_content(getattr(msg, "content", ""))
-        if content:
-            lines.append(content)
-        lines.append("")
-
-    return "\n".join(lines)
+_first_line = _hub_format._first_line
+_truncate = _hub_format._truncate
+_last_text_message = _hub_format._last_text_message
+_format_message_content = _hub_format._format_message_content
+_format_agent_history = _hub_format._format_agent_history

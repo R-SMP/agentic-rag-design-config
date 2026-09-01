@@ -263,9 +263,14 @@ def _sections_for(agent_name: str) -> tuple[str, ...]:
     """
     from agents.shared.prompts import PLANNER_FIRST
 
-    if _topology.topology() != 7:
+    topo = _topology.topology()
+    if topo not in (7, 5):
         return _ROUTING_SECTIONS_DEFAULT
-    if PLANNER_FIRST and agent_name in _PF_SENSITIVE_AGENTS:
+    # PLANNER_FIRST is a 7-agent-only axis.  Topology 5 always ships the
+    # branch-COLLAPSED fragments, which carry the uii_first text -- i.e.
+    # the text that absorbed what the reduction removed -- so the
+    # PF gate must not fire there.
+    if topo == 7 and PLANNER_FIRST and agent_name in _PF_SENSITIVE_AGENTS:
         return _ROUTING_SECTIONS_DEFAULT
     return _ROUTING_SECTIONS_BY_AGENT.get(
         agent_name, _ROUTING_SECTIONS_DEFAULT,

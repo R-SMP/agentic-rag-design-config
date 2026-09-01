@@ -75,8 +75,6 @@ DEFAULT_AGENTS_TO_ACL: tuple[str, ...] = (
     "dc_input_creator",
     "tool_caller",
     # 5-agent topology (superset across topologies)
-    "conductor",
-    "creator",
     # 3-agent topology
     "architect",
     "designer",

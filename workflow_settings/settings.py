@@ -961,6 +961,36 @@ MAX_ORCHESTRATOR_STEPS: int = 120
 # Was 6; raised to 15.
 # Valid values: positive int.
 MAX_ORCH_INNER_STEPS: int = 15
+# MAX_PLANNER5_STEPS - LLM turns inside ONE run of the 5-agent HUB (the
+# Planner acting as Planner + Orchestrator; agents/planner5/).
+#
+# SEPARATE from MAX_PLANNER_STEPS on purpose.  That one is the 7-agent
+# chain Planner, which only plans; this one is the same agent key doing
+# both jobs in one loop under topology 5.  Two names so topology 5 can be
+# retuned without moving topology 7.
+#
+# Above the Orchestrator's 15: the Orchestrator was kept tight because it
+# should "relay, not deliberate", but here the deliberating half is what
+# needs the room.  Same figure the retired Conductor used for the same
+# merged role.
+#
+# Valid values: positive int.
+MAX_PLANNER5_STEPS: int = 40
+
+# MAX_PLANNER5_VISITS - how many times the dispatcher may RE-ENTER the
+# 5-agent hub during a single user turn.  The MAX_ORCHESTRATOR_STEPS
+# analogue for topology 5.
+#
+# Higher than the Orchestrator's 120 because the hub ABSORBS the Planner:
+# in the 7-agent system a planning turn happened inside the Planner and
+# cost the hub nothing, whereas here every plan, re-plan and approval is
+# itself a re-entry, so identical work consumes more visits.
+#
+# Raise this FIRST if long precision sessions stop early: it is the cap a
+# multi-round refine loop reaches before any other.
+#
+# Valid values: positive int.
+MAX_PLANNER5_VISITS: int = 150
 
 # MAX_DISPATCH_HOPS - Total inter-agent hops allowed in ONE user turn, across all agents.
 # The outermost runaway guard: it bounds the whole dispatch loop no
@@ -985,47 +1015,6 @@ MAX_DISPATCH_HOPS: int = 400
 # Valid values: positive int.
 MAX_SECTIONS_REFINE_ROUNDS: int = 12
 
-# MAX_CONDUCTOR_STEPS — LLM turns allowed inside ONE Conductor.run()
-# invocation.
-#
-# The Conductor's two parents disagreed sharply about this: the
-# Orchestrator was given 6, deliberately tight because it "should relay,
-# not deliberate", while the Planner was given 20.  The Conductor does
-# BOTH jobs inside one loop, so it takes the planning figure — a turn
-# that only relays simply uses fewer.
-#
-# Raise this if you see the Conductor being cut off mid-plan.
-#
-# Valid values: positive int.
-MAX_CONDUCTOR_STEPS: int = 40
-
-# MAX_CONDUCTOR_VISITS — how many times the dispatcher may RE-ENTER the
-# Conductor during a single user turn (the hub-visit cap).
-#
-# The 7-agent Orchestrator gets 60, but there a planning turn happened
-# INSIDE the Planner and cost the hub nothing.  Here every plan, re-plan
-# and approval is itself a re-entry, so identical work consumes more
-# visits — which is why the default is higher rather than inherited.
-#
-# Raise this FIRST if long precision sessions stop early: this is the
-# cap a multi-round refine loop hits before any other.
-#
-# Valid values: positive int.
-MAX_CONDUCTOR_VISITS: int = 150
-
-# MAX_CREATOR_STEPS — LLM turns allowed inside ONE Creator.run()
-# invocation.
-#
-# Its parents got 50 each (the DC Input Creator to author the parameter
-# set, the DC Input Inspector to inspect it).  The Creator does both in
-# one loop but SHARES most of their tool calls — one read of the
-# extraction, one batched calculate — so the honest figure is nearer one
-# parent's budget than their sum.  The headroom over 50 covers the
-# self-validation pass and the image / OCR calls it inherited.
-#
-# Valid values: positive int.
-MAX_CREATOR_STEPS: int = 90
-
 # MAX_ARCHITECT_STEPS - LLM turns allowed inside ONE Architect.run()
 # invocation (3-agent topology).
 #
@@ -1042,7 +1031,7 @@ MAX_ARCHITECT_STEPS: int = 60
 # MAX_ARCHITECT_VISITS - how many times the dispatcher may RE-ENTER the
 # Architect during a single user turn (3-agent topology).
 #
-# The MAX_CONDUCTOR_VISITS analogue.  Same value: absorbing perception
+# The MAX_PLANNER5_VISITS analogue.  Same value: absorbing perception
 # adds work INSIDE one visit rather than adding visits - the extraction
 # is written once per turn, not once per cycle.
 #
@@ -1056,7 +1045,8 @@ MAX_ARCHITECT_VISITS: int = 150
 # (generate + render), and DROPS validation entirely - that is the
 # strip-down.  So it needs the DCIC's authoring budget plus the Tool
 # Caller's tool calls, but NOT the Creator's self-validation pass.
-# Hence BELOW MAX_CREATOR_STEPS despite merging one more agent.
+# Hence a smaller budget than a create-plus-validate agent would need,
+# despite merging one more agent.
 #
 # Valid values: positive int.
 MAX_DESIGNER_STEPS: int = 85

@@ -73,15 +73,36 @@ IMAGE_PATH = _DC_CONFIG_DIR / "images" / "dc_params_primer.png"
 # diameter, section orientation) and drops the names, formulas and ranges.
 # Note the diagram itself still carries labels; this narrows the leak, it does
 # not close it.
-_TEXT_PATH_BY_AGENT = {
-    "user_input_inspector":
-        _DC_CONFIG_DIR / "dc_params_primer_text_user_input_inspector.txt",
+_TEXT_NAME_BY_AGENT = {
+    "user_input_inspector": "dc_params_primer_text_user_input_inspector.txt",
 }
+
+_TEXT_NAME_DEFAULT = "dc_params_primer_text.txt"
 
 
 def _text_path(agent_key: "str | None") -> Path:
-    """The primer text this agent gets — its variant, or the default."""
-    return _TEXT_PATH_BY_AGENT.get(agent_key or "", TEXT_PATH)
+    """The primer text this agent gets — its variant, or the default.
+
+    Resolved through ``prompts._topology_override`` so a topology can own
+    its own primer text, exactly as it owns its own prompt fragments.
+
+    This matters more here than anywhere else in the prompt layer: the
+    primer is injected at INVOKE time, not spliced into the system prompt,
+    so it bypasses every prompt-level filter.  Before this, a
+    ``agents/<N>agent/dc_config/dc_params_primer_text*_<N>agents.txt``
+    could sit on disk and be silently inert -- the paths were built
+    absolute from ``_DC_CONFIG_DIR`` and never consulted the resolver.
+
+    Imported lazily, the way ``routing._load_routing_fragment`` does it:
+    ``prompts`` pulls in this module's neighbours at its own import time,
+    so a module-level import here would be circular.  Topology 7 has no
+    ``agents/7agent/``, so the override always misses there and the shared
+    file is read exactly as before.
+    """
+    from agents.shared.prompts import _topology_override
+
+    name = _TEXT_NAME_BY_AGENT.get(agent_key or "", _TEXT_NAME_DEFAULT)
+    return _topology_override(f"dc_config/{name}") or (_DC_CONFIG_DIR / name)
 
 # The agents that receive the primer.  The injection sites are explicit in
 # each agent file; this set exists for the OTHER consumer — the Context
@@ -93,7 +114,6 @@ PRIMER_AGENT_KEYS = frozenset({
     "dc_input_creator",
     "dc_input_inspector",
     "dc_output_inspector",
-    "creator",       # 5-agent: absorbs DCIC + DCII
     "designer",      # 3-agent: absorbs the Creator
 })
 

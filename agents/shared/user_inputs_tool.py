@@ -44,6 +44,7 @@ from PIL import Image
 from langchain_core.messages import ToolMessage
 from langchain_core.tools import tool
 
+from agents.shared import topology as _topology
 from agents.shared.agent_activity import generic_tool
 from agents.shared.file_utils import (
     append_pending_images,
@@ -148,8 +149,14 @@ _VIEW_IMAGES_PATHS_BY_AGENT = {
 
 def _view_images_paths_clause(agent_key: str) -> str:
     """Where *agent_key* really gets absolute image paths from."""
-    return _VIEW_IMAGES_PATHS_BY_AGENT.get(
-        agent_key, _VIEW_IMAGES_PATHS_DEFAULT)
+    # Per-topology overlay first (agents/topology5/tool_text.py), then the
+    # shared table.  Topology 7 ships no overlay, so this is the same lookup
+    # it always did.
+    table = _topology.overlay_value(
+        "VIEW_IMAGES_PATHS_BY_AGENT", _VIEW_IMAGES_PATHS_BY_AGENT)
+    default = _topology.overlay_value(
+        "VIEW_IMAGES_PATHS_DEFAULT", _VIEW_IMAGES_PATHS_DEFAULT)
+    return table.get(agent_key, default)
 
 
 def _view_images_base_doc(paths_from: str) -> str:
@@ -382,6 +389,31 @@ READ_INPUTS_DOC_PLANNER = (
     "list of the reference images present with their paths."
 )
 
+
+# Agent -> its wording.  The four constants above stay exported (other
+# modules import them by name), but every agent now resolves its doc
+# through this table so the TOPOLOGY can own it: the constants alone were
+# selected at each agent's call site, which no per-topology overlay could
+# reach.  See agents/topology5/tool_text.py.
+READ_INPUTS_DOC_BY_AGENT = {
+    "user_input_inspector": READ_INPUTS_DOC_UII,
+    "dc_input_inspector":   READ_INPUTS_DOC_DCII,
+    "dc_output_inspector":  READ_INPUTS_DOC_DCOI,
+    "planner":              READ_INPUTS_DOC_PLANNER,
+}
+
+# Historic default for an agent with no entry: the UII's wording, which is
+# what ``build_read_user_inputs``'s default argument has always been.
+READ_INPUTS_DOC_DEFAULT = READ_INPUTS_DOC_UII
+
+
+def read_inputs_doc(agent_key: str) -> str:
+    """The ``read_user_inputs`` documentation *agent_key* should be given."""
+    table = _topology.overlay_value(
+        "READ_INPUTS_DOC_BY_AGENT", READ_INPUTS_DOC_BY_AGENT)
+    default = _topology.overlay_value(
+        "READ_INPUTS_DOC_DEFAULT", READ_INPUTS_DOC_DEFAULT)
+    return table.get(agent_key, default)
 
 _TURN_HEADER_RE = re.compile(
     r"^--- \[[^\]]{1,40}\](?:[ \t]+([A-Z]+))?[ \t]*---[ \t]*$",

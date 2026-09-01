@@ -51,9 +51,11 @@ from agents.shared.routing_tools import (
     stuck_escalation,
     tool_call_signature,
 )
+from agents.shared.topology import hub_key as _hub_key
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
     build_read_user_inputs,
+    read_inputs_doc,
     build_user_inputs_tools,
     dispatch_user_inputs_tool,
     read_user_inputs_summary,
@@ -74,14 +76,14 @@ logger = logging.getLogger("propeller_agent")
 # ---------------------------------------------------------------------------
 
 
-def _build_read_user_inputs():
+def _build_read_user_inputs(agent_key: str):
     """Build the UII's ``read_user_inputs`` stub.
 
     Returns text + an image LIST only; the real work happens in
     ``_handle_read_inputs_tool``.  Images (and their OCR) are loaded on
     demand via ``view_images``.
     """
-    return build_read_user_inputs()
+    return build_read_user_inputs(doc=read_inputs_doc(agent_key))
 
 
 @tool
@@ -127,7 +129,7 @@ class UserInputInspector(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        self._read_tool = _build_read_user_inputs()
+        self._read_tool = _build_read_user_inputs(self.AGENT_KEY)
         self._write_tool = write_extraction
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
@@ -223,7 +225,7 @@ class UserInputInspector(BaseChainAgent):
                 if begin_routing_retry(self, final, "UII"):
                     continue
                 return AgentHop(
-                    "orchestrator",
+                    _hub_key(),
                     "Error: User Input Inspector produced a response with no "
                     "routing tool call — it wrote prose but did not invoke "
                     "call_dc_input_creator / call_planner / call_orchestrator, "
@@ -305,7 +307,7 @@ class UserInputInspector(BaseChainAgent):
                 return self._pending_hop
 
         return AgentHop(
-            "orchestrator",
+            _hub_key(),
             "Error: User Input Inspector reached step limit without routing.",
         )
 

@@ -84,8 +84,6 @@ AGENT_KEYS: list[str] = [
     # so the DH could never interview the two agents that do all the
     # work in a 5-agent run.  A topology that does not build them simply
     # never produces a schedule entry naming them.
-    "conductor",
-    "creator",
     # 3-agent topology, listed for the same reason.
     "architect",
     "designer",
@@ -108,8 +106,6 @@ AGENT_SHORT_LABELS: dict[str, str] = {
     # 5-agent topology — without these the To-column popover would
     # fall back to the raw underscored keys for the two agents a
     # 5-agent run actually uses.
-    "conductor":            "Conductor",
-    "creator":              "Creator",
     "architect":            "Architect",
     "designer":             "Designer",
 }

@@ -50,6 +50,7 @@ from agents.shared.routing_tools import (
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
+from agents.shared.topology import hub_key as _hub_key
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_TC_STEPS
 from tools import get_render_library, get_tools
@@ -179,7 +180,7 @@ class ToolCaller(BaseChainAgent):
                 if begin_routing_retry(self, final, "ToolCaller"):
                     continue
                 return AgentHop(
-                    "orchestrator",
+                    _hub_key(),
                     "Error: Tool Caller produced a response with no routing "
                     "tool call — it wrote prose but did not invoke "
                     "call_dc_output_inspector / call_orchestrator, so the "
@@ -243,7 +244,7 @@ class ToolCaller(BaseChainAgent):
                 return self._pending_hop
 
         return AgentHop(
-            "orchestrator",
+            _hub_key(),
             "Error: Tool Caller reached maximum steps without completing.",
         )
 

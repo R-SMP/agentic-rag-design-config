@@ -263,9 +263,11 @@ check("flag back on WITHOUT restart -> message returns",
       len(dc_primer.dc_primer_messages("anthropic")) == 1)
 
 # --- 5. injection sites ------------------------------------------------------
-print("case 5 - all six agents splice it between system and history")
+# The Creator was retired on 2026-08-31 with the rest of the old 5-agent
+# topology; topology 5 now uses the DC Input Creator, already in this list.
+print("case 5 - all five agents splice it between system and history")
 SIX = ("user_input_inspector", "dc_input_creator", "dc_input_inspector",
-       "dc_output_inspector", "creator", "designer")
+       "dc_output_inspector", "designer")
 PATTERN = ("[make_system_message(self.system_prompt, self.provider)] "
            "+ dc_primer_messages(self.provider, self.AGENT_KEY) "
            "+ self.messages,")

@@ -28,6 +28,7 @@ Same reasoning, and the same shape, as ``_build_view_images`` in
 
 from langchain_core.tools import tool
 
+from agents.shared import topology as _topology
 from agents.shared.agent_activity import generic_tool
 
 _BASE_DOC = (
@@ -62,7 +63,12 @@ _USE_BY_AGENT = {
 
 
 def _use_clause(agent_key: str) -> str:
-    return _USE_BY_AGENT.get(agent_key or "", _USE_DEFAULT)
+    # The active topology owns this table outright when it ships one; see
+    # agents/topology5/tool_text.py.  Topology 7 misses and takes the shared
+    # values unchanged.
+    table = _topology.overlay_value("USE_BY_AGENT", _USE_BY_AGENT)
+    default = _topology.overlay_value("USE_DEFAULT", _USE_DEFAULT)
+    return table.get(agent_key or "", default)
 
 
 def build_dc_params_list(agent_key: str = ""):

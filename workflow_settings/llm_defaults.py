@@ -22,6 +22,8 @@ better model ships), edit the dict below; users with their own
 
 from __future__ import annotations
 
+from workflow_settings import settings as _settings
+
 
 DEFAULT_PROVIDER: str = "openai"
 
@@ -45,12 +47,6 @@ DEFAULT_PER_AGENT_MODELS: dict[str, str] = {
     "tool_caller":          "gpt-5.4-mini",
     "database_handler":     "gpt-5-mini",
     "context_pruner":       "gpt-5.4",
-    # 5-agent topology.  The Conductor takes the Orchestrator's default
-    # (its hub half runs on every turn); the Creator takes the DC Input
-    # Inspector's — the STRONGER of its two parents — because it now
-    # authors AND validates in a single turn.
-    "conductor":            "gpt-5.4-mini",
-    "creator":              "gpt-5.5",
     # 3-agent topology.  The Architect takes the STRONGER of its three
     # parents' defaults: it perceives (vision), plans and routes in one
     # agent, which is the cognitive-load confound the design doc flags
@@ -62,6 +58,31 @@ DEFAULT_PER_AGENT_MODELS: dict[str, str] = {
 }
 
 
+# Per-TOPOLOGY overlay.  Consulted BEFORE the shared dict above and
+# fully populated, so topology 5 owns every one of its agents' defaults
+# outright: changing a model here can never move topology 7, and changing
+# one above can never move topology 5.  Same override-then-fallback shape
+# the prompt layer uses for agents/5agent/ and the tool layer uses for
+# agents/topology5/.
+#
+# The one value that is NOT a copy is the Planner's.  In topology 7 the
+# Planner only plans and is the weakest tier in the table; in topology 5
+# it is the HUB, running the dispatch loop on every hop.  It therefore
+# takes the figure the retired Conductor used for exactly that merged
+# role -- gpt-5.4-mini -- rather than the chain Planner's gpt-5-mini.
+DEFAULT_PER_AGENT_MODELS_BY_TOPOLOGY: dict[int, dict[str, str]] = {
+    5: {
+        "receptionist":         "gpt-5.4",
+        "user_input_inspector": "gpt-5.4",
+        "planner":              "gpt-5.4-mini",   # HUB here, not a chain agent
+        "dc_input_creator":     "gpt-5.4-mini",
+        "dc_output_inspector":  "gpt-5.4",
+        "tool_caller":          "gpt-5.4-mini",
+        "database_handler":     "gpt-5-mini",
+        "context_pruner":       "gpt-5.4",
+    },
+}
+
 # Last-resort fallback for any agent not in the dict above.  Kept
 # in sync with the historical ``_DEFAULT_MODEL`` in
 # ``agents/shared/llm_provider.py`` and
@@ -72,9 +93,25 @@ FALLBACK_MODEL: str = "gpt-5-mini"
 def model_for(agent_key: str) -> str:
     """Return the baked-in default model for ``agent_key``.
 
-    Agents not in :data:`DEFAULT_PER_AGENT_MODELS` get
-    :data:`FALLBACK_MODEL`.
+    The ACTIVE topology's overlay wins; then
+    :data:`DEFAULT_PER_AGENT_MODELS`; then :data:`FALLBACK_MODEL`.
+
+    ``SYSTEM_TOPOLOGY`` is read FRESH on every call, never captured at
+    import: the Sessions Queue switches topology between runs inside one
+    process, and ``web_app._build_session`` reloads the settings module in
+    place without reloading its importers (see ``agents/shared/topology.py``
+    for the same reasoning).  A module-level constant here would pin the
+    overlay to whatever topology the process started with and silently
+    mis-resolve the 2nd..Nth run of a mixed-topology queue.
+
+    Read off ``workflow_settings.settings`` directly rather than through
+    ``agents.shared.topology`` so this module does not import from
+    ``agents`` -- that would invert the package dependency direction.
     """
+    topo = int(getattr(_settings, "SYSTEM_TOPOLOGY", 7))
+    overlay = DEFAULT_PER_AGENT_MODELS_BY_TOPOLOGY.get(topo)
+    if overlay and agent_key in overlay:
+        return overlay[agent_key]
     return DEFAULT_PER_AGENT_MODELS.get(agent_key, FALLBACK_MODEL)
 
 

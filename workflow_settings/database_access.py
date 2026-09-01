@@ -97,8 +97,6 @@ DEFAULT_AGENTS: tuple[str, ...] = (
     "dc_output_inspector",
     "tool_caller",
     # 5-agent topology (superset across topologies)
-    "conductor",
-    "creator",
     # 3-agent topology
     "architect",
     "designer",

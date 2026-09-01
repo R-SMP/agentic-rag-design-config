@@ -104,6 +104,42 @@ HIDDEN_FROM_FLAG_LIST = {
 _FENCE_RE = re.compile(r"^#+\s*=+\s*$")
 
 
+# Settings that a TOPOLOGY renders meaningless.  The flag list still shows
+# them, with their real stored value, but greyed out and refused by
+# ``_do_write`` -- because the code already ignores them there and a live
+# toggle that silently does nothing is worse than no toggle at all.
+#
+# name -> (topologies where the setting is INERT, why)
+_INERT_UNDER_TOPOLOGY: dict[str, tuple[frozenset, str]] = {
+    "DC_INSPECTOR_ENABLED": (
+        frozenset({5, 3}),
+        "Only meaningful in the 7-agent topology.  The DC Input Inspector "
+        "was merged away in the reduced topologies, so there is no agent "
+        "for this flag to switch on: prompts._dcii_effective() forces it "
+        "False whenever SYSTEM_TOPOLOGY is not 7.",
+    ),
+    "PLANNER_FIRST": (
+        frozenset({5, 3}),
+        "Only meaningful in the 7-agent topology.  In the reduced "
+        "topologies the hub IS the planner, so there is no Planner/UII "
+        "ordering to choose: prompts._planner_first_effective() forces it "
+        "False whenever SYSTEM_TOPOLOGY is not 7.",
+    ),
+}
+
+
+def _inert_reason(name: str, topology: Any) -> str:
+    """Why *name* is inert under *topology*, or "" if it is live."""
+    entry = _INERT_UNDER_TOPOLOGY.get(name)
+    if entry is None:
+        return ""
+    topologies, reason = entry
+    try:
+        topo = int(topology)
+    except (TypeError, ValueError):
+        return ""
+    return reason if topo in topologies else ""
+
 class SettingsError(ValueError):
     """Raised on an invalid edit; surfaced to the UI as a 400."""
 
@@ -202,6 +238,14 @@ def read_schema() -> list[dict[str, Any]]:
     except Exception:  # pragma: no cover - settings import is required elsewhere
         _live = None
 
+    # The topology the file currently declares, for the inert-setting
+    # marking below.
+    _topology_literal = None
+    for _n in nodes:
+        if _n.target.id == "SYSTEM_TOPOLOGY":
+            _ok, _topology_literal = _literal(_n.value)
+            break
+
     schema: list[dict[str, Any]] = []
     current_group = ""
     for idx, node in enumerate(body):
@@ -253,6 +297,14 @@ def read_schema() -> list[dict[str, Any]]:
             }
             if name in ENUM_OPTIONS:
                 item["options"] = ENUM_OPTIONS[name]
+
+        # Inert-under-this-topology marking.  Computed from the file's own
+        # SYSTEM_TOPOLOGY literal, not from the imported settings module,
+        # so it agrees with what a save would actually write.
+        reason = _inert_reason(name, _topology_literal)
+        if reason:
+            item["disabled"] = True
+            item["disabled_note"] = reason
 
         item["group"] = current_group
         item["help"] = help_text
@@ -372,6 +424,16 @@ def _do_write(updates: dict[str, Any], *, allow_hidden: bool) -> None:
             raise SettingsError(
                 f"{name} is not editable via this endpoint."
             )
+        # Refuse a change the active topology would ignore.  The UI greys
+        # these out, but SettingsIn.values is an untyped dict, so without
+        # this the grey-out would be cosmetic only.  The topology CHECKED is
+        # the one this same write produces, so switching to 7 and flipping
+        # PLANNER_FIRST in a single save is still allowed.
+        effective_topology = updates.get(
+            "SYSTEM_TOPOLOGY", merged.get("SYSTEM_TOPOLOGY"))
+        reason = _inert_reason(name, effective_topology)
+        if reason:
+            raise SettingsError(f"{name} cannot be changed: {reason}")
         type_str = _annotation_type(by_name[name]) or "str"
         value = _coerce(name, type_str, raw)
         coerced[name] = value
@@ -399,12 +461,18 @@ def _do_write(updates: dict[str, Any], *, allow_hidden: bool) -> None:
             f"Refusing to write — the result would not parse: {exc}"
         ) from exc
 
+    # Preserve the file's OWN line ending.  ``_parse_nodes`` reads with
+    # universal newlines, so ``lines`` are \n-separated whatever is on disk;
+    # writing them back through a hard-coded newline="\\n" rewrote a CRLF
+    # settings.py to LF on the FIRST save, turning a one-toggle change into
+    # a whole-file diff.
+    newline = "\r\n" if b"\r\n" in SETTINGS_PATH.read_bytes() else "\n"
     # Atomic replace so a crash mid-write cannot corrupt the file.
     fd, tmp = tempfile.mkstemp(
         dir=str(SETTINGS_PATH.parent), prefix=".settings_", suffix=".tmp"
     )
     try:
-        with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
+        with os.fdopen(fd, "w", encoding="utf-8", newline=newline) as fh:
             fh.write(new_src)
         os.replace(tmp, SETTINGS_PATH)
     except Exception:

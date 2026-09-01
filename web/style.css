@@ -841,6 +841,27 @@ button.danger:hover { background: #3a1d1d; }
   font-style: italic;
 }
 
+/* A setting the active SYSTEM_TOPOLOGY ignores.  The control keeps painting
+   its real stored value so the operator can still read it, but it cannot be
+   changed -- the code overrides it anyway, and a live toggle that silently
+   does nothing is worse than no toggle at all.  ``.toggle button`` had no
+   disabled rule of its own, so without the second rule below a disabled
+   toggle still looked live. */
+.setting-control.inert { opacity: 0.55; }
+.toggle button[disabled] { cursor: not-allowed; }
+.setting-control select[disabled] {
+  opacity: 0.6;
+  cursor: not-allowed;
+  font-style: italic;
+}
+.setting-inert-note {
+  margin-top: 4px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--muted);
+  font-style: italic;
+}
+
 .settings-bar {
   display: flex;
   align-items: center;

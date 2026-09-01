@@ -50,9 +50,10 @@ from agents.shared.routing_tools import (
     stuck_escalation,
     tool_call_signature,
 )
+from agents.shared.topology import hub_key as _hub_key
 from agents.shared.session import AgentState, Session
 from agents.shared.user_inputs_tool import (
-    READ_INPUTS_DOC_DCII,
+    read_inputs_doc,
     build_read_user_inputs,
     build_user_inputs_tools,
     dispatch_user_inputs_tool,
@@ -107,7 +108,8 @@ class DCInputInspector(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        self._read_inputs_tool = build_read_user_inputs(doc=READ_INPUTS_DOC_DCII)
+        self._read_inputs_tool = build_read_user_inputs(
+            doc=read_inputs_doc(self.AGENT_KEY))
         self._read_extraction_tool = read_extracted_inputs
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
@@ -181,7 +183,7 @@ class DCInputInspector(BaseChainAgent):
                 if begin_routing_retry(self, final, "DCII"):
                     continue
                 return AgentHop(
-                    "orchestrator",
+                    _hub_key(),
                     "Error: DC Input Inspector produced a response with no "
                     "routing tool call — it wrote prose but did not invoke "
                     "call_tool_caller / call_dc_input_creator / "
@@ -263,7 +265,7 @@ class DCInputInspector(BaseChainAgent):
                 return self._pending_hop
 
         return AgentHop(
-            "orchestrator",
+            _hub_key(),
             "Error: DC Input Inspector reached step limit without routing.",
         )
 
