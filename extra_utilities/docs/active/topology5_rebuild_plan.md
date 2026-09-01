@@ -557,30 +557,114 @@ Structural only — **no content editorialising** (D15).
       is correct rather than merely convenient.
 - [ ] 5.7 Scoped-fragment pass-throughs (O4).
 
-### Stage 6 — Verification harness  (D14)
+### Stage 6 - Verification harness  (D14)  - **DONE 2026-08-31**
 
-- [ ] 6.1 `dump.py --topology` (default 7, so existing use is unchanged).
-- [ ] 6.2 Both-topology assemble + hash + unified-diff script.
-- [ ] 6.3 Rewrite `smoke_test_topology_fragments.py`: `AGENTS_BY_TOPOLOGY[5]`,
-      `ROUTING_FRAGMENTS_BY_TOPOLOGY[5]`, `HUB_BY_TOPOLOGY[5]`,
-      `UII_KICKOFF_AGENT[5]`, `HUB_MARKERS`, `CHAIN_BY_TOPOLOGY[5]`,
-      `NEVER_FORMATTED`, the `IDENTITY` loop, the `FACTORY` assertion.
-      ⚠ `:431-434` hard-codes a two-entry display map that **KeyErrors** the
-      moment `HUB_BY_TOPOLOGY[5]` changes — fix in the same commit or the whole
-      file dies instead of reporting one failure.
-- [ ] 6.4 New audit: every tool named in an assembled prompt is in the agent's
-      bound set and vice versa, run under `SYSTEM_TOPOLOGY` 7 **and** 5.
-- [ ] 6.5 **Mutation-test every new check.**  Re-introduce the defect it is
-      meant to catch and confirm it fails.  Two of the existing suite's checks
-      were silently vacuous until mutation-tested.
-- [ ] 6.6 `py -3.13 -m pyflakes agents/ web_app.py workflow_settings/`.
-      `py_compile` is NOT evidence.
-- [ ] 6.7 Other tests naming conductor/creator: `smoke_test_orchestrator.py`,
-      `smoke_test_prompt_cache.py`, `smoke_test_queue_tiers.py`,
-      `smoke_test_llm_routing.py`,
-      `extra_utilities/prompt_efficiency/prompt_shrink_cuts.json`,
-      `measure_prompts.py`.
-- [ ] 6.8 O7 — `web/app.js`.
+- [x] 6.1 `dump.py --topology N` (default 7 -> `dump.json`, unchanged in every
+      respect; 5 -> `dump5.json`).  `tools_for()` is WRAPPED rather than
+      forked: the wrapper strips the routing tools the 7-agent wiring produced
+      and re-adds topology 5's, keeping the utility half, which is genuinely
+      shared because the classes are the same objects.  The two committed-
+      default asserts now read the EFFECTIVE flags and only apply to topology
+      7.  **This also fixed a break I had introduced in 2.5b and not caught:**
+      changing `UII._build_read_user_inputs` to take an `agent_key` left
+      `dump.py` raising `TypeError`.  It had been broken since; the
+      cross-validation I reported at Stage 2 was true when run and stale
+      afterwards.
+- [x] 6.2 `topology_prompt_snapshot.py` - built in Stage 1b.
+- [x] 6.3 `smoke_test_topology_fragments.py` rewritten for the new agent set.
+      Rosters, routing-fragment lists, `HUB_BY_TOPOLOGY`, `UII_KICKOFF_AGENT`,
+      `CHAIN_BY_TOPOLOGY` and the FACTORY sentinels all re-pointed.  Three
+      deeper changes:
+      * **"the other hub" stopped being a usable idea.**  It worked while the
+        Conductor existed only in topology 5 and the Orchestrator only in 7.
+        Now topology 5's hub is the PLANNER, which is a perfectly real agent
+        in topology 7 - forbidding its name there would reject correct text.
+        Replaced by `ABSENT_DISPLAYS`: no routing section may name an agent
+        the ACTIVE topology does not build.  Narrower and actually true.
+      * **`MIRROR`, a new and much stronger check.**  The old COVERAGE
+        invariant ("every override is read") does not fit a complete mirror -
+        the mirror deliberately contains flag-gated variants nothing reads
+        under one setting.  For a mirrored topology the invariant is instead
+        that NOTHING is read from the shared prompt trees at all.  **Topology
+        5 reads 86 files, every one from `agents/5agent/`, zero shared.**
+      * `HUB_MARKERS` -> `HUB_SLOT_TOPOLOGIES`.  A marker word only proves
+        SOME file was read; the check now compares the assembled hub prompt
+        against the text `routing_<hub>.md` actually resolves to.  Topology 5
+        is not listed because its hub prompt carries `{routing_instructions}`
+        rather than `$routing_hub`, and is covered by the HUB section.
+- [x] 6.4 `smoke_test_prompt_tool_audit.py` - NEW.  Fails when an assembled
+      prompt names a tool that NO agent in that topology binds.  Both sides
+      derived, never transcribed: prompts from `topology_prompt_snapshot`,
+      bound tools from `dump*.json` plus the routing edges read out of
+      `planner5.py` with `ast`.
+      The invariant is deliberately topology-wide rather than per-agent: a
+      prompt may legitimately NAME a neighbour's tool (the hub's roster does,
+      the DH's prompt describes the whole system), but naming one nothing
+      binds cannot be explained that way - and that is the shape of all three
+      drifts on record.
+- [x] 6.5 **Every new check mutation-tested**, per the "a check that has never
+      failed has not been shown to work" rule:
+      * hub attributes - re-introducing `self.planner.reset()` fails it;
+      * hub edges - deleting the DCOI->DCIC edge fails it;
+      * MIRROR - deleting one mirrored file fails it, naming the shared file
+        that stood in;
+      * RETIRED - adding `list_input_files` to a topology-5 prompt fails it.
+      Every mutated file restored and hash-checked afterwards.
+- [x] 6.6 `pyflakes agents/ workflow_settings/ web_app.py extra_utilities/*.py`
+      - every warning is in a file this work never touched.
+- [x] 6.7 Other scripts naming the retired agents: `measure_prompts.py`,
+      `build_html.py` and `provenance.py` turned out to match only on
+      `dc_input_creator`.  `smoke_test_dc_primer.py` was fixed in Stage 4.
+      `smoke_test_db_writer.py` fails on a missing Postgres URL, which is
+      environmental.  `prompt_shrink_cuts.json`, `round2_annotations.json` and
+      `baseline_tokens.json` are records of past analysis rounds and are
+      deliberately left as they are.
+- [x] 6.8 `web/app.js` - done in Stage 4.
+- [x] 6.9 `SMOKE_TESTS.md` gains rows for the two new checks; the stale
+      description of the rewritten suite and the stale side-effects note (it
+      named a probe file the wipe removed) are corrected.
+      `prompt_pdf/.gitignore` gains `dump5.json` / `dump3.json`.
+
+**Two-way cross-validation, the strongest statement in the harness:** every
+prompt in `dump.json` (9 agents) and `dump5.json` (7 agents) hashes identically
+to the same agent's prompt from `topology_prompt_snapshot`.  Two independently
+written assemblers agree byte-for-byte on both topologies.
+
+**The suite, after Stage 6** - all green:
+`smoke_test_topology_fragments` PASS (18 known-pending),
+`smoke_test_hub_attributes` problems none,
+`smoke_test_prompt_tool_audit` PASS (7 known-pending),
+`smoke_test_queue_tiers`, `smoke_test_slot_splices`, `smoke_test_llm_routing`
+all pass.  Topology-7 templates: 0 drift from the original baseline.
+
+### The KNOWN-PENDING list IS the Stage-8 worklist
+
+Everything below is a real finding, deliberately left standing because the
+fix is a prompt edit the owner owns.  Nothing here is silently swallowed - the
+suites print each one and stay green only because it is named.
+
+1. **Topology 5 still routes to `call_orchestrator`** - 7 prompts.  The forked
+   tree is byte-identical to topology 7's, so every routing fragment still
+   names an agent topology 5 does not build.
+2. **Topology 5's routing sections never name their own hub** - the Tool
+   Caller's and the DCOI's say "the Orchestrator" where they should say "the
+   Planner".
+3. **Nobody states the UII's two required paths.**  In topology 7 the
+   `Input directory:` / `Extraction output file:` lines are emitted by the
+   ORCHESTRATOR alone; the Planner carries them only inside a `<<PF_ON>>`
+   block, which is stripped whenever PLANNER_FIRST is False.  Topology 5 has
+   no Orchestrator and its hub IS the Planner, so the lines are emitted
+   nowhere - and `write_extraction` / `read_user_inputs` both take a REQUIRED
+   `path` with no default.  This is item 1 of the fifteen responsibilities
+   that lived only in the Orchestrator's prompt (§5.1), now confirmed to bite.
+4. **The topology-5 hub keeps the `<<CHAIN_ONLY>>` rules**, so it is told
+   "never address the user yourself - route your content to the Orchestrator".
+   Deliberate: `_NON_CHAIN_AGENTS` has no topology dimension, so adding
+   `planner` would strip that block from the 7-agent Planner too.  The fix is
+   a topology-5 scoped copy of `generic_constraints_planner`.
+5. **The hub receives the chain-access block its prompt never explains** -
+   `_CHAIN_ACCESS_ON/OFF` were dropped with the Orchestrator's prompt, but the
+   dispatch-time prepend is still gated on the `CHAIN_ACCESS` setting.
 
 ### Stage 7 — Tool-layer topology overlays  (D7)
 

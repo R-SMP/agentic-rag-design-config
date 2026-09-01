@@ -56,7 +56,9 @@ that move.
 | `smoke_test_session_roundtrip.py` | llm-api |  | End-to-end two-turn integration: dispatch_turn against a live LLM, then asserts snapshot-back populated session.agent_states['receptionist'].messages, that to_dict (with live BaseMessages stripped)... |
 | `smoke_test_session_to_from_dict.py` | none |  | Asserts Session.to_dict/from_dict round-trips every config flag, path field, chain-log exchange and per-agent AgentState field; that to_dict output passes assert_plain_data and json.dumps; that ass... |
 | `smoke_test_slot_splices.py` | none |  | Scans every $-slot substitution target (agent prompt*.md plus every prompt_fragments/, tools_config/ and dc_config/ tree, variants included) and fails when a slot that resolves to MULTI-LINE conten... |
-| `smoke_test_topology_fragments.py` | none | py>=3.10 - **writes into the real tree** | Builds every prompt for topologies 7 and 5 under both PLANNER_FIRST settings and asserts COVERAGE (every agents/<N>agent/ override is read), NO-LEAK, ISOLATION, no unsubstituted $slots, $routing_hu... |
+| `smoke_test_hub_attributes.py` | none | pure ast - no imports, runs anywhere | For every hub class: enumerates EVERY `self.<attr>.<method>()` and fails on an attr the class never provides (the defect that left the Architect calling three agents its topology never builds), and asserts each hub's WIRED ROUTING EDGE SET against an expected list extracted from the source with ast - so it tests what the code does, not what a comment claims.  Both halves mutation-tested. |
+| `smoke_test_prompt_tool_audit.py` | none | regenerates `prompt_pdf/dump*.json` if absent | Fails when an assembled prompt names a tool that NO agent in that topology binds - the shape of every prompt/tool drift on record (the Conductor's `read_user_queries`, the DCOI's `list_input_files`, a topology-5 prompt still saying `call_orchestrator`).  Both sides derived, never transcribed: prompts from `topology_prompt_snapshot`, bound tools from dump.json plus the routing edges read out of `planner5.py`. |
+| `smoke_test_topology_fragments.py` | none | py>=3.10 - **writes into the real tree** | Builds every prompt for topologies 7 and 5 under both PLANNER_FIRST settings and asserts NO-LEAK, ISOLATION, no unsubstituted $slots, correct $routing_hub resolution, the CHAIN_ONLY hub filter, clean degradation for an unregistered topology, and - for a fully forked topology - MIRROR: that it reads NOTHING from the shared prompt trees at all.  Findings that await an owner-approved prompt edit are listed as KNOWN-PENDING rather than silently passed. |
 
 ## Root utilities (not tests)  (3)
 
@@ -99,8 +101,9 @@ that move.
 - **The only script that runs as-is in the bare py3.8 worktree** is
   `smoke_test_slot_splices.py` (pure stdlib).
 - **Side effects on the real tree.**  `smoke_test_topology_fragments` writes
-  `DC_prompt_fragments/dc_config/hard_constraints_dc_dc_input_inspector.md` and
-  `agents/5agent/prompt_fragments/routing_user_input_inspector_uii_first_5agents.md`;
+  probe fragments into `DC_prompt_fragments/` and `agents/5agent/` and removes
+  them again - it picks a (slot, agent) pair that is FREE on disk, and that
+  pair moves as the trees fill up;
   `smoke_test_attempt_coherence` creates `g_*` / `f75*` folders under the real
   `ATTEMPTS_DIR`.  Check `git status` afterwards.
 - **`smoke_test_prompt_cache`** costs a few cents.  Its `check_phase_isolation()`

@@ -33,15 +33,15 @@ from agents.shared import topology as _topology
 # no separable DC Input Inspector to switch off, because both were merged
 # into other agents.
 #
-# Note the 5-agent string includes the Receptionist while the 7-agent one
-# does not.  That is not an oversight either way: the 7-agent Receptionist
-# hands to the Orchestrator rather than into the chain, so the string
-# starts and ends at the hub; the 5-agent Receptionist routes straight to
-# the UII, so it IS the UII's natural previous and belongs in the flow.
+# Both strings start and end at the hub, because in both topologies the
+# Receptionist hands to the hub rather than into the chain.  The 5-agent
+# string is the 7-agent PF_OFF one with the Orchestrator replaced by the
+# Planner and the two removed agents dropped; the Planner appears twice
+# because it is both the origin and the terminus there.
 _PIPELINE_BY_TOPOLOGY = {
     5: (
-        "Receptionist → User Input Inspector → Conductor → Creator → "
-        "Tool Caller → DC Output Inspector → Conductor"
+        "Planner → User Input Inspector → Planner → DC Input Creator → "
+        "Tool Caller → DC Output Inspector → Planner"
     ),
     # 3-agent (strip-down).  Starts and ends at the hub, like the
     # 7-agent string and unlike the 5-agent one: there is no UII here,

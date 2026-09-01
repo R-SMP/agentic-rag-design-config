@@ -83,7 +83,7 @@ AGENTS_BY_TOPOLOGY = {
         "dc_output_inspector", "database_handler",
     ],
     5: [
-        "receptionist", "conductor", "user_input_inspector", "creator",
+        "receptionist", "planner", "user_input_inspector", "dc_input_creator",
         "tool_caller", "dc_output_inspector", "database_handler",
     ],
 }
@@ -100,9 +100,13 @@ ROUTING_FRAGMENTS_BY_TOPOLOGY = {
         "routing_tool_caller.md",
         "routing_dc_output_inspector.md",
     ],
+    # The hub's fragment is listed unbranched because ``Planner5`` passes the
+    # uii_first name unconditionally: PLANNER_FIRST does not exist here, and
+    # _load_routing_fragment collapses the suffix to reach the override.
     5: [
+        "routing_planner_uii_first.md",
         "routing_user_input_inspector_{pf}.md",
-        "routing_creator.md",
+        "routing_dc_input_creator_{pf}.md",
         "routing_tool_caller.md",
         "routing_dc_output_inspector.md",
     ],
@@ -111,7 +115,7 @@ ROUTING_FRAGMENTS_BY_TOPOLOGY = {
 # Each topology's hub — the agent whose prompt must NOT keep the
 # <<CHAIN_ONLY>> rules, since "escalate to the hub" addressed to the hub
 # is self-referential.
-HUB_BY_TOPOLOGY = {7: "orchestrator", 5: "conductor"}
+HUB_BY_TOPOLOGY = {7: "orchestrator", 5: "planner"}
 
 # The Database Handler is the ONLY agent whose assembled template is never
 # passed through ``str.format()`` — ``database_handler.py`` builds it with
@@ -131,19 +135,67 @@ NEVER_FORMATTED = frozenset({"database_handler"})
 # construction.  What this check enforces is only that whoever kicks off
 # actually STATES both — the UII's read and write tools each take a required
 # ``path`` with no default, so an unstated path leaves it guessing.
-UII_KICKOFF_AGENT = {7: "orchestrator", 5: "receptionist"}
+UII_KICKOFF_AGENT = {7: "orchestrator", 5: "planner"}
 
-# Routing-tool names unique to each topology's hub fragment.  Used to prove
-# $routing_hub resolved to the RIGHT file, not merely to some file: the
-# 7-agent hub can call the Planner, the 5-agent hub can call the Creator,
-# and neither name exists in the other topology.
-HUB_MARKERS = {7: ("call_planner", "call_creator"),
-               5: ("call_creator", "call_planner")}
+# Topologies whose HUB PROMPT carries the ``$routing_hub`` slot, and can
+# therefore be checked by comparing the assembled prompt against the fragment
+# that slot resolves to.  A marker word would only prove SOME file was read;
+# comparing against the resolved text proves it was the right one.
+#
+# Topology 5's hub is the Planner, running the Planner's prompt, which takes
+# its routing text through the ``{routing_instructions}`` runtime slot
+# instead -- so it is not listed, and is covered by the HUB section further
+# down, which calls routing_instructions() directly.
+HUB_SLOT_TOPOLOGIES = frozenset({7})
+
+# Agent display names that a topology does NOT build.  No routing section may
+# name one: it would tell an agent to hand work to something that does not
+# exist.  Topology 7 builds a superset of topology 5's agents, so it forbids
+# nothing.
+ABSENT_DISPLAYS = {
+    7: (),
+    5: ("Orchestrator", "DC Input Inspector"),
+}
+
+# Topologies whose agents/<N>agent/ tree is a COMPLETE MIRROR rather than a
+# hand-picked override set (plan D5/D17).  For these the invariant is much
+# stronger than "every override is reached": NOTHING may be read from the
+# shared prompt trees at all, because a shared read means some file was not
+# mirrored -- or an override is inert and its original silently stood in.
+MIRRORED_TOPOLOGIES = frozenset({5})
 
 # Defects found by this harness that are awaiting an approved fix.  Listed
 # so the rest of the suite still reports a meaningful PASS/FAIL; each is
 # printed separately and never silently swallowed.
-KNOWN_PENDING: set = set()
+#
+# Each entry is a TUPLE of substrings that must ALL appear in the formatted
+# finding line.  Substrings rather than an exact message because the messages
+# quote live text; tuples rather than one substring so an entry can be pinned
+# to a single topology and never mask the same defect elsewhere.
+KNOWN_PENDING: tuple = (
+    # Topology 5's prompt tree is currently a byte-identical fork of topology
+    # 7's, so its routing fragments still say "Orchestrator" and still direct
+    # agents to ``call_orchestrator``.  That is the deliberate
+    # identical-first baseline; the owner's prompt edits re-point it.
+    ("[HUB] topology 5", "names the other hub"),
+    ("[HUB] topology 5", "never names its own hub"),
+    ("[HUB] topology 5", "names an agent this topology does not build"),
+    # In topology 7 the two UII path labels are emitted by the ORCHESTRATOR
+    # alone -- the Planner carries them only inside a <<PF_ON>> block, which
+    # is stripped whenever PLANNER_FIRST is False.  Topology 5 has no
+    # Orchestrator and its hub IS the Planner, so nobody states them.  A real
+    # gap, and one of the fifteen responsibilities that lived only in the
+    # Orchestrator's prompt; it needs a prompt edit, not a code change.
+    ("[UII-PATHS] topology 5", "never emits a"),
+    # prompts._NON_CHAIN_AGENTS is keyed by agent name with NO topology
+    # dimension, so adding "planner" to it would strip the <<CHAIN_ONLY>>
+    # region from the 7-agent Planner as well -- a live behaviour change.
+    # Topology 5 therefore keeps the chain rules on its hub, which is also
+    # what the identical-first baseline requires.  The fix is a topology-5
+    # scoped copy of generic_constraints_planner with the region removed,
+    # i.e. a prompt edit, not a code change.
+    ("[CHAIN_ONLY] topology 5", "kept a chain-link rule"),
+)
 
 failures: list[str] = []
 pending: list[str] = []
@@ -151,9 +203,9 @@ notes: list[str] = []
 
 
 def fail(case: str, check: str, msg: str) -> None:
-    (pending if msg in KNOWN_PENDING else failures).append(
-        f"[{check}] {case}: {msg}"
-    )
+    line = f"[{check}] {case}: {msg}"
+    known = any(all(part in line for part in entry) for entry in KNOWN_PENDING)
+    (pending if known else failures).append(line)
 
 
 def rel(p: Path) -> str:
@@ -237,8 +289,20 @@ def check_case(topo: int, planner_first: bool) -> None:
     ov = overrides_for(topo)
 
     # --- COVERAGE: every override for this topology is actually read ------
-    for p in sorted(ov):
-        if p not in read:
+    # For a hand-picked override set an unread override is a defect: it was
+    # written and is silently inert.  For a MIRRORED topology it is normal --
+    # the mirror includes files only some flag combination reads (the
+    # database_search_* set with RAG off, the BSV-off variant, the
+    # render_check_library alternatives) -- so it is reported as a note and
+    # the far stronger MIRROR check below carries the weight instead.
+    unread = [p for p in sorted(ov) if p not in read]
+    if topo in MIRRORED_TOPOLOGIES:
+        notes.append(
+            f"{case}: {len(unread)}/{len(ov)} mirrored files not read under "
+            f"these flags (expected -- flag-gated variants)"
+        )
+    else:
+        for p in unread:
             orig = ov[p]
             extra = (
                 f"; the shared {rel(orig)} was read instead"
@@ -273,6 +337,17 @@ def check_case(topo: int, planner_first: bool) -> None:
         f"{len([p for p in ov if p in read])}/{len(ov)} overrides read"
     )
 
+    # --- MIRROR: a fully-forked topology must read NOTHING shared ---------
+    # The strongest statement the harness can make about the fork: if even one
+    # shared fragment is reached, either the mirror is incomplete or an
+    # override is inert and its original stood in unnoticed.  Both are the
+    # failure mode that made the previous 5-agent system drift.
+    if topo in MIRRORED_TOPOLOGIES:
+        for leaked in sorted(shared_read):
+            fail(case, "MIRROR",
+                 f"topology {topo} is fully forked but still read the shared "
+                 f"{rel(leaked)}")
+
     # --- SLOTS: nothing left unsubstituted --------------------------------
     slot_names = set(prompts._build_slots()) | {
         "database_search_per_agent", "blade_sections_visualizer_per_agent",
@@ -286,16 +361,17 @@ def check_case(topo: int, planner_first: bool) -> None:
     # --- HUB SLOT: $routing_hub resolved to THIS topology's hub fragment --
     hub = HUB_BY_TOPOLOGY[topo]
     hub_text = built.get(hub, "")
-    want, must_not = HUB_MARKERS[topo]
-    if want not in hub_text:
-        fail(case, "HUB-SLOT",
-             f"the hub ({hub}) prompt lacks '{want}' — $routing_hub did not "
-             f"resolve to routing_{hub}")
-    if must_not in hub_text:
-        fail(case, "HUB-SLOT",
-             f"the hub ({hub}) prompt contains '{must_not}', which belongs "
-             f"to the OTHER topology's hub fragment")
-    for other_slot in ("$routing_orchestrator", "$routing_conductor"):
+    if topo in HUB_SLOT_TOPOLOGIES:
+        hub_frag = prompts._read_generic_fragment(f"routing_{hub}.md")
+        anchors = [ln.strip() for ln in hub_frag.splitlines() if ln.strip()]
+        missing = [a for a in anchors[:6] if a not in hub_text]
+        if missing:
+            fail(case, "HUB-SLOT",
+                 f"the hub ({hub}) prompt is missing {len(missing)} line(s) "
+                 f"of routing_{hub}.md — $routing_hub did not resolve to it: "
+                 f"{missing[:1]}")
+    for other_slot in ("$routing_orchestrator", "$routing_conductor",
+                       "$routing_planner", "$routing_architect"):
         for who, text in built.items():
             if other_slot in text:
                 fail(case, "HUB-SLOT",
@@ -419,19 +495,23 @@ CHAIN_BY_TOPOLOGY = {
          "routing_tool_caller.md"),
         ("DC Output Inspector", None, "Tool Caller",
          "routing_dc_output_inspector.md")],
-    5: [("User Input Inspector", "Conductor", "Receptionist",
+    5: [("User Input Inspector", "Planner", None,
          "routing_user_input_inspector_{pf}.md"),
-        ("Creator", "Tool Caller", "Conductor", "routing_creator.md"),
-        ("Tool Caller", "DC Output Inspector", "Creator",
+        ("DC Input Creator", "Tool Caller", "Planner",
+         "routing_dc_input_creator_{pf}.md"),
+        ("Tool Caller", "DC Output Inspector", "DC Input Creator",
          "routing_tool_caller.md"),
         ("DC Output Inspector", None, "Tool Caller",
          "routing_dc_output_inspector.md")],
 }
 
+# "The other hub" stopped being a usable idea when topology 5's hub became
+# the PLANNER: the Planner is a perfectly real agent in topology 7, so
+# forbidding its name there would reject correct text.  What is actually
+# wanted is narrower and truer -- no routing section may name an agent the
+# ACTIVE topology does not build.  ABSENT_DISPLAYS carries that per topology.
 for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
-    _other_hub = HUB_BY_TOPOLOGY[7 if _topo == 5 else 5]
-    _other_display = {"orchestrator": "Orchestrator",
-                      "conductor": "Conductor"}[_other_hub]
+    _absent = ABSENT_DISPLAYS[_topo]
     for _pf_flag in (False, True):
         prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
         prompts.PLANNER_FIRST = _pf_flag
@@ -441,9 +521,11 @@ for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
 
         # natural_pipeline() must describe THIS topology.
         _flow = routing.natural_pipeline()
-        if _other_display in _flow:
-            fail(_case, "HUB",
-                 f"natural_pipeline() names the other hub: {_flow}")
+        for _gone in _absent:
+            if _gone in _flow:
+                fail(_case, "HUB",
+                     f"natural_pipeline() names an agent this topology does "
+                     f"not build ({_gone}): {_flow}")
         if _hub_disp not in _flow:
             fail(_case, "HUB",
                  f"natural_pipeline() never names its own hub: {_flow}")
@@ -453,12 +535,15 @@ for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
                 agent_name=_name, next_agent=_next, prev_agent=_prev,
                 fragment_name=_frag.format(pf=_pf),
             )
-            if _other_display in block:
-                bad = [ln.strip() for ln in block.splitlines()
-                       if _other_display in ln]
-                fail(_case, "HUB",
-                     f"{_name}'s routing section names the other hub "
-                     f"({_other_display}): {bad[:2]}")
+            for _gone in _absent:
+                if _gone in block:
+                    bad = [ln.strip() for ln in block.splitlines()
+                           if _gone in ln]
+                    tag = ("names the other hub" if _gone == "Orchestrator"
+                           else "names an agent this topology does not build")
+                    fail(_case, "HUB",
+                         f"{_name}'s routing section {tag} "
+                         f"({_gone}): {bad[:2]}")
             # The 2026-08-22 prompt reduction cut most routing boilerplate
             # for some agents (routing._ROUTING_SECTIONS_BY_AGENT) — assert
             # each section's content only where that section is still
@@ -508,9 +593,9 @@ class _SentinelOrchestrator:
         self.which = "orchestrator"
 
 
-class _SentinelConductor:
+class _SentinelPlanner5:
     def __init__(self, session=None, llm_cache=None):
-        self.which = "conductor"
+        self.which = "planner"
 
 
 class _SentinelArchitect:
@@ -520,17 +605,17 @@ class _SentinelArchitect:
 
 _mo = types.ModuleType("agents.orchestrator")
 _mo.Orchestrator = _SentinelOrchestrator
-_mc = types.ModuleType("agents.conductor")
-_mc.Conductor = _SentinelConductor
+_mc = types.ModuleType("agents.planner5")
+_mc.Planner5 = _SentinelPlanner5
 _ma = types.ModuleType("agents.architect")
 _ma.Architect = _SentinelArchitect
 sys.modules["agents.orchestrator"] = _mo
-sys.modules["agents.conductor"] = _mc
+sys.modules["agents.planner5"] = _mc
 sys.modules["agents.architect"] = _ma
 
 from agents.hub import build_hub  # noqa: E402
 
-for _topo, _expect in ((7, "orchestrator"), (5, "conductor"),
+for _topo, _expect in ((7, "orchestrator"), (5, "planner"),
                        (3, "architect"), (99, "orchestrator")):
     prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
     got = build_hub(session=None).which
@@ -541,16 +626,21 @@ for _topo, _expect in ((7, "orchestrator"), (5, "conductor"),
         )
 
 # --- IDENTITY: every table must agree on the agent-key universe -----------
-# The 5-agent agents are registered in several independent tables.  Missing
-# one is silent: dh_schedule.AGENT_KEYS validates schedule entries, so
-# omitting 'conductor' there meant a schedule naming it was REJECTED and the
-# DH could never interview the hub of a 5-agent run.
+# Every agent a topology builds is registered in several independent tables.
+# Missing one is silent: dh_schedule.AGENT_KEYS validates schedule entries,
+# so an agent absent there means a schedule naming it is REJECTED and the DH
+# can never interview it.
 from agents.shared import session as _session_mod  # noqa: E402
 from agents.shared import trace as _trace_mod  # noqa: E402
 from workflow_settings import dh_schedule as _dh  # noqa: E402
 from workflow_settings import llm_routing as _llm  # noqa: E402
 
-for _agent in ("conductor", "creator"):
+# Every agent topology 5 builds must be present in all seven tables.  The
+# Context Pruner is out of scope here: it has no routing tool and no display
+# row, and is registered only for LLM routing.
+for _agent in sorted(set(AGENTS_BY_TOPOLOGY[5]) | set(AGENTS_BY_TOPOLOGY[7])):
+    if _agent == "database_handler":
+        continue  # outside the routing chain; has no call_<agent> tool
     _display = routing_tools.AGENT_DISPLAY.get(_agent)
     for _label, _ok in (
         ("routing_tools.AGENT_DISPLAY", _display is not None),
@@ -566,13 +656,33 @@ for _agent in ("conductor", "creator"):
         if not _ok:
             failures.append(f"[IDENTITY] {_agent!r} missing from {_label}")
 
-# Both 5-agent agents are constructed by build_hub now, so neither may
-# still be flagged unwired in the LLM-routing spec.
-for _k, _d, _wired in _llm.AGENT_SPEC:
-    if _k in ("conductor", "creator") and not _wired:
+# The mirror image: a RETIRED agent must be gone from the live tables, or a
+# stale row keeps offering a call_<agent> tool for something nothing builds.
+# session.RETIRED_AGENT_KEYS is the deliberate exception -- archived
+# snapshots still name them, and must still load.
+for _agent in sorted(_session_mod.RETIRED_AGENT_KEYS):
+    for _label, _present in (
+        ("routing_tools.AGENT_DISPLAY",
+         _agent in routing_tools.AGENT_DISPLAY),
+        ("routing_tools.ROUTING_TOOL_NAMES",
+         f"call_{_agent}" in routing_tools.ROUTING_TOOL_NAMES),
+        ("session.KNOWN_AGENT_KEYS", _agent in _session_mod.KNOWN_AGENT_KEYS),
+        ("llm_routing.AGENT_KEYS", _agent in _llm.AGENT_KEYS),
+        ("dh_schedule.AGENT_KEYS", _agent in _dh.AGENT_KEYS),
+    ):
+        if _present:
+            failures.append(
+                f"[IDENTITY] retired agent {_agent!r} is STILL in {_label}"
+            )
+
+# Every agent a hub constructs must be flagged wired in the LLM-routing spec,
+# or it silently drops out of the per-agent model UI.
+_wired_by_key = {k: w for k, _d, w in _llm.AGENT_SPEC}
+for _agent in sorted(set(AGENTS_BY_TOPOLOGY[5]) | set(AGENTS_BY_TOPOLOGY[7])):
+    if _wired_by_key.get(_agent) is False:
         failures.append(
-            f"[IDENTITY] llm_routing marks {_k!r} unwired, but build_hub "
-            f"constructs it under topology 5"
+            f"[IDENTITY] llm_routing marks {_agent!r} unwired, but a hub "
+            f"constructs it"
         )
 
 # --- TABLES: topology.py display names must match AGENT_DISPLAY -----------

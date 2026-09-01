@@ -149,21 +149,28 @@ PLANNER_FIRST = bool(_workflow_settings.PLANNER_FIRST)
 #   * topology 5's hub IS the Planner, so there is no Planner/UII ordering
 #     to choose and <<PF_ON>>/<<PF_OFF>> has nothing to select between.
 #
-# The two helpers below force both axes off for every topology that is not
-# 7, and read the TOPOLOGY fresh on each call because the Sessions Queue
-# switches topology between runs inside one process (see topology.py).  For
-# topology 7 they return the import-time constants UNCHANGED, so that
-# topology takes byte-for-byte the path it always took.
+# The two helpers below force both axes off for every topology that does not
+# have the agents they describe, and read the topology fresh on each call
+# because the Sessions Queue switches it between runs inside one process (see
+# topology.py).
+#
+# They key on the resolved HUB, not on ``topology() == 7``.  Any topology
+# whose hub is the Orchestrator IS the 7-agent agent set -- including an
+# UNREGISTERED topology number, which ``_HUB_BY_TOPOLOGY`` deliberately falls
+# back to the Orchestrator for.  Keying on the number instead made that
+# fallback build DIFFERENT prompts from topology 7, which is exactly what the
+# fallback exists to avoid; smoke_test_topology_fragments' DEGRADE case
+# caught it.
 
 
 def _dcii_effective() -> bool:
     """Is the DC Input Inspector present in the ACTIVE topology?"""
-    return DCII_ENABLED if _topology() == 7 else False
+    return DCII_ENABLED if _hub_agent() == "orchestrator" else False
 
 
 def _planner_first_effective() -> bool:
     """Does the ACTIVE topology have a Planner/UII ordering to choose?"""
-    return PLANNER_FIRST if _topology() == 7 else False
+    return PLANNER_FIRST if _hub_agent() == "orchestrator" else False
 
 _DCII_ONLY_RE = re.compile(r"<<DCII_ONLY>>(.*?)<</DCII_ONLY>>", re.DOTALL)
 _DCII_OFF_RE = re.compile(r"<<DCII_OFF>>(.*?)<</DCII_OFF>>", re.DOTALL)

@@ -1,20 +1,30 @@
-"""Dump the 7-agent REDUCED system's assembled system prompts + bound tools.
+"""Dump a topology's assembled system prompts + bound tools.
 
 Runs the REAL assembler (agents.shared.prompts) and the REAL langchain tool
-objects, with SYSTEM_TOPOLOGY=7 and every other
-workflow setting left at its committed default.  Each agent is produced
-twice -- RAG_ENABLED False and True -- so the caller can mark exactly which
-text and which tools RAG adds.
+objects, with every workflow setting left at its committed default.  Each
+agent is produced twice -- RAG_ENABLED False and True -- so the caller can
+mark exactly which text and which tools RAG adds.
+
+    py -3.13 dump.py                 # topology 7 -> dump.json  (the default)
+    py -3.13 dump.py --topology 5    # topology 5 -> dump5.json
+
+The default is unchanged in every respect, output filename included, so the
+PDF builder and anything else reading dump.json keeps working untouched.
 """
 import io
 import json
+import sys
 
 import bootstrap
 
 REPO = bootstrap.install()
 
+TOPOLOGY = 7
+if "--topology" in sys.argv:
+    TOPOLOGY = int(sys.argv[sys.argv.index("--topology") + 1])
+
 import workflow_settings.settings as S
-S.SYSTEM_TOPOLOGY = 7
+S.SYSTEM_TOPOLOGY = TOPOLOGY
 
 from workflow_settings import database_access, ocr_access, blade_sections_access
 
@@ -50,10 +60,14 @@ import agents.dc_input_inspector.dc_input_inspector as DCII_M
 import agents.dc_output_inspector.dc_output_inspector as DCOI_M
 from agents.database_handler import dh_tools, batch_tools
 
-DCII_ON = bool(S.DC_INSPECTOR_ENABLED)
-PF = bool(S.PLANNER_FIRST)
-assert not PF, "this dump assumes the committed default PLANNER_FIRST=False"
-assert DCII_ON, "this dump assumes the committed default DC_INSPECTOR_ENABLED=True"
+# Both axes exist only where the hub is the Orchestrator; prompts.py forces
+# them off elsewhere, so read the EFFECTIVE values rather than the raw flags.
+DCII_ON = P._dcii_effective()
+PF = P._planner_first_effective()
+if TOPOLOGY == 7:
+    assert not PF, "this dump assumes the committed default PLANNER_FIRST=False"
+    assert DCII_ON, ("this dump assumes the committed default "
+                     "DC_INSPECTOR_ENABLED=True")
 
 
 class _FakeSession:
@@ -203,7 +217,8 @@ def tools_for(agent):
                    [rt("user_input_inspector", "dc_input_creator"),
                     rt("user_input_inspector", "planner"),
                     rt("user_input_inspector", "orchestrator")])
-        return ([UII_M._build_read_user_inputs(), UII_M.write_extraction]
+        return ([UII_M._build_read_user_inputs("user_input_inspector"),
+                 UII_M.write_extraction]
                 + extra
                 + build_user_inputs_tools("user_input_inspector",
                                           include_text_tools=False)
@@ -281,9 +296,43 @@ def tool_record(t):
             "args": args, "required": required}
 
 
-AGENTS = ["receptionist", "orchestrator", "planner", "user_input_inspector",
-          "dc_input_creator", "dc_input_inspector", "tool_caller",
-          "dc_output_inspector", "database_handler"]
+AGENTS_BY_TOPOLOGY = {
+    7: ["receptionist", "orchestrator", "planner", "user_input_inspector",
+        "dc_input_creator", "dc_input_inspector", "tool_caller",
+        "dc_output_inspector", "database_handler"],
+    # Topology 5: the 7-agent set minus the Orchestrator and the DC Input
+    # Inspector, with the Planner as hub.
+    5: ["receptionist", "planner", "user_input_inspector",
+        "dc_input_creator", "tool_caller", "dc_output_inspector",
+        "database_handler"],
+}
+AGENTS = AGENTS_BY_TOPOLOGY[TOPOLOGY]
+
+# Under topology 5 the routing EDGES differ (agents/planner5/planner5.py) and
+# the hub is the Planner running the Planner's prompt.  Rather than fork
+# tools_for(), post-process it: strip every routing tool the 7-agent wiring
+# produced and re-add this topology's, which keeps the UTILITY half -- the
+# part that is genuinely shared, because the classes are the same objects.
+_EDGES_5 = {
+    "receptionist":         ["planner"],
+    "planner":              ["user_input_inspector", "dc_input_creator",
+                             "dc_output_inspector", "receptionist"],
+    "user_input_inspector": ["planner"],
+    "dc_input_creator":     ["tool_caller", "planner"],
+    "tool_caller":          ["dc_output_inspector", "dc_input_creator"],
+    "dc_output_inspector":  ["tool_caller", "dc_input_creator", "planner"],
+    "database_handler":     [],
+}
+
+_tools_for_7 = tools_for
+
+
+def tools_for(agent):                     # noqa: F811 - deliberate wrapper
+    t = _tools_for_7(agent)
+    if TOPOLOGY == 7:
+        return t
+    utility = [x for x in t if not getattr(x, "name", "").startswith("call_")]
+    return utility + [rt(agent, tgt) for tgt in _EDGES_5.get(agent, [])]
 
 out = {
     "config": {
@@ -324,10 +373,11 @@ for a in AGENTS:
 
 S.RAG_ENABLED = False
 
-with io.open(REPO / "extra_utilities" / "prompt_pdf" / "dump.json",
+_name = "dump.json" if TOPOLOGY == 7 else f"dump{TOPOLOGY}.json"
+with io.open(REPO / "extra_utilities" / "prompt_pdf" / _name,
              "w", encoding="utf-8") as f:
     json.dump(out, f, ensure_ascii=False, indent=1)
-print("wrote dump.json")
+print(f"wrote {_name}  (topology {TOPOLOGY}, {len(AGENTS)} agents)")
 for a in AGENTS:
     r = out["agents"][a]
     print("{:22s} off={:6d} on={:6d} tools off={:2d} on={:2d}  [{}]".format(
