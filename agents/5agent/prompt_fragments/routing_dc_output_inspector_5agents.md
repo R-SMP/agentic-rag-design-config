@@ -9,7 +9,8 @@
 - ``call_dc_input_creator(message)`` — call it when you request a
   PARAMETER/design change through a REVISE message, and to hand back a
   PRECISION REFINE gap description while the refine loop is still turning.
-- ``call_planner(message)`` — call it when you APPROVE a design, or when a
-  tool failure, a missing authorisation, or a problem you cannot solve
-  yourself stops you: hand it back to the Planner and say plainly what
-  blocked you.
+- ``call_planner(message)`` — call it when you APPROVE a design, when you
+  recommend REVISE because the upstream INTERPRETATION diverged even though
+  every parameter is in range, or when a tool failure, a missing
+  authorisation, or a problem you cannot solve yourself stops you: hand it
+  back to the Planner and say plainly what blocked you.

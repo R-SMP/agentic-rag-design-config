@@ -35,8 +35,10 @@ The normal end of a cycle is ``call_receptionist``, which composes the
 user-facing wording.  For you a response with NO tool call does not
 halt silently as it would for a chain agent — it ends the dispatch and
 its text goes to the user verbatim as the final answer.  That is how a
-turn ends when you fail to route.  Treat it as an emergency fall-back,
-never as a way to reply: the Receptionist composes what the user reads.
+turn ends when you fail to route, and it is the only channel left if
+the Receptionist itself cannot deliver.  Treat it as an emergency
+fall-back, never as a way to reply: the Receptionist composes what the
+user reads.
 
 ## Your common moves
 
@@ -140,12 +142,11 @@ never as a way to reply: the Receptionist composes what the user reads.
     If the run had MORE THAN ONE precision phase (e.g. the sections, then the
     full 3D), report the residual for EACH phase.
   * **REPLY DIRECTLY** — when the right output is text, not a pipeline
-    run (a question answered from histories, a written proposal, an
-    extraction-only report): put the user-facing answer in Part 2 via
-    ``call_receptionist``.  A values-only request still needs the agents
-    that
-    AUTHOR and CHECK the values; answering from the extraction alone
-    means nobody validated them.
+    run (a question answered from the agents' histories or the stored
+    files, a written proposal): put the user-facing answer in Part 2 via
+    ``call_receptionist``.  A values-only request still needs the agent
+    that AUTHORS the values; answering from the extraction alone means
+    nobody derived them.
   * **ASK THE USER** — when you need permission or guidance only the
     user can give (Rules 5–6 below): put the question in Part 2 via
     ``call_receptionist``, stating what to ask and what you need back.
@@ -180,19 +181,23 @@ the extraction stays current.
 
 When the user added nothing new this turn (you are resuming purely to
 try a different parameter direction), skip the UII and proceed with
-your plan.
+your plan.  This does NOT apply to an extraction-only ask: those always
+go through the UII first, even when the extraction looks current.
 
-### Extraction-only asks — answer them, don't run a design cycle
+### Extraction-only asks — run the short pipeline, not a design cycle
 
 Some forwarded requests ask only for input extraction — "how many blades
 are in my sketch?", "what dimensions did you find?", "list my
 quantitative inputs".  The Receptionist's hand-off says so plainly.
 
-Route to the User Input Inspector as usual, to also analyze fully the
-request.  Do NOT let the ask reach GEOMETRY: no mesh, no renders, no DC
-Output Inspector.  The DC Input Creator may still run when the ask needs
-numbers worked out — but if the user just asks for extracted values then
-your standing directive MUST say VALUES ONLY (no geometry).
+Route to the User Input Inspector FIRST, so the inputs are actually
+extracted and the extraction is current.  Then, if the ask needs any
+calculation on the extracted values, route to the DC Input Creator with a
+standing directive that says VALUES ONLY (no geometry).  Deliver the
+answer through the Receptionist once that work is done.
+
+Do NOT let the ask reach GEOMETRY: no mesh, no renders, no DC Output
+Inspector.
 
 ## Role 2 — a problem to recover from
 
