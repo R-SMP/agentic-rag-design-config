@@ -3372,6 +3372,12 @@ class DhScheduleIn(BaseModel):
     # The editor sends the FULL replacement schedule on every Save.
     version: int = 1
     questions: list[dict[str, object]]
+    # The topology the editor LOADED these rows under, echoed back from
+    # read_state().  The schedule file is chosen by the topology live at
+    # write time, so without this a topology switch between load and Save
+    # writes one topology's rows into the other topology's file.  Optional
+    # so an older client, or a hand-rolled curl, still works.
+    topology: int | None = None
 
 
 @app.get("/api/fixed-feedback-questions")
@@ -3408,12 +3414,26 @@ def api_dh_schedule_post(body: DhScheduleIn) -> dict:
     for the NEXT End Session → save (the DH reads the file at save
     time).
 
-    Rejected with HTTP 409 while a session is active.
+    Rejected with HTTP 409 while a session is active, or when the
+    topology changed under the editor since it loaded the rows.
     """
     _require_auth()
     _require_no_session()
+    active = settings_dh_schedule.active_topology()
+    if body.topology is not None and int(body.topology) != active:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"These questions were loaded under the {body.topology}-agent "
+                f"topology, but the system is now on the {active}-agent one, "
+                f"which keeps a separate schedule.  Reload the page and redo "
+                f"the edit so it is saved against the right schedule."
+            ),
+        )
+    payload = body.model_dump()
+    payload.pop("topology", None)
     try:
-        settings_dh_schedule.write_updates(body.model_dump())
+        settings_dh_schedule.write_updates(payload)
     except settings_dh_schedule.ScheduleError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
     except Exception as exc:  # never 500 the editor

@@ -168,6 +168,20 @@ def _dcii_effective() -> bool:
     return DCII_ENABLED if _hub_agent() == "orchestrator" else False
 
 
+def dcii_effective() -> bool:
+    """Public alias of :func:`_dcii_effective`.
+
+    The Database Handler needs the same answer this module already
+    computes.  Without it the two layers disagree: the prompt layer
+    strips every DCII reference under topology 5, while the DH's gate
+    reads ``session.dc_inspector_enabled`` -- seeded from a setting whose
+    default is True and which has NO topology dimension -- so the three
+    DCII schedule rows fall through to the unknown-agent branch and are
+    persisted as ``ERROR:`` chunks.
+    """
+    return _dcii_effective()
+
+
 def _planner_first_effective() -> bool:
     """Does the ACTIVE topology have a Planner/UII ordering to choose?"""
     return PLANNER_FIRST if _hub_agent() == "orchestrator" else False
@@ -454,6 +468,15 @@ def _read_generic_fragment(rel_path: str) -> str:
 
 # ---------------------------------------------------------------------------
 # DC-specific content (loaded once at import time)
+#
+# "Once at import time" is a REAL constraint, not a note about cost: these
+# constants are resolved against whatever SYSTEM_TOPOLOGY was on disk when
+# this module was first imported, and the Sessions Queue switches topology
+# between runs inside one process (agents/shared/topology.py:11-15).  They
+# are safe only because they are OFF the prompt-assembly path -- see the
+# note above _build_slots(), which re-reads every fragment from disk on
+# every call.  Do NOT consume these constants at agent-construction time:
+# call _read_dc_fragment() / _read_generic_fragment() there instead.
 # ---------------------------------------------------------------------------
 
 DC_NAME = _read_dc_fragment("dc_config/name.txt").strip()
@@ -465,6 +488,12 @@ PARAMETER_LIST = _read_dc_fragment("dc_config/parameters.md")
 
 def _parse_parameter_keys(rel_path: str) -> tuple[tuple[str, ...], dict[str, type]]:
     """Parse ``parameter_keys.txt`` into an ordered name tuple + type map."""
+    # The ONE reader here that deliberately does NOT go through
+    # _topology_override.  The design configurator's parameters do not
+    # depend on the topology: this file is DATA (the canonical key list
+    # used by the runtime validator and for JSON ordering), not prompt
+    # text, and it is not a $slot.  So there is nothing to fork, and a
+    # per-topology copy would be a second source of truth for one fact.
     raw = (DC_FRAGMENTS_DIR / rel_path).read_text(encoding="utf-8")
     names: list[str] = []
     types: dict[str, type] = {}
@@ -718,8 +747,6 @@ FRAGMENT_TO_SLOT: dict[str, str] = {
     "DC_prompt_fragments/tools_config/retrieve_attempt.md":           "retrieve_attempt_tool",
     # Generic fragments
     "agents/shared/prompt_fragments/generic_constraints.md":  "hard_constraints_generic",
-    "agents/shared/prompt_fragments/eos_feedback_intro.md":   "eos_feedback_intro",
-    "agents/shared/prompt_fragments/eos_feedback_outro.md":   "eos_feedback_outro",
     "agents/shared/prompt_fragments/value_states.md":         "value_states",
     "agents/shared/prompt_fragments/routing_receptionist.md": "routing_receptionist",
     # $routing_hub has one source file PER TOPOLOGY; only the active
@@ -727,7 +754,7 @@ FRAGMENT_TO_SLOT: dict[str, str] = {
     # (The other 5-agent override paths are not in this index yet — that is
     # part of the System-Prompts-UI surface step.)
     "agents/shared/prompt_fragments/routing_orchestrator.md": "routing_hub",
-    "agents/5agent/prompt_fragments/routing_conductor_5agents.md": "routing_hub",
+    "agents/5agent/prompt_fragments/routing_planner_5agents.md": "routing_hub",
     "agents/shared/prompt_fragments/available_agents.md":     "available_agents",
     # $pipeline_flow has TWO source files; only the file matching the
     # current PLANNER_FIRST flag is read by _build_slots.  Both are
@@ -861,14 +888,6 @@ def _scoped_fragments_for(agent_dir_name: str) -> dict[str, str]:
 # format kwarg in an agent's ``__init__``, ADD the same name to this set in
 # the same commit.
 PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
-    # The 5-agent Receptionist forwards straight to the UII, whose tools
-    # refuse to run without explicit paths ("Error: no directory path
-    # provided"), so it must state them in the hand-off.  Its 7-agent
-    # prompt references neither slot — there the Orchestrator is the UII's
-    # entry point — so ``.format()`` is a no-op in that topology.
-    "receptionist":         frozenset({
-        "user_inputs_dir", "extraction_output_file",
-    }),
     "orchestrator":         frozenset({"chain_access_block"}),
     "planner":              frozenset({
         "routing_instructions", "user_inputs_dir",
@@ -966,14 +985,13 @@ def _build_slots() -> dict[str, str]:
         "blade_sections_visualizer_off": _read_dc_fragment("tools_config/blade_sections_visualizer_off.md"),
         # Generic
         "hard_constraints_generic": _read_generic_fragment("generic_constraints.md"),
-        "eos_feedback_intro": _read_generic_fragment("eos_feedback_intro.md"),
-        "eos_feedback_outro": _read_generic_fragment("eos_feedback_outro.md"),
         "value_states": _read_generic_fragment("value_states.md"),
         # Per-agent routing fragments (Receptionist + the topology's hub;
         # the chain agents load theirs via routing_instructions()).
         #
         # The hub's fragment is named per topology — routing_orchestrator.md
-        # in the 7-agent system, routing_conductor.md in the 5-agent one —
+        # in the 7-agent system, routing_planner_5agents.md in the 5-agent
+        # one, whose hub IS the Planner —
         # but BOTH hub prompts reference the single topology-neutral slot
         # $routing_hub.  Only the active topology's file is ever asked for,
         # so there is no "might be missing" case to tolerate: a genuine typo

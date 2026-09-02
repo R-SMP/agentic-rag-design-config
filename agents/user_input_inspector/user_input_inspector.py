@@ -224,13 +224,14 @@ class UserInputInspector(BaseChainAgent):
                 final = ai_text(response.content)
                 if begin_routing_retry(self, final, "UII"):
                     continue
+                bound = " / ".join(sorted(self._routing_tools_by_name)) \
+                    or "any routing tool"
                 return AgentHop(
                     _hub_key(),
                     "Error: User Input Inspector produced a response with no "
                     "routing tool call — it wrote prose but did not invoke "
-                    "call_dc_input_creator / call_planner / call_orchestrator, "
-                    "so the pipeline would otherwise halt silently.  Its raw "
-                    f"text was:\n\n{final}",
+                    f"{bound}, so the pipeline would otherwise halt "
+                    f"silently.  Its raw text was:\n\n{final}",
                 )
 
             routed = False

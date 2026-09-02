@@ -110,8 +110,6 @@ _GENERIC_FIXTURES = {
     "pipeline_flow_planner_first.md": "[PIPELINE_FLOW_PF]",
     "pipeline_flow_uii_first.md":     "[PIPELINE_FLOW_UII]",
     "available_agents.md":            "[AVAILABLE_AGENTS]",
-    "eos_feedback_intro.md":           "[EOS_INTRO]",
-    "eos_feedback_outro.md":           "[EOS_OUTRO]",
     "value_states.md":                 "[VALUE_STATES]",
 }
 

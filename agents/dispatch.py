@@ -335,12 +335,11 @@ def dispatch_turn(
         #    The trace names the ACTIVE hub; ``routing_tools`` suppresses
         #    its own Receptionist->hub trace on the strength of this one,
         #    so the two must agree.
-        # Where the Receptionist actually addressed its hand-off.  In the
-        # 7-agent topology it is bound exactly one routing tool, so this is
-        # always the hub; in the 5-agent one it chooses between the User
-        # Input Inspector (new design content — the usual case) and the
-        # Conductor, and that choice must be honoured or the turn starts at
-        # the wrong agent.
+        # Where the Receptionist actually addressed its hand-off.  In every
+        # topology today it is bound exactly one routing tool, so this is
+        # always the hub -- the Orchestrator in the 7-agent system, the
+        # Planner in the 5-agent one.  The ``or _hub_key()`` fallback is
+        # what makes that true regardless.
         start_agent = validation.get("target") or _hub_key()
 
         # Traced here ONLY for the hop into the hub, because that is the
@@ -372,13 +371,13 @@ def dispatch_turn(
             f"Available file types: {ft_str}",
             "",
             # Deliberately names no agent.  This used to say "handing off
-            # to the Planner", which is wrong twice over: the Planner does
-            # not exist in the 5-agent topology, and under the live
-            # PLANNER_FIRST=False the Orchestrator's own prompt says it
-            # kicks off the User Input Inspector — so the dispatcher was
-            # contradicting the prompt it was feeding.  The hub's prompt
-            # already states exactly who it starts, per topology and per
-            # flag; the dispatcher should not second-guess it.
+            # to the Planner", which contradicted the prompt it was
+            # feeding: under the live PLANNER_FIRST=False the
+            # Orchestrator's own prompt says it kicks off the User Input
+            # Inspector, and in the 5-agent system the Planner IS the hub
+            # being addressed.  The hub's prompt already states exactly who
+            # it starts, per topology and per flag; the dispatcher should
+            # not second-guess it.
             "Decide freely how to proceed — your own prompt states who you "
             "kick off.  Carry whatever context from the Receptionist "
             "(goals, strategy caps, specific requirements, abstract "

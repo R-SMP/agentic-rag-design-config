@@ -57,7 +57,7 @@ time — your paragraph exists only to produce a good embedding.
    not narrate ("the agent says…", "the system reports…"); just state
    what is true about the design / session.
 6. **No metadata leakage.**  Do not mention session IDs, attempt
-   numbers, file paths, agent names (UII, DCII, Planner, etc.), or
+   numbers, file paths, agent names (UII, DCIC, DCOI, Planner, etc.), or
    tool names.  The retrieval layer adds those back from structured
    columns at query time; embedding them here pollutes the vector
    space with noise that doesn't help similarity matching.

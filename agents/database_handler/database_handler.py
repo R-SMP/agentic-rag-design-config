@@ -5,11 +5,13 @@ user has typed ``quit`` and confirmed they want to save.  It is NOT
 part of the dispatch loop, has no routing tools, and never speaks to
 the user.
 
-Its job is to interview each in-session agent (UII, Planner, DCIC,
-DCII if enabled, TC, DCOI, Orchestrator, Receptionist — in that
-order) about a list of database fields drawn from the
-``forClaude`` schema, and to write each (question, answer) pair to
-disk under ``database/<session_name>/<agent>/<field>.txt``.
+Its job is to interview each agent the ACTIVE topology built, about a
+list of database fields drawn from the ``forClaude`` schema, and to
+write each (question, answer) pair to disk under
+``database/<session_name>/<agent>/<field>.txt``.  The roster is
+topology-dependent: topology 7 builds UII, Planner, DCIC, DCII (if
+enabled), TC, DCOI, Orchestrator, Receptionist; topology 5 has neither
+an Orchestrator nor a DCII.
 
 Interview protocol
 ------------------
@@ -102,14 +104,21 @@ logger = logging.getLogger("database_handler")
 # Per-agent question schedule
 # ---------------------------------------------------------------------------
 #
-# Sequence is fixed: UII, Planner, DCIC, DCII (if enabled), TC, DCOI,
-# Orchestrator, Receptionist.  Each entry corresponds to one row of
+# Sequence follows the schedule, loaded at runtime from the ACTIVE
+# topology's file — ``workflow_settings/dh_schedule.json`` for topology 7,
+# ``dh_schedule_5agents.json`` for topology 5.  The agents it may name
+# are whichever that topology built: topology 5 has no Orchestrator and
+# no DCII.  Each entry corresponds to one row of
 # the ``forClaude`` sheet of ``Agent-Database_v5.xlsx`` — one database
 # field that the named agent is responsible for filling.
 #
 # Per the May-3 spec:
-#   * Orchestrator has no rows in the sheet, so we ask it a single
-#     generic "what did you do this session?" question.
+#   * The HUB has no rows in the sheet, so we ask it a single generic
+#     "what did you do this session?" question — the "Session summary"
+#     row.  There is no alias: ``from_agent`` is looked up directly in
+#     the hub's ``_agents_by_key``, so each topology's schedule file
+#     names its own hub — ``"orchestrator"`` in dh_schedule.default.json,
+#     ``"planner"`` in dh_schedule_5agents.default.json.
 #   * Rows whose ``Type`` is "File as-is" / "as-is" (User images,
 #     User input 2D model files, Design Output file, Design Output
 #     renders) are SKIPPED for now — they require copying the actual
@@ -1090,7 +1099,17 @@ class DatabaseHandler(BaseChainAgent):
             from agents.hub import build_hub
             orchestrator = build_hub(self.session)
 
-        dc_inspector_enabled = self.session.dc_inspector_enabled
+        # AND the topology's own answer: the session flag has no topology
+        # dimension, so under topology 5 it is True by default and the three
+        # DCII rows would fall through to the unknown-agent branch and be
+        # written as ERROR: chunks.  With this they take the existing
+        # _write_empty_entry placeholder path instead, which is what the
+        # toggle was designed to do.  Under topology 7 both terms are the
+        # same setting, so the value does not move.
+        from agents.shared.prompts import dcii_effective
+        dc_inspector_enabled = (
+            self.session.dc_inspector_enabled and dcii_effective()
+        )
 
         try:
             log_path, trace_path = init_dh_logging(

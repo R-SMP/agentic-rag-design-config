@@ -59,10 +59,8 @@ from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import (
     PARAMETER_NAMES,
-    RENDER_CHECK_LIBRARY_PYVISTA,
-    RENDER_CHECK_LIBRARY_OFF,
-    RENDER_CHECK_LIBRARY_TRIMESH,
     _build_template,
+    _read_dc_fragment,
     routing_instructions,
 )
 from agents.shared.routing_tools import (
@@ -226,14 +224,19 @@ class Designer(BaseChainAgent):
         # never receives.  Gated HERE rather than with <<MESH_ON>> markers
         # because .format() runs AFTER apply_flag_filters — a marker inside
         # the injected fragment would never be filtered.
-        render_check_block = (
-            (
-                RENDER_CHECK_LIBRARY_PYVISTA
-                if self.render_library == "pyvista"
-                else RENDER_CHECK_LIBRARY_TRIMESH
+        # Read HERE, not from the module-level RENDER_CHECK_LIBRARY_*
+        # constants: those are resolved at prompts-import time and would pin
+        # the fragment to whatever SYSTEM_TOPOLOGY was on disk when the
+        # process started (topology.py:11-15 -- the Sessions Queue switches
+        # topology between runs inside one process).
+        render_check_block = _read_dc_fragment(
+            "tools_config/render_check_library/"
+            + (
+                ("pyvista" if self.render_library == "pyvista" else "trimesh")
+                if self.mesh_checks
+                else "off"
             )
-            if self.mesh_checks
-            else RENDER_CHECK_LIBRARY_OFF
+            + ".md"
         )
         # Built fresh at construction time so live edits to .md fragments
         # on disk take effect on the NEXT session

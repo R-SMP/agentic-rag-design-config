@@ -49,20 +49,69 @@ logger = logging.getLogger("propeller_agent")
 _THIS_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _THIS_DIR.parent
 
-# Per-developer / per-deploy runtime file (gitignored).  Holds the
-# user's CURRENT customisations; written by the editor + the
-# upload endpoint.  When absent, the system seeds it from
-# DEFAULT_SCHEDULE_PATH (tracked in the repo as the system's
-# standard set of questions) — see :func:`_seed_default`.
-SCHEDULE_PATH = _THIS_DIR / "dh_schedule.json"
+# The schedule is PER TOPOLOGY.  Topology 7's row set names the
+# Orchestrator and the DC Input Inspector — as an answering agent on
+# four rows, and in most ``to_agents`` lists — and neither exists in
+# topology 5.  A row whose ``from_agent`` the active hub does not build
+# does not merely warn: ``_phase_3c_persist_chunk(..., is_error=True)``
+# writes an ``ERROR:`` row into the R2 mirror and the Postgres
+# ``chunks`` table, where it comes back at retrieval time.
+#
+# Two files rather than an alias at the lookup, on the owner's call.
+# The infix goes on the BASE name, not via ``Path.stem`` —
+# ``Path("dh_schedule.default.json").stem`` is ``"dh_schedule.default"``,
+# so the naive form would yield ``dh_schedule.default_5agents.json``.
+#
+# Resolved per CALL, never captured: the Sessions Queue switches
+# ``SYSTEM_TOPOLOGY`` between runs inside one process, so a module
+# constant would pin whichever topology was active at import.  Topology 7
+# resolves to exactly the historic paths, so it needs no migration.
+_SCHEDULE_BY_TOPOLOGY = {5: "_5agents"}
 
-# Tracked default — ships with the repo.  Whenever a deployment has
-# no per-deploy ``dh_schedule.json`` yet (fresh install, deleted
-# runtime file, image rebuild without a volume mount), this file
-# becomes the seed for the editor's initial state.  Treat it as
-# the system's "factory" set of questions; edit it in the repo, not
-# at runtime.
-DEFAULT_SCHEDULE_PATH = _THIS_DIR / "dh_schedule.default.json"
+
+def active_topology() -> int:
+    """The topology number currently in force.
+
+    Duplicates ``agents/shared/topology.py``'s ``topology()`` rather than
+    importing it, because the dependency runs the other way: that module
+    imports ``workflow_settings``, and reaching it from here would pull
+    ``agents/__init__.py`` -- which eagerly imports every agent class, and
+    with them langchain -- into the settings layer.  ``dh_schedule`` must
+    stay importable without it.
+
+    Public so the POST handler can compare against the SAME reading this
+    module resolves its paths with, rather than a second opinion.
+    """
+    from workflow_settings import settings as _settings
+
+    return int(getattr(_settings, "SYSTEM_TOPOLOGY", 7))
+
+
+def _topology_infix() -> str:
+    """``"_5agents"`` for a topology with its own schedule, else ``""``."""
+    return _SCHEDULE_BY_TOPOLOGY.get(active_topology(), "")
+
+
+def schedule_path() -> Path:
+    """The active topology's per-deploy runtime file (gitignored).
+
+    Holds the user's CURRENT customisations; written by the editor and
+    the upload endpoint.  When absent, the system seeds it from
+    :func:`default_schedule_path` — see :func:`_seed_default`.
+    """
+    return _THIS_DIR / f"dh_schedule{_topology_infix()}.json"
+
+
+def default_schedule_path() -> Path:
+    """The active topology's tracked default — ships with the repo.
+
+    Whenever a deployment has no per-deploy runtime file yet (fresh
+    install, deleted runtime file, image rebuild without a volume
+    mount), this file becomes the seed for the editor's initial state.
+    Treat it as the system's "factory" set of questions; edit it in the
+    repo, not at runtime.
+    """
+    return _THIS_DIR / f"dh_schedule{_topology_infix()}.default.json"
 
 # Mirrors ``llm_routing.AGENT_KEYS`` order so the dropdowns line up
 # across views.  The 10th key (``context_pruner``) is included but
@@ -78,13 +127,13 @@ AGENT_KEYS: list[str] = [
     "tool_caller",
     "database_handler",
     "context_pruner",
-    # 5-agent topology.  Listed for EVERY topology because this list
-    # VALIDATES schedule entries (``from_agent`` and each target): omit
-    # them and a schedule naming the Conductor or Creator is rejected,
-    # so the DH could never interview the two agents that do all the
-    # work in a 5-agent run.  A topology that does not build them simply
-    # never produces a schedule entry naming them.
-    # 3-agent topology, listed for the same reason.
+    # 5-agent topology introduces no new keys -- its agents (planner,
+    # user_input_inspector, dc_input_creator, tool_caller,
+    # dc_output_inspector, receptionist) are all listed above.  The list
+    # stays a cross-topology SUPERSET because it VALIDATES schedule entries
+    # (``from_agent`` and each target); a topology that does not build an
+    # agent simply never produces an entry naming it.
+    # 3-agent topology.
     "architect",
     "designer",
 ]
@@ -160,10 +209,11 @@ def _seed_default() -> list[dict]:
     ``_normalise_for_write`` path the upload endpoint uses, so a
     malformed default never reaches disk as the runtime file.
     """
-    if not _file_exists_and_nonempty(DEFAULT_SCHEDULE_PATH):
+    _default_path = default_schedule_path()
+    if not _file_exists_and_nonempty(_default_path):
         return []
     try:
-        raw = json.loads(DEFAULT_SCHEDULE_PATH.read_text(encoding="utf-8"))
+        raw = json.loads(_default_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return []
     if not isinstance(raw, dict):
@@ -227,10 +277,11 @@ def _file_exists_and_nonempty(path: Path) -> bool:
 
 
 def _load_raw() -> dict[str, Any] | None:
-    if not _file_exists_and_nonempty(SCHEDULE_PATH):
+    _path = schedule_path()
+    if not _file_exists_and_nonempty(_path):
         return None
     try:
-        return json.loads(SCHEDULE_PATH.read_text(encoding="utf-8"))
+        return json.loads(_path.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
 
@@ -277,8 +328,13 @@ def read_state() -> dict[str, Any]:
             ...
           ],
           "scopes": ["session", "attempt"],
-          "types":  ["Semantic", "Quantitative"]
+          "types":  ["Semantic", "Quantitative"],
+          "topology": 7
         }
+
+    ``topology`` is the topology these rows were READ under.  The editor
+    echoes it back on Save so a write cannot land in another topology's
+    file — see :func:`schedule_path` and the POST handler in web_app.py.
     """
     payload = _load_raw()
     if payload is None or not isinstance(payload, dict):
@@ -316,6 +372,11 @@ def read_state() -> dict[str, Any]:
         ],
         "scopes": list(SCOPES),
         "types": list(TYPES),
+        # NOT used to filter `agents` above: AGENT_KEYS lists `architect`
+        # and `designer`, which no topology roster claims, so filtering
+        # would drop them from topology 7's From dropdown.  This value
+        # exists only to make the Save round-trip topology-safe.
+        "topology": active_topology(),
     }
 
 
@@ -586,9 +647,10 @@ def _validate(questions: list[dict]) -> None:
 # ---------------------------------------------------------------------------
 
 def _atomic_write(payload: dict[str, Any]) -> None:
-    SCHEDULE_PATH.parent.mkdir(parents=True, exist_ok=True)
+    _path = schedule_path()
+    _path.parent.mkdir(parents=True, exist_ok=True)
     fd, tmp = tempfile.mkstemp(
-        dir=str(SCHEDULE_PATH.parent),
+        dir=str(_path.parent),
         prefix=".dh_schedule_",
         suffix=".tmp",
     )
@@ -596,7 +658,7 @@ def _atomic_write(payload: dict[str, Any]) -> None:
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as fh:
             json.dump(payload, fh, indent=2, ensure_ascii=False)
             fh.write("\n")
-        os.replace(tmp, SCHEDULE_PATH)
+        os.replace(tmp, _path)
     except Exception:
         try:
             os.unlink(tmp)
@@ -678,8 +740,9 @@ def download_payload() -> bytes:
     UI metadata) when the file is missing, so the user always gets a
     valid JSON.
     """
-    if _file_exists_and_nonempty(SCHEDULE_PATH):
-        return SCHEDULE_PATH.read_bytes()
+    _path = schedule_path()
+    if _file_exists_and_nonempty(_path):
+        return _path.read_bytes()
     state = read_state()
     payload = {
         "version": state["version"],

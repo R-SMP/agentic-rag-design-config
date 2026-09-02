@@ -300,13 +300,14 @@ class DCOutputInspector(BaseChainAgent):
                 final = ai_text(response.content)
                 if begin_routing_retry(self, final, "DCOI"):
                     continue
+                bound = " / ".join(sorted(self._routing_tools_by_name)) \
+                    or "any routing tool"
                 return AgentHop(
                     _hub_key(),
                     "Error: DC Output Inspector produced a response with no "
                     "routing tool call — it wrote prose but did not invoke "
-                    "call_tool_caller / call_orchestrator, so the pipeline "
-                    "would otherwise halt silently.  Its raw text was:\n\n"
-                    f"{final}",
+                    f"{bound}, so the pipeline would otherwise halt "
+                    f"silently.  Its raw text was:\n\n{final}",
                 )
 
             routed = False

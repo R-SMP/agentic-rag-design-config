@@ -32,10 +32,8 @@ from agents.shared.llm_provider import (
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import (
-    RENDER_CHECK_LIBRARY_PYVISTA,
-    RENDER_CHECK_LIBRARY_OFF,
-    RENDER_CHECK_LIBRARY_TRIMESH,
     _build_template,
+    _read_dc_fragment,
     routing_instructions,
 )
 from agents.shared.routing_tools import (
@@ -132,14 +130,19 @@ class ToolCaller(BaseChainAgent):
         # never receives.  Gated HERE rather than with <<MESH_ON>> markers
         # because .format() runs AFTER apply_flag_filters — a marker inside
         # the injected fragment would never be filtered.
-        render_check_block = (
-            (
-                RENDER_CHECK_LIBRARY_PYVISTA
-                if self.render_library == "pyvista"
-                else RENDER_CHECK_LIBRARY_TRIMESH
+        # Read HERE, not from the module-level RENDER_CHECK_LIBRARY_*
+        # constants: those are resolved at prompts-import time and would pin
+        # the fragment to whatever SYSTEM_TOPOLOGY was on disk when the
+        # process started (topology.py:11-15 -- the Sessions Queue switches
+        # topology between runs inside one process).
+        render_check_block = _read_dc_fragment(
+            "tools_config/render_check_library/"
+            + (
+                ("pyvista" if self.render_library == "pyvista" else "trimesh")
+                if self.mesh_checks
+                else "off"
             )
-            if self.mesh_checks
-            else RENDER_CHECK_LIBRARY_OFF
+            + ".md"
         )
         # Built fresh at construction time so live edits to .md
         # fragments on disk take effect on the
@@ -179,13 +182,14 @@ class ToolCaller(BaseChainAgent):
                 final = ai_text(response.content)
                 if begin_routing_retry(self, final, "ToolCaller"):
                     continue
+                bound = " / ".join(sorted(self._routing_tools_by_name)) \
+                    or "any routing tool"
                 return AgentHop(
                     _hub_key(),
                     "Error: Tool Caller produced a response with no routing "
                     "tool call — it wrote prose but did not invoke "
-                    "call_dc_output_inspector / call_orchestrator, so the "
-                    "pipeline would otherwise halt silently.  Its raw text "
-                    f"was:\n\n{final}",
+                    f"{bound}, so the pipeline would otherwise halt "
+                    f"silently.  Its raw text was:\n\n{final}",
                 )
 
             routed = False

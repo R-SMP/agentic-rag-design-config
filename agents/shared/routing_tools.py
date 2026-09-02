@@ -506,16 +506,16 @@ def stuck_escalation(agent_label: str, tool_name: str) -> AgentHop:
 
     Targets the ACTIVE topology's hub.  Hard-coding ``"orchestrator"``
     sent the 5-agent chain's failure path to an agent that topology never
-    builds — and the callers (Creator, Tool Caller, User Input Inspector)
-    all run there, so the escalation route was broken exactly when it was
-    needed.
+    builds — and the callers (DC Input Creator, Tool Caller, User
+    Input Inspector) all run there, so the escalation route was broken
+    exactly when it was needed.
     """
     return AgentHop(
         _hub_key(),
         (
             f"Error: {agent_label} detected a stuck loop — it was about to "
             f"call '{tool_name}' with the same arguments it already used "
-            f"this turn, without new information to act on.  Escalating "
+            f"this turn, without new information to act on.  Handing back "
             f"instead of looping; please provide fresh instructions or "
             f"consult another agent."
         ),

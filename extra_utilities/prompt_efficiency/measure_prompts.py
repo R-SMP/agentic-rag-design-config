@@ -195,8 +195,6 @@ def build_slots() -> dict:
         "blade_sections_visualizer": dc("tools_config/blade_sections_visualizer.md"),
         "blade_sections_visualizer_off": dc("tools_config/blade_sections_visualizer_off.md"),
         "hard_constraints_generic": gn("generic_constraints.md"),
-        "eos_feedback_intro": gn("eos_feedback_intro.md"),
-        "eos_feedback_outro": gn("eos_feedback_outro.md"),
         "routing_receptionist": gn("routing_receptionist.md"),
         "routing_orchestrator": gn("routing_orchestrator.md"),
         "pipeline_flow": gn(pf_flow),

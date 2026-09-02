@@ -45,7 +45,7 @@ from agents.shared.routing_tools import (
     log_tool_call,
 )
 from agents.shared.session import AgentState, Session
-from config import ATTEMPTS_DIR, USER_INPUTS_DIR
+from config import ATTEMPTS_DIR
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
 from tools.visualize_model.visualize_model import visualize_3d_model
@@ -81,18 +81,11 @@ class Receptionist(BaseChainAgent):
         # fragments on disk take effect on the
         # NEXT session without a Python restart.
         #
-        # The two path slots are consumed only by the 5-agent prompt,
-        # where the Receptionist hands off directly to the UII and the
-        # UII's tools refuse to run without explicit paths.  The 7-agent
-        # prompt references neither, so ``.format()`` is a no-op there —
-        # but it is still called, because the alternative is a topology
-        # branch here for no behavioural gain.  Mirrors planner.py.
-        self.system_prompt: str = _build_template("receptionist").format(
-            user_inputs_dir=str(USER_INPUTS_DIR.resolve()),
-            extraction_output_file=str(
-                (USER_INPUTS_DIR / "extracted_inputs.txt").resolve()
-            ),
-        )
+        # No runtime slots: neither receptionist prompt references one, in
+        # either topology.  ``.format()`` is still called so that adding a
+        # ``{slot}`` to the prompt keeps working -- but it is passed
+        # nothing, and PROMPT_MD_RUNTIME_SLOTS lists no row for this agent.
+        self.system_prompt: str = _build_template("receptionist").format()
         self._tools_by_name: dict = {}
         # Receptionist resets cycle_start_ts at the start of every
         # validate_input call.  When restoring from a fresh AgentState

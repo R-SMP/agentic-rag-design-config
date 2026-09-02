@@ -1,0 +1,509 @@
+{
+  "version": 1,
+  "questions": [
+    {
+      "id": "eea6f1e6080c40bb9934c3d7024015b6",
+      "name": "User query description",
+      "description": "Description of how the user requests something.",
+      "from_agent": "user_input_inspector",
+      "to_agents": [
+        "receptionist",
+        "user_input_inspector",
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "22fc05a89700471cae008155eeba0199",
+      "name": "Design intent formulation",
+      "description": "Formulation of the user needs, in terms of what the design needs to do / what is the application.",
+      "from_agent": "user_input_inspector",
+      "to_agents": [
+        "receptionist",
+        "user_input_inspector",
+        "planner",
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "63eb30df29a0416da3ef62ac643eb7cb",
+      "name": "Functional Requirements",
+      "description": "Formulation of the user needs, in terms of practical design features that have to be respected.",
+      "from_agent": "user_input_inspector",
+      "to_agents": [
+        "receptionist",
+        "user_input_inspector",
+        "planner",
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "3e568c29e5dd40e3a8839c1461a70c9a",
+      "name": "Problem - UII",
+      "description": "Description of a problem encountered in the analysis of user inputs.  If no problem occurred this session, say so explicitly.",
+      "from_agent": "user_input_inspector",
+      "to_agents": [
+        "receptionist",
+        "user_input_inspector",
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "a8b43184344c4e3c8a1272b8af99d4a1",
+      "name": "User clarification request",
+      "description": "Any clarification you wanted to request from the user (e.g. ambiguous inputs, missing information).  If none was needed this session, say so explicitly.",
+      "from_agent": "user_input_inspector",
+      "to_agents": [
+        "receptionist",
+        "user_input_inspector",
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "79bbff44f81043bbbe77a591fb313d1d",
+      "name": "User-defined qualitative inputs",
+      "description": "The qualitative inputs the user provided this session (adjectives, target use case, stylistic constraints, etc.), as you extracted them.",
+      "from_agent": "user_input_inspector",
+      "to_agents": [
+        "user_input_inspector",
+        "planner",
+        "dc_input_creator"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "cbce5900d62049bab82b0f8224d063f0",
+      "name": "User images descriptions",
+      "description": "Your description of any images the user provided this session (what they show, what they imply for the design).  If no images were provided, say so explicitly.",
+      "from_agent": "user_input_inspector",
+      "to_agents": [
+        "user_input_inspector",
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "7mpkno4412e7dmmtmjo00fil0rcu4k58",
+      "name": "User images misinterpretation",
+      "description": "Any misinterpretation of the content of a specific user image input (parameters read, sketches drawn, features observed). If no images were provided, say so explicitly.",
+      "from_agent": "user_input_inspector",
+      "to_agents": [
+        "receptionist",
+        "user_input_inspector",
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "31deb73ce8e7424c9cc874ad50e7c33a",
+      "name": "Problem - Planner",
+      "description": "Description of a problem encountered in the workflow during this session.  If no problem occurred, say so explicitly.",
+      "from_agent": "planner",
+      "to_agents": [
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "23d53cc8146940b58e567bae30b8dfc6",
+      "name": "Planner Plan",
+      "description": "The plan you followed to solve the problem(s) encountered during this session.  If no plan beyond the natural pipeline was needed, say so explicitly.",
+      "from_agent": "planner",
+      "to_agents": [
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "f2ad2b074554409d961d2cbe05e28444",
+      "name": "Problem solution - Planner",
+      "description": "Description of how the problem(s) you faced were solved this session.  If none were solved (e.g. the session ended unresolved, or none arose), say so explicitly.",
+      "from_agent": "planner",
+      "to_agents": [
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "4b0f0a010e25455ca1085a3e6700a8ee",
+      "name": "Useful learning - Planner",
+      "description": "Useful learning gathered this session (what worked, what did not, what to avoid next time).",
+      "from_agent": "planner",
+      "to_agents": [
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "c3f6b12885204b379d18b6e8dd158f79",
+      "name": "Problem - DCIC",
+      "description": "Problem(s) encountered when creating the input parameters for the Design Configurator this session.  If none, say so explicitly.",
+      "from_agent": "dc_input_creator",
+      "to_agents": [
+        "planner",
+        "dc_input_creator"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "eb51be78873f46f6b46e807f88e65f16",
+      "name": "Invalid solution - DCIC",
+      "description": "Explanation of any invalid change(s) you applied when trying to solve a problem this session.  If none, say so explicitly.",
+      "from_agent": "dc_input_creator",
+      "to_agents": [
+        "planner",
+        "dc_input_creator"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "bfa9d74daee1465fb0f5cf95ec8208c2",
+      "name": "Valid solution - DCIC",
+      "description": "Explanation of any valid change(s) you applied to solve the problem(s) this session.  If none, say so explicitly.",
+      "from_agent": "dc_input_creator",
+      "to_agents": [
+        "planner",
+        "dc_input_creator"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "83dba9e61aa843c2b7d9ccfe7401d566",
+      "name": "Tool Caller problem",
+      "description": "Description of any problem you encountered this session (e.g. a tool error, a missing input, a geometry-generation failure).  If none, say so explicitly.",
+      "from_agent": "tool_caller",
+      "to_agents": [
+        "planner",
+        "tool_caller"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "b94eff8b828e4f0fa2123b876083ab35",
+      "name": "Tool Caller problem solution",
+      "description": "Description of what was done to solve the problem(s) you encountered this session.  If none arose, say so explicitly.",
+      "from_agent": "tool_caller",
+      "to_agents": [
+        "planner",
+        "tool_caller"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "ef2xg6113j72m109uno6sb4juhwfhvcp",
+      "name": "Final Design Output",
+      "description": "Identify which was the final design output produced this session, that was considered the best match with the user request or that was eventually provided as final design output to the user.",
+      "from_agent": "planner",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "1da64e19d3084c428db185f93bced462",
+      "name": "Design Output Description",
+      "description": "A general description of the final design output produced this session — not the feedback, not whether it is correct, just describe the design in general.",
+      "from_agent": "dc_output_inspector",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": "ef2xg6113j72m109uno6sb4juhwfhvcp",
+      "sub_index": 1,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "391c2494b8804e568277e50d4888c4eb",
+      "name": "Design Output Correctness",
+      "description": "Where the final design output did well: how it satisfied the design intent and the functional requirements, and the absence of problems.",
+      "from_agent": "dc_output_inspector",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": "ef2xg6113j72m109uno6sb4juhwfhvcp",
+      "sub_index": 2,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "d680a45e89e44673b9dba6a5bd7b6292",
+      "name": "Design Output Problems",
+      "description": "The main problems of the final design output: visible problems, and/or design intent / functional requirements that were not respected.",
+      "from_agent": "dc_output_inspector",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": "ef2xg6113j72m109uno6sb4juhwfhvcp",
+      "sub_index": 3,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "e75eb6b6-054f-4855-9fd5-a611d51b1074",
+      "name": "Bad Attempt",
+      "description": "Identify which was/were the worst design attempt(s) that provided a solution not matching the user requirements. If none, say so explicitly.",
+      "from_agent": "dc_output_inspector",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "e273308b-e053-43a6-96e0-6fef84c9cfb2",
+      "name": "Bad attempt description",
+      "description": "Description of the unsuccessful design attempt — not the feedback, not whether it is correct, just describe the design in general.",
+      "from_agent": "dc_output_inspector",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": "e75eb6b6-054f-4855-9fd5-a611d51b1074",
+      "sub_index": 1,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "l6ci1im2wkvoyct22thhabaqbg2fqruj",
+      "name": "Bad Attempt rejection reason",
+      "description": "Reasons why the attempt was deemed as unsuccessful — visible problems, failures, and/or design intent / functional requirements that were not respected.",
+      "from_agent": "dc_output_inspector",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": "e75eb6b6-054f-4855-9fd5-a611d51b1074",
+      "sub_index": 2,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "9zkoetfiulysvxrfo4zqw0o06jryt1zd",
+      "name": "Bad attempt Suggested solution",
+      "description": "What solution improved the unsuccessful design, following the user requirements and previous attempts.",
+      "from_agent": "planner",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": "e75eb6b6-054f-4855-9fd5-a611d51b1074",
+      "sub_index": 3,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "v6wffmram8f1pxoiwzmmzzcksdo35xxi",
+      "name": "Useful Attempt insights",
+      "description": "Identify which was the design attempt(s) that provided a useful insight / learning / piece of information / unexpected result",
+      "from_agent": "dc_output_inspector",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "yxogc275qdg36giw26x5tifv6qm23slx",
+      "name": "Useful Attempt description",
+      "description": "A general description of the useful design attempt — not the feedback, not whether it is correct, just describe the design in general.",
+      "from_agent": "dc_output_inspector",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": "v6wffmram8f1pxoiwzmmzzcksdo35xxi",
+      "sub_index": 1,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "qyn7v0xp13lcthturxs4c5hpnwbd1dr2",
+      "name": "Useful Attempt output observations",
+      "description": "Observations regarding the design attempt that can be useful to know for similar design attempts.",
+      "from_agent": "dc_output_inspector",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": "v6wffmram8f1pxoiwzmmzzcksdo35xxi",
+      "sub_index": 2,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "pkabgh8kc2w6k7og1jfioinziku5bzba",
+      "name": "Useful Attempt planner observations",
+      "description": "Observations regarding the design attempt that can be useful to know when planning the steps or searching a solution to a problem, based on user requirement and expectations.",
+      "from_agent": "planner",
+      "to_agents": [
+        "dc_input_creator",
+        "dc_output_inspector"
+      ],
+      "scope": "attempt",
+      "type": "Semantic",
+      "parent_id": "v6wffmram8f1pxoiwzmmzzcksdo35xxi",
+      "sub_index": 3,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "9ad47ceee5e04d90b8bdec2bfcdfe375",
+      "name": "Session summary",
+      "description": "A brief description of what you did this session — how you coordinated the chain, what particular hand-offs you made (that follow non-standard agent chain), any problems handed back to you that you had to resolve.",
+      "from_agent": "planner",
+      "to_agents": [
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "ba6c8f93ce7d49cb824189df7abe945a",
+      "name": "User query problem",
+      "description": "Description of any problem you detected in the user's request(s) this session (ambiguity, conflict, infeasible numbers, missing information, etc.).  If none, say so explicitly.",
+      "from_agent": "receptionist",
+      "to_agents": [
+        "receptionist",
+        "user_input_inspector",
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "768db13fc1f848888fb455d645a58a99",
+      "name": "Receptionist Response problem",
+      "description": "Description of any problem in your answer(s) to the user — most often, feedback the user gave you asking to clarify, add, remove, or change something.  If none, say so explicitly.",
+      "from_agent": "receptionist",
+      "to_agents": [
+        "receptionist",
+        "user_input_inspector",
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    },
+    {
+      "id": "158402f533aa4436b3bfc78b1254c11e",
+      "name": "Receptionist Response solution",
+      "description": "Description of how you answered the user to successfully resolve the problem (do NOT consider it a good solution unless the user explicitly said so).  If no problem arose, say so explicitly.",
+      "from_agent": "receptionist",
+      "to_agents": [
+        "receptionist",
+        "user_input_inspector",
+        "planner"
+      ],
+      "scope": "session",
+      "type": "Semantic",
+      "parent_id": null,
+      "sub_index": null,
+      "requires_dcii_enabled": false
+    }
+  ]
+}

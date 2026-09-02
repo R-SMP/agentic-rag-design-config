@@ -242,13 +242,14 @@ class DCInputCreator(BaseChainAgent):
                 raw = ai_text(response.content)
                 if begin_routing_retry(self, raw, "DCIC"):
                     continue
+                bound = " / ".join(sorted(self._routing_tools_by_name)) \
+                    or "any routing tool"
                 return AgentHop(
                     _hub_key(),
                     "Error: DC Input Creator produced a response with no "
                     "routing tool call — it wrote prose but did not invoke "
-                    "call_dc_input_inspector / call_orchestrator / etc., so "
-                    "the pipeline would otherwise halt silently.  Its raw "
-                    f"text was:\n\n{raw}",
+                    f"{bound}, so the pipeline would otherwise halt "
+                    f"silently.  Its raw text was:\n\n{raw}",
                 )
 
             routed = False

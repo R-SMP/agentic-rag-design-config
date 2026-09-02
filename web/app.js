@@ -2902,6 +2902,7 @@ const Q_TYPES = ["Semantic", "Quantitative"];
 let qState = {
   version: 1,
   questions: [],
+  topology: null,
 };
 
 function qEl(id) { return document.getElementById(id); }
@@ -3680,6 +3681,10 @@ async function loadQuestions() {
     qState = {
       version: data.version || 1,
       questions: data.questions || [],
+      // Echoed back on Save; the server refuses the write with a 409 if
+      // the topology moved since this load, because each topology keeps
+      // its own schedule file.
+      topology: data.topology ?? null,
     };
     Q_AGENTS.length = 0;
     for (const a of (data.agents || [])) Q_AGENTS.push(a);
@@ -3716,6 +3721,7 @@ async function saveQuestions() {
       body: JSON.stringify({
         version: qState.version || 1,
         questions: qState.questions,
+        topology: qState.topology,
       }),
     });
     if (res.status === 401) { showGate(); return; }
@@ -3732,6 +3738,10 @@ async function saveQuestions() {
     qState = {
       version: data.state.version || 1,
       questions: data.state.questions || [],
+      // Carry the topology forward: the POST response is a full
+      // read_state() payload, so it carries one.  Dropping it here left
+      // the 409 cross-topology guard armed for the FIRST save only.
+      topology: data.state.topology ?? qState.topology ?? null,
     };
     renderQuestions();
     qSetStatus("Saved — applies to the next save.", "ok");
@@ -3793,6 +3803,10 @@ async function uploadQuestionsFile(file) {
     qState = {
       version: data.payload.version || 1,
       questions: data.payload.questions || [],
+      // An uploaded file carries no topology, so keep the one this view
+      // loaded under; the upload flow ends in a Save, which must still
+      // be guarded.
+      topology: qState.topology ?? null,
     };
     renderQuestions();
     qSetStatus("Uploaded — click Save to persist.", "ok");

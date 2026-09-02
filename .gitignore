@@ -35,7 +35,10 @@ prompts_backup_*/
 #     for Saved Sessions" web view).  Seeded from the hardcoded
 #     SCHEDULE on first load; the file represents the developer's
 #     personal customisations and should not be committed. ---
+# The DH question schedule is per-topology; each topology has its own
+# runtime file seeded from its own tracked default.
 workflow_settings/dh_schedule.json
+workflow_settings/dh_schedule_5agents.json
 
 # --- Claude Code (per-user) ---
 .claude/settings.local.json
