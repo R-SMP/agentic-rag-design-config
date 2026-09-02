@@ -32,6 +32,7 @@ from typing import TYPE_CHECKING
 
 from langchain_core.tools import StructuredTool
 
+from agents.shared import topology as _topology
 from agents.shared.topology import hub_key as _hub_key
 from agents.shared.trace import trace as _trace
 
@@ -306,7 +307,12 @@ def build_routing_tool(
     caller_display = AGENT_DISPLAY.get(caller_key, caller_key)
     target_display = AGENT_DISPLAY.get(target_key, target_key)
     tool_name = f"call_{target_key}"
-    description = _TOOL_DESCRIPTIONS.get(
+    # A topology that ships an overlay owns this table outright -- the same
+    # override-then-REPLACE contract the prompt tree uses, not a merge.  The
+    # generic fallback below still covers a tool the active table omits.
+    descriptions = _topology.overlay_value(
+        "TOOL_DESCRIPTIONS", _TOOL_DESCRIPTIONS)
+    description = descriptions.get(
         tool_name, f"Call the {target_display} with a short hand-off message."
     )
 

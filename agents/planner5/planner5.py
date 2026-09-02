@@ -983,7 +983,7 @@ class Planner5(BaseChainAgent):
         """
         from agents.orchestrator.feedback_tool import (
             feedback_envelope,
-            submit_feedback_dispatch,
+            build_submit_feedback_dispatch,
             SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME,
         )
 
@@ -1003,7 +1003,7 @@ class Planner5(BaseChainAgent):
         # the DH's W18 invariant: this tool is never on self.llm.
         try:
             feedback_llm = self.base_llm.bind_tools(
-                [submit_feedback_dispatch],
+                [build_submit_feedback_dispatch()],
                 tool_choice=SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME,
             )
         except Exception as exc:  # pragma: no cover — defensive

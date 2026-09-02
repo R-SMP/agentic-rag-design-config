@@ -14,6 +14,7 @@ from typing import Callable, Optional
 
 from langchain_core.tools import StructuredTool
 
+from agents.shared import topology as _topology
 from agents.shared.agent_activity import generic_tool
 
 
@@ -47,8 +48,14 @@ def build_read_agent_history_tool(
         except Exception as exc:
             return f"Error reading history for '{agent_name}': {exc}"
 
+    # The valid-agents roster differs per topology -- topology 5 builds
+    # neither the Orchestrator nor the DC Input Inspector, and naming an
+    # agent that cannot be resolved costs the caller a burned step.  Read
+    # per build, never captured: the Sessions Queue switches topology
+    # between runs inside one process.
     return StructuredTool.from_function(
         func=_invoke,
         name="read_agent_history",
-        description=_TOOL_DESCRIPTION,
+        description=_topology.overlay_value(
+            "READ_AGENT_HISTORY_DESCRIPTION", _TOOL_DESCRIPTION),
     )

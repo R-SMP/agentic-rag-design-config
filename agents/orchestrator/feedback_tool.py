@@ -125,3 +125,38 @@ def submit_feedback_dispatch(dispatches: list[dict]) -> str:
         f"(no-op stub — the system handles submit_feedback_dispatch; "
         f"caller passed {len(dispatches)} dispatch(es))"
     )
+
+
+def build_submit_feedback_dispatch():
+    """The dispatch tool with THIS topology's description.
+
+    ``@tool`` turns the docstring above into the tool's DESCRIPTION, and that
+    text names the Orchestrator, offers ``"dc_input_inspector"`` as a legal
+    ``agent_key``, and lists the Planner — none of which is true in a topology
+    that builds neither the Orchestrator nor the DCII and excludes its own hub
+    from the target set.
+
+    Topology 7 and topology 3 keep importing ``submit_feedback_dispatch``
+    directly and are untouched.  Resolved per call, never at import: the
+    Sessions Queue switches SYSTEM_TOPOLOGY between runs inside one process,
+    so a module-level binding would freeze whichever topology was active
+    first (see ``agents/shared/topology.py``).
+
+    When no overlay exists this returns THE SAME OBJECT, so "topology 7 did
+    not move" is an ``is`` check rather than an argument.
+    """
+    from langchain_core.tools import StructuredTool
+
+    from agents.shared import topology as _topology
+
+    doc = _topology.overlay_value(
+        "SUBMIT_FEEDBACK_DISPATCH_DOC", submit_feedback_dispatch.description
+    )
+    if doc == submit_feedback_dispatch.description:
+        return submit_feedback_dispatch          # the identical object
+    return StructuredTool.from_function(
+        func=submit_feedback_dispatch.func,
+        name=SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME,
+        description=doc,
+        args_schema=submit_feedback_dispatch.args_schema,
+    )
