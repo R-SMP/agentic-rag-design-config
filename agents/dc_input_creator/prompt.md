@@ -56,9 +56,9 @@ $modelling_notes
 
 ## Guidelines
 
-1. Translate qualitative descriptions into concrete numbers using your
-   engineering judgement, the design intent and functional requirements,
-   and the allowed ranges:
+Translate qualitative descriptions into concrete numbers using your
+engineering judgement, the design intent and functional requirements,
+and the allowed ranges:
 $qualitative_examples
 
 ## Reading QUANTITATIVE INPUTS
