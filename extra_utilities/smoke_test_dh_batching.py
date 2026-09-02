@@ -57,6 +57,7 @@ sys.modules["langchain_core.tools"] = _lct
 
 from agents.database_handler import batch_tools as B   # noqa: E402
 from workflow_settings import dh_schedule as S         # noqa: E402
+from workflow_settings import settings as _settings    # noqa: E402
 
 FAILS: list[str] = []
 
@@ -522,6 +523,48 @@ check("the repair keeps every row",
 check("the repair is a no-op when clean", S._reorder_children(clean)[1] == 0)
 check("the shipped schedule is contract-clean",
       S._schedule_problem(S.read_state()["questions"]) is None)
+
+# ===========================================================================
+print("\n-- F19d: every schedule row names an agent its hub BUILDS ----------")
+
+# The DH resolves a row's ``from_agent`` against the hub's ``_agents_by_key``.
+# A row naming an agent that hub does not build does not merely warn: the
+# unknown-agent branch calls _phase_3c_persist_chunk(..., is_error=True),
+# which writes an ``ERROR:`` row into the R2 mirror AND the Postgres
+# ``chunks`` table, where it comes back at retrieval time.
+#
+# The registry reader is SHARED with topology_prompt_snapshot.py (F47), so
+# there is one derivation of "which agents does this hub build", taken from
+# the hub's own literal.  extra_utilities/hub_registry.py records why
+# neither AGENTS_BY_TOPOLOGY table answers this question.
+sys.path.insert(0, str(REPO / "extra_utilities"))
+from hub_registry import registry_keys_from_source          # noqa: E402
+
+_HUBS = {
+    7: ("agents/orchestrator/orchestrator.py", 36, "dh_schedule.json"),
+    5: ("agents/planner5/planner5.py",         33, "dh_schedule_5agents.json"),
+}
+
+_saved_topology = getattr(_settings, "SYSTEM_TOPOLOGY", 7)
+try:
+    for _topo, (_hub_rel, _want_rows, _want_file) in _HUBS.items():
+        _settings.SYSTEM_TOPOLOGY = _topo
+        _built = registry_keys_from_source(REPO / _hub_rel)
+        check(f"topology {_topo}: the hub registry parses",
+              bool(_built) and not any(str(k).startswith("<unparsed")
+                                       for k in _built),
+              str(sorted(_built)))
+        check(f"topology {_topo}: reads {_want_file}",
+              S.schedule_path().name == _want_file, S.schedule_path().name)
+        _rows = S.read_state()["questions"]
+        check(f"topology {_topo}: {_want_rows} rows", len(_rows) == _want_rows,
+              f"got {len(_rows)}")
+        _orphans = sorted({r["from_agent"] for r in _rows} - _built)
+        check(f"topology {_topo}: every from_agent is an agent the hub builds",
+              not _orphans,
+              f"rows naming an agent this hub does not build: {_orphans}")
+finally:
+    _settings.SYSTEM_TOPOLOGY = _saved_topology
 
 # ===========================================================================
 print()

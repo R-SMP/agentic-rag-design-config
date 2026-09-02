@@ -18,12 +18,14 @@ result opaquely and never branch on topology themselves.
 from agents.shared.topology import topology
 
 
-def build_hub(session, *, llm_cache=None):
-    """The active topology's hub, with every sub-agent constructed.
+def hub_class():
+    """The active topology's hub CLASS, without constructing it.
 
-    Constructing a hub materialises the whole agent set: each sub-agent
-    builds its own LLM and its own system prompt.  That is why there is
-    exactly one of these per session rather than one per call site.
+    Split out so a diagnostic tool can ask which hub a topology uses —
+    and read its ``_agents_by_key`` — without materialising the agent
+    set, which needs real API keys.  Keeping the branch here rather than
+    duplicating it in the tool means exactly one place still maps a
+    topology to a hub.
 
     The hub classes are imported lazily so that selecting one topology
     never imports the other's agent modules — the 7-agent Orchestrator
@@ -33,9 +35,19 @@ def build_hub(session, *, llm_cache=None):
     """
     if topology() == 5:
         from agents.planner5 import Planner5
-        return Planner5(session=session, llm_cache=llm_cache)
+        return Planner5
     if topology() == 3:
         from agents.architect import Architect
-        return Architect(session=session, llm_cache=llm_cache)
+        return Architect
     from agents.orchestrator import Orchestrator
-    return Orchestrator(session=session, llm_cache=llm_cache)
+    return Orchestrator
+
+
+def build_hub(session, *, llm_cache=None):
+    """The active topology's hub, with every sub-agent constructed.
+
+    Constructing a hub materialises the whole agent set: each sub-agent
+    builds its own LLM and its own system prompt.  That is why there is
+    exactly one of these per session rather than one per call site.
+    """
+    return hub_class()(session=session, llm_cache=llm_cache)

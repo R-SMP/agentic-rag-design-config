@@ -170,7 +170,18 @@ def _assemble(topology: int) -> dict:
     from agents.shared import topology as T         # noqa: E402
     from agents.shared.routing_tools import AGENT_DISPLAY   # noqa: E402
 
-    candidates = sorted(AGENT_DISPLAY)
+    sys.path.insert(0, str(Path(__file__).resolve().parent))
+    from hub_registry import built_here                     # noqa: E402
+
+    # AGENT_DISPLAY is the topology-NEUTRAL identity registry -- nothing
+    # iterates it to BUILD agents.  Iterating it unfiltered made the
+    # 5-agent section assemble an Orchestrator and a DC Input Inspector,
+    # and the 3-agent section a Planner and a Tool Caller: chimeras built
+    # with the ACTIVE topology's slot resolution.  This tool IS the
+    # evidence for "which agents did my edit move", so rows for prompts
+    # that cannot exist at runtime make that evidence lie.
+    _built = built_here()
+    candidates = [k for k in sorted(AGENT_DISPLAY) if k in _built]
     if "database_handler" not in candidates:
         candidates.append("database_handler")
 
@@ -179,7 +190,7 @@ def _assemble(topology: int) -> dict:
         "hub_key": T.hub_key(),
         "hub_display": T.hub_display(),
         "planner_first": bool(getattr(P, "PLANNER_FIRST", False)),
-        "dcii_enabled": bool(getattr(P, "DCII_ENABLED", False)),
+        "dcii_enabled": bool(P._dcii_effective()),
         "prompts": {},
         "unavailable": {},
     }
@@ -358,6 +369,18 @@ def cmd_diff(a: Path, b: Path, context: int) -> int:
 
 
 def main(argv: list[str]) -> int:
+    # Windows consoles default to cp1252.  Every diff until now was
+    # all-byte-identical, so no unified-diff body was ever printed; the
+    # first genuinely moved prompt put a character from the prompt text
+    # itself through print() and killed the run with UnicodeEncodeError
+    # PART WAY THROUGH the report -- which reads as the tool finding
+    # fewer differences than it had, the worst possible failure for the
+    # one check this rebuild's verification rests on.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    except (AttributeError, OSError):        # pragma: no cover
+        pass
+
     if len(argv) >= 2 and argv[0] == "_child":
         return _child_main(int(argv[1]))
 

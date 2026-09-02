@@ -178,7 +178,6 @@ KNOWN_PENDING: tuple = (
     # agents to ``call_orchestrator``.  That is the deliberate
     # identical-first baseline; the owner's prompt edits re-point it.
     ("[HUB] topology 5", "names the other hub"),
-    ("[HUB] topology 5", "never names its own hub"),
     ("[HUB] topology 5", "names an agent this topology does not build"),
     # In topology 7 the two UII path labels are emitted by the ORCHESTRATOR
     # alone -- the Planner carries them only inside a <<PF_ON>> block, which
@@ -560,7 +559,15 @@ for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
                 fail(_case, "ROUTING",
                      f"{_name}'s routing block never states FORWARD-is-"
                      f"default -- generic_constraints.md no longer does")
-            if f"the {_hub_disp}" not in block:
+            # The Tool Caller is the ONE agent with no edge to its hub
+            # under topology 5: planner5._wire_routing gives it
+            # call_dc_output_inspector and call_dc_input_creator only,
+            # because work enters the DC loop through the DCIC.  Naming
+            # the Planner in its routing section would advertise a tool it
+            # does not hold, so the silence is correct -- an exemption,
+            # not a defect awaiting a fix.
+            _no_hub_edge = (_topo == 5 and _name == "Tool Caller")
+            if not _no_hub_edge and f"the {_hub_disp}" not in block:
                 fail(_case, "HUB",
                      f"{_name}'s routing section never names its own hub "
                      f"({_hub_disp})")
