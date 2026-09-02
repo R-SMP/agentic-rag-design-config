@@ -16,24 +16,23 @@ dispatch object per agent in the target set provided below.  Each object:
 ## Decision rule (per agent)
 Inspect the user's two free-text fields and decide PER AGENT whether the
 feedback contains material pertaining to THAT agent's responsibilities
-(use the "Agent Capabilities" section of your system prompt for each
-agent's scope):
+(use the "Available Agents" section of your system prompt for each
+agent's scope).  You are not in the target set — you are the splitter,
+never a recipient.  Feedback about planning, recovery, final-approval picks
+or retry budget has no inbox this session; leave it out rather than routing
+it to another agent.
 
   * **Receptionist** — how attempts were presented; tone, completeness,
     whether the right attempt was shown; forward-vs-reply-direct calls.
-  * **Planner** — strategy / recovery decisions, final-approval picks,
-    retry-budget judgement, locked-vs-unlocked handling.
   * **User Input Inspector** — accuracy of extracted quantitative values,
     fidelity of qualitative descriptions, capture of design intent and
     authorisations, image-count signals.
   * **DC Input Creator** — parameter choices for unlocked values,
     qualitative-to-numeric translations, real-world-quantity conversions,
     whether user-locked values were honoured.
-  * **DC Input Inspector** — parameter-validation judgement
-    (APPROVE/REVISE/ESCALATE), range / locked-value checks, and its
-    engineering-soundness assessment of the parameter set.
   * **Tool Caller** — tool-execution reporting (correct paths,
-    NEW-vs-carried freshness, escalations on failure).
+    NEW-vs-carried freshness, and how failures were handed back to the
+    DC Input Creator).
   * **DC Output Inspector** — visual / QC verdicts, countable-feature
     checks, comparison-source claims, override decisions, and whether
     visual claims were grounded in images loaded that turn.

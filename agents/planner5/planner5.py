@@ -40,14 +40,15 @@ from datetime import datetime
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, ToolMessage
+from langchain_core.tools import tool
 
 from agents.database_handler import DatabaseHandler
 from agents.dc_input_creator import DCInputCreator
 from agents.dc_output_inspector import DCOutputInspector
 from agents.receptionist import Receptionist
-from agents.planner.planner import read_extracted_inputs
+from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import read_attempts
-from agents.shared.dc_params_tool import dc_params_list
+from agents.shared.dc_params_tool import build_dc_params_list
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.context_pruner import ContextPruner
 from agents.shared.file_utils import ai_text
@@ -95,6 +96,32 @@ from agents.shared.hub_format import (
 from config import INPUT_IMAGES_SUBDIR, LOGS_DIR, USER_INPUTS_DIR
 
 logger = logging.getLogger("propeller_agent")
+
+
+@tool
+@generic_tool("Read extracted inputs")
+def read_extracted_inputs(path: str) -> str:
+    """Read the User Input Inspector's structured extraction.
+
+    Pass the absolute path that the UII supplied under the ``Extracted
+    inputs file:`` label.  Returns the full extraction as text —
+    QUANTITATIVE INPUTS, QUALITATIVE DESCRIPTIONS, DESIGN INTENT AND
+    FUNCTIONAL REQUIREMENTS, and USEFUL INPUT IMAGES (which reference
+    images matter, and the crop regions the UII identified on each for
+    the agents that compare against them).  Returns a short error string
+    if the file does not exist or cannot be read.
+
+    Use this whenever ``extracted_inputs.txt`` is present in the
+    pipeline state: read the extraction first, and consult the raw user
+    inputs (texts + notes) only if you still need more context."""
+    from pathlib import Path
+    try:
+        p = Path(path)
+        if not p.exists():
+            return f"extracted_inputs.txt not found at {p.resolve()}."
+        return p.read_text(encoding="utf-8")
+    except OSError as exc:
+        return f"Error reading extracted_inputs.txt: {exc}"
 
 
 # Component C — the chain agents that must carry a standing directive forward
@@ -370,7 +397,7 @@ class Planner5(BaseChainAgent):
             read_extracted_inputs,
             history_tool,
             read_attempts,
-            dc_params_list,
+            build_dc_params_list(self.AGENT_KEY),
             build_routing_tool(self.AGENT_KEY, "user_input_inspector",
                                self, cl),
             build_routing_tool(self.AGENT_KEY, "dc_input_creator", self, cl),
@@ -960,15 +987,10 @@ class Planner5(BaseChainAgent):
             SUBMIT_FEEDBACK_DISPATCH_TOOL_NAME,
         )
 
-        # Target set: every chain agent in the registry except the
-        # hub itself (the hub collects/dispatches,
-        # never receives feedback).  Adapts to ``dc_inspector_enabled``
-        # automatically because DCII is only inserted into
-        # ``_agents_by_key`` when enabled... actually DCII is ALWAYS in
-        # the registry (orchestrator.py:188-197) but its routing tools
-        # are only wired when enabled — so we explicitly drop it from
-        # the feedback target set when disabled to avoid forwarding
-        # feedback to a dormant agent.
+        # Target set: every chain agent in the registry except the hub
+        # itself (the hub collects and dispatches, never receives).  No
+        # DC Input Inspector case to handle: _agents_by_key holds six keys
+        # and that is not one of them.
         target_keys: list[str] = []
         for k in self._agents_by_key.keys():
             if k == self.AGENT_KEY:
@@ -986,7 +1008,7 @@ class Planner5(BaseChainAgent):
             )
         except Exception as exc:  # pragma: no cover — defensive
             logger.warning(
-                f"[ORCHESTRATOR-FEEDBACK]  could not bind "
+                f"[HUB-FEEDBACK]  could not bind "
                 f"submit_feedback_dispatch: {type(exc).__name__}: "
                 f"{exc}; treating as empty dispatch list."
             )
@@ -1033,7 +1055,7 @@ class Planner5(BaseChainAgent):
             )
         except Exception as exc:
             logger.warning(
-                f"[ORCHESTRATOR-FEEDBACK]  LLM call raised "
+                f"[HUB-FEEDBACK]  LLM call raised "
                 f"{type(exc).__name__}: {exc}; treating as empty "
                 f"dispatch list."
             )
@@ -1042,7 +1064,7 @@ class Planner5(BaseChainAgent):
         tool_calls = getattr(response, "tool_calls", None) or []
         if not tool_calls:
             logger.warning(
-                "[ORCHESTRATOR-FEEDBACK]  response carried no tool_calls "
+                "[HUB-FEEDBACK]  response carried no tool_calls "
                 "despite tool_choice=submit_feedback_dispatch; "
                 "treating as empty dispatch list."
             )
@@ -1053,7 +1075,7 @@ class Planner5(BaseChainAgent):
         dispatches = (args or {}).get("dispatches") or []
         if not isinstance(dispatches, list):
             logger.warning(
-                f"[ORCHESTRATOR-FEEDBACK]  expected `dispatches` to be "
+                f"[HUB-FEEDBACK]  expected `dispatches` to be "
                 f"a list; got {type(dispatches).__name__!r}."
             )
             dispatches = []
@@ -1068,13 +1090,13 @@ class Planner5(BaseChainAgent):
             msg = str(d.get("message") or "").strip()
             if ak not in target_keys:
                 logger.warning(
-                    f"[ORCHESTRATOR-FEEDBACK]  dispatch agent_key "
+                    f"[HUB-FEEDBACK]  dispatch agent_key "
                     f"{ak!r} not in target set; skipping."
                 )
                 continue
             if ak in seen_keys:
                 logger.warning(
-                    f"[ORCHESTRATOR-FEEDBACK]  duplicate dispatch for "
+                    f"[HUB-FEEDBACK]  duplicate dispatch for "
                     f"{ak!r}; keeping the first one."
                 )
                 continue
@@ -1099,7 +1121,7 @@ class Planner5(BaseChainAgent):
                 self.session.agent_states[ak] = target.snapshot_state()
             except Exception as exc:
                 logger.warning(
-                    f"[ORCHESTRATOR-FEEDBACK]  could not append "
+                    f"[HUB-FEEDBACK]  could not append "
                     f"feedback to {ak!r}: {type(exc).__name__}: {exc}"
                 )
                 applied.append({"agent_key": ak, "send": False, "message": ""})
@@ -1111,7 +1133,7 @@ class Planner5(BaseChainAgent):
         sent = [d["agent_key"] for d in applied if d.get("send")]
         skipped = [d["agent_key"] for d in applied if not d.get("send")]
         logger.info(
-            f"[ORCHESTRATOR-FEEDBACK]  round complete — "
+            f"[HUB-FEEDBACK]  round complete — "
             f"sent={sent or '[]'}  skipped={skipped or '[]'}"
         )
         return {"ok": True, "decisions": applied, "error": None}
