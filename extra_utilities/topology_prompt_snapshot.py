@@ -69,12 +69,12 @@ _INPUT_IMAGES_SUBDIR = "input_images"
 # class that cannot be constructed without langchain, so there is nothing to
 # read it from.
 #
-# ⚠ Topology 5's rows are DELIBERATELY identical to topology 7's for now.
-# That isolates the measurement: any difference the harness reports is caused
-# by topology-aware CODE (hub display name, section set, pipeline string), not
-# by a shape choice.  Update these rows when the topology-5 hub class lands
-# (plan Stage 3 / O2 / O3), or the harness will describe a hub that does not
-# exist.
+# Topology 5's shape comes from ``Planner5._wire_routing``: the hub forwards
+# to the DC Input Creator, the DCIC's next is the Tool Caller (there is no DC
+# Input Inspector to pass through), and the Tool Caller's prev is the DCIC.
+# Keyed off the EFFECTIVE DCII state rather than the raw setting, because
+# ``prompts._dcii_effective()`` is hard-False wherever the hub is not the
+# Orchestrator.
 _ROUTING_SHAPE: dict[str, tuple] = {
     # agent: (agent_name, next_agent, prev_agent, fragment_name)
     "planner": ("Planner", "DC Input Creator", "User Input Inspector",
@@ -100,7 +100,11 @@ def _runtime_slots(agent: str, P, S) -> dict | None:
     """
     from agents.shared.routing import routing_instructions
 
-    dcii = bool(S.DC_INSPECTOR_ENABLED)
+    # The EFFECTIVE value, not the raw setting: topology 5 has no DC Input
+    # Inspector whatever the flag says, so its DCIC forwards to the Tool
+    # Caller and its Tool Caller's previous is the DCIC.
+    from agents.shared import prompts as _P
+    dcii = _P._dcii_effective()
 
     def routing(agent_key: str) -> str:
         name, nxt, prev, frag = _ROUTING_SHAPE[agent_key]

@@ -8,12 +8,12 @@
   back to the User Input Inspector if its ``extracted_inputs.txt`` is
   missing required information or contains an inconsistency that only
   the UII can resolve.
+- ``call_receptionist(message)`` — hand the result to the Receptionist,
+  which composes the exact user-facing wording.  Use this for Part 2
+  (the summary the user must hear), for normal completion when no
+  pipeline run is required, and to ask the user a question.
 - ``call_dc_output_inspector(message)`` — CLARIFY back to the DC Output
   Inspector when its verdict is unclear or you need it to look again, and
   ask it to analyse or compare specific attempts — against each other, or
   against the user's inputs.  It judges renders that already exist and
   generates nothing, so name the attempt number(s) you want examined.
-- ``call_receptionist(message)`` — hand the result to the Receptionist,
-  which composes the exact user-facing wording.  Use this for Part 2
-  (the summary the user must hear), for normal completion when no
-  pipeline run is required, and to ask the user a question.

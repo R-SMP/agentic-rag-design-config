@@ -42,7 +42,7 @@ from agents.shared.attempts_tool import read_attempts
 from agents.shared.dc_params_tool import build_dc_params_list, dc_params_list
 from agents.shared.user_inputs_tool import (
     READ_INPUTS_DOC_DCOI, READ_INPUTS_DOC_PLANNER, build_read_user_inputs,
-    build_user_inputs_tools,
+    build_user_inputs_tools, read_inputs_doc,
 )
 from agents.shared.history_tool import build_read_agent_history_tool
 from agents.shared.routing_tools import build_routing_tool
@@ -196,6 +196,23 @@ def tools_for(agent):
         return t
 
     if agent == "planner":
+        # Topology 5's hub is this same key but a different implementation:
+        # it binds its OWN read_extracted_inputs (no "or the Orchestrator"),
+        # the agent-scoped dc_params_list, and read_user_inputs through the
+        # overlay.  Without this branch the dump shows the 7-agent wording
+        # for all three.
+        if TOPOLOGY == 5:
+            import agents.planner5.planner5 as P5
+            t = ([build_read_user_inputs(
+                      doc=read_inputs_doc("planner"),
+                      direct_provider="openai"),
+                  P5.read_extracted_inputs,
+                  build_read_agent_history_tool(lambda *a, **k: []),
+                  read_attempts,
+                  build_dc_params_list("planner")]
+                 + [rt("planner", tgt) for tgt in _EDGES_5["planner"]])
+            t.extend(dba_tools_for("planner"))
+            return t
         routing = ([rt("planner", "dc_input_creator"),
                     rt("planner", "user_input_inspector"),
                     rt("planner", "orchestrator")] if not PF else

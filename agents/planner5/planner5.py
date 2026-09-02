@@ -382,12 +382,14 @@ class Planner5(BaseChainAgent):
         # This hub -- the Orchestrator's reach minus the retired DCII and
         # minus the Tool Caller, plus the PLANNER's own utility tools.
         #
-        # The utility set is the Planner's, not the Orchestrator's, and that
-        # is load-bearing: this agent runs the PLANNER's prompt, which
-        # documents ``read_user_inputs`` and ``read_extracted_inputs``.  A
-        # prompt naming a tool the class does not bind is exactly the defect
-        # the first 5-agent live run hit -- two wasted hops and the only tool
-        # error in the run.
+        # The utility set is the Planner's, not the Orchestrator's: this
+        # agent runs the PLANNER's prompt, so it must hold what that prompt's
+        # reader is assumed to hold.  Neither tool is NAMED in the prompt --
+        # that is true of topology 7's Planner too, which binds exactly the
+        # same five -- so this mirrors the 7-agent Planner rather than
+        # satisfying a promise the text makes.  Binding less than the prompt
+        # assumes is the defect the first 5-agent live run hit: two wasted
+        # hops and the only tool error in the run.
         read_user_inputs = build_read_user_inputs(
             doc=read_inputs_doc(self.AGENT_KEY),
             direct_provider=getattr(self, "provider", "openai"),
@@ -1043,7 +1045,7 @@ class Planner5(BaseChainAgent):
                 feedback_llm,
                 [make_system_message(self.system_prompt, self.provider)]
                 + [instruction],
-                "Orchestrator-feedback-dispatch",
+                "Hub-feedback-dispatch",
                 # NO history breakpoint here on purpose.  This call sends a
                 # freshly-built one-off list ([system] + [instruction]) rather
                 # than the persistent self.messages, so ``instruction`` differs
