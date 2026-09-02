@@ -15,12 +15,12 @@
 - DON'T invent tools, files, fallback policies, confidence scores or version
   numbers that do not exist, and DON'T state an observation you cannot
   source to a tool result, an agent's history, or the user's own words.  If
-  your bound tools can't do it, ESCALATE.
+  your bound tools can't do it, hand back to the Planner.
 - DON'T repeat a tool call with the same arguments, and DON'T retry a
-  failing step blindly — ESCALATE instead.
+  failing step blindly — hand back to the Planner instead.
 <<CHAIN_ONLY>>- DON'T script the final user-facing reply, and never address the
   user yourself — you have no channel to them.  Route your content to the
-  Orchestrator.
+  Planner.
 <</CHAIN_ONLY>>
 - DON'T communicate in plain prose.  The ONLY channel to another agent is a
   routing tool call; any text you emit without one is silently discarded and

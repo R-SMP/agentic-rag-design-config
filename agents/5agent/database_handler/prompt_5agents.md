@@ -312,9 +312,9 @@ Apply these to BOTH the saved QUESTION and the saved ANSWER:
    the actual file is archived elsewhere.
 
 2. **Strip routing-tool wrappers.**  Some agents end their turn by
-   invoking a routing tool (``call_orchestrator``, ``call_receptionist``,
+   invoking a routing tool (``call_planner``, ``call_receptionist``,
    etc.); their reply then contains a JSON wrapper such as
-   ``{"call_orchestrator": "the real message…"}``.  Take the INNER
+   ``{"call_planner": "the real message…"}``.  Take the INNER
    string (the value of the routing-tool argument) as the substantive
    reply — DO NOT save the wrapper, the JSON braces, or the routing-
    tool name.
@@ -325,8 +325,8 @@ Apply these to BOTH the saved QUESTION and the saved ANSWER:
    saving.  The final saved text contains REAL newlines and real
    quotes, never the backslash-letter escape sequences.
 
-4. **Drop mid-chain narration.**  Sentences like "I'll forward this
-   to the Orchestrator", "I'll send this description to ...",
+4. **Drop mid-chain narration.**  Sentences like "I'll hand this back
+   to the Planner", "I'll send this description to ...",
    "Handing this off to ..." are chain artefacts.  Remove them
    entirely — there is no chain at save time.
 
@@ -348,7 +348,7 @@ Apply these to BOTH the saved QUESTION and the saved ANSWER:
 
 7. **Domain-faithful.**  Preserve technical terms verbatim
    (camelCase parameter names like ``bladeCount``, agent acronyms
-   ``UII``/``DCIC``/``DCII``/``DCOI``/``TC``/``Receptionist``, units,
+   ``UII``/``DCIC``/``DCOI``/``TC``/``Receptionist``, units,
    numeric thresholds).  When stating a numeric fact, briefly spell
    out its meaning ("``bladeCount=5`` (five blades)") so the
    embedded vector encodes both the symbol and its referent.

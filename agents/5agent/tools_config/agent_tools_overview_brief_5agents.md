@@ -6,12 +6,9 @@ does not appear in your prompt.
 
 - **Receptionist**: gates user input and composes user-facing
   replies.  Bridge between user and pipeline.
-- **Orchestrator**: routes between agents.  Originates no design
-  decisions; relays context.  May open attempt folders only as a
-  fallback for the DCIC.
-- **Planner**: sets the strategic intent for a request and produces
-  recovery plans when something goes wrong.  Owns the qualitative
-  directives.
+- **Planner**: the HUB.  Sets the strategic intent for a request,
+  dispatches every agent, receives every hand-back, produces recovery
+  plans, and gives final approval.
 - **User Input Inspector (UII)**: turns raw user content (text +
   notes + images) into a structured ``extracted_inputs.txt``.  Only
   agent that interprets raw user content.
@@ -26,7 +23,9 @@ does not appear in your prompt.
   tool (mesh generation + renders + QC in a single call), producing the
   mesh file and renders for the current attempt.
 - **DC Output Inspector (DCOI)**: visually inspects the renders and
-  approves or escalates.
+  either approves, asks the Tool Caller to re-render, communicates a
+  shape problem to the DC Input Creator, or hands the verdict back to
+  the Planner.
 
 Database Handler scope: collect each agent's recollection of what
 they did, what worked, what did not, and why — not their tool

@@ -72,9 +72,9 @@ compare whatever it names against whatever renders the hand-off supplied.
   thin and its leading edge too pointed; middle camber is shallower than drawn;
   outer high-point sits too far forward".  Name the feature and the direction.
 - **Route to keep the loop turning.**  While still iterating, hand your gap
-  description back with ``call_orchestrator``, clearly marked as a PRECISION
-  REFINE — still iterating, not a blocker.  The Orchestrator relays it straight
-  to other agents, which adjust the unlocked shape params and re-render back
+  description back with ``call_dc_input_creator``, clearly marked as a
+  PRECISION REFINE — still iterating, not a blocker.  The DC Input Creator
+  adjusts the unlocked geometry params and the Tool Caller re-renders back
   to you.  This is NOT the ordinary "REVISE → re-plan" path.
 - **Iterate only if an UNLOCKED lever helps.**  If an unlocked parameter
   would measurably improve the mismatched aspect — e.g. a section's radial
@@ -92,7 +92,8 @@ FINALIZE when ANY of these holds — state which in your verdict:
   keep iterating while the shapes are still getting closer.
 - **Cap reached** — the hand-off carries a ``PRECISION REFINE CAP REACHED`` note
   (the code backstop fired): stop now and finalize with the best attempt.
-On stopping, route to the Orchestrator to finalize and **report the residual
+
+On stopping, route to the Planner to finalize and **report the residual
 honestly** — how closely it matched, and if a gap remains, name the limit it
 hit rather than implying more rounds would close it.  When you finalize, name
 the BEST ATTEMPT so far.
@@ -138,15 +139,13 @@ position the rest of the chain lacks<</DCII_ONLY>>.  When the renders disagree w
 the source in a way that suggests the upstream interpretation diverged
 from the user's intent, you may recommend REVISE<<DCII_ONLY>> (overriding a
 DCII APPROVE)<</DCII_ONLY>> even when every parameter is in range.  When you do:
-  * Recommend REVISE and ESCALATE to the Orchestrator.
+  * Recommend REVISE and communicate the problem to the Planner.
   * In your ``message``, state what looks wrong, name the in-scope
     artefact that grounds it (reference image, paired note, user_query
     line, or a specific QUANTITATIVE INPUTS / DESIGN INTENT line), and
     say where the interpretation diverged.
 Use this deliberately, not routinely: defer when the only mismatches are
 sub-resolution; speak up on a clear visible contradiction.
-
-$visual_inspection_guide
 
 ## Comparing against a prior attempt
 ``read_attempts`` pulls an earlier cycle's ``description.txt`` and render /
@@ -171,6 +170,8 @@ $parameter_list
 gap you can ask to close from one you cannot: never ask for a value outside
 its range, and when the mismatch traces to a parameter already at its bound,
 say so instead of asking for more.<</DCOI_RANGES_ON>>
+
+$visual_inspection_guide
 
 ## How to phrase your feedback
 

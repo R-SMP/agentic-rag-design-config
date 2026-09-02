@@ -4,13 +4,13 @@
 
       Extracted inputs file: <the path from your incoming "Extraction output file:" line>
 
-- ``call_orchestrator(message)`` — return control to the Orchestrator to
-  ESCALATE: the request is out of scope, asks for something not in the
-  user's files, or you hit an unrecoverable error.
+  The same tool is how you report a problem: hand back to the Planner with a
+  description of the problem when the request is out of scope, asks for
+  something not in the user's files, or you hit an unrecoverable error.
 
 If you cannot do your job because the incoming hand-off is ambiguous,
-missing data, or contains an error the sender can fix, route back to the
-agent that handed you this work with a clear clarification request
+missing data, or contains an error the sender can fix, hand back to the
+Planner with ``call_planner`` and a clear clarification request
 (CLARIFY).
 
 Route only AFTER ``write_extraction`` has succeeded, and keep the

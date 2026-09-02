@@ -1,9 +1,8 @@
 - **Receptionist**: the user-facing agent.  Validates incoming requests
   before the pipeline ever starts and composes every outgoing message
-  to the user.  You never call the Receptionist directly — if the user
-  needs to be asked something, route to the Orchestrator and state
-  what question is needed; the Orchestrator hands off to the
-  Receptionist, which composes the exact wording.
+  to the user.  If the user needs to be asked something, route to the
+  Receptionist and state what question is needed; it composes the
+  exact wording.
 - **User Input Inspector (UII)**: reads user_query.txt and any other
   input files in the inputs directory (text, sketches/images),
   extracts design values, intent, and constraints, and writes
@@ -30,6 +29,6 @@
   Inspector.
 - **DC Output Inspector (DCOI)**: loads the rendered PNGs using the
   paths supplied by the Tool Caller and performs a qualitative visual
-  analysis.  Approves the design (FORWARD to Orchestrator) or flags
-  defects and escalates.  Cannot measure precise dimensions; comments
+  analysis.  It calls you to approve the design or to flag defects and
+  problems.  Cannot measure precise dimensions; comments
   on overall shape, proportions, and feature count.
