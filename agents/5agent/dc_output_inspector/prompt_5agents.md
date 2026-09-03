@@ -84,8 +84,8 @@ compare whatever it names against whatever renders the hand-off supplied.
 
 ### When to stop
 FINALIZE when ANY of these holds — state which in your verdict:
-- **Satisfied** — the shapes match the inputs/request as closely as the
-  configurator can express.
+- **Satisfied** — the shapes, sizes and angles match the inputs/request
+  as closely as the configurator can express.
 - **Plateau** — across roughly 2–3 consecutive rounds the shapes stopped
   meaningfully improving (compare each render with the previous round's):
   you have reached that ceiling.  There is no fixed budget of refine rounds —
@@ -126,10 +126,9 @@ the RENDER, deciding the outcome:
     it as the next category.
   * **Not resolvable at the renders' resolution** — the claim needs a
     quantity the renders can't resolve at image scale (sub-millimetre
-    dimensions, fine angles, percentages with no visible structural
-    manifestation).  Say so plainly, naming the claim; do NOT pretend to
-    see what you can't — trust falls on the upstream parameter
-    authorisation chain.
+    dimensions, percentages with no visible structural manifestation).
+    Say so plainly, naming the claim; do NOT pretend to see what you
+    can't — trust falls on the upstream parameter authorisation chain.
 
 ### Override authority and reporting upstream interpretation problems
 

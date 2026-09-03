@@ -29,8 +29,8 @@ $parameter_list
   nor its size.
 
 **The BLADE AS A WHOLE** — its 3D form and its top-view outline.  It
-follows from the section profiles AND from how the sections are sized and
-placed, so more levers reach it:
+follows from the section profiles AND from how the sections are sized,
+angled and placed, so more levers reach it:
 * the three ``*Chord`` values set the blade OUTLINE from root to tip —
   changing them reshapes the blade even when every section profile is
   left untouched;
@@ -38,6 +38,9 @@ placed, so more levers reach it:
   changes that outline too;
 * ``impellerRadius`` sets the blade SPAN (4 mm root → tip), so it changes
   the blade's proportions;
+* the three ``*Angle`` values TWIST the blade — varying the angle of
+  attack from one section to the next turns them by different amounts, so
+  the blade as a whole twists along its span;
 * the profile parameters above, since the blade is the surface through its
   sections.
 

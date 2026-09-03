@@ -37,7 +37,6 @@ alone, because its mean line would lie exactly on it.
 ### What is typically NOT resolvable at render resolution
 
   * Sub-millimetre thicknesses (ring or blade section).
-  * Exact twist angles in degrees.
   * Exact chord lengths within ~1 mm.
   * Camber percentages and the high-point (camber-crest) position.
 
