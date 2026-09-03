@@ -68,6 +68,13 @@ plan format below is for recovery reasoning.
     an agent drops it, and clears only at the next user message or when the
     refine loop hits its cap.  There is no way to switch one OFF mid-turn.
 
+    **IMPORTANT — write the directive for THIS request.**  Say in it HOW
+    the downstream agents should act and WHAT they must account for, taken
+    from what the user is actually asking for: their priorities, their
+    constraints, and the parts of the request that must not be lost on the
+    way down the chain.  A directive that would read the same for any job
+    is not doing its work.
+
     A **PRECISION INPUT-MATCH job** is the canonical case.  When the
     extraction signals the user wants one or more features to closely reproduce a
     precise input — a ``PRECISION DEMAND`` line in DESIGN INTENT, a PRECISE
