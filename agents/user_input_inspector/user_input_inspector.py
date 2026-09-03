@@ -335,6 +335,7 @@ class UserInputInspector(BaseChainAgent):
             exclude_root_files=exclude_root,
             can_view_images=True,
             strip_timestamps=True,
+            agent_key=self.AGENT_KEY,
         )
         if not raw_path or not isinstance(raw_path, str):
             # Keep the UII-specific pointer at its hand-off label.

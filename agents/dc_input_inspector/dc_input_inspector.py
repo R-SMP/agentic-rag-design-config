@@ -280,6 +280,7 @@ class DCInputInspector(BaseChainAgent):
             tc.get("args", {}).get("path"),
             getattr(self, "provider", "openai"),
             can_view_images=True,
+            agent_key=self.AGENT_KEY,
         )
         log_tool_call(
             "dc_input_inspector", tc["name"], tc.get("args"), summary,

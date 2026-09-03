@@ -159,13 +159,21 @@ def _view_images_paths_clause(agent_key: str) -> str:
     return table.get(agent_key, default)
 
 
-def _view_images_base_doc(paths_from: str) -> str:
+def _view_images_base_doc(paths_from: str, ocr_on: bool = True) -> str:
     """The shared ``view_images`` doc with *paths_from* spliced in.
 
     Plain concatenation, never ``.format()``: a literal brace anywhere
     in this text would otherwise have to be doubled, and the next
     person to edit it would not know that.
+
+    The crop-vs-text-region contrast is spliced only when *ocr_on*: with
+    OCR off there are no numbered TEXT regions to contrast against, so
+    the sentence would point at something the agent never sees.
     """
+    crop_vs_text = (
+        "These are picture crops, unrelated to the numbered TEXT regions "
+        "OCR reports.  " if ocr_on else ""
+    )
     return (
         "View one or more images so you can see them — user sketches (under "
         "``inputs/``) and/or tool-generated renders (under ``attempts/``), "
@@ -186,8 +194,8 @@ def _view_images_base_doc(paths_from: str) -> str:
         "``crop_regions`` (OPTIONAL): a list aligned by index with ``paths``; "
         "each entry is a COARSE crop box ``[x0, y0, x1, y1]`` as fractions in "
         "0..1 (or ``null`` for no crop), so a large sketch is cropped to its "
-        "relevant part before viewing or comparing.  These are picture crops, "
-        "unrelated to the numbered TEXT regions OCR reports.  The User Input "
+        "relevant part before viewing or comparing.  " + crop_vs_text +
+        "The User Input "
         "Inspector identifies them from the raw images and records them in the "
         "extraction's ``USEFUL INPUT IMAGES`` section; other agents (e.g. the "
         "DC Output Inspector comparing blade sections) REUSE a recorded crop "
@@ -220,7 +228,8 @@ def _build_view_images(ocr_on: bool, agent_key: str = ""):
     ``_handle_view_images`` via the dispatcher; this stub just defines the
     LLM-facing schema + doc.
     """
-    base = _view_images_base_doc(_view_images_paths_clause(agent_key))
+    base = _view_images_base_doc(
+        _view_images_paths_clause(agent_key), ocr_on)
     if ocr_on:
         def _impl(paths: list[str], side_by_side: bool = False,
                   layout: str = "match_height", crop_regions: list = None,
@@ -407,13 +416,38 @@ READ_INPUTS_DOC_BY_AGENT = {
 READ_INPUTS_DOC_DEFAULT = READ_INPUTS_DOC_UII
 
 
+# The one clause in any ``read_user_inputs`` wording that names OCR.  The
+# shared UII doc and the topology-5 overlay's copy of it end with this
+# sentence byte-for-byte, so swapping it in :func:`read_inputs_doc` covers
+# both topologies without a second edit in ``agents/topology5/tool_text.py``.
+# The overlay's DCOI doc already uses the plain form below.
+_SEE_IMAGE_OCR = (
+    "To actually SEE an image "
+    "(and get its OCR-recognised text: dimension callouts, labels), call "
+    "``view_images`` with the path(s) you need."
+)
+_SEE_IMAGE_PLAIN = (
+    "To actually SEE an image, call "
+    "``view_images`` with the path(s) you need."
+)
+
+
 def read_inputs_doc(agent_key: str) -> str:
-    """The ``read_user_inputs`` documentation *agent_key* should be given."""
+    """The ``read_user_inputs`` documentation *agent_key* should be given.
+
+    With OCR off for this agent the OCR clause is swapped out, so a
+    no-OCR run never advertises text recognition the agent cannot do.
+    ``smoke_test_ocr_descriptions.py`` asserts the swap still bites --
+    a ``.replace`` that stops matching would otherwise fail silently.
+    """
     table = _topology.overlay_value(
         "READ_INPUTS_DOC_BY_AGENT", READ_INPUTS_DOC_BY_AGENT)
     default = _topology.overlay_value(
         "READ_INPUTS_DOC_DEFAULT", READ_INPUTS_DOC_DEFAULT)
-    return table.get(agent_key, default)
+    doc = table.get(agent_key, default)
+    if not ocr_access.is_enabled_for(agent_key):
+        doc = doc.replace(_SEE_IMAGE_OCR, _SEE_IMAGE_PLAIN)
+    return doc
 
 _TURN_HEADER_RE = re.compile(
     r"^--- \[[^\]]{1,40}\](?:[ \t]+([A-Z]+))?[ \t]*---[ \t]*$",
@@ -449,6 +483,7 @@ def read_user_inputs_summary(
     exclude_root_files: tuple[str, ...] = (),
     can_view_images: bool = False,
     strip_timestamps: bool = False,
+    agent_key: str = "",
 ) -> str:
     """The ``read_user_inputs`` result text for *raw_path*.
 
@@ -506,12 +541,18 @@ def read_user_inputs_summary(
             f"  - {Path(p).name}   (path: {p})"
             for p in image_paths
         )
-        hint = (
-            "  To SEE an image and get its OCR text, call "
-            "view_images with the path(s) you need:"
-            if can_view_images else
-            "  Their paths, for relaying to an agent that can view them:"
-        )
+        # Three cases, not two: an agent that can view images but has no
+        # OCR must not be promised OCR text.  *agent_key* defaults to ""
+        # (no OCR), so a caller that does not pass it errs quiet rather
+        # than advertising a capability that is switched off.
+        if not can_view_images:
+            hint = "  Their paths, for relaying to an agent that can view them:"
+        elif ocr_access.is_enabled_for(agent_key):
+            hint = ("  To SEE an image and get its OCR text, call "
+                    "view_images with the path(s) you need:")
+        else:
+            hint = ("  To SEE an image, call "
+                    "view_images with the path(s) you need:")
         summary_parts.append(
             f"{len(image_paths)} reference image(s) are available "
             f"but NOT loaded here (their notes are in the file "

@@ -72,11 +72,16 @@ DEFAULT_AGENTS: tuple[str, ...] = (
     # "planner" was dropped 2026-08-22: the Planner no longer binds any
     # image tool (view_images / reread_text_regions unbound in the prompt
     # reduction), so an OCR toggle for it would be a dead switch.
-    "dc_input_creator",
+    # "dc_input_creator" was dropped 2026-09-03, for the same reason as
+    # the Planner: it binds no image tool at all (only the UII, the DCII
+    # and the DCOI call ``build_user_inputs_tools``), so its flag was a
+    # dead switch.  ``ocr_region_crops_access.DEFAULT_AGENTS`` already
+    # listed the correct three.
     "dc_input_inspector",
     "dc_output_inspector",
-    # 5-agent topology: the Creator inherits the DCIC's + DCII's image
-    # tools; the Conductor inherits the Planner's ``view_images``.
+    # 5-agent topology introduces no new entry: it is the 7-agent set
+    # minus the Orchestrator and minus the DCII, and neither of those
+    # binds an image tool anyway.
     # 3-agent topology.  The Architect PERCEIVES — it absorbs the UII,
     # so it binds the image tools and needs OCR text with them.
     "architect",
