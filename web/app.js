@@ -1971,13 +1971,12 @@ const LR_BOXES_7 = [
     label: "Context Pruner" },
 ];
 
-// 5-agent topology.  The Conductor takes the Orchestrator's central
-// The Planner sits in the Orchestrator's slot because it IS the hub here,
-// and the UII / Output Inspector keep their 7-agent row beside it.  Only
-// two boxes are missing relative to the 7-agent chart -- the Orchestrator
-// and the Input Inspector -- so the layout is deliberately the 7-agent one
-// with those two removed and the Input Creator pulled into the centre
-// column above the Tool Caller it feeds.
+// 5-agent topology.  The Planner sits in the Orchestrator's slot because
+// it IS the hub here, and the UII / Output Inspector keep their 7-agent
+// row beside it.  Only two boxes are missing relative to the 7-agent
+// chart -- the Orchestrator and the Input Inspector -- so the layout is
+// deliberately the 7-agent one with those two removed and the Input
+// Creator pulled into the centre column above the Tool Caller it feeds.
 const LR_BOXES_5 = [
   { key: "user",                  role: "user",  x: 230, y: 10,  w: 140, h: 40,
     label: "User" },
