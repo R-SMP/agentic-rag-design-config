@@ -6,7 +6,7 @@ Built on **LangChain** with swappable LLM backends (OpenAI / Anthropic / Google)
 
 ## How it works
 
-Nine stateful sub-agents collaborate via a flat horizontal dispatcher (eight in-session, one post-session).
+Nine stateful sub-agents collaborate via a flat horizontal dispatcher (eight in-session, one post-session) — that is the **7-agent topology**, the default. `SYSTEM_TOPOLOGY` also selects a **5-agent topology** of seven (six in-session, one post-session); see [Topologies](#topologies).
 
 **Default flow (`PLANNER_FIRST=False`, UII-first):**
 
@@ -18,6 +18,20 @@ user → Receptionist → Orchestrator → User Input Inspector
 ```
 
 Any agent can ESCALATE to the Orchestrator, which calls the Planner for a Problem/Solution/Sequence plan and re-routes one step at a time. On REVISE, a new attempt folder is opened.
+
+### Topologies
+
+`SYSTEM_TOPOLOGY` in [`workflow_settings/settings.py`](workflow_settings/settings.py) selects the agent set. The flow above is topology **7**, the default. Topology **5** removes the Orchestrator and the DC Input Inspector and makes the **Planner** the hub:
+
+```
+user → Receptionist → Planner → User Input Inspector (UII) → Planner
+                    → DC Input Creator → Tool Caller (mesh + renders)
+                    → DC Output Inspector → Planner → Receptionist → user
+```
+
+The Planner absorbs the Orchestrator's dispatch role, so it both plans and routes. Two absences are deliberate: the Planner has no edge to the Tool Caller (work enters the DC loop through the Input Creator), and the Tool Caller has none back to the Planner. Topology 5 also has no chain-access feed — reading the other agents' traffic was the Orchestrator's power and left the system with it.
+
+Each topology keeps its own prompt tree: the 7-agent prompts sit beside their agents (`agents/<agent>/prompt.md`), the 5-agent ones under [`agents/5agent/`](agents/5agent/), with the hub in [`agents/planner5/`](agents/planner5/) and topology-specific code overlays in [`agents/topology5/`](agents/topology5/). Several flags below are inert outside topology 7, and the settings view marks them so.
 
 **User-provided values — locked, soft, or free.** A value the user gives is treated one of three ways. **LOCKED** (default): an exact number they stated is a hard constraint — nothing changes it without their authorisation. **FREE**: a parameter they never mentioned — the system chooses it within range. **SOFT TARGET**: a value they provided but explicitly *subordinated to a qualitative goal* (e.g. *"here are dimensions, but fit the sketched shape; the exact dimensions matter less"*) — the **goal dominates on conflict** (the system varies the value freely to serve it) while holding it **close when there is slack**. The User Input Inspector records a soft target as a `SOFT TARGET (goal: …; keep near … if free)` marker on its QUANTITATIVE INPUTS line, and every downstream agent honours it (Planner authorisation, Creator generation, DCII validation, DCOI output inspection). Details: [`extra_utilities/docs/active/value_states_and_out_of_range.md`](extra_utilities/docs/active/value_states_and_out_of_range.md) Part B.
 
@@ -498,13 +512,14 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
 | `MESH_CHECKS` | `False` | watertight / volume / degenerate-face checks |
 | `RENDER_LIBRARY` | `"trimesh"` | `"trimesh"` or `"pyvista"` metric backend |
 | `RAG_ENABLED` | `True` | Master switch for the `database_search` tool (Phase 4).  When `True`, the 8 chain agents get `database_search` bound at session start AND the `$database_search_tool` fragment in their system prompts — *subject to* the per-agent DBa flag in `workflow_settings/database_access.json` (AND semantics).  When `False`, no agent gets database access regardless of any per-agent flag.  Per-agent flags are edited via the **DBa** toggle button on each agent box in the LLM-routing chart.  See `warnings_developer.md` W33 for the full lifecycle + filter mechanism. |
-| `DC_INSPECTOR_ENABLED` | `True` | run DCII before mesh generation |
-| `CHAIN_ACCESS` | `True` | Orchestrator sees inter-agent chain messages |
+| `SYSTEM_TOPOLOGY` | `7` | `7` or `5` — which agent set to build (see [Topologies](#topologies)) |
+| `DC_INSPECTOR_ENABLED` | `True` | run DCII before mesh generation — **7-agent only**, forced off in topology 5 |
+| `CHAIN_ACCESS` | `True` | Orchestrator sees inter-agent chain messages — **7-agent only**; topology 5's hub has no such feed |
 | `KEEP_IMAGES_IN_CONTEXT` | `False` | image bytes persist across hand-offs |
 | `RATE_LIMIT_ENABLED` | `True` | throttle every `llm.invoke()` |
 | `RATE_LIMIT_REQUESTS_PER_SECOND` | `1.0` | steady-state call rate |
 | `DCOI_COMPARISON_MODE` | `3` | 1=user inputs, 2=extraction, 3=both |
-| `PLANNER_FIRST` | `False` | True = Planner runs before UII |
+| `PLANNER_FIRST` | `False` | True = Planner runs before UII — **7-agent only**; in topology 5 the hub IS the planner |
 | `EMBEDDING_MODEL` | `"text-embedding-3-large"` | for DH-shaped Semantic bodies |
 | `EMBEDDING_VECTOR_DIMS` | `1024` | MRL truncation dim at index time |
 | `EMBEDDING_MAX_RESPONSE_TOKENS` | `700` | DH cap for Semantic bodies |
