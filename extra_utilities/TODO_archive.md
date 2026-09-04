@@ -1520,3 +1520,146 @@ the authoritative marker list is `agents/shared/prompts.py:151-175`.
 ---
 
 ---
+
+---
+
+### F58. A 5-agent save loses 17 of the 36 default schedule rows, three different ways
+
+**RESOLVED 2026-09-04.**  Topology 5 now has its OWN tracked schedule --
+`workflow_settings/dh_schedule_5agents.default.json`, 33 rows, chosen by
+topology in `dh_schedule.schedule_path()` -- so no row names an agent the
+active hub does not build, and the three loss mechanisms below have
+nothing to act on.  Guarded by the F19d assertion in
+`extra_utilities/smoke_test_dh_batching.py`: every `from_agent` in the
+effective schedule must be a key of the built hub's `_agents_by_key`.
+
+Read the breakdown below as CONDUCTOR-era: it counts `planner` and
+`dc_input_creator` among the agents topology 5 "no longer has", and both
+exist in the current 5-agent system.
+
+
+
+
+**Where.** `agents/database_handler/database_handler.py` `populate_database`
+
+(the agent-resolution guard, the sub-row collector and the `parent_id`
+
+guard), `workflow_settings/dh_schedule.py` `AGENT_KEYS`, and the two hub
+
+registries `agents/orchestrator/orchestrator.py` / `agents/conductor/conductor.py`.
+
+
+
+**What.** `dh_schedule.AGENT_KEYS` is a deliberate SUPERSET across topologies —
+
+it has to be, or a schedule naming the Conductor could not be saved at all. But
+
+the DH resolves each row's agent against `hub._agents_by_key`, which holds only
+
+the agents the ACTIVE topology actually built. Under `SYSTEM_TOPOLOGY = 5` the
+
+default 36-row schedule names four agents that no longer exist (planner ×7,
+
+dc_input_creator ×3, dc_input_inspector ×3, orchestrator ×1).
+
+
+
+Verified breakdown for a 5-agent run on default settings — **17 rows yield
+
+nothing, but only 12 leave any trace**:
+
+
+
+* **12 rows** hit the agent-resolution guard and produce an ERROR `.txt` plus an
+
+  `is_error=True` chunks row. Visible, if ugly.
+
+* **2 rows** (`Bad attempt Suggested solution`, `Useful Attempt planner
+
+  observations`) are Planner SUB-rows of DCOI parents. The DCOI exists in the
+
+  5-agent topology, so their parent runs normally and consumes them inside the
+
+  attempt-major loop, where an unresolvable sub-agent hits a bare `continue`
+
+  with a log warning — **no error entry, no chunks row, nothing on disk.**
+
+* **3 rows** are collateral. Row 20 (`Final Design Output`) is a PLANNER
+
+  identifying row whose three children all name the DC Output Inspector — an
+
+  agent the Conductor does have. But the parent errors out and does
+
+  `i += 1; continue`, so the sub-row collector never runs, and those three
+
+  perfectly-valid children fall through to the main loop where the
+
+  `if parent_id is not None:` guard — which sits ABOVE agent resolution —
+
+  drops them silently.
+
+
+
+So one unresolvable PARENT silently costs every child under it, whatever agent
+
+those children name.
+
+
+
+**A topology-independent hole in the same area.** Neither hub registers
+
+`database_handler` or `context_pruner`, yet `dh_schedule.py` offers both in the
+
+editor's agent dropdown. A row naming either takes the error path in EVERY
+
+topology, 7-agent included.
+
+
+
+**Why it matters now.** This is not cosmetic: it silently halves the corpus a
+
+5-agent session contributes, and the rows it drops are not a random sample —
+
+they are every planning and parameter-authoring question. Any Test-2
+
+(agent-count) comparison drawn from saved sessions would be comparing a full
+
+7-agent corpus against a mutilated 5-agent one.
+
+
+
+**Options, none chosen yet.**
+
+
+
+1. **Map retired agents onto their merged successor** at save time —
+
+   planner/orchestrator → conductor, dc_input_creator/dc_input_inspector →
+
+   creator. One schedule keeps working across topologies. Needs a per-row
+
+   judgement about whether the merged agent can answer that question
+
+   meaningfully.
+
+2. **Make the schedule topology-aware** — a per-topology file, or a per-row
+
+   topology filter, so a run only asks what its agents can answer. Cleanest
+
+   semantically, most work, two question sets to maintain.
+
+3. **At minimum, make the failure uniform and loud**: the three dispositions
+
+   above (error entry / silent continue / silent parent-cascade drop) should be
+
+   one disposition, and a save whose schedule names agents the active topology
+
+   does not build should say so up front rather than 12 times in the middle.
+
+
+
+**Status.** Open, logged 2026-08-04 from a verified multi-agent audit of the DH
+
+save path (run `wf_ae8569ed-087`). Owner's call: log now, decide later.
+
+

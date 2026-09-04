@@ -88,7 +88,6 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F55` | OPEN | The briefing anchor: cache the DH's re-seeded base history ACROSS fields |
 | `F56` | OPEN | `SYSTEM_TOPOLOGY` is read fresh mid-turn, so a run in flight is not pinned |
 | `F57` | OPEN | The two hubs differ in chain access, which confounds a 7-vs-5 comparison |
-| `F58` | OPEN | A 5-agent save loses 17 of the 36 default schedule rows, three different ways |
 | `F59` | OPEN | Six verified defects in the DH save path (from the 2026-08-04 audit) |
 | `F83` | OPEN | The UII's categorisation rule says "two buckets" but there are three sections |
 | `F84` | OPEN | The generic CLARIFY bullet needs a per-agent patch paragraph in every first-agent fragment |
@@ -2914,6 +2913,24 @@ observed in a run.
 
 ### F57. The two hubs differ in chain access, which confounds a 7-vs-5 comparison
 
+**UPDATE 2026-09-04.**  The names below are Conductor-era: topology 5's
+
+hub is now `Planner5` (`agents/planner5/planner5.py`), and
+
+`agents/conductor/conductor.py` no longer exists.  The SUBSTANCE stands,
+
+and was reaffirmed deliberately -- commit `83ae01a` removed the
+
+chain-access feed from Planner5 on the owner's ruling that reading the
+
+other agents' traffic was the ORCHESTRATOR's power and leaves the system
+
+with it.  That CLOSES option (a): giving the 5-agent hub the block is now
+
+against an explicit decision.  Option (b) -- run the 7-agent side with
+
+`CHAIN_ACCESS=False` for comparison runs -- is the live one.
+
 
 
 **Where.** `workflow_settings/settings.py` §5 (`CHAIN_ACCESS`, default
@@ -2973,133 +2990,6 @@ read as a pure agent-count effect.
 before the first 7-vs-5 comparison run, not after.
 
 
-
-
-### F58. A 5-agent save loses 17 of the 36 default schedule rows, three different ways
-
-
-
-**Where.** `agents/database_handler/database_handler.py` `populate_database`
-
-(the agent-resolution guard, the sub-row collector and the `parent_id`
-
-guard), `workflow_settings/dh_schedule.py` `AGENT_KEYS`, and the two hub
-
-registries `agents/orchestrator/orchestrator.py` / `agents/conductor/conductor.py`.
-
-
-
-**What.** `dh_schedule.AGENT_KEYS` is a deliberate SUPERSET across topologies —
-
-it has to be, or a schedule naming the Conductor could not be saved at all. But
-
-the DH resolves each row's agent against `hub._agents_by_key`, which holds only
-
-the agents the ACTIVE topology actually built. Under `SYSTEM_TOPOLOGY = 5` the
-
-default 36-row schedule names four agents that no longer exist (planner ×7,
-
-dc_input_creator ×3, dc_input_inspector ×3, orchestrator ×1).
-
-
-
-Verified breakdown for a 5-agent run on default settings — **17 rows yield
-
-nothing, but only 12 leave any trace**:
-
-
-
-* **12 rows** hit the agent-resolution guard and produce an ERROR `.txt` plus an
-
-  `is_error=True` chunks row. Visible, if ugly.
-
-* **2 rows** (`Bad attempt Suggested solution`, `Useful Attempt planner
-
-  observations`) are Planner SUB-rows of DCOI parents. The DCOI exists in the
-
-  5-agent topology, so their parent runs normally and consumes them inside the
-
-  attempt-major loop, where an unresolvable sub-agent hits a bare `continue`
-
-  with a log warning — **no error entry, no chunks row, nothing on disk.**
-
-* **3 rows** are collateral. Row 20 (`Final Design Output`) is a PLANNER
-
-  identifying row whose three children all name the DC Output Inspector — an
-
-  agent the Conductor does have. But the parent errors out and does
-
-  `i += 1; continue`, so the sub-row collector never runs, and those three
-
-  perfectly-valid children fall through to the main loop where the
-
-  `if parent_id is not None:` guard — which sits ABOVE agent resolution —
-
-  drops them silently.
-
-
-
-So one unresolvable PARENT silently costs every child under it, whatever agent
-
-those children name.
-
-
-
-**A topology-independent hole in the same area.** Neither hub registers
-
-`database_handler` or `context_pruner`, yet `dh_schedule.py` offers both in the
-
-editor's agent dropdown. A row naming either takes the error path in EVERY
-
-topology, 7-agent included.
-
-
-
-**Why it matters now.** This is not cosmetic: it silently halves the corpus a
-
-5-agent session contributes, and the rows it drops are not a random sample —
-
-they are every planning and parameter-authoring question. Any Test-2
-
-(agent-count) comparison drawn from saved sessions would be comparing a full
-
-7-agent corpus against a mutilated 5-agent one.
-
-
-
-**Options, none chosen yet.**
-
-
-
-1. **Map retired agents onto their merged successor** at save time —
-
-   planner/orchestrator → conductor, dc_input_creator/dc_input_inspector →
-
-   creator. One schedule keeps working across topologies. Needs a per-row
-
-   judgement about whether the merged agent can answer that question
-
-   meaningfully.
-
-2. **Make the schedule topology-aware** — a per-topology file, or a per-row
-
-   topology filter, so a run only asks what its agents can answer. Cleanest
-
-   semantically, most work, two question sets to maintain.
-
-3. **At minimum, make the failure uniform and loud**: the three dispositions
-
-   above (error entry / silent continue / silent parent-cascade drop) should be
-
-   one disposition, and a save whose schedule names agents the active topology
-
-   does not build should say so up front rather than 12 times in the middle.
-
-
-
-**Status.** Open, logged 2026-08-04 from a verified multi-agent audit of the DH
-
-save path (run `wf_ae8569ed-087`). Owner's call: log now, decide later.
 
 
 ### F59. Six verified defects in the DH save path (from the 2026-08-04 audit)
@@ -4080,10 +3970,11 @@ confirmed defect.
 NOT VERIFIED. Same caveat.
 
 **(c) "No `conductor`/`creator` variants of the per-agent database / BSV
-fragments."** **FIXED.** `agents/5agent/tools_config/` now holds all four:
-`database_search_conductor_5agents.md`, `database_search_creator_5agents.md`,
-`blade_sections_visualizer_conductor_5agents.md`,
-`blade_sections_visualizer_creator_5agents.md`.
+fragments."** **FIXED.** `agents/5agent/tools_config/` now holds a
+variant per agent — e.g. `database_search_dc_input_creator_5agents.md`
+and `blade_sections_visualizer_planner_5agents.md`.  (The
+Conductor/Creator names originally cited here went with those agents;
+the per-agent variants that replaced them are what exist now.)
 
 **(d) "`user_input_inspector.py` still says paths are 'supplied by the
 Planner'."** **FIXED in substance.** `prev_agent="Planner"` at
