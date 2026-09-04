@@ -124,7 +124,9 @@ DC_INSPECTOR_ENABLED: bool = True
 # 5.  Orchestrator chain access
 # ===========================================================
 # Whether the Orchestrator's LLM sees inter-agent messages
-# exchanged while it was waiting.
+# exchanged while it was waiting.  7-AGENT ONLY — the reduced
+# topologies' hubs have no such feed, so this flag does nothing
+# there.
 #
 #   True   every chain message is prepended to the Orchestrator's
 #          next incoming message — diagnostic gold but expensive

@@ -125,6 +125,14 @@ _INERT_UNDER_TOPOLOGY: dict[str, tuple[frozenset, str]] = {
         "ordering to choose: prompts._planner_first_effective() forces it "
         "False whenever SYSTEM_TOPOLOGY is not 7.",
     ),
+    "CHAIN_ACCESS": (
+        frozenset({5, 3}),
+        "Only meaningful in the 7-agent topology.  Reading the other "
+        "agents' traffic was the ORCHESTRATOR's power and left the system "
+        "with it: Planner5 has no chain-access feed, and the Architect "
+        "never had one.  Both hubs see only the hand-off addressed to "
+        "them, whatever this flag says.",
+    ),
 }
 
 

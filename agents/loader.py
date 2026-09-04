@@ -18,6 +18,7 @@ from agents.hub import build_hub
 from agents.shared.llm_provider import list_agent_configs
 from agents.shared.routing_tools import AGENT_DISPLAY
 from agents.shared.session import Session
+from agents.shared.topology import topology
 from agents.shared.trace import close_trace, init_trace
 from config import (
     ATTEMPTS_DIR,
@@ -731,7 +732,11 @@ def run() -> None:
         print(f"  Render/check library: {render_library}")
         print(f"  RAG retrieval:       {'ON (not yet implemented)' if rag_enabled else 'OFF'}")
         print(f"  DC Input Inspector:  {'ON' if dc_inspector_enabled else 'OFF (skipped)'}")
-        print(f"  Orchestrator chain access: {'ON' if chain_access else 'OFF'}")
+        # 7-agent only.  The reduced topologies' hubs have no chain-access
+        # feed at all, so the flag says nothing about them and printing it
+        # would claim a capability they do not have.
+        if topology() == 7:
+            print(f"  Orchestrator chain access: {'ON' if chain_access else 'OFF'}")
         print(f"  Keep images in agent context: {'ON' if keep_images_in_context else 'OFF (stripped at every operation end)'}")
         if rate_limit_enabled:
             print(
