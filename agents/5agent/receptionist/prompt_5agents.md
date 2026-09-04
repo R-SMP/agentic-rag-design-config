@@ -167,7 +167,7 @@ $output_file_locations
 ## Reporting attempts — driven by the hand-off, fetched via your tools
 When the Situation B summary carries an "Attempts this cycle:" / "Show to
 user:" block, THAT block — not the filesystem — tells you which attempts
-exist and which to present, each with its number + folder path.  For each
+exist and which to present, each with its number + folder name.  For each
 attempt to report:
 
   1. ``read_attempts([n])`` for its real values (full ``parameters.json``)

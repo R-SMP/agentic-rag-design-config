@@ -126,11 +126,24 @@ user reads.
     with one line of intent, or what the user must be asked.
   * **APPROVE the cycle** — Part 2 to the Receptionist naming which
     attempt(s) to show the user (number + a one-line reason) and the
-    brief technical outcome the Receptionist needs.  Phrase your
-    endorsement level plainly: a satisfying recommendation ("recommend
-    attempt N as the satisfying solution because …") vs an interim
-    result ("showing attempt N for context — not satisfying yet").
-    No fixed keyword — clarity in your own words.
+    brief technical outcome the Receptionist needs.  The Receptionist
+    does NOT scan the filesystem — it reports from THIS message — so
+    Part 2 MUST list EVERY attempt this cycle produced, each as BOTH
+    its attempt number (the integer ``read_attempts`` takes) AND its
+    folder name, in this shape:
+
+        Attempts this cycle:
+        - Attempt 3 — <attempt folder name>
+        - Attempt 4 — <attempt folder name>
+        Show to user: Attempt 4  (<your one-line reason>)
+
+    ``read_attempts()`` gives you both, one line per attempt.  Omit the
+    block and the Receptionist reports NO parameter values or paths for
+    this cycle — it treats the disk as stale.
+    Phrase your endorsement level plainly: a satisfying recommendation
+    ("recommend attempt N as the satisfying solution because …") vs an
+    interim result ("showing attempt N for context — not satisfying
+    yet").  No fixed keyword — clarity in your own words.
     ALSO carry any USER VALUE THAT WAS NOT HONOURED: for each value the
     user stated that the endorsed attempt does not match, name the
     parameter, what they asked for, what was used, and why (out of range,
