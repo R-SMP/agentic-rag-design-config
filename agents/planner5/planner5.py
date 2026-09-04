@@ -27,6 +27,8 @@ removals:
   slots instead of the Orchestrator's ``chain_access_block``;
 * it carries the Planner's ``_persist_plan`` / ``_save_plan_to_file``, so
   ``current_plan.txt`` keeps being written under topology 5;
+* it does NOT feed itself the chain log -- the "what happened while I was
+  waiting" view was the Orchestrator's power and left with it;
 * no ``PLANNER_FIRST`` or ``DC_INSPECTOR_ENABLED`` branching -- neither axis
   exists here (``prompts._planner_first_effective`` forces both off).
 
@@ -190,7 +192,7 @@ class Planner5(BaseChainAgent):
         self.rag_enabled = session.rag_enabled
         self.mesh_checks = session.mesh_checks
         self.dcoi_comparison_mode = session.dcoi_comparison_mode
-        self.chain_access = session.chain_access
+        # ``chain_access`` is deliberately absent: see dispatch().
 
         # The chain log lives on session.chain_log_exchanges (per
         # v3 Phase 1 Q1 — session-scoped, not per-turn).  Routing
@@ -612,13 +614,7 @@ class Planner5(BaseChainAgent):
         self.session.standing_directives = ""
         # Cursor into the SESSION-scoped chain log.  Initialised to the
         # log's current length so the per-turn chain-access view shows
-        # only exchanges produced during THIS dispatch call, not prior
-        # turns' exchanges (per v3 Phase 1 Q1: chain_log is session-
-        # scoped, but the hub's "what happened while I was
-        # waiting" feature stays per-turn).
-        orch_chain_log_cursor = len(self.session.chain_log_exchanges)
         orch_visits = 0
-        first_orch_entry = True
         # A6 (precision sections): count refine ROUNDS while a standing
         # directive is active — one round per hop into the DCOI.  A local
         # here (not on the session) because a precision loop lives entirely
@@ -649,28 +645,12 @@ class Planner5(BaseChainAgent):
                 return f"Dispatch error: unknown agent key '{current}'."
 
             if current == self.AGENT_KEY:
-                if self.chain_access and not first_orch_entry:
-                    new_exchanges = self.session.chain_log_exchanges[
-                        orch_chain_log_cursor:
-                    ]
-                    if new_exchanges:
-                        block_lines = [
-                            "--- Inter-agent messages recorded while you "
-                            "were waiting ---"
-                        ]
-                        for ex in new_exchanges:
-                            block_lines.append(
-                                f"\n[FROM {ex['from_agent']}, "
-                                f"TO {ex['to_agent']}]:\n{ex['message']}"
-                            )
-                        block_lines.append(
-                            "\n--- End of inter-agent messages; hand-off "
-                            "below ---"
-                        )
-                        message = (
-                            "\n".join(block_lines) + "\n\n" + message
-                        )
-                first_orch_entry = False
+                # No chain-access feed here, deliberately.  The
+                # Orchestrator prepends the inter-agent messages recorded
+                # while it was waiting; reading the other agents' traffic
+                # was ITS power, and it left the system with it.  This hub
+                # sees only the hand-off addressed to it, so what reaches
+                # the Receptionist is what the hand-off carried.
                 orch_visits += 1
                 if orch_visits > MAX_PLANNER5_VISITS:
                     logger.warning("[DISPATCH] Max Planner visits reached")
@@ -698,9 +678,6 @@ class Planner5(BaseChainAgent):
                         f"[DISPATCH] on_operation_end failed for "
                         f"{current}: {exc}"
                     )
-
-            if current == self.AGENT_KEY:
-                orch_chain_log_cursor = len(self.session.chain_log_exchanges)
 
             if not isinstance(hop, AgentHop):
                 # Defensive guard — every agent must return AgentHop.
