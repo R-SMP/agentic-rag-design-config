@@ -1,27 +1,47 @@
-"""Which fragment FILES feed each 7-agent-reduced prompt.
+"""Which fragment FILES feed each agent's prompt, per topology.
 
 Resolution is done by the loader itself: the two fragment readers are
 patched to return a sentinel naming the file they resolved to, so the
 answer honours topology overrides, variant overrides and per-agent scoped
 copies without re-implementing any of those rules here.
+
+Usage
+-----
+    py -3.13 provenance.py                 # topology 7 -> provenance.json
+    py -3.13 provenance.py --topology 5    # topology 5 -> provenance5.json
+
+Run ``dump.py`` for the SAME topology first: the agent roster is read
+from that dump rather than hard-coded here, so the two stages cannot
+disagree about which agents a topology builds.
 """
 import io
 import json
 import re
+import sys
 
 import bootstrap
 
 REPO = bootstrap.install()
 
+TOPOLOGY = 7
+if "--topology" in sys.argv:
+    TOPOLOGY = int(sys.argv[sys.argv.index("--topology") + 1])
+SUFFIX = "" if TOPOLOGY == 7 else str(TOPOLOGY)
+
 import workflow_settings.settings as S
-S.SYSTEM_TOPOLOGY = 7
+S.SYSTEM_TOPOLOGY = TOPOLOGY
 S.RAG_ENABLED = True          # widest set of slots
 
 from agents.shared import prompts as P
 
-AGENTS = ["receptionist", "orchestrator", "planner", "user_input_inspector",
-          "dc_input_creator", "dc_input_inspector", "tool_caller",
-          "dc_output_inspector", "database_handler"]
+_DUMP = REPO / "extra_utilities" / "prompt_pdf" / ("dump%s.json" % SUFFIX)
+if not _DUMP.is_file():
+    raise SystemExit(
+        "%s not found - run  py -3.13 dump.py%s  first."
+        % (_DUMP.name, (" --topology %d" % TOPOLOGY) if SUFFIX else "")
+    )
+with io.open(_DUMP, encoding="utf-8") as _f:
+    AGENTS = list(json.load(_f)["agents"])
 
 _real_dc = P._read_dc_fragment
 _real_generic = P._read_generic_fragment
@@ -120,10 +140,10 @@ for agent in AGENTS:
         "fragments": rows,
     }
 
-with io.open(REPO / "extra_utilities" / "prompt_pdf" / "provenance.json",
-             "w", encoding="utf-8") as f:
+_OUT = REPO / "extra_utilities" / "prompt_pdf" / ("provenance%s.json" % SUFFIX)
+with io.open(_OUT, "w", encoding="utf-8") as f:
     json.dump(out, f, ensure_ascii=False, indent=1)
-print("wrote provenance.json")
+print("wrote %s  (topology %d, %d agents)" % (_OUT.name, TOPOLOGY, len(AGENTS)))
 for a in AGENTS:
     r = out[a]
     print("%-22s %s" % (a, r["prompt_file"]))

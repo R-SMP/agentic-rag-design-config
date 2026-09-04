@@ -1,9 +1,14 @@
-"""Render dump.json + provenance.json into a print-ready HTML document."""
+"""Render a topology's dump + provenance into a print-ready HTML document.
+
+    py -3.13 build_html.py                 # -> system_prompts.html
+    py -3.13 build_html.py --topology 5    # -> system_prompts5.html
+"""
 import difflib
 import html
 import io
 import json
 import re
+import sys
 from pathlib import Path
 
 from markdown_it import MarkdownIt
@@ -11,9 +16,29 @@ from markdown_it import MarkdownIt
 HERE = Path(__file__).resolve().parent
 REPO = Path(__file__).resolve().parents[2]   # <repo>/extra_utilities/prompt_pdf/x.py
 
-D = json.load(open(HERE / "dump.json", encoding="utf-8"))
-PROV = json.load(open(HERE / "provenance.json", encoding="utf-8"))
+TOPOLOGY = 7
+if "--topology" in sys.argv:
+    TOPOLOGY = int(sys.argv[sys.argv.index("--topology") + 1])
+SUFFIX = "" if TOPOLOGY == 7 else str(TOPOLOGY)
+
+for _need in ("dump%s.json" % SUFFIX, "provenance%s.json" % SUFFIX):
+    if not (HERE / _need).is_file():
+        raise SystemExit(
+            "%s not found - run dump.py and provenance.py%s  first."
+            % (_need, (" --topology %d" % TOPOLOGY) if SUFFIX else "")
+        )
+
+D = json.load(open(HERE / ("dump%s.json" % SUFFIX), encoding="utf-8"))
+PROV = json.load(open(HERE / ("provenance%s.json" % SUFFIX), encoding="utf-8"))
 CFG = D["config"]
+
+# The 7-agent build keeps its historic name; any other topology is named
+# by its number.  ``_AGENT_WORD`` spells the design-agent count for the
+# configuration table (the Database Handler runs post-session and is not
+# one of them).
+DOC_TITLE = ("The 7-Agent Reduced-Prompt System" if TOPOLOGY == 7
+             else "The %d-Agent System" % TOPOLOGY)
+_AGENT_WORD = {7: "seven", 5: "five", 3: "three"}.get(TOPOLOGY, str(TOPOLOGY))
 GRID = D["dba_grid"]
 
 def _git(*args):
@@ -29,9 +54,16 @@ def _git(*args):
 COMMIT = _git("rev-parse", "--short", "HEAD")
 COMMIT_DATE = _git("log", "-1", "--format=%cd", "--date=short")
 
-AGENTS = ["receptionist", "orchestrator", "planner", "user_input_inspector",
-          "dc_input_creator", "dc_input_inspector", "tool_caller",
-          "dc_output_inspector", "database_handler"]
+AGENTS = list(D["agents"])
+N_AGENTS = len(AGENTS)
+_N_WORD = {5: "five", 6: "six", 7: "seven", 8: "eight",
+           9: "nine"}.get(N_AGENTS, str(N_AGENTS))
+# The hub is per topology: the Orchestrator under 7, the Planner under 5.
+HUB_DISPLAY = "Orchestrator" if TOPOLOGY == 7 else "Planner"
+# Which agents carry the RAG slot but keep the flag off -- topology 5's
+# hub IS the Planner, so naming both would repeat it.
+SLOT_CARRIERS = ("User Input Inspector, Planner and Orchestrator"
+                 if TOPOLOGY == 7 else "User Input Inspector and Planner")
 
 DISPLAY = {
     "receptionist": "Receptionist",
@@ -214,16 +246,21 @@ def tools_html(agent, rec):
 # Front matter
 # ---------------------------------------------------------------------------
 CFG_ROWS = [
-    ("SYSTEM_TOPOLOGY", CFG["SYSTEM_TOPOLOGY"], "seven design-workflow agents"),
+    ("SYSTEM_TOPOLOGY", CFG["SYSTEM_TOPOLOGY"],
+     _AGENT_WORD + " design-workflow agents"),
     ("database-access profile", '"' + CFG["dba_profile"] + '"',
      "which DB tools each agent gets when RAG is on"),
     ("RAG_ENABLED", CFG["RAG_ENABLED_default"],
      "the committed default \u2014 the highlighted text is what turning this "
      "on would add"),
     ("DC_INSPECTOR_ENABLED", CFG["DC_INSPECTOR_ENABLED"],
-     "DC Input Inspector is in the chain"),
+     "DC Input Inspector is in the chain" if TOPOLOGY == 7 else
+     "raw setting \u2014 forced OFF here: this topology has no DC Input "
+     "Inspector (prompts._dcii_effective)"),
     ("PLANNER_FIRST", CFG["PLANNER_FIRST"],
-     "UII runs before the Planner"),
+     "UII runs before the Planner" if TOPOLOGY == 7 else
+     "raw setting \u2014 forced OFF here: the hub IS the planner "
+     "(prompts._planner_first_effective)"),
     ("MESH_CHECKS", CFG["MESH_CHECKS"],
      "no watertightness / volume metrics; the Tool Caller gets the "
      "\u201cchecks off\u201d render fragment"),
@@ -235,7 +272,7 @@ CFG_ROWS = [
     ("OCR_ENABLED", CFG["OCR_ENABLED"],
      "view_images carries OCR text; ocr_regions exists"),
     ("CHAIN_ACCESS", CFG["CHAIN_ACCESS"],
-     "the Orchestrator's chain-access block is the ON variant"),
+     "the " + HUB_DISPLAY + "'s chain-access block is the ON variant"),
     ("KEEP_IMAGES_IN_CONTEXT", CFG["KEEP_IMAGES_IN_CONTEXT"],
      "DCOI image-persistence block is the OFF variant"),
     ("DCOI_COMPARISON_MODE", CFG["DCOI_COMPARISON_MODE"],
@@ -325,8 +362,12 @@ def provenance_html():
     return "\n".join(out)
 
 
-ROLE4 = (REPO / "agents" / "orchestrator" /
-         "role4_feedback_instructions.md").read_text(encoding="utf-8")
+# Role 4 belongs to whichever agent is the HUB: the Orchestrator under
+# topology 7, Planner5 under topology 5.  Each keeps its own copy.
+ROLE4_REL = ("agents/orchestrator/role4_feedback_instructions.md"
+             if TOPOLOGY == 7 else
+             "agents/planner5/role4_feedback_instructions.md")
+ROLE4 = (REPO / ROLE4_REL).read_text(encoding="utf-8")
 
 CSS = """
 @page { size: A4; margin: 17mm 15mm 16mm 15mm; }
@@ -492,7 +533,7 @@ def agent_section(a, idx):
     return """
 <section id="{key}" class="agent">
   <div class="agent-head">
-    <div class="sec-kicker">Agent {idx} of 9</div>
+    <div class="sec-kicker">Agent {idx} of {n_agents}</div>
     <h2>{name}</h2>
     <p class="role">{role}</p>
     <div class="stats">
@@ -511,7 +552,8 @@ def agent_section(a, idx):
   {tools}
 </section>
 """.format(
-        key=esc(a), idx=idx, name=esc(DISPLAY[a]), role=esc(ROLE[a]),
+        key=esc(a), idx=idx, n_agents=N_AGENTS,
+        name=esc(DISPLAY[a]), role=esc(ROLE[a]),
         chars=esc(chars), toks=esc(toks), ntools=esc(ntools),
         src=esc(rec["prompt_path"]),
         variant_note=variant_note,
@@ -525,7 +567,7 @@ parts = ["<style>%s</style>" % CSS]
 parts.append("""
 <div class="cover">
   <div class="kicker">Propeller design configurator &middot; v9</div>
-  <h1>The 7-Agent Reduced-Prompt System</h1>
+  <h1>{doc_title}</h1>
   <div class="rule"></div>
   <div class="sub">Every system prompt exactly as the model receives it &mdash;
   fully assembled, all fragments spliced in, all conditional regions resolved
@@ -533,15 +575,16 @@ parts.append("""
   Text that appears <mark style="background:#fff6c2;padding:0 3px">only when
   RAG is switched on</mark> is highlighted.</div>
   <div class="meta">
-    <div><b>Configuration</b> &nbsp; SYSTEM_TOPOLOGY = 7 &nbsp;&middot;&nbsp;
+    <div><b>Configuration</b> &nbsp; SYSTEM_TOPOLOGY = {topology} &nbsp;&middot;&nbsp;
          all settings at their committed defaults</div>
     <div><b>Source</b> &nbsp; commit {commit} &nbsp;&middot;&nbsp; {date}</div>
-    <div><b>Agents</b> &nbsp; 9 &nbsp;&middot;&nbsp; ~{chars} characters of
+    <div><b>Agents</b> &nbsp; {n_agents} &nbsp;&middot;&nbsp; ~{chars} characters of
          assembled prompt</div>
   </div>
 </div>
 """.format(
-    commit=COMMIT, date=COMMIT_DATE,
+    commit=COMMIT, date=COMMIT_DATE, doc_title=DOC_TITLE, topology=TOPOLOGY,
+    n_agents=N_AGENTS,
     chars=fmt_int(sum(len(D["agents"][a]["rag_off"]["prompt"]) for a in AGENTS)),
 ))
 
@@ -553,7 +596,7 @@ parts.append("""
   <p class="lead">Nothing here was transcribed by hand. Each prompt below is the
   output of the repository&rsquo;s own assembler
   (<span class="m">agents/shared/prompts.py</span>), executed against the working
-  tree at commit {commit} with <span class="m">SYSTEM_TOPOLOGY&nbsp;=&nbsp;7</span>.
+  tree at commit {commit} with <span class="m">SYSTEM_TOPOLOGY&nbsp;=&nbsp;{topology}</span>.
   That means every layer a real session applies has been applied:</p>
   <ul>
     <li>each agent&rsquo;s own <span class="m">prompt.md</span>, plus any topology override that applies;</li>
@@ -572,13 +615,14 @@ parts.append("""
     <li>the runtime <span class="m">{{slot}}</span> values each agent fills in at
         wiring time &mdash; the routing section built by
         <span class="m">agents/shared/routing.py</span>, the
-        Orchestrator&rsquo;s chain-access block, the Tool Caller&rsquo;s
+        {hub}&rsquo;s chain-access block, the Tool Caller&rsquo;s
         render-backend block, the DC Output Inspector&rsquo;s image-persistence
         and comparison-mode blocks, and the file paths.</li>
   </ul>
   <p>The assembled prompts were checked for leftovers: <b>zero</b> unresolved
   <span class="m">$slots</span>, <span class="m">{{slots}}</span> or
-  <span class="m">&lt;&lt;markers&gt;&gt;</span> remain in any of the nine.</p>
+  <span class="m">&lt;&lt;markers&gt;&gt;</span> remain in any of the
+  {n_word}.</p>
 
   <p><b>Paths.</b> Absolute paths are shown as they resolve in the deployed
   Railway container, whose working directory is
@@ -611,7 +655,8 @@ parts.append("""
   all (see the grid overleaf).</p>
 
 </section>
-""".format(commit=COMMIT))
+""".format(commit=COMMIT, topology=TOPOLOGY, hub=HUB_DISPLAY,
+           n_word=_N_WORD))
 
 # --- contents ----------------------------------------------------------------
 parts.append("""
@@ -620,16 +665,16 @@ parts.append("""
   <h2 class="sec">Contents</h2>
   <p class="lead">Each agent starts on its own page: the assembled system prompt
   first, then every tool bound to it, in the order the model receives them. Two
-  appendices follow the nine agents.</p>
+  appendices follow the {n_word} agents.</p>
   {toc}
   <h3>Appendices</h3>
   <ol class="toc">
     <li><span class="num">A</span>Which files fed which prompt</li>
-    <li><span class="num">B</span>Orchestrator &mdash; Role-4 feedback
+    <li><span class="num">B</span>{hub} &mdash; Role-4 feedback
         instructions</li>
   </ol>
 </section>
-""".format(toc=contents()))
+""".format(toc=contents(), hub=HUB_DISPLAY, n_word=_N_WORD))
 
 # --- configuration -----------------------------------------------------------
 parts.append("""
@@ -657,13 +702,14 @@ parts.append("""
     prompts contains the string &ldquo;retrieve_attempt&rdquo; anywhere: their
     prompt files carry no <span class="m">$retrieve_attempt_tool</span> slot and
     no prose description. With RAG on, those agents would be handed a tool the
-    system prompt never mentions. The inverse case is clean &mdash; the User
-    Input Inspector, Planner and Orchestrator <em>do</em> carry the slot but have
+    system prompt never mentions. The inverse case is clean &mdash; the
+    {slot_carriers} <em>do</em> carry the slot but have
     the flag off, so the loader blanks it and no stale reference survives. The
     affected tools are flagged again in the agents&rsquo; own tool lists.
   </div>
 </section>
-""".format(cfg=config_table(), grid=grid_table()))
+""".format(cfg=config_table(), grid=grid_table(),
+           slot_carriers=SLOT_CARRIERS))
 
 for i, a in enumerate(AGENTS, 1):
     parts.append(agent_section(a, i))
@@ -689,22 +735,22 @@ parts.append("""
 parts.append("""
 <section id="appendix-b">
   <div class="sec-kicker">Appendix B</div>
-  <h2 class="sec">Orchestrator &mdash; Role-4 feedback instructions</h2>
+  <h2 class="sec">{hub} &mdash; Role-4 feedback instructions</h2>
   <div class="note"><span class="h">Not part of any system prompt.</span>
-  This file is read by the Orchestrator at end of session and injected as a
+  This file is read by the {hub} at end of session and injected as a
   conversation message during the feedback round, so it never appears in the
   system prompt printed in section 2. It is reproduced here because it is the
-  only other authored instruction text the Orchestrator receives. Source:
-  <span class="m">agents/orchestrator/role4_feedback_instructions.md</span>.</div>
+  only other authored instruction text the {hub} receives. Source:
+  <span class="m">{role4_rel}</span>.</div>
   <div class="prompt">{body}</div>
 </section>
-""".format(body=md(ROLE4)))
+""".format(body=md(ROLE4), hub=HUB_DISPLAY, role4_rel=ROLE4_REL))
 
 html_doc = "\n".join(parts)
-out = HERE / "system_prompts.html"
+out = HERE / ("system_prompts%s.html" % SUFFIX)
 with io.open(out, "w", encoding="utf-8") as f:
     f.write("<!doctype html><html><head><meta charset='utf-8'>"
-            "<title>7-Agent Reduced-Prompt System</title></head><body>")
+            "<title>" + DOC_TITLE + "</title></head><body>")
     f.write(html_doc)
     f.write("</body></html>")
 print("wrote", out, "-", len(html_doc), "chars")
