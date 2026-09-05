@@ -564,7 +564,9 @@ traced all three routing failures to agents carrying the mandate three times.
 
 **A scaffold is ~40 % larger than the union will be, by construction.**  Design
 Engineer 43 722 chars, Requirements Analyst 41 771 — against parents of
-22 466 + 8 268 and 12 571 + 17 241.  The excess is not content: concatenating
+22 466 + 8 268 and 12 571 + 17 241.  *(Corrected at Stage 7: those two are the
+TEMPLATES.  The full prompts are 48 336 and 50 440 — the snapshot harness was
+not filling these agents' runtime slots.  See Stage 7.)*  The excess is not content: concatenating
 two `prompt.md` files makes `_build_template` splice every shared `$slot`
 TWICE.  Stage 9 collapsing the duplicates is most of where that goes.
 
@@ -692,18 +694,73 @@ strength with no code change: `['design_engineer', 'planner', 'receptionist',
 
 ### Stage 7 — Verification harness  (D9)
 
-- [ ] 7.1 `extra_utilities/dry_run_topology.py` — one complete turn per
-      topology against a scripted fake LLM.  Asserts the full topology-3 hop
-      sequence and locks 7 and 5 against regression at the same time.
-- [ ] 7.2 `smoke_test_topology_fragments.py` — topology-3 rows in all seven
-      per-topology tables.
-- [ ] 7.3 `prompt_pdf/dump.py --topology 3` → `dump3.json`, feeding the
-      prompt-names-a-tool ⇄ class-binds-a-tool audit.
-- [ ] 7.4 **Every new check mutation-tested.**  A check that has never failed
-      has not been shown to work; two of this suite's checks were silently
-      vacuous until they were mutation-tested.
-- [ ] 7.5 `SMOKE_TESTS.md` rows for the new checks;
-      `prompt_pdf/.gitignore` already carries `dump3.json`.
+- [x] 7.1 `extra_utilities/dry_run_topology.py` — **NEW**, one complete turn
+      per topology.  Everything but `invoke_with_retry` is the production
+      path.  `ROUTES` is an ORDERED script, so it asserts the exact hop
+      SEQUENCE rather than merely that a turn finished, and it proves each
+      edge is really bound: the fake returns a tool NAME, and an agent that
+      does not hold it answers "unknown tool" and never routes.  Topology 3
+      walks the refine loop twice.  All three drive clean: 6 hops for
+      topology 7, 9 for topology 5, 10 for topology 3.
+- [x] 7.2 `smoke_test_topology_fragments.py` — topology-3 rows in every
+      per-topology table, plus a `_SentinelPlanner3` for the FACTORY case and
+      a guard so the UII-paths check SKIPS a topology that has no UII.
+      **MIRROR holds: topology 3 reads 0 shared files, 76/82 overrides.**
+- [x] 7.3 Topology 3 added to the prompt ⇄ tool audit — but **not** via
+      `dump3.json`.  See below.
+- [x] 7.4 Mutation-tested; see below.
+- [x] 7.5 `SMOKE_TESTS.md` gains the `dry_run_topology.py` row and the two
+      stale descriptions are corrected.
+
+**⚠ 7.3 could not be done the way the plan said, and the reason matters.**
+The audit derives topology 5's bound set from the 7-agent dump plus
+`planner5.py`'s edges, because the classes are *the same objects* — only the
+edges differ.  Topology 3 has no such route: the Design Engineer and the
+Requirements Analyst are NEW classes with no 7-agent twin, so there is nothing
+in `dump.json` to derive them from.  `dump.py` builds its tool lists by
+TRANSCRIBING them in a long `if/elif`, which is the very defect this audit
+exists to catch, so extending it there would have made the audit grade its own
+homework.  Instead `bound_3()` runs a child process that builds the real hub
+and records what each agent is HANDED — derived from the classes, never
+retyped.
+
+**⚠ A gap in MY OWN earlier verification, found here.**
+`topology_prompt_snapshot._ROUTING_SHAPE` had no rows for the two merged
+agents, and `_runtime_slots` returns `None` for an agent it does not know —
+which means the template is snapshotted VERBATIM, with `{routing_instructions}`
+never filled.  So the topology-3 figures reported at Stage 4 (Design Engineer
+43 722, Requirements Analyst 41 771) were **templates, not prompts**, and the
+audit inherited the blind spot: it was reading prompts with no routing section,
+which is exactly where the scaffold residue lives.  Fixed by giving both agents
+`_ROUTING_SHAPE` rows and slot builders that mirror their classes.
+
+Corrected figures — **Design Engineer 48 336, Requirements Analyst 50 440**.
+The cross-check is the reassuring part: the Design Engineer now matches the
+number measured at Stage 5 from the REAL constructed agent to the byte, and
+the Requirements Analyst differs by 90 characters for a reason that is fully
+accounted for — the harness uses the production paths (`/app/inputs/…`) where
+the Stage-5 probe used a temp directory, and its comparison-source block
+interpolates that path.
+
+**Known-pending, now NAMED by two suites instead of measured by hand:**
+8 ORPHAN findings in the audit (`call_tool_caller`, `call_dc_input_creator`,
+`call_dc_output_inspector`, `call_user_input_inspector` across the hub and both
+merged agents) and 14 HUB findings in the fragments suite (routing sections
+naming agents topology 3 does not build).  All are the Stage-4 scaffolds; all
+clear at Stage 9.  Each is printed, never swallowed.
+
+**Mutation tests, all four restored and hash-checked:**
+
+* dry run — delete the Requirements Analyst → Design Engineer refine edge:
+  fails, naming the step and what was invoked instead;
+* dry run — re-introduce the historic §F.1 defect (the Receptionist's forward
+  test hard-coded to `"orchestrator"`): **topology 3 stops dead after the
+  Receptionist and never forwards, while topology 7 still PASSES.**  That
+  asymmetry is precisely why the bug shipped in the first place — the live
+  7-agent system was unaffected, so nothing caught it;
+* hub attributes — delete an edge: fails;
+* hub attributes — add a call to an agent the hub never builds: fails with
+  `! self.tool_caller -> reset`.
 
 ### Stage 8 — Tool-layer overlay  (D3)
 

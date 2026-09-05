@@ -65,6 +65,8 @@ AGENTS = {
     5: ["receptionist", "planner", "user_input_inspector",
         "dc_input_creator", "tool_caller", "dc_output_inspector",
         "database_handler"],
+    3: ["receptionist", "planner", "design_engineer",
+        "requirements_analyst", "database_handler"],
 }
 
 # A prompt may legitimately NAME a tool it does not itself hold: the hub's
@@ -85,6 +87,14 @@ KNOWN_PENDING: tuple = (
     # still routes to ``call_orchestrator``.  The deliberate identical-first
     # baseline; the owner's prompt edits re-point it.
     ("topology 5", "``call_orchestrator``"),
+    # Topology 3's two merged prompts are still MECHANICAL CONCATENATIONS
+    # of their topology-5 parents, so they still name the routing tools of
+    # the four agents that were merged away.  Cleared by the authored
+    # union, not by a code change.
+    ("topology 3", "``call_tool_caller``"),
+    ("topology 3", "``call_dc_input_creator``"),
+    ("topology 3", "``call_dc_output_inspector``"),
+    ("topology 3", "``call_user_input_inspector``"),
 )
 
 failures: list[str] = []
@@ -165,6 +175,78 @@ def bound_5(b7: dict) -> dict:
     return out
 
 
+_BOUND_3_CHILD = r"""
+import json, sys
+sys.modules["simplejson"] = None
+sys.modules["chardet"] = None
+sys.path.insert(0, sys.argv[1])
+import bootstrap
+bootstrap.install()
+from workflow_settings import settings as S
+S.SYSTEM_TOPOLOGY = 3
+S.RAG_ENABLED = False
+from datetime import datetime, timezone
+from agents.shared.session import Session
+from agents.hub import build_hub
+sess = Session(session_id="audit3", session_ts=datetime.now(timezone.utc))
+hub = build_hub(sess)
+out = {}
+# The hub and the Receptionist keep their own complete map, keyed by name.
+out["planner"] = sorted(hub._tools_by_name)
+out["receptionist"] = sorted(
+    getattr(hub._agents_by_key["receptionist"], "_tools_by_name", {}) or {})
+# The two merged agents do not: build_user_inputs_tools and the @tool stubs
+# go straight into the bind_tools list and are never stored.  Re-wire each
+# with its OWN routing tools under a spy and record what it is handed --
+# derived from the class, never transcribed here.
+for key in ("design_engineer", "requirements_analyst"):
+    a = hub._agents_by_key[key]
+    tools = list(a._routing_tools_by_name.values())
+    got = []
+    real = a.base_llm.bind_tools
+    def spy(t, *ar, _r=real, _g=got, **kw):
+        _g.append(t)
+        return _r(t, *ar, **kw)
+    a.base_llm.bind_tools = spy
+    try:
+        a.set_routing_tools(tools)
+    finally:
+        a.base_llm.bind_tools = real   # base_llm is SHARED: restore it
+    out[key] = sorted({x.name for x in got[0]})
+sys.stdout.write("@@J@@" + json.dumps(out))
+"""
+
+
+def bound_3(b7: dict) -> dict:
+    """Topology 3's bound set, DERIVED by constructing the real agents.
+
+    Topology 5 can be derived from the 7-agent dump because its classes are
+    the same objects; only the edges differ.  Topology 3 cannot: the Design
+    Engineer and the Requirements Analyst are NEW classes with no 7-agent
+    twin, so there is nothing in ``dump.json`` to derive them from.  Writing
+    their tool lists out by hand here would be the very thing this audit
+    exists to catch, so the child process builds the hub and asks the
+    classes instead.
+    """
+    import os
+    env = dict(os.environ)
+    env.setdefault("OPENAI_API_KEY", "sk-dummy")
+    env["PYTHONIOENCODING"] = "utf-8"
+    proc = subprocess.run(
+        [sys.executable, "-c", _BOUND_3_CHILD,
+         str(ROOT / "extra_utilities" / "prompt_pdf")],
+        capture_output=True, text=True, cwd=str(ROOT), env=env)
+    if "@@J@@" not in proc.stdout:
+        raise RuntimeError("bound_3 child failed: "
+                           + proc.stdout[-500:] + proc.stderr[-1500:])
+    out = {k: set(v) for k, v in
+           json.loads(proc.stdout.split("@@J@@", 1)[1]).items()}
+    # The Database Handler binds its own tools outside any hub, exactly as
+    # in the other two topologies.
+    out["database_handler"] = {t for t in b7.get("database_handler", set())}
+    return out
+
+
 # ---------------------------------------------------------------------------
 # The prompt side
 # ---------------------------------------------------------------------------
@@ -194,7 +276,7 @@ def mentioned(text: str, vocabulary: set) -> set:
 def main() -> int:
     dump = load_dump()
     b7 = bound_7(dump)
-    bound = {7: b7, 5: bound_5(b7)}
+    bound = {7: b7, 5: bound_5(b7), 3: bound_3(b7)}
 
     vocabulary = set(RETIRED_TOOLS)
     for per_agent in bound.values():
@@ -205,7 +287,7 @@ def main() -> int:
     # topology may legitimately mention.
     anywhere = {t: set().union(*bound[t].values()) for t in bound}
 
-    for topo in (7, 5):
+    for topo in (7, 5, 3):
         data = _tps._run_child(topo)
         if "fatal" in data:
             failures.append(f"topology {topo}: could not assemble — "

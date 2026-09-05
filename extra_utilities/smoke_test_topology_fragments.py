@@ -86,6 +86,10 @@ AGENTS_BY_TOPOLOGY = {
         "receptionist", "planner", "user_input_inspector", "dc_input_creator",
         "tool_caller", "dc_output_inspector", "database_handler",
     ],
+    3: [
+        "receptionist", "planner", "design_engineer",
+        "requirements_analyst", "database_handler",
+    ],
 }
 
 # The ``fragment_name=`` values each topology's chain agents pass to
@@ -110,12 +114,19 @@ ROUTING_FRAGMENTS_BY_TOPOLOGY = {
         "routing_tool_caller.md",
         "routing_dc_output_inspector.md",
     ],
+    # Topology 3 ships ONE fragment per merged agent; the hub passes the
+    # uii_first name unconditionally, exactly as Planner5 does.
+    3: [
+        "routing_planner_uii_first.md",
+        "routing_design_engineer.md",
+        "routing_requirements_analyst.md",
+    ],
 }
 
 # Each topology's hub — the agent whose prompt must NOT keep the
 # <<CHAIN_ONLY>> rules, since "escalate to the hub" addressed to the hub
 # is self-referential.
-HUB_BY_TOPOLOGY = {7: "orchestrator", 5: "planner"}
+HUB_BY_TOPOLOGY = {7: "orchestrator", 5: "planner", 3: "planner"}
 
 # The Database Handler is the ONLY agent whose assembled template is never
 # passed through ``str.format()`` — ``database_handler.py`` builds it with
@@ -135,6 +146,11 @@ NEVER_FORMATTED = frozenset({"database_handler"})
 # construction.  What this check enforces is only that whoever kicks off
 # actually STATES both — the UII's read and write tools each take a required
 # ``path`` with no default, so an unstated path leaves it guessing.
+#
+# Topology 3 is deliberately absent: it has no User Input Inspector at all.
+# The requirements half of that agent lives in the Requirements Analyst, and
+# whether the hub states its two paths is a PROMPT question for the merge,
+# not a kickoff-shape question this check can answer.
 UII_KICKOFF_AGENT = {7: "orchestrator", 5: "planner"}
 
 # Topologies whose HUB PROMPT carries the ``$routing_hub`` slot, and can
@@ -155,6 +171,10 @@ HUB_SLOT_TOPOLOGIES = frozenset({7})
 ABSENT_DISPLAYS = {
     7: (),
     5: ("Orchestrator", "DC Input Inspector"),
+    # Topology 3 builds the fewest agents, so it forbids the most: the two
+    # topology-5 drops PLUS the four that were merged away.
+    3: ("Orchestrator", "DC Input Inspector", "User Input Inspector",
+        "DC Input Creator", "Tool Caller", "DC Output Inspector"),
 }
 
 # Topologies whose agents/<N>agent/ tree is a COMPLETE MIRROR rather than a
@@ -162,7 +182,7 @@ ABSENT_DISPLAYS = {
 # stronger than "every override is reached": NOTHING may be read from the
 # shared prompt trees at all, because a shared read means some file was not
 # mirrored -- or an override is inert and its original silently stood in.
-MIRRORED_TOPOLOGIES = frozenset({5})
+MIRRORED_TOPOLOGIES = frozenset({5, 3})
 
 # Defects found by this harness that are awaiting an approved fix.  Listed
 # so the rest of the suite still reports a meaningful PASS/FAIL; each is
@@ -179,6 +199,17 @@ KNOWN_PENDING: tuple = (
     # identical-first baseline; the owner's prompt edits re-point it.
     ("[HUB] topology 5", "names the other hub"),
     ("[HUB] topology 5", "names an agent this topology does not build"),
+    # Topology 3 carries the SAME defect for the same reason, one merge
+    # further on: its two merged routing fragments are still MECHANICAL
+    # CONCATENATIONS of their topology-5 parents (the "SCAFFOLD - NOT THE
+    # FINAL TEXT" banner is in each of them), so they still name the DC
+    # Input Creator, the Tool Caller, the UII and the DCOI.  Cleared by
+    # the authored union, not by a code change.
+    #
+    # Deliberately NOT paired with a "names the other hub" entry: topology
+    # 3's hub IS the Planner and its fragments say so, so that half must
+    # keep failing loudly if it ever regresses.
+    ("[HUB] topology 3", "names an agent this topology does not build"),
     # In topology 7 the two UII path labels are emitted by the ORCHESTRATOR
     # alone -- the Planner carries them only inside a <<PF_ON>> block, which
     # is stripped whenever PLANNER_FIRST is False.  Topology 5 has no
@@ -413,13 +444,20 @@ def check_case(topo: int, planner_first: bool) -> None:
     # mentioned: a shared fragment discusses "the paths a hand-off label
     # gives (``Input directory:`` …)" in prose, and a bare substring test
     # would accept that as if the instruction were still there.
-    agent = UII_KICKOFF_AGENT[topo]
-    emitted = {ln.strip() for ln in built[agent].splitlines()}
-    for label in ("Input directory:", "Extraction output file:"):
-        if not any(ln.startswith(label) for ln in emitted):
-            fail(case, "UII-PATHS",
-                 f"{agent} kicks off the UII but its prompt never emits a "
-                 f"{label!r} line — the UII's tools require an explicit path")
+    # A topology with no User Input Inspector has nothing to kick off, so
+    # it is absent from the table and this whole check is skipped -- there
+    # is no agent for the paths to be handed TO.  Topology 3 is that case:
+    # the requirements half lives in the Requirements Analyst, and whether
+    # the hub states its paths is a question for the prompt merge.
+    agent = UII_KICKOFF_AGENT.get(topo)
+    if agent:
+        emitted = {ln.strip() for ln in built[agent].splitlines()}
+        for label in ("Input directory:", "Extraction output file:"):
+            if not any(ln.startswith(label) for ln in emitted):
+                fail(case, "UII-PATHS",
+                     f"{agent} kicks off the UII but its prompt never "
+                     f"emits a {label!r} line — the UII's tools require "
+                     f"an explicit path")
 
     # --- CHAIN_ONLY: the hub must not keep chain-link rules ---------------
     # Anchors are DERIVED from the fragment THIS topology actually resolves
@@ -480,7 +518,7 @@ def check_case(topo: int, planner_first: bool) -> None:
 
 # ---------------------------------------------------------------------------
 
-for _topo in (7, 5):
+for _topo in (7, 5, 3):
     for _pf in (False, True):
         check_case(_topo, _pf)
 
@@ -502,6 +540,13 @@ CHAIN_BY_TOPOLOGY = {
          "routing_tool_caller.md"),
         ("DC Output Inspector", None, "Tool Caller",
          "routing_dc_output_inspector.md")],
+    # (agent, next, prev, fragment) as each class passes them.  The
+    # Requirements Analyst is last in the natural flow, so next is None --
+    # completing normally means handing back to the hub.
+    3: [("Design Engineer", "Requirements Analyst", "Planner",
+         "routing_design_engineer.md"),
+        ("Requirements Analyst", None, "Design Engineer",
+         "routing_requirements_analyst.md")],
 }
 
 # "The other hub" stopped being a usable idea when topology 5's hub became
@@ -605,12 +650,20 @@ class _SentinelPlanner5:
         self.which = "planner"
 
 
+class _SentinelPlanner3:
+    def __init__(self, session=None, llm_cache=None):
+        self.which = "planner"
+
+
 _mo = types.ModuleType("agents.orchestrator")
 _mo.Orchestrator = _SentinelOrchestrator
 _mc = types.ModuleType("agents.planner5")
 _mc.Planner5 = _SentinelPlanner5
+_mp3 = types.ModuleType("agents.planner3")
+_mp3.Planner3 = _SentinelPlanner3
 sys.modules["agents.orchestrator"] = _mo
 sys.modules["agents.planner5"] = _mc
+sys.modules["agents.planner3"] = _mp3
 
 from agents.hub import build_hub  # noqa: E402
 
@@ -618,7 +671,7 @@ from agents.hub import build_hub  # noqa: E402
 # ``build_hub`` RAISES for it (agents/hub.py), which is the wanted
 # behaviour — a registered topology with no hub must fail loudly rather
 # than silently run the 7-agent set.  The row returns when Planner3 lands.
-for _topo, _expect in ((7, "orchestrator"), (5, "planner"),
+for _topo, _expect in ((7, "orchestrator"), (5, "planner"), (3, "planner"),
                        (99, "orchestrator")):
     prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
     got = build_hub(session=None).which

@@ -89,6 +89,15 @@ _ROUTING_SHAPE: dict[str, tuple] = {
                     "routing_tool_caller.md"),
     "dc_output_inspector": ("DC Output Inspector", None, "Tool Caller",
                             "routing_dc_output_inspector.md"),
+    # Topology 3's two merged agents.  These MUST mirror what the classes
+    # pass: an agent missing here falls through to ``return None`` below and
+    # is snapshotted as an UNFILLED template, which silently under-reports
+    # its size and hides everything its routing section says.
+    "design_engineer": ("Design Engineer", "Requirements Analyst",
+                        "Planner", "routing_design_engineer.md"),
+    "requirements_analyst": ("Requirements Analyst", None,
+                             "Design Engineer",
+                             "routing_requirements_analyst.md"),
 }
 
 
@@ -135,6 +144,25 @@ def _runtime_slots(agent: str, P, S) -> dict | None:
                  if S.RENDER_LIBRARY == "pyvista"
                  else P.RENDER_CHECK_LIBRARY_TRIMESH)
                 if S.MESH_CHECKS else P.RENDER_CHECK_LIBRARY_OFF),
+        )
+    if agent == "design_engineer":
+        return dict(
+            routing_instructions=routing("design_engineer"),
+            render_check_library_block=(
+                (P.RENDER_CHECK_LIBRARY_PYVISTA
+                 if S.RENDER_LIBRARY == "pyvista"
+                 else P.RENDER_CHECK_LIBRARY_TRIMESH)
+                if S.MESH_CHECKS else P.RENDER_CHECK_LIBRARY_OFF),
+        )
+    if agent == "requirements_analyst":
+        import agents.requirements_analyst.requirements_analyst as RA_M
+        return dict(
+            routing_instructions=routing("requirements_analyst"),
+            image_persistence_block=(RA_M._IMAGE_PERSISTENCE_ON
+                                     if S.KEEP_IMAGES_IN_CONTEXT
+                                     else RA_M._IMAGE_PERSISTENCE_OFF),
+            comparison_mode_block=RA_M._build_comparison_mode_block(
+                S.DCOI_COMPARISON_MODE, _EXTRACTION_FILE, _USER_QUERY_FILE),
         )
     if agent == "dc_output_inspector":
         import agents.dc_output_inspector.dc_output_inspector as DCOI_M
