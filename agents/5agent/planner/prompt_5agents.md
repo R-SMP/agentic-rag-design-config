@@ -95,8 +95,10 @@ user reads.
     precise input — a ``PRECISION DEMAND`` line in DESIGN INTENT, a PRECISE
     SKETCH verdict on a drawing, or wording like "match as
     precisely as possible / try as many attempts as needed" — DECIDE it is a
-    precision job and issue a directive along these lines (adapt the wording;
-    keep it operational and self-contained):
+    precision job and issue a standing directive for it.  What follows is an
+    EXAMPLE of one — use it as an example, not as a template: adapt the
+    wording to the request in front of you, and keep it operational and
+    self-contained.
 
         === STANDING DIRECTIVES (copy verbatim to the next agent) ===
         PRECISION JOB.  Iterate to
