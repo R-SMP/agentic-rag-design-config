@@ -578,18 +578,61 @@ become named known-pending entries exactly as topology 5's
 
 ### Stage 5 — The two agent classes
 
-- [ ] 5.1 `agents/requirements_analyst/` — union of `UserInputInspector` and
-      `DCOutputInspector`.  Tools: `read_user_inputs`, `write_extraction`,
-      `read_extracted_inputs`, `read_attempts`, `calculate`, `view_images`
-      (+ `reread_text_regions` when OCR is on), the DBa set, routing.
-- [ ] 5.2 `agents/design_engineer/` — union of `DCInputCreator` and
-      `ToolCaller`.  Tools: `read_extracted_inputs`,
-      `new_attempt_parameters` (O1), `read_attempts`, `calculate`,
-      `get_tools()`, `render_blade_sections` when enabled, the DBa set,
-      routing.  **No image tools** — neither parent binds any.
-- [ ] 5.3 `PROMPT_MD_RUNTIME_SLOTS` rows for both.  An unlisted `{x}` makes
-      `str.format` raise `KeyError` at agent construction, i.e. at runtime.
-- [ ] 5.4 VERIFY: `smoke_test_hub_attributes`; `smoke_test_prompt_tool_audit`.
+- [x] 5.1 `agents/requirements_analyst/` — union of `UserInputInspector` and
+      `DCOutputInspector`.  **9 tools measured, not assumed:** `calculate`,
+      `call_design_engineer`, `call_planner`, `read_attempts`,
+      `read_extracted_inputs`, `read_user_inputs`, `reread_text_regions`,
+      `view_images`, `write_extraction`.
+- [x] 5.2 `agents/design_engineer/` — union of `DCInputCreator` and
+      `ToolCaller`.  **8 tools measured:** `calculate`, `call_planner`,
+      `call_requirements_analyst`, `generate_and_render_propeller`,
+      `new_attempt_parameters`, `read_attempts`, `read_extracted_inputs`,
+      `render_blade_sections`.  No image tool, because neither parent binds
+      one.
+- [x] 5.3 `PROMPT_MD_RUNTIME_SLOTS` — done in Stage 2; both prompts
+      `.format()` cleanly, which is the proof (an unlisted `{x}` raises
+      `KeyError` at construction).
+- [x] 5.4 **VERIFIED.**  Both classes construct, wire and assemble — Design
+      Engineer 48 336 chars, Requirements Analyst 50 530.  Snapshot diff 0
+      differences; `pyflakes` clean on both new packages and still 20
+      repo-wide.
+
+**`calculate` is bound exactly once, and that needed care.**  `get_tools()`
+returns `[generate_and_render_propeller, calculate]`, and the DC Input Creator
+half binds `calculate` explicitly — so a naive union would have bound it twice.
+The tool map is keyed by NAME, which collapses it; asserted rather than
+assumed.
+
+**Both `@tool` stubs are LOCAL copies, not imports of the parents'.**  Their
+docstrings ARE the descriptions the model reads, so importing
+`read_extracted_inputs` from `dc_input_creator` would mean a topology-3 wording
+edit silently moving topologies 5 and 7 — the isolation rule this rebuild is
+bound by.  Same reason the retired Designer kept its own copies.
+
+**The run loops come from the CURRENT parents, per §4.5.**  Both carry the
+one-shot routing retry (`begin_routing_retry` / `finish_routing_retry`), the
+stuck-loop signature check, `finalize_unanswered_tool_calls`, and
+`topology.hub_key()` on every error fall-through — none of which the retired
+`designer.py` had.
+
+**Two verification mistakes worth recording, because both produced a
+confident-looking wrong answer.**  The first binding probe read
+`llm.kwargs["tools"]` and reported **0 tools bound** for both agents: under
+`bootstrap.install()` the LLM is a `MagicMock`, so nothing is readable off the
+bound object.  The second attempt patched `base_llm.bind_tools` to record its
+argument — and recursed to the stack limit, because the two agents SHARE one
+`base_llm`, so the second agent's spy wrapped the first.  The working form
+records the argument and restores the original in a `finally`.  Until that was
+fixed the check also reported `view_images` as unbound by the Requirements
+Analyst, which was false — the tool comes from `build_user_inputs_tools`, which
+is passed straight into `all_tools` and never touches
+`_extra_utility_tools_by_name`.
+
+**Known-pending, measured:** the assembled prompts still NAME
+`call_tool_caller`, `call_dc_input_creator` and `call_dc_output_inspector` —
+tools nothing in topology 3 binds — because the routing fragments are verbatim
+topology-5 scaffolds.  This is the same class topology 5 carried as
+`call_orchestrator`, and it clears at Stage 9.
 
 ### Stage 6 — The hub class  (D2)
 
@@ -742,6 +785,8 @@ it can never later be attributed to it.
 | `smoke_test_llm_routing` | **FAIL — environmental.**  `ModuleNotFoundError: No module named 'trimesh'` at import. |
 | `smoke_test_prompt_format` | **FAIL — environmental.**  Same missing module. |
 | `smoke_test_database_handler` | **FAIL — environmental.**  Same missing module.  *(Added 2026-09-05: not run at Stage 0.)* |
+| `smoke_test_base_chain_agent` | **FAIL — environmental.**  Same missing module.  *(Added 2026-09-05.)* |
+| `smoke_test_all_chain_agents` | **FAIL — environmental.**  Same missing module.  *(Added 2026-09-05.)* |
 | `smoke_test_prompt_toggles` | **FAIL — pre-existing, and NOT environmental.**  *(Added 2026-09-05: not run at Stage 0.)*  See below. |
 
 > **Correction to this baseline.**  The Stage-0 sweep did not run every suite in
