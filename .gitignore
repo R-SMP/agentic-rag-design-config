@@ -39,6 +39,7 @@ prompts_backup_*/
 # runtime file seeded from its own tracked default.
 workflow_settings/dh_schedule.json
 workflow_settings/dh_schedule_5agents.json
+workflow_settings/dh_schedule_3agents.json
 
 # --- Claude Code (per-user) ---
 .claude/settings.local.json

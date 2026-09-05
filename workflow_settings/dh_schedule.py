@@ -66,7 +66,17 @@ _PROJECT_ROOT = _THIS_DIR.parent
 # ``SYSTEM_TOPOLOGY`` between runs inside one process, so a module
 # constant would pin whichever topology was active at import.  Topology 7
 # resolves to exactly the historic paths, so it needs no migration.
-_SCHEDULE_BY_TOPOLOGY = {5: "_5agents"}
+# Topologies with a schedule file of their own.  A topology whose roster
+# differs from the 7-agent one MUST have an entry: without it the resolver
+# falls through to dh_schedule.json, whose rows name agents that topology
+# never builds -- and an unresolvable ``from_agent`` is not a warning, it is
+# an ``ERROR:`` row written into the R2 mirror and the Postgres ``chunks``
+# table, where it comes back at retrieval time.
+#
+# Land the DATA file before adding the entry here.  Reversed, ``_seed_default``
+# finds no default to read, falls through to the topology-blind hardcoded
+# SCHEDULE, and writes THAT to disk permanently.
+_SCHEDULE_BY_TOPOLOGY = {5: "_5agents", 3: "_3agents"}
 
 
 def active_topology() -> int:

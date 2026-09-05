@@ -469,11 +469,53 @@ Conductor/Creator 5-agent system while offering topology 3 as a valid value),
 
 ### Stage 3 — DH schedule  (D8)
 
-- [ ] 3.1 `workflow_settings/dh_schedule_3agents.default.json` — the 33 rows
-      remapped.
-- [ ] 3.2 `dh_schedule._SCHEDULE_BY_TOPOLOGY[3] = "_3agents"`.
-- [ ] 3.3 VERIFY: `smoke_test_dh_batching` (which today covers only topologies
-      7 and 5 — it gains a topology-3 case here).
+- [x] 3.1 `workflow_settings/dh_schedule_3agents.default.json` — 33 rows,
+      18 316 bytes.  `from_agent` and every `to_agents` entry remapped
+      (`uii`/`dcoi` → RA, `dcic`/`tc` → DE) with an order-preserving dedupe
+      WITHIN each row's target list; exactly two rows shrink, both having
+      listed the UII and the DCOI separately.  Row `id`s, `name`s,
+      `description`s, `scope`, `type`, `parent_id` and `sub_index` are
+      untouched, so provenance back to the 5-agent source is exact.
+      Resulting tallies — from: RA 17, planner 8, DE 5, receptionist 3.
+- [x] 3.2 `dh_schedule._SCHEDULE_BY_TOPOLOGY[3] = "_3agents"`, landed AFTER
+      the data file, with the ordering trap written into the comment above it.
+- [x] 3.3 `smoke_test_dh_batching` gains a topology-3 row in `_HUBS`, and
+      **mutation-tested both ways**: a row naming `tool_caller` fails it, and a
+      30-row file fails it.  File restored and hash-checked afterwards.
+- [x] 3.4 **VERIFIED.**  Snapshot diff 0 differences.  Cold-seed test — runtime
+      file deleted first, because that is the case that actually matters —
+      seeds **33 rows** under topology 3, i.e. the new default and NOT the
+      29-row topology-blind hardcoded `SCHEDULE`; every `agent_key` and every
+      `to_agents` entry is on the topology-3 roster; topologies 7 and 5 still
+      seed their own files at 36 and 33 rows; and `_validate` still rejects a
+      row naming the retired `architect`.  Eight suites pass, `pyflakes` still
+      20.
+
+**The writer was proved before it was trusted.**  The generator round-trips
+`dh_schedule_5agents.default.json` **byte-for-byte** (2-space indent,
+`ensure_ascii=False`, CRLF, trailing newline) before authoring anything, so the
+new file is in house format rather than merely valid JSON.
+
+**`.gitignore` was missing the topology-3 runtime file.**  It listed
+`dh_schedule.json` and `dh_schedule_5agents.json` but not
+`dh_schedule_3agents.json`, which is written on first use — so the per-deploy
+file would have shown up as untracked and could have been committed over the
+tracked default.  Added.
+
+**The six stale question NAMES were left verbatim, on the owner's word:** the
+schedule is a SEED, and the Workflow Settings UI lets him author a different
+question set per topology, so `Problem - UII` / `Problem - DCIC` / `Tool Caller
+problem` are his to adapt if he runs the DH under topology 3.  Recorded because
+the name is not cosmetic — `database_handler._slugify` turns it into the stored
+filename and the DB field label, and those come back at RAG retrieval time.
+
+**The F19d roster check degrades honestly rather than being skipped.**  Its
+strict form derives "which agents does the hub build" from the hub class's own
+`_agents_by_key` literal, and `agents/planner3/planner3.py` does not exist until
+Stage 6.  Until it does, the check falls back to the DECLARED queue roster and
+prints a `PENDING` line naming what it substituted; it upgrades itself
+automatically the moment the hub module lands.  Every other assertion in the
+topology-3 case runs at full strength.
 
 > **⚠ Order is load-bearing.**  The DATA file must land BEFORE the resolver
 > entry.  Reversed, `_seed_default` falls through to the 29-row

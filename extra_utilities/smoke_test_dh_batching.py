@@ -543,17 +543,37 @@ from hub_registry import registry_keys_from_source          # noqa: E402
 _HUBS = {
     7: ("agents/orchestrator/orchestrator.py", 36, "dh_schedule.json"),
     5: ("agents/planner5/planner5.py",         33, "dh_schedule_5agents.json"),
+    3: ("agents/planner3/planner3.py",         33, "dh_schedule_3agents.json"),
 }
+
+# Until a topology's hub CLASS exists, "which agents does the hub build" has
+# no answer to derive, so the roster half of the check falls back to the
+# topology's declared queue roster (minus the two agents no hub ever
+# registers).  That is weaker -- it proves the schedule agrees with the
+# DECLARED roster rather than with the BUILT one -- so it is announced as
+# PENDING rather than passed silently, and it upgrades itself the moment the
+# hub module lands.  Every other assertion still runs at full strength.
+from agents.shared.sessions_queue import AGENTS_BY_TOPOLOGY   # noqa: E402
+
+_NEVER_REGISTERED = {"context_pruner", "database_handler"}
 
 _saved_topology = getattr(_settings, "SYSTEM_TOPOLOGY", 7)
 try:
     for _topo, (_hub_rel, _want_rows, _want_file) in _HUBS.items():
         _settings.SYSTEM_TOPOLOGY = _topo
-        _built = registry_keys_from_source(REPO / _hub_rel)
-        check(f"topology {_topo}: the hub registry parses",
-              bool(_built) and not any(str(k).startswith("<unparsed")
-                                       for k in _built),
-              str(sorted(_built)))
+        _hub_src = REPO / _hub_rel
+        if _hub_src.is_file():
+            _built = registry_keys_from_source(_hub_src)
+            check(f"topology {_topo}: the hub registry parses",
+                  bool(_built) and not any(str(k).startswith("<unparsed")
+                                           for k in _built),
+                  str(sorted(_built)))
+        else:
+            _built = {k for k, _ in AGENTS_BY_TOPOLOGY[_topo]
+                      if k not in _NEVER_REGISTERED}
+            print(f"  PENDING  topology {_topo}: {_hub_rel} does not exist "
+                  f"yet — the roster check falls back to the DECLARED queue "
+                  f"roster {sorted(_built)}, not the built one.")
         check(f"topology {_topo}: reads {_want_file}",
               S.schedule_path().name == _want_file, S.schedule_path().name)
         _rows = S.read_state()["questions"]
