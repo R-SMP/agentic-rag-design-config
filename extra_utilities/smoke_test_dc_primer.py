@@ -17,10 +17,16 @@ What is worth pinning:
     survives on text blocks); for OpenAI no marker and no trailing block.
  4. GATING.  The flag off => [], read fresh per call (a Workflow-Settings
     edit must not need a restart).
- 5. INJECTION.  All six agent files splice dc_primer_messages BETWEEN the
-    system message and self.messages — never appended to self.messages,
-    where the image stripper / Context Pruner / session snapshot would eat
-    it.
+ 5. INJECTION.  All five agent files splice the primer via
+    primed_history() BETWEEN the system message and self.messages — never
+    appended to self.messages, where the image stripper / Context Pruner /
+    session snapshot would eat it, and never raw (see 7).
+ 7. SYSTEM-MESSAGE ADJACENCY.  Anthropic rejects non-consecutive system
+    messages.  The Context Pruner replaces self.messages with
+    SystemMessage(s) AT THE HEAD, so a raw splice produced
+    [System, Human(primer), System(summary), ...] and killed the call.
+    Composing through primed_history() keeps every system message
+    consecutive in all four histories a run can present.
  6. ACCOUNTING.  primer_tokens_for() is >0 exactly for the six primer
     agents while the flag is on, 0 otherwise, and base_chain_agent's
     pruner arithmetic consumes it.
@@ -269,14 +275,17 @@ print("case 5 - all five agents splice it between system and history")
 SIX = ("user_input_inspector", "dc_input_creator", "dc_input_inspector",
        "dc_output_inspector", "designer")
 PATTERN = ("[make_system_message(self.system_prompt, self.provider)] "
-           "+ dc_primer_messages(self.provider, self.AGENT_KEY) "
-           "+ self.messages,")
+           "+ primed_history(self.provider, self.AGENT_KEY, "
+           "self.messages),")
 for a in SIX:
     src = norm((ROOT / "agents" / a / (a + ".py")).read_text(encoding="utf-8"))
     check("%s: splice present, system-first order" % a, PATTERN in src)
     check("%s: never appended to self.messages" % a,
           "self.messages.append(dc_primer" not in src
           and "messages += dc_primer" not in src)
+    # The raw splice is what broke Anthropic after a prune (case 7).
+    check("%s: does not splice the primer raw" % a,
+          "+ dc_primer_messages(" not in src)
 
 # --- 6. token accounting ------------------------------------------------------
 print("case 6 - pruner accounting")
@@ -296,9 +305,70 @@ src = norm((ROOT / "agents" / "shared" / "base_chain_agent.py"
 check("base_chain_agent consumes primer_tokens_for",
       "primer_tokens_for(self.AGENT_KEY)" in src)
 
+# --- 7. system-message adjacency after a prune -------------------------------
+# The bug this guards: Anthropic raises "Received multiple non-consecutive
+# system messages" when a HumanMessage sits between two SystemMessages.  The
+# Context Pruner puts its summary at the HEAD of self.messages, so the old
+# raw splice produced exactly that.  Structural check -- no langchain_anthropic
+# needed, because the invariant is about message ORDER, not the wire format.
+print("case 7 - system messages stay consecutive after a prune")
+from langchain_core.messages import (AIMessage, HumanMessage,  # noqa: E402
+                                     SystemMessage)
+
+def _adjacent(msgs) -> bool:
+    """True when every SystemMessage precedes every non-system one."""
+    seen_other = False
+    for m in msgs:
+        if isinstance(m, SystemMessage):
+            if seen_other:
+                return False
+        else:
+            seen_other = True
+    return True
+
+# The four histories a run can actually present to an agent.
+HISTORIES = {
+    "unpruned": [HumanMessage(content="hi"), AIMessage(content="ok")],
+    "tier 1 (coarse + tail)": [SystemMessage(content="coarse"),
+                               HumanMessage(content="hi")],
+    "tier 2 (coarse + fine)": [SystemMessage(content="coarse"),
+                               SystemMessage(content="fine")],
+    "tier 3 (super)":         [SystemMessage(content="super")],
+}
+
+st.DC_PARAMS_PRIMER_ENABLED = True
+dc_primer._MESSAGE_CACHE.clear()
+for a in SIX:
+    for label, hist in HISTORIES.items():
+        composed = ([SystemMessage(content="<system prompt>")]
+                    + dc_primer.primed_history("anthropic", a, hist))
+        check("%s / %s: system messages consecutive" % (a, label),
+              _adjacent(composed),
+              [type(m).__name__ for m in composed])
+    # Before any prune the result must be byte-identical to the old
+    # behaviour, so nothing changes for OpenAI or for an unpruned turn.
+    plain = HISTORIES["unpruned"]
+    check("%s: unpruned order unchanged" % a,
+          dc_primer.primed_history("anthropic", a, plain)
+          == dc_primer.dc_primer_messages("anthropic", a) + plain)
+    # And the primer must still actually be there after a prune.
+    t1 = dc_primer.primed_history("anthropic", a, HISTORIES["tier 1 (coarse + tail)"])
+    check("%s: primer survives a tier-1 prune" % a,
+          any(isinstance(m, HumanMessage) for m in t1) and len(t1) == 3)
+
+st.DC_PARAMS_PRIMER_ENABLED = False
+dc_primer._MESSAGE_CACHE.clear()
+check("primer off -> history returned untouched",
+      dc_primer.primed_history("anthropic", "user_input_inspector",
+                               HISTORIES["tier 1 (coarse + tail)"])
+      == HISTORIES["tier 1 (coarse + tail)"])
+st.DC_PARAMS_PRIMER_ENABLED = True
+dc_primer._MESSAGE_CACHE.clear()
+
 print()
 if FAILS:
     print("FAIL - %d assertion(s): %s" % (len(FAILS), FAILS))
     sys.exit(1)
 print("PASS - the primer's assets, lockstep wording, per-provider shape, "
-      "gating, six injection sites and pruner accounting all hold.")
+      "gating, five injection sites, pruner accounting and system-message "
+      "adjacency after a prune all hold.")

@@ -9,9 +9,17 @@ message and the live history:
     invoke_with_retry(
         self.llm,
         [make_system_message(self.system_prompt, self.provider)]
-        + dc_primer_messages(self.provider, self.AGENT_KEY)
-        + self.messages,
+        + primed_history(self.provider, self.AGENT_KEY, self.messages),
         ...)
+
+Use ``primed_history``, not ``dc_primer_messages``, at a call site.  The
+Context Pruner replaces ``self.messages`` with one or two
+``SystemMessage``s AT THE HEAD, and Anthropic rejects system messages
+that are not consecutive: splicing the primer straight after the system
+prompt puts a ``HumanMessage`` between them and the call dies with
+"Received multiple non-consecutive system messages".  ``primed_history``
+inserts the primer AFTER any leading system messages instead, which is
+exactly the shape every non-primer agent already sends.
 
 WHY A MESSAGE, AND WHY NOT IN ``self.messages``.  Anthropic's ``system``
 field takes text blocks only and OpenAI allows image parts only in ``user``
@@ -53,7 +61,7 @@ import base64
 import struct
 from pathlib import Path
 
-from langchain_core.messages import HumanMessage
+from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.shared.llm_provider import make_image_block, system_cache_control
 
@@ -215,3 +223,33 @@ def primer_tokens_for(agent_key: str) -> int:
             return 0
         _TOKEN_ESTIMATE[text_path.name] = cached
     return cached
+
+
+def primed_history(provider: str, agent_key: "str | None",
+                   messages: list) -> list:
+    """*messages* with the primer spliced in after any leading system ones.
+
+    A call site composes ``[system_prompt] + primed_history(...)``.  Before
+    the Context Pruner has ever fired, ``messages`` starts with a
+    ``HumanMessage``, the scan stops at 0, and the result is byte-identical
+    to the old ``primer + messages`` -- so OpenAI runs and every unpruned
+    turn are completely unaffected.
+
+    After a prune, ``messages`` begins with the Pruner's summary
+    ``SystemMessage``(s).  Putting the primer after them keeps every system
+    message consecutive, which is what Anthropic requires and what every
+    non-primer agent already sends.
+
+    Only LEADING system messages are skipped.  That covers every shape the
+    Pruner produces (tier 1 ``[coarse] + tail``, tier 2 ``[coarse, fine]``,
+    tier 3 ``[super]``, all at the head).  A system message buried deeper is
+    left where it is: nothing puts one there, and hoisting it would silently
+    reorder the conversation.
+    """
+    primer = dc_primer_messages(provider, agent_key)
+    if not primer:
+        return list(messages)
+    i = 0
+    while i < len(messages) and isinstance(messages[i], SystemMessage):
+        i += 1
+    return list(messages[:i]) + primer + list(messages[i:])
