@@ -741,7 +741,7 @@ output or a `→` in a diff kills the run on cp1252.
 | `dc_input_inspector` | 18 794 | `f8d84b85c795` |
 | `dc_output_inspector` | 19 576 | `3525c8805e46` |
 | `orchestrator` | 16 900 | `f681d36e0b53` |
-| `planner` | 21 783 | `df166732af60` |
+| `planner` | 21 901 | `3b9ca3a8ea4f` | *(re-baselined, see below)* |
 | `receptionist` | 16 036 | `d7bd2399fa4d` |
 | `tool_caller` | 9 317 | `71835c0f1f05` |
 | `user_input_inspector` | 14 393 | `53a39d746b8d` |
@@ -754,10 +754,26 @@ output or a `→` in a diff kills the run on cp1252.
 | `database_handler` | 22 338 | `54c27087079d` |
 | `dc_input_creator` | 23 465 | `8cb1578b61e1` |
 | `dc_output_inspector` | 19 771 | `29e0fea6c7fd` |
-| `planner` | 25 297 | `70514bdc6fc5` |
+| `planner` | 25 415 | `c191528578b7` | *(re-baselined, see below)* |
 | `receptionist` | 15 978 | `370c1cc62d5b` |
 | `tool_caller` | 9 040 | `df6a4b436e92` |
 | `user_input_inspector` | 14 400 | `0ecf3a4bf846` |
+
+> **RE-BASELINED 2026-09-05, mid-Stage-6.**  The owner reworded the Planner's
+> PRECISION INPUT-MATCH lead-in on `stage-a-web-deploy` (`4e15726`) so the
+> standing-directive block reads as an EXAMPLE rather than a template, and
+> applied it to the 7-agent and 5-agent Planners.  That commit was merged into
+> this branch — merged rather than rebased, so the topology-3 commit SHAs
+> already reported stay valid — and the same text imported into
+> `agents/3agent/planner/prompt_3agents.md` by re-copying from the 5-agent
+> source, which was byte-identical to it beforehand and therefore imports his
+> edit exactly and nothing else.
+>
+> **The two `planner` rows above are the ONLY figures that changed.**  Proved,
+> not assumed: the snapshot diff from the original baseline reports both
+> Planners `MOVED +118 chars` with the expected four-line hunk, and every other
+> topology-7 and topology-5 prompt `byte-identical`.  From here on, "0
+> differences" means against THESE numbers.
 
 **Topology 3** — `FATAL FileNotFoundError:
 agents/shared/prompt_fragments/routing_architect.md`.
