@@ -2,9 +2,9 @@
 
 The primer explains how the DC parameters couple with the design (top view,
 section grid, camber / high-point / angle semantics).  It is delivered to the
-DC-side agents — UII, DCIC, DCII, DCOI, and their 5/3-agent counterparts
-Creator and Designer — as ONE ``HumanMessage`` spliced between the system
-message and the live history:
+DC-side agents — UII, DCIC, DCII, DCOI, and the 3-agent Design Engineer
+and Requirements Analyst that merge them — as ONE ``HumanMessage``
+spliced between the system message and the live history:
 
     invoke_with_retry(
         self.llm,
@@ -114,6 +114,9 @@ PRIMER_AGENT_KEYS = frozenset({
     "dc_input_creator",
     "dc_input_inspector",
     "dc_output_inspector",
+    # 3-agent: each merges at least one primer-receiving parent.
+    "design_engineer",
+    "requirements_analyst",
 })
 
 # Filled lazily; keys are (provider, text-file name), values the single

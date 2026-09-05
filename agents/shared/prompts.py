@@ -902,6 +902,19 @@ PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
     # Topology 5 needs no extra rows: its hub is the PLANNER, running the
     # Planner's prompt with the Planner's four slots (already above), and
     # every other agent it builds is a 7-agent agent under its own key.
+    # 3-agent topology.  Each merged agent takes the UNION of its two
+    # parents' slots: the Design Engineer gets the DC Input Creator's
+    # routing slot plus the Tool Caller's render-backend block, and the
+    # Requirements Analyst gets the UII's routing slot plus the DC Output
+    # Inspector's two runtime blocks.  The hub is the Planner and uses
+    # ``$routing_hub``, so it needs no row.
+    "design_engineer":      frozenset({
+        "routing_instructions", "render_check_library_block",
+    }),
+    "requirements_analyst": frozenset({
+        "routing_instructions", "image_persistence_block",
+        "comparison_mode_block",
+    }),
     "tool_caller":          frozenset({
         "routing_instructions", "render_check_library_block",
     }),

@@ -2006,22 +2006,27 @@ const LR_BOXES_5 = [
     label: "Context Pruner" },
 ];
 
-// 3-agent topology (strip-down).  The Architect absorbs the UII as well as
-// the Planner and Orchestrator, so there is no separate perceiver box; the
-// Designer absorbs the Tool Caller.  The Critic is the DC Output Inspector,
-// unrenamed.  Designer and Critic sit side by side because the refine loop
-// runs BETWEEN them without passing through the Architect.
+// 3-agent topology.  A fork of the 5-agent one: the hub is the PLANNER, in
+// the same slot the Orchestrator and Planner occupy in the other two charts.
+// Below it sit the two merged agents -- the Design Engineer (DC Input
+// Creator + Tool Caller) and the Requirements Analyst (User Input Inspector
+// + DC Output Inspector) -- SIDE BY SIDE, because the refine loop runs
+// between them without passing through the hub.
+//
+// The Design Engineer is on the RIGHT deliberately.  It absorbed the Tool
+// Caller, so it is the box the two tool diagonals leave from; with it on the
+// left both lines would cross straight through the Requirements Analyst.
 const LR_BOXES_3 = [
   { key: "user",                  role: "user",  x: 230, y: 10,  w: 140, h: 40,
     label: "User" },
   { key: "receptionist",          role: "agent", x: 230, y: 75,  w: 140, h: 95,
     label: "Receptionist" },
-  { key: "architect",             role: "agent", x: 230, y: 200, w: 140, h: 95,
-    label: "Architect" },
-  { key: "designer",              role: "agent", x: 130, y: 400, w: 140, h: 95,
-    label: "Designer" },
-  { key: "dc_output_inspector",   role: "agent", x: 330, y: 400, w: 140, h: 95,
-    label: "Output Inspector" },
+  { key: "planner",               role: "agent", x: 230, y: 200, w: 140, h: 95,
+    label: "Planner" },
+  { key: "requirements_analyst",  role: "agent", x: 130, y: 400, w: 140, h: 95,
+    label: "Requirements Analyst" },
+  { key: "design_engineer",       role: "agent", x: 330, y: 400, w: 140, h: 95,
+    label: "Design Engineer" },
   // Tools — display only.
   { key: "propeller_configurator",   role: "tool", x: 610, y: 275, w: 180, h: 60,
     label: "Propeller Configurator", toolPrefix: true },
@@ -2097,16 +2102,24 @@ const LR_ARROWS_5 = [
   { x1: 374, y1: 500, x2: 606, y2: 510 },   // Tool Caller - Blade Sections
 ];
 
-// 3-agent: Receptionist -> Architect -> Designer, and then the Designer
-// and the Critic refine with EACH OTHER.  The Architect is reached only on
-// escalation, phase change, or a dispatcher-forced checkpoint - which is
-// why its arrow to the Critic is drawn as well as the one to the Designer.
+// 3-agent: Receptionist -> Planner, and the Planner reaches BOTH merged
+// agents directly -- the Requirements Analyst when new user material needs
+// turning into requirements, the Design Engineer to start a design cycle.
+// The horizontal line between them is the refine loop, which the Planner is
+// deliberately NOT in: they route back and forth on their own, and the hub
+// is reached at phase boundaries and on escalation.
+//
+// The two diagonals to the tools are new.  The old 3-agent chart drew none
+// at all, exactly as the old 5-agent one did -- an omission, since the agent
+// that absorbed the Tool Caller is the one that calls the generators.
 const LR_ARROWS_3 = [
   { x1: 300, y1: 54,  x2: 300, y2: 71  },   // User - Receptionist
-  { x1: 300, y1: 174, x2: 300, y2: 196 },   // Receptionist - Architect
-  { x1: 262, y1: 297, x2: 208, y2: 398 },   // Architect - Designer
-  { x1: 338, y1: 297, x2: 392, y2: 398 },   // Architect - Critic
-  { x1: 274, y1: 447, x2: 326, y2: 447 },   // Designer <-> Critic (refine loop)
+  { x1: 300, y1: 174, x2: 300, y2: 196 },   // Receptionist - Planner
+  { x1: 262, y1: 297, x2: 208, y2: 398 },   // Planner - Requirements Analyst
+  { x1: 338, y1: 297, x2: 392, y2: 398 },   // Planner - Design Engineer
+  { x1: 274, y1: 447, x2: 326, y2: 447 },   // Requirements Analyst <-> Design Engineer
+  { x1: 474, y1: 440, x2: 606, y2: 305 },   // Design Engineer - Propeller Configurator
+  { x1: 474, y1: 475, x2: 606, y2: 510 },   // Design Engineer - Blade Sections
 ];
 
 const LR_ARROWS_BY_TOPOLOGY = {
@@ -2440,8 +2453,8 @@ function applyLrPreset(wf) {
 //
 // Per-agent model assignments are NOT affected by switching: they live in
 // agents/<agent>/.env, one file per agent key, and the merged agents have
-// distinct keys (conductor, creator, architect, designer).  So each
-// topology keeps its own assignments and switching back restores them.
+// distinct keys (design_engineer, requirements_analyst).  So each topology
+// keeps its own assignments and switching back restores them.
 // ---------------------------------------------------------------------------
 
 function renderLrTopology() {

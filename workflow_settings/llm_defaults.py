@@ -47,6 +47,14 @@ DEFAULT_PER_AGENT_MODELS: dict[str, str] = {
     "tool_caller":          "gpt-5.4-mini",
     "database_handler":     "gpt-5-mini",
     "context_pruner":       "gpt-5.4",
+    # 3-agent topology.  These two keys exist ONLY under topology 3, so a
+    # base entry here cannot move topology 7 or 5 -- it simply keeps
+    # every consumer that iterates ALL agent keys (llm_routing, the
+    # loader's startup banner) off FALLBACK_MODEL.  Each inherits its
+    # parents' shared default: both of the Design Engineer's are
+    # gpt-5.4-mini, both of the Requirements Analyst's are gpt-5.4.
+    "design_engineer":      "gpt-5.4-mini",
+    "requirements_analyst": "gpt-5.4",
 }
 
 
@@ -70,6 +78,20 @@ DEFAULT_PER_AGENT_MODELS_BY_TOPOLOGY: dict[int, dict[str, str]] = {
         "dc_input_creator":     "gpt-5.4-mini",
         "dc_output_inspector":  "gpt-5.4",
         "tool_caller":          "gpt-5.4-mini",
+        "database_handler":     "gpt-5-mini",
+        "context_pruner":       "gpt-5.4",
+    },
+    # 3-agent topology.  Listed in FULL, like topology 5's, so the table
+    # is the whole truth for this topology rather than a diff a reader has
+    # to compute.  Exactly ONE entry differs from the shared defaults --
+    # ``planner`` gpt-5-mini -> gpt-5.4-mini, the same lift topology 5
+    # gives the same merged-hub role.  The two merged agents inherit
+    # their parents' figure, which in both cases the two parents share.
+    3: {
+        "receptionist":         "gpt-5.4",
+        "planner":              "gpt-5.4-mini",   # HUB here
+        "requirements_analyst": "gpt-5.4",
+        "design_engineer":      "gpt-5.4-mini",
         "database_handler":     "gpt-5-mini",
         "context_pruner":       "gpt-5.4",
     },

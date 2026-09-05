@@ -672,8 +672,8 @@ BLADE_SECTIONS_VISUALIZER_ENABLED: bool = True
 
 # DC_PARAMS_PRIMER_ENABLED - the DC-parameter reference diagram.
 #
-# When ON, the DC-side agents (UII, DCIC, DCII, DCOI - plus Creator and
-# Designer in the 5/3-agent systems) receive a fixed reference at every
+# When ON, the DC-side agents (UII, DCIC, DCII, DCOI - plus the 3-agent
+# Design Engineer and Requirements Analyst) receive a fixed reference at every
 # LLM call: one image showing how the parameters couple with the design
 # (top view + the camber / high-point section grid) with a paired text
 # block.  Injected at invoke time between the system prompt and the
@@ -814,14 +814,21 @@ IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320
 #      DC Output Inspector.  The original topology: every role is
 #      separate, so each parameter set is authored by one agent and
 #      independently audited by another.
-#   5  Receptionist, User Input Inspector, CONDUCTOR, CREATOR,
-#      Tool Caller, DC Output Inspector.  The Conductor merges the
-#      Planner and Orchestrator; the Creator merges the DC Input
-#      Creator and DC Input Inspector, authoring the parameters AND
-#      self-validating them before writing.  Fewer hand-offs and fewer
-#      LLM calls per cycle, but the parameter set is checked by the
-#      agent that wrote it — the Tool Caller's independent range check
-#      before generating is what compensates.
+#   5  Receptionist, PLANNER (the hub), User Input Inspector,
+#      DC Input Creator, Tool Caller, DC Output Inspector.  The
+#      7-agent system minus the Orchestrator and minus the DC Input
+#      Inspector: the Planner absorbs the dispatch role, and the
+#      parameter set is no longer independently audited before
+#      generation — the Tool Caller's own range check compensates.
+#   3  Receptionist, PLANNER (the hub), DESIGN ENGINEER,
+#      REQUIREMENTS ANALYST.  A fork of the 5-agent system with two
+#      merges: the Design Engineer authors the parameter set AND runs
+#      the generation / render tools (DC Input Creator + Tool Caller);
+#      the Requirements Analyst derives the requirements from the
+#      user's material AND judges the renders against them (User Input
+#      Inspector + DC Output Inspector).  The Planner is deliberately
+#      OUTSIDE the refine loop — those two route back and forth
+#      directly, and the hub is called at phase boundaries.
 #
 # Changing this takes effect on the NEXT session; a run already in
 # flight keeps the topology it started with.
@@ -1016,6 +1023,57 @@ MAX_DISPATCH_HOPS: int = 400
 # Was 8; raised to 12.
 # Valid values: positive int.
 MAX_SECTIONS_REFINE_ROUNDS: int = 12
+
+# MAX_PLANNER3_STEPS - LLM turns inside ONE run of the 3-agent HUB.
+#
+# The 3-agent hub is the PLANNER, exactly as in topology 5, and it does
+# the same job there, so it takes the same figure.  A separate name
+# rather than a shared one because the two must be retunable
+# independently: they are the same agent key doing the same job in two
+# different systems, and one number cannot serve both without a change
+# to topology 3 moving topology 5.
+#
+# Valid values: positive int.
+MAX_PLANNER3_STEPS: int = 40
+
+# MAX_PLANNER3_VISITS - how many times the dispatcher may RE-ENTER the
+# 3-agent hub during a single user turn.
+#
+# The MAX_PLANNER5_VISITS analogue, same figure and same reasoning:
+# every plan, re-plan and approval is itself a re-entry once the hub
+# absorbs the Planner.
+#
+# Raise this FIRST if long precision sessions stop early.
+#
+# Valid values: positive int.
+MAX_PLANNER3_VISITS: int = 150
+
+# MAX_REQUIREMENTS_ANALYST_STEPS - LLM turns inside ONE run of the
+# 3-agent Requirements Analyst (User Input Inspector + DC Output
+# Inspector).
+#
+# The MAX of its two parents (both 40), not their sum, and the reason is
+# structural rather than thrifty: this agent's two jobs happen in
+# SEPARATE invocations.  It writes the extraction when the Planner sends
+# it new user material, and it judges renders when the Design Engineer
+# hands one over.  It never needs both budgets in one turn, so summing
+# them would only widen the runaway window.
+#
+# Valid values: positive int.
+MAX_REQUIREMENTS_ANALYST_STEPS: int = 40
+
+# MAX_DESIGN_ENGINEER_STEPS - LLM turns inside ONE run of the 3-agent
+# Design Engineer (DC Input Creator + Tool Caller).
+#
+# The SUM of its two parents (80 + 40), for the mirror-image reason:
+# this agent's two jobs happen in the SAME invocation.  One turn reads
+# the extraction, authors the full parameter set, opens the attempt and
+# writes it, THEN generates and renders -- work that cost two agents and
+# a hand-off in topology 5.  Giving it only the author half's budget
+# would cut it off mid-generation on a complex job.
+#
+# Valid values: positive int.
+MAX_DESIGN_ENGINEER_STEPS: int = 120
 
 # ===========================================================
 # 29. Prompt caching (Anthropic only)

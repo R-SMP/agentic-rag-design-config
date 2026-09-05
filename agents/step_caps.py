@@ -140,6 +140,40 @@ used to happen INSIDE the Planner and cost the hub nothing, whereas here
 every plan, re-plan and approval is itself a re-entry."""
 
 
+# ---------------------------------------------------------------------------
+# 3-agent caps (topology 3)
+#
+# The hub is the PLANNER again, so it needs both an inner-turn cap and a
+# visit cap, under names of its own: topology 3 and topology 5 run the same
+# agent key in the same role, and one number cannot serve both without a
+# change to one moving the other.
+#
+# The two merged agents follow one rule, applied in opposite directions --
+# see settings.py section 28 for the full reasoning.
+# ---------------------------------------------------------------------------
+
+MAX_PLANNER3_STEPS = _ws.MAX_PLANNER3_STEPS
+"""LLM turns allowed inside ONE run of the topology-3 hub.  Same figure
+as ``MAX_PLANNER5_STEPS``: same agent, same job, different system."""
+
+MAX_PLANNER3_VISITS = _ws.MAX_PLANNER3_VISITS
+"""How many times the dispatcher may RE-ENTER the topology-3 hub during a
+single user turn.  The ``MAX_PLANNER5_VISITS`` analogue."""
+
+MAX_REQUIREMENTS_ANALYST_STEPS = _ws.MAX_REQUIREMENTS_ANALYST_STEPS
+"""LLM turns inside ONE ``RequirementsAnalyst.run()``.  The MAX of its two
+parents (UII 40, DCOI 40) rather than their sum, because its two jobs --
+writing the extraction and judging a render -- happen in SEPARATE
+invocations and never share a turn."""
+
+MAX_DESIGN_ENGINEER_STEPS = _ws.MAX_DESIGN_ENGINEER_STEPS
+"""LLM turns inside ONE ``DesignEngineer.run()``.  The SUM of its two
+parents (DCIC 80, TC 40), because its two jobs DO share a turn: one
+invocation authors the parameter set, opens the attempt, writes it, then
+generates and renders -- work that cost two agents and a hand-off in
+topology 5."""
+
+
 MAX_DISPATCH_HOPS = _ws.MAX_DISPATCH_HOPS
 """Hard ceiling on the total number of agent hops the dispatcher
 will execute in a single user turn before bailing out via

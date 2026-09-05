@@ -149,7 +149,7 @@ later "corrected" as an inconsistency.
 | **O4** | A `"3"` profile in `database_access.json` mirroring `"7"`.  Moot while `RAG_ENABLED=False`, but without it every topology-3 agent gets all three RAG tools the moment the flag flips.  Same open item topology 5 carries as its O5. | Stage 8 |
 | **O5** | `history_tool.py` hard-codes an 8-agent roster in its description and `feedback_tool.py` a 7-agent allow-list.  Topology 5 fixed both with overlay entries (`READ_AGENT_HISTORY_DESCRIPTION`, `SUBMIT_FEEDBACK_DISPATCH_DOC`).  Topology 3 needs its own. | Stage 8 |
 | **O6** | End-of-session feedback distribution (Role 4) for topology 3.  Deferred, as it was in the 5-agent rebuild; not needed for the owner's current tests. | Deferred |
-| **O7** | **Comment residue from the retirement.**  Fourteen prose references to the Architect / Designer survive in files Stage 1 had no reason to edit, plus `topology.topology()`'s docstring still reading "(7 or 5)".  None affects behaviour.  ONE is user-visible: `editor.py`'s `_INERT_UNDER_TOPOLOGY` reason for `CHAIN_ACCESS` says "the Architect never had one", and that string is rendered in the Workflow Settings UI.  Sweep as one commit, or fold each into the stage that next touches its file? | Stage 2 |
+| ~~O7~~ | **PARTIALLY CLOSED in Stage 2.**  Every residual reference in a file Stage 1 or 2 already opened has been swept, including both user-visible strings (`editor.py`'s `CHAIN_ACCESS` inert-reason, and `settings.py` §27's topology help text, which still described the DELETED Conductor/Creator 5-agent system).  What is left sits only in files no stage has needed yet — `feedback_tool.py`, `receptionist.py`, `hub_format.py`, `user_inputs_tool.py` ×2, `user_queries_tool.py`, `hub_registry.py`, two smoke tests, `generate_mesh.py` ×2 — and each is folded into the stage that next touches its file. | folded |
 
 ---
 
@@ -383,34 +383,89 @@ Architect / Designer survive in files this stage had no reason to edit
 behaviour; one — `editor.py`'s CHAIN_ACCESS inert-reason string — is
 user-visible in the Workflow Settings UI.  Tracked as **O7**.
 
-### Stage 2 — Register the new roster  (runbook Stage A: additive)
+### Stage 2 — Register the new roster  (runbook Stage A: additive)  — **DONE 2026-09-05**
 
-- [ ] 2.1 `AGENT_DISPLAY` += `design_engineer`, `requirements_analyst`.
-      **Do this one FIRST** — `ROUTING_TOOL_NAMES` and
-      `session.KNOWN_AGENT_KEYS` both derive from it, and a miss here raises
-      immediately, which is the good case.
-- [ ] 2.2 `_TOOL_DESCRIPTIONS` += `call_design_engineer`,
-      `call_requirements_analyst` (generic shared wording; the topology-3
-      wording lands in the overlay at Stage 8).
-- [ ] 2.3 The remaining identity rows: `trace`, `_PRUNE_DISPLAY_NAMES`,
-      `PROMPT_MD_RUNTIME_SLOTS`, `dc_primer.PRIMER_AGENT_KEYS` +
-      `_TEXT_NAME_BY_AGENT`, `database_access`, `db_writer` ACL, `ocr_access`
-      (RA only — it is the agent that binds image tools),
-      `llm_defaults` + the `[3]` overlay (D7), `llm_routing.AGENT_SPEC` with
-      `wired_into_dispatcher=False`, `dh_schedule` keys + labels,
+26 scripted edits across 18 files; +245 / −43.
+
+- [x] 2.1 `AGENT_DISPLAY` += `design_engineer`, `requirements_analyst`, done
+      FIRST — `ROUTING_TOOL_NAMES` and `session.KNOWN_AGENT_KEYS` both derive
+      from it, and a miss there raises immediately, which is the good case.
+- [x] 2.2 `_TOOL_DESCRIPTIONS` += `call_design_engineer`,
+      `call_requirements_analyst`, generic shared wording; the topology-3
+      wording lands in the overlay at Stage 8.
+- [x] 2.3 The remaining identity rows: `trace`, `_PRUNE_DISPLAY_NAMES`,
+      `PROMPT_MD_RUNTIME_SLOTS` (each merged agent takes the UNION of its two
+      parents' slots), `dc_primer.PRIMER_AGENT_KEYS`, `database_access`,
+      `db_writer` ACL, `ocr_access` **(RA only)**, `llm_defaults` + the `[3]`
+      overlay, `llm_routing.AGENT_SPEC` with `wired_into_dispatcher=False`,
+      `dh_schedule` keys + labels ("DEng" / "RA"),
       `sessions_queue.AGENTS_BY_TOPOLOGY[3]`.
-- [ ] 2.4 `topology._HUB_BY_TOPOLOGY[3]` → `("planner", "Planner")`.
-- [ ] 2.5 Step caps (D6): `MAX_PLANNER3_STEPS = 40`,
-      `MAX_PLANNER3_VISITS = 150`, `MAX_REQUIREMENTS_ANALYST_STEPS = 40`,
-      `MAX_DESIGN_ENGINEER_STEPS = 120` in `settings.py` §28, forwarded through
-      `agents/step_caps.py`.
-- [ ] 2.6 `routing._PIPELINE_BY_TOPOLOGY[3]` → the §1.3 string.
-- [ ] 2.7 `web/app.js` — `LR_BOXES_3` / `LR_ARROWS_3` rebuilt for the new
-      roster.  `LR_ARROWS_3` is hard-coded coordinate pairs and must be
-      re-derived by hand, then **rendered and inspected**, not assumed.
-      `node --check web/app.js`.
-- [ ] 2.8 VERIFY: 7 and 5 byte-identical; `pyflakes`;
-      `smoke_test_llm_routing`; `smoke_test_queue_tiers`.
+- [x] 2.4 **DONE in Stage 1** — it could not wait; see 1.6.
+- [x] 2.5 Step caps (D6) in `settings.py` §28, forwarded through
+      `step_caps.py`, each carrying its own reasoning so the `max()`-vs-`sum()`
+      asymmetry cannot later be "tidied" into one rule.
+- [x] 2.6 `routing._PIPELINE_BY_TOPOLOGY[3]` → the §1.3 string.
+- [x] 2.7 `web/app.js` — `LR_BOXES_3` / `LR_ARROWS_3` rebuilt.  `node --check`
+      passes.  **Rendered and inspected twice**; see the note below.
+- [x] 2.8 **VERIFIED.**  Snapshot diff **0 differences** — all sixteen
+      topology-7 and topology-5 prompts still byte-identical to the §8.1
+      baseline.  Eight suites pass; `pyflakes` still 20, the same set.
+      Behavioural checks through `bootstrap.install()`: `AGENT_SPEC` and the
+      queue union both grew 10 → 12 and remain equal; both keys present in all
+      eight registries that need them and in `ROUTING_TOOL_NAMES`; `AgentState`
+      accepts both; the full model-resolution table for topologies 7 / 5 / 3
+      printed and checked, with topology 7's Planner still `gpt-5-mini` and
+      topology 5's still `gpt-5.4-mini`; the topology-3 pipeline string names
+      the Receptionist at both ends and no retired agent; all four new caps
+      resolve, `MAX_PLANNER5_*` unmoved, all three deleted caps confirmed gone.
+
+**Two decisions inside 2.3 worth keeping.**
+
+*The two new keys DO get base `DEFAULT_PER_AGENT_MODELS` entries*, which looks
+like a violation of D7's "overlay, never the shared dict".  It is not: that rule
+protects agents topologies 7 and 5 also build.  These keys exist ONLY under
+topology 3, so a base entry cannot move anything — while its absence would drop
+them to `FALLBACK_MODEL` in every consumer that iterates ALL agent keys
+(`llm_routing`, the loader's startup banner).  The `[3]` overlay is still
+written in FULL, like topology 5's, so the table is the whole truth for the
+topology rather than a diff the reader must compute; exactly one entry differs
+from base — `planner` `gpt-5-mini` → `gpt-5.4-mini`.
+
+*`ocr_access` gets the Requirements Analyst and NOT the Design Engineer.*  The
+RA merges the UII and the DCOI, both image-tool binders.  The DE merges the DC
+Input Creator and the Tool Caller, neither of which binds one — so a flag for
+it would be the same dead switch that tuple's own comments record dropping
+twice before.
+
+**`dc_primer._TEXT_NAME_BY_AGENT` deliberately did NOT get its row.**  Unlike
+every other table here it gates a FILE READ, and the Requirements Analyst's
+primer text does not exist until Stage 4.  Adding the row now would point at a
+missing shared path.  Same "land the data before the resolver" rule as the DH
+schedule; it moves to Stage 4.
+
+**The chart was rendered twice, and the first render did not count.**  The
+first mock wrapped long labels onto two lines.  The production renderer
+(`app.js:2217-2226`) does no such thing — it emits a SINGLE unwrapped `<text>`
+at `y + 22`, 12 px, white on `#2c6cb7`, and SVG text does not clip, so an
+over-long label spills outside its box.  Re-rendered faithfully against the real
+fill colours, font sizes and baselines, and every label measured: "Requirements
+Analyst" is 116 px in a 140 px box — the longest in the chart, and exactly the
+same character count as the "User Input Inspector" already shipping in a 140 px
+box in topologies 5 and 7.  Nothing overflows; no line crosses a box.
+
+**The Design Engineer sits on the RIGHT deliberately.**  It absorbed the Tool
+Caller, so it is the box the two tool diagonals leave from; with it on the left
+both lines would cross straight through the Requirements Analyst.  Those two
+diagonals are also NEW — the old 3-agent chart drew none at all, the same
+omission the topology-5 rebuild had to repair in `LR_ARROWS_5`.
+
+**O7, partially closed.**  The residue in files this stage already opened was
+swept: `editor.py`'s `CHAIN_ACCESS` inert-reason and `settings.py` §27's
+topology help text (**both user-visible** — and §27 still described the DELETED
+Conductor/Creator 5-agent system while offering topology 3 as a valid value),
+`settings.py` §21's primer roster, `dc_primer.py`'s module docstring,
+`web/app.js`'s per-agent `.env` note, and `topology.topology()`'s `"""(7 or
+5)"""`.  What remains is only in files no stage has needed yet.
 
 ### Stage 3 — DH schedule  (D8)
 

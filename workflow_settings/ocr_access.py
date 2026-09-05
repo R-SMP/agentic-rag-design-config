@@ -82,6 +82,12 @@ DEFAULT_AGENTS: tuple[str, ...] = (
     # 5-agent topology introduces no new entry: it is the 7-agent set
     # minus the Orchestrator and minus the DCII, and neither of those
     # binds an image tool anyway.
+    # 3-agent topology: ONLY the Requirements Analyst.  It merges the UII
+    # and the DCOI, both image-tool binders.  The Design Engineer is
+    # deliberately absent -- it merges the DC Input Creator and the Tool
+    # Caller, neither of which binds an image tool, so a flag for it
+    # would be the same dead switch dropped twice above.
+    "requirements_analyst",
 )
 
 # Default per-agent value when the JSON file is missing or doesn't

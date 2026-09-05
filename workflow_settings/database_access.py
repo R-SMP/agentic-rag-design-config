@@ -97,6 +97,9 @@ DEFAULT_AGENTS: tuple[str, ...] = (
     "dc_output_inspector",
     "tool_caller",
     # 5-agent topology (superset across topologies)
+    # 3-agent topology
+    "design_engineer",
+    "requirements_analyst",
 )
 
 # Default value for any (profile, agent, tool) the JSON file does not

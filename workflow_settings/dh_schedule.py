@@ -133,6 +133,9 @@ AGENT_KEYS: list[str] = [
     # stays a cross-topology SUPERSET because it VALIDATES schedule entries
     # (``from_agent`` and each target); a topology that does not build an
     # agent simply never produces an entry naming it.
+    # 3-agent topology.
+    "design_engineer",
+    "requirements_analyst",
 ]
 
 # Short labels (the same as the LOG-and-Status chart uses on its boxes).
@@ -149,6 +152,11 @@ AGENT_SHORT_LABELS: dict[str, str] = {
     "tool_caller":          "TC",
     "database_handler":     "DH",
     "context_pruner":       "CP",
+    # 3-agent topology — without these the To-column popover would fall
+    # back to the raw underscored keys for the two agents a 3-agent run
+    # actually uses.
+    "design_engineer":      "DEng",
+    "requirements_analyst": "RA",
 }
 
 # Valid enum values.

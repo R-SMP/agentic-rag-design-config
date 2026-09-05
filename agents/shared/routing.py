@@ -43,10 +43,15 @@ _PIPELINE_BY_TOPOLOGY = {
         "Planner → User Input Inspector → Planner → DC Input Creator → "
         "Tool Caller → DC Output Inspector → Planner"
     ),
-    # 3-agent (strip-down).  Starts and ends at the hub, like the
-    # 7-agent string and unlike the 5-agent one: there is no UII here,
-    # so the Receptionist hands to the HUB rather than into the chain.
-    3: "Architect → Designer → DC Output Inspector → Architect",
+    # 3-agent.  The ONLY string that names the Receptionist, at both
+    # ends, on the owner's instruction: with just three working agents it
+    # genuinely is the sole door in and the composer out, and omitting it
+    # understates the flow.  The shape difference from topologies 7 and 5
+    # is deliberate, not an inconsistency to "correct" later.
+    3: (
+        "Receptionist → Planner → Requirements Analyst → Planner → "
+        "Design Engineer → Requirements Analyst → Planner → Receptionist"
+    ),
 }
 
 

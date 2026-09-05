@@ -44,7 +44,7 @@ _DEFAULT_HUB = _HUB_BY_TOPOLOGY[7]
 
 
 def topology() -> int:
-    """The active agent topology (7 or 5)."""
+    """The active agent topology (7, 5 or 3)."""
     return int(getattr(_workflow_settings, "SYSTEM_TOPOLOGY", 7))
 
 

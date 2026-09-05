@@ -173,6 +173,12 @@ AGENT_DISPLAY: dict[str, str] = {
     "dc_output_inspector":  "DC Output Inspector",
     "orchestrator":         "Orchestrator",
     "receptionist":         "Receptionist",
+    # 3-agent topology.  Two merges, each under its own NEW key so the
+    # ``call_<key>`` tool name the models see matches the display name --
+    # a mismatch there is agent-facing text and mis-routes.  The hub is
+    # the PLANNER, already above, so it needs no row.
+    "design_engineer":      "Design Engineer",
+    "requirements_analyst": "Requirements Analyst",
     # NOTE this table is the identity registry: ``ROUTING_TOOL_NAMES`` below
     # and ``session.KNOWN_AGENT_KEYS`` both derive from it, and
     # ``AgentState`` validates against it.  Nothing iterates it to BUILD
@@ -262,6 +268,21 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "free-form prose.  Use this when the natural pipeline has "
         "completed, when you cannot proceed, or when the Orchestrator's "
         "incoming instruction told you to report back."
+    ),
+    "call_design_engineer": (
+        "Call the Design Engineer.  The ``message`` argument IS the "
+        "hand-off text it will see — write it as free-form prose.  It "
+        "authors the complete parameter set AND runs the generation / "
+        "render tools itself, so state the qualitative direction you "
+        "want rather than concrete numbers."
+    ),
+    "call_requirements_analyst": (
+        "Call the Requirements Analyst.  The ``message`` argument IS "
+        "the hand-off text it will see — write it as free-form prose.  "
+        "It owns the requirements at both ends: it derives them from "
+        "the user's material and judges the output against them, so "
+        "include the full paths of any rendered images it should "
+        "analyse, under a 'Render images:' label."
     ),
     "call_receptionist": (
         "Hand a user-facing result to the Receptionist, which composes "

@@ -143,7 +143,9 @@ AGENTS_BY_TOPOLOGY: "dict[int, list[tuple[str, str]]]" = {
     ],
     3: [
         ("receptionist",         "Receptionist"),
-        ("dc_output_inspector",  "Output Inspector"),
+        ("planner",              "Planner (hub)"),
+        ("design_engineer",      "Design Engineer"),
+        ("requirements_analyst", "Requirements Analyst"),
         ("context_pruner",       "Context Pruner"),
         ("database_handler",     "Database Handler"),
     ],
