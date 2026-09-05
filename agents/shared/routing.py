@@ -203,6 +203,22 @@ _ROUTING_SECTIONS_BY_AGENT: dict[str, tuple[str, ...]] = {
     "DC Input Inspector": ("fragment", "mandatory_tail"),
     "Tool Caller": ("fragment", "mandatory_tail"),
     "DC Output Inspector": ("fragment", "mandatory_tail"),
+    # 3-agent topology.  Each merged agent takes what its own fragment
+    # does NOT already say, which is the criterion this table encodes.
+    #
+    # The Design Engineer gets the tail: neither the DC Input Creator's
+    # fragment nor the Tool Caller's carries the mandate, exactly as
+    # their own rows above record.
+    #
+    # The Requirements Analyst does NOT, and that asymmetry is the whole
+    # point: the User Input Inspector's fragment carries the full
+    # ``### Routing is a tool call — MANDATORY`` section INSIDE itself --
+    # which is why the UII's row above is ("fragment",) alone -- so the
+    # merged fragment already states the mandate once.  Adding the tail
+    # would state it twice, and saying the same rule twice is the defect
+    # the 2026-08-25 run analysis traced three routing failures to.
+    "Design Engineer": ("fragment", "mandatory_tail"),
+    "Requirements Analyst": ("fragment",),
 }
 
 # Agents whose reduction is safe ONLY under PLANNER_FIRST=False.  Round 1
@@ -269,7 +285,7 @@ def _sections_for(agent_name: str) -> tuple[str, ...]:
     from agents.shared.prompts import PLANNER_FIRST
 
     topo = _topology.topology()
-    if topo not in (7, 5):
+    if topo not in (7, 5, 3):
         return _ROUTING_SECTIONS_DEFAULT
     # PLANNER_FIRST is a 7-agent-only axis.  Topology 5 always ships the
     # branch-COLLAPSED fragments, which carry the uii_first text -- i.e.

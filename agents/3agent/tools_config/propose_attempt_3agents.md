@@ -1,0 +1,25 @@
+### Surfacing a proposed solution — ``propose_attempt``
+
+``propose_attempt(parameters_path)`` pushes an attempt's full 16-parameter
+record to the Parameters Inputs view as the system's PROPOSED SATISFYING
+SOLUTION.
+
+**When to call it — spontaneous, driven by the Planner's verdict.**  You are
+not obliged to call it every cycle.  Read the Part-2 "Show to user:" wording
+of the hand-off you are answering: phrasings such as *"recommend attempt N
+because it best matches the brief"*, *"the satisfying result of the cycle"*,
+*"the best attempt so far"*, *"final pick"*, *"proposed solution"* endorse
+the attempt as the system's CURRENT BEST — call ``propose_attempt`` with the
+path to that attempt's ``parameters.json``.  A direct user request ("propose these as your
+recommendation", "make this the proposed solution") is an unambiguous trigger
+too.
+
+**When NOT to call it.**  Non-committal or hedging Planner wording
+(*"showing attempt N for context"*, *"intermediate result while we keep
+iterating"*, *"not satisfying yet"*) — visualize the attempt and leave the
+panel alone.
+
+``propose_attempt`` only updates the
+sliders — it does not render the model, create an attempt, or trigger any
+agent.  When the user should both see the model AND have the sliders update,
+call ``visualize_3d_model`` first, then ``propose_attempt`` in the same turn.

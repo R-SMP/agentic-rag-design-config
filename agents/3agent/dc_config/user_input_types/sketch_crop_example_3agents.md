@@ -1,0 +1,2 @@
+      - sections (the three airfoil profiles): [0.0, 0.72, 1.0, 1.0]
+      - top view (whole propeller planform): [0.0, 0.0, 1.0, 0.62]

@@ -523,15 +523,58 @@ topology-3 case runs at full strength.
 
 ### Stage 4 — Prompt tree fork  (D5, D13)
 
-- [ ] 4.1 Fork 82 files into `agents/3agent/`: 40 shared + 3 unchanged agent
-      prompts + 24 renamed scoped + 13 merged scoped + 2 merged prompts.
-- [ ] 4.2 The 15 merge targets land as **banner-marked scaffolds** (D13).
-- [ ] 4.3 `routing._sections_for` opened to topology 3 — currently
-      `topo not in (7, 5)`, so topology 3 gets the FULL historic routing
-      section set, roughly +3 700 characters per agent.  Without this,
-      "identical to topology 5" is false by ~15 000 characters.
-- [ ] 4.4 VERIFY: 7 and 5 byte-identical; the MIRROR invariant shows topology 3
-      reading ZERO shared prompt files.
+- [x] 4.1 **Forked 97 → 82 files** into `agents/3agent/`: 40 shared + 3
+      unchanged agent prompts + 24 renamed scoped + 13 merged scoped + 2 merged
+      prompts.  Done in BYTES throughout — the source tree is CRLF and both
+      parents of every merge already are, so appending them verbatim cannot
+      produce the `\r\r\n` that makes git stop normalising a file.  Verified:
+      0 files with `\r\r\n`, 0 with a bare LF.
+- [x] 4.2 The 15 merge targets carry a **`SCAFFOLD - NOT THE FINAL TEXT`
+      banner** naming both parents, plus a `SCAFFOLD JOIN` line at the seam.
+      Both strings are greppable, so Stage 9 can enumerate what is still
+      provisional rather than relying on memory.
+- [x] 4.3 `routing._sections_for` opened to topology 3 — **and the table it
+      guards needed two new rows, which the plan had missed.**  Opening the
+      gate alone would not have worked: `_ROUTING_SECTIONS_BY_AGENT` is keyed
+      by DISPLAY name, and "Design Engineer" / "Requirements Analyst" are not
+      in it, so both merged agents would have fallen through to
+      `_ROUTING_SECTIONS_DEFAULT` — the full historic set, ~3 700 characters
+      each — exactly the outcome the step exists to prevent.
+- [x] 4.4 `dc_primer._TEXT_NAME_BY_AGENT` gained its `requirements_analyst`
+      row, deferred from Stage 2 until the file it points at existed.
+- [x] 4.5 **VERIFIED.**  Snapshot diff 0 differences.  All five topology-3
+      agents assemble, and **every one reads ZERO files from either shared
+      prompt tree** — the MIRROR invariant, checked by instrumenting
+      `Path.read_text` around each `_build_template` call in a subprocess per
+      topology.  The three carried-over agents are **byte-identical to
+      topology 5's**: planner `d8c14a62a81f` 23 765, receptionist
+      `370c1cc62d5b` 15 978, database_handler `54c27087079d` 22 338.  Eight
+      suites pass; `pyflakes` still 20.
+
+**The `mandatory_tail` asymmetry is deliberate and load-bearing.**  The Design
+Engineer gets `("fragment", "mandatory_tail")`; the Requirements Analyst gets
+`("fragment",)` alone.  The reason is a fact about the source fragments, not a
+preference: `routing_user_input_inspector_5agents.md` carries the whole
+`### Routing is a tool call — MANDATORY` section INSIDE itself — which is why
+the UII's own row is `("fragment",)` — so the merged RA fragment already states
+the mandate once, and adding the tail would state it twice.  Neither the DC
+Input Creator's fragment nor the Tool Caller's carries it, so the DE needs it.
+Saying the same routing rule twice is not harmless: the ID252-262 analysis
+traced all three routing failures to agents carrying the mandate three times.
+
+**A scaffold is ~40 % larger than the union will be, by construction.**  Design
+Engineer 43 722 chars, Requirements Analyst 41 771 — against parents of
+22 466 + 8 268 and 12 571 + 17 241.  The excess is not content: concatenating
+two `prompt.md` files makes `_build_template` splice every shared `$slot`
+TWICE.  Stage 9 collapsing the duplicates is most of where that goes.
+
+**Known-pending, and expected:** the topology-3 scaffolds name tools nothing in
+topology 3 binds — `call_tool_caller`, `call_dc_input_creator`,
+`call_planner`'s neighbours — because the fragments are verbatim topology-5
+text.  `smoke_test_prompt_tool_audit` does not see this yet (it covers only the
+topologies with a `dump*.json`); topology 3 joins it at Stage 7.3, where these
+become named known-pending entries exactly as topology 5's
+`call_orchestrator` ones did.
 
 ### Stage 5 — The two agent classes
 
@@ -698,6 +741,24 @@ it can never later be attributed to it.
 | `smoke_test_dc_primer` | **PASS** |
 | `smoke_test_llm_routing` | **FAIL — environmental.**  `ModuleNotFoundError: No module named 'trimesh'` at import. |
 | `smoke_test_prompt_format` | **FAIL — environmental.**  Same missing module. |
+| `smoke_test_database_handler` | **FAIL — environmental.**  Same missing module.  *(Added 2026-09-05: not run at Stage 0.)* |
+| `smoke_test_prompt_toggles` | **FAIL — pre-existing, and NOT environmental.**  *(Added 2026-09-05: not run at Stage 0.)*  See below. |
+
+> **Correction to this baseline.**  The Stage-0 sweep did not run every suite in
+> `extra_utilities/`, so two failures surfaced later and had to be attributed
+> after the fact rather than being on record from the start.  Both were proved
+> pre-existing by re-running them in a throwaway worktree checked out at the
+> commit BEFORE the stage that found them, with `agents/3agent/` absent —
+> which is the only honest way to settle "was this mine?", and is cheaper than
+> the argument.
+>
+> `smoke_test_prompt_toggles` is the interesting one: it fails on *"neither
+> position adds a blank-line run"*, and the run it finds is a 4-newline
+> sequence in the **topology-7** User Input Inspector prompt that is present in
+> BOTH toggle positions.  So the check's label mis-attributes it — the residue
+> exists independently of the toggle it is blaming, in the SHARED tree, in the
+> live 7-agent system.  Out of scope for this rebuild; recorded because it is a
+> real defect in production text and nothing else is tracking it.
 | `pyflakes agents/ workflow_settings/ web_app.py extra_utilities/*.py` | 20 warnings, every one in a file this work has not touched |
 
 ---

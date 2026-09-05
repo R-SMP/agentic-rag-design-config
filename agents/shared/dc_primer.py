@@ -75,6 +75,13 @@ IMAGE_PATH = _DC_CONFIG_DIR / "images" / "dc_params_primer.png"
 # not close it.
 _TEXT_NAME_BY_AGENT = {
     "user_input_inspector": "dc_params_primer_text_user_input_inspector.txt",
+    # 3-agent: the Requirements Analyst absorbs the UII, so it inherits
+    # the UII's variant text.  Registered only once the file exists --
+    # this table resolves to a PATH, so a row added before its file is
+    # forked points at a missing shared original.  The Design Engineer
+    # needs no row: of its two parents only the DC Input Creator receives
+    # the primer, and it takes the default text.
+    "requirements_analyst": "dc_params_primer_text_requirements_analyst.txt",
 }
 
 _TEXT_NAME_DEFAULT = "dc_params_primer_text.txt"

@@ -1,0 +1,5 @@
+- "thick blades"           → thickness toward upper end of range
+- "aggressive angle"       → angle of attack toward upper end
+- "slim profile"           → low thickness percentage
+- "large propeller"        → impellerRadius toward 80 mm
+- "blades closer to center"→ middlePos toward 0.3
