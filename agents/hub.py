@@ -28,22 +28,18 @@ def hub_class():
     topology to a hub.
 
     The hub classes are imported lazily so that selecting one topology
-    never imports the other's agent modules — the 7-agent Orchestrator
-    pulls in the Planner and both DC inspectors, while the 5-agent Planner5
-    pulls in neither of those two, and neither topology should pay for the
-    other.
+    never imports another's agent modules — the 7-agent Orchestrator pulls
+    in the Planner and both DC inspectors, Planner5 pulls in neither, and
+    Planner3 pulls in neither of those but does pull in the two merged
+    agents that exist only under topology 3.  No topology should pay for
+    another's imports.
     """
     if topology() == 5:
         from agents.planner5 import Planner5
         return Planner5
     if topology() == 3:
-        raise NotImplementedError(
-            "SYSTEM_TOPOLOGY = 3 is being rebuilt and has no hub class "
-            "yet.  Selecting it MUST fail loudly: falling through to the "
-            "Orchestrator would silently run the 7-agent set under a "
-            "3-agent label, which is the quietest failure this registry "
-            "has.  See docs/active/topology3_rebuild_plan.md."
-        )
+        from agents.planner3 import Planner3
+        return Planner3
     from agents.orchestrator import Orchestrator
     return Orchestrator
 

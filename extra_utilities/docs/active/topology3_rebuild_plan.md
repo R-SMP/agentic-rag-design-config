@@ -636,27 +636,59 @@ topology-5 scaffolds.  This is the same class topology 5 carried as
 
 ### Stage 6 — The hub class  (D2)
 
-- [ ] 6.1 `agents/planner3/planner3.py` — starts as a byte-for-byte copy of
-      `agents/planner5/planner5.py`, then re-pointed.  Plus its own
-      `role4_feedback_instructions.md` (the path is `__file__`-relative).
-- [ ] 6.2 `_agents_by_key` = FOUR entries: `self.AGENT_KEY -> self`,
-      `design_engineer`, `requirements_analyst`, `receptionist`.
-- [ ] 6.3 `_wire_routing` for the §1.2 edge set.  No branches.
-- [ ] 6.4 `_DIRECTIVE_CARRIERS` = `{design_engineer, requirements_analyst}`.
-      The hub is the directive's AUTHOR and is excluded.
-- [ ] 6.5 **Re-key the precision-round counter.**  `planner5.py:724` reads
-      `if hop.target == "dc_output_inspector" and …: precision_rounds += 1`.
-      Under topology 3 that key is never built, so ported unchanged the guard
-      never fires, `precision_rounds` stays 0 forever, and the entire precision
-      section-matching loop vanishes with **no error and no log line**.  It
-      must become `"requirements_analyst"`, and it gets a mutation test.
-- [ ] 6.6 `_AGENT_KEY_ALIASES`, `reset()`, `dump_histories()` (4-tuple) and
-      `_surface_limit_to_user()` re-pointed — the last reads
-      `self.dc_output_inspector` and `self.tool_caller` today.
-- [ ] 6.7 `agents/hub.py` topology-3 branch → `Planner3`;
-      `llm_routing` `wired_into_dispatcher` → `True`.
-- [ ] 6.8 VERIFY: `smoke_test_hub_attributes` (edge set asserted from source
-      with `ast`, not from a comment); 7 and 5 byte-identical.
+- [x] 6.1 `agents/planner3/planner3.py`, **25 scripted anchor replacements**
+      over a byte-for-byte copy of `planner5.py`.  Every replacement asserts
+      its anchor matches exactly once, so a drifted source fails loudly rather
+      than silently skipping an edit — which it did, three times, on anchors
+      transcribed from memory instead of from the file.  Plus its own
+      `role4_feedback_instructions.md` (`Path(__file__).parent`-relative).
+- [x] 6.2 `_agents_by_key` = FOUR entries.
+- [x] 6.3 `_wire_routing` for the §1.2 edge set.  No branches.  **8 edges
+      wired**, read back out of the source with `ast`.
+- [x] 6.4 `_DIRECTIVE_CARRIERS` = `{design_engineer, requirements_analyst}`.
+- [x] 6.5 **Precision counter re-keyed to `"requirements_analyst"`** —
+      the item most likely to have been missed, and silent if it had been.
+- [x] 6.6 `_AGENT_KEY_ALIASES`, `reset()`, `dump_histories()` (4-tuple) and
+      `_surface_limit_to_user()` re-pointed.
+- [x] 6.7 `agents/hub.py` topology-3 branch → `Planner3` (the Stage-1
+      `NotImplementedError` removed); `llm_routing` `wired_into_dispatcher`
+      → `True` for both merged agents.
+- [x] 6.8 **VERIFIED.**  Topology 3 assembles for the first time in this
+      rebuild: `built=5 unavailable=0`.  Topologies 7 and 5: **16 agents
+      byte-identical, 0 moved.**  Eight suites pass; `pyflakes` still 20.
+
+**What 6.5 actually prevents.**  `planner5.py` counts a refine round with
+`if hop.target == "dc_output_inspector" and self.session.standing_directives`.
+That key does not exist in topology 3.  Ported unchanged the guard never
+matches, `precision_rounds` stays 0 for the whole session,
+`MAX_SECTIONS_REFINE_ROUNDS` never fires, and the precision section-matching
+loop runs to `MAX_DISPATCH_HOPS` with no cap, no error and no log line — a
+happy-path run would look fine.  It is the same failure that hit standing
+directives during the 5-agent build, where the test was keyed on `"planner"`
+and the issuer was the Conductor.  Both halves now carry a comment saying why
+the key is what it is.
+
+**The `_AGENT_KEY_ALIASES` table keeps the merged-away names**, mapped onto
+whichever agent absorbed them — `uii`/`dcoi` → `requirements_analyst`,
+`dcic`/`tool caller` → `design_engineer`, `orchestrator` → `planner`.  A
+prompt, a log line or a user carried over from topology 5 or 7 asking
+`read_agent_history("DCIC")` gets an answer instead of "unknown agent", which
+costs a burned step.
+
+**`smoke_test_hub_attributes` gained a Planner3 row and both halves were
+mutation-tested.**  Deleting the Requirements Analyst → Design Engineer edge
+fails the edge check; adding a `self.tool_caller.reset()` call fails the
+attribute check with `! self.tool_caller -> reset`, reproducing exactly the
+defect that shipped in the retired Architect — it called three agents its
+topology never built, and `pyflakes` and the narrow version of this check both
+passed it.  File restored and hash-checked afterwards.
+
+**The DH check upgraded itself.**  `smoke_test_dh_batching`'s F19d roster test
+fell back to the DECLARED queue roster at Stage 3 while `planner3.py` did not
+exist, printing a `PENDING` line.  Now that `hub_registry.built_here()` parses
+the class's own `_agents_by_key` literal, the topology-3 case runs at full
+strength with no code change: `['design_engineer', 'planner', 'receptionist',
+'requirements_analyst']`.
 
 ### Stage 7 — Verification harness  (D9)
 

@@ -74,12 +74,11 @@ AGENT_SPEC: list[tuple[str, str, bool]] = [
     # 5-agent topology.  Constructed by ``agents/hub.py:build_hub`` when
     # SYSTEM_TOPOLOGY is 5, so they are wired like any other agent —
     # a 5-agent run routes through them and nothing else.
-    # 3-agent topology.  ``wired_into_dispatcher`` stays False until the
-    # Planner3 hub actually constructs them (rebuild plan Stage 6);
-    # ``context_pruner`` above is the precedent for a registered but
-    # unwired row.
-    ("design_engineer",       "Design Engineer",       False),
-    ("requirements_analyst",  "Requirements Analyst",  False),
+    # 3-agent topology.  Constructed by ``agents/hub.py:build_hub`` when
+    # SYSTEM_TOPOLOGY is 3, so they are wired like any other agent —
+    # a 3-agent run routes through them and nothing else.
+    ("design_engineer",       "Design Engineer",       True),
+    ("requirements_analyst",  "Requirements Analyst",  True),
 ]
 AGENT_KEYS = [k for k, _, _ in AGENT_SPEC]
 

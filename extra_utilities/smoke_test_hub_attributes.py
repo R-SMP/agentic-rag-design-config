@@ -35,6 +35,7 @@ REPO = pathlib.Path(__file__).resolve().parents[1]
 HUBS = {
     "agents/orchestrator/orchestrator.py": "Orchestrator",
     "agents/planner5/planner5.py": "Planner5",
+    "agents/planner3/planner3.py": "Planner3",
 }
 
 # Attributes that are NOT sub-agents: assigned in __init__ but not agents, or
@@ -103,6 +104,24 @@ EXPECTED_EDGES = {
         ("planner", "user_input_inspector"),
         ("planner", "dc_input_creator"),
         ("planner", "dc_output_inspector"),
+        ("planner", "receptionist"),
+    },
+    # Owner-confirmed 2026-09-05.  EIGHT edges.  Two things differ from
+    # Planner5 and both follow from the merges: there is no Tool Caller for
+    # the hub to avoid an edge to, and the Design Engineer CAN reach the hub
+    # -- topology 5's Tool Caller could not, and merging it into the DC
+    # Input Creator, which could, hands that back.
+    #
+    # design_engineer <-> requirements_analyst is the refine loop.  The
+    # Planner is deliberately NOT in it.
+    "Planner3": {
+        ("receptionist", "planner"),
+        ("design_engineer", "requirements_analyst"),
+        ("design_engineer", "planner"),
+        ("requirements_analyst", "design_engineer"),
+        ("requirements_analyst", "planner"),
+        ("planner", "design_engineer"),
+        ("planner", "requirements_analyst"),
         ("planner", "receptionist"),
     },
 }
