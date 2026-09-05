@@ -1017,67 +1017,6 @@ MAX_DISPATCH_HOPS: int = 400
 # Valid values: positive int.
 MAX_SECTIONS_REFINE_ROUNDS: int = 12
 
-# MAX_ARCHITECT_STEPS - LLM turns allowed inside ONE Architect.run()
-# invocation (3-agent topology).
-#
-# The Architect merges THREE agents: the UII (perceive - reads images,
-# runs OCR, writes the extraction), the Planner (plan) and the
-# Orchestrator (route/approve).  Its first turn of a design job is the
-# expensive one: image reads dominate, and in a live 5-agent run the
-# UII alone took 10 LLM calls on a three-image task.  Set above the
-# Conductor's 20 to cover that perception pass on top of planning.
-#
-# Valid values: positive int.
-MAX_ARCHITECT_STEPS: int = 60
-
-# MAX_ARCHITECT_VISITS - how many times the dispatcher may RE-ENTER the
-# Architect during a single user turn (3-agent topology).
-#
-# The MAX_PLANNER5_VISITS analogue.  Same value: absorbing perception
-# adds work INSIDE one visit rather than adding visits - the extraction
-# is written once per turn, not once per cycle.
-#
-# Valid values: positive int.
-MAX_ARCHITECT_VISITS: int = 150
-
-# MAX_DESIGNER_STEPS - LLM turns allowed inside ONE Designer.run()
-# invocation (3-agent topology).
-#
-# The Designer merges the DC Input Creator (author) and the Tool Caller
-# (generate + render), and DROPS validation entirely - that is the
-# strip-down.  So it needs the DCIC's authoring budget plus the Tool
-# Caller's tool calls, but NOT the Creator's self-validation pass.
-# Hence a smaller budget than a create-plus-validate agent would need,
-# despite merging one more agent.
-#
-# Valid values: positive int.
-MAX_DESIGNER_STEPS: int = 85
-
-# MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT - how many consecutive
-# Designer <-> Critic rounds may run before the dispatcher FORCES the next
-# hop to the Architect (3-agent topology only).
-#
-# In the 3-agent system the Critic refines directly with the Designer
-# rather than returning to the hub every round, so the brain is not in the
-# loop by default.  It is called for three things: an escalation, a
-# phase change (e.g. "the sections now match, move to full 3D"), and
-# periodically - to see what several rounds of refinement have actually
-# achieved.  The Critic's prompt tells it when a checkpoint is worthwhile;
-# this is the HARD BACKSTOP for when it does not, so the Architect can
-# never be shut out of a long loop by a model that keeps deciding to
-# iterate once more.
-#
-# Distinct from MAX_SECTIONS_REFINE_ROUNDS, which is unchanged and still
-# means the same thing in every topology: this is a REPORTING CADENCE,
-# that is the per-phase STOPPING CEILING.
-#
-# Default 3: run ID237's sections phase converged in 3 rounds, so a
-# checkpoint at 3 surfaces intermediate progress on anything slower than
-# that without interrupting a phase that is converging normally.
-#
-# Valid values: positive int.
-MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT: int = 3
-
 # ===========================================================
 # 29. Prompt caching (Anthropic only)
 # ===========================================================

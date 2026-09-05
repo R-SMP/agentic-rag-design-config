@@ -114,7 +114,6 @@ PRIMER_AGENT_KEYS = frozenset({
     "dc_input_creator",
     "dc_input_inspector",
     "dc_output_inspector",
-    "designer",      # 3-agent: absorbs the Creator
 })
 
 # Filled lazily; keys are (provider, text-file name), values the single

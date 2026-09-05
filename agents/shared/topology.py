@@ -30,9 +30,11 @@ from workflow_settings import settings as _workflow_settings
 _HUB_BY_TOPOLOGY = {
     7: ("orchestrator", "Orchestrator"),
     5: ("planner", "Planner"),
-    # 3-agent topology (strip-down).  The Architect merges the UII into
-    # the hub: perceive + plan + route + approve.
-    3: ("architect", "Architect"),
+    # 3-agent topology.  The hub is the PLANNER, exactly as in topology 5 —
+    # the merges are elsewhere (DC Input Creator + Tool Caller become the
+    # Design Engineer; User Input Inspector + DC Output Inspector become the
+    # Requirements Analyst), so the hub needs no identity row of its own.
+    3: ("planner", "Planner"),
 }
 
 # Fallback for an unrecognised SYSTEM_TOPOLOGY: behave as the 7-agent

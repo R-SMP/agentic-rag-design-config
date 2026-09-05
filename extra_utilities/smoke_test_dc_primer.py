@@ -265,9 +265,9 @@ check("flag back on WITHOUT restart -> message returns",
 # --- 5. injection sites ------------------------------------------------------
 # The Creator was retired on 2026-08-31 with the rest of the old 5-agent
 # topology; topology 5 now uses the DC Input Creator, already in this list.
-print("case 5 - all five agents splice it between system and history")
+print("case 5 - all four agents splice it between system and history")
 SIX = ("user_input_inspector", "dc_input_creator", "dc_input_inspector",
-       "dc_output_inspector", "designer")
+       "dc_output_inspector")
 PATTERN = ("[make_system_message(self.system_prompt, self.provider)] "
            "+ dc_primer_messages(self.provider, self.AGENT_KEY) "
            "+ self.messages,")

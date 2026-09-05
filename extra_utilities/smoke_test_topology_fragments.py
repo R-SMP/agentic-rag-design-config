@@ -605,25 +605,21 @@ class _SentinelPlanner5:
         self.which = "planner"
 
 
-class _SentinelArchitect:
-    def __init__(self, session=None, llm_cache=None):
-        self.which = "architect"
-
-
 _mo = types.ModuleType("agents.orchestrator")
 _mo.Orchestrator = _SentinelOrchestrator
 _mc = types.ModuleType("agents.planner5")
 _mc.Planner5 = _SentinelPlanner5
-_ma = types.ModuleType("agents.architect")
-_ma.Architect = _SentinelArchitect
 sys.modules["agents.orchestrator"] = _mo
 sys.modules["agents.planner5"] = _mc
-sys.modules["agents.architect"] = _ma
 
 from agents.hub import build_hub  # noqa: E402
 
+# Topology 3 is deliberately absent: while its hub class is being rebuilt
+# ``build_hub`` RAISES for it (agents/hub.py), which is the wanted
+# behaviour — a registered topology with no hub must fail loudly rather
+# than silently run the 7-agent set.  The row returns when Planner3 lands.
 for _topo, _expect in ((7, "orchestrator"), (5, "planner"),
-                       (3, "architect"), (99, "orchestrator")):
+                       (99, "orchestrator")):
     prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
     got = build_hub(session=None).which
     if got != _expect:
@@ -709,7 +705,7 @@ for _key, _disp in topology._HUB_BY_TOPOLOGY.values():
 #
 # The probe is deliberately a number NO topology uses.  It was 3 until the
 # 3-agent was registered in _HUB_BY_TOPOLOGY; from that moment topology 3
-# resolves $routing_hub to routing_architect.md and CRASHES until its
+# resolves $routing_hub to routing_planner.md and CRASHES until its
 # fragments exist — which is correct and wanted.  Selecting a registered
 # topology whose files are missing must fail loudly, never silently run the
 # 7-agent set.  Only a genuinely unknown N tests the fall-back path.

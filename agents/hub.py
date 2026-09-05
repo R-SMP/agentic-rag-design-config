@@ -37,8 +37,13 @@ def hub_class():
         from agents.planner5 import Planner5
         return Planner5
     if topology() == 3:
-        from agents.architect import Architect
-        return Architect
+        raise NotImplementedError(
+            "SYSTEM_TOPOLOGY = 3 is being rebuilt and has no hub class "
+            "yet.  Selecting it MUST fail loudly: falling through to the "
+            "Orchestrator would silently run the 7-agent set under a "
+            "3-agent label, which is the quietest failure this registry "
+            "has.  See docs/active/topology3_rebuild_plan.md."
+        )
     from agents.orchestrator import Orchestrator
     return Orchestrator
 

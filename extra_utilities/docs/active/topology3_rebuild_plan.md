@@ -149,6 +149,7 @@ later "corrected" as an inconsistency.
 | **O4** | A `"3"` profile in `database_access.json` mirroring `"7"`.  Moot while `RAG_ENABLED=False`, but without it every topology-3 agent gets all three RAG tools the moment the flag flips.  Same open item topology 5 carries as its O5. | Stage 8 |
 | **O5** | `history_tool.py` hard-codes an 8-agent roster in its description and `feedback_tool.py` a 7-agent allow-list.  Topology 5 fixed both with overlay entries (`READ_AGENT_HISTORY_DESCRIPTION`, `SUBMIT_FEEDBACK_DISPATCH_DOC`).  Topology 3 needs its own. | Stage 8 |
 | **O6** | End-of-session feedback distribution (Role 4) for topology 3.  Deferred, as it was in the 5-agent rebuild; not needed for the owner's current tests. | Deferred |
+| **O7** | **Comment residue from the retirement.**  Fourteen prose references to the Architect / Designer survive in files Stage 1 had no reason to edit, plus `topology.topology()`'s docstring still reading "(7 or 5)".  None affects behaviour.  ONE is user-visible: `editor.py`'s `_INERT_UNDER_TOPOLOGY` reason for `CHAIN_ACCESS` says "the Architect never had one", and that string is rendered in the Workflow Settings UI.  Sweep as one commit, or fold each into the stage that next touches its file? | Stage 2 |
 
 ---
 
@@ -224,6 +225,40 @@ Two conflicts are already known and will need a ruling at Stage 9:
 * the DCOI's comparison-source block tells it that a wrong extraction is "an
   upstream UII problem to surface"; merged, there is no upstream (O2).
 
+### 4.5 What the deleted `agents/designer/designer.py` was worth
+
+It was the only prior art for the DCIC + Tool Caller merge.  Read in full
+before deletion (Stage 1.1); five things survive it, for Stage 5.
+
+1. **`mesh_provenance_mismatches` (F75b) becomes moot.**  The Designer's
+   `write_parameters` had to refuse a write that would contradict a mesh
+   already sitting in the attempt folder — possible because `new_attempt` and
+   `write_parameters` were two calls with a gap between them.  The DCIC's
+   `new_attempt_parameters` creates the folder and writes into it in ONE call,
+   so no pre-existing mesh can be there.  The guard disappears by
+   construction.  This is the argument for O1's "keep the DCIC's tool".
+2. **The Design Engineer needs no `read_parameters`.**  The Designer carried a
+   local copy because round 2 of the prompt reduction removed it from the
+   7-agent Tool Caller.  The DE writes `parameters.json` itself, in the same
+   invocation it then generates from, so reading it back is a round-trip to
+   learn what it just did.
+3. **`render_check_block` must be read at WIRING time.**  Not from the
+   module-level `RENDER_CHECK_LIBRARY_*` constants: those resolve at
+   prompts-import and would pin the fragment to whatever `SYSTEM_TOPOLOGY` was
+   on disk when the process started — and the Sessions Queue switches topology
+   between runs inside one process.
+4. **Keep `on_operation_end` even though it is a no-op.**  The DE binds no
+   image tools, so there is never an image block to strip; the hook stays so
+   the dispatcher's per-hop contract holds for every agent, and so it behaves
+   correctly if image tools are ever added.
+5. **The file was STALE, which is why the run loop is not copied from it.**  It
+   predates the one-shot routing retry entirely (no `begin_routing_retry` /
+   `finish_routing_retry`), it hard-codes `AgentHop("architect", …)` where
+   every live agent now calls `topology.hub_key()`, and it still logged
+   `[CREATOR]` in two places — the copy-paste failure mode this build has to
+   avoid.  The DE's run loop comes from the CURRENT `dc_input_creator.py` and
+   `tool_caller.py`, per D1.
+
 ---
 
 ## 5. The prompt-merge procedure (owner's, verbatim)
@@ -270,13 +305,15 @@ with the snapshot diff of §7 proving topologies 7 and 5 have not moved.
       on this work.
 - [x] 0.4 `git status` clean before the stage.
 
-### Stage 1 — Retire the abandoned scaffolding  (D4)
+### Stage 1 — Retire the abandoned scaffolding  (D4)  — **DONE 2026-09-05**
 
-- [ ] 1.1 Delete `agents/architect/` (2 files, 1 193 lines) and
-      `agents/designer/` (2 files, 634 lines).  Read `designer.py` for intent
-      first — it is the only prior art for the DCIC+TC merge — and record
-      anything worth carrying in §4 before deleting.
-- [ ] 1.2 Strip the `architect` / `designer` rows from every registry:
+33 scripted edits across 20 files plus 2 package deletions; 24 files changed,
++50 / −2 035.
+
+- [x] 1.1 Deleted `agents/architect/` (2 files, 1 193 lines) and
+      `agents/designer/` (2 files, 634 lines).  `designer.py` was read in full
+      first and the five things worth carrying are recorded in §4.5.
+- [x] 1.2 Stripped the `architect` / `designer` rows from every registry:
       `routing_tools.AGENT_DISPLAY` + `_TOOL_DESCRIPTIONS` (both
       `call_architect` and `call_designer`), `trace._AGENT_DISPLAY_NAMES`,
       `base_chain_agent._PRUNE_DISPLAY_NAMES`,
@@ -288,12 +325,63 @@ with the snapshot diff of §7 proving topologies 7 and 5 have not moved.
       `sessions_queue.AGENTS_BY_TOPOLOGY[3]`,
       `orchestrator._AGENT_KEY_ALIASES`, and the
       `smoke_test_topology_fragments` FACTORY sentinel.
-- [ ] 1.3 Delete `MAX_ARCHITECT_STEPS`, `MAX_ARCHITECT_VISITS`,
-      `MAX_DESIGNER_STEPS` and `MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT` from
-      `settings.py` §28 and `agents/step_caps.py`.
-- [ ] 1.4 `session.RETIRED_AGENT_KEYS` += `architect`, `designer`.
-- [ ] 1.5 `agents/hub.py` — the topology-3 branch stops importing `Architect`.
-- [ ] 1.6 VERIFY: topologies 7 and 5 byte-identical; suite unchanged from §8.2.
+- [x] 1.3 Deleted `MAX_ARCHITECT_STEPS` (60), `MAX_ARCHITECT_VISITS` (150),
+      `MAX_DESIGNER_STEPS` (85) and `MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT`
+      (3) from `settings.py` §28 (−61) and `agents/step_caps.py` (−30).  This
+      also cleared a pre-existing defect: `step_caps.py` held an ORPHANED
+      docstring — the string written for `MAX_DESIGNER_STEPS` sat after
+      `MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT`'s own docstring, documenting
+      nothing.
+- [x] 1.4 `session.RETIRED_AGENT_KEYS` += `architect`, `designer`, with the
+      retirement recorded beside the Conductor / Creator one.
+- [x] 1.5 **`agents/hub.py` RAISES for topology 3** rather than losing the
+      branch.  Deleting it would have made `build_hub` return the
+      Orchestrator, i.e. silently run the 7-agent set under a 3-agent label —
+      runbook row 15, and the exact thing the DEGRADE test's own comment
+      forbids.  The raise is removed at Stage 6.
+- [x] 1.6 **`topology._HUB_BY_TOPOLOGY[3]` → `("planner", "Planner")` moved
+      into this stage** (it was filed as 2.4).  It cannot wait: the suite's
+      TABLES check asserts every `_HUB_BY_TOPOLOGY` display name equals its
+      `AGENT_DISPLAY` entry, so deleting the `architect` row from one and not
+      the other turns the suite red.  Net effect on topology 3 is nil — it
+      still raises `FileNotFoundError`, now on `routing_planner.md` instead of
+      `routing_architect.md`.
+- [x] 1.7 Two suites that named the deleted agents, fixed in the same commit:
+      `smoke_test_dc_primer`'s case-5 tuple (it READS
+      `agents/designer/designer.py` from disk, so the deletion would have
+      crashed it) and `smoke_test_topology_fragments`'s `_SentinelArchitect`,
+      its `agents.architect` stub module and its `(3, "architect")` FACTORY
+      row.
+- [x] 1.8 **VERIFIED.**  Snapshot diff: **0 differences** — all nine
+      topology-7 and all seven topology-5 full prompts byte-identical to the
+      §8.1 baseline.  All eight runnable suites pass, unchanged from §8.2.
+      `pyflakes`: 20 warnings, the same set as the baseline, every one in a
+      file this stage did not touch.  No `\r\r\n` in any edited file.
+      Behavioural checks the offline suite cannot cover, run through
+      `bootstrap.install()`: `llm_routing.AGENT_KEYS` and
+      `sessions_queue._all_agent_keys()` both shrank 12 → 10 and remain equal
+      (`smoke_test_llm_routing`'s assertion, which cannot run here for want of
+      `trimesh`); all four retired keys still load as inert `AgentState`s while
+      an unknown key is still rejected; and `hub_class()` returns
+      `Orchestrator` under 7, `Planner5` under 5, and raises under 3.
+
+**Deliberately left standing, and why.**  `routing._PIPELINE_BY_TOPOLOGY[3]`
+still reads `Architect → Designer → DC Output Inspector → Architect`, and
+`web/app.js`'s `LR_BOXES_3` / `LR_ARROWS_3` still draw an Architect and a
+Designer.  Both are rewritten wholesale at Stage 2 (2.6 and 2.7) rather than
+deleted here and re-added there — `LR_ARROWS_3` in particular is hand-derived
+coordinate pairs, and touching that block twice invites an error.  Both are
+inert: topology 3 cannot be constructed at all until Stage 6.
+
+**Comment residue — a separate sweep.**  Fourteen prose references to the
+Architect / Designer survive in files this stage had no reason to edit
+(`feedback_tool.py`, `receptionist.py`, `dc_primer.py` module docstring,
+`hub_format.py`, `user_inputs_tool.py` ×2, `user_queries_tool.py`,
+`editor.py`, `settings.py` §21, `hub_registry.py`, `smoke_test_hub_attributes`,
+`smoke_test_orchestrator`, `generate_mesh.py` ×2, `web/app.js:2443`), plus
+`topology.topology()`'s docstring still saying "(7 or 5)".  None affects
+behaviour; one — `editor.py`'s CHAIN_ACCESS inert-reason string — is
+user-visible in the Workflow Settings UI.  Tracked as **O7**.
 
 ### Stage 2 — Register the new roster  (runbook Stage A: additive)
 

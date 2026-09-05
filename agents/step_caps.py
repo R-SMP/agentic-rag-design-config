@@ -140,36 +140,6 @@ used to happen INSIDE the Planner and cost the hub nothing, whereas here
 every plan, re-plan and approval is itself a re-entry."""
 
 
-MAX_ARCHITECT_STEPS = _ws.MAX_ARCHITECT_STEPS
-"""LLM turns allowed inside ONE ``Architect.run()`` invocation
-(3-agent).  Above a plan-and-route hub's budget because the Architect
-also PERCEIVES: image reads and OCR dominate its first turn of a design
-job.  Tunable — see settings.py §28."""
-
-MAX_ARCHITECT_VISITS = _ws.MAX_ARCHITECT_VISITS
-"""How many times the dispatcher may RE-ENTER the Architect during
-a single user turn.  Same as ``MAX_PLANNER5_VISITS``: absorbing
-perception adds work inside ONE visit, not extra visits.  Tunable — see
-settings.py §28."""
-
-MAX_DESIGNER_STEPS = _ws.MAX_DESIGNER_STEPS
-
-MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT = (
-    _ws.MAX_ROUNDS_BEFORE_ARCHITECT_CHECKPOINT
-)
-"""Consecutive Designer <-> Critic rounds allowed before the dispatcher
-forces a hop to the Architect (3-agent only).  The Critic refines directly
-with the Designer, so this is the backstop that keeps the brain from being
-shut out of a long loop.  A REPORTING CADENCE, not a stopping condition --
-``MAX_SECTIONS_REFINE_ROUNDS`` remains the per-phase ceiling.  Tunable --
-see settings.py section 28."""
-"""LLM turns allowed inside ONE ``Designer.run()`` invocation
-(3-agent).  Smaller than a create-plus-validate agent would need
-despite merging one more agent: the Designer drops validation
-entirely, so it carries the DCIC's authoring budget plus the Tool
-Caller's calls but no self-validation pass.  Tunable — see
-settings.py §28."""
-
 MAX_DISPATCH_HOPS = _ws.MAX_DISPATCH_HOPS
 """Hard ceiling on the total number of agent hops the dispatcher
 will execute in a single user turn before bailing out via

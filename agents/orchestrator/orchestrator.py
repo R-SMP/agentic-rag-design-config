@@ -863,9 +863,6 @@ class Orchestrator(BaseChainAgent):
         "tc": "tool_caller",
         "receptionist": "receptionist",
         "orchestrator": "orchestrator",
-        # 3-agent topology
-        "architect": "architect",
-        "designer": "designer",
     }
 
     def get_agent_messages(
@@ -1138,8 +1135,8 @@ class Orchestrator(BaseChainAgent):
 #
 # Defined in ``agents/shared/hub_format.py`` since 2026-08-31 so the
 # topology-5 hub can use them without forking ~90 lines of live code.
-# Re-exported here because callers (``agents/architect/architect.py``, and
-# historically the Conductor) import them from this module by name.
+# Re-exported here because callers historically imported them from this
+# module by name.
 # ---------------------------------------------------------------------------
 
 from agents.shared import hub_format as _hub_format

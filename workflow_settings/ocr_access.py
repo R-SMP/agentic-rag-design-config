@@ -82,10 +82,6 @@ DEFAULT_AGENTS: tuple[str, ...] = (
     # 5-agent topology introduces no new entry: it is the 7-agent set
     # minus the Orchestrator and minus the DCII, and neither of those
     # binds an image tool anyway.
-    # 3-agent topology.  The Architect PERCEIVES — it absorbs the UII,
-    # so it binds the image tools and needs OCR text with them.
-    "architect",
-    "designer",
 )
 
 # Default per-agent value when the JSON file is missing or doesn't

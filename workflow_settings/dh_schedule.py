@@ -133,9 +133,6 @@ AGENT_KEYS: list[str] = [
     # stays a cross-topology SUPERSET because it VALIDATES schedule entries
     # (``from_agent`` and each target); a topology that does not build an
     # agent simply never produces an entry naming it.
-    # 3-agent topology.
-    "architect",
-    "designer",
 ]
 
 # Short labels (the same as the LOG-and-Status chart uses on its boxes).
@@ -152,11 +149,6 @@ AGENT_SHORT_LABELS: dict[str, str] = {
     "tool_caller":          "TC",
     "database_handler":     "DH",
     "context_pruner":       "CP",
-    # 5-agent topology — without these the To-column popover would
-    # fall back to the raw underscored keys for the two agents a
-    # 5-agent run actually uses.
-    "architect":            "Architect",
-    "designer":             "Designer",
 }
 
 # Valid enum values.
@@ -372,10 +364,11 @@ def read_state() -> dict[str, Any]:
         ],
         "scopes": list(SCOPES),
         "types": list(TYPES),
-        # NOT used to filter `agents` above: AGENT_KEYS lists `architect`
-        # and `designer`, which no topology roster claims, so filtering
-        # would drop them from topology 7's From dropdown.  This value
-        # exists only to make the Save round-trip topology-safe.
+        # NOT used to filter `agents` above: AGENT_KEYS is a deliberate
+        # cross-topology SUPERSET, so filtering by the active topology
+        # would drop rows a schedule for another topology still needs.
+        # This value exists only to make the Save round-trip
+        # topology-safe.
         "topology": active_topology(),
     }
 

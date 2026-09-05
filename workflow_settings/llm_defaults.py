@@ -47,14 +47,6 @@ DEFAULT_PER_AGENT_MODELS: dict[str, str] = {
     "tool_caller":          "gpt-5.4-mini",
     "database_handler":     "gpt-5-mini",
     "context_pruner":       "gpt-5.4",
-    # 3-agent topology.  The Architect takes the STRONGER of its three
-    # parents' defaults: it perceives (vision), plans and routes in one
-    # agent, which is the cognitive-load confound the design doc flags
-    # as W1 — under-modelling it would confound "fewer agents" with
-    # "one overloaded agent".  The Designer takes the DCIC's default;
-    # it creates AND executes, but has no validation stage to carry.
-    "architect":            "gpt-5.4",
-    "designer":             "gpt-5.4-mini",
 }
 
 

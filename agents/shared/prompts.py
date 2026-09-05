@@ -245,14 +245,17 @@ _CHAIN_ONLY_RE = re.compile(r"<<CHAIN_ONLY>>(.*?)<</CHAIN_ONLY>>", re.DOTALL)
 
 # The non-chain agents: the Receptionist, which composes the user's wording
 # rather than passing work along, and each topology's HUB — the Orchestrator
-# in the 7-agent system, the Architect in the 3-agent one — which dispatches
-# and receives rather than forwarding to a "next" agent.
+# in the 7-agent system — which dispatches and receives rather than
+# forwarding to a "next" agent.
 #
 # ⚠ Topology 5's hub is the PLANNER, and it is deliberately NOT listed: this
 # frozenset is keyed by agent name with no topology dimension, so adding
 # "planner" would strip the <<CHAIN_ONLY>> regions from the 7-agent Planner
 # too — a live behaviour change.  Topology 5 therefore keeps those regions,
-# which is also what "identical to topology 7 first" requires.
+# which is also what "identical to topology 7 first" requires.  Topology 3's
+# hub is the Planner too, so the same reasoning applies there; the fix for
+# both is a topology-scoped ``generic_constraints_planner`` override, never
+# a row here.
 #
 # EVERY hub is listed unconditionally.  This is a delete-list keyed by agent
 # name; it is never rendered into any prompt, and each hub is only ever
@@ -260,7 +263,7 @@ _CHAIN_ONLY_RE = re.compile(r"<<CHAIN_ONLY>>(.*?)<</CHAIN_ONLY>>", re.DOTALL)
 # never consulted.  Miss a hub here and it KEEPS the ``<<CHAIN_ONLY>>``
 # rules — i.e. it is told to escalate to itself.
 _NON_CHAIN_AGENTS = frozenset({
-    "receptionist", "orchestrator", "architect",
+    "receptionist", "orchestrator",
 })
 
 
@@ -899,17 +902,6 @@ PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
     # Topology 5 needs no extra rows: its hub is the PLANNER, running the
     # Planner's prompt with the Planner's four slots (already above), and
     # every other agent it builds is a 7-agent agent under its own key.
-    # 3-agent topology.  The Architect inherits the Planner's three path
-    # slots (it perceives, so it reads the input files itself) but NOT
-    # ``routing_instructions``: being the hub it uses ``$routing_hub``,
-    # exactly as the Orchestrator and Conductor do.
-    "architect":            frozenset({
-        "user_inputs_dir", "input_images_subdir",
-        "extraction_output_file",
-    }),
-    "designer":             frozenset({
-        "routing_instructions", "render_check_library_block",
-    }),
     "tool_caller":          frozenset({
         "routing_instructions", "render_check_library_block",
     }),

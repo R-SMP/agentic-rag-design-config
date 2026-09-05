@@ -102,8 +102,8 @@ _VALID_PROVIDERS = {"openai", "anthropic", "google", "openrouter"}
 # Topology + per-agent tiering
 # ---------------------------------------------------------------------------
 # Which agent rows a run shows, per ``SYSTEM_TOPOLOGY``.  Mirrors the
-# ``_agents_by_key`` map each hub builds (orchestrator.py / conductor.py /
-# architect.py) PLUS the two agents that are constructed but never routed to:
+# ``_agents_by_key`` map each hub builds (orchestrator.py / planner5.py)
+# PLUS the two agents that are constructed but never routed to:
 #
 #   * ``context_pruner``  — built in all three hubs from its own
 #     ``build_llm("context_pruner")`` call; fires only when a history crosses
@@ -143,8 +143,6 @@ AGENTS_BY_TOPOLOGY: "dict[int, list[tuple[str, str]]]" = {
     ],
     3: [
         ("receptionist",         "Receptionist"),
-        ("architect",            "Architect (hub)"),
-        ("designer",             "Designer"),
         ("dc_output_inspector",  "Output Inspector"),
         ("context_pruner",       "Context Pruner"),
         ("database_handler",     "Database Handler"),

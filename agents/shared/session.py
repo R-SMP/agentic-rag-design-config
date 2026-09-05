@@ -65,10 +65,18 @@ KNOWN_AGENT_KEYS: frozenset[str] = frozenset(
 # rebuilt as the 7-agent system minus the Orchestrator and minus the DC Input
 # Inspector.  Their work is done by 'planner' and 'dc_input_creator' now.
 #
+# Retired 2026-09-05: the Architect and the Designer, when topology 3 was
+# rebuilt as a fork of topology 5.  The Architect had merged the UII into
+# the hub, which the rebuilt topology does not do; its work is split between
+# 'planner' (the hub) and 'requirements_analyst'.  The Designer was the same
+# create-plus-execute merge now called 'design_engineer'.
+#
 # Deliberately SEPARATE from KNOWN_AGENT_KEYS: a retired key must not become
 # a routing target, must not appear in a settings roster, and must not be
 # constructible.  It is only tolerated as inert data on a restored state.
-RETIRED_AGENT_KEYS: frozenset[str] = frozenset({"conductor", "creator"})
+RETIRED_AGENT_KEYS: frozenset[str] = frozenset({
+    "conductor", "creator", "architect", "designer",
+})
 
 
 @dataclass
