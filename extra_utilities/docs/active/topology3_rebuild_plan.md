@@ -146,8 +146,8 @@ later "corrected" as an inconsistency.
 | **O1** | Does the Design Engineer keep the DCIC's `new_attempt_parameters` (one call: validate → create folder → write `parameters.json`), or the abandoned Designer's split `new_attempt` + `write_parameters`?  The fork rule (D1) says the former; recorded because the deleted `designer.py` is the only prior art for this merge and it used the latter. | Stage 5 |
 | **O2** | `DCOI_COMPARISON_MODE` under topology 3: in mode 2 the Requirements Analyst compares the render against `extracted_inputs.txt` — a file it WROTE itself.  Self-grading against one's own extraction is a different act from grading against another agent's, and the mode's prompt block says "if the extraction is wrong, that is an upstream UII problem to surface" — which now has no upstream.  Needs an owner decision or a prompt edit. | Stage 9 |
 | **O3** | Whether the Design Engineer keeps the DCIC's `USEFUL INPUT IMAGES` strip on `read_extracted_inputs`.  It binds no image tools, so the section is still noise it cannot act on — the strip should stay — but it is worth confirming rather than inheriting silently. | Stage 5 |
-| **O4** | A `"3"` profile in `database_access.json` mirroring `"7"`.  Moot while `RAG_ENABLED=False`, but without it every topology-3 agent gets all three RAG tools the moment the flag flips.  Same open item topology 5 carries as its O5. | Stage 8 |
-| **O5** | `history_tool.py` hard-codes an 8-agent roster in its description and `feedback_tool.py` a 7-agent allow-list.  Topology 5 fixed both with overlay entries (`READ_AGENT_HISTORY_DESCRIPTION`, `SUBMIT_FEEDBACK_DISPATCH_DOC`).  Topology 3 needs its own. | Stage 8 |
+| ~~O4~~ | **RESOLVED 2026-09-05 — no `"3"` profile.**  Topology 5 has none either, and adding one for topology 3 alone would be its only divergence from topology 5, against D1.  Moot while `RAG_ENABLED` is False; revisit for BOTH reduced topologies together if it is switched on. | Stage 8 |
+| ~~O5~~ | **RESOLVED 2026-09-05 in Stage 8** — both reach topology 3 through `agents/topology3/tool_text.py`, verified on a constructed hub. | Stage 8 |
 | **O6** | End-of-session feedback distribution (Role 4) for topology 3.  Deferred, as it was in the 5-agent rebuild; not needed for the owner's current tests. | Deferred |
 | ~~O7~~ | **PARTIALLY CLOSED in Stage 2.**  Every residual reference in a file Stage 1 or 2 already opened has been swept, including both user-visible strings (`editor.py`'s `CHAIN_ACCESS` inert-reason, and `settings.py` §27's topology help text, which still described the DELETED Conductor/Creator 5-agent system).  What is left sits only in files no stage has needed yet — `feedback_tool.py`, `receptionist.py`, `hub_format.py`, `user_inputs_tool.py` ×2, `user_queries_tool.py`, `hub_registry.py`, two smoke tests, `generate_mesh.py` ×2 — and each is folded into the stage that next touches its file. | folded |
 
@@ -764,13 +764,69 @@ clear at Stage 9.  Each is printed, never swallowed.
 
 ### Stage 8 — Tool-layer overlay  (D3)
 
-- [ ] 8.1 `agents/topology3/tool_text.py` — the same shape as
-      `agents/topology5/tool_text.py`: every per-agent tool table, fully
-      populated, SHADOWING rather than merging.  Entries for agents topology 3
-      does not build are dropped.
-- [ ] 8.2 `TOOL_DESCRIPTIONS` for `call_planner`, `call_design_engineer`,
-      `call_requirements_analyst`, `call_receptionist`.
-- [ ] 8.3 O4 and O5 resolved here.
+- [x] 8.1 `agents/topology3/{__init__,tool_text}.py`, the exact peer of
+      `agents/topology5/`, registered in `_OVERLAY_MODULE_BY_TOPOLOGY[3]`.
+      SHADOWS rather than merges, per the contract in `topology.py`.
+- [x] 8.2 `TOOL_DESCRIPTIONS` for all four `call_*` tools of this roster.
+- [x] 8.3 O4 and O5 resolved — see below.
+- [x] 8.4 **`smoke_test_topology3_tool_text.py`** — NEW, because a claim of
+      "copied verbatim" that nothing checks is worth nothing: a transcription
+      slip in a tool description does not raise, it quietly hands the model a
+      different instruction.  Mutation-tested twice.
+- [x] 8.5 **VERIFIED.**  Snapshot diff 0 differences (tool descriptions are
+      not prompt text, so this is the expected result rather than a weak one).
+      Nine suites plus the dry run pass; `pyflakes` still 20.
+
+**Nothing in the overlay is newly authored prose, and the suite proves it in
+the shape each claim is made.**  Every value is one of three kinds:
+
+* **carried over unchanged** — the Planner and the Receptionist do the same
+  job here as in topology 5, so their entries are byte-identical copies,
+  asserted against `agents/topology5/tool_text.py` directly;
+* **superset wins** — `VIEW_IMAGES_PATHS_BY_AGENT`.  Topology 5 gave the UII
+  *"from the image listing ``read_user_inputs`` returns"* and the DCOI a longer
+  clause ENDING in that same phrase.  The Requirements Analyst merges both, so
+  the DCOI's text already IS the union; the suite asserts both that the copy
+  is byte-identical to the DCOI's and that it CONTAINS the UII's, so "superset"
+  is checked rather than claimed;
+* **roster-derived** — `READ_AGENT_HISTORY_DESCRIPTION` and
+  `SUBMIT_FEEDBACK_DISPATCH_DOC` ENUMERATE agents.  That is a statement of
+  fact about the topology, not prose, so both are regenerated from the roster
+  and checked against `planner3.py`'s own `_agents_by_key` literal.  Left
+  alone they would advertise six agents this topology never builds, and asking
+  for one can only return "Error: unknown agent" — a burned step.
+
+**⚠ ONE GENUINE MERGE IS DELIBERATELY LEFT UNWRITTEN.**  The Requirements
+Analyst has no `READ_INPUTS_DOC_BY_AGENT` row.  Its two parents' docs differ
+in the one thing that matters — HOW to find the directory.  The UII is told to
+take the path *"supplied in your hand-off under the ``Input directory:``
+label"*; the DCOI is told it is *"the folder holding ``user_query.txt`` and
+``extracted_inputs.txt``, i.e. the parent directory of the extraction path
+named in your comparison-source instructions"*.  Neither contains the other,
+and the merged agent genuinely needs BOTH routes: it gets an `Input directory:`
+label when the Planner sends it new user material, and comparison-source
+instructions when it is judging a render.  Writing that union is authoring new
+instruction text, which is the owner's call.  Omitting the key makes
+`read_inputs_doc` fall through to `READ_INPUTS_DOC_DEFAULT` — the UII's
+wording, which is EXACTLY what topology 3 already served with no overlay at
+all — so this file changes nothing there rather than guessing.  **Stage 9
+item.**
+
+**O4 — RESOLVED as "no `3` profile", which is a decision, not an omission.**
+`database_access.json` holds only profile `"7"`; the module's own docstring
+records that `"5"` and `"3"` are deliberately absent, and topology 5's
+equivalent open item was never taken up.  Adding one for topology 3 alone
+would make it the single place topology 3 diverges from topology 5 — against
+D1 — for no measured benefit while `RAG_ENABLED` is False.  Revisit if and
+when RAG is switched on, for BOTH reduced topologies together.
+
+**O5 — RESOLVED.**  `history_tool.py`'s hard-coded roster and
+`feedback_tool.py`'s hard-coded allow-list both reach topology 3 through the
+overlay, exactly as topology 5 fixed them.  Verified on a CONSTRUCTED hub, not
+just through `overlay_value`: the built `read_agent_history` tool advertises
+the topology-3 roster, each merged agent sees the topology-3 wording of the
+other's `call_*` tool, `call_planner` carries the hub-RETURN wording rather
+than topology 7's forward one, and topologies 5 and 7 still get their own.
 
 ### Stage 9 — The merged prompts  (D10, §5)
 

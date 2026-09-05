@@ -81,6 +81,7 @@ def hub_display() -> str:
 
 _OVERLAY_MODULE_BY_TOPOLOGY = {
     5: "agents.topology5.tool_text",
+    3: "agents.topology3.tool_text",
 }
 
 
