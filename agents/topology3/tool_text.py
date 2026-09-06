@@ -92,23 +92,19 @@ VIEW_IMAGES_PATHS_BY_AGENT = {
 # ---------------------------------------------------------------------------
 # user_inputs_tool — the per-agent ``read_user_inputs`` documentation
 #
-# ⚠ THE REQUIREMENTS ANALYST IS DELIBERATELY ABSENT FROM THIS TABLE, and that
-# absence is a decision rather than an oversight.
+# BOTH merged agents now have an entry, and the question that blocked the
+# Requirements Analyst's is answered rather than dodged.  It was: its two
+# parents disagreed about HOW to find the directory -- an ``Input directory:``
+# label for the UII, the parent of an extraction path for the DCOI -- and
+# neither contained the other.  There is no extraction any more, so both
+# routes name the SAME folder and one sentence covers them.
 #
-# Its two parents' docs differ in the one thing that matters -- HOW to find the
-# directory.  The UII is told to take the path "supplied in your hand-off under
-# the ``Input directory:`` label"; the DCOI is told it is "the folder holding
-# ``user_query.txt`` and ``extracted_inputs.txt``, i.e. the parent directory of
-# the extraction path named in your comparison-source instructions".  Neither
-# is a superset of the other, and the merged agent genuinely needs BOTH routes:
-# it gets an ``Input directory:`` label when the Planner sends it new user
-# material, and comparison-source instructions when it is judging a render.
-#
-# Writing the union is authoring new instruction text, which is the owner's
-# call, so it is left to the prompt stage.  Omitting the key makes
-# ``read_inputs_doc`` fall through to ``READ_INPUTS_DOC_DEFAULT`` -- the UII's
-# wording, which is EXACTLY what topology 3 serves today with no overlay at
-# all.  So this file changes nothing here, on purpose, rather than guessing.
+# The two entries differ in exactly one respect, and it is deliberate: the
+# Requirements Analyst is offered image PATHS and told to call ``view_images``
+# with them; the Design Engineer is offered image NAMES and told plainly that
+# it cannot see them and who can.  A path is worth having only to an agent
+# that can open an image or relay it to one that can, and the Design Engineer
+# is neither -- but the NAMES matter to it, because the user names them.
 # ---------------------------------------------------------------------------
 
 READ_INPUTS_DOC_PLANNER = (
@@ -124,8 +120,40 @@ READ_INPUTS_DOC_PLANNER = (
     "list of the reference images present with their paths."
 )
 
+READ_INPUTS_DOC_REQUIREMENTS_ANALYST = (
+    "Read the user-inputs directory: TEXT plus a LIST of its images (it "
+    "does NOT load the images themselves).\n\n"
+    "Pass the absolute path of the user-inputs directory - the folder "
+    "holding ``user_query.txt`` - supplied in your hand-off under the "
+    "``Input directory:`` label, or named in your comparison-source "
+    "instructions (do NOT guess a path).  The output is a summary plus the "
+    "concatenated contents of all text/JSON files - the user's queries and "
+    "every image's ``_note.txt`` - followed by a list of the reference "
+    "images present with their paths.  To actually SEE an image (and get "
+    "its OCR-recognised text: dimension callouts, labels), call "
+    "``view_images`` with the path(s) you need."
+)
+
+READ_INPUTS_DOC_DESIGN_ENGINEER = (
+    "Read the user-inputs directory: TEXT plus a LIST of its image NAMES "
+    "(it does NOT load the images themselves, and you cannot see them).\n\n"
+    "Pass the absolute path of the user-inputs directory - the folder "
+    "holding ``user_query.txt`` - supplied in your hand-off under the "
+    "``Input directory:`` label (do NOT guess a path).  The output is a "
+    "summary plus the concatenated contents of all text/JSON files - the "
+    "user's queries and every image's ``_note.txt``, which is where an "
+    "image's content is described to you - followed by the NAMES of the "
+    "reference images present.  You are given names rather than paths on "
+    "purpose: you bind no image tool, and there is no agent downstream of "
+    "you to relay a path to.  The names are worth having because the user "
+    "refers to the images by name.  When something must actually be SEEN, "
+    "the Requirements Analyst is the agent that can see it."
+)
+
 READ_INPUTS_DOC_BY_AGENT = {
     "planner": READ_INPUTS_DOC_PLANNER,
+    "requirements_analyst": READ_INPUTS_DOC_REQUIREMENTS_ANALYST,
+    "design_engineer": READ_INPUTS_DOC_DESIGN_ENGINEER,
 }
 
 

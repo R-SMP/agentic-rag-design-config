@@ -43,14 +43,20 @@ _PIPELINE_BY_TOPOLOGY = {
         "Planner → User Input Inspector → Planner → DC Input Creator → "
         "Tool Caller → DC Output Inspector → Planner"
     ),
-    # 3-agent.  The ONLY string that names the Receptionist, at both
-    # ends, on the owner's instruction: with just three working agents it
-    # genuinely is the sole door in and the composer out, and omitting it
-    # understates the flow.  The shape difference from topologies 7 and 5
-    # is deliberate, not an inconsistency to "correct" later.
+    # 3-agent.  The ONLY string that names the USER and the Receptionist,
+    # at both ends, on the owner's instruction: with just three working
+    # agents the Receptionist genuinely is the sole door in and the
+    # composer out, and omitting either understates the flow.  The shape
+    # difference from topologies 7 and 5 is deliberate.
+    #
+    # DESIGN-ENGINEER-FIRST.  The Requirements Analyst's standing job is
+    # CRITIC: it judges what was generated.  Reading the user's material
+    # before anything is generated is the EXCEPTION, which the Planner
+    # selects with a standing directive when the images must be read
+    # before any number can be chosen -- so it is not the natural flow.
     3: (
-        "Receptionist → Planner → Requirements Analyst → Planner → "
-        "Design Engineer → Requirements Analyst → Planner → Receptionist"
+        "User → Receptionist → Planner → Design Engineer → "
+        "Requirements Analyst → Planner → Receptionist → User"
     ),
 }
 

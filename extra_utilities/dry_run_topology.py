@@ -94,10 +94,10 @@ ROUTES: dict[int, list[tuple[str, str | None]]] = {
     ],
     3: [
         ("Receptionist",  "call_planner"),
-        # New user material -> requirements, returned to the hub.
-        ("Planner",       "call_requirements_analyst"),
-        ("RA",            "call_planner"),
-        # The hub starts the design cycle.
+        # DESIGN-ENGINEER-FIRST.  The Requirements Analyst's standing job
+        # is CRITIC; reading the user's material before anything has been
+        # generated is the EXCEPTION the Planner selects with a standing
+        # directive, so it is not the natural flow.
         ("Planner",       "call_design_engineer"),
         # The refine loop: the Planner is deliberately NOT in it.
         ("DEng",          "call_requirements_analyst"),

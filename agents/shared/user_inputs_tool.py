@@ -484,6 +484,7 @@ def read_user_inputs_summary(
     can_view_images: bool = False,
     strip_timestamps: bool = False,
     agent_key: str = "",
+    include_image_paths: bool = True,
 ) -> str:
     """The ``read_user_inputs`` result text for *raw_path*.
 
@@ -494,6 +495,12 @@ def read_user_inputs_summary(
     ``view_images`` (the UII; the Planner has no image tools).
     *strip_timestamps* collapses each conversation turn header to its
     speaker — see :func:`strip_turn_timestamps`.
+
+    *include_image_paths* False lists the images by NAME only.  A path is
+    worth giving to an agent that can OPEN the image, or that must RELAY
+    it to one that can; the topology-3 Design Engineer is neither -- it
+    binds no image tool and there is nobody downstream of it to relay to.
+    The names still matter, because the user names them in their request.
     """
     if not raw_path or not isinstance(raw_path, str):
         return (
@@ -538,14 +545,19 @@ def read_user_inputs_summary(
         summary_parts.append("(no text or JSON files found)")
     if image_paths:
         listing = "\n".join(
-            f"  - {Path(p).name}   (path: {p})"
+            f"  - {Path(p).name}" + (f"   (path: {p})"
+                                    if include_image_paths else "")
             for p in image_paths
         )
         # Three cases, not two: an agent that can view images but has no
         # OCR must not be promised OCR text.  *agent_key* defaults to ""
         # (no OCR), so a caller that does not pass it errs quiet rather
         # than advertising a capability that is switched off.
-        if not can_view_images:
+        if not can_view_images and not include_image_paths:
+            # Names only: this agent can neither open an image nor relay
+            # one, so a path would be an instruction it cannot act on.
+            hint = "  Their names:"
+        elif not can_view_images:
             hint = "  Their paths, for relaying to an agent that can view them:"
         elif ocr_access.is_enabled_for(agent_key):
             hint = ("  To SEE an image and get its OCR text, call "

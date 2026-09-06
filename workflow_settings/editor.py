@@ -125,6 +125,10 @@ _INERT_UNDER_TOPOLOGY: dict[str, tuple[frozenset, str]] = {
         "ordering to choose: prompts._planner_first_effective() forces it "
         "False whenever SYSTEM_TOPOLOGY is not 7.",
     ),
+    "DCOI_COMPARISON_MODE": (
+        frozenset({3}),
+        "Only meaningful where an extraction file exists.  Modes 2 and 3 compare the render against extracted_inputs.txt, and in the 3-agent topology nothing writes that file: the Requirements Analyst states what it found in its hand-off instead.  It therefore always compares against the user's own material, which is mode 1, whatever this says.",
+    ),
     "CHAIN_ACCESS": (
         frozenset({5, 3}),
         "Only meaningful in the 7-agent topology.  Reading the other "

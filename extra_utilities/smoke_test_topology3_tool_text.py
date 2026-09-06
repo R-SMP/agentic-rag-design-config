@@ -103,15 +103,26 @@ check("TOOL_DESCRIPTIONS covers exactly the four call_* tools of this roster",
       sorted(T3.TOOL_DESCRIPTIONS))
 
 print()
-print("-- DELIBERATELY ABSENT: the one genuine merge, still unwritten --")
-check("READ_INPUTS_DOC_BY_AGENT has no requirements_analyst row",
-      "requirements_analyst" not in T3.READ_INPUTS_DOC_BY_AGENT)
+print("-- BOTH merged agents now have a read_user_inputs doc --")
+# Stage 8 deliberately left the Requirements Analyst out, because its two
+# parents disagreed about how to FIND the directory.  Round 1 of Stage 9
+# settled that: there is no extraction, so both routes name the same folder.
 S.SYSTEM_TOPOLOGY = 3
 from agents.shared.user_inputs_tool import (          # noqa: E402
     READ_INPUTS_DOC_DEFAULT, read_inputs_doc)
-check("so read_inputs_doc still returns the UNCHANGED default for it — this "
-      "overlay alters nothing there, on purpose",
-      read_inputs_doc("requirements_analyst") == READ_INPUTS_DOC_DEFAULT)
+for _k in ("requirements_analyst", "design_engineer", "planner"):
+    check(f"{_k} has its own doc, not the shared default",
+          _k in T3.READ_INPUTS_DOC_BY_AGENT
+          and read_inputs_doc(_k) != READ_INPUTS_DOC_DEFAULT)
+# The one difference between the two merged agents, and it is the point:
+# only the agent that can OPEN an image is offered paths.
+check("the Requirements Analyst is offered image PATHS",
+      "with their paths" in read_inputs_doc("requirements_analyst"))
+check("the Design Engineer is offered image NAMES and told it cannot see",
+      "the NAMES of the reference images" in read_inputs_doc("design_engineer")
+      and "you cannot see them" in read_inputs_doc("design_engineer"))
+check("...and is NOT handed paths it could not use",
+      "with their paths" not in read_inputs_doc("design_engineer"))
 
 print()
 print("-- REACHED: a written-but-unregistered overlay is silently inert --")

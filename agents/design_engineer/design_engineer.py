@@ -19,6 +19,14 @@ taken from ``dc_input_creator.py`` and ``tool_caller.py`` as they stand.
 
 Tool set — the union of both parents, with two deliberate notes:
 
+* it reads the USER INPUTS DIRECTLY.  Topology 3 has no
+  ``extracted_inputs.txt`` — nothing writes one — so there is no extraction
+  to read.  The Requirements Analyst STATES what it found in its hand-off,
+  and for anything it did not cover this agent reads the inputs itself.
+  Its view lists the reference images by NAME but NOT by path: a path is
+  worth having only to an agent that can open an image or relay it to one
+  that can, and this agent is neither.  The names still matter, because the
+  user refers to them.
 * ``new_attempt_parameters`` (from the DCIC), NOT the retired Designer's split
   ``new_attempt`` + ``write_parameters``.  One call validates, creates the
   folder and writes into it, so the folder it creates is the folder it writes
@@ -27,9 +35,10 @@ Tool set — the union of both parents, with two deliberate notes:
   existed because a gap between the two calls let a mesh appear in the folder
   first, and there is no gap here.
 * **NO image tools.**  Neither parent binds one, so the union has none.  Vision
-  in topology 3 lives entirely in the Requirements Analyst.
+  in topology 3 lives entirely in the Requirements Analyst — which is also
+  why this agent is given image names rather than paths.
 
-The two ``@tool`` stubs below are LOCAL copies of the DC Input Creator's
+The ``@tool`` stub below is a LOCAL copy of the DC Input Creator's
 rather than imports of them.  Their docstrings ARE the descriptions the model
 reads, so importing would mean a topology-3 wording edit silently moving
 topologies 5 and 7 — the isolation rule this rebuild is bound by.
@@ -37,7 +46,6 @@ topologies 5 and 7 — the isolation rule this rebuild is bound by.
 
 import json
 import logging
-from pathlib import Path
 
 from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
@@ -77,6 +85,11 @@ from agents.shared.routing_tools import (
 from agents.shared.session import AgentState, Session
 from agents.shared.stop_signal import check_stop_or_raise
 from agents.shared.topology import hub_key as _hub_key
+from agents.shared.user_inputs_tool import (
+    build_read_user_inputs,
+    read_inputs_doc,
+    read_user_inputs_summary,
+)
 from agents.shared import token_usage
 from agents.step_caps import MAX_DESIGN_ENGINEER_STEPS
 from tools import get_render_library, get_tools
@@ -86,36 +99,9 @@ from workflow_settings import blade_sections_access
 logger = logging.getLogger("propeller_agent")
 
 
-# The extraction's final section, ``USEFUL INPUT IMAGES``, records which
-# reference images matter and the crop regions identified on them.  It exists
-# for agents that can SEE images — in topology 3 that is the Requirements
-# Analyst alone.  This agent binds no image tools, so the section is stripped
-# before the text reaches it: image navigation it cannot act on is noise it
-# would have to reason past.  The section is written LAST, so removing it is a
-# truncate; absent (older extraction, or a run with no images) this is a no-op.
-_IMAGES_SECTION_HEADER = "USEFUL INPUT IMAGES:"
-
-
-def _strip_images_section(content: str) -> str:
-    """Return *content* without its trailing ``USEFUL INPUT IMAGES`` section."""
-    head, sep, _tail = content.partition(_IMAGES_SECTION_HEADER)
-    return head.rstrip() + "\n" if sep else content
-
-
 # ---------------------------------------------------------------------------
 # Utility tool schemas (actual I/O handled by DesignEngineer)
 # ---------------------------------------------------------------------------
-
-@tool
-def read_extracted_inputs(path: str) -> str:
-    """Read the structured user-input extraction from a file.
-
-    Pass the absolute path supplied by the Requirements Analyst under
-    the ``Extracted inputs file:`` label.  Returns the extraction's
-    parameter-relevant sections as text.  Do NOT call this tool with a
-    guessed path."""
-    return ""  # Actual read is performed by _handle_read_tool.
-
 
 @tool
 def new_attempt_parameters(parameters: dict,
@@ -170,7 +156,9 @@ class DesignEngineer(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        self._read_tool = read_extracted_inputs
+        # Schema-only stub: this agent's run loop handles the call itself.
+        self._read_tool = build_read_user_inputs(
+            doc=read_inputs_doc(self.AGENT_KEY))
         self._write_tool = new_attempt_parameters
         # From the Tool Caller half.  The render backend is chosen by
         # ``set_render_library`` before this agent is built.
@@ -307,7 +295,7 @@ class DesignEngineer(BaseChainAgent):
                         )
                         return stuck_escalation("Design Engineer", name)
                     seen_sigs.add(sig)
-                if name == "read_extracted_inputs":
+                if name == "read_user_inputs":
                     self._handle_read_tool(tc)
                     continue
                 if name == "new_attempt_parameters":
@@ -377,50 +365,27 @@ class DesignEngineer(BaseChainAgent):
         )
 
     # ------------------------------------------------------------------
-    # read_extracted_inputs handler
+    # read_user_inputs handler
     # ------------------------------------------------------------------
 
-    @generic_tool("Read extracted inputs")
+    @generic_tool("Read user inputs")
     def _handle_read_tool(self, tc: dict) -> None:
-        """Read the extraction file the hand-off pointed us at."""
-        raw_path = tc.get("args", {}).get("path")
+        """Read the user-inputs directory: text, notes, and image NAMES.
 
-        if not isinstance(raw_path, str) or not raw_path.strip():
-            summary = (
-                "Error: missing or non-string 'path' argument.  Call this "
-                "tool with the absolute path supplied by the Requirements "
-                "Analyst under the 'Extracted inputs file:' label."
-            )
-        else:
-            path = Path(raw_path)
-            if not path.is_file():
-                summary = (
-                    f"Error: '{raw_path}' is not an existing file.  Do not "
-                    f"retry with a guessed path; hand back to the Planner if "
-                    f"no valid path was supplied."
-                )
-            else:
-                try:
-                    content = _strip_images_section(
-                        path.read_text(encoding="utf-8"))
-                except OSError as exc:
-                    summary = f"Error reading '{raw_path}': {exc}"
-                else:
-                    if not content.strip():
-                        summary = (
-                            f"Warning: '{raw_path}' exists but is empty.  "
-                            f"Hand back — the Requirements Analyst did not "
-                            f"produce an extraction."
-                        )
-                    else:
-                        summary = (
-                            f"Loaded extraction from {path.resolve()} "
-                            f"({len(content)} chars).\n\n"
-                            f"--- Extracted Inputs ---\n{content}"
-                        )
-
+        ``include_image_paths=False`` is the whole point of this override.
+        This agent binds no image tool and has nobody to relay one to, so a
+        path would be an instruction it cannot act on; the NAMES stay,
+        because the user refers to the images by name in their request.
+        """
+        summary = read_user_inputs_summary(
+            tc.get("args", {}).get("path"),
+            getattr(self, "provider", "openai"),
+            can_view_images=False,
+            include_image_paths=False,
+            strip_timestamps=True,
+            agent_key=self.AGENT_KEY,
+        )
         log_tool_call(self.AGENT_KEY, tc["name"], tc.get("args"), summary)
-
         self.messages.append(ToolMessage(
             content=summary,
             tool_call_id=tc["id"],
