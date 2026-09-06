@@ -18,6 +18,6 @@ authorisation, discoverable from EITHER of these:
       "vary as needed" / "automated conservative adjustments OK",
       or parameter-specific "the user approved changing <param Y>");
   (B) the **extraction's DESIGN INTENT section** records one — a user
-      authorisation the UII wrote, standing every cycle until revoked.
+      authorisation the RA wrote, standing every cycle until revoked.
 Either source is enough — never demand a "ritual re-confirmation" of an
 authorisation the hand-off already carries.

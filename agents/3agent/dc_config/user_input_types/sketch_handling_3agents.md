@@ -81,11 +81,11 @@ feature within it, on its own.
     feature cannot be brought closer (parameter limits, or a rough source)
     say so plainly — don't imply more iterations would close the gap.
 
-### UII responsibility — record the sketch's precision in the extraction
-The User Input Inspector decides whether a reference image is a sketch and
+### RA responsibility — record the sketch's precision in the extraction
+The Requirements Analyst decides whether a reference image is a sketch and
 how precise it is, and states that in the DESIGN INTENT section of
-``extracted_inputs.txt`` so downstream agents (DCOI comparison modes that
-don't load the image, and the DC Input Creator that authors the parameters)
+``extracted_inputs.txt`` so downstream agents (RA comparison modes that
+don't load the image, and the Design Engineer that authors the parameters)
 match with the right strictness — for example:
 
     Reference image is a ROUGH SKETCH — match qualitatively; treat
@@ -101,8 +101,8 @@ Without this, downstream agents default to one strictness and either chase
 unmeetable proportions on a rough sketch or discard real proportions on a
 precise one.
 
-### UII — for a PRECISE blade-section drawing, add a warm-start estimate + crop regions
-The DC Input Creator authors the parameters but CANNOT see the images; you can.
+### RA — for a PRECISE blade-section drawing, add a warm-start estimate + crop regions
+The Design Engineer authors the parameters but CANNOT see the images; you can.
 So when a reference image contains a precise blade-section (airfoil) drawing, two
 extra records make the downstream section-matching far more efficient:
 
@@ -114,11 +114,11 @@ extra records make the downstream section-matching far more efficient:
    The middle section has no profile-shape parameters of its own — its shape is
    interpolated from inner and outer; only its chord, angle and radial position
    are settable.
-   Record it in QUALITATIVE DESCRIPTIONS under a clear label so the DC Input
-   Creator seeds its first attempt close to the drawing instead of from defaults:
+   Record it in QUALITATIVE DESCRIPTIONS under a clear label so the Design
+   Engineer seeds its first attempt close to the drawing instead of from defaults:
 
        SUGGESTED SECTION SHAPES (rough estimate read from the precise drawing — a
-       STARTING POINT for the DC Input Creator, NOT a user-locked value; refine
+       STARTING POINT for the Design Engineer, NOT a user-locked value; refine
        within ranges):
          inner  ≈ 8% thick, 3% camber, camber crest at ~3/10 chord
          outer  ≈ 10% thick, 3% camber, camber crest at ~4/10 chord
@@ -130,7 +130,7 @@ extra records make the downstream section-matching far more efficient:
 
 2. **Crop regions, recorded in §4 of the extraction.**  When the section
    drawings occupy only part of a larger multi-part sketch (e.g. the bottom
-   strip of a full technical page), the UII records a COARSE normalized crop
+   strip of a full technical page), the RA records a COARSE normalized crop
    box ``[x0, y0, x1, y1]`` (fractions in 0..1) for that part in the
    extraction's ``USEFUL INPUT IMAGES`` section, labelled by what it shows.
    A whole-propeller top / side / perspective view — one the 3D geometry, not

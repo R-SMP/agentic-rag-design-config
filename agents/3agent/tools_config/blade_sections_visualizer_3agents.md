@@ -2,7 +2,7 @@
 
 The system can render JUST the blade cross-sections — a flat image showing the
 three blade sections (Inner, Middle, Outer) stacked vertically, each at its
-true angle of attack — without building the full 3D propeller.  The Tool Caller
+true angle of attack — without building the full 3D propeller.  The Design Engineer
 generates it (the `render_blade_sections` tool) from an attempt's parameters
 file; the image is shown to the user and can be read by any agent that can load
 images.  Because it skips the slow full-3D mesh generation, it is **much

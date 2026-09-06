@@ -348,7 +348,7 @@ Apply these to BOTH the saved QUESTION and the saved ANSWER:
 
 7. **Domain-faithful.**  Preserve technical terms verbatim
    (camelCase parameter names like ``bladeCount``, agent acronyms
-   ``UII``/``DCIC``/``DCOI``/``TC``/``Receptionist``, units,
+   ``RA``/``DE``/``Receptionist``, units,
    numeric thresholds).  When stating a numeric fact, briefly spell
    out its meaning ("``bladeCount=5`` (five blades)") so the
    embedded vector encodes both the symbol and its referent.
@@ -359,8 +359,8 @@ Apply these to BOTH the saved QUESTION and the saved ANSWER:
 
 9. **Negation-canonical.**  When the answer is "nothing of the kind
    happened this session", save a single short canonical sentence
-   such as ``No problem occurred during this session for the User
-   Input Inspector.``  Do not leave the body empty, ambiguous, or
+   such as ``No problem occurred during this session for the Requirements
+   Analyst.``  Do not leave the body empty, ambiguous, or
    filled with hedges.
 
 ### Rules of authorship

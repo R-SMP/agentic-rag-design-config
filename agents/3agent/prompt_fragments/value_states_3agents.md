@@ -29,7 +29,7 @@ authorisation, discoverable from ANY of these (one is enough):
       <param Y>") or a strategy / recovery directive to change the value; a
       CLARIFY bounce may carry one too;
   (B) the **extraction's DESIGN INTENT section** records one — a user
-      authorisation the UII wrote, standing every cycle until revoked; or
+      authorisation the RA wrote, standing every cycle until revoked; or
   (C) the value's own QUANTITATIVE INPUTS line carries an
       ``(unlocked by user)`` annotation, IF PRESENT — an older extraction may
       still carry this inline mark; today a released value is simply omitted
