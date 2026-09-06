@@ -1054,7 +1054,7 @@ MAX_PLANNER3_VISITS: int = 150
 #
 # The MAX of its two parents (both 40), not their sum, and the reason is
 # structural rather than thrifty: this agent's two jobs happen in
-# SEPARATE invocations.  It writes the extraction when the Planner sends
+# SEPARATE invocations.  It states the requirements when the Planner sends
 # it new user material, and it judges renders when the Design Engineer
 # hands one over.  It never needs both budgets in one turn, so summing
 # them would only widen the runaway window.
@@ -1067,7 +1067,7 @@ MAX_REQUIREMENTS_ANALYST_STEPS: int = 40
 #
 # The SUM of its two parents (80 + 40), for the mirror-image reason:
 # this agent's two jobs happen in the SAME invocation.  One turn reads
-# the extraction, authors the full parameter set, opens the attempt and
+# the user's inputs, authors the full parameter set, opens the attempt and
 # writes it, THEN generates and renders -- work that cost two agents and
 # a hand-off in topology 5.  Giving it only the author half's budget
 # would cut it off mid-generation on a complex job.

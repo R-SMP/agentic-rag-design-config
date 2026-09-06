@@ -66,7 +66,7 @@ def _authorisation_sources(hub: str) -> str:
 
     The ONE place in the routing boilerplate that is not a rename: the
     7-agent system has the Planner as a grantor distinct from the hub,
-    but the 5-agent Conductor absorbs the Planner, so the list collapses
+    but in topologies 5 and 3 the hub IS the Planner, so the list collapses
     from three sources to two.
     """
     if _topology.topology() == 7:
@@ -321,7 +321,7 @@ def routing_instructions(
     per the agent's allow-list in ``_ROUTING_SECTIONS_BY_AGENT``.
     """
     # Whoever the active topology's hub is — Orchestrator (7-agent) or
-    # Conductor (5-agent).  Every "route back / escalate to …" below names
+    # Planner (5- and 3-agent).  Every "route back / escalate to …" below names
     # it, so it is resolved once here rather than hard-coded per sentence.
     hub = _topology.hub_display()
     sections = _sections_for(agent_name)

@@ -125,6 +125,19 @@ def read_image_notes() -> str:
 # spliced into the schema sentence and after "Get valid paths" in the
 # bad-argument errors.  ("obtained from ...", the pre-2026-08-25 wording,
 # did not.)
+# Who identifies a crop box, and whether one can be inherited.  Overlaid
+# per topology: under topology 3 there is no extraction to record boxes
+# in and no second image-reading agent to inherit one from, so the whole
+# clause is empty there.
+_VIEW_IMAGES_CROP_SOURCE_DEFAULT = (
+    "The User Input "
+    "Inspector identifies them from the raw images and records them in the "
+    "extraction's ``USEFUL INPUT IMAGES`` section; other agents (e.g. the "
+    "DC Output Inspector comparing blade sections) REUSE a recorded crop "
+    "region when it helps.  Prefer a recorded or handed-off crop region "
+    "over one you derive yourself."
+)
+
 _VIEW_IMAGES_PATHS_DEFAULT = (
     "from ``list_input_files``, or relayed in the hand-off"
 )
@@ -195,12 +208,9 @@ def _view_images_base_doc(paths_from: str, ocr_on: bool = True) -> str:
         "each entry is a COARSE crop box ``[x0, y0, x1, y1]`` as fractions in "
         "0..1 (or ``null`` for no crop), so a large sketch is cropped to its "
         "relevant part before viewing or comparing.  " + crop_vs_text +
-        "The User Input "
-        "Inspector identifies them from the raw images and records them in the "
-        "extraction's ``USEFUL INPUT IMAGES`` section; other agents (e.g. the "
-        "DC Output Inspector comparing blade sections) REUSE a recorded crop "
-        "region when it helps.  Prefer a recorded or handed-off crop region "
-        "over one you derive yourself."
+        _topology.overlay_value(
+            "VIEW_IMAGES_CROP_SOURCE_DEFAULT",
+            _VIEW_IMAGES_CROP_SOURCE_DEFAULT)
     )
 
 

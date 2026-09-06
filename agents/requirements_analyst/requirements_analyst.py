@@ -31,10 +31,6 @@ Tool set — the union of both parents:
 ``calculate`` comes from the DCOI half alone — the UII deliberately does not
 bind it, because it records what the user said and resolves nothing.  Under
 the union rule the merged agent has it, since one parent did.
-
-The ``@tool`` stubs below are LOCAL copies rather than imports of the
-parents'.  Their docstrings ARE the descriptions the model reads, so importing
-would mean a topology-3 wording edit silently moving topologies 5 and 7.
 """
 
 import logging
@@ -80,9 +76,7 @@ from agents.shared.user_inputs_tool import (
 )
 from agents.shared import token_usage
 from agents.step_caps import MAX_REQUIREMENTS_ANALYST_STEPS
-from config import USER_INPUTS_DIR
 from tools.calculate.calculate import calculate
-from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
 
@@ -136,11 +130,7 @@ plus any paired image+note in ``inputs/input_images/``."""
 # Utility tool schemas (actual I/O handled by RequirementsAnalyst)
 # ---------------------------------------------------------------------------
 
-def _build_comparison_mode_block(
-    mode: int,
-    extracted_inputs_path: str,
-    user_query_path: str,
-) -> str:
+def _build_comparison_mode_block(mode: int) -> str:
     """Return the runtime-filled comparison-source block."""
     # *mode* is accepted and IGNORED.  ``DCOI_COMPARISON_MODE`` is inert
     # under topology 3 (settings editor), because modes 2 and 3 compare
@@ -148,14 +138,11 @@ def _build_comparison_mode_block(
     # The argument stays in the signature so the call site, the runtime
     # slot and the snapshot harness all keep their shape.
     del mode
-    return _COMPARISON_MODE_1.format(
-        extracted_inputs_path=extracted_inputs_path,
-        user_query_path=user_query_path,
-    )
+    return _COMPARISON_MODE_1
 
 
 class RequirementsAnalyst(BaseChainAgent):
-    """Stateful agent that writes the extraction AND judges renders."""
+    """Stateful agent that states the requirements AND judges renders."""
 
     AGENT_KEY = "requirements_analyst"
 
@@ -236,15 +223,8 @@ class RequirementsAnalyst(BaseChainAgent):
             if self.keep_images_in_context
             else _IMAGE_PERSISTENCE_OFF
         )
-        extracted_inputs_path = str(
-            (USER_INPUTS_DIR / "extracted_inputs.txt").resolve()
-        )
-        user_query_path = str((USER_INPUTS_DIR / "user_query.txt").resolve())
         comparison_mode_block = _build_comparison_mode_block(
-            self.dcoi_comparison_mode,
-            extracted_inputs_path,
-            user_query_path,
-        )
+            self.dcoi_comparison_mode)
         # Built fresh at construction time so live edits to .md fragments on
         # disk take effect on the NEXT session without a Python restart.
         self.system_prompt = _build_template(self.AGENT_KEY).format(
@@ -382,17 +362,9 @@ class RequirementsAnalyst(BaseChainAgent):
         """Load everything in the requested directory and feed it to the LLM."""
         raw_path = tc.get("args", {}).get("path")
 
-        # Workflow setting (block #18) lets the developer filter the prior
-        # extracted_inputs.txt out of the bundle when they suspect the agent
-        # is carrying stale state forward despite the prompt's "do not copy
-        # forward" rule.  Read disk-fresh per the standard pattern.
-        exclude_root: tuple[str, ...] = ()
-        if not workflow_settings.UII_MAY_READ_PREVIOUS_EXTRACTION:
-            exclude_root = ("extracted_inputs.txt",)
         summary = read_user_inputs_summary(
             raw_path,
             self.provider,
-            exclude_root_files=exclude_root,
             can_view_images=True,
             strip_timestamps=True,
             agent_key=self.AGENT_KEY,

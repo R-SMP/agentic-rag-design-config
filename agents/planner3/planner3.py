@@ -54,12 +54,10 @@ from datetime import datetime
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, ToolMessage
-from langchain_core.tools import tool
 
 from agents.database_handler import DatabaseHandler
 from agents.design_engineer import DesignEngineer
 from agents.receptionist import Receptionist
-from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import read_attempts
 from agents.shared.dc_params_tool import build_dc_params_list
 from agents.shared.base_chain_agent import BaseChainAgent
@@ -109,31 +107,6 @@ from config import INPUT_IMAGES_SUBDIR, LOGS_DIR, USER_INPUTS_DIR
 
 logger = logging.getLogger("propeller_agent")
 
-
-@tool
-@generic_tool("Read extracted inputs")
-def read_extracted_inputs(path: str) -> str:
-    """Read the User Input Inspector's structured extraction.
-
-    Pass the absolute path that the UII supplied under the ``Extracted
-    inputs file:`` label.  Returns the full extraction as text —
-    QUANTITATIVE INPUTS, QUALITATIVE DESCRIPTIONS, DESIGN INTENT AND
-    FUNCTIONAL REQUIREMENTS, and USEFUL INPUT IMAGES (which reference
-    images matter, and the crop regions the UII identified on each for
-    the agents that compare against them).  Returns a short error string
-    if the file does not exist or cannot be read.
-
-    Use this whenever ``extracted_inputs.txt`` is present in the
-    pipeline state: read the extraction first, and consult the raw user
-    inputs (texts + notes) only if you still need more context."""
-    from pathlib import Path
-    try:
-        p = Path(path)
-        if not p.exists():
-            return f"extracted_inputs.txt not found at {p.resolve()}."
-        return p.read_text(encoding="utf-8")
-    except OSError as exc:
-        return f"Error reading extracted_inputs.txt: {exc}"
 
 
 # Component C — the chain agents that must carry a standing directive forward
@@ -383,7 +356,6 @@ class Planner3(BaseChainAgent):
         )
         hub_tools = [
             read_user_inputs,
-            read_extracted_inputs,
             history_tool,
             read_attempts,
             build_dc_params_list(self.AGENT_KEY),
@@ -420,9 +392,6 @@ class Planner3(BaseChainAgent):
             routing_instructions=routing_block,
             user_inputs_dir=str(USER_INPUTS_DIR.resolve()),
             input_images_subdir=INPUT_IMAGES_SUBDIR,
-            extraction_output_file=str(
-                (USER_INPUTS_DIR / "extracted_inputs.txt").resolve()
-            ),
         )
 
     # ------------------------------------------------------------------
@@ -589,17 +558,17 @@ class Planner3(BaseChainAgent):
         current = start_agent_key or self.AGENT_KEY
         message = kickoff_message
         # Component C: a standing directive is issued fresh each user turn
-        # (the Planner re-derives it from the extraction when still relevant),
+        # (the Planner re-derives it from the user's material when still
+        # relevant),
         # so a stale directive from a prior turn is never forced onto — or
         # leaked by — an unrelated later turn.  Within-turn persistence is
         # unaffected: capture happens later in THIS dispatch and the field is
         # session-scoped for the rest of the loop.
         self.session.standing_directives = ""
-        # Cursor into the SESSION-scoped chain log.  Initialised to the
-        # log's current length so the per-turn chain-access view shows
         orch_visits = 0
         # A6 (precision sections): count refine ROUNDS while a standing
-        # directive is active — one round per hop into the DCOI.  A local
+        # directive is active — one round per hop into the Requirements
+        # Analyst.  A local
         # here (not on the session) because a precision loop lives entirely
         # within ONE dispatch call (one user turn).
         precision_rounds = 0
@@ -700,16 +669,19 @@ class Planner3(BaseChainAgent):
             # "dc_output_inspector" it would never match, precision_rounds
             # would stay 0, and the loop would run to MAX_DISPATCH_HOPS with
             # no cap and no log line.  When the loop
-            # exceeds its hard cap, DROP the directive (so the DCOI is no longer
+            # exceeds its hard cap, DROP the directive (so the Requirements
+            # Analyst is no longer
             # bound to keep iterating) and tell it to finalize with the best
             # attempt + report the residual honestly.  This is the graceful code
-            # backstop behind the DCOI's own Satisfied/Plateau prose judgments,
+            # backstop behind the Requirements Analyst's own Satisfied/Plateau
+            # prose judgments,
             # so a stuck loop can never run forever regardless of prose.  Runs
             # BEFORE the re-stamp block below, so clearing the field here makes
             # that block's ensure_present a no-op (it won't re-add the directive).
             # Keyed on ANY active directive because precision section-matching is
             # the only directive TYPE today, and only its tight loop can reach 9
-            # DCOI hops in one turn — an ordinary directive leaves the DCOI at
+            # Requirements Analyst hops in one turn — an ordinary directive
+            # leaves it at
             # its usual 1-3 visits, far under the cap.  If a non-precision
             # directive type is ever added, gate this on it being a precision one
             # (the finalize note below is sections-specific).
@@ -943,7 +915,7 @@ class Planner3(BaseChainAgent):
         ``self.messages`` — the feedback round is a separate
         post-session pass, NOT part of the live design pipeline.  The
         tool is bound for ONE turn only (W18 / W20 force-tool pattern)
-        and discarded immediately afterwards; the permanent ``orch_tools``
+        and discarded immediately afterwards; the permanent ``hub_tools``
         binding installed by ``_wire_routing`` is untouched.
 
         Args:

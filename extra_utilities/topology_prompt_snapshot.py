@@ -162,7 +162,7 @@ def _runtime_slots(agent: str, P, S) -> dict | None:
                                      if S.KEEP_IMAGES_IN_CONTEXT
                                      else RA_M._IMAGE_PERSISTENCE_OFF),
             comparison_mode_block=RA_M._build_comparison_mode_block(
-                S.DCOI_COMPARISON_MODE, _EXTRACTION_FILE, _USER_QUERY_FILE),
+                S.DCOI_COMPARISON_MODE),
         )
     if agent == "dc_output_inspector":
         import agents.dc_output_inspector.dc_output_inspector as DCOI_M
@@ -353,6 +353,11 @@ def cmd_diff(a: Path, b: Path, context: int) -> int:
         pb = rb.get("prompts", {})
         print(f"\n=== topology {n} "
               f"(hub {ra.get('hub_key')} -> {rb.get('hub_key')}) ===")
+        for side, m in (("before", ra), ("after", rb)):
+            for agent, err in sorted(m.get("unformatted", {}).items()):
+                print(f"  !! {agent:<23} {side}: runtime slots NOT "
+                      f"filled, snapshot is a raw TEMPLATE -- {err}")
+                moved += 1
         for key in ("hub_key", "hub_display", "planner_first", "dcii_enabled"):
             if ra.get(key) != rb.get(key):
                 print(f"  ! {key}: {ra.get(key)!r} -> {rb.get(key)!r}")

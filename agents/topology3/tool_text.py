@@ -32,16 +32,14 @@ Not here, and why:
 * the step budgets — UI-tunable, so ``workflow_settings/settings.py`` §28;
 * the per-agent model defaults — ``workflow_settings/llm_defaults.py``, whose
   ``model_for()`` is the single funnel every consumer already goes through.
-
-⚠ **ONE GENUINE MERGE IS DELIBERATELY ABSENT** — see
-``READ_INPUTS_DOC_BY_AGENT`` below.
 """
 
 # ---------------------------------------------------------------------------
 # dc_params_tool — the "when to call me" clause of ``dc_params_list``
 #
-# Both entries carried over unchanged: topology 3 builds the same Planner and
-# the same Receptionist, doing the same jobs.
+# The Receptionist's entry is carried over unchanged.  The Planner's
+# NAMED the DC Input Creator, an agent topology 3 never builds, so it is
+# regenerated from the roster -- the merged agent's display name.
 # ---------------------------------------------------------------------------
 
 USE_DEFAULT = (
@@ -54,7 +52,7 @@ USE_BY_AGENT = {
     "planner": (
         "Reference only: which parameters exist and what each one means.  You "
         "rarely need it — describe the change you want in plain words and let "
-        "the DC Input Creator pick the parameter and the value.  Takes NO "
+        "the Design Engineer pick the parameter and the value.  Takes NO "
         "arguments."
     ),
     "receptionist": (
@@ -111,12 +109,10 @@ READ_INPUTS_DOC_PLANNER = (
     "Read the user-inputs directory: TEXT plus a LIST of its images (it "
     "does NOT load the images themselves).\n\n"
     "Pass the absolute path of the user-inputs directory — the folder "
-    "holding ``user_query.txt`` and ``extracted_inputs.txt``.  Your own "
-    "prompt states it; if a hand-off instead names an ``Extracted inputs "
-    "file:``, it is that file's parent directory (do NOT guess a path).  "
-    "The output is a summary plus the "
-    "concatenated contents of all text/JSON files — the user's queries, the "
-    "current extraction and every image's ``_note.txt`` — followed by a "
+    "holding ``user_query.txt``.  Your own prompt states it (do NOT "
+    "guess a path).  The output is a summary plus the "
+    "concatenated contents of all text/JSON files — the user's queries "
+    "and every image's ``_note.txt`` — followed by a "
     "list of the reference images present with their paths."
 )
 
@@ -144,11 +140,13 @@ READ_INPUTS_DOC_DESIGN_ENGINEER = (
     "user's queries and every image's ``_note.txt``, which is where an "
     "image's content is described to you - followed by the NAMES of the "
     "reference images present.  You are given names rather than paths on "
-    "purpose: you bind no image tool, and there is no agent downstream of "
-    "you to relay a path to.  The names are worth having because the user "
+    "purpose: you bind no image tool.  The names are worth having because "
+    "the user "
     "refers to the images by name.  When something must actually be SEEN, "
     "the Requirements Analyst is the agent that can see it."
 )
+
+VIEW_IMAGES_CROP_SOURCE_DEFAULT = ""
 
 READ_INPUTS_DOC_BY_AGENT = {
     "planner": READ_INPUTS_DOC_PLANNER,

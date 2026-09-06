@@ -163,7 +163,7 @@ single user turn.  The ``MAX_PLANNER5_VISITS`` analogue."""
 MAX_REQUIREMENTS_ANALYST_STEPS = _ws.MAX_REQUIREMENTS_ANALYST_STEPS
 """LLM turns inside ONE ``RequirementsAnalyst.run()``.  The MAX of its two
 parents (UII 40, DCOI 40) rather than their sum, because its two jobs --
-writing the extraction and judging a render -- happen in SEPARATE
+stating the requirements and judging a render -- happen in SEPARATE
 invocations and never share a turn."""
 
 MAX_DESIGN_ENGINEER_STEPS = _ws.MAX_DESIGN_ENGINEER_STEPS

@@ -7,7 +7,7 @@ to the Requirements Analyst.
 
 That "inside one invocation" is why its step budget is the SUM of its parents'
 (``MAX_DESIGN_ENGINEER_STEPS``, 120 = DCIC 80 + TC 40) rather than the max: a
-single turn reads the extraction, authors the full parameter set, opens the
+single turn reads the user's inputs, authors the full parameter set, opens the
 attempt, writes it, and only then generates and renders.
 
 **Built from the CURRENT parents, not from the retired 3-agent Designer.**

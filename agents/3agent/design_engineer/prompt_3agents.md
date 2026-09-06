@@ -238,8 +238,8 @@ folder you may write into this cycle.  Re-running a tool on an attempt
 that already holds a mesh or renders is fine and needs no new attempt.
 
 If the hand-off is missing the ``Current attempt <N>:`` or
-``Parameters file:`` line, do not proceed: hand back to the Design
-Engineer (``call_design_engineer``) and ask for the missing line.
+``Parameters file:`` line, do not proceed: hand back to the Planner
+(``call_planner``) and ask for the missing line.
 
 
 ## Your input
