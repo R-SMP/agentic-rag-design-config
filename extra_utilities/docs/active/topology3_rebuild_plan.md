@@ -901,6 +901,108 @@ Plus one of mine: `routing_design_engineer_3agents.md` lost its
 come back depends on whether the DC Input Inspector is ever enabled under
 topology 3.
 
+#### §E — the unannotated prompts  — **DONE 2026-09-06** (`6e88906`, `9fcf6d4`)
+
+§E is the four prompts the owner never annotated: the DC Input Creator, the
+Tool Caller and the DC Output Inspector — which between them ARE the two
+merged agents — plus the Database Handler.  Round 1's annotations could not
+point at any of it.
+
+Method: 12 lenses (one per parent half, per agent, plus cross-agent contracts,
+tool references, deletion residue, the code, and one that traces a live turn
+instead of matching text) → 118 findings, 80 after dedup → three adversarial
+verifiers each (does the text exist verbatim / is it actually false / is the
+fix minimal, safe and in scope), kept only on a unanimous vote → 55 survived,
+25 refuted → a completeness critic over what nobody looked at, which added 3
+and overturned 2 refutations.  **58 applied.**
+
+**The five blockers.**
+
+1. **The Design Engineer could not read the user's inputs at all.**
+   `Input directory:` appeared exactly ONCE in all five assembled prompts — in
+   the Planner, mandated for `call_requirements_analyst` only — while A6 sends
+   the DE FIRST, A4 has it read the inputs itself, and its bound
+   `read_user_inputs` doc says the path arrives "in your hand-off under the
+   ``Input directory:`` label (do NOT guess a path)".  The DE's prompt never
+   mentioned the directory.  Two lenses found it from opposite ends.
+2. **`read_extracted_inputs` was still BOUND to the Planner**, and its
+   docstring named the UII, the `Extracted inputs file:` label and the crop
+   regions A3 abolished.
+3. **`READ_INPUTS_DOC_PLANNER`** told the Planner the inputs folder holds
+   `extracted_inputs.txt` and that the return carries "the current
+   extraction".
+4. **The RA's precision comparison was silently dead.**  "take the crop box
+   from the extraction's USEFUL INPUT IMAGES section … if no box was recorded,
+   view the image whole" — the `if` is true 100 % of the time.
+5. **"no mesh, no renders, no Requirements Analyst"**, six lines after "Route
+   to the Requirements Analyst FIRST".  The owner's worklist marked that
+   clause RED for DELETION; round 1 renamed it instead.
+
+**The lesson that generalises.**  Round 1 reported "grep confirms 0 hits for
+`extracted_inputs.txt` in all five assembled prompts".  True — and the system
+still told the Planner to read an extraction, because **a bound tool's
+docstring is model-facing and is not part of the assembled prompt**.  Blockers
+2, 3 and the `view_images` crop clause all survived there.  Same trap class as
+the invoke-time DC primer.  *Any* future prompt sweep must cover
+`agents/topology3/tool_text.py`, the `@tool` docstrings, and the shared
+`*_tool.py` doc builders.
+
+**Three self-calls, not one.**  `call_design_engineer` is bound to the Planner
+and the RA, never to the DE.  The tool audit saw one (in `## Attempt
+folders`); a second, in `## Loading parameters`, names no tool in backticks so
+the audit structurally cannot see it; a third was the DE's FIRST routing
+bullet.  All were made by round 1's mechanical rename — topology 5 read
+"hand back to the DC Input Creator".
+
+**One of my own round-1 edits was wrong.**  §D's D3 rewrote "## Loading
+parameters" as "pass the attempt's path"; both tools take the
+`parameters.json` FILE path, and that prompt's own tool inventory says so
+twice.
+
+**Two verification gaps closed.**
+
+* The snapshot harness catches a runtime-slot failure, snapshots the RAW
+  TEMPLATE and says so — but only from `save`.  `diff` said nothing, so a slot
+  regression looked like a −3 916-char size change.  Twice now.  `diff` now
+  prints "runtime slots NOT filled" and counts it.  Mutation-tested.
+* The overlay suite asserted `READ_INPUTS_DOC_PLANNER` and
+  `USE_BY_AGENT['planner']` were byte-identical to topology 5's — which is
+  exactly what made them wrong.  **A byte-identity check cannot be "moved"
+  into the roster-derived block; it has to be replaced** by one that asserts
+  what is now true.  Both are, plus a check that topology 5 still gets the
+  crop clause in full.  All three mutation-tested.
+
+**Deliberately NOT changed, and why.**
+
+* The six stale DH schedule question names (`Problem - UII`,
+  `Problem/Invalid solution/Valid solution - DCIC`, `Tool Caller problem`,
+  `Tool Caller problem solution`) — owner-deferred, refuted on scope.
+* The DH's skip-vs-canonical-sentence contradiction — a real contradiction,
+  but byte-inherited from topologies 5 and 7, so not merge residue.
+* Every `<<DCII_ONLY>>` region: `_dcii_effective()` returns False for any hub
+  that is not the Orchestrator, so none of it assembles under topology 3.
+* **24 surviving uses of "extract" / "the extraction"** across the five
+  prompts.  The verifiers refused these on a consistent principle: A1
+  abolishes the FILE, not the WORD, and the RA genuinely does extract
+  requirements — it just says them instead of writing them.  Whether the
+  VOCABULARY should go too is an owner call, not a §E correction.
+
+**Two findings held for the owner, not applied.**
+
+* The Planner is told "Whenever the user has supplied NEW meaningful content
+  this turn, the RA must see it … you still route to the RA first".  A6 makes
+  RA-first the EXCEPTION, and the owner's own worked case 1 says "the RA is
+  never called" for a text-only extraction ask.  The fix is new prose about
+  when the exception applies — a decision, not a correction.
+* `$parameter_list` resolves to a scoped fragment that is ITSELF a Stage-4
+  scaffold concatenation, so the RA carries the 16-parameter list TWICE — the
+  UII half with ranges unconditionally, the DCOI half range-gated and
+  currently OFF.  That is what made "You are given the NAMES, not the allowed
+  ranges" false (deleted).  **The duplication itself is the union round's**:
+  §4.2's thirteen scoped-fragment merges are all still mechanical
+  concatenations, and §D 6.1 only de-duplicated whole `$slot` references in
+  the two prompts, never content inside a fragment.
+
 ### Stage 10 — Live run
 
 Static checks cannot see behaviour.  Both 5-agent live runs found defects the
