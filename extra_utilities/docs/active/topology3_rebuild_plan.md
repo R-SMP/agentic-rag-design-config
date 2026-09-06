@@ -828,10 +828,78 @@ the topology-3 roster, each merged agent sees the topology-3 wording of the
 other's `call_*` tool, `call_planner` carries the hub-RETURN wording rather
 than topology 7's forward one, and topologies 5 and 7 still get their own.
 
-### Stage 9 — The merged prompts  (D10, §5)
+### Stage 9 — The merged prompts  (D10, §5)  — **ROUND 1 DONE 2026-09-06**
 
 The real content work.  Four phases, owner-driven, for the 2 prompts and the
 13 scoped fragments.  The Stage-4 scaffolds are replaced wholesale.
+
+**Round 1** is the owner's worklist, committed by them as
+`docs/active/topology3_stage9_prompt_edits.md` (`a59edaa`).  It is scoped to
+**removal, a few approved small edits, and CONCATENATION**.  Uniting two texts
+into one flowing statement is a LATER round and needs the owner's approval per
+instance — a rule stated twice, after I crossed it once.
+
+| § | What | Commit |
+|---|---|---|
+| **A** | Code prerequisites C1–C10 — `write_extraction` / `read_extracted_inputs` unbound, `read_user_inputs` bound to the Design Engineer with `include_image_paths=False`, `DCOI_COMPARISON_MODE` forced to mode 1 | `8d0b095` |
+| **B** | Global edits B1–B3 — every `extracted_inputs.txt` reference removed (A1: the file does not exist in topology 3), the sketch-precision verdict re-homed into the hand-off (A7 keeps the vocabulary) | `efad97b` |
+| — | **Revert of four merges** written during §B, plus 15 SCAFFOLD banners restored to naming their parents | `6d53d18` |
+| **C** | The duplicated roster entries co-located, one pair per merged agent | `736e6e3` |
+| **D** | Slot de-duplication (6.1) and the section pairs (6.2 / 6.3) | `a302187` |
+
+Assembled sizes, Stage-8 scaffold → end of round 1:
+
+| Agent | Stage 8 | Round 1 | Δ |
+|---|---|---|---|
+| `design_engineer` | 48 336 | 34 868 | −13 468 |
+| `requirements_analyst` | 50 440 | 36 389 | −14 051 |
+| `planner` | 25 415 | 24 384 | −1 031 |
+| `database_handler` | 22 338 | 22 160 | −178 |
+| `receptionist` | 15 978 | 15 974 | −4 |
+
+Topologies 7 and 5 assembled byte-identical, 16 of 16, at every commit.
+
+**Where the DE / RA reduction actually came from.**  6.1 alone is −22 727
+chars, and it is not a content cut: both merged prompts referenced the same
+`$hard_constraints_generic` / `$database_search_tool` / `$parameter_list`
+block twice, once per parent, so the assembled text carried it twice.
+`{routing_instructions}` was spliced twice as well — a duplication the
+worklist's own slot table did not list, found only by grepping the assembled
+prompt for repeated runtime slots.  **Check the ASSEMBLED text for repeats,
+not the source file: a `$slot` is one line and its expansion is thousands.**
+
+**Two contradictions are standing on purpose.**  Concatenating without uniting
+produces them, and they are round 2's to settle, not mine:
+
+* the Design Engineer's `## Attempt folders` both OWNS attempt creation
+  ("open exactly one attempt per generation") and demands a
+  `Current attempt <N>:` line from its incoming hand-off — which is now its
+  own;
+* the Requirements Analyst is told both to state everything it found (A2, no
+  extraction file exists) and to "keep the message to one or two sentences".
+
+**One provenance exception.**  R7 moves `## User inputs` across the
+Requirements Analyst's SCAFFOLD JOIN so it sits beside
+`## Loading render images`.  The join marker now records that exception in
+its own text, because "everything below comes from the DC Output Inspector"
+is the only record of which parent each paragraph came from, and round 2
+needs it.
+
+**Still open at the end of round 1** — all four are the owner's calls,
+carried from §F of the worklist:
+
+* **Q1** the Requirements Analyst's pre-route self-check was
+  `did write_extraction return success?`; with no such tool there is nothing
+  to check, and the section is currently just gone;
+* **Q2** the Receptionist's description of the flow;
+* **Q3** whether `MAX_SECTIONS_REFINE_ROUNDS` is retuned — a topology-3 round
+  is a shorter loop, but it is still ONE round (see the withdrawn O4);
+* **Q4** the Database Handler's schedule question names.
+
+Plus one of mine: `routing_design_engineer_3agents.md` lost its
+`<<DCII_ONLY>>/<<DCII_OFF>>` clarify-back block in §B, and whether it should
+come back depends on whether the DC Input Inspector is ever enabled under
+topology 3.
 
 ### Stage 10 — Live run
 
