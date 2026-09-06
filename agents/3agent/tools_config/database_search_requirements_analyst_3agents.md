@@ -1,7 +1,7 @@
 <!-- SCAFFOLD - NOT THE FINAL TEXT ------------------------------------
      scoped fragment `database_search` for the Requirements Analyst, produced by
      MECHANICALLY CONCATENATING its two topology-5 parents:
-       Requirements Analyst + Requirements Analyst
+       User Input Inspector + DC Output Inspector
 
      It exists so the 3-agent system assembles and its wiring can be
      verified BEFORE the prompts are authored.  It is a concatenation,
@@ -20,14 +20,13 @@
 * The Planner's instructions (however relayed) still take priority over any
   prior experience the database surfaces.
 
-**HARD — call ``database_search`` BEFORE you report what you found
-when:**
+**HARD — call ``database_search`` BEFORE you report what you found when:**
   * the user or an upstream agent required / mandated using past experience
     / the database / prior sessions (even when the relay softens it to
     "leveraging" or "emphasizes") — treat it as MANDATORY; OR
   * what you report depends on visually interpreting a sketch or reference
     image (the dominant RA case) — past sessions calibrate how comparable
-    sketches were read.
+    sketches were extracted.
 
 When it applies:
   1. ``database_search(query=<short focused query>, n=2-4)`` first — phrase

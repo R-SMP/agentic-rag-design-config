@@ -1,7 +1,7 @@
 <!-- SCAFFOLD - NOT THE FINAL TEXT ------------------------------------
      scoped fragment `generic_constraints` for the Design Engineer, produced by
      MECHANICALLY CONCATENATING its two topology-5 parents:
-       Design Engineer + Design Engineer
+       DC Input Creator + Tool Caller
 
      It exists so the 3-agent system assembles and its wiring can be
      verified BEFORE the prompts are authored.  It is a concatenation,

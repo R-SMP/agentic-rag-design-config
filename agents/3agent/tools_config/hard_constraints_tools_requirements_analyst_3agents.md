@@ -1,7 +1,7 @@
 <!-- SCAFFOLD - NOT THE FINAL TEXT ------------------------------------
      scoped fragment `hard_constraints_tools` for the Requirements Analyst, produced by
      MECHANICALLY CONCATENATING its two topology-5 parents:
-       Requirements Analyst + Requirements Analyst
+       User Input Inspector + DC Output Inspector
 
      It exists so the 3-agent system assembles and its wiring can be
      verified BEFORE the prompts are authored.  It is a concatenation,
