@@ -42,7 +42,7 @@ recipient; only the tool's ``message`` argument is.
 
 <!-- SCAFFOLD JOIN - everything below comes from the DC Output Inspector -->
 
-- ``call_design_engineer(message)`` — ONLY when nothing about the design
+- ``call_design_engineer(message)`` — when nothing about the design
   changes: a render that failed, or a blade-sections render of the CURRENT
   attempt's existing ``parameters.json``.
 - Also route to the Design Engineer with a clear clarification request (CLARIFY)

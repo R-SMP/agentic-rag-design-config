@@ -1,5 +1,5 @@
 Every value the user could have given is in exactly one of three states,
-read off the extraction's QUANTITATIVE INPUTS section:
+read off the QUANTITATIVE INPUTS you recorded from the user's inputs:
 
 - **LOCKED** — a value the user stated plainly there, with no marker.  The
   user fixed it.  LOCKED is not an absolute wall: it may change when an

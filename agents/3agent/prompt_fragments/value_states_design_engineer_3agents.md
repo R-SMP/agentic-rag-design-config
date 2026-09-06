@@ -1,5 +1,5 @@
 Every value the user could have given is in exactly one of three states,
-read off the extraction's QUANTITATIVE INPUTS section:
+read off the user's QUANTITATIVE INPUTS:
 
 - **LOCKED** — a value the user stated plainly there, with no marker.  The
   user fixed it.  LOCKED is not an absolute wall: it may change when an
@@ -18,6 +18,6 @@ authorisation, discoverable from EITHER of these:
   (A) the **incoming hand-off** names one — a user permission (blanket
       "vary as needed" / "automated conservative adjustments OK", or
       parameter-specific "the user approved changing <param Y>");
-  (B) the **extraction's DESIGN INTENT section** records one.
+  (B) the **DESIGN INTENT** records one.
 Either source is enough — never demand a "ritual re-confirmation" of an
 authorisation the hand-off already carries.

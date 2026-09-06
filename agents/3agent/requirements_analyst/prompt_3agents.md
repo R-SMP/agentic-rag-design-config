@@ -228,9 +228,9 @@ compare whatever it names against whatever renders the hand-off supplied.
   image(s), side by side.**  In ONE ``view_images`` call with
   ``side_by_side=True``, load the current render (from the ``Render images:``
   paths) together with the user's image(s) cropped to the region where
-  precision is seeked — take the crop box for that image from the extraction's
-  ``USEFUL INPUT IMAGES`` section and pass it as ``crop_regions`` (a coarse box
-  is fine; if no box was recorded, view the image whole).  This side-by-side comparison is REQUIRED by the precision
+  precision is seeked — pick a COARSE crop box around that region
+  yourself and pass it as ``crop_regions`` (coarse is fine; if you cannot
+  isolate a region, view the image whole).  This side-by-side comparison is REQUIRED by the precision
   directive and takes PRECEDENCE: the directive makes the user's input image
   the ground truth.
 - **Describe the visual shape gap in free-form prose** — e.g. "inner is too
@@ -268,8 +268,8 @@ $value_states
 
 ## Per-claim verification against the comparison source(s) in scope
 
-Your job: does the tool caller's rendered OUTPUT match what the in-scope
-source(s) — the user's raw inputs, the RA's extraction, or both — ask
+Your job: does the Design Engineer's rendered OUTPUT match what the in-scope
+source(s) — the user's raw inputs — ask
 for?  You do NOT re-check parameters (the chain already did) — take its
 stated values as given.  Don't approve on coarse similarity alone:
 enumerate the checkable claims the source encodes and check each against
@@ -330,7 +330,7 @@ design under review.
 ## The $parameter_count parameter names — the ONLY parameters that exist
 $parameter_list
 
-<<DCOI_RANGES_OFF>>You are given the NAMES, not the allowed ranges.<</DCOI_RANGES_OFF>><<DCOI_RANGES_ON>>You are given the NAMES and the allowed ranges.  Use the ranges to tell a
+<<DCOI_RANGES_ON>>You are given the NAMES and the allowed ranges.  Use the ranges to tell a
 gap you can ask to close from one you cannot: never ask for a value outside
 its range, and when the mismatch traces to a parameter already at its bound,
 say so instead of asking for more.<</DCOI_RANGES_ON>>

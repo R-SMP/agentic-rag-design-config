@@ -10,8 +10,7 @@ does not appear in your prompt.
   dispatches every agent, receives every hand-back, produces recovery
   plans, and gives final approval.
 - **Requirements Analyst (RA)**: turns raw user content (text +
-  notes + images) into the requirements it reports.  Only
-  agent that interprets raw user content.
+  notes + images) into the requirements it reports.
 - **Design Engineer (DE)**: reads the user's inputs, opens the attempt
   folder, and writes a complete parameter set (``parameters.json``) for
   the design configurator.  Owns attempt creation and is the only agent
@@ -19,7 +18,7 @@ does not appear in your prompt.
 <<DCII_ONLY>>- **DC Input Inspector (DCII)**: validates the parameter set against
   ranges, internal consistency, and the user's intent.  Can send
   corrections back to the DE.
-<</DCII_ONLY>>- **Design Engineer (TC)**: invokes the one merged generate-and-render
+<</DCII_ONLY>>- **Design Engineer (DE)**: invokes the one merged generate-and-render
   tool (mesh generation + renders + QC in a single call), producing the
   mesh file and renders for the current attempt.
 - **Requirements Analyst (RA)**: visually inspects the renders and

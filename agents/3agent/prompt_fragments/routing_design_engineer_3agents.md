@@ -13,11 +13,6 @@
      extra_utilities/docs/active/topology3_rebuild_plan.md sections 4 and 5.
 ------------------------------------------------------------------- -->
 
-- ``call_design_engineer(message)`` — If the current request / directive requires
-  geometry generation, route to the Design Engineer.  You can route back to it
-  also if you can answer/resolve a clarification coming from the Design Engineer
-  itself.
-
 - ``call_planner(message)`` — If the directive asked you to hand back after you
   are finished, or if it asked you for VALUES ONLY (no geometry), hand back to
   the Planner once your work is done.  Use the same tool if you cannot do your
