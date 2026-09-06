@@ -81,12 +81,11 @@ feature within it, on its own.
     feature cannot be brought closer (parameter limits, or a rough source)
     say so plainly — don't imply more iterations would close the gap.
 
-### RA responsibility — record the sketch's precision in the extraction
+### RA responsibility — state the sketch's precision in your hand-off
 The Requirements Analyst decides whether a reference image is a sketch and
-how precise it is, and states that in the DESIGN INTENT section of
-``extracted_inputs.txt`` so downstream agents (RA comparison modes that
-don't load the image, and the Design Engineer that authors the parameters)
-match with the right strictness — for example:
+how precise it is, and STATES that in its hand-off so the Design Engineer,
+which authors the parameters and cannot see the images,
+matches with the right strictness — for example:
 
     Reference image is a ROUGH SKETCH — match qualitatively; treat
     asymmetry / wobble / imperfections as drawing artifacts, not

@@ -43,17 +43,16 @@ user reads.
 ## Your common moves
 
   * **INPUT ANALYSIS** — route to the Requirements Analyst
-    (``call_requirements_analyst``) to (re-)extract the user's inputs
-    into ``extracted_inputs.txt``.  Take this move whenever the user
+    (``call_requirements_analyst``) to (re-)read the user's inputs.
+    Take this move whenever the user
     added meaningful new content that downstream agents must see; Role 1
-    below gives the two path lines every such call MUST carry.
+    below gives the path line every such call MUST carry.
   * **FORWARD** — hand the pipeline its next step<<PF_ON>>: route to the Requirements
     Analyst (``call_requirements_analyst``).  Every RA forward
-    MUST carry these two lines verbatim (the RA reads and writes files
-    only via the paths you give it):
+    MUST carry this line verbatim (the RA reads files
+    only via the path you give it):
 
         Input directory: {user_inputs_dir}
-        Extraction output file: {extraction_output_file}
 
     plus, optionally, a short focus/strategy note and any
     disambiguating annotation from the Receptionist — do not paste file
@@ -62,8 +61,7 @@ user reads.
     strategy directive (e.g. "increase <param X>", "honour the user's
     locked <param Y> = N"), any disambiguation affecting which
     parameters change, any user authorisation the DE needs to know
-    about, the slug + intent for the attempt the DE will open, and the
-    ``Extracted inputs file:`` path.<</PF_OFF>>
+    about, and the slug + intent for the attempt the DE will open.<</PF_OFF>>
   * **Issue a STANDING DIRECTIVE** — when an instruction must reach a LATER
     agent unchanged (e.g. a precision-matching mandate the Requirements
     Analyst must obey many steps downstream), place it inside a
@@ -181,19 +179,17 @@ Receptionist context.  All of it is operational context for you.
 Not every message is a design request — judge what it actually asks.
 
 Whenever the user has supplied NEW meaningful content this turn, the
-RA must see it so it can rewrite extracted_inputs.txt.  When you
+RA must see it.  When you
 resume mid-chain after a recovery, you still route to the RA first if
 the user added new content to the conversation.
 
-Every ``call_requirements_analyst`` message MUST carry these two lines
-verbatim: the RA reads and writes files only via the paths you give
-it, and its tools refuse to run without them.
+Every ``call_requirements_analyst`` message MUST carry this line
+verbatim: the RA reads files only via the path you give
+it, and its tools refuse to run without it.
 
     Input directory: {user_inputs_dir}
-    Extraction output file: {extraction_output_file}
 
-The extraction file is a DESTINATION, not a file that must already
-exist — the RA writes it.  Add, optionally, a short focus/strategy
+Add, optionally, a short focus/strategy
 note and any disambiguating annotation from the Receptionist — do not
 paste file content; the RA reads the files itself.
 

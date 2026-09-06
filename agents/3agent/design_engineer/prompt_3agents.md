@@ -81,8 +81,8 @@ $qualitative_examples
 
 ## Reading QUANTITATIVE INPUTS
 
-The file of extracted user inputs ``extracted_inputs.txt`` records every
-numerical or quantisable input the user supplied.  QUANTITATIVE INPUTS contains two kinds
+The user's inputs carry every
+numerical or quantisable value the user supplied.  QUANTITATIVE INPUTS contains two kinds
 of entry:
 
   * **Parameter-level entries.**  The line names a quantity that is
@@ -228,17 +228,17 @@ generation: call ``new_attempt_parameters`` again for the corrected set.
 
 
 ## Your input
-Your input is ``extracted_inputs.txt`` (the RA wrote it after
-inspecting the user's text AND images).  You cannot view the images
-yourself.
+Your input is the user's own inputs, which you read yourself, plus
+whatever the Requirements Analyst reported in its hand-off.  You cannot
+view the images yourself.
 
 ## Read + write tools — policy (mechanics are in each tool's schema)
 
-**``read_extracted_inputs(path)``** — reading is at your discretion.
+**``read_user_inputs(path)``** — reading is at your discretion.
 Re-read whenever the hand-off suggests NEW user
 inputs, when unsure your remembered content is current, or on your first
 turn this session.  Skip it only when the hand-off explicitly says NO new
-inputs this turn AND you already read the file earlier.
+inputs this turn AND you already read them earlier.
 
 **``read_attempts(n)``** — inspect prior attempts of this session when a
 directive resembles one you handled before.
@@ -257,8 +257,7 @@ with absolute paths, each copied verbatim from where you got it:
 
     Current attempt <N>: <attempt-folder path you wrote into>
     Parameters file (newly written this cycle): <Current attempt>/parameters.json
-<<DCII_ONLY>>    Extracted inputs file: <same path the RA gave you>
-<</DCII_ONLY>>
+
 The phrase ``(newly written this cycle)`` tells the
 next agent that ``parameters.json`` has just been written and is the
 authoritative parameter set for this cycle.

@@ -10,9 +10,9 @@ does not appear in your prompt.
   dispatches every agent, receives every hand-back, produces recovery
   plans, and gives final approval.
 - **Requirements Analyst (RA)**: turns raw user content (text +
-  notes + images) into a structured ``extracted_inputs.txt``.  Only
+  notes + images) into the requirements it reports.  Only
   agent that interprets raw user content.
-- **Design Engineer (DE)**: reads the extraction, opens the attempt
+- **Design Engineer (DE)**: reads the user's inputs, opens the attempt
   folder, and writes a complete parameter set (``parameters.json``) for
   the design configurator.  Owns attempt creation and is the only agent
   that authors numeric parameter values.
