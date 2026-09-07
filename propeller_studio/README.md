@@ -122,7 +122,14 @@ Notable options:
 * `render.background.mode` — `solid`, `gradient`, `transparent`, `floor`
   (with a contact shadow).
 * `render.overlays` — silhouette, feature edges, section curves, wireframe.
-* `drawing.sections.annotations` — each dimension is its own switch.
+* `drawing.sections.annotations` — each dimension is its own switch. Twelve of
+  them: chord, angle, thickness, camber, radial station, span position, chord
+  line, camber mean line, LE/TE markers, leading-edge radius, bounding box and
+  the value table.
+* `drawing.layout` — `stacked` (views across the top, sections in a band
+  below), `sections_right` (views fill the left, sections run down a column on
+  the right — a wider, more horizontal drawing) or `sections_left`.
+  `drawing.sections_column_fraction` sets the column width, 0.15–0.7.
 
 ---
 
@@ -147,6 +154,20 @@ r = 4 mm, *inside* the 8.28 mm hub, so in a single pass the hub swallows it and
 the drawing silently loses a third of its subject. Set
 `render.overlays.section_curves_on_top: false` for honest occlusion instead.
 
+**Labels are placed, not positioned.** Every value — including the ones on
+dimension lines — is offered a ladder of candidate anchors and takes the first
+that overlaps no other text, no box, and no already-drawn dimension line, and
+that stays inside its panel. A value prefers to sit on its own dimension line;
+when that line is congested it comes off onto a leader, as a draughtsman would
+do. The largest item (the value table) chooses first, because the small values
+have leaders and can travel around it while it cannot travel around them.
+
+Fixed offsets cannot work here: the panel is a different shape in each layout,
+and each extra toggle adds another label competing for the same two millimetres
+around the airfoil. `smoke_test.py` asserts the result — every annotation on,
+both layouts, A3 landscape and A4 portrait — by measuring the real label boxes
+against the real renderer.
+
 ---
 
 ## Keeping the copies honest
@@ -167,7 +188,7 @@ is ~4e-06 mm — three.js stores positions as float32, which dominates.
 .\.venv-studio\Scripts\python -m propeller_studio.dev.smoke_test --rhino
 ```
 
-runs 33 end-to-end checks. Drop `--rhino` if no server is running.
+runs 37 end-to-end checks (35 without `--rhino`). Drop `--rhino` if no server is running.
 
 ---
 

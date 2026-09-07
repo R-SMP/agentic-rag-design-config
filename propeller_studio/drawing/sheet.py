@@ -4,13 +4,20 @@ Composes one ISO sheet: frame, title block, the 3D views with their outline
 overlaid, and the dimensioned blade sections beside them -- all in a single
 image, as asked.  Every element is switchable from the settings tree.
 
+Two layouts:
+
+``stacked``          views in a band across the top, sections in a band below.
+``sections_right``   views fill the left of the sheet, sections run down a
+                     column on the right (``sections_left`` mirrors it).
+
 Both bands are drawn TO A STATED SCALE chosen from the standard series, and the
 scale is printed in the title block.  Auto-framing each panel to fill its box
 would look tidier and be a lie: a drawing that names a scale has to be at it.
 
-Layout is packed TOP-DOWN at each band's *needed* height rather than split by a
-fixed fraction.  The scale series is coarse -- 1:1 then 1:2 -- so a fixed split
-routinely leaves a third of a band empty while the other band is cramped.
+Panels are arranged by :func:`_grid`, which picks the rows x columns that make
+the panels largest rather than assuming a single row -- in the column layout the
+views get a narrower, taller region, where two rows of two beats one row of
+four by a wide margin.
 """
 
 from __future__ import annotations
@@ -104,7 +111,46 @@ def _section_needs(kinds, params):
     return max(need_w, 1.0) * SEC_PAD_W, max(need_h, 1.0) * SEC_PAD_H
 
 
-def render_sheet(geom, s, *, out_paths, title=None, warnings=()):
+def _grid(n, rect_w, rect_h, *, caption_h=CAPTION_H, pad=PANEL_PAD, force_cols=None):
+    """Rows x columns that make each panel as large as possible.
+
+    Returns ``(rows, cols, panel_w, panel_h)``.  ``force_cols`` pins the column
+    count (the section column is one-wide by definition).
+    """
+    best = None
+    options = [force_cols] if force_cols else range(1, n + 1)
+    for cols in options:
+        rows = -(-n // cols)
+        pw = (rect_w - pad * (cols - 1)) / cols
+        ph = (rect_h - (caption_h + pad) * rows + pad) / rows
+        if pw <= 1 or ph <= 1:
+            continue
+        score = min(pw, ph)
+        if best is None or score > best[0]:
+            best = (score, rows, cols, pw, ph)
+    if best is None:                       # degenerate sheet; fail visibly, not silently
+        return 1, max(1, n), max(1.0, rect_w / max(1, n)), max(1.0, rect_h - caption_h)
+    return best[1], best[2], best[3], best[4]
+
+
+def _cells(rect, rows, cols, panel_w, panel_h, *, caption_h=CAPTION_H,
+           pad=PANEL_PAD, count=None):
+    """Yield the (x, y, w, h) of each panel, centred inside *rect*."""
+    rx, ry, rw, rh = rect
+    n = count if count is not None else rows * cols
+    cell_h = panel_h + caption_h
+    block_h = rows * cell_h + (rows - 1) * pad
+    block_w = cols * panel_w + (cols - 1) * pad
+    top = ry + rh - max(0.0, rh - block_h) / 2.0
+    left = rx + max(0.0, rw - block_w) / 2.0
+    for i in range(n):
+        r, c = divmod(i, cols)
+        yield (left + c * (panel_w + pad),
+               top - (r + 1) * cell_h - r * pad,
+               panel_w, panel_h)
+
+
+def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
     """Draw the sheet for *geom* and write it to every path in *out_paths*.
 
     ``out_paths`` maps format -> Path (``{"png": ..., "pdf": ..., "svg": ...}``).
@@ -140,60 +186,87 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=()):
     strip_h = max(30.0, H * 0.11) if (sheet["title_block"] or d["param_table"]) else 0.0
     content = (frame[0] + 3, frame[1] + strip_h + 4.0,
                frame[2] - 6, frame[3] - strip_h - 4.0 - 3)
-    content_top = content[1] + content[3]
 
     view_specs = [S.resolve_view(v) for v in d["views"]]
     sec_kinds = list(d["sections"]["which"]) if d["sections"]["enabled"] else []
     has_views, has_secs = bool(view_specs), bool(sec_kinds)
 
-    # ---- decide both scales, then take only the height each band needs ----
-    view_scale = sec_scale = None
-    view_panel_w = view_panel_h = 0.0
-    sec_panel_w = sec_panel_h = 0.0
+    layout = d.get("layout", "stacked")
+    column = layout in ("sections_right", "sections_left") and has_views and has_secs
 
+    # ---- carve the content area into a views region and a sections region -
+    if column:
+        frac = min(0.7, max(0.15, float(d.get("sections_column_fraction", 0.38))))
+        col_w = content[2] * frac
+        rest_w = content[2] - col_w - BAND_GAP
+        if layout == "sections_right":
+            views_rect = (content[0], content[1], rest_w, content[3])
+            secs_rect = (content[0] + rest_w + BAND_GAP, content[1], col_w, content[3])
+        else:
+            secs_rect = (content[0], content[1], col_w, content[3])
+            views_rect = (content[0] + col_w + BAND_GAP, content[1], rest_w, content[3])
+        sec_force_cols = 1
+    else:
+        views_rect = secs_rect = None
+        sec_force_cols = len(sec_kinds) or 1
+
+    meta = {"views": [], "sections": sec_kinds}
+    section_axes = []
+    view_scale = sec_scale = None
+
+    # ---- views ------------------------------------------------------------
+    v_rows = v_cols = 0
+    v_pw = v_ph = 0.0
     if has_views:
         radius = _bounding_radius(geom)
-        view_panel_w = (content[2] - PANEL_PAD * (len(view_specs) - 1)) / len(view_specs)
-        allow_h = (content[3] * 0.58 if has_secs else content[3]) - CAPTION_H
-        view_scale = nice_scale(min(view_panel_w, allow_h) * 0.94 / (2 * radius))
-        view_panel_h = min(allow_h, 2 * radius * view_scale * 1.06)
+        region = views_rect or (content[0], content[1], content[2],
+                                content[3] * (0.58 if has_secs else 1.0))
+        v_rows, v_cols, v_pw, v_ph = _grid(len(view_specs), region[2], region[3])
+        view_scale = nice_scale(min(v_pw, v_ph) * 0.94 / (2 * radius))
+        v_ph = min(v_ph, 2 * radius * view_scale * 1.06)
 
-    views_band = (view_panel_h + CAPTION_H) if has_views else 0.0
+    views_band = (v_rows * (v_ph + CAPTION_H) + (v_rows - 1) * PANEL_PAD) if has_views else 0.0
 
+    # ---- sections ---------------------------------------------------------
+    s_rows = s_cols = 0
+    s_pw = s_ph = 0.0
     if has_secs:
-        sec_panel_w = (content[2] - PANEL_PAD * (len(sec_kinds) - 1)) / len(sec_kinds)
-        allow_h = content[3] - views_band - (BAND_GAP if has_views else 0.0) - CAPTION_H
+        if column:
+            region = secs_rect
+        else:
+            avail_h = content[3] - views_band - (BAND_GAP if has_views else 0.0)
+            region = (content[0], content[1], content[2], avail_h)
+        s_rows, s_cols, s_pw, s_ph = _grid(len(sec_kinds), region[2], region[3],
+                                           force_cols=sec_force_cols)
         need_w, need_h = _section_needs(sec_kinds, params)
         if d["sections"]["common_scale"]:
-            sec_scale = nice_scale(min(sec_panel_w / need_w, allow_h / need_h))
-            # Fill the band rather than shrink-wrapping the subject: the scale
+            sec_scale = nice_scale(min(s_pw / need_w, s_ph / need_h))
+            # Fill the region rather than shrink-wrapping the subject: the scale
             # is fixed by the series, so a tight box would only mean a small
             # airfoil floating above empty sheet.  The cap stops a very small
-            # section from being framed by a vast field of grid.
-            sec_panel_h = min(allow_h, need_h * sec_scale * 1.7)
-        else:
-            # Each section fills its own box; the panel is simply the space.
-            sec_panel_h = allow_h
+            # section being framed by a vast field of grid.
+            s_ph = min(s_ph, need_h * sec_scale * 1.7)
+        secs_band = s_rows * (s_ph + CAPTION_H) + (s_rows - 1) * PANEL_PAD
 
-    # Centre the bands vertically in whatever is left.  Packing hard against
-    # the top leaves a short sheet -- two views and two sections on A4 -- with
-    # a third of its height blank below, which reads as a layout failure rather
-    # than as a deliberately sparse drawing.
-    used_h = views_band
-    if has_secs:
-        used_h += (BAND_GAP if has_views else 0.0) + sec_panel_h + CAPTION_H
-    band_top = content_top - max(0.0, content[3] - used_h) / 2.0
+    # In the stacked layout both bands share one column of space, so centre the
+    # pair vertically; in the column layout each region centres within itself.
+    if not column:
+        used = views_band + (secs_band + BAND_GAP if has_secs and has_views else
+                             (secs_band if has_secs else 0.0))
+        slack = max(0.0, content[3] - used) / 2.0
+        top = content[1] + content[3] - slack
+        views_rect = (content[0], top - views_band, content[2], views_band)
+        secs_rect = (content[0], top - views_band - (BAND_GAP if has_views else 0.0)
+                     - secs_band, content[2], secs_band)
 
-    # ---- 3D views --------------------------------------------------------
-    meta = {"views": [], "sections": sec_kinds}
     if has_views:
-        view_y = band_top - views_band
-        px_h = int(max(360, view_panel_h * d["dpi"] / 25.4))
-        px_w = int(max(360, view_panel_w * d["dpi"] / 25.4))
-        half_world_h = (view_panel_h / view_scale) / 2.0
+        px_h = int(max(360, v_ph * d["dpi"] / 25.4))
+        px_w = int(max(360, v_pw * d["dpi"] / 25.4))
+        half_world_h = (v_ph / view_scale) / 2.0
         style = dict(d["view_style"])
-
-        for i, (name, az, el) in enumerate(view_specs):
+        cells = list(_cells(views_rect, v_rows, v_cols, v_pw, v_ph,
+                            count=len(view_specs)))
+        for (name, az, el), cell in zip(view_specs, cells):
             img = scene.render_view(
                 geom, s, {"name": name, "az": az, "el": el},
                 width=px_w, height=px_h, style=style,
@@ -202,8 +275,7 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=()):
                 # view's background off whatever the render preset says.
                 background={"mode": "transparent"}, transparent=True,
             )
-            x = content[0] + i * (view_panel_w + PANEL_PAD)
-            ax = _blank(_axes(fig, (x, view_y, view_panel_w, view_panel_h), (W, H)))
+            ax = _blank(_axes(fig, cell, (W, H)))
             ax.imshow(img)
             ax.patch.set_alpha(0)
             if d["view_style"].get("labels", True):
@@ -212,34 +284,38 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=()):
             meta["views"].append({"name": name, "az": az, "el": el,
                                   "scale": scale_text(view_scale)})
 
-    # ---- blade sections (directly beneath the views) ---------------------
     if has_secs:
-        sec_y = band_top - views_band - (BAND_GAP if has_views else 0.0) \
-                - sec_panel_h - CAPTION_H
-        aspect = sec_panel_w / sec_panel_h
+        aspect = s_pw / s_ph
         if d["sections"]["common_scale"]:
-            half_spans = {k: (sec_panel_h / sec_scale) / 2.0 for k in sec_kinds}
+            half_spans = {k: (s_ph / sec_scale) / 2.0 for k in sec_kinds}
         else:
             half_spans = {}
             for k in sec_kinds:
                 w, h = SEC.section_span(k, params)
                 half_spans[k] = max(w * SEC_PAD_W / max(aspect, 1e-6),
                                     h * SEC_PAD_H) * 0.5
-
-        for i, kind in enumerate(sec_kinds):
-            x = content[0] + i * (sec_panel_w + PANEL_PAD)
-            ax = _axes(fig, (x, sec_y, sec_panel_w, sec_panel_h), (W, H))
+        cells = list(_cells(secs_rect, s_rows, s_cols, s_pw, s_ph,
+                            count=len(sec_kinds)))
+        for kind, cell in zip(sec_kinds, cells):
+            ax = _axes(fig, cell, (W, H))
             note = None
             if not d["sections"]["common_scale"]:
-                note = scale_text(sec_panel_h / (2 * half_spans[kind]))
+                note = scale_text(s_ph / (2 * half_spans[kind]))
             SEC.draw_section(ax, kind, params, d["sections"]["annotations"],
                              half_span=half_spans[kind], aspect=aspect,
                              grid=d["sections"].get("grid", True),
                              scale_note=note)
+            section_axes.append(ax)
 
     if fax is not None and (sheet["title_block"] or d["param_table"]):
         _draw_strip(fax, frame, strip_h, s, geom, title=title,
                     view_scale=view_scale, sec_scale=sec_scale, warnings=warnings)
+
+    # Hook for the label-overlap check: it needs the live figure (extents only
+    # exist against a renderer), and re-deriving the layout in the test would
+    # test the copy rather than the sheet.
+    if inspect is not None:
+        inspect(fig, section_axes)
 
     written = {}
     for fmt, path in (out_paths or {}).items():
@@ -249,6 +325,7 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=()):
     plt.close(fig)
 
     meta.update({
+        "layout": layout,
         "sheet": "%s %s" % (sheet["size"], sheet["orientation"]),
         "sheet_mm": [W, H],
         "view_scale": scale_text(view_scale) if view_scale else None,
@@ -284,7 +361,7 @@ def _draw_strip(fax, frame, strip_h, s, geom, *, title, view_scale, sec_scale,
                 ("views " + scale_text(view_scale)) if view_scale else None,
                 ("sections " + scale_text(sec_scale)) if sec_scale else None,
             ])) or "not to scale"),
-            ("UNITS / PROJECTION", "mm   orthographic (views arranged left to right)"),
+            ("UNITS / PROJECTION", "mm   orthographic"),
             ("DRAWN / DATE", "%s   %s" % (d.get("drawn_by") or "-",
                                           _dt.date.today().isoformat())),
         ]

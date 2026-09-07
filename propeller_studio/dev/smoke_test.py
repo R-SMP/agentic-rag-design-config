@@ -19,6 +19,7 @@ from pathlib import Path
 from propeller_studio import params as P
 from propeller_studio import pipeline
 from propeller_studio import settings as S
+from propeller_studio.drawing import sheet as SHEET
 from propeller_studio.geometry import airfoil, backends
 
 PASS, FAIL = [], []
@@ -177,6 +178,77 @@ def test_pipeline():
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+ALL_ANNOTATIONS = {
+    "chord": True, "angle": True, "thickness": True, "camber": True,
+    "radial_station": True, "span_position": True, "chord_line": True,
+    "camber_line": True, "le_te": True, "le_radius": True, "bbox": True,
+    "value_table": True,
+}
+
+
+def _label_report(fig, axes):
+    """Every label box, checked against its panel and against every other."""
+    renderer = fig.canvas.get_renderer()
+    problems = []
+    for ax in axes:
+        panel = ax.get_window_extent(renderer=renderer)
+        items = []
+        for t in ax.texts:
+            if not t.get_text().strip():
+                continue
+            try:
+                items.append((t.get_text().splitlines()[0][:28],
+                              t.get_window_extent(renderer=renderer)))
+            except Exception:
+                continue
+        for name, bb in items:
+            # 1 px of tolerance: a box that shares an edge with the frame is
+            # touching, not overflowing.
+            if (bb.x0 < panel.x0 - 1 or bb.x1 > panel.x1 + 1
+                    or bb.y0 < panel.y0 - 1 or bb.y1 > panel.y1 + 1):
+                problems.append("'%s' leaves its panel" % name)
+        for i in range(len(items)):
+            for j in range(i + 1, len(items)):
+                a, b = items[i][1], items[j][1]
+                ix = min(a.x1, b.x1) - max(a.x0, b.x0)
+                iy = min(a.y1, b.y1) - max(a.y0, b.y0)
+                if ix > 1 and iy > 1:
+                    problems.append("'%s' overlaps '%s' (%.0fx%.0f px)"
+                                    % (items[i][0], items[j][0], ix, iy))
+    return problems
+
+
+def test_label_placement(layouts=("stacked", "sections_right")):
+    """No dimension text may overlap other text, or leave its panel.
+
+    Checked on the REAL sheet with every annotation switched on -- the worst
+    case, and the only one that exercises the placer's fallbacks.
+    """
+    print("\n== label placement (all annotations on) ==")
+    tmp = Path(tempfile.mkdtemp(prefix="propstudio_labels_"))
+    try:
+        geom = backends.build(P.DEFAULT_PARAMS, "feg")
+        for layout in layouts:
+            for sheet_size, orient in (("A3", "landscape"), ("A4", "portrait")):
+                found = []
+                s = S.resolve({"drawing": {
+                    "layout": layout,
+                    "dpi": 120,
+                    "sheet": {"size": sheet_size, "orientation": orient},
+                    "sections": {"annotations": ALL_ANNOTATIONS},
+                }})
+                SHEET.render_sheet(
+                    geom, s, out_paths={"png": tmp / ("%s_%s.png" % (layout, sheet_size))},
+                    title="label check",
+                    inspect=lambda fig, axes: found.extend(_label_report(fig, axes)),
+                )
+                check("%s / %s %s: no label collisions"
+                      % (layout, sheet_size, orient), not found,
+                      "; ".join(found[:3]) if found else "")
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main(argv=None):
     argv = argv or []
     with_rhino = "--rhino" in argv
@@ -185,6 +257,7 @@ def main(argv=None):
     test_settings()
     test_backends(with_rhino)
     test_pipeline()
+    test_label_placement()
     print("\n%d passed, %d failed" % (len(PASS), len(FAIL)))
     if FAIL:
         print("FAILED: " + ", ".join(FAIL))

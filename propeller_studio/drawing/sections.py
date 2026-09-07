@@ -7,13 +7,23 @@ attack.
 
 Every annotation is individually switchable; :func:`draw_section` reads the
 ``drawing.sections.annotations`` block straight from the settings tree.
+
+Labels are PLACED, not positioned: each is offered a ladder of candidate
+anchors and takes the first that collides with nothing already drawn (see
+``placement.Placer``).  Fixed offsets cannot work here -- the panel is a
+different shape in the stacked and column layouts, and every extra toggle adds
+another label competing for the same two millimetres around the airfoil.
 """
 
 from __future__ import annotations
 
+import math
+
 import numpy as np
+from matplotlib.patches import Circle, Rectangle
 
 from propeller_studio.drawing import dimensions as D
+from propeller_studio.drawing.placement import Placer
 from propeller_studio.geometry import airfoil
 
 SECTION_COLORS = {
@@ -35,12 +45,7 @@ def section_span(kind, params):
 
 
 def common_half_span(kinds, params, pad=1.35):
-    """Half-extent (mm) large enough to frame EVERY selected section.
-
-    Used when ``common_scale`` is on: all panels then share one mm-per-point
-    scale, so an inner chord of 10 mm looks half a middle chord of 20 mm --
-    which is the whole point of drawing them on one sheet.
-    """
+    """Half-extent (mm) large enough to frame EVERY selected section."""
     worst = 0.0
     for k in kinds:
         w, h = section_span(k, params)
@@ -61,14 +66,15 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
         half_span = max(w, h) * 0.5 * 1.35
 
     # The window is the PANEL's shape, not a square: an airfoil is wide and
-    # flat, so a square window spends most of its area on empty grid and
-    # shrinks the subject.  mm-per-point is identical either way, so the stated
-    # common scale is unaffected.
+    # flat, so a square window spends most of its area on empty grid.
+    # mm-per-point is identical either way, so the stated scale is unaffected.
     ax.set_aspect("equal", adjustable="box")
     half_w = half_span * float(aspect)
     half_h = half_span
     xlim = (centroid[0] - half_w, centroid[0] + half_w)
     ylim = (centroid[1] - half_h, centroid[1] + half_h)
+    ax.set_xlim(*xlim)
+    ax.set_ylim(*ylim)
 
     if grid:
         D.mm_grid(ax, xlim, ylim, step=1.0, major_every=5)
@@ -83,92 +89,130 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
     chord_len = m["chord_mm"]
 
     if annotations.get("chord_line", True):
-        ax.plot([le[0], te[0]], [le[1], te[1]], color=CHORD_COLOR, lw=0.7,
-                zorder=5)
+        ax.plot([le[0], te[0]], [le[1], te[1]], color=CHORD_COLOR, lw=0.7, zorder=5)
     if annotations.get("camber_line", True) and m["has_camber"]:
         cl = m["camber_line_xy"]
         ax.plot(cl[:, 0], cl[:, 1], color=CAMBER_COLOR, lw=0.9,
                 ls=(0, (5, 2.5)), zorder=5)
 
-    unit = half_span  # every offset below is a fraction of the panel half-size
+    if title:
+        label = SECTION_LABELS[kind] + " SECTION"
+        if scale_note:
+            label += "    " + scale_note
+        ax.set_title(label, fontsize=7.6, color=color, pad=4, fontweight="bold")
+    for spine in ax.spines.values():
+        spine.set_edgecolor("#bbbbbb")
+        spine.set_linewidth(0.6)
+    ax.set_xticks([])
+    ax.set_yticks([])
+
+    # ---- annotations, placed rather than positioned ----------------------
+    placer = Placer(ax)
+    lo, hi = pts.min(axis=0), pts.max(axis=0)
+    # The airfoil itself is occupied: a label sitting on the shape it measures
+    # is the one overlap no amount of leader routing can excuse.
+    placer.reserve_data(lo[0], lo[1], hi[0], hi[1])
+
+    unit = half_span
     win_w = xlim[1] - xlim[0]
     win_h = ylim[1] - ylim[0]
 
+    # ---- phase 1: draw every dimension LINE, arc and patch ---------------
+    # Lines are geometry and go where the geometry says.  Only their VALUES are
+    # placed, in phase 2 -- so a line may cross another line (which a drawing
+    # tolerates) while no value crosses a value or a box (which it does not).
+    jobs = []          # (size_rank, callable) -- placed largest first
+
     if annotations.get("chord"):
-        # Offset scaled to the SECTION, capped by the panel: a fixed fraction of
-        # the window pushes a wide section's chord label past the frame edge.
         chord_off = min(unit * 0.30, chord_len * 0.30, win_h * 0.20)
-        D.linear_dim(ax, te, le, offset=chord_off, side=-1.0,
-                     label="CHORD %.2f mm" % chord_len)
+        a, b, _ = D.linear_dim(ax, te, le, offset=chord_off, side=-1.0,
+                               show_text=False)
+        placer.reserve_line(a, b)
+        jobs.append((2, lambda a=a, b=b: placer.place_on_line(
+            "CHORD %.2f mm" % chord_len, a, b,
+            color=D.DIM_COLOR, fontsize=D.FONT_DIM)))
 
     if annotations.get("angle"):
         datum = te + np.array([chord_len * 0.75, 0.0])
-        D.angular_dim(ax, te, datum, le, radius=chord_len * 0.42,
-                      label="%.1f°" % m["angle_deg"],
-                      datum_len=chord_len * 0.62)
+        vertex, a0, sweep, arc_r, _ = D.angular_dim(
+            ax, te, datum, le, radius=chord_len * 0.42,
+            datum_len=chord_len * 0.62, show_text=False)
+        cands = []
+        for rm in (1.12, 1.45, 1.85, 2.3):
+            for f in (0.5, 0.75, 0.25, 1.0):
+                ang = a0 + sweep * f
+                cands.append((vertex[0] + arc_r * rm * math.cos(ang),
+                              vertex[1] + arc_r * rm * math.sin(ang),
+                              "left" if math.cos(ang) >= 0 else "right",
+                              "center", None))
+        jobs.append((1, lambda c=cands: placer.place(
+            "%.1f°" % m["angle_deg"], c,
+            color=D.DIM_COLOR, fontsize=D.FONT_DIM)))
 
-    # Thickness and camber are dimensioned ACROSS a section only a millimetre
-    # or two deep, so their values go on leaders rather than on the dimension
-    # line.  Rotated text sitting in that gap collides with the outline, the
-    # camber line and the angle arc -- three labels fighting over the same
-    # 2 mm, which is how a drawing becomes unreadable at print size.
     if annotations.get("thickness"):
         up = np.asarray(m["thickness_upper_xy"])
         lo_pt = np.asarray(m["thickness_lower_xy"])
         D.linear_dim(ax, lo_pt, up, offset=0.0, show_text=False)
-        # Anchored to the panel, not to the feature: a chord-relative offset
-        # scales with the section and walks a long label straight off the
-        # sheet on the wide middle section.
-        D.leader(ax, (up + lo_pt) / 2.0,
-                 "t max %.2f mm  (%.1f%% c @ %.0f%% c)" % (
-                     m["max_thickness_mm"], m["thickness_pct"],
-                     100 * m["thickness_station_frac"]),
-                 landing=(xlim[0] + win_w * 0.05, ylim[1] - win_h * 0.11),
-                 landing_len=win_w * 0.02, text_dir=1.0)
+        placer.reserve_line(lo_pt, up)
+        mid = tuple((up + lo_pt) / 2.0)
+        jobs.append((3, lambda mid=mid: placer.place_text(
+            "t max %.2f mm  (%.1f%% c @ %.0f%% c)" % (
+                m["max_thickness_mm"], m["thickness_pct"],
+                100 * m["thickness_station_frac"]),
+            zones=["TL", "ML", "BL", "TR", "MR", "BR"],
+            color=D.DIM_COLOR, fontsize=D.FONT_DIM, leader_from=mid)))
 
     if annotations.get("camber"):
         if m["has_camber"]:
-            crest = np.asarray(m["camber_crest_xy"])
+            crest = tuple(np.asarray(m["camber_crest_xy"]))
             D.linear_dim(ax, m["camber_chord_xy"], crest, offset=0.0,
                          color=CAMBER_COLOR, show_text=False)
-            D.leader(ax, crest,
-                     "camber %.2f mm  (%.1f%% c)  crest %.0f/10 c" % (
-                         m["max_camber_mm"], m["camber_pct"], m["crest_tenths"]),
-                     landing=(xlim[1] - win_w * 0.05, ylim[1] - win_h * 0.21),
-                     landing_len=win_w * 0.02, text_dir=-1.0,
-                     color=CAMBER_COLOR)
+            placer.reserve_line(m["camber_chord_xy"], crest)
+            jobs.append((3, lambda crest=crest: placer.place_text(
+                "camber %.2f mm  (%.1f%% c)  crest %.0f/10 c" % (
+                    m["max_camber_mm"], m["camber_pct"], m["crest_tenths"]),
+                zones=["TR", "MR", "BR", "TL", "ML", "BL"],
+                color=CAMBER_COLOR, fontsize=D.FONT_DIM, leader_from=crest)))
         else:
-            ax.text(xlim[1] - win_w * 0.05, ylim[1] - win_h * 0.21,
-                    "no camber (symmetric)", ha="right", va="center",
-                    fontsize=D.FONT_DIM, color=CAMBER_COLOR, zorder=7)
-
-    if annotations.get("le_te"):
-        ax.annotate("LE", xy=tuple(le), xytext=(le[0] + unit * 0.16, le[1] + unit * 0.16),
-                    fontsize=D.FONT_DIM, color=CHORD_COLOR,
-                    arrowprops=dict(arrowstyle="-", color=CHORD_COLOR, lw=0.5), zorder=7)
-        ax.annotate("TE", xy=tuple(te), xytext=(te[0] - unit * 0.22, te[1] - unit * 0.18),
-                    fontsize=D.FONT_DIM, color=CHORD_COLOR,
-                    arrowprops=dict(arrowstyle="-", color=CHORD_COLOR, lw=0.5), zorder=7)
-
-    if annotations.get("le_radius"):
-        # NACA 4-digit leading-edge radius: r = 1.1019 * t^2 * c.
-        r_le = 1.1019 * (m["thickness_pct"] / 100.0) ** 2 * chord_len
-        ax.add_patch(__import__("matplotlib.patches", fromlist=["Circle"]).Circle(
-            tuple(le + (te - le) / max(chord_len, 1e-9) * r_le), r_le,
-            fill=False, ec=D.DIM_COLOR, lw=D.EXT_LW, zorder=6))
-        D.leader(ax, le, "R %.3f mm" % r_le,
-                 landing=(xlim[1] - win_w * 0.05, ylim[0] + win_h * 0.30),
-                 landing_len=win_w * 0.02, text_dir=-1.0)
+            jobs.append((2, lambda: placer.place_text(
+                "no camber (symmetric)", zones=["TR", "MR", "BR", "TL"],
+                color=CAMBER_COLOR, fontsize=D.FONT_DIM)))
 
     if annotations.get("bbox"):
-        lo, hi = pts.min(axis=0), pts.max(axis=0)
-        ax.add_patch(__import__("matplotlib.patches", fromlist=["Rectangle"]).Rectangle(
-            (lo[0], lo[1]), hi[0] - lo[0], hi[1] - lo[1], fill=False,
-            ec=D.CENTER_COLOR, lw=D.EXT_LW, ls=(0, (4, 3)), zorder=3))
-        D.linear_dim(ax, (lo[0], lo[1]), (hi[0], lo[1]), offset=-unit * 0.16,
-                     label="%.2f" % (hi[0] - lo[0]), color=D.CENTER_COLOR)
-        D.linear_dim(ax, (hi[0], lo[1]), (hi[0], hi[1]), offset=unit * 0.16,
-                     label="%.2f" % (hi[1] - lo[1]), color=D.CENTER_COLOR)
+        ax.add_patch(Rectangle((lo[0], lo[1]), hi[0] - lo[0], hi[1] - lo[1],
+                               fill=False, ec=D.CENTER_COLOR, lw=D.EXT_LW,
+                               ls=(0, (4, 3)), zorder=3))
+        a, b, _ = D.linear_dim(ax, (lo[0], lo[1]), (hi[0], lo[1]),
+                               offset=-min(unit * 0.14, win_h * 0.10),
+                               color=D.CENTER_COLOR, show_text=False)
+        placer.reserve_line(a, b)
+        jobs.append((1, lambda a=a, b=b: placer.place_on_line(
+            "%.2f" % (hi[0] - lo[0]), a, b,
+            color=D.CENTER_COLOR, fontsize=D.FONT_DIM)))
+        a2, b2, _ = D.linear_dim(ax, (hi[0], lo[1]), (hi[0], hi[1]),
+                                 offset=min(unit * 0.14, win_w * 0.06),
+                                 color=D.CENTER_COLOR, show_text=False)
+        placer.reserve_line(a2, b2)
+        jobs.append((1, lambda a=a2, b=b2: placer.place_on_line(
+            "%.2f" % (hi[1] - lo[1]), a, b,
+            color=D.CENTER_COLOR, fontsize=D.FONT_DIM)))
+
+    r_le = 1.1019 * (m["thickness_pct"] / 100.0) ** 2 * chord_len
+    if annotations.get("le_radius"):
+        # NACA 4-digit leading-edge radius: r = 1.1019 * t^2 * c.
+        centre = le + (te - le) / max(chord_len, 1e-9) * r_le
+        ax.add_patch(Circle(tuple(centre), r_le, fill=False, ec=D.DIM_COLOR,
+                            lw=D.EXT_LW, zorder=6))
+        jobs.append((2, lambda: placer.place_text(
+            "LE radius %.3f mm" % r_le, zones=["BR", "MR", "BL", "TR"],
+            color=D.DIM_COLOR, fontsize=D.FONT_DIM, leader_from=tuple(le))))
+
+    if annotations.get("le_te"):
+        for pt, txt in ((le, "LE"), (te, "TE")):
+            jobs.append((0, lambda pt=pt, txt=txt: placer.place_text(
+                txt, zones=["TR", "TL", "BR", "BL"], color=CHORD_COLOR,
+                fontsize=D.FONT_DIM, leader_from=tuple(pt),
+                radii=(0.055, 0.09, 0.14, 0.20))))
 
     station_bits = []
     if annotations.get("radial_station"):
@@ -176,8 +220,9 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
     if annotations.get("span_position"):
         station_bits.append("span %.2f (from 4 mm root)" % m["span_fraction"])
     if station_bits:
-        ax.text(xlim[0] + unit * 0.05, ylim[1] - unit * 0.07, "   ".join(station_bits),
-                ha="left", va="top", fontsize=D.FONT_DIM, color="#444444", zorder=7)
+        jobs.append((4, lambda: placer.place_text(
+            "   ".join(station_bits), zones=["TL", "TR", "BL", "BR"],
+            color="#444444", fontsize=D.FONT_DIM)))
 
     if annotations.get("value_table"):
         rows = [
@@ -190,22 +235,18 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
                 m["max_camber_mm"], m["camber_pct"],
                 100 * m["camber_station_frac"]),
         ]
-        ax.text(xlim[0] + unit * 0.05, ylim[0] + unit * 0.05, "\n".join(rows),
-                ha="left", va="bottom", fontsize=D.FONT_DIM - 0.4, color="#333333",
-                family="monospace", zorder=7,
-                bbox=dict(boxstyle="round,pad=0.25", fc="white", ec="#dddddd", lw=0.4))
+        jobs.append((9, lambda: placer.place_text(
+            "\n".join(rows), zones=["BL", "BR", "TL", "TR"],
+            color="#333333", fontsize=D.FONT_DIM - 0.4, family="monospace",
+            bbox=dict(boxstyle="round,pad=0.25", fc="white",
+                      ec="#dddddd", lw=0.4))))
 
-    if title:
-        label = SECTION_LABELS[kind] + " SECTION"
-        if scale_note:
-            label += "    " + scale_note
-        ax.set_title(label, fontsize=7.6, color=color, pad=4, fontweight="bold")
+    # ---- phase 2: place the values, LARGEST FIRST ------------------------
+    # Whoever is placed first gets the space.  Placing the four-line value table
+    # LAST meant that on a small panel it was the one item with nowhere left to
+    # go, so it is now first: the small values have leaders and can travel
+    # around it, while it cannot travel around them.
+    for _, job in sorted(jobs, key=lambda item: -item[0]):
+        job()
 
-    ax.set_xlim(*xlim)
-    ax.set_ylim(*ylim)
-    for spine in ax.spines.values():
-        spine.set_edgecolor("#bbbbbb")
-        spine.set_linewidth(0.6)
-    ax.set_xticks([])
-    ax.set_yticks([])
     return m

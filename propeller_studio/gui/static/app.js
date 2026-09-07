@@ -34,6 +34,7 @@ async function boot() {
   buildSelect("lighting", SCHEMA.lighting_presets, "studio");
   buildSelect("bg-mode", SCHEMA.background_modes, "gradient");
   buildSelect("sheet-size", SCHEMA.sheet_sizes, "A3");
+  buildSelect("layout", SCHEMA.layouts, "stacked");
   buildAnnotations();
   buildPartMaterials();
   for (const p of SCHEMA.presets) {
@@ -223,6 +224,8 @@ function collectSettings() {
         frame: $("sheet-frame").checked,
         title_block: $("sheet-tb").checked,
       },
+      layout: $("layout").value,
+      sections_column_fraction: Number($("sections-width").value),
       views: chipValues("draw-views"),
       view_style: {
         shaded: $("vs-shaded").checked,
@@ -389,6 +392,8 @@ function applySettings(s) {
     if (o.wireframe !== undefined) $("ov-wire").checked = o.wireframe;
   }
   if (d.enabled !== undefined) $("draw-enabled").checked = d.enabled;
+  if (d.layout) $("layout").value = d.layout;
+  if (d.sections_column_fraction) $("sections-width").value = d.sections_column_fraction;
   if (d.param_table !== undefined) $("param-table").checked = d.param_table;
   if (d.dpi) $("dpi").value = d.dpi;
   if (d.sheet) {

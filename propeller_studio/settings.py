@@ -37,6 +37,7 @@ NAMED_VIEWS = {
 LIGHTING_PRESETS = ("studio", "soft", "dramatic", "technical")
 BACKGROUND_MODES = ("solid", "gradient", "transparent", "floor")
 PROJECTIONS = ("perspective", "orthographic")
+DRAWING_LAYOUTS = ("stacked", "sections_right", "sections_left")
 SHEET_SIZES = {                      # width x height in mm, portrait
     "A5": (148, 210), "A4": (210, 297), "A3": (297, 420),
     "A2": (420, 594), "A1": (594, 841),
@@ -95,6 +96,11 @@ DEFAULTS = {
 
     "drawing": {
         "enabled": True,
+        # "stacked"        views across the top, sections in a band below
+        # "sections_right" views fill the left, sections run down the right
+        # "sections_left"  the mirror of sections_right
+        "layout": "stacked",
+        "sections_column_fraction": 0.38,   # column layouts only
         "sheet": {
             "size": "A3",
             "orientation": "landscape",
@@ -223,6 +229,8 @@ def validate(s):
         _check(int(tt["count"]) >= 1, "render.turntable.count must be >= 1")
 
     d = s["drawing"]
+    _check(d.get("layout", "stacked") in DRAWING_LAYOUTS,
+           "drawing.layout must be one of %s" % (DRAWING_LAYOUTS,))
     _check(d["sheet"]["size"] in SHEET_SIZES,
            "drawing.sheet.size must be one of %s" % (sorted(SHEET_SIZES),))
     _check(d["sheet"]["orientation"] in ("landscape", "portrait"),

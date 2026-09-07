@@ -82,6 +82,10 @@ def build_parser():
     cfg.add_argument("--bg-color")
     cfg.add_argument("--size", help="render size WxH, e.g. 2000x1500")
     cfg.add_argument("--projection", choices=S.PROJECTIONS)
+    cfg.add_argument("--layout", choices=S.DRAWING_LAYOUTS,
+                     help="stacked (bands) or sections_right/left (column)")
+    cfg.add_argument("--sections-width", type=float, metavar="FRACTION",
+                     help="width of the sections column, 0.15-0.7 (column layouts)")
     cfg.add_argument("--sheet", choices=sorted(S.SHEET_SIZES))
     cfg.add_argument("--portrait", action="store_true")
     cfg.add_argument("--formats", type=_csv, help="png,pdf,svg")
@@ -192,6 +196,10 @@ def collect_overrides(args):
             raise SystemExit("--size expects WxH, e.g. 2000x1500")
     if args.projection:
         _set(o, "render.projection", args.projection)
+    if args.layout:
+        _set(o, "drawing.layout", args.layout)
+    if args.sections_width:
+        _set(o, "drawing.sections_column_fraction", args.sections_width)
     if args.sheet:
         _set(o, "drawing.sheet.size", args.sheet)
     if args.portrait:

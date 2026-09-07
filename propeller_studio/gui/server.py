@@ -68,6 +68,7 @@ def create_app(out_root=None):
             "lighting_presets": list(S.LIGHTING_PRESETS),
             "background_modes": list(S.BACKGROUND_MODES),
             "projections": list(S.PROJECTIONS),
+            "layouts": list(S.DRAWING_LAYOUTS),
             "sheet_sizes": sorted(S.SHEET_SIZES),
         })
 

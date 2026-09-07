@@ -54,7 +54,7 @@ def linear_dim(ax, p1, p2, *, offset=0.0, label=None, decimals=2, unit=" mm",
     d = p2 - p1
     length = float(np.linalg.norm(d))
     if length < 1e-9:
-        return
+        return p1, p2, None
     u = _unit(d)
     n = _perp(u) * float(side)
     off = n * float(offset)
@@ -75,20 +75,21 @@ def linear_dim(ax, p1, p2, *, offset=0.0, label=None, decimals=2, unit=" mm",
                                 color=color, lw=DIM_LW, shrinkA=0, shrinkB=0))
 
     if not show_text:
-        return
+        return a, b, None
     text = label if label is not None else _fmt(length, decimals, unit)
     ang = math.degrees(math.atan2(u[1], u[0]))
     if ang > 90 or ang <= -90:
         ang += 180
     mid = (a + b) / 2.0
     pad = _perp(u) * (length * 0.035 + 0.12) * (-1.0 if flip_text else 1.0) * float(side)
-    ax.text(mid[0] + pad[0], mid[1] + pad[1], text, rotation=ang,
-            rotation_mode="anchor", ha="center", va="bottom",
-            fontsize=fontsize, color=color, zorder=7)
+    return a, b, ax.text(mid[0] + pad[0], mid[1] + pad[1], text, rotation=ang,
+                         rotation_mode="anchor", ha="center", va="bottom",
+                         fontsize=fontsize, color=color, zorder=7)
 
 
 def angular_dim(ax, vertex, p_from, p_to, *, radius, label=None, decimals=1,
-                color=DIM_COLOR, fontsize=FONT_DIM, datum_len=None):
+                color=DIM_COLOR, fontsize=FONT_DIM, datum_len=None,
+                show_text=True):
     """Dimension the angle at *vertex* between the rays to *p_from*/*p_to*.
 
     Draws the datum ray, the arc, arrowheads tangent to the arc, and the value
@@ -113,37 +114,16 @@ def angular_dim(ax, vertex, p_from, p_to, *, radius, label=None, decimals=1,
                     arrowprops=dict(arrowstyle=ARROW + ",head_length=0.5,head_width=0.18",
                                     color=color, lw=DIM_LW, shrinkA=0, shrinkB=0))
 
+    if not show_text:
+        return vertex, a0, sweep, radius, None
     mid_a = a0 + sweep / 2.0
     tp = vertex + np.array([math.cos(mid_a), math.sin(mid_a)]) * (radius * 1.08 + 0.25)
     text = label if label is not None else (
         _fmt(abs(math.degrees(sweep)), decimals, "") + "°")
-    ax.text(tp[0], tp[1], text, ha="left" if math.cos(mid_a) >= 0 else "right",
-            va="center", fontsize=fontsize, color=color, zorder=7)
-
-
-def leader(ax, target, text, *, landing, color=DIM_COLOR, fontsize=FONT_DIM,
-           landing_len=None, ha=None, text_dir=None):
-    """A leader from *target* to a landing point, with text on the landing.
-
-    ``text_dir`` (+1 right, -1 left) sets which way the text grows, INDEPENDENT
-    of which way the elbow points.  That separation matters: a label anchored to
-    the left edge of a panel must still read rightwards, or it runs off the
-    sheet -- which is precisely what happens when the text direction is inferred
-    from the elbow.
-    """
-    target = np.asarray(target, dtype=float)
-    landing = np.asarray(landing, dtype=float)
-    elbow_sign = 1.0 if landing[0] >= target[0] else -1.0
-    if landing_len is None:
-        landing_len = abs(landing[0] - target[0]) * 0.18 + 0.4
-    sign = float(text_dir) if text_dir else elbow_sign
-    end = landing + np.array([landing_len * sign, 0.0])
-    ax.plot([target[0], landing[0], end[0]], [target[1], landing[1], end[1]],
-            color=color, lw=DIM_LW, zorder=6)
-    ax.plot([target[0]], [target[1]], marker="o", ms=1.8, color=color, zorder=7)
-    ax.text(end[0] + 0.15 * sign, end[1], text, va="center",
-            ha=(ha or ("left" if sign > 0 else "right")),
-            fontsize=fontsize, color=color, zorder=7)
+    artist = ax.text(tp[0], tp[1], text,
+                     ha="left" if math.cos(mid_a) >= 0 else "right",
+                     va="center", fontsize=fontsize, color=color, zorder=7)
+    return vertex, a0, sweep, radius, artist
 
 
 def center_mark(ax, point, size, *, color=CENTER_COLOR, lw=0.5):
