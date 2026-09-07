@@ -86,6 +86,11 @@ def build_parser():
                      help="stacked (bands) or sections_right/left (column)")
     cfg.add_argument("--sections-width", type=float, metavar="FRACTION",
                      help="width of the sections column, 0.15-0.7 (column layouts)")
+    cfg.add_argument("--scale-mode", choices=S.SCALE_MODES,
+                     help="fill = draw as large as the panel allows (default); "
+                          "standard = round down to a preferred-series scale")
+    cfg.add_argument("--font-scale", type=float, metavar="X",
+                     help="multiply every annotation size, e.g. 1.25")
     cfg.add_argument("--sheet", choices=sorted(S.SHEET_SIZES))
     cfg.add_argument("--portrait", action="store_true")
     cfg.add_argument("--formats", type=_csv, help="png,pdf,svg")
@@ -198,6 +203,10 @@ def collect_overrides(args):
         _set(o, "render.projection", args.projection)
     if args.layout:
         _set(o, "drawing.layout", args.layout)
+    if args.scale_mode:
+        _set(o, "drawing.scale_mode", args.scale_mode)
+    if args.font_scale:
+        _set(o, "drawing.font_scale", args.font_scale)
     if args.sections_width:
         _set(o, "drawing.sections_column_fraction", args.sections_width)
     if args.sheet:

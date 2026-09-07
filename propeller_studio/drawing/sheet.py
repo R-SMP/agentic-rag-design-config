@@ -50,6 +50,11 @@ SCALE_SERIES = (100, 50, 20, 10, 5, 4, 2.5, 2, 1,
 # 3.99 would drop to 2.5 for want of 0.3 %.
 SCALE_TOLERANCE = 1.04
 
+# Ceiling on the height the views band may take in the stacked layout.  In fill
+# mode the views really do claim their whole allowance, so this is the knob that
+# decides how the sheet is split between big pictures and legible dimensions.
+VIEWS_HEIGHT_SHARE = 0.52
+
 CAPTION_H = 6.0          # mm reserved above a panel for its caption
 BAND_GAP = 5.0
 PANEL_PAD = 3.0
@@ -70,9 +75,20 @@ def nice_scale(max_scale):
 
 
 def scale_text(s):
+    """A scale as a printable ratio, 3 significant figures.
+
+    Fill mode produces ratios like 1 : 1.18 that are not on the preferred
+    series; they are still true, and stating the real number beats stating a
+    tidy one the drawing is not actually at.
+    """
     if s >= 1:
-        return "%g : 1" % s
-    return "1 : %g" % round(1.0 / s, 4)
+        return "%.3g : 1" % s
+    return "1 : %.3g" % (1.0 / s)
+
+
+def pick_scale(fit, mode):
+    """Turn an available fit into the scale to draw at."""
+    return nice_scale(fit) if mode == "standard" else fit
 
 
 def _bounding_radius(geom):
@@ -142,9 +158,13 @@ def _cells(rect, rows, cols, panel_w, panel_h, *, caption_h=CAPTION_H,
     block_h = rows * cell_h + (rows - 1) * pad
     block_w = cols * panel_w + (cols - 1) * pad
     top = ry + rh - max(0.0, rh - block_h) / 2.0
-    left = rx + max(0.0, rw - block_w) / 2.0
     for i in range(n):
         r, c = divmod(i, cols)
+        # Centre each row on its OWN contents: three views in a 2x2 grid leave
+        # the last one hanging against the left margin otherwise.
+        in_row = min(cols, n - r * cols)
+        row_w = in_row * panel_w + (in_row - 1) * pad
+        left = rx + max(0.0, rw - row_w) / 2.0
         yield (left + c * (panel_w + pad),
                top - (r + 1) * cell_h - r * pad,
                panel_w, panel_h)
@@ -192,6 +212,8 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
     has_views, has_secs = bool(view_specs), bool(sec_kinds)
 
     layout = d.get("layout", "stacked")
+    scale_mode = d.get("scale_mode", "fill")
+    fs = float(d.get("font_scale", 1.0))
     column = layout in ("sections_right", "sections_left") and has_views and has_secs
 
     # ---- carve the content area into a views region and a sections region -
@@ -220,9 +242,10 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
     if has_views:
         radius = _bounding_radius(geom)
         region = views_rect or (content[0], content[1], content[2],
-                                content[3] * (0.58 if has_secs else 1.0))
+                                content[3] * (VIEWS_HEIGHT_SHARE if has_secs else 1.0))
         v_rows, v_cols, v_pw, v_ph = _grid(len(view_specs), region[2], region[3])
-        view_scale = nice_scale(min(v_pw, v_ph) * 0.94 / (2 * radius))
+        headroom = 0.94 if scale_mode == "standard" else 0.98
+        view_scale = pick_scale(min(v_pw, v_ph) * headroom / (2 * radius), scale_mode)
         v_ph = min(v_ph, 2 * radius * view_scale * 1.06)
 
     views_band = (v_rows * (v_ph + CAPTION_H) + (v_rows - 1) * PANEL_PAD) if has_views else 0.0
@@ -240,7 +263,7 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
                                            force_cols=sec_force_cols)
         need_w, need_h = _section_needs(sec_kinds, params)
         if d["sections"]["common_scale"]:
-            sec_scale = nice_scale(min(s_pw / need_w, s_ph / need_h))
+            sec_scale = pick_scale(min(s_pw / need_w, s_ph / need_h), scale_mode)
             # Fill the region rather than shrink-wrapping the subject: the scale
             # is fixed by the series, so a tight box would only mean a small
             # airfoil floating above empty sheet.  The cap stops a very small
@@ -280,7 +303,7 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
             ax.patch.set_alpha(0)
             if d["view_style"].get("labels", True):
                 ax.set_title("%s  (az %g°, el %g°)" % (name.upper(), az, el),
-                             fontsize=7.2, pad=3, color="#222222")
+                             fontsize=7.6 * fs, pad=3, color="#222222")
             meta["views"].append({"name": name, "az": az, "el": el,
                                   "scale": scale_text(view_scale)})
 
@@ -304,12 +327,13 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
             SEC.draw_section(ax, kind, params, d["sections"]["annotations"],
                              half_span=half_spans[kind], aspect=aspect,
                              grid=d["sections"].get("grid", True),
-                             scale_note=note)
+                             scale_note=note, font_scale=fs)
             section_axes.append(ax)
 
     if fax is not None and (sheet["title_block"] or d["param_table"]):
         _draw_strip(fax, frame, strip_h, s, geom, title=title,
-                    view_scale=view_scale, sec_scale=sec_scale, warnings=warnings)
+                    view_scale=view_scale, sec_scale=sec_scale,
+                    warnings=warnings, font_scale=fs)
 
     # Hook for the label-overlap check: it needs the live figure (extents only
     # exist against a renderer), and re-deriving the layout in the test would
@@ -326,6 +350,7 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
 
     meta.update({
         "layout": layout,
+        "scale_mode": scale_mode,
         "sheet": "%s %s" % (sheet["size"], sheet["orientation"]),
         "sheet_mm": [W, H],
         "view_scale": scale_text(view_scale) if view_scale else None,
@@ -336,7 +361,7 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
 
 
 def _draw_strip(fax, frame, strip_h, s, geom, *, title, view_scale, sec_scale,
-                warnings):
+                warnings, font_scale=1.0):
     """Title block on the right of the bottom strip, notes/params on the left."""
     d = s["drawing"]
     params = geom.params
@@ -370,10 +395,10 @@ def _draw_strip(fax, frame, strip_h, s, geom, *, title, view_scale, sec_scale,
             ry = top - (i + 1) * rh
             if i:
                 fax.plot([tb_x, right], [ry + rh, ry + rh], color="#999999", lw=0.4)
-            fax.text(tb_x + 2.0, ry + rh * 0.5, k, fontsize=4.8, va="center",
-                     color="#666666")
-            fax.text(tb_x + tb_w * 0.34, ry + rh * 0.5, v, fontsize=5.8,
-                     va="center", color="#111111")
+            fax.text(tb_x + 2.0, ry + rh * 0.5, k, fontsize=5.4 * font_scale,
+                     va="center", color="#666666")
+            fax.text(tb_x + tb_w * 0.34, ry + rh * 0.5, v,
+                     fontsize=6.6 * font_scale, va="center", color="#111111")
 
     lx = x0 + 2.0
     lw = tb_x - lx - 4.0

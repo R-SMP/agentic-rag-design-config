@@ -218,13 +218,16 @@ def _label_report(fig, axes):
     return problems
 
 
-def test_label_placement(layouts=("stacked", "sections_right")):
+def test_label_placement(layouts=("stacked", "sections_right"),
+                         annotations=None, label="all annotations on"):
     """No dimension text may overlap other text, or leave its panel.
 
-    Checked on the REAL sheet with every annotation switched on -- the worst
-    case, and the only one that exercises the placer's fallbacks.
+    Checked on the REAL sheet twice: with the DEFAULT annotation set, which is
+    what most drawings use, and with every toggle on, which is the worst case
+    and the only one that exercises the placer's fallbacks.
     """
-    print("\n== label placement (all annotations on) ==")
+    annotations = ALL_ANNOTATIONS if annotations is None else annotations
+    print("\n== label placement (%s) ==" % label)
     tmp = Path(tempfile.mkdtemp(prefix="propstudio_labels_"))
     try:
         geom = backends.build(P.DEFAULT_PARAMS, "feg")
@@ -235,7 +238,7 @@ def test_label_placement(layouts=("stacked", "sections_right")):
                     "layout": layout,
                     "dpi": 120,
                     "sheet": {"size": sheet_size, "orientation": orient},
-                    "sections": {"annotations": ALL_ANNOTATIONS},
+                    "sections": {"annotations": annotations},
                 }})
                 SHEET.render_sheet(
                     geom, s, out_paths={"png": tmp / ("%s_%s.png" % (layout, sheet_size))},
@@ -257,6 +260,9 @@ def main(argv=None):
     test_settings()
     test_backends(with_rhino)
     test_pipeline()
+    test_label_placement(
+        annotations=S.defaults()["drawing"]["sections"]["annotations"],
+        label="default annotations")
     test_label_placement()
     print("\n%d passed, %d failed" % (len(PASS), len(FAIL)))
     if FAIL:

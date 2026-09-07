@@ -22,7 +22,7 @@ DIM_LW = 0.7
 EXT_LW = 0.5
 OBJ_LW = 1.5
 CENTER_COLOR = "#7a7a7a"
-FONT_DIM = 6.2
+FONT_DIM = 7.6        # base annotation size; scaled by drawing.font_scale
 ARROW = "-|>"
 
 

@@ -126,6 +126,17 @@
         <label class="field">Sections column width
           <input type="range" id="sections-width" min="0.15" max="0.7" step="0.01" value="0.38"><span class="val"></span></label>
       </div>
+      <div class="row">
+        <label class="field">Scale <select id="scale-mode"></select></label>
+        <label class="field">Text size
+          <input type="range" id="font-scale" min="0.7" max="1.8" step="0.05" value="1"><span class="val"></span></label>
+      </div>
+      <p class="note"><strong>fill</strong> draws the views and sections as large
+        as their panels allow and states the true ratio (e.g. 1 : 1.24).
+        <strong>standard</strong> rounds down to a preferred-series scale
+        (2:1, 1:1, 1:2 …) — tidier numbers, but the series has nothing between
+        1:1 and 1:2, so on A3 with three views it costs about 40 % of the image
+        size. Either way the title block states the scale actually used.</p>
       <p class="note"><strong>stacked</strong>: views across the top, sections in a
         band below. <strong>sections_right</strong>: views fill the left, sections
         run down a column on the right (a wider, more horizontal drawing);

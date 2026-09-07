@@ -130,14 +130,31 @@ Notable options:
   below), `sections_right` (views fill the left, sections run down a column on
   the right — a wider, more horizontal drawing) or `sections_left`.
   `drawing.sections_column_fraction` sets the column width, 0.15–0.7.
+* `drawing.scale_mode` — `fill` (default) draws everything as large as its panel
+  allows and states the true ratio; `standard` rounds down to a preferred-series
+  scale. See below.
+* `drawing.font_scale` — multiplies every annotation size at once (1.25 for
+  larger values, 0.85 for denser sheets).
 
 ---
 
 ## About the drawing
 
-**It is genuinely to scale.** Both bands pick a scale from the standard series
-(…10:1, 5:1, 4:1, 2.5:1, 2:1, 1:1, 1:2…) and the title block states it.
-Auto-framing each panel to fill its box would look tidier and would be a lie.
+**It is genuinely to scale, and the title block states which scale.** Two modes:
+
+* `fill` (default) draws each band as large as its panel allows and prints the
+  exact ratio, e.g. `views 1 : 1.24   sections 3.94 : 1`.
+* `standard` rounds down to a preferred-series value (…4:1, 2.5:1, 2:1, 1:1,
+  1:2…). Tidier numbers, but the series has **nothing between 1:1 and 1:2**, so
+  on A3 with three views the fit of 0.85 drops to 1:2 and the images come out at
+  59 % of the size the sheet could carry.
+
+Either way the number printed is the number drawn. What is never done is
+auto-framing each panel while claiming a scale it is not at.
+
+`VIEWS_HEIGHT_SHARE` in `sheet.py` caps how much height the views band may take
+in the stacked layout — it is the knob that trades big pictures against legible
+dimensions, since in fill mode the views really do claim their whole allowance.
 
 **The 2D sections are true projections of the 3D geometry.** A section's placed
 points all share one X (its radius), so the drawing frame is exactly the (Y, Z)

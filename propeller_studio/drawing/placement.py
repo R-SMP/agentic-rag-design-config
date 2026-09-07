@@ -136,8 +136,16 @@ class Placer:
                 out.append((x0 + zx * w, y0 + (zy + dy) * h, ha, va, None))
         return out
 
+    def zone_candidates(self, zones, leader_from, radii=(0.16, 0.26, 0.38)):
+        """Public candidate builder, for callers that mix their own anchors with
+        the panel-zone fallbacks (the angle value sits on its arc first)."""
+        x0, x1 = self.ax.get_xlim()
+        y0, y1 = self.ax.get_ylim()
+        return self._candidates(zones, leader_from, x1 - x0, y1 - y0, x0, y0, radii)
+
     def place(self, text, candidates, *, color, fontsize, leader_from=None,
-              leader_from_index=0, zorder=7, family=None, bbox=None):
+              leader_from_index=0, zorder=7, family=None, bbox=None,
+              alt_texts=()):
         """Draw *text* at the first candidate that collides with nothing.
 
         ``candidates`` is an ordered list of ``(x, y, ha, va, rotation)``.  A
@@ -155,35 +163,59 @@ class Placer:
         artist = self.ax.text(x0, self.ax.get_ylim()[0], text, color=color,
                               fontsize=fontsize, zorder=zorder, family=family,
                               bbox=bbox)
+        def sweep():
+            """Best (score, ...) over every candidate for the current text."""
+            found = None
+            for idx, (px, py, ha, va, rot) in enumerate(candidates):
+                artist.set_position((px, py))
+                artist.set_ha(ha)
+                artist.set_va(va)
+                artist.set_rotation(rot or 0)
+                if rot is not None:
+                    artist.set_rotation_mode("anchor")
+                try:
+                    bb = artist.get_window_extent(renderer=self.renderer)
+                except Exception:
+                    continue
+                # Ranked worst-first: leaving the panel, then overlapping text
+                # or a box, then merely being crossed by a dimension line.
+                score = (self.overlap(bb)
+                         + _outside_area(bb, panel) * 4.0
+                         + self.crossed_by_line(bb) * 25.0)
+                needs_leader = leader_from is not None and idx >= leader_from_index
+                if score == 0.0 and needs_leader:
+                    if self.segment_blocked(
+                            leader_from, self._leader_anchor((px, py), ha, w)):
+                        score = 1.0    # clean box, but the leader crosses
+                if found is None or score < found[0]:
+                    found = (score, (px, py), ha, va, rot, bb, needs_leader)
+                if score == 0.0:
+                    break
+            return found
+
+        # A long label in a narrow panel may not fit at the requested size at
+        # all.  Rather than let it escape the frame, fall back through the
+        # caller's more compact wordings first -- a line break costs nothing --
+        # and only then shrink, which costs the legibility the size was chosen
+        # for.
         best = None
-        for idx, (px, py, ha, va, rot) in enumerate(candidates):
-            artist.set_position((px, py))
-            artist.set_ha(ha)
-            artist.set_va(va)
-            artist.set_rotation(rot or 0)
-            if rot is not None:
-                artist.set_rotation_mode("anchor")
-            try:
-                bb = artist.get_window_extent(renderer=self.renderer)
-            except Exception:
-                continue
-            # Outside the panel is never acceptable, so it is weighted heavily
-            # rather than merely ranked against the overlaps.
-            # Ranked worst-first: leaving the panel, then overlapping text or a
-            # box, then merely being crossed by a dimension line.
-            score = (self.overlap(bb)
-                     + _outside_area(bb, panel) * 4.0
-                     + self.crossed_by_line(bb) * 25.0)
-            needs_leader = leader_from is not None and idx >= leader_from_index
-            if score == 0.0 and needs_leader:
-                if self.segment_blocked(leader_from, self._leader_anchor((px, py), ha, w)):
-                    score = 1.0        # clean box, but the leader crosses
-            if best is None or score < best[0]:
-                best = (score, (px, py), ha, va, rot, bb, needs_leader)
-            if score == 0.0:
+        for shrink in (1.0, 0.92, 0.84, 0.76, 0.68, 0.60):
+            artist.set_fontsize(fontsize * shrink)
+            for variant in (text,) + tuple(alt_texts):
+                artist.set_text(variant)
+                found = sweep()
+                if found is None:
+                    continue
+                if best is None or found[0] < best[0]:
+                    best = found + (variant, fontsize * shrink)
+                if found[0] == 0.0:
+                    break
+            if best and best[0] == 0.0:
                 break
 
-        _, pos, ha, va, rot, bb, needs_leader = best
+        _, pos, ha, va, rot, bb, needs_leader, variant, size = best
+        artist.set_text(variant)
+        artist.set_fontsize(size)
         artist.set_position(pos)
         artist.set_ha(ha)
         artist.set_va(va)

@@ -54,7 +54,7 @@ def common_half_span(kinds, params, pad=1.35):
 
 
 def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
-                 grid=True, title=True, scale_note=None):
+                 grid=True, title=True, scale_note=None, font_scale=1.0):
     """Draw one dimensioned section into *ax*.  Returns its metrics dict."""
     m = airfoil.section_metrics(kind, params)
     color = SECTION_COLORS[kind]
@@ -87,6 +87,9 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
     le = np.asarray(m["le_xy"])
     te = np.asarray(m["te_xy"])
     chord_len = m["chord_mm"]
+    # One knob for every annotation size, so "make the values readable" is a
+    # single setting rather than a hunt through a dozen literals.
+    fs = D.FONT_DIM * float(font_scale)
 
     if annotations.get("chord_line", True):
         ax.plot([le[0], te[0]], [le[1], te[1]], color=CHORD_COLOR, lw=0.7, zorder=5)
@@ -99,7 +102,8 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
         label = SECTION_LABELS[kind] + " SECTION"
         if scale_note:
             label += "    " + scale_note
-        ax.set_title(label, fontsize=7.6, color=color, pad=4, fontweight="bold")
+        ax.set_title(label, fontsize=8.4 * float(font_scale), color=color,
+                     pad=4, fontweight="bold")
     for spine in ax.spines.values():
         spine.set_edgecolor("#bbbbbb")
         spine.set_linewidth(0.6)
@@ -130,7 +134,7 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
         placer.reserve_line(a, b)
         jobs.append((2, lambda a=a, b=b: placer.place_on_line(
             "CHORD %.2f mm" % chord_len, a, b,
-            color=D.DIM_COLOR, fontsize=D.FONT_DIM)))
+            color=D.DIM_COLOR, fontsize=fs)))
 
     if annotations.get("angle"):
         datum = te + np.array([chord_len * 0.75, 0.0])
@@ -145,9 +149,18 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
                               vertex[1] + arc_r * rm * math.sin(ang),
                               "left" if math.cos(ang) >= 0 else "right",
                               "center", None))
-        jobs.append((1, lambda c=cands: placer.place(
+        # Like every other value, the angle gets a leader fallback: penned in
+        # beside a crowded arc it would otherwise shrink itself into
+        # illegibility rather than move somewhere it can be read.
+        arc_mid = (vertex[0] + arc_r * math.cos(a0 + sweep * 0.5),
+                   vertex[1] + arc_r * math.sin(a0 + sweep * 0.5))
+        on_arc = len(cands)
+        cands = cands + placer.zone_candidates(
+            ["MR", "TR", "BR", "ML", "TL", "BL"], arc_mid, (0.14, 0.24, 0.34))
+        jobs.append((1, lambda c=cands, a=arc_mid, n=on_arc: placer.place(
             "%.1f°" % m["angle_deg"], c,
-            color=D.DIM_COLOR, fontsize=D.FONT_DIM)))
+            color=D.DIM_COLOR, fontsize=fs,
+            leader_from=a, leader_from_index=n)))
 
     if annotations.get("thickness"):
         up = np.asarray(m["thickness_upper_xy"])
@@ -160,7 +173,7 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
                 m["max_thickness_mm"], m["thickness_pct"],
                 100 * m["thickness_station_frac"]),
             zones=["TL", "ML", "BL", "TR", "MR", "BR"],
-            color=D.DIM_COLOR, fontsize=D.FONT_DIM, leader_from=mid)))
+            color=D.DIM_COLOR, fontsize=fs, leader_from=mid)))
 
     if annotations.get("camber"):
         if m["has_camber"]:
@@ -172,11 +185,11 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
                 "camber %.2f mm  (%.1f%% c)  crest %.0f/10 c" % (
                     m["max_camber_mm"], m["camber_pct"], m["crest_tenths"]),
                 zones=["TR", "MR", "BR", "TL", "ML", "BL"],
-                color=CAMBER_COLOR, fontsize=D.FONT_DIM, leader_from=crest)))
+                color=CAMBER_COLOR, fontsize=fs, leader_from=crest)))
         else:
             jobs.append((2, lambda: placer.place_text(
                 "no camber (symmetric)", zones=["TR", "MR", "BR", "TL"],
-                color=CAMBER_COLOR, fontsize=D.FONT_DIM)))
+                color=CAMBER_COLOR, fontsize=fs)))
 
     if annotations.get("bbox"):
         ax.add_patch(Rectangle((lo[0], lo[1]), hi[0] - lo[0], hi[1] - lo[1],
@@ -188,14 +201,14 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
         placer.reserve_line(a, b)
         jobs.append((1, lambda a=a, b=b: placer.place_on_line(
             "%.2f" % (hi[0] - lo[0]), a, b,
-            color=D.CENTER_COLOR, fontsize=D.FONT_DIM)))
+            color=D.CENTER_COLOR, fontsize=fs)))
         a2, b2, _ = D.linear_dim(ax, (hi[0], lo[1]), (hi[0], hi[1]),
                                  offset=min(unit * 0.14, win_w * 0.06),
                                  color=D.CENTER_COLOR, show_text=False)
         placer.reserve_line(a2, b2)
         jobs.append((1, lambda a=a2, b=b2: placer.place_on_line(
             "%.2f" % (hi[1] - lo[1]), a, b,
-            color=D.CENTER_COLOR, fontsize=D.FONT_DIM)))
+            color=D.CENTER_COLOR, fontsize=fs)))
 
     r_le = 1.1019 * (m["thickness_pct"] / 100.0) ** 2 * chord_len
     if annotations.get("le_radius"):
@@ -205,13 +218,13 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
                             lw=D.EXT_LW, zorder=6))
         jobs.append((2, lambda: placer.place_text(
             "LE radius %.3f mm" % r_le, zones=["BR", "MR", "BL", "TR"],
-            color=D.DIM_COLOR, fontsize=D.FONT_DIM, leader_from=tuple(le))))
+            color=D.DIM_COLOR, fontsize=fs, leader_from=tuple(le))))
 
     if annotations.get("le_te"):
         for pt, txt in ((le, "LE"), (te, "TE")):
             jobs.append((0, lambda pt=pt, txt=txt: placer.place_text(
                 txt, zones=["TR", "TL", "BR", "BL"], color=CHORD_COLOR,
-                fontsize=D.FONT_DIM, leader_from=tuple(pt),
+                fontsize=fs, leader_from=tuple(pt),
                 radii=(0.055, 0.09, 0.14, 0.20))))
 
     station_bits = []
@@ -220,9 +233,15 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
     if annotations.get("span_position"):
         station_bits.append("span %.2f (from 4 mm root)" % m["span_fraction"])
     if station_bits:
+        # Two fallbacks, in order of what they give up: the line break first,
+        # then the parenthetical.  "(from 4 mm root)" is the last thing to go --
+        # span is measured from the blade root at r = 4 mm, not from the centre,
+        # and a reader who assumes otherwise misreads every middle section.
         jobs.append((4, lambda: placer.place_text(
             "   ".join(station_bits), zones=["TL", "TR", "BL", "BR"],
-            color="#444444", fontsize=D.FONT_DIM)))
+            color="#444444", fontsize=fs,
+            alt_texts=("\n".join(station_bits),
+                       "\n".join(station_bits).replace(" (from 4 mm root)", "")))))
 
     if annotations.get("value_table"):
         rows = [
@@ -237,7 +256,7 @@ def draw_section(ax, kind, params, annotations, *, half_span=None, aspect=1.0,
         ]
         jobs.append((9, lambda: placer.place_text(
             "\n".join(rows), zones=["BL", "BR", "TL", "TR"],
-            color="#333333", fontsize=D.FONT_DIM - 0.4, family="monospace",
+            color="#333333", fontsize=fs - 0.5, family="monospace",
             bbox=dict(boxstyle="round,pad=0.25", fc="white",
                       ec="#dddddd", lw=0.4))))
 

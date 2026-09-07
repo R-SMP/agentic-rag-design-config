@@ -69,6 +69,7 @@ def create_app(out_root=None):
             "background_modes": list(S.BACKGROUND_MODES),
             "projections": list(S.PROJECTIONS),
             "layouts": list(S.DRAWING_LAYOUTS),
+            "scale_modes": list(S.SCALE_MODES),
             "sheet_sizes": sorted(S.SHEET_SIZES),
         })
 

@@ -38,6 +38,7 @@ LIGHTING_PRESETS = ("studio", "soft", "dramatic", "technical")
 BACKGROUND_MODES = ("solid", "gradient", "transparent", "floor")
 PROJECTIONS = ("perspective", "orthographic")
 DRAWING_LAYOUTS = ("stacked", "sections_right", "sections_left")
+SCALE_MODES = ("fill", "standard")
 SHEET_SIZES = {                      # width x height in mm, portrait
     "A5": (148, 210), "A4": (210, 297), "A3": (297, 420),
     "A2": (420, 594), "A1": (594, 841),
@@ -101,6 +102,13 @@ DEFAULTS = {
         # "sections_left"  the mirror of sections_right
         "layout": "stacked",
         "sections_column_fraction": 0.38,   # column layouts only
+        # "fill"     draw as large as the panel allows, stating the true ratio
+        # "standard" round DOWN to a preferred-series scale (2:1, 1:1, 1:2 ...)
+        # The series has nothing between 1:1 and 1:2, so on A3 with three views
+        # "standard" costs about 40 % of the image size.  Either way the title
+        # block states the scale actually used.
+        "scale_mode": "fill",
+        "font_scale": 1.0,                  # multiplies every annotation size
         "sheet": {
             "size": "A3",
             "orientation": "landscape",
@@ -231,6 +239,10 @@ def validate(s):
     d = s["drawing"]
     _check(d.get("layout", "stacked") in DRAWING_LAYOUTS,
            "drawing.layout must be one of %s" % (DRAWING_LAYOUTS,))
+    _check(d.get("scale_mode", "fill") in SCALE_MODES,
+           "drawing.scale_mode must be one of %s" % (SCALE_MODES,))
+    _check(float(d.get("font_scale", 1.0)) > 0,
+           "drawing.font_scale must be positive")
     _check(d["sheet"]["size"] in SHEET_SIZES,
            "drawing.sheet.size must be one of %s" % (sorted(SHEET_SIZES),))
     _check(d["sheet"]["orientation"] in ("landscape", "portrait"),
