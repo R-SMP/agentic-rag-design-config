@@ -1,0 +1,19 @@
+# propeller_studio -- local render + technical-drawing tool.
+#
+# Deliberately separate from the repository's requirements.txt: this package is
+# meant to be lifted into its own repository, and it must not drag the
+# multi-agent app's LangChain / Postgres / R2 stack along with it.
+#
+# Install into a dedicated virtualenv (see bootstrap.ps1 / bootstrap.sh).
+
+numpy>=2.0
+Pillow>=10.0
+pyvista>=0.44          # renders + silhouette / feature-edge extraction (VTK)
+matplotlib>=3.8        # the drawing sheet: PNG, PDF and SVG from one figure
+Flask>=3.0             # the local GUI (localhost only)
+
+# --- RhinoCompute backend only -------------------------------------------
+# Needed just for `--backend rhino`.  The FEG backend needs Node, not these.
+compute-rhino3d>=0.12.0
+DracoPy>=0.4.0
+requests>=2.31.0

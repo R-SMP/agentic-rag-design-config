@@ -1,0 +1,15 @@
+{
+  "render": {
+    "projection": "orthographic",
+    "background": {"mode": "solid", "color": "#ffffff"},
+    "lighting": {"preset": "technical"},
+    "material": {"mode": "uniform",
+                 "uniform": {"color": "#c9ccd1", "metallic": 0.15, "roughness": 0.75}},
+    "overlays": {"silhouette": true, "feature_edges": true, "section_curves": true}
+  },
+  "drawing": {
+    "view_style": {"shaded": true, "shading_strength": 0.45},
+    "param_table": true,
+    "formats": {"png": true, "pdf": true, "svg": false}
+  }
+}

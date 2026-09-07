@@ -1,0 +1,18 @@
+{
+  "bladeCount": 5,
+  "impellerRadius": 70.0,
+  "impellerThickness": 3.0,
+  "innerAngle": 23.0,
+  "innerCamber": 4.0,
+  "innerChord": 10.0,
+  "innerMaxPos": 4,
+  "innerThickness": 12.0,
+  "middleAngle": 22.0,
+  "middleChord": 30.0,
+  "middlePos": 0.5,
+  "outerAngle": 15.0,
+  "outerCamber": 3.0,
+  "outerChord": 20.0,
+  "outerMaxPos": 4,
+  "outerThickness": 8.0
+}

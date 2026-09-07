@@ -1,0 +1,12 @@
+{
+  "render": {
+    "background": {"mode": "floor", "color": "#eef1f5", "floor_color": "#e2e4e8", "shadow": true},
+    "lighting": {"preset": "studio", "intensity": 1.05},
+    "material": {"mode": "per_part",
+                 "parts": {"blade": {"color": "#b87333", "metallic": 0.8, "roughness": 0.22},
+                           "ring":  {"color": "#8a8f98", "metallic": 0.85, "roughness": 0.18},
+                           "hub":   {"color": "#3f4045", "metallic": 0.5, "roughness": 0.45},
+                           "launcher": {"color": "#5c6068", "metallic": 0.6, "roughness": 0.35}}},
+    "width": 2000, "height": 1500
+  }
+}

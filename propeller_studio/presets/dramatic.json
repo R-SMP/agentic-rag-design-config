@@ -1,0 +1,10 @@
+{
+  "render": {
+    "background": {"mode": "gradient", "color": "#2b2f36", "color2": "#0d0f12"},
+    "lighting": {"preset": "dramatic", "intensity": 1.15},
+    "material": {"mode": "uniform",
+                 "uniform": {"color": "#c0c4cc", "metallic": 0.95, "roughness": 0.2}},
+    "width": 2200, "height": 1650
+  },
+  "drawing": {"enabled": false}
+}

@@ -1,0 +1,175 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Propeller Studio</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+<header>
+  <h1>Propeller Studio</h1>
+  <div class="head-actions">
+    <label class="inline">Preset
+      <select id="preset"><option value="">(defaults)</option></select>
+    </label>
+    <button id="apply-preset" class="ghost">Load</button>
+    <button id="save-preset" class="ghost">Save as…</button>
+    <button id="render" class="primary">Render</button>
+  </div>
+</header>
+
+<main>
+  <section id="controls">
+    <details open>
+      <summary>Geometry backend</summary>
+      <div class="row">
+        <label class="radio"><input type="radio" name="backend" value="feg" checked>
+          FEG (.js, headless Node)</label>
+        <label class="radio"><input type="radio" name="backend" value="rhino">
+          RhinoCompute</label>
+      </div>
+      <label class="field">RhinoCompute URL
+        <input id="rhino-url" placeholder="http://localhost:6500/"></label>
+      <p class="note">The two backends produce different geometry, so neither
+        ever substitutes for the other. If RhinoCompute is unreachable the run
+        fails and says so.</p>
+    </details>
+
+    <details open>
+      <summary>Parameters</summary>
+      <div id="params"></div>
+      <label class="check"><input type="checkbox" id="allow-oor">
+        Allow values outside the documented range</label>
+    </details>
+
+    <details open>
+      <summary>Renders</summary>
+      <label class="check"><input type="checkbox" id="render-enabled" checked>
+        Produce standalone renders</label>
+      <div class="field-label">Views</div>
+      <div id="render-views" class="chips"></div>
+      <label class="field">Custom views (az/el pairs, e.g. <code>30/25, 210/10</code>)
+        <input id="render-custom" placeholder=""></label>
+      <div class="row">
+        <label class="field">Turntable frames
+          <input type="number" id="turntable" min="0" max="72" value="0"></label>
+        <label class="field">Elevation
+          <input type="number" id="turntable-el" value="20"></label>
+      </div>
+      <div class="row">
+        <label class="field">Width <input type="number" id="width" value="1600"></label>
+        <label class="field">Height <input type="number" id="height" value="1200"></label>
+        <label class="field">Zoom <input type="number" step="0.05" id="zoom" value="1.4"></label>
+      </div>
+      <label class="field">Projection <select id="projection"></select></label>
+    </details>
+
+    <details open>
+      <summary>Colour &amp; material</summary>
+      <div class="row">
+        <label class="radio"><input type="radio" name="matmode" value="uniform" checked>
+          One colour</label>
+        <label class="radio"><input type="radio" name="matmode" value="per_part">
+          Per part</label>
+      </div>
+      <div id="mat-uniform">
+        <label class="field">Colour <input type="color" id="uni-color" value="#b87333"></label>
+        <label class="field">Metallic <input type="range" id="uni-metallic" min="0" max="1" step="0.01" value="0.55"><span class="val"></span></label>
+        <label class="field">Roughness <input type="range" id="uni-roughness" min="0" max="1" step="0.01" value="0.35"><span class="val"></span></label>
+        <label class="field">Opacity <input type="range" id="uni-opacity" min="0.05" max="1" step="0.01" value="1"><span class="val"></span></label>
+      </div>
+      <div id="mat-parts" hidden></div>
+    </details>
+
+    <details open>
+      <summary>Lighting &amp; background</summary>
+      <label class="field">Lighting rig <select id="lighting"></select></label>
+      <label class="field">Intensity
+        <input type="range" id="intensity" min="0.2" max="2" step="0.05" value="1"><span class="val"></span></label>
+      <label class="field">Background <select id="bg-mode"></select></label>
+      <div class="row">
+        <label class="field">Colour <input type="color" id="bg-color" value="#f2f4f7"></label>
+        <label class="field">Colour 2 <input type="color" id="bg-color2" value="#c9d4e4"></label>
+        <label class="field">Floor <input type="color" id="bg-floor" value="#e8e8e8"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="bg-shadow" checked> Floor shadow</label>
+    </details>
+
+    <details open>
+      <summary>Overlays on the renders</summary>
+      <label class="check"><input type="checkbox" id="ov-silhouette"> Silhouette + crisp edges</label>
+      <label class="check"><input type="checkbox" id="ov-feature"> Feature edges</label>
+      <label class="field">Feature angle
+        <input type="number" id="ov-feature-angle" value="45" min="1" max="90"></label>
+      <label class="check"><input type="checkbox" id="ov-sections"> Section outline curves</label>
+      <label class="check"><input type="checkbox" id="ov-sections-top" checked>
+        &nbsp;&nbsp;…always on top (else hidden by the hub)</label>
+      <label class="check"><input type="checkbox" id="ov-wire"> Wireframe</label>
+    </details>
+
+    <details open>
+      <summary>Technical drawing</summary>
+      <label class="check"><input type="checkbox" id="draw-enabled" checked>
+        Produce the drawing sheet</label>
+      <div class="row">
+        <label class="field">Sheet <select id="sheet-size"></select></label>
+        <label class="field">Orientation
+          <select id="sheet-orient">
+            <option value="landscape">landscape</option>
+            <option value="portrait">portrait</option>
+          </select></label>
+        <label class="field">DPI <input type="number" id="dpi" value="200"></label>
+      </div>
+      <label class="check"><input type="checkbox" id="sheet-frame" checked> Border frame</label>
+      <label class="check"><input type="checkbox" id="sheet-tb" checked> Title block</label>
+      <label class="check"><input type="checkbox" id="param-table"> Full parameter table</label>
+
+      <div class="field-label">Views on the sheet</div>
+      <div id="draw-views" class="chips"></div>
+
+      <div class="field-label">View style</div>
+      <label class="check"><input type="checkbox" id="vs-shaded" checked> Shaded body</label>
+      <label class="field">Shading strength
+        <input type="range" id="vs-strength" min="0" max="1" step="0.05" value="0.55"><span class="val"></span></label>
+      <label class="check"><input type="checkbox" id="vs-silhouette" checked> Silhouette</label>
+      <label class="check"><input type="checkbox" id="vs-feature" checked> Feature edges</label>
+      <label class="check"><input type="checkbox" id="vs-sections" checked> Section curves on the 3D</label>
+      <label class="check"><input type="checkbox" id="vs-wire"> Wireframe</label>
+      <label class="check"><input type="checkbox" id="vs-labels" checked> View captions</label>
+
+      <div class="field-label">Blade sections</div>
+      <label class="check"><input type="checkbox" id="sec-enabled" checked> Include the sections</label>
+      <div id="sec-which" class="chips"></div>
+      <label class="check"><input type="checkbox" id="sec-common" checked>
+        One common scale across sections</label>
+      <label class="check"><input type="checkbox" id="sec-grid" checked> 1 mm grid</label>
+
+      <div class="field-label">Dimensions</div>
+      <div id="annotations"></div>
+
+      <div class="field-label">Output formats</div>
+      <label class="check"><input type="checkbox" id="fmt-png" checked> PNG</label>
+      <label class="check"><input type="checkbox" id="fmt-pdf" checked> PDF</label>
+      <label class="check"><input type="checkbox" id="fmt-svg"> SVG</label>
+
+      <label class="field">Title <input id="title" placeholder="Propeller assembly"></label>
+      <label class="field">Drawn by <input id="drawn-by"></label>
+      <label class="field">Notes <input id="notes"></label>
+    </details>
+  </section>
+
+  <section id="results">
+    <div id="status" class="status idle">Ready.</div>
+    <pre id="log" hidden></pre>
+    <div id="gallery"></div>
+    <details id="history-wrap">
+      <summary>Previous runs</summary>
+      <div id="history"></div>
+    </details>
+  </section>
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>

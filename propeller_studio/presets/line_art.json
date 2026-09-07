@@ -1,0 +1,14 @@
+{
+  "render": {
+    "projection": "orthographic",
+    "background": {"mode": "transparent"},
+    "lighting": {"preset": "technical"},
+    "overlays": {"silhouette": true, "feature_edges": true, "feature_angle": 25.0,
+                 "section_curves": false}
+  },
+  "drawing": {
+    "view_style": {"shaded": false, "silhouette": true, "feature_edges": true,
+                   "section_curves": true, "shading_strength": 0.0},
+    "sections": {"grid": false}
+  }
+}

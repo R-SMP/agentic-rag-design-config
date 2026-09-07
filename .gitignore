@@ -63,3 +63,7 @@ desktop.ini
 node_modules/
 package-lock.json
 render_try/
+
+# --- propeller_studio (local render tool) ---
+.venv-studio/
+propeller_studio/out/
