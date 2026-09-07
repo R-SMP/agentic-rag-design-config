@@ -86,6 +86,11 @@ def build_parser():
                      help="stacked (bands) or sections_right/left (column)")
     cfg.add_argument("--sections-width", type=float, metavar="FRACTION",
                      help="width of the sections column, 0.15-0.7 (column layouts)")
+    cfg.add_argument("--section-scale", metavar="SCALE",
+                     help="draw the blade sections at an exact scale: '4:1', "
+                          "'1:2' or a bare multiplier. Default 'auto' fits the "
+                          "panel. Honoured even if it overflows, with a note "
+                          "on the sheet naming the largest that fits.")
     cfg.add_argument("--scale-mode", choices=S.SCALE_MODES,
                      help="fill = draw as large as the panel allows (default); "
                           "standard = round down to a preferred-series scale")
@@ -203,6 +208,9 @@ def collect_overrides(args):
         _set(o, "render.projection", args.projection)
     if args.layout:
         _set(o, "drawing.layout", args.layout)
+    if args.section_scale:
+        S.parse_scale(args.section_scale)      # fail here, not mid-render
+        _set(o, "drawing.sections.scale", args.section_scale)
     if args.scale_mode:
         _set(o, "drawing.scale_mode", args.scale_mode)
     if args.font_scale:

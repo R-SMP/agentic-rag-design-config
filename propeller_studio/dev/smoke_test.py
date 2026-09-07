@@ -174,6 +174,25 @@ def test_pipeline():
                                   "turntable": {"enabled": True, "count": 4}}})
         check("turntable expands to 1 + 4 views",
               len(pipeline.expand_views(s["render"])) == 5)
+
+        # An explicitly chosen section scale is honoured exactly, and an
+        # impossible one is reported rather than quietly reduced.
+        geom = backends.build(P.DEFAULT_PARAMS, "feg")
+        for value, expect in (("4:1", "4 : 1"), ("1:2", "1 : 2"), (2.5, "2.5 : 1")):
+            got = SHEET.render_sheet(
+                geom, S.resolve({"drawing": {"dpi": 80,
+                                             "sections": {"scale": value}}}),
+                out_paths={"png": tmp / ("scale_%s.png" % str(value).replace(":", "-"))})
+            check("section scale %r honoured" % value,
+                  got["section_scale"] == expect and got["section_scale_requested"],
+                  got["section_scale"])
+        over = SHEET.render_sheet(
+            geom, S.resolve({"drawing": {"dpi": 80, "sections": {"scale": "20:1"}}}),
+            out_paths={"png": tmp / "scale_over.png"})
+        check("over-large section scale warns instead of shrinking",
+              over["section_scale"] == "20 : 1"
+              and any("overflows" in w for w in over["warnings"]),
+              (over["warnings"] or ["no warning"])[0][:60])
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
 

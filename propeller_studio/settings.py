@@ -131,6 +131,13 @@ DEFAULTS = {
             "enabled": True,
             "which": ["inner", "middle", "outer"],
             "common_scale": True,
+            # None / "auto"  fit the panel (see drawing.scale_mode)
+            # a number       exact paper-mm per model-mm, e.g. 4 for 4:1
+            # "A:B"          the same written as a ratio, e.g. "4:1", "1:2"
+            # An explicit scale is honoured even when the section then
+            # overflows its panel -- a stated scale that is quietly reduced to
+            # make it fit is worse than one that visibly does not.
+            "scale": None,
             "grid": True,
             "annotations": {
                 "chord": True,
@@ -155,6 +162,41 @@ DEFAULTS = {
         "dpi": 200,
     },
 }
+
+
+def parse_scale(value):
+    """``None``/``"auto"`` -> None; a number or ``"A:B"`` -> paper-mm per model-mm.
+
+    Accepts both how a drawing states a scale ("4:1", "1:2") and the bare
+    multiplier, because the first is what an engineer writes and the second is
+    what a settings file naturally holds.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        text = value.strip().lower()
+        if text in ("", "auto", "none", "fit"):
+            return None
+        if ":" in text:
+            a, _, b = text.partition(":")
+            try:
+                num, den = float(a), float(b)
+            except ValueError:
+                raise SettingsError(
+                    "drawing.sections.scale %r is not a ratio like '4:1'" % value)
+            if num <= 0 or den <= 0:
+                raise SettingsError(
+                    "drawing.sections.scale %r must have positive terms" % value)
+            return num / den
+        try:
+            value = float(text)
+        except ValueError:
+            raise SettingsError(
+                "drawing.sections.scale %r is not a number or an 'A:B' ratio" % value)
+    value = float(value)
+    if value <= 0:
+        raise SettingsError("drawing.sections.scale must be positive, got %r" % value)
+    return value
 
 
 class SettingsError(ValueError):
@@ -249,6 +291,7 @@ def validate(s):
            "drawing.sheet.orientation must be 'landscape' or 'portrait'")
     for v in d["views"]:
         resolve_view(v)
+    parse_scale(d["sections"].get("scale"))
     for k in d["sections"]["which"]:
         _check(k in ("inner", "middle", "outer"),
                "drawing.sections.which may only contain inner/middle/outer, got %r" % k)

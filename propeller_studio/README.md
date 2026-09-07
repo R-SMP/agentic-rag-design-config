@@ -74,6 +74,7 @@ python -m propeller_studio render --params propeller_studio/examples/default.jso
 python -m propeller_studio render --attempt attempts/12 --backend rhino
 python -m propeller_studio render --preset technical --views iso,top,front --turntable 12
 python -m propeller_studio render --color '#b87333' --metallic 0.8 --lighting dramatic
+python -m propeller_studio render --layout sections_right --section-scale 4:1 --font-scale 1.2
 python -m propeller_studio presets      # list presets
 python -m propeller_studio defaults     # print the whole settings tree
 ```
@@ -135,6 +136,11 @@ Notable options:
   scale. See below.
 * `drawing.font_scale` — multiplies every annotation size at once (1.25 for
   larger values, 0.85 for denser sheets).
+* `drawing.sections.scale` — draw the blade sections at an EXACT scale instead
+  of fitting the panel. Accepts a ratio as a drawing writes it (`"4:1"`,
+  `"1:2"`, `"2.5:1"`) or a bare multiplier (`4`, `0.5`); `null` or `"auto"`
+  fits the panel. `--section-scale 4:1` on the CLI, a text field in the GUI.
+  Choosing a scale implies one common scale across the sections.
 
 ---
 
@@ -151,6 +157,13 @@ Notable options:
 
 Either way the number printed is the number drawn. What is never done is
 auto-framing each panel while claiming a scale it is not at.
+
+**A chosen section scale is honoured, not quietly reduced.** If
+`drawing.sections.scale` does not fit the panel, the sections are still drawn at
+it — visibly overflowing — and the sheet carries a note saying so and naming the
+largest scale that would fit. Silently shrinking to fit is how a drawing comes
+to state one number and be at another, which is the failure this whole scale
+mechanism exists to prevent.
 
 `VIEWS_HEIGHT_SHARE` in `sheet.py` caps how much height the views band may take
 in the stacked layout — it is the knob that trades big pictures against legible
@@ -205,7 +218,7 @@ is ~4e-06 mm — three.js stores positions as float32, which dominates.
 .\.venv-studio\Scripts\python -m propeller_studio.dev.smoke_test --rhino
 ```
 
-runs 37 end-to-end checks (35 without `--rhino`). Drop `--rhino` if no server is running.
+runs 45 end-to-end checks (43 without `--rhino`). Drop `--rhino` if no server is running.
 
 ---
 

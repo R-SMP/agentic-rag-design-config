@@ -243,6 +243,7 @@ function collectSettings() {
         enabled: $("sec-enabled").checked,
         which: chipValues("sec-which"),
         common_scale: $("sec-common").checked,
+        scale: $("sec-scale").value.trim() || null,
         grid: $("sec-grid").checked,
         annotations,
       },
@@ -421,6 +422,7 @@ function applySettings(s) {
     const sc = d.sections;
     if (sc.enabled !== undefined) $("sec-enabled").checked = sc.enabled;
     if (sc.common_scale !== undefined) $("sec-common").checked = sc.common_scale;
+    if (sc.scale !== undefined) $("sec-scale").value = sc.scale === null ? "" : sc.scale;
     if (sc.grid !== undefined) $("sec-grid").checked = sc.grid;
     if (sc.which) {
       for (const k of ["inner", "middle", "outer"]) {

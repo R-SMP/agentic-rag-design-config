@@ -213,6 +213,7 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
 
     layout = d.get("layout", "stacked")
     scale_mode = d.get("scale_mode", "fill")
+    requested_sec_scale = S.parse_scale(d["sections"].get("scale"))
     fs = float(d.get("font_scale", 1.0))
     column = layout in ("sections_right", "sections_left") and has_views and has_secs
 
@@ -262,7 +263,12 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
         s_rows, s_cols, s_pw, s_ph = _grid(len(sec_kinds), region[2], region[3],
                                            force_cols=sec_force_cols)
         need_w, need_h = _section_needs(sec_kinds, params)
-        if d["sections"]["common_scale"]:
+        # An explicit scale implies a common one: a chosen ratio that differed
+        # per panel would not be a scale at all.
+        if requested_sec_scale:
+            sec_scale = requested_sec_scale
+            s_ph = min(s_ph, need_h * sec_scale * 1.7)
+        elif d["sections"]["common_scale"]:
             sec_scale = pick_scale(min(s_pw / need_w, s_ph / need_h), scale_mode)
             # Fill the region rather than shrink-wrapping the subject: the scale
             # is fixed by the series, so a tight box would only mean a small
@@ -270,6 +276,23 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
             # section being framed by a vast field of grid.
             s_ph = min(s_ph, need_h * sec_scale * 1.7)
         secs_band = s_rows * (s_ph + CAPTION_H) + (s_rows - 1) * PANEL_PAD
+
+        if requested_sec_scale:
+            # Report a chosen scale the sheet cannot hold, naming the largest
+            # that would fit.  Honour it anyway: quietly reducing a scale the
+            # reader asked for is how a drawing comes to state one number and
+            # be at another.
+            raw_w = raw_h = 0.0
+            for k in sec_kinds:
+                w, h = SEC.section_span(k, params)
+                raw_w, raw_h = max(raw_w, w), max(raw_h, h)
+            if raw_w * sec_scale > s_pw or raw_h * sec_scale > s_ph:
+                largest = min(s_pw / max(raw_w, 1e-9), s_ph / max(raw_h, 1e-9))
+                warnings = list(warnings) + [
+                    "Sections drawn at the requested %s, which overflows the "
+                    "%.0f x %.0f mm panel; %s is the largest that fits."
+                    % (scale_text(sec_scale), s_pw, s_ph, scale_text(largest))
+                ]
 
     # In the stacked layout both bands share one column of space, so centre the
     # pair vertically; in the column layout each region centres within itself.
@@ -309,7 +332,7 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
 
     if has_secs:
         aspect = s_pw / s_ph
-        if d["sections"]["common_scale"]:
+        if requested_sec_scale or d["sections"]["common_scale"]:
             half_spans = {k: (s_ph / sec_scale) / 2.0 for k in sec_kinds}
         else:
             half_spans = {}
@@ -322,7 +345,9 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
         for kind, cell in zip(sec_kinds, cells):
             ax = _axes(fig, cell, (W, H))
             note = None
-            if not d["sections"]["common_scale"]:
+            if requested_sec_scale:
+                note = scale_text(sec_scale)
+            elif not d["sections"]["common_scale"]:
                 note = scale_text(s_ph / (2 * half_spans[kind]))
             SEC.draw_section(ax, kind, params, d["sections"]["annotations"],
                              half_span=half_spans[kind], aspect=aspect,
@@ -355,6 +380,8 @@ def render_sheet(geom, s, *, out_paths, title=None, warnings=(), inspect=None):
         "sheet_mm": [W, H],
         "view_scale": scale_text(view_scale) if view_scale else None,
         "section_scale": scale_text(sec_scale) if sec_scale else None,
+        "section_scale_requested": bool(requested_sec_scale),
+        "warnings": list(warnings),
         "files": written,
     })
     return meta
