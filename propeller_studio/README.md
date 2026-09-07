@@ -9,6 +9,9 @@ of the geometry maths, and it imports nothing from `agents/`, `web_app.py` or
 That isolation is the point — the package is designed to be lifted into a
 standalone repository by moving the folder, not by untangling imports.
 
+> Merging this with another tool? Read **`HANDOVER.md`** instead — it is the
+> integration brief: the importable API, the design invariants, and the traps.
+
 You give it the 16 configurator parameters. It gives you:
 
 * **Standalone renders** — one PNG per view, from any angles you name, with your
