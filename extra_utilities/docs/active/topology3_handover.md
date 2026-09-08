@@ -330,8 +330,13 @@ reports no parameter values or paths at all (it treats the disk as stale).
   reasoning and the risks.  Apply only on an explicit approval; on feedback,
   re-propose rather than applying a guess.
 * **Never commit or push unless told.**  Check for conflicts first
-  (`git fetch`, then `git log HEAD..origin/stage-a-web-deploy`).  Push target is
-  `stage-a-web-deploy`.
+  (`git fetch`, then `git log HEAD..origin/stage-a-web-deploy`).
+* **NEVER push to `stage-a-web-deploy`.**  It is the branch Railway deploys
+  the live app from, so a push there ships untested code to the running
+  product.  Work on this session's own `claude/*` branch and push only that.
+  Do not infer permission from a change being small, safe or already
+  reviewed — if something seems to need to land on
+  `stage-a-web-deploy`, stop and ask.
 * **No AI attribution in any commit or PR** — no `Co-Authored-By`, no
   "Generated with", nothing.
 * Every PowerShell/bash block touching the repo starts with
