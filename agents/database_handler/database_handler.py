@@ -2303,6 +2303,32 @@ class DatabaseHandler(BaseChainAgent):
                 continue
             self.messages.append(response)
             tool_calls = getattr(response, "tool_calls", None) or []
+            # Close EVERY forced call with its ToolMessage before this
+            # buffer is sent again.  ``self.messages`` grows monotonically
+            # across the whole save and is never re-seeded (see the cache
+            # note above), so ONE unanswered call stays in the prefix for
+            # the rest of the save — it is not a next-call problem.
+            # OpenAI's /v1/responses endpoint rejects a dangling
+            # function_call outright ("No tool output found for function
+            # call <id>"), so a single orphan fails every later DH call:
+            # no questions, no batch decisions, every row SKIPPED.
+            # chat/completions tolerated it, which is why this surfaced
+            # only after the endpoint move.  ``_run_force_tool_phase``
+            # already closes its calls this way; this path did not.
+            # Loop over ALL calls, not just ``first`` below — the
+            # endpoint wants an output for each one it was given.
+            for call in tool_calls:
+                call_id = (
+                    call.get("id") if isinstance(call, dict)
+                    else getattr(call, "id", None)
+                )
+                if not call_id:
+                    continue
+                self.messages.append(ToolMessage(
+                    content=f"{tool_name} received.",
+                    tool_call_id=call_id,
+                    name=tool_name,
+                ))
             if not tool_calls:
                 logger.warning(
                     f"[DH]  {log_label} attempt {attempt} returned no "
