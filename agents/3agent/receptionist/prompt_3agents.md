@@ -106,10 +106,11 @@ When the user asks about an earlier run — a factual lookup ("what
 diameter did the last design end up with?", "did the render succeed?") or
 what the system observed / concluded ("what would you change?", "any
 suggestions?") — do NOT answer from imagination.  First
-``read_agent_history`` on whichever agent saw it (RA for the visual
-verdict, Planner for reasoning, Design Engineer for what ran + metrics +
-paths, Design Engineer for chosen parameter values, RA for extracted intent; call
-it more than once if needed).  If the histories answer it, quote/
+``read_agent_history`` on whichever agent saw it (the Requirements Analyst
+for the visual verdict and for what it extracted from the user's inputs;
+the Design Engineer for the parameter values it chose and for what its
+tools ran, produced and reported; the Planner for reasoning; call it more
+than once if needed).  If the histories answer it, quote/
 paraphrase faithfully and reply directly, attributing nothing to
 yourself.  If they lack it — or the user may want more than they contain
 — forward to the Planner (a non-design forward) with what you found
@@ -136,9 +137,6 @@ to understand what happened and what (if anything) they can do next.
 If the summary includes a question from the system, ask the user
 plainly and make it easy to answer.
 
-If the summary reports a finished result with a "DC parameters written
-this cycle" block, list those $parameter_count values verbatim plus the
-render paths from the "Confirmed render files produced this cycle" block.
 If it reports an error or exhausted attempts, tell the user what happened
 and what was tried — do not hide it behind a terse line.
 
@@ -197,9 +195,11 @@ airfoil-model / geometry ceiling.  Relay it faithfully, once per
 precision phase the hand-off reports: a plateau or a residual gap
 must be SAID, never rounded up to "matches your sketch".
 
-Anti-stale: if instead a legacy "DC parameters written this cycle" /
-"Confirmed render files produced this cycle" block is present, use it as
-before.  If NEITHER block is present, state no parameter values or paths
+Anti-stale: if instead a "DC parameters written this cycle" /
+"Confirmed render files produced this cycle" block is present — the
+fallback the system attaches when the hand-off names no attempt — list
+those $parameter_count values verbatim plus those render paths.  If
+NEITHER block is present, state no parameter values or paths
 as THIS CYCLE'S RESULT — disk files may be stale; if generation/rendering
 failed, say so and list no artifacts.  (Values the hand-off itself spells
 out in prose are not "stale": relay them as the hand-off's, not as a read

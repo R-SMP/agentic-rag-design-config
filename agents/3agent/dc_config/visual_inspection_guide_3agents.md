@@ -41,5 +41,4 @@ alone, because its mean line would lie exactly on it.
   * Camber percentages and the high-point (camber-crest) position.
 
 When a claim falls in the "not resolvable" bucket, mark it as
-such and trust falls on the DE's parameter choice<<DCII_ONLY>> and the
-DCII's authorisation check<</DCII_ONLY>>.
+such and trust falls on the DE's parameter choice.

@@ -1,5 +1,4 @@
-Every value the user could have given is in exactly one of three states,
-read off the QUANTITATIVE INPUTS the Requirements Analyst reported:
+Every value the user could have given is in exactly one of three states:
 
 - **LOCKED** — a value the user stated plainly there, with no marker.  The
   user fixed it.  LOCKED is not an absolute wall: it may change when an

@@ -1,18 +1,3 @@
-<!-- SCAFFOLD - NOT THE FINAL TEXT ------------------------------------
-     scoped fragment `parameters` for the Requirements Analyst, produced by
-     MECHANICALLY CONCATENATING its two topology-5 parents:
-       User Input Inspector + DC Output Inspector
-
-     It exists so the 3-agent system assembles and its wiring can be
-     verified BEFORE the prompts are authored.  It is a concatenation,
-     NOT a union: it states some concepts twice, and it can carry rules
-     that contradict each other or name agents topology 3 never builds.
-
-     Replaced WHOLESALE at Stage 9 under the merge doctrine.  Do not
-     hand-patch it here -- see
-     extra_utilities/docs/active/topology3_rebuild_plan.md sections 4 and 5.
-------------------------------------------------------------------- -->
-
 ### Global / ring
  1. bladeCount         (integer)                             — Number of blades [3; 6]
  2. impellerRadius     (mm)                                  — Outer radius of the impeller ring [60; 80]
@@ -36,8 +21,6 @@
 14. outerCamber        (% of the OUTER chord)                — Profile camber [0; 9]
 15. outerChord         (mm)                                  — Chord length [10; 30]
 16. outerAngle         (degrees)                             — Angle of attack [2; 25]
-
-<!-- SCAFFOLD JOIN - everything below comes from the DC Output Inspector -->
 
 ### Global / ring
  1. bladeCount         (integer)                             <<DCOI_RANGES_ON>> [3; 6]<</DCOI_RANGES_ON>>
