@@ -322,6 +322,11 @@ AGENTS_BY_TOPOLOGY = {
     5: ["receptionist", "planner", "user_input_inspector",
         "dc_input_creator", "tool_caller", "dc_output_inspector",
         "database_handler"],
+    # Topology 3: the Receptionist, the Planner as hub, and the two MERGED
+    # agents -- Design Engineer (DC Input Creator + Tool Caller) and
+    # Requirements Analyst (User Input Inspector + DC Output Inspector).
+    3: ["receptionist", "planner", "design_engineer",
+        "requirements_analyst", "database_handler"],
 }
 AGENTS = AGENTS_BY_TOPOLOGY[TOPOLOGY]
 
@@ -344,12 +349,80 @@ _EDGES_5 = {
 _tools_for_7 = tools_for
 
 
+# Topology 3 cannot be post-processed the same way.  Its Design Engineer and
+# Requirements Analyst are NEW classes with no 7-agent twin, so there is
+# nothing in the 7-agent wiring to strip routing tools OFF of.  Writing their
+# tool lists out by hand here is exactly the transcription error this dump
+# exists to make visible, so build the REAL hub and ask the classes instead --
+# the same technique as smoke_test_prompt_tool_audit.bound_3().
+_T3_CACHE: dict[bool, dict] = {}
+
+
+def _t3_tools(rag: bool) -> dict:
+    """Every topology-3 agent's bound tool OBJECTS, from the real hub."""
+    if rag in _T3_CACHE:
+        return _T3_CACHE[rag]
+    from datetime import datetime, timezone
+    prev, S.RAG_ENABLED = S.RAG_ENABLED, rag
+    try:
+        from agents.shared.session import Session
+        from agents.hub import build_hub
+        hub = build_hub(Session(session_id="pdfdump3",
+                                session_ts=datetime.now(timezone.utc)))
+        out = {"planner": list(hub._tools_by_name.values())}
+        rec = hub._agents_by_key["receptionist"]
+        out["receptionist"] = list(
+            (getattr(rec, "_tools_by_name", {}) or {}).values())
+        # The merged agents keep no such map: build_user_inputs_tools and the
+        # @tool stubs go straight into the bind_tools list.  Re-wire each under
+        # a spy and record what it is handed.
+        for key in ("design_engineer", "requirements_analyst"):
+            a = hub._agents_by_key[key]
+            got: list = []
+            real = a.base_llm.bind_tools
+
+            def spy(t, *ar, _r=real, _g=got, **kw):
+                _g.append(t)
+                return _r(t, *ar, **kw)
+
+            a.base_llm.bind_tools = spy
+            try:
+                a.set_routing_tools(list(a._routing_tools_by_name.values()))
+            finally:
+                a.base_llm.bind_tools = real   # base_llm is SHARED: restore it
+            out[key] = list(got[0])
+        # The DH binds outside any hub, exactly as in the other topologies.
+        out["database_handler"] = _tools_for_7("database_handler")
+    finally:
+        S.RAG_ENABLED = prev
+    _T3_CACHE[rag] = out
+    return out
+
+
 def tools_for(agent):                     # noqa: F811 - deliberate wrapper
+    if TOPOLOGY == 3:
+        return _t3_tools(bool(S.RAG_ENABLED))[agent]
     t = _tools_for_7(agent)
     if TOPOLOGY == 7:
         return t
     utility = [x for x in t if not getattr(x, "name", "").startswith("call_")]
     return utility + [rt(agent, tgt) for tgt in _EDGES_5.get(agent, [])]
+
+
+# The two merged agents have no row in this file's transcribed
+# ``runtime_slots``.  Rather than transcribe them a second time, delegate to
+# ``topology_prompt_snapshot._runtime_slots``, which already carries them and
+# is the module the rebuild verifies every prompt against.
+if TOPOLOGY == 3:
+    import importlib.util as _ilu
+    _spec = _ilu.spec_from_file_location(
+        "_tps_for_dump", REPO / "extra_utilities" / "topology_prompt_snapshot.py")
+    _tps = _ilu.module_from_spec(_spec)
+    _spec.loader.exec_module(_tps)
+    _runtime_slots_7 = runtime_slots
+
+    def runtime_slots():               # noqa: F811 - deliberate wrapper
+        return {a: _tps._runtime_slots(a, P, S) for a in AGENTS}
 
 out = {
     "config": {

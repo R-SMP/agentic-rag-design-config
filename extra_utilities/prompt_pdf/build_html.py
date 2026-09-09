@@ -74,6 +74,9 @@ DISPLAY = {
     "dc_input_inspector": "DC Input Inspector",
     "tool_caller": "Tool Caller",
     "dc_output_inspector": "DC Output Inspector",
+    # Topology 3's two merged agents.
+    "design_engineer": "Design Engineer",
+    "requirements_analyst": "Requirements Analyst",
     "database_handler": "Database Handler",
 }
 
@@ -86,6 +89,8 @@ ROLE = {
     "dc_input_inspector": "Validate \u2014 independent audit of the created parameters before anything is rendered.",
     "tool_caller": "Execute \u2014 calls the geometry/render tool and passes the render paths on. The most mechanical agent.",
     "dc_output_inspector": "Critique \u2014 compares the render against the intent/sketch and drives the refine loop. Vision.",
+    "design_engineer": "Create + Execute \u2014 DC Input Creator + Tool Caller in one agent. Reads the user's inputs itself, authors the numeric parameter set, opens the attempt, then generates and renders from the file on disk. Image-blind: it is given image NAMES, never paths.",
+    "requirements_analyst": "Perceive + Critique \u2014 User Input Inspector + DC Output Inspector in one agent. Reads the user's text and images and reports what it found VERBALLY (topology 3 writes no extraction file), then judges the renders against that intent and drives the refine loop. Vision.",
     "database_handler": "Post-session \u2014 runs after the user saves; never part of the dispatch loop and never speaks to the user.",
 }
 
@@ -364,9 +369,9 @@ def provenance_html():
 
 # Role 4 belongs to whichever agent is the HUB: the Orchestrator under
 # topology 7, Planner5 under topology 5.  Each keeps its own copy.
-ROLE4_REL = ("agents/orchestrator/role4_feedback_instructions.md"
-             if TOPOLOGY == 7 else
-             "agents/planner5/role4_feedback_instructions.md")
+ROLE4_REL = {7: "agents/orchestrator/role4_feedback_instructions.md",
+             5: "agents/planner5/role4_feedback_instructions.md",
+             3: "agents/planner3/role4_feedback_instructions.md"}[TOPOLOGY]
 ROLE4 = (REPO / ROLE4_REL).read_text(encoding="utf-8")
 
 CSS = """
