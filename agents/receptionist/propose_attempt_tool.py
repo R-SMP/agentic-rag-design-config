@@ -115,7 +115,7 @@ def propose_attempt(
     SOLUTION.
 
     Call this AFTER ``visualize_3d_model`` when you have decided
-    (or have been told by Planner / DCOI) that a given attempt
+    (or have been told so in your hand-off) that a given attempt
     satisfies the user's requirements.  Pass the PATH to that
     attempt's ``parameters.json`` — the tool reads all 16 values out
     of the record, so the panel can only ever show what the attempt

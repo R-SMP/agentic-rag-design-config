@@ -734,8 +734,8 @@ def make_retrieve_user_inputs_tool(caller_agent: str):
         deeper read.  Everything that session's user supplied is written
         to a local folder, and the response lists that folder's contents.
 
-        The response prints, per session: the User Input Inspector's
-        structured extraction of the inputs (or, for a session archived
+        The response prints, per session: the structured extraction of the
+        inputs recorded for that session (or, for a session archived
         before extractions were kept, the raw user text instead), and
         every reference image as an absolute local path — with its
         description when one was written, and the path alone when none

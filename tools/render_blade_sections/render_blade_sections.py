@@ -51,9 +51,8 @@ def render_blade_sections(parameters_path: str, grid: bool = False) -> str:
     ``parameters.json``).  The image shows each section's airfoil rotated by
     its angle of attack, colour-coded with a name label, plus a small angle
     protractor.  The PNG is written into that attempt's folder and will be
-    shown to the user in the chat; any agent with an image-reading tool (e.g.
-    the DC Output Inspector via ``view_images``) can view it by passing
-    the returned path.
+    shown to the user in the chat; any agent with an image-reading tool
+    (``view_images``) can view it by passing the returned path.
 
     Args:
         parameters_path: Absolute path to the parameters ``.json`` file
