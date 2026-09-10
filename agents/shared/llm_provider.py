@@ -102,7 +102,7 @@ _API_KEY_ENV_VARS: dict = {
 # ``make_image_block`` already emits for non-Anthropic providers.
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-_DEFAULT_MODEL = "gpt-5-mini"
+_DEFAULT_MODEL = "gpt-5.6-terra"
 
 
 # HTTP timeout (in seconds) passed to every provider client at

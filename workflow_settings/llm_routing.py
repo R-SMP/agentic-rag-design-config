@@ -97,12 +97,12 @@ AGENTS_DIR = _PROJECT_ROOT / "agents"
 SHARED_ENV_PATH = AGENTS_DIR / ".env"
 
 _DEFAULT_PROVIDER = "openai"
-_DEFAULT_MODEL = "gpt-5-mini"
+_DEFAULT_MODEL = "gpt-5.6-terra"
 
 # Recommended placeholder model names per provider; the UI uses these
 # as input ``placeholder`` text only — the field stays free-form.
 PROVIDER_MODEL_PLACEHOLDERS = {
-    "openai":     "gpt-5-mini",
+    "openai":     "gpt-5.6-terra",
     "anthropic":  "claude-sonnet-4-5",
     "google":     "gemini-2.5-pro",
     "openrouter": "deepseek/deepseek-chat",
