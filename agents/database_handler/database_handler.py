@@ -3109,7 +3109,7 @@ class DatabaseHandler(BaseChainAgent):
              attempt's data to Postgres, caching the returned
              ``BIGSERIAL attempt_id`` in ``attempt_id_by_nnn``.
              Postgres-side failures log ERROR + add the
-             attempt_label to ``cascaded_attempt_nnns`` (subsequent
+             NNN to ``cascaded_attempt_nnns`` (subsequent
              attempt-scoped Q+A then routes to the R2 safety folder
              with ``cascade_source`` set).  When
              ``db_writer_available`` is False, this step is skipped
@@ -3603,9 +3603,15 @@ class DatabaseHandler(BaseChainAgent):
         * ``--- Session ID ---``   — the ``IDxxx_YYYYMMDD_HHMMSS`` slug
           shared with ``previous_sessions/`` and the R2 mirror's
           per-session prefix.
-        * ``--- Attempt ID ---``   — set to ``attempt_id`` when known,
-          ``"(session-scope)"`` for session-scoped rows, or
-          ``"(unbound)"`` for attempt rows that errored.
+        * ``--- Attempt ID ---``   — the attempt's LOCAL NNN ("001"),
+          NOT the global ``dc_attempts.attempt_id``; ``"(session-scope)"``
+          for session-scoped rows, or ``"(unbound)"`` for attempt rows
+          that errored.  The ``attempt_id`` parameter below carries that
+          NNN string despite its name.  Neither the name nor the header
+          text is renamed: the header is written into every archived
+          ``.txt``, is named in the DH's own prompt, and the same
+          ``attempt_id=`` keyword is used elsewhere in this file for the
+          genuine BIGSERIAL (``insert_chunk``).
         * ``--- Field ---``        — the schedule's human-readable
           field name (NOT the slug — the slug is the filename).
 
