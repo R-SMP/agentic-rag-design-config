@@ -61,7 +61,7 @@ Note the target code ALREADY EXISTS: the factory's `else:` branch (OCR-off) has
 exactly the signature we want, so this is mostly a deletion of the `if` branch.
 
 ### Step 2a — `retrieve_attempt` writes folders, stops attaching  **DONE**
-`retrieve_attempt(attempts_ID_list)` — one required argument, nothing optional.
+`retrieve_attempt(past_attempts_global_ids)` — one required argument, nothing optional.
 Artefacts materialise under `attempts/_retrieved/<global_id>/`; the reply adds a
 `<folder>` listing every downloaded file with its size, beside the existing
 `<description>` and `<parameters>`.  Re-retrieval within a session is detected
