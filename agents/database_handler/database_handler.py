@@ -715,11 +715,13 @@ _ATTEMPT_SLUG_RE = re.compile(
     r"\b\d{8}_\d{6}_\d{3}_[\w\-]+\b",
 )
 
-# Narrow strip for the sub-row "For attempt NNN:" lead-in.  Sub-row
-# descriptions are auto-prefixed with ``"For attempt NNN: "`` (see
-# the ``sub_desc = f"For {attempt_str}: {sub_entry.get('description','')}"``
-# line in :meth:`populate_database`) so Agent A knows which attempt
-# the question is scoped to.  Without intervention the DH model
+# Narrow strip for the sub-row attempt lead-in.  Sub-row descriptions
+# are auto-prefixed with ``"For attempt NNN: "`` (the ``asked_rows``
+# comprehension in :meth:`populate_database`, which also stamps the row
+# with an ``attempt`` field) so Agent A knows which attempt the question
+# is scoped to — and :meth:`_batch_questions` may prepend
+# ``"About attempt NNN: "`` when the DH's own question omitted it.
+# Both forms are covered here.  Without intervention the DH model
 # parrots the lead-in into the short SAVE: QUESTION (and sometimes
 # the ANSWER), which is redundant — the attempt id is already in
 # the filename suffix (``__NNN``) and in the file body's
@@ -729,7 +731,7 @@ _ATTEMPT_SLUG_RE = re.compile(
 # "attempt NNN" elsewhere in the body, so cross-references like
 # "unlike attempt 002, this one ..." survive.
 _ATTEMPT_LEADIN_RE = re.compile(
-    r"^\s*[Ff]or\s+attempt\s*#?\s*\d{1,4}\s*[:\-,]\s*",
+    r"^\s*(?:[Ff]or|[Aa]bout)\s+attempt\s*#?\s*\d{1,4}\s*[:\-,]\s*",
     re.MULTILINE,
 )
 
@@ -843,6 +845,45 @@ def _normalise_attempt_input(raw: str) -> str | None:
         if idx is not None:
             return f"{idx:03d}"
     return None
+
+
+def _question_names_attempt(question: str, attempt: str) -> bool:
+    """True when *question* names the design attempt *attempt* is about.
+
+    Used as a backstop on the DH's question-writing turn: an
+    attempt-scoped sub-row is asked once per attempt, each time from the
+    agent's ORIGINAL session history, so an asked question that omits the
+    attempt is word-for-word identical across attempts and the agent
+    cannot tell them apart.
+
+    Deliberately generous about HOW the attempt is named — "attempt 3",
+    "attempt #003", "the third attempt", "the third iteration" and the
+    full folder slug all count — so the backstop only fires when the
+    attempt is genuinely absent and never mangles a question that
+    already reads well.  Matching on the NNN alone is what makes that
+    work: the DH is free to word the reference however it likes, as
+    long as one of those forms carries it.
+    """
+    nnn = _normalise_attempt_input(attempt or "")
+    if not nnn:
+        # Nothing to check against; assume the question is fine rather
+        # than prepending a lead-in built from an id we could not parse.
+        return True
+    q = question or ""
+    # EVERY attempt reference in the question, not just the first: a
+    # question may legitimately open on a cross-reference ("unlike
+    # attempt 002, ...") and still name its own attempt further in.
+    seen = {f"{int(m):03d}" for m in _ATTEMPT_NUMBER_RE.findall(q)}
+    seen |= {
+        slug.split("_")[2]
+        for slug in _ATTEMPT_SLUG_FULL_RE.findall(q)
+        if len(slug.split("_")) >= 3 and slug.split("_")[2].isdigit()
+    }
+    q_low = q.lower()
+    for word, idx in _ORDINAL_TO_NUM.items():
+        if f"{word} attempt" in q_low or f"{word} iteration" in q_low:
+            seen.add(f"{idx:03d}")
+    return nnn in seen
 
 
 def _resolve_attempt_folder(
@@ -1793,11 +1834,24 @@ class DatabaseHandler(BaseChainAgent):
                             # answer to the right design — while the
                             # FILING comes from the closure above, never
                             # from the model.
+                            #
+                            # It travels TWICE: as the historic lead-in on
+                            # the description, and as a first-class
+                            # ``attempt`` field.  The field is what
+                            # ``_batch_questions`` keys its ATTEMPT rule and
+                            # its backstop off — a lead-in buried in prose is
+                            # exactly the thing a question-writing model
+                            # paraphrases away, and the agent is interviewed
+                            # once per attempt from its ORIGINAL history, so
+                            # a question that does not name the attempt is
+                            # identical across attempts and unanswerable.
                             asked_rows = [
-                                {**r, "description": (
-                                    f"For {attempt_str}: "
-                                    f"{r.get('description', '')}"
-                                )}
+                                {**r,
+                                 "attempt": attempt_str,
+                                 "description": (
+                                     f"For {attempt_str}: "
+                                     f"{r.get('description', '')}"
+                                 )}
                                 for r in sub_group
                             ]
                             for r in sub_group:
@@ -2470,22 +2524,47 @@ class DatabaseHandler(BaseChainAgent):
         Falls back to the row's own schedule description for any label
         the DH omits, so a partial response costs wording quality rather
         than a missing question.
+
+        A row carrying an ``attempt`` is asked about ONE design attempt.
+        Such a row is marked in the prompt, the rule for it is stated,
+        and the result is checked: a question that does not name its
+        attempt gets the attempt prefixed back on before it is asked.
         """
         from agents.database_handler import batch_tools as bt
 
         rows_block = "\n".join(
             f"  {label}  {row.get('field')} "
             f"[{row.get('type', 'Semantic')}]"
-            f"\n        {(row.get('description') or '').strip()}"
+            + (f"  ATTEMPT: {row['attempt']}" if row.get("attempt") else "")
+            + f"\n        {(row.get('description') or '').strip()}"
             for label, row in labelled.items()
         )
+        # Only stated when a row actually carries an attempt, so the
+        # ordinary session-row batch — the overwhelming majority — does
+        # not pay for a rule that cannot apply to it.
+        attempt_rule = ""
+        if any(row.get("attempt") for row in labelled.values()):
+            attempt_rule = (
+                "ATTEMPT-SCOPED ROWS.  A row marked ATTEMPT above is "
+                "about that ONE design attempt.  You interview "
+                f"{agent_key} SEPARATELY for each attempt, and each time "
+                "it starts from its original session history with NO "
+                "memory of the other attempts' questions — so a question "
+                "that does not name its attempt is word-for-word "
+                "identical across attempts, and its answer cannot be "
+                "trusted to be about the right design.  Name the "
+                "attempt explicitly in every question you write for such "
+                "a row.  This is the ASKED question only; the short "
+                "question you later SAVE still drops the attempt id.\n\n"
+            )
         args = self._force_tool_args(
             bt.submit_questions, bt.SUBMIT_QUESTIONS_TOOL_NAME,
             "QUESTION-WRITING TURN.\n\n"
             f"Target agent: {agent_key}\n"
             f"You are about to ask it these {len(labelled)} database "
             f"field(s) in ONE message:\n\n{rows_block}\n\n"
-            "Write one question per label.  Stay faithful to each "
+            + attempt_rule
+            + "Write one question per label.  Stay faithful to each "
             "field's original intent; you MAY adapt the wording using "
             "what earlier agents have told you this save, as long as "
             "that does not drift the question away from its field.  "
@@ -2511,11 +2590,39 @@ class DatabaseHandler(BaseChainAgent):
                     f"({row.get('field')}); using its schedule "
                     f"description."
                 )
+                # The description already opens with the "For attempt
+                # NNN:" lead-in on an attempt row, so the generic
+                # "For this session" framing would contradict it.
+                lead = (
+                    "" if row.get("attempt")
+                    else "For this session, "
+                )
                 out[label] = (
-                    f"For this session, please describe: "
+                    f"{lead}please describe: "
                     f"{row.get('field')} — "
                     f"{(row.get('description') or '').strip()}"
                 )
+
+        # BACKSTOP.  The rule above is a directive to a model, and a
+        # directive can be ignored — the DH's own system prompt tells it
+        # to DROP the "For attempt NNN:" lead-in (correctly, for the
+        # question it SAVES), which is exactly the wording it is being
+        # asked to keep here.  Rather than trust the two rules to be
+        # told apart every time, put the attempt back when it is
+        # genuinely missing.  Same posture as _clean_saves: instruct,
+        # then verify.
+        for label, row in labelled.items():
+            attempt = (row.get("attempt") or "").strip()
+            if not attempt or label not in out:
+                continue
+            if _question_names_attempt(out[label], attempt):
+                continue
+            logger.warning(
+                f"[DH]  question for {label} ({row.get('field')}) did "
+                f"not name {attempt}; prefixing it.  Without this the "
+                f"same question is asked for every bound attempt."
+            )
+            out[label] = f"About {attempt}: {out[label]}"
         return out
 
     @staticmethod

@@ -95,17 +95,27 @@ a position in a list:
 3. **Attempt-specific sub-rows** — rows hanging off an identifying row,
    about the SAME attempt it pinned down.  After an identifying row
    "which attempt was best", its sub-rows might be "why was that attempt
-   successful?" and "what numerical parameters were used?".  The system
-   prepends ``"For attempt NNN: "`` to the description these sub-rows
-   receive, so Agent A knows which attempt to answer about.
+   successful?" and "what numerical parameters were used?".  Such a row
+   arrives marked ``ATTEMPT: attempt NNN``, and its description is
+   prefixed ``"For attempt NNN: "``.
 
-   **Do NOT echo the attempt id into the question or answer you save.**
-   Drop the ``"For attempt NNN:"`` lead-in and any other "attempt NNN" /
-   "attempt #NNN" wording — the saved ``.txt`` already carries the
-   attempt id in TWO places (the filename suffix ``__NNN`` and the
-   ``--- Attempt ID ---`` header), so repeating it inside the text
-   spends embedding budget on nothing.  Write as if the reader already
-   knows which attempt is meant.
+   The attempt id goes in OPPOSITE directions on the two turns, so keep
+   them apart:
+
+   * **The question you ASK Agent A — NAME the attempt.**  You interview
+     Agent A once per bound attempt, and each interview starts from its
+     original session history with no memory of the others, so a
+     question that does not name its attempt is identical for every
+     attempt and Agent A cannot tell which design you mean.  See
+     "Asked question — attempt-scoped rows" below.
+   * **The question and answer you SAVE — DROP the attempt id.**  Drop
+     the ``"For attempt NNN:"`` lead-in and any other "attempt NNN" /
+     "attempt #NNN" wording from the SAVED text — the saved ``.txt``
+     already carries the attempt id in TWO places (the filename suffix
+     ``__NNN`` and the ``--- Attempt ID ---`` header), so repeating it
+     inside the text spends embedding budget on nothing.  Write the
+     saved version as if the reader already knows which attempt is
+     meant.
 
 ## Identifying attempt-specific questions — the force-tool protocol
 
@@ -217,6 +227,28 @@ useful.  Include any clarifying sub-asks, examples, or framing that
 help Agent A produce a complete answer.  The asked question is NOT
 embedded; only the version you eventually save is.  Spend the tokens
 that help the agent.
+
+### Asked question — attempt-scoped rows
+
+A row marked ``ATTEMPT: attempt NNN`` is about that ONE design attempt.
+**Name the attempt in the question you ask.**
+
+This is not a stylistic preference.  Sub-rows are asked once per bound
+attempt, and every one of those interviews is seeded from Agent A's
+ORIGINAL session history — it never sees the questions you asked it
+about the other attempts.  So a question that omits the attempt is
+word-for-word identical across all of them: Agent A answers about
+whichever attempt comes to mind, twice, and the two answers are then
+filed under two different attempt ids.
+
+Word the reference however reads best — "attempt 003", "the third
+attempt", the folder slug — as long as the attempt is unambiguous in
+the question text.  If you leave it out, the system prefixes it back
+in and logs that it had to, which produces a clumsier question than
+one you wrote yourself.
+
+Remember this applies to the ASKED question only.  The short question
+you SAVE still drops the attempt id.
 
 ### Asked question — keep the agent reasoning-focused
 
