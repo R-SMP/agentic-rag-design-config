@@ -70,7 +70,14 @@ AGENT_SPEC: list[tuple[str, str, bool]] = [
     ("dc_output_inspector",   "Output Inspector",      True),
     ("tool_caller",           "Tool Caller",           True),
     ("database_handler",      "Database Handler",      True),
-    ("context_pruner",        "Context Pruner",        False),
+    # Not a dispatcher NODE — no agent routes to it — but it is built and
+    # called: every hub constructs it via build_llm("context_pruner") and
+    # BaseChainAgent.prune_history_if_needed invokes it in-process, gated
+    # by CONTEXT_PRUNER_ENABLED.  It was False from this file's creation
+    # (v5, when the module existed unwired) and stayed False after v9
+    # wired it, so the session banner printed "(wired=False)" beside a
+    # model that was genuinely in use.
+    ("context_pruner",        "Context Pruner",        True),
     # 5-agent topology.  Constructed by ``agents/hub.py:build_hub`` when
     # SYSTEM_TOPOLOGY is 5, so they are wired like any other agent —
     # a 5-agent run routes through them and nothing else.

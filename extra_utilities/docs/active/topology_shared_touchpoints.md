@@ -42,7 +42,7 @@ bottom.**  Verified 2026-08-01 by grep, not from memory.
 | 9 | `agents/database_handler/db_writer.py` | `DEFAULT_AGENTS_TO_ACL` | The agent is missing from `chunks.agents_to` defaults. |
 | 10 | `workflow_settings/ocr_access.py` | `DEFAULT_AGENTS` | Silent and easy to miss: the agent's `view_images` calls lose their OCR text. **Only for agents that bind image tools** — the wiring map got this wrong for the Conductor, which does bind `view_images` (inherited from the Planner). |
 | 11 | `workflow_settings/llm_defaults.py` | `DEFAULT_PER_AGENT_MODELS` | No default model for the agent. |
-| 12 | `workflow_settings/llm_routing.py` | `AGENT_SPEC` | Absent from LLM routing. Note the third field, `wired_into_dispatcher` — set it `False` until the agent is actually constructed, as `context_pruner` does. |
+| 12 | `workflow_settings/llm_routing.py` | `AGENT_SPEC` | Absent from LLM routing. Note the third field, `wired_into_dispatcher` — set it `False` until the agent is actually constructed, then flip it to `True` in the same commit that constructs it (`context_pruner` was left `False` for months after it was wired, and the session banner mislabelled it). |
 | 13 | `workflow_settings/settings.py` + `editor.py` | `SYSTEM_TOPOLOGY` + `ENUM_OPTIONS` | The topology cannot be selected from the UI. |
 
 ## Rows 14–19 — touch-points added AFTER the original list (2026-08-04)
