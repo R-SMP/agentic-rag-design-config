@@ -269,7 +269,7 @@ def upload_attempt_artefacts(
     attempt_folder: Path,
     *,
     session_id: str,
-    attempt_id: str,
+    attempt_nnn: str,
     global_attempt_id: int | None = None,
     whitelist: Iterable[str] | None = None,
 ) -> tuple[list[str], list[str]]:
@@ -285,6 +285,11 @@ def upload_attempt_artefacts(
     Filenames stay as the originals (``parameters.json``,
     ``propeller_mesh.obj``, ``render_isometric.png``, …) — no
     ``<sid>__<NNN>__`` rename, because the folder already disambiguates.
+
+    ``attempt_nnn`` is the per-session attempt NUMBER as a zero-padded
+    string ("001"), NOT ``dc_attempts.attempt_id`` — that is
+    ``global_attempt_id``.  The two were both called ``attempt_id``
+    until 2026-09-10.
 
     Legacy key layout (pre-Phase 5A, *global_attempt_id* omitted)::
 
@@ -328,14 +333,14 @@ def upload_attempt_artefacts(
     # Otherwise fall back to the pre-5A layout for any unupdated
     # direct caller.
     if global_attempt_id is not None:
-        base = f"{session_id}/attempts/{attempt_id}__{global_attempt_id}/"
+        base = f"{session_id}/attempts/{attempt_nnn}__{global_attempt_id}/"
     else:
         logger.warning(
             "[R2]  upload_attempt_artefacts called without "
             "global_attempt_id — falling back to pre-5A key shape.  "
             "Production callers should always pass global_attempt_id."
         )
-        base = f"{session_id}/attempts/{attempt_id}/"
+        base = f"{session_id}/attempts/{attempt_nnn}/"
 
     uploaded: list[str] = []
     missing: list[str] = []
@@ -347,7 +352,7 @@ def upload_attempt_artefacts(
         if global_attempt_id is not None:
             key = base + name  # clean filename — folder disambiguates
         else:
-            key = base + f"{session_id}__{attempt_id}__{name}"  # legacy
+            key = base + f"{session_id}__{attempt_nnn}__{name}"  # legacy
         if upload_file(local, key):
             uploaded.append(name)
         else:

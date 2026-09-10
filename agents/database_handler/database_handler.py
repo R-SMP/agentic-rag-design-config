@@ -1226,12 +1226,12 @@ class DatabaseHandler(BaseChainAgent):
 
             # Phase 3C caches — live for the duration of THIS
             # populate_database call.
-            #   attempt_id_by_nnn: maps each DH-chosen attempt_label
+            #   attempt_id_by_nnn: maps each attempt's NNN (e.g. "001")
             #     to the BIGSERIAL ``dc_attempts.attempt_id`` returned
             #     by db_writer.upsert_attempt.  Per-Q+A insert_chunk
             #     looks up the BIGSERIAL here when an attempt-scoped
             #     row is about to land.
-            #   cascaded_attempt_nnns: attempt_labels whose
+            #   cascaded_attempt_nnns: NNNs whose
             #     identifying-Q INSERT returned SAFETY OR whose
             #     upsert_attempt itself failed.  Every subsequent
             #     attempt-scoped Q+A for these attempts SKIPS
@@ -3420,7 +3420,7 @@ class DatabaseHandler(BaseChainAgent):
                     uploaded, missing = _r2.upload_attempt_artefacts(
                         folder,
                         session_id=session_id,
-                        attempt_id=nnn,
+                        attempt_nnn=nnn,
                         global_attempt_id=attempt_id_by_nnn.get(nnn),
                     )
                     uploaded_per_attempt[nnn] = {

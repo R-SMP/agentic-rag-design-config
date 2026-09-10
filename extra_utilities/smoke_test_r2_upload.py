@@ -398,7 +398,7 @@ with tempfile.TemporaryDirectory(prefix="r2_smoke_attempt_") as td:
         uploaded, missing = r2_uploader.upload_attempt_artefacts(
             attempt_dir,
             session_id=smoke_sid,
-            attempt_id=smoke_nnn,
+            attempt_nnn=smoke_nnn,
         )
     except Exception as exc:
         _fail("upload_attempt_artefacts raised", exc)

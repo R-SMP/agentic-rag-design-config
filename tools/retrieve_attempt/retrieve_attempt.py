@@ -402,13 +402,12 @@ def _run_retrieve_attempt(
     *,
     caller_agent: str,
     global_attempt_ids: list[int],
-) -> tuple[str, list[dict], list[str]]:
+) -> str:
     """Real retrieval logic.  Called by the dispatcher.
 
     Returns the XML string.  Artefacts are materialised under
     ``attempts/_retrieved/<global_id>/`` and referenced there BY PATH;
-    nothing is attached to the model's context.  The
-    parallel list of R2 keys used as text labels.
+    nothing is attached to the model's context.
     """
     start = time.monotonic()
     error_message: str | None = None
@@ -594,7 +593,7 @@ def _run_retrieve_attempt(
             latency_ms=latency_ms,
             error_message=error_message,
         )
-        return xml, [], []
+        return xml
 
 
 def make_retrieve_attempt_tool(caller_agent: str):
