@@ -133,6 +133,13 @@ logger = logging.getLogger("database_handler")
 # derives one from ``field``.
 _SHORT_LABEL_MAX = 26
 
+# HISTORICAL SNAPSHOT, not the live question set.  The shipped default
+# is dh_schedule.default.json; this list is reached only by
+# dh_schedule._seed_from_hardcoded when that file is missing or
+# unparseable, and it is lossy when it is (every row flattens to
+# scope="session", parent_id=None, to_agents=[]).  It is deliberately
+# NOT kept in step with the JSON default — 2026-09-10 the default
+# dropped to 29 rows while this stayed at its 36.
 SCHEDULE: list[dict] = [
     # ------------------------------------------------------------------
     # UII
