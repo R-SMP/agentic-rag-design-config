@@ -54,7 +54,7 @@ from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import create_attempt, read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.dba_tools import dba_tools_for
-from agents.shared.dc_primer import dc_primer_messages
+from agents.shared.dc_primer import primed_history
 from agents.shared.file_utils import (
     ai_text,
     flush_pending_image_blocks,
@@ -262,8 +262,8 @@ class DesignEngineer(BaseChainAgent):
             response = invoke_with_retry(
                 self.llm,
                 [make_system_message(self.system_prompt, self.provider)]
-                + dc_primer_messages(self.provider, self.AGENT_KEY)
-                + self.messages,
+                + primed_history(self.provider, self.AGENT_KEY,
+                                 self.messages),
                 "DEng",
                 cache_control=history_cache_control(self.provider),
             )
