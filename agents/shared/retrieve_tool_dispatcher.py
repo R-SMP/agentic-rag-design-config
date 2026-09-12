@@ -138,15 +138,20 @@ def _handle_retrieve_attempt(agent, tc: dict, agent_key: str) -> None:
         return
 
     args = tc.get("args", {}) or {}
-    raw_attempt_ids = args.get("attempts_ID_list")
+    # MUST match the parameter name in ``make_retrieve_attempt_tool``'s
+    # stub -- that signature IS the schema the model fills in, and this
+    # is the key the filled-in args arrive under.  Rename one, rename both.
+    raw_attempt_ids = args.get("past_attempts_global_ids")
     if isinstance(raw_attempt_ids, (str, int)):
         raw_attempt_ids = [raw_attempt_ids]
     if not isinstance(raw_attempt_ids, list) or not raw_attempt_ids:
         _emit_error_tool_message(
             agent, tc, agent_key,
-            "Error: 'attempts_ID_list' must be a non-empty list of "
-            "integer global attempt ids (BIGSERIAL "
-            "dc_attempts.attempt_id values from Postgres).",
+            "Error: 'past_attempts_global_ids' must be a non-empty list "
+            "of GLOBAL attempt ids (BIGSERIAL dc_attempts.attempt_id "
+            "values), as given by database_search's ``global_id``.  They "
+            "are NOT this session's attempt numbers -- for those, call "
+            "read_attempts(local_attempt_numbers=[...]) instead.",
         )
         return
     try:
@@ -154,7 +159,7 @@ def _handle_retrieve_attempt(agent, tc: dict, agent_key: str) -> None:
     except (TypeError, ValueError):
         _emit_error_tool_message(
             agent, tc, agent_key,
-            f"Error: every entry in 'attempts_ID_list' must be an "
+            f"Error: every entry in 'past_attempts_global_ids' must be an "
             f"integer global attempt id; got {raw_attempt_ids!r}.",
         )
         return

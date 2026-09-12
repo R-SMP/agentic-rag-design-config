@@ -436,7 +436,7 @@ The save flow writes to R2 via **three distinct upload paths** that run at diffe
 
 Site: `agents/database_handler/database_handler.py:_run_force_tool_phase`. Fires once per resolved attempt id, **immediately** when the force-tool's `save_attempt_data` tool call succeeds — before the DH's save decision.
 
-Calls `r2_uploader.upload_attempt_artefacts(folder, session_id=…, attempt_id=NNN, global_attempt_id=<bigserial>)` per resolved NNN. Whitelisted files (from `agents/shared/r2_uploader.py:ATTEMPT_ARTEFACT_WHITELIST`): `parameters.json`, `propeller_mesh.obj`, `render_isometric.png`, `render_top.png`, `render_side.png`, `description.txt`. `propeller_mesh_components.obj` is intentionally excluded.
+Calls `r2_uploader.upload_attempt_artefacts(folder, session_id=…, attempt_nnn=NNN, global_attempt_id=<bigserial>)` per resolved NNN. Whitelisted files (from `agents/shared/r2_uploader.py:ATTEMPT_ARTEFACT_WHITELIST`): `parameters.json`, `propeller_mesh.obj`, `render_isometric.png`, `render_top.png`, `render_side.png`, `description.txt`. `propeller_mesh_components.obj` is intentionally excluded.
 
 Keys written (Phase 5A shape, 2026-06-03 onward):
 

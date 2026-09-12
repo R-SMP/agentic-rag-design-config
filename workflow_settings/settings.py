@@ -1223,8 +1223,11 @@ PROMPT_CACHE_TTL_SAVE: str = "5m"
 #
 # But a DH interview is not design work: the agent is recalling and
 # summarising its OWN transcript, which a small model does well.  So
-# these two settings let the whole interview run on one cheap model
-# regardless of what each agent ran on live.
+# these two settings let the whole interview run on ONE model
+# regardless of what each agent ran on live.  Note that the default is
+# no longer cheaper than the agents themselves (it matches the workflow's
+# own gpt-5.6-terra); name a smaller model here when the goal is cost
+# rather than uniformity.
 #
 # WHAT IT COVERS.  Every call the Database Handler makes TO an agent:
 # the ordinary per-field answers AND the attempt-identifying calls
@@ -1271,7 +1274,7 @@ PROMPT_CACHE_TTL_SAVE: str = "5m"
 # "anthropic", "google", "openrouter"}; DH_INTERVIEW_MODEL any model
 # name the chosen provider exposes.
 DH_INTERVIEW_PROVIDER: str = "openai"
-DH_INTERVIEW_MODEL: str = "gpt-5.4-mini"
+DH_INTERVIEW_MODEL: str = "gpt-5.6-terra"
 
 
 # --- (was 17) Database Handler — stitching model (Option B embedding input) ---

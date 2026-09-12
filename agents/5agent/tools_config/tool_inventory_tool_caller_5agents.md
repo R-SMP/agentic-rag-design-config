@@ -10,7 +10,7 @@
    followed by the render+check report (the three render paths + any
    warnings).
 <<BSV_ON>>3.<</BSV_ON>><<BSV_OFF>>2.<</BSV_OFF>> **calculate** — evaluate arithmetic / boolean expressions.
-<<BSV_ON>>4.<</BSV_ON>><<BSV_OFF>>3.<</BSV_OFF>> **read_attempts(attempt_numbers=None)** — with no argument, a
+<<BSV_ON>>4.<</BSV_ON>><<BSV_OFF>>3.<</BSV_OFF>> **read_attempts(local_attempt_numbers=None)** — with no argument, a
    numbered summary of every attempt folder: which roles (parameters /
    mesh / renders / description) each holds, plus its ``description.txt``.
    Given attempt numbers, the same for just those, each with its full

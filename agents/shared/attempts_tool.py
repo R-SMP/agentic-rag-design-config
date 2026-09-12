@@ -11,7 +11,7 @@ creates them implicitly.
 
 Two tools are defined here:
 
-- ``read_attempts(attempt_numbers=None)`` — the one attempts-inspection
+- ``read_attempts(local_attempt_numbers=None)`` — the one attempts-inspection
   tool (it replaced the former ``list_attempts`` / ``read_attempt``
   pair, 2026-08-22).  With no argument it summarises every attempt
   folder (files present + ``description.txt`` content); given attempt
@@ -212,8 +212,8 @@ def _attempt_summary(n: int, folder: Path, detailed: bool) -> list[str]:
 
 @tool
 @generic_tool("Read attempts")
-def read_attempts(attempt_numbers: list[int] | None = None) -> str:
-    """Inspect this session's attempt folders — contents and file paths.
+def read_attempts(local_attempt_numbers: list[int] | None = None) -> str:
+    """Inspect THIS session's attempt folders — contents and file paths.
 
     An attempt folder is the canonical container for one design-
     generation process: it may hold the DC inputs (``parameters.json``),
@@ -222,13 +222,17 @@ def read_attempts(attempt_numbers: list[int] | None = None) -> str:
     Folders may be partial — e.g. a folder with only parameters.json
     means no mesh was generated yet for that input set.
 
+    For an attempt from a PAST session use ``retrieve_attempt`` instead —
+    that one takes GLOBAL ids, a different numbering space.
+
     Args:
-      attempt_numbers: OPTIONAL list of 1-based attempt numbers.  Omit
+      local_attempt_numbers: OPTIONAL list of 1-based attempt numbers
+        LOCAL to this session (1, 2, 3 …).  Omit
         it to get a numbered summary of EVERY attempt — files present
         (``Has:`` line) plus each attempt's ``description.txt`` content.
         Pass numbers (e.g. ``[2, 5]``) to get the same summary for only
         those attempts, each with its full ``parameters.json`` content
-        as well.  Attempt numbers only — never paths.
+        as well.  Attempt numbers only — never paths, never global ids.
 
     In both modes each attempt's ``render_*.png`` (including
     ``render_blade_sections.png``) and ``propeller_mesh.obj`` are listed
@@ -240,21 +244,22 @@ def read_attempts(attempt_numbers: list[int] | None = None) -> str:
     if not items:
         return "No attempts created yet."
 
-    if attempt_numbers is None or attempt_numbers == []:
+    if local_attempt_numbers is None or local_attempt_numbers == []:
         selected = items
         detailed = False
         invalid: list[str] = []
     else:
-        if isinstance(attempt_numbers, (int, str)):
-            attempt_numbers = [attempt_numbers]
-        if not isinstance(attempt_numbers, (list, tuple)):
+        if isinstance(local_attempt_numbers, (int, str)):
+            local_attempt_numbers = [local_attempt_numbers]
+        if not isinstance(local_attempt_numbers, (list, tuple)):
             return (
-                "Error: 'attempt_numbers' must be a list of integer "
-                "attempt numbers (or omitted to list every attempt)."
+                "Error: 'local_attempt_numbers' must be a list of integer "
+                "attempt numbers local to this session (or omitted to list "
+                "every attempt)."
             )
         wanted: list[int] = []
         invalid = []
-        for raw in attempt_numbers:
+        for raw in local_attempt_numbers:
             try:
                 wanted.append(int(raw))
             except (TypeError, ValueError):

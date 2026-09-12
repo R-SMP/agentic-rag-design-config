@@ -1,7 +1,7 @@
 """retrieve_attempt — DC-specific R2-backed attempt-scoped retrieval tool.
 
-When a chain agent calls ``retrieve_attempt(attempts_ID_list,
-attempts_ID_list)``, the tool:
+When a chain agent calls
+``retrieve_attempt(past_attempts_global_ids)``, the tool:
 
 1. Resolves each global attempt_id (BIGSERIAL ``dc_attempts.attempt_id``)
    against Postgres to recover ``(session_id, attempt_label, has_renders)``.
@@ -381,7 +381,10 @@ def _log_to_rag_queries(
     retrieval_common.log_to_rag_queries(
         caller_agent=caller_agent,
         tool_name="retrieve_attempt",
-        params_key="attempts_ID_list",
+        # Also the JSONB key written to rag_queries.query_params.  Rows
+        # logged before 2026-09-10 carry the old "attempts_ID_list" key;
+        # both are accurate records of the call as it was made.
+        params_key="past_attempts_global_ids",
         requested_ids=global_attempt_ids,
         returned_ids=returned_global_ids,
         returned_id_key="attempt_id",
@@ -402,13 +405,12 @@ def _run_retrieve_attempt(
     *,
     caller_agent: str,
     global_attempt_ids: list[int],
-) -> tuple[str, list[dict], list[str]]:
+) -> str:
     """Real retrieval logic.  Called by the dispatcher.
 
     Returns the XML string.  Artefacts are materialised under
     ``attempts/_retrieved/<global_id>/`` and referenced there BY PATH;
-    nothing is attached to the model's context.  The
-    parallel list of R2 keys used as text labels.
+    nothing is attached to the model's context.
     """
     start = time.monotonic()
     error_message: str | None = None
@@ -594,7 +596,7 @@ def _run_retrieve_attempt(
             latency_ms=latency_ms,
             error_message=error_message,
         )
-        return xml, [], []
+        return xml
 
 
 def make_retrieve_attempt_tool(caller_agent: str):
@@ -616,12 +618,17 @@ def make_retrieve_attempt_tool(caller_agent: str):
     @tool
     @generic_tool("Retrieve attempt")
     def retrieve_attempt(
-        attempts_ID_list: list[int],
+        past_attempts_global_ids: list[int],
     ) -> str:
-        """Retrieve past attempts in full — description, parameters, renders.
+        """Retrieve PAST SESSIONS' attempts in full — description, parameters, renders.
 
-        Use AFTER ``database_search`` or ``retrieve_user_inputs`` has
-        surfaced an attempt worth a deeper read.  Get the ids from the
+        For an attempt of THIS session use ``read_attempts`` instead — that
+        one takes local attempt numbers (1, 2, 3 …).  This tool takes GLOBAL
+        ids, which are a different numbering space: global id 3 is the third
+        attempt ever archived, by any session, not this session's attempt 3.
+
+        Use AFTER ``database_search`` has surfaced an attempt worth a deeper
+        read.  Get the ids from the ``global_id`` attribute in the
         ``<available_attempts>`` block of a ``database_search`` response.
 
         Every artefact of each attempt is downloaded into a LOCAL folder and
@@ -631,7 +638,9 @@ def make_retrieve_attempt_tool(caller_agent: str):
         ``view_images`` — which can also show several images side by side.
 
         Args:
-            attempts_ID_list: list of GLOBAL attempt ids (integers).
+            past_attempts_global_ids: list of GLOBAL attempt ids (integers),
+                as given by ``database_search``'s ``global_id``.  NOT this
+                session's attempt numbers.
 
         Returns XML: one ``<attempt>`` per id, each with ``<description>``,
         ``<parameters>``, and a ``<folder>`` listing every downloaded file

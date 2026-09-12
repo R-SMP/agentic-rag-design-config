@@ -2,7 +2,7 @@
 
 Verifies:
   1. read_state() with empty/missing .env files returns sane defaults
-     (mode='individual', shared=openai/gpt-5-mini, every agent shows
+     (mode='individual', shared=openai/_DEFAULT_MODEL, every agent shows
      source='shared' with empty overrides).
   2. write_updates() with mode='individual' and a per-agent override
      persists the override to agents/<agent>/.env without disturbing
@@ -120,7 +120,11 @@ def _run() -> None:
             state = _routing.read_state()
         assert state["mode"] == "individual", state["mode"]
         assert state["shared"]["provider"] == "openai", state["shared"]
-        assert state["shared"]["model"] == "gpt-5-mini", state["shared"]
+        # Compared against the constant, not a literal: the baked-in
+        # default moves when a better model ships, and this assertion
+        # is about the FALLBACK PATH, not about any one model name.
+        assert (state["shared"]["model"]
+                == _routing._DEFAULT_MODEL), state["shared"]
         prov_by_key = {p["key"]: p for p in state["providers"]}
         assert prov_by_key["openai"]["key_present"] is True
         assert prov_by_key["anthropic"]["key_present"] is False

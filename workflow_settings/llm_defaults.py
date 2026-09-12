@@ -37,22 +37,22 @@ DEFAULT_PROVIDER: str = "openai"
 # ``workflow_settings.llm_routing.AGENT_SPEC`` and
 # ``workflow_settings.database_access.DEFAULT_AGENTS``.
 DEFAULT_PER_AGENT_MODELS: dict[str, str] = {
-    "receptionist":         "gpt-5.4",
-    "orchestrator":         "gpt-5.4-mini",
-    "user_input_inspector": "gpt-5.4",
-    "planner":              "gpt-5-mini",
-    "dc_input_creator":     "gpt-5.4-mini",
-    "dc_input_inspector":   "gpt-5.5",
-    "dc_output_inspector":  "gpt-5.4",
-    "tool_caller":          "gpt-5.4-mini",
-    "database_handler":     "gpt-5-mini",
-    "context_pruner":       "gpt-5.4",
+    "receptionist":         "gpt-5.6-terra",
+    "orchestrator":         "gpt-5.6-luna",
+    "user_input_inspector": "gpt-5.6-terra",
+    "planner":              "gpt-5.6-terra",
+    "dc_input_creator":     "gpt-5.6-terra",
+    "dc_input_inspector":   "gpt-5.6-luna",
+    "dc_output_inspector":  "gpt-5.6-terra",
+    "tool_caller":          "gpt-5.6-luna",
+    "database_handler":     "gpt-5.6-terra",
+    "context_pruner":       "gpt-5.6-sol",
     # 3-agent topology.  These two keys exist ONLY under topology 3, so a
     # base entry here cannot move topology 7 or 5 -- it simply keeps
     # every consumer that iterates ALL agent keys (llm_routing, the
-    # loader's startup banner) off FALLBACK_MODEL.  Each inherits its
-    # parents' shared default: both of the Design Engineer's are
-    # gpt-5.4-mini, both of the Requirements Analyst's are gpt-5.4.
+    # loader's startup banner) off FALLBACK_MODEL.  Their RUNTIME values
+    # come from the topology-3 overlay below, which lists both in full;
+    # these mirror it so the settings chart and the runtime agree.
     "design_engineer":      "gpt-5.4-mini",
     "requirements_analyst": "gpt-5.4",
 }
@@ -65,11 +65,13 @@ DEFAULT_PER_AGENT_MODELS: dict[str, str] = {
 # the prompt layer uses for agents/5agent/ and the tool layer uses for
 # agents/topology5/.
 #
-# The one value that is NOT a copy is the Planner's.  In topology 7 the
-# Planner only plans and is the weakest tier in the table; in topology 5
-# it is the HUB, running the dispatch loop on every hop.  It therefore
-# takes the figure the retired Conductor used for exactly that merged
-# role -- gpt-5.4-mini -- rather than the chain Planner's gpt-5-mini.
+# Topology 5's values are a SNAPSHOT of the gpt-5.4-era table: they were
+# copied when the overlay was written and deliberately left alone when
+# topology 7 moved to the gpt-5.6 family, because the overlay exists so
+# that exactly this kind of edit cannot move topology 5 by accident.
+# Re-tier them deliberately when topology 5 is next benchmarked.  Note
+# that topology 5's Planner is the HUB, running the dispatch loop on
+# every hop, not the chain Planner topology 7 has.
 DEFAULT_PER_AGENT_MODELS_BY_TOPOLOGY: dict[int, dict[str, str]] = {
     5: {
         "receptionist":         "gpt-5.4",
@@ -101,7 +103,7 @@ DEFAULT_PER_AGENT_MODELS_BY_TOPOLOGY: dict[int, dict[str, str]] = {
 # in sync with the historical ``_DEFAULT_MODEL`` in
 # ``agents/shared/llm_provider.py`` and
 # ``workflow_settings/llm_routing.py``.
-FALLBACK_MODEL: str = "gpt-5-mini"
+FALLBACK_MODEL: str = "gpt-5.6-terra"
 
 
 def model_for(agent_key: str) -> str:

@@ -124,8 +124,9 @@ def default_schedule_path() -> Path:
     return _THIS_DIR / f"dh_schedule{_topology_infix()}.default.json"
 
 # Mirrors ``llm_routing.AGENT_KEYS`` order so the dropdowns line up
-# across views.  The 10th key (``context_pruner``) is included but
-# flagged ``wired=False`` in the agent metadata exposed to the UI.
+# across views.  The 10th key (``context_pruner``) is included: it is
+# not a dispatcher node, but it is built and called in-process by every
+# chain agent, so it carries its own model assignment like any other.
 AGENT_KEYS: list[str] = [
     "receptionist",
     "orchestrator",
