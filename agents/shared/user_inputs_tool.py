@@ -947,6 +947,18 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
             loaded.append(str(r["path"].resolve()))
             if (not r["is_render"]) and extract_text:
                 ocr_items.append((r["path"].name, cbytes))
+        # The 3-panel cap above is otherwise SILENT: an agent told the
+        # side-by-side comparison is REQUIRED would never learn that part
+        # of what it asked for was discarded.
+        if len(resolved) > 3:
+            dropped = resolved[3:]
+            body_parts.append(
+                "side_by_side merges at most 3 panels: "
+                f"{len(dropped)} of the {len(resolved)} paths you passed "
+                "were NOT included ("
+                + ", ".join(r["path"].name for r in dropped)
+                + ").  Call again with a narrower selection to see them."
+            )
         if pil_panels:
             try:
                 comp = stitch(pil_panels, labels, layout)

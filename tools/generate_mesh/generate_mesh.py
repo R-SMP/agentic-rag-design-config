@@ -774,9 +774,9 @@ def _backend_label(backend_used: str) -> str:
 def generate_and_render_propeller(
     parameters_path: Annotated[
         str,
-        "Absolute path of the attempt's ``parameters.json`` — the same path "
-        "the hand-off carries under ``Parameters file:``.  The mesh and the "
-        "render PNGs are written into that file's OWN attempt folder, so the "
+        "Absolute path of the attempt's ``parameters.json`` — from your "
+        "hand-off, or from the call that created the attempt.  The mesh and "
+        "the render PNGs are written into that file's OWN attempt folder, so the "
         "geometry can never be built from one attempt's numbers into another "
         "attempt's folder.",
     ],
