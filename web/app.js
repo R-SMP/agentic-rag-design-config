@@ -1988,9 +1988,14 @@ const LR_BOXES_5 = [
     label: "Planner" },
   { key: "dc_output_inspector",   role: "agent", x: 420, y: 200, w: 140, h: 95,
     label: "Output Inspector" },
-  { key: "dc_input_creator",      role: "agent", x: 230, y: 325, w: 140, h: 95,
+  // The design loop is a RING around the hub: Planner -> Input Creator ->
+  // Tool Caller -> Output Inspector -> Planner.  Putting the Tool Caller
+  // under the Output Inspector rather than under the Input Creator is what
+  // makes the return leg a short vertical instead of a diagonal across the
+  // chart -- the same arrangement the 7-agent chart uses.
+  { key: "dc_input_creator",      role: "agent", x: 230, y: 450, w: 140, h: 95,
     label: "Input Creator" },
-  { key: "tool_caller",           role: "agent", x: 230, y: 450, w: 140, h: 95,
+  { key: "tool_caller",           role: "agent", x: 420, y: 450, w: 140, h: 95,
     label: "Tool Caller" },
   // Tools — display only.
   { key: "propeller_configurator",   role: "tool", x: 610, y: 275, w: 180, h: 60,
@@ -2094,12 +2099,11 @@ const LR_ARROWS_5 = [
   { x1: 300, y1: 174, x2: 300, y2: 196 },   // Receptionist - Planner
   { x1: 226, y1: 247, x2: 184, y2: 247 },   // Planner - UII
   { x1: 374, y1: 247, x2: 416, y2: 247 },   // Planner - Output Inspector
-  { x1: 300, y1: 299, x2: 300, y2: 321 },   // Planner - Input Creator
-  { x1: 300, y1: 424, x2: 300, y2: 446 },   // Input Creator - Tool Caller
-  { x1: 374, y1: 480, x2: 462, y2: 299 },   // Tool Caller - Output Inspector
-  { x1: 416, y1: 270, x2: 374, y2: 330 },   // Output Inspector - Input Creator
-  { x1: 374, y1: 470, x2: 606, y2: 305 },   // Tool Caller - Propeller Configurator
-  { x1: 374, y1: 500, x2: 606, y2: 510 },   // Tool Caller - Blade Sections
+  { x1: 300, y1: 299, x2: 300, y2: 446 },   // Planner - Input Creator
+  { x1: 374, y1: 498, x2: 416, y2: 498 },   // Input Creator - Tool Caller
+  { x1: 490, y1: 446, x2: 490, y2: 299 },   // Tool Caller - Output Inspector
+  { x1: 564, y1: 470, x2: 606, y2: 305 },   // Tool Caller - Propeller Configurator
+  { x1: 564, y1: 530, x2: 606, y2: 510 },   // Tool Caller - Blade Sections
 ];
 
 // 3-agent: Receptionist -> Planner, and the Planner reaches BOTH merged
