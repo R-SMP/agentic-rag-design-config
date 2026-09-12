@@ -271,9 +271,18 @@ check("flag back on WITHOUT restart -> message returns",
 # --- 5. injection sites ------------------------------------------------------
 # The Creator was retired on 2026-08-31 with the rest of the old 5-agent
 # topology; topology 5 now uses the DC Input Creator, already in this list.
-print("case 5 - all four agents splice it between system and history")
+print("case 5 - all six agents splice it between system and history")
+# The 3-agent pair was missing here, so cases 5 and 6 had never touched
+# the two agents that receive the primer under SYSTEM_TOPOLOGY=3.
 SIX = ("user_input_inspector", "dc_input_creator", "dc_input_inspector",
-       "dc_output_inspector")
+       "dc_output_inspector", "design_engineer", "requirements_analyst")
+# The topology each agent actually RUNS under.  It matters because
+# _text_path() resolves through prompts._topology_override, and the RA's
+# variant exists ONLY as the 3agent copy -- there is no shared original --
+# so asking for it at SYSTEM_TOPOLOGY=7 finds nothing and degrades to "no
+# primer".  That is correct (topology 7 has no Requirements Analyst), but a
+# test that asks must ask under the topology the agent lives in.
+TOPO_FOR = {"design_engineer": 3, "requirements_analyst": 3}
 PATTERN = ("[make_system_message(self.system_prompt, self.provider)] "
            "+ primed_history(self.provider, self.AGENT_KEY, "
            "self.messages),")
@@ -289,8 +298,15 @@ for a in SIX:
 
 # --- 6. token accounting ------------------------------------------------------
 print("case 6 - pruner accounting")
-dc_primer._TOKEN_ESTIMATE.clear()
-got = {a: dc_primer.primer_tokens_for(a) for a in SIX}
+got = {}
+_t0 = getattr(st, "SYSTEM_TOPOLOGY", 7)
+try:
+    for a in SIX:
+        st.SYSTEM_TOPOLOGY = TOPO_FOR.get(a, 7)
+        dc_primer._TOKEN_ESTIMATE.clear()
+        got[a] = dc_primer.primer_tokens_for(a)
+finally:
+    st.SYSTEM_TOPOLOGY = _t0
 check("all six primer agents count >0", all(v > 0 for v in got.values()), got)
 check("UII gets the parameter-free variant, and it is shorter",
       got["user_input_inspector"] < got["dc_input_creator"], got)
@@ -338,7 +354,10 @@ HISTORIES = {
 
 st.DC_PARAMS_PRIMER_ENABLED = True
 dc_primer._MESSAGE_CACHE.clear()
+_t0 = getattr(st, "SYSTEM_TOPOLOGY", 7)
 for a in SIX:
+    st.SYSTEM_TOPOLOGY = TOPO_FOR.get(a, 7)
+    dc_primer._MESSAGE_CACHE.clear()
     for label, hist in HISTORIES.items():
         composed = ([SystemMessage(content="<system prompt>")]
                     + dc_primer.primed_history("anthropic", a, hist))
@@ -356,6 +375,7 @@ for a in SIX:
     check("%s: primer survives a tier-1 prune" % a,
           any(isinstance(m, HumanMessage) for m in t1) and len(t1) == 3)
 
+st.SYSTEM_TOPOLOGY = _t0
 st.DC_PARAMS_PRIMER_ENABLED = False
 dc_primer._MESSAGE_CACHE.clear()
 check("primer off -> history returned untouched",
@@ -364,6 +384,68 @@ check("primer off -> history returned untouched",
       == HISTORIES["tier 1 (coarse + tail)"])
 st.DC_PARAMS_PRIMER_ENABLED = True
 dc_primer._MESSAGE_CACHE.clear()
+
+# --- 8. per-TOPOLOGY text resolution ----------------------------------------
+# Every wording check above reads the module-level TEXT_PATH, which is pinned to
+# the SHARED file and never passes through _text_path -> _topology_override.  So
+# the suite had never opened a 3agent/5agent primer text at all, and the
+# Requirements Analyst's variant could drift unnoticed.  This case resolves the
+# text the way the RUNTIME does, for every (topology, agent) pair that exists.
+print("case 8 - per-topology text resolution")
+
+RECIPIENTS = {
+    7: ("user_input_inspector", "dc_input_creator",
+        "dc_input_inspector", "dc_output_inspector"),
+    5: ("user_input_inspector", "dc_input_creator", "dc_output_inspector"),
+    3: ("design_engineer", "requirements_analyst"),
+}
+_topo0 = getattr(st, "SYSTEM_TOPOLOGY", 7)
+resolved = {}
+try:
+    for _topo, _keys in RECIPIENTS.items():
+        st.SYSTEM_TOPOLOGY = _topo
+        for _key in _keys:
+            p = dc_primer._text_path(_key)
+            check("topo %d / %s: text resolves to a real file" % (_topo, _key),
+                  p.is_file(), str(p))
+            if p.is_file():
+                resolved[(_topo, _key)] = p.read_text(encoding="utf-8")
+finally:
+    st.SYSTEM_TOPOLOGY = _topo0
+
+# Facts that must hold in EVERY delivered text, whichever variant it is.
+for (_topo, _key), _body in sorted(resolved.items()):
+    n = norm(_body)
+    check("topo %d / %s: names the hub as 8 mm" % (_topo, _key),
+          "radius 8 mm" in n)
+    check("topo %d / %s: puts the blade root at 4 mm" % (_topo, _key),
+          "at r = 4 mm" in n)
+
+# The three DEFAULT copies are one text and the two UII variants are one text --
+# the topology forks exist for the mirror rule, not to say anything different.
+_defaults = [resolved.get((7, "dc_input_creator")),
+             resolved.get((5, "dc_input_creator")),
+             resolved.get((3, "design_engineer"))]
+check("the 3 default-text copies are byte-identical across topologies",
+      all(_defaults) and len(set(_defaults)) == 1)
+_uii = [resolved.get((7, "user_input_inspector")),
+        resolved.get((5, "user_input_inspector"))]
+check("the 2 UII-variant copies are byte-identical across topologies",
+      all(_uii) and len(set(_uii)) == 1)
+
+# The RA's variant is DELIBERATELY its own text.  The UII's "you do not need
+# them" is true for an agent whose list is gated off by
+# UII_PARAMETER_LIST_ENABLED; the topology-3 RA carries the list
+# unconditionally (prompt_3agents.md, "$parameter_list"), so the same sentence
+# would contradict its own prompt.
+_ra = resolved.get((3, "requirements_analyst")) or ""
+check("RA variant does not deny a list the RA actually carries",
+      "you do not need them" not in norm(_ra), norm(_ra)[:200])
+check("RA variant keeps the zero-camber inertness fact",
+      "at zero camber" in norm(_ra))
+check("RA variant still withholds the middlePos band",
+      "0.3" not in _ra)
+
 
 print()
 if FAILS:

@@ -321,7 +321,9 @@ design under review.
 ## The $parameter_count parameter names — the ONLY parameters that exist
 $parameter_list
 
-<<DCOI_RANGES_ON>>You are given the NAMES and the allowed ranges.  Use the ranges to tell a
+<<DCOI_RANGES_OFF>>You do NOT hold the allowed ranges.  Never say a value is at, over
+or under its limit (e.g. "at the maximum") — you cannot know.  Only the Design
+Engineer or the Planner can tell you.<</DCOI_RANGES_OFF>><<DCOI_RANGES_ON>>You are given the NAMES and the allowed ranges.  Use the ranges to tell a
 gap you can ask to close from one you cannot: never ask for a value outside
 its range, and when the mismatch traces to a parameter already at its bound,
 say so instead of asking for more.<</DCOI_RANGES_ON>>

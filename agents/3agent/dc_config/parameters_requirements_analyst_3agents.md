@@ -1,6 +1,6 @@
 ### Global / ring
  1. bladeCount         (integer)                             — Number of blades<<DCOI_RANGES_ON>> [3; 6]<</DCOI_RANGES_ON>>
- 2. impellerRadius     (mm)                                  — Outer radius of the impeller ring<<DCOI_RANGES_ON>> [60; 80]<</DCOI_RANGES_ON>>
+ 2. impellerRadius     (mm)                                  — Ring MID-WALL radius (outer face = +impellerThickness/2)<<DCOI_RANGES_ON>> [60; 80]<</DCOI_RANGES_ON>>
  3. impellerThickness  (mm)                                  — Wall thickness of the outer ring<<DCOI_RANGES_ON>> [1; 5]<</DCOI_RANGES_ON>>
 
 (The outer-ring HEIGHT is not a parameter — it is derived automatically to fit

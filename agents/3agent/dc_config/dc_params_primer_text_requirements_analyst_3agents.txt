@@ -1,8 +1,8 @@
 REFERENCE DIAGRAM - propeller geometry (attached image).
 A fixed reference supplied with your instructions. It is NOT a user input: never
 describe it back to the user, and never count it among the user's uploaded images.
-The diagram carries parameter labels; you do not need them - record what the USER
-says, in the user's own words.
+The diagram carries parameter labels; use the names your instructions list, but
+record what the USER says, in the user's own words.
 
 LEFT - top view, looking along the rotation axis.
   - hub            = the central cylinder, radius 8 mm.
@@ -21,6 +21,7 @@ orientation the blade-section renders use). All nine share one chord and one
 thickness; only camber and high-point change.
   - camber, in % of chord, increases left to right.
   - the high point of the camber line, in tenths of chord, moves top to bottom.
+    It moves the CAMBER crest only, and does nothing at zero camber.
   - thickness is a % of that section's OWN chord - how thick it is, not where it
     is thickest.
   - angle of attack is measured from the horizontal plane.  The sections are

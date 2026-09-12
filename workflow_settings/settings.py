@@ -697,9 +697,17 @@ DC_PARAMS_PRIMER_ENABLED: bool = True
 # The UII records what the USER said, in the user's own words; it does not
 # map anything onto configurator parameters (that is the DC Input Creator's
 # job).  With this OFF - the default - the "Design Configurator Parameters
-# (for reference)" section is stripped from the UII's system prompt, and the
-# UII also receives a parameter-free variant of the DC-parameter primer text
-# (the reference DIAGRAM is unchanged and still carries labels).
+# (for reference)" section is stripped from the UII's system prompt.
+#
+# This flag does NOT control the primer text.  dc_primer._text_path picks
+# the UII's parameter-free variant by AGENT KEY alone, so the UII receives
+# that variant at BOTH positions of this toggle (and the reference DIAGRAM
+# is unchanged either way - it still carries labels).
+#
+# NO EFFECT under SYSTEM_TOPOLOGY=3: the <<UII_PARAMS_*>> markers live only
+# in the UII's own prompt, and topology 3 has no UII.  Its Requirements
+# Analyst carries the parameter list unconditionally; only
+# DCOI_KNOWS_PARAMS_RANGES varies there.
 #
 # Turn it ON to put the names, units and ranges back in front of the UII,
 # e.g. to compare extraction behaviour with and without them.

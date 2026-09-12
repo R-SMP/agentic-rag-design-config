@@ -223,7 +223,10 @@ generation: call ``new_attempt_parameters`` again for the corrected set.
 ## Your input
 Your input is the user's own inputs, which you read yourself, plus
 whatever the Requirements Analyst reported in its hand-off.  You cannot
-view the images yourself.
+open the user's reference images yourself — you receive their names only —
+and you cannot see the renders your own tools produce.  The Requirements
+Analyst is your eyes for both: when a decision turns on what something
+LOOKS like, ask it rather than guessing.
 
 ## Read + write tools — policy (mechanics are in each tool's schema)
 

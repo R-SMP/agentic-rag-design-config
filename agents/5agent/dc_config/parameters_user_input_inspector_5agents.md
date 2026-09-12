@@ -1,6 +1,6 @@
 ### Global / ring
  1. bladeCount         (integer)                             — Number of blades [3; 6]
- 2. impellerRadius     (mm)                                  — Outer radius of the impeller ring [60; 80]
+ 2. impellerRadius     (mm)                                  — Ring MID-WALL radius (outer face = +impellerThickness/2) [60; 80]
  3. impellerThickness  (mm)                                  — Wall thickness of the outer ring [1; 5]
 
 ### Inner blade section
