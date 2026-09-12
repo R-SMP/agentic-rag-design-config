@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F95**.
+branches (F36 is taken on a sibling branch).  Next free id: **F97**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -110,6 +110,8 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F92` | PARTIALLY CLOSED | Four defects the 5-agent merge inherited from the 7-agent system — status re-checked 2026-08-21 |
 | `F93` | OPEN | Pending actions embedded inside `warnings_developer.md` — index |
 | `F94` | DONE | Review PDFs render bullet lists as run-on prose — the renderer was not CommonMark |
+| `F95` | OPEN | The IN-SESSION briefing anchor: give a stripped agent a fallback entry |
+| `F96` | OPEN | Topology 3: the RA is required to emit `INTERPRETATION:` and `QUALITATIVE DESCRIPTIONS` and no agent is told to read either |
 
 ---
 
@@ -4157,3 +4159,64 @@ when the anchor helper is being written for F55 anyway, since both need the same
 `on_operation_end` actually strips); `agents/shared/llm_provider.py` (shared marker
 helper). Mechanics: `extra_utilities/design_prompt_caching.md` §7 and §9 "Step 2".
 Related: F55 (same primitive, post-session), W40.
+
+---
+
+### F96. Topology 3: two Requirements-Analyst output labels nobody is told to read
+
+**Status.** OPEN, deliberately. Closed as "not a defect — keep both" in Stage 9
+round 3 (R14), and filed here so it can be re-opened if the test runs show the
+RA's reports being ignored or its ambiguity flags going nowhere.
+
+**What.** The RA's prompt compels two labels that appear in NO other agent's
+assembled prompt:
+
+* `INTERPRETATION: straightforward` / `INTERPRETATION: ambiguous, <what was
+  open to reading>` — required on EVERY run
+  (`requirements_analyst/prompt_3agents.md`, end of `### 3. DESIGN INTENT`:
+  *"State one every time; silence cannot be told from a clean read."*)
+* `QUALITATIVE DESCRIPTIONS` — §2 of the extraction.
+
+What the other agents DO name, for contrast:
+
+| label the RA emits | Planner | Design Engineer |
+|---|---|---|
+| `QUANTITATIVE INPUTS` | — | yes |
+| `DESIGN INTENT` | yes | yes |
+| `PRECISION DEMAND` | yes | — |
+| `PRECISE SKETCH` | yes | — |
+| **`QUALITATIVE DESCRIPTIONS`** | **no** | **no** |
+| **`INTERPRETATION:`** | **no** | **no** |
+
+**Why it was left as is.** Both earn their place on the RA's own side:
+
+* `INTERPRETATION:` is a SELF-CHECK. Its value — forcing the RA to distinguish
+  *"I found no ambiguity"* from *"I did not look"* — is realised in the RA's
+  output discipline whether or not a recipient keys off the label. Deleting it
+  removes a check, not a message.
+* `QUALITATIVE DESCRIPTIONS` is a section of the extraction, and §1's
+  count rule routes conflicts INTO it (*"if your count and a note disagree, use
+  yours and record both in QUALITATIVE DESCRIPTIONS"*). Cutting the label would
+  orphan that instruction.
+
+The round-2 pressure to cut them is also gone: the ROUTING fragment's
+*"Keep the message to one or two sentences"* cap — which made every unread
+label expensive — was deleted in round 3 (R3).
+
+**What the proper fix would look like, IF the tests justify it.** Not deletion
+— the reverse. Teach the Planner to act on them:
+
+* `INTERPRETATION: ambiguous, …` arriving in Role 1 is a signal to ASK THE USER
+  rather than to proceed on a guess. Today the Planner decides ambiguity for
+  itself and the RA's verdict is inert.
+* `QUALITATIVE DESCRIPTIONS` is the natural source for the Planner's standing
+  directive wording, which it currently composes from the user's message alone.
+
+Both are NEW capability, not defect repair, which is why they were not taken in
+a round scoped to the RA's own prompt.
+
+**Where to look.** `agents/3agent/requirements_analyst/prompt_3agents.md`
+(`### 2. QUALITATIVE DESCRIPTIONS`, `### 3. DESIGN INTENT`);
+`agents/3agent/planner/prompt_3agents.md` (`## Role 1`, `HARD RULE 6` for the
+ask-the-user path). Decision record:
+`extra_utilities/docs/active/topology3_stage9_round3_ra_prompt_edits.md` §R14.
