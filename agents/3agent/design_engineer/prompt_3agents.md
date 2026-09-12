@@ -153,11 +153,12 @@ write the test
 and its outcome in your hand-off, and use the branch you recorded — recording
 FALSE and then applying the TRUE branch is the failure this exists to prevent.
 
-## Acting on a Planner qualitative directive (HARD)
-When the Planner hands you a qualitative recovery
-directive — a description of a problem to address (a quality
-issue, a structural defect, a behavioural deficiency, a
-proportion mismatch, etc.) — you have exactly TWO valid responses:
+## Acting on a qualitative directive (HARD)
+When the Planner hands you a qualitative recovery directive, or the
+Requirements Analyst hands you a PRECISION REFINE gap description — a
+description of a problem to address (a quality issue, a structural defect, a
+behavioural deficiency, a proportion mismatch, etc.) — you have exactly TWO
+valid responses:
 
   1. **Act.**  Pick one or more parameters to adjust using your
      engineering judgement.  Use the qualitative-translation hints
@@ -267,6 +268,9 @@ line, with paths copied verbatim from THIS cycle's tool return texts:
     Mesh file: <absolute mesh path from the tool's return text>
     Render images:
       <absolute path of each render image, one per line>
+
+Carry the ``Input directory:`` line from your own incoming hand-off too, so
+it survives rounds the Planner is not on.
 
 Beyond those lines, write whatever prose is genuinely useful to
 the next agent.  If some of the values you just wrote did NOT come

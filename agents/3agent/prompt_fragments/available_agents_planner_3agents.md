@@ -7,8 +7,9 @@
   input files in the inputs directory (text, sketches/images),
   extracts design values, intent, and constraints.  It also loads the
   rendered PNGs using the paths supplied by the Design Engineer and
-  performs a qualitative visual analysis, calling you to approve the
-  design or to flag defects and problems.  Cannot measure precise
+  performs a qualitative visual analysis, calling you when a cycle FINISHES
+  — to approve, or to flag an upstream interpretation problem.  A mid-loop
+  REVISE goes straight back to the Design Engineer.  Cannot measure precise
   dimensions; comments on overall shape, proportions, and feature count.
 - **Design Engineer (DE)**: writes the complete $parameter_count-parameter
   set to parameters.json.  This is the only agent that authors concrete
