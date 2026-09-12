@@ -127,15 +127,13 @@ extra records make the downstream section-matching far more efficient:
    and unlocked, distinct from any explicit user numbers in QUANTITATIVE INPUTS.
    The downstream loop refines it against the drawing, so do not over-invest.
 
-2. **Crop regions, recorded in §4 of the extraction.**  When the section
-   drawings occupy only part of a larger multi-part sketch (e.g. the bottom
-   strip of a full technical page), the RA records a COARSE normalized crop
-   box ``[x0, y0, x1, y1]`` (fractions in 0..1) for that part in the
-   extraction's ``USEFUL INPUT IMAGES`` section, labelled by what it shows.
-   A whole-propeller top / side / perspective view — one the 3D geometry, not
-   just the sections, should match — gets its own labelled box there too, so
-   the later 3D precision check knows which sketch view to compare against
-   which render view.
+2. **Crop regions — pick them yourself.**  When the section drawings occupy
+   only part of a larger multi-part sketch (e.g. the bottom strip of a full
+   technical page), choose a COARSE normalized crop box ``[x0, y0, x1, y1]``
+   (fractions in 0..1) for that part.  A whole-propeller top / side /
+   perspective view — one the 3D geometry, not just the sections, should
+   match — gets its own box, so the later 3D precision check compares the
+   right sketch view against the right render view.
 
    Downstream, pass the box straight to ``view_images`` as that image's
    ``crop_regions`` entry: the sections box for the cheap sections match, the

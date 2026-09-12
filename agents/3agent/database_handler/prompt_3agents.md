@@ -188,7 +188,8 @@ search time and makes the database worse, not more complete.  A skip is
 recorded on disk, so nothing is lost by skipping.
 
 Judgement, not reflex: "nothing went wrong" is a skip; "nothing went
-wrong BECAUSE the extraction pinned the ambiguity early" is worth saving.
+wrong BECAUSE the Requirements Analyst pinned the ambiguity early" is
+worth saving.
 
 ### The attempt path uses the same tools
 
