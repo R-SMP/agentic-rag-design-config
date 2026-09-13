@@ -802,7 +802,11 @@ IMAGE_COMPRESSION_DEFAULT_CAP: int = 1024
 #
 # Valid values: a positive integer, or 0 to disable the ceiling entirely.
 IMAGE_COMPRESSION_HARD_MAX_LONG_EDGE: int = 1900
-IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE: int = 35
+# 69, not 35: the blade-sections render was scaled x(28/18) so the archived
+# and chat copies carry large, CRISP text.  The degree absorbs that growth so
+# the MODEL-facing copy stays the size it has always been (~529 px long edge)
+# — raising the source without raising this would double the agent's tokens.
+IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE: int = 69
 IMAGE_COMPRESSION_3D_RENDER_DEGREE: int = 55
 IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320
 

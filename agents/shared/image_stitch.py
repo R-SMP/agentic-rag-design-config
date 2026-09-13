@@ -83,13 +83,17 @@ _MAX_LONG_EDGE = 1560
 
 
 def stitch(images, labels=None, layout: str = "match_height",
-           max_long_edge: int = _MAX_LONG_EDGE) -> "Image.Image":
+           max_long_edge: int = _MAX_LONG_EDGE,
+           allow_upscale: bool = False) -> "Image.Image":
     """Compose up to :data:`MAX_PANELS` PIL images side-by-side into ONE image.
 
     ``layout="match_height"``: scale each panel to a common height — best for
     shape comparison, since two same-scale renders line up.  That height never
-    exceeds a panel's own, so a panel is only ever scaled DOWN; a shorter one
-    stays native and is centred in the band.  ``layout="native"``:
+    exceeds a panel's own unless ``allow_upscale`` is set, so by default a panel
+    is only ever scaled DOWN and a shorter one stays native, centred in the
+    band.  Pass ``allow_upscale=True`` ONLY for a copy a human will look at --
+    it costs a model copy vision tokens for pixels carrying no new detail.
+    ``layout="native"``:
     keep native pixels (each capped), padded to a common height.  Every panel
     gets a label bar (its ``labels`` entry), a thin border, and white gaps.  The
     finished composite's long edge is capped at ``max_long_edge`` so it reaches
@@ -117,10 +121,15 @@ def stitch(images, labels=None, layout: str = "match_height",
         # the same picture).  A panel shorter than the common height keeps its
         # native height and is centred in the band, which the canvas below
         # already handles -- it is what layout="native" relies on.
-        h = min(_MATCH_HEIGHT_TARGET, max(im.height for im in ims))
+        # ``allow_upscale`` is for the HUMAN copy only: magnifying a small
+        # render costs the chat nothing and keeps the Inner / Middle / Outer
+        # labels and the protractor degrees readable, while the model copy
+        # pays vision tokens per pixel and must never be scaled up.
+        h = (_MATCH_HEIGHT_TARGET if allow_upscale
+             else min(_MATCH_HEIGHT_TARGET, max(im.height for im in ims)))
         scaled = []
         for im in ims:
-            th = min(h, im.height)
+            th = h if allow_upscale else min(h, im.height)
             scaled.append(im.resize(
                 (max(1, round(im.width * th / im.height)), th), _LANCZOS))
         ims = scaled

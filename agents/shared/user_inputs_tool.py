@@ -989,7 +989,8 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
             )
         if pil_panels:
             try:
-                comp = stitch(pil_panels, labels, layout)
+                comp = stitch(pil_panels, labels, layout,
+                              allow_upscale=True)
                 cbuf = io.BytesIO(); comp.save(cbuf, format="PNG")
                 comp_bytes = cbuf.getvalue()
                 saved = _save_composite(comp_bytes)   # auto-shows in chat
