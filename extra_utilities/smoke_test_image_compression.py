@@ -181,6 +181,47 @@ def main():
     print(f"    phone photo anthropic tokens: {before} -> {after} ({100 * (before - after) // max(before, 1)}% saved)")
     ok(after < before, "phone photo tokens reduced")
 
+    # --- side-by-side composite: the panels must be model-facing ---------
+    # Regression guard for the bypass where view_images stitched FULL-RES
+    # panels and passed degree_pct=0, so the per-render-type degrees never
+    # reached a side_by_side view, and match_height then UPSCALED a short
+    # sections panel up to 640 px.  Mirrors the patched loop in
+    # agents/shared/user_inputs_tool.py.  Settings are STUBBED (as everywhere
+    # else here) so the test does not move when someone retunes the panel.
+    _stitch_mod = Path(__file__).resolve().parents[1] / "agents" / "shared" / "image_stitch.py"
+    _ss = importlib.util.spec_from_file_location("image_stitch", _stitch_mod)
+    st = importlib.util.module_from_spec(_ss)
+    _ss.loader.exec_module(st)
+
+    _render_stub = {"IMAGE_COMPRESSION_ENABLED": True,
+                    "IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE": 35,
+                    "IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE": 320,
+                    "IMAGE_COMPRESSION_HARD_MAX_LONG_EDGE": 1900}
+    m._get_setting = lambda n, d: _render_stub.get(n, orig(n, d))
+
+    SEC_W, SEC_H = 690, 285                     # native blade-sections render
+    sec_raw = _enc(Image.new("RGB", (SEC_W, SEC_H), (247, 247, 247)), "PNG")
+    deg, floor = m.render_degree_and_floor("render_blade_sections_001.png")
+    ok((deg, floor) == (35, 320), "sections degree+floor resolved from settings")
+    model_bytes = m.compress_for_model(sec_raw, deg, is_render=True, floor=floor)
+    single = _dims(model_bytes)
+    ok(single[0] < SEC_W, "sections single-view is downscaled")
+
+    panel = st.to_rgb(Image.open(io.BytesIO(model_bytes)))
+    for n in (1, 2, 3):
+        comp = st.stitch([panel.copy() for _ in range(n)],
+                         [str(i) for i in range(n)], "match_height")
+        ok(comp.height <= single[1] + st._LABEL_H,
+           f"{n}-panel composite no taller than panel + label bar (no upscale)")
+    tall = Image.new("RGB", (400, 900), (5, 5, 5))
+    mixed = st.stitch([panel.copy(), tall], ["a", "b"], "match_height")
+    ok(mixed.height <= st._MATCH_HEIGHT_TARGET + st._LABEL_H,
+       "match_height never exceeds its own target")
+    ok(st.stitch([panel.copy()], ["a"], "match_height").height
+       == panel.height + st._LABEL_H,
+       "lone short panel keeps its native height (no upscale)")
+    m._get_setting = orig
+
     print("\n" + ("ALL PASS" if not _fails else f"{len(_fails)} FAILURES: " + "; ".join(_fails)))
     return 1 if _fails else 0
 

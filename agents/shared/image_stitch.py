@@ -87,7 +87,9 @@ def stitch(images, labels=None, layout: str = "match_height",
     """Compose up to :data:`MAX_PANELS` PIL images side-by-side into ONE image.
 
     ``layout="match_height"``: scale each panel to a common height — best for
-    shape comparison, since two same-scale renders line up.  ``layout="native"``:
+    shape comparison, since two same-scale renders line up.  That height never
+    exceeds a panel's own, so a panel is only ever scaled DOWN; a shorter one
+    stays native and is centred in the band.  ``layout="native"``:
     keep native pixels (each capped), padded to a common height.  Every panel
     gets a label bar (its ``labels`` entry), a thin border, and white gaps.  The
     finished composite's long edge is capped at ``max_long_edge`` so it reaches
@@ -108,9 +110,20 @@ def stitch(images, labels=None, layout: str = "match_height",
             capped.append(im)
         ims = capped
     else:  # match_height (default)
-        h = _MATCH_HEIGHT_TARGET
-        ims = [im.resize((max(1, round(im.width * h / im.height)), h), _LANCZOS)
-               for im in ims]
+        # Common height for shape comparison -- but NEVER above a panel's own.
+        # Panels arrive already downscaled to their model-facing size, so
+        # scaling one UP invents no detail and multiplies its vision-token cost
+        # (a 231 px-tall sections panel pushed to 640 px costs ~7x for exactly
+        # the same picture).  A panel shorter than the common height keeps its
+        # native height and is centred in the band, which the canvas below
+        # already handles -- it is what layout="native" relies on.
+        h = min(_MATCH_HEIGHT_TARGET, max(im.height for im in ims))
+        scaled = []
+        for im in ims:
+            th = min(h, im.height)
+            scaled.append(im.resize(
+                (max(1, round(im.width * th / im.height)), th), _LANCZOS))
+        ims = scaled
 
     panel_h = max(im.height for im in ims)
     total_w = sum(im.width for im in ims) + _GAP * (len(ims) - 1)

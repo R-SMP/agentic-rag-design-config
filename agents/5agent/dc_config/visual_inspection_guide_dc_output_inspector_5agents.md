@@ -1,3 +1,10 @@
+On a blade-sections render the three sections are drawn in their OWN
+colours — **Inner BLUE, Middle GREEN, Outer RED** — and each section's
+name label, in the left gutter, carries that same colour.  The
+bottom-right "Angle of attack" protractor draws one ray per section in
+those colours and carries NO names, so colour is the only thing that
+tells its three rays apart.
+
 On a blade-sections render each section also carries two construction lines:
 a THIN BLACK straight line from leading to trailing edge — the chord — and a
 MAGENTA DASHED curve — the camber (mean) line.  A section with zero camber
