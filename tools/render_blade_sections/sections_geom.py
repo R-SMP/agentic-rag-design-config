@@ -174,6 +174,13 @@ def rendered_params_block(params):
             f"camber crest at {hp:g}/10 chord"
         )
     lines.append(
+        "  COLOUR CODE on the blade-sections render: each section is drawn in "
+        "its own colour — inner BLUE, middle GREEN, outer RED — and its name "
+        "label carries that colour too.  The \"Angle of attack\" protractor "
+        "draws one ray per section in the colour of that section, with its "
+        "angle in degrees at the tip."
+    )
+    lines.append(
         "  MIDDLE SECTION: to fatten or reshape it, raise innerThickness / "
         "innerCamber AND outerThickness / outerCamber — the middle is their "
         f"weighted average at middlePos={float(params.get('middlePos', 0)):g}, so "

@@ -13,6 +13,5 @@ deliverable.
 
 Each section is drawn in its OWN colour — **Inner BLUE, Middle GREEN, Outer
 RED** — and its name label in the left gutter carries that same colour.  The
-bottom-right "Angle of attack" protractor draws one ray per section in those
-colours and carries NO names, so colour is the only thing that tells its three
-rays apart.
+bottom-right "Angle of attack" protractor draws one ray per section in the
+colour of that section, with its angle in degrees at the tip.
