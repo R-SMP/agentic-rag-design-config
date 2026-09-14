@@ -11,3 +11,6 @@ descriptions hide), and
 relevant past attempts surface — it prints their parameters too.  Both
 download to a local folder and list it; open any listed path with
 ``view_images``.  Fetch only the most useful ones.
+
+On APPROVE, put the ids and your one-line note in the ``call_tool_caller``
+``message``, beside the two lines that call already requires.

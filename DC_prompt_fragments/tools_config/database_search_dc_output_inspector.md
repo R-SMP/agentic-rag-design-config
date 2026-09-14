@@ -7,3 +7,8 @@ visual — comparing the current renders against the user's inputs.  Use
 past attempt's renders: it downloads them to a local folder and lists it;
 pass a listed path to ``view_images`` — with ``side_by_side=True`` to set one
 against the current render.  Fetch only the most useful ones.
+
+**A retrieved render calibrates; it never decides.**  Your verdict rests on
+THIS cycle's evidence — a past render only shows what was judged good or bad
+before.  When one did shape your judgement, give the folder and the exact
+image path of the render that was useful, beside the id.

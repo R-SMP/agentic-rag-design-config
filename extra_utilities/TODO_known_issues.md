@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F98**.
+branches (F36 is taken on a sibling branch).  Next free id: **F99**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -113,6 +113,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F95` | OPEN | The IN-SESSION briefing anchor: give a stripped agent a fallback entry |
 | `F96` | OPEN | Topology 3: the RA is required to emit `INTERPRETATION:` and `QUALITATIVE DESCRIPTIONS` and no agent is told to read either |
 | `F97` | OPEN | `retrieve_attempt`'s nnn-to-global_id paragraph rests on an unverified premise about how the DH words its answers |
+| `F98` | OPEN | Topologies 5 and 3 do not share what they retrieve — the RAG hand-off pointer rules landed in topology 7 only |
 
 ---
 
@@ -4305,3 +4306,65 @@ sentence); `DC_prompt_fragments/tools_config/database_search.md`;
 `agents/database_handler/stitching_prompt.md`;
 `workflow_settings/dh_schedule.default.json` (the three attempt-scoped
 identifying questions).
+
+---
+
+### F98. Topologies 5 and 3 do not share what they retrieve
+
+**Status.** OPEN, deliberate. Filed 2026-09-14 in the same change that shipped
+the topology-7 half, at the owner's request so the other two are not forgotten.
+
+**What shipped for topology 7.** With RAG on, an agent that retrieves a useful
+past attempt or past session names it in its hand-off — the id in a fixed form
+(`attempt global_id NNN`, `session ID...`), the local folder if it fetched it
+itself, and one line on why — and an agent receiving such a pointer opens it
+when it holds the tool for it, or carries it forward when it does not. Shared
+block in `DC_prompt_fragments/tools_config/database_search.md`, plus per-agent
+lines for the Planner, the UII, the DCII and the DCOI, and a moved passage in
+`retrieve_user_inputs.md`.
+
+**What is missing.** The per-agent overlay forks and the topology copies of the
+shared fragments WIN over the base files, so none of this reaches topologies 5
+or 3. The files that would need it:
+
+* `agents/5agent/tools_config/database_search_5agents.md` — shared block + the
+  rewritten "Verify context" paragraph
+* `agents/3agent/tools_config/database_search_3agents.md` — same
+* `agents/5agent/tools_config/retrieve_user_inputs_5agents.md` — the moved
+  "See it before you trust it" bullet
+* `agents/3agent/tools_config/retrieve_user_inputs_3agents.md` — same
+* `agents/5agent/tools_config/database_search_planner_5agents.md`
+* `agents/5agent/tools_config/database_search_user_input_inspector_5agents.md`
+* `agents/5agent/tools_config/database_search_dc_output_inspector_5agents.md`
+* `agents/3agent/tools_config/database_search_planner_3agents.md`
+* `agents/3agent/tools_config/database_search_requirements_analyst_3agents.md`
+* `agents/3agent/tools_config/database_search_design_engineer_3agents.md`
+
+**Four traps — this is NOT a copy-paste port.**
+
+1. **The Planner block is a topology-7 fact and is FALSE in 5 and 3.** It says
+   "Of the database tools you hold ``database_search`` only". In those
+   topologies the Planner ALSO holds `retrieve_user_inputs`: `database_access.json`
+   turns off only `attempt` for them, and `search` / `user_inputs` have no row,
+   so they fall back to `_DEFAULT_VALUE = True`. Verified 2026-09-14.
+2. **The merge map changes who needs which line.** Topology 5 has no DCII at
+   all. Topology 3 merges UII + DCOI into the Requirements Analyst and
+   DCIC + Tool Caller into the Design Engineer, so each of those needs the
+   UNION of the corresponding lines, not a copy of one of them.
+3. **Block E's routing is topology-7 only.** "On APPROVE, put the ids in the
+   ``call_tool_caller`` ``message``" is the DCII's route, and there is no DCII
+   below topology 7.
+4. **The A2b move relies on a GATE, not on wording.** The pixel-fetching
+   passage was moved out of `database_search.md` into `retrieve_user_inputs.md`
+   precisely because that slot is blanked for an agent holding neither retrieve
+   tool — which is what stops the topology-7 Planner from reading instructions
+   for tools it lacks. In topologies 5 and 3 the Planner DOES hold
+   `retrieve_user_inputs`, so the move hides nothing there. Decide deliberately
+   whether that is acceptable, or whether those Planners should have
+   `user_inputs` switched off as well.
+
+**Where to look.** `DC_prompt_fragments/tools_config/database_search.md` and
+`retrieve_user_inputs.md` for the shipped text; `agents/shared/prompts.py`
+(`_topology_override`, `_build_template`, `_DBA_TOOL_SLOTS`) for why the forks
+win and how the slot gating works; `workflow_settings/database_access.json` for
+the per-topology tool holdings.
