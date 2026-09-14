@@ -144,32 +144,38 @@ def model_for(agent_key: str) -> str:
 # renders one button per entry from the /api/llm-routing response, no
 # JS / HTML change needed.
 #
-# These two presets ARE Test 1 "Experiment Subject 5" — the per-agent
-# LLM mix (see extra_utilities/docs/reference/benchmark_suite.md, Part B).  The tier of
-# each agent is chosen by REASONING demand (context window is not a
-# binding constraint: every tier is >= 200k and observed peak usage was
-# ~30k).  The SAME tier assignment is instantiated for both providers, so
-# the two presets are the two benchmark runs of Subject 5.
+# The OPENAI preset is the gpt-5.6 workflow, and is kept identical to
+# ``DEFAULT_PER_AGENT_MODELS`` above (topology 7's baked-in defaults) so
+# that a fresh deploy and a click on the button produce the SAME chart.
+# Change one, change the other.
 #
-#   Agent                 Tier    | OpenAI tier map      Anthropic tier map
-#   -------------------- -------- | -----------------    ------------------
-#   user_input_inspector  HIGH    | HIGH   gpt-5.5       HIGH   claude-opus-4-8
-#   dc_input_creator      MEDIUM  | MEDIUM gpt-5.4       MEDIUM claude-sonnet-4-6
-#   dc_input_inspector    HIGH    | LOW    gpt-5.4-mini  LOW    claude-haiku-4-5
-#   dc_output_inspector   HIGH    |
-#   planner               MEDIUM  |  Why these tiers:
-#   receptionist          MEDIUM  |  - HIGH: perceive (UII), validate (DCII),
-#   orchestrator          LOW     |    critique (DCOI) — the judgement that
-#   tool_caller           LOW     |    determines correctness.
-#   database_handler      LOW     |  - MEDIUM: create (DCIC), plan (Planner),
-#   context_pruner        HIGH    |    interface (Receptionist).
-#                                 |  - LOW: route (Orchestrator), execute
-#                                 |    (Tool Caller), post-session (DH).
-#   The Context Pruner now builds its OWN LLM from this assignment (see
-#   orchestrator.py) instead of sharing the Orchestrator's, so HIGH takes
-#   effect on the summarisation call (fired only when a long history crosses
-#   the pruning threshold — rare).  The DH does not run during a scored
-#   Test-1 session, so its tier is cost-only.
+#   gpt-5.6-terra   receptionist, user_input_inspector, planner,
+#                   dc_input_creator, dc_output_inspector, database_handler
+#   gpt-5.6-luna    orchestrator, dc_input_inspector, tool_caller
+#   gpt-5.6-sol     context_pruner — the only agent on sol
+#
+# The ANTHROPIC preset is still Test 1 "Experiment Subject 5" (see
+# extra_utilities/docs/reference/benchmark_suite.md, Part B): a tier chosen
+# per agent by REASONING demand — HIGH claude-opus-4-8 to perceive (UII),
+# validate (DCII) and critique (DCOI); MEDIUM claude-sonnet-4-6 to create
+# (DCIC), plan (Planner) and interface (Receptionist); LOW claude-haiku-4-5
+# to route (Orchestrator), execute (Tool Caller) and save (DH).  Context
+# window is not a binding constraint on either side: every tier is >= 200k
+# and observed peak usage was ~30k.
+#
+# The two presets are therefore NO LONGER one tier assignment instantiated
+# twice.  The OpenAI side was re-pointed at the 5.6 family on 2026-09-14
+# and does not follow that map: the DCII drops from the top tier to the
+# middle, the DH rises from the bottom to the top, and the Context Pruner
+# sits alone on sol.  A like-for-like Subject-5 comparison needs the
+# Anthropic preset against the PRE-2026-09-14 OpenAI mix, which is in git
+# history at this file.
+#
+# The Context Pruner builds its OWN LLM from this assignment (see
+# orchestrator.py) rather than sharing the Orchestrator's, so its entry
+# takes effect on the summarisation call — fired only when a long history
+# crosses the pruning threshold.  The DH does not run during a scored
+# Test-1 session, so its entry is cost-only.
 # ---------------------------------------------------------------------
 
 PROPOSED_WORKFLOWS: list[dict] = [
@@ -178,16 +184,16 @@ PROPOSED_WORKFLOWS: list[dict] = [
         "label":    "Proposed OpenAI Workflow (Test 1 · Subj 5)",
         "provider": "openai",
         "models": {
-            "receptionist":         "gpt-5.4",       # MEDIUM
-            "orchestrator":         "gpt-5.4-mini",  # LOW
-            "user_input_inspector": "gpt-5.5",       # HIGH
-            "planner":              "gpt-5.4",       # MEDIUM
-            "dc_input_creator":     "gpt-5.4",       # MEDIUM
-            "dc_input_inspector":   "gpt-5.5",       # HIGH
-            "dc_output_inspector":  "gpt-5.5",       # HIGH
-            "tool_caller":          "gpt-5.4-mini",  # LOW
-            "database_handler":     "gpt-5.4-mini",  # LOW
-            "context_pruner":       "gpt-5.5",       # HIGH
+            "receptionist":         "gpt-5.6-terra",
+            "orchestrator":         "gpt-5.6-luna",
+            "user_input_inspector": "gpt-5.6-terra",
+            "planner":              "gpt-5.6-terra",
+            "dc_input_creator":     "gpt-5.6-terra",
+            "dc_input_inspector":   "gpt-5.6-luna",
+            "dc_output_inspector":  "gpt-5.6-terra",
+            "tool_caller":          "gpt-5.6-luna",
+            "database_handler":     "gpt-5.6-terra",
+            "context_pruner":       "gpt-5.6-sol",
         },
     },
     {
