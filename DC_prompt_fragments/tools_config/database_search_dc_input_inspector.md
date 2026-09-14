@@ -6,7 +6,8 @@ the DCIC's parameters against the user's extraction and the configurator's
 constraints, so strongly prefer
 ``retrieve_user_inputs(sessions_ID_list=[<sid>])`` to compare past sketches
 with the current user's (visual comparison catches extraction errors text
-descriptions hide), and ``retrieve_attempt(...)`` when relevant past attempts
-surface — it prints their parameters too.  Both download to a local folder
-and list it; open any listed path with ``view_images``.  Fetch only the most
-useful ones.
+descriptions hide), and
+``retrieve_attempt(past_attempts_global_ids=[<global_id>, ...])`` when
+relevant past attempts surface — it prints their parameters too.  Both
+download to a local folder and list it; open any listed path with
+``view_images``.  Fetch only the most useful ones.

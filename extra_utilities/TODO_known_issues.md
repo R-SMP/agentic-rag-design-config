@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F97**.
+branches (F36 is taken on a sibling branch).  Next free id: **F98**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -112,6 +112,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F94` | DONE | Review PDFs render bullet lists as run-on prose — the renderer was not CommonMark |
 | `F95` | OPEN | The IN-SESSION briefing anchor: give a stripped agent a fallback entry |
 | `F96` | OPEN | Topology 3: the RA is required to emit `INTERPRETATION:` and `QUALITATIVE DESCRIPTIONS` and no agent is told to read either |
+| `F97` | OPEN | `retrieve_attempt`'s nnn-to-global_id paragraph rests on an unverified premise about how the DH words its answers |
 
 ---
 
@@ -4220,3 +4221,51 @@ a round scoped to the RA's own prompt.
 `agents/3agent/planner/prompt_3agents.md` (`## Role 1`, `HARD RULE 6` for the
 ask-the-user path). Decision record:
 `extra_utilities/docs/active/topology3_stage9_round3_ra_prompt_edits.md` §R14.
+
+---
+
+### F97. `retrieve_attempt`'s nnn-to-global_id paragraph rests on an unverified premise
+
+**Status.** OPEN. Filed 2026-09-14 in the same change that shipped the text, at
+the owner's request — the edit was approved *and* flagged for revisiting.
+
+**What shipped.** `tools/retrieve_attempt/retrieve_attempt.py`, the
+`retrieve_attempt` tool docstring, gained a paragraph telling the agent that a
+past session's answers name their attempts by that session's own LOCAL number
+("attempt 002"), and that the `nnn` attribute in `<available_attempts>` is the
+only thing linking that number to a `global_id`. The shorter form of the same
+rule went into `DC_prompt_fragments/tools_config/database_search.md` and its two
+topology forks.
+
+**The premise that needs checking.** The paragraph assumes DH-saved answers DO
+mention local attempt numbers in their prose. That may not be true by design:
+the attempt-scoped fields are already ROUTED to a specific attempt row (the
+identifying question force-calls `save_attempt_data`, which upserts
+`dc_attempts` and stamps the BIGSERIAL onto every chunk of that attempt — see
+`agents/database_handler/database_handler.py` around `_force_save_attempt_data`
+and the Phase-3C cascade). If the DH is supposed to write answers that do NOT
+name the attempt, because the row's identity already carries it, then:
+
+* the new paragraph describes a case that never occurs, and costs ~460 chars of
+  tool description on every turn for the DCIC / DCII / DCOI; and
+* worse, it could *teach* a pattern — "look for an attempt number in the prose"
+  — that is not there, inviting the agent to hunt for something absent.
+
+Conversely, if the DH's answers DO carry local numbers (the
+`stitching_prompt.md` worked example uses "the second attempt", and the
+schedule's identifying questions literally ask *"Identify which was/were the
+worst design attempt(s)"*), the paragraph is load-bearing and should stay.
+
+**What to do.** Settle which of the two it is by reading real saved answers, not
+by reading the prompts: pull `chunks.body` for the `Bad Attempt` /
+`Useful Attempt insights` / `Final Design Output` fields out of a populated
+corpus and check whether the prose names attempts at all. Then either keep the
+paragraph, trim it to one sentence, or drop it and fix the DH's answer style
+instead.
+
+**Where to look.** `tools/retrieve_attempt/retrieve_attempt.py` (the
+`retrieve_attempt` docstring, immediately under the `<available_attempts>`
+sentence); `DC_prompt_fragments/tools_config/database_search.md`;
+`agents/database_handler/stitching_prompt.md`;
+`workflow_settings/dh_schedule.default.json` (the three attempt-scoped
+identifying questions).
