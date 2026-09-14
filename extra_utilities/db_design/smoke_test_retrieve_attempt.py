@@ -5,10 +5,10 @@ Live test against:
   * Cloudflare R2 (PUT + GET + LIST under the Phase 5A key shape
     ``<sid>/attempts/<NNN>__<global_id>/<file>``).
 
-8 named assertions covering the happy path, image flag semantics,
-render-view policy filter, the has_renders=FALSE branch, missing R2
-files, unknown global ids, the token-cap trim, and the rag_queries
-log row.
+8 named assertions covering the happy path, that retrieval hands back
+PATHS and never image bytes, the render-view policy filter, the
+has_renders=FALSE branch, the Postgres parameters fallback, unknown
+global ids, the token-cap trim, and the rag_queries log row.
 
 Run from repo root::
 
@@ -24,6 +24,7 @@ dc_attempts rows + rag_queries rows + R2 objects).  Set
 
 from __future__ import annotations
 
+import json
 import os
 import struct
 import sys
@@ -211,6 +212,10 @@ def main() -> int:
     _orig_iso = workflow_settings.ATTEMPT_VIEW_ISOMETRIC
     _orig_top = workflow_settings.ATTEMPT_VIEW_TOP
     _orig_side = workflow_settings.ATTEMPT_VIEW_SIDE
+    # Added to the product after this suite was written, and it defaults
+    # to True -- so every render_views_in_scope assertion below is wrong
+    # unless each test pins it explicitly.
+    _orig_bsv = workflow_settings.ATTEMPT_VIEW_BLADE_SECTIONS
     _orig_cap = mod._MAX_RESPONSE_TOKENS
 
     exit_code = 0
@@ -263,10 +268,10 @@ def main() -> int:
         workflow_settings.ATTEMPT_VIEW_ISOMETRIC = True
         workflow_settings.ATTEMPT_VIEW_TOP = True
         workflow_settings.ATTEMPT_VIEW_SIDE = True
-        xml, image_blocks, image_paths = _run_retrieve_attempt(
+        workflow_settings.ATTEMPT_VIEW_BLADE_SECTIONS = False
+        xml = _run_retrieve_attempt(
             caller_agent=CALLER,
             global_attempt_ids=[GID_A],
-            images_flag=True,
         )
         assert "<description>" in xml, f"missing <description>:\n{xml[:500]}"
         assert "ring propeller" in xml, "missing description text"
@@ -276,30 +281,29 @@ def main() -> int:
         assert 'render_views_in_scope="isometric,top,side"' in xml, (
             f"unexpected render_views_in_scope: {xml[:500]}"
         )
-        assert len(image_blocks) == 3, (
-            f"expected 3 image_blocks (one per view), got {len(image_blocks)}"
-        )
+        for _f in ("render_isometric.png", "render_top.png",
+                   "render_side.png"):
+            assert _f in xml, f"missing {_f}"
+        assert "<folder path=" in xml, "missing <folder> listing"
         print("OK happy_path_with_renders")
 
         # ============================================================
-        # Test 2: happy_path_no_images_flag
+        # Test 2: renders_are_paths_never_bytes
         # ============================================================
-        # Keep all 3 views ON in policy; flag determines whether bytes
-        # ship.
-        xml, image_blocks, image_paths = _run_retrieve_attempt(
+        # The 2026-08-20 retrieval rework removed images_flag and image
+        # attachment outright: this tool DOWNLOADS and names paths, and
+        # ``view_images`` is what actually looks.  Pin that contract.
+        xml = _run_retrieve_attempt(
             caller_agent=CALLER,
             global_attempt_ids=[GID_A],
-            images_flag=False,
         )
         assert "<description>" in xml
         assert "<parameters>" in xml
-        assert "<renders>" not in xml, (
-            "<renders> should be absent with images_flag=False"
+        assert "<render name=" in xml and "key=" in xml, (
+            "renders must be named by PATH"
         )
-        assert len(image_blocks) == 0, (
-            f"expected 0 image_blocks, got {len(image_blocks)}"
-        )
-        print("OK happy_path_no_images_flag")
+        assert "base64" not in xml, "no image bytes may appear in the XML"
+        print("OK renders_are_paths_never_bytes")
 
         # ============================================================
         # Test 3: render_view_policy_filter (only isometric ON)
@@ -307,21 +311,23 @@ def main() -> int:
         workflow_settings.ATTEMPT_VIEW_ISOMETRIC = True
         workflow_settings.ATTEMPT_VIEW_TOP = False
         workflow_settings.ATTEMPT_VIEW_SIDE = False
-        xml, image_blocks, image_paths = _run_retrieve_attempt(
+        workflow_settings.ATTEMPT_VIEW_BLADE_SECTIONS = False
+        xml = _run_retrieve_attempt(
             caller_agent=CALLER,
             global_attempt_ids=[GID_A],
-            images_flag=True,
         )
         assert 'render_views_in_scope="isometric"' in xml, (
             f"expected only isometric in scope, got:\n{xml[:500]}"
         )
         assert "<renders>" in xml
-        assert "render_isometric.png" in xml
-        assert "render_top.png" not in xml, "top should not appear"
-        assert "render_side.png" not in xml, "side should not appear"
-        assert len(image_blocks) == 1, (
-            f"expected 1 image_block (isometric only), got {len(image_blocks)}"
-        )
+        # Scoped to <renders> ON PURPOSE.  Test 1 cached all three PNGs
+        # into attempts/_retrieved/<gid>/, and <folder> lists whatever is
+        # on disk -- so the out-of-scope files legitimately still appear
+        # there.  What the policy filters is the <renders> block.
+        _renders = xml.split("<renders>")[1].split("</renders>")[0]
+        assert "render_isometric.png" in _renders
+        assert "render_top.png" not in _renders, "top is out of scope"
+        assert "render_side.png" not in _renders, "side is out of scope"
         print("OK render_view_policy_filter")
 
         # ============================================================
@@ -331,41 +337,63 @@ def main() -> int:
         workflow_settings.ATTEMPT_VIEW_ISOMETRIC = True
         workflow_settings.ATTEMPT_VIEW_TOP = True
         workflow_settings.ATTEMPT_VIEW_SIDE = True
-        xml, image_blocks, _ = _run_retrieve_attempt(
+        workflow_settings.ATTEMPT_VIEW_BLADE_SECTIONS = False
+        xml = _run_retrieve_attempt(
             caller_agent=CALLER,
             global_attempt_ids=[GID_B],
-            images_flag=True,
         )
         assert "<description>" in xml, "missing description"
         assert "<parameters>" in xml, "missing parameters"
         assert "<renders>" not in xml, (
             "<renders> should be absent (has_renders=FALSE)"
         )
-        assert len(image_blocks) == 0
         print("OK no_renders_attempt")
 
         # ============================================================
-        # Test 5: missing_files (Postgres row only; no R2)
+        # Test 5: parameters_fallback (Postgres row only; no R2)
         # ============================================================
-        xml, _, _ = _run_retrieve_attempt(
+        # GID_C has a dc_attempts row and NOTHING in R2.  The description
+        # is unrecoverable and must still report <missing/>.  The
+        # parameters must NOT, because dc_attempts.parameters_json is
+        # JSONB NOT NULL and the tool falls back to it -- _seed_attempt
+        # wrote {"bladeCount": 5, "_smoke": True} there.
+        xml = _run_retrieve_attempt(
             caller_agent=CALLER,
             global_attempt_ids=[GID_C],
-            images_flag=False,
         )
         assert "<missing" in xml, (
             f"expected <missing/> markers, got:\n{xml[:500]}"
         )
         assert "description.txt" in xml, "expected description.txt in missing"
-        assert "parameters.json" in xml, "expected parameters.json in missing"
-        print("OK missing_files")
+        assert f"{NNN_C}__{GID_C}/parameters.json" not in xml, (
+            "parameters.json must NOT be reported missing -- the Postgres "
+            f"fallback should have supplied it:\n{xml[:800]}"
+        )
+        assert "<parameters>" in xml, "expected <parameters> from Postgres"
+        # Real JSON, not a double-encoded string: psycopg hands JSONB back
+        # as a dict, and json.dumps over an already-serialised str would
+        # wrap the whole thing in quotes.  THIS is the assertion that
+        # proves the psycopg return type on live infra.
+        _inner = xml.split("<parameters>")[1].split("</parameters>")[0]
+        _inner = _inner.split("CDATA[")[1].split("]]")[0]
+        assert json.loads(_inner) == {"bladeCount": 5, "_smoke": True}, (
+            f"parameters CDATA did not round-trip: {_inner!r}"
+        )
+        # The fallback must not persist into the retrieval cache: a
+        # non-empty folder makes every later call take the cache path and
+        # stop re-trying R2 for the description and the renders.
+        assert not list(mod._retrieved_dir(GID_C).glob("*")), (
+            "the Postgres fallback must not persist into "
+            f"{mod._retrieved_dir(GID_C)}"
+        )
+        print("OK parameters_fallback")
 
         # ============================================================
         # Test 6: not_found
         # ============================================================
-        xml, _, _ = _run_retrieve_attempt(
+        xml = _run_retrieve_attempt(
             caller_agent=CALLER,
             global_attempt_ids=[FAKE_GID],
-            images_flag=False,
         )
         assert 'status="not_found"' in xml, (
             f"expected not_found marker, got:\n{xml[:500]}"
@@ -378,10 +406,9 @@ def main() -> int:
         # ============================================================
         mod._MAX_RESPONSE_TOKENS = 150
         try:
-            xml, _, _ = _run_retrieve_attempt(
+            xml = _run_retrieve_attempt(
                 caller_agent=CALLER,
                 global_attempt_ids=[GID_A, GID_B, GID_C],
-                images_flag=False,
             )
         finally:
             mod._MAX_RESPONSE_TOKENS = _orig_cap
@@ -448,6 +475,7 @@ def main() -> int:
         workflow_settings.ATTEMPT_VIEW_ISOMETRIC = _orig_iso
         workflow_settings.ATTEMPT_VIEW_TOP = _orig_top
         workflow_settings.ATTEMPT_VIEW_SIDE = _orig_side
+        workflow_settings.ATTEMPT_VIEW_BLADE_SECTIONS = _orig_bsv
         mod._MAX_RESPONSE_TOKENS = _orig_cap
 
         if os.environ.get("SMOKE_NO_CLEANUP") == "1":
