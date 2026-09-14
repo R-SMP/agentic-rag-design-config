@@ -89,10 +89,27 @@ DEFAULTS = dict(ATTEMPT_VIEW_ISOMETRIC=True, ATTEMPT_VIEW_TOP=True,
 CALLS: dict = {}
 
 
+class _FakeStructuredTool:
+    """A langchain ``@tool`` object: NOT callable, real function on ``.func``.
+
+    Both production entry points are ``@tool``-decorated, so ``ensure_renders``
+    must unwrap them.  Stubbing them as plain FUNCTIONS is exactly what let
+    "TypeError: 'StructuredTool' object is not callable" ship and survive
+    3.5 weeks of saves -- the suite exercised a calling convention that does
+    not exist in production.  Case 12 uses this shape instead.
+    """
+
+    def __init__(self, fn):
+        self.func = fn
+
+
 def _install_stubs(*, sections_ok=True, core_ok=True, geom_ok=True,
                    sections_raises=False, core_raises=False,
-                   geom_raises=False):
-    """Fake the three tool entry points ensure_renders imports lazily."""
+                   geom_raises=False, wrap_tools=False):
+    """Fake the three tool entry points ensure_renders imports lazily.
+
+    ``wrap_tools`` presents them as non-callable ``@tool`` objects, which is
+    what production actually hands to ``ensure_renders``."""
     CALLS.clear()
     CALLS.update(sections=[], core=[], geom=[])
 
@@ -129,10 +146,12 @@ def _install_stubs(*, sections_ok=True, core_ok=True, geom_ok=True,
 
     bs_pkg = types.ModuleType("tools.render_blade_sections")
     bs_mod = types.ModuleType("tools.render_blade_sections.render_blade_sections")
-    bs_mod.render_blade_sections = _sections
+    bs_mod.render_blade_sections = (
+        _FakeStructuredTool(_sections) if wrap_tools else _sections)
     gm_pkg = types.ModuleType("tools.generate_mesh")
     gm_mod = types.ModuleType("tools.generate_mesh.generate_mesh")
-    gm_mod.generate_and_render_propeller = _geom
+    gm_mod.generate_and_render_propeller = (
+        _FakeStructuredTool(_geom) if wrap_tools else _geom)
     tools_mod = types.ModuleType("tools")
     tools_mod.__path__ = []
     tools_mod.get_render_core = lambda: _core
@@ -282,6 +301,17 @@ with tempfile.TemporaryDirectory() as td, _Flags(**DEFAULTS):
           sorted(v for v, _w in r["failed"]) == ["isometric", "top"], r)
     check("log_report does not raise on a mixed result",
           ar.log_report(d, r) is None)
+
+print("case 12 - the tools are @tool OBJECTS, exactly as in production")
+with tempfile.TemporaryDirectory() as td, _Flags(**DEFAULTS):
+    _install_stubs(wrap_tools=True)
+    d = _attempt(Path(td), params=True)
+    r = ar.ensure_renders(d)
+    check("blade sections generated from a NON-CALLABLE @tool object",
+          "blade_sections" in r["generated"], r)
+    check("3D views generated from a NON-CALLABLE @tool object",
+          {"isometric", "top"} <= set(r["generated"]), r)
+    check("no view failed", not r["failed"], r["failed"])
 
 print("case 11 - the retrieve tool sees blade sections")
 import ast                                                  # noqa: E402
