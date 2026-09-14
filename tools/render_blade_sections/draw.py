@@ -16,6 +16,7 @@ sized tightly to the content.
 
 from __future__ import annotations
 
+import logging
 import math
 
 from PIL import Image, ImageDraw, ImageFont
@@ -87,13 +88,43 @@ _CAMBER_DASH = 16      # final px, scaled by ss at the call site
 _CAMBER_GAP = 9
 
 
+_FONT_WARNED = False
+
+
 def _load_font(size):
-    for name in ("DejaVuSans.ttf", "arial.ttf", "Arial.ttf"):
+    """A font at *size*, preferring a real system face.
+
+    Order matters.  A named system font is best: the layout was tuned against
+    DejaVu.  Failing that, ``load_default(size)`` scales an EMBEDDED face, which
+    keeps every label readable on an image with no fonts installed at all.
+    What must NEVER happen is bare ``load_default()`` -- it returns a fixed
+    ~8 px BITMAP font that ignores *size*, so labels came out microscopic and
+    the model-facing copy then downscaled them further.  That is exactly how
+    the Railway renders degraded, silently, until 2026-09-14.  Logged once per
+    process so it cannot happen again unnoticed.
+    """
+    for name in ("DejaVuSans.ttf", "arial.ttf", "Arial.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
         try:
             return ImageFont.truetype(name, size)
         except Exception:
             continue
-    return ImageFont.load_default()
+    global _FONT_WARNED
+    if not _FONT_WARNED:
+        _FONT_WARNED = True
+        logging.getLogger("propeller_agent").error(
+            "[render_blade_sections]  no system TrueType font found; using "
+            "PIL's EMBEDDED fallback face at the requested size.  Labels stay "
+            "readable, but the metrics are not the DejaVu the layout was tuned "
+            "for.  Install fonts-dejavu-core in the image (see Dockerfile)."
+        )
+    # Pillow >= 10.1 SCALES its embedded font when given a size; without the
+    # argument it returns the ~8 px bitmap that ignores *size* entirely.  This
+    # keeps labels readable even on an image with no system font installed.
+    try:
+        return ImageFont.load_default(size)
+    except TypeError:            # Pillow 10.0 — no size parameter yet
+        return ImageFont.load_default()
 
 
 def _dashed(draw, pts, fill, width, dash, gap):

@@ -14,6 +14,7 @@ images / bytes; the crop + composite are model-facing copies only.
 from __future__ import annotations
 
 import io
+import logging
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -46,14 +47,42 @@ def to_rgb(im: "Image.Image") -> "Image.Image":
     return im.convert("RGB")
 
 
+_FONT_WARNED = False
+
+
 def _font(size: int):
-    for cand in ("arial.ttf", "DejaVuSans.ttf",
+    """A font at *size*, preferring a real system face.
+
+    Three of the four original candidates were Windows-only absolute paths, so
+    on the Linux image this fell straight through to bare ``load_default()`` --
+    a fixed ~8 px BITMAP font that ignores *size*, making every panel label bar
+    unreadable.  ``load_default(size)`` scales an EMBEDDED face instead, so the
+    labels survive even with no system font present; ``fonts-dejavu-core`` in
+    the Dockerfile restores the intended typeface.  Logged once per process.
+    """
+    for cand in ("DejaVuSans.ttf", "arial.ttf", "Arial.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                  r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\segoeui.ttf"):
         try:
             return ImageFont.truetype(cand, size)
         except Exception:
             continue
-    return ImageFont.load_default()
+    global _FONT_WARNED
+    if not _FONT_WARNED:
+        _FONT_WARNED = True
+        logging.getLogger("propeller_agent").error(
+            "[image_stitch]  no system TrueType font found; using PIL's "
+            "EMBEDDED fallback face at the requested size.  Panel labels stay "
+            "readable, but the metrics are not the DejaVu the layout was tuned "
+            "for.  Install fonts-dejavu-core in the image (see Dockerfile)."
+        )
+    # Pillow >= 10.1 SCALES its embedded font when given a size; without the
+    # argument it returns the ~8 px bitmap that ignores *size* entirely.  This
+    # keeps labels readable even on an image with no system font installed.
+    try:
+        return ImageFont.load_default(size)
+    except TypeError:            # Pillow 10.0 — no size parameter yet
+        return ImageFont.load_default()
 
 
 def crop_to_region(im: "Image.Image", region) -> "Image.Image":
