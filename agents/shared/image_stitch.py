@@ -14,6 +14,7 @@ images / bytes; the crop + composite are model-facing copies only.
 from __future__ import annotations
 
 import io
+import logging
 
 from PIL import Image, ImageDraw, ImageFont
 
@@ -46,14 +47,42 @@ def to_rgb(im: "Image.Image") -> "Image.Image":
     return im.convert("RGB")
 
 
+_FONT_WARNED = False
+
+
 def _font(size: int):
-    for cand in ("arial.ttf", "DejaVuSans.ttf",
+    """A font at *size*, preferring a real system face.
+
+    Three of the four original candidates were Windows-only absolute paths, so
+    on the Linux image this fell straight through to bare ``load_default()`` --
+    a fixed ~8 px BITMAP font that ignores *size*, making every panel label bar
+    unreadable.  ``load_default(size)`` scales an EMBEDDED face instead, so the
+    labels survive even with no system font present; ``fonts-dejavu-core`` in
+    the Dockerfile restores the intended typeface.  Logged once per process.
+    """
+    for cand in ("DejaVuSans.ttf", "arial.ttf", "Arial.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf",
                  r"C:\Windows\Fonts\arial.ttf", r"C:\Windows\Fonts\segoeui.ttf"):
         try:
             return ImageFont.truetype(cand, size)
         except Exception:
             continue
-    return ImageFont.load_default()
+    global _FONT_WARNED
+    if not _FONT_WARNED:
+        _FONT_WARNED = True
+        logging.getLogger("propeller_agent").error(
+            "[image_stitch]  no system TrueType font found; using PIL's "
+            "EMBEDDED fallback face at the requested size.  Panel labels stay "
+            "readable, but the metrics are not the DejaVu the layout was tuned "
+            "for.  Install fonts-dejavu-core in the image (see Dockerfile)."
+        )
+    # Pillow >= 10.1 SCALES its embedded font when given a size; without the
+    # argument it returns the ~8 px bitmap that ignores *size* entirely.  This
+    # keeps labels readable even on an image with no system font installed.
+    try:
+        return ImageFont.load_default(size)
+    except TypeError:            # Pillow 10.0 — no size parameter yet
+        return ImageFont.load_default()
 
 
 def crop_to_region(im: "Image.Image", region) -> "Image.Image":
@@ -83,11 +112,17 @@ _MAX_LONG_EDGE = 1560
 
 
 def stitch(images, labels=None, layout: str = "match_height",
-           max_long_edge: int = _MAX_LONG_EDGE) -> "Image.Image":
+           max_long_edge: int = _MAX_LONG_EDGE,
+           allow_upscale: bool = False) -> "Image.Image":
     """Compose up to :data:`MAX_PANELS` PIL images side-by-side into ONE image.
 
     ``layout="match_height"``: scale each panel to a common height — best for
-    shape comparison, since two same-scale renders line up.  ``layout="native"``:
+    shape comparison, since two same-scale renders line up.  That height never
+    exceeds a panel's own unless ``allow_upscale`` is set, so by default a panel
+    is only ever scaled DOWN and a shorter one stays native, centred in the
+    band.  Pass ``allow_upscale=True`` ONLY for a copy a human will look at --
+    it costs a model copy vision tokens for pixels carrying no new detail.
+    ``layout="native"``:
     keep native pixels (each capped), padded to a common height.  Every panel
     gets a label bar (its ``labels`` entry), a thin border, and white gaps.  The
     finished composite's long edge is capped at ``max_long_edge`` so it reaches
@@ -108,9 +143,25 @@ def stitch(images, labels=None, layout: str = "match_height",
             capped.append(im)
         ims = capped
     else:  # match_height (default)
-        h = _MATCH_HEIGHT_TARGET
-        ims = [im.resize((max(1, round(im.width * h / im.height)), h), _LANCZOS)
-               for im in ims]
+        # Common height for shape comparison -- but NEVER above a panel's own.
+        # Panels arrive already downscaled to their model-facing size, so
+        # scaling one UP invents no detail and multiplies its vision-token cost
+        # (a 231 px-tall sections panel pushed to 640 px costs ~7x for exactly
+        # the same picture).  A panel shorter than the common height keeps its
+        # native height and is centred in the band, which the canvas below
+        # already handles -- it is what layout="native" relies on.
+        # ``allow_upscale`` is for the HUMAN copy only: magnifying a small
+        # render costs the chat nothing and keeps the Inner / Middle / Outer
+        # labels and the protractor degrees readable, while the model copy
+        # pays vision tokens per pixel and must never be scaled up.
+        h = (_MATCH_HEIGHT_TARGET if allow_upscale
+             else min(_MATCH_HEIGHT_TARGET, max(im.height for im in ims)))
+        scaled = []
+        for im in ims:
+            th = h if allow_upscale else min(h, im.height)
+            scaled.append(im.resize(
+                (max(1, round(im.width * th / im.height)), th), _LANCZOS))
+        ims = scaled
 
     panel_h = max(im.height for im in ims)
     total_w = sum(im.width for im in ims) + _GAP * (len(ims) - 1)

@@ -39,6 +39,11 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 #     pulled in by the pyrender import chain even when OSMesa is
 #     the active backend.
 #   * libgomp1 — runtime for numpy/trimesh's OpenMP loops.
+#   * fonts-dejavu-core — PIL ships NO scalable font.  ImageFont.truetype()
+#     resolves by NAME against the system font dirs; with none installed
+#     every caller silently falls back to load_default(), a ~8 px BITMAP
+#     font that IGNORES the requested size.  That is what made the
+#     blade-sections labels and the side-by-side label bars unreadable.
 #   * curl — used by the HEALTHCHECK below.
 #   * nodejs / npm — Node runtime for the headless FEG geometry backend
 #     (tools/generate_mesh/feg_export.mjs runs web/feg/* via Node + three,
@@ -51,6 +56,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         libsm6 \
         libxrender1 \
         libgomp1 \
+        fonts-dejavu-core \
         curl \
         nodejs \
         npm \

@@ -16,6 +16,7 @@ sized tightly to the content.
 
 from __future__ import annotations
 
+import logging
 import math
 
 from PIL import Image, ImageDraw, ImageFont
@@ -41,16 +42,21 @@ SECTIONS = (
 # Logical (final-image) constants.  The scene is rendered at _SUPERSAMPLE x
 # these and downscaled, so everything stays crisp.
 #
-# The WHOLE layout was scaled x(18/11) from the earlier PX_PER_MM=11 tuning so
-# the render is ~1.6x larger natively (~690x285) and stays legible when a
-# side-by-side comparison (view_images match_height=640) scales it up — WITHOUT
-# upscaling it 3-4x.  All the layout + font constants scale together, so the
-# section/label/protractor BALANCE from the rebalance is preserved.
-PX_PER_MM = 18         # final px per mm → 1 mm grid square = 18 px
-_MARGIN = 26
-_GAP = 29              # vertical gap between stacked sections
-_LABEL_GUTTER = 98     # left column reserved for the Inner/Middle/Outer labels
-_PROT_R = 183          # protractor radius
+# The WHOLE layout has been scaled twice: x(18/11) off the original
+# PX_PER_MM=11 tuning, then x(28/18) so the render the USER sees — in the chat
+# and in the R2 archive — carries large, CRISP text instead of an interpolated
+# blow-up.  At ~965x430 a side-by-side composite now DOWNSCALES it (it used to
+# be upscaled ~1.2x and looked soft).  The model-facing copy is unaffected:
+# IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE was raised 35 -> 69 in the same
+# change to absorb the growth, so the agent still gets ~529 px for ~161 tokens.
+# Raise one without the other and you either blur the archive or double every
+# agent's vision-token bill.  All the layout + font constants scale TOGETHER,
+# which is what preserves the section/label/protractor balance.
+PX_PER_MM = 28         # final px per mm → 1 mm grid square = 28 px
+_MARGIN = 40
+_GAP = 45              # vertical gap between stacked sections
+_LABEL_GUTTER = 152    # left column reserved for the Inner/Middle/Outer labels
+_PROT_R = 285          # protractor radius
 _SUPERSAMPLE = 3
 _BG = (247, 247, 247)
 _GRID_MINOR = (221, 221, 221)
@@ -60,9 +66,9 @@ _PROTRACTOR_MAX_DEG = 25
 
 # Text sizes (final px).  Scaled with the layout above so the labels stay
 # legible next to the section shapes (which scale with the physical mm size).
-_FONT_LABEL = 36       # Inner / Middle / Outer name labels
-_FONT_TITLE = 29       # protractor "Angle of attack" title
-_FONT_ANGLE = 26       # per-ray angle values
+_FONT_LABEL = 56       # Inner / Middle / Outer name labels
+_FONT_TITLE = 45       # protractor "Angle of attack" title
+_FONT_ANGLE = 40       # per-ray angle values
 
 # Chord + camber overlay.  Magenta rather than the reference figure's red:
 # the Outer section is already drawn red, and a red mean line on a red
@@ -75,20 +81,50 @@ _CAMBER_COLOR = (198, 12, 140)
 # step: 4/3 = 1.33 px chord, 5/3 = 1.67 px camber, both under the 2 px section
 # outline.  The chord is the thinner of the two: it is the datum, while the
 # camber line is the curve actually being judged.  Verified legible after the
-# model-facing downscale (505 px at IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE=35).
+# model-facing downscale (~529 px at IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE=69).
 _CHORD_W_SS = 4
 _CAMBER_W_SS = 5
-_CAMBER_DASH = 10      # final px, scaled by ss at the call site
-_CAMBER_GAP = 6
+_CAMBER_DASH = 16      # final px, scaled by ss at the call site
+_CAMBER_GAP = 9
+
+
+_FONT_WARNED = False
 
 
 def _load_font(size):
-    for name in ("DejaVuSans.ttf", "arial.ttf", "Arial.ttf"):
+    """A font at *size*, preferring a real system face.
+
+    Order matters.  A named system font is best: the layout was tuned against
+    DejaVu.  Failing that, ``load_default(size)`` scales an EMBEDDED face, which
+    keeps every label readable on an image with no fonts installed at all.
+    What must NEVER happen is bare ``load_default()`` -- it returns a fixed
+    ~8 px BITMAP font that ignores *size*, so labels came out microscopic and
+    the model-facing copy then downscaled them further.  That is exactly how
+    the Railway renders degraded, silently, until 2026-09-14.  Logged once per
+    process so it cannot happen again unnoticed.
+    """
+    for name in ("DejaVuSans.ttf", "arial.ttf", "Arial.ttf",
+                 "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"):
         try:
             return ImageFont.truetype(name, size)
         except Exception:
             continue
-    return ImageFont.load_default()
+    global _FONT_WARNED
+    if not _FONT_WARNED:
+        _FONT_WARNED = True
+        logging.getLogger("propeller_agent").error(
+            "[render_blade_sections]  no system TrueType font found; using "
+            "PIL's EMBEDDED fallback face at the requested size.  Labels stay "
+            "readable, but the metrics are not the DejaVu the layout was tuned "
+            "for.  Install fonts-dejavu-core in the image (see Dockerfile)."
+        )
+    # Pillow >= 10.1 SCALES its embedded font when given a size; without the
+    # argument it returns the ~8 px bitmap that ignores *size* entirely.  This
+    # keeps labels readable even on an image with no system font installed.
+    try:
+        return ImageFont.load_default(size)
+    except TypeError:            # Pillow 10.0 — no size parameter yet
+        return ImageFont.load_default()
 
 
 def _dashed(draw, pts, fill, width, dash, gap):

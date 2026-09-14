@@ -10,3 +10,8 @@ faster** than producing the whole propeller — so when a request centres on the
 blade sections (section drawings or specific section details), the sections can
 be rendered and refined cheaply on their own, and can even be the final
 deliverable.
+
+Each section is drawn in its OWN colour — **Inner BLUE, Middle GREEN, Outer
+RED** — and its name label in the left gutter carries that same colour.  The
+bottom-right "Angle of attack" protractor draws one ray per section in the
+colour of that section, with its angle in degrees at the tip.

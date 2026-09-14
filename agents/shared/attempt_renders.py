@@ -71,7 +71,15 @@ def _render_blade_sections(folder: Path, report: dict) -> None:
         from tools.render_blade_sections.render_blade_sections import (
             render_blade_sections,
         )
-        out = render_blade_sections(str((folder / _PARAMS).resolve()))
+        # ``.func`` unwraps the @tool StructuredTool to the underlying
+        # function -- the same unwrap _render_mesh_views does below.  Without
+        # it every call raises "TypeError: 'StructuredTool' object is not
+        # callable", which this function's own except swallows into a report
+        # line, so the pass created ZERO blade-sections renders between
+        # e61293a (2026-08-21) and this fix while appearing to work: 27 of 59
+        # attempts across one 25-session sample failed exactly this way.
+        fn = getattr(render_blade_sections, "func", render_blade_sections)
+        out = fn(str((folder / _PARAMS).resolve()))
     except Exception as exc:  # noqa: BLE001 — never break the save
         report["failed"].append(("blade_sections",
                                  f"{type(exc).__name__}: {exc}"))

@@ -53,6 +53,10 @@ from agents.shared.file_utils import (
     load_user_inputs_bundle,
     pair_input_images,
 )
+from agents.shared.image_compression import (
+    compress_for_model,
+    render_degree_and_floor,
+)
 from agents.shared.image_stitch import crop_to_region, stitch, to_rgb
 from agents.shared.llm_provider import (
     encode_image,
@@ -936,13 +940,37 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
 
     if side_by_side and resolved:
         # Merge up to 3 (cropped) panels into ONE labelled composite image.
-        pil_panels, labels = [], []
+        pil_panels, model_panels, labels = [], [], []
         for j, r in enumerate(resolved[:3]):
             try:
                 cropped, cbytes = _load_cropped(r["path"], r["region"])
             except (OSError, ValueError) as exc:
                 missing.append(f"{r['path']} (read error: {exc})"); continue
+            # TWO copies of every panel.  ``cropped`` keeps full resolution and
+            # feeds the composite SAVED TO THE CHAT; ``model_panel`` is
+            # downscaled to its model-facing size by the same rule the
+            # separate-blocks branch below uses -- a render by its per-type
+            # degree + render floor, a user image by the size-based default.
+            # Until this existed the composite was stitched from full-resolution
+            # panels, so the degrees in the "Render compression" settings panel
+            # never reached a side-by-side view at all.  OCR further down still
+            # reads the uncompressed ``cbytes``.
+            if r["is_render"]:
+                pdeg, pfloor = render_degree_and_floor(r["path"].name)
+                pbytes = compress_for_model(cbytes, pdeg, is_render=True,
+                                            floor=pfloor)
+            else:
+                pbytes = compress_for_model(cbytes, None, is_render=False)
+            model_panel = cropped
+            if pbytes is not cbytes:
+                # compress_for_model hands back the ORIGINAL object when there
+                # is nothing to do, so identity is the cheap "did it change?".
+                try:
+                    model_panel = to_rgb(Image.open(io.BytesIO(pbytes)))
+                except OSError:      # a decode slip must not lose the panel
+                    pass
             pil_panels.append(cropped)
+            model_panels.append(model_panel)
             labels.append(f"{j + 1}: {r['path'].name}")
             loaded.append(str(r["path"].resolve()))
             if (not r["is_render"]) and extract_text:
@@ -961,16 +989,23 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
             )
         if pil_panels:
             try:
-                comp = stitch(pil_panels, labels, layout)
+                comp = stitch(pil_panels, labels, layout,
+                              allow_upscale=True)
                 cbuf = io.BytesIO(); comp.save(cbuf, format="PNG")
                 comp_bytes = cbuf.getvalue()
                 saved = _save_composite(comp_bytes)   # auto-shows in chat
-                # degree_pct=0: the panels are already at the cap, so the
-                # composite is not degree-compressed again.  Its WIDTH is the
-                # sum of the panels, though, so the absolute ceiling in
-                # compress_for_model is what keeps it under the API's
-                # many-image limit.
-                b64 = encode_image_bytes(comp_bytes, degree_pct=0)
+                # The chat copy above is stitched from FULL-RESOLUTION panels;
+                # the model copy below from the same panels already downscaled.
+                # Same split as every other image path: what the user looks at
+                # is never the copy degraded for the vision API.
+                mcomp = stitch(model_panels, labels, layout)
+                mbuf = io.BytesIO(); mcomp.save(mbuf, format="PNG")
+                # degree_pct=0: those panels were downscaled individually in the
+                # loop above, so the composite is not degree-compressed a second
+                # time.  Its WIDTH is the sum of the panels, though, so the
+                # absolute ceiling in compress_for_model is what keeps it under
+                # the API's many-image limit.
+                b64 = encode_image_bytes(mbuf.getvalue(), degree_pct=0)
                 image_blocks.append(make_image_block(b64, provider))
                 image_paths.append(str(saved) if saved else "composite")
                 body_parts.append(
