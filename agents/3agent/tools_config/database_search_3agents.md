@@ -35,11 +35,10 @@ pixels with whichever retrieval tool covers that artefact: it downloads to
 a local folder and lists it, then pass a listed path to ``view_images`` to
 actually look.
 ``database_search`` itself returns TEXT ONLY — each ``<session>`` lists
-``<available_attempts>`` global_ids for attempt retrieval.  Past answers
-refer to attempts by the PAST session's own local number ("attempt 002");
-the ``nnn`` attribute there is the only thing that maps that number to a
-``global_id``, so always read the id off ``<available_attempts>`` rather
-than reusing the number the answer text mentions.
+``<available_attempts>`` global_ids for attempt retrieval.  Answers refer
+to attempts by the PAST session's own local numbering ("attempt 002", or
+"the second attempt"); read that number's ``global_id`` off
+``<available_attempts>`` and never reuse the local number itself.
 
 **When to call it** — when a question or doubt could plausibly be
 answered by prior sessions: an obstacle you have hit, background on what
