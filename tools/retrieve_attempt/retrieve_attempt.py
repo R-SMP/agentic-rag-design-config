@@ -41,6 +41,7 @@ Architecture references
 from __future__ import annotations
 
 import base64
+import json
 import logging
 import re
 import time
@@ -145,14 +146,20 @@ def _views_in_scope() -> list[str]:
 def _resolve_global_attempt_ids(
     global_ids: list[int],
 ) -> dict[int, dict[str, Any] | None]:
-    """Look up each global_id's (session_id, NNN, has_renders).
+    """Look up each global_id's (session_id, NNN, has_renders, params).
 
     Returns a dict mapping each requested global_id to either
-    ``{"session_id": ..., "nnn": ..., "has_renders": ...}`` (when the
-    row exists in ``dc_attempts``) or ``None`` (when the row is
-    missing).  NNN is extracted from ``attempt_label`` via the
-    ``<TS>_<NNN>_<slug>`` regex; rows whose label does not match
-    (defensive) also map to ``None``.
+    ``{"session_id": ..., "nnn": ..., "has_renders": ...,
+    "parameters_json": ...}`` (when the row exists in ``dc_attempts``)
+    or ``None`` (when the row is missing).  NNN is extracted from
+    ``attempt_label`` via the ``<TS>_<NNN>_<slug>`` regex; rows whose
+    label does not match (defensive) also map to ``None``.
+
+    ``parameters_json`` is the JSONB snapshot, decoded to a dict.  The
+    column is NOT NULL, so a row that exists always carries it -- which
+    is what makes it a dependable fallback when the R2 artefact is
+    gone.  Selected here rather than in a second query because this
+    statement already runs on every call.
     """
     if not global_ids:
         return {}
@@ -162,12 +169,14 @@ def _resolve_global_attempt_ids(
     with postgres_pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "SELECT attempt_id, session_id, attempt_label, has_renders "
+                "SELECT attempt_id, session_id, attempt_label, has_renders, "
+                "parameters_json "
                 "FROM dc_attempts "
                 "WHERE attempt_id = ANY(%s)",
                 (global_ids,),
             )
-            for gid, session_id, attempt_label, has_renders in cur.fetchall():
+            for (gid, session_id, attempt_label, has_renders,
+                 parameters_json) in cur.fetchall():
                 m = _ATTEMPT_LABEL_RE.match(attempt_label or "")
                 if not m:
                     logger.warning(
@@ -181,6 +190,7 @@ def _resolve_global_attempt_ids(
                     "session_id": session_id,
                     "nnn": m.group(1),
                     "has_renders": bool(has_renders),
+                    "parameters_json": parameters_json,
                 }
     return out
 
@@ -526,6 +536,27 @@ def _run_retrieve_attempt(
                         render_refs.append(
                             (view, str((dest / filename).resolve()))
                         )
+
+            # Postgres fallback for the parameters.  Retrieving an attempt
+            # has to yield its parameters -- that is most of the point of
+            # the tool -- but every branch above sources them from the R2
+            # object (or its local cache), so a failed upload, a lifecycle
+            # expiry or the forward-only attempt-key reshape (W30) left the
+            # agent with <missing .../parameters.json> while the database
+            # still held the exact snapshot.  dc_attempts.parameters_json is
+            # JSONB NOT NULL and _resolve_global_attempt_ids already read it
+            # on this call, so this costs no extra round trip.
+            #
+            # Deliberately NOT written into ``dest``: the cache branch fires
+            # on "folder exists and is non-empty", so persisting this one
+            # file when nothing else was fetched would make every later call
+            # take the cache path and stop re-trying R2 for the description
+            # and the renders.  In-memory only; the fallback simply runs
+            # again next time.
+            if parameters_text is None:
+                _db_params = info.get("parameters_json")
+                if _db_params is not None:
+                    parameters_text = json.dumps(_db_params, indent=2)
 
             attempt_records.append({
                 "global_id": gid,

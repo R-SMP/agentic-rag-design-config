@@ -1,4 +1,38 @@
 {
+  "3": {
+    "design_engineer": {
+      "attempt": true
+    },
+    "planner": {
+      "attempt": false
+    },
+    "receptionist": {
+      "attempt": false
+    },
+    "requirements_analyst": {
+      "attempt": true
+    }
+  },
+  "5": {
+    "dc_input_creator": {
+      "attempt": true
+    },
+    "dc_output_inspector": {
+      "attempt": true
+    },
+    "planner": {
+      "attempt": false
+    },
+    "receptionist": {
+      "attempt": false
+    },
+    "tool_caller": {
+      "attempt": false
+    },
+    "user_input_inspector": {
+      "attempt": false
+    }
+  },
   "7": {
     "dc_input_creator": {
       "attempt": true,
