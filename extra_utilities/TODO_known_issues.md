@@ -4237,31 +4237,67 @@ only thing linking that number to a `global_id`. The shorter form of the same
 rule went into `DC_prompt_fragments/tools_config/database_search.md` and its two
 topology forks.
 
-**The premise that needs checking.** The paragraph assumes DH-saved answers DO
-mention local attempt numbers in their prose. That may not be true by design:
-the attempt-scoped fields are already ROUTED to a specific attempt row (the
-identifying question force-calls `save_attempt_data`, which upserts
-`dc_attempts` and stamps the BIGSERIAL onto every chunk of that attempt — see
-`agents/database_handler/database_handler.py` around `_force_save_attempt_data`
-and the Phase-3C cascade). If the DH is supposed to write answers that do NOT
-name the attempt, because the row's identity already carries it, then:
+**The premise — CHECKED 2026-09-14 against the specification and the code; it
+HOLDS.** The doubt was that the DH should already save answers without naming
+attempts. That rule is real but applies to the OTHER text column:
 
-* the new paragraph describes a case that never occurs, and costs ~460 chars of
-  tool description on every turn for the DCIC / DCII / DCOI; and
-* worse, it could *teach* a pattern — "look for an attempt number in the prose"
-  — that is not there, inviting the agent to hunt for something absent.
+* `chunks.embedding_input` — stitching_prompt.md rule 6, *"Do not mention
+  session IDs, attempt numbers…"*. Agents NEVER see this column: `_emit_qa`
+  emits `question` + `body`; `embedding_input` surfaces only as an
+  `<image_ref><caption>` for image rows.
+* `chunks.body` — what the `<answer>` element carries. `insert_chunk` takes it
+  as a *"verbatim chunks column value"*; the stitch result goes to
+  `embedding_input` alone (`db_writer.py:890`).
 
-Conversely, if the DH's answers DO carry local numbers (the
-`stitching_prompt.md` worked example uses "the second attempt", and the
-schedule's identifying questions literally ask *"Identify which was/were the
-worst design attempt(s)"*), the paragraph is load-bearing and should stay.
+Four things confirm `body` keeps local attempt references:
 
-**What to do.** Settle which of the two it is by reading real saved answers, not
-by reading the prompts: pull `chunks.body` for the `Bad Attempt` /
-`Useful Attempt insights` / `Final Design Output` fields out of a populated
-corpus and check whether the prose names attempts at all. Then either keep the
-paragraph, trim it to one sentence, or drop it and fix the DH's answer style
-instead.
+1. The DH's nine saved-answer rewrite rules (`prompt.md:335-397`) strip paths,
+   folder slugs, routing JSON, escapes, narration and parameter dumps — never
+   attempt numbers.
+2. `prompt.md:250-251` scopes the drop explicitly: *"Remember this applies to
+   the ASKED question only.  The short question you SAVE still drops the
+   attempt id."* The QUESTION, not the answer.
+3. `_clean_semantic_body` preserves them deliberately — the comment at
+   `database_handler.py:955-961` reads *"Narrow on purpose: bare 'attempt NNN'
+   cross-references elsewhere in the body … are legitimate and survive."*
+   `_ATTEMPT_LEADIN_RE` is `^`-anchored and kills only `For/About attempt NNN:`.
+4. The identifying questions demand it (*"Identify which was/were the worst
+   design attempt(s)"*), and the stitching prompt's own worked example keeps
+   *"The second attempt was the weakest overall match"* in its OUTPUT.
+
+**So the paragraph stays.** Two residues remain open:
+
+* **Empirical check not done.** The above is spec + code; no populated corpus
+  was read. Still worth pulling `chunks.body` for the `Bad Attempt` /
+  `Useful Attempt insights` / `Final Design Output` fields from a real database
+  to see how often, and in what form, attempts are named.
+* **`stitching_prompt.md` contradicts itself.** Rule 6 forbids attempt numbers;
+  the worked example forty lines below keeps "The second attempt". Harmless for
+  `body`, but it is degrading embedding consistency — the stitcher is a cheap
+  model being given a rule and a counter-example in one prompt. Fixing it means
+  bumping `version:` and deciding whether to re-stitch the existing corpus.
+
+**Two adjacent facts the same check turned up.** Both concern
+`<available_attempts>`, and both were stated wrongly in the session that filed
+this entry:
+
+* **The block lists only attempts an identifying question NAMED.**
+  `upsert_attempt` has exactly one production call site — inside
+  `_force_save_attempt_data`, iterating the NNNs resolved for one identifying
+  question (`database_handler.py:3429-3453`). An attempt that no identifying
+  question names never gets a `dc_attempts` row, so it is absent from the
+  directory entirely, not present-but-unlabelled. The block means "every
+  attempt the DH classified", not "every attempt the session ran".
+* **Global ids do not run in attempt order.** They are issued in the order the
+  DH's field walk first names each attempt. `Final Design Output` is the FIRST
+  attempt-scoped question in the default schedule, so the final attempt
+  typically receives the LOWEST global id of its session — and
+  `_run_available_attempts_query` sorts `ORDER BY attempt_id`, so the directory
+  can list `nnn` descending. Anything that reads the block positionally is
+  wrong. The tool description therefore tells the agent to match on the `nnn`
+  VALUE and shows a worked example with the two numbers inverted
+  (`global_id="2" nnn="004"`) rather than explaining the issuing order — that
+  explanation was cut as prompt clutter on 2026-09-14.
 
 **Where to look.** `tools/retrieve_attempt/retrieve_attempt.py` (the
 `retrieve_attempt` docstring, immediately under the `<available_attempts>`

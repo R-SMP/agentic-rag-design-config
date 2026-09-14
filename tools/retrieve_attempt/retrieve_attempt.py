@@ -631,13 +631,17 @@ def make_retrieve_attempt_tool(caller_agent: str):
         read.  Get the ids from the ``global_id`` attribute in the
         ``<available_attempts>`` block of a ``database_search`` response.
 
-        A past session's ANSWERS name their attempts by that session's own
-        local number ("attempt 002"), never by a global id.  The ``nnn``
-        attribute in ``<available_attempts>`` is the ONLY place those two
-        numbering spaces are linked: to act on "attempt 002 was the worst",
-        find ``nnn="002"`` in that session's block and pass its
-        ``global_id``.  Never pass the local number — it is a valid global
-        id belonging to some unrelated session's attempt.
+        A past session's ANSWERS refer to attempts by that session's own
+        local numbering — "attempt 002", or an ordinal ("the second
+        attempt") meaning the same.  Those are not global ids, and one
+        cannot be derived from the other.  To act on one, find that number
+        as the ``nnn`` of an entry in the same session's
+        ``<available_attempts>`` and pass the ``global_id`` beside it.
+        Never pass the local number itself.
+
+        Example — the answer says "attempt 004 was the worst"; that
+        session's block holds ``<attempt global_id="2" nnn="004"/>``; you
+        pass ``2``.
 
         Every artefact of each attempt is downloaded into a LOCAL folder and
         the response lists that folder's contents, alongside the attempt's
