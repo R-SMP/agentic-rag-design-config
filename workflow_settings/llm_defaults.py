@@ -144,15 +144,30 @@ def model_for(agent_key: str) -> str:
 # renders one button per entry from the /api/llm-routing response, no
 # JS / HTML change needed.
 #
-# The OPENAI preset is the gpt-5.6 workflow, and is kept identical to
-# ``DEFAULT_PER_AGENT_MODELS`` above (topology 7's baked-in defaults) so
-# that a fresh deploy and a click on the button produce the SAME chart.
-# Change one, change the other.
+# The OPENAI preset is the gpt-5.6 workflow.  For the ten topology-7 agents
+# it is kept identical to ``DEFAULT_PER_AGENT_MODELS`` above, so a fresh
+# deploy and a click on the button produce the SAME chart — change one,
+# change the other.
 #
 #   gpt-5.6-terra   receptionist, user_input_inspector, planner,
 #                   dc_input_creator, dc_output_inspector, database_handler
 #   gpt-5.6-luna    orchestrator, dc_input_inspector, tool_caller
 #   gpt-5.6-sol     context_pruner — the only agent on sol
+#
+# Both presets also carry topology 3's two merged agents, so a click there
+# fills every row.  They follow the merge map (rebuild plan D7 — a merged
+# agent inherits its parents' model): requirements_analyst = UII + DCOI,
+# whose parents agree; design_engineer = DCIC + Tool Caller, whose parents
+# DISAGREE under this assignment (D7 never had to resolve that — topology
+# 5's parents matched).  It follows the DCIC, because the merged agent
+# authors the full parameter set as well as running the tools, so it is
+# sized for the harder of its two jobs.
+#
+# Those two rows deliberately DIFFER from ``DEFAULT_PER_AGENT_MODELS``,
+# whose design_engineer / requirements_analyst entries mirror the
+# topology-3 overlay below — still frozen on the gpt-5.4 family, as
+# topology 5's is.  The preset offers the modern workflow; the overlay
+# stays put until topology 3 is deliberately re-tiered.
 #
 # The ANTHROPIC preset is still Test 1 "Experiment Subject 5" (see
 # extra_utilities/docs/reference/benchmark_suite.md, Part B): a tier chosen
@@ -194,6 +209,9 @@ PROPOSED_WORKFLOWS: list[dict] = [
             "tool_caller":          "gpt-5.6-luna",
             "database_handler":     "gpt-5.6-terra",
             "context_pruner":       "gpt-5.6-sol",
+            # Topology 3's two merged agents (rebuild plan D7).
+            "requirements_analyst": "gpt-5.6-terra",  # UII + DCOI, both terra
+            "design_engineer":      "gpt-5.6-terra",  # DCIC + TC; follows the DCIC
         },
     },
     {
@@ -211,6 +229,9 @@ PROPOSED_WORKFLOWS: list[dict] = [
             "tool_caller":          "claude-haiku-4-5",   # LOW
             "database_handler":     "claude-haiku-4-5",   # LOW
             "context_pruner":       "claude-opus-4-8",    # HIGH
+            # Topology 3's two merged agents (rebuild plan D7).
+            "requirements_analyst": "claude-opus-4-8",    # UII + DCOI, both HIGH
+            "design_engineer":      "claude-sonnet-4-6",  # DCIC + TC; follows the DCIC
         },
     },
 ]
