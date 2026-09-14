@@ -11,3 +11,7 @@
   lists what is in it; no image reaches your context until you pass a listed
   path to ``view_images``.  Re-retrieving something another agent already
   fetched is free — it is served from that folder, not fetched again.
+- **See it before you trust it.**  For any visual or geometric judgement — a
+  past sketch vs the current one, how a past blade rendered, whether a
+  parameter set produced the expected shape — a past claim is literally
+  transferable only once you have LOOKED and seen the contexts match.

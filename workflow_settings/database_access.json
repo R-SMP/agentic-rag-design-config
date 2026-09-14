@@ -1,36 +1,56 @@
 {
   "3": {
     "design_engineer": {
-      "attempt": true
+      "attempt": true,
+      "search": true,
+      "user_inputs": false
     },
     "planner": {
-      "attempt": false
+      "attempt": false,
+      "search": true,
+      "user_inputs": false
     },
     "receptionist": {
-      "attempt": false
+      "attempt": false,
+      "search": false,
+      "user_inputs": false
     },
     "requirements_analyst": {
-      "attempt": true
+      "attempt": true,
+      "search": true,
+      "user_inputs": true
     }
   },
   "5": {
     "dc_input_creator": {
-      "attempt": true
+      "attempt": true,
+      "search": true,
+      "user_inputs": false
     },
     "dc_output_inspector": {
-      "attempt": true
+      "attempt": true,
+      "search": true,
+      "user_inputs": false
     },
     "planner": {
-      "attempt": false
+      "attempt": false,
+      "search": true,
+      "user_inputs": false
     },
     "receptionist": {
-      "attempt": false
+      "attempt": false,
+      "search": false,
+      "user_inputs": false
     },
     "tool_caller": {
-      "attempt": false
+      "attempt": false,
+      "search": false,
+      "user_inputs": false
     },
     "user_input_inspector": {
-      "attempt": false
+      "attempt": false,
+      "search": true,
+      "user_inputs": true
     }
   },
   "7": {

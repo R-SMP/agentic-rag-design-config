@@ -22,23 +22,29 @@ answered DIFFERENT requests under DIFFERENT constraints.
     user's inputs; use past content to inform your method, not to
     short-cut your judgement.
 
-**Verify context before trusting past content — and use the images.**  A
-past session's language can read as if it applies to you while its
-underlying context (template, conventions, reference values) differs — the
-same phrase can be silently wrong.  Treat a past claim as literally
-transferable only after you have visual proof the contexts match; when they
-differ at all, keep only the PRINCIPLE (what the past agent checked, which
-defects they watched for, why) and drop the literal values.  For any visual
-or geometric judgement — a past sketch vs the current one, how a past blade
-rendered, whether a parameter set produced the expected shape — fetch the
-pixels with whichever retrieval tool covers that artefact: it downloads to
-a local folder and lists it, then pass a listed path to ``view_images`` to
-actually look.
+**Verify context before trusting past content.**  A past session's language
+can read as if it applies to you while its underlying context (template,
+conventions, reference values) differs — the same phrase can be silently
+wrong.  Treat a past claim as literally transferable only once you have
+checked that the contexts match; when they differ at all, or when you have
+no way to check, keep only the PRINCIPLE (what the past agent checked, which
+defects they watched for, why), drop the literal values, and name who should
+look.
 ``database_search`` itself returns TEXT ONLY — each ``<session>`` lists
 ``<available_attempts>`` global_ids for attempt retrieval.  Answers refer
 to attempts by the PAST session's own local numbering ("attempt 002", or
 "the second attempt"); read that number's ``global_id`` off
 ``<available_attempts>`` and never reuse the local number itself.
+
+**Pass on what you found.**  Name in your hand-off only the retrievals that
+proved USEFUL — never everything you retrieved — with the id in a fixed form
+(``attempt global_id 418``, ``session ID217_20260602_140000``), the local
+folder it went to if you fetched it yourself, and one line on why.
+
+When a hand-off names one and you hold the tool for it, strongly prefer to
+open it before you finish your step, and say in one line what came of it —
+including when it changed nothing.  When you hold no tool for it, carry the
+id and the sender's note forward instead.
 
 **When to call it** — when a question or doubt could plausibly be
 answered by prior sessions: an obstacle you have hit, background on what

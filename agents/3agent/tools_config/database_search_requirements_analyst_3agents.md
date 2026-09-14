@@ -27,10 +27,10 @@ When it applies:
      local folder and lists it; open any listed path with ``view_images`` —
      that call, not the retrieval, is what costs vision tokens, so open only
      the most useful one or two.
-  3. In your hand-off, say what you searched for, what you retrieved with
-     images, what the comparison showed, and how (if at all) it changed your
-     extraction — including "it did not change my conclusion", so the chain
-     knows you considered it.
+  3. In your hand-off, name the retrieved inputs that actually HELPED and
+     what they changed in your extraction — not your query, and not the ones
+     that led nowhere.  If you searched and nothing helped, say so in a few
+     words, so the chain can tell that from your not having looked.
 
 * The Planner's instructions (however relayed) still take priority over any
   prior experience the database surfaces.
@@ -41,3 +41,8 @@ visual — comparing the current renders against the user's inputs.  Use
 past attempt's renders: it downloads them to a local folder and lists it;
 pass a listed path to ``view_images`` — with ``side_by_side=True`` to set one
 against the current render.  Fetch only the most useful ones.
+
+**A retrieved render calibrates; it never decides.**  Your verdict rests on
+THIS cycle's evidence — a past render only shows what was judged good or bad
+before.  When one did shape your judgement, give the folder and the exact
+image path of the render that was useful, beside the id.

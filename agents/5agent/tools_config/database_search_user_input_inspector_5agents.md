@@ -27,7 +27,7 @@ When it applies:
      local folder and lists it; open any listed path with ``view_images`` —
      that call, not the retrieval, is what costs vision tokens, so open only
      the most useful one or two.
-  3. In your hand-off, say what you searched for, what you retrieved with
-     images, what the comparison showed, and how (if at all) it changed your
-     extraction — including "it did not change my conclusion", so the chain
-     knows you considered it.
+  3. In your hand-off, name the retrieved inputs that actually HELPED and
+     what they changed in your extraction — not your query, and not the ones
+     that led nowhere.  If you searched and nothing helped, say so in a few
+     words, so the chain can tell that from your not having looked.

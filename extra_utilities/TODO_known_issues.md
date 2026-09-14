@@ -113,7 +113,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F95` | OPEN | The IN-SESSION briefing anchor: give a stripped agent a fallback entry |
 | `F96` | OPEN | Topology 3: the RA is required to emit `INTERPRETATION:` and `QUALITATIVE DESCRIPTIONS` and no agent is told to read either |
 | `F97` | OPEN | `retrieve_attempt`'s nnn-to-global_id paragraph rests on an unverified premise about how the DH words its answers |
-| `F98` | OPEN | Topologies 5 and 3 do not share what they retrieve — the RAG hand-off pointer rules landed in topology 7 only |
+| `F98` | DONE | Topologies 5 and 3 do not share what they retrieve — the RAG hand-off pointer rules landed in topology 7 only |
 
 ---
 
@@ -4311,8 +4311,28 @@ identifying questions).
 
 ### F98. Topologies 5 and 3 do not share what they retrieve
 
-**Status.** OPEN, deliberate. Filed 2026-09-14 in the same change that shipped
-the topology-7 half, at the owner's request so the other two are not forgotten.
+**Status.** DONE 2026-09-14, in the change immediately after the one that
+filed it. Kept because the four traps below are the reason it was not a
+copy-paste port, and two of them were removed rather than worked around.
+
+**How it was closed.** `database_access.json` gained FULL rows for profiles
+"5" and "3" (previously only `attempt` was written, so `search` and
+`user_inputs` fell through to the all-True default). Topology 5 now mirrors
+each agent's topology-7 twin; topology 3 gives the Planner `search` only, the
+Requirements Analyst both retrieve tools, and the Design Engineer attempts
+only. That single edit dissolved traps 1 and 4: with the Planner on `search`
+alone in both topologies, its block is true again and the moved
+`retrieve_user_inputs` passage is gated away from it exactly as in topology 7.
+Trap 3 was handled by giving the block-E analogue to the topology-5 DC Input
+Creator, which is the agent that hands to the Tool Caller there. Trap 2 stands
+as described: the Requirements Analyst took the UNION of the UII and DCOI
+lines, and the Design Engineer took no per-agent line at all.
+
+Original entry follows.
+
+**Status when filed.** OPEN, deliberate. Filed 2026-09-14 in the same change
+that shipped the topology-7 half, at the owner's request so the other two are
+not forgotten.
 
 **What shipped for topology 7.** With RAG on, an agent that retrieves a useful
 past attempt or past session names it in its hand-off — the id in a fixed form

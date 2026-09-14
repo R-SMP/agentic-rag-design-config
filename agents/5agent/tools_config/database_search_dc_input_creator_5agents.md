@@ -8,3 +8,7 @@ strongly prefer ``retrieve_attempt(past_attempts_global_ids=[<global_id>, ...])`
 to inspect their ``parameters.json`` values (printed in full in the reply)
 — past parameter sets encode which ranges produced viable vs degenerate
 geometry for designs like yours.  Fetch only the most useful ones.
+
+When you hand to the Tool Caller, put the ids and your one-line note in the
+``call_tool_caller`` ``message``, or they never reach the DC Output
+Inspector.
