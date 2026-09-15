@@ -6,13 +6,14 @@ the tool:
 1. Validates each session_id against the Postgres ``sessions`` table
    (and fetches each existing session's ``user_provided_images`` bool).
 2. Materialises that session's user inputs into
-   ``inputs/_retrieved/<sid>/`` — the UII's ``extracted_inputs.txt``,
-   the raw ``queries.txt``, every reference image at FULL resolution,
-   each image's ``_note.txt`` description, and each image's
-   ``.compression.json`` degree sidecar (so ``view_images`` applies the
-   degree the image's own author chose).  A folder already populated is
-   served straight from disk: the artefacts are immutable, so a
-   re-retrieval by any agent costs nothing and reads identically.
+   ``inputs/_retrieved/<sid>/`` — the UII's ``extracted_inputs.txt`` and
+   the raw ``queries.txt`` at the top level, then, under an
+   ``input_images/`` subfolder mirroring the live tree, every reference
+   image at FULL resolution, each image's ``_note.txt`` description, and
+   each image's ``.compression.json`` degree sidecar (so ``view_images``
+   applies the degree the image's own author chose).  A folder already
+   populated is served straight from disk: the artefacts are immutable, so
+   a re-retrieval by any agent costs nothing and reads identically.
 3. Assembles an XML response (``<retrieve_user_inputs_meta/>`` +
    per-session blocks) naming every local path; trims sessions from the
    end of the input list when the response exceeds
@@ -53,7 +54,7 @@ from agents.shared import postgres_pool
 from agents.shared.agent_activity import generic_tool
 from agents.shared import r2_uploader
 from tools import retrieval_common
-from config import USER_INPUTS_DIR
+from config import INPUT_IMAGES_SUBDIR, USER_INPUTS_DIR
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
@@ -92,9 +93,28 @@ def _retrieved_dir(session_id: str) -> Path:
     return retrieval_common.retrieved_dir(USER_INPUTS_DIR, session_id)
 
 
+def _images_dir(dest: Path) -> Path:
+    """``<retrieved folder>/input_images/`` — where its images go.
+
+    Mirrors the LIVE tree (``config.INPUT_IMAGES_DIR``) and the R2 archive,
+    which both keep images in a subfolder of their own.  Retrieval used to
+    flatten them beside the text, which is why ``read_user_inputs`` — which
+    looks under ``input_images/`` — reported a retrieved session as having
+    no images at all, and why its per-image ``.compression.json`` sidecars
+    surfaced in that tool's text sweep as noise.
+    """
+    return dest / INPUT_IMAGES_SUBDIR
+
+
 def _folder_listing(dest: Path) -> list[tuple[str, int]]:
-    """``(name, size)`` for every file in *dest*, name-sorted."""
-    return retrieval_common.folder_listing(dest)
+    """``(name, size)`` for every file in *dest*, nested ones included.
+
+    Recursive, unlike ``retrieve_attempt``'s: the images live one level
+    down in ``input_images/``, and a non-recursive listing would drop them
+    from ``<folder>`` while ``<images>`` still named them — the block would
+    quietly stop being the inventory it claims to be.
+    """
+    return retrieval_common.folder_listing(dest, recurse=True)
 
 
 def _write_artefact(dest: Path, name: str, data: bytes) -> None:
@@ -549,7 +569,7 @@ def _run_retrieve_user_inputs(
                 # never has to reason about cache state.
                 extraction_text = _read_local(dest, "extracted_inputs.txt")
                 queries_text = _read_local(dest, "queries.txt")
-                images, orphan_notes = _local_images(dest)
+                images, orphan_notes = _local_images(_images_dir(dest))
             elif bucket is None or client is None:
                 # R2 not configured and nothing cached: emit a <missing/>
                 # marker and move on.  Won't return any content.
@@ -591,7 +611,7 @@ def _run_retrieve_user_inputs(
                         # ``image_compression.read_degree`` looks, so
                         # ``view_images`` applies the degree the image's own
                         # author chose.
-                        _write_artefact(dest, img_name, data)
+                        _write_artefact(_images_dir(dest), img_name, data)
                         paired.add(stem)
                         note_name = f"{stem}_note.txt"
                         note_text = _r2_get_text(
@@ -599,7 +619,7 @@ def _run_retrieve_user_inputs(
                             _r2_key(sid, "user_inputs", "images", note_name),
                         )
                         if note_text is not None:
-                            _write_artefact(dest, note_name,
+                            _write_artefact(_images_dir(dest), note_name,
                                             note_text.encode("utf-8"))
                         _sc_name = (
                             f"{img_name.rsplit('.', 1)[0]}.compression.json"
@@ -609,10 +629,14 @@ def _run_retrieve_user_inputs(
                             _r2_key(sid, "user_inputs", "images", _sc_name),
                         )
                         if _sc_text is not None:
-                            _write_artefact(dest, _sc_name,
+                            # BESIDE its image, which is where
+                            # image_compression.read_degree looks.
+                            _write_artefact(_images_dir(dest), _sc_name,
                                             _sc_text.encode("utf-8"))
                         images.append(
-                            (stem, str((dest / img_name).resolve()), note_text)
+                            (stem,
+                             str((_images_dir(dest) / img_name).resolve()),
+                             note_text)
                         )
                     for stem, note_name in notes_listed:
                         # A note with no image of its own.  Fetched too, so
@@ -625,7 +649,8 @@ def _run_retrieve_user_inputs(
                         )
                         if text is None:
                             continue
-                        _write_artefact(dest, note_name, text.encode("utf-8"))
+                        _write_artefact(_images_dir(dest), note_name,
+                                        text.encode("utf-8"))
                         orphan_notes.append((stem, text))
 
             session_records.append({

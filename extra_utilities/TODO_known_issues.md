@@ -114,6 +114,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F96` | OPEN | Topology 3: the RA is required to emit `INTERPRETATION:` and `QUALITATIVE DESCRIPTIONS` and no agent is told to read either |
 | `F97` | OPEN | `retrieve_attempt`'s nnn-to-global_id paragraph rests on an unverified premise about how the DH words its answers |
 | `F98` | DONE | Topologies 5 and 3 do not share what they retrieve — the RAG hand-off pointer rules landed in topology 7 only |
+| `F99` | OPEN | A retrieved session's raw conversation is fetched and listed, but never printed and nothing licensed reading it |
 
 ---
 
@@ -4388,3 +4389,80 @@ or 3. The files that would need it:
 (`_topology_override`, `_build_template`, `_DBA_TOOL_SLOTS`) for why the forks
 win and how the slot gating works; `workflow_settings/database_access.json` for
 the per-topology tool holdings.
+
+---
+
+### F99. A retrieved session's raw conversation is fetched, listed, and was effectively unreachable
+
+**Status.** Route 1 (advertise the folder) CHOSEN and applied 2026-09-15.
+Kept OPEN until a real run shows whether agents actually open the folder when
+the extraction is thin.  If they do not, route 2 is the fallback — print the
+raw conversation inline in the retrieval response — and the route-1 edits come
+back out.  They are built to be removed in one piece; `W44` lists the exact
+revert points.
+
+**What was wrong.** `retrieve_user_inputs` downloads
+`<sid>/user_inputs/queries.txt` — the session's whole CONVERSATION,
+`--- [ts] USER ---` / `--- [ts] RECEPTIONIST ---` turns — into
+`inputs/_retrieved/<sid>/`, and lists it in `<folder>` with its byte count.
+It is PRINTED as `<user_query>` only when no extraction was archived, the
+legacy fallback for sessions saved before extractions shipped to R2.  For
+every session saved since, the raw conversation was fetched, stored, named,
+and never shown — while nothing in any prompt licensed reading it, and the
+per-agent `read_user_inputs` descriptions pinned the argument to the LIVE
+inputs directory named in the hand-off, with an explicit "do NOT guess a
+path".  `read_input_text`, the obvious single-file reader, is bound to none of
+the three holders (all build with `include_text_tools=False`).
+
+**What shipped.** A sentence appended to `read_user_inputs`'s description for
+any agent holding `retrieve_user_inputs`, naming a `<folder path=...>` as a
+valid argument; a `<<HAS_USER_INPUTS>>`-gated bullet in the
+`retrieve_user_inputs` fragment (all three topologies) saying the raw
+conversation is on disk and to trust the extraction unless it is genuinely not
+enough; and the layout fix below, which was a precondition rather than a
+nicety.
+
+**The layout fix (NOT part of the route-1 revert).** Retrieval used to write a
+past session's images FLAT beside the text, while both the live tree and the
+R2 archive keep them in a subfolder of their own.  Three defects followed, all
+reachable only by a reader of that folder — which is to say, nobody, until
+this change invited one in:
+
+1. `read_user_inputs` looks under `input_images/`, found no such folder, and
+   reported ZERO images.  Not merely redundant — it reads as "that past
+   session had no images", contradicting the `<images>` block printed moments
+   earlier.
+2. The per-image `.compression.json` sidecars sat at the top level, where the
+   tool's text sweep pretty-printed them into context as content.
+3. The extraction was read a second time, having already been printed in full
+   by the retrieval response.
+
+Images, notes and sidecars now go to `inputs/_retrieved/<sid>/input_images/`,
+mirroring the live tree; (1) and (2) stop existing rather than being worked
+around, and (3) is handled by an `exclude_root_files` entry.  One consequence:
+`pair_input_images` now actually runs on a retrieved folder, so a past session
+with an unpaired image would emit "pairing INVALID — ESCALATE so the user can
+be asked to fix the uploads".  That accuses the CURRENT user over an archived
+session nobody can change, so it is suppressed for retrieved folders.
+
+**Still open / worth knowing.**
+
+* Whether agents use it at all.  That is the question the OPEN status is for.
+* `<folder>` now recurses so the images still appear in the inventory, named
+  `input_images/sketch_1.png`.  `retrieve_attempt`'s listing is unchanged —
+  `folder_listing` takes `recurse=False` by default.
+* Topology 3 has NO extraction file of its own
+  (`agents/3agent/requirements_analyst/prompt_3agents.md:19` says so outright),
+  yet retrieval hands its Requirements Analyst an `<extracted_inputs>` block
+  from sessions run under topologies 7/5.  Its fork of the bullet is the first
+  and only place that explains what the block is.  **That gap predates this
+  change** and may exist elsewhere in the topology-3 prompts.
+
+**Where to look.** `tools/retrieve_user_inputs/retrieve_user_inputs.py`
+(`_images_dir`, `_folder_listing`, `_build_session_block`'s `<user_query>`
+fallback); `tools/retrieval_common.py` (`folder_listing(recurse=)`);
+`agents/shared/user_inputs_tool.py` (`read_inputs_doc`,
+`read_user_inputs_summary`'s retrieved branch); `agents/shared/prompts.py`
+(`_HAS_USER_INPUTS_RE`, `apply_dba_filter`);
+`DC_prompt_fragments/tools_config/retrieve_user_inputs.md` + the `5agent` /
+`3agent` forks; `extra_utilities/db_design/smoke_test_retrieve_user_inputs.py`.

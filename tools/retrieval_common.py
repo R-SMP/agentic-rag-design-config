@@ -71,12 +71,21 @@ def retrieved_dir(root: Path, key: Any) -> Path:
     return root / RETRIEVED_SUBDIR / str(key)
 
 
-def folder_listing(dest: Path) -> list[tuple[str, int]]:
-    """``(name, size)`` for every file in *dest*, name-sorted."""
+def folder_listing(dest: Path, recurse: bool = False) -> list[tuple[str, int]]:
+    """``(name, size)`` for every file in *dest*, name-sorted.
+
+    With *recurse* the walk descends into subfolders and each file is named
+    RELATIVE to *dest* (``input_images/sketch_1.png``), so the listing stays
+    a faithful inventory of a nested layout.  Default False leaves
+    ``retrieve_attempt``'s flat listing byte-identical — for a flat folder
+    the relative name IS the file name, so there is one code path, not two.
+    """
     if not dest.is_dir():
         return []
+    walk = dest.rglob("*") if recurse else dest.iterdir()
     return sorted(
-        (f.name, f.stat().st_size) for f in dest.iterdir() if f.is_file()
+        (f.relative_to(dest).as_posix(), f.stat().st_size)
+        for f in walk if f.is_file()
     )
 
 

@@ -14,4 +14,10 @@
 - **See it before you trust it.**  For any visual or geometric judgement — a
   past sketch vs the current one, how a past blade rendered, whether a
   parameter set produced the expected shape — a past claim is literally
-  transferable only once you have LOOKED and seen the contexts match.
+  transferable only once you have LOOKED and seen the contexts match.<<HAS_USER_INPUTS>>
+- **The user's own words are on disk, not in the reply.**
+  A retrieval prints each past session's structured extraction, never the
+  raw conversation.  The latter is in the ``<folder path=...>`` it names:
+  pass the folder to ``read_user_inputs``.  Trust the extraction and do
+  this only when it is genuinely not enough — a phrase you need verbatim,
+  or wording the extraction leaves ambiguous.<</HAS_USER_INPUTS>>

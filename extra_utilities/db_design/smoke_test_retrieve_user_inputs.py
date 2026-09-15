@@ -4,25 +4,35 @@ Live test against:
   * Railway Postgres (sessions + rag_queries tables — schema v7).
   * Cloudflare R2 (PUT + GET + LIST under <SMOKE_SESSION_ID>/user_inputs/).
 
-Exercises 7 named assertions covering the happy path, image
-flag semantics, missing R2 files, unknown session IDs, the token-cap
-trim, and the rag_queries log row.
+Exercises 8 named assertions covering the happy path, the local layout
+(images under ``input_images/``, mirroring the live tree), the cache
+re-read, the pre-extraction fallback, missing R2 files, unknown session
+IDs, the token-cap trim, and the rag_queries log row.
 
 Run from repo root::
 
     python extra_utilities/db_design/smoke_test_retrieve_user_inputs.py
 
-Cost: a handful of R2 PUTs (~1 KB each) + 7-ish GETs + a few Postgres
+Cost: a handful of R2 PUTs (~1 KB each) + a dozen GETs + a few Postgres
 queries.  Sub-cent; sub-second wall-clock excluding cold starts.
 
-Cleanup: always wipes its own synthetic data (sessions + rag_queries
-rows + R2 objects).  Set ``SMOKE_NO_CLEANUP=1`` to leave it in place
-for manual inspection.
+Cleanup: always wipes its own synthetic data — sessions + rag_queries
+rows, R2 objects, AND the local ``inputs/_retrieved/<sid>/`` folders the
+tool materialises (the pre-2026-09-15 version of this test leaked those).
+Set ``SMOKE_NO_CLEANUP=1`` to leave it all in place for inspection.
+
+Revived 2026-09-15.  It had been dead for some time: it unpacked a
+3-tuple from a function that returns a plain string, passed an
+``images_flag`` argument the tool no longer has, asserted an
+``<image_notes>`` block replaced by notes nested inside ``<image>``, and
+never seeded an ``extracted_inputs.txt``, so every assertion exercised
+the legacy no-extraction fallback rather than the live path.
 """
 
 from __future__ import annotations
 
 import os
+import shutil
 import struct
 import sys
 import time
@@ -62,11 +72,15 @@ from tools.retrieve_user_inputs.retrieve_user_inputs import (  # noqa: E402
 # Test fixtures
 # ============================================================
 _TS = int(time.time())
-SESSION_A = f"_smoke_test_retrieve_a_{_TS}"   # has images + note
-SESSION_B = f"_smoke_test_retrieve_b_{_TS}"   # text only
+SESSION_A = f"_smoke_test_retrieve_a_{_TS}"   # extraction + images + note
+SESSION_B = f"_smoke_test_retrieve_b_{_TS}"   # queries.txt only, NO extraction
 SESSION_C = f"_smoke_test_retrieve_c_{_TS}"   # Postgres row only, no R2
 SESSION_FAKE = f"_smoke_test_retrieve_fake_{_TS}"  # not in Postgres
 CALLER = "_smoke_retrieve"
+
+IMG_NAME = "blade_ref.png"
+SIDECAR_NAME = "blade_ref.compression.json"
+NOTE_NAME = "blade_ref_note.txt"
 
 
 def _minimal_png() -> bytes:
@@ -100,6 +114,22 @@ def _minimal_png() -> bytes:
 
 
 PNG_BYTES = _minimal_png()
+
+EXTRACTION_TEXT = (
+    "QUANTITATIVE INPUTS:\n"
+    "  Blade count: 5\n\n"
+    "QUALITATIVE DESCRIPTIONS:\n"
+    "  The ring should read as thin.\n\n"
+    "DESIGN INTENT:\n"
+    "  A clean five-blade ring propeller.  INTERPRETATION: straightforward\n\n"
+    "USEFUL INPUT IMAGES:\n"
+    "  blade_ref.png — swept blade reference.\n"
+)
+
+# The literal the response must NOT contain for SESSION_A: the raw
+# conversation stays on disk once an extraction exists.  That is the whole
+# premise of F99, so it is asserted rather than assumed.
+RAW_ONLY_PHRASE = "and please hurry, the review is tomorrow"
 
 
 # ============================================================
@@ -160,6 +190,15 @@ def _cleanup_r2_session(sid: str) -> None:
             client.delete_objects(Bucket=bucket, Delete={"Objects": batch})
 
 
+def _cleanup_local(sid: str) -> None:
+    """Remove ``inputs/_retrieved/<sid>/``, which the tool materialises.
+
+    In a real session ``loader.py`` deletes the whole cache at End Session;
+    a smoke test has no End Session, so it cleans up after itself.
+    """
+    shutil.rmtree(mod._retrieved_dir(sid), ignore_errors=True)  # noqa: SLF001
+
+
 def _cleanup_postgres() -> None:
     with postgres_pool.connection() as conn:
         with conn.cursor() as cur:
@@ -195,115 +234,164 @@ def main() -> int:
         _seed_session(SESSION_A, has_images=True)
         _seed_session(SESSION_B, has_images=False)
         _seed_session(SESSION_C, has_images=False)
-        # SESSION_FAKE: NOT inserted (test 5)
+        # SESSION_FAKE: NOT inserted (test 6)
 
-        # Seed R2 — A has full set; B has just queries.txt; C has nothing
+        # Seed R2.  A is the modern shape: extraction + raw conversation +
+        # image + note + compression sidecar.  B predates extractions, so it
+        # has queries.txt alone.  C has nothing.
         _put_r2_text(
-            f"{SESSION_A}/user_inputs/queries.txt",
-            "--- [2026-06-03 10:00:00] ---\n"
-            "make me a propeller with 5 thin blades and a clean ring",
+            f"{SESSION_A}/user_inputs/extracted_inputs.txt",
+            EXTRACTION_TEXT,
         )
         _put_r2_text(
-            f"{SESSION_A}/user_inputs/images/blade_ref_note.txt",
+            f"{SESSION_A}/user_inputs/queries.txt",
+            "--- [2026-06-03 10:00:00] USER ---\n"
+            "make me a propeller with 5 thin blades and a clean ring, "
+            f"{RAW_ONLY_PHRASE}\n"
+            "--- [2026-06-03 10:00:12] RECEPTIONIST ---\n"
+            "Understood — forwarding that now.\n",
+        )
+        _put_r2_text(
+            f"{SESSION_A}/user_inputs/images/{NOTE_NAME}",
             "A reference photo showing a swept blade with a thin trailing edge.",
         )
         _put_r2_bytes(
-            f"{SESSION_A}/user_inputs/images/blade_ref.png",
+            f"{SESSION_A}/user_inputs/images/{IMG_NAME}",
             PNG_BYTES,
+        )
+        _put_r2_text(
+            f"{SESSION_A}/user_inputs/images/{SIDECAR_NAME}",
+            '{"degree": 60}',
         )
 
         _put_r2_text(
             f"{SESSION_B}/user_inputs/queries.txt",
-            "--- [2026-06-03 10:30:00] ---\n"
+            "--- [2026-06-03 10:30:00] USER ---\n"
             "design a simple ring propeller",
         )
 
-        # SESSION_C: Postgres row exists; R2 has nothing → tests <missing/> marker
+        # SESSION_C: Postgres row exists; R2 has nothing → tests <missing/>
 
+        # Start from a clean local cache so test 1 exercises the FETCH path
+        # and test 3 exercises the CACHE path, deterministically.
+        for _sid in (SESSION_A, SESSION_B, SESSION_C):
+            _cleanup_local(_sid)
 
         # ============================================================
-        # Test 1: happy_path_with_images
+        # Test 1: happy_path_with_extraction
         # ============================================================
-        xml, image_blocks, image_paths = _run_retrieve_user_inputs(
+        xml = _run_retrieve_user_inputs(
             caller_agent=CALLER,
             session_ids=[SESSION_A],
-            images_flag=True,
         )
-        assert "<user_query>" in xml, f"missing <user_query>:\n{xml[:500]}"
-        assert "swept blade" in xml, "expected note text in XML"
-        assert "<image_notes>" in xml, "missing <image_notes> block"
+        assert "<extracted_inputs>" in xml, (
+            f"missing <extracted_inputs>:\n{xml[:600]}"
+        )
+        assert "QUANTITATIVE INPUTS" in xml, "extraction body did not survive"
+        assert "<user_query>" not in xml, (
+            "<user_query> must NOT be printed when an extraction exists — "
+            "the raw conversation stays on disk (F99)"
+        )
+        assert RAW_ONLY_PHRASE not in xml, (
+            "the raw conversation leaked into the response"
+        )
         assert "<images>" in xml, "missing <images> block"
+        assert "swept blade" in xml, "expected note text nested in <image>"
         assert "blade_ref" in xml, "missing image name in XML"
-        assert len(image_blocks) == 1, (
-            f"expected 1 image_block, got {len(image_blocks)}"
-        )
-        assert len(image_paths) == 1, (
-            f"expected 1 image_path, got {len(image_paths)}"
-        )
-        assert "blade_ref.png" in image_paths[0], (
-            f"image_path looks wrong: {image_paths[0]}"
-        )
-        print("OK happy_path_with_images")
+        print("OK happy_path_with_extraction")
 
         # ============================================================
-        # Test 2: happy_path_no_images_flag
+        # Test 2: local_layout_mirrors_live_tree
         # ============================================================
-        xml, image_blocks, image_paths = _run_retrieve_user_inputs(
+        dest = mod._retrieved_dir(SESSION_A)          # noqa: SLF001
+        img_dir = mod._images_dir(dest)               # noqa: SLF001
+        assert (img_dir / IMG_NAME).is_file(), (
+            f"image not at {img_dir / IMG_NAME}; retrieval must mirror the "
+            f"live tree's input_images/ subfolder"
+        )
+        assert (img_dir / NOTE_NAME).is_file(), "note did not follow the image"
+        assert (img_dir / SIDECAR_NAME).is_file(), (
+            "compression sidecar must sit BESIDE its image — that is where "
+            "image_compression.read_degree looks"
+        )
+        assert not (dest / IMG_NAME).exists(), (
+            "image is ALSO at the folder root; the flat layout should be gone"
+        )
+        assert (dest / "queries.txt").is_file(), "queries.txt should be at root"
+        assert (dest / "extracted_inputs.txt").is_file(), (
+            "extracted_inputs.txt should be at root"
+        )
+        # <folder> must still be a complete inventory now that it is nested.
+        assert f"input_images/{IMG_NAME}" in xml, (
+            f"<folder> did not list the nested image; got:\n{xml[:900]}"
+        )
+        # The printed <image path=...> must point INTO the subfolder.
+        assert str((img_dir / IMG_NAME).resolve()) in xml, (
+            "<image path=...> does not point at the materialised file"
+        )
+        print("OK local_layout_mirrors_live_tree")
+
+        # ============================================================
+        # Test 3: cache_reread
+        # ------------------------------------------------------------
+        # The second call is served from disk by _local_images().  Pointed
+        # at the wrong folder it silently returns NO images, which only ever
+        # shows on a repeat retrieval — so it is asserted explicitly.
+        # ============================================================
+        xml_cached = _run_retrieve_user_inputs(
             caller_agent=CALLER,
             session_ids=[SESSION_A],
-            images_flag=False,
         )
-        assert "<user_query>" in xml
-        assert "<image_notes>" in xml, (
-            "<image_notes> should be present even with images_flag=False"
+        assert "<images>" in xml_cached, (
+            "cached re-read lost the <images> block"
         )
-        assert "swept blade" in xml, "note text should still appear"
-        assert "<images>" not in xml, (
-            "<images> block should be absent with images_flag=False"
+        assert "blade_ref" in xml_cached, "cached re-read lost the image"
+        assert "swept blade" in xml_cached, "cached re-read lost the note"
+        assert "<extracted_inputs>" in xml_cached, (
+            "cached re-read lost the extraction"
         )
-        assert len(image_blocks) == 0, (
-            f"expected 0 image_blocks, got {len(image_blocks)}"
+        assert f"input_images/{IMG_NAME}" in xml_cached, (
+            "cached re-read dropped the nested image from <folder>"
         )
-        print("OK happy_path_no_images_flag")
+        print("OK cache_reread")
 
         # ============================================================
-        # Test 3: no_images_session
+        # Test 4: no_extraction_falls_back_to_raw
         # ============================================================
-        xml, image_blocks, _ = _run_retrieve_user_inputs(
+        xml = _run_retrieve_user_inputs(
             caller_agent=CALLER,
             session_ids=[SESSION_B],
-            images_flag=True,
         )
-        assert "<user_query>" in xml, "missing <user_query>"
+        assert "<user_query>" in xml, (
+            "a session archived before extractions must fall back to the raw "
+            f"text; got:\n{xml[:600]}"
+        )
         assert "ring propeller" in xml, "missing queries.txt content"
-        assert "<image_notes>" not in xml, (
-            "<image_notes> should be absent — session B has no images"
+        assert "<missing" in xml, (
+            "the fallback should also mark the absent extraction"
         )
-        assert "<images>" not in xml, "<images> should be absent"
-        assert len(image_blocks) == 0
-        print("OK no_images_session")
+        assert "<images>" not in xml, "<images> should be absent — B has none"
+        print("OK no_extraction_falls_back_to_raw")
 
         # ============================================================
-        # Test 4: r2_missing_queries
+        # Test 5: r2_missing_everything
         # ============================================================
-        xml, _, _ = _run_retrieve_user_inputs(
+        xml = _run_retrieve_user_inputs(
             caller_agent=CALLER,
             session_ids=[SESSION_C],
-            images_flag=False,
         )
         assert "<missing" in xml, (
             f"expected <missing/> marker, got:\n{xml[:500]}"
         )
         assert "queries.txt" in xml, "expected queries.txt in missing marker"
-        print("OK r2_missing_queries")
+        print("OK r2_missing_everything")
 
         # ============================================================
-        # Test 5: not_found
+        # Test 6: not_found
         # ============================================================
-        xml, _, _ = _run_retrieve_user_inputs(
+        xml = _run_retrieve_user_inputs(
             caller_agent=CALLER,
             session_ids=[SESSION_FAKE],
-            images_flag=False,
         )
         assert 'status="not_found"' in xml, (
             f"expected status=\"not_found\", got:\n{xml[:500]}"
@@ -312,16 +400,15 @@ def main() -> int:
         print("OK not_found")
 
         # ============================================================
-        # Test 6: trim_cap
+        # Test 7: trim_cap
         # ============================================================
         original_cap = mod._MAX_RESPONSE_TOKENS
         try:
             # Tight enough that not all 3 sessions can fit at once.
             mod._MAX_RESPONSE_TOKENS = 150
-            xml, _, _ = _run_retrieve_user_inputs(
+            xml = _run_retrieve_user_inputs(
                 caller_agent=CALLER,
                 session_ids=[SESSION_A, SESSION_B, SESSION_C],
-                images_flag=False,
             )
         finally:
             mod._MAX_RESPONSE_TOKENS = original_cap
@@ -334,7 +421,7 @@ def main() -> int:
         print("OK trim_cap")
 
         # ============================================================
-        # Test 7: rag_queries_log
+        # Test 8: rag_queries_log
         # ============================================================
         with postgres_pool.connection() as conn:
             with conn.cursor() as cur:
@@ -357,6 +444,9 @@ def main() -> int:
                     (CALLER,),
                 )
                 latest = cur.fetchone()
+        # Six calls reach the tool: tests 1, 3, 4, 5, 6 and 7.  Test 2 makes
+        # no call of its own -- it inspects the disk the first call wrote,
+        # and the XML that call returned.
         assert row_count >= 6, (
             f"expected >= 6 rag_queries rows from this test, got {row_count}"
         )
@@ -366,6 +456,10 @@ def main() -> int:
             f"unexpected tool_name: {tool_name}"
         )
         assert n_req is not None and n_req >= 1
+        assert images_flag is False, (
+            "images_flag must be False — no image bytes reach the caller's "
+            f"context any more; got {images_flag}"
+        )
         print(
             f"OK rag_queries_log "
             f"(latest: tool={tool_name}, n_requested={n_req}, "
@@ -374,7 +468,7 @@ def main() -> int:
         )
 
         print()
-        print("PASS - retrieve_user_inputs smoke test")
+        print("PASS - retrieve_user_inputs smoke test (8/8)")
     except AssertionError as exc:
         print(f"FAIL - assertion: {exc}")
         exit_code = 1
@@ -398,6 +492,10 @@ def main() -> int:
                     _cleanup_r2_session(sid)
                 except Exception as exc:
                     print(f"  R2 cleanup warning for {sid}: {exc}")
+                try:
+                    _cleanup_local(sid)
+                except Exception as exc:
+                    print(f"  local cleanup warning for {sid}: {exc}")
             try:
                 _cleanup_postgres()
             except Exception as exc:

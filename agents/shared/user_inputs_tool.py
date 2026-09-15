@@ -71,6 +71,7 @@ from config import (
     INPUT_IMAGES_SUBDIR,
     USER_INPUTS_DIR,
 )
+from workflow_settings import database_access
 from workflow_settings import ocr_access
 from workflow_settings import ocr_region_crops_access
 from workflow_settings import settings as workflow_settings
@@ -79,6 +80,11 @@ logger = logging.getLogger("propeller_agent")
 
 ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 NOTE_SUFFIX = "_note.txt"
+# Mirrors tools.retrieval_common.RETRIEVED_SUBDIR.  A literal, not an
+# import: reaching ``tools`` executes ``tools/__init__``, which pulls the
+# heavy 3D render stack into this light shared utility.  Same idiom as
+# agents/dispatch.py:212.
+RETRIEVED_SUBDIR = "_retrieved"
 
 
 # ---------------------------------------------------------------------------
@@ -445,6 +451,22 @@ _SEE_IMAGE_PLAIN = (
     "``view_images`` with the path(s) you need."
 )
 
+# APPENDED, never spliced, for an agent holding ``retrieve_user_inputs``.
+# Appending rather than rewriting each agent's "supplied in your hand-off"
+# clause is deliberate: a ``.replace`` anchor that stops matching fails
+# SILENTLY -- which is why the OCR swap above needs
+# ``smoke_test_ocr_descriptions.py`` -- while a concatenation cannot.
+# Reverting this is deleting the one ``if`` in ``read_inputs_doc``.
+#
+# It states only WHERE a valid path may come from.  When to prefer the
+# extraction over the raw conversation is behaviour, and lives in the
+# ``retrieve_user_inputs`` prompt fragment, not in a tool schema.
+_RETRIEVED_FOLDER_CLAUSE = (
+    "\n\nA ``<folder path=...>`` printed by ``retrieve_user_inputs`` is "
+    "also a valid path here: it holds that past session's own inputs, "
+    "including the user's raw conversation."
+)
+
 
 def read_inputs_doc(agent_key: str) -> str:
     """The ``read_user_inputs`` documentation *agent_key* should be given.
@@ -461,6 +483,12 @@ def read_inputs_doc(agent_key: str) -> str:
     doc = table.get(agent_key, default)
     if not ocr_access.is_enabled_for(agent_key):
         doc = doc.replace(_SEE_IMAGE_OCR, _SEE_IMAGE_PLAIN)
+    # ``is_enabled_for`` is RAG_ENABLED AND the per-(profile, agent, tool)
+    # flag, so this is off for every agent whenever RAG is off.  Read here
+    # rather than captured at import because this runs at bind time and the
+    # Sessions Queue switches profiles between runs inside one process.
+    if database_access.is_enabled_for(agent_key, "user_inputs"):
+        doc += _RETRIEVED_FOLDER_CLAUSE
     return doc
 
 _TURN_HEADER_RE = re.compile(
@@ -527,6 +555,15 @@ def read_user_inputs_summary(
             f"Error: '{raw_path}' is not an existing directory.  "
             f"Do not retry with a guessed path."
         )
+    # A RETRIEVED folder (inputs/_retrieved/<sid>/) mirrors a live one, so
+    # everything below works on it unchanged -- except that its extraction
+    # was ALREADY printed in full by retrieve_user_inputs, and reading it
+    # again here would duplicate it in the caller's context.
+    retrieved = directory.parent.name == RETRIEVED_SUBDIR
+    if retrieved:
+        exclude_root_files = (
+            tuple(exclude_root_files) + ("extracted_inputs.txt",)
+        )
     # Images are NOT loaded here — the caller loads the specific
     # image(s) it needs on demand via view_images (where bound).
     # read_user_inputs stays cheap: text + notes + a list of the
@@ -543,7 +580,13 @@ def read_user_inputs_summary(
         f"Loaded inputs from {directory.resolve()}.",
         f"Files: {loaded['summary']}",
     ]
-    if not pairing["ok"]:
+    # Suppressed for a retrieved folder: the message tells the reader to
+    # escalate so THIS user can fix THEIR uploads, but the fault would be in
+    # an archived session nobody can now change -- acting on it burns a step
+    # and misinforms whoever receives the escalation.  Only reachable at all
+    # since retrieved images moved into input_images/; before that,
+    # pair_input_images saw no such folder and stayed silent.
+    if not pairing["ok"] and not retrieved:
         summary_parts.append(
             "WARNING: image+note pairing is INVALID.  "
             "The Receptionist should have caught this — "

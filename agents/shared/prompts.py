@@ -196,6 +196,14 @@ _PF_OFF_RE = re.compile(r"<<PF_OFF>>(.*?)<</PF_OFF>>", re.DOTALL)
 # time when the agent does NOT have database access; otherwise
 # unwrapped to expose the inner content.  See ``apply_dba_filter``.
 _HAS_DBA_RE = re.compile(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>", re.DOTALL)
+# Finer than <<HAS_DBA>>, which asks "holds ANY database tool".  The
+# ``$retrieve_user_inputs_tool`` fragment is shown to holders of EITHER
+# retrieve tool (see _DBA_TOOL_SLOTS), so text about a retrieved
+# USER-INPUTS folder needs its own region, or it reaches attempt-only
+# holders -- the DC Input Creator, the DC Output Inspector, the topology-3
+# Design Engineer -- as a capability they do not have.
+_HAS_USER_INPUTS_RE = re.compile(
+    r"<<HAS_USER_INPUTS>>(.*?)<</HAS_USER_INPUTS>>", re.DOTALL)
 
 
 # Which database tool(s) each DBa slot describes.  A slot is blanked only
@@ -405,6 +413,10 @@ def apply_dba_filter(text: str, agent_dir_name: str) -> str:
         text = _HAS_DBA_RE.sub(lambda m: m.group(1), text)
     else:
         text = _HAS_DBA_RE.sub("", text)
+    if _database_access.is_enabled_for(agent_dir_name, "user_inputs"):
+        text = _HAS_USER_INPUTS_RE.sub(lambda m: m.group(1), text)
+    else:
+        text = _HAS_USER_INPUTS_RE.sub("", text)
     return text
 
 

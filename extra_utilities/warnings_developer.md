@@ -2034,3 +2034,70 @@ the same `gpt-5.4` call from 0 to 70 reasoning tokens.
 the chat/completions shape and has no Responses API, so its `ChatOpenAI` branch
 takes no endpoint kwargs.  `db_writer.py:294` is also unaffected: it calls the
 raw `openai` SDK's `chat.completions.create` directly, not langchain.
+
+---
+
+## W44. The retrieval caches live INSIDE `inputs/` and `attempts/` because `view_images` refuses every other path.
+
+**Where.** `agents/shared/user_inputs_tool.py:926-929` (the `view_images`
+guard) and `:1103` (`reread_text_regions`); `tools/retrieval_common.py`
+(`retrieved_dir`); `agents/loader.py:283` (the cache wipe).
+
+**Why.** `view_images` resolves each requested path and rejects anything that
+is not under `inputs/` or `attempts/`:
+
+```python
+in_inputs = _is_inside_inputs(path)
+in_attempts = _is_inside_attempts(path)
+if not (in_inputs or in_attempts):
+    missing.append(f"{raw} (not under inputs/ or attempts/)"); continue
+```
+
+`inputs/_retrieved/<sid>/` and `attempts/_retrieved/<gid>/` are nested where
+they are so retrieved artefacts INHERIT that permission.  The nesting is the
+mechanism, not a filing preference.
+
+**So:** moving either cache to a top-level folder of its own — `retrieved_inputs/`
+was proposed on 2026-09-15 and rejected for this reason — silently breaks the
+one documented purpose of both retrieve tools ("pass a listed path to
+`view_images`").  Every retrieved image comes back as *"not under inputs/ or
+attempts/"*.  It can be done, but it costs widening a guard whose job is to
+stop an agent reading arbitrary files off disk, in two places, plus a new
+`config.py` constant, a new wipe line in `loader.py` (**miss that and
+retrieved sessions leak across sessions and grow without bound**), a
+`.gitignore` entry, and the same work again for the attempt cache or the two
+shapes diverge.
+
+**Two related facts worth keeping together with this one.**
+
+1. `agents/dispatch.py:237` skips the cache with `_RETRIEVED_SUBDIR in p.parts`,
+   NOT `p.parent.name`, so nesting deeper (as `input_images/` did on
+   2026-09-15) still matches.  Keep it that way.
+2. `design_rag_customization_sequence.md` closed "exclude `_retrieved` from
+   `list_input_files`" as NO CODE NEEDED **only because** `list_files` is
+   non-recursive and files-only.  Any future walker of `inputs/` that DOES
+   recurse must skip `_retrieved` itself.
+
+**Reverting the F99 route-1 edits** (if the raw conversation turns out to be
+better printed inline than fetched — see `F99`) means exactly four places, and
+nothing else:
+
+* the `if database_access.is_enabled_for(agent_key, "user_inputs")` branch and
+  `_RETRIEVED_FOLDER_CLAUSE` in `read_inputs_doc`
+* the `<<HAS_USER_INPUTS>>` region in each of the three
+  `retrieve_user_inputs*.md` fragments
+* `_HAS_USER_INPUTS_RE` and its branch in `apply_dba_filter`
+
+The `input_images/` layout change and the `read_user_inputs_summary` retrieved
+branch are NOT part of that revert: they fix defects that exist whether or not
+anyone is invited into the folder.
+
+**One more trap, pre-existing.** `database_access._DEFAULT_VALUE` is `True`, so
+an agent with no row in a profile holds ALL THREE database tools.  Profiles "5"
+and "3" carry rows only for the agents those topologies actually build, so
+eight templates (`t5` Orchestrator / DC Input Inspector, `t3` Orchestrator /
+DCIC / DCII / DCOI / Tool Caller) assemble as though they held every RAG tool.
+Harmless today — `agents/hub.py:37-44` builds Planner5 / Planner3, and neither
+imports the Orchestrator, which is the only construction site of the DC Input
+Inspector — but a new agent added to a reduced topology WITHOUT a DBa row will
+silently hold all three.
