@@ -1397,6 +1397,65 @@
           </div>
         </div>
       </section>
+
+      <!-- Upload content to database: curated entries put in by hand.
+           Written as if they were a saved session, so the retrieval tools
+           find them unmodified -- see
+           extra_utilities/docs/active/design_manual_upload_implementation_plan.md -->
+      <section class="view upload-db-view" data-view="upload_db" hidden>
+        <div class="udb-form-pane">
+          <h2 class="udb-h">Upload content to database</h2>
+          <p class="udb-sub">
+            Curated content agents can find later through the database.
+            Stored like a saved session, but marked as
+            <code>origin="manual_upload"</code> so an agent knows it was
+            written by hand rather than produced by a run.
+          </p>
+
+          <div id="udb-busy" class="udb-busy" hidden></div>
+
+          <label class="udb-label" for="udb-text">
+            Text <span class="udb-req">required</span>
+            <span class="udb-hint">This is what gets embedded and searched.</span>
+          </label>
+          <textarea id="udb-text" class="udb-text" rows="6"
+                    placeholder="e.g. A five-blade ring propeller with a deliberately thin ring..."></textarea>
+
+          <label class="udb-label">Images <span class="udb-hint">optional</span></label>
+          <div class="udb-drop">
+            <input id="udb-file" type="file" accept=".png,.jpg,.jpeg"
+                   multiple hidden />
+            <button id="udb-pick" class="ghost" type="button">Choose images</button>
+            <span class="udb-hint">.png / .jpg / .jpeg</span>
+          </div>
+          <div id="udb-images" class="udb-images"></div>
+
+          <div class="udb-toggles">
+            <label><input id="udb-is-user-image" type="checkbox" />
+              Is this a user input image?</label>
+            <label><input id="udb-is-render" type="checkbox" />
+              Is this a render of a propeller generated with our design tool?</label>
+          </div>
+
+          <label class="udb-label">
+            Parameters <span class="udb-hint">optional, partial sets are fine</span>
+          </label>
+          <div id="udb-params" class="udb-params"></div>
+
+          <div class="udb-actions">
+            <button id="udb-submit" class="primary" type="button">Add to database</button>
+            <span id="udb-status" class="udb-status"></span>
+          </div>
+        </div>
+
+        <div class="udb-list-pane">
+          <h3 class="udb-h">Manual entries</h3>
+          <p class="udb-sub">Only entries added here. Saved sessions never appear.</p>
+          <div id="udb-list" class="udb-list">
+            <p class="udb-empty">None yet.</p>
+          </div>
+        </div>
+      </section>
     </div>
   </div>
 
@@ -1498,65 +1557,6 @@
                   class="danger">Save anyway</button>
           <button id="prompts-warning-cancel" type="button"
                   class="ghost">Cancel</button>
-        </div>
-      </section>
-
-      <!-- Upload content to database: curated entries put in by hand.
-           Written as if they were a saved session, so the retrieval tools
-           find them unmodified -- see
-           extra_utilities/docs/active/design_manual_upload_implementation_plan.md -->
-      <section class="view upload-db-view" data-view="upload_db" hidden>
-        <div class="udb-form-pane">
-          <h2 class="udb-h">Upload content to database</h2>
-          <p class="udb-sub">
-            Curated content agents can find later through the database.
-            Stored like a saved session, but marked as
-            <code>origin="manual_upload"</code> so an agent knows it was
-            written by hand rather than produced by a run.
-          </p>
-
-          <div id="udb-busy" class="udb-busy" hidden></div>
-
-          <label class="udb-label" for="udb-text">
-            Text <span class="udb-req">required</span>
-            <span class="udb-hint">This is what gets embedded and searched.</span>
-          </label>
-          <textarea id="udb-text" class="udb-text" rows="6"
-                    placeholder="e.g. A five-blade ring propeller with a deliberately thin ring..."></textarea>
-
-          <label class="udb-label">Images <span class="udb-hint">optional</span></label>
-          <div class="udb-drop">
-            <input id="udb-file" type="file" accept=".png,.jpg,.jpeg"
-                   multiple hidden />
-            <button id="udb-pick" class="ghost" type="button">Choose images</button>
-            <span class="udb-hint">.png / .jpg / .jpeg</span>
-          </div>
-          <div id="udb-images" class="udb-images"></div>
-
-          <div class="udb-toggles">
-            <label><input id="udb-is-user-image" type="checkbox" />
-              Is this a user input image?</label>
-            <label><input id="udb-is-render" type="checkbox" />
-              Is this a render of a propeller generated with our design tool?</label>
-          </div>
-
-          <label class="udb-label">
-            Parameters <span class="udb-hint">optional, partial sets are fine</span>
-          </label>
-          <div id="udb-params" class="udb-params"></div>
-
-          <div class="udb-actions">
-            <button id="udb-submit" class="primary" type="button">Add to database</button>
-            <span id="udb-status" class="udb-status"></span>
-          </div>
-        </div>
-
-        <div class="udb-list-pane">
-          <h3 class="udb-h">Manual entries</h3>
-          <p class="udb-sub">Only entries added here. Saved sessions never appear.</p>
-          <div id="udb-list" class="udb-list">
-            <p class="udb-empty">None yet.</p>
-          </div>
         </div>
       </section>
     </div>
