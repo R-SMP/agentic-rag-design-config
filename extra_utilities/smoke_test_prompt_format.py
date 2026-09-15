@@ -44,10 +44,18 @@ from pathlib import Path
 REPO_ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(REPO_ROOT))
 
-# Force ``agents`` to import before any ``tools`` reference — see the
-# session bootstrap pattern in extra_utilities/db_design/smoke_test_*.
-import agents  # noqa: F401, E402
+# ``import agents`` pulls the whole chain, and with it trimesh, pyrender,
+# DracoPy and compute_rhino3d.  On any machine without the 3D stack this
+# file died at IMPORT and was therefore silently never run -- which is how
+# the W45 brace bug reached four prompts with a dedicated guard for it
+# sitting right here.  prompt_pdf/bootstrap.py stubs exactly those
+# packages and nothing that shapes a prompt.
+sys.path.insert(0, str(REPO_ROOT / "extra_utilities" / "prompt_pdf"))
+import bootstrap  # noqa: E402
+bootstrap.install()
+
 from agents.shared import prompts  # noqa: E402
+from workflow_settings import settings as workflow_settings  # noqa: E402
 
 # Every agent that wires its TEMPLATE through ``.format(...)``.  The Database
 # Handler is the only genuine exclusion — database_handler.py:1022 assigns the
@@ -63,15 +71,19 @@ from agents.shared import prompts  # noqa: E402
 # no-op ``.format()`` still raises KeyError on a literal ``{name}`` and
 # ValueError on a bare ``{``.  It was the one ``.format()``ed agent with zero
 # brace coverage, in the exact place everyone assumed was safe.
-TEMPLATE_NAMES = (
-    "RECEPTIONIST",
-    "ORCHESTRATOR",
-    "PLANNER",
-    "UII",
-    "DCIC",
-    "DCII",
-    "TOOL_CALLER",
-    "DCOI",
+# (label, agent_dir_name).  The dir name is new: main() now ASSEMBLES each
+# template with _build_template() instead of reading the module-level
+# *_TEMPLATE constants, because those are built at import time
+# (prompts.py:1190-1198) and so are frozen at whatever RAG_ENABLED was.
+TEMPLATES = (
+    ("RECEPTIONIST", "receptionist"),
+    ("ORCHESTRATOR", "orchestrator"),
+    ("PLANNER",      "planner"),
+    ("UII",          "user_input_inspector"),
+    ("DCIC",         "dc_input_creator"),
+    ("DCII",         "dc_input_inspector"),
+    ("TOOL_CALLER",  "tool_caller"),
+    ("DCOI",         "dc_output_inspector"),
 )
 
 
@@ -89,21 +101,44 @@ class StubKwargs(dict):
 
 
 def main() -> int:
-    stubs = StubKwargs()
-    failures: list[tuple[str, str, str]] = []
-    for name in TEMPLATE_NAMES:
-        tpl = getattr(prompts, f"{name}_TEMPLATE")
-        try:
-            tpl.format_map(stubs)
-        except (IndexError, ValueError, KeyError) as exc:
-            failures.append((name, type(exc).__name__, str(exc)))
+    """Brace-check every ``.format()``ed template under RAG OFF **and** ON.
 
-    for name, etype, msg in failures:
-        print(f"FAIL {name}: {etype}: {msg}")
+    Both states ship, and they assemble DIFFERENT text: with RAG off,
+    ``_DBA_TOOL_SLOTS`` blanks every ``database_search`` / ``retrieve_*``
+    fragment, so checking only the shipped default leaves that whole
+    fragment tree unverified -- which is exactly what let the W45 brace
+    through.  Verified: with the brace re-introduced this returns 1 and
+    names ``[RAG on ] DCIC``; under RAG off alone it returns 0.
+    """
+    stubs = StubKwargs()
+    failures: list[tuple[str, str, str, str]] = []
+    original_rag = getattr(workflow_settings, "RAG_ENABLED", False)
+    try:
+        for rag in (False, True):
+            workflow_settings.RAG_ENABLED = rag
+            state = "RAG on " if rag else "RAG off"
+            for label, agent_dir in TEMPLATES:
+                try:
+                    tpl = prompts._build_template(agent_dir)
+                except Exception as exc:              # noqa: BLE001
+                    failures.append((state, label, type(exc).__name__,
+                                     f"assembly failed: {exc}"))
+                    continue
+                try:
+                    tpl.format_map(stubs)
+                except (IndexError, ValueError, KeyError) as exc:
+                    failures.append((state, label, type(exc).__name__,
+                                     str(exc)))
+    finally:
+        workflow_settings.RAG_ENABLED = original_rag
+
+    for state, label, etype, msg in failures:
+        print(f"FAIL [{state}] {label}: {etype}: {msg}")
 
     if failures:
         return 1
-    print(f"OK prompt-format smoke test ({len(TEMPLATE_NAMES)} templates)")
+    print(f"OK prompt-format smoke test "
+          f"({len(TEMPLATES)} templates x RAG off/on)")
     return 0
 
 

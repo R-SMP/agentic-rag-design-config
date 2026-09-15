@@ -82,6 +82,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F44` | NOT STARTED | Check whether the Context Pruner and Database Handler have / need blade-sections-tool info |
 | `F45` | PARTIALLY ADDRESSED | Refine blade-section parameters in place (no new attempt per tweak) |
 | `F46` | OPEN | Cross-schema-version session search — UNBLOCKED 2026-09-15: T1 shipped |
+| `F101` | DEFERRED | `smoke_test_prompt_format.py` brace-checks topology 7 only — do this BEFORE running topology 3 or 5 again |
 | `F52` | NOT STARTED | Sessions Queue overnight runner: SOLID token / rate / context-limit resilience |
 | `F53` | PARTLY DONE | Prompt caching: port conversation-history caching to the 3-agent system |
 | `F54` | OPEN | Verify save-phase prompt caching on a REAL session save |
@@ -4589,3 +4590,32 @@ teach one behaviour rather than two.
 `_DBA_TOOL_SLOTS`); `agents/dc_input_creator/dc_input_creator.py`;
 `agents/design_engineer/design_engineer.py:383`;
 `extra_utilities/smoke_test_prompt_image_regions.py`.
+
+
+### F101. `smoke_test_prompt_format.py` brace-checks topology 7 only
+
+**Status.** DEFERRED 2026-09-16 — topologies 3 and 5 are not in use
+(owner).  **Do this before running either of them again.**
+
+**Where.** `extra_utilities/smoke_test_prompt_format.py`, the `TEMPLATES`
+tuple.
+
+**The gap.**  `TEMPLATES` lists the eight SEVEN-agent templates.  The
+topology-5 DC Input Creator and the topology-3 Design Engineer /
+Requirements Analyst assemble from their own `_<N>agents.md` overlays,
+resolved by `prompts._topology_override`, and are never brace-checked.
+Of the four prompts the W45 brace bug broke, this test would have caught
+two: the topology-7 DCIC and DCII.  The topology-5 DCIC and the
+topology-3 Design Engineer went unseen.
+
+**What to build.**  Run the existing `TEMPLATES` loop once per topology,
+forcing `SYSTEM_TOPOLOGY` for each pass.  **Not in one process:**
+`prompts.py` captures `PLANNER_FIRST` and `DC_INSPECTOR_ENABLED` at
+IMPORT time, so the second topology in a single process inherits the
+first one's flags — which is exactly why
+`extra_utilities/topology_prompt_snapshot.py` spawns one subprocess per
+topology rather than looping in-place.  Copy that shape.
+
+**Related.**  W45 (the bug class), and the RAG off/on loop already in
+this file — the same "both states ship, so check both" reasoning applies
+one dimension over.
