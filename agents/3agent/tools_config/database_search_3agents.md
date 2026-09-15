@@ -28,8 +28,8 @@ conventions, reference values) differs — the same phrase can be silently
 wrong.  Treat a past claim as literally transferable only once you have
 checked that the contexts match; when they differ at all, or when you have
 no way to check, keep only the PRINCIPLE (what the past agent checked, which
-defects they watched for, why), drop the literal values, and name who should
-look.
+defects they watched for, why), drop the literal values, and say in your
+hand-off that it still needs a look.
 ``database_search`` itself returns TEXT ONLY — each ``<session>`` lists
 ``<available_attempts>`` global_ids for attempt retrieval.  Answers refer
 to attempts by the PAST session's own local numbering ("attempt 002", or

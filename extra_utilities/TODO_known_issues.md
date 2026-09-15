@@ -4545,12 +4545,24 @@ instruction into a shared fragment, check which agents the slot's gate admits �
 all of them, or split it per capability.  Same family as F98 trap 4 and W44's
 closing note on `_DEFAULT_VALUE`.
 
-**Adjacent, still open.** `DC_prompt_fragments/tools_config/database_search.md`
-line 31 is SHARED, so it reaches every `search` holder including the DCIC and
-the Design Engineer, and it says "drop the literal values, and name who should
-look".  Same weakness — they do not know who can.  It is advisory rather than a
-branch, so it was left alone; the `<<CANNOT_SEE>>` text above is deliberately
-weaker than it (flag, do not name).  Fix it the same way if it ever misfires.
+**The adjacent case — CLOSED the same day, but NOT the same way.**
+`DC_prompt_fragments/tools_config/database_search.md` (+ both forks) is SHARED,
+so its "drop the literal values, and name who should look" reached every
+`search` holder — including the DCIC, the Design Engineer AND the Planner.
+
+Splitting it on `<<CAN_SEE>>` would have been WRONG.  The Planner cannot see
+images either, yet naming who should is exactly its job, and unlike the other
+two **it knows the cast**: `database_search_planner.md:6-10` spells the roster
+out ("`retrieve_attempt` for an attempt (DC Input Creator, DC Input Inspector,
+DC Output Inspector) ..."). The axis that matters for THIS sentence is "knows
+who to name", not "can look" — a different split, for one sentence.
+
+So it was reworded once instead: "... and say in your hand-off that it still
+needs a look."  Flagging needs no roster; naming does.  The Planner loses
+nothing, because the stronger name-the-agent directive stays in its own
+overlay, which is the only place the names actually appear.  The wording
+deliberately matches the `<<CANNOT_SEE>>` text above, so the two fragments
+teach one behaviour rather than two.
 
 **Where to look.** `DC_prompt_fragments/tools_config/retrieve_user_inputs.md`
 + the `5agent` / `3agent` forks; `agents/shared/prompts.py`
