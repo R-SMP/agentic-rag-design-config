@@ -52,6 +52,7 @@ from langchain_core.tools import tool
 
 from agents.shared import postgres_pool
 from agents.shared.agent_activity import generic_tool
+from tools.database_search import param_rank
 from agents.database_handler import db_writer
 from agents.shared import voyage_mm
 from workflow_settings import settings as workflow_settings
@@ -123,6 +124,12 @@ class AnchorHit:
     attempt_label: str | None     # human-readable 'NNN' slug; NULL when attempt_id is NULL
     dist:          float          # cosine distance to query (lower = closer)
     best_chunk_id: int            # id of the rank-1 chunk for this anchor
+    # Parameter search only; None on every semantic hit, which is what
+    # the emitter branches on.  D8.2 makes matched_keys MANDATORY in
+    # the result set: a k=1 and a k=16 distance are not comparable, and
+    # the consumer can only know that if k travels with the number.
+    matched_keys:  int | None = None   # k = |query keys ^ attempt keys|
+    n_queried:     int | None = None   # |query keys|
 
 
 @dataclass(frozen=True)
@@ -599,6 +606,19 @@ _METAFILTER_SPEC: dict[str, _MetafilterSpec] = {
 _COMPARISON_OPS = ("<=", ">=", "<", ">")
 
 
+class BothInputsError(ValueError):
+    """Raised when ONE call supplies both a text query and a parameter
+    vector.
+
+    They rank by different things -- cosine similarity over embedded
+    prose versus masked RMSE over stored numbers -- on different
+    scales and in different directions.  Any blend of the two would be
+    an ordering neither the agent nor its author could explain, so the
+    tool refuses instead of guessing which one was meant.  The
+    architecture doc reserves T3/RRF for combining them properly.
+    """
+
+
 class InvalidMetafilterError(ValueError):
     """Raised when the metafilters dict has an unknown key, a
     wrong-type value, an unsupported operator, or a comma-string
@@ -772,6 +792,12 @@ class SearchMeta:
     selected_mode:                 str = "text-only"   # Database-options mode requested (verbatim)
     db_table:                      str = "chunks"        # table actually queried (verbatim)
     fallback_note:                 str | None = None     # set when multimodal fell back to text-only
+    # Which KIND of search produced these anchors.  "semantic" is the
+    # vector search; "parameters" is the masked-RMSE search over
+    # dc_attempt_parameters (T1).  Defaults to "semantic" so every
+    # existing call site keeps its current header verbatim.
+    search_kind:                   str = "semantic"      # "semantic" | "parameters"
+    parameters_repr:               str = ""              # the query vector; escaped at emit time
 
 
 # Lazy module-level tiktoken encoding cache.  cl100k_base matches
@@ -906,7 +932,16 @@ def _emit_anchor_block(
     their ``global_id`` attribute (also Phase 5D), so the agent can
     feed it directly into ``retrieve_attempt``.
     """
-    score    = _similarity_score(anchor.dist)
+    # Never score= for a parameter hit.  The agent has learned that
+    # score= is a cosine similarity; an RMSE-derived number in that
+    # same attribute would read as the same kind of evidence when it is
+    # not.  Distinct names make the two impossible to confuse.
+    if anchor.matched_keys is not None:
+        rank_attrs = (f'closeness="{_similarity_score(anchor.dist)}" '
+                      f'matched_keys="{anchor.matched_keys}'
+                      f'/{anchor.n_queried}"')
+    else:
+        rank_attrs = f'score="{_similarity_score(anchor.dist)}"'
     sid_attr = quoteattr(anchor.session_id)
 
     # Phase 5D: <available_attempts> block (always emitted)
@@ -936,7 +971,7 @@ def _emit_anchor_block(
         return (
             f"<session id={sid_attr}>\n"
             f"{avail_block}\n"
-            f'  <attempt id={quoteattr(att_label)}{global_id_attr} score="{score}">\n'
+            f'  <attempt id={quoteattr(att_label)}{global_id_attr} {rank_attrs}>\n'
             f"{qa_lines}\n"
             f"  </attempt>\n"
             f"</session>"
@@ -952,7 +987,7 @@ def _emit_anchor_block(
             key = c.attempt_label or str(c.attempt_id)
             attempt_groups.setdefault(key, []).append(c)
 
-    parts: list[str] = [f'<session id={sid_attr} score="{score}">']
+    parts: list[str] = [f'<session id={sid_attr} {rank_attrs}>']
     parts.append(avail_block)
 
     if generic_chunks:
@@ -996,6 +1031,23 @@ def _emit_search_meta(meta: SearchMeta) -> str:
     fallback_attr = (
         f'fallback={quoteattr(meta.fallback_note)} ' if meta.fallback_note else ""
     )
+    if meta.search_kind == "parameters":
+        # A parameter search embeds NOTHING, so embedding_model and
+        # skipped_due_to_model_mismatch are omitted rather than filled
+        # in.  §4.6 asks this header to state what was ACTUALLY
+        # applied; printing a model that never ran would read to the
+        # agent as evidence the ranking used it, and a mismatch count
+        # of 0 would report a check that never happened.
+        return (
+            f'<search_meta '
+            f'search_kind="parameters" '
+            f'n_requested="{meta.n_requested}" '
+            f'n_returned="{meta.n_returned}" '
+            f'attempt_specific="true" '
+            f'parameters={quoteattr(meta.parameters_repr)} '
+            f'db={quoteattr(meta.db_table)}'
+            f'/>'
+        )
     return (
         f'<search_meta '
         f'n_requested="{meta.n_requested}" '
@@ -1010,8 +1062,26 @@ def _emit_search_meta(meta: SearchMeta) -> str:
     )
 
 
-def _emit_no_results(metafilters_applied: bool) -> str:
-    """Locked §4.7 wording — two variants by metafilter presence."""
+def _emit_no_results(metafilters_applied: bool,
+                     search_kind: str = "semantic") -> str:
+    """§4.7 wording.  Two LOCKED variants by metafilter presence, plus
+    a third for the parameter search.
+
+    The third is an ADDITION to a section the architecture doc marks as
+    locked, and is recorded as such.  It is needed because both locked
+    wordings are framed around metafilters, and "consider relaxing
+    them" is actively wrong advice here: validate_query has already
+    rejected unknown keys, so an empty parameter result means no
+    attempt carried those keys or the ACL excluded them all -- not that
+    a filter was too tight.
+    """
+    if search_kind == "parameters":
+        return (
+            "<no_results>"
+            + escape("No results found. No saved attempt carries any of "
+                     "the parameters you supplied, or none is visible "
+                     "to you.")
+            + "</no_results>")
     if metafilters_applied:
         msg = (
             "No results found. This may be related to the metafilters "
@@ -1048,7 +1118,8 @@ def _build_response_full(
     no token counting — the trim loop calls this then counts."""
     parts = [_emit_search_meta(meta)]
     if not anchors:
-        parts.append(_emit_no_results(metafilters_applied))
+        parts.append(_emit_no_results(metafilters_applied,
+                                      search_kind=meta.search_kind))
     for a in anchors:
         key = a.attempt_id if attempt_specific else a.session_id
         parts.append(
@@ -1077,6 +1148,8 @@ def _trim_to_token_cap(
     selected_mode:                 str,
     db_table:                      str,
     fallback_note:                 str | None,
+    search_kind:                   str = "semantic",
+    parameters_repr:               str = "",
 ) -> tuple[str, int]:
     """Naive O(N²) drop-lowest-rebuild trim loop (Q-4A-12).
 
@@ -1100,6 +1173,12 @@ def _trim_to_token_cap(
             selected_mode                 = selected_mode,
             db_table                      = db_table,
             fallback_note                 = fallback_note,
+            # Threaded rather than defaulted: SearchMeta is rebuilt on
+            # EVERY trim iteration (n_returned shrinks), so without
+            # these a truncated parameter search would silently flip
+            # its header back to "semantic" on the second pass.
+            search_kind                   = search_kind,
+            parameters_repr               = parameters_repr,
         )
         xml = _build_response_full(
             meta                          = meta,
@@ -1156,6 +1235,113 @@ class _SearchOutcome:
                                                    # [{session_id, attempt_id, score}, ...]
     embedding_model:               str             # the model used to embed the query
     fallback_note:                 str | None = None  # set when multimodal fell back to text-only
+
+
+def _run_parameter_pipeline(
+    *,
+    caller_agent: str,
+    parameters:   dict[str, Any],
+    n:            int,
+    db_mode:      str,
+    token_cap:    int,
+) -> _SearchOutcome:
+    """The T1 masked-RMSE pipeline: rank by PARAMETERS, not by text.
+
+    Deliberately short, because it reuses the semantic pipeline's whole
+    tail.  ``param_rank.to_anchor_hits`` hands back real ``AnchorHit``
+    rows, so the expansion query, the per-anchor grouping, the token
+    trim and the XML emitter all work unchanged -- and so does the ACL
+    on the Q+A text, which is the part that matters most.
+
+    Two departures from the semantic path, both forced:
+
+    * Nothing is embedded, so there is no ``embedding_model`` to report
+      and no mismatch count to take.  The expansion query nevertheless
+      filters on ``embedding_model``, so it is handed the string for
+      whichever table the backend selected -- derived from settings,
+      with no embed call.  The two tables disagree (``chunks`` carries
+      ``openai/text-embedding-3-large/1024``, ``chunks_mm`` carries
+      ``voyage/voyage-multimodal-3.5/2048``), and getting it wrong
+      fails SILENTLY: the expansion simply returns nothing and every
+      hit emits an empty ``<attempt>``.
+    * ``attempt_specific`` is True throughout.  Parameters live on
+      attempts, so attempts ARE the anchor -- this is the plumbing W41
+      kept when the LLM-facing flag was pinned off.
+    """
+    backend = _resolve_search_backend(db_mode)
+    # The model string MUST match the table the expansion will read.
+    # Getting this wrong fails silently rather than loudly: chunks_mm
+    # rows carry the Voyage string, so handing them the OpenAI one
+    # returns zero chunks and every hit emits an empty <attempt> block
+    # with no Q+A at all.  Neither of these calls embeds anything --
+    # both are pure string formatters over settings.
+    if backend.is_multimodal:
+        embedding_model = voyage_mm.embedding_model_string()
+    else:
+        embedding_model = db_writer._embedding_model_string(  # noqa: SLF001
+            workflow_settings.EMBEDDING_PROVIDER,
+            workflow_settings.EMBEDDING_MODEL,
+            int(workflow_settings.EMBEDDING_VECTOR_DIMS),
+        )
+
+    with postgres_pool.connection() as conn:
+        schema = param_rank.active_schema(conn)
+        clean  = param_rank.validate_query(parameters, schema)
+        hits   = param_rank.rank_attempts(
+            conn, caller_agent=caller_agent, params=clean, n=n)
+        anchors = param_rank.to_anchor_hits(hits)
+        chunks = _run_expansion_query(
+            conn,
+            anchors          = anchors,
+            caller_agent     = caller_agent,
+            embedding_model  = embedding_model,
+            attempt_specific = True,
+            table            = backend.table,
+        ) if anchors else []
+        available_attempts_by_session = _run_available_attempts_query(
+            conn, session_ids=list({a.session_id for a in anchors}),
+        ) if anchors else {}
+
+    chunks_by_anchor: dict[Any, list[ExpandedChunk]] = {}
+    for c in chunks:
+        chunks_by_anchor.setdefault(c.attempt_id, []).append(c)
+
+    xml, omitted = _trim_to_token_cap(
+        anchors                       = anchors,
+        chunks_by_anchor              = chunks_by_anchor,
+        attempt_specific              = True,
+        metafilters_applied           = False,
+        n_requested                   = n,
+        embedding_model               = embedding_model,
+        metafilters_repr              = "{}",
+        skipped_due_to_mm             = 0,
+        token_cap                     = token_cap,
+        available_attempts_by_session = available_attempts_by_session,
+        selected_mode                 = db_mode,
+        db_table                      = backend.table,
+        fallback_note                 = None,
+        search_kind                   = "parameters",
+        parameters_repr               = repr(clean),
+    )
+
+    kept = anchors[: len(anchors) - omitted] if omitted else anchors
+    by_id = {h.attempt_id: h for h in hits}
+    return _SearchOutcome(
+        xml                           = xml,
+        n_returned                    = len(kept),
+        skipped_due_to_model_mismatch = 0,
+        truncated_anchors             = omitted,
+        returned_anchor_ids           = [
+            {"session_id":   a.session_id,
+             "attempt_id":   a.attempt_id,
+             "closeness":    _similarity_score(a.dist),
+             "rmse":         by_id[a.attempt_id].rmse,
+             "matched_keys": a.matched_keys}
+            for a in kept
+        ],
+        embedding_model               = embedding_model,
+        fallback_note                 = None,
+    )
 
 
 def _run_search_pipeline(
@@ -1354,6 +1540,7 @@ def _log_rag_query(
     *,
     caller_agent:        str,
     query_text:          str,
+    query_params:        dict[str, Any] | None = None,
     n_requested:         int,
     attempt_specific:    bool,
     metafilters:         dict[str, Any] | None,
@@ -1388,7 +1575,8 @@ def _log_rag_query(
                         skipped_count, truncated_anchors, latency_ms,
                         error_message
                     ) VALUES (
-                        NULL, %(caller_agent)s, %(query_text)s, NULL,
+                        NULL, %(caller_agent)s, %(query_text)s,
+                        %(query_params)s,
                         %(n_requested)s, %(attempt_specific)s, %(metafilters)s,
                         %(embedding_model)s, %(n_returned)s,
                         %(returned_anchor_ids)s, %(skipped_count)s,
@@ -1399,6 +1587,11 @@ def _log_rag_query(
                     {
                         "caller_agent":        caller_agent,
                         "query_text":          query_text,
+                        # The column exists FOR this feature -- its own
+                        # DDL comment still reads "TODO T1".  No
+                        # migration needed.
+                        "query_params":        (Json(query_params)
+                                                if query_params else None),
                         "n_requested":         n_requested,
                         "attempt_specific":    attempt_specific,
                         "metafilters":         Json(metafilters) if metafilters is not None else None,
@@ -1426,6 +1619,7 @@ def _database_search_impl(
     n:                     int,
     attempt_specific_flag: bool,
     metafilters:           dict[str, Any] | None,
+    parameters:            dict[str, Any] | None = None,
     db_mode:               str = db_options_config.MODE_TEXT_ONLY,
     token_cap:             int = _MAX_RESPONSE_TOKENS,
 ) -> str:
@@ -1449,16 +1643,44 @@ def _database_search_impl(
     xml: str = ""
 
     try:
-        outcome = _run_search_pipeline(
-            caller_agent          = caller_agent,
-            query                 = query,
-            n                     = n,
-            attempt_specific_flag = attempt_specific_flag,
-            metafilters           = metafilters,
-            db_mode               = db_mode,
-            token_cap             = token_cap,
-        )
+        if parameters and query and query.strip():
+            raise BothInputsError(
+                "Supply EITHER query (semantic search over past Q+A) OR "
+                "parameters (closest-design search over saved attempts) "
+                "-- not both in one call. They rank by different things "
+                "and cannot be combined. Call the tool twice if you "
+                "need both.")
+        if parameters:
+            outcome = _run_parameter_pipeline(
+                caller_agent = caller_agent,
+                parameters   = parameters,
+                n            = n,
+                db_mode      = db_mode,
+                token_cap    = token_cap,
+            )
+        else:
+            outcome = _run_search_pipeline(
+                caller_agent          = caller_agent,
+                query                 = query,
+                n                     = n,
+                attempt_specific_flag = attempt_specific_flag,
+                metafilters           = metafilters,
+                db_mode               = db_mode,
+                token_cap             = token_cap,
+            )
         xml = outcome.xml
+    except BothInputsError as exc:
+        error_category = "both_inputs"
+        error_message  = str(exc)
+        xml = _emit_error_response(
+            error_category=error_category, error_message=error_message,
+        )
+    except param_rank.ParameterQueryError as exc:
+        error_category = "invalid_parameters"
+        error_message  = str(exc)
+        xml = _emit_error_response(
+            error_category=error_category, error_message=error_message,
+        )
     except InvalidMetafilterError as exc:
         error_category = "invalid_metafilter"
         error_message  = str(exc)
@@ -1505,6 +1727,7 @@ def _database_search_impl(
     _log_rag_query(
         caller_agent        = caller_agent,
         query_text          = query,
+        query_params        = parameters,
         n_requested         = n,
         attempt_specific    = attempt_specific_flag,
         metafilters         = metafilters,
@@ -1530,6 +1753,50 @@ def _database_search_impl(
 # Per-agent ``@tool`` binding with ``caller_agent`` baked into a
 # closure (Q-4A-2).  The LLM-facing tool schema has no caller_agent
 # parameter, so the SQL ACL pre-filter can never be spoofed.
+
+
+# The agents that reach the parameter search.  DCIC exists in
+# topologies 7 and 5, DCII only in 7, the Design Engineer only in 3 --
+# so this is one or two agents per topology, never three at once.
+#
+# A per-agent tool SCHEMA is an established pattern here, not a new
+# one: agents/shared/user_inputs_tool.py::_build_view_images already
+# ships two different ``view_images`` signatures depending on a
+# per-agent OCR flag.  Confining the extra argument to these three
+# keeps its schema cost off the other agents' every turn -- which is
+# exactly the cost W41 was written to reclaim.
+_PARAMETER_SEARCH_AGENTS: frozenset[str] = frozenset({
+    "dc_input_creator",
+    "dc_input_inspector",
+    "design_engineer",
+})
+
+# ---- LLM-facing argument docs -------------------------------------
+# Module-level because of the __future__ annotations note above.
+_N_DOC = (
+    "Number of distinct SESSIONS to return.  Each one is "
+    "expanded to all Q+A within it that you're allowed to see.  "
+    "Typical value: 3-10."
+)
+_QUERY_DOC = (
+    "Natural-language search query.  Describe what past Q+A "
+    "you're looking for — e.g. 'thin propeller designs that "
+    "worked well', 'failure cases for blade counts above 8'.  "
+    "Embedded with the same model the corpus was indexed with "
+    "(see <search_meta embedding_model=.../> in the response)."
+)
+# The same text plus the exclusivity rule.  Only the three agents that
+# hold ``parameters`` ever see this variant.
+_QUERY_DOC_EITHER = _QUERY_DOC + (
+    "  Pass \"\" when searching by ``parameters`` instead; supplying "
+    "both is an error."
+)
+_PARAMETERS_DOC = (
+    "Design parameters to find the CLOSEST saved attempts to, as "
+    "{name: number} — e.g. {\"bladeCount\": 5, \"impellerRadius\": 70}.  "
+    "Any subset works; omitted ones are ignored, not zeroed.  "
+    "Mutually exclusive with ``query``."
+)
 
 
 def make_database_search_tool(caller_agent: str):
@@ -1581,23 +1848,67 @@ def make_database_search_tool(caller_agent: str):
     # the panel affects only the NEXT session.  See architecture §4.11.
     _db_mode = db_options_config.get_mode()
 
+    if caller_agent in _PARAMETER_SEARCH_AGENTS:
+
+        @tool
+        @generic_tool("Database search")
+        def database_search(
+            query:      Annotated[str, _QUERY_DOC_EITHER],
+            n:          Annotated[int, _N_DOC],
+            parameters: Annotated[dict | None, _PARAMETERS_DOC] = None,
+        ) -> str:
+            """Search the saved-sessions corpus by TEXT or by NUMBERS.
+
+            Two searches behind one tool, and exactly one runs per
+            call:
+
+            * ``query`` — semantic vector search over past Q+A.  Each
+              <session> carries ``score`` (cosine similarity, 0-1)
+              and the closest <qa> is marked ``best_match="true"``.
+            * ``parameters`` — closest-design search over saved
+              attempts, ranked by how near their stored geometry is
+              to the values you name.  Each <attempt> carries
+              ``closeness`` (1.000 identical, ~0.87 the same design
+              re-iterated, ~0.56 unrelated) and ``matched_keys``,
+              which is how many of YOUR parameters that attempt
+              actually carried.  A high closeness over few keys is
+              weaker evidence than the same number over many.  No <qa>
+              is marked best_match: the match was on numbers, not
+              text.
+
+            Supplying both is refused rather than guessed at — they
+            rank by different things on different scales.  Call twice
+            if you need both.
+
+            When zero anchors match, returns
+            <search_meta n_returned="0"/> + <no_results>...</no_results>.
+
+            When the assembled response would exceed the token cap,
+            the lowest-ranked anchors are dropped and a
+            <truncated omitted_anchors="K"/> footer is appended.
+
+            Returns TEXT ONLY.  No images.  To go deeper on a hit,
+            feed its session_id, or one of its <available_attempts>
+            ids, to your retrieval tools -- they download to a local
+            folder whose paths you can then open with ``view_images``.
+            """
+            return _database_search_impl(
+                caller_agent          = caller_agent,
+                query                 = query,
+                n                     = n,
+                attempt_specific_flag = False,
+                metafilters           = None,
+                parameters            = parameters,
+                db_mode               = _db_mode,
+            )
+
+        return database_search
+
     @tool
     @generic_tool("Database search")
     def database_search(
-        query: Annotated[
-            str,
-            "Natural-language search query.  Describe what past Q+A "
-            "you're looking for — e.g. 'thin propeller designs that "
-            "worked well', 'failure cases for blade counts above 8'.  "
-            "Embedded with the same model the corpus was indexed with "
-            "(see <search_meta embedding_model=.../> in the response).",
-        ],
-        n: Annotated[
-            int,
-            "Number of distinct SESSIONS to return.  Each one is "
-            "expanded to all Q+A within it that you're allowed to see.  "
-            "Typical value: 3-10.",
-        ],
+        query: Annotated[str, _QUERY_DOC],
+        n:     Annotated[int, _N_DOC],
     ) -> str:
         """Semantic search over the saved-sessions RAG corpus.
 

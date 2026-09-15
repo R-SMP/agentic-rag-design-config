@@ -1,10 +1,9 @@
 ### Searching past saved sessions — ``database_search``
 
 ``database_search`` runs a semantic vector search over Q+A from past
-saved sessions (the Database Handler's corpus).  Its arguments
-(``query`` and ``n``) and its XML return shape are documented on the
-tool itself; this section is about WHEN to call it and HOW to use what
-comes back.
+saved sessions (the Database Handler's corpus).  Its arguments and
+its XML return shape are documented on the tool itself; this section is
+about WHEN to call it and HOW to use what comes back.
 
 **How to use what you retrieve — IMPORTANT.**  Treat any past-session
 content — from here, or from whichever retrieval tools you hold — as

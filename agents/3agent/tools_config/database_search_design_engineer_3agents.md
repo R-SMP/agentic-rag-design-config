@@ -15,3 +15,18 @@ geometry for designs like yours.  Fetch only the most useful ones.
 * The Planner's instructions (delivered directly or indirectly by another agent) still take priority over any prior experience the database surfaces.
 
 In these cases the database search should almost always be used.  Evaluate when and how the search should be done.
+
+**Searching by NUMBERS instead of words.**  ``database_search`` takes
+either a text ``query`` OR a ``parameters`` dict — one per call, never
+both.  Pass ``parameters`` (with ``query=""``) to find the saved
+attempts whose stored geometry is CLOSEST to values you name — say
+bladeCount 5 together with impellerRadius 70.  Any subset of the design
+parameters works; the ones you omit are ignored, not treated as zero.
+
+Reach for it when your question is about VALUES — "has anything near
+this been built?", "what came of this blade count at this radius?" —
+and for the text query when it is about REASONING.  Read BOTH numbers
+on each hit: ``closeness`` (1.000 identical, ~0.87 the same design
+re-iterated, ~0.56 unrelated) and ``matched_keys``, which says how many
+of your parameters that attempt actually carried.  A high closeness
+over one key is much weaker evidence than the same number over ten.
