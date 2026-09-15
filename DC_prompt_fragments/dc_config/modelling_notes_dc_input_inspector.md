@@ -28,8 +28,12 @@ this propeller DC are:
     NOT of ``impellerRadius``): ``middlePos = (r − 4) / (impellerRadius − 4)``, with
     ``r`` the desired middle-section radius in mm and 4 mm the INNER BLADE SECTION's
     radius — NOT the hub radius, which is 8 mm.
-  * Diameter ↔ radius (the configurator parameterises only ``impellerRadius``;
-    user-stated diameters convert via ``impellerRadius = diameter / 2``).
+  * Diameter ↔ radius.  ``impellerRadius`` is the ring MID-WALL radius, and ANY
+    radius or diameter the user states — INCLUDING one they call the propeller's
+    "outer radius" or "outer diameter" — is that mid-wall value:
+    ``impellerRadius = diameter / 2``, wall thickness ignored.  ONLY wording
+    naming the WHOLE part — "total diameter", "total size", "total width" —
+    includes the wall: ``impellerRadius = total / 2 − impellerThickness / 2``.
 
 These are the typical patterns; the user may state quantities in
 other ways too.  When you encounter an unfamiliar unit, derive the

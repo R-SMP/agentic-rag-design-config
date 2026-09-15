@@ -32,8 +32,12 @@ this propeller DC are:
     (when the user expresses a chord, height, or similar absolute-
     unit value as a fraction of diameter or radius, multiply by the
     corresponding scale).
-  * Diameter ↔ radius (the configurator parameterises only ``impellerRadius``;
-    user-stated diameters convert via ``impellerRadius = diameter / 2``).
+  * Diameter ↔ radius.  ``impellerRadius`` is the ring MID-WALL radius, and ANY
+    radius or diameter the user states — INCLUDING one they call the propeller's
+    "outer radius" or "outer diameter" — is that mid-wall value:
+    ``impellerRadius = diameter / 2``, wall thickness ignored.  ONLY wording
+    naming the WHOLE part — "total diameter", "total size", "total width" —
+    includes the wall: ``impellerRadius = total / 2 − impellerThickness / 2``.
 
 These are the typical patterns; the user may state quantities in
 other ways too.  When you encounter an unfamiliar unit, derive the
