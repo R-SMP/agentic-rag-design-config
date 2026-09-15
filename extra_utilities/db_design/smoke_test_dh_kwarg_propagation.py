@@ -79,6 +79,19 @@ _REPO_ROOT = Path(__file__).resolve().parent.parent.parent
 if str(_REPO_ROOT) not in sys.path:
     sys.path.insert(0, str(_REPO_ROOT))
 
+
+# `import agents` pulls the whole chain, and with it trimesh, pyrender,
+# DracoPy and compute_rhino3d.  Without the 3D stack installed this file
+# died at import and was silently never run -- see W45, where a dedicated
+# guard missed a real bug for exactly this reason.  bootstrap stubs those
+# packages and nothing this test actually exercises.
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[2]
+                        / "extra_utilities" / "prompt_pdf"))
+import bootstrap as _bootstrap  # noqa: E402
+_bootstrap.install()
+
 from agents.database_handler.database_handler import DatabaseHandler  # noqa: E402
 
 

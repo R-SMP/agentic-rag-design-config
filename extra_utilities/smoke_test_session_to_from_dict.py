@@ -29,6 +29,19 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+
+# `import agents` pulls the whole chain, and with it trimesh, pyrender,
+# DracoPy and compute_rhino3d.  Without the 3D stack installed this file
+# died at import and was silently never run -- see W45, where a dedicated
+# guard missed a real bug for exactly this reason.  bootstrap stubs those
+# packages and nothing this test actually exercises.
+import sys as _sys
+from pathlib import Path as _Path
+_sys.path.insert(0, str(_Path(__file__).resolve().parents[1]
+                        / "extra_utilities" / "prompt_pdf"))
+import bootstrap as _bootstrap  # noqa: E402
+_bootstrap.install()
+
 from agents.shared.session import (
     AgentState,
     Session,

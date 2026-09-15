@@ -149,13 +149,30 @@ with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=7):
           and not da.is_enabled_for("planner", "attempt"))
 
 # --- 3. an ABSENT profile falls back to today's all-on behaviour -------
-print("case 3 - profiles '5' and '3' are absent -> all-on fallback")
-for topo in (5, 3):
+# This case used to prove the fallback THROUGH profiles "5" and "3",
+# because they were genuinely missing from database_access.json.  a0f1910
+# (2026-09-14, "a tool distribution that matches topology 7") gave both an
+# explicit, non-uniform distribution, so they stopped being absent -- and
+# this case began failing on a config change that was entirely deliberate.
+#
+# The fallback is still worth pinning: database_access.py's own docstring
+# warns that a typo'd profile key does NOT raise, it silently resolves to
+# all-True, "which looks like 'the setting did nothing'".  So it is proved
+# here with a profile key that really is absent, and 3b locks the fact
+# that the three REAL profiles no longer reach that fallback at all.
+print("case 3 - an ABSENT profile falls back to all-on")
+with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=99):
+    allon = all(all(da.get_tools(a).values()) for a in da.DEFAULT_AGENTS)
+    check("an unknown profile: every agent holds every tool", allon)
+
+print("case 3b - the profiles that DO exist are explicit, not fallback")
+for topo in (7, 5, 3):
     with _Settings(RAG_ENABLED=True, SYSTEM_TOPOLOGY=topo):
         allon = all(
             all(da.get_tools(a).values()) for a in da.DEFAULT_AGENTS
         )
-        check("topology %d: every agent holds every tool" % topo, allon)
+        check("topology %d does NOT fall through to all-on" % topo,
+              not allon)
 
 # --- 4. profile_key mapping -------------------------------------------
 print("case 4 - profile_key()")
@@ -425,9 +442,27 @@ print("case 13 - an agent only ever reads about tools it HOLDS")
 # could fix, because the correct text differs per agent.  They now refer to
 # "whichever retrieval tools you hold" instead, which is true in every
 # profile.  A side benefit: naming no argument means no argument to go stale.
+# The Planner is a DELIBERATE exception, not a leak.  Its per-agent
+# fragment carries "You can point, but you cannot fetch.  Of the database
+# tools you hold ``database_search`` only ... Say who should fetch what
+# you name: ``retrieve_attempt`` for an attempt (DC Input Creator, DC
+# Input Inspector, DC Output Inspector)" -- added in aaae786 so the hub
+# can ROUTE retrieval to the agents that hold it.
+#
+# Naming a tool so its HOLDER can be told to call it is not the same as
+# being told to call it yourself, and this invariant tests only for the
+# name appearing anywhere in the prompt.  Without this exception the test
+# reports an intended design as a violation, which is how a real check
+# gets edited into uselessness the third time someone hits it.  Keep the
+# set as small as the design requires.
+_MAY_NAME_TOOLS_IT_LACKS = {"planner"}
+
+
 def _invariant_violations() -> list:
     out = []
     for _a in da.DEFAULT_AGENTS:
+        if _a in _MAY_NAME_TOOLS_IT_LACKS:
+            continue
         try:
             _flat = " ".join(_prompts._build_template(_a).split())
         except Exception:

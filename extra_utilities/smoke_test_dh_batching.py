@@ -298,7 +298,14 @@ print("\n-- the real shipped schedule ----------------------------------------")
 
 live = S.read_for_dh()
 live_runs = B.candidate_runs(live)
-check("the shipped schedule loads", len(live) == 36, f"{len(live)} rows")
+# 29, not 36, since 031ad0f (2026-09-10) "new default question schedule
+# for topology 7" replaced it deliberately.  The literal is kept rather
+# than derived on purpose: changing the shipped schedule SHOULD cost a
+# deliberate edit here.  Note this reads dh_schedule.json, which is
+# gitignored and editable from the web UI -- on a deployment whose owner
+# has edited it, this count is theirs and this line will fail honestly
+# rather than wrongly.
+check("the shipped schedule loads", len(live) == 29, f"{len(live)} rows")
 check("runs cover it exactly", sum(len(r) for r in live_runs) == len(live))
 check("every identifying row is alone",
       all(len(r) == 1 for r in live_runs if B.is_identifying(r[0])))
@@ -541,7 +548,7 @@ sys.path.insert(0, str(REPO / "extra_utilities"))
 from hub_registry import registry_keys_from_source          # noqa: E402
 
 _HUBS = {
-    7: ("agents/orchestrator/orchestrator.py", 36, "dh_schedule.json"),
+    7: ("agents/orchestrator/orchestrator.py", 29, "dh_schedule.json"),
     5: ("agents/planner5/planner5.py",         33, "dh_schedule_5agents.json"),
     3: ("agents/planner3/planner3.py",         33, "dh_schedule_3agents.json"),
 }
