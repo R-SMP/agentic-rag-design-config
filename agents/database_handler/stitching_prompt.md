@@ -1,5 +1,5 @@
 ---
-version: 1
+version: 2
 purpose: |
   Rewrite one Database Handler Q+A row (field + question + answer) into
   a single coherent declarative paragraph optimised for sentence-embedding
@@ -14,13 +14,20 @@ load_bearing: true
 notes:
   - Used by the DH at chunks-INSERT time, called via the cheap LLM
     selected by workflow_settings.STITCHING_PROVIDER / STITCHING_MODEL.
-    Default: gpt-4o-mini via OpenAI.
+    Default: gpt-5.4-mini via OpenAI.
   - This prompt is LOAD-BEARING: changing it changes retrieval
     quality across the whole corpus.  When you edit it:
       1. Bump the `version:` field above.
       2. Consider whether to re-stitch existing rows in production
          (chunks.embedding_input + chunks.embedding can be recomputed
-         row-by-row from chunks.field + .question + .body).
+         row-by-row from sessions.dc_name + chunks.field + .question
+         + .body -- DC_NAME lives on sessions, not on chunks, and
+         insert_chunk refuses a Semantic row without it).
+    v1 -> v2 (2026-09-15): attempt identifiers are now stripped from
+    embedding_input.  Rows stitched before that date keep the old
+    convention and were deliberately NOT re-stitched -- their answers
+    remain valid.  There is no version column on chunks, so created_at
+    is the only way to date-split the two conventions.
   - Reference: extra_utilities/db_design/database_and_RAG_architecture.md §6.1.
 ---
 
@@ -41,7 +48,8 @@ time — your paragraph exists only to produce a good embedding.
 
 1. **Preserve every factual claim in the ANSWER.**  Do not add,
    remove, exaggerate, soften, or speculate.  If the ANSWER is wrong
-   or empty, your paragraph is wrong or empty in the same way.
+   or empty, your paragraph is wrong or empty in the same way.  This
+   does not cover the identifiers rule 6 strips.
 2. **Naturalise the framing.**  Begin with a short phrase that grounds
    the topic using the FIELD and the DC_NAME, then state the substance
    of the ANSWER in flowing prose.  Do NOT emit literal labels like
@@ -57,8 +65,10 @@ time — your paragraph exists only to produce a good embedding.
    not narrate ("the agent says…", "the system reports…"); just state
    what is true about the design / session.
 6. **No metadata leakage.**  Do not mention session IDs, attempt
-   numbers, file paths, agent names (UII, DCIC, DCOI, Planner, etc.), or
-   tool names.  The retrieval layer adds those back from structured
+   identifiers in ANY form -- "attempt 002", "the second attempt",
+   "the other two" -- file paths, agent names (UII, DCIC, DCOI,
+   Planner, etc.), or tool names.  Keep the claim, drop the
+   identifier.  The retrieval layer adds those back from structured
    columns at query time; embedding them here pollutes the vector
    space with noise that doesn't help similarity matching.
 7. **Faithfully reflect "none" / "not applicable" answers.**  If the
@@ -97,7 +107,7 @@ ANSWER: No attempt was a clear mismatch. All three designs met the core requirem
 
 OUTPUT:
 ```
-Regarding the bad-attempt assessment for this propeller design, no attempt was a clear mismatch. All three designs met the core requirements of a continuous ring, a central hub, and five broad blades connecting hub to ring. The second attempt was the weakest overall match because its ring read noticeably heavier than the sketch intent, which called for a relatively thin ring. It still fit the brief well enough to approve qualitatively, but it was the least aligned stylistically compared with the other two.
+Regarding the bad-attempt assessment for this propeller design, no attempt was a clear mismatch. All three designs met the core requirements of a continuous ring, a central hub, and five broad blades connecting hub to ring. One of the designs was the weakest overall match because its ring read noticeably heavier than the sketch intent, which called for a relatively thin ring. It still fit the brief well enough to approve qualitatively, but it was the least aligned stylistically.
 ```
 
 ## Second worked example — short "none" answer

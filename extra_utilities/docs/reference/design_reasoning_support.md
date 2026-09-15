@@ -556,11 +556,15 @@ reasoning on and off.
 - ~~**GPT-5.6 tiers (Sol/Terra/Luna) unusable here.**~~ **RESOLVED by the same
   commit** — they work on the `responses` default. They remain unusable on the
   `chat` option, which is a property of that endpoint, not of this system.
-- **`db_writer` stitching** (`db_writer.py:275-283`): the one raw-SDK call,
-  with `temperature=0.0`, `max_tokens=800` and a free-text UI-editable model.
-  Point it at a reasoning model and it either 400s on `temperature` or returns
-  empty content and raises a misleading `StitchError`. Out of scope; document
-  the constraint next to the setting.
+- ~~**`db_writer` stitching**~~ **RESOLVED 2026-09-15.** The raw-SDK call now
+  passes `max_completion_tokens` (gpt-5.4-mini returns HTTP 400 for
+  `max_tokens`; the newer parameter is accepted by gpt-4o-mini too, so no
+  per-model branch), and a `finish_reason == "length"` guard sends a truncated
+  paragraph down the retry/safety path instead of embedding it silently. The
+  prediction above was half wrong, measured: gpt-5.4-mini accepts
+  `temperature=0.0` and `seed=42` and returns non-empty content with ZERO
+  reasoning tokens -- only `max_tokens` was rejected. A true reasoning model
+  may still behave as originally described.
 
 ---
 

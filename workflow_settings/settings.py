@@ -1319,9 +1319,9 @@ DH_INTERVIEW_MODEL: str = "gpt-5.6-terra"
 # routed to the R2 safety folder.  This keeps the chunks corpus
 # uniform (every row has a real LLM-stitched embedding_input).
 #
-# Cost example: gpt-4o-mini at ~$0.15 / 1M input tokens, one call per
-# SAVED ENTRY at ~300 input tokens each ≈ $0.0001 per session on a
-# schedule of a few dozen rows.
+# Cost: one call per SAVED ENTRY, measured at ~1,050 input / ~50 output
+# tokens, on a schedule of a few dozen rows — a fraction of a cent per
+# session.
 #
 # >>> Currently only the OpenAI provider is implemented.  The
 # >>> Anthropic and Google branches are TODO items T16 and T17 in
@@ -1330,13 +1330,15 @@ DH_INTERVIEW_MODEL: str = "gpt-5.6-terra"
 # >>> provider input is rendered as a disabled dropdown — see
 # >>> ENUM_OPTIONS in workflow_settings/editor.py).  STITCHING_MODEL
 # >>> stays editable so the developer can try a different OpenAI
-# >>> model (e.g. gpt-4o-mini → gpt-4o) without code edits.
+# >>> model without code edits.  NOTE: the call passes
+# >>> max_completion_tokens, so a model that still requires the older
+# >>> max_tokens will 400.
 #
 # Valid values:
 #   STITCHING_PROVIDER ∈ {"OpenAI"}  (Anthropic / Google = T16 / T17, deferred)
 #   STITCHING_MODEL    : any model name the chosen provider exposes
 STITCHING_PROVIDER: str = "OpenAI"
-STITCHING_MODEL: str = "gpt-4o-mini"
+STITCHING_MODEL: str = "gpt-5.4-mini"
 
 # Maximum number of output tokens the cheap stitching LLM is allowed
 # to emit per Q+A rewrite.  Architecture doc §6.1 locks the output

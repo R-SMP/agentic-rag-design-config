@@ -236,7 +236,7 @@ def stitch_for_embedding(
         TODOs T16 (Anthropic) and T17 (Google).
     model:
         Override for ``workflow_settings.STITCHING_MODEL``.
-        Default reads from settings (currently ``"gpt-4o-mini"``).
+        Default reads from settings.
 
     Returns
     -------
@@ -279,7 +279,11 @@ def stitch_for_embedding(
                 {"role": "user",   "content": user_message},
             ],
             temperature=0.0,
-            max_tokens=workflow_settings.STITCHING_MAX_OUTPUT_TOKENS,
+            # max_completion_tokens, NOT max_tokens: gpt-5.4-mini and newer
+            # return HTTP 400 for max_tokens.  Verified live that
+            # max_completion_tokens is accepted by gpt-4o-mini too, so this
+            # needs no per-model branch.
+            max_completion_tokens=workflow_settings.STITCHING_MAX_OUTPUT_TOKENS,
             seed=42,
         )
     except Exception as exc:  # broad: OpenAI exception hierarchy varies
@@ -290,11 +294,23 @@ def stitch_for_embedding(
 
     try:
         body = resp.choices[0].message.content or ""
+        finish = resp.choices[0].finish_reason
     except (AttributeError, IndexError) as exc:
         raise StitchError(
             f"OpenAI stitching response had unexpected shape: "
             f"{type(exc).__name__}: {exc}"
         ) from exc
+
+    # A truncated paragraph is NOT empty, so the check below never caught it:
+    # it was stored and embedded mid-sentence, with no error and no log line.
+    # Treat it like any other stitch failure -- retry, then the R2 safety
+    # folder -- rather than poisoning the vector space silently.
+    if finish == "length":
+        raise StitchError(
+            f"OpenAI stitching hit the output cap "
+            f"({workflow_settings.STITCHING_MAX_OUTPUT_TOKENS} tokens) and "
+            f"returned a truncated paragraph."
+        )
 
     body = body.strip()
     if not body:
