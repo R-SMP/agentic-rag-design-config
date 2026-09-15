@@ -1083,6 +1083,48 @@ function udbCollectParams() {
   return out;
 }
 
+let udbBusyTimer = null;
+
+// The server refuses a manual upload while it owns the on-disk session
+// (W13).  Reading the SAME sentence it would refuse with -- /api/config's
+// busy_reason, produced by web_app._busy_reason() -- means the banner can
+// never contradict the refusal.  Polled while the view is open so the
+// owner is not left typing a long entry that cannot be sent.
+async function udbRefreshBusy() {
+  const banner = document.getElementById("udb-busy");
+  const btn = document.getElementById("udb-submit");
+  if (!banner || !btn) return;
+  let reason = null;
+  try {
+    const cfg = await (await fetch("/api/config")).json();
+    reason = cfg.busy_reason || null;
+  } catch (err) {
+    // A failed probe must not silently ENABLE a submit that would fail:
+    // say so and leave the button alone.
+    banner.textContent = `Could not check whether the system is busy: ${err}`;
+    banner.hidden = false;
+    return;
+  }
+  banner.textContent = reason || "";
+  banner.hidden = !reason;
+  btn.disabled = Boolean(reason);
+  btn.title = reason || "";
+}
+
+function udbStartBusyPoll() {
+  udbRefreshBusy();
+  if (udbBusyTimer) clearInterval(udbBusyTimer);
+  udbBusyTimer = setInterval(() => {
+    const view = document.querySelector('.view[data-view="upload_db"]');
+    if (!view || view.hidden) {        // left the view: stop polling
+      clearInterval(udbBusyTimer);
+      udbBusyTimer = null;
+      return;
+    }
+    udbRefreshBusy();
+  }, 5000);
+}
+
 async function udbRefreshList() {
   const box = document.getElementById("udb-list");
   if (!box) return;
@@ -1142,6 +1184,7 @@ async function udbSubmit() {
     const data = await res.json().catch(() => ({}));
     if (!res.ok) { status.textContent = data.detail || `Failed (${res.status})`; return; }
     status.textContent = `Added ${data.session_id}`;
+    udbRefreshBusy();
     document.getElementById("udb-text").value = "";
     udbFiles.clear(); udbRenderImages();
     for (const el of document.querySelectorAll("#udb-params input[data-param]")) el.value = "";
@@ -1184,6 +1227,7 @@ function udbWire() {
     document.getElementById("udb-status").textContent =
       res.ok ? `Deleted ${id}` : (data.detail || `Delete failed (${res.status})`);
     udbRefreshList();
+    udbRefreshBusy();
   });
 }
 
@@ -1221,6 +1265,7 @@ function switchView(name) {
     udbWire();
     udbRenderParams();
     udbRefreshList();
+    udbStartBusyPoll();
   }
   if (name === "settings") {
     if (!settingsLoaded) loadSettings();

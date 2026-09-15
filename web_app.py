@@ -542,6 +542,9 @@ def api_config() -> dict:
         "authed": _BOX.authed or not _auth_required(),
         "session_active": _BOX.session is not None,
         "queue_active": _QUEUE_IN_FLIGHT,
+        # None when a manual upload would be accepted; otherwise the exact
+        # sentence /api/manual_entry would refuse with.
+        "busy_reason": _busy_reason(),
     }
 
 
@@ -608,32 +611,41 @@ def _require_no_queue() -> None:
         )
 
 
-def _require_not_busy() -> None:
-    """Refuse a manual upload while the system owns the on-disk session.
+def _busy_reason() -> str | None:
+    """Why a manual upload would be refused right now, or None if it fits.
 
-    W13: Stage A is single-user-at-a-time on disk.  Rather than reason about
-    interleaving a hand-written entry with a running pipeline, refuse -- and
-    say WHICH condition blocked it, so the UI can explain rather than just
-    fail.
+    ONE source of truth: ``_require_not_busy`` raises with this exact text,
+    and ``/api/config`` reports it so the view can disable its button and
+    SAY why -- otherwise the owner types a long entry only to have it
+    rejected on submit.  A banner that could disagree with the refusal
+    would be worse than no banner, which is why both read this.
 
-    Two of these are broader than their names suggest, both in the safe
-    direction: ``_TURN_IN_FLIGHT`` covers Sessions-Queue turns as well as
-    human ones, and ``_require_no_queue()`` also rejects while an orphaned
-    pipeline is still unwinding.
+    W13: Stage A is single-user-at-a-time on disk.  Rather than reason
+    about interleaving a hand-written entry with a running pipeline, refuse.
     """
-    _require_no_queue()
+    # Same pair _require_no_queue() tests: the queue itself, and a prior
+    # uninterruptible pipeline still unwinding on a threadpool thread.
+    if _QUEUE_IN_FLIGHT or _live_orphans():
+        return ("A Sessions Queue is running, or a prior pipeline is still "
+                "unwinding. Manual uploads are blocked until it finishes.")
+    # Covers Sessions-Queue turns as well as human ones.
     if _TURN_IN_FLIGHT:
-        raise HTTPException(status_code=409, detail=(
-            "A chat turn is running. Manual uploads are blocked until it "
-            "finishes."))
+        return ("A chat turn is running. Manual uploads are blocked until "
+                "it finishes.")
     if _END_IN_FLIGHT:
-        raise HTTPException(status_code=409, detail=(
-            "A session is being saved. Manual uploads are blocked until the "
-            "save completes."))
+        return ("A session is being saved. Manual uploads are blocked until "
+                "the save completes.")
     if _BOX.session is not None:
-        raise HTTPException(status_code=409, detail=(
-            "A design session is open. End it before uploading content by "
-            "hand."))
+        return ("A design session is open. End it before uploading content "
+                "by hand.")
+    return None
+
+
+def _require_not_busy() -> None:
+    """Refuse a manual upload while the system owns the on-disk session."""
+    reason = _busy_reason()
+    if reason:
+        raise HTTPException(status_code=409, detail=reason)
 
 
 def _artefact_url(p: Path) -> str:
