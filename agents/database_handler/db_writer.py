@@ -810,6 +810,11 @@ def insert_chunk(
     # Stitching context (Semantic non-empty only — passed verbatim
     # to the stitching LLM as the DC_NAME line)
     dc_name: str | None = None,
+    # Embed the body AS WRITTEN instead of stitching it into a paragraph.
+    # For curated content: the text was written deliberately, there is no
+    # question to naturalise it against, and the stitcher would paraphrase
+    # it.  Default False, so every existing caller is unaffected.
+    skip_stitch: bool = False,
     # Safety-fallback context (required because R2-only on exhaust)
     safety_scope: str,
     safety_filename: str,
@@ -883,7 +888,12 @@ def insert_chunk(
 
     skip_stitch_embed = (field_type == "Quantitative") or is_empty
 
-    if field_type == "Semantic" and not is_empty and not dc_name:
+    if (field_type == "Semantic" and not is_empty and not dc_name
+            and not skip_stitch):
+        # The guard's whole reason is that the stitching prompt needs a
+        # DC_NAME line.  With skip_stitch there is no stitching prompt, so
+        # demanding one would be a trap: it raises BEFORE the retry loop,
+        # i.e. outside the safety-folder path, and the content is lost.
         raise ValueError(
             "insert_chunk requires dc_name for Semantic, non-empty "
             "rows (the stitching prompt needs the DC_NAME line)."
@@ -903,7 +913,7 @@ def insert_chunk(
                 vector: list[float] | None = None
                 model_str: str | None = None
             else:
-                embedding_input = stitch_for_embedding(
+                embedding_input = body if skip_stitch else stitch_for_embedding(
                     dc_name=dc_name or "",   # guard above ensures non-empty
                     field=field,
                     question=question or "",
