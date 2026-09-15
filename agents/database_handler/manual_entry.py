@@ -256,6 +256,44 @@ def _rollback(session_id: str) -> None:
                        f"{session_id} did not complete: {exc}")
 
 
+def purge_r2(session_id: str) -> int:
+    """Delete EVERY R2 object under ONE manual entry, safety folder included.
+
+    REFUSES a session id without the ``MANUAL_`` prefix.  The guarantee lives
+    here rather than in the caller: this deletes irreversibly, and the one
+    thing it must never be able to do is reach a real saved session because
+    someone wired it up wrongly later.
+
+    Distinct from :func:`_rollback`, which KEEPS ``<sid>/safety/`` -- there
+    the failure is the system's and that copy may be the only surviving
+    record of the text.  Here the owner asked for the entry to go, so it
+    goes, safety copy included.
+
+    Returns the number of objects removed.
+    """
+    if not session_id.startswith(retrieval_common.MANUAL_SESSION_PREFIX):
+        raise ManualEntryError(
+            f"purge_r2 refuses {session_id!r}: it deletes irreversibly, and "
+            f"only manually uploaded entries may be deleted this way.")
+    client = r2_uploader._client()                    # noqa: SLF001
+    if client is None:
+        return 0
+    bucket = r2_uploader._env("R2_BUCKET_NAME")       # noqa: SLF001
+    prefix = f"{r2_uploader._key_prefix()}{session_id}/"  # noqa: SLF001
+    keys = []
+    for page in client.get_paginator("list_objects_v2").paginate(
+            Bucket=bucket, Prefix=prefix):
+        for obj in page.get("Contents", []) or []:
+            keys.append({"Key": obj["Key"]})
+    for i in range(0, len(keys), 1000):   # delete_objects caps at 1000
+        batch = keys[i:i + 1000]
+        if batch:
+            client.delete_objects(Bucket=bucket, Delete={"Objects": batch})
+    logger.info(f"[manual_entry]  purged {len(keys)} R2 objects under "
+                f"{session_id}/")
+    return len(keys)
+
+
 # ---------------------------------------------------------------------------
 # The write
 # ---------------------------------------------------------------------------

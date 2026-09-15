@@ -51,6 +51,7 @@ from pydantic import BaseModel, Field
 
 import importlib
 
+from agents.database_handler import manual_entry
 from agents.dispatch import dispatch_turn
 from agents.loader import _archive_previous_session
 from agents.shared.attempts_tool import attempt_label_for_path
@@ -516,6 +517,10 @@ class ImageNoteIn(BaseModel):
     description: str
 
 
+class ManualEntryIdIn(BaseModel):
+    session_id: str
+
+
 class ImageNameIn(BaseModel):
     name: str
 
@@ -601,6 +606,34 @@ def _require_no_queue() -> None:
                     "uninterruptible turn); controls stay locked until it "
                     "drains or the app is restarted."),
         )
+
+
+def _require_not_busy() -> None:
+    """Refuse a manual upload while the system owns the on-disk session.
+
+    W13: Stage A is single-user-at-a-time on disk.  Rather than reason about
+    interleaving a hand-written entry with a running pipeline, refuse -- and
+    say WHICH condition blocked it, so the UI can explain rather than just
+    fail.
+
+    Two of these are broader than their names suggest, both in the safe
+    direction: ``_TURN_IN_FLIGHT`` covers Sessions-Queue turns as well as
+    human ones, and ``_require_no_queue()`` also rejects while an orphaned
+    pipeline is still unwinding.
+    """
+    _require_no_queue()
+    if _TURN_IN_FLIGHT:
+        raise HTTPException(status_code=409, detail=(
+            "A chat turn is running. Manual uploads are blocked until it "
+            "finishes."))
+    if _END_IN_FLIGHT:
+        raise HTTPException(status_code=409, detail=(
+            "A session is being saved. Manual uploads are blocked until the "
+            "save completes."))
+    if _BOX.session is not None:
+        raise HTTPException(status_code=409, detail=(
+            "A design session is open. End it before uploading content by "
+            "hand."))
 
 
 def _artefact_url(p: Path) -> str:
@@ -3942,6 +3975,138 @@ def api_images_delete(name: str) -> dict:
         note.unlink()
     logger.info("[WEB] image deleted: %s", image.name)
     return {"ok": True, "images": _image_listing()}
+
+
+# --------------------------------------------------------------------------
+# Manual upload to the database
+#
+# Curated content put in by hand: a text query (embedded, so database_search
+# finds it), optional images, optional parameters.  Written as if it were a
+# saved session so the retrieval tools need no special-casing -- see
+# agents/database_handler/manual_entry.py and
+# extra_utilities/docs/active/design_manual_upload_implementation_plan.md.
+# --------------------------------------------------------------------------
+# `_` is a single-character WILDCARD in SQL LIKE, so the prefix MUST be
+# escaped or 'MANUAL_%' also matches MANUALX_... -- verified against the live
+# server, which returned MANUALX_crafted for the unescaped pattern.  This
+# predicate is what makes the list and delete endpoints safe, so it has to
+# mean what it says.
+#
+# No ESCAPE clause: backslash is ALREADY PostgreSQL's default LIKE escape
+# character, and spelling it out means threading a backslash through a Python
+# literal and a SQL literal, which is how the first version of this line
+# ended up matching nothing at all.
+_MANUAL_LIKE = (manual_entry.retrieval_common.MANUAL_SESSION_PREFIX
+                .replace("_", r"\_") + "%")
+
+
+@app.post("/api/manual_entry")
+async def api_manual_entry_create(
+    text: str = Form(...),
+    parameters_json: str = Form("{}"),
+    is_user_input_image: bool = Form(False),
+    is_render: bool = Form(False),
+    notes_json: str = Form("{}"),        # {filename: note}
+    degrees_json: str = Form("{}"),      # {filename: 0-100}
+    mirror_multimodal: bool = Form(False),
+    files: list[UploadFile] = File(default=[]),
+) -> dict:
+    """Write one curated entry.  Refuses while the system is busy."""
+    _require_auth()
+    _require_not_busy()
+    try:
+        params = {k: float(v)
+                  for k, v in json.loads(parameters_json).items()}
+        notes = json.loads(notes_json)
+        degrees = json.loads(degrees_json)
+    except (ValueError, TypeError, AttributeError) as exc:
+        raise HTTPException(status_code=400,
+                            detail=f"Malformed form data: {exc}") from exc
+
+    images: list[manual_entry.ManualImage] = []
+    for f in files:
+        name = Path(f.filename or "image").name
+        if Path(name).suffix.lower() not in ALLOWED_IMAGE_SUFFIXES:
+            raise HTTPException(status_code=400, detail=(
+                f"{name}: unsupported type (allowed: .png .jpg .jpeg)"))
+        data = await f.read()
+        if len(data) > MAX_IMAGE_BYTES:
+            raise HTTPException(status_code=400, detail=(
+                f"{name}: exceeds {MAX_IMAGE_BYTES // (1024 * 1024)} MB"))
+        images.append(manual_entry.ManualImage(
+            filename=name, data=data,
+            note=str(notes.get(name, "")),
+            compression_degree=int(degrees.get(name, 0))))
+
+    try:
+        res = manual_entry.create_manual_entry(
+            text=text, images=images, parameters=params,
+            is_user_input_image=is_user_input_image, is_render=is_render,
+            mirror_multimodal=mirror_multimodal)
+    except manual_entry.ManualEntryError as exc:
+        # create_manual_entry has already rolled back; nothing half-written
+        # survives, so this is a plain 400 rather than a 500.
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    logger.info("[WEB] manual entry created: %s (attempt=%s, images=%d, "
+                "params=%d)", res.session_id, res.attempt_id, len(images),
+                len(params))
+    return {"ok": True, "session_id": res.session_id,
+            "attempt_id": res.attempt_id, "images": len(images),
+            "parameters": len(params)}
+
+
+@app.get("/api/manual_entries")
+def api_manual_entries_list() -> dict:
+    """List manually uploaded entries.  Real sessions never appear here."""
+    _require_auth()
+    with postgres_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT s.session_id, s.session_ts, s.user_provided_images,"
+                "       LEFT(c.body, 240) AS preview,"
+                "       EXISTS (SELECT 1 FROM dc_attempts a"
+                "               WHERE a.session_id = s.session_id)"
+                "  FROM sessions s"
+                "  LEFT JOIN chunks c ON c.session_id = s.session_id"
+                " WHERE s.session_id LIKE %s"
+                " ORDER BY s.session_ts DESC", (_MANUAL_LIKE,))
+            rows = cur.fetchall()
+    return {"entries": [
+        {"session_id": r[0],
+         "session_ts": r[1].isoformat() if r[1] else None,
+         "has_images": bool(r[2]), "preview": r[3] or "",
+         "has_parameters": bool(r[4])} for r in rows]}
+
+
+@app.post("/api/manual_entry/delete")
+def api_manual_entry_delete(body: ManualEntryIdIn) -> dict:
+    """Delete ONE manual entry: its rows (all cascading) and its R2 objects.
+
+    Guarded three independent ways -- the prefix check here, the escaped
+    LIKE in the SQL, and purge_r2's own refusal.  Any one alone would do;
+    a mistake would have to defeat all three to reach a real session.
+    """
+    _require_auth()
+    _require_not_busy()
+    sid = body.session_id
+    if not sid.startswith(manual_entry.retrieval_common
+                          .MANUAL_SESSION_PREFIX):
+        raise HTTPException(status_code=403, detail=(
+            "Only manually uploaded entries can be deleted here."))
+    with postgres_pool.connection() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "DELETE FROM sessions WHERE session_id = %s"
+                "   AND session_id LIKE %s",
+                (sid, _MANUAL_LIKE))
+            deleted = cur.rowcount
+            conn.commit()
+    if not deleted:
+        raise HTTPException(status_code=404, detail="No such manual entry.")
+    n_objects = manual_entry.purge_r2(sid)
+    logger.info("[WEB] manual entry deleted: %s (%d R2 objects)",
+                sid, n_objects)
+    return {"ok": True, "session_id": sid, "r2_objects_deleted": n_objects}
 
 
 # --------------------------------------------------------------------------
