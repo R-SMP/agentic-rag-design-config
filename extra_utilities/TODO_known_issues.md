@@ -81,7 +81,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F42` | PARTIALLY ADDRESSED | Make the Planner and DCOI processes faster / more focused |
 | `F44` | NOT STARTED | Check whether the Context Pruner and Database Handler have / need blade-sections-tool info |
 | `F45` | PARTIALLY ADDRESSED | Refine blade-section parameters in place (no new attempt per tweak) |
-| `F46` | DEFERRED | Cross-schema-version session search — DEFERRED, blocked on T1 |
+| `F46` | OPEN | Cross-schema-version session search — UNBLOCKED 2026-09-15: T1 shipped |
 | `F52` | NOT STARTED | Sessions Queue overnight runner: SOLID token / rate / context-limit resilience |
 | `F53` | PARTLY DONE | Prompt caching: port conversation-history caching to the 3-agent system |
 | `F54` | OPEN | Verify save-phase prompt caching on a REAL session save |
@@ -2584,11 +2584,30 @@ loop doesn't accumulate attempts.  Weigh against losing the per-attempt
 parameter history.
 
 
-### F46. Cross-schema-version session search — DEFERRED, blocked on T1
+### F46. Cross-schema-version session search — UNBLOCKED, T1 has shipped
 
-**Status.** DEFERRED — recorded 2026-07-07 at `impellerHeight` removal,
-rescoped the same day after checking `database_search`.  NOT real work now;
-becomes real only when **T1** (parameter-value filtering) is built.
+**Status.** OPEN as of 2026-09-15.  Was DEFERRED (recorded 2026-07-07 at
+`impellerHeight` removal, rescoped the same day after checking
+`database_search`) pending **T1**.  T1 is now built —
+`tools/database_search/param_rank.py` plus the `parameters` argument on
+`database_search` — so the dependency is discharged and this is real work.
+
+**What T1 already settled, so it is NOT outstanding here.**  (a) and (c)
+are done.  Normalisation follows design note D7 — every attempt is scored
+against the CURRENT active ranges, deliberately, because a distance is only
+meaningful on one common scale; that is a stated exception to invariant 7
+and is recorded as such.  `impellerHeight` is excluded outright: it exists
+only in schema v1, and pinning `MAX(schema_version)` drops it, which is what
+F46(c) asked for.
+
+**What IS still outstanding.**  (b) — a filter naming a parameter that some
+attempts do not carry.  The masked RMSE already handles the RANKING side
+(an attempt missing a key contributes nothing for it, and `matched_keys`
+reports the coverage), but there is no parameter-value FILTER yet: the
+metafilter table still has no `dc_attempt_parameters` JOIN, so
+`bladeCount >= 5` as a hard pre-filter remains unbuilt.  See W46 for the
+trap that `retired_at IS NULL` alone does not select one schema row per
+parameter.
 
 **Finding (why deferred).** `database_search` does NOT search, filter, or
 rank by any design parameter today.  It is pure semantic / vector-embedding

@@ -21,7 +21,7 @@ that move.
 | **costs money** | Makes billed LLM API calls |
 | **BROKEN** | Calls an API that has since changed -- see "Known-broken" below |
 
-## Root smoke tests  (32)
+## Root smoke tests  (33)
 
 | Script | Needs | Flags | Guards / does |
 |---|---|---|---|
@@ -46,6 +46,7 @@ that move.
 | `smoke_test_ocr_grouping.py` | none |  | Ten deterministic checks on group_words_into_regions with synthetic word boxes: same-line merge, same-band gap-split, separate vertical bands ordered top-to-bottom with ids, order-independence (pro... |
 | `smoke_test_orchestrator.py` | llm-api |  | Asserts Orchestrator is a BaseChainAgent with its own AgentState slot, requires a Session, that routing tools append 4-key exchange dicts with a tz-aware ISO ts, that the chain log is session-scope... |
 | `smoke_test_param_rename.py` | none |  | Intercepts EvaluateDefinition to capture the ParamName of every input tree the tool sends to RhinoCompute and asserts exactly 17 names arrive — the 16 canonical camelCase inputs from parameter_keys... |
+| `smoke_test_parameter_search.py` | postgres (partly) | py>=3.10 | Covers the masked-RMSE parameter search (T1): the per-agent tool schema (only the DC Input Creator, DC Input Inspector and Design Engineer get `parameters`, and the other seven schemas stay unchanged), the validation layer, the topology-3 role equivalence, the ranking SQL against the live corpus, the emitted XML under BOTH chunk backends (`chunks` and `chunks_mm` carry different embedding_model strings -- W47), and the refusal when a text query and a parameter vector arrive in one call.  Sections A/B/F need nothing but the repo; the live sections SKIP rather than fail without Postgres.  Read-only: every statement is a SELECT, and `_log_rag_query` is neutralised so it leaves no rows in `rag_queries`. |
 | `smoke_test_prompt_cache.py` | llm-api | **costs money** | Drives real Anthropic calls through the shipped helpers (make_system_message / history_cache_control / invoke_with_retry) to prove the explicit system breakpoint and the top-level automatic breakpo... |
 | `smoke_test_prompt_format.py` | none |  | Pulls each of the 8 .format()-wired agent TEMPLATEs from agents.shared.prompts and calls .format_map() with a stub mapping, catching literal `{}`/unmatched braces/malformed slots that would otherwi... |
 | `smoke_test_prompt_variant.py` | none |  | For each PROMPT_VARIANT, proves every file under agents/<N>agent_<variant>/ is actually REACHED by prompts._topology_override, that the set of agents whose assembled prompt differs equals the BLAST... |

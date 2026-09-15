@@ -2137,9 +2137,24 @@ prompt is `.format()`ed — a shared fragment lands in prompts that are and
 prompts that are not.  Write the example without braces and let the TOOL
 SCHEMA carry the JSON shape; it is not `.format()`ed.
 
-**The check that catches it** (now in the parameter-search suite): after
+**There is ALREADY a dedicated guard for this, and it did not fire.**
+`extra_utilities/smoke_test_prompt_format.py` exists for exactly this bug
+class -- its own docstring says two earlier Phase 4 production crashes "would
+have been caught here at PR time".  It missed this one twice over:
+
+* **It cannot start without the 3D/Rhino stack.**  It does a plain
+  `import agents`, which drags in trimesh/pyrender/DracoPy/compute_rhino3d,
+  so on a machine (or worktree) without them it dies at import and is
+  silently never run.  `prompt_pdf/bootstrap.py` stubs precisely those; a
+  three-line change would reactivate it.
+* **It covers topology 7 only.**  `TEMPLATE_NAMES` lists the eight 7-agent
+  templates, so the topology-5 DC Input Creator and the topology-3 Design
+  Engineer are not checked at all.  Of the four prompts this bug broke, it
+  would have caught two.
+
+Until both are fixed, the reliable check is the snapshot: after
 `topology_prompt_snapshot.py save`, assert no snapshot contains a literal
-`{routing_instructions}`, or equivalently that `sha256 != template_sha256`
+`{routing_instructions}` -- equivalently that `sha256 != template_sha256`
 for every agent in `PROMPT_MD_RUNTIME_SLOTS`.
 
 
