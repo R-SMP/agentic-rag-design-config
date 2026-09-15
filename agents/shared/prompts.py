@@ -204,6 +204,32 @@ _HAS_DBA_RE = re.compile(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>", re.DOTALL)
 # Design Engineer -- as a capability they do not have.
 _HAS_USER_INPUTS_RE = re.compile(
     r"<<HAS_USER_INPUTS>>(.*?)<</HAS_USER_INPUTS>>", re.DOTALL)
+# Two VERSIONS of a passage, not a show/hide: whichever does not apply is
+# stripped, so exactly one survives.  Same shape as <<BSV_ON>>/<<BSV_OFF>>.
+#
+# The alternative -- one passage with "if you hold an image tool ..." in it --
+# was rejected deliberately.  It asks the model to introspect about its own
+# toolset, which the assembler already knows at build time, and it hands an
+# agent that CAN look an explicit branch for handing the work off instead.
+# Resolving capability here is the same principle _build_template already
+# applies to the DBa slots: a tool an agent does not hold is not described
+# to it.
+_CAN_SEE_RE = re.compile(r"<<CAN_SEE>>(.*?)<</CAN_SEE>>", re.DOTALL)
+_CANNOT_SEE_RE = re.compile(r"<<CANNOT_SEE>>(.*?)<</CANNOT_SEE>>", re.DOTALL)
+
+# Agents that bind an image-viewing tool.  The source of truth is each
+# agent's own ``can_view_images=`` argument where it calls
+# ``read_user_inputs_summary``; this mirrors it so prompt assembly can branch
+# without importing the agent modules (which drags in the 3D render stack).
+# ``smoke_test_prompt_image_regions.py`` asserts the two still agree -- without
+# that check this set rots silently the first time an agent gains or loses an
+# image tool, and the wrong version of the passage ships.
+_AGENTS_WITH_IMAGE_TOOLS = frozenset({
+    "user_input_inspector",
+    "dc_input_inspector",
+    "dc_output_inspector",
+    "requirements_analyst",
+})
 
 
 # Which database tool(s) each DBa slot describes.  A slot is blanked only
@@ -417,6 +443,29 @@ def apply_dba_filter(text: str, agent_dir_name: str) -> str:
         text = _HAS_USER_INPUTS_RE.sub(lambda m: m.group(1), text)
     else:
         text = _HAS_USER_INPUTS_RE.sub("", text)
+    return text
+
+
+def apply_image_tools_filter(text: str, agent_dir_name: str) -> str:
+    """Resolve ``<<CAN_SEE>>`` / ``<<CANNOT_SEE>>`` for one agent.
+
+    Some shared fragments describe what to do with a retrieved IMAGE.  That
+    instruction is only true for an agent that binds an image tool; for the
+    others -- the DC Input Creator in topologies 7 and 5, the topology-3
+    Design Engineer -- it used to read as an instruction to do something
+    impossible, and it contradicted the ``database_search`` text telling them
+    to hand a visual question on.  See ``F100``.
+
+    Exactly one of the two regions survives: the version that does not apply
+    is stripped whole.
+    """
+    can_see = agent_dir_name in _AGENTS_WITH_IMAGE_TOOLS
+    if can_see:
+        text = _CAN_SEE_RE.sub(lambda m: m.group(1), text)
+        text = _CANNOT_SEE_RE.sub("", text)
+    else:
+        text = _CAN_SEE_RE.sub("", text)
+        text = _CANNOT_SEE_RE.sub(lambda m: m.group(1), text)
     return text
 
 
@@ -1130,6 +1179,7 @@ def _build_template(agent_dir_name: str) -> str:
     # classification — so they run separately from the global
     # apply_flag_filters chain.
     filtered = apply_dba_filter(filtered, agent_dir_name)
+    filtered = apply_image_tools_filter(filtered, agent_dir_name)
     return apply_chain_only_filter(filtered, agent_dir_name)
 
 

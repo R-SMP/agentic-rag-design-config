@@ -115,6 +115,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F97` | OPEN | `retrieve_attempt`'s nnn-to-global_id paragraph rests on an unverified premise about how the DH words its answers |
 | `F98` | DONE | Topologies 5 and 3 do not share what they retrieve — the RAG hand-off pointer rules landed in topology 7 only |
 | `F99` | OPEN | A retrieved session's raw conversation is fetched and listed, but never printed and nothing licensed reading it |
+| `F100` | DONE | The shared retrieval fragment told the DCIC and Design Engineer to look at images they hold no tool to open |
 
 ---
 
@@ -4466,3 +4467,94 @@ fallback); `tools/retrieval_common.py` (`folder_listing(recurse=)`);
 (`_HAS_USER_INPUTS_RE`, `apply_dba_filter`);
 `DC_prompt_fragments/tools_config/retrieve_user_inputs.md` + the `5agent` /
 `3agent` forks; `extra_utilities/db_design/smoke_test_retrieve_user_inputs.py`.
+
+---
+
+### F100. The shared retrieval fragment told agents with no image tool to look at images
+
+**Status.** DONE 2026-09-15, in the change that filed it.  Found by the owner,
+who also rejected the first fix.  Kept because both the miss AND the rejected
+fix are worth remembering.
+
+**What was wrong.** `$retrieve_user_inputs_tool` — the "Retrieving past saved
+content" fragment — is shown to holders of EITHER retrieve tool
+(`_DBA_TOOL_SLOTS` pairs it with `("user_inputs", "attempt")`).  Two of its
+bullets were written from the point of view of an agent that can see images:
+one named `view_images` as the way to open a retrieved path, the other said a
+past visual claim "is literally transferable only once you have LOOKED".
+Three agents receive that text and bind no image tool at all — the DC Input
+Creator (topologies 7 and 5) and the topology-3 Design Engineer.  The DCIC has
+ZERO occurrences of `view_images` in its module and never calls
+`build_user_inputs_tools`; the Design Engineer passes `can_view_images=False`
+explicitly.
+
+**Worse than a dead instruction — a contradiction.** Six lines above it in the
+same assembled prompt, the `database_search` block tells the DCIC that "when
+you have no way to check ... name who should look", while the retrieval bullet
+said a claim transfers only once YOU have LOOKED.  An agent that cannot look
+could satisfy neither.
+
+**The tool holding is NOT the bug.** The DCIC's own per-agent block says it
+retrieves attempts "to inspect their `parameters.json` values (printed in full
+in the reply)" — text, not pictures.  The holding is right; the bullets were
+mis-targeted.
+
+**The fix that was REJECTED, and why it matters.** The first proposal was to
+reword both bullets once, for everyone: *"open what you need if you hold an
+image tool; otherwise pass the path on and name who should look."*  Three
+problems, and the third is the one that killed it:
+
+1. It asks the model to introspect about its own toolset — a fact the prompt
+   assembler already knows at build time.
+2. "Name who should look" is not executable by the agents it was written for.
+   **The DCIC is never told who can see images**: its whole prompt mentions the
+   DC Input Inspector exactly once, in a routing-frequency rule, and the DC
+   Output Inspector not at all.  It would have had to invent a name.
+3. It hands the four agents that CAN look — UII, DCII, DCOI, RA — an explicit,
+   cheaper branch for handing the work off instead of doing it.  That risks
+   degrading four agents that behave correctly in order to fix three that were
+   merely being told something inert.
+
+It also cut against the rule `_build_template` already follows for the DBa
+slots: *a tool an agent does not hold is not described to it.*  Capability is
+resolved at assembly time, not handed to the model as a conditional.
+
+**How it was actually fixed.** Two VERSIONS of the passage, in
+`<<CAN_SEE>>` / `<<CANNOT_SEE>>` regions — the same shape as
+`<<BSV_ON>>`/`<<BSV_OFF>>` — resolved per agent by
+`apply_image_tools_filter`.  The CAN_SEE text is **byte-identical to the
+pre-split prompt**, so the four agents that work today are untouched; only the
+three that hold no image tool get new text, and theirs says to retrieve for the
+TEXT, to treat an image path as something to pass on, and to *say in the
+hand-off that the point needs a look* — flagging rather than naming, because
+they do not know the cast.
+
+**The drift guard.** `_AGENTS_WITH_IMAGE_TOOLS` in `prompts.py` mirrors a fact
+that actually lives in each agent's `can_view_images=` argument; prompt
+assembly cannot read the real one without importing agent modules and dragging
+in the 3D render stack.  `extra_utilities/smoke_test_prompt_image_regions.py`
+asserts the two agree (and that the CANNOT_SEE version names no image tool).
+Verified to BITE: removing one agent from the frozenset fails it.  Without that
+check the mirror rots the first time an agent gains or loses an image tool, and
+the wrong version ships silently.
+
+**The general trap.** A fragment in a slot gated on "holds ANY of these tools"
+cannot address "you" as if every reader has the same tools.  Before writing an
+instruction into a shared fragment, check which agents the slot's gate admits —
+`_DBA_TOOL_SLOTS` in `agents/shared/prompts.py` — and either make it true for
+all of them, or split it per capability.  Same family as F98 trap 4 and W44's
+closing note on `_DEFAULT_VALUE`.
+
+**Adjacent, still open.** `DC_prompt_fragments/tools_config/database_search.md`
+line 31 is SHARED, so it reaches every `search` holder including the DCIC and
+the Design Engineer, and it says "drop the literal values, and name who should
+look".  Same weakness — they do not know who can.  It is advisory rather than a
+branch, so it was left alone; the `<<CANNOT_SEE>>` text above is deliberately
+weaker than it (flag, do not name).  Fix it the same way if it ever misfires.
+
+**Where to look.** `DC_prompt_fragments/tools_config/retrieve_user_inputs.md`
++ the `5agent` / `3agent` forks; `agents/shared/prompts.py`
+(`_CAN_SEE_RE`, `_AGENTS_WITH_IMAGE_TOOLS`, `apply_image_tools_filter`,
+`_DBA_TOOL_SLOTS`); `agents/dc_input_creator/dc_input_creator.py`;
+`agents/design_engineer/design_engineer.py:383`;
+`extra_utilities/smoke_test_prompt_image_regions.py`.
