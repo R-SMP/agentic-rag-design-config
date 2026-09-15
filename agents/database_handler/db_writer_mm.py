@@ -57,7 +57,11 @@ AGENT_USER_IMAGE = "User"
 AGENT_RENDER = "tool_caller"
 
 _IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
-_RENDER_RE = re.compile(r"render_.*\.png$", re.IGNORECASE)
+# ANY image in an attempt folder, not only a canonical ``render_*`` one: a
+# manual upload's images carry their own names, and a new render type would
+# otherwise be skipped until someone renamed it.  .obj / .json / .txt are
+# excluded by the suffix list, so a mesh is never sent to the embedder.
+_RENDER_RE = re.compile(r"\.(?:png|jpe?g)$", re.IGNORECASE)
 # attempts/<NNN>__<global_id>/  — global_id IS dc_attempts.attempt_id
 _ATTEMPT_FOLDER_RE = re.compile(r"^(\d+)__(\d+)$")
 

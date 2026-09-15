@@ -56,7 +56,7 @@ from agents.shared import postgres_pool
 from agents.shared import attempt_views
 from tools import retrieval_common
 from agents.shared.agent_activity import generic_tool
-from config import ATTEMPTS_DIR
+from config import ATTEMPTS_DIR, PROJECT_ROOT
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
@@ -131,6 +131,22 @@ def _read_local(dest: Path, name: str) -> str | None:
 # ============================================================
 # Render-view policy
 # ============================================================
+def _schema_parameter_count() -> int | None:
+    """How many parameters a COMPLETE set has, or None when unreadable.
+
+    Read from the fragment that already holds it rather than importing
+    ``agents.shared.prompts`` -- that module pulls the routing + topology
+    stack, and ``tools`` must not depend on it.  None disables the
+    ``partial`` attribute entirely rather than guessing a denominator.
+    """
+    try:
+        return int((PROJECT_ROOT / "DC_prompt_fragments" / "dc_config"
+                    / "parameter_count.txt").read_text(
+                        encoding="utf-8").strip())
+    except Exception:  # noqa: BLE001
+        return None
+
+
 def _views_in_scope() -> list[str]:
     """Return the ordered list of render-view names the workflow enables."""
     out: list[str] = []
@@ -241,27 +257,51 @@ def _build_attempt_block(
     fetch_failures: list[str],
     folder: str | None = None,
     listing: list[tuple[str, int]] | None = None,
+    extra_images: list[tuple[str, str]] | None = None,
 ) -> str:
     """Render one <attempt> block."""
     parts: list[str] = []
+    # Curated content, not a design run.  Keyed off the id the tool already
+    # holds, so there is no new column and no new file to keep in step.
+    manual = session_id.startswith(retrieval_common.MANUAL_SESSION_PREFIX)
+    origin = ' origin="manual_upload"' if manual else ""
     parts.append(
         f"<attempt id={_attr(global_id)} nnn={_attr(nnn)} "
-        f"session_id={_attr(session_id)}>"
+        f"session_id={_attr(session_id)}{origin}>"
     )
-    if description_text is None:
-        parts.append(
-            f"  <missing path={_attr(f'{session_id}/attempts/{nnn}__{global_id}/description.txt')}/>"
-        )
-    else:
+    if description_text is not None:
         parts.append("  <description>")
         parts.append("    " + _wrap_cdata(description_text))
         parts.append("  </description>")
+    elif not manual:
+        # A manual entry has no description.txt by design, so the marker
+        # would report a failure that never happened.  A real attempt keeps
+        # it: there, an absent description IS a missing artefact.
+        #
+        # Tested on presence FIRST, not on absence: gating the old
+        # ``if description_text is None`` with ``and not manual`` sent a
+        # manual entry down the else branch and into _wrap_cdata(None).
+        parts.append(
+            f"  <missing path={_attr(f'{session_id}/attempts/{nnn}__{global_id}/description.txt')}/>"
+        )
     if parameters_text is None:
         parts.append(
             f"  <missing path={_attr(f'{session_id}/attempts/{nnn}__{global_id}/parameters.json')}/>"
         )
     else:
-        parts.append("  <parameters>")
+        # A manual upload may supply only SOME parameters, so
+        # ``parameters_json`` stops universally meaning "complete snapshot".
+        # Say so -- but only when it really is partial, so a complete set
+        # keeps the old tag byte-for-byte.
+        _attrs = ""
+        _total = _schema_parameter_count()
+        try:
+            _n_keys = len(json.loads(parameters_text))
+        except Exception:  # noqa: BLE001 — not this tool's JSON to police
+            _n_keys = None
+        if _n_keys is not None and _total and _n_keys < _total:
+            _attrs = f' partial="true" keys={_attr(f"{_n_keys}/{_total}")}'
+        parts.append(f"  <parameters{_attrs}>")
         parts.append("    " + _wrap_cdata(parameters_text))
         parts.append("  </parameters>")
     if render_refs:
@@ -271,6 +311,17 @@ def _build_attempt_block(
                 f"    <render name={_attr(view)} key={_attr(key)}/>"
             )
         parts.append("  </renders>")
+    if extra_images:
+        # Images in the attempt folder that are not one of the canonical
+        # views: a manual upload's own files, or a render type this build
+        # does not know about.  Same shape as <render>, a different name so
+        # a reader is never told a photograph is an isometric view.
+        parts.append("  <extra_images>")
+        for _name, _path in extra_images:
+            parts.append(
+                f"    <extra_image name={_attr(_name)} path={_attr(_path)}/>"
+            )
+        parts.append("  </extra_images>")
     if folder:
         # The full attempt, materialised locally.  Every file is addressable
         # by ``view_images``; the agent picks which view is worth looking at.
@@ -331,6 +382,7 @@ def _build_xml(
             r["fetch_failures"],
             r.get("folder"),
             r.get("listing"),
+            r.get("extra_images"),
         ))
     if truncated_count > 0:
         parts.append(
@@ -472,6 +524,7 @@ def _run_retrieve_attempt(
             description_text: str | None = None
             parameters_text: str | None = None
             render_refs: list[tuple[str, str]] = []
+            extra_images: list[tuple[str, str]] = []
             fetch_failures: list[str] = []
 
             # Bound on EVERY path: the record below reads ``dest``
@@ -497,6 +550,12 @@ def _run_retrieve_attempt(
                         render_refs.append(
                             (view, str((dest / _RENDER_FILES[view]).resolve()))
                         )
+                _canonical = set(_RENDER_FILES.values())
+                for _f in sorted(dest.iterdir()):
+                    if (_f.is_file() and _f.name not in _canonical
+                            and _f.suffix.lower()
+                            in retrieval_common.IMAGE_SUFFIXES):
+                        extra_images.append((_f.name, str(_f.resolve())))
             elif bucket is None or client is None:
                 fetch_failures.append(
                     f"{session_id}/attempts/{nnn}__{gid}/ (R2 not configured)"
@@ -519,7 +578,13 @@ def _run_retrieve_attempt(
                 if parameters_text is not None:
                     _write_artefact(dest, "parameters.json",
                                     parameters_text.encode("utf-8"))
-                if has_renders and render_views_in_scope:
+                # Canonical views are fetched BY NAME, and a manual entry
+                # has none of them -- the loop would append one <missing/>
+                # per enabled view, so the agent would read a curated entry
+                # as a broken one.  Its images come from the listing below.
+                _manual = session_id.startswith(
+                    retrieval_common.MANUAL_SESSION_PREFIX)
+                if has_renders and render_views_in_scope and not _manual:
                     for view in render_views_in_scope:
                         filename = _RENDER_FILES[view]
                         key = _r2_key(base, filename)
@@ -536,6 +601,28 @@ def _run_retrieve_attempt(
                         render_refs.append(
                             (view, str((dest / filename).resolve()))
                         )
+                if has_renders:
+                    # The canonical views are fetched BY NAME above, so
+                    # anything else in the folder is invisible to this tool.
+                    # That is why a manually uploaded image never surfaced,
+                    # and why a NEW render type stays invisible until someone
+                    # adds it to attempt_views.VIEWS.  List, and carry the
+                    # rest.  Costs one LIST, and only when renders exist.
+                    _canonical = set(_RENDER_FILES.values())
+                    for _name in retrieval_common.r2_list(
+                            client, bucket, base + "/", tag=_TAG):
+                        if _name in _canonical:
+                            continue
+                        if not _name.lower().endswith(
+                                retrieval_common.IMAGE_SUFFIXES):
+                            continue  # .obj / .json / .txt stay out
+                        _data = _r2_get_bytes(
+                            client, bucket, _r2_key(base, _name))
+                        if _data is None:
+                            continue
+                        _write_artefact(dest, _name, _data)
+                        extra_images.append(
+                            (_name, str((dest / _name).resolve())))
 
             # Postgres fallback for the parameters.  Retrieving an attempt
             # has to yield its parameters -- that is most of the point of
@@ -566,6 +653,7 @@ def _run_retrieve_attempt(
                 "description_text": description_text,
                 "parameters_text": parameters_text,
                 "render_refs": render_refs,
+                "extra_images": extra_images,
                 "fetch_failures": fetch_failures,
                 "folder": str(dest.resolve()) if dest.is_dir() else None,
                 "listing": _folder_listing(dest),

@@ -11,9 +11,10 @@ Run from repo root::
 
     python extra_utilities/smoke_test_retrieve_attempt_offline.py
 
-7 named assertions:
+8 named assertions:
 
-  A1  <parameters> is emitted even with R2 unreachable.
+  A1  <parameters> is emitted even with R2 unreachable (and a partial
+      set is flagged as such).
   A2  the emitted values are the ones the database held.
   A3  no <missing .../parameters.json> marker for the recovered attempt.
   A4  a NULL parameters_json still yields <missing/> (nothing is invented).
@@ -146,8 +147,14 @@ def main() -> int:
                 failures.append(f"{name}: {detail}")
                 print(f"FAIL {name} - {detail}")
 
-        check("A1_parameters_present", "<parameters>" in xml,
+        # Matched on the OPENING tag only: the element carries attributes
+        # now (partial / keys), and PARAMS below is a 3-key set, so a
+        # literal "<parameters>" stopped matching when that shipped.
+        check("A1_parameters_present", "<parameters" in xml,
               "no <parameters> despite the database holding the snapshot")
+        check("A1b_partial_flagged",
+              'partial="true"' in xml and f'keys="{len(PARAMS)}/' in xml,
+              "a 3-key set must be reported as partial, with its count")
         check("A2_values_are_the_db_values", '"bladeCount": 5' in xml,
               "the seeded parameter values are not in the response")
         check(
@@ -176,7 +183,8 @@ def main() -> int:
         round_tripped = None
         detail = ""
         try:
-            body = xml.split("<parameters>")[1].split("</parameters>")[0]
+            body = xml.split("<parameters")[1].split(">", 1)[1]
+            body = body.split("</parameters>")[0]
             round_tripped = json.loads(body.split("CDATA[")[1].split("]]")[0])
         except Exception as exc:
             detail = f"CDATA is not valid JSON (double-encoded?): {exc}"
@@ -187,7 +195,7 @@ def main() -> int:
         if failures:
             print(f"FAIL - {len(failures)} of 7 assertions failed")
             return 1
-        print("PASS - retrieve_attempt offline fallback test (7 assertions)")
+        print("PASS - retrieve_attempt offline fallback test (8 assertions)")
         return 0
     finally:
         shutil.rmtree(tmp_root, ignore_errors=True)

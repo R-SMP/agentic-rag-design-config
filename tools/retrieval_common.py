@@ -162,6 +162,39 @@ def r2_get_bytes(client, bucket: str, key: str, *, tag: str) -> bytes | None:
         return None
 
 
+IMAGE_SUFFIXES: tuple[str, ...] = (".png", ".jpg", ".jpeg")
+
+# A session id minted by the manual-upload view rather than by a design run.
+# Both retrieve tools key their ``origin`` attribute off this, so the prefix
+# is the SINGLE place that decides what counts as curated content.
+MANUAL_SESSION_PREFIX = "MANUAL_"
+
+
+def r2_list(client, bucket: str, prefix: str, *, tag: str) -> list[str]:
+    """Basenames of the objects directly under *prefix*.
+
+    Prefix-free like every other helper here -- the caller passes a key
+    relative to the bucket's configured key prefix and this adds it.  Only
+    direct children are returned; anything in a sub-folder is skipped.
+    """
+    full = _full_key(prefix)
+    out: list[str] = []
+    try:
+        for page in client.get_paginator("list_objects_v2").paginate(
+                Bucket=bucket, Prefix=full):
+            for obj in page.get("Contents", []) or []:
+                key = obj.get("Key", "")
+                if not key.startswith(full):
+                    continue
+                name = key[len(full):]
+                if name and "/" not in name:
+                    out.append(name)
+    except Exception as exc:  # noqa: BLE001
+        logger.info(f"[{tag}]  R2 LIST failed for {full}: "
+                    f"{type(exc).__name__}: {exc}")
+    return out
+
+
 # ============================================================
 # XML escaping + token accounting
 # ============================================================

@@ -300,7 +300,11 @@ def _build_session_block(
 ) -> str:
     """Render one <session> block."""
     parts: list[str] = []
-    parts.append(f"<session id={_attr(session_id)}>")
+    manual = session_id.startswith(retrieval_common.MANUAL_SESSION_PREFIX)
+    parts.append(
+        f"<session id={_attr(session_id)}"
+        f"{' origin=\"manual_upload\"' if manual else ''}>"
+    )
     if extraction_text is not None:
         # The UII's interpreted extraction is the primary text: already
         # structured, so a reading agent does not re-derive it from prose.
@@ -312,10 +316,14 @@ def _build_session_block(
         # Sessions archived before extractions were shipped to R2 have none.
         # Say so, then fall back to the raw text, so one call is still
         # useful for the whole pre-existing corpus.
+        # A manual entry never ran the UII, so nothing was LOST.  The
+        # archive wording below reads as data loss and sends a reader
+        # looking for something that never existed.
         parts.append(
             "  <missing path={} note={}/>".format(
                 _attr(f"{session_id}/user_inputs/extracted_inputs.txt"),
-                _attr("no extraction was archived for this session; "
+                _attr("manually-written data point" if manual else
+                      "no extraction was archived for this session; "
                       "the raw user text is given below instead"),
             )
         )
