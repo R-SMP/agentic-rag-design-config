@@ -2101,3 +2101,96 @@ Harmless today — `agents/hub.py:37-44` builds Planner5 / Planner3, and neither
 imports the Orchestrator, which is the only construction site of the DC Input
 Inspector — but a new agent added to a reduced topology WITHOUT a DBa row will
 silently hold all three.
+
+## W45. A literal `{` in ANY prompt fragment silently strips the routing section.
+
+**Cost me a real bug on 2026-09-15**, caught only by the topology snapshot.
+
+**Where.** Every `agents/<agent>/prompt.md` that appears in
+`prompts.PROMPT_MD_RUNTIME_SLOTS` is `.format()`ed with runtime kwargs
+(`routing_instructions`, `render_check_library_block`, ...).  `$slot`
+substitution runs FIRST, so a fragment's text is inside the template by the
+time `.format()` sees it.
+
+**What happens.**  A JSON example in a tools_config fragment —
+
+```
+``{"bladeCount": 5, "impellerRadius": 70}``
+```
+
+— makes `str.format()` read `{"bladeCount"` as a replacement field and raise
+`KeyError`.  The caller falls back to the UNFORMATTED template, so the agent
+ships with a literal `{routing_instructions}` in its system prompt and
+**no routing instructions at all**.  Measured: all four edited prompts
+(`dc_input_creator` x2 topologies, `dc_input_inspector`, `design_engineer`)
+went `full_sha == template_sha`, i.e. never formatted.
+
+**Why it is easy to miss.**  Nothing raises where you are looking.  The
+fragment is valid Markdown, the prompt assembles, the file is the right size
+to the eye, and the agent still has most of its prompt.  Only the tail is
+wrong.  No existing fragment contained a literal brace before this, so there
+was no precedent to copy and nothing to collide with.
+
+**So:** never put `{` or `}` in a prompt fragment.  Escaping as `{{`/`}}`
+technically works but couples the fragment to whether that particular agent's
+prompt is `.format()`ed — a shared fragment lands in prompts that are and
+prompts that are not.  Write the example without braces and let the TOOL
+SCHEMA carry the JSON shape; it is not `.format()`ed.
+
+**The check that catches it** (now in the parameter-search suite): after
+`topology_prompt_snapshot.py save`, assert no snapshot contains a literal
+`{routing_instructions}`, or equivalently that `sha256 != template_sha256`
+for every agent in `PROMPT_MD_RUNTIME_SLOTS`.
+
+
+## W46. `retired_at IS NULL` does NOT select one row per parameter.
+
+**Where.** `tools/database_search/param_rank.py::_ACTIVE_SCHEMA_SQL`, and
+design note D7, which says to JOIN "the most recent active
+(`retired_at IS NULL`) schema entry per `param_name`".
+
+**D7's rule, taken literally, is wrong against the live data.**
+`dc_parameter_schemas` holds v1 (17 params) and v2 (16 params), and the v1
+rows were **never marked retired** — so all 16 shared parameters have TWO
+active rows.  A JOIN on `retired_at IS NULL` alone multiplies every attempt's
+rows and **doubles `matched_keys`**: measured 32/16, 4/2, 2/1.
+
+**The RMSE itself survived only by luck** — v1 and v2 carry identical ranges
+for all 16 today, so averaging over duplicated terms gave the same answer.
+The moment one range changes in a future version, the average silently blends
+two normalisation bases and nothing looks wrong.
+
+**So:** pin `schema_version = (SELECT MAX(schema_version) ...)` as well.
+That is also what retires `impellerHeight` — it exists only in v1, with
+`retired_at` still NULL, so every "active" filter keeps it, and F46(c) says it
+must never be a ranking signal.
+
+
+## W47. The expansion's `embedding_model` filter must follow the BACKEND, not the settings.
+
+**Where.** `tools/database_search/database_search.py::_run_parameter_pipeline`.
+
+`_run_expansion_query` filters `c.embedding_model = %(embedding_model)s`.  A
+parameter search embeds nothing, so it has to supply that string itself — and
+the two tables disagree:
+
+| table | embedding_model | attempt-level rows |
+|---|---|---|
+| `chunks` | `openai/text-embedding-3-large/1024` | 342 |
+| `chunks_mm` | `voyage/voyage-multimodal-3.5/2048` | 627 |
+
+The live default mode is `single-vector-multimodal`, so `backend.table` is
+`chunks_mm`.  Handing it the OpenAI string (the obvious thing, since that is
+what `workflow_settings.EMBEDDING_*` holds) matches **zero rows**.
+
+**The failure is silent and looks fine.**  The search still ranks correctly,
+still returns the right attempts, still emits well-formed XML — every
+`<attempt>` is just EMPTY, with no `<qa>` inside.  A reader skims it as "that
+attempt had no text saved".
+
+**So:** branch on `backend.is_multimodal` and use
+`voyage_mm.embedding_model_string()` or `db_writer._embedding_model_string(...)`
+accordingly.  Neither embeds; both are pure formatters.  The regression test
+asserts `<answer>` is actually present, because that is the only thing that
+distinguishes this from a working search.
+

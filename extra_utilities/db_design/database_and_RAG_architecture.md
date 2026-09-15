@@ -614,6 +614,25 @@ why results look the way they do.
              skipped_due_to_model_mismatch="0"/>
 ```
 
+**AMENDED 2026-09-15 — the parameter search (T1).**  A parameter query
+embeds nothing, so it omits `embedding_model` and
+`skipped_due_to_model_mismatch` and carries `search_kind="parameters"`
+plus the query vector instead:
+
+```xml
+<search_meta search_kind="parameters"
+             n_requested="3"
+             n_returned="3"
+             attempt_specific="true"
+             parameters="{'bladeCount': 5.0, 'impellerRadius': 70.0}"
+             db="chunks_mm"/>
+```
+
+Both omitted attributes would assert that a model ranked the results when
+none did — which contradicts this section's own requirement that the
+header state what was ACTUALLY applied.  See
+`database_search.py::_emit_search_meta`.
+
 ### 4.7 No-results payload (two variants)
 
 When zero anchors match, return an explicit message (never empty
@@ -625,6 +644,16 @@ applied:
   > applied — consider relaxing them."
 - **If no metafilters were applied:**
   > "No results found."
+
+**AMENDED 2026-09-15 — a THIRD variant for the parameter search (T1):**
+  > "No results found. No saved attempt carries any of the parameters
+  > you supplied, or none is visible to you."
+
+  Both wordings above are framed around metafilters, and "consider
+  relaxing them" is actively WRONG advice for a parameter query:
+  `param_rank.validate_query` has already rejected unknown keys and
+  out-of-range values, so an empty result means no attempt carried those
+  keys or the ACL excluded them all — not that a filter was too tight.
 
 Always still include the `<search_meta>` header.
 
