@@ -1028,6 +1028,165 @@ if (logClearBtn) logClearBtn.addEventListener("click", clearLogView);
 // ---------------------------------------------------------------------------
 // Left side menu — switch between the interfaces
 // ---------------------------------------------------------------------------
+// --------------------------------------------------------------------
+// Upload content to database
+//
+// The 16 parameter names, in the canonical order.  Mirrors
+// DC_prompt_fragments/dc_config/parameter_keys.txt; the form sends only
+// the boxes that were actually filled, because a PARTIAL set is allowed
+// and the retrieval layer reports it as partial="true" keys="N/16".
+// --------------------------------------------------------------------
+const UDB_PARAMS = [
+  "bladeCount", "impellerRadius", "impellerThickness",
+  "innerThickness", "innerMaxPos", "innerCamber", "innerChord",
+  "innerAngle", "middlePos", "middleChord", "middleAngle",
+  "outerThickness", "outerMaxPos", "outerCamber", "outerChord",
+  "outerAngle",
+];
+const udbFiles = new Map();   // filename -> {file, note, degree}
+
+function udbRenderParams() {
+  const box = document.getElementById("udb-params");
+  if (!box || box.childElementCount) return;
+  box.innerHTML = UDB_PARAMS.map((p) => `
+    <label class="udb-param">
+      <span>${p}</span>
+      <input type="number" step="any" data-param="${p}" placeholder="—" />
+    </label>`).join("");
+}
+
+function udbRenderImages() {
+  const box = document.getElementById("udb-images");
+  if (!box) return;
+  if (!udbFiles.size) { box.innerHTML = ""; return; }
+  box.innerHTML = Array.from(udbFiles.entries()).map(([name, e]) => `
+    <div class="udb-img" data-name="${name}">
+      <div class="udb-img-head">
+        <strong>${name}</strong>
+        <button type="button" class="ghost udb-img-del" data-name="${name}">Remove</button>
+      </div>
+      <input type="text" class="udb-img-note" data-name="${name}"
+             placeholder="note (optional)" value="${e.note || ""}" />
+      <label class="udb-img-deg">Compression
+        <input type="number" min="0" max="100" step="1" class="udb-img-degree"
+               data-name="${name}" value="${e.degree || 0}" /> %
+      </label>
+    </div>`).join("");
+}
+
+function udbCollectParams() {
+  const out = {};
+  for (const el of document.querySelectorAll("#udb-params input[data-param]")) {
+    const v = el.value.trim();
+    if (v !== "") out[el.dataset.param] = Number(v);
+  }
+  return out;
+}
+
+async function udbRefreshList() {
+  const box = document.getElementById("udb-list");
+  if (!box) return;
+  try {
+    const res = await fetch("/api/manual_entries");
+    const data = await res.json();
+    const rows = data.entries || [];
+    if (!rows.length) { box.innerHTML = `<p class="udb-empty">None yet.</p>`; return; }
+    box.innerHTML = rows.map((r) => `
+      <div class="udb-entry">
+        <div class="udb-entry-head">
+          <code>${r.session_id}</code>
+          <button type="button" class="danger udb-del" data-id="${r.session_id}">Delete</button>
+        </div>
+        <div class="udb-entry-preview">${(r.preview || "").replace(/</g, "&lt;")}</div>
+        <div class="udb-entry-meta">
+          ${r.has_images ? "images" : "no images"} ·
+          ${r.has_parameters ? "parameters" : "no parameters"}
+        </div>
+      </div>`).join("");
+  } catch (err) {
+    box.innerHTML = `<p class="udb-empty">Could not load entries: ${err}</p>`;
+  }
+}
+
+async function udbSubmit() {
+  const status = document.getElementById("udb-status");
+  const text = document.getElementById("udb-text").value;
+  const isUser = document.getElementById("udb-is-user-image").checked;
+  const isRender = document.getElementById("udb-is-render").checked;
+  if (!text.trim()) { status.textContent = "Text is required."; return; }
+  // Mirrors the server rule: an image with both toggles off would be
+  // stored where neither retrieval tool looks.  Checked here too so the
+  // user is told before a large upload is sent.
+  if (udbFiles.size && !isUser && !isRender) {
+    status.textContent =
+      "Turn on 'user input image' or 'render' — otherwise no agent could open the images.";
+    return;
+  }
+  const fd = new FormData();
+  fd.append("text", text);
+  fd.append("is_user_input_image", isUser ? "true" : "false");
+  fd.append("is_render", isRender ? "true" : "false");
+  fd.append("parameters_json", JSON.stringify(udbCollectParams()));
+  const notes = {}; const degrees = {};
+  for (const [name, e] of udbFiles.entries()) {
+    fd.append("files", e.file, name);
+    notes[name] = e.note || "";
+    degrees[name] = e.degree || 0;
+  }
+  fd.append("notes_json", JSON.stringify(notes));
+  fd.append("degrees_json", JSON.stringify(degrees));
+
+  status.textContent = "Saving…";
+  try {
+    const res = await fetch("/api/manual_entry", { method: "POST", body: fd });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) { status.textContent = data.detail || `Failed (${res.status})`; return; }
+    status.textContent = `Added ${data.session_id}`;
+    document.getElementById("udb-text").value = "";
+    udbFiles.clear(); udbRenderImages();
+    for (const el of document.querySelectorAll("#udb-params input[data-param]")) el.value = "";
+    udbRefreshList();
+  } catch (err) {
+    status.textContent = `Failed: ${err}`;
+  }
+}
+
+function udbWire() {
+  const pick = document.getElementById("udb-pick");
+  const file = document.getElementById("udb-file");
+  if (!pick || !file || pick.dataset.wired) return;
+  pick.dataset.wired = "1";
+  pick.addEventListener("click", () => file.click());
+  file.addEventListener("change", () => {
+    for (const f of file.files) udbFiles.set(f.name, { file: f, note: "", degree: 0 });
+    file.value = ""; udbRenderImages();
+  });
+  document.getElementById("udb-images").addEventListener("input", (ev) => {
+    const name = ev.target.dataset.name; if (!name) return;
+    const entry = udbFiles.get(name); if (!entry) return;
+    if (ev.target.classList.contains("udb-img-note")) entry.note = ev.target.value;
+    if (ev.target.classList.contains("udb-img-degree")) entry.degree = Number(ev.target.value);
+  });
+  document.getElementById("udb-images").addEventListener("click", (ev) => {
+    if (!ev.target.classList.contains("udb-img-del")) return;
+    udbFiles.delete(ev.target.dataset.name); udbRenderImages();
+  });
+  document.getElementById("udb-submit").addEventListener("click", udbSubmit);
+  document.getElementById("udb-list").addEventListener("click", async (ev) => {
+    if (!ev.target.classList.contains("udb-del")) return;
+    const id = ev.target.dataset.id;
+    if (!confirm(`Delete ${id}? Its database rows and stored files go too. This cannot be undone.`)) return;
+    const res = await fetch("/api/manual_entry/delete", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ session_id: id }),
+    });
+    const data = await res.json().catch(() => ({}));
+    document.getElementById("udb-status").textContent =
+      res.ok ? `Deleted ${id}` : (data.detail || `Delete failed (${res.status})`);
+    udbRefreshList();
+  });
+}
+
 const navItems = Array.from(document.querySelectorAll(".nav-item"));
 const views = Array.from(document.querySelectorAll(".view"));
 let settingsLoaded = false;
@@ -1057,6 +1216,11 @@ function switchView(name) {
     const on = v.dataset.view === name;
     v.classList.toggle("active", on);
     v.hidden = !on;
+  }
+  if (name === "upload_db") {
+    udbWire();
+    udbRenderParams();
+    udbRefreshList();
   }
   if (name === "settings") {
     if (!settingsLoaded) loadSettings();

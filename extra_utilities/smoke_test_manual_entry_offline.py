@@ -5,7 +5,7 @@ tools work unmodified, but it is NOT a design run: it has no extraction, no
 canonical renders, no description, and its parameter set may be partial.
 Phase A taught all three modules to say so.  This test pins what they say.
 
-Eleven assertions, in three groups:
+Twelve assertions, in four groups:
 
   M1  retrieve_attempt  -- origin="manual_upload" on <attempt>
   M2                    -- a partial parameter set is flagged, with its count
@@ -21,6 +21,8 @@ Eleven assertions, in three groups:
                            wording and gains no origin attribute
   M8  db_writer_mm      -- any image in an attempt folder is mirrored ...
   M9                    -- but never propeller_mesh.obj / .json / .txt
+  M10 web/app.js        -- its hardcoded parameter list still matches
+                           parameter_keys.txt, in the canonical order
 
 M3, M5's second half, M7 and M9 are REGRESSION assertions: they are the
 reason a real session's retrieval is unchanged by any of this, and they are
@@ -42,6 +44,7 @@ from __future__ import annotations
 
 import importlib.util
 import json
+import re
 import sys
 import types
 from pathlib import Path
@@ -216,13 +219,28 @@ def main() -> int:
           f"a real folder must yield exactly its canonical renders and "
           f"never the mesh; got {got_real}")
 
+    # ---------------- the web form's parameter list ----------------
+    # web/app.js hardcodes the 16 names (a static asset cannot read the
+    # fragment).  parameter_keys.txt declares BOTH the set and the order
+    # canonical, so a copy that drifts would offer the owner a box for a
+    # parameter that no longer exists -- or silently omit one.
+    keys_file = _REPO_ROOT / "DC_prompt_fragments" / "dc_config" /         "parameter_keys.txt"
+    canon = [ln.split()[0].rstrip(":,")
+             for ln in keys_file.read_text(encoding="utf-8").splitlines()
+             if ln.strip() and not ln.strip().startswith("#")]
+    app_js = (_REPO_ROOT / "web" / "app.js").read_text(encoding="utf-8")
+    m = re.search(r"const UDB_PARAMS = \[(.*?)\];", app_js, re.S)
+    ui = re.findall(r'"([A-Za-z]+)"', m.group(1)) if m else []
+    check("M10_web_form_parameters_match", ui == canon,
+          f"web/app.js UDB_PARAMS is {ui}, parameter_keys.txt is {canon}")
+
     print()
     if _failures:
-        print(f"FAIL - {len(_failures)} of 11 assertions failed")
+        print(f"FAIL - {len(_failures)} of 12 assertions failed")
         for f in _failures:
             print(f"  - {f}")
         return 1
-    print("PASS - manual-entry retrieval contract (11 assertions)")
+    print("PASS - manual-entry retrieval contract (12 assertions)")
     return 0
 
 

@@ -4521,3 +4521,49 @@ button.danger:hover:not(:disabled) { filter: brightness(1.1); }
 .sq-img-cmp-row input[type="range"] { flex: 1 1 auto; }
 .sq-img-cmp-val { flex: 0 0 auto; min-width: 62px; text-align: right; color: var(--text); }
 .sq-img-cmp-info { color: var(--muted); font-size: 12px; margin-top: 6px; min-height: 16px; }
+
+
+/* ------------------------------------------------------------------
+   Upload content to database  (manual, curated entries)
+   Deliberately plain: it reuses the app's existing button classes and
+   adds only layout, so it inherits the theme rather than restating it.
+   ------------------------------------------------------------------ */
+.upload-db-view { display: flex; gap: 20px; padding: 18px; overflow: auto; }
+.udb-form-pane { flex: 1 1 60%; min-width: 0; max-width: 640px; }
+.udb-list-pane { flex: 1 1 40%; min-width: 0; }
+.udb-h { margin: 0 0 4px; font-size: 1.05rem; }
+.udb-sub { margin: 0 0 14px; font-size: 0.82rem; opacity: 0.75; }
+.udb-label { display: block; margin: 14px 0 4px; font-weight: 600;
+             font-size: 0.85rem; }
+.udb-req { color: #c0392b; font-weight: 500; font-size: 0.75rem; }
+.udb-hint { font-weight: 400; opacity: 0.65; font-size: 0.75rem; }
+.udb-text { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; }
+.udb-drop { display: flex; align-items: center; gap: 10px; }
+.udb-images { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
+.udb-img { border: 1px solid rgba(128,128,128,0.35); border-radius: 6px;
+           padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.udb-img-head { display: flex; justify-content: space-between; align-items: center; }
+.udb-img-note { width: 100%; box-sizing: border-box; font: inherit; padding: 4px; }
+.udb-img-deg { font-size: 0.8rem; opacity: 0.85; }
+.udb-img-deg input { width: 64px; }
+.udb-toggles { display: flex; flex-direction: column; gap: 6px; margin-top: 12px;
+               font-size: 0.85rem; }
+.udb-params { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr));
+              gap: 6px 14px; }
+.udb-param { display: flex; align-items: center; justify-content: space-between;
+             gap: 8px; font-size: 0.78rem; }
+.udb-param input { width: 92px; font: inherit; padding: 3px 5px; }
+.udb-actions { margin-top: 18px; display: flex; align-items: center; gap: 12px; }
+.udb-status { font-size: 0.82rem; opacity: 0.85; }
+.udb-busy { margin-bottom: 10px; padding: 8px; border-radius: 6px;
+            background: rgba(192,57,43,0.12); font-size: 0.82rem; }
+.udb-list { display: flex; flex-direction: column; gap: 10px; }
+.udb-entry { border: 1px solid rgba(128,128,128,0.35); border-radius: 6px;
+             padding: 8px; }
+.udb-entry-head { display: flex; justify-content: space-between;
+                  align-items: center; gap: 8px; }
+.udb-entry-head code { font-size: 0.76rem; }
+.udb-entry-preview { margin: 6px 0 4px; font-size: 0.8rem; opacity: 0.9;
+                     white-space: pre-wrap; word-break: break-word; }
+.udb-entry-meta { font-size: 0.72rem; opacity: 0.6; }
+.udb-empty { font-size: 0.82rem; opacity: 0.6; }
