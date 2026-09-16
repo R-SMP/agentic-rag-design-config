@@ -4539,6 +4539,8 @@ button.danger:hover:not(:disabled) { filter: brightness(1.1); }
 .udb-hint { font-weight: 400; opacity: 0.65; font-size: 0.75rem; }
 .udb-text { width: 100%; box-sizing: border-box; font: inherit; padding: 8px; }
 .udb-drop { display: flex; align-items: center; gap: 10px; }
+.udb-params-bar { display: flex; align-items: center; gap: 10px;
+                  margin: 6px 0 8px; flex-wrap: wrap; }
 .udb-images { display: flex; flex-direction: column; gap: 8px; margin-top: 8px; }
 .udb-img { border: 1px solid rgba(128,128,128,0.35); border-radius: 6px;
            padding: 8px; display: flex; flex-direction: column; gap: 6px; }
