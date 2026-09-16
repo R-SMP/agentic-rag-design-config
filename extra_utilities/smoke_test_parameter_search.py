@@ -339,9 +339,35 @@ else:
                   reach["dc_input_creator"] > 0)
             check("the Design Engineer reaches them too, via the role "
                   "equivalence", reach["design_engineer"] > 0)
-            check("an agent with no attempt-level grant reaches NONE -- "
-                  "the ACL is load-bearing",
-                  reach["receptionist"] == 0, str(reach["receptionist"]))
+            # NOT "reaches zero".  A manual upload is deliberately
+            # written with the FULL agents_to roster -- curated content is
+            # meant for every agent -- so the Receptionist legitimately
+            # reaches those.  Asserting 0 made this test depend on the
+            # corpus holding nothing universally visible, which is exactly
+            # what the manual-upload feature exists to add; it went red the
+            # first time a real entry was uploaded.  The property worth
+            # pinning is that the ACL still BITES: strictly fewer, and only
+            # attempts whose chunks actually name the caller.
+            check("the ACL is load-bearing: a non-granted agent reaches "
+                  "strictly fewer attempts",
+                  reach["receptionist"] < reach["dc_input_creator"],
+                  f'{reach["receptionist"]} vs {reach["dc_input_creator"]}')
+            narrow = param_rank.rank_attempts(
+                conn, caller_agent="receptionist", params=sub, n=500)
+            leaked = 0
+            if narrow:
+                with conn.cursor() as cur:
+                    cur.execute(
+                        "SELECT COUNT(*) FROM dc_attempts a"
+                        " WHERE a.attempt_id = ANY(%s)"
+                        "   AND NOT EXISTS (SELECT 1 FROM chunks c"
+                        "                    WHERE c.attempt_id = a.attempt_id"
+                        "                      AND 'receptionist' ="
+                        "                          ANY(c.agents_to))",
+                        ([h.attempt_id for h in narrow],))
+                    leaked = cur.fetchone()[0]
+            check("...and only attempts whose chunks name it",
+                  leaked == 0, f"{leaked} reached without an ACL grant")
 
     # ===============================================================
     section("D.  End-to-end XML")

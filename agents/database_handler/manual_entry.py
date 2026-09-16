@@ -314,7 +314,10 @@ def create_manual_entry(
     parameters: dict[str, float] | None = None,
     is_user_input_image: bool = False,
     is_render: bool = False,
-    mirror_multimodal: bool = False,
+    # TRUE by default -- see the note in the endpoint.  `chunks` alone is
+    # not enough: which table database_search reads is decided by the
+    # Database-options mode, and the live default reads `chunks_mm`.
+    mirror_multimodal: bool = True,
 ) -> ManualEntryResult:
     """Write one curated entry.  Ordered, because each step reads the last.
 
@@ -432,8 +435,15 @@ def create_manual_entry(
                 "The text could not be embedded; it was written to the R2 "
                 "safety folder and the rest of the entry was rolled back.")
 
-        # 5. optional multimodal mirror.  Reads chunks AND R2, so it can
-        #    only run once both exist.  Best-effort by design.
+        # 5. multimodal mirror.  Reads chunks AND R2, so it can only run
+        #    once both exist.  Best-effort BY DESIGN, and that is what
+        #    makes defaulting it on safe: a Voyage failure here leaves a
+        #    fully working text-only entry rather than losing the upload.
+        #
+        #    It produces the same row shapes a real saved session gets --
+        #    one fused (image + <name>_note.txt) row per user image via
+        #    voyage_mm.embed_fused, so the note is the embedding_input,
+        #    plus one row per attempt render.
         if mirror_multimodal:
             try:
                 from agents.database_handler import db_writer_mm
