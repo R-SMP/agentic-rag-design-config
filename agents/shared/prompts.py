@@ -442,7 +442,7 @@ def apply_dba_filter(text: str, agent_dir_name: str) -> str:
         unwrap the region — keep its inner content verbatim.
     Off (the agent does NOT have access)
         strip the region entirely.  Used to remove the
-        ``## Searching past saved sessions`` heading +
+        ``## Database tools`` heading +
         ``$database_search_tool`` fragment from agents that lack
         access, so the LLM never sees stale references to a tool
         it can't call.

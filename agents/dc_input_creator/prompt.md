@@ -296,7 +296,7 @@ $hard_constraints_dc
 
 $hard_constraints_tools
 <<HAS_DBA>>
-## Searching past saved sessions
+## Database tools
 $database_search_tool
 
 $database_search_per_agent

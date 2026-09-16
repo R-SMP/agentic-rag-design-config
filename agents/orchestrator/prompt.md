@@ -268,7 +268,7 @@ halt silently as it would for a chain agent — it ends the dispatch and
 its text goes to the user verbatim as the final answer.  That is how a
 turn ends when you fail to route.
 <<HAS_DBA>>
-## Searching past saved sessions
+## Database tools
 $database_search_tool
 
 $database_search_per_agent

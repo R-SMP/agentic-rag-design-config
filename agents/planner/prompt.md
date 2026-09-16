@@ -296,7 +296,7 @@ for it when:
     captured) and prior attempts would clarify.
 
 <<HAS_DBA>>
-## Searching past saved sessions
+## Database tools
 $database_search_tool
 
 $database_search_per_agent
