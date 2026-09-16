@@ -1440,6 +1440,13 @@
           <label class="udb-label">
             Parameters <span class="udb-hint">optional, partial sets are fine</span>
           </label>
+          <div class="udb-params-bar">
+            <input id="udb-params-file" type="file"
+                   accept=".json,application/json" hidden />
+            <button id="udb-params-load" class="ghost" type="button">Load from JSON…</button>
+            <button id="udb-params-clear" class="ghost" type="button">Clear</button>
+            <span id="udb-params-note" class="udb-hint"></span>
+          </div>
           <div id="udb-params" class="udb-params"></div>
 
           <div class="udb-actions">

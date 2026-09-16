@@ -1083,6 +1083,102 @@ function udbCollectParams() {
   return out;
 }
 
+// Fill the parameter boxes from a local .json -- typically an attempt's
+// own parameters.json, which is a FLAT {name: number} object (confirmed
+// against dc_attempts.parameters_json).  A {"parameters": {...}} wrapper
+// is accepted too, because that is the other shape these files turn up
+// in and rejecting it would be a pointless papercut.
+//
+// REPLACES the set rather than merging into it.  Merging would leave
+// boxes you typed sitting beside boxes the file filled, and the entry
+// you upload would match neither the file nor what you thought you saw.
+// Clearing first means the form shows exactly the file.
+function udbApplyParamFile(text, fileName) {
+  const note = document.getElementById("udb-params-note");
+  const say = (msg, bad) => {
+    if (!note) return;
+    note.textContent = msg;
+    note.style.color = bad ? "var(--danger, #c0392b)" : "";
+  };
+  let data;
+  try {
+    data = JSON.parse(text);
+  } catch (err) {
+    say(`${fileName}: not valid JSON — ${err.message}`, true);
+    return;
+  }
+  if (data && typeof data === "object" && !Array.isArray(data)
+      && data.parameters && typeof data.parameters === "object") {
+    data = data.parameters;
+  }
+  if (!data || typeof data !== "object" || Array.isArray(data)) {
+    say(`${fileName}: expected a JSON object of parameter names to numbers.`,
+        true);
+    return;
+  }
+
+  const known = new Set(UDB_PARAMS);
+  const filled = [];
+  const unknown = [];
+  const bad = [];
+  const values = new Map();
+  for (const [k, v] of Object.entries(data)) {
+    if (!known.has(k)) { unknown.push(k); continue; }
+    // typeof true === "boolean" and Number(true) === 1, so a boolean
+    // would land as a silent 1.  The backend's validate_query rejects
+    // booleans for the same reason; reject here too rather than let the
+    // form and the server disagree about what counts as a number.
+    if (typeof v === "boolean" || v === null || v === "") { bad.push(k); continue; }
+    const n = Number(v);
+    if (!Number.isFinite(n)) { bad.push(k); continue; }
+    values.set(k, n);
+  }
+
+  for (const el of document.querySelectorAll("#udb-params input[data-param]")) {
+    if (values.has(el.dataset.param)) {
+      el.value = String(values.get(el.dataset.param));
+      filled.push(el.dataset.param);
+    } else {
+      el.value = "";
+    }
+  }
+
+  const bits = [`${fileName}: filled ${filled.length} of ${UDB_PARAMS.length}`];
+  if (unknown.length) bits.push(`ignored ${unknown.length} unknown (${unknown.join(", ")})`);
+  if (bad.length) bits.push(`skipped ${bad.length} non-numeric (${bad.join(", ")})`);
+  say(bits.join("; "), bad.length > 0 || filled.length === 0);
+}
+
+function udbWireParamFile() {
+  const pick = document.getElementById("udb-params-load");
+  const input = document.getElementById("udb-params-file");
+  const clear = document.getElementById("udb-params-clear");
+  const note = document.getElementById("udb-params-note");
+  if (!pick || !input || pick.dataset.wired) return;
+  pick.dataset.wired = "1";
+  pick.addEventListener("click", () => input.click());
+  input.addEventListener("change", () => {
+    const f = input.files && input.files[0];
+    // Reset FIRST: a file input does not fire `change` when the same
+    // file is picked twice, so without this, correcting the file and
+    // re-picking the original silently does nothing.
+    input.value = "";
+    if (!f) return;
+    const r = new FileReader();
+    r.onerror = () => { if (note) note.textContent = `${f.name}: could not be read.`; };
+    r.onload = () => udbApplyParamFile(String(r.result || ""), f.name);
+    r.readAsText(f);
+  });
+  if (clear) {
+    clear.addEventListener("click", () => {
+      for (const el of document.querySelectorAll("#udb-params input[data-param]")) {
+        el.value = "";
+      }
+      if (note) { note.textContent = ""; note.style.color = ""; }
+    });
+  }
+}
+
 let udbBusyTimer = null;
 
 // The server refuses a manual upload while it owns the on-disk session
@@ -1264,6 +1360,7 @@ function switchView(name) {
   if (name === "upload_db") {
     udbWire();
     udbRenderParams();
+    udbWireParamFile();
     udbRefreshList();
     udbStartBusyPoll();
   }
