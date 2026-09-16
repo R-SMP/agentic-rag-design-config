@@ -613,14 +613,30 @@ def _run_retrieve_attempt(
                             client, bucket, base + "/", tag=_TAG):
                         if _name in _canonical:
                             continue
+                        # .obj / .txt stay out, and so does a bare .json --
+                        # the one .json that matters is a compression
+                        # sidecar, fetched BESIDE its image just below.
                         if not _name.lower().endswith(
                                 retrieval_common.IMAGE_SUFFIXES):
-                            continue  # .obj / .json / .txt stay out
+                            continue
                         _data = _r2_get_bytes(
                             client, bucket, _r2_key(base, _name))
                         if _data is None:
                             continue
                         _write_artefact(dest, _name, _data)
+                        # BESIDE the image, which is where
+                        # image_compression.read_degree looks -- the same
+                        # thing retrieve_user_inputs does for a past user
+                        # image.  Without it a manually uploaded attempt
+                        # image reaches the agent at the size-based default
+                        # instead of the degree its uploader chose.
+                        _sc_name = (
+                            f"{_name.rsplit('.', 1)[0]}.compression.json")
+                        _sc_text = _r2_get_text(
+                            client, bucket, _r2_key(base, _sc_name))
+                        if _sc_text is not None:
+                            _write_artefact(dest, _sc_name,
+                                            _sc_text.encode("utf-8"))
                         extra_images.append(
                             (_name, str((dest / _name).resolve())))
 

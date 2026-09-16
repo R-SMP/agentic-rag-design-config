@@ -217,6 +217,68 @@ check("E: encode_image still applies the per-type degree to a real render",
       f"got {long_edge(e_iso)}")
 
 print()
+print("=" * 74)
+print("F.  retrieve_attempt carries the sidecar to the _retrieved folder")
+print("=" * 74)
+
+# The whole R2 + Postgres seam is module-level wrappers, so the REAL fetch
+# loop runs here against a fake bucket.  Nothing touches R2 or Postgres, and
+# _retrieved_dir is redirected so the repo's own attempts/ is never written.
+from tools.retrieve_attempt import retrieve_attempt as ra   # noqa: E402
+from tools import retrieval_common as rc                    # noqa: E402
+
+GID = 4242
+SID = "ID9999_20260916_120000"
+IMG = "ring_reference.png"
+SC = ic.sidecar_path(IMG).name
+
+fake_r2 = {
+    f"{SID}/attempts/001__{GID}/parameters.json": '{"bladeCount": 5}',
+    f"{SID}/attempts/001__{GID}/description.txt": "a manual entry",
+    f"{SID}/attempts/001__{GID}/{SC}": ic.degree_json(37),
+}
+fake_bytes = {f"{SID}/attempts/001__{GID}/{IMG}": png_bytes(1600, 1200)}
+retrieved_root = Path(tempfile.mkdtemp(prefix="retrieved_"))
+
+ra._resolve_global_attempt_ids = lambda ids: {
+    GID: {"session_id": SID, "nnn": "001", "has_renders": True,
+          "parameters_json": None}}
+ra._r2_bucket_and_client = lambda: ("fake-bucket", object())
+ra._r2_get_text = lambda client, bucket, key: fake_r2.get(key)
+ra._r2_get_bytes = lambda client, bucket, key: fake_bytes.get(key)
+ra._retrieved_dir = lambda gid: retrieved_root / str(gid)
+rc.r2_list = lambda client, bucket, prefix, *, tag: [IMG, SC,
+                                                     "parameters.json"]
+
+xml = ra._run_retrieve_attempt(caller_agent="dc_input_creator",
+                               global_attempt_ids=[GID])
+
+dest = retrieved_root / str(GID)
+got = sorted(p.name for p in dest.iterdir()) if dest.is_dir() else []
+print(f"   files written to _retrieved/{GID}: {got}")
+
+check("F: the image itself was fetched", IMG in got)
+check("F: its compression sidecar came with it", SC in got,
+      f"only {got}")
+check("F: read_degree finds the degree on the RETRIEVED copy",
+      ic.read_degree(dest / IMG) == 37,
+      f"got {ic.read_degree(dest / IMG)}")
+check("F: the retrieved copy resolves to the chosen degree, not the default",
+      ic.degree_and_floor_for_path(dest / IMG, is_render=True)[0] == 37)
+check("F: the image is advertised to the agent as an extra_image",
+      IMG in xml, "absent from the returned XML")
+check("F: the sidecar is NOT advertised as an image",
+      f'<extra_image name="{SC}"' not in xml)
+
+# The name the fetch derives must be the name write_degree really uses --
+# these are two independent expressions of the same convention.
+for _n in ("a.png", "a.b.png", "UPPER.PNG", "with space.jpg", "x.jpeg"):
+    derived = f"{_n.rsplit('.', 1)[0]}.compression.json"
+    check(f"F: sidecar name agrees with image_compression for {_n!r}",
+          derived == ic.sidecar_path(_n).name,
+          f"{derived} != {ic.sidecar_path(_n).name}")
+
+print()
 if _failures:
     print("FAILURES:", _failures)
     sys.exit(1)
