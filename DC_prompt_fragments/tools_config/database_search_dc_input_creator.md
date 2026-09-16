@@ -20,8 +20,16 @@ Choose the search that fits the question you have.  A text ``query`` for how
 a request like this was READ and what was tried; a ``parameters`` search for
 what has already been BUILT near the values you are about to write, and
 whether that design was after the same thing you are.  Once per question is
-not once per session: a rejection, a plateau or a late constraint is a new
-question.
+not once per session.  Search again whenever the job in front of you has
+genuinely moved on — a revision you have been asked to apply, an attempt that
+was rejected, an edit whose consequence you cannot predict, a constraint that
+surfaced only now.  Each of those is a new question and worth its own look.
+Only re-asking the SAME question in reworded text is wasted.
+
+Read BOTH numbers on each hit: ``closeness`` (1.000 identical, ~0.87 the
+same design re-iterated, ~0.56 unrelated) and ``matched_keys``, which says
+how many of your parameters that attempt actually carried.  A high closeness
+over one key is much weaker evidence than the same number over ten.
 
 **When past values may be reused.**  The rule above is to take the method and
 leave the numbers, and it holds unless BOTH of these are true: the retrieved
@@ -36,9 +44,3 @@ for a different purpose is not a match.
 Put the full image paths of anything you fetched in your hand-off, joining the
 folder to its ``<file name=...>`` entries: the agents that look at images are
 downstream of you.
-
-Read BOTH numbers
-on each hit: ``closeness`` (1.000 identical, ~0.87 the same design
-re-iterated, ~0.56 unrelated) and ``matched_keys``, which says how many
-of your parameters that attempt actually carried.  A high closeness
-over one key is much weaker evidence than the same number over ten.

@@ -272,6 +272,14 @@ _DCOI_RANGES_ON_RE = re.compile(r"<<DCOI_RANGES_ON>>(.*?)<</DCOI_RANGES_ON>>",
                                 re.DOTALL)
 _DCOI_RANGES_OFF_RE = re.compile(
     r"<<DCOI_RANGES_OFF>>(.*?)<</DCOI_RANGES_OFF>>", re.DOTALL)
+# Global RAG switch.  Unlike ``<<HAS_DBA>>``, which asks whether THIS agent
+# holds a database tool, ``<<RAG_ON>>`` asks only whether the RAG layer is on
+# at all.  The distinction is load-bearing: the Tool Caller holds no database
+# tool, so every ``<<HAS_DBA>>`` region is stripped from its prompt — yet it
+# is the hop that relays past-session ids on to the DC Output Inspector, and
+# so needs text that appears exactly when RAG is enabled.
+_RAG_ON_RE = re.compile(r"<<RAG_ON>>(.*?)<</RAG_ON>>", re.DOTALL)
+
 # Per-agent chain-only filter — strips ``<<CHAIN_ONLY>>`` regions from the
 # agents that are NOT links in the forward chain, and unwraps them for the
 # ones that are.  See ``apply_chain_only_filter``.
@@ -405,6 +413,22 @@ def apply_dcoi_ranges_filter(text: str) -> str:
     return text
 
 
+def apply_rag_on_filter(text: str) -> str:
+    """Resolve ``<<RAG_ON>>`` regions against the global RAG master switch.
+
+    Deliberately NOT per-agent.  ``apply_dba_filter`` asks "does this agent
+    hold a database tool?" and strips the region when it does not; this asks
+    only "is the RAG layer on?".  The Tool Caller needs the second question:
+    it holds no database tool, so a ``<<HAS_DBA>>`` region could never survive
+    in its prompt, but it is the hop that must carry past-session ids forward
+    to the DC Output Inspector.  Read fresh, same contract as the filters
+    above.
+    """
+    if bool(getattr(_workflow_settings, "RAG_ENABLED", False)):
+        return _RAG_ON_RE.sub(lambda m: m.group(1), text)
+    return _RAG_ON_RE.sub("", text)
+
+
 def apply_dba_filter(text: str, agent_dir_name: str) -> str:
     """Resolve ``<<HAS_DBA>>...<</HAS_DBA>>`` conditional regions
     for one agent's template.
@@ -490,8 +514,8 @@ def apply_chain_only_filter(text: str, agent_dir_name: str) -> str:
 
 
 def apply_flag_filters(text: str) -> str:
-    """Apply the DCII, PLANNER_FIRST, BSV, MESH_CHECKS, UII-parameter-list
-    and DCOI-ranges filters in sequence.
+    """Apply the DCII, PLANNER_FIRST, BSV, MESH_CHECKS, UII-parameter-list,
+    DCOI-ranges and RAG_ON filters in sequence.
 
     The last two are global even though their markers appear in only one
     agent's files each: the marker names are unique, so a template that does
@@ -502,11 +526,13 @@ def apply_flag_filters(text: str) -> str:
     :func:`_build_template` because they need to know which agent's
     template is being assembled.
     """
-    return apply_dcoi_ranges_filter(
-        apply_uii_params_filter(
-            apply_mesh_checks_filter(
-                apply_bsv_filter(
-                    apply_planner_first_filter(apply_dcii_filter(text))
+    return apply_rag_on_filter(
+        apply_dcoi_ranges_filter(
+            apply_uii_params_filter(
+                apply_mesh_checks_filter(
+                    apply_bsv_filter(
+                        apply_planner_first_filter(apply_dcii_filter(text))
+                    )
                 )
             )
         )

@@ -5,7 +5,12 @@
   reproduce it UNCHANGED in your own hand-off — never alter, summarise,
   translate, re-order or omit it.  Only the block in your current hand-off
   applies; neglect any standing directive from a previous message.
-<</CHAIN_ONLY>>- DO write hand-offs as free-form prose carrying exactly what the recipient
+<</CHAIN_ONLY>><<RAG_ON>>- DO carry forward everything the message you received says about PAST
+  SESSIONS — session ids, attempt global_ids and any retrieved image path —
+  into your own hand-off, alongside the standing-directive block.  You cannot
+  open them yourself, but the DC Output Inspector can, and it only ever sees
+  what you pass on.
+<</RAG_ON>>- DO write hand-offs as free-form prose carrying exactly what the recipient
   needs — the paths their tools require, what changed and why, and the true
   authorship of any non-user-authored value ("the Planner directed …", "the
   user asked …"; never relabel one source as another).

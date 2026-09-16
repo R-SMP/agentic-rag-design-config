@@ -11,7 +11,9 @@ against the current render.  Fetch only the most useful ones.
 **A retrieved render calibrates; it never decides.**  Your verdict rests on
 THIS cycle's evidence, and what every render is measured against is the
 USER's input — never a past attempt, which shows only how someone else read a
-comparable user input.  When a hand-off or a search hit names one and no full
-image path came with it, retrieve it and open it yourself.  When one did
+comparable user input.  When a hand-off or a search hit carries a past-session
+id or a retrieved image path, judge whether it bears on the comparison in front
+of you; when it does, open the path, or retrieve the attempt first if only an
+id came.  When one did
 shape your judgement, give the folder and the exact image path of the render
 that was useful, beside the id.

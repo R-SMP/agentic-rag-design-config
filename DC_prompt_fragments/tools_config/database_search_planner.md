@@ -16,6 +16,9 @@ every agent — "re-measure the sketch fresh for every comparison, handwritten
 numbers are not targets", "compare each section render against the user's own
 input crop", "report any value outside its range instead of clamping it" — and
 the user's own instruction to draw on past experience belongs there too, as the
-instruction itself, never as a specific id.  Never name a past attempt as the
+instruction itself, never as a specific id.  Pass that instruction on as it
+stands and make no assumption about what may or may not be used from past work
+— what transfers and what does not is settled by the agents holding the values,
+not by you.  Never name a past attempt as the
 thing to match: every comparison is against the USER's input, so a directive
 pointing at a past attempt misdirects the whole chain on every cycle.

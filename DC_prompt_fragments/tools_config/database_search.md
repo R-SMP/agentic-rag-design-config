@@ -13,13 +13,12 @@ answered DIFFERENT requests under DIFFERENT constraints.
   * TAKE: reasoning patterns, pitfalls and how they were resolved,
     extraction / interpretation conventions, calibration evidence
     (which parameter ranges produced sound vs degenerate geometries).
-  * LEAVE BEHIND: specific parameter values, specific user-input numbers
+  * BE CAREFUL WITH: specific parameter values, specific user-input numbers
     (the past user's diameter is not this user's diameter), specific
-    outcomes — copy them ONLY when the current request obviously calls
-    for the same solution (same design referenced, same constraints
-    imposed).  When in doubt, derive your own values from the CURRENT
-    user's inputs; use past content to inform your method, not to
-    short-cut your judgement.
+    outcomes.  Reuse them when the past design is of the same nature and
+    its values fit the current design intent; derive your own when it is
+    not, or when you cannot tell.  Past content should inform your
+    method, not short-cut your judgement.
 
 **Verify context before trusting past content.**  A past session's language
 can read as if it applies to you while its underlying context (template,
