@@ -48,7 +48,9 @@ id and the sender's note forward instead.
 **When to call it** — when a question or doubt could plausibly be
 answered by prior sessions: an obstacle you have hit, background on what
 has been tried in similar situations, a request resembling a past one, or
-a choice you are uncertain about.
+a choice you are uncertain about.  A standing directive or hand-off saying
+past experience is required counts as one of those: search once before you
+commit, and say in one line what came of it.
 
 **When NOT to call it** — for trivial questions answerable from the
 current session's messages (it round-trips to Postgres + an embedding

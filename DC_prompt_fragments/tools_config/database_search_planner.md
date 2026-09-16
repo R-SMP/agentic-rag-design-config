@@ -8,6 +8,7 @@
 you name: ``retrieve_attempt`` for an attempt (DC Input Creator, DC Input
 Inspector, DC Output Inspector); ``retrieve_user_inputs`` for a past session's
 inputs (User Input Inspector, DC Input Inspector).  Put this in your hand-off
-prose.  You may also put it in the STANDING DIRECTIVE, but only when the check
-must repeat every cycle — e.g. "compare each render against attempt global_id
-418".
+prose.  Put it in the STANDING DIRECTIVE when it must survive every cycle and
+reach every agent — a repeating check (e.g. "compare each render against
+attempt global_id 418"), or the user's own instruction to draw on past
+experience, which governs the whole run rather than just your next hand-off.

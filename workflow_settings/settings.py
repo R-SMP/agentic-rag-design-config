@@ -1353,11 +1353,24 @@ STITCHING_MODEL: str = "gpt-5.4-mini"
 STITCHING_MAX_OUTPUT_TOKENS: int = 800
 
 
-# --- (was 11) Embedding model (used post-session for RAG indexing) ---
+# --- (was 11) Embedding model — TEXT-ONLY database, write path ---
 
-# The embedding model that the (yet-to-be-implemented) RAG layer
-# will use to turn the saved per-field SEMANTIC answers under
-# ``database/<session>/<agent>/<field>.txt`` into vectors.
+# These configure the OpenAI embedding used when a saved session is
+# written into the text-only ``chunks`` table at End Session.
+#
+# They are NOT what retrieval uses by default.  The retrieval model is
+# chosen in the "Database options" panel, which currently selects
+# Single-vector multimodal -> voyage-multimodal-3.5 / 2048, hard-coded
+# in ``agents/shared/voyage_mm.py`` and not editable here.  The
+# ``<search_meta embedding_model=... mode=... db=.../>`` header on any
+# database_search reply states which one actually ran.
+#
+# They still matter to the multimodal corpus: ``chunks_mm`` is BUILT
+# FROM ``chunks`` (db_writer_mm selects FROM chunks and re-embeds
+# ``embedding_input``), so a row that fails to embed here reaches
+# neither table.  They are also the live retrieval path when Database
+# options is set to Text-only, and on the automatic fallback if the
+# Voyage embed throws.
 #
 # The Database Handler (DH) is told these values via its system
 # prompt so it can shape SEMANTIC answers to fit the model:
@@ -1372,6 +1385,9 @@ STITCHING_MAX_OUTPUT_TOKENS: int = 800
 # here.  Set ``OPENAI_API_KEY`` (or change the env var name below)
 # in your shell or in a project .env you load before launching.
 EMBEDDING_PROVIDER: str = "OpenAI"
+
+# Text-only ``chunks`` table only — NOT the retrieval model unless
+# Database options is set to Text-only.  See the note above.
 EMBEDDING_MODEL: str = "text-embedding-3-large"
 EMBEDDING_API_KEY: str = os.getenv("OPENAI_API_KEY", "")
 
