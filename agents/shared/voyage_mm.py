@@ -20,8 +20,9 @@ the UI — see the Database options panel):
 
   * model            = ``voyage-multimodal-3.5``
   * output_dimension = 2048  (Voyage's max; stored as ``vector(2048)``)
-  * input_type       = ``document`` for stored corpus rows
-                       (``query`` reserved for read time, not wired yet)
+  * input_type       = ``document`` for stored corpus rows, and
+                       ``query`` for a search's query vector -- wired
+                       via ``as_query=True`` at database_search.py:1392
   * max image side   = 1536 px (resize-before-send; preserves fine
                        sketch annotations better than the harness's
                        1024 while bounding pixel-token cost)

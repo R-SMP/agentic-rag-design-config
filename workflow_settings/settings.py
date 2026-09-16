@@ -1353,17 +1353,17 @@ STITCHING_MODEL: str = "gpt-5.4-mini"
 STITCHING_MAX_OUTPUT_TOKENS: int = 800
 
 
-# --- (was 11) Embedding model — TEXT-ONLY database, write path ---
+# --- (was 11) Embedding model — TEXT-ONLY database, WRITE path ---
+# NOT shown in the Workflow Settings UI (see editor.HIDDEN_FROM_FLAG_LIST).
+# Change by a code edit.
 
-# These configure the OpenAI embedding used when a saved session is
-# written into the text-only ``chunks`` table at End Session.
-#
-# They are NOT what retrieval uses by default.  The retrieval model is
-# chosen in the "Database options" panel, which currently selects
-# Single-vector multimodal -> voyage-multimodal-3.5 / 2048, hard-coded
-# in ``agents/shared/voyage_mm.py`` and not editable here.  The
-# ``<search_meta embedding_model=... mode=... db=.../>`` header on any
-# database_search reply states which one actually ran.
+# The OpenAI embedding used when a saved session is written into the
+# text-only ``chunks`` table at End Session.  It is NOT the retrieval
+# model: retrieval is selected in the "Database options" panel and
+# defaults to Single-vector multimodal -> voyage-multimodal-3.5 / 2048.
+# Every session log states the resolved retrieval model in its
+# ``[Database retrieval]`` banner section, and every database_search
+# reply repeats it in ``<search_meta embedding_model=... mode=... db=.../>``.
 #
 # They still matter to the multimodal corpus: ``chunks_mm`` is BUILT
 # FROM ``chunks`` (db_writer_mm selects FROM chunks and re-embeds

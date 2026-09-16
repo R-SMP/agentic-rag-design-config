@@ -153,6 +153,45 @@ def _scan_database_profile() -> str | None:
         return None
 
 
+def _scan_database_retrieval() -> dict[str, str] | None:
+    """What a ``database_search`` will actually query this session.
+
+    Mirrors ``_resolve_search_backend`` in tools/database_search: the
+    single-vector-multimodal mode goes to the Voyage ``chunks_mm`` table,
+    every other mode (including the unbuilt late-interaction placeholder)
+    to the text ``chunks`` table.  Derived from that same rule rather than
+    restated, so the banner cannot drift from what the tool does.
+
+    Importing ``voyage_mm`` here is safe: ``embedding_model_string`` is a
+    pure string formatter and the ``voyageai`` client is imported lazily
+    inside the embed call, so no key and no package are needed to report
+    the name.  Everything is wrapped anyway -- this runs at session start
+    and must never be the reason a session fails to open.
+    """
+    try:
+        from agents.database_handler import db_writer
+        from agents.shared import voyage_mm
+        from workflow_settings import db_options_config
+        from workflow_settings import settings as _s
+
+        mode = db_options_config.get_mode()
+        multimodal = mode == db_options_config.MODE_SINGLE_VECTOR
+        write_model = db_writer._embedding_model_string(  # noqa: SLF001
+            _s.EMBEDDING_PROVIDER,
+            _s.EMBEDDING_MODEL,
+            int(_s.EMBEDDING_VECTOR_DIMS),
+        )
+        return {
+            "mode": mode,
+            "retrieval_model": (voyage_mm.embedding_model_string()
+                                if multimodal else write_model),
+            "table": "chunks_mm" if multimodal else "chunks",
+            "write_model": write_model,
+        }
+    except Exception:
+        return None
+
+
 def _scan_secrets_present() -> dict[str, bool]:
     """Return ``{env_var_name: bool}`` based on os.environ presence.
     Never reads the value beyond truthiness."""
@@ -172,9 +211,10 @@ def build_banner_lines() -> list[str]:
       2. ``[settings.py]`` — every public, non-sensitive flag.
       3. ``[LLM routing]`` — global mode + per-agent effective config.
       4. ``[Database access]`` — per-agent DBa flag.
-      5. ``[Secrets]`` — presence-only.
-      6. ``[Machine-readable]`` — a single JSON line for grep + jq.
-      7. End marker.
+      5. ``[Database retrieval]`` — the model a search actually queries.
+      6. ``[Secrets]`` — presence-only.
+      7. ``[Machine-readable]`` — a single JSON line for grep + jq.
+      8. End marker.
     """
     lines: list[str] = []
 
@@ -182,6 +222,7 @@ def build_banner_lines() -> list[str]:
     routing = _scan_llm_routing()
     dba = _scan_database_access()
     dba_profile = _scan_database_profile()
+    retrieval = _scan_database_retrieval()
     secrets = _scan_secrets_present()
 
     lines.append("=== SESSION CONFIG BANNER ===")
@@ -234,6 +275,22 @@ def build_banner_lines() -> list[str]:
         lines.append("  (could not read database access flags)")
     lines.append("")
 
+    # --- [Database retrieval] ---
+    # The settings block above prints EMBEDDING_MODEL, which is the WRITE
+    # path into ``chunks``.  Without this section the only record of what
+    # retrieval actually used was the <search_meta/> header inside a tool
+    # result -- routinely cut by the log payload cap, and absent entirely
+    # from a session that never searched.
+    lines.append("[Database retrieval - what a database_search queries]")
+    if retrieval is not None:
+        lines.append(f"  mode             : {retrieval['mode']}")
+        lines.append(f"  retrieval model  : {retrieval['retrieval_model']}")
+        lines.append(f"  table            : {retrieval['table']}")
+        lines.append(f"  write path (text): {retrieval['write_model']}")
+    else:
+        lines.append("  (could not resolve the retrieval backend)")
+    lines.append("")
+
     # --- [Secrets] ---
     lines.append("[Secrets - presence only]")
     for name in _SECRET_ENV_NAMES:
@@ -247,6 +304,7 @@ def build_banner_lines() -> list[str]:
         "llm_routing":     routing,
         "database_access": dba,
         "database_profile": dba_profile,
+        "database_retrieval": retrieval,
         "secrets_present": secrets,
     }
     lines.append("[Machine-readable]")

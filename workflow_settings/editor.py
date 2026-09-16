@@ -95,6 +95,19 @@ HIDDEN_FROM_FLAG_LIST = {
     "LLM_ROUTING_MODE",
     "EMBEDDING_INPUT_MAX_CHARS",
     "DATABASE_ENTRY_RETRY_BACKOFF_SECONDS",
+    # The embedding model is NOT chosen here.  Retrieval is selected in the
+    # "Database options" panel, which defaults to Single-vector multimodal
+    # -> voyage-multimodal-3.5 / 2048.  These configure only the OpenAI text
+    # embedding on the WRITE path into ``chunks``, and showing them in the
+    # flag list made readers believe they were picking the retrieval model.
+    # Still load-bearing -- ``chunks_mm`` is BUILT FROM ``chunks``, so a row
+    # that fails to embed here reaches neither table.  Change by a code edit.
+    # The API key is hidden with them: the ``[Secrets]`` banner section
+    # already reports OPENAI_API_KEY presence, so nothing is lost.
+    "EMBEDDING_PROVIDER",
+    "EMBEDDING_MODEL",
+    "EMBEDDING_VECTOR_DIMS",
+    "EMBEDDING_API_KEY",
     # Owned by the dedicated "Render compression" panel, which previews each
     # degree against sample renders with a slider.
     "IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE",
