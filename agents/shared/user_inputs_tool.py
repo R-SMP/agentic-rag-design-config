@@ -55,7 +55,7 @@ from agents.shared.file_utils import (
 )
 from agents.shared.image_compression import (
     compress_for_model,
-    render_degree_and_floor,
+    degree_and_floor_for_path,
 )
 from agents.shared.image_stitch import crop_to_region, stitch, to_rgb
 from agents.shared.llm_provider import (
@@ -998,12 +998,10 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
             # panels, so the degrees in the "Render compression" settings panel
             # never reached a side-by-side view at all.  OCR further down still
             # reads the uncompressed ``cbytes``.
-            if r["is_render"]:
-                pdeg, pfloor = render_degree_and_floor(r["path"].name)
-                pbytes = compress_for_model(cbytes, pdeg, is_render=True,
-                                            floor=pfloor)
-            else:
-                pbytes = compress_for_model(cbytes, None, is_render=False)
+            pdeg, pfloor = degree_and_floor_for_path(
+                r["path"], is_render=r["is_render"])
+            pbytes = compress_for_model(cbytes, pdeg,
+                                        is_render=r["is_render"], floor=pfloor)
             model_panel = cropped
             if pbytes is not cbytes:
                 # compress_for_model hands back the ORIGINAL object when there
@@ -1064,12 +1062,11 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
             try:
                 if r["region"]:
                     _cropped, cbytes = _load_cropped(r["path"], r["region"])
-                    if r["is_render"]:
-                        b64 = encode_image_bytes(cbytes, is_render=True,
-                                                 name=r["path"].name)
-                    else:
-                        b64 = encode_image_bytes(cbytes, degree_pct=None,
-                                                 is_render=False)
+                    cdeg, _cfloor = degree_and_floor_for_path(
+                        r["path"], is_render=r["is_render"])
+                    b64 = encode_image_bytes(cbytes, degree_pct=cdeg,
+                                             is_render=r["is_render"],
+                                             name=r["path"].name)
                     ocr_src = cbytes
                 else:
                     b64 = encode_image(r["path"], is_render=r["is_render"])

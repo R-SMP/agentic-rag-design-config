@@ -61,7 +61,7 @@ from pathlib import Path
 
 from psycopg import errors as pg_errors
 
-from agents.shared import postgres_pool, r2_uploader
+from agents.shared import image_compression, postgres_pool, r2_uploader
 from agents.database_handler import db_writer
 from tools import retrieval_common
 
@@ -199,10 +199,13 @@ def _stage(staging: Path, text: str, images: list[ManualImage], *,
             # Written even when blank, so image+note pairing stays valid.
             (imgs / f"{stem}_note.txt").write_text(img.note, encoding="utf-8")
             # BESIDE the image: that is where image_compression.read_degree
-            # looks, and it is why .json must be in the suffix list.
-            (imgs / f"{stem}.compression.json").write_text(
-                json.dumps({"degree": img.compression_degree}),
-                encoding="utf-8")
+            # looks, and it is why .json must be in the suffix list.  Written
+            # THROUGH image_compression so the filename and the KEY can never
+            # drift from the reader again -- this wrote a "degree" key, which
+            # read_degree parses as None, so every percentage chosen here was
+            # silently replaced by the size-based default.
+            image_compression.write_degree(imgs / img.filename,
+                                           img.compression_degree)
 
     attempt_dir: Path | None = None
     if parameters is not None:
@@ -212,6 +215,13 @@ def _stage(staging: Path, text: str, images: list[ManualImage], *,
             json.dumps(parameters, indent=2), encoding="utf-8")
         for img in images:
             (attempt_dir / img.filename).write_bytes(img.data)
+            # The attempt copy needs its OWN sidecar: a degree is resolved
+            # from the file being viewed, and this is a different file from
+            # the user_inputs one.  Without it the same upload compressed to
+            # the chosen degree under user_inputs/ and to the size-based
+            # default under attempts/.
+            image_compression.write_degree(attempt_dir / img.filename,
+                                           img.compression_degree)
     return ui, attempt_dir
 
 
@@ -390,7 +400,9 @@ def create_manual_entry(
                 # attempt_artefact_whitelist(), the canonical artefact names,
                 # which a manual image never matches.
                 whitelist=(["parameters.json"]
-                           + [i.filename for i in images]),
+                           + [i.filename for i in images]
+                           + [image_compression.sidecar_path(i.filename).name
+                              for i in images]),
             )
             attempt_keys = list(uploaded)
 

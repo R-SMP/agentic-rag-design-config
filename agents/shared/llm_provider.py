@@ -37,7 +37,7 @@ from langchain_core.rate_limiters import InMemoryRateLimiter
 
 from agents.shared.image_compression import (
     compress_for_model,
-    read_degree,
+    degree_and_floor_for_path,
     render_degree_and_floor,
     sniff_media_type,
 )
@@ -505,13 +505,12 @@ def encode_image(image_path: Path, is_render: bool = False) -> str:
     software-generated render so the renders toggle applies.
     """
     p = Path(image_path)
-    if is_render:
-        # Renders use the per-type degree + lower floor from settings (chosen by
-        # the render's canonical filename), NOT a per-image sidecar.
-        deg, floor = render_degree_and_floor(p)
-        raw = compress_for_model(p.read_bytes(), deg, is_render=True, floor=floor)
-    else:
-        raw = compress_for_model(p.read_bytes(), read_degree(p), is_render=False)
+    # A GENERATED render uses the per-type degree + lower floor from settings,
+    # chosen by its canonical filename.  Anything else -- including a manual
+    # upload living under attempts/ -- uses its own per-image sidecar.
+    deg, floor = degree_and_floor_for_path(p, is_render=is_render)
+    raw = compress_for_model(p.read_bytes(), deg, is_render=is_render,
+                             floor=floor)
     return base64.b64encode(raw).decode()
 
 

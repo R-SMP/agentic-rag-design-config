@@ -266,6 +266,24 @@ def render_degree_and_floor(image_path):
     return (0 if deg is None else deg), _render_floor()
 
 
+def degree_and_floor_for_path(image_path, *, is_render: bool):
+    """The ``(degree_pct, floor)`` to use for a real file on disk.
+
+    ``is_render`` is decided by LOCATION -- anything under ``attempts/`` --
+    but a GENERATED render is decided by its canonical FILENAME.  A file
+    under attempts/ carrying neither name is a user-supplied image that
+    happens to live there (a manual upload), so it keeps its own sidecar
+    degree and the user-image floor, exactly as it would under
+    ``user_inputs/``.  Without this it fell through to the size-based
+    default and the degree its uploader chose was never applied anywhere.
+    """
+    if is_render:
+        deg, floor = render_degree_and_floor(image_path)
+        if deg is not None:
+            return deg, floor
+    return read_degree(image_path), None
+
+
 def compress_for_model(raw: bytes, degree_pct=None, is_render: bool = False,
                        floor: int = None) -> bytes:
     """Resolution-reduced copy of *raw* for MODEL viewing.  *degree_pct* None (or
