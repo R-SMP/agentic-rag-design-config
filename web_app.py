@@ -4020,7 +4020,17 @@ async def api_manual_entry_create(
     is_render: bool = Form(False),
     notes_json: str = Form("{}"),        # {filename: note}
     degrees_json: str = Form("{}"),      # {filename: 0-100}
-    mirror_multimodal: bool = Form(False),
+    # Defaults TRUE: an entry that exists only in `chunks` is invisible
+    # to the search the system actually runs.  Measured on the first real
+    # manual upload -- with the mode at single-vector-multimodal,
+    # database_search found nothing semantically, and the parameter
+    # search ranked the attempt but returned a 247-char block with zero
+    # <qa> and zero <answer>, i.e. the agent saw it exist and got none of
+    # its content.  Mirrored, the same block is 3098 chars with the text
+    # and two <image_ref>s.  The mirror is best-effort inside
+    # create_manual_entry, so a Voyage outage degrades to text-only
+    # rather than failing the upload.
+    mirror_multimodal: bool = Form(True),
     files: list[UploadFile] = File(default=[]),
 ) -> dict:
     """Write one curated entry.  Refuses while the system is busy."""
