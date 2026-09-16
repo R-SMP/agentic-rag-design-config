@@ -16,9 +16,28 @@ attempts whose stored geometry is CLOSEST to values you name — say
 bladeCount 5 together with impellerRadius 70.  Any subset of the design
 parameters works; the ones you omit are ignored, not treated as zero.
 
-Reach for it when your question is about VALUES — "has anything near
-this been built?", "what came of this blade count at this radius?" —
-and for the text query when it is about REASONING.  Read BOTH numbers
+Choose the search that fits the question you have.  A text ``query`` for how
+a request like this was READ and what was tried; a ``parameters`` search for
+what has already been BUILT near the values you are about to write, and
+whether that design was after the same thing you are.  Once per question is
+not once per session: a rejection, a plateau or a late constraint is a new
+question.
+
+**When past values may be reused.**  The rule above is to take the method and
+leave the numbers, and it holds unless BOTH of these are true: the retrieved
+design is of the same nature as this one, and its parameters partially or
+fully match the current design intent and functional requirements.  Then
+reuse is sound, in part or in whole — name the attempt or session the values
+came from, say in one line WHY the two match, and take your normal forward to
+the DC Input Inspector that round rather than straight to the Tool Caller, so
+the reasoning is checked before it ships.  A numerically close attempt built
+for a different purpose is not a match.
+
+Put the full image paths of anything you fetched in your hand-off, joining the
+folder to its ``<file name=...>`` entries: the agents that look at images are
+downstream of you.
+
+Read BOTH numbers
 on each hit: ``closeness`` (1.000 identical, ~0.87 the same design
 re-iterated, ~0.56 unrelated) and ``matched_keys``, which says how many
 of your parameters that attempt actually carried.  A high closeness

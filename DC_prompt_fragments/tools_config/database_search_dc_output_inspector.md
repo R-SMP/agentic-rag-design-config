@@ -9,6 +9,9 @@ pass a listed path to ``view_images`` — with ``side_by_side=True`` to set one
 against the current render.  Fetch only the most useful ones.
 
 **A retrieved render calibrates; it never decides.**  Your verdict rests on
-THIS cycle's evidence — a past render only shows what was judged good or bad
-before.  When one did shape your judgement, give the folder and the exact
-image path of the render that was useful, beside the id.
+THIS cycle's evidence, and what every render is measured against is the
+USER's input — never a past attempt, which shows only how someone else read a
+comparable user input.  When a hand-off or a search hit names one and no full
+image path came with it, retrieve it and open it yourself.  When one did
+shape your judgement, give the folder and the exact image path of the render
+that was useful, beside the id.
