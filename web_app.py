@@ -4081,6 +4081,13 @@ async def api_manual_entry_create(
 def api_manual_entries_list() -> dict:
     """List manually uploaded entries.  Real sessions never appear here."""
     _require_auth()
+    # Local import, per the note on the reset endpoint: web_app has no
+    # module-level postgres_pool, so a deploy without DATABASE_URL never
+    # opens the pool just to serve other views.  Omitting it here raised
+    # NameError on every call -- a bare 500 that the browser reported as
+    # "Unexpected token 'I', \"Internal S\"... is not valid JSON", which
+    # points at the frontend rather than at the missing import.
+    from agents.shared import postgres_pool
     with postgres_pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
@@ -4115,6 +4122,7 @@ def api_manual_entry_delete(body: ManualEntryIdIn) -> dict:
                           .MANUAL_SESSION_PREFIX):
         raise HTTPException(status_code=403, detail=(
             "Only manually uploaded entries can be deleted here."))
+    from agents.shared import postgres_pool  # see the note in the list endpoint
     with postgres_pool.connection() as conn:
         with conn.cursor() as cur:
             cur.execute(
