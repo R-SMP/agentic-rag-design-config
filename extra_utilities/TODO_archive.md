@@ -6,7 +6,8 @@ file it lives in changed.
 
 **Ids are never reused.**  The F / O / R counter is a single manually-reserved
 space shared across git branches, and ~19 F/O ids are cited from live source.
-An id appearing here is retired, not free.  New items start at **F94**.
+An id appearing here is retired, not free.  New items take the next free id stated at the top of
+`TODO_known_issues.md`.
 
 **Why entries are here and not deleted.**  Several record a decision plus its
 reasoning (why a thing was kept, why a fix was narrowed, why something was

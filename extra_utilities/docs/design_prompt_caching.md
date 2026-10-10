@@ -263,7 +263,7 @@ perfectly.
 
 This is the main argument for keeping a breakpoint anchored **after the task
 briefing**: when the strip invalidates the post-briefing history, the fallback
-is the briefing anchor rather than the system prompt. Filed as **TODO F90** —
+is the briefing anchor rather than the system prompt. Filed as **TODO F95** —
 a two-agent fix (UII and DCOI are the only agents that strip), and deliberately
 NOT a reason to flip the flag.
 
@@ -576,7 +576,7 @@ right answer once a live A/B has measured it.
 - **Step 2 (not built):** the briefing anchor (marker ②) — the one hand-placed
   marker, and so the only place coercion risk returns. It has **two independent
   applications**, now filed separately: **F55** (post-session DH, recovers ~two
-  thirds of the save-phase saving — measured, high value) and **F90** (in-session,
+  thirds of the save-phase saving — measured, high value) and **F95** (in-session,
   gives a stripped UII/DCOI a fallback entry — flat ~$0.05/session, low value).
   Both need the same "mark a copy of a message without mutating the original"
   primitive, so build them together.
