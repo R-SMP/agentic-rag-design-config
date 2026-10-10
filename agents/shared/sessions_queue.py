@@ -166,8 +166,9 @@ def _all_agent_keys() -> "list[str]":
     Equals the 14 keys in ``workflow_settings.llm_routing.AGENT_SPEC``.
     Built here rather than imported so this module stays importable without
     dotenv / the settings editor — the same reason the classifier imports
-    its provider lazily.  ``smoke_test_llm_routing.py`` asserts the two
-    lists agree, so they cannot drift silently.
+    its provider lazily.  The two lists must agree; the removed
+    ``smoke_test_llm_routing.py`` asserted it (restore it from git, see
+    extra_utilities/extra_info.md §13).
     """
     out: "list[str]" = []
     for topo in TOPOLOGIES:

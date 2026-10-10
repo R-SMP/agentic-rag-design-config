@@ -758,7 +758,7 @@ isn't required to use).
 redesign (2026-06-XX) onward.
 
 
-## W23. The Phase 3B smoke test lives at `extra_utilities/db_design/smoke_test_db_writer.py` and exercises the live OpenAI API + the live Railway Postgres.
+## W23. The Phase 3B smoke test lives at `extra_utilities/db_design/smoke_test_db_writer.py` *(removed 2026-10-10; in git history)* and exercises the live OpenAI API + the live Railway Postgres.
 
 The smoke test is the canonical end-to-end verifier for
 `agents/database_handler/db_writer.py` (Phase 3B).  It runs 14
@@ -800,7 +800,7 @@ When to run: any time `db_writer.py`, `stitching_prompt.md`, the
 For the full per-check expected-output transcript and the
 architecture-doc cross-references for each check, see the module
 docstring at the top of
-`extra_utilities/db_design/smoke_test_db_writer.py`.
+`extra_utilities/db_design/smoke_test_db_writer.py` *(removed 2026-10-10; in git history)*.
 
 **Status.** Introduced 2026-06-02 alongside Phase 3B.
 
@@ -958,7 +958,7 @@ unique key need to be aware of this asymmetry.
 
 **Status.** In force from Phase 3C (2026-06-02) onward.  See
 architecture doc §9.5 + the chunks-table NOTE in
-`database_PostgreSQL_schema_v5.sql`.
+`database_PostgreSQL_schema_v5.sql` *(removed 2026-10-10; in git history)*.
 
 
 ## W29. Local DH `.txt` files are transitional during Phase 3C; Postgres + R2 will be the only sources of truth.
@@ -1136,7 +1136,7 @@ ID_{YYYYMMDD_HHMMSS}_{microseconds:06d}    e.g. ID_20260602_193015_524873
   both formats).
 
 **Migration on existing v5 deployments.**  Run
-`extra_utilities/db_design/migrations/migrate_v5_to_v6.py` to
+`extra_utilities/db_design/migrations/migrate_v5_to_v6.py` *(removed 2026-10-10; in git history)* to
 add the SEQUENCE and seed its initial value from existing
 `sessions.session_id` MAX(NNN).  Idempotent.  See architecture
 doc §9.10 + the migration script's docstring.
@@ -1541,7 +1541,7 @@ the HTTP request's lifecycle; the reply lands as a single
 
 ### Regression-catcher
 
-`extra_utilities/smoke_test_async_turn.py` covers the five
+`extra_utilities/smoke_test_async_turn.py` *(removed 2026-10-10; in git history)* covers the five
 properties above (202 + `turn_id` shape, 400 on empty, 409 on
 concurrent, end-to-end SSE round-trip, flag cleared after
 completion).  Run it from your venv before any commit that
@@ -1656,7 +1656,7 @@ Two complementary fixes ship together:
 
 ### Regression-catcher
 
-`extra_utilities/smoke_test_async_turn.py` (extended on the
+`extra_utilities/smoke_test_async_turn.py` *(removed 2026-10-10; in git history)* (extended on the
 L1+L2 ship) covers the stop path: open SSE, POST /api/turn, POST
 /api/stop, assert the matching `turn_done` arrives carrying the
 "(Session interrupted...)" reply within 2 s.  Run it from your
@@ -1788,7 +1788,7 @@ call site must keep the prefix, and no agent may ever be named `DH*`** — other
 writes get priced at the wrong phase's ttl the moment the two ttls diverge.
 
 **Status.** In force from 2026-08-04 (the conversation-history-caching change; the
-Database Handler joined the same day). See `extra_utilities/docs/reference/design_prompt_caching.md`
+Database Handler joined the same day). See `extra_utilities/docs/design_prompt_caching.md`
 and `workflow_settings/settings.py` §29–§30.
 
 **Unverified assumption (2026-08-04).** Whether the **top-level** `cache_control`
@@ -1860,7 +1860,7 @@ back later:
 ## W42. Five 0-byte `.md` fragments are LOAD-BEARING — in two OPPOSITE directions.
 
 **Recorded 2026-08-21** during the documentation audit, after
-`extra_utilities/prompt_efficiency/PROMPT_SHRINK_PROPOSAL_7agent.md:707-708`
+`extra_utilities/prompt_efficiency/PROMPT_SHRINK_PROPOSAL_7agent.md:707-708` *(removed 2026-10-10; in git history)*
 was found prescribing DELETE for three of them.  **That instruction is wrong.**
 An empty file here is not an authoring accident — it is a decision, and in one
 of the two groups it is not even substitutable by absence.
@@ -1881,7 +1881,7 @@ So a missing file raises `FileNotFoundError` the moment `agents.shared.prompts`
 is imported: every agent, the web app and the CLI all fail to start.
 
 Empty content is the INTENDED state — the slot renders nothing.  Both were
-emptied deliberately (see `design_tool_merges.md`, commit `251ff5b`: "retrieve_*
+emptied deliberately (see `design_tool_merges.md` *(removed 2026-10-10; summarised in `extra_utilities/extra_info.md` §8)*, commit `251ff5b`: "retrieve_*
 fragments — lean fully on the tool schemas"), with `retrieve_user_inputs.md`
 covering both retrieval tools.
 
@@ -2073,7 +2073,7 @@ shapes diverge.
 1. `agents/dispatch.py:237` skips the cache with `_RETRIEVED_SUBDIR in p.parts`,
    NOT `p.parent.name`, so nesting deeper (as `input_images/` did on
    2026-09-15) still matches.  Keep it that way.
-2. `design_rag_customization_sequence.md` closed "exclude `_retrieved` from
+2. `design_rag_customization_sequence.md` *(removed 2026-10-10; summarised in `extra_utilities/extra_info.md` §9)* closed "exclude `_retrieved` from
    `list_input_files`" as NO CODE NEEDED **only because** `list_files` is
    non-recursive and files-only.  Any future walker of `inputs/` that DOES
    recurse must skip `_retrieved` itself.
@@ -2138,7 +2138,7 @@ prompts that are not.  Write the example without braces and let the TOOL
 SCHEMA carry the JSON shape; it is not `.format()`ed.
 
 **There is ALREADY a dedicated guard for this, and it did not fire.**
-`extra_utilities/smoke_test_prompt_format.py` exists for exactly this bug
+`extra_utilities/tests/smoke_test_prompt_format.py` exists for exactly this bug
 class -- its own docstring says two earlier Phase 4 production crashes "would
 have been caught here at PR time".  It missed this one twice over:
 

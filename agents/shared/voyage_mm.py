@@ -1,12 +1,9 @@
 """Voyage multimodal embedding client for the multimodal `chunks_mm` table.
 
-This is the DEDICATED client for the database layer.  It is SEPARATE
-from the embedding-tests harness client
-(``extra_utilities/embedding_tests/voyage_client.py``), which is
-hardcoded to ``voyage-multimodal-3`` @ 1024 dims and single-modality,
-and whose 35 stored vectors depend on those defaults.  Do NOT merge
-the two — changing the harness client would invalidate its cached
-vectors.
+This is the DEDICATED client for the database layer.  The Embedding-tests
+harness (removed 2026-10-10, see ``extra_utilities/extra_info.md`` §13)
+had its own client, hardcoded to ``voyage-multimodal-3`` @ 1024 dims and
+single-modality; the two were deliberately never merged.
 
 What this client does
 ---------------------

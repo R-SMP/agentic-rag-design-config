@@ -248,7 +248,7 @@ class Planner3(BaseChainAgent):
 
         # Registry for the dispatch driver.  FOUR entries: this agent is its
         # own ``planner`` row, plus the two merged agents and the
-        # Receptionist.  ``extra_utilities/hub_registry.py`` parses this
+        # Receptionist.  ``extra_utilities/scripts/hub_registry.py`` parses this
         # literal to answer "which agents does this hub BUILD" -- the
         # question the DH validates every schedule row's ``from_agent``
         # against, and an unresolvable one writes an ERROR: row into the R2

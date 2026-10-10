@@ -5,7 +5,7 @@ WHY THIS EXISTS
 ``agents/shared/prompts.py`` is the real prompt assembler, but it cannot
 be imported in the worktree dev environment: it uses 3.9+ builtin-generic
 annotations (``dict[str, str]`` at module scope) and pulls in the langchain
-agent stack.  ``extra_utilities/smoke_test_prompt_format.py`` therefore
+agent stack.  ``extra_utilities/tests/smoke_test_prompt_format.py`` therefore
 does not run here either (it imports ``agents.shared.prompts``).
 
 This script is a **faithful, dependency-free replica** of

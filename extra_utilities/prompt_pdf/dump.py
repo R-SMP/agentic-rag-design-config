@@ -354,7 +354,7 @@ _tools_for_7 = tools_for
 # nothing in the 7-agent wiring to strip routing tools OFF of.  Writing their
 # tool lists out by hand here is exactly the transcription error this dump
 # exists to make visible, so build the REAL hub and ask the classes instead --
-# the same technique as smoke_test_prompt_tool_audit.bound_3().
+# the same technique the (since removed) smoke_test_prompt_tool_audit used.
 _T3_CACHE: dict[bool, dict] = {}
 
 
@@ -416,7 +416,7 @@ def tools_for(agent):                     # noqa: F811 - deliberate wrapper
 if TOPOLOGY == 3:
     import importlib.util as _ilu
     _spec = _ilu.spec_from_file_location(
-        "_tps_for_dump", REPO / "extra_utilities" / "topology_prompt_snapshot.py")
+        "_tps_for_dump", REPO / "extra_utilities" / "scripts" / "topology_prompt_snapshot.py")
     _tps = _ilu.module_from_spec(_spec)
     _spec.loader.exec_module(_tps)
     _runtime_slots_7 = runtime_slots

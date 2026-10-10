@@ -1,11 +1,9 @@
 """``dc_params_list`` — the design-parameter list as an on-demand tool.
 
 The Planner and the Orchestrator do not carry the ``$parameter_list``
-fragment inline in their system prompts (2026-08-22 prompt reduction,
-extra_utilities/prompt_reduction_4agents_changes.md §B2), and the
-Receptionist stopped carrying it in round 5
-(extra_utilities/prompt_reduction_round5_changes.md, "The Receptionist
-loses its static parameter list").  All three retrieve it only when they
+fragment inline in their system prompts (2026-08-22 prompt reduction),
+and the Receptionist stopped carrying it in round 5 (see
+extra_utilities/extra_info.md §7.1 and §8).  All three retrieve it only when they
 explicitly need it, via this tool.
 
 The UII does NOT bind it: its inline fragment is gated by

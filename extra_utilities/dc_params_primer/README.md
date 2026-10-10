@@ -49,7 +49,7 @@ enlarged corner dimensioning both, because at the top view's own scale the two
 are about a millimetre apart on the page.
 
 `ROOT_MM` in the generator is **load-bearing** and must equal
-`innerRadiusFixed`; `smoke_test_dc_primer.py` asserts it.  `HUB_MM` is 8.0 by
+`innerRadiusFixed`; `smoke_test_dc_primer.py` *(removed 2026-10-10; in git history)* asserts it.  `HUB_MM` is 8.0 by
 the owner's decision, deliberately *not* the 8.28 in `constants.js`: that value
 is commented "interface.cs placeholder" and the hub is a cosmetic cylinder no
 parameter depends on, so the round number is the one worth teaching.  The FEG
@@ -66,4 +66,4 @@ Two rules the pipeline depends on:
    sidecars do not apply.  Do not route it through `encode_image`.
 2. The high-point bullet in the text block quotes the canonical sentence
    from `DC_prompt_fragments/dc_config/parameters.md` **verbatim** — keep
-   them in lockstep (guarded by `extra_utilities/smoke_test_dc_primer.py`).
+   them in lockstep (guarded by `extra_utilities/smoke_test_dc_primer.py` *(removed 2026-10-10; in git history)*).

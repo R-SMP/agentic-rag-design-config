@@ -7,7 +7,7 @@
 -- ``CREATE TABLE`` is not idempotent.  Typical sequence::
 --
 --     python apply_schema.py drop_all_tables.sql
---     python apply_schema.py database_PostgreSQL_schema_v5.sql
+--     python apply_schema.py database_PostgreSQL_schema_v8.sql
 --     python populate_dc_parameter_schemas.py
 --
 -- ``DROP TABLE IF EXISTS ... CASCADE`` is safe to run against a

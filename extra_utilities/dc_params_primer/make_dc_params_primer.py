@@ -183,8 +183,8 @@ RING_T = 5.0                      # impellerThickness, mm
 # constants.js: that value is commented "interface.cs placeholder" and the
 # hub is a cosmetic cylinder that no parameter depends on, so the round
 # number is the one worth teaching.  ROOT_MM is the opposite case -- it IS
-# load-bearing, so it tracks the code exactly and smoke_test_dc_primer
-# asserts the two stay equal.
+# load-bearing, so it tracks the code exactly (the removed
+# smoke_test_dc_primer asserted the two stay equal; extra_info.md §13).
 HUB_MM = 8.0
 ROOT_MM = 4.0
 B1_MM, B2_MM = ROOT_MM + 0.3 * 66, ROOT_MM + 0.7 * 66

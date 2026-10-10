@@ -455,7 +455,8 @@ _SEE_IMAGE_PLAIN = (
 # Appending rather than rewriting each agent's "supplied in your hand-off"
 # clause is deliberate: a ``.replace`` anchor that stops matching fails
 # SILENTLY -- which is why the OCR swap above needs
-# ``smoke_test_ocr_descriptions.py`` -- while a concatenation cannot.
+# ``smoke_test_ocr_descriptions.py`` (removed 2026-10-10, see
+# extra_utilities/extra_info.md §13) -- while a concatenation cannot.
 # Reverting this is deleting the one ``if`` in ``read_inputs_doc``.
 #
 # It states only WHERE a valid path may come from.  When to prefer the
@@ -473,8 +474,9 @@ def read_inputs_doc(agent_key: str) -> str:
 
     With OCR off for this agent the OCR clause is swapped out, so a
     no-OCR run never advertises text recognition the agent cannot do.
-    ``smoke_test_ocr_descriptions.py`` asserts the swap still bites --
-    a ``.replace`` that stops matching would otherwise fail silently.
+    The removed ``smoke_test_ocr_descriptions.py`` asserted the swap still
+    bites (extra_utilities/extra_info.md §13) -- a ``.replace`` that stops
+    matching would otherwise fail silently.
     """
     table = _topology.overlay_value(
         "READ_INPUTS_DOC_BY_AGENT", READ_INPUTS_DOC_BY_AGENT)

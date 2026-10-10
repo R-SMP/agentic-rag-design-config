@@ -6,7 +6,7 @@ Built on **LangChain** with swappable LLM backends (OpenAI / Anthropic / Google)
 
 ## How it works
 
-Nine stateful sub-agents collaborate via a flat horizontal dispatcher (eight in-session, one post-session) — that is the **7-agent topology**, the default. `SYSTEM_TOPOLOGY` also selects a **5-agent topology** of seven (six in-session, one post-session); see [Topologies](#topologies).
+Nine stateful sub-agents collaborate via a flat horizontal dispatcher (eight in-session, one post-session) — that is the **7-agent topology**, the default. `SYSTEM_TOPOLOGY` also selects a **5-agent topology** of seven (six in-session, one post-session) and a **3-agent topology** of five (four in-session, one post-session); see [Topologies](#topologies).
 
 **Default flow (`PLANNER_FIRST=False`, UII-first):**
 
@@ -31,9 +31,18 @@ user → Receptionist → Planner → User Input Inspector (UII) → Planner
 
 The Planner absorbs the Orchestrator's dispatch role, so it both plans and routes. Two absences are deliberate: the Planner has no edge to the Tool Caller (work enters the DC loop through the Input Creator), and the Tool Caller has none back to the Planner. Topology 5 also has no chain-access feed — reading the other agents' traffic was the Orchestrator's power and left the system with it.
 
-Each topology keeps its own prompt tree: the 7-agent prompts sit beside their agents (`agents/<agent>/prompt.md`), the 5-agent ones under [`agents/5agent/`](agents/5agent/), with the hub in [`agents/planner5/`](agents/planner5/) and topology-specific code overlays in [`agents/topology5/`](agents/topology5/). Several flags below are inert outside topology 7, and the settings view marks them so.
+Topology **3** starts from topology 5 and merges two pairs of agents. The **Design Engineer** is the DC Input Creator + the Tool Caller: it writes the parameters, opens the attempt folder and runs the geometry and render tools itself. The **Requirements Analyst** is the User Input Inspector + the DC Output Inspector: it works out the requirements from the user's inputs and judges the renders against them. The Planner stays the hub:
 
-**User-provided values — locked, soft, or free.** A value the user gives is treated one of three ways. **LOCKED** (default): an exact number they stated is a hard constraint — nothing changes it without their authorisation. **FREE**: a parameter they never mentioned — the system chooses it within range. **SOFT TARGET**: a value they provided but explicitly *subordinated to a qualitative goal* (e.g. *"here are dimensions, but fit the sketched shape; the exact dimensions matter less"*) — the **goal dominates on conflict** (the system varies the value freely to serve it) while holding it **close when there is slack**. The User Input Inspector records a soft target as a `SOFT TARGET (goal: …; keep near … if free)` marker on its QUANTITATIVE INPUTS line, and every downstream agent honours it (Planner authorisation, Creator generation, DCII validation, DCOI output inspection). Details: [`extra_utilities/docs/active/value_states_and_out_of_range.md`](extra_utilities/docs/active/value_states_and_out_of_range.md) Part B.
+```
+user → Receptionist → Planner → Design Engineer → Requirements Analyst
+                    → Planner → Receptionist → user
+```
+
+The natural flow is Design-Engineer-first; the Planner sends the Requirements Analyst first only when images must be read before any value can be chosen. During refinement the Design Engineer and the Requirements Analyst hand work back and forth directly, without the Planner. Topology 3 has no `extracted_inputs.txt`: the Requirements Analyst states its findings in its hand-off, and the Design Engineer reads the user's inputs itself (image names, not paths — it cannot see images).
+
+Each topology keeps its own prompt tree: the 7-agent prompts sit beside their agents (`agents/<agent>/prompt.md`), the 5-agent ones under [`agents/5agent/`](agents/5agent/) and the 3-agent ones under [`agents/3agent/`](agents/3agent/). The hubs are in [`agents/planner5/`](agents/planner5/) and [`agents/planner3/`](agents/planner3/), with topology-specific code overlays in [`agents/topology5/`](agents/topology5/) and [`agents/topology3/`](agents/topology3/). Several flags below are inert outside topology 7, and the settings view marks them so. Why the reduced topologies exist, and the design decisions behind them: [`extra_utilities/extra_info.md`](extra_utilities/extra_info.md) §1–§3.
+
+**User-provided values — locked, soft, or free.** A value the user gives is treated one of three ways. **LOCKED** (default): an exact number they stated is a hard constraint — nothing changes it without their authorisation. **FREE**: a parameter they never mentioned — the system chooses it within range. **SOFT TARGET**: a value they provided but explicitly *subordinated to a qualitative goal* (e.g. *"here are dimensions, but fit the sketched shape; the exact dimensions matter less"*) — the **goal dominates on conflict** (the system varies the value freely to serve it) while holding it **close when there is slack**. The User Input Inspector records a soft target as a `SOFT TARGET (goal: …; keep near … if free)` marker on its QUANTITATIVE INPUTS line, and every downstream agent honours it (Planner authorisation, Creator generation, DCII validation, DCOI output inspection). Details: [`extra_utilities/docs/value_states_and_out_of_range.md`](extra_utilities/docs/value_states_and_out_of_range.md) Part B.
 
 **Post-session save (opt-in):** when the user types `quit`, the system asks whether to save the session to the database. If yes, the **Database Handler** interviews each in-session agent and writes one `.txt` file per saved entry, shaped to be embedding-ready (self-contained, declarative, one topic per file, ≤700 `cl100k_base` tokens for Semantic fields). Rows going to the same agent are asked in **batches** — one message, one reply — and every DH decision is a forced tool call. See [Database Handler: the batched interview](#database-handler-the-batched-interview).
 
@@ -56,7 +65,9 @@ Each topology keeps its own prompt tree: the 7-agent prompts sit beside their ag
 │   │                             # trace/viz_bus, stop_signal, agent_activity
 │   ├── orchestrator/  receptionist/  planner/  user_input_inspector/
 │   ├── dc_input_creator/  dc_input_inspector/  tool_caller/  dc_output_inspector/
-│   └── database_handler/         # post-session interviewer (opt-in)
+│   ├── database_handler/         # post-session interviewer (opt-in)
+│   ├── 5agent/  planner5/  topology5/                      # topology 5: prompts, hub, overlays
+│   └── 3agent/  planner3/  topology3/  design_engineer/  requirements_analyst/  # topology 3
 ├── DC_prompt_fragments/          # DC-specific prompt fragments (propeller today)
 │   ├── dc_config/                # parameters, structure, capabilities, constraints
 │   └── tools_config/             # tool inventory, render-check library
@@ -64,9 +75,9 @@ Each topology keeps its own prompt tree: the 7-agent prompts sit beside their ag
 │   ├── generate_mesh/            # RhinoCompute + Grasshopper definition (DC tool)
 │   ├── render_mesh/              # trimesh + pyvista backends (DC tool)
 │   ├── calculate/  visualize_model/
-└── extra_utilities/              # trackers (TODO_known_issues.md, warnings_developer.md),
-    │                             # docs/{active,reference,archive}/, db_design/, smoke tests
-    │                             # -- start at extra_utilities/README.md
+└── extra_utilities/              # TODO list, warnings_developer.md, extra_info.md, docs/,
+                                  # db_design/, tests/, scripts/, prompt_pdf/
+                                  # -- start at extra_utilities/README.md
 ```
 
 Generated at runtime (gitignored): `attempts/`, `logs/`, `previous_sessions/`, `database/`, `inputs/`.
@@ -136,7 +147,7 @@ The left rail switches between seven views:
 |---|---|
 | **Chat** | Conversational interface + inline 3D viewer for generated meshes.  Image-render bubbles carry an "Attempt NNN" heading and the viewer toolbar shows a matching "Attempt NNN" badge so it's always clear which design is on screen. |
 | **Image Inputs** | Upload reference images, attach a `_note.txt` description per image |
-| **Parameters Inputs** | Direct-edit form for the 17 design params with live 3D preview. Split-pane like Chat: independent 3D viewer LEFT, 4-tab parameter column RIGHT (General / Inner / Middle / Outer profile).  Per-slider VARY ↔ FIXED ↔ PROPOSED state machine — moving a slider FIXES it (green); the system can spontaneously PROPOSE values (orange) when the Planner endorses an attempt.  FIXED values auto-append to the next chat message so downstream agents see them.  See **"Parameters Inputs view"** section below + `extra_utilities/docs/reference/web_interface_notes.md` for the full design. |
+| **Parameters Inputs** | Direct-edit form for the 17 design params with live 3D preview. Split-pane like Chat: independent 3D viewer LEFT, 4-tab parameter column RIGHT (General / Inner / Middle / Outer profile).  Per-slider VARY ↔ FIXED ↔ PROPOSED state machine — moving a slider FIXES it (green); the system can spontaneously PROPOSE values (orange) when the Planner endorses an attempt.  FIXED values auto-append to the next chat message so downstream agents see them.  See **"Parameters Inputs view"** section below + `extra_utilities/docs/web_interface_notes.md` for the full design. |
 | **LOG and Status** | Live multi-agent flowchart + tailing of the current session log |
 | **Questions for Saved Sessions** | Editable Database Handler schedule (see "DH schedule: three kinds of questions" below). Locked while a session is active. |
 | **Workflow Settings** | Live editor over `workflow_settings/settings.py` (takes effect next session) + LLM-routing chart on top.  The LLM-routing chart hosts a per-agent **DBa** (Database access) toggle button — see `extra_utilities/warnings_developer.md` W33 for the per-agent flag + `RAG_ENABLED` master-switch semantics. |
@@ -219,7 +230,7 @@ All downstream agents (Receptionist, UII via `read_user_inputs`, Planner via `re
 
 **End Session** wipes the Parameters Inputs panel state (`paramsResetAll()` in `web/app.js`) alongside the chat: all rows reset to gray VARY at mid-of-range defaults, PROPOSED text cleared, LEFT viewer unloads, Download geometry disabled, FIXED-dispatch dedup snapshot cleared so the next session's first chat send carries a fresh FIXED block if applicable.
 
-Full design + decisions log: [`extra_utilities/docs/reference/web_interface_notes.md`](extra_utilities/docs/reference/web_interface_notes.md).
+Full design + decisions log: [`extra_utilities/docs/web_interface_notes.md`](extra_utilities/docs/web_interface_notes.md).
 
 ## Architecture: how live activity reaches the browser
 
@@ -512,14 +523,14 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
 | `MESH_CHECKS` | `False` | watertight / volume / degenerate-face checks |
 | `RENDER_LIBRARY` | `"trimesh"` | `"trimesh"` or `"pyvista"` metric backend |
 | `RAG_ENABLED` | `True` | Master switch for the `database_search` tool (Phase 4).  When `True`, the 8 chain agents get `database_search` bound at session start AND the `$database_search_tool` fragment in their system prompts — *subject to* the per-agent DBa flag in `workflow_settings/database_access.json` (AND semantics).  When `False`, no agent gets database access regardless of any per-agent flag.  Per-agent flags are edited via the **DBa** toggle button on each agent box in the LLM-routing chart.  See `warnings_developer.md` W33 for the full lifecycle + filter mechanism. |
-| `SYSTEM_TOPOLOGY` | `7` | `7` or `5` — which agent set to build (see [Topologies](#topologies)) |
-| `DC_INSPECTOR_ENABLED` | `True` | run DCII before mesh generation — **7-agent only**, forced off in topology 5 |
-| `CHAIN_ACCESS` | `True` | Orchestrator sees inter-agent chain messages — **7-agent only**; topology 5's hub has no such feed |
+| `SYSTEM_TOPOLOGY` | `7` | `7`, `5` or `3` — which agent set to build (see [Topologies](#topologies)) |
+| `DC_INSPECTOR_ENABLED` | `True` | run DCII before mesh generation — **7-agent only**, forced off in topologies 5 and 3 |
+| `CHAIN_ACCESS` | `True` | Orchestrator sees inter-agent chain messages — **7-agent only**; the hubs of topologies 5 and 3 have no such feed |
 | `KEEP_IMAGES_IN_CONTEXT` | `False` | image bytes persist across hand-offs |
 | `RATE_LIMIT_ENABLED` | `True` | throttle every `llm.invoke()` |
 | `RATE_LIMIT_REQUESTS_PER_SECOND` | `1.0` | steady-state call rate |
-| `DCOI_COMPARISON_MODE` | `3` | 1=user inputs, 2=extraction, 3=both |
-| `PLANNER_FIRST` | `False` | True = Planner runs before UII — **7-agent only**; in topology 5 the hub IS the planner |
+| `DCOI_COMPARISON_MODE` | `3` | 1=user inputs, 2=extraction, 3=both — inert in topology 3 (always 1: there is no extraction file) |
+| `PLANNER_FIRST` | `False` | True = Planner runs before UII — **7-agent only**; in topologies 5 and 3 the hub IS the planner |
 | `EMBEDDING_MODEL` | `"text-embedding-3-large"` | for DH-shaped Semantic bodies |
 | `EMBEDDING_VECTOR_DIMS` | `1024` | MRL truncation dim at index time |
 | `EMBEDDING_MAX_RESPONSE_TOKENS` | `700` | DH cap for Semantic bodies |
@@ -548,7 +559,7 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
   - **F24** — RESOLVED.  Live 3D preview in the Parameters Inputs view (Phase 3 of the redesign — see "Parameters Inputs view" above).
   - **F25 / F26 / F27 / F28** — post-redesign polish items: pre-compute the active FIXED set in Python (instead of UII's in-prompt walk); verify Planner behaviour in non-happy-path cases; live-preview ON/OFF toggle; `sessionStorage` persistence of panel state across reload.  All open as low-priority exploration items, none committed to being implemented.
 - [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W42) that must not regress.  **W42** is the one to read before deleting any 0-byte fragment.  W18 + W20 are the per-turn force-tool pattern (DH's `save_attempt_data`; Orchestrator's `submit_feedback_dispatch`).  W19 is the disjoint-R2-key-namespace invariant for the upload paths.  **W21** is the "empty `to_agents` in the DH schedule means all primary agents, NOT no agents" rule (Postgres ingest contract).  **W22** is the natural-language convention for the spontaneous `propose_attempt` mechanism — Receptionist's LLM interprets the Planner's APPROVE-branch wording; endorsement vocabulary in Receptionist / Planner / `DC_prompt_fragments/tools_config/propose_attempt.md` MUST stay consistent.  **W30 / W33 / W35** govern the RAG / retrieve_* stack — Phase-5A R2 attempt key shape, per-agent DBa gating, and the dispatcher pattern that lets retrieve_* tool calls deliver both XML and image content blocks.
-- [`extra_utilities/docs/reference/web_interface_notes.md`](extra_utilities/docs/reference/web_interface_notes.md) — full design + locked-decisions log for the Parameters Inputs redesign (§§1–8) plus a closing wrap-up (§9) describing the delivered state as of 2026-06-02.
+- [`extra_utilities/docs/web_interface_notes.md`](extra_utilities/docs/web_interface_notes.md) — full design + locked-decisions log for the Parameters Inputs redesign (§§1–8) plus a closing wrap-up (§9) describing the delivered state as of 2026-06-02.
 
 ## Roadmap
 
@@ -574,8 +585,8 @@ Near-term direction:
 - **In-app End Session modal** (replaces `window.confirm`).  Step 1: Yes / No / Cancel.  Step 2 (on Yes): Y/Partial/N satisfaction toggle + two optional free-text fields.  Feedback submitted with the save.
 - **Orchestrator Role 4 — end-of-session feedback distribution.**  When the user supplies feedback, the Orchestrator distributes per-agent slices via a forced `submit_feedback_dispatch` tool call.  Each chain agent receives a single `HumanMessage(name="orchestrator")` in its history with only the feedback parts relevant to its scope — visible to the Database Handler when it interviews each agent post-session.
 - **Per-attempt UI labels** — image renders in chat carry an "Attempt NNN" heading; the 3D viewer toolbar shows a matching badge.
-- **Parameters Inputs view redesign** (2026-06 multi-step rollout, commits `f378ba7` → `fcb9ab6`).  Replaces the previous "coming soon" placeholder with a working split-pane view: independent 3D viewer LEFT, tabbed parameter column RIGHT, per-slider VARY ↔ FIXED ↔ PROPOSED state machine, live preview via `/api/preview_mesh`, FIXED/RELEASED block auto-append on every chat send so downstream agents see user constraints without any per-agent code change, and a spontaneous `propose_attempt` mechanism driven by the Planner's natural-language endorsement (no fixed marker phrase required — see W22).  `viewer.js` refactored to a `Viewer` class so the params view can host its own 3D instance alongside the chat's.  UII prompt rewritten to handle the new auto-appended blocks correctly (no more stale `(unlocked by user)` annotations).  Planner and Receptionist prompts gain rules for when to consult prior attempts and when to fire `propose_attempt` spontaneously.  Full design + chronology + delivered-state walkthrough in [`extra_utilities/docs/reference/web_interface_notes.md`](extra_utilities/docs/reference/web_interface_notes.md).
-- **Phase 4 — `database_search` tool** (2026-06-03).  Closure-factory `@tool` bound to the 8 chain agents (DH skipped — write-only post-session).  Window-function dedup over a `DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER × N` candidate pool (default 10), invariant-8 prefix locked in a single helper (`tools/database_search/database_search.py::_invariant_8_where_fragment`), per-row ACL via `chunks.agents_to[]`, embedding-model mismatch skip, token-cap trim, structured error envelope, best-effort `rag_queries` logging.  26-assertion live smoke test at `extra_utilities/db_design/smoke_test_database_search.py` passes against Railway.  See architecture doc §4 + §9.7 + §9.11 + `warnings_developer.md` W32.
+- **Parameters Inputs view redesign** (2026-06 multi-step rollout, commits `f378ba7` → `fcb9ab6`).  Replaces the previous "coming soon" placeholder with a working split-pane view: independent 3D viewer LEFT, tabbed parameter column RIGHT, per-slider VARY ↔ FIXED ↔ PROPOSED state machine, live preview via `/api/preview_mesh`, FIXED/RELEASED block auto-append on every chat send so downstream agents see user constraints without any per-agent code change, and a spontaneous `propose_attempt` mechanism driven by the Planner's natural-language endorsement (no fixed marker phrase required — see W22).  `viewer.js` refactored to a `Viewer` class so the params view can host its own 3D instance alongside the chat's.  UII prompt rewritten to handle the new auto-appended blocks correctly (no more stale `(unlocked by user)` annotations).  Planner and Receptionist prompts gain rules for when to consult prior attempts and when to fire `propose_attempt` spontaneously.  Full design + chronology + delivered-state walkthrough in [`extra_utilities/docs/web_interface_notes.md`](extra_utilities/docs/web_interface_notes.md).
+- **Phase 4 — `database_search` tool** (2026-06-03).  Closure-factory `@tool` bound to the 8 chain agents (DH skipped — write-only post-session).  Window-function dedup over a `DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER × N` candidate pool (default 10), invariant-8 prefix locked in a single helper (`tools/database_search/database_search.py::_invariant_8_where_fragment`), per-row ACL via `chunks.agents_to[]`, embedding-model mismatch skip, token-cap trim, structured error envelope, best-effort `rag_queries` logging.  26-assertion live smoke test at `extra_utilities/db_design/smoke_test_database_search.py` *(removed 2026-10-10; in git history)* passes against Railway.  See architecture doc §4 + §9.7 + §9.11 + `warnings_developer.md` W32.
 - **Per-agent DBa toggle + `RAG_ENABLED` master switch** (2026-06-03).  Each chain-agent box on the LLM-routing chart now has a small "DBa" pill that decides whether that agent has `database_search` bound AND the `$database_search_tool` fragment in its prompt.  Persistent in `workflow_settings/database_access.json`; combined with `RAG_ENABLED` (now also a real master switch, default `True`) via AND semantics.  Conditional inclusion in templates uses a `<<HAS_DBA>>...<</HAS_DBA>>` filter applied per-agent at `_build_template` time.  See W33.
 - **Database admin view** (2026-06-03).  New seventh side-menu view, password-gated by `PASSWORD_DATABASE_WEB_UI`.  Currently exposes one action: `TRUNCATE` every data table EXCEPT `dc_parameter_schemas` (preserves the 17-parameter schema seed; leaves the `session_counter` SEQUENCE alone — manual `ALTER SEQUENCE` via psql if you want IDNNN to restart).  See W34.
 - **User-inputs R2 mirror fix** (2026-06-03).  Phase 3D's whole-`session_dir` upload with `.png/.jpg/.jpeg` whitelist had inadvertently stopped mirroring `queries.txt` and `*_note.txt` files under `<session_dir>/user_inputs/`.  Mirror re-scoped to that subdirectory with the full `.txt/.png/.jpg/.jpeg` whitelist; user text + image notes now reach R2 regardless of whether images were uploaded or any DH attempts were saved.  W30 updated.

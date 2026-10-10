@@ -25,7 +25,9 @@
 --         ``sessions`` / ``dc_attempts`` tables (metadata reused,
 --         not duplicated).
 --   * Reapply procedure: idempotent CREATE TABLE / CREATE INDEX in
---     ``migrations/migrate_v7_to_v8.py`` for an existing v7 DB.  For
+--     ``migrations/migrate_v7_to_v8.py`` for an existing v7 DB (the
+--     migration ledger was removed from the tree on 2026-10-10; restore
+--     it from git, see extra_utilities/extra_info.md §11).  For
 --     fresh deploys, applying this file directly via
 --     ``apply_schema.py`` includes ``chunks_mm``.
 --
@@ -49,7 +51,8 @@
 --     queries do not full-scan the table.
 --
 --   * Reapply procedure: idempotent ALTER TABLE statements run by
---     ``extra_utilities/db_design/migrations/migrate_v6_to_v7.py``.
+--     ``extra_utilities/db_design/migrations/migrate_v6_to_v7.py``
+--     (in git history, see extra_utilities/extra_info.md §11).
 --     For fresh deploys, applying this file directly via
 --     ``apply_schema.py`` is also fine.
 --
@@ -70,6 +73,7 @@
 --     idempotent.  When upgrading an existing v5 deployment with
 --     live data, run
 --     ``extra_utilities/db_design/migrations/migrate_v5_to_v6.py``
+--     (in git history, see extra_utilities/extra_info.md §11)
 --     instead of re-applying this schema file from scratch — the
 --     migration adds the SEQUENCE AND seeds its initial value to
 --     MAX(existing IDNNN) so the next nextval returns max+1.

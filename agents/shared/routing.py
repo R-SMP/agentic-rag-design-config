@@ -163,7 +163,7 @@ def _load_routing_fragment(fragment_name: str) -> str:
 # ---------------------------------------------------------------------------
 
 # Which routing sections each agent's prompt gets.  The 2026-08-22 prompt
-# reduction (extra_utilities/prompt_reduction_4agents_changes.md §A2) cut
+# reduction (extra_utilities/extra_info.md §7.1) cut
 # most of the shared boilerplate for the Planner and the UII; every agent
 # NOT listed here keeps the full historic set, byte-identical.
 #
@@ -202,7 +202,7 @@ _ROUTING_SECTIONS_BY_AGENT: dict[str, tuple[str, ...]] = {
     # absorbed the surviving CLARIFY sentence, the forwarding rules and the
     # mandate remains, so the fragment IS the whole routing section.
     "User Input Inspector": ("fragment",),
-    # Round 2 (prompt_reduction_3agents_changes.md §A2) folded the four
+    # Round 2 of the prompt reduction folded the four
     # decision bullets into the tool bullets they describe, inside each of
     # these fragments, and dropped every remaining sub-section.
     "DC Input Creator": ("fragment", "mandatory_tail"),

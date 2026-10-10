@@ -806,14 +806,14 @@ the agent in a usable state.
 
 **Suggested test layout.**
 
-- ``extra_utilities/smoke_test_context_pruner.py`` (new) — exercises
+- ``extra_utilities/tests/smoke_test_context_pruner.py`` (new) — exercises
   the pure helpers (``_safe_cut_point`` boundary cases,
   ``_serialise_messages`` round-trip including image blocks,
   ``prune_history_if_needed`` no-op paths, and the failure
   modes) without standing up a Session or invoking a real LLM.
   Mocks ``pruner.run`` to return a fixed summary string.  Should
   be runnable inside the Docker container the same way
-  ``smoke_test_llm_routing.py`` is.
+  ``smoke_test_llm_routing.py`` *(removed 2026-10-10; in git history)* is.
 - A manual run: take the v7 case that hit 894k tokens (3-attempt
   design request with one reference image attached) and confirm
   (a) it no longer raises ``OpenAIContextOverflowError`` and
@@ -1157,7 +1157,7 @@ multi-attempt session end-to-end.  Need a proper verification.
 
 **Suggested test layout.**
 
-- ``extra_utilities/smoke_test_dh_multi.py`` (new) — pure-helper
+- ``extra_utilities/tests/smoke_test_dh_multi.py`` (new) — pure-helper
   tests for ``_parse_save_body_semantic`` (the 5 shapes above),
   ``_normalise_attempt_input`` edge cases, ``_safe_cut_point``
   if not already covered, and ``_resolve_attempt_folder`` with
@@ -1733,7 +1733,7 @@ message.  The Orchestrator in turn surfaces the existing
 high-blast-radius and easy to break the tool_use/tool_result
 contiguity invariants (see resolved issue R2).  Worth a
 dedicated commit with the smoke tests in
-`extra_utilities/smoke_test_image_buffer.py` re-run to make
+`extra_utilities/smoke_test_image_buffer.py` *(removed 2026-10-10; in git history)* re-run to make
 sure the abort path doesn't malform message lists.
 
 **Status.** Open.  Today's coarse hop-boundary check is "good
@@ -2423,7 +2423,7 @@ priority).
 multimodal mirror writer — the image-embedding site, which fuses
 each image with its associated text via voyage-multimodal-3.5)
 and the `chunks_mm` table created by
-`extra_utilities/db_design/migrations/migrate_v7_to_v8.py`.
+`extra_utilities/db_design/migrations/migrate_v7_to_v8.py` *(removed 2026-10-10; in git history)*.
 Evaluation would lean on the F36 embedding-tests mini-eval
 harness once that exists.
 
@@ -2479,7 +2479,7 @@ rationale also recorded in
 > on `stage-a-web-deploy`).  This entry is therefore **F38**.
 
 **Where.**  The not-yet-built OCR feature — see
-`extra_utilities/docs/reference/OCR_technology_notes.md` (the region / crop re-OCR
+`extra_utilities/docs/OCR_technology_notes.md` (the region / crop re-OCR
 escalation tier, §3 Decision 3 + §4).  No code exists yet; this
 records a design assumption to validate before / during build.
 
@@ -2731,9 +2731,8 @@ still passes no phase, i.e. the `"session"` default.
 
 **Where.** `agents/<each reduced-topology agent>/*.py`. Reference implementation: the 8
 in-session agents on the current topology. Mechanics + measured rationale:
-`extra_utilities/docs/reference/design_prompt_caching.md`. Settings: `workflow_settings/settings.py` §29.
-Related: the agent-count work in `extra_utilities/docs/reference/design_agent_count_variants.md` and
-`agent_count_variants_build_tracker.md`.
+`extra_utilities/docs/design_prompt_caching.md`. Settings: `workflow_settings/settings.py` §29.
+Related: the agent-count work, summarised in `extra_utilities/extra_info.md` §3.
 
 ---
 
@@ -2742,7 +2741,7 @@ Related: the agent-count work in `extra_utilities/docs/reference/design_agent_co
 **Status.** OPEN — code shipped 2026-08-04, offline + live smoke tests pass, but the
 Database Handler has never run with caching enabled against a real saved session.
 
-**Why it needs a live check.** `smoke_test_prompt_cache.py` proves the mechanism and
+**Why it needs a live check.** `smoke_test_prompt_cache.py` *(removed 2026-10-10; in git history)* proves the mechanism and
 proves a re-seeded buffer keeps a stable prefix, but it builds a *synthetic* base
 history. A real save differs in the ways that could break the win:
 
@@ -2774,7 +2773,7 @@ independent of the session's, so it can be changed without re-measuring the sess
 
 **Where.** `workflow_settings/settings.py` §30; `agents/database_handler/database_handler.py`
 (5 call sites); `agents/shared/token_usage.py` (`_phase_for`, `_configured_ttl`).
-Mechanics: `extra_utilities/docs/reference/design_prompt_caching.md` § "The session-save phase".
+Mechanics: `extra_utilities/docs/design_prompt_caching.md` § "The session-save phase".
 
 ---
 
@@ -2783,7 +2782,7 @@ Mechanics: `extra_utilities/docs/reference/design_prompt_caching.md` § "The ses
 **Status.** OPEN — this is the larger half of the save-phase saving, and it is NOT
 captured by the 2026-08-04 change. **Measured**, not suspected.
 
-**The gap.** `smoke_test_prompt_cache.py`'s `run_save_phase()` measured three re-seeded
+**The gap.** `smoke_test_prompt_cache.py` *(removed 2026-10-10; in git history)*'s `run_save_phase()` measured three re-seeded
 fields on `claude-opus-4-8`:
 
 ```
@@ -2840,7 +2839,7 @@ written — only the verdict changes.
 
 **Where.** `agents/database_handler/database_handler.py` `_ask_agent` (~line 2733);
 `agents/shared/llm_provider.py` (a new marker helper alongside `system_cache_control`).
-Mechanics: `extra_utilities/docs/reference/design_prompt_caching.md` § "The session-save phase".
+Mechanics: `extra_utilities/docs/design_prompt_caching.md` § "The session-save phase".
 Related: F54 (live verification on a real save).
 
 ### F56. `SYSTEM_TOPOLOGY` is read fresh mid-turn, so a run in flight is not pinned
@@ -2921,7 +2920,7 @@ the hub/routing helpers), so a live turn is pinned to the topology it
 
 started with by construction rather than by timing. This is also decision
 
-T1/T2 of `extra_utilities/docs/active/topology_shared_touchpoints.md` §G — the Sessions
+T1/T2 of `extra_utilities/docs/topology_shared_touchpoints.md` §G — the Sessions
 
 Queue's per-run topology field needs a per-session carrier anyway, so the
 
@@ -3256,7 +3255,7 @@ intact.  Porting that is a one-hunk change — but note
 
 **Why it is not fixed now.**  The owner has set the 7-agent standard and
 5-agent systems aside; the reduced system is the one being built.
-`smoke_test_database_access.py` case 13 therefore HARD-asserts the invariant
+`smoke_test_database_access.py` *(removed 2026-10-10; in git history)* case 13 therefore HARD-asserts the invariant
 for `reduced` and, for `standard`, asserts only that no violation appears
 BEYOND this known pair — so a NEW standard-tree violation still fails the
 test, while this one does not mask it.
@@ -3354,7 +3353,7 @@ will not show up in a signature grep.
 **Status.** OPEN — evidence-backed, no fix attempted.  Found 2026-08-05 by a
 13-agent adversarial verification of the proposal's routing-duplication claims
 (~968k tokens).  Recorded because re-deriving it is expensive; see
-`extra_utilities/prompt_efficiency/UII_CUT_VERDICTS.md` for the per-cut detail.
+`extra_utilities/prompt_efficiency/UII_CUT_VERDICTS.md` *(removed 2026-10-10; in git history — findings summarised in `extra_utilities/extra_info.md` §12)* for the per-cut detail.
 
 Four duplications, none of which any of the 349 cuts touches:
 
@@ -3539,7 +3538,7 @@ summarised in the commit for this fix.
 
 Two reasons this is acceptable rather than sloppy.  **Nothing reads
 `dc_parameter_schemas` at runtime** — verified by grep; the only references are
-the seeder, a row-count in `smoke_test_postgres_pool.py`, and TRUNCATE comments
+the seeder, a row-count in `smoke_test_postgres_pool.py` *(removed 2026-10-10; in git history)*, and TRUNCATE comments
 in `web_app.py`.  No agent has ever seen it.  And the file's header states the
 V1 list is immutable history, so correcting it in place would violate the
 table's own append-only contract.
@@ -3914,7 +3913,7 @@ when the module is first imported, and all nine are listed in `__all__`.
 
 **Why it is safe right now.** No production code reads any of the nine.
 Re-grepped 2026-08-21: the only consumer outside the module is
-`extra_utilities/smoke_test_prompt_format.py:95`
+`extra_utilities/tests/smoke_test_prompt_format.py:95`
 (`getattr(prompts, f"{name}_TEMPLATE")`). (`dc_output_inspector.py:65` mentions
 `DCOI_TEMPLATE` in a comment only.) So today they are dead weight.
 
@@ -3937,11 +3936,11 @@ Re-grepped 2026-08-21: the only consumer outside the module is
 later if the API surface is ever worth removing outright.
 
 **Provenance.** Lifted verbatim from
-`extra_utilities/docs/archive/agent_count_variants_build_tracker.md` (section
+`extra_utilities/docs/archive/agent_count_variants_build_tracker.md` *(removed 2026-10-10; in git history)* (section
 "🔶 OPEN — the eager `*_TEMPLATE` block in `prompts.py`") when that file was
 archived, so the item stays visible in the live tracker. Same subject as the
 topology-selector `O9` obstacle, now folded into
-`extra_utilities/docs/active/topology_shared_touchpoints.md` §G.
+`extra_utilities/docs/topology_shared_touchpoints.md` §G.
 
 ---
 
@@ -3967,7 +3966,7 @@ flow chart, add a button/tick:
 per-agent choice.)
 
 **Provenance.** Lifted verbatim from
-`extra_utilities/docs/archive/agent_count_variants_build_tracker.md`, section
+`extra_utilities/docs/archive/agent_count_variants_build_tracker.md` *(removed 2026-10-10; in git history)*, section
 "Separate feature TODO (surfaced 2026-07-26 — NOT part of the reduced-agent
 build)".
 
@@ -4243,7 +4242,7 @@ a round scoped to the RA's own prompt.
 (`### 2. QUALITATIVE DESCRIPTIONS`, `### 3. DESIGN INTENT`);
 `agents/3agent/planner/prompt_3agents.md` (`## Role 1`, `HARD RULE 6` for the
 ask-the-user path). Decision record:
-`extra_utilities/docs/active/topology3_stage9_round3_ra_prompt_edits.md` §R14.
+`extra_utilities/docs/active/topology3_stage9_round3_ra_prompt_edits.md` §R14 *(removed 2026-10-10; in git history — see `extra_utilities/extra_info.md` §1)*.
 
 ---
 
@@ -4486,7 +4485,7 @@ fallback); `tools/retrieval_common.py` (`folder_listing(recurse=)`);
 `read_user_inputs_summary`'s retrieved branch); `agents/shared/prompts.py`
 (`_HAS_USER_INPUTS_RE`, `apply_dba_filter`);
 `DC_prompt_fragments/tools_config/retrieve_user_inputs.md` + the `5agent` /
-`3agent` forks; `extra_utilities/db_design/smoke_test_retrieve_user_inputs.py`.
+`3agent` forks; `extra_utilities/db_design/smoke_test_retrieve_user_inputs.py` *(removed 2026-10-10; in git history)*.
 
 ---
 
@@ -4552,7 +4551,7 @@ they do not know the cast.
 **The drift guard.** `_AGENTS_WITH_IMAGE_TOOLS` in `prompts.py` mirrors a fact
 that actually lives in each agent's `can_view_images=` argument; prompt
 assembly cannot read the real one without importing agent modules and dragging
-in the 3D render stack.  `extra_utilities/smoke_test_prompt_image_regions.py`
+in the 3D render stack.  `extra_utilities/smoke_test_prompt_image_regions.py` *(removed 2026-10-10; in git history)*
 asserts the two agree (and that the CANNOT_SEE version names no image tool).
 Verified to BITE: removing one agent from the frozenset fails it.  Without that
 check the mirror rots the first time an agent gains or loses an image tool, and
@@ -4589,7 +4588,7 @@ teach one behaviour rather than two.
 (`_CAN_SEE_RE`, `_AGENTS_WITH_IMAGE_TOOLS`, `apply_image_tools_filter`,
 `_DBA_TOOL_SLOTS`); `agents/dc_input_creator/dc_input_creator.py`;
 `agents/design_engineer/design_engineer.py:383`;
-`extra_utilities/smoke_test_prompt_image_regions.py`.
+`extra_utilities/smoke_test_prompt_image_regions.py` *(removed 2026-10-10; in git history)*.
 
 
 ### F101. `smoke_test_prompt_format.py` brace-checks topology 7 only
@@ -4597,7 +4596,7 @@ teach one behaviour rather than two.
 **Status.** DEFERRED 2026-09-16 — topologies 3 and 5 are not in use
 (owner).  **Do this before running either of them again.**
 
-**Where.** `extra_utilities/smoke_test_prompt_format.py`, the `TEMPLATES`
+**Where.** `extra_utilities/tests/smoke_test_prompt_format.py`, the `TEMPLATES`
 tuple.
 
 **The gap.**  `TEMPLATES` lists the eight SEVEN-agent templates.  The
@@ -4613,7 +4612,7 @@ forcing `SYSTEM_TOPOLOGY` for each pass.  **Not in one process:**
 `prompts.py` captures `PLANNER_FIRST` and `DC_INSPECTOR_ENABLED` at
 IMPORT time, so the second topology in a single process inherits the
 first one's flags — which is exactly why
-`extra_utilities/topology_prompt_snapshot.py` spawns one subprocess per
+`extra_utilities/scripts/topology_prompt_snapshot.py` spawns one subprocess per
 topology rather than looping in-place.  Copy that shape.
 
 **Related.**  W45 (the bug class), and the RAG off/on loop already in

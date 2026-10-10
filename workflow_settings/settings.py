@@ -608,7 +608,7 @@ RETRIEVE_MAX_RESPONSE_TOKENS: int = 30_000
 # gets a clean, quotable reading of any dimension callouts /
 # annotations alongside the image itself.  Also exposes the
 # ``reread_text_regions`` zoom-in tool.  See
-# extra_utilities/docs/reference/OCR_technology_notes.md for the full design.
+# extra_utilities/docs/OCR_technology_notes.md for the full design.
 #
 # Requires GOOGLE_CLOUD_VISION_API_KEY in the environment (Railway
 # dashboard Variables / local .env).
@@ -1094,7 +1094,7 @@ MAX_DESIGN_ENGINEER_STEPS: int = 120
 # a prompt PREFIX, keyed by a hash of that prefix's exact tokens.  A
 # later request whose prompt STARTS with the same tokens reads that
 # state back at ~0.1x the normal input price instead of re-paying
-# full price for it.  See extra_utilities/docs/reference/design_prompt_caching.md
+# full price for it.  See extra_utilities/docs/design_prompt_caching.md
 # for the full mechanics (breakpoints, the 20-block lookback, TTL
 # economics and the measured behaviour of this system).
 #

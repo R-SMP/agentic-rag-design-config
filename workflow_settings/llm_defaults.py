@@ -170,7 +170,7 @@ def model_for(agent_key: str) -> str:
 # stays put until topology 3 is deliberately re-tiered.
 #
 # The ANTHROPIC preset is still Test 1 "Experiment Subject 5" (see
-# extra_utilities/docs/reference/benchmark_suite.md, Part B): a tier chosen
+# extra_utilities/docs/benchmark_suite.md, Part B): a tier chosen
 # per agent by REASONING demand — HIGH claude-opus-4-8 to perceive (UII),
 # validate (DCII) and critique (DCOI); MEDIUM claude-sonnet-4-6 to create
 # (DCIC), plan (Planner) and interface (Receptionist); LOW claude-haiku-4-5

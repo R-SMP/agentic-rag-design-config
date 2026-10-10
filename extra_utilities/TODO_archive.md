@@ -209,7 +209,7 @@ agents. The five `TEMPORARY (see extra_utilities/TODO_known_
 issues.md, item #1)` comment markers are deleted.
 
 **Verified by 4 unit-style smoke tests.** See
-`extra_utilities/smoke_test_image_buffer.py`:
+`extra_utilities/smoke_test_image_buffer.py` *(removed 2026-10-10; in git history)*:
 
 1. Dual parallel tool call (`load_input_images` + `read_input_text`)
    → final shape `[AIMessage, ToolMessage, ToolMessage, HumanMessage]`,
@@ -222,7 +222,7 @@ issues.md, item #1)` comment markers are deleted.
    `load_input_images` in one AIMessage) → both paths in path-text
    labels, two image blocks, contiguity preserved.
 
-A second smoke test (`extra_utilities/smoke_test_no_parallel_kwarg.py`)
+A second smoke test (`extra_utilities/smoke_test_no_parallel_kwarg.py` *(removed 2026-10-10; in git history)*)
 asserts that NO agent still passes `parallel_tool_calls=` to
 `bind_tools(...)`.
 
@@ -409,7 +409,7 @@ LLM calls per pass, before the per-attempt multiplier on sub-rows.  The
 real per-save cost is still unmeasured — that needs one live save.
 
 Documented in the README ("Database Handler: the batched interview").
-Covered by `extra_utilities/smoke_test_dh_batching.py` (80 checks).
+Covered by `extra_utilities/smoke_test_dh_batching.py` *(removed 2026-10-10; in git history)* (80 checks).
 
 ---
 
@@ -446,7 +446,7 @@ routing + mode-aware embed-with-fallback + `<image_ref>` emission +
 generic `<search_meta>` `mode`/`db`/`fallback` attrs, all in
 `database_search.py`; the single extension point for future backends is
 documented in **W39**.  Smoke test
-`smoke_test_database_search_mm.py` (11/11).  NOT yet committed/deployed
+`smoke_test_database_search_mm.py` *(removed 2026-10-10; in git history)* (11/11).  NOT yet committed/deployed
 — mark this entry DONE once it ships.
 
 ---
@@ -636,7 +636,7 @@ ordering + proportions (explicitly declining shape) and went straight to 3D. Roo
 causes: DCOI bar too low (A), section-shape params never extracted from the drawing (B),
 "many attempts" recorded as permission not mandate (D); compounded by a small /
 compressed comparison render (C) and the NACA airfoil ceiling (E). Full design:
-`extra_utilities/docs/archive/design_precision_sections_match.md` (31 decisions; 3 components).
+`extra_utilities/docs/design_precision_sections_match.md` (31 decisions; 3 components).
 
 **Fix (3 components, 5 phases).**
   * **C — standing directives (P1).** A verbose Planner-issued instruction survives the
@@ -1086,7 +1086,7 @@ was closed separately as **F75b** below.  **DORMANT since 2026-08-20**:
 instead of 16 values, so the numbers it builds from COME from the record and
 cannot disagree with it.  This comparison is unreachable through the agent path.
 KEPT, not deleted — it still guards any future caller that reintroduces
-value-passing, and `smoke_test_attempt_coherence` now exercises it directly
+value-passing, and `smoke_test_attempt_coherence` *(removed 2026-10-10; in git history)* now exercises it directly
 instead of through the tool.
 
 The removed clause said a folder's mesh and ``render_*.png`` must have come
@@ -1111,9 +1111,9 @@ target folder's `parameters.json` and refuse on mismatch.**
 
 **THAT WORDING IS SUPERSEDED — do not implement it as written.**  Putting the
 comparison in `_validate_output_dir` and refusing on mismatch would, on day
-one: refuse `smoke_test_generate_mesh.py` on 100% of runs (it never writes a
+one: refuse `smoke_test_generate_mesh.py` *(removed 2026-10-10; in git history)* on 100% of runs (it never writes a
 `parameters.json` — verified, zero occurrences); `TypeError`
-`smoke_test_param_rename.py:92-96`, which patches that function with a
+`smoke_test_param_rename.py:92-96` *(removed 2026-10-10; in git history)*, which patches that function with a
 ONE-ARGUMENT lambda; block the Orchestrator's documented DCIC-failure recovery
 folder (`new_attempt` writes no parameters.json); block the 3-agent Designer
 structurally (it can emit the geometry call before `write_parameters` in one
@@ -1136,7 +1136,7 @@ change the outcome.  A missing / empty / unparseable / incomplete
 corrective retry carries different arguments and does not trip the identical-
 signature `stuck_escalation` at `tool_caller.py:213-218`.
 
-Covered by `extra_utilities/smoke_test_attempt_coherence.py` (18 assertions,
+Covered by `extra_utilities/smoke_test_attempt_coherence.py` *(removed 2026-10-10; in git history)* (18 assertions,
 fully offline), which proves it fires AND does not over-fire.
 
 ---
@@ -1360,7 +1360,7 @@ constraint still governs every redeploy.
     `R-SMP` org and that needs an org-owner approval we do not
     control.  No push-to-deploy; each deploy is a manual
     `railway up` from the `stage-a-web-deploy` worktree.
-  * Follow `extra_utilities/docs/reference/cloud_deploy_runbook.md` end to end:
+  * Follow `extra_utilities/docs/cloud_deploy_runbook.md` end to end:
     §1 open the existing empty (Pro-workspace) Railway project
     `agentic-rag-design-config`
     (id `644e017b-b027-455a-b1f8-5a86952feae5`), create the
@@ -1530,7 +1530,7 @@ the authoritative marker list is `agents/shared/prompts.py:151-175`.
 topology in `dh_schedule.schedule_path()` -- so no row names an agent the
 active hub does not build, and the three loss mechanisms below have
 nothing to act on.  Guarded by the F19d assertion in
-`extra_utilities/smoke_test_dh_batching.py`: every `from_agent` in the
+`extra_utilities/smoke_test_dh_batching.py` *(removed 2026-10-10; in git history)*: every `from_agent` in the
 effective schedule must be a key of the built hub's `_agents_by_key`.
 
 Read the breakdown below as CONDUCTOR-era: it counts `planner` and

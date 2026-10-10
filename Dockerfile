@@ -18,8 +18,8 @@
 #
 # Stage A scope: no DB, no R2.  The DATABASE_URL / R2 env vars
 # referenced by docker-compose.yml are accepted but unused — they
-# come into play in Stage B.  See extra_utilities/cloud_
-# architecture_notes.md C6 for the Stage A vs Stage B button-
+# come into play in Stage B.  See extra_utilities/docs/
+# cloud_architecture_notes.md C6 for the Stage A vs Stage B button-
 # labelling discipline and warnings_developer.md W14 for the
 # matching code-side rule.
 

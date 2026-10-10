@@ -17,7 +17,7 @@ projection is irrelevant to the height and is intentionally not ported.  The
 fitted height therefore depends on exactly five params: ``outerThickness,
 outerMaxPos, outerCamber, outerChord, outerAngle``.
 
-**Drift guard:** ``extra_utilities/smoke_test_ring_height.py`` verifies this
+**Drift guard:** ``extra_utilities/tests/smoke_test_ring_height.py`` verifies this
 port bit-for-bit against the real ``web/feg`` modules (Python vs Node,
 < 1e-9 mm) over hundreds of param sets.  Keep this module and ``web/feg`` in
 sync; the constants below mirror ``web/feg/constants.js``.

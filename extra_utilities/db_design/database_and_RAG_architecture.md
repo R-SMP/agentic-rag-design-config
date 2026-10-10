@@ -1,7 +1,7 @@
 # Database and RAG Architecture — Design Decisions
 
 **Status:** design phase. Implementation begins after the user gives the go-ahead.
-**Companion file:** `database_PostgreSQL_schema_v4.sql` (in this folder). v4 = v3 + all §3 decisions locked 2026-06-01 (CHECK constraint on chunks, partial HNSW index, rag_queries log table). `database_PostgreSQL_schema_v2.sql` and `_v3.sql` kept as historical records.
+**Companion file:** `database_PostgreSQL_schema_v8.sql` (in this folder) — the current schema. Earlier versions (v1–v7) and the migration ledger were removed on 2026-10-10 and are in git history (`extra_utilities/extra_info.md` §11); the version notes below still name them.
 **Last updated:** 2026-06-01.
 
 This file captures every architectural decision made during the
@@ -15,7 +15,7 @@ once decisions are locked).
 
 ## 1. Database schema (v2)
 
-Five tables; see `database_PostgreSQL_schema_v2.sql` for the
+Five tables; see `database_PostgreSQL_schema_v2.sql` *(removed 2026-10-10; in git history)* for the
 full DDL. Headline points:
 
 | Table | Role |
@@ -116,7 +116,7 @@ These need no new columns, just indexes and tool wiring:
 ## 3. Schema additions and write-reliability behaviour locked 2026-06-01
 
 These four items were "pending" earlier and have now all been
-**accepted**. The schema changes appear in `database_PostgreSQL_schema_v4.sql`;
+**accepted**. The schema changes appear in `database_PostgreSQL_schema_v4.sql` *(removed 2026-10-10; in git history)*;
 the runtime behaviour described in §3.5 is application-layer and does
 not change the SQL itself.
 
@@ -208,7 +208,7 @@ backend implementation locks this prefix into a single helper function
 > `sessions.feedback_what_worked` + `sessions.feedback_what_didnt`
 > into a single `sessions.feedback TEXT` column (see the v5
 > changelog at the top of
-> `database_PostgreSQL_schema_v5.sql`).  Behaviour for the `chunks`
+> `database_PostgreSQL_schema_v5.sql` *(removed 2026-10-10; in git history)*).  Behaviour for the `chunks`
 > mirror is unchanged from the v4 design.
 
 When the user submits the End Session modal, the backend writes:
@@ -316,7 +316,7 @@ Notes:
 >
 > New index `idx_rag_queries_tool_name` supports per-tool analytics
 > queries.  Migration:
-> `extra_utilities/db_design/migrations/migrate_v6_to_v7.py` (idempotent
+> `extra_utilities/db_design/migrations/migrate_v6_to_v7.py` *(removed 2026-10-10; in git history)* (idempotent
 > ALTER TABLE).  See §9.13 for the full Phase 5 narrative.
 
 ### 3.5 DH retry behaviour and R2 safety fallback
@@ -1077,7 +1077,7 @@ Items deferred to future iterations but recorded so they're not lost:
 | T15 | **Artefact-fetch tool** — separate from `database_search`. Given a specific `(session_id, attempt_id?)` anchor the caller has already triaged via text-only search, returns the requested image artefacts (`kinds=["user_input_images", "attempt_renders"]` or any subset). Reads from R2 since artefacts live there per §3.5 scope note. See §4.10 for the two-step retrieval rationale this tool is built to support. | Out of Phase 3 scope; text-only search ships first. The text response is enough for most agent decisions; image lookups are the long-tail follow-up. | New tool in `agents/database_handler/` or `agents/shared/`. Returns image bytes (or pre-signed R2 URLs) in the tool response. |
 | T16 | **Anthropic-provider stitching client.** | Phase 3B locks `db_writer.py`'s stitching path to OpenAI (direct `openai` SDK).  Settings block #17 docstring AND the workflow-settings editor UI both lock `STITCHING_PROVIDER` to "OpenAI" while this is the case.  Anthropic is the next-most-likely cheap-LLM provider to support. | Add an Anthropic branch in `stitch_for_embedding()` in `agents/database_handler/db_writer.py`, gated on `ANTHROPIC_API_KEY`.  Unlock the provider input in `workflow_settings/editor.py` once available (extend `ENUM_OPTIONS["STITCHING_PROVIDER"]` to include `"Anthropic"`). |
 | T17 | **Google-provider stitching client.** | Same rationale as T16; deferred for the same reason. | Same file pattern as T16; mirror the Google branch (`google.generativeai` SDK), gated on `GOOGLE_API_KEY`. |
-| T18 | **Schema migration scripts (v4 → v5, and future v→v+1).** | v5 shipped via drop-and-recreate on 2026-06-02 because the Railway Postgres had no live data worth preserving.  Future schema bumps cannot make the same assumption — at least one production cutover with real session data is expected before v6.  **First use case landed 2026-06-02 (Phase 3E):** `migrate_v5_to_v6.py` adds the `session_counter` SEQUENCE and seeds its initial value from existing session_ids.  See §9.10. | New folder `extra_utilities/db_design/migrations/`.  One idempotent Python script per version bump: `migrate_v4_to_v5.py`, `migrate_v5_to_v6.py`, ….  Each script wraps `ALTER TABLE` + data backfill in a single transaction.  `apply_schema.py` stays the path for fresh-DB deploys; migrations are the path for non-empty DBs. |
+| T18 | **Schema migration scripts (v4 → v5, and future v→v+1).** | v5 shipped via drop-and-recreate on 2026-06-02 because the Railway Postgres had no live data worth preserving.  Future schema bumps cannot make the same assumption — at least one production cutover with real session data is expected before v6.  **First use case landed 2026-06-02 (Phase 3E):** `migrate_v5_to_v6.py` adds the `session_counter` SEQUENCE and seeds its initial value from existing session_ids.  See §9.10. | New folder `extra_utilities/db_design/migrations/` *(removed 2026-10-10; in git history)*.  One idempotent Python script per version bump: `migrate_v4_to_v5.py`, `migrate_v5_to_v6.py`, ….  Each script wraps `ALTER TABLE` + data backfill in a single transaction.  `apply_schema.py` stays the path for fresh-DB deploys; migrations are the path for non-empty DBs. |
 | T19 | **Schema v6 — text-param long-format mirror.** | v5's `dc_attempt_parameters.raw_value` is `DOUBLE PRECISION NOT NULL`, so non-numeric (text, boolean, etc.) parameter values cannot land in the long-format mirror table.  They ARE preserved verbatim in `dc_attempts.parameters_json` (JSONB) and queryable via Postgres JSONB operators (e.g. `parameters_json->>'material' = 'steel'`).  For future design configurators whose parameters include text values that need range-style filtering or fast indexed lookup like numeric params currently get, the long-format mirror would need extension. | Schema v6 bump: extend `dc_attempt_parameters` with `raw_text TEXT NULL` + a CHECK that exactly one of `raw_value` / `raw_text` is non-NULL.  Extend `dc_parameter_schemas` similarly (text params have no numeric min/max — make those nullable, optionally add `allowed_values TEXT[] NULL` for enumerated text params).  Change `db_writer.upsert_attempt_parameters` signature to `dict[str, float \| str]`.  Update the architecture doc §1 + §3.  Touches T18 (migration script needed). |
 | T20 | **Tighter `user_provided_images` detection.** | Phase 3C's `db_writer.upsert_session` call derives `user_provided_images` by globbing `*.png` / `*.jpg` / `*.jpeg` under `Session.inputs_dir`.  Future image formats (HEIC, WEBP, AVIF) will NOT be detected; multi-file user-input directories with mixed content might mis-classify too.  Acceptable for v9 since the upload pipeline is locked to PNG/JPG/JPEG. | Either (a) widen the glob set as the upload pipeline gains new image-type support — `Session.inputs_dir` is scanned at populate_database start in `agents/database_handler/database_handler.py`, or (b) refactor to a session-level flag set BY the dispatch layer when an image file is uploaded — more authoritative than a post-hoc folder scan. |
 | T21 | **Use `sessions.notes` column for session-level free text.** | The column is reserved on schema v5 for free-text session notes.  Phase 3C wires `upsert_session(notes=None)`; nothing populates it today.  Direct quote from the design discussion: *"if there is the need to add final messages on the session, or to specify why there were some problems, use the notes column"*. | Add the wiring when a feature needs it — e.g. an operator-side "session notes" textarea in the workflow-settings UI, or an automatic *"the DH save was partial because <reason>"* message generated by `populate_database` itself, or a wrap-up note from the End Session flow.  No schema change needed; just pass a non-None string to `db_writer.upsert_session(notes=...)`.  See also `warnings_developer.md` W26. |
@@ -1178,7 +1178,7 @@ design".
 
 ### 9.2 Phase 2 — Schema deployment + parameter seed  (COMPLETE)
 
-- `database_PostgreSQL_schema_v4.sql` applied via
+- `database_PostgreSQL_schema_v4.sql` *(removed 2026-10-10; in git history)* applied via
   `extra_utilities/db_design/apply_schema.py`.
 - All 6 tables created (`chunks`, `dc_attempt_parameters`,
   `dc_attempts`, `dc_parameter_schemas`, `rag_queries`, `sessions`).
@@ -1199,7 +1199,7 @@ design".
   `ConnectionPool` (min=1, max=4) with pgvector adapter registered
   per-connection.  Returns `None` / raises `PostgresDisabledError`
   cleanly when no URL is set.
-- `extra_utilities/db_design/smoke_test_postgres_pool.py` —
+- `extra_utilities/db_design/smoke_test_postgres_pool.py` *(removed 2026-10-10; in git history)* —
   end-to-end verifier that runs locally without the full langchain
   stack (uses `importlib` to bypass `agents/__init__.py`).
   Verified PASS locally + Railway build clean + UI shows
@@ -1212,7 +1212,7 @@ design".
 > **Resume sprint update (2026-06-02):** the stitching prompt at
 > `agents/database_handler/stitching_prompt.md` was reviewed by the
 > user and approved at `version: 1` (no edits).  Schema v5
-> (`database_PostgreSQL_schema_v5.sql`) committed alongside
+> (`database_PostgreSQL_schema_v5.sql` *(removed 2026-10-10; in git history)*) committed alongside
 > `drop_all_tables.sql` — collapses
 > `sessions.feedback_what_worked` + `sessions.feedback_what_didnt`
 > into a single `sessions.feedback TEXT` column per §3.3 rewrite.
@@ -1271,7 +1271,7 @@ design".
   - `DEFAULT_AGENTS_TO_ACL` constant — the canonical list of
     "primary agents" used when a schedule entry's `to_agents`
     is empty (per §3.6 + invariant 14).
-- `extra_utilities/db_design/smoke_test_db_writer.py` — end-to-end
+- `extra_utilities/db_design/smoke_test_db_writer.py` *(removed 2026-10-10; in git history)* — end-to-end
   verifier that exercises stitch + embed + insert with a
   synthetic `_smoke_test_*` session_id and cleans up after itself.
 
@@ -1293,7 +1293,7 @@ implementing):**
 2. Write `db_writer.py` per the contract above, importing the
    pool from `agents.shared.postgres_pool` and the prompt text
    from `stitching_prompt.md`.
-3. Write `smoke_test_db_writer.py`.
+3. Write `smoke_test_db_writer.py` *(removed 2026-10-10; in git history)*.
 4. Run the smoke test locally — confirm a synthetic insert hits
    the DB and a forced failure routes to R2 safety.
 5. Commit + pause again before 3C.
@@ -1381,7 +1381,7 @@ row then returns ``SKIPPED_UNIQUE`` rather than silently
 double-writing.  Session-scoped single-pair rows keep
 ``item_index=None`` — the schema's NULL-distinct semantics are
 intentional for those (see the chunks table NOTE in
-``database_PostgreSQL_schema_v5.sql``).  See
+``database_PostgreSQL_schema_v5.sql`` *(removed 2026-10-10; in git history)*).  See
 ``warnings_developer.md`` W28.
 
 **Error rows in chunks (Q-3C-E1 / E6 = α).**  When the DH writes
@@ -1498,7 +1498,7 @@ Implementation shipped:
   constants visible in the editor UI:
   `DATABASE_SEARCH_MAX_RESPONSE_TOKENS = 30_000` and
   `DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER = 10`.
-- `extra_utilities/db_design/smoke_test_database_search.py`
+- `extra_utilities/db_design/smoke_test_database_search.py` *(removed 2026-10-10; in git history)*
   (~735 lines) — 8 scenarios covering happy path, ACL filter,
   empty results + metafilters, token-cap trim, model-mismatch
   skip, attempt_specific, error path, and rag_queries logging.
@@ -1525,10 +1525,10 @@ In order:
 
 When resuming, the file you re-read first is this one (`database_and_RAG_architecture.md`); §1–§8 are the locked design, §9 is "where we paused".  Then in order of likely need:
 
-- `extra_utilities/db_design/database_PostgreSQL_schema_v4.sql` — the live schema on Railway.
+- `extra_utilities/db_design/database_PostgreSQL_schema_v4.sql` *(removed 2026-10-10; in git history)* — the live schema on Railway.
 - `extra_utilities/db_design/apply_schema.py` — re-apply if you need to drop/recreate.
 - `extra_utilities/db_design/populate_dc_parameter_schemas.py` — re-seed parameter schemas; idempotent.
-- `extra_utilities/db_design/smoke_test_postgres_pool.py` — sanity-check the connection.
+- `extra_utilities/db_design/smoke_test_postgres_pool.py` *(removed 2026-10-10; in git history)* — sanity-check the connection.
 - `agents/shared/postgres_pool.py` — pool module.
 - `agents/database_handler/stitching_prompt.md` — Option B rewrite prompt (review first when resuming).
 - `workflow_settings/settings.py` blocks #16 and #17 — `DATABASE_ENTRY_MAX_RETRIES`, `STITCHING_PROVIDER`, `STITCHING_MODEL`.
@@ -1568,7 +1568,7 @@ The IDNNN counter moves to a Postgres `SEQUENCE`:
   naturally extends to 4+ digits past 999.
 
 **Migration.**  v5 → v6 via
-`extra_utilities/db_design/migrations/migrate_v5_to_v6.py`:
+`extra_utilities/db_design/migrations/migrate_v5_to_v6.py` *(removed 2026-10-10; in git history)*:
 
 1. `CREATE SEQUENCE IF NOT EXISTS session_counter ...` (idempotent).
 2. Scan existing `sessions.session_id` values matching
@@ -1581,14 +1581,14 @@ manual sequence resets.
 
 **Files touched.**
 
-- `extra_utilities/db_design/database_PostgreSQL_schema_v6.sql`
+- `extra_utilities/db_design/database_PostgreSQL_schema_v6.sql` *(removed 2026-10-10; in git history)*
   (NEW; full schema = v5 + the SEQUENCE).
-- `extra_utilities/db_design/migrations/migrate_v5_to_v6.py`
+- `extra_utilities/db_design/migrations/migrate_v5_to_v6.py` *(removed 2026-10-10; in git history)*
   (NEW; first concrete use of T18's migrations folder).
 - `agents/loader.py` — `_resolve_session_name` rewritten;
   `_next_session_id` removed; module-level `logger` added for
   the fallback WARNING.
-- `extra_utilities/db_design/smoke_test_resolve_session_name.py`
+- `extra_utilities/db_design/smoke_test_resolve_session_name.py` *(removed 2026-10-10; in git history)*
   (NEW; verifies BOTH happy + fallback paths via monkey-patched
   `postgres_pool.is_enabled`).
 - `warnings_developer.md` W31 — slug-generation algorithm +
@@ -1761,10 +1761,10 @@ from a prior ``database_search`` call.  Five sub-phases.
   `tool_name TEXT NOT NULL DEFAULT 'database_search'`,
   `images_flag BOOLEAN` (nullable), and `attempt_specific`
   relaxed to nullable.  New index `idx_rag_queries_tool_name`.
-  Migration: `extra_utilities/db_design/migrations/migrate_v6_to_v7.py`
+  Migration: `extra_utilities/db_design/migrations/migrate_v6_to_v7.py` *(removed 2026-10-10; in git history)*
   (idempotent ALTER TABLE).  See §3.4 v7 update.
 * 7-assertion live smoke test
-  `extra_utilities/db_design/smoke_test_retrieve_user_inputs.py`
+  `extra_utilities/db_design/smoke_test_retrieve_user_inputs.py` *(removed 2026-10-10; in git history)*
   exercises happy path, images_flag semantics, no-images
   sessions, R2-missing files, not_found, trim_cap, and the
   rag_queries log row.
@@ -1788,7 +1788,7 @@ from a prior ``database_search`` call.  Five sub-phases.
   `DC_prompt_fragments/tools_config/retrieve_attempt.md` +
   `$retrieve_attempt_tool` slot.
 * 8-assertion live smoke test
-  `smoke_test_retrieve_attempt.py` covers all view-policy
+  `smoke_test_retrieve_attempt.py` *(removed 2026-10-10; in git history)* covers all view-policy
   branches in addition to the same shape as 5B.
 * F30 tracks the future "per-call view selection" extension.
 
@@ -1809,7 +1809,7 @@ from a prior ``database_search`` call.  Five sub-phases.
     `anchor.attempt_id` / `group_chunks[0].attempt_id`).
 * §5.2 XML example refreshed (see below).
 * 3 new assertions appended to
-  `smoke_test_database_search.py` Scenario 1.
+  `smoke_test_database_search.py` *(removed 2026-10-10; in git history)* Scenario 1.
 
 **5E — Agent bindings.**
 
@@ -1847,15 +1847,15 @@ from a prior ``database_search`` call.  Five sub-phases.
   `agents/shared/prompts.py` (2 new slots).
 * Agents: 8 × `<agent>.py` (imports + binding + dispatcher) +
   8 × `<agent>/prompt.md` (`<<HAS_DBA>>` block extension).
-* Schema: `database_PostgreSQL_schema_v7.sql`,
-  `migrations/migrate_v6_to_v7.py`.
+* Schema: `database_PostgreSQL_schema_v7.sql` *(removed 2026-10-10; in git history)*,
+  `migrations/migrate_v6_to_v7.py` *(removed 2026-10-10; in git history)*.
 * R2 layer: `agents/shared/r2_uploader.py` (5A key reshape +
   global_attempt_id kwarg), `agents/database_handler/database_handler.py`
   (pass through), `agents/loader.py` (log filename rename on
   upload).
 * Settings: `workflow_settings/settings.py` blocks #21 + #22.
 * Tests: `extra_utilities/db_design/smoke_test_retrieve_{user_inputs,attempt}.py`,
-  +3 assertions in `smoke_test_database_search.py`.
+  +3 assertions in `smoke_test_database_search.py` *(removed 2026-10-10; in git history)*.
 * TODO: F30 (render-view per-call selection).
 * Docs: this section, §3.4 v7 update, §5.2 XML refresh, W30 +
   W33 + W35 in `warnings_developer.md`, README RAG section.
@@ -1872,7 +1872,7 @@ decision live in §6.3; this is the implementation status.
 and an HNSW index built on a `halfvec(2048)` cast (pgvector's
 float-`vector` HNSW caps at 2000 dims; Railway pgvector is 0.8.2).
 FK-reuses the existing `sessions`/`dc_attempts` (no metadata
-duplicated).  `migrations/migrate_v7_to_v8.py` (additive,
+duplicated).  `migrations/migrate_v7_to_v8.py` *(removed 2026-10-10; in git history)* (additive,
 idempotent — already RUN on Railway) +
 `database_PostgreSQL_schema_v8.sql` (fresh-deploy parity).
 
@@ -1923,10 +1923,10 @@ field-mapping + the backfill button/log.
   R2 directly instead of trusting the flag.
 
 **File inventory.**  New: `database_PostgreSQL_schema_v8.sql`,
-`migrations/migrate_v7_to_v8.py`, `agents/shared/voyage_mm.py`,
+`migrations/migrate_v7_to_v8.py` *(removed 2026-10-10; in git history)*, `agents/shared/voyage_mm.py`,
 `agents/database_handler/db_writer_mm.py`,
 `workflow_settings/{db_options_config.py,db_options.json}`,
-`smoke_test_voyage_mm.py`, `smoke_test_db_writer_mm.py`.  Edited:
+`smoke_test_voyage_mm.py` *(removed 2026-10-10; in git history)*, `smoke_test_db_writer_mm.py` *(removed 2026-10-10; in git history)*.  Edited:
 `web_app.py` (db_options endpoints + backfill task + SSE events +
 live dual-write hook), `web/{index.html,app.js,style.css}` (the
 panel), `requirements-web.txt` (voyageai>=0.4.0), §6.3 + F37 +
@@ -1970,9 +1970,9 @@ builders + `<image_ref>` emission + the `mode`/`db`/`fallback`
 `<search_meta>` attrs.  `db_mode` is read in the
 `make_database_search_tool` factory (frozen at session build) and
 defaults to `text-only` so existing callers are unchanged.  Verified by
-`extra_utilities/db_design/smoke_test_database_search_mm.py` (11/11 —
+`extra_utilities/db_design/smoke_test_database_search_mm.py` *(removed 2026-10-10; in git history)* (11/11 —
 routing to `chunks_mm`, `<image_ref>` hits, logged text-only fallback)
-plus the existing `smoke_test_database_search.py` (no text-only
+plus the existing `smoke_test_database_search.py` *(removed 2026-10-10; in git history)* (no text-only
 regression).  Extension point for future backends: W39.  NOT yet
 committed / deployed.
 ### 9.16 DH batched interview — the save path today  (BUILT 2026-08-04; uncommitted)
@@ -2033,5 +2033,5 @@ the positional merge could re-assign an answer to the wrong attempt on a
 count drift, and its `max(len, len)` bound could append an empty pair
 that was written as an empty `.txt` plus a `chunks` row.
 
-Verified by `extra_utilities/smoke_test_dh_batching.py` (80 checks,
+Verified by `extra_utilities/smoke_test_dh_batching.py` *(removed 2026-10-10; in git history)* (80 checks,
 stdlib-only).  NOT yet exercised against a live save.

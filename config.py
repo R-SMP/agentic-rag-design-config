@@ -52,7 +52,7 @@ RHINO_COMPUTE_URL = os.getenv("RHINO_COMPUTE_URL", "http://localhost:6500/")
 RHINO_COMPUTE_API_KEY = os.getenv("RHINO_COMPUTE_API_KEY", "")
 
 # PostgreSQL — Railway-hosted, pgvector enabled.  Schema lives in
-# ``extra_utilities/db_design/database_PostgreSQL_schema_v4.sql``;
+# ``extra_utilities/db_design/database_PostgreSQL_schema_v8.sql``;
 # architecture notes in ``database_and_RAG_architecture.md``.
 #
 # In production on Railway the service receives DATABASE_URL via

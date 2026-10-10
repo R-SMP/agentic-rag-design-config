@@ -72,9 +72,6 @@
         <button class="nav-item" type="button" data-view="database">
           <span class="nav-ico">🗄️</span><span>Database</span>
         </button>
-        <button class="nav-item" type="button" data-view="embed_tests">
-          <span class="nav-ico">🧪</span><span>Embedding tests</span>
-        </button>
         <button class="nav-item" type="button" data-view="db_options">
           <span class="nav-ico">🧬</span><span>Database options</span>
         </button>
@@ -239,7 +236,7 @@
         VARY ↔ FIXED on slider modification; Step 10 wires PROPOSED
         from the propose_attempt SSE event).
 
-        Full design: extra_utilities/docs/reference/web_interface_notes.md §§1-7.
+        Full design: extra_utilities/docs/web_interface_notes.md §§1-7.
       -->
       <section class="view params-split-view" data-view="params" hidden>
         <!-- LEFT pane: 3D viewer (own instance — Step 4) -->
@@ -1156,167 +1153,6 @@
         </div>
       </section>
 
-      <!-- 8. Embedding tests: empirical sketch-embedding comparison
-           harness.  Self-contained — all the real work lives in
-           extra_utilities/embedding_tests/.  Layout: top toolbar +
-           compact search row + single results panel + scroll-bounded
-           reference table on the left; wider Recent-searches rail on
-           the right.  None of the panes scroll the page itself. -->
-      <section class="view embed-tests-view" data-view="embed_tests" hidden>
-        <div class="emb-main-col">
-
-          <!-- Top toolbar: title, status badge, view-mode toggle,
-               rebuild button. -->
-          <div class="emb-toolbar">
-            <div class="emb-toolbar-left">
-              <strong class="emb-toolbar-title">Embedding tests</strong>
-              <span id="emb-status-badge" class="emb-status-badge"
-                    role="status" aria-live="polite"
-                    title="Loading status…">Loading…</span>
-            </div>
-            <div class="emb-toolbar-right">
-              <div class="emb-mode-toggle" role="group"
-                   aria-label="Reference table view mode">
-                <button class="emb-mode-btn" type="button"
-                        data-mode="compact" aria-pressed="true"
-                        title="One-line rows: # + name + thumb + blade count">Compact</button>
-                <button class="emb-mode-btn" type="button"
-                        data-mode="full" aria-pressed="false"
-                        title="Full rows with visual + semantic descriptions (clamped)">Full</button>
-                <button class="emb-mode-btn" type="button"
-                        data-mode="grid" aria-pressed="false"
-                        title="Thumbnail card grid, 4 per row">Grid</button>
-              </div>
-              <button id="emb-rebuild-btn" type="button" class="ghost"
-                      title="Recompute Voyage + caption vectors for all sketches">
-                Rebuild index
-              </button>
-              <span id="emb-rebuild-status" class="emb-input-status"
-                    role="status"></span>
-            </div>
-          </div>
-
-          <!-- Search row: two compact cards side-by-side.  Explanatory
-               text is hidden behind the ⓘ help icons next to each
-               card title. -->
-          <div class="emb-search-row">
-
-            <form id="emb-text-form" class="emb-search-card" data-mode="text">
-              <div class="emb-search-card-head">
-                <span class="emb-search-card-label">Text → Images</span>
-                <span class="emb-help" tabindex="0" role="button"
-                      aria-label="About text → images search"
-                      title="Voyage embeds the text in the joint multimodal space and matches the stored image vectors. The two caption lanes embed the text via OpenAI text-embedding-3-large and match the stored caption vectors (visual / semantic).">ⓘ</span>
-              </div>
-              <div class="emb-search-card-row">
-                <input id="emb-text-input" type="text" autocomplete="off"
-                       placeholder="Type any text and press Search…" />
-                <button id="emb-text-btn" type="submit" class="primary">Search</button>
-              </div>
-            </form>
-
-            <div class="emb-search-card" data-mode="image">
-              <div class="emb-search-card-head">
-                <span class="emb-search-card-label">Image → Images</span>
-                <span class="emb-help" tabindex="0" role="button"
-                      aria-label="About image → images search"
-                      title="Voyage embeds the query image in the joint multimodal space. The caption lanes caption the image with Claude Sonnet, then embed the caption via OpenAI text-embedding-3-large for the match.">ⓘ</span>
-              </div>
-              <div class="emb-search-card-row">
-                <input id="emb-image-file" type="file"
-                       accept=".png,.jpg,.jpeg" hidden />
-                <button id="emb-image-pick-file" type="button"
-                        title="Upload an arbitrary image as the query">Upload</button>
-                <span id="emb-image-filename" class="emb-input-status"></span>
-                <button id="emb-image-search-upload" type="button"
-                        class="primary" disabled>Search uploaded</button>
-                <span class="emb-or">or</span>
-                <select id="emb-image-select" class="emb-image-select"
-                        title="Pick one of the 13 sketches as the query image">
-                  <option value="">— pick from test set —</option>
-                </select>
-                <button id="emb-image-search-picked" type="button"
-                        class="primary" disabled>Search picked</button>
-              </div>
-            </div>
-
-          </div>
-
-          <!-- Single results panel: whichever query was last run wins.
-               Contains a small header (query badge), the 3x3 results
-               grid, and the two captions cards (image queries only). -->
-          <div class="emb-results-panel" id="emb-results-panel">
-            <div class="emb-results-header">
-              <span id="emb-results-badge" class="emb-results-badge">
-                Run a query above to see results.
-              </span>
-            </div>
-            <div id="emb-results-grid" class="emb-results-grid emb-results-empty">
-              <em class="emb-empty">Results will appear here.</em>
-            </div>
-            <div id="emb-image-captions" class="emb-captions" hidden>
-              <details class="emb-caption-card" data-flavor="visual">
-                <summary>Visual caption used for this query</summary>
-                <pre id="emb-image-caption-visual"></pre>
-              </details>
-              <details class="emb-caption-card" data-flavor="semantic">
-                <summary>Semantic caption used for this query</summary>
-                <pre id="emb-image-caption-semantic"></pre>
-              </details>
-            </div>
-          </div>
-
-          <!-- Reference-table area: header bar with title + meta,
-               and a scroll-bounded body that hosts either the table
-               (Full / Compact) or the grid (Grid).  Sticky thead so
-               column titles stay visible while you scroll. -->
-          <div class="emb-table-area">
-            <div class="emb-table-head-bar">
-              <strong class="emb-table-title">Reference table</strong>
-              <span class="emb-meta-inline" id="emb-meta">Loading manifest…</span>
-            </div>
-            <div class="emb-table-scroll">
-              <table id="emb-ref-table" class="emb-ref-table"
-                     data-view-mode="compact">
-                <thead>
-                  <tr>
-                    <th class="emb-th-idx">#</th>
-                    <th class="emb-th-name">Name</th>
-                    <th class="emb-th-thumb">Thumb</th>
-                    <th class="emb-th-blades">Blades</th>
-                    <th class="emb-th-desc emb-mode-full-only">Visual description</th>
-                    <th class="emb-th-desc emb-mode-full-only">Semantic description</th>
-                  </tr>
-                </thead>
-                <tbody id="emb-ref-tbody">
-                  <tr class="emb-ref-loading">
-                    <td colspan="6">Loading reference table…</td>
-                  </tr>
-                </tbody>
-              </table>
-              <div id="emb-ref-grid" class="emb-ref-grid" hidden></div>
-            </div>
-          </div>
-
-        </div>
-
-        <!-- Wider right-side log panel (~420 px) — 'Recent searches'.
-             Each entry shows the query (text or thumb+name) and a 3x3
-             mini result grid with per-method colored score bars.  Click
-             an entry to re-run that search. -->
-        <aside class="emb-log-panel">
-          <div class="emb-log-head">
-            <h3>Recent searches</h3>
-            <button id="emb-log-refresh" type="button" class="ghost"
-                    title="Reload the search log">⟳</button>
-          </div>
-          <div id="emb-log-stream" class="emb-log-stream">
-            <em class="emb-empty">(no searches yet)</em>
-          </div>
-        </aside>
-
-      </section>
-
       <!-- Database options: 3-way DB mode toggle + multimodal backfill
            (architecture doc §6.3).  The mode RECORDS the choice only for
            now; the backfill button streams progress over /api/events. -->
@@ -1401,7 +1237,7 @@
       <!-- Upload content to database: curated entries put in by hand.
            Written as if they were a saved session, so the retrieval tools
            find them unmodified -- see
-           extra_utilities/docs/active/design_manual_upload_implementation_plan.md -->
+           extra_utilities/extra_info.md §10 -->
       <section class="view upload-db-view" data-view="upload_db" hidden>
         <div class="udb-form-pane">
           <h2 class="udb-h">Upload content to database</h2>
@@ -1464,21 +1300,6 @@
         </div>
       </section>
     </div>
-  </div>
-
-  <!-- Embedding tests lightbox overlay (click any thumbnail to enlarge).
-       role + aria-modal so AT announces the modal; focus is moved into
-       the overlay on open and restored on close — see embOpenLightbox /
-       embCloseLightbox in web/app.js. -->
-  <div id="emb-lightbox" class="emb-lightbox" hidden
-       role="dialog" aria-modal="true"
-       aria-labelledby="emb-lightbox-caption"
-       aria-label="Sketch preview">
-    <button id="emb-lightbox-close" class="emb-lightbox-close"
-            type="button" aria-label="Close lightbox" title="Close (Esc)">×</button>
-    <img id="emb-lightbox-img" class="emb-lightbox-img"
-         alt="Enlarged sketch preview" />
-    <div id="emb-lightbox-caption" class="emb-lightbox-caption"></div>
   </div>
 
   <!-- End Session modal — replaces window.confirm() with an in-app

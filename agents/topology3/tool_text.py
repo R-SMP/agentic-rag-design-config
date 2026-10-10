@@ -7,10 +7,12 @@ makes the topologies independent.  Editing a description in the shared module
 can no longer reach topology 3, and editing one here can never reach 5 or 7.
 
 **Every value below is either copied VERBATIM from ``agents/topology5``, or
-derived from topology 3's roster.**  Nothing here is newly authored prose:
-``smoke_test_topology3_tool_text.py`` asserts the verbatim half really is
-byte-identical to its topology-5 source, so a transcription slip fails loudly
-instead of quietly becoming a different instruction.
+derived from topology 3's roster.**  Nothing here is newly authored prose.
+The removed ``smoke_test_topology3_tool_text.py`` checked that the verbatim
+half really is byte-identical to its topology-5 source; restore it from git
+(``extra_utilities/extra_info.md`` §13) and run it after editing this file,
+because a transcription slip does not raise -- it quietly becomes a different
+instruction.
 
 The three shapes a value can take, and why:
 

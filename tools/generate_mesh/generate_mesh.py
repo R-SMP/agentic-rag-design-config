@@ -214,8 +214,8 @@ def _param_mismatches(out_dir, param_values, record_name="parameters.json"):
     unreadable, not a JSON object, a non-numeric value, or one of the
     canonical 16 keys missing.  An absent or incomplete record is NOT a
     mismatch: legitimate callers reach this tool before any parameters.json
-    exists (the Orchestrator's fallback folder, the 3-agent Designer's call
-    ordering, smoke_test_generate_mesh), and F75 is about a folder whose
+    exists (e.g. the Orchestrator's fallback folder, or a script that
+    generates directly), and F75 is about a folder whose
     record DISAGREES with its mesh — which presupposes a complete record.
 
     Returns ``[]`` when all 16 agree, else a list of readable differences.
@@ -817,9 +817,11 @@ def generate_and_render_propeller(
     """
     params_file = Path(parameters_path)
     # _validate_output_dir keeps its ONE-argument contract deliberately:
-    # smoke_test_param_rename patches it with a one-arg lambda and
-    # smoke_test_attempt_coherence asserts the arity, so the folder is derived
-    # here rather than by giving that helper a second parameter.
+    # smoke_test_param_rename patched it with a one-arg lambda and
+    # smoke_test_attempt_coherence asserted the arity (both removed
+    # 2026-10-10, restorable from git -- extra_utilities/extra_info.md §13),
+    # so the folder is derived here rather than by giving that helper a
+    # second parameter.
     out_path_dir, err = _validate_output_dir(str(params_file.parent))
     if err is not None:
         return err

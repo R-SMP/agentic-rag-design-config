@@ -221,7 +221,8 @@ _CANNOT_SEE_RE = re.compile(r"<<CANNOT_SEE>>(.*?)<</CANNOT_SEE>>", re.DOTALL)
 # agent's own ``can_view_images=`` argument where it calls
 # ``read_user_inputs_summary``; this mirrors it so prompt assembly can branch
 # without importing the agent modules (which drags in the 3D render stack).
-# ``smoke_test_prompt_image_regions.py`` asserts the two still agree -- without
+# ``smoke_test_prompt_image_regions.py`` (removed 2026-10-10; restore it from
+# git, see extra_utilities/extra_info.md §13) asserted the two agree.  Without
 # that check this set rots silently the first time an agent gains or loses an
 # image tool, and the wrong version of the passage ships.
 _AGENTS_WITH_IMAGE_TOOLS = frozenset({
@@ -665,7 +666,7 @@ VISUALIZE_3D_MODEL_TOOL = _read_dc_fragment(
 )
 # Web-interface-only UI-update tool.  Bound to the Receptionist alone
 # (Step 9 of the Parameters Inputs redesign — see
-# extra_utilities/docs/reference/web_interface_notes.md §§3-7).  Fires the
+# extra_utilities/docs/web_interface_notes.md §§3-7).  Fires the
 # params_proposed SSE event that updates the Parameters Inputs view's
 # slider colours / labels.  Same templating idiom as
 # VISUALIZE_3D_MODEL_TOOL above.
@@ -902,11 +903,11 @@ SCOPED_FRAGMENTS: dict[str, tuple[str, str]] = {
     "pipeline_flow":            ("generic", "pipeline_flow.md"),
     "value_states":             ("generic", "value_states.md"),
     "dc_structure":             ("dc", "dc_config/structure.md"),
-    # Round 2 (prompt_reduction_3agents_changes.md §C1.1 / §C3.1).
+    # Round 2 of the prompt reduction (extra_utilities/extra_info.md §7.1).
     "modelling_notes":          ("dc", "dc_config/modelling_notes.md"),
     "qualitative_examples":     ("dc", "dc_config/qualitative_examples.md"),
     "tool_inventory":           ("dc", "tools_config/tool_inventory.md"),
-    # Round 3 (prompt_reduction_dcoi_changes.md A1) -- the DC Output
+    # Round 3 of the prompt reduction -- the DC Output
     # Inspector cuts 9 spans from the visual-inspection guide; the
     # 5-agent DCOI reads the shared file and must not move.
     "visual_inspection_guide":  ("dc", "dc_config/visual_inspection_guide.md"),
@@ -925,7 +926,7 @@ def scoped_fragment_path(slot: str, agent_dir_name: str) -> Path | None:
     ``agents/7agent_reduced/dc_config/hard_constraints_dc_<agent>_7agents_reduced.md``
     and a 5-agent Creator could ship its own twin.
 
-    Public because ``extra_utilities/smoke_test_topology_fragments.py``
+    Public because ``extra_utilities/tests/smoke_test_topology_fragments.py``
     resolves the same question; a second copy of this naming rule there is
     exactly the drift 13e0bab had to consolidate away.  (It was also read by
     the System Prompts UI's "used by" badge, removed 2026-08-21 -- the smoke
