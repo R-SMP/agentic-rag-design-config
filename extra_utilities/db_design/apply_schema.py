@@ -1,7 +1,7 @@
 """Apply a SQL schema file to the database pointed at by DATABASE_URL.
 
 Usage (from anywhere; absolute or relative paths both work):
-    python extra_utilities/db_design/apply_schema.py extra_utilities/db_design/database_PostgreSQL_schema_v8.sql
+    python extra_utilities/db_design/apply_schema.py extra_utilities/db_design/database_PostgreSQL_schema_v9.sql
 
 Reads DATABASE_URL from the repo-root .env via the same load_dotenv()
 pattern as config.py. The whole .sql file is executed inside one

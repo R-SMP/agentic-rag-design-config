@@ -53,7 +53,8 @@ extra_utilities/
 ├── db_design/
 │   ├── database_and_RAG_architecture.md   the DB/RAG source of truth
 │   ├── database_design_notes.md           D0–D15 doctrine (its DDL block is v5-era)
-│   ├── database_PostgreSQL_schema_v8.sql  the current schema
+│   ├── database_PostgreSQL_schema_v9.sql  the current schema
+│   ├── migrations/migrate_v8_to_v9.sql    upgrades a v8 database (idempotent)
 │   ├── apply_schema.py                    run a .sql file against DATABASE_URL
 │   ├── populate_dc_parameter_schemas.py   seed dc_parameter_schemas (idempotent)
 │   └── drop_all_tables.sql                wipe before re-applying the schema
@@ -67,7 +68,7 @@ extra_utilities/
 ```
 
 **Building a fresh database:** `drop_all_tables.sql` (if needed) →
-`database_PostgreSQL_schema_v8.sql` → `populate_dc_parameter_schemas.py`,
+`database_PostgreSQL_schema_v9.sql` → `populate_dc_parameter_schemas.py`,
 each run through `apply_schema.py` (see `drop_all_tables.sql`'s header).
 Upgrading an older database needs the migration ledger from git history —
 `extra_info.md` §11.

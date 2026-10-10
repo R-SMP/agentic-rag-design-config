@@ -2167,9 +2167,10 @@ design note D7, which says to JOIN "the most recent active
 (`retired_at IS NULL`) schema entry per `param_name`".
 
 **D7's rule, taken literally, is wrong against the live data.**
-`dc_parameter_schemas` holds v1 (17 params) and v2 (16 params), and the v1
-rows were **never marked retired** — so all 16 shared parameters have TWO
-active rows.  A JOIN on `retired_at IS NULL` alone multiplies every attempt's
+`dc_parameter_schemas` holds v1 (17 params) and v2 (16 params).  Only a
+parameter the next version DROPPED gets `retired_at` (v1 `impellerHeight`,
+since schema v9); the v1 rows of the 16 shared parameters stay active — so
+all 16 have TWO active rows.  A JOIN on `retired_at IS NULL` alone multiplies every attempt's
 rows and **doubles `matched_keys`**: measured 32/16, 4/2, 2/1.
 
 **The RMSE itself survived only by luck** — v1 and v2 carry identical ranges

@@ -25,9 +25,12 @@ mutate the V1 list below. Instead:
   1. Add a new constant, e.g. PROPELLER_DC_PARAMETERS_V2.
   2. Update main() to accept the target version on the command line
      (or insert both V1 and V2 in one run; both are immutable history).
-  3. For retirements: don't delete from V1 — set retired_at on the V1
-     row directly (UPDATE dc_parameter_schemas SET retired_at = NOW()
-     WHERE schema_version = 1 AND param_name = '...').
+  3. Retirements need no hand-written UPDATE: after inserting, this
+     script sets ``retired_at`` on every row of version N whose
+     parameter is ABSENT from version N+1, to the moment version N+1
+     was seeded in that database (its rows' earliest ``introduced_at``).
+     Rows are never deleted.  ``impellerHeight`` (in v1, gone from v2)
+     is the one retirement so far.
 """
 
 from __future__ import annotations
@@ -101,6 +104,23 @@ _SCHEMA_SETS: dict[int, list] = {
 }
 
 
+# A parameter present in version N but absent from version N+1 was retired
+# when N+1 arrived.  Its version-N row gets retired_at = the earliest
+# introduced_at among version N+1's rows (when N+1 was seeded here).
+_RETIRE_DROPPED_SQL = """
+    UPDATE dc_parameter_schemas AS old
+       SET retired_at = nxt.seeded_at
+      FROM (SELECT schema_version, MIN(introduced_at) AS seeded_at
+              FROM dc_parameter_schemas
+             GROUP BY schema_version) AS nxt
+     WHERE nxt.schema_version = old.schema_version + 1
+       AND old.retired_at IS NULL
+       AND NOT EXISTS (SELECT 1 FROM dc_parameter_schemas AS n
+                        WHERE n.schema_version = old.schema_version + 1
+                          AND n.param_name = old.param_name)
+"""
+
+
 def main() -> int:
     url = os.environ.get("DATABASE_PUBLIC_URL") or os.environ.get("DATABASE_URL")
     url_source = (
@@ -155,6 +175,12 @@ def main() -> int:
                         skipped += 1
                 print(f"  schema_version {version}: {len(rows)} params — "
                       f"inserted {inserted}, skipped {skipped} (already present)")
+
+            # Retire every parameter that the NEXT version no longer has,
+            # timed to when that next version was seeded.  Idempotent:
+            # only rows whose retired_at is still NULL are touched.
+            cur.execute(_RETIRE_DROPPED_SQL)
+            print(f"  retirements: {cur.rowcount} row(s) newly marked retired")
 
     print()
     # Verification: read back each version.

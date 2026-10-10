@@ -51,6 +51,7 @@ from psycopg.types.json import Json
 from langchain_core.tools import tool
 
 from agents.shared import postgres_pool
+from agents.shared import rag_queries_link
 from agents.shared.agent_activity import generic_tool
 from tools.database_search import param_rank
 from agents.database_handler import db_writer
@@ -1558,12 +1559,13 @@ def _log_rag_query(
     error paths.  Failures here log a WARNING but DO NOT propagate
     — logging must never break the user-facing tool response.
 
-    ``rag_queries.session_id`` is set to NULL in v1.  Linking to
-    the live session row is deferred (the session row doesn't
-    exist in Postgres until End Session, so the FK would fail
-    mid-session).  See Step 7 sub-decision 7-α.
+    The row is inserted with no session: a live session has no
+    database id until it is named.  Its id is remembered, and
+    :mod:`agents.shared.rag_queries_link` stamps ``run_session_id``
+    (every session) and ``session_id`` (saved sessions) later.
     """
     try:
+        row_id = None
         with postgres_pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -1583,6 +1585,7 @@ def _log_rag_query(
                         %(truncated_anchors)s, %(latency_ms)s,
                         %(error_message)s
                     )
+                    RETURNING id
                     """,
                     {
                         "caller_agent":        caller_agent,
@@ -1604,6 +1607,8 @@ def _log_rag_query(
                         "error_message":       error_message,
                     },
                 )
+                row_id = cur.fetchone()[0]
+        rag_queries_link.remember(row_id)
     except Exception as exc:
         logger.warning(
             "[database_search] rag_queries log failed (best-effort): "

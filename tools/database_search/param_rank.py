@@ -35,8 +35,8 @@ Three traps, each paid for once
 -------------------------------
 1. ``retired_at IS NULL`` DOES NOT SELECT ONE ROW PER PARAMETER.
    D7 says to join "the most recent active" schema entry, but the v1
-   rows were never marked retired -- so on the live database all 16
-   parameters have TWO active rows (v1 and v2).  Joining on
+   rows of the shared parameters are not retired -- so on the live
+   database all 16 parameters have TWO active rows (v1 and v2).  Joining on
    ``retired_at IS NULL`` alone multiplies every attempt's rows and
    DOUBLES ``matched_keys`` (measured: 32/16, 4/2, 2/1).  The RMSE
    itself survived only because v1 and v2 happen to carry identical
@@ -44,10 +44,10 @@ Three traps, each paid for once
    blends two normalisation bases and nothing looks wrong.  Hence
    ``_ACTIVE_SCHEMA_SQL`` pins MAX(schema_version) as well.
 
-2. Pinning the newest version is also what retires impellerHeight.
-   It exists only in v1, with retired_at still NULL, so every
-   "active" filter keeps it.  Pinning the newest version drops it,
-   which is what D8.1 and F46(c) both ask for.
+2. Pinning the newest version also drops impellerHeight, which
+   exists only in v1 -- what D8.1 and F46(c) both ask for.  (Since
+   schema v9 its v1 row also carries retired_at, but the pin does not
+   depend on that.)
 
 3. The mask is the JOIN, not an ``if``.  An attempt missing one of
    the queried keys simply contributes no row for it, so k falls out

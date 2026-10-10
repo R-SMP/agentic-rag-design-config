@@ -463,7 +463,8 @@ def upsert_session(
 
     Idempotent — safe to call repeatedly with the same session_id
     during a Phase 3C save flow (the DH walks the schedule and may
-    re-enter the upsert when re-running a partial save).
+    re-enter the upsert when re-running a partial save).  Every call
+    refreshes ``saved_at``, so it records the LAST save.
 
     Does NOT touch ``satisfaction`` / ``feedback`` — those columns
     are written by :func:`save_session_feedback` at End-Session
@@ -494,7 +495,8 @@ def upsert_session(
             dc_inspector_enabled = EXCLUDED.dc_inspector_enabled,
             schema_version       = EXCLUDED.schema_version,
             notes                = EXCLUDED.notes,
-            user_provided_images = EXCLUDED.user_provided_images
+            user_provided_images = EXCLUDED.user_provided_images,
+            saved_at             = NOW()
     """
     params = {
         "session_id":           session_id,

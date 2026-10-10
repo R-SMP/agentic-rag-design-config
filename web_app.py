@@ -66,6 +66,7 @@ from agents.shared.image_compression import (
     write_degree,
 )
 from agents.shared.session import Session
+from agents.shared import rag_queries_link
 from agents.shared import token_usage
 from agents.shared.stop_signal import (
     clear_stop as stop_signal_clear,
@@ -309,6 +310,8 @@ def _build_session() -> Session:
 
     session_id = _new_session_id()
     log_path = _setup_session_logger(session_id)
+    # A new session starts with no rag_queries rows of its own.
+    rag_queries_link.reset()
     try:
         init_trace(LOGS_DIR)
     except Exception:
@@ -450,6 +453,20 @@ def _end_session(was_saved: bool = False) -> None:
     cached_name: str | None = None
     if _BOX.session is not None:
         cached_name = _BOX.session.resolved_session_name
+    # A session that made RAG calls is named NOW, if nothing named it yet,
+    # so its rag_queries rows get the same id the archive folder will use.
+    # (Only then: the archiver mints no name for a session with nothing to
+    # archive, and a RAG session always has something.)
+    if rag_queries_link.has_rows():
+        try:
+            if cached_name is None and _BOX.session is not None:
+                from agents.loader import _resolve_session_name
+                _BOX.session.resolved_session_name = _resolve_session_name()
+                cached_name = _BOX.session.resolved_session_name
+            rag_queries_link.stamp(cached_name)
+        except Exception:
+            logger.warning("[WEB] rag_queries stamping at End Session failed; continuing",
+                           exc_info=True)
     try:
         _archive_previous_session(
             session_name=cached_name, was_saved=was_saved,
@@ -458,6 +475,7 @@ def _end_session(was_saved: bool = False) -> None:
         # Best-effort: a failed archive must not break the End Session
         # reset (worst case the old attempts remain for next session).
         logger.exception("[WEB] session archival failed: %s", exc)
+    rag_queries_link.reset()
     _BOX.session = None
     _BOX.log_path = None
 
@@ -1169,7 +1187,7 @@ def _run_save_session_feedback_sync(feedback: "FeedbackIn") -> dict:
     the loop (Q-3C-6 = A).  Maps the modal payload to the
     ``FIXED_FEEDBACK_QUESTIONS`` ids and translates the satisfaction
     enum to the SMALLINT 0..10 scale per the
-    ``database_PostgreSQL_schema_v8.sql`` ``sessions.satisfaction``
+    ``database_PostgreSQL_schema_v9.sql`` ``sessions.satisfaction``
     column comment (10=yes, 5=partially, 0=no, NULL=no feedback).
 
     Best-effort: when Postgres is disabled OR an error occurs, log
@@ -1486,6 +1504,8 @@ def _snapshot_log_to_r2() -> "tuple[str, str]":
     session_name = _BOX.session.resolved_session_name
     if not session_name:
         raise RuntimeError("No canonical session name available after resolve.")
+    # The session is now named: give its rag_queries rows that id.
+    rag_queries_link.stamp(session_name)
 
     ts = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
     remote_key = f"{session_name}/logs/snapshot_{ts}.log"

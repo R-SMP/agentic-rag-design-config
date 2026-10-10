@@ -38,11 +38,12 @@ Three traps this module exists to get right, each verified 2026-09-15:
    canonical artefact names.  A manual image matches none of them, so passing
    a suffix tuple (or nothing) uploads NOTHING and returns an empty list,
    quietly: the entry then retrieves with parameters and no images.
-4. ``dc_attempts.attempt_label`` carries a standalone global ``UNIQUE`` while
-   ``upsert_attempt``'s ``ON CONFLICT`` targets ``(session_id,
-   attempt_label)`` only, and it has no ``UniqueViolation`` handler.  The
-   timestamped label makes a collision practically impossible; the explicit
-   handler below turns "practically" into "reported".
+4. Up to schema v8, ``dc_attempts.attempt_label`` also carried a standalone
+   global ``UNIQUE`` while ``upsert_attempt``'s ``ON CONFLICT`` targets
+   ``(session_id, attempt_label)`` only, with no ``UniqueViolation`` handler.
+   Schema v9 drops the global one.  On a v8 database the timestamped label
+   makes a collision practically impossible; the explicit handler below turns
+   "practically" into "reported".
 
 Traps 1 and 3b are the same mistake in two places: assuming an upload
 helper's filter parameter means what the caller wants it to mean.  Both were

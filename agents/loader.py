@@ -17,6 +17,7 @@ from agents.dispatch import dispatch_turn
 from agents.hub import build_hub
 from agents.shared.llm_provider import list_agent_configs
 from agents.shared.routing_tools import AGENT_DISPLAY
+from agents.shared import rag_queries_link
 from agents.shared.session import Session
 from agents.shared.topology import topology
 from agents.shared.trace import close_trace, init_trace
@@ -78,7 +79,7 @@ def _resolve_session_name() -> str:
       The 3-digit padding holds for nnn < 1000; beyond that the
       slug naturally extends to 4+ digits.  See architecture doc
       §9.10 + the ``session_counter`` notes in
-      ``database_PostgreSQL_schema_v8.sql``.
+      ``database_PostgreSQL_schema_v9.sql``.
 
     * **Fallback** — Postgres disabled OR ``nextval`` raised
       (per Q-SID-2 = ii — keep the DH save flow alive even when
@@ -496,6 +497,8 @@ def _end_session(
         except Exception:
             pass
         session_name = None
+    # The session is named: give its rag_queries rows that id.
+    rag_queries_link.stamp(session_name)
 
     # IMPORTANT (see extra_utilities/warnings_developer.md, W1):
     # dump agent histories BEFORE any post-session task runs (the
@@ -556,6 +559,7 @@ def _end_session(
     except Exception:
         # Logger is already closed — nothing left to record this on.
         pass
+    rag_queries_link.reset()
 
 
 # ---------------------------------------------------------------------------

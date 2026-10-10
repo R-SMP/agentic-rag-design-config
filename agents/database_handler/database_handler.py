@@ -83,6 +83,7 @@ from agents.database_handler.dh_trace import (
 )
 from agents.database_handler.token_utils import count_tokens
 from agents.shared import postgres_pool
+from agents.shared import rag_queries_link
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
 from agents.shared.llm_provider import history_cache_control, make_system_message
@@ -1347,6 +1348,11 @@ class DatabaseHandler(BaseChainAgent):
                         f"session_id={session_id} "
                         f"user_provided_images={user_provided_images}"
                     )
+                    # Name this session's rag_queries rows, then link them
+                    # to the sessions row that now exists.  Best-effort:
+                    # neither call can fail the save.
+                    rag_queries_link.stamp(session_id)
+                    rag_queries_link.link_saved(session_id)
                 except Exception as exc:
                     logger.error(
                         f"[DH]  Phase 3C upsert_session FAILED "

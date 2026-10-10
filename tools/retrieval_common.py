@@ -51,6 +51,7 @@ from psycopg.types.json import Json
 
 from agents.shared import postgres_pool
 from agents.shared import r2_uploader
+from agents.shared import rag_queries_link
 
 logger = logging.getLogger("propeller_agent")
 
@@ -246,11 +247,14 @@ def log_to_rag_queries(
     The four values that differ between the two tools are arguments:
     *tool_name*, the *params_key* naming the tool's id argument, the
     *returned_id_key* used inside ``returned_anchor_ids``, and the log
-    *tag*.  Everything else is one shared statement.
+    *tag*.  Everything else is one shared statement.  The new row's id
+    is remembered so :mod:`agents.shared.rag_queries_link` can give it
+    the session's id once the session is named.
     """
     if not postgres_pool.is_enabled():
         return
     try:
+        row_id = None
         with postgres_pool.connection() as conn:
             with conn.cursor() as cur:
                 cur.execute(
@@ -264,7 +268,7 @@ def log_to_rag_queries(
                     "  %s, %s, "
                     "  %s, %s, %s, "
                     "  %s, %s, %s"
-                    ")",
+                    ") RETURNING id",
                     (
                         caller_agent,
                         tool_name,
@@ -279,6 +283,8 @@ def log_to_rag_queries(
                         error_message,
                     ),
                 )
+                row_id = cur.fetchone()[0]
+        rag_queries_link.remember(row_id)
     except Exception as exc:  # noqa: BLE001
         logger.warning(
             f"[{tag}]  rag_queries log failed: "

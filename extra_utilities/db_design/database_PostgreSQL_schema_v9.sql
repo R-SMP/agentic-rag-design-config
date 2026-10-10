@@ -1,8 +1,32 @@
 -- ============================================================
--- Design Copilot — PostgreSQL schema (v8)
+-- Design Copilot — PostgreSQL schema (v9)
 --
 -- Source of truth for the design decisions this schema implements:
 --   extra_utilities/db_design/database_and_RAG_architecture.md
+--
+-- Changes vs v8 (2026-10-10).  No data is removed by any of them.
+-- Upgrade an existing v8 database with
+-- ``migrations/migrate_v8_to_v9.sql`` (idempotent; run through
+-- ``apply_schema.py``).
+--   * rag_queries — NEW column ``run_session_id TEXT`` (no foreign key)
+--     + index.  The id of the session that made the call
+--     (``IDNNN_<date>_<time>``), for EVERY session, saved or not: a
+--     snapshot-only or Sessions Queue session never gets a ``sessions``
+--     row, so the ``session_id`` foreign key cannot hold its id.
+--     ``session_id`` keeps its FK and is now filled when the session is
+--     saved.  Both are written by agents/shared/rag_queries_link.py.
+--   * dc_attempts — the column-level UNIQUE on ``attempt_label`` is
+--     dropped.  ``UNIQUE (session_id, attempt_label)`` stays: it is
+--     what the upsert's ``ON CONFLICT`` needs, and labels only need to
+--     be unique within a session (every lookup goes by attempt_id).
+--     The global one only turned a cross-session label collision into
+--     an unhandled UniqueViolation.
+--   * sessions.saved_at — now refreshed on every save (``upsert_session``
+--     sets it in ``ON CONFLICT DO UPDATE``), so it is the LAST save.
+--     No DDL change; comment only.
+--   * dc_parameter_schemas.retired_at — no DDL change.  The seeder now
+--     sets it on every row whose parameter the next version dropped;
+--     the migration backfills the one so far (v1 ``impellerHeight``).
 --
 -- Changes vs v7 (multimodal extension, 2026-06-15):
 --   * NEW table ``chunks_mm`` — a parallel copy of ``chunks`` that
@@ -254,7 +278,7 @@ CREATE TABLE sessions (
     feedback                TEXT,                                     -- concatenated free-text from the modal
     -- Session-level metafilter (added in v3)
     user_provided_images    BOOLEAN      NOT NULL DEFAULT FALSE,      -- did the user supply images as input?
-    saved_at                TIMESTAMPTZ  NOT NULL DEFAULT NOW()       -- row creation timestamp
+    saved_at                TIMESTAMPTZ  NOT NULL DEFAULT NOW()       -- when the session was LAST saved (v9: refreshed on every re-save)
 );
 
 -- Indexes supporting the database_search metafilters:
@@ -278,7 +302,7 @@ CREATE TABLE dc_attempts (
     attempt_id      BIGSERIAL    PRIMARY KEY,                                              -- auto-incrementing PK
     session_id      TEXT         NOT NULL REFERENCES sessions(session_id) ON DELETE CASCADE,
                                                                                             -- -> sessions.session_id
-    attempt_label   TEXT         NOT NULL UNIQUE,                                          -- '<TS>_<NNN>_<slug>' folder name
+    attempt_label   TEXT         NOT NULL,                                                 -- '<TS>_<NNN>_<slug>' folder name; unique per session (v9: no longer globally)
     schema_version  INTEGER      NOT NULL,                                                 -- schema used for this attempt (indexed)
                                                                                             --   (logical ref to dc_parameter_schemas, see note above)
     parameters_json JSONB        NOT NULL,                                                 -- full parameter snapshot
@@ -408,7 +432,8 @@ CREATE INDEX idx_dc_attempt_parameters_param_value
 CREATE TABLE rag_queries (
     id                  BIGSERIAL    PRIMARY KEY,                                            -- auto-incrementing PK
     ts                  TIMESTAMPTZ  NOT NULL DEFAULT NOW(),                                 -- when the call was issued
-    session_id          TEXT         REFERENCES sessions(session_id) ON DELETE SET NULL,    -- the calling session (NULLed on session delete)
+    session_id          TEXT         REFERENCES sessions(session_id) ON DELETE SET NULL,    -- the calling session, filled when it is SAVED (NULLed on session delete)
+    run_session_id      TEXT,                                                                 -- v9: the calling session's id for EVERY session, saved or not (no FK)
     caller_agent        TEXT         NOT NULL,                                                -- which agent invoked the tool
     tool_name           TEXT         NOT NULL DEFAULT 'database_search',                     -- v7: which RAG tool ('database_search', 'retrieve_user_inputs', 'retrieve_attempt')
     query_text          TEXT,                                                                 -- the input_key_text argument (database_search only)
@@ -430,6 +455,7 @@ CREATE INDEX idx_rag_queries_ts            ON rag_queries (ts);
 CREATE INDEX idx_rag_queries_session_id    ON rag_queries (session_id);
 CREATE INDEX idx_rag_queries_caller_agent  ON rag_queries (caller_agent);
 CREATE INDEX idx_rag_queries_tool_name     ON rag_queries (tool_name);
+CREATE INDEX idx_rag_queries_run_session_id ON rag_queries (run_session_id);
 
 
 -- ------------------------------------------------------------

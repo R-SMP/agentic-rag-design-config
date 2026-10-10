@@ -622,6 +622,20 @@ Design settled 2026-08-20 / 08-21; not described in
   archived, and turning the flag on later cannot reach back.
 * A new setting needs no front-end code: `/api/settings` parses
   `workflow_settings/settings.py`.
+* **Which session made each RAG call** (schema v9, 2026-10-10).  Every
+  `database_search` / `retrieve_*` call is one `rag_queries` row with the
+  agent (`caller_agent`), the tool, the query (`query_text`, or the ids in
+  `query_params`) and what came back (`returned_anchor_ids`).
+  `run_session_id` holds the calling session's `IDNNN_<date>_<time>` id for
+  every session; `session_id` (foreign key) is filled only for saved
+  sessions.  The row is inserted during the call and gets its id whenever
+  the session is named — a log snapshot, the end of a Sessions Queue run, a
+  Database Handler save, or End Session — see
+  `agents/shared/rag_queries_link.py`.  The 881 rows logged before v9 were
+  backfilled by matching each one to the same `[TOOL CALL]` line in the
+  session logs in R2 (all 881 matched; 202 sessions, ID1940–ID2146).
+  Example: `SELECT run_session_id, caller_agent, tool_name, query_text,
+  returned_anchor_ids FROM rag_queries ORDER BY run_session_id, ts;`
 
 ---
 
@@ -647,9 +661,10 @@ and its three traps; the decisions behind it (owner, 2026-09-15):
 * Submitting is blocked when an image is attached but both "use as user input"
   and "use as render" are off (it would be stored but unreachable).
 * Facts worth knowing: `user_provided_images` is **not** a security boundary
-  (when Postgres is down the image listing is attempted anyway); `attempt_label`
-  carries a global UNIQUE while the upsert's ON CONFLICT is per session, so
-  labels must be timestamp-shaped (`<YYYYMMDD>_<HHMMSS>_<NNN>_<slug>`);
+  (when Postgres is down the image listing is attempted anyway); up to schema v8
+  `attempt_label` also carried a global UNIQUE while the upsert's ON CONFLICT is
+  per session (v9 dropped it), and labels must be timestamp-shaped
+  (`<YYYYMMDD>_<HHMMSS>_<NNN>_<slug>`) for the retrieve tools to parse them;
   `r2_uploader._key_prefix()` is `test11/` locally while live data sits under
   `web-v1/`.
 * Open when built: nothing ranks a manual entry differently from a real
@@ -662,14 +677,16 @@ and its three traps; the decisions behind it (owner, 2026-09-15):
 
 ## 11. Database schema history
 
-Only the current schema is kept: `db_design/database_PostgreSQL_schema_v8.sql`,
+Only the current schema is kept: `db_design/database_PostgreSQL_schema_v9.sql`,
 with `apply_schema.py`, `populate_dc_parameter_schemas.py` and
-`drop_all_tables.sql`.  That is enough to build a fresh database.
+`drop_all_tables.sql`.  That is enough to build a fresh database.  A v8
+database is upgraded with `db_design/migrations/migrate_v8_to_v9.sql`
+(idempotent, one transaction, removes no data; 2026-10-10).
 
-Removed: schemas v1–v7 and the ordered, idempotent migration ledger
+Removed: schemas v1–v7 and the older ordered, idempotent migration ledger
 (`db_design/migrations/migrate_v5_to_v6.py`, `_v6_to_v7.py`, `_v7_to_v8.py`).
-The live database is already on v8.  **To upgrade an older database**, restore
-the ledger from `f173e2d` and run the scripts in order; they are idempotent,
+**To upgrade a database older than v8**, restore that ledger from `f173e2d`
+and run the scripts in order, then the v8→v9 file; they are idempotent,
 and `migrate_v7_to_v8.py` creates `chunks_mm` (with its HNSW index built in a
 separate transaction behind a pgvector-version guard).
 
