@@ -456,10 +456,3 @@ def reset() -> None:
         _TURN_AGENT = None
         _TURN = _blank()
         _UNAVAILABLE = 0
-
-
-def session_totals() -> dict[str, dict]:
-    """Snapshot of the per-agent totals, for callers that want the
-    numbers rather than the log lines (e.g. a benchmark harness)."""
-    with _LOCK:
-        return {k: dict(v) for k, v in _SESSION.items()}

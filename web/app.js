@@ -2363,9 +2363,6 @@ let lrTopology = 7;
 function lrBoxes() {
   return LR_BOXES_BY_TOPOLOGY[lrTopology] || LR_BOXES_7;
 }
-function lrAgentKeys() {
-  return lrBoxes().filter((b) => b.role === "agent").map((b) => b.key);
-}
 
 // Static black arrows between boxes (drawn first so they sit behind).
 // Coords match the box centre-edges; arrowheads at both ends to mirror

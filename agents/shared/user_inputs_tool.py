@@ -296,15 +296,6 @@ def _build_reread_text_regions():
     return tool("reread_text_regions")(_impl)
 
 
-USER_INPUTS_TOOL_NAMES = {
-    "list_input_files",
-    "read_input_text",
-    "read_image_notes",
-    "view_images",
-    "reread_text_regions",
-}
-
-
 def build_user_inputs_tools(
     agent_key: str,
     include_image_tools: bool = True,

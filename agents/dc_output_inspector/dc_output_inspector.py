@@ -83,7 +83,7 @@ renders again you must explicitly re-load them from those paths via
 
 
 # Comparison-source blocks — one per startup choice (1 / 2 / 3).
-# Filled into the {comparison_mode_block} placeholder of DCOI_TEMPLATE.
+# Filled into the {comparison_mode_block} placeholder of the DCOI's prompt.
 
 _COMPARISON_MODE_1 = """\
 Compare the generated design DIRECTLY against the USER INPUTS —

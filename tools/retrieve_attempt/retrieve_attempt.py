@@ -40,7 +40,6 @@ Architecture references
 
 from __future__ import annotations
 
-import base64
 import json
 import logging
 import re
@@ -737,9 +736,9 @@ def _run_retrieve_attempt(
 def make_retrieve_attempt_tool(caller_agent: str):
     """Factory: returns a fresh ``@tool``-decorated stub for *caller_agent*.
 
-    The LLM-facing schema has NO ``caller_agent`` parameter — the
-    caller is baked into a closure variable at bind time so the LLM
-    cannot spoof its identity.  Phase 5E binds this per-agent in
+    The LLM-facing schema has NO ``caller_agent`` parameter, so the LLM
+    cannot spoof its identity: the dispatcher takes the caller from the
+    agent that made the call (``agent_key``).  Phase 5E binds this per-agent in
     each chain agent's ``set_tools()``/``set_routing_tools()``.
 
     The returned stub returns ``""`` and relies on the dispatcher in
@@ -748,7 +747,6 @@ def make_retrieve_attempt_tool(caller_agent: str):
     blocks to the next ``HumanMessage`` via
     ``append_pending_images``).
     """
-    _caller = caller_agent
 
     @tool
     @generic_tool("Retrieve attempt")

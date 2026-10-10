@@ -1467,8 +1467,7 @@ Same checklist as the existing two:
    `_run_*` doing the work.
 2. Add a new handler to
    `agents/shared/retrieve_tool_dispatcher.py` and register the
-   tool name in `_HANDLERS` (with the matching name added to
-   `RETRIEVE_TOOL_NAMES`).
+   tool name in `_HANDLERS`.
 3. The chain agents need NO change — the same
    `dispatch_retrieve_tool(...)` line already catches any name
    that `_HANDLERS` registers.
@@ -1870,24 +1869,27 @@ of the two groups it is not even substitutable by absence.
     DC_prompt_fragments/tools_config/retrieve_attempt.md
     DC_prompt_fragments/tools_config/tool_caller_instructions.md
 
-The loader is `_read_dc_fragment` (`agents/shared/prompts.py:391-395`):
+The loader is `_read_dc_fragment` in `agents/shared/prompts.py`:
 
     path = _topology_override(rel_path) or (DC_FRAGMENTS_DIR / rel_path)
     return path.read_text(encoding="utf-8").rstrip()
 
-There is **no `exists()` / `is_file()` guard**, and both are called at MODULE
-SCOPE — `TOOL_CALLER_INSTRUCTIONS` at `:483`, `RETRIEVE_ATTEMPT_TOOL` at `:531`.
-So a missing file raises `FileNotFoundError` the moment `agents.shared.prompts`
-is imported: every agent, the web app and the CLI all fail to start.
+There is **no `exists()` / `is_file()` guard**, and `_build_slots()` reads both
+(slots `tool_caller_instructions` and `retrieve_attempt_tool`) every time ANY
+agent is constructed, in every topology.  So a missing file raises
+`FileNotFoundError` as soon as a session builds its agents: the web app starts,
+but no session can run.  *(Until 2026-10-10 both were also read at module
+scope, so the app failed at import instead; those import-time copies were
+removed with TODO F90.)*
 
 Empty content is the INTENDED state — the slot renders nothing.  Both were
 emptied deliberately (see `design_tool_merges.md` *(removed 2026-10-10; summarised in `extra_utilities/extra_info.md` §8)*, commit `251ff5b`: "retrieve_*
 fragments — lean fully on the tool schemas"), with `retrieve_user_inputs.md`
 covering both retrieval tools.
 
-**If you genuinely want one gone, you must delete the file AND its
-`_read_dc_fragment` call AND its `_build_slots` entry AND its row in the
-fragment→slot index, in the same commit.**  Never the file alone.
+**If you genuinely want one gone, you must delete the file (and its
+`agents/5agent/` and `agents/3agent/` copies) AND its `_build_slots` entry AND
+its row in `FRAGMENT_TO_SLOT`, in the same commit.**  Never the file alone.
 
 ### Group 2 — delete these and the prompt silently changes, with no error
 

@@ -40,8 +40,6 @@ Architecture references
 
 from __future__ import annotations
 
-import base64
-import json
 import logging
 import time
 from pathlib import Path
@@ -737,9 +735,9 @@ def _run_retrieve_user_inputs(
 def make_retrieve_user_inputs_tool(caller_agent: str):
     """Factory: returns a fresh ``@tool``-decorated stub for *caller_agent*.
 
-    The LLM-facing schema has NO ``caller_agent`` parameter — the
-    caller is baked into a closure variable at bind time so the LLM
-    cannot spoof its identity.  Phase 5E binds this per-agent in
+    The LLM-facing schema has NO ``caller_agent`` parameter, so the LLM
+    cannot spoof its identity: the dispatcher takes the caller from the
+    agent that made the call (``agent_key``).  Phase 5E binds this per-agent in
     each chain agent's ``set_tools()``/``set_routing_tools()``.
 
     The returned stub returns ``""`` and relies on the dispatcher
@@ -748,12 +746,6 @@ def make_retrieve_user_inputs_tool(caller_agent: str):
     blocks to the next ``HumanMessage`` via
     ``append_pending_images``).
     """
-    # ``caller_agent`` is captured but currently used only at
-    # dispatcher time (the dispatcher reads ``agent_key`` from the
-    # caller).  The closure is kept anyway so future per-agent
-    # behaviour (e.g. caller-specific docstring tweaks, an ACL
-    # layer) can hook in here.
-    _caller = caller_agent
 
     # OCR is NOT performed here: retrieval fetches, ``view_images`` reads.
     # That tool's own OCR flag already defaults to True for eligible

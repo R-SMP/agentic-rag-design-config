@@ -74,11 +74,6 @@ def get_ignore_list() -> list[str]:
     })
 
 
-def is_ignored(session_id: str) -> bool:
-    """Convenience: True iff ``session_id`` is on the ignore list."""
-    return str(session_id or "").strip() in set(get_ignore_list())
-
-
 def _atomic_write(payload: list[str]) -> None:
     """Tmp-file + rename for crash-safe writes.  Caller holds
     :data:`_LOCK`."""

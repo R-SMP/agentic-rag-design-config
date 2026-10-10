@@ -324,9 +324,9 @@ is the WHY behind the rows above.
 **Status caveat carried across:** the T1-T4 decisions in §G.1 all shipped
 (`3dbde09`, `01173b8`, `ae727d9`, `dec7279`).  Several of the O-items in
 "Structural obstacles that remain real" have since been resolved and are
-annotated inline where known; `O9` (the nine eager `*_TEMPLATE` builds) is
-still genuinely open and is now also tracked as **F90** in
-`extra_utilities/TODO_known_issues.md` — fix it in one place, close both.
+annotated inline where known; `O9` (the nine eager `*_TEMPLATE` builds) was
+closed on 2026-10-10 together with **F90** (now in
+`extra_utilities/TODO_archive.md`): the builds were removed.
 
 ## Topology selector — design
 
@@ -364,7 +364,7 @@ What is genuinely import-time is only:
 `_USER_FACING_AGENTS` (`prompts.py:92`), `_PIPELINE_FLOW_FRAGMENT_NAME`
 (`:403`), `NATURAL_PIPELINE` (`routing.py:31-39`), and the nine eager
 `*_TEMPLATE` builds (`:660-668`) — which the map independently confirmed are
-**DEAD CODE** (every agent rebuilds its own).  These are *parameters written as
+**DEAD CODE** (every agent rebuilds its own).  *(Removed 2026-10-10.)*  These are *parameters written as
 constants*, not an architectural constraint.
 
 **⟹ The work is to thread a topology argument down to `_build_template` /
@@ -414,6 +414,8 @@ Full detail in the wiring map; the ones that survive the O1 correction:
 - **O9 — the eager `*_TEMPLATE` block is an active hazard**: once `_build_slots`
   is topology-aware it would splice one topology's fragments into another's
   prompts.  Delete it (it is dead) or guard it.
+  > **CLOSED 2026-10-10** — the block was deleted (F90, now in
+  > `extra_utilities/TODO_archive.md`).  The history below is kept as written.
   > **STILL OPEN (2026-08-02)** — deliberately untouched to keep the
   > resolution step's blast radius small.  Written up in full in the build
   > tracker (condition, five problems, three fix options; recommendation =

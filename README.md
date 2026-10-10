@@ -219,7 +219,7 @@ The user is no longer constraining the following parameters (they can now be var
   - outerThickness
 ```
 
-All downstream agents (Receptionist, UII via `read_user_inputs`, Planner via `read_user_queries`) see both blocks for free — no per-agent code change. Dedup by full fingerprint (names AND values); an unchanged FIXED list does not re-append. Empty FIXED list appends nothing.
+All downstream agents (Receptionist, and the UII and Planner via `read_user_inputs`) see both blocks for free — no per-agent code change. Dedup by full fingerprint (names AND values); an unchanged FIXED list does not re-append. Empty FIXED list appends nothing.
 
 **Bottom-row action buttons** (visible regardless of active tab):
 

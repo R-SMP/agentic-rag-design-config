@@ -213,21 +213,6 @@ ROUTING_TOOL_NAMES: set[str] = {f"call_{k}" for k in AGENT_DISPLAY}
 #   - ``message``:    the unlabelled hand-off prose
 #   - ``ts``:         ISO-8601 with timezone, recorded at append time
 
-def format_chain_exchanges(exchanges: list[dict]) -> str:
-    """Render a list of chain-log exchanges as the prose block agents see.
-
-    Same shape as the previous ``ChainLog.format()`` output (which the
-    Orchestrator-with-chain-access prepends to its incoming message),
-    but reads dicts instead of tuples.
-    """
-    if not exchanges:
-        return ""
-    blocks = [
-        f"[FROM {ex['from_agent']}, TO {ex['to_agent']}]:\n{ex['message']}"
-        for ex in exchanges
-    ]
-    return "\n\n---\n\n".join(blocks)
-
 
 # ---------------------------------------------------------------------------
 # Tool factory
@@ -363,15 +348,6 @@ def build_routing_tool(
         name=tool_name,
         description=description,
     )
-
-
-# ---------------------------------------------------------------------------
-# Shared run loop helper
-# ---------------------------------------------------------------------------
-
-def is_routing_tool(name: str) -> bool:
-    """Return True if *name* is one of the terminal routing tools."""
-    return name in ROUTING_TOOL_NAMES
 
 
 # ---------------------------------------------------------------------------

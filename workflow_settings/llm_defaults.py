@@ -25,9 +25,6 @@ from __future__ import annotations
 from workflow_settings import settings as _settings
 
 
-DEFAULT_PROVIDER: str = "openai"
-
-
 # Per-agent baked-in defaults.  Each entry is the model string
 # passed verbatim to the provider's client (OpenAI's API accepts
 # arbitrary model identifiers; an unknown one surfaces as a 404

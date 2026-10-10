@@ -13,7 +13,6 @@ images / bytes; the crop + composite are model-facing copies only.
 
 from __future__ import annotations
 
-import io
 import logging
 
 from PIL import Image, ImageDraw, ImageFont
@@ -186,11 +185,3 @@ def stitch(images, labels=None, layout: str = "match_height",
             _LANCZOS,
         )
     return canvas
-
-
-def stitch_to_png_bytes(images, labels=None, layout: str = "match_height",
-                        max_long_edge: int = _MAX_LONG_EDGE) -> bytes:
-    """:func:`stitch` then encode the composite to PNG bytes."""
-    buf = io.BytesIO()
-    stitch(images, labels, layout, max_long_edge).save(buf, format="PNG")
-    return buf.getvalue()

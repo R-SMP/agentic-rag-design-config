@@ -68,7 +68,6 @@ from agents.shared.llm_provider import make_image_block, system_cache_control
 _DC_CONFIG_DIR = (
     Path(__file__).resolve().parent.parent.parent / "DC_prompt_fragments" / "dc_config"
 )
-TEXT_PATH = _DC_CONFIG_DIR / "dc_params_primer_text.txt"
 IMAGE_PATH = _DC_CONFIG_DIR / "images" / "dc_params_primer.png"
 
 # Agents that get a DIFFERENT primer text.  The IMAGE is always the same.

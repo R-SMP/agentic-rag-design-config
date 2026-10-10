@@ -291,7 +291,7 @@ def _build_render_rows(
         if not m:
             log(f"    ! skip unrecognised attempt folder: {folder}")
             continue
-        nnn, gid = m.group(1), int(m.group(2))
+        gid = int(m.group(2))
         renders = sorted(f for f in filenames if _RENDER_RE.search(f))
         if not renders:
             continue

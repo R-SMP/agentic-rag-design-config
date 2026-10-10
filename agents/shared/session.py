@@ -282,42 +282,6 @@ class Session:
             "logs_dir":     None if self.logs_dir     is None else str(self.logs_dir),
         }
 
-    @classmethod
-    def from_dict(cls, data: dict) -> "Session":
-        """Inverse of ``to_dict``.
-
-        Doesn't reconstruct LLM clients (those come from the cache via
-        the agent constructors).  Doesn't restore live BaseMessage
-        instances (callers do that lazily via ``message_from_dict``
-        when invoking the agent's LLM in later Phase-1 commits).
-        """
-        return cls(
-            session_id=             data["session_id"],
-            session_ts=             datetime.fromisoformat(data["session_ts"]),
-            user_id=                data.get("user_id"),
-            dc_name=                data.get("dc_name", "propeller"),
-            schema_version=         data.get("schema_version", 1),
-            dc_inspector_enabled=   data.get("dc_inspector_enabled", _DEFAULT_DC_INSPECTOR_ENABLED),
-            rag_enabled=            data.get("rag_enabled", _DEFAULT_RAG_ENABLED),
-            mesh_checks=            data.get("mesh_checks", _DEFAULT_MESH_CHECKS),
-            chain_access=           data.get("chain_access", _DEFAULT_CHAIN_ACCESS),
-            keep_images_in_context= data.get("keep_images_in_context", _DEFAULT_KEEP_IMAGES_IN_CONTEXT),
-            dcoi_comparison_mode=   data.get("dcoi_comparison_mode", _DEFAULT_DCOI_COMPARISON_MODE),
-            planner_first=          data.get("planner_first", _DEFAULT_PLANNER_FIRST),
-            render_library=         data.get("render_library", _DEFAULT_RENDER_LIBRARY),
-            resolved_session_name=      data.get("resolved_session_name"),
-            resolved_session_timestamp= data.get("resolved_session_timestamp"),
-            chain_log_exchanges=    list(data.get("chain_log_exchanges", [])),
-            standing_directives=    data.get("standing_directives", ""),
-            agent_states={
-                k: AgentState(**v) for k, v in data.get("agent_states", {}).items()
-            },
-            inputs_dir=   None if data.get("inputs_dir")   is None else Path(data["inputs_dir"]),
-            attempts_dir= None if data.get("attempts_dir") is None else Path(data["attempts_dir"]),
-            logs_dir=     None if data.get("logs_dir")     is None else Path(data["logs_dir"]),
-        )
-
-
 # ---------------------------------------------------------------------
 # Plain-data invariant
 # ---------------------------------------------------------------------

@@ -106,7 +106,6 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F73` | OPEN | The DCII is told `parameters.json` is "overwritten".  It never is. |
 | `F86` | OPEN | The reduced tree dropped the per-agent TRIGGERS for the user-input reading tools |
 | `F87` | OPEN | C3 cannot be tested by the current variant switch, and its original evidence was a counting artefact |
-| `F90` | OPEN | The eager `*_TEMPLATE` block in `prompts.py` — nine import-time, topology-frozen constants |
 | `F91` | OPEN | Per-agent STATEFUL / STATELESS toggle in the Workflow-Settings agent flow chart |
 | `F92` | PARTIALLY CLOSED | Four defects the 5-agent merge inherited from the 7-agent system — status re-checked 2026-08-21 |
 | `F93` | OPEN | Pending actions embedded inside `warnings_developer.md` — index |
@@ -3857,90 +3856,6 @@ or DCOI ran in either.
 **Where.** Runs `ID245` (standard) / `ID246` (reduced), 2026-08-20.
 Related: F56 (`SYSTEM_TOPOLOGY` read fresh mid-turn — the same
 settings-are-global problem, one axis over).
-
----
-
-### F90. The eager `*_TEMPLATE` block in `prompts.py` — nine import-time, topology-frozen constants
-
-**Status.** OPEN. Not a live defect today; a latent trap. Raised 2026-08-02
-during the topology-resolution step and deliberately NOT touched then, to keep
-that step's blast radius small. **Decide before the 3-agent variant.**
-Re-verified live 2026-08-21: still eager at `agents/shared/prompts.py:1045-1053`.
-
-**Where.** `agents/shared/prompts.py:1045-1053` builds nine module-level
-constants at **import** time — `RECEPTIONIST_TEMPLATE`, `ORCHESTRATOR_TEMPLATE`,
-`PLANNER_TEMPLATE`, `UII_TEMPLATE`, `DCIC_TEMPLATE`, `DCII_TEMPLATE`,
-`TOOL_CALLER_TEMPLATE`, `DCOI_TEMPLATE`, `DH_TEMPLATE` — each a
-`_build_template(...)` call. They are the **7-agent** set, they run exactly once
-when the module is first imported, and all nine are listed in `__all__`.
-
-**The problem, in ascending severity.**
-
-1. **Wasted startup work.** Under topology 5 all nine still build, including
-   Planner, Orchestrator, DCIC and DCII, which that topology never constructs.
-   Each `_build_template` call re-reads ~40 fragment files, so this is ~360 file
-   reads at import for ~4/9 no reason. A cost, not a correctness issue.
-
-1b. **What those four builds CONTAIN is incoherent** — the sharper form of 1,
-   and the same defect as `O9` in the topology-selector design notes. Under
-   topology 5, `_build_template("planner")` reads the 7-agent
-   `agents/planner/prompt.md` but fills it from a topology-5 slot map, so
-   `PLANNER_TEMPLATE` becomes the 7-agent Planner prompt with **5-agent
-   fragments spliced into it**: `generic_constraints_5agents.md` telling it to
-   escalate to a Conductor, `hard_constraints_dc_5agents.md`, and so on. A
-   topology-MIXED prompt, not merely a wasted one. Harmless only because nothing
-   reads it — which is exactly the assumption problem 3 says will not hold.
-
-2. **Topology-frozen and hot-reload-stale.** `_topology()` is read fresh per
-   call precisely because the Sessions Queue switches topology between runs
-   inside one process. These nine capture whatever `SYSTEM_TOPOLOGY` was on disk
-   when the module was FIRST imported and never update — neither on a topology
-   switch nor on a System-Prompts-UI edit. They are the one place in the module
-   that breaks the fresh-read contract.
-
-3. **They look like the supported API.** Being in `__all__`, a future caller
-   doing `from agents.shared.prompts import DCOI_TEMPLATE` silently gets an
-   import-time, topology-frozen, stale string, while every current agent
-   correctly calls `_build_template(...)` fresh in its own `__init__`.
-
-4. **They become a hard startup failure the moment a topology deletes a prompt.**
-   Each line needs its `agents/<agent>/prompt.md` to resolve. All nine 7-agent
-   files exist today, so under topology 5 the first two `_prompt_path` candidates
-   miss and each falls through to its historic file — fine. But if the 3-agent
-   variant ever REMOVES a 7-agent prompt file, this block raises
-   `FileNotFoundError` **at module import**: the whole app fails to boot rather
-   than failing at the one agent that needed it.
-
-**Why it is safe right now.** No production code reads any of the nine.
-Re-grepped 2026-08-21: the only consumer outside the module is
-`extra_utilities/tests/smoke_test_prompt_format.py:95`
-(`getattr(prompts, f"{name}_TEMPLATE")`). (`dc_output_inspector.py:65` mentions
-`DCOI_TEMPLATE` in a comment only.) So today they are dead weight.
-
-**Proposed solutions.**
-
-- **Option A — make them lazy (recommended).** Delete the nine assignments and
-  add a PEP-562 module-level `__getattr__` mapping `<NAME>_TEMPLATE` →
-  `_build_template(<agent_dir>)` on attribute access. Fixes 1, 2 and 4 at once:
-  nothing is built until asked for, and what is built is topology-correct and
-  disk-fresh. `__all__` is unchanged and `smoke_test_prompt_format.py` needs no
-  edit, so call-site churn is zero.
-- **Option B — remove them.** Delete the nine constants and their `__all__`
-  entries; change the one harness to call `_build_template` directly. Cleanest
-  end state and kills 3 outright, but it is a public-API removal.
-- **Option C — guard only.** Wrap the block in a topology check or a
-  try/except. Addresses 4 alone, leaves 1, 2 and 3 in place. Not recommended —
-  it hides the staleness rather than fixing it.
-
-**Recommendation:** A now (zero call-site churn, fixes three of four), then B
-later if the API surface is ever worth removing outright.
-
-**Provenance.** Lifted verbatim from
-`extra_utilities/docs/archive/agent_count_variants_build_tracker.md` *(removed 2026-10-10; in git history)* (section
-"🔶 OPEN — the eager `*_TEMPLATE` block in `prompts.py`") when that file was
-archived, so the item stays visible in the live tracker. Same subject as the
-topology-selector `O9` obstacle, now folded into
-`extra_utilities/docs/topology_shared_touchpoints.md` §G.
 
 ---
 

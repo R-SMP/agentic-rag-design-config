@@ -71,10 +71,10 @@ from workflow_settings import settings as workflow_settings  # noqa: E402
 # no-op ``.format()`` still raises KeyError on a literal ``{name}`` and
 # ValueError on a bare ``{``.  It was the one ``.format()``ed agent with zero
 # brace coverage, in the exact place everyone assumed was safe.
-# (label, agent_dir_name).  The dir name is new: main() now ASSEMBLES each
-# template with _build_template() instead of reading the module-level
-# *_TEMPLATE constants, because those are built at import time
-# (prompts.py:1190-1198) and so are frozen at whatever RAG_ENABLED was.
+# (label, agent_dir_name).  main() ASSEMBLES each template with
+# _build_template(), exactly as the agents do, so it follows RAG_ENABLED
+# when the test flips it.  (prompts.py once also built module-level
+# *_TEMPLATE copies at import; those were removed on 2026-10-10.)
 TEMPLATES = (
     ("RECEPTIONIST", "receptionist"),
     ("ORCHESTRATOR", "orchestrator"),

@@ -666,7 +666,7 @@ what the user sees and how the system behaves NOW.
   FIXED list does NOT re-append.  An empty FIXED list appends
   nothing.
 - All downstream agents that read `user_query.txt` (Receptionist,
-  UII, Planner via `read_user_queries`) see the blocks for free —
+  and the UII and Planner via `read_user_inputs`) see the blocks for free —
   no per-agent code change.
 
 ### 9.4 UII extraction rules (post-redesign)

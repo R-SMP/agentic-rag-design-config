@@ -36,7 +36,6 @@ from __future__ import annotations
 import json
 import logging
 import os
-import re
 import tempfile
 import uuid
 from pathlib import Path
@@ -173,20 +172,6 @@ AGENT_SHORT_LABELS: dict[str, str] = {
 # Valid enum values.
 SCOPES = ("session", "attempt")
 TYPES = ("Semantic", "Quantitative")
-
-# Filename slug helper — mirrors database_handler._slugify EXCEPT the
-# editor uses underscores between Word_Like_Capitals so "Planner
-# Problem" -> "Planner_Problem.txt".  The DH writer applies its own
-# slugify on save; this is just the value we display in the UI.
-_NON_FILENAME_SAFE = re.compile(r"[^\w]+")
-
-
-def display_filename(name: str) -> str:
-    """``Planner Problem`` -> ``Planner_Problem.txt`` (UI hint only)."""
-    s = _NON_FILENAME_SAFE.sub("_", (name or "").strip()).strip("_")
-    if not s:
-        s = "entry"
-    return f"{s}.txt"
 
 
 class ScheduleError(ValueError):

@@ -466,11 +466,12 @@ Both first builds were replaced (§1, §2).  As built:
 11. **A refine ROUND is a full cycle, not a hop.**  The counter increments once
     per arrival at the inspector/critic, so `MAX_SECTIONS_REFINE_ROUNDS = 12`
     means 12 render-and-judge cycles in every topology.
-12. **Importing `agents.shared.prompts` builds every agent template
-    immediately**, under whatever topology is on disk (`TODO_known_issues.md`
-    F90).  `PLANNER_FIRST` and `DC_INSPECTOR_ENABLED` are captured at import;
-    `SYSTEM_TOPOLOGY` is read fresh.  That is why the snapshot and dry-run
-    scripts use one subprocess per topology.
+12. **`prompts.py` captures two flags at import.**  `PLANNER_FIRST` and
+    `DC_INSPECTOR_ENABLED` are read once, when `agents.shared.prompts` is first
+    imported, while `SYSTEM_TOPOLOGY` is read fresh on every call.  That is why
+    the snapshot and dry-run scripts use one subprocess per topology.  (Until
+    2026-10-10 the import also built every agent template under the on-disk
+    topology — TODO F90, now archived.)
 13. **`_load_routing_fragment`'s shared fallback uses the original branched
     name**, so a missing collapsed override silently falls through to the
     Orchestrator-naming shared file.

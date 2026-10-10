@@ -119,11 +119,6 @@ resolved errors, superseded decisions, all narrative.  Output terse short
 paragraphs."""
 
 
-# Public alias retained for any external caller that imported the previous
-# single-prompt name.  Equivalent to the coarse prompt.
-SYSTEM_PROMPT = COARSE_SUMMARY_PROMPT
-
-
 class ContextPruner:
     """Stateless agent that prunes message histories.
 

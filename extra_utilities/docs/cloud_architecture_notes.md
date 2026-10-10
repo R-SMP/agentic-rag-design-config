@@ -314,9 +314,10 @@ Specifically:
   `_pending_image_paths`, `cycle_start_ts`, current attempt id, etc.)
   is captured as plain data alongside `messages`. This ties into TODO
   `O4` in `TODO_known_issues.md`.
-- The `Session` class exposes `Session.to_dict()` and
-  `Session.from_dict(data, llm_clients)` symmetric methods. The
-  in-memory store today never calls them; it just holds live objects.
+- The `Session` class exposes `Session.to_dict()`.  Its inverse,
+  `Session.from_dict`, was never called and was removed on 2026-10-10
+  (it is in git history); a Redis-backed store as sketched below would
+  need it back.  The in-memory store just holds live objects.
 
 With that shape, the storage layer is swappable:
 

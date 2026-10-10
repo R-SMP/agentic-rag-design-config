@@ -50,10 +50,6 @@ VIEWS: tuple[tuple[str, str, str], ...] = (
 # is not worth forking the render core over.
 MESH_VIEWS: frozenset[str] = frozenset({"isometric", "top", "side"})
 
-# Rendered from ``parameters.json`` alone — no mesh required, which is why
-# ``attempt_renders`` does this one FIRST.
-PARAMS_ONLY_VIEWS: frozenset[str] = frozenset({"blade_sections"})
-
 VIEW_FILES: dict[str, str] = {v: f for v, _flag, f in VIEWS}
 
 
@@ -79,8 +75,3 @@ def enabled_views() -> list[str]:
 def enabled_view_files() -> list[str]:
     """Render filenames of the enabled views, in registry order."""
     return [VIEW_FILES[v] for v in enabled_views()]
-
-
-def view_file(view: str) -> str | None:
-    """Render filename for *view*, or None when the view is unknown."""
-    return VIEW_FILES.get(view)

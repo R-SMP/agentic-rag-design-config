@@ -87,63 +87,6 @@ def load_json_file(path: Path) -> dict:
 # High-level loaders
 # ------------------------------------------------------------------
 
-def load_all_inputs(directory: Path, provider: str) -> dict:
-    """Load all input files from a directory.
-
-    ``provider`` is the LLM provider tag of the agent that will see
-    the loaded blocks (used to build provider-correct image content
-    blocks).
-
-    Returns
-    -------
-    dict with keys:
-        text_content  : str        -- all text files concatenated
-        json_data     : list[dict] -- parsed JSON files
-        image_blocks  : list[dict] -- LLM-ready image content blocks
-        image_paths   : list[str]  -- absolute paths parallel to
-                                      ``image_blocks`` (same length,
-                                      same order); used by callers
-                                      that pair each image with a
-                                      path-text block in history
-        file_list     : list[dict] -- metadata for every file
-        summary       : str        -- human-readable one-liner
-    """
-    files = list_files(directory)
-    text_parts: list[str] = []
-    json_data: list[dict] = []
-    image_blocks: list[dict] = []
-    image_paths: list[str] = []
-
-    for f in files:
-        p = Path(f["path"])
-        cat = f["category"]
-        try:
-            if cat == "text":
-                content = load_text_file(p)
-                text_parts.append(f"--- {f['name']} ---\n{content}")
-            elif cat == "json":
-                data = load_json_file(p)
-                json_data.append({"file": f["name"], "data": data})
-                text_parts.append(
-                    f"--- {f['name']} ---\n{json.dumps(data, indent=2)}"
-                )
-            elif cat == "image":
-                b64 = encode_image(p)
-                image_blocks.append(make_image_block(b64, provider))
-                image_paths.append(str(p.resolve()))
-        except Exception:
-            text_parts.append(f"--- {f['name']} --- (failed to load)")
-
-    return {
-        "text_content": "\n\n".join(text_parts) if text_parts else "",
-        "json_data": json_data,
-        "image_blocks": image_blocks,
-        "image_paths": image_paths,
-        "file_list": files,
-        "summary": summarise_files(files),
-    }
-
-
 _NOTE_SUFFIX = "_note.txt"
 USER_IMAGE_SUFFIXES = (".png", ".jpg", ".jpeg")
 
@@ -419,51 +362,6 @@ def load_user_inputs_bundle(
         "root_files": root_files,
         "summary": summary,
     }
-
-
-def summarise_files(files: list[dict]) -> str:
-    """One-line summary of available file types and names."""
-    if not files:
-        return "No files found."
-    cats: dict[str, list[str]] = {}
-    for f in files:
-        cats.setdefault(f["category"], []).append(f["name"])
-    parts = []
-    for cat, names in cats.items():
-        parts.append(f"{cat}: {', '.join(names)}")
-    return "; ".join(parts)
-
-
-def build_multimodal_content(
-    text: str,
-    image_blocks: list[dict],
-    image_paths: list[str] | None = None,
-) -> list[dict] | str:
-    """Build a LangChain-compatible content value.
-
-    If there are images, returns a list of content blocks (text first,
-    then for each image a ``Loaded image (path: …):`` text block
-    immediately followed by the image block — provided ``image_paths``
-    is supplied and parallel to ``image_blocks``).  When ``image_paths``
-    is omitted or empty the images are appended unpaired (legacy
-    behaviour).  When there are no images the plain text string is
-    returned.
-
-    Pairing matters because it keeps the image's source path visible
-    to the LLM alongside the bytes — and because it's the record that
-    survives image-block stripping when the "keep images in context"
-    option is OFF.
-    """
-    if not image_blocks:
-        return text
-    blocks: list[dict] = [{"type": "text", "text": text}]
-    if image_paths and len(image_paths) == len(image_blocks):
-        for img, p in zip(image_blocks, image_paths):
-            blocks.append({"type": "text", "text": f"Loaded image (path: {p}):"})
-            blocks.append(img)
-    else:
-        blocks.extend(image_blocks)
-    return blocks
 
 
 def build_paired_image_blocks(

@@ -45,7 +45,6 @@ from workflow_settings import settings as workflow_settings
 # Postgres-down fallback (Phase 3E).
 logger = logging.getLogger("propeller_agent")
 
-_ID_RE = re.compile(r"^ID(\d+)_")
 _LOG_TS_RE = re.compile(r"session_(\d{8}_\d{6})\.log$")
 
 
@@ -593,27 +592,6 @@ def _ask_yes_no(prompt: str, default_yes: bool = True) -> bool:
         if answer in {"n", "no"}:
             return False
         print("  Please enter Y or N.")
-
-
-def _ask_choice(prompt: str, options: list[str], default: int = 1) -> int:
-    """Ask the user to pick one of *options* by 1-based index.
-
-    Prints the prompt followed by each option on its own indented line
-    (numbered).  Returns the 1-based index of the chosen option.  Empty
-    input picks *default*.
-    """
-    print(prompt)
-    for i, opt in enumerate(options, start=1):
-        marker = " (default)" if i == default else ""
-        print(f"  {i}. {opt}{marker}")
-    valid = {str(i) for i in range(1, len(options) + 1)}
-    while True:
-        answer = input(f"Choose 1-{len(options)} [default {default}]: ").strip()
-        if answer == "":
-            return default
-        if answer in valid:
-            return int(answer)
-        print(f"  Please enter a number between 1 and {len(options)}.")
 
 
 def _print_agent_llm_summary(logger: logging.Logger) -> None:

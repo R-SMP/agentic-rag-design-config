@@ -69,12 +69,11 @@ Memory model
   agent in the next conversation.
 """
 
-import json
 import logging
 import re
 from pathlib import Path
 
-from langchain_core.messages import HumanMessage, SystemMessage, ToolMessage
+from langchain_core.messages import HumanMessage, ToolMessage
 
 from agents.database_handler import db_writer
 from agents.database_handler.dh_trace import (
@@ -90,7 +89,7 @@ from agents.shared.llm_provider import history_cache_control, make_system_messag
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import PARAMETER_NAMES, _build_template
 from agents.shared.session import AgentState, Session
-from agents.step_caps import MAX_DH_STEPS, MAX_DH_TURNS_PER_FIELD
+from agents.step_caps import MAX_DH_TURNS_PER_FIELD
 from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
 from workflow_settings import settings as workflow_settings
 
@@ -2048,7 +2047,6 @@ class DatabaseHandler(BaseChainAgent):
                             )
 
                 def _write_row_error(row: dict, exc: Exception) -> None:
-                    nonlocal written
                     handled_ids.add(row["id"])
                     error_msg = (
                         f"the DH conversation with {row['agent_key']} "

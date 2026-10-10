@@ -216,12 +216,6 @@ def normalize_topology(value: Any, *, label: str = "topology") -> int:
     return n
 
 
-def agent_rows_for(topology: Any) -> "list[tuple[str, str]]":
-    """``[(agent_key, label)]`` for ``topology`` — the rows a run's per-agent
-    tier panel shows, and the only agents that run may assign."""
-    return list(AGENTS_BY_TOPOLOGY[normalize_topology(topology)])
-
-
 def tier_payload(*, provider: str, low: str, mid: str, high: str,
                  agent_tiers: "dict[str, str] | None",
                  topology: Any) -> dict:

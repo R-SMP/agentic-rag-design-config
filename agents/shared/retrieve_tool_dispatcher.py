@@ -197,8 +197,6 @@ _HANDLERS = {
     "retrieve_attempt":     _handle_retrieve_attempt,
 }
 
-RETRIEVE_TOOL_NAMES = frozenset(_HANDLERS.keys())
-
 
 def dispatch_retrieve_tool(agent, tc: dict, agent_key: str) -> bool:
     """If *tc* calls one of the retrieve_* tools, handle it and return True.

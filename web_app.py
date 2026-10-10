@@ -2031,11 +2031,6 @@ def _web_now_iso() -> str:
     return datetime.now(timezone.utc).isoformat(timespec="seconds")
 
 
-def _dump_model(m: BaseModel) -> dict:
-    # pydantic v2 keeps ``.dict()`` as a deprecated alias; v1 has only it.
-    return m.model_dump() if hasattr(m, "model_dump") else m.dict()
-
-
 def _queue_progress(manifest: dict, *, current_index: int, stage: str,
                     in_flight_run_id: "str | None", active: bool) -> dict:
     return {
@@ -3680,7 +3675,6 @@ async def api_db_admin_clear_previous_sessions(
     _require_no_queue()
 
     import shutil
-    from config import PREVIOUS_SESSIONS_DIR
 
     if not PREVIOUS_SESSIONS_DIR.exists():
         return {
