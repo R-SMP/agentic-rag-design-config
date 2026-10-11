@@ -3736,6 +3736,14 @@ folder was opened.  **Fix: `overwritten` -> `written`.**
 **Status.** OPEN — LOW, and a VERIFY item rather than a fix-now item.  Found
 2026-08-20 while analysing the standard-vs-reduced A/B (ID245 / ID246).
 
+**Update 2026-10-11 — now about the OCR zoom tool only.**  Three of the four
+tools below did not stay bound: `list_input_files`, `read_input_text` and
+`read_image_notes` were later withheld from every agent
+(`include_text_tools=False`, superseded by `read_user_inputs`, which returns
+every text file and image note at once) and were deleted on 2026-10-11.  The
+OCR zoom tool (`ocr_regions` then, `reread_text_regions` now) is still bound
+when OCR is on, so the verify step below applies to it alone.
+
 **The measurement.** ASSEMBLED prompts, topology 7, RAG off, counting mentions
 of the four on-demand user-input tools (standard -> reduced):
 
@@ -4346,8 +4354,9 @@ every session saved since, the raw conversation was fetched, stored, named,
 and never shown — while nothing in any prompt licensed reading it, and the
 per-agent `read_user_inputs` descriptions pinned the argument to the LIVE
 inputs directory named in the hand-off, with an explicit "do NOT guess a
-path".  `read_input_text`, the obvious single-file reader, is bound to none of
-the three holders (all build with `include_text_tools=False`).
+path".  `read_input_text`, the obvious single-file reader, was bound to none
+of the three holders (all built with `include_text_tools=False`; the tool was
+deleted on 2026-10-11).
 
 **What shipped.** A sentence appended to `read_user_inputs`'s description for
 any agent holding `retrieve_user_inputs`, naming a `<folder path=...>` as a

@@ -237,8 +237,7 @@ def tools_for(agent):
         return ([UII_M._build_read_user_inputs("user_input_inspector"),
                  UII_M.write_extraction]
                 + extra
-                + build_user_inputs_tools("user_input_inspector",
-                                          include_text_tools=False)
+                + build_user_inputs_tools("user_input_inspector")
                 + routing)
 
     if agent == "dc_input_creator":
@@ -263,8 +262,7 @@ def tools_for(agent):
                    rt("dc_input_inspector", "orchestrator")]
         return ([build_read_user_inputs(), DCII_M.read_extracted_inputs]
                 + extra
-                + build_user_inputs_tools("dc_input_inspector",
-                                          include_text_tools=False)
+                + build_user_inputs_tools("dc_input_inspector")
                 + routing)
 
     if agent == "tool_caller":
@@ -286,8 +284,7 @@ def tools_for(agent):
         return ([DCOI_M.read_extracted_inputs,
                  build_read_user_inputs(doc=READ_INPUTS_DOC_DCOI)]
                 + extra
-                + build_user_inputs_tools("dc_output_inspector",
-                                          include_text_tools=False)
+                + build_user_inputs_tools("dc_output_inspector")
                 + routing)
 
     if agent == "database_handler":

@@ -447,8 +447,8 @@ class Orchestrator(BaseChainAgent):
             # handed only to the Planner and the Receptionist.  The
             # chain-access block cannot cover it: it injects hand-off prose
             # ([FROM x, TO y]), never tool results.  Same bug class, and
-            # same fix, as the Conductor's read_extracted_inputs /
-            # read_user_queries (conductor.py:350-357).
+            # same fix, as the former Conductor's read_extracted_inputs /
+            # read_user_queries (both gone with the topology-5 rebuild).
             history_tool,
         ]
         # Which of the three database tools this agent holds is a

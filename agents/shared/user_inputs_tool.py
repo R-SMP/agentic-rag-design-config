@@ -1,17 +1,21 @@
 """Generic user-input file/image tools shared across agents.
 
-Every agent that needs on-demand access to the user's input files
-(text + images under ``inputs/`` and ``inputs/input_images/``) binds
-the four LangChain ``@tool`` stubs defined here:
+Every agent that needs to look at the user's images or the tool renders
+binds the LangChain ``@tool`` stubs built by ``build_user_inputs_tools``:
 
-  * ``list_input_files``      — categorised filesystem listing
-  * ``read_input_text``       — read any text file under ``inputs/``
-  * ``read_image_notes``      — read every ``<name>_note.txt`` at once
   * ``view_images``           — the unified image tool: view any images
     (user sketches under ``inputs/`` AND tool renders under ``attempts/``),
     optionally cropped to a coarse region and/or merged side-by-side into
     one comparison image.  Replaces the former ``load_input_images`` +
     ``load_render_images``.
+  * ``reread_text_regions``   — the OCR zoom-in tool, bound only when OCR
+    is on for the agent.
+
+The text files under ``inputs/`` are read by ``read_user_inputs`` (also
+built here, see ``build_read_user_inputs``), which returns every text file
+and image note at once.  The single-file text tools ``list_input_files`` /
+``read_input_text`` / ``read_image_notes`` were bound by no agent and were
+removed on 2026-10-11.
 
 The actual handlers live in this module too — each one mutates the
 calling agent's ``messages`` list (appending a ToolMessage with a
@@ -48,10 +52,7 @@ from agents.shared import topology as _topology
 from agents.shared.agent_activity import generic_tool
 from agents.shared.file_utils import (
     append_pending_images,
-    list_files,
-    load_text_file,
     load_user_inputs_bundle,
-    pair_input_images,
 )
 from agents.shared.image_compression import (
     compress_for_model,
@@ -67,8 +68,6 @@ from agents.shared.routing_tools import log_tool_call
 from agents.shared.ocr import ocr_regions_reread, ocr_summary_if_enabled
 from config import (
     ATTEMPTS_DIR,
-    INPUT_IMAGES_DIR,
-    INPUT_IMAGES_SUBDIR,
     USER_INPUTS_DIR,
 )
 from workflow_settings import database_access
@@ -79,7 +78,6 @@ from workflow_settings import settings as workflow_settings
 logger = logging.getLogger("propeller_agent")
 
 ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
-NOTE_SUFFIX = "_note.txt"
 # Mirrors tools.retrieval_common.RETRIEVED_SUBDIR.  A literal, not an
 # import: reaching ``tools`` executes ``tools/__init__``, which pulls the
 # heavy 3D render stack into this light shared utility.  Same idiom as
@@ -92,49 +90,6 @@ RETRIEVED_SUBDIR = "_retrieved"
 # ---------------------------------------------------------------------------
 
 
-@tool
-def list_input_files() -> str:
-    """List every file under ``inputs/``, including the ``input_images/``
-    subfolder.  Reports root text/JSON files (e.g. ``user_query.txt``,
-    ``extracted_inputs.txt``), every paired image+note in
-    ``input_images/``, and any orphan image / note (a
-    ``<name>.png/.jpg/.jpeg`` with no matching ``<name>_note.txt`` or
-    vice-versa).  Takes NO arguments — the inputs root is fixed by
-    the system."""
-    return ""  # handled by dispatch_user_inputs_tool
-
-
-@tool
-def read_input_text(path: str) -> str:
-    """Read any text file located under the inputs directory.
-
-    ``path`` MUST be the absolute path of a file inside ``inputs/``
-    (or its ``input_images/`` subfolder); paths outside the inputs
-    tree are refused.  Use this to read a ``_note.txt`` describing
-    a specific image, or to re-read ``user_query.txt`` /
-    ``extracted_inputs.txt`` on demand."""
-    return ""  # handled by dispatch_user_inputs_tool
-
-
-@tool
-def read_image_notes() -> str:
-    """Read every ``<name>_note.txt`` file in ``inputs/input_images/``
-    and return the contents grouped by image name.  Convenience
-    helper so you do not have to call ``read_input_text`` once per
-    note.  Takes NO arguments."""
-    return ""  # handled by dispatch_user_inputs_tool
-
-
-# ``view_images``' path-source clause, per agent.  The default names
-# ``list_input_files``; the agents built with ``include_text_tools=False``
-# do NOT bind it, so each of those names the readers it actually holds.
-# In the live 7-agent system that is EVERY binder of ``view_images`` -- the
-# default is reached only by the dormant 5-agent Creator and the 3-agent
-# Architect, which do bind ``list_input_files``.
-# Prepositional like the per-agent ones below, so it reads correctly both
-# spliced into the schema sentence and after "Get valid paths" in the
-# bad-argument errors.  ("obtained from ...", the pre-2026-08-25 wording,
-# did not.)
 # Who identifies a crop box, and whether one can be inherited.  Overlaid
 # per topology: under topology 3 there is no extraction to record boxes
 # in and no second image-reading agent to inherit one from, so the whole
@@ -148,8 +103,16 @@ _VIEW_IMAGES_CROP_SOURCE_DEFAULT = (
     "over one you derive yourself."
 )
 
+# ``view_images``' path-source clause, per agent: each binder names the
+# readers it actually holds.  Every agent that binds ``view_images`` today
+# has its own entry, so the default is a fallback for a future binder.
+# Prepositional like the per-agent ones below, so it reads correctly both
+# spliced into the schema sentence and after "Get valid paths" in the
+# bad-argument errors.  ("obtained from ...", the pre-2026-08-25 wording,
+# did not.)
 _VIEW_IMAGES_PATHS_DEFAULT = (
-    "from ``list_input_files``, or relayed in the hand-off"
+    "from the image listing ``read_user_inputs`` returns, or relayed in "
+    "the hand-off"
 )
 
 _VIEW_IMAGES_PATHS_BY_AGENT = {
@@ -296,12 +259,9 @@ def _build_reread_text_regions():
     return tool("reread_text_regions")(_impl)
 
 
-def build_user_inputs_tools(
-    agent_key: str,
-    include_image_tools: bool = True,
-    include_text_tools: bool = True,
-) -> list:
-    """Return the user-inputs tool objects to bind to *agent_key*.
+def build_user_inputs_tools(agent_key: str) -> list:
+    """Return the image tools to bind to *agent_key*: ``view_images``,
+    plus ``reread_text_regions`` when OCR is on for the agent.
 
     Built fresh (not a static list) so the OCR-dependent tools/flags
     appear ONLY when OCR is enabled **for this agent** — when OCR is off
@@ -310,31 +270,17 @@ def build_user_inputs_tools(
     ``reread_text_regions`` tool.
     The gate is ``ocr_access.is_enabled_for(agent_key)`` (master
     ``OCR_ENABLED`` AND the per-agent flag), read as of that session's
-    build.  ``list_input_files`` / ``read_input_text`` /
-    ``read_image_notes`` are static (OCR does not touch them).
+    build.
 
-    When *include_image_tools* is False the agent gets ONLY the text-file
-    tools (``list_input_files`` / ``read_input_text``); the image-viewing
-    tools (``read_image_notes`` / ``view_images`` /
-    ``reread_text_regions``)
-    are withheld.  The DC Input Creator uses this — it works from
-    ``extracted_inputs.txt`` and does not view raw images.
-
-    When *include_text_tools* is False the three text-file tools
-    (``list_input_files`` / ``read_input_text`` / ``read_image_notes``)
-    are withheld and only the image tools are returned.  The UII uses
-    this — its ``read_user_inputs`` already reads every text file at
-    once, image notes included, and lists the image paths.
+    The text files are not covered here: every binder reads them with
+    ``read_user_inputs``, which returns every text file at once, image
+    notes included, and lists the image paths.
     """
-    tools = [list_input_files, read_input_text] if include_text_tools else []
-    if include_image_tools:
-        on = ocr_access.is_enabled_for(agent_key)
-        if include_text_tools:
-            tools.append(read_image_notes)
-        tools.append(_build_view_images(on, agent_key))
-        if on:
-            # The text-region zoom-in tool exists only when OCR is on.
-            tools.append(_build_reread_text_regions())
+    on = ocr_access.is_enabled_for(agent_key)
+    tools = [_build_view_images(on, agent_key)]
+    if on:
+        # The text-region zoom-in tool exists only when OCR is on.
+        tools.append(_build_reread_text_regions())
     return tools
 
 
@@ -343,7 +289,7 @@ def build_user_inputs_tools(
 #
 # Historically defined inside the UII's module; hoisted here (2026-08-22)
 # because the Planner now binds it too (it replaced the Planner's
-# ``read_user_queries``).  The UII keeps its stub + in-agent handler
+# former ``read_user_queries``).  The UII keeps its stub + in-agent handler
 # (which routes through ``read_user_inputs_summary`` below); the Planner
 # binds a directly-invokable tool built by ``build_read_user_inputs``
 # with ``direct=True``.
@@ -724,185 +670,9 @@ def _save_composite(png_bytes: bytes):
         return None
 
 
-def _format_input_files_listing() -> str:
-    """Return a categorised listing of every file under ``inputs/``."""
-    if not USER_INPUTS_DIR.is_dir():
-        return f"No inputs directory found at {USER_INPUTS_DIR.resolve()}."
-
-    root_entries = list_files(USER_INPUTS_DIR)
-    pairing = pair_input_images(INPUT_IMAGES_DIR)
-
-    lines: list[str] = [f"Inputs directory: {USER_INPUTS_DIR.resolve()}"]
-    if root_entries:
-        lines.append("")
-        lines.append("Root files:")
-        for f in root_entries:
-            lines.append(
-                f"  - {f['name']}  ({f['category']})  "
-                f"path: {f['path']}"
-            )
-    else:
-        lines.append("(no files in the inputs root)")
-
-    lines.append("")
-    if not INPUT_IMAGES_DIR.is_dir():
-        lines.append(
-            f"{INPUT_IMAGES_SUBDIR}/ subfolder: not present (no images "
-            f"have been uploaded)."
-        )
-    else:
-        lines.append(f"{INPUT_IMAGES_SUBDIR}/ subfolder:")
-        if not pairing["pairs"] and not pairing["orphan_images"] and not pairing["orphan_notes"]:
-            lines.append("  (empty)")
-        else:
-            for img, note in pairing["pairs"]:
-                lines.append(
-                    f"  - PAIR  image: {img.name}   note: {note.name}"
-                )
-                lines.append(f"          image path: {img.resolve()}")
-                lines.append(f"          note path : {note.resolve()}")
-            for img in pairing["orphan_images"]:
-                lines.append(
-                    f"  - ORPHAN image (no matching {img.stem}_note.txt): "
-                    f"{img.name}"
-                )
-                lines.append(f"          image path: {img.resolve()}")
-            for note in pairing["orphan_notes"]:
-                stem = note.name[: -len(NOTE_SUFFIX)]
-                lines.append(
-                    f"  - ORPHAN note (no matching {stem}.png/.jpg/.jpeg): "
-                    f"{note.name}"
-                )
-                lines.append(f"          note path : {note.resolve()}")
-            for stem, paths in pairing.get("duplicate_stems", []):
-                names = ", ".join(p.name for p in paths)
-                lines.append(
-                    f"  - DUPLICATE-STEM image set (keep only one): "
-                    f"{names}"
-                )
-        if not pairing["ok"]:
-            lines.append("")
-            lines.append(
-                "PAIRING INVALID — every <name>.png/.jpg/.jpeg must be "
-                "paired with <name>_note.txt and vice-versa, and each "
-                "stem may use only one image format.  The Receptionist "
-                "will not forward the user's request until this is fixed."
-            )
-    return "\n".join(lines)
-
-
-def _format_image_notes() -> str:
-    """Return the contents of every ``<name>_note.txt`` in the images folder."""
-    if not INPUT_IMAGES_DIR.is_dir():
-        return (
-            f"{INPUT_IMAGES_SUBDIR}/ subfolder is not present at "
-            f"{INPUT_IMAGES_DIR.resolve()} — there are no notes to read."
-        )
-    pairing = pair_input_images(INPUT_IMAGES_DIR)
-    if not pairing["pairs"] and not pairing["orphan_notes"]:
-        return f"{INPUT_IMAGES_SUBDIR}/ has no _note.txt files."
-
-    lines: list[str] = []
-    for img, note in pairing["pairs"]:
-        try:
-            text = load_text_file(note)
-        except Exception as exc:
-            text = f"(failed to read: {exc})"
-        lines.append(
-            f"--- {note.name} (describes image {img.name}) ---\n{text}"
-        )
-    for note in pairing["orphan_notes"]:
-        try:
-            text = load_text_file(note)
-        except Exception as exc:
-            text = f"(failed to read: {exc})"
-        lines.append(
-            f"--- {note.name} (ORPHAN — no matching "
-            f".png/.jpg/.jpeg image) ---\n{text}"
-        )
-    if pairing["orphan_images"]:
-        names = ", ".join(p.name for p in pairing["orphan_images"])
-        lines.append(
-            f"NOTE: the following image(s) have no matching _note.txt: "
-            f"{names}"
-        )
-    if pairing.get("duplicate_stems"):
-        for stem, paths in pairing["duplicate_stems"]:
-            names = ", ".join(p.name for p in paths)
-            lines.append(
-                f"NOTE: stem '{stem}' is used by more than one image "
-                f"format ({names}) — keep only one per stem."
-            )
-    return "\n\n".join(lines)
-
-
 # ---------------------------------------------------------------------------
 # Tool-call handlers
 # ---------------------------------------------------------------------------
-
-
-@generic_tool("List input files")
-def _handle_list_input_files(agent, tc: dict, agent_key: str) -> None:
-    summary = _format_input_files_listing()
-    log_tool_call(agent_key, tc["name"], tc.get("args"), summary)
-    agent.messages.append(ToolMessage(
-        content=summary,
-        tool_call_id=tc["id"],
-        name=tc["name"],
-    ))
-
-
-@generic_tool("Read input text")
-def _handle_read_input_text(agent, tc: dict, agent_key: str) -> None:
-    raw_path = (tc.get("args", {}) or {}).get("path")
-    if not isinstance(raw_path, str) or not raw_path.strip():
-        summary = (
-            "Error: missing or non-string 'path' argument.  Pass the "
-            "absolute path of a text file under the inputs/ directory."
-        )
-    else:
-        path = Path(raw_path)
-        if not _is_inside_inputs(path):
-            summary = (
-                f"Error: '{raw_path}' is not under the inputs/ directory.  "
-                f"This tool only reads files inside "
-                f"{USER_INPUTS_DIR.resolve()}."
-            )
-        elif not path.is_file():
-            summary = (
-                f"Error: '{raw_path}' is not an existing file.  Use "
-                f"list_input_files to discover valid paths."
-            )
-        else:
-            try:
-                content = load_text_file(path)
-            except Exception as exc:
-                summary = f"Error reading '{raw_path}': {exc}"
-            else:
-                if not content.strip():
-                    summary = f"'{path.name}' exists but is empty."
-                else:
-                    summary = (
-                        f"--- {path.name} (path: {path.resolve()}) ---\n"
-                        f"{content}"
-                    )
-    log_tool_call(agent_key, tc["name"], tc.get("args"), summary)
-    agent.messages.append(ToolMessage(
-        content=summary,
-        tool_call_id=tc["id"],
-        name=tc["name"],
-    ))
-
-
-@generic_tool("Read image notes")
-def _handle_read_image_notes(agent, tc: dict, agent_key: str) -> None:
-    summary = _format_image_notes()
-    log_tool_call(agent_key, tc["name"], tc.get("args"), summary)
-    agent.messages.append(ToolMessage(
-        content=summary,
-        tool_call_id=tc["id"],
-        name=tc["name"],
-    ))
 
 
 def _load_cropped(path: Path, region):
@@ -1240,9 +1010,6 @@ def _handle_reread_text_regions(agent, tc: dict, agent_key: str) -> None:
 
 
 _HANDLERS = {
-    "list_input_files":  _handle_list_input_files,
-    "read_input_text":   _handle_read_input_text,
-    "read_image_notes":  _handle_read_image_notes,
     "view_images":       _handle_view_images,
     "reread_text_regions": _handle_reread_text_regions,
 }

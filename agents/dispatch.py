@@ -73,7 +73,7 @@ class TurnResult:
     that appeared under ``attempts_dir`` between the start and end
     of this turn, sorted by mtime ascending so the order reflects
     creation order.  Empty when no new artefacts landed (Receptionist
-    direct reply, or pipeline that did not call ``new_attempt``).
+    direct reply, or pipeline that did not create an attempt).
     The web handler renders these inline as chat-bubble
     images; the CLI REPL caller is free to ignore the field (it does
     — terminal output has no concept of inline images).
@@ -220,7 +220,7 @@ def _snapshot_artefact_paths(attempts_dir: Path) -> set[Path]:
     web handler can display only the artefacts that were created
     during the just-completed turn.  Returns an empty set when
     ``attempts_dir`` does not yet exist (first turn before any
-    ``new_attempt`` call).
+    attempt is created).
     """
     if not attempts_dir.exists():
         return set()

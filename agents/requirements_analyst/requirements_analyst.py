@@ -204,7 +204,7 @@ class RequirementsAnalyst(BaseChainAgent):
             # text file at once (image notes included) and lists the image
             # paths, so only ``view_images`` (+ ``reread_text_regions`` when
             # OCR is on) come from the shared builder.
-            + build_user_inputs_tools(self.AGENT_KEY, include_text_tools=False)
+            + build_user_inputs_tools(self.AGENT_KEY)
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)

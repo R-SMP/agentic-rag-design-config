@@ -160,7 +160,7 @@ class UserInputInspector(BaseChainAgent):
         all_tools = (
             [self._read_tool, self._write_tool]
             + list(self._extra_utility_tools_by_name.values())
-            + build_user_inputs_tools(self.AGENT_KEY, include_text_tools=False)
+            + build_user_inputs_tools(self.AGENT_KEY)
             + list(tools)
         )
         self.llm = self.base_llm.bind_tools(all_tools)

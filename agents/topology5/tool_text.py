@@ -66,8 +66,10 @@ USE_BY_AGENT = {
 # user_inputs_tool — where ``view_images`` says absolute paths come from
 # ---------------------------------------------------------------------------
 
+# The fallback for a binder without its own entry (none today).
 VIEW_IMAGES_PATHS_DEFAULT = (
-    "from ``list_input_files``, or relayed in the hand-off"
+    "from the image listing ``read_user_inputs`` returns, or relayed in "
+    "the hand-off"
 )
 
 VIEW_IMAGES_PATHS_BY_AGENT = {

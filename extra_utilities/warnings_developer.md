@@ -2078,7 +2078,8 @@ shapes diverge.
 2. `design_rag_customization_sequence.md` *(removed 2026-10-10; summarised in `extra_utilities/extra_info.md` §9)* closed "exclude `_retrieved` from
    `list_input_files`" as NO CODE NEEDED **only because** `list_files` is
    non-recursive and files-only.  Any future walker of `inputs/` that DOES
-   recurse must skip `_retrieved` itself.
+   recurse must skip `_retrieved` itself.  (`list_input_files` itself was
+   deleted on 2026-10-11; `read_user_inputs` is the reader now.)
 
 **Reverting the F99 route-1 edits** (if the raw conversation turns out to be
 better printed inline than fetched — see `F99`) means exactly four places, and

@@ -402,7 +402,7 @@ def build_paired_image_blocks(
 #
 # That works fine when the LLM emitted a single tool_call.  But when
 # the LLM batches multiple tool_calls in one ``AIMessage`` (e.g.
-# ``view_images`` + ``read_input_text`` in the same response —
+# ``view_images`` + ``read_user_inputs`` in the same response —
 # Claude Opus does this routinely), appending the HumanMessage
 # immediately after the first ToolMessage breaks the API's contiguity
 # requirement: every ``tool_use`` block in an assistant message MUST

@@ -47,12 +47,9 @@ Extra slack covers image loading (``view_images`` /
 
 MAX_DCIC_STEPS = _ws.MAX_DCIC_STEPS
 """DC Input Creator's ``run()``.  Standard flow is
-``read_extracted_inputs`` → ``new_attempt`` (for a new generation) →
-``write_parameters`` → routing call (3-4 turns).  Reference-matching
-runs may additionally invoke ``list_input_files`` /
-``read_image_notes`` / ``view_images``, which can push the
-turn count up materially when the LLM also needs intermediate
-``calculate`` calls."""
+``read_extracted_inputs`` → ``new_attempt_parameters`` (creates the
+attempt folder and writes ``parameters.json`` in one call) → routing call
+(3 turns).  Intermediate ``calculate`` calls push the turn count up."""
 
 MAX_DCII_STEPS = _ws.MAX_DCII_STEPS
 """DC Input Inspector's ``run()``.  Standard flow is

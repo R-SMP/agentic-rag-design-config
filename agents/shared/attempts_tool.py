@@ -5,11 +5,11 @@ process: it may carry the DC inputs (``parameters.json``), the DC
 output (``propeller_mesh.obj``), the analysis renders
 (``render_*.png``), an optional ``description.txt``, and any further
 metrics produced for the same set of inputs.  Folders are created
-explicitly by the DC Input Creator (the default owner of attempt
-creation; the Orchestrator may open one only as a fallback) — nothing
-creates them implicitly.
+explicitly — by the DC Input Creator's ``new_attempt_parameters``, or in
+topology 3 by the Design Engineer's merged tool, both through
+``create_attempt`` below — nothing creates them implicitly.
 
-Two tools are defined here:
+Defined here:
 
 - ``read_attempts(local_attempt_numbers=None)`` — the one attempts-inspection
   tool (it replaced the former ``list_attempts`` / ``read_attempt``
@@ -19,8 +19,10 @@ Two tools are defined here:
   both modes it lists each attempt's ``render_*.png`` and
   ``propeller_mesh.obj`` as absolute paths — mesh contents and image
   bytes are never returned inline.
-- ``new_attempt(slug, description)`` — create a new, empty attempt
-  folder and return its absolute path.
+- ``create_attempt(slug, description)`` — the plain function (not a
+  tool) that creates a fresh attempt folder.  The standalone
+  ``new_attempt`` tool that wrapped it was bound by no agent and was
+  removed on 2026-10-11.
 
 ``parameters.json`` is append-only: its write tool refuses to overwrite
 an existing file.  The merged geometry+renders tool
@@ -38,7 +40,7 @@ from langchain_core.tools import tool
 from agents.shared.agent_activity import generic_tool
 from config import ATTEMPTS_DIR
 
-# Folder names produced by ``new_attempt`` have the form
+# Folder names produced by ``create_attempt`` have the form
 # ``YYYYMMDD_HHMMSS_NNN_<slug>`` — the third group is the 1-based
 # attempt number.
 _ATTEMPT_RE = re.compile(r"^(\d{8})_(\d{6})_(\d+)_(.+)$")
@@ -296,10 +298,10 @@ def read_attempts(local_attempt_numbers: list[int] | None = None) -> str:
 def create_attempt(slug: str = "attempt", description: str = ""):
     """Create a fresh attempt folder; return ``(attempt_number, path)``.
 
-    The mechanism behind both attempt-creating tools: the ``new_attempt``
-    tool below (still bound in the 5- and 3-agent topologies) and the
-    7-agent DC Input Creator's merged ``new_attempt_parameters``, which
-    creates the folder and writes ``parameters.json`` into it in one call.
+    The mechanism behind the attempt-creating tools: the DC Input
+    Creator's merged ``new_attempt_parameters`` and the topology-3 Design
+    Engineer's equivalent, each of which creates the folder and writes
+    ``parameters.json`` into it in one call.
     Raises ``OSError`` if the folder cannot be created; the caller decides
     how to word the failure.
     """
@@ -315,58 +317,3 @@ def create_attempt(slug: str = "attempt", description: str = ""):
             desc_text + "\n", encoding="utf-8",
         )
     return attempt_n, dest
-
-
-@tool
-@generic_tool("Open new attempt")
-def new_attempt(slug: str = "attempt", description: str = "") -> str:
-    """Create a new, empty attempt folder for an upcoming design generation.
-
-    An attempt folder is the canonical home for ONE design-generation
-    process — it will hold parameters.json, propeller_mesh.obj, the
-    render PNGs, and any other artifact produced for the same set of
-    DC inputs.  Whoever creates the folder decides what (if anything)
-    to record in the description.
-
-    Args:
-      slug:        short, filename-safe label that will appear in the
-                   folder name after the timestamp + sequence number
-                   (e.g. ``'4blades_thick_ring'``).  Falls back to
-                   ``'attempt'`` when omitted or made of unsafe
-                   characters.
-      description: optional one-paragraph note explaining what this
-                   attempt is for.  When non-empty it is written to
-                   ``description.txt`` inside the new folder.
-
-    Returns a confirmation that includes the folder's absolute path
-    on success — copy that path verbatim into your hand-offs as
-    ``Current attempt:`` so downstream agents target the same folder.
-    """
-    if not isinstance(slug, (str, type(None))):
-        return "Error: 'slug' must be a string or omitted."
-    if not isinstance(description, (str, type(None))):
-        return "Error: 'description' must be a string or omitted."
-
-    try:
-        attempt_n, dest = create_attempt(slug, "")
-    except OSError as exc:
-        return f"Error creating attempt folder: {exc}"
-
-    if (description or "").strip():
-        try:
-            (dest / "description.txt").write_text(
-                (description or "").strip() + chr(10), encoding="utf-8",
-            )
-        except OSError as exc:
-            return (
-                f"Attempt folder created at {dest.resolve()} but "
-                f"description.txt could not be written: {exc}"
-            )
-
-    desc_text = (description or "").strip()
-
-    return (
-        f"Created attempt {attempt_n} at {dest.resolve()}."
-        + (f"  description.txt written ({len(desc_text)} chars)."
-           if desc_text else "")
-    )
