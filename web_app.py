@@ -4273,6 +4273,27 @@ def api_model_windows_get() -> dict:
     return state
 
 
+@app.get("/api/agent-roles")
+def api_agent_roles_get() -> dict:
+    """The agent role map, read-only: which agent holds each seven-agent role
+    in topologies 5 and 3.  Served from agents/shared/agent_roles.py -- the
+    same table database_search and the Database Handler use -- so the panel
+    cannot disagree with what runs.  Customizing it is TODO F102."""
+    _require_auth()
+    importlib.reload(workflow_settings)
+    from agents.shared import agent_roles
+    return {
+        "rows": [
+            {"role": r["role"], "name": agent_roles.DISPLAY[r["role"]],
+             "abbr": agent_roles.ABBREVIATION.get(r["role"], ""),
+             "holders": {str(t): (agent_roles.DISPLAY[h] if h else None)
+                         for t, h in r["holders"].items()}}
+            for r in agent_roles.role_map_rows()
+        ],
+        "dcic_reads_dcii": agent_roles.dcic_reads_dcii(),
+    }
+
+
 @app.post("/api/model_windows")
 def api_model_windows_save(body: ModelWindowsIn) -> dict:
     """Persist the table.  Locked while a session is active, like every other

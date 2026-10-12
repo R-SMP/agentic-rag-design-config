@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F102**.
+branches (F36 is taken on a sibling branch).  Next free id: **F104**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -116,6 +116,8 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F98` | DONE | Topologies 5 and 3 do not share what they retrieve — the RAG hand-off pointer rules landed in topology 7 only |
 | `F99` | OPEN | A retrieved session's raw conversation is fetched and listed, but never printed and nothing licensed reading it |
 | `F100` | DONE | The shared retrieval fragment told the DCIC and Design Engineer to look at images they hold no tool to open |
+| `F102` | OPEN | Make the agent role map user-customizable in Workflow Settings |
+| `F103` | OPEN | Retire `RAG_DCIC_READS_DCII` once F102 lands |
 
 ---
 
@@ -4542,3 +4544,41 @@ topology rather than looping in-place.  Copy that shape.
 **Related.**  W45 (the bug class), and the RAG off/on loop already in
 this file — the same "both states ship, so check both" reasoning applies
 one dimension over.
+
+---
+
+### F102. Make the agent role map user-customizable in Workflow Settings
+
+**Status.** OPEN — planned (owner, 2026-10-12).
+
+**What exists.**  `agents/shared/agent_roles.py` holds the table that says
+which agent holds each seven-agent role in topologies 5 and 3.  It drives
+three things: who may read which past answers in `database_search` (text,
+multimodal and parameter search), the one-line `<agent_roles>` legend at the
+top of a search response, and the downward mapping of the Questions-for-
+Saved-Sessions "Agent from" column at save time.  Workflow Settings shows it
+read-only ("Agent roles across topologies", served by `GET /api/agent-roles`).
+
+**What to build.**  Let the user edit the table in that panel: a JSON file
+beside the other workflow settings (seeded from today's table), a POST
+endpoint with validation (every topology-5/3 holder must be in that
+topology's `ROSTER`; the hub must hold the Orchestrator's role), and the
+session-active lock every settings write has.  `agent_roles.holder()` reads
+the file instead of `_HOLDER_BY_TOPOLOGY`.  `smoke_test_agent_roles.py`
+pins today's table — make it test the default file.
+
+**Related.**  F103.
+
+---
+
+### F103. Retire `RAG_DCIC_READS_DCII` once F102 lands
+
+**Status.** OPEN — blocked on F102 (owner, 2026-10-12).
+
+The flag (`workflow_settings/settings.py` §3b, inert outside topology 5)
+switches one cell of the role map: whether the topology-5 DC Input Creator
+holds the DC Input Inspector's role.  Once the map is editable that cell is
+just an entry in it.  Remove the flag, its `_INERT_UNDER_TOPOLOGY` entry in
+`workflow_settings/editor.py`, `agent_roles.dcic_reads_dcii()` and the
+special case in `agent_roles.holder()`, and the "(setting 3b …)" hint in the
+Workflow Settings panel (`loadAgentRoles` in `web/app.js`).

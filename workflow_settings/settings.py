@@ -105,6 +105,27 @@ RAG_ENABLED: bool = False
 
 
 # ===========================================================
+# 3b. 5-agent DC Input Creator takes the DC Input Inspector's role
+# ===========================================================
+# TOPOLOGY 5 ONLY.  The 5-agent system has no DC Input Inspector:
+# its DC Input Creator validates its own parameters.  This decides
+# whether the DC Input Creator also holds the Inspector's role in
+# the agent role map (shown under "Agent roles across topologies"):
+#
+#   True   it reads past DC Input Inspector answers in database_search,
+#          and question-table rows whose "Agent from" is the DC Input
+#          Inspector are asked to it at save time
+#   False  past DC Input Inspector answers stay unreadable in topology
+#          5, and those question rows are skipped at save time
+#
+# To be retired once the role map is user-customizable (TODO F102 /
+# F103).  Takes effect on the next session.
+#
+# Valid values: True, False
+RAG_DCIC_READS_DCII: bool = True
+
+
+# ===========================================================
 # 4.  DC Input Inspector
 # ===========================================================
 # Whether to run the DC Input Inspector between the DC Input

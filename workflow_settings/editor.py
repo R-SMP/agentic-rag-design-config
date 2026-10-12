@@ -124,6 +124,12 @@ _FENCE_RE = re.compile(r"^#+\s*=+\s*$")
 #
 # name -> (topologies where the setting is INERT, why)
 _INERT_UNDER_TOPOLOGY: dict[str, tuple[frozenset, str]] = {
+    "RAG_DCIC_READS_DCII": (
+        frozenset({7, 3}),
+        "Only meaningful in the 5-agent topology.  Topology 7 has its own DC "
+        "Input Inspector, and in topology 3 the Design Engineer always holds "
+        "that role (agents/shared/agent_roles.py).",
+    ),
     "DC_INSPECTOR_ENABLED": (
         frozenset({5, 3}),
         "Only meaningful in the 7-agent topology.  The DC Input Inspector "

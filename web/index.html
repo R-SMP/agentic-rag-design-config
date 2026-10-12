@@ -706,6 +706,18 @@
               <code>workflow_settings/dh_schedule.json</code>
               (gitignored).
             </p>
+            <p class="questions-note">
+              <strong>Agent from / To across topologies.</strong>  Write rows
+              with the 7-agent agents.  When a session runs with fewer agents,
+              each row is asked to the agent that holds that role (see
+              <em>Agent roles across topologies</em> in Workflow Settings) &mdash;
+              e.g. an &ldquo;Agent from: DCOI&rdquo; row is answered by the
+              Requirements Analyst in the 3-agent system.  A row whose Agent from
+              is the Design Engineer or Requirements Analyst only applies to
+              3-agent sessions and is skipped otherwise.  The <em>To</em> column
+              is stored as written; the same table decides who can retrieve the
+              answer later.
+            </p>
           </div>
 
           <div class="questions-bar-top">
@@ -917,6 +929,46 @@
             <button id="settings-reload" class="ghost" type="button">Reload</button>
             <span id="settings-status" class="settings-status" role="status"></span>
           </div>
+
+          <!-- Agent roles across topologies: read-only view of
+               agents/shared/agent_roles.py (served by /api/agent-roles), the
+               table behind database_search's role mapping and the Database
+               Handler's question mapping.  Customization is TODO F102. -->
+          <section class="rc-panel" id="agent-roles">
+            <div class="rc-head">
+              <h2>Agent roles across topologies <span class="ar-tag">read only</span></h2>
+              <p class="rc-note">
+                Which agent holds each role of the 7-agent system in the reduced
+                topologies.  Sessions saved under any topology stay retrievable
+                under the others through this table.
+              </p>
+            </div>
+            <div class="mw-table-wrap ar-table-wrap">
+              <table class="mw-table ar-table">
+                <thead>
+                  <tr><th>7-agent role</th><th>5-agent system</th><th>3-agent system</th></tr>
+                </thead>
+                <tbody id="ar-rows"></tbody>
+              </table>
+            </div>
+            <ul class="rc-note ar-notes">
+              <li><strong>Retrieval works both ways.</strong>  An agent can read every
+                past answer addressed to a role it holds here: a 3-agent Design
+                Engineer reads answers addressed to the DCIC, DCII and Tool Caller,
+                and a 7-agent DCIC reads answers addressed to a Design Engineer.
+                When a search result names an agent this system does not have, the
+                response opens with one line telling the agent which agent here
+                holds that role.</li>
+              <li><strong>Questions for Saved Sessions map downward only.</strong>
+                Write the tables in 7-agent names.  A row whose
+                <em>Agent from</em> is, say, the DCOI is asked to the Requirements
+                Analyst when a 3-agent session is saved; a row naming the Design
+                Engineer or Requirements Analyst is skipped when a 7- or 5-agent
+                session is saved.</li>
+              <li>Changes take effect for the <strong>next session</strong>.
+                Customizing this table is planned (TODO F102).</li>
+            </ul>
+          </section>
 
           <!-- Model context windows: the table the Context Pruner uses to
                decide how much history each agent may accumulate.  Rows are

@@ -68,44 +68,26 @@ logger = logging.getLogger("propeller_agent")
 # ~0.134, two unrelated designs ~0.440, furthest pair 0.851.
 _CLOSENESS_DP = 3
 
-# ----- Topology-3 role equivalence --------------------------
+# ----- Role equivalence across topologies --------------------
 #
-# chunks.agents_to names SEVEN-agent roles.  Topology 3 merges those
-# roles into two agents, so a literal `design_engineer = ANY(agents_to)`
-# matches almost nothing: measured on the live corpus, the DE and the
-# RA are each named in 88 of 1464 chunks and in ZERO of the 342
-# attempt-level chunks.  Gating a parameter ranking on the literal
-# name would hand both of them a permanently empty result.
+# chunks.agents_to names the agents of whichever topology saved the
+# session, mostly SEVEN-agent roles.  Gating the ranking on the caller's
+# literal key would hand a topology-3 Design Engineer or Requirements
+# Analyst a permanently empty result (measured: each named in 0 of the 342
+# attempt-level chunks).  The equivalence now lives in
+# agents/shared/agent_roles.py, shared with the text search and the
+# question table; this module used to keep a topology-3-only copy of it.
 #
-# The merge is already recorded in prose -- agents/shared/topology.py:
-# "DC Input Creator + Tool Caller become the Design Engineer; User
-# Input Inspector + DC Output Inspector become the Requirements
-# Analyst" -- and prompts.PROMPT_MD_RUNTIME_SLOTS gives each merged
-# agent "the UNION of its two parents' slots".  This is the same union,
-# applied to the ACL instead of to prompt slots.  The DE also absorbs
-# the DC Input Inspector, which exists in topology 7 only.
-#
-# Measured consequence: attempts invisible to the DE goes 95/95 -> 0/95,
-# and to the RA 95/95 -> 0/95.  Chunk reach goes 88 -> 975 for the DE
-# and 88 -> 863 for the RA.  The DE's 975 is EXACTLY what the DC Input
-# Inspector alone already sees, so the expansion grants no topology-3
-# agent sight of anything no topology-7 agent already holds.  It is a
-# re-labelling, not an escalation -- which is the whole argument for
-# doing it here rather than widening agents_to at write time.
-_ROLE_EQUIVALENCE: dict[str, tuple[str, ...]] = {
-    "design_engineer":      ("dc_input_creator", "dc_input_inspector",
-                             "tool_caller"),
-    "requirements_analyst": ("user_input_inspector", "dc_output_inspector"),
-}
+# Measured on the topology-3 copy: attempts invisible to the DE went
+# 95/95 -> 0/95, and the DE's chunk reach (975) was EXACTLY what the DC
+# Input Inspector alone already saw -- a re-labelling, not an escalation.
 
 
 def acl_identities(caller_agent: str) -> list[str]:
-    """Every seven-agent role *caller_agent* inherits, itself included.
-
-    An agent with no merge returns just its own slug, so topologies 7
-    and 5 are untouched by construction.
-    """
-    return sorted({caller_agent, *_ROLE_EQUIVALENCE.get(caller_agent, ())})
+    """Every ``agents_to`` key *caller_agent* may read in the running
+    topology, itself included (``agent_roles.readable_keys``)."""
+    from agents.shared import agent_roles
+    return agent_roles.readable_keys(caller_agent)
 
 
 class ParameterQueryError(ValueError):

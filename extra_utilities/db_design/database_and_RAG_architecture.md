@@ -541,9 +541,22 @@ listing which agents may see it. The ACL is applied **both** as a
 pre-filter to the ANN search and as a post-filter on the result
 display.
 
-- **Pre-filter at search time:** `WHERE $caller_agent = ANY(agents_to)` — the
-  ranking never considers rows the caller cannot see. The GIN index
-  on `agents_to` makes this cheap.
+- **Pre-filter at search time:** `WHERE agents_to && $acl` — the ranking
+  never considers rows the caller cannot see. The GIN index on `agents_to`
+  makes this cheap.  `$acl` is the caller's key **plus every key whose role
+  it holds in the running topology** (`agents/shared/agent_roles.py`,
+  since 2026-10-12): a 3-agent Design Engineer reads what was addressed to
+  the DC Input Creator / Inspector and Tool Caller, a 7-agent DC Input
+  Creator reads what was addressed to a Design Engineer, and the 5/3-agent
+  Planner reads what was addressed to the Orchestrator.  The parameter
+  search (`param_rank.acl_identities`) uses the same table.
+- **Legend:** when an emitted result names an agent the running topology
+  does not build (as author, in a question name or in the answer text), the
+  response carries ONE `<agent_roles>` line right after `<search_meta>`
+  saying which agent here holds that role.  Authors are shown by display
+  name.  The same table maps the Questions-for-Saved-Sessions "Agent from"
+  column DOWNWARD at save time (`dh_schedule.read_for_dh`).  Read-only in
+  Workflow Settings; customization is TODO F102.
 - **Post-filter at display time:** the retrieve-then-expand pass also
   respects the ACL when fetching all Q/A pairs in the returned
   sessions/attempts. An agent never sees a sibling Q/A pair it

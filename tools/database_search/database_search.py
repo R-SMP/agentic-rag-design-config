@@ -15,7 +15,13 @@ Public surface
 
 Behaviour locked by the architecture doc
 ----------------------------------------
-* §4.2 — ``$caller_agent = ANY(agents_to)`` pre-filter on every query.
+* §4.2 — ``agents_to && $acl`` pre-filter on every query, where ``$acl`` is
+  every key whose role the caller holds in the running topology
+  (``agent_roles.readable_keys``): a 3-agent Design Engineer reads what was
+  addressed to the DC Input Creator / Inspector and Tool Caller, and a
+  7-agent DC Input Creator reads what was addressed to a Design Engineer.
+* An ``<agent_roles>`` legend follows ``<search_meta>`` -- once, and only
+  when a result names an agent the running topology does not build.
 * §4.3 — ``N`` counts ANCHORS (distinct sessions or attempts), not
   chunks.  Dedup via ``ROW_NUMBER() PARTITION BY anchor`` over a
   ``DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER × N`` candidate pool.
@@ -50,6 +56,7 @@ import tiktoken
 from psycopg.types.json import Json
 from langchain_core.tools import tool
 
+from agents.shared import agent_roles
 from agents.shared import postgres_pool
 from agents.shared import rag_queries_link
 from agents.shared.agent_activity import generic_tool
@@ -306,7 +313,7 @@ def _run_candidate_query(
             JOIN sessions s         ON s.session_id = c.session_id
             LEFT JOIN dc_attempts a ON a.attempt_id = c.attempt_id
             WHERE {_invariant_8_where_fragment()}
-              AND %(caller_agent)s = ANY(c.agents_to)
+              AND c.agents_to && %(acl)s
               AND c.embedding_model = %(embedding_model)s
               {attempt_clause}
               {extra_where}
@@ -330,6 +337,7 @@ def _run_candidate_query(
     params: dict[str, Any] = {
         "query_vec":           query_vec,
         "caller_agent":        caller_agent,
+        "acl":                 agent_roles.readable_keys(caller_agent),
         "embedding_model":     embedding_model,
         "candidate_pool_size": candidate_pool_size,
         "n":                   n,
@@ -423,12 +431,13 @@ def _run_expansion_query(
         FROM {table} c
         LEFT JOIN dc_attempts a ON a.attempt_id = c.attempt_id
         WHERE {_invariant_8_where_fragment()}
-          AND %(caller_agent)s = ANY(c.agents_to)
+          AND c.agents_to && %(acl)s
           AND c.embedding_model = %(embedding_model)s
           AND {anchor_filter}
     """
     params: dict[str, Any] = {
         "caller_agent":    caller_agent,
+        "acl":             agent_roles.readable_keys(caller_agent),
         "embedding_model": embedding_model,
         "anchor_keys":     anchor_keys,
     }
@@ -495,12 +504,13 @@ def _run_mismatch_count_query(
         JOIN sessions s         ON s.session_id = c.session_id
         LEFT JOIN dc_attempts a ON a.attempt_id = c.attempt_id
         WHERE {_invariant_8_where_fragment()}
-          AND %(caller_agent)s = ANY(c.agents_to)
+          AND c.agents_to && %(acl)s
           AND c.embedding_model <> %(embedding_model)s
           {extra_where};
     """
     params: dict[str, Any] = {
         "caller_agent":    caller_agent,
+        "acl":             agent_roles.readable_keys(caller_agent),
         "embedding_model": embedding_model,
         **metafilter_params,
     }
@@ -833,12 +843,20 @@ def _similarity_score(dist: float) -> float:
 
 # ----- Per-<qa> emission ------------------------------------
 
+def _author(agent_from: str) -> str:
+    """The author as the agent reads it: a display name ("User Input
+    Inspector"), so it matches the names in question titles, answers and
+    the ``<agent_roles>`` legend.  ``User`` and unknown keys pass through."""
+    return agent_roles.DISPLAY.get(agent_from, agent_from)
+
+
+
 def _emit_qa(chunk: ExpandedChunk, *, best_match: bool) -> str:
     """Emit one ``<qa>...</qa>`` block.  Text fields escaped via
     ``saxutils.escape``; attribute values via ``saxutils.quoteattr``.
     """
     attrs = (
-        f"agent={quoteattr(chunk.agent_from)} "
+        f"agent={quoteattr(_author(chunk.agent_from))} "
         f"field={quoteattr(chunk.field)} "
         f"type={quoteattr(chunk.field_type)}"
     )
@@ -871,7 +889,7 @@ def _emit_image_ref(chunk: ExpandedChunk, *, kind: str, best_match: bool) -> str
         f"kind={quoteattr(kind)} "
         f"r2_key={quoteattr(chunk.body)} "
         f"field={quoteattr(chunk.field)} "
-        f"agent={quoteattr(chunk.agent_from)}"
+        f"agent={quoteattr(_author(chunk.agent_from))}"
     )
     if best_match:
         attrs += ' best_match="true"'
@@ -1118,6 +1136,17 @@ def _build_response_full(
     """Assemble the full response string from its parts.  Pure;
     no token counting — the trim loop calls this then counts."""
     parts = [_emit_search_meta(meta)]
+    # One legend for the whole response, never one per session: built from
+    # every chunk that is about to be emitted (author, question name, text).
+    roles_line = agent_roles.legend(
+        x
+        for a in anchors
+        for c in chunks_by_anchor.get(
+            a.attempt_id if attempt_specific else a.session_id, [])
+        for x in (c.agent_from, c.field, c.question, c.body, c.embedding_input)
+    )
+    if roles_line:
+        parts.append(roles_line)
     if not anchors:
         parts.append(_emit_no_results(metafilters_applied,
                                       search_kind=meta.search_kind))

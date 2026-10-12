@@ -1368,6 +1368,7 @@ function switchView(name) {
     if (!settingsLoaded) loadSettings();
     loadLrRouting();
     loadRenderCompression();
+    loadAgentRoles();
     loadModelWindows();
     // Pick up the latest lock state when the user opens the view;
     // otherwise a session started in another tab/turn could leave the
@@ -1860,6 +1861,8 @@ async function saveSettings() {
     // without needing the operator to refresh the page.
     await loadDbAccessState();
     paintDbaBanner();
+    // Setting 3b (RAG_DCIC_READS_DCII) changes one cell of the role map.
+    loadAgentRoles();
   } catch (e) {
     setSettingsStatus("Network error: " + e, "err");
   } finally {
@@ -2071,6 +2074,42 @@ function mwFormatThreshold(window_) {
   const bound =
     t === mwState.max ? "cap" : (t === mwState.min ? "floor" : "fraction");
   return t.toLocaleString() + "  (" + bound + ")";
+}
+
+// Agent roles across topologies -- read-only view of /api/agent-roles.
+// Text nodes only (no innerHTML), so nothing served can become markup.
+async function loadAgentRoles() {
+  const body = $("ar-rows");
+  if (!body) return;
+  try {
+    const res = await fetch("/api/agent-roles");
+    if (!res.ok) return;
+    const d = await res.json();
+    body.textContent = "";
+    for (const r of d.rows || []) {
+      const tr = document.createElement("tr");
+      const role = document.createElement("td");
+      role.textContent = r.abbr ? r.name + " (" + r.abbr + ")" : r.name;
+      tr.appendChild(role);
+      for (const t of ["5", "3"]) {
+        const td = document.createElement("td");
+        const h = (r.holders || {})[t];
+        td.textContent = h || "none";
+        td.className = !h ? "ar-none" : (h === r.name ? "ar-same" : "");
+        if (t === "5" && r.role === "dc_input_inspector") {
+          const note = document.createElement("span");
+          note.className = "ar-hint";
+          note.textContent = d.dcic_reads_dcii
+            ? " (setting 3b is on)" : " (setting 3b is off)";
+          td.appendChild(note);
+        }
+        tr.appendChild(td);
+      }
+      body.appendChild(tr);
+    }
+  } catch (e) {
+    /* read-only panel: leave it empty rather than block the view */
+  }
 }
 
 async function loadModelWindows() {

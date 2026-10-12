@@ -480,11 +480,39 @@ def read_for_dh() -> list[dict]:
             n_shifted,
         )
 
+    # "Agent from" maps DOWNWARD only (agents/shared/agent_roles.py): a
+    # seven-agent role this topology merged away is asked to the agent that
+    # holds it (a DC Output Inspector row runs as the Requirements Analyst
+    # under topology 3).  A row nobody here can answer -- a Design Engineer /
+    # Requirements Analyst row under topology 7 or 5, a DC Input Inspector
+    # row under topology 5 with RAG_DCIC_READS_DCII off -- is skipped with
+    # its sub-rows, instead of being written to the database as an ERROR row.
+    # Imported here, not at module level: agents/__init__ pulls in the whole
+    # agent stack, which imports this module.
+    from agents.shared import agent_roles
+    topo = active_topology()
+    skipped_ids: set[str] = set()
     out: list[dict] = []
     for q in rows:
+        answerer = agent_roles.question_answerer(q["from_agent"], topo)
+        if answerer is None or q["parent_id"] in skipped_ids:
+            skipped_ids.add(q["id"])
+            logger.info(
+                "[DH-SCHEDULE]  row %r (Agent from: %s) skipped: no agent in "
+                "the %d-agent system holds that role%s.",
+                q["name"], q["from_agent"], topo,
+                " (its parent row was skipped)" if answerer is not None else "",
+            )
+            continue
+        if answerer != q["from_agent"]:
+            logger.info(
+                "[DH-SCHEDULE]  row %r: Agent from %s is asked to %s (the "
+                "agent holding that role in the %d-agent system).",
+                q["name"], q["from_agent"], answerer, topo,
+            )
         out.append({
             "id":          q["id"],
-            "agent_key":   q["from_agent"],
+            "agent_key":   answerer,
             "field":       q["name"],
             "description": q["description"],
             "type":        q["type"],

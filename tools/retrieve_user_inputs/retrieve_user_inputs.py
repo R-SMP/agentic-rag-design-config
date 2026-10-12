@@ -311,9 +311,11 @@ def _build_session_block(
         parts.append("    " + _wrap_cdata(extraction_text))
         parts.append("  </extracted_inputs>")
     else:
-        # Sessions archived before extractions were shipped to R2 have none.
-        # Say so, then fall back to the raw text, so one call is still
-        # useful for the whole pre-existing corpus.
+        # Some sessions have none: those archived before extractions were
+        # shipped to R2, and every session run with the 3-agent system,
+        # which writes no extraction.  Say so neutrally -- for the latter
+        # nothing was lost, and the reading agent need not know why -- then
+        # fall back to the raw text, so one call is still useful.
         # A manual entry never ran the UII, so nothing was LOST.  The
         # archive wording below reads as data loss and sends a reader
         # looking for something that never existed.
@@ -321,7 +323,7 @@ def _build_session_block(
             "  <missing path={} note={}/>".format(
                 _attr(f"{session_id}/user_inputs/extracted_inputs.txt"),
                 _attr("manually-written data point" if manual else
-                      "no extraction was archived for this session; "
+                      "this session has no saved extraction; "
                       "the raw user text is given below instead"),
             )
         )
@@ -760,8 +762,8 @@ def make_retrieve_user_inputs_tool(caller_agent: str):
         to a local folder, and the response lists that folder's contents.
 
         The response prints, per session: the structured extraction of the
-        inputs recorded for that session (or, for a session archived
-        before extractions were kept, the raw user text instead), and
+        inputs recorded for that session (or, for a session with no saved
+        extraction, the raw user text instead), and
         every reference image as an absolute local path — with its
         description when one was written, and the path alone when none
         was.
