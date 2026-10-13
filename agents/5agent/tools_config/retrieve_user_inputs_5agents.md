@@ -1,12 +1,11 @@
 ### Retrieving past saved content
 
-- **Don't over-call.**  Never retrieve content the live session already
-  holds, and never loop — make ONE call with all the relevant ids.
-- **Reading a partial response.**  A row missing from Postgres renders
-  ``status="not_found"``; a failed R2 fetch leaves a
-  ``<missing path="..."/>`` marker with the rest of the response intact;
-  and when the response would exceed the token cap, whole items drop from
-  the END of your list under a ``<truncated omitted_.../>`` footer.<<CAN_SEE>>
+- **Don't over-call.**  Never re-retrieve what is already in your context,
+  and never loop — make ONE call with all the relevant ids; an id a hand-off
+  names is not content you hold.
+- **A partial response is still a response.**  If something comes back
+  marked missing, not found or truncated, use what arrived, note what did
+  not, and do not re-call.<<CAN_SEE>>
 - **Retrieving is not looking.**  Retrieval DOWNLOADS to a local folder and
   lists what is in it; no image reaches your context until you pass a listed
   path to ``view_images``.  Re-retrieving something another agent already
@@ -25,9 +24,9 @@
   whether a parameter set produced the expected shape — you cannot confirm the
   contexts match.  Keep the PRINCIPLE, drop the literal values, and say in
   your hand-off that the point needs a look, with the path.<</CANNOT_SEE>><<HAS_USER_INPUTS>>
-- **The user's own words are on disk, not in the reply.**
-  A retrieval prints each past session's structured extraction, never the
-  raw conversation.  The latter is in the ``<folder path=...>`` it names:
-  pass the folder to ``read_user_inputs``.  Trust the extraction and do
-  this only when it is genuinely not enough — a phrase you need verbatim,
-  or wording the extraction leaves ambiguous.<</HAS_USER_INPUTS>>
+- **The user's own words are on disk, not in the reply.**  A retrieval
+  prints each past session's structured extraction — or, when none was
+  archived, says so in a ``note`` and gives the raw text instead.  The
+  conversation is in the ``<folder path=...>`` it names: pass that folder to
+  ``read_user_inputs`` only when the extraction is genuinely not enough — a
+  phrase you need verbatim, or wording it leaves ambiguous.<</HAS_USER_INPUTS>>

@@ -82,7 +82,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F44` | NOT STARTED | Check whether the Context Pruner and Database Handler have / need blade-sections-tool info |
 | `F45` | PARTIALLY ADDRESSED | Refine blade-section parameters in place (no new attempt per tweak) |
 | `F46` | OPEN | Cross-schema-version session search — UNBLOCKED 2026-09-15: T1 shipped |
-| `F101` | DEFERRED | `smoke_test_prompt_format.py` brace-checks topology 7 only — do this BEFORE running topology 3 or 5 again |
+| `F101` | DONE | `smoke_test_prompt_format.py` brace-checks topology 7 only — do this BEFORE running topology 3 or 5 again |
 | `F52` | NOT STARTED | Sessions Queue overnight runner: SOLID token / rate / context-limit resilience |
 | `F53` | PARTLY DONE | Prompt caching: port conversation-history caching to the 3-agent system |
 | `F54` | OPEN | Verify save-phase prompt caching on a REAL session save |
@@ -4519,7 +4519,18 @@ teach one behaviour rather than two.
 
 ### F101. `smoke_test_prompt_format.py` brace-checks topology 7 only
 
-**Status.** DEFERRED 2026-09-16 — topologies 3 and 5 are not in use
+**Status.** DONE 2026-10-13.  The test now spawns one subprocess per topology
+(7, 5, 3), checks every agent in `agent_roles.ROSTER[N]`, and runs three
+states: RAG off, RAG on as configured, and RAG on with every database tool
+forced on (a fragment for a tool the current profile withholds is one toggle
+from shipping).  54 templates.  Verified by planting a `{` in
+`agents/3agent/tools_config/retrieve_attempt_3agents.md`: it failed in the
+topology-3 Requirements Analyst (RAG on) and Planner (only in the all-tools
+state), then passed again once removed.
+
+Original entry follows.
+
+**Status when filed.** DEFERRED 2026-09-16 — topologies 3 and 5 are not in use
 (owner).  **Do this before running either of them again.**
 
 **Where.** `extra_utilities/tests/smoke_test_prompt_format.py`, the `TEMPLATES`

@@ -229,8 +229,8 @@ When the user asks the CHAIN to use past experience ("the agents MUST
 look at the database", "analyse 3 previous sketches"), do NOT run the
 search yourself and pack the results into your summary.  The RA /
 DE have these same tools and
-will consult the database from their own context, with their own visual
-capabilities on past sketches / renders.  Pre-cooking wastes tokens (the
+will consult the database from their own context — the RA with its own
+visual capabilities on past sketches / renders.  Pre-cooking wastes tokens (the
 chain re-runs it anyway) and biases the chain toward your conclusion.  Forward the user's mandate verbatim (per "Preserve the force
 of user directives" above) and let them do the work.
 <</HAS_DBA>>

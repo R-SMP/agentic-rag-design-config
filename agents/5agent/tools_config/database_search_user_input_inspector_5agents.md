@@ -1,9 +1,8 @@
-* Especially useful when the user's inputs need interpretation — above all
-  when interpreting images (photos, sketches, renders) — and when the
+* Especially useful when the user's inputs need interpretation, and when the
   request is complex, carries qualitative / functional requirements
-  (*make it light*, *fly high*), or hit a problem before.
-* The Planner's instructions (however relayed) still take priority over any
-  prior experience the database surfaces.
+  (*make it light*, *fly high*), or has hit a problem before.
+The Planner's instructions (however relayed) still take priority over any
+prior experience the database surfaces.
 
 **HARD — call ``database_search`` BEFORE ``write_extraction`` when:**
   * the user or an upstream agent required / mandated using past experience
@@ -22,11 +21,9 @@ When it applies:
      **MANDATORY on at least one in-scope session when the user explicitly
      demanded past-image / past-experience use** (skipping it then is a HARD
      failure); a strong default otherwise when you are extracting from a
-     sketch, since past sketches are the best calibration and text alone is
-     usually too thin to anchor a numeric extraction.  It downloads to a
-     local folder and lists it; open any listed path with ``view_images`` —
-     that call, not the retrieval, is what costs vision tokens, so open only
-     the most useful one or two.
+     sketch, since text alone is too thin to anchor a numeric extraction.
+     Open only the most useful one or two with ``view_images`` — the
+     viewing, not the retrieval, is what costs vision tokens.
   3. In your hand-off, name the retrieved inputs that actually HELPED and
      what they changed in your extraction — not your query, and not the ones
      that led nowhere.  If you searched and nothing helped, say so in a few

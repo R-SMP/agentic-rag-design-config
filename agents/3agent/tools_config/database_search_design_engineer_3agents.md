@@ -1,32 +1,31 @@
-* The Planner's instructions (however relayed) still take priority over any
-  prior experience the database surfaces.
+The Planner's instructions (however relayed) still take priority over any
+prior experience the database surfaces.
 
 **Retrieve past attempts to calibrate your parameter choices.**  When
 ``database_search``'s ``<available_attempts>`` lists attempts from a similar
 design (same family, similar qualitative intent, comparable constraints),
 strongly prefer
-``retrieve_attempt(past_attempts_global_ids=[<global_id>, ...])``
-to inspect their ``parameters.json`` values (printed in full in the reply)
+``retrieve_attempt(past_attempts_global_ids=[<global_id>, ...])`` to inspect
+their ``parameters.json`` values (printed in full in the reply)
 — past parameter sets encode which ranges produced viable vs degenerate
 geometry for designs like yours.  Fetch only the most useful ones.
 
-* The database is useful when dealing with exceptions or routing problems.
-* The database is useful when the request is complex or long.
-* The Planner's instructions (delivered directly or indirectly by another agent) still take priority over any prior experience the database surfaces.
+**Words or NUMBERS — choose the search that fits the question.**  A text
+``query`` for how a request like this was READ and what was tried; a
+``parameters`` search (with ``query=""``) for what has already been BUILT
+near the values you are about to write, and whether that design was after
+the same thing you are — a ``parameters`` hit gives you that attempt's
+ranking numbers and its archived Q+A, not its stored values.  Once per
+question is not once per session: a revision you have been asked to apply,
+an attempt that was rejected, an edit whose consequence you cannot predict,
+or a constraint that surfaced only now is a new question.
 
-In these cases the database search should almost always be used.  Evaluate when and how the search should be done.
+**If you reuse past values.**  Name the attempt or session they came from
+and say in one line WHY that design matches this one — same nature, same
+job, comparable constraints — and test that against the current request
+before you write.  A numerically close attempt built for a different purpose
+is not a match, and its values are not licensed by it.
 
-**Searching by NUMBERS instead of words.**  ``database_search`` takes
-either a text ``query`` OR a ``parameters`` dict — one per call, never
-both.  Pass ``parameters`` (with ``query=""``) to find the saved
-attempts whose stored geometry is CLOSEST to values you name — say
-bladeCount 5 together with impellerRadius 70.  Any subset of the design
-parameters works; the ones you omit are ignored, not treated as zero.
-
-Reach for it when your question is about VALUES — "has anything near
-this been built?", "what came of this blade count at this radius?" —
-and for the text query when it is about REASONING.  Read BOTH numbers
-on each hit: ``closeness`` (1.000 identical, ~0.87 the same design
-re-iterated, ~0.56 unrelated) and ``matched_keys``, which says how many
-of your parameters that attempt actually carried.  A high closeness
-over one key is much weaker evidence than the same number over ten.
+Put the full image paths of anything you fetched in your hand-off, joining the
+folder to its ``<file name=...>`` entries: the agents that look at images are
+downstream of you.
