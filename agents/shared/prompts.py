@@ -256,6 +256,11 @@ _BSV_OFF_RE = re.compile(r"<<BSV_OFF>>(.*?)<</BSV_OFF>>", re.DOTALL)
 # between runs inside one process.  See ``apply_mesh_checks_filter``.
 _MESH_ON_RE = re.compile(r"<<MESH_ON>>(.*?)<</MESH_ON>>", re.DOTALL)
 _MESH_OFF_RE = re.compile(r"<<MESH_OFF>>(.*?)<</MESH_OFF>>", re.DOTALL)
+# A <<MESH_ON>> region that is a whole line on its own (e.g. an inspector
+# role-list item spliced from tools_config) goes together with its line
+# when mesh checks are off, so the list keeps no empty line.
+_MESH_ON_LINE_RE = re.compile(
+    r"^<<MESH_ON>>(?:(?!<</MESH_ON>>)[^\n])*<</MESH_ON>>\n", re.MULTILINE)
 # Global UII-parameter-list filter, gated by ``UII_PARAMETER_LIST_ENABLED``.
 # The markers appear only in the UII's own prompt and its scoped
 # ``parameters_user_input_inspector.md``, so a global filter is safe: no other
@@ -377,6 +382,7 @@ def apply_mesh_checks_filter(text: str) -> str:
         text = _MESH_OFF_RE.sub("", text)
         text = _MESH_ON_RE.sub(lambda m: m.group(1), text)
     else:
+        text = _MESH_ON_LINE_RE.sub("", text)
         text = _MESH_ON_RE.sub("", text)
         text = _MESH_OFF_RE.sub(lambda m: m.group(1), text)
     return text
@@ -1009,7 +1015,10 @@ PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
 # these lengthened past _INLINE_WRAP_WIDTH is re-wrapped at word
 # boundaries.  Lines without one are never touched.
 #
-# A new phrase slot is listed here as well as in _build_slots.
+# A new phrase slot is listed here as well as in _build_slots.  The output
+# vocabulary ($output_images = "renders", ...) is NOT: a vocabulary slot puts
+# the author's own word back in its own place, so it never makes a line
+# longer than the author wrote it.
 # ---------------------------------------------------------------------------
 
 INLINE_FRAGMENT_SLOTS: frozenset[str] = frozenset({
@@ -1059,19 +1068,6 @@ INLINE_FRAGMENT_SLOTS: frozenset[str] = frozenset({
     "dh_parameter_name_example",
     "dh_numeric_fact_example",
     "dh_structural_marker_examples",
-    "output_images_label",
-    "output_model_label",
-    "output_images_long",
-    "output_image_files",
-    "output_reactions",
-    "output_reaction",
-    "output_action_noun",
-    "output_produced",
-    "output_image_caps",
-    "output_action",
-    "output_images",
-    "output_image",
-    "output_model",
 })
 _INLINE_WRAP_WIDTH = 80
 # Invisible delimiters around an inline slot's text, so the lines it lands

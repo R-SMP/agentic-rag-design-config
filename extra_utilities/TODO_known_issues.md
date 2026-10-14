@@ -123,7 +123,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F106` | OPEN | DC / tool wording left in Python-side prompt text |
 | `F107` | OPEN | `measure_prompts.py` replicates a slot map that no longer matches |
 | `F108` | OPEN | Overlapping fragments to merge in the single DC interface |
-| `F109` | OPEN | Mesh checks OFF leaves an empty line in the inspector's role list |
+| `F109` | DONE | Mesh checks OFF leaves an empty line in the inspector's role list |
 
 ---
 
@@ -4682,12 +4682,3 @@ same examples in different agents (`extraction_only_examples` /
 `soft_target_marker_example`).  Fold them into the planned
 easy-to-modify interface.
 
----
-
-### F109. Mesh checks OFF leaves an empty line in the inspector's role list
-
-**Status.** OPEN — cosmetic (2026-10-13).
-
-`$mesh_check_role_item` sits on its own line in the DC Output Inspector and
-Requirements Analyst role lists, so with `MESH_CHECKS` off the list shows an
-empty line where item 2 (topology 3: item 3) was.  Whitespace only.

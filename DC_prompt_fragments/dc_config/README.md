@@ -56,7 +56,8 @@ is wired up.
    use it).  The slot name is the file stem, `$X`.
 2. Register it in `agents/shared/prompts.py`: `_build_slots()` and
    `FRAGMENT_TO_SLOT`; a one-line phrase used inside a sentence also goes
-   in `INLINE_FRAGMENT_SLOTS`.
+   in `INLINE_FRAGMENT_SLOTS` (a vocabulary word that only puts the author's
+   own word back does not).
 3. Reference it as `$X` in the generic template or fragment that needs it
    (routing fragments are substituted too since 2026-10).
 4. Add it to the table below (or to the one in `tools_config/README.md`).

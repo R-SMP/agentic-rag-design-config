@@ -1749,3 +1749,14 @@ later if the API surface is ever worth removing outright.
 archived, so the item stays visible in the live tracker. Same subject as the
 topology-selector `O9` obstacle, now folded into
 `extra_utilities/docs/topology_shared_touchpoints.md` §G.
+
+---
+
+### F109. Mesh checks OFF leaves an empty line in the inspector's role list
+
+**Status.** DONE — fixed on `MAS-generalized-v2` by the whole-line `<<MESH_ON>>` rule in
+`apply_mesh_checks_filter` (2026-10-14).
+
+`$mesh_check_role_item` sits on its own line in the DC Output Inspector and
+Requirements Analyst role lists, so with `MESH_CHECKS` off the list shows an
+empty line where item 2 (topology 3: item 3) was.  Whitespace only.
