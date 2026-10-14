@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F110**.
+branches (F36 is taken on a sibling branch).  Next free id: **F111**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -124,6 +124,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F107` | OPEN | `measure_prompts.py` replicates a slot map that no longer matches |
 | `F108` | OPEN | Overlapping fragments to merge in the single DC interface |
 | `F109` | DONE | Mesh checks OFF leaves an empty line in the inspector's role list |
+| `F110` | OPEN | Mesh checks OFF leaves the inspector's role list numbered 1, 3 |
 
 ---
 
@@ -4681,4 +4682,20 @@ same examples in different agents (`extraction_only_examples` /
 `extraction_only_examples_user`, `soft_target_example` /
 `soft_target_marker_example`).  Fold them into the planned
 easy-to-modify interface.
+
+---
+
+### F110. Mesh checks OFF leaves the inspector's role list numbered 1, 3
+
+**Status.** OPEN — found by the Studio draft's prompt viewer (2026-10-14); also on `main`.
+
+F109 removed the empty line, not the gap in the numbering.  In topologies 7
+and 5 the DC Output Inspector's role list (`agents/dc_output_inspector/prompt.md`
+and `agents/5agent/dc_output_inspector/prompt_5agents.md`) has its item 2 in
+`$mesh_check_role_item`, a `<<MESH_ON>>` region, so with `MESH_CHECKS` off
+(the default) the prompt reads "1. The rendered images … 3. Whether the
+design matches …".  Topology 3 is unaffected: the Requirements Analyst's
+mesh item is the last one in its list.  A fix is a prompt edit (renumber, or
+an unnumbered list): show it to the owner first, and compare the `base` and
+`mesh_on` combinations of `extra_utilities/scripts/prompt_matrix.py`.
 
