@@ -1,8 +1,8 @@
 # MAS Blueprint — a multi-agent system you set up for your own design configurator
 
-**Proposal v1 — 2026-10-14.**  Written from a design review of the owner's concept, with
-the owner's decisions recorded in §1.  This is the brief for the coding session that will
-build it; nothing here has been implemented yet.
+**Proposal v1 — 2026-10-14, revision 1 the same day** (§0A: the Studio becomes a hosted web
+app).  Written from a design review of the owner's concept, with the owner's decisions
+recorded in §1.  This is the brief for the coding session that will build it.
 
 MAS = multi-agent system.  DC = design configurator (the parametric model the agents
 drive — today, the propeller).  "Pack" = the one folder that holds everything specific to
@@ -24,18 +24,75 @@ later step (§12), not part of this work.
 
 ---
 
+## 0A. Revision 1 (2026-10-14): a hosted Studio (option A); hosted runs later (option C)
+
+**What changed.**  The Studio is no longer only a local app: it becomes a **web app reached
+through a URL**.  Its landing page has three large buttons:
+
+1. **Use the Propeller Configurator** — opens the ready-made example (the propeller
+   deployment run by the owner; invite code as today).
+2. **Create your own** — opens the Studio, blank or starting from the propeller example.
+3. **Import a setup** — upload a setup file made earlier with the Studio.
+
+The Studio offers two downloads:
+
+* **Setup file** — the configurator alone (the `dc_pack`, §4.1) as one versioned file.
+  It is the Studio's save format: upload it with button 3 to continue editing.
+* **Full package** — engine + pack, ready to push to a private repo and deploy.
+
+**What is in scope now (option A) and what is not.**
+
+| | Now (A) | Later (C) |
+|---|---|---|
+| Edit, preview prompts, static Validate, download setup file / full package | yes | yes |
+| "Import a setup" | opens the setup **in the Studio** (edit, validate, view prompts, re-download) | also **runs** it on the page |
+| Running a configurator on the hosted site | only the propeller example (button 1) | setups whose tools are all **remote** (HTTP endpoint or RhinoCompute URL hosted by the user), with the user's own LLM API key |
+| User Python executed on the hosted server | **never** | **never** (only the engine runs; remote tools are called over HTTP) |
+
+"Open in Codespaces" / "Deploy to Railway" one-click buttons (option B) are **not** planned.
+
+**Why the line is drawn there.**  A setup contains the user's Python tools.  Running them on
+the hosted server would let uploaded code read the server's secrets and reach other users,
+would need every configurator's dependencies installed on one server (the propeller alone
+needs OSMesa, Node, trimesh, pyrender, the Rhino libraries), and would need isolated sessions
+for many users (today `web_app.py` holds one in-process session, single worker — W13, F22).
+Option C avoids executing user code by restricting hosted runs to remote tools; it still
+needs the multi-user work (F22) and a bring-your-own-key policy, so it comes after A.
+
+**Consequences for this brief** (each section below is updated accordingly):
+
+* **One Studio, two modes.**  The same Studio code runs **hosted** (the default) or
+  **locally** (`python -m studio`).  Hosted mode never imports or runs pack tools: Validate is
+  static plus prompt assembly, and "Test tool" is disabled with a note.  Local mode adds "Test
+  tool", the full offline checks with the user's tools, and the git steps.
+* **No secrets in the hosted Studio.**  It only lists which secrets each tool needs; values
+  are entered in the user's own `.env` / deployment variables after download.
+* **Saving.**  No accounts in A: the setup file is the save format, plus an autosave of the
+  draft in the browser's local storage (best effort; the user is told to download).
+* **D8 adapted.**  Hosted: "Validate" + "Download setup file" + "Download full package".  The
+  former "Prepare for GitHub" steps (§9) move into the full package as a local command
+  (`python -m studio prepare`), run on the user's machine.
+* **Setup file format.**  A zip of the pack with `pack.yaml: pack_format` and the engine
+  version that wrote it; never secrets; tool Python files are included and flagged as code.
+  Importing an older format runs the pack migrations (§4.1).  Size and file-type limits on
+  upload; the server stores nothing after the browser session.
+* **Hosting.**  The Studio is deployed as its own service (not inside the propeller app),
+  holding no engine secrets (no LLM, database or R2 keys) — nothing in it is worth stealing.
+
+---
+
 ## 1. Decisions already taken by the owner
 
 | # | Question | Decision |
 |---|---|---|
 | D1 | Where does DC-specific content live? | **One "DC pack" folder.** The engine reads it at runtime; the setup app edits only this folder. |
-| D2 | Where does the setup app run? | **A separate local app ("Studio")**, never deployed.  Git is the source of truth. |
+| D2 | Where does the setup app run? | ~~A separate local app, never deployed.~~ **Revised (§0A): a hosted web app with a landing page (propeller example / create your own / import a setup); the same code also runs locally.**  Hosted runs of imported setups: later, remote tools only (option C). |
 | D3 | Examples shipped | **Propeller only** (as the example pack). |
 | D4 | Branch | New branch **`MAS-blueprint` from `MAS-generalized-v2`**; `main` and `MAS-generalized-v2` untouched. |
 | D5 | User tool format | **Plain Python function + a manifest.** No LangChain in user code; generator tools return a structured result. |
 | D6 | Topologies in the fragment editor | **Three columns (3-agent left, 5-agent middle, 7-agent right), one row per fragment**, shared rows aligned across columns, an **explicit link icon** per shared row (§6.3). |
 | D7 | Where tool text may go in a prompt | **Fixed named sections** per agent.  TODO: also allow "anywhere". |
-| D8 | Final buttons | **Two separate buttons: "Validate" and "Prepare for GitHub".** |
+| D8 | Final buttons | **Two separate buttons: "Validate" and "Prepare for GitHub".**  Revised (§0A): hosted = "Validate", "Download setup file", "Download full package"; "Prepare for GitHub" becomes a local command inside the full package. |
 | D9 | Live preview in the web app | **Optional, two levels**: a generic server-side "Preview" (runs the generator, shows its images) for every DC; an instant in-browser preview only if the pack ships one (the propeller does). |
 | D10 | Editing agents / topologies | **Not in v1** (TODO). |
 | D11 | AI drafting of fields | **Not in v1** — TODO + developer notes (§12). |
@@ -44,23 +101,26 @@ later step (§12), not part of this work.
 
 ## 2. The user journey (refined)
 
-1. Get the blueprint (for now: clone this repo and check out `MAS-blueprint`).
-2. Install locally: Python 3.13, `pip install -r requirements.txt`; Node only if a tool needs it.
-3. Start the Studio: `python -m studio` (or `run_studio.bat` / `run_studio.sh`) → opens
-   `http://localhost:8600`.
-4. Choose **"Start from the propeller example"** or **"Start blank"**.  Blank = every field
-   empty, the propeller value shown beside it as reference.
+*(Revised by §0A.)*
+
+1. Open the Studio's URL.  Landing page: **Use the Propeller Configurator** / **Create your
+   own** / **Import a setup**.
+2. "Create your own" → choose **"Start from the propeller example"** or **"Start blank"**.
+   Blank = every field empty, the propeller value shown beside it as reference.
+   (Working locally instead: clone, Python 3.13, `pip install -r requirements.txt`,
+   `python -m studio` → `http://localhost:8600`.)
 5. Fill the sections in order (§6.1): identity → parameters → configurator description →
    outputs & vocabulary → tools → examples → agent access → settings & secrets.
 6. Inspect the result in the **Prompt viewer** (flowchart → click an agent → full prompt).
-7. Press **Validate** until it is green.
-8. Press **Prepare for GitHub**: hygiene checks, first commit, the commands to create a
-   private repo and push.
-9. Create the private repo, push, deploy on Railway (or elsewhere) following the generated
-   `DEPLOY.md`.
-10. Later: edit in the Studio again → Validate → commit → push → redeploy.  Engine updates
-    from the blueprint are pulled with `git pull upstream MAS-blueprint`; they never touch
-    the pack (§3.1).
+7. Press **Validate** until it is green (hosted: static checks + prompt assembly).
+8. **Download the setup file** (to continue later via "Import a setup") and/or **the full
+   package**.
+9. Locally, in the unpacked full package: fill `.env`, run `python -m studio prepare`
+   (tool test runs, offline checks, git hygiene, first commit, `DEPLOY.md`), create the
+   private repo, push, deploy on Railway (or elsewhere).
+10. Later: import the setup file in the Studio → edit → Validate → download → replace
+    `dc_pack/` in the repo → commit → push → redeploy.  Engine updates from the blueprint are
+    pulled with `git pull upstream MAS-blueprint`; they never touch the pack (§4.1).
 
 ---
 
@@ -361,7 +421,8 @@ difference for approval.  TODO: "insert anywhere".
 
 ### 5.6 Testing a tool in the Studio
 
-"Test tool" runs the entrypoint **in a subprocess** with the parameter defaults (or a chosen
+**Local mode only (§0A)** — the hosted Studio never runs pack code; there the button is
+disabled with "available after download: `python -m studio`".  "Test tool" runs the entrypoint **in a subprocess** with the parameter defaults (or a chosen
 example set), with the declared settings and secrets, and shows: import errors,
 missing dependencies, the timing, the returned summary, the images, the metrics, and any
 mismatch between the manifest and what was produced (e.g. a declared view missing).
@@ -453,9 +514,11 @@ timeout, and a **Test tool** button (§5.6).  Saving writes `dc_pack/tools/<name
 
 ### 6.7 Tech
 
-FastAPI + vanilla JS, the same stack as `web_app.py` (Streamlit was removed — F4).  Runs on
-`localhost` only; excluded from the Docker image by `.dockerignore`.  The Studio imports the
-engine's assembler — it never re-implements prompt assembly (a replica drifts: see TODO F107,
+FastAPI + vanilla JS, the same stack as `web_app.py` (Streamlit was removed — F4).  Revised
+(§0A): deployed as its **own service** (landing page + Studio; no engine secrets), and also
+runnable locally with `python -m studio`; a mode flag (`STUDIO_MODE=hosted|local`) gates
+everything that executes pack code.  It stays out of the configurator's Docker image
+(`.dockerignore`).  The Studio imports the engine's assembler — it never re-implements prompt assembly (a replica drifts: see TODO F107,
 `measure_prompts.py`).
 
 ---
@@ -497,6 +560,11 @@ The result is stored with a hash of the pack, so "Prepare" can tell whether it i
 
 ## 9. "Prepare for GitHub" button
 
+*Revised (§0A): this is no longer a hosted button.  It is the local command
+`python -m studio prepare` shipped inside the full package (and a button in the Studio's
+local mode).  The hosted Studio's downloads produce the files of steps 2, 4 and 5 already;
+steps 1, 3 and 6 run on the user's machine.*
+
 1. Requires a passing Validate for the current pack hash.
 2. `.gitignore` check/repair: `.env`, `*.env` (not `.env.example`), runtime folders
    (`logs/`, `attempts/`, `database/`, `previous_sessions/`, `inputs/…`), Studio caches,
@@ -525,7 +593,8 @@ The result is stored with a hash of the pack, so "Prepare" can tell whether it i
 | P4 | Python-side DC text (C10 / F106); engine-generated hand-off labels; the web app made generic (§7). | Prompts identical; web app works with the propeller pack. |
 | P5 | Studio, read-only: pack browser, the 3-column grid, prompt viewer. | Every slot visible with "where it lands". |
 | P6 | Studio editing: grid with the link icon, parameters editor, New tool overlay + Test tool, settings & secrets. | Round-trip: editing then reverting leaves the pack byte-identical. |
-| P7 | Validate and Prepare buttons; `DEPLOY.md`. | A fresh clone → Studio → propeller example → Validate green → Prepare → deploys on Railway. |
+| P7 | Validate; the two downloads (setup file, full package); local `prepare` command; `DEPLOY.md`. | Studio → propeller example → Validate green → download full package → `prepare` → deploys on Railway; the setup file re-imports byte-identically. |
+| P7b | Hosted Studio: landing page (3 buttons), `STUDIO_MODE=hosted`, own service, upload limits, browser autosave. | No code path in hosted mode imports pack Python (test: a pack whose tool raises on import validates and downloads fine). |
 | P8 | User docs ("Getting started", "Write a tool", "Adapters"); **acceptance test with a throw-away second DC** (not shipped, per D3) built only through the Studio. | The throw-away DC runs a full session. |
 
 ---
@@ -584,6 +653,9 @@ with the feature off — fixable once flags are generic, §4.5), F105 (rename
   several fields (e.g. the two extraction-only example lists, the two soft-target examples).
 * **Template repository** with clean history for public distribution (C11).
 * A read-only prompt viewer inside the deployed app.
+* **Option C — run imported setups on the hosted page** (§0A): only setups whose tools are
+  all remote (HTTP endpoint / RhinoCompute URL hosted by the user), with the user's own LLM
+  API key; requires multi-user session isolation first (F22).
 
 ---
 
@@ -598,4 +670,6 @@ with the feature off — fixable once flags are generic, §4.5), F105 (rename
 * **Tool dependencies** may be heavy or OS-specific (OSMesa, Node, Rhino); the Test tool
   button must run in the same environment the Docker image will have, or say clearly that it
   does not.
+* **Hosted Studio abuse**: uploads are limited in size and type, nothing is kept server-side,
+  and no pack code runs there (§0A); the propeller demo keeps its invite code.
 * **Licensing** of example assets (the Grasshopper file, images) before any public release.
