@@ -45,3 +45,9 @@ what it guarded and how to restore it from git.
   then `diff <dirA> <dirB>`.  State which agents moved and which are
   byte-identical; a topology-5 or topology-3 edit must leave topology 7's
   prompts untouched.
+- **For a refactor that must move no prompt at all** (the MAS-blueprint
+  phases), use the settings matrix:
+  `py -3.13 extra_utilities/scripts/prompt_matrix.py save extra_utilities/prompt_matrix/snapshots/<name>`
+  assembles 357 prompts (17 setting combinations x topologies 7, 5 and 3), and
+  `diff extra_utilities/prompt_matrix/baseline_manifest.json extra_utilities/prompt_matrix/snapshots/<name>`
+  must report 0 differences.  `wsdiff` and `classify` explain any that remain.

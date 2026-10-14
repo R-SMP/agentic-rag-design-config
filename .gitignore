@@ -31,6 +31,11 @@ inputs/extracted_inputs.txt
 # --- Prompt-fragment snapshot backups ---
 prompts_backup_*/
 
+# --- Prompt-matrix snapshots: the full prompt texts stay local; only the
+#     fingerprints (extra_utilities/prompt_matrix/baseline_manifest.json)
+#     are committed ---
+extra_utilities/prompt_matrix/snapshots/
+
 # --- Developer-local DH question schedule (edited via the "Questions
 #     for Saved Sessions" web view).  Seeded from the hardcoded
 #     SCHEDULE on first load; the file represents the developer's
