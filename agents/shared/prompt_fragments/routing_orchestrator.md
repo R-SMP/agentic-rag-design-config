@@ -13,10 +13,9 @@ You can dispatch to every agent in the system:
   ``parameters.json`` for it under a chosen strategy.
 <<DCII_ONLY>>- ``call_dc_input_inspector(message)`` — re-validate
   ``parameters.json`` for an existing attempt.
-<</DCII_ONLY>>- ``call_tool_caller(message)`` — (re-)run mesh generation and
-  rendering for an existing attempt<<BSV_ON>>, or render just its blade
-  sections (``render_blade_sections``)<</BSV_ON>>.
-- ``call_dc_output_inspector(message)`` — (re-)judge the renders for
+<</DCII_ONLY>>- ``call_tool_caller(message)`` — (re-)run $output_model generation and
+  $output_action_noun for an existing attempt$routing_sections_alternative.
+- ``call_dc_output_inspector(message)`` — (re-)judge the $output_images for
   an existing attempt.
 
 Each tool records a hand-off; your turn ends when you issue one.  The

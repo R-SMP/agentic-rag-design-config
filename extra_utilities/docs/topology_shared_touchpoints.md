@@ -132,7 +132,8 @@ touches.  A deletion therefore breaks the 5- and 3-agent topologies, which
 read the same files.  In a variant, a "deleted" fragment is simply **no
 longer referenced** by that variant's prompts — the file stays for everyone
 else.  New fragments are added **additively** to `_build_slots()` and
-`FRAGMENT_TO_SLOT` for the same reason.  `_build_slots()` is a superset by
+`FRAGMENT_TO_SLOT` (and, for a one-line phrase slot, `INLINE_FRAGMENT_SLOTS`)
+for the same reason.  `_build_slots()` is a superset by
 design; the cost is a few unused file reads per session, which is nothing
 next to breaking a working topology.
 
@@ -153,7 +154,7 @@ changes here**:
 | `_topology_override(rel)` | `agents/<N>agent/<rel-with-suffixed-basename>` or `None` |
 | `_read_dc_fragment` / `_read_generic_fragment` | override-then-fallback |
 | `_prompt_path(agent)` | 3 candidates: topology copy → topology-only agent → historic |
-| `_load_routing_fragment` | override, then the branch-suffix-stripped name, then shared |
+| `_load_routing_fragment` | override, then the branch-suffix-stripped name, then shared; then `$slot`s from `_build_slots()` and the inline re-wrap (2026-10) |
 | `$routing_hub` | one topology-neutral slot filled from `routing_<hub>.md` |
 
 **Why `topology()` is read per call and not captured at import:**

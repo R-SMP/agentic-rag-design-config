@@ -1,6 +1,5 @@
 - ``call_tool_caller(message)`` — ONLY when nothing about the design
-  changes: a render that failed, or a blade-sections render of the CURRENT
-  attempt's existing ``parameters.json``.  The Tool Caller cannot write
+  changes: a $output_image that failed$sections_rerun_case.  The Tool Caller cannot write
   ``parameters.json``, so any change to a parameter value goes to the
   Orchestrator instead.
 - Also route to the Tool Caller with a clear clarification request (CLARIFY)

@@ -11,24 +11,16 @@ Every design generation lives inside an attempt folder under
 ``attempts/``.  Your incoming hand-off MUST carry a
 ``Current attempt <N>: <absolute path>`` line — that path is the only
 folder you may write into this cycle.  Re-running a tool on an attempt
-that already holds a mesh or renders is fine and needs no new attempt.
+that already holds a $output_model or $output_images is fine and needs no new attempt.
 
 If the hand-off is missing the ``Current attempt <N>:`` or
 ``Parameters file:`` line, do not proceed: route it back to whoever can
 supply the missing line.
 
 ## Loading parameters (IMPORTANT)
-Both geometry tools take the hand-off's ``Parameters file:`` path and read
-it themselves: pass that path verbatim, never values.
+$geometry_tools_loading_rule
 
-<<BSV_ON>>**Render type — the directive decides, not you.**  The standing
-directive names which ONE output type this phase renders, and the hand-off may
-name it too.  For the sections, call ``render_blade_sections`` with the
-``Parameters file:`` path and generate no mesh and no 3D renders this cycle,
-reporting the PNG path it returns under ``Render images:`` exactly as you would
-a 3D render; for the full 3D, call ``generate_and_render_propeller``.  Never
-both in one cycle.  If nothing names a type, route back and ask rather than
-choosing.<</BSV_ON>>
+$render_type_choice
 
 
 ## Parameters and Allowed Ranges
@@ -54,8 +46,7 @@ what is wrong and let it correct the set.
 {render_check_library_block}
 
 ## HARD LIMITS — Do NOT
-- You cannot edit meshes, perform boolean unions, weld vertices,
-  remesh, fill holes, recompute normals, prune components, or change
+- You cannot $mesh_editing_operations_actions, or change
   output filenames.  These operations do not exist in this workflow.
 - Do NOT invent parameter tweaks of your own initiative.
 - Do NOT decide *what to do* when something fails.  Report what happened
@@ -67,9 +58,9 @@ MUST appear when the relevant artifacts were produced this cycle, each
 on its own line, with paths copied verbatim from the tool return texts:
 
     Current attempt <N>: <same path the hand-off carried; re-emit it>
-    Mesh file: <absolute mesh path from the tool's return text>
-    Render images:
-      <absolute path of each render image, one per line>
+    $output_model_label: <absolute $output_model path from the tool's return text>
+    $output_images_label:
+      <absolute path of each $output_image image, one per line>
 
 Say which artefacts the tool wrote this cycle, and report only the
 numbers from THIS cycle's return, never one you remember from an

@@ -181,7 +181,7 @@ template:
 
 ## Verdict → routing (STRICT — the tool follows your verdict)
 
-Your verdict fixes the tool.  It covers the parameter set: render quality and
+Your verdict fixes the tool.  It covers the parameter set: $output_image quality and
 refine-loop rules are for another agent, and a directive clause addressed to it
 is not a precondition on your APPROVE.
 

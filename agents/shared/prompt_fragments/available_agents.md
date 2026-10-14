@@ -18,16 +18,13 @@
   extracted_inputs.txt from disk and validates that the parameter
   values are in range, internally consistent, and match the user's
   intent.  Can send corrections back to the DC Input Creator.
-<</DCII_ONLY>>- **Tool Caller (TC)**: points ``generate_and_render_propeller``
+<</DCII_ONLY>>- **Tool Caller (TC)**: points $geometry_tool_name
   at an attempt's ``parameters.json`` and calls it once — the tool reads
-  that record itself and produces the mesh file
-  AND, as its built-in final step, the renders and (if enabled) the
-  quality-check numbers.<<BSV_ON>>  It can instead be asked for
-  ``render_blade_sections`` — the three blade cross-sections alone,
-  with no 3D mesh.<</BSV_ON>>  Also has a ``calculate`` tool for
+  that record itself and produces the $output_model file
+  AND, as its built-in final step, the $output_images and (if enabled) $quality_check_numbers.$roster_sections_tool_sentence  Also has a ``calculate`` tool for
   arithmetic.  Reports the produced file paths for the DC Output
   Inspector.
-- **DC Output Inspector (DCOI)**: loads the rendered PNGs using the
+- **DC Output Inspector (DCOI)**: loads the $output_image_files using the
   paths supplied by the Tool Caller and performs a qualitative visual
   analysis.  Approves the design (FORWARD to Orchestrator) or flags
   defects and escalates.  Cannot measure precise dimensions; comments

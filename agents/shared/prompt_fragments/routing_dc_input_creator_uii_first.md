@@ -3,7 +3,7 @@
   default), and your own work succeeded, route FORWARD to the DC Input
   Inspector.
 - ``call_tool_caller(message)`` — the precision tight-loop edge: FORWARD
-  straight to render, skipping the DC Input Inspector.  Use it only on a
+  straight to $output_action, skipping the DC Input Inspector.  Use it only on a
   precision refine round.
 <</DCII_ONLY>><<DCII_OFF>>- ``call_tool_caller(message)`` — If the Orchestrator's instruction in
   your incoming message told you to continue the pipeline (explicitly or by

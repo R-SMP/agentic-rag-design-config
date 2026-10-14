@@ -23,6 +23,14 @@ to the prompt-fragment library** (rather than to any single
 | `routing_dc_input_creator_planner_first.md` / `routing_dc_input_creator_uii_first.md` | DCIC's "Available routing tools" subsection, dual-variant on `PLANNER_FIRST`. | (loaded by `routing.py`) |
 | `available_agents.md` | Directory of every agent in the system with role descriptions (used by the Planner). May reference other `$`-slots (e.g. `$parameter_count`, `$tool_inventory`); `_build_template` runs a second pass to resolve them. | `$available_agents` |
 
+**Configurator-agnostic.**  Nothing in this folder (or in an agent's prompt
+body) names the design configurator, its tools or their outputs.  Where a
+sentence needs such a word or example it names a `$slot` from
+`DC_prompt_fragments/dc_config/` or `tools_config/` — see
+`DC_prompt_fragments/README.md`, "Phrase slots".  The routing fragments loaded
+by `routing.py` get the same `$slot` substitution (and inline re-wrap) since
+2026-10.
+
 **Conditional regions inside fragments and prompts.** Several flags
 gate optional content:
 
@@ -31,7 +39,9 @@ gate optional content:
 - `<<PF_ON>>…<</PF_ON>>` and `<<PF_OFF>>…<</PF_OFF>>` — resolved
   against `PLANNER_FIRST`.
 - `<<BSV_ON>>…<</BSV_ON>>` / `<<BSV_OFF>>…<</BSV_OFF>>` — resolved
-  against `BLADE_SECTIONS_VISUALIZER_ENABLED`.
+  against `BLADE_SECTIONS_VISUALIZER_ENABLED`.  These regions (and the
+  `<<MESH_ON>>` ones) now live only inside `tools_config/` fragments; the
+  generic files carry none.
 - `<<HAS_DBA>>…<</HAS_DBA>>` — **per-agent**, kept only for agents that
   have `database_search` access.
 - `<<CHAIN_ONLY>>…<</CHAIN_ONLY>>` — **per-agent**, stripped for the two

@@ -8,7 +8,7 @@
 - **Requirements Analyst (RA)**: reads user_query.txt and any other
   input files in the inputs directory (text, JSON, sketches/images),
   extracts design values, intent, and constraints.  It also loads the
-  rendered PNGs using the paths supplied by the Design Engineer and
+  $output_image_files using the paths supplied by the Design Engineer and
   performs a qualitative visual analysis, calling the Planner to approve
   the design or to flag defects and problems.  Cannot measure precise
   dimensions; comments on overall shape, proportions, and feature count.
@@ -16,10 +16,8 @@
   set to parameters.json.  This is the only agent that authors concrete
   numeric parameter values.  Translates qualitative guidance (a directive
   of the form "increase <param X>") into numbers.  It then uses that
-  attempt's ``parameters.json``<<BSV_ON>> for calling
-  ``render_blade_sections`` — the three blade cross-sections alone, with
-  no 3D mesh<</BSV_ON>>.  Or it points ``generate_and_render_propeller``
+  attempt's ``parameters.json``$roster_tools_clause
   at that ``parameters.json`` and calls it once — the tool reads that
-  record itself and produces the mesh file and the image renders of the
-  mesh.  Also has a ``calculate`` tool for arithmetic.
+  record itself and produces the $output_model file and the image $output_images of the
+  $output_model.  Also has a ``calculate`` tool for arithmetic.
   Reports the produced file paths for the Requirements Analyst.

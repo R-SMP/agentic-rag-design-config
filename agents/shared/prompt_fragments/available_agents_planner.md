@@ -20,15 +20,13 @@
   intent.  Can send corrections back to the DC Input Creator.
 <</DCII_ONLY>>- **Tool Caller (TC)**: works from an attempt's ``parameters.json`` —
   the record of the $parameter_count parameter values the DCIC
-  authored.<<BSV_ON>>  It can be asked for ``render_blade_sections`` —
-  the three blade cross-sections alone, with no 3D mesh.<</BSV_ON>>  Or it
-  points ``generate_and_render_propeller`` at that ``parameters.json``
+  authored.$roster_tools_clause at that ``parameters.json``
   and calls it once — the tool reads the record itself and produces the
-  mesh file AND, as its built-in final step, the renders and (if
-  enabled) the quality-check numbers.  Also has a ``calculate`` tool
+  $output_model file AND, as its built-in final step, the $output_images and (if
+  enabled) $quality_check_numbers.  Also has a ``calculate`` tool
   for arithmetic.  Reports the produced file paths for the DC Output
   Inspector.
-- **DC Output Inspector (DCOI)**: loads the rendered PNGs using the
+- **DC Output Inspector (DCOI)**: loads the $output_image_files using the
   paths supplied by the Tool Caller and performs a qualitative visual
   analysis.  Approves the design (FORWARD to Orchestrator) or flags
   defects and escalates.  Cannot measure precise dimensions; comments

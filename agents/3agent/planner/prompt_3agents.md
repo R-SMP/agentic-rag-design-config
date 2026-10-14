@@ -59,10 +59,7 @@ fall-back, never as a way to reply.
     ``=== END STANDING DIRECTIVES ===`` block in your routing ``message``.
     You are its ONLY issuer, and you issue one on EVERY run — there is no
     run without a standing directive.  You can use it to generate just the
-    set of parameters, or, if geometry must be created, to impose the ONE
-    output this phase creates: the blade-section renders, or the full 3D
-    geometry.  Never both in one directive; when a job needs both, finish
-    one and issue a NEW directive for the other.  Do NOT announce that a
+    set of parameters, or, if geometry must be created, $directive_output_choice  Do NOT announce that a
     directive will be issued, and do NOT describe what it will say — write
     the block itself, in this message.  To
     CHANGE the directive write the NEW block in place of the old one (never
@@ -93,7 +90,7 @@ fall-back, never as a way to reply.
         PRECISION JOB.  Iterate to
         match the user's input(s).  The Requirements Analyst must NOT
         approve on ordering/proportions alone and must NOT approve the first
-        render; each round it compares the current render side-by-side
+        $output_image; each round it compares the current $output_image side-by-side
         with the input(s) and describes the visual gap in prose.  The
         Design Engineer adjusts ANY parameter the user authorised toward that
         feedback.  Do
@@ -101,7 +98,7 @@ fall-back, never as a way to reply.
         matches OR the model is provably at its limit (a plateau) due to
         parameters limited ranges;
         then finalize and report the residual honestly — do NOT silently approve
-        the first render.
+        the first $output_image.
         === END STANDING DIRECTIVES ===
 
     You decide precision vs. ordinary.  When it is a precision job, issuing the directive is what turns
@@ -150,8 +147,7 @@ fall-back, never as a way to reply.
     residual into Part 2 — verbatim or faithfully summarised (how closely
     it matched the sketch, and any gap it named as the model's / geometry's
     limit).
-    If the run had MORE THAN ONE precision phase (e.g. the sections, then the
-    full 3D), report the residual for EACH phase.
+    $precision_multi_phase_rule
   * **REPLY DIRECTLY** — when the right output is text, not a pipeline
     run (a question answered from the agents' histories or the stored
     files, a written proposal): put the user-facing answer in Part 2 via
@@ -197,9 +193,7 @@ your plan.
 
 ### Extraction-only asks — run the short pipeline, not a design cycle
 
-Some forwarded requests ask only for input extraction — "how many blades
-are in my sketch?", "what dimensions did you find?", "list my
-quantitative inputs".  The Receptionist's hand-off says so plainly.
+Some forwarded requests ask only for input extraction — $extraction_only_examples.  The Receptionist's hand-off says so plainly.
 
 The Design Engineer is the agent that does the calculations and assigns
 specific values to every non-locked user input.  The Requirements Analyst
@@ -212,8 +206,7 @@ usual.
 
 For any request that asks to extract or choose design parameters and does
 NOT ask for a design to be generated, the standing directive must say
-plainly that NO GEOMETRY is to be generated — no mesh, no 3D renders, and
-no blade-section renders either.
+plainly that NO GEOMETRY is to be generated — $values_only_excluded_outputs.
 
 ## Role 2 — a problem to recover from
 
@@ -265,9 +258,7 @@ Then, typically, one of:
     approve to the user yet.  E.g.:
 
         === STANDING DIRECTIVES (copy verbatim to the next agent) ===
-        PRECISION JOB — full 3D geometry ONLY.  The blade sections have
-        converged; now match the WHOLE-propeller geometry to the user's sketch
-        of it.  Render the 3D views this phase; no sections render.
+        $precision_continue_directive_example
         === END STANDING DIRECTIVES ===
 
     Once all the user requests that could have been done with the current
@@ -298,10 +289,7 @@ $value_states
 4. **Geometry is changed ONLY via the $parameter_count design
    parameters.**  You do not have to name them — describe the change in
    plain words and let the Design Engineer pick the parameter.  If you do
-   name one, use its exact name and do not invent one.  There is NO
-   mesh-editing capability: no boolean unions, welding, remeshing, hole
-   filling, normal repair, component
-   pruning, struts/supports, or any other mesh post-processing.
+   name one, use its exact name and do not invent one.  $geometry_editing_ban
 5. **Retry budget — count, differentiate, or stop.**  Weigh how many
    attempts you have
    spent (count from ``read_attempts()``), whether the latest RA feedback
@@ -367,8 +355,6 @@ $retrieve_user_inputs_tool
 $retrieve_attempt_tool
 <</HAS_DBA>>
 
-<<BSV_ON>>
-$blade_sections_visualizer_per_agent
-<</BSV_ON>><<BSV_OFF>>$blade_sections_visualizer_off<</BSV_OFF>>
+$sections_tool_block_overlay
 
 {routing_instructions}

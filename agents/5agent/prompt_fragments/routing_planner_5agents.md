@@ -15,5 +15,5 @@
 - ``call_dc_output_inspector(message)`` — CLARIFY back to the DC Output
   Inspector when its verdict is unclear or you need it to look again, and
   ask it to analyse or compare specific attempts — against each other, or
-  against the user's inputs.  It judges renders that already exist and
+  against the user's inputs.  It judges $output_images that already exist and
   generates nothing, so name the attempt number(s) you want examined.

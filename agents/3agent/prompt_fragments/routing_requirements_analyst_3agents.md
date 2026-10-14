@@ -1,8 +1,7 @@
 - ``call_design_engineer(message)`` — call it when you request a
   PARAMETER/design change through a REVISE message; to hand back a PRECISION
   REFINE gap description while the refine loop is still turning; when nothing
-  about the design changes (a render that failed, or a blade-sections render
-  of the CURRENT attempt's existing ``parameters.json``); and to send a
+  about the design changes (a $output_image that failed$sections_rerun_case); and to send a
   clarification request (CLARIFY) when the incoming hand-off is ambiguous,
   missing data, or contains an error the Design Engineer can fix.
   Carry the ``Input directory:`` line from your own incoming hand-off into

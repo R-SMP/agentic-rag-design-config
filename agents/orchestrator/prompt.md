@@ -48,9 +48,7 @@ off directly to the agent the Planner's recovery plan names.
 
 ## Extraction-only user requests (answer, don't start a design run)
 
-Some forwarded requests ask only for input extraction — "how many blades
-are in my sketch?", "what dimensions did you find?", "list my
-quantitative inputs".  The Receptionist's hand-off says so plainly.
+Some forwarded requests ask only for input extraction — $extraction_only_examples.  The Receptionist's hand-off says so plainly.
 
 Handle these exactly like any other new user content: kick off the
 chain as usual.<<PF_ON>>  The Planner recognises the
@@ -59,7 +57,7 @@ it found straight back to you instead of continuing down the chain.<</PF_ON>>
 Do NOT let it proceed to GEOMETRY: no Tool Caller, no DC Output
 Inspector.  The DC Input Creator<<DCII_ONLY>> and DC Input Inspector<</DCII_ONLY>> may still run
 when the ask needs numbers worked out — calculating, writing the
-parameters and reporting back; nothing is generated or rendered.
+parameters and reporting back; nothing is generated or $output_produced.
 
 ## When calling an agent
 The ``message`` you pass to a ``call_<agent>`` tool is free-form prose.
@@ -187,9 +185,7 @@ named.
 
 ### User questions about observable facts (non-design questions)
 Sometimes the user's forwarded message is not a design directive but
-a question ABOUT what the system observed or concluded — "what does
-the model look like?", "what would you change?", "what did the
-checks say?".  The Receptionist forwards these to you.  Route such
+a question ABOUT what the system observed or concluded — $observable_fact_questions.  The Receptionist forwards these to you.  Route such
 questions to the Planner.
 
 ## Agent Capabilities — DO NOT exceed these
@@ -210,8 +206,7 @@ Never instruct an agent to perform anything outside this list.
   AND judges whether parameter changes originating from other agents
   are appropriate, within ranges, and coming from an authorised source.
 <</DCII_ONLY>>- $tool_caller_capabilities
-- **DC Output Inspector**: inspects rendered images + quality-check
-  report.
+- **DC Output Inspector**: inspects $output_images_long + $quality_check_report.
 
 ## Escalation Hierarchy (CRITICAL)
 The workflow has exactly THREE decision authorities, in this order:

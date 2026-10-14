@@ -18,6 +18,7 @@ reads), not runtime mechanism (which lives in
 """
 
 from pathlib import Path
+from string import Template
 
 from workflow_settings import settings as _workflow_settings
 from agents.shared import topology as _topology
@@ -119,9 +120,13 @@ def _load_routing_fragment(fragment_name: str) -> str:
     tools" subsection — the list of bound ``call_<agent>`` tools and
     their FORWARD / CLARIFY / ESCALATE semantics.
 
-    DCII conditional regions (``<<DCII_ONLY>>`` / ``<<DCII_OFF>>``)
-    and PLANNER_FIRST conditional regions (``<<PF_ON>>`` /
-    ``<<PF_OFF>>``) are resolved here.
+    ``$slot`` references are substituted first, from the same slot map
+    the agent bodies use, so a routing fragment can splice in DC- or
+    tool-specific text kept under ``DC_prompt_fragments/`` (e.g.
+    ``$routing_render_rerun_cases``).  Then the DCII conditional
+    regions (``<<DCII_ONLY>>`` / ``<<DCII_OFF>>``) and the
+    PLANNER_FIRST conditional regions (``<<PF_ON>>`` / ``<<PF_OFF>>``)
+    are resolved, as in ``_build_template``.
 
     The active topology's override is preferred when one exists, so the
     5-agent chain loads ``routing_creator_5agents.md`` while a fragment
@@ -130,7 +135,10 @@ def _load_routing_fragment(fragment_name: str) -> str:
     ``apply_flag_filters``, because ``prompts`` imports THIS module at its
     own import time — a module-level import here would be circular.
     """
-    from agents.shared.prompts import _topology_override, apply_flag_filters
+    from agents.shared.prompts import (
+        _build_slots, _topology_override, apply_flag_filters,
+        mark_inline_slots, wrap_inline_lines,
+    )
 
     # PLANNER_FIRST splits some of these fragments into a
     # ``*_planner_first.md`` / ``*_uii_first.md`` pair.  That axis exists
@@ -155,7 +163,10 @@ def _load_routing_fragment(fragment_name: str) -> str:
     # collapsed one, so topology 7 reads exactly what it always read.
     if path is None:
         path = _FRAGMENTS_DIR / fragment_name
-    return apply_flag_filters(path.read_text(encoding="utf-8").rstrip())
+    text = path.read_text(encoding="utf-8").rstrip()
+    slots = mark_inline_slots(_build_slots())
+    return wrap_inline_lines(
+        apply_flag_filters(Template(text).safe_substitute(slots)))
 
 
 # ---------------------------------------------------------------------------

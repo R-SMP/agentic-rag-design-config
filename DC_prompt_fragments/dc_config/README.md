@@ -50,7 +50,46 @@ is wired up.
 
 ## Adding a new slot
 
-1. Create a new file in this folder (or `tools_config/`).
-2. Add it to the loader in `agents/shared/prompts.py`.
-3. Reference it as `$your_new_slot` in any generic template that
-   needs it.
+1. Create `X.md` in this folder (or `tools_config/`), plus
+   `agents/5agent/<folder>/X_5agents.md` and
+   `agents/3agent/<folder>/X_3agents.md` (empty where a topology does not
+   use it).  The slot name is the file stem, `$X`.
+2. Register it in `agents/shared/prompts.py`: `_build_slots()` and
+   `FRAGMENT_TO_SLOT`; a one-line phrase used inside a sentence also goes
+   in `INLINE_FRAGMENT_SLOTS`.
+3. Reference it as `$X` in the generic template or fragment that needs it
+   (routing fragments are substituted too since 2026-10).
+4. Add it to the table below (or to the one in `tools_config/README.md`).
+
+## Phrase and example slots (2026-10)
+
+The rules are in `../README.md`, "Phrase slots".  "Used in" names the agent
+bodies / generic fragments that reference the slot, in any topology.
+
+| File | Kind | Used in | What goes in it | Current propeller value |
+| --- | --- | --- | --- | --- |
+| `past_run_lookup_examples.md` | phrase | receptionist | Example factual questions about an earlier run, in parentheses. | ("what diameter did the last design end up with?", "did the render succeed?") |
+| `extraction_only_examples_user.md` | phrase | receptionist | Example user requests that ask only for extraction (Receptionist list). | "what is the number of blades in my sketch?", "extract the dimensions you see… |
+| `extraction_only_examples.md` | phrase | orchestrator, planner | Example forwarded requests that ask only for extraction (hub list). | "how many blades are in my sketch?", "what dimensions did you find?", "list m… |
+| `non_consumable_input_examples.md` | phrase | requirements_analyst, user_input_inspector | Example inputs the configurator cannot consume (quoted list). | "500 MPa yield strength", "shiny material", "for cooling fins" |
+| `quantitative_input_example.md` | block | requirements_analyst, user_input_inspector | Two example QUANTITATIVE INPUTS lines (block). | Radius of propeller: 70 mm ⏎     tip speed: 40 m/s |
+| `countable_feature_example.md` | phrase | requirements_analyst, user_input_inspector | A countable feature of this DC, as 'the ... for example'. | the blades for example |
+| `stated_count_example.md` | phrase | requirements_analyst, user_input_inspector | A count written beside a drawing, quoted. | "6 blades" |
+| `soft_target_example.md` | phrase | requirements_analyst, user_input_inspector | One example extraction line with a SOFT TARGET marker. | Radius of propeller: ~75 mm — SOFT TARGET (goal: match the sketched blade sha… |
+| `soft_target_marker_example.md` | phrase | value_states_design_engineer.md | A shorter SOFT TARGET marker example (Design Engineer value states). (topology 3 only) | Radius of propeller: ~75 mm — SOFT TARGET (goal: match the sketched blade sha… |
+| `useful_input_images_example.md` | block | user_input_inspector | Worked USEFUL INPUT IMAGES block for one image (block). | sketch_2.png — technical template sheet: the three blade-section profiles ⏎  … |
+| `lever_map.md` | block | dc_input_creator, design_engineer | The 'Which lever moves what' section: which parameters change which aspect (block, with heading). | ## Which lever moves what ⏎  ⏎ "Shape" means two different things here, and d… |
+| `parameter_level_entry_example.md` | phrase | dc_input_creator, design_engineer | Example of a user quantity that maps directly onto one parameter, in parentheses. | ("average outer ring radius: 70 mm" is ``impellerRadius``) |
+| `non_applicable_input_examples.md` | phrase | dc_input_creator, design_engineer | Example entries that do not apply to the configurator, in parentheses. | (a motor RPM, a cost, a date) |
+| `shape_gap_example.md` | phrase | dc_output_inspector, requirements_analyst | Example free-form description of a visual shape gap (quoted). | "inner is too thin and its leading edge too pointed; middle camber is shallow… |
+| `unlocked_lever_examples.md` | phrase | dc_output_inspector, requirements_analyst | Example unlocked levers that could improve a mismatch. | a section's radial position (``middlePos``) shifting the planform, a chord, o… |
+| `sub_resolution_examples.md` | phrase | dc_output_inspector, requirements_analyst | Example quantities the renders cannot resolve, in parentheses. | (sub-millimetre dimensions, percentages with no visible structural manifestat… |
+| `prior_finding_citation_example.md` | phrase | dc_output_inspector, requirements_analyst | Example of marking a prior-cycle finding, in parentheses. | ("previous: blade tips clipped the ring → current: clear") |
+| `feature_feedback_examples.md` | phrase | dc_output_inspector, requirements_analyst | Example feature / parameter direction feedback, in parentheses. | ("the blade looks too twisted"; "<param X> looks too small / large") |
+| `relative_magnitude_examples.md` | phrase | dc_output_inspector, requirements_analyst | Example relative-magnitude requests (quoted list). | "make the inner section roughly twice as thick", "increase the thickness by ~… |
+| `ratio_vs_absolute_feedback.md` | block | dc_output_inspector, requirements_analyst | Block: name the quantity (ratio vs absolute size) for this DC's ratio parameters. | **Name the quantity: ratio or absolute size.** ⏎  ⏎ Whenever you ask for a th… |
+| `dh_parameter_dump_example.md` | phrase | database_handler | Example of how a parameter-value dump looks, in parentheses. | (often in the form ``bladeCount = 6 — [3,6]``, etc.) |
+| `dh_concrete_noun_examples.md` | phrase | database_handler | Example pronoun-to-concrete-noun replacements, in parentheses. | (e.g. "the 5-blade propeller variant" instead of "this one"; "the Receptionis… |
+| `dh_parameter_name_example.md` | phrase | database_handler | This DC's parameter naming convention with one example name. | camelCase parameter names like ``bladeCount`` |
+| `dh_numeric_fact_example.md` | phrase | database_handler | Example of spelling out a numeric fact, in parentheses. | ("``bladeCount=5`` (five blades)") |
+| `dh_structural_marker_examples.md` | phrase | database_handler | Structural markers in agents' answers to preserve, in parentheses. | (camelCase keys, JSON-like notation if Agent A used it) |

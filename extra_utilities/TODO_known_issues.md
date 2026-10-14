@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F104**.
+branches (F36 is taken on a sibling branch).  Next free id: **F110**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -118,6 +118,12 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F100` | DONE | The shared retrieval fragment told the DCIC and Design Engineer to look at images they hold no tool to open |
 | `F102` | OPEN | Make the agent role map user-customizable in Workflow Settings |
 | `F103` | OPEN | Retire `RAG_DCIC_READS_DCII` once F102 lands |
+| `F104` | OPEN | Feature-gated fragments that still ship when their feature is OFF |
+| `F105` | OPEN | Rename `visualize_3d_model` and `propose_attempt` to configurator-neutral names |
+| `F106` | OPEN | DC / tool wording left in Python-side prompt text |
+| `F107` | OPEN | `measure_prompts.py` replicates a slot map that no longer matches |
+| `F108` | OPEN | Overlapping fragments to merge in the single DC interface |
+| `F109` | OPEN | Mesh checks OFF leaves an empty line in the inspector's role list |
 
 ---
 
@@ -4593,3 +4599,95 @@ just an entry in it.  Remove the flag, its `_INERT_UNDER_TOPOLOGY` entry in
 `workflow_settings/editor.py`, `agent_roles.dcic_reads_dcii()` and the
 special case in `agent_roles.holder()`, and the "(setting 3b …)" hint in the
 Workflow Settings panel (`loadAgentRoles` in `web/app.js`).
+
+---
+
+### F104. Feature-gated fragments that still ship when their feature is OFF
+
+**Status.** OPEN — found by the generic-fragments audit (2026-10-13); a pure
+relocation, so the gap was moved, not fixed.
+
+These `tools_config/` fragments describe the blade-sections tool or the mesh
+checks but carry no `<<BSV_ON>>` / `<<MESH_ON>>` marker, so they reach the
+agents with `BLADE_SECTIONS_VISUALIZER_ENABLED` or `MESH_CHECKS` off:
+blade sections — `directive_output_choice`, `precision_multi_phase_rule`,
+`precision_continue_directive_example`, `precision_match_subject`,
+`precision_match_targets`, `sections_rerun_case`, `values_only_excluded_outputs`
+(topology 3), `geometry_tools_loading_rule` ("Both geometry tools");
+mesh checks — `quality_check_numbers`, `quality_check_report`,
+`observable_fact_questions` ("what did the checks say?"),
+`tool_run_history_contents` ("+ metrics").  Each fix is now confined to the
+fragment file (all three topology copies) and changes the assembled prompts
+only with the feature off — show each one to the owner first.
+
+---
+
+### F105. Rename `visualize_3d_model` and `propose_attempt` to configurator-neutral names
+
+**Status.** OPEN — requested by the owner (2026-10-13).
+
+Both are treated as generic by the generic-fragments audit, but a
+configurator may not output a 3D model.  Renaming touches the tool
+definitions, every agent that binds them, the `visualize_3d_model` /
+`propose_attempt` fragments in all three trees, and the Receptionist bodies
+that name them.  One tool change at a time (AI_ASSISTANT_RULES rule 6).
+
+---
+
+### F106. DC / tool wording left in Python-side prompt text
+
+**Status.** OPEN — out of the generic-fragments audit's scope (owner,
+2026-10-13).
+
+Not audited: the hub feedback instructions
+(`agents/{orchestrator,planner5,planner3}/role4_feedback_instructions.md`),
+runtime blocks built in Python (`_CHAIN_ACCESS_*`, `_IMAGE_PERSISTENCE_*`,
+the DCOI comparison text in its 3 modes), and tool descriptions with their
+topology overlays (`agents/topology5/tool_text.py`,
+`agents/topology3/tool_text.py`).  Two of them must move together with the
+new vocabulary slots: the label `Render images:` named in
+`agents/shared/routing_tools.py` (2 tool descriptions),
+`agents/shared/user_inputs_tool.py` and both `tool_text.py` overlays
+(`$output_images_label` in the prompts), and the Receptionist's runtime
+block title "Confirmed render files produced this cycle"
+(`agents/receptionist/receptionist.py`), which the Receptionist prompts
+quote literally.
+
+---
+
+### F107. `measure_prompts.py` replicates a slot map that no longer matches
+
+**Status.** OPEN (2026-10-13).
+
+`extra_utilities/prompt_efficiency/measure_prompts.py` keeps a hand-copied
+replica of `_build_slots()` and `SCOPED_FRAGMENTS`.  It knows none of the 68
+slots added by the generic-fragments audit, nor the inline re-wrap
+(`wrap_inline_lines`) or the `$` pass in routing fragments, so it would
+measure prompts with `$slot` literals in them.  Re-sync it or make it call
+`agents.shared.prompts` through `prompt_pdf/bootstrap.py`.
+
+---
+
+### F108. Overlapping fragments to merge in the single DC interface
+
+**Status.** OPEN (2026-10-13).
+
+The audit created one fragment per moved phrase, as asked; some overlap with
+older, unreferenced slots: `$geometry_modification_rule` vs
+`geometry_editing_ban` / `mesh_editing_operations_actions` /
+`recommendation_exclusions`, and `$sketch_crop_example` (crop box `0.72`) vs
+`useful_input_images_example` (`0.74`).  Several phrase fragments repeat the
+same examples in different agents (`extraction_only_examples` /
+`extraction_only_examples_user`, `soft_target_example` /
+`soft_target_marker_example`).  Fold them into the planned
+easy-to-modify interface.
+
+---
+
+### F109. Mesh checks OFF leaves an empty line in the inspector's role list
+
+**Status.** OPEN — cosmetic (2026-10-13).
+
+`$mesh_check_role_item` sits on its own line in the DC Output Inspector and
+Requirements Analyst role lists, so with `MESH_CHECKS` off the list shows an
+empty line where item 2 (topology 3: item 3) was.  Whitespace only.

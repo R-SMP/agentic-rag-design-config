@@ -19,11 +19,7 @@ session.
 ### Tools used across the system (high-level only, for context)
 $agent_tools_overview_brief
 
-<<BSV_ON>>
-$blade_sections_visualizer
-
-$blade_sections_visualizer_per_agent
-<</BSV_ON>><<BSV_OFF>>$blade_sections_visualizer_off<</BSV_OFF>>
+$sections_tool_block_full
 
 ### The token budget for SEMANTIC answers
 Text you save into a SEMANTIC field's ``.txt`` is embedded for vector
@@ -263,8 +259,7 @@ parameters, locked values, …) that downstream consumers read as data,
 not as prose.
 
 * Save Agent A's answer essentially verbatim — preserve every number,
-  unit, parameter name and structural marker (camelCase keys, JSON-like
-  notation if Agent A used it).
+  unit, parameter name and structural marker $dh_structural_marker_examples.
 * You may strip leading/trailing pleasantries ("Sure, here is …") and
   obvious meta-commentary, but do not paraphrase or reorganise the data.
 * No token cap applies — keep whatever Agent A produced.
@@ -305,11 +300,11 @@ number), and a sub-row that also splits combines both suffixes, e.g.
 Apply these to BOTH the saved QUESTION and the saved ANSWER:
 
 1. **Strip every file path and directory name.**  No
-   ``/app/attempts/...``, no ``/app/inputs/...``, no render PNG paths,
+   ``/app/attempts/...``, no ``/app/inputs/...``, no $output_image PNG paths,
    no ``parameters.json`` references, no attempt-folder slugs like
    ``20260529_091434_001_...``.  When the original answer referenced
-   a render or a file to make a point, refer to the artefact
-   GENERICALLY ("the isometric render", "the saved parameter set") —
+   a $output_image or a file to make a point, refer to the artefact
+   GENERICALLY $dh_artefact_reference_examples —
    the actual file is archived elsewhere.
 
 2. **Strip routing-tool wrappers.**  Some agents end their turn by
@@ -332,8 +327,7 @@ Apply these to BOTH the saved QUESTION and the saved ANSWER:
    entirely — there is no chain at save time.
 
 5. **Replace parameter-value dumps with reasoning.**  When the agent
-   listed all $parameter_count parameter values (often in the form
-   ``bladeCount = 6 — [3,6]``, etc.), do NOT save the value list.
+   listed all $parameter_count parameter values $dh_parameter_dump_example, do NOT save the value list.
    Save the REASONING the agent applied: which checks they ran, which
    coherence heuristics applied, which trade-offs they weighed, what
    they flagged as risk.  The values themselves are recoverable from
@@ -342,16 +336,15 @@ Apply these to BOTH the saved QUESTION and the saved ANSWER:
 6. **Self-contained and declarative.**  A reader who has never seen
    the question should still understand the answer.  Replace pronouns
    ("you" / "I" / "we" / "this one") with the concrete noun they
-   refer to (e.g. "the 5-blade propeller variant" instead of "this
-   one"; "the Receptionist" instead of "I").  Continuous prose
+   refer to $dh_concrete_noun_examples.  Continuous prose
    embeds better than bullet salads, Q&A, or markdown headings.
    Avoid filler ("basically", "essentially", "I think").
 
 7. **Domain-faithful.**  Preserve technical terms verbatim
-   (camelCase parameter names like ``bladeCount``, agent acronyms
+   ($dh_parameter_name_example, agent acronyms
    ``RA``/``DE``/``Receptionist``, units,
    numeric thresholds).  When stating a numeric fact, briefly spell
-   out its meaning ("``bladeCount=5`` (five blades)") so the
+   out its meaning $dh_numeric_fact_example so the
    embedded vector encodes both the symbol and its referent.
 
 8. **One topic per file.**  Each field is one concept; do not bundle

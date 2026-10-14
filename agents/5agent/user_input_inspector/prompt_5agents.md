@@ -27,8 +27,7 @@ NATURE of the data, not by whether it matches a configurator parameter:
     reporting preferences, and any precision / iteration demand.
 
 ### Capture, do not filter
-Record even inputs the configurator cannot consume — "500 MPa yield
-strength", "shiny material", "for cooling fins", a number with no obvious
+Record even inputs the configurator cannot consume — $non_consumable_input_examples, a number with no obvious
 application.
 
 ### Temporal scope — the CURRENT request
@@ -67,8 +66,7 @@ OMITTED.
 Record one quantitative input per line.  Label the quantity in the user's own
 words and give their unit / frame:
 
-    Radius of propeller: 70 mm
-    tip speed: 40 m/s
+    $quantitative_input_example
 
 Structure by intent: a plain list for a simple request; a labelled sub-list
 per design for a multi-design request; a sentence naming what is being swept
@@ -85,10 +83,10 @@ quantitative constraints at all.
 
 - **Count countable features explicitly.**  When an image shows discrete
   elements you can count — anything that can be counted and may be relevant,
-  the blades for example — load the image and count them one by one,
+  $countable_feature_example — load the image and count them one by one,
   traversing every instance once, never from a glance.
   Record the count under a descriptive label.  If the drawing is not trying
-  to SHOW the count — one element with a "×6" label, or "6 blades" written
+  to SHOW the count — one element with a "×6" label, or $stated_count_example written
   beside a single representative — the stated number wins.  Otherwise the
   drawing wins: if your count and a note disagree, use yours and record both
   in QUALITATIVE DESCRIPTIONS.
@@ -99,9 +97,7 @@ quantitative constraints at all.
   keep it on its normal line with a marker naming the goal and how tightly
   to hold the number:
 
-      - Radius of propeller: ~75 mm — SOFT TARGET (goal: match the sketched
-        blade shape; keep near 75 mm if free, but vary freely to fit the
-        shape)
+      - $soft_target_example
 
   The goal governs; the number is only the fallback where the goal does not
   bear on the parameter.  Read the strength from the user's own wording
@@ -141,12 +137,7 @@ was worth and where to look on it.
 One block per image that actually contributed something — what it shows, why
 it matters to this design, and every crop region you identified on it:
 
-    sketch_2.png — technical template sheet: the three blade-section profiles
-    (inner / middle / outer) drawn across the bottom strip.
-    Why it matters: the only precise source for section shape.
-    Crop regions:
-      - sections (the three airfoil profiles): [0.0, 0.74, 1.0, 1.0]
-      - top view (whole propeller planform): [0.0, 0.0, 1.0, 0.62]
+    $useful_input_images_example
 
 Keep the crop lines in exactly that shape — ``- <label>: [x0, y0, x1, y1]``,
 fractions in 0..1 — so a downstream agent can pick one by label and pass it

@@ -33,6 +33,7 @@ then.  ``DC_NAME`` and ``PARAMETER_NAMES`` are data, not prompt text.
 """
 
 import re
+import textwrap
 from pathlib import Path
 from string import Template
 
@@ -734,6 +735,75 @@ FRAGMENT_TO_SLOT: dict[str, str] = {
     "DC_prompt_fragments/tools_config/database_search.md":            "database_search_tool",
     "DC_prompt_fragments/tools_config/retrieve_user_inputs.md":       "retrieve_user_inputs_tool",
     "DC_prompt_fragments/tools_config/retrieve_attempt.md":           "retrieve_attempt_tool",
+    # Relocated DC- / tool-specific text (generic-fragments audit, 2026-10)
+    "DC_prompt_fragments/tools_config/geometry_tool_name.md":                   "geometry_tool_name",
+    "DC_prompt_fragments/tools_config/quality_check_numbers.md":                "quality_check_numbers",
+    "DC_prompt_fragments/tools_config/quality_check_report.md":                 "quality_check_report",
+    "DC_prompt_fragments/tools_config/mesh_check_role_item.md":                 "mesh_check_role_item",
+    "DC_prompt_fragments/tools_config/qc_numerics_verdict_rule.md":             "qc_numerics_verdict_rule",
+    "DC_prompt_fragments/tools_config/no_render_fallback_qc.md":                "no_render_fallback_qc",
+    "DC_prompt_fragments/tools_config/geometry_model_filename.md":              "geometry_model_filename",
+    "DC_prompt_fragments/tools_config/render_view_list.md":                     "render_view_list",
+    "DC_prompt_fragments/tools_config/roster_sections_tool_sentence.md":        "roster_sections_tool_sentence",
+    "DC_prompt_fragments/tools_config/roster_tools_clause.md":                  "roster_tools_clause",
+    "DC_prompt_fragments/tools_config/routing_sections_alternative.md":         "routing_sections_alternative",
+    "DC_prompt_fragments/tools_config/sections_rerun_case.md":                  "sections_rerun_case",
+    "DC_prompt_fragments/tools_config/directive_output_choice.md":              "directive_output_choice",
+    "DC_prompt_fragments/tools_config/precision_multi_phase_rule.md":           "precision_multi_phase_rule",
+    "DC_prompt_fragments/tools_config/geometry_tools_loading_rule.md":          "geometry_tools_loading_rule",
+    "DC_prompt_fragments/tools_config/sections_tool_block_full.md":             "sections_tool_block_full",
+    "DC_prompt_fragments/tools_config/sections_tool_block_overlay.md":          "sections_tool_block_overlay",
+    "DC_prompt_fragments/tools_config/precision_match_subject.md":              "precision_match_subject",
+    "DC_prompt_fragments/tools_config/precision_gap_description.md":            "precision_gap_description",
+    "DC_prompt_fragments/tools_config/precision_match_targets.md":              "precision_match_targets",
+    "DC_prompt_fragments/tools_config/values_only_excluded_outputs.md":         "values_only_excluded_outputs",
+    "DC_prompt_fragments/tools_config/precision_continue_directive_example.md": "precision_continue_directive_example",
+    "DC_prompt_fragments/tools_config/render_type_choice.md":                   "render_type_choice",
+    "DC_prompt_fragments/tools_config/geometry_editing_ban.md":                 "geometry_editing_ban",
+    "DC_prompt_fragments/tools_config/mesh_editing_operations_actions.md":      "mesh_editing_operations_actions",
+    "DC_prompt_fragments/tools_config/recommendation_exclusions.md":            "recommendation_exclusions",
+    "DC_prompt_fragments/dc_config/past_run_lookup_examples.md":                "past_run_lookup_examples",
+    "DC_prompt_fragments/dc_config/extraction_only_examples_user.md":           "extraction_only_examples_user",
+    "DC_prompt_fragments/dc_config/extraction_only_examples.md":                "extraction_only_examples",
+    "DC_prompt_fragments/tools_config/observable_fact_questions.md":            "observable_fact_questions",
+    "DC_prompt_fragments/tools_config/tool_run_history_contents.md":            "tool_run_history_contents",
+    "DC_prompt_fragments/dc_config/non_consumable_input_examples.md":           "non_consumable_input_examples",
+    "DC_prompt_fragments/dc_config/quantitative_input_example.md":              "quantitative_input_example",
+    "DC_prompt_fragments/dc_config/countable_feature_example.md":               "countable_feature_example",
+    "DC_prompt_fragments/dc_config/stated_count_example.md":                    "stated_count_example",
+    "DC_prompt_fragments/dc_config/soft_target_example.md":                     "soft_target_example",
+    "DC_prompt_fragments/dc_config/soft_target_marker_example.md":              "soft_target_marker_example",
+    "DC_prompt_fragments/dc_config/useful_input_images_example.md":             "useful_input_images_example",
+    "DC_prompt_fragments/dc_config/lever_map.md":                               "lever_map",
+    "DC_prompt_fragments/dc_config/parameter_level_entry_example.md":           "parameter_level_entry_example",
+    "DC_prompt_fragments/dc_config/non_applicable_input_examples.md":           "non_applicable_input_examples",
+    "DC_prompt_fragments/tools_config/visual_claim_examples.md":                "visual_claim_examples",
+    "DC_prompt_fragments/dc_config/shape_gap_example.md":                       "shape_gap_example",
+    "DC_prompt_fragments/dc_config/unlocked_lever_examples.md":                 "unlocked_lever_examples",
+    "DC_prompt_fragments/dc_config/sub_resolution_examples.md":                 "sub_resolution_examples",
+    "DC_prompt_fragments/dc_config/prior_finding_citation_example.md":          "prior_finding_citation_example",
+    "DC_prompt_fragments/dc_config/feature_feedback_examples.md":               "feature_feedback_examples",
+    "DC_prompt_fragments/dc_config/relative_magnitude_examples.md":             "relative_magnitude_examples",
+    "DC_prompt_fragments/dc_config/ratio_vs_absolute_feedback.md":              "ratio_vs_absolute_feedback",
+    "DC_prompt_fragments/tools_config/dh_artefact_reference_examples.md":       "dh_artefact_reference_examples",
+    "DC_prompt_fragments/dc_config/dh_parameter_dump_example.md":               "dh_parameter_dump_example",
+    "DC_prompt_fragments/dc_config/dh_concrete_noun_examples.md":               "dh_concrete_noun_examples",
+    "DC_prompt_fragments/dc_config/dh_parameter_name_example.md":               "dh_parameter_name_example",
+    "DC_prompt_fragments/dc_config/dh_numeric_fact_example.md":                 "dh_numeric_fact_example",
+    "DC_prompt_fragments/dc_config/dh_structural_marker_examples.md":           "dh_structural_marker_examples",
+    "DC_prompt_fragments/tools_config/output_images_label.md":                  "output_images_label",
+    "DC_prompt_fragments/tools_config/output_model_label.md":                   "output_model_label",
+    "DC_prompt_fragments/tools_config/output_images_long.md":                   "output_images_long",
+    "DC_prompt_fragments/tools_config/output_image_files.md":                   "output_image_files",
+    "DC_prompt_fragments/tools_config/output_reactions.md":                     "output_reactions",
+    "DC_prompt_fragments/tools_config/output_reaction.md":                      "output_reaction",
+    "DC_prompt_fragments/tools_config/output_action_noun.md":                   "output_action_noun",
+    "DC_prompt_fragments/tools_config/output_produced.md":                      "output_produced",
+    "DC_prompt_fragments/tools_config/output_image_caps.md":                    "output_image_caps",
+    "DC_prompt_fragments/tools_config/output_action.md":                        "output_action",
+    "DC_prompt_fragments/tools_config/output_images.md":                        "output_images",
+    "DC_prompt_fragments/tools_config/output_image.md":                         "output_image",
+    "DC_prompt_fragments/tools_config/output_model.md":                         "output_model",
     # Generic fragments
     "agents/shared/prompt_fragments/generic_constraints.md":  "hard_constraints_generic",
     "agents/shared/prompt_fragments/value_states.md":         "value_states",
@@ -929,6 +999,125 @@ PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
 # ---------------------------------------------------------------------------
 
 
+# ---------------------------------------------------------------------------
+# Inline phrase slots
+#
+# A DC- or tool-specific PHRASE (a tool name, an example list, ...) kept
+# in its own one-line fragment and spliced INSIDE a sentence of a generic
+# fragment or an agent body.  Splicing one can make its line much longer
+# than the text around it, so after assembly every line that one of
+# these lengthened past _INLINE_WRAP_WIDTH is re-wrapped at word
+# boundaries.  Lines without one are never touched.
+#
+# A new phrase slot is listed here as well as in _build_slots.
+# ---------------------------------------------------------------------------
+
+INLINE_FRAGMENT_SLOTS: frozenset[str] = frozenset({
+    "geometry_tool_name",
+    "quality_check_numbers",
+    "quality_check_report",
+    "qc_numerics_verdict_rule",
+    "no_render_fallback_qc",
+    "geometry_model_filename",
+    "render_view_list",
+    "roster_sections_tool_sentence",
+    "roster_tools_clause",
+    "routing_sections_alternative",
+    "sections_rerun_case",
+    "directive_output_choice",
+    "precision_multi_phase_rule",
+    "geometry_tools_loading_rule",
+    "precision_match_subject",
+    "precision_gap_description",
+    "precision_match_targets",
+    "values_only_excluded_outputs",
+    "geometry_editing_ban",
+    "mesh_editing_operations_actions",
+    "recommendation_exclusions",
+    "past_run_lookup_examples",
+    "extraction_only_examples_user",
+    "extraction_only_examples",
+    "observable_fact_questions",
+    "tool_run_history_contents",
+    "non_consumable_input_examples",
+    "countable_feature_example",
+    "stated_count_example",
+    "soft_target_example",
+    "soft_target_marker_example",
+    "parameter_level_entry_example",
+    "non_applicable_input_examples",
+    "visual_claim_examples",
+    "shape_gap_example",
+    "unlocked_lever_examples",
+    "sub_resolution_examples",
+    "prior_finding_citation_example",
+    "feature_feedback_examples",
+    "relative_magnitude_examples",
+    "dh_artefact_reference_examples",
+    "dh_parameter_dump_example",
+    "dh_concrete_noun_examples",
+    "dh_parameter_name_example",
+    "dh_numeric_fact_example",
+    "dh_structural_marker_examples",
+    "output_images_label",
+    "output_model_label",
+    "output_images_long",
+    "output_image_files",
+    "output_reactions",
+    "output_reaction",
+    "output_action_noun",
+    "output_produced",
+    "output_image_caps",
+    "output_action",
+    "output_images",
+    "output_image",
+    "output_model",
+})
+_INLINE_WRAP_WIDTH = 80
+# Invisible delimiters around an inline slot's text, so the lines it lands
+# on can be found after the substitution passes and the flag filters.
+_INLINE_OPEN, _INLINE_CLOSE = "\x02", "\x03"
+_LIST_MARKER_RE = re.compile(r"(?:[-*]|\d+\.) ")
+
+
+def mark_inline_slots(slots: dict[str, str]) -> dict[str, str]:
+    """Delimit the text of every inline phrase slot (see above)."""
+    return {
+        k: (_INLINE_OPEN + v + _INLINE_CLOSE
+            if k in INLINE_FRAGMENT_SLOTS and v else v)
+        for k, v in slots.items()
+    }
+
+
+def wrap_inline_lines(text: str) -> str:
+    """Remove the delimiters and re-wrap each delimited line that is now
+    longer than ``_INLINE_WRAP_WIDTH``.
+
+    The line keeps its indentation; the continuation lines of a list item
+    (``- ``, ``* ``, ``3. ``) are indented past its marker.  Words and
+    hyphenated words are never split.
+    """
+    out = []
+    for line in text.split("\n"):
+        if _INLINE_OPEN not in line:
+            out.append(line)
+            continue
+        plain = line.replace(_INLINE_OPEN, "").replace(_INLINE_CLOSE, "")
+        if len(plain) <= _INLINE_WRAP_WIDTH:
+            out.append(plain)
+            continue
+        body = plain.lstrip(" ")
+        indent = plain[: len(plain) - len(body)]
+        marker = _LIST_MARKER_RE.match(body)
+        hang = indent + " " * (marker.end() if marker else 0)
+        out.append(textwrap.fill(
+            body, width=_INLINE_WRAP_WIDTH, initial_indent=indent,
+            subsequent_indent=hang, break_long_words=False,
+            break_on_hyphens=False,
+        ))
+    return "\n".join(out)
+
+
 def _build_slots() -> dict[str, str]:
     """Re-read every fragment from disk and assemble the $-slot map."""
     return {
@@ -972,6 +1161,78 @@ def _build_slots() -> dict[str, str]:
         # _build_template, like $database_search_per_agent.
         "blade_sections_visualizer": _read_dc_fragment("tools_config/blade_sections_visualizer.md"),
         "blade_sections_visualizer_off": _read_dc_fragment("tools_config/blade_sections_visualizer_off.md"),
+        # Relocated DC- / tool-specific text (generic-fragments audit,
+        # 2026-10): phrases and blocks that were inline in a generic
+        # fragment or an agent body.  Described in the dc_config /
+        # tools_config READMEs.
+        "geometry_tool_name": _read_dc_fragment("tools_config/geometry_tool_name.md"),
+        "quality_check_numbers": _read_dc_fragment("tools_config/quality_check_numbers.md"),
+        "quality_check_report": _read_dc_fragment("tools_config/quality_check_report.md"),
+        "mesh_check_role_item": _read_dc_fragment("tools_config/mesh_check_role_item.md"),
+        "qc_numerics_verdict_rule": _read_dc_fragment("tools_config/qc_numerics_verdict_rule.md"),
+        "no_render_fallback_qc": _read_dc_fragment("tools_config/no_render_fallback_qc.md"),
+        "geometry_model_filename": _read_dc_fragment("tools_config/geometry_model_filename.md"),
+        "render_view_list": _read_dc_fragment("tools_config/render_view_list.md"),
+        "roster_sections_tool_sentence": _read_dc_fragment("tools_config/roster_sections_tool_sentence.md"),
+        "roster_tools_clause": _read_dc_fragment("tools_config/roster_tools_clause.md"),
+        "routing_sections_alternative": _read_dc_fragment("tools_config/routing_sections_alternative.md"),
+        "sections_rerun_case": _read_dc_fragment("tools_config/sections_rerun_case.md"),
+        "directive_output_choice": _read_dc_fragment("tools_config/directive_output_choice.md"),
+        "precision_multi_phase_rule": _read_dc_fragment("tools_config/precision_multi_phase_rule.md"),
+        "geometry_tools_loading_rule": _read_dc_fragment("tools_config/geometry_tools_loading_rule.md"),
+        "sections_tool_block_full": _read_dc_fragment("tools_config/sections_tool_block_full.md"),
+        "sections_tool_block_overlay": _read_dc_fragment("tools_config/sections_tool_block_overlay.md"),
+        "precision_match_subject": _read_dc_fragment("tools_config/precision_match_subject.md"),
+        "precision_gap_description": _read_dc_fragment("tools_config/precision_gap_description.md"),
+        "precision_match_targets": _read_dc_fragment("tools_config/precision_match_targets.md"),
+        "values_only_excluded_outputs": _read_dc_fragment("tools_config/values_only_excluded_outputs.md"),
+        "precision_continue_directive_example": _read_dc_fragment("tools_config/precision_continue_directive_example.md"),
+        "render_type_choice": _read_dc_fragment("tools_config/render_type_choice.md"),
+        "geometry_editing_ban": _read_dc_fragment("tools_config/geometry_editing_ban.md"),
+        "mesh_editing_operations_actions": _read_dc_fragment("tools_config/mesh_editing_operations_actions.md"),
+        "recommendation_exclusions": _read_dc_fragment("tools_config/recommendation_exclusions.md"),
+        "past_run_lookup_examples": _read_dc_fragment("dc_config/past_run_lookup_examples.md"),
+        "extraction_only_examples_user": _read_dc_fragment("dc_config/extraction_only_examples_user.md"),
+        "extraction_only_examples": _read_dc_fragment("dc_config/extraction_only_examples.md"),
+        "observable_fact_questions": _read_dc_fragment("tools_config/observable_fact_questions.md"),
+        "tool_run_history_contents": _read_dc_fragment("tools_config/tool_run_history_contents.md"),
+        "non_consumable_input_examples": _read_dc_fragment("dc_config/non_consumable_input_examples.md"),
+        "quantitative_input_example": _read_dc_fragment("dc_config/quantitative_input_example.md"),
+        "countable_feature_example": _read_dc_fragment("dc_config/countable_feature_example.md"),
+        "stated_count_example": _read_dc_fragment("dc_config/stated_count_example.md"),
+        "soft_target_example": _read_dc_fragment("dc_config/soft_target_example.md"),
+        "soft_target_marker_example": _read_dc_fragment("dc_config/soft_target_marker_example.md"),
+        "useful_input_images_example": _read_dc_fragment("dc_config/useful_input_images_example.md"),
+        "lever_map": _read_dc_fragment("dc_config/lever_map.md"),
+        "parameter_level_entry_example": _read_dc_fragment("dc_config/parameter_level_entry_example.md"),
+        "non_applicable_input_examples": _read_dc_fragment("dc_config/non_applicable_input_examples.md"),
+        "visual_claim_examples": _read_dc_fragment("tools_config/visual_claim_examples.md"),
+        "shape_gap_example": _read_dc_fragment("dc_config/shape_gap_example.md"),
+        "unlocked_lever_examples": _read_dc_fragment("dc_config/unlocked_lever_examples.md"),
+        "sub_resolution_examples": _read_dc_fragment("dc_config/sub_resolution_examples.md"),
+        "prior_finding_citation_example": _read_dc_fragment("dc_config/prior_finding_citation_example.md"),
+        "feature_feedback_examples": _read_dc_fragment("dc_config/feature_feedback_examples.md"),
+        "relative_magnitude_examples": _read_dc_fragment("dc_config/relative_magnitude_examples.md"),
+        "ratio_vs_absolute_feedback": _read_dc_fragment("dc_config/ratio_vs_absolute_feedback.md"),
+        "dh_artefact_reference_examples": _read_dc_fragment("tools_config/dh_artefact_reference_examples.md"),
+        "dh_parameter_dump_example": _read_dc_fragment("dc_config/dh_parameter_dump_example.md"),
+        "dh_concrete_noun_examples": _read_dc_fragment("dc_config/dh_concrete_noun_examples.md"),
+        "dh_parameter_name_example": _read_dc_fragment("dc_config/dh_parameter_name_example.md"),
+        "dh_numeric_fact_example": _read_dc_fragment("dc_config/dh_numeric_fact_example.md"),
+        "dh_structural_marker_examples": _read_dc_fragment("dc_config/dh_structural_marker_examples.md"),
+        "output_images_label": _read_dc_fragment("tools_config/output_images_label.md"),
+        "output_model_label": _read_dc_fragment("tools_config/output_model_label.md"),
+        "output_images_long": _read_dc_fragment("tools_config/output_images_long.md"),
+        "output_image_files": _read_dc_fragment("tools_config/output_image_files.md"),
+        "output_reactions": _read_dc_fragment("tools_config/output_reactions.md"),
+        "output_reaction": _read_dc_fragment("tools_config/output_reaction.md"),
+        "output_action_noun": _read_dc_fragment("tools_config/output_action_noun.md"),
+        "output_produced": _read_dc_fragment("tools_config/output_produced.md"),
+        "output_image_caps": _read_dc_fragment("tools_config/output_image_caps.md"),
+        "output_action": _read_dc_fragment("tools_config/output_action.md"),
+        "output_images": _read_dc_fragment("tools_config/output_images.md"),
+        "output_image": _read_dc_fragment("tools_config/output_image.md"),
+        "output_model": _read_dc_fragment("tools_config/output_model.md"),
         # Generic
         "hard_constraints_generic": _read_generic_fragment("generic_constraints.md"),
         "value_states": _read_generic_fragment("value_states.md"),
@@ -1093,6 +1354,7 @@ def _build_template(agent_dir_name: str) -> str:
     for _slot, _tools in _DBA_TOOL_SLOTS:
         if not any(_dba.is_enabled_for(agent_dir_name, t) for t in _tools):
             slots[_slot] = ""
+    slots = mark_inline_slots(slots)
     once = Template(raw).safe_substitute(slots)
     twice = Template(once).safe_substitute(slots)
     filtered = apply_flag_filters(twice)
@@ -1103,7 +1365,8 @@ def _build_template(agent_dir_name: str) -> str:
     # apply_flag_filters chain.
     filtered = apply_dba_filter(filtered, agent_dir_name)
     filtered = apply_image_tools_filter(filtered, agent_dir_name)
-    return apply_chain_only_filter(filtered, agent_dir_name)
+    return wrap_inline_lines(
+        apply_chain_only_filter(filtered, agent_dir_name))
 
 
 # Re-export routing helpers so agents can do ``from agents.shared.prompts

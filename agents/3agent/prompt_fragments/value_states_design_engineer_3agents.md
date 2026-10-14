@@ -6,8 +6,7 @@ Every value the user could have given is in exactly one of three states:
 - **SOFT TARGET** — the user gave the value but subordinated it to a
   qualitative goal.  The Requirements Analyst reports these with an
   explicit marker naming the goal and how tightly to hold the number,
-  e.g. ``Radius of propeller: ~75 mm — SOFT TARGET (goal: match the
-  sketched blade shape; keep near 75 mm if free)``.  It is neither locked
+  e.g. ``$soft_target_marker_example``.  It is neither locked
   nor free.  **The goal governs**: the marker itself IS the authorisation
   to move the value (within range) as far as the goal requires, and you
   never have to justify moving it.  The stated value is a reference, not
