@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>MAS Studio (draft)</title>
+<!-- Studio draft: a file:// page (studio UI kit rules: plain <link>/<script src>,
+     no modules, no fetch()).  draft_data.js holds the REAL propeller pack;
+     mock_bridge.js answers the page's calls the way the hosted server will
+     (POST /api/<name> -> {ok: true, ...}). -->
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="studio.css">
+<script src="draft_data.js"></script>
+<script src="mock_bridge.js"></script>
+</head>
+<body>
+<div id="app"></div>
+
+<div class="modal-back" id="modal">
+  <div class="modal" id="modalBox">
+    <header id="modalTitle"></header>
+    <div class="body" id="modalBody"></div>
+    <footer id="modalFoot"></footer>
+  </div>
+</div>
+<div id="toasts"></div>
+<div id="draftTag">DRAFT &middot; mock bridge &middot; real propeller data</div>
+<script src="studio.js"></script>
+</body>
+</html>

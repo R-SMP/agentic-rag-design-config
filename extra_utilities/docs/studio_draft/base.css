@@ -1,0 +1,134 @@
+/* =========================================================================
+   base.css -- the shared look of every studio window.
+
+   The palette and the button/input rules are BASE_CSS, the block every
+   window in the mesh_evaluation repo carries (ui/index.html, analyzer.html,
+   studio.html, chart_studio.html, studio_overlay.html), so a new studio
+   reads as part of the same application.  The repo pages inline this block
+   in a <style> tag; a <link rel="stylesheet" href="base.css"> works just as
+   well from file:// and keeps one copy.  Do not re-theme per window.
+
+   Sections:  1 palette + base   2 layout shell   3 toolbar   4 panels
+              5 splitters        6 tabs           7 forms     8 tables
+              9 pills/badges    10 banners       11 status bar
+             12 modal           13 toast         14 utilities
+   ========================================================================= */
+
+/* 1 ---- palette + base (BASE_CSS) ------------------------------------- */
+:root { --bg:#1e1f24; --panel:#2a2c33; --line:#3a3d46; --txt:#e6e8ec;
+        --muted:#9aa0aa; --accent:#4a8cff; --good:#37b24d; --warn:#f08c00;
+        --bad:#e03131; --a:#f0a24a; --b:#38b2a3; --c:#9b7fe0;
+        --mono: Consolas, "Cascadia Mono", monospace; }
+* { box-sizing:border-box; }
+html,body { margin:0; height:100%; background:var(--bg); color:var(--txt);
+            font-family:Segoe UI, system-ui, sans-serif; font-size:13px; }
+button { background:var(--panel); color:var(--txt); border:1px solid var(--line);
+         border-radius:6px; padding:5px 10px; cursor:pointer; font-size:12px; }
+button:hover { background:#3d414a; }
+button:disabled { opacity:.4; cursor:default; }
+button.on, button.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+button.danger { border-color:#7a2a2a; color:#ffb3b3; }
+input, select, textarea { background:#1b1c20; color:var(--txt); border:1px solid var(--line);
+         border-radius:5px; padding:4px 6px; font-size:12px; font-family:inherit; }
+input:focus, select:focus, textarea:focus { outline:none; border-color:var(--accent); }
+input.invalid { border-color:var(--bad); }
+h4 { margin:0 0 5px; font-size:10.5px; color:var(--muted); font-weight:600;
+     text-transform:uppercase; letter-spacing:.05em; }
+.muted { color:var(--muted); }
+.err { color:#ff8787; } .ok { color:#8ce99a; } .run { color:#a5c8ff; } .warn { color:#ffc078; }
+
+/* 2 ---- layout shell: toolbar / columns / status bar ------------------- */
+#app { display:flex; flex-direction:column; height:100vh; min-height:0; }
+#main { flex:1 1 auto; display:flex; min-height:0; }
+.col { display:flex; flex-direction:column; min-width:0; min-height:0; overflow:auto; }
+.col.side { flex:0 0 auto; width:300px; background:var(--panel); }
+.col.center { flex:1 1 auto; background:#15161a; }
+
+/* 3 ---- toolbar -------------------------------------------------------- */
+.toolbar { display:flex; align-items:center; gap:8px; flex-wrap:wrap; padding:7px 12px;
+           border-bottom:1px solid var(--line); background:var(--panel); }
+.toolbar .title { font-weight:600; font-size:14px; margin-right:6px; }
+.toolbar .grow { flex:1 1 auto; }
+.toolbar label { color:var(--muted); font-size:11.5px; display:flex; gap:5px; align-items:center; }
+
+/* 4 ---- panels / sections ---------------------------------------------- */
+.section { padding:10px 12px; border-bottom:1px solid var(--line); }
+.section:last-child { border-bottom:0; }
+.row { display:flex; align-items:center; gap:8px; margin:5px 0; }
+.row > label { flex:0 0 110px; color:var(--muted); font-size:12px; }
+.row > input, .row > select { flex:1 1 auto; min-width:0; }
+.card { background:#23252b; border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+
+/* 5 ---- splitters (drag to resize the side columns) -------------------- */
+.splitter { flex:0 0 5px; cursor:col-resize; background:var(--line); opacity:.6; }
+.splitter:hover, .splitter.drag { background:var(--accent); opacity:1; }
+
+/* 6 ---- tabs ------------------------------------------------------------ */
+.tabs { display:flex; gap:2px; padding:6px 8px 0; border-bottom:1px solid var(--line); }
+.tabs button { border-radius:6px 6px 0 0; border-bottom:0; }
+.tabs button.on { background:var(--bg); border-color:var(--line); color:var(--txt); }
+.tabpane { display:none; flex:1 1 auto; min-height:0; overflow:auto; }
+.tabpane.on { display:block; }
+
+/* 7 ---- forms ----------------------------------------------------------- */
+.seg { display:inline-flex; border:1px solid var(--line); border-radius:6px; overflow:hidden; }
+.seg button { border:0; border-radius:0; }
+input[type=range] { padding:0; accent-color:var(--accent); }
+.hint { color:var(--muted); font-size:11px; margin:2px 0 0 118px; }
+
+/* 8 ---- tables ---------------------------------------------------------- */
+table.grid { width:100%; border-collapse:collapse; font-variant-numeric:tabular-nums; }
+table.grid th { text-align:left; color:var(--muted); font-weight:600; font-size:11px;
+                border-bottom:1px solid var(--line); padding:4px 6px; }
+table.grid td { border-bottom:1px solid #2f3139; padding:4px 6px; }
+table.grid tr:hover td { background:#262830; }
+table.grid td.num { text-align:right; font-family:var(--mono); }
+
+/* 9 ---- pills / badges --------------------------------------------------- */
+.pill { border:1px solid var(--line); border-radius:999px; padding:2px 10px;
+        font-size:12px; font-weight:600; background:#1b1c20; }
+.pill.good { color:#8ce99a; border-color:#2b6a37; background:#16301c; }
+.pill.warn { color:#ffd8a0; border-color:#7a5a1a; background:#33260f; }
+.pill.bad  { color:#ffb3b3; border-color:#7a2a2a; background:#331616; }
+.badge { display:inline-block; min-width:18px; padding:0 5px; border-radius:9px;
+         background:var(--accent); color:#fff; font-size:11px; text-align:center; }
+
+/* 10 ---- banners (advisory messages that stay visible) ----------------- */
+.banner { padding:7px 12px; border-bottom:1px solid var(--line); font-size:12px; }
+.banner.warn { background:#33260f; color:#ffd8a0; }
+.banner.bad  { background:#331616; color:#ffb3b3; }
+.banner.info { background:#172238; color:#a5c8ff; }
+.banner[hidden] { display:none; }
+
+/* 11 ---- status bar ------------------------------------------------------ */
+.statusbar { display:flex; align-items:center; gap:10px; padding:5px 12px;
+             border-top:1px solid var(--line); background:var(--panel); font-size:12px; }
+.statusbar .msg { flex:1 1 auto; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.progress { flex:0 0 180px; height:6px; background:#1b1c20; border-radius:3px; overflow:hidden; }
+.progress > div { height:100%; width:0; background:var(--accent); transition:width .2s; }
+
+/* 12 ---- modal dialog ---------------------------------------------------- */
+.modal-back { position:fixed; inset:0; background:rgba(0,0,0,.55); display:none;
+              align-items:center; justify-content:center; z-index:50; }
+.modal-back.on { display:flex; }
+.modal { background:var(--panel); border:1px solid var(--line); border-radius:10px;
+         min-width:360px; max-width:80vw; box-shadow:0 10px 40px rgba(0,0,0,.5); }
+.modal header { padding:10px 14px; border-bottom:1px solid var(--line); font-weight:600; }
+.modal .body { padding:12px 14px; }
+.modal footer { padding:10px 14px; border-top:1px solid var(--line); display:flex;
+                justify-content:flex-end; gap:8px; }
+
+/* 13 ---- toast (short, self-dismissing notices) ------------------------- */
+#toasts { position:fixed; right:14px; top:54px; display:flex; flex-direction:column;
+          gap:6px; z-index:60; }
+.toast { background:#23252b; border:1px solid var(--line); border-left:4px solid var(--accent);
+         border-radius:6px; padding:8px 12px; min-width:220px; box-shadow:0 4px 18px rgba(0,0,0,.4); }
+.toast.ok { border-left-color:var(--good); } .toast.err { border-left-color:var(--bad); }
+
+/* 14 ---- utilities -------------------------------------------------------- */
+.mono { font-family:var(--mono); }
+.pre { white-space:pre-wrap; word-break:break-word; }
+.log { font-family:var(--mono); font-size:11.5px; white-space:pre-wrap; color:#c9ccd3;
+       background:#15161a; border:1px solid var(--line); border-radius:6px; padding:8px;
+       max-height:220px; overflow:auto; }
+.empty { color:var(--muted); text-align:center; padding:40px 10px; }
