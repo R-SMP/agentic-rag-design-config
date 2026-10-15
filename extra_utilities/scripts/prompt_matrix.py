@@ -7,8 +7,9 @@ Why a matrix
 are on disk.  Most prompt text is conditional, though: ``<<RAG_ON>>``,
 ``<<HAS_DBA>>``, the pack's ``<<IF:tool:…>>`` / ``<<IF:setting:…>>``, ``<<DCII_ONLY>>``,
 ``<<PF_ON>>``, the per-agent parameter-access regions, the per-agent
-database-tool slots, and the runtime blocks chosen by ``RENDER_LIBRARY``,
-``DCOI_COMPARISON_MODE``, ``KEEP_IMAGES_IN_CONTEXT`` and ``CHAIN_ACCESS``.  A
+database-tool slots, and the runtime blocks chosen by the generator's
+``render_library`` / ``mesh_checks`` settings, ``DCOI_COMPARISON_MODE``,
+``KEEP_IMAGES_IN_CONTEXT`` and ``CHAIN_ACCESS``.  A
 change that is byte-identical under one setting can still move a prompt under
 another.  The 17 combinations below switch each of those at least once; times
 three topologies that is 357 prompts.  They are the combinations that
@@ -131,6 +132,16 @@ _ACCESS_FROM_SETTING = {
 }
 
 
+# The settings that became TOOL settings (MAS-blueprint P3c) -- each tool's
+# tool.yaml + Workflow Settings -- as (tool, setting).  The combinations keep
+# their names and meaning.
+_TOOL_SETTING_FROM_SETTING = {
+    "BLADE_SECTIONS_VISUALIZER_ENABLED": ("render_blade_sections", "enabled"),
+    "MESH_CHECKS": ("generate_and_render_propeller", "mesh_checks"),
+    "RENDER_LIBRARY": ("generate_and_render_propeller", "render_library"),
+}
+
+
 def apply_config(config: str):
     """Apply combination *config* to this (child) process and return the
     settings module.  Shared with ``tool_matrix.py``."""
@@ -148,6 +159,16 @@ def apply_config(config: str):
                 for agent, row in (on if overrides.pop(name) else off).items():
                     cells.setdefault(agent, {}).update(row)
         PA.read_overrides = lambda: {a: dict(r) for a, r in cells.items()}
+    try:
+        from engine import pack_tools as PT
+    except ImportError:                       # before the tools moved
+        PT = None
+    if PT is not None:
+        tool_values: dict = {}
+        for name, (tool, key) in _TOOL_SETTING_FROM_SETTING.items():
+            if name in overrides and not hasattr(S, name):
+                tool_values.setdefault(tool, {})[key] = overrides.pop(name)
+        PT.settings_override_for_tests(tool_values)
     missing = [k for k in overrides if not hasattr(S, k)]
     if missing:
         raise SystemExit(f"{config}: not in workflow_settings.settings: "

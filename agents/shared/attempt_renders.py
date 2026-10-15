@@ -68,17 +68,14 @@ def _missing(folder: Path, views: list[str]) -> list[str]:
 def _render_blade_sections(folder: Path, report: dict) -> None:
     """Blade sections from parameters.json.  No mesh needed."""
     try:
-        from tools.render_blade_sections.render_blade_sections import (
-            render_blade_sections,
-        )
-        # ``.func`` unwraps the @tool StructuredTool to the underlying
-        # function -- the same unwrap _render_mesh_views does below.  Without
-        # it every call raises "TypeError: 'StructuredTool' object is not
-        # callable", which this function's own except swallows into a report
-        # line, so the pass created ZERO blade-sections renders between
-        # e61293a (2026-08-21) and this fix while appearing to work: 27 of 59
-        # attempts across one 25-session sample failed exactly this way.
-        fn = getattr(render_blade_sections, "func", render_blade_sections)
+        # The pack's blade-sections tool is a plain function (MAS-blueprint
+        # P3c); the engine resolves it from its tool.yaml.  (It used to be a
+        # @tool StructuredTool that had to be unwrapped with ``.func`` -- the
+        # missing unwrap made this pass create ZERO blade-sections renders
+        # between e61293a (2026-08-21) and its fix.)
+        from engine import pack_tools
+        fn = pack_tools.plugin("render_blade_sections").function(
+            pack_tools.manifest("render_blade_sections")["entrypoint"])
         out = fn(str((folder / _PARAMS).resolve()))
     except Exception as exc:  # noqa: BLE001 — never break the save
         report["failed"].append(("blade_sections",
@@ -100,34 +97,26 @@ def _render_mesh_views(folder: Path, missing: list[str], report: dict) -> None:
     mesh = folder / _MESH
     if not mesh.is_file():
         try:
-            from tools.generate_mesh.generate_mesh import (
-                generate_and_render_propeller,
-            )
+            from engine import pack_tools
+            generator = pack_tools.generators()[0]
         except Exception as exc:  # noqa: BLE001
             for v in missing:
                 report["failed"].append(
                     (v, f"geometry tool unavailable: {type(exc).__name__}"))
             return
         try:
-            # It takes ONLY the parameters path and derives the attempt
-            # folder from it, so geometry can never be built from one
-            # attempt's numbers into another's folder.  It builds the mesh
-            # AND renders the three views in the same call.
-            #
-            # ``.func`` unwraps the @tool StructuredTool to the underlying
-            # callable.  The @tool_active layer beneath is safe here: its
-            # instrumentation is wrapped in try/except precisely so it
-            # cannot break a real invocation, and there is no agent turn in
-            # flight during a save.
-            fn = getattr(generate_and_render_propeller, "func",
-                         generate_and_render_propeller)
-            fn(str((folder / _PARAMS).resolve()))
+            # The same run the agents' tool does (engine/pack_tools.py): it
+            # takes ONLY the parameters path and derives the attempt folder
+            # from it, so geometry can never be built from one attempt's
+            # numbers into another's folder.  It builds the mesh AND renders
+            # the three views in the same call.
+            pack_tools.run_generator(generator, str((folder / _PARAMS).resolve()))
         except Exception as exc:  # noqa: BLE001
             for v in missing:
                 report["failed"].append(
                     (v, f"mesh generation failed: {type(exc).__name__}: {exc}"))
             return
-        # generate_and_render_propeller renders as part of the same call
+        # the generator renders as part of the same call
         for v in list(missing):
             if (folder / attempt_views.VIEW_FILES[v]).is_file():
                 report["generated"].append(v)
@@ -137,9 +126,8 @@ def _render_mesh_views(folder: Path, missing: list[str], report: dict) -> None:
 
     # Mesh already there — render only.
     try:
-        from tools import get_render_core
-        core = get_render_core()
-        core(str(mesh.resolve()), str(folder.resolve()))
+        from engine import pack_tools
+        pack_tools.render_existing(pack_tools.generators()[0], folder)
     except Exception as exc:  # noqa: BLE001
         for v in missing:
             report["failed"].append(

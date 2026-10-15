@@ -51,11 +51,10 @@ from agents.shared.stop_signal import check_stop_or_raise
 from agents.shared.topology import hub_key as _hub_key
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_TC_STEPS
-from tools import get_render_library, get_tools
-from tools.render_blade_sections.render_blade_sections import render_blade_sections
+from tools.calculate.calculate import calculate
 from agents.shared.dba_tools import dba_tools_for
 from agents.shared.dc_params_tool import param_tools_for
-from workflow_settings import blade_sections_access
+from engine import pack_tools
 
 logger = logging.getLogger("propeller_agent")
 
@@ -85,24 +84,24 @@ class ToolCaller(BaseChainAgent):
         if state is None:
             state = AgentState(agent_key=self.AGENT_KEY)
         super().__init__(state=state, session=session, llm_cache=llm_cache)
-        # Utility tools span the design generators (the active render
-        # library is picked by ``set_render_library`` before this agent
-        # is built) and the session-scoped attempt-inspection helpers;
-        # both are dispatched the same way so they share one map.
-        utility_tools = list(get_tools()) + [read_attempts]
+        # Utility tools span the pack's generators (bound by role: this
+        # agent is the tool runner -- engine/pack_tools.py), the calculator
+        # and the session-scoped attempt-inspection helpers; all are
+        # dispatched the same way so they share one map.
+        utility_tools = (pack_tools.agent_tools(self.AGENT_KEY, ("generator",))
+                         + [calculate, read_attempts])
         # Which of the three database tools this agent holds is a
         # per-(profile, agent, tool) decision; dba_tools_for owns it.
         utility_tools.extend(dba_tools_for("tool_caller"))
-        # Blade-sections visualizer (global toggle, Tool Caller only).  Read
-        # fresh so a Workflow-Settings edit takes effect next session.
-        if blade_sections_access.is_enabled():
-            utility_tools.append(render_blade_sections)
+        # The pack's other tools for this role (the blade-sections
+        # visualizer), each only while its Workflow Settings switch is on.
+        utility_tools.extend(pack_tools.agent_tools(self.AGENT_KEY, ("helper",)))
         # dc_params_list, when this agent's parameter-access cell says
         # "tool" (engine/parameter_access.py).
         utility_tools.extend(param_tools_for(self.AGENT_KEY))
         self._extra_utility_tools_by_name = {t.name: t for t in utility_tools}
         self.mesh_checks = session.mesh_checks
-        self.render_library = get_render_library()
+        self.render_library = session.render_library
         self._routing_tools_by_name: dict = {}
         self.system_prompt: str = ""
 

@@ -266,13 +266,13 @@ CFG_ROWS = [
      "UII runs before the Planner" if TOPOLOGY == 7 else
      "raw setting \u2014 forced OFF here: the hub IS the planner "
      "(prompts._planner_first_effective)"),
-    ("MESH_CHECKS", CFG["MESH_CHECKS"],
+    ("generator: mesh_checks", CFG["MESH_CHECKS"],
      "no watertightness / volume metrics; the Tool Caller gets the "
      "\u201cchecks off\u201d render fragment"),
-    ("RENDER_LIBRARY", '"' + CFG["RENDER_LIBRARY"] + '"', "render backend"),
-    ("GEOMETRY_BACKEND", '"' + CFG["GEOMETRY_BACKEND"] + '"',
+    ("generator: render_library", '"' + CFG["RENDER_LIBRARY"] + '"', "render backend"),
+    ("generator: geometry_backend", '"' + CFG["GEOMETRY_BACKEND"] + '"',
      "headless-Node FEG rather than RhinoCompute"),
-    ("BLADE_SECTIONS_VISUALIZER_ENABLED", CFG["BLADE_SECTIONS_VISUALIZER_ENABLED"],
+    ("render_blade_sections: enabled", CFG["BLADE_SECTIONS_VISUALIZER_ENABLED"],
      "render_blade_sections bound to the Tool Caller"),
     ("OCR_ENABLED", CFG["OCR_ENABLED"],
      "view_images carries OCR text; ocr_regions exists"),

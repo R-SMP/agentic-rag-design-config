@@ -26,7 +26,7 @@ if "--topology" in sys.argv:
 import workflow_settings.settings as S
 S.SYSTEM_TOPOLOGY = TOPOLOGY
 
-from workflow_settings import database_access, ocr_access, blade_sections_access
+from workflow_settings import database_access, ocr_access
 
 # Production (Railway/Docker) paths.  The Dockerfile's WORKDIR is /app and
 # config.py derives every path from PROJECT_ROOT = the repo root, so these
@@ -39,7 +39,7 @@ INPUT_IMAGES_SUBDIR = "input_images"
 from agents.shared import prompts as P
 from agents.shared.dba_tools import dba_tools_for
 from agents.shared.attempts_tool import read_attempts
-from agents.shared.dc_params_tool import build_dc_params_list, dc_params_list
+from agents.shared.dc_params_tool import param_tools_for
 from agents.shared.user_inputs_tool import (
     READ_INPUTS_DOC_DCOI, READ_INPUTS_DOC_PLANNER, build_read_user_inputs,
     build_user_inputs_tools, read_inputs_doc,
@@ -49,8 +49,10 @@ from agents.shared.routing_tools import build_routing_tool
 from agents.receptionist.propose_attempt_tool import propose_attempt
 from tools.calculate.calculate import calculate
 from tools.visualize_model.visualize_model import visualize_3d_model
-from tools import get_tools
-from tools.render_blade_sections.render_blade_sections import render_blade_sections
+from engine import pack_tools
+
+# The generator tool's settings (its tool.yaml + Workflow Settings).
+_GEN = pack_tools.settings(pack_tools.generators()[0])
 
 import agents.orchestrator.orchestrator as ORCH
 import agents.planner.planner as PLAN
@@ -143,10 +145,10 @@ def runtime_slots():
             render_check_library_block=(
                 (
                     P.RENDER_CHECK_LIBRARY_PYVISTA
-                    if S.RENDER_LIBRARY == "pyvista"
+                    if _GEN["render_library"] == "pyvista"
                     else P.RENDER_CHECK_LIBRARY_TRIMESH
                 )
-                if S.MESH_CHECKS else P.RENDER_CHECK_LIBRARY_OFF
+                if _GEN["mesh_checks"] else P.RENDER_CHECK_LIBRARY_OFF
             ),
         ),
         "dc_output_inspector": dict(
@@ -177,7 +179,7 @@ def tools_for(agent):
                    rt("receptionist", "orchestrator")]
         return (list(routing) + [read_attempts,
                                  visualize_3d_model,
-                                 build_dc_params_list("receptionist"),
+                                 *param_tools_for("receptionist"),
                                  propose_attempt]
                 + dba_tools_for("receptionist"))
 
@@ -188,7 +190,7 @@ def tools_for(agent):
              rt("orchestrator", "tool_caller"),
              rt("orchestrator", "dc_output_inspector"),
              rt("orchestrator", "receptionist"),
-             read_attempts, dc_params_list,
+             read_attempts, *param_tools_for("orchestrator"),
              build_read_agent_history_tool(lambda *a, **k: [])]
         t.extend(dba_tools_for("orchestrator"))
         if DCII_ON:
@@ -209,7 +211,7 @@ def tools_for(agent):
                   P5.read_extracted_inputs,
                   build_read_agent_history_tool(lambda *a, **k: []),
                   read_attempts,
-                  build_dc_params_list("planner")]
+                  *param_tools_for("planner")]
                  + [rt("planner", tgt) for tgt in _EDGES_5["planner"]])
             t.extend(dba_tools_for("planner"))
             return t
@@ -222,7 +224,7 @@ def tools_for(agent):
                                      direct_provider="openai"),
               PLAN.read_extracted_inputs]
              + [build_read_agent_history_tool(lambda *a, **k: [])]
-             + [read_attempts, dc_params_list]
+             + [read_attempts, *param_tools_for("planner")]
              + routing)
         t.extend(dba_tools_for("planner"))
         return t
@@ -266,10 +268,11 @@ def tools_for(agent):
                 + routing)
 
     if agent == "tool_caller":
-        utility = list(get_tools()) + [read_attempts]
+        utility = (pack_tools.agent_tools("tool_caller", ("generator",))
+                   + [calculate, read_attempts])
         utility += dba_tools_for("tool_caller")
-        if blade_sections_access.is_enabled():
-            utility.append(render_blade_sections)
+        utility += pack_tools.agent_tools("tool_caller", ("helper",))
+        utility += param_tools_for("tool_caller")
         routing = [rt("tool_caller", "dc_output_inspector"),
                    rt("tool_caller",
                       "dc_input_inspector" if DCII_ON else "dc_input_creator"),
@@ -427,10 +430,11 @@ out = {
         "dba_profile": database_access.profile_key(),
         "DC_INSPECTOR_ENABLED": bool(S.DC_INSPECTOR_ENABLED),
         "PLANNER_FIRST": bool(S.PLANNER_FIRST),
-        "MESH_CHECKS": bool(S.MESH_CHECKS),
-        "RENDER_LIBRARY": S.RENDER_LIBRARY,
-        "GEOMETRY_BACKEND": S.GEOMETRY_BACKEND,
-        "BLADE_SECTIONS_VISUALIZER_ENABLED": bool(S.BLADE_SECTIONS_VISUALIZER_ENABLED),
+        # Tool settings since MAS-blueprint P3c; the keys stay for build_html.
+        "MESH_CHECKS": bool(_GEN["mesh_checks"]),
+        "RENDER_LIBRARY": _GEN["render_library"],
+        "GEOMETRY_BACKEND": _GEN["geometry_backend"],
+        "BLADE_SECTIONS_VISUALIZER_ENABLED": pack_tools.is_enabled("render_blade_sections"),
         "OCR_ENABLED": bool(S.OCR_ENABLED),
         "CHAIN_ACCESS": bool(S.CHAIN_ACCESS),
         "KEEP_IMAGES_IN_CONTEXT": bool(S.KEEP_IMAGES_IN_CONTEXT),

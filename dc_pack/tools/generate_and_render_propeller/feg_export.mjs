@@ -2,10 +2,10 @@
 //
 // Reuses the EXACT web/feg modules the browser 3D preview uses, so the
 // agent-facing geometry matches the preview with zero port-drift.  Outputs an
-// OBJ that the existing Python render pipeline (tools/render_mesh) renders the
+// OBJ that the existing Python render pipeline (render_mesh.py) renders the
 // same way it renders a RhinoCompute OBJ.
 //
-// Usage:  node tools/generate_mesh/feg_export.mjs '<params-json>'
+// Usage:  node dc_pack/tools/generate_and_render_propeller/feg_export.mjs '<params-json>'
 //         (17 canonical params) — OBJ text -> stdout, one-line stats -> stderr.
 //
 // The blade is an InstancedMesh (blade x bladeCount around Z); each instance is
@@ -18,7 +18,7 @@ import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const propellerUrl = pathToFileURL(
-  resolve(__dirname, '..', '..', 'web', 'feg', 'propeller.js'),
+  resolve(__dirname, '..', '..', '..', 'web', 'feg', 'propeller.js'),
 ).href;
 const { buildPropellerGroup } = await import(propellerUrl);
 

@@ -364,12 +364,26 @@ def _settings_values(names) -> dict:
     return out
 
 
-def _docstring(path: str, func: str) -> str:
-    tree = ast.parse((REPO / path).read_text(encoding="utf-8"))
-    for node in ast.walk(tree):
-        if isinstance(node, ast.FunctionDef) and node.name == func:
-            return ast.get_docstring(node) or ""
-    return ""
+def _tools() -> list:
+    """The pack's tools, from their manifests (engine/pack_tools.py)."""
+    from engine import pack_tools
+    out = []
+    for name, m in pack_tools.manifests().items():
+        ref = m.get("build") or m.get("entrypoint")
+        out.append({"name": name, "display": m["display_name"], "kind": m["kind"],
+                    "file": f"dc_pack/tools/{name}/{ref.split(':')[0]}",
+                    "description": m["description"]})
+    return out
+
+
+def _tool_settings() -> list:
+    """Each tool's settings with their defaults (the Settings screen)."""
+    from engine import pack_tools
+    return [{"tool": name, "settings": [
+                {"name": s["name"], "type": s["type"], "default": s["default"],
+                 "values": s.get("values"), "label": s.get("label", "")}
+                for s in pack_tools.setting_specs(name)]}
+            for name in pack_tools.manifests()]
 
 
 def _validate(slots: list, engine_slots: set) -> dict:
@@ -434,7 +448,8 @@ def _test_child(out_png: str, params_json: str) -> int:
     tool's own drawing function on the parameter defaults, in a subprocess."""
     import time
     _bootstrap()
-    from tools.render_blade_sections.draw import render_png
+    from engine import pack_tools
+    render_png = pack_tools.plugin("render_blade_sections").submodule("draw").render_png
     t0 = time.perf_counter()
     w, h = render_png(json.loads(params_json), False, Path(out_png))
     secs = time.perf_counter() - t0
@@ -473,8 +488,7 @@ def _matrix_summary() -> dict:
 
 def _pack_bytes() -> int:
     from engine import pack
-    roots = [pack.pack_dir(), REPO / "web/images",
-             REPO / "tools/generate_mesh", REPO / "tools/render_blade_sections"]
+    roots = [pack.pack_dir(), REPO / "web/images"]
     return sum(p.stat().st_size for r in roots for p in r.rglob("*")
                if p.is_file() and "__pycache__" not in p.parts)
 
@@ -509,32 +523,14 @@ def main() -> int:
                              "spans": prompts[("base", n)]["spans"]}
                     for n in TOPOLOGIES},
         "align": {f"{c}/{n}": prompts[(c, n)]["align"] for c, n in prompts},
-        "tools": [
-            {"name": "generate_and_render_propeller", "display": "Propeller Configurator",
-             "kind": "generator", "file": "tools/generate_mesh/generate_mesh.py",
-             "description": _docstring("tools/generate_mesh/generate_mesh.py",
-                                       "generate_and_render_propeller")},
-            {"name": "render_blade_sections", "display": "Blade Sections",
-             "kind": "alt_generator", "file": "tools/render_blade_sections/render_blade_sections.py",
-             "description": _docstring("tools/render_blade_sections/render_blade_sections.py",
-                                       "render_blade_sections")},
-        ],
-        "settings": _settings_values({
-            "MESH_CHECKS", "RENDER_LIBRARY", "GEOMETRY_BACKEND", "ATTEMPT_VIEW_ISOMETRIC",
-            "ATTEMPT_VIEW_TOP", "ATTEMPT_VIEW_SIDE", "ATTEMPT_VIEW_BLADE_SECTIONS",
-            "BLADE_SECTIONS_VISUALIZER_ENABLED", "DC_PARAMS_PRIMER_ENABLED"}),
+        "tools": _tools(),
+        "tool_settings": _tool_settings(),
+        "settings": _settings_values({"DC_PARAMS_PRIMER_ENABLED"}),
         "parameter_access": _parameter_access(),
         "validate": _validate(slots, set(P._build_slots())),
-        # TODO F104 (extra_utilities/TODO_known_issues.md): fragments about the
-        # blade-sections tool / the mesh checks that carry no feature marker.
-        "f104": {"blade_sections": [
-                     "directive_output_choice", "precision_multi_phase_rule",
-                     "precision_continue_directive_example", "precision_match_subject",
-                     "precision_match_targets", "sections_rerun_case",
-                     "values_only_excluded_outputs", "geometry_tools_loading_rule"],
-                 "mesh_checks": [
-                     "quality_check_numbers", "quality_check_report",
-                     "observable_fact_questions", "tool_run_history_contents"]},
+        # TODO F104 is closed (MAS-blueprint P3b): every field about the
+        # blade-sections tool or the mesh checks carries its <<IF:...>> marker.
+        "f104": {"blade_sections": [], "mesh_checks": []},
         "matrix": _matrix_summary(),
         "pack_bytes": _pack_bytes(),
         "env_vars": _env_names(),

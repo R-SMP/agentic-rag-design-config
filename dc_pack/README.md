@@ -12,8 +12,9 @@ chooses another pack; the default is this folder.
 | --- | --- |
 | `fragments/dc/` | Text about the configurator: parameter list, structure, modelling notes, capabilities, examples, … |
 | `fragments/tools/` | Text about the bound tools: tool inventory, tool rules, output vocabulary, render-check blocks, … |
+| `tools/<tool>/` | One folder per tool: `tool.yaml` (its name, its kind — `generator` or `helper` —, the role that may call it, the text the agents read, its outputs, and its settings with their defaults) plus plain Python with no LangChain in it (the contract is `engine/tooling.py`).  The engine loads them, builds the agents' tools and gives each to whichever agent holds its role in the running topology (`engine/pack_tools.py`).  A tool's switch and settings are its `<<IF:tool:…>>` / `<<IF:setting:…>>` flags; Workflow Settings › Tools changes them for the next session (`workflow_settings/tool_settings.json`). |
 | `parameters.json` | The parameters: names in canonical (JSON) order, types, ranges, steps, defaults, groups, and each consumer's wording (slider label/unit, database unit/description).  The one source for the validator, `$parameter_count`, the slider page, the preview check and the database schema (`engine/parameters.py`).  The agents' parameter lists stay hand-written; `smoke_test_parameters.py` checks they agree. |
-| `pack.yaml` | The pack's own settings.  `parameter_access`, who sees the parameter list for each agent and topology (full list / names only / through the `dc_params_list` tool / nothing).  It is the default; Workflow Settings › Parameter list access changes cells for the next session (`engine/parameter_access.py`); and `tool_switches` / `tool_settings`, which Workflow Settings value turns each `<<IF:tool:…>>` / `<<IF:setting:…>>` flag on (until the tools get their own files). |
+| `pack.yaml` | The pack's own settings.  `parameter_access`, who sees the parameter list for each agent and topology (full list / names only / through the `dc_params_list` tool / nothing).  It is the default; Workflow Settings › Parameter list access changes cells for the next session (`engine/parameter_access.py`). |
 | `assets/` | Images — the parameter primer (`dc_params_primer.png`). |
 
 The engine's own text — the DOs / DON'Ts every agent inherits, the routing
@@ -87,9 +88,11 @@ index in `prompts.py` are derived from the registry.
 
 * `render_check_library_trimesh` / `_pyvista` / `_off` — the render + mesh-check
   block the Tool Caller (Design Engineer in topology 3) receives through its
-  `{render_check_library_block}` placeholder, chosen by `RENDER_LIBRARY` and
-  `MESH_CHECKS`.  A new backend is an engine change (`tools/render_mesh/`,
-  `RENDER_LIBRARIES` in `tools/__init__.py`) plus one such field.
+  `{render_check_library_block}` placeholder, chosen by the generator's
+  `render_library` and `mesh_checks` settings.  A new backend is a new
+  `render_library` value in the generator's `tool.yaml` with its branch in its
+  `tool.py`, the block choice in `tool_caller.py` / `design_engineer.py`
+  (until P4), plus one such field.
 * `dc_params_primer_text` — the text sent with the parameter primer image at
   invoke time (`agents/shared/dc_primer.py`); an agent with its own copy gets
   that instead.

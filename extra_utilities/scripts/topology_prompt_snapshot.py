@@ -136,23 +136,17 @@ def _runtime_slots(agent: str, P, S) -> dict | None:
                     user_inputs_dir=_USER_INPUTS_DIR,
                     input_images_subdir=_INPUT_IMAGES_SUBDIR,
                     extraction_output_file=_EXTRACTION_FILE)
-    if agent == "tool_caller":
+    if agent in ("tool_caller", "design_engineer"):
+        # The generator's own settings (its tool.yaml + Workflow Settings).
+        from engine import pack_tools as PT
+        gen = PT.settings(PT.generators()[0])
         return dict(
-            routing_instructions=routing("tool_caller"),
+            routing_instructions=routing(agent),
             render_check_library_block=(
                 (P.RENDER_CHECK_LIBRARY_PYVISTA
-                 if S.RENDER_LIBRARY == "pyvista"
+                 if gen["render_library"] == "pyvista"
                  else P.RENDER_CHECK_LIBRARY_TRIMESH)
-                if S.MESH_CHECKS else P.RENDER_CHECK_LIBRARY_OFF),
-        )
-    if agent == "design_engineer":
-        return dict(
-            routing_instructions=routing("design_engineer"),
-            render_check_library_block=(
-                (P.RENDER_CHECK_LIBRARY_PYVISTA
-                 if S.RENDER_LIBRARY == "pyvista"
-                 else P.RENDER_CHECK_LIBRARY_TRIMESH)
-                if S.MESH_CHECKS else P.RENDER_CHECK_LIBRARY_OFF),
+                if gen["mesh_checks"] else P.RENDER_CHECK_LIBRARY_OFF),
         )
     if agent == "requirements_analyst":
         import agents.requirements_analyst.requirements_analyst as RA_M

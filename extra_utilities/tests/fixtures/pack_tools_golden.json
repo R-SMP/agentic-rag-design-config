@@ -1,0 +1,968 @@
+{
+ "backend_error_generic": {
+  "calls": [
+   [
+    "backend",
+    [
+     [
+      "bladeCount",
+      3
+     ],
+     [
+      "impellerRadius",
+      71
+     ],
+     [
+      "impellerThickness",
+      2
+     ],
+     [
+      "innerAngle",
+      25
+     ],
+     [
+      "innerCamber",
+      4
+     ],
+     [
+      "innerChord",
+      11
+     ],
+     [
+      "innerMaxPos",
+      4
+     ],
+     [
+      "innerThickness",
+      6
+     ],
+     [
+      "middleAngle",
+      15
+     ],
+     [
+      "middleChord",
+      20
+     ],
+     [
+      "middlePos",
+      0.3
+     ],
+     [
+      "outerAngle",
+      10
+     ],
+     [
+      "outerCamber",
+      4
+     ],
+     [
+      "outerChord",
+      15
+     ],
+     [
+      "outerMaxPos",
+      4
+     ],
+     [
+      "outerThickness",
+      6
+     ]
+    ]
+   ]
+  ],
+  "files": {
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   }
+  },
+  "text": "Error: All geometry backends failed — feg: x | rhino: y"
+ },
+ "backend_error_prefixed": {
+  "calls": [
+   [
+    "backend",
+    [
+     [
+      "bladeCount",
+      3
+     ],
+     [
+      "impellerRadius",
+      71
+     ],
+     [
+      "impellerThickness",
+      2
+     ],
+     [
+      "innerAngle",
+      25
+     ],
+     [
+      "innerCamber",
+      4
+     ],
+     [
+      "innerChord",
+      11
+     ],
+     [
+      "innerMaxPos",
+      4
+     ],
+     [
+      "innerThickness",
+      6
+     ],
+     [
+      "middleAngle",
+      15
+     ],
+     [
+      "middleChord",
+      20
+     ],
+     [
+      "middlePos",
+      0.3
+     ],
+     [
+      "outerAngle",
+      10
+     ],
+     [
+      "outerCamber",
+      4
+     ],
+     [
+      "outerChord",
+      15
+     ],
+     [
+      "outerMaxPos",
+      4
+     ],
+     [
+      "outerThickness",
+      6
+     ]
+    ]
+   ]
+  ],
+  "files": {
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   }
+  },
+  "text": "FEG error: node is not installed"
+ },
+ "fallback_rhino_selected": {
+  "calls": [
+   [
+    "backend",
+    [
+     [
+      "bladeCount",
+      3
+     ],
+     [
+      "impellerRadius",
+      71
+     ],
+     [
+      "impellerThickness",
+      2
+     ],
+     [
+      "innerAngle",
+      25
+     ],
+     [
+      "innerCamber",
+      4
+     ],
+     [
+      "innerChord",
+      11
+     ],
+     [
+      "innerMaxPos",
+      4
+     ],
+     [
+      "innerThickness",
+      6
+     ],
+     [
+      "middleAngle",
+      15
+     ],
+     [
+      "middleChord",
+      20
+     ],
+     [
+      "middlePos",
+      0.3
+     ],
+     [
+      "outerAngle",
+      10
+     ],
+     [
+      "outerCamber",
+      4
+     ],
+     [
+      "outerChord",
+      15
+     ],
+     [
+      "outerMaxPos",
+      4
+     ],
+     [
+      "outerThickness",
+      6
+     ]
+    ]
+   ],
+   [
+    "render",
+    "<ATT>/002_fallback/propeller_mesh.obj",
+    "<ATT>/002_fallback"
+   ]
+  ],
+  "files": {
+   "mesh_params.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "propeller_mesh.obj": "g Blade\nv 0 0 0\ng Ring\nv 1 1 1\ng Blade\n"
+  },
+  "text": "Mesh saved to <ATT>/002_fallback/propeller_mesh.obj (44 bytes, 1234 vertices). Parts: Blade, Ring. Geometry backend: FEG (fallback — RhinoCompute unavailable).\n\nRENDER REPORT for propeller_mesh.obj in <ATT>/002_fallback"
+ },
+ "incomplete_record": {
+  "calls": [],
+  "files": {
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": "ten",
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   }
+  },
+  "text": "Error: <ATT>/007_bad_record/parameters.json is not a complete parameter record.  Missing keys: ['innerChord']  Non-numeric values: ['outerAngle']  No mesh was built.  Fix the record on a NEW attempt rather than editing this one — attempt folders are append-only."
+ },
+ "legacy_impeller_height": {
+  "calls": [
+   [
+    "backend",
+    [
+     [
+      "bladeCount",
+      3
+     ],
+     [
+      "impellerRadius",
+      71
+     ],
+     [
+      "impellerThickness",
+      2
+     ],
+     [
+      "innerAngle",
+      25
+     ],
+     [
+      "innerCamber",
+      4
+     ],
+     [
+      "innerChord",
+      11
+     ],
+     [
+      "innerMaxPos",
+      4
+     ],
+     [
+      "innerThickness",
+      6
+     ],
+     [
+      "middleAngle",
+      15
+     ],
+     [
+      "middleChord",
+      20
+     ],
+     [
+      "middlePos",
+      0.3
+     ],
+     [
+      "outerAngle",
+      10
+     ],
+     [
+      "outerCamber",
+      4
+     ],
+     [
+      "outerChord",
+      15
+     ],
+     [
+      "outerMaxPos",
+      4
+     ],
+     [
+      "outerThickness",
+      6
+     ]
+    ]
+   ],
+   [
+    "render",
+    "<ATT>/010_legacy_key/propeller_mesh.obj",
+    "<ATT>/010_legacy_key"
+   ]
+  ],
+  "files": {
+   "mesh_params.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerHeight": 7,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "propeller_mesh.obj": "g Blade\nv 0 0 0\ng Ring\nv 1 1 1\ng Blade\n",
+   "propeller_mesh_components.obj": "g Comp1\nv 9 9 9\n"
+  },
+  "text": "Mesh saved to <ATT>/010_legacy_key/propeller_mesh.obj (44 bytes, 1234 vertices). Parts: Blade, Ring. Geometry backend: FEG.\n\nRENDER REPORT for propeller_mesh.obj in <ATT>/010_legacy_key"
+ },
+ "missing_folder": {
+  "calls": [],
+  "files": null,
+  "text": "Error: '<ATT>/nope' is not an existing directory.  Create the attempt folder first and pass its absolute path."
+ },
+ "new_mesh_feg": {
+  "calls": [
+   [
+    "backend",
+    [
+     [
+      "bladeCount",
+      3
+     ],
+     [
+      "impellerRadius",
+      71
+     ],
+     [
+      "impellerThickness",
+      2
+     ],
+     [
+      "innerAngle",
+      25
+     ],
+     [
+      "innerCamber",
+      4
+     ],
+     [
+      "innerChord",
+      11
+     ],
+     [
+      "innerMaxPos",
+      4
+     ],
+     [
+      "innerThickness",
+      6
+     ],
+     [
+      "middleAngle",
+      15
+     ],
+     [
+      "middleChord",
+      20
+     ],
+     [
+      "middlePos",
+      0.3
+     ],
+     [
+      "outerAngle",
+      10
+     ],
+     [
+      "outerCamber",
+      4
+     ],
+     [
+      "outerChord",
+      15
+     ],
+     [
+      "outerMaxPos",
+      4
+     ],
+     [
+      "outerThickness",
+      6
+     ]
+    ]
+   ],
+   [
+    "render",
+    "<ATT>/001_new/propeller_mesh.obj",
+    "<ATT>/001_new"
+   ]
+  ],
+  "files": {
+   "mesh_params.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "propeller_mesh.obj": "g Blade\nv 0 0 0\ng Ring\nv 1 1 1\ng Blade\n",
+   "propeller_mesh_components.obj": "g Comp1\nv 9 9 9\n"
+  },
+  "text": "Mesh saved to <ATT>/001_new/propeller_mesh.obj (44 bytes, 1234 vertices). Parts: Blade, Ring. Geometry backend: FEG.\n\nRENDER REPORT for propeller_mesh.obj in <ATT>/001_new"
+ },
+ "no_record": {
+  "calls": [],
+  "files": {},
+  "text": "Error: no parameters.json at <ATT>/006_no_record/parameters.json.  An attempt's mesh is built FROM its parameter record, so the record must exist first — point this call at an attempt that has one."
+ },
+ "outside_attempts": {
+  "calls": [],
+  "files": null,
+  "text": "Error: '<OUT>' is not an attempt folder under <ATT>.  ``generate_and_render_propeller`` only writes inside an attempt folder."
+ },
+ "record_bad_json": {
+  "calls": [],
+  "files": {
+   "parameters.json": "raw:{not json"
+  },
+  "text": "Error: could not read <ATT>/009_bad_json/parameters.json: Expecting property name enclosed in double quotes: line 1 column 2 (char 1).  The file must be a JSON object mapping each parameter name to a number."
+ },
+ "record_not_object": {
+  "calls": [],
+  "files": {
+   "parameters.json": [
+    1,
+    2,
+    3
+   ]
+  },
+  "text": "Error: <ATT>/008_not_object/parameters.json is not a JSON object.  It must map each parameter name to a number."
+ },
+ "render_raises": {
+  "calls": [
+   [
+    "backend",
+    [
+     [
+      "bladeCount",
+      3
+     ],
+     [
+      "impellerRadius",
+      71
+     ],
+     [
+      "impellerThickness",
+      2
+     ],
+     [
+      "innerAngle",
+      25
+     ],
+     [
+      "innerCamber",
+      4
+     ],
+     [
+      "innerChord",
+      11
+     ],
+     [
+      "innerMaxPos",
+      4
+     ],
+     [
+      "innerThickness",
+      6
+     ],
+     [
+      "middleAngle",
+      15
+     ],
+     [
+      "middleChord",
+      20
+     ],
+     [
+      "middlePos",
+      0.3
+     ],
+     [
+      "outerAngle",
+      10
+     ],
+     [
+      "outerCamber",
+      4
+     ],
+     [
+      "outerChord",
+      15
+     ],
+     [
+      "outerMaxPos",
+      4
+     ],
+     [
+      "outerThickness",
+      6
+     ]
+    ]
+   ],
+   [
+    "render",
+    "<ATT>/011_render_fails/propeller_mesh.obj",
+    "<ATT>/011_render_fails"
+   ]
+  ],
+  "files": {
+   "mesh_params.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "propeller_mesh.obj": "g Blade\nv 0 0 0\ng Ring\nv 1 1 1\ng Blade\n",
+   "propeller_mesh_components.obj": "g Comp1\nv 9 9 9\n"
+  },
+  "text": "Mesh saved to <ATT>/011_render_fails/propeller_mesh.obj (44 bytes, 1234 vertices). Parts: Blade, Ring. Geometry backend: FEG.\n\nRender step failed: GL context lost"
+ },
+ "reuse_existing": {
+  "calls": [
+   [
+    "render",
+    "<ATT>/001_new/propeller_mesh.obj",
+    "<ATT>/001_new"
+   ]
+  ],
+  "files": {
+   "mesh_params.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "propeller_mesh.obj": "g Blade\nv 0 0 0\ng Ring\nv 1 1 1\ng Blade\n",
+   "propeller_mesh_components.obj": "g Comp1\nv 9 9 9\n"
+  },
+  "text": "Reused existing mesh at <ATT>/001_new/propeller_mesh.obj (44 bytes; geometry not regenerated).\n\nRENDER REPORT for propeller_mesh.obj in <ATT>/001_new"
+ },
+ "rhino_selected_rhino_used": {
+  "calls": [
+   [
+    "backend",
+    [
+     [
+      "bladeCount",
+      3
+     ],
+     [
+      "impellerRadius",
+      71
+     ],
+     [
+      "impellerThickness",
+      2
+     ],
+     [
+      "innerAngle",
+      25
+     ],
+     [
+      "innerCamber",
+      4
+     ],
+     [
+      "innerChord",
+      11
+     ],
+     [
+      "innerMaxPos",
+      4
+     ],
+     [
+      "innerThickness",
+      6
+     ],
+     [
+      "middleAngle",
+      15
+     ],
+     [
+      "middleChord",
+      20
+     ],
+     [
+      "middlePos",
+      0.3
+     ],
+     [
+      "outerAngle",
+      10
+     ],
+     [
+      "outerCamber",
+      4
+     ],
+     [
+      "outerChord",
+      15
+     ],
+     [
+      "outerMaxPos",
+      4
+     ],
+     [
+      "outerThickness",
+      6
+     ]
+    ]
+   ],
+   [
+    "render",
+    "<ATT>/003_rhino/propeller_mesh.obj",
+    "<ATT>/003_rhino"
+   ]
+  ],
+  "files": {
+   "mesh_params.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "propeller_mesh.obj": "g Blade\nv 0 0 0\ng Ring\nv 1 1 1\ng Blade\n",
+   "propeller_mesh_components.obj": "g Comp1\nv 9 9 9\n"
+  },
+  "text": "Mesh saved to <ATT>/003_rhino/propeller_mesh.obj (44 bytes, 1234 vertices). Parts: Blade, Ring. Geometry backend: RhinoCompute.\n\nRENDER REPORT for propeller_mesh.obj in <ATT>/003_rhino"
+ },
+ "sections_bad_json": {
+  "files": null,
+  "text": "render_blade_sections: FAILED — could not read JSON <ATT>/102_sections_bad_json/parameters.json: Expecting property name enclosed in double quotes: line 1 column 2 (char 1)"
+ },
+ "sections_empty_path": {
+  "files": null,
+  "text": "render_blade_sections: FAILED — no parameters_path given. Pass the absolute path to an attempt's parameters.json."
+ },
+ "sections_grid": {
+  "files": {
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "render_blade_sections.png": "<png>",
+   "render_blade_sections_grid.png": "<png>"
+  },
+  "text": "render_blade_sections: OK — wrote render_blade_sections_grid.png (<W>x<H>px, grid=on) to <ATT>/101_sections. The image will be shown in the chat; read it by passing this path to view_images: <ATT>/101_sections/render_blade_sections_grid.png"
+ },
+ "sections_missing_keys": {
+  "files": null,
+  "text": "render_blade_sections: FAILED — parameters file is missing required keys: ['outerThickness', 'outerMaxPos', 'outerCamber', 'outerChord', 'outerAngle']."
+ },
+ "sections_no_file": {
+  "files": null,
+  "text": "render_blade_sections: FAILED — no file at <ATT>/nope/parameters.json. Pass the path the previous agent reported."
+ },
+ "sections_non_numeric": {
+  "files": null,
+  "text": "render_blade_sections: FAILED — these parameters are not numbers: ['innerAngle']."
+ },
+ "sections_not_object": {
+  "files": null,
+  "text": "render_blade_sections: FAILED — <ATT>/103_sections_list/parameters.json is not a JSON object of parameters."
+ },
+ "sections_ok": {
+  "files": {
+   "parameters.json": {
+    "bladeCount": 3,
+    "impellerRadius": 71,
+    "impellerThickness": 2,
+    "innerAngle": 25,
+    "innerCamber": 4,
+    "innerChord": 11,
+    "innerMaxPos": 4,
+    "innerThickness": 6,
+    "middleAngle": 15,
+    "middleChord": 20,
+    "middlePos": 0.3,
+    "outerAngle": 10,
+    "outerCamber": 4,
+    "outerChord": 15,
+    "outerMaxPos": 4,
+    "outerThickness": 6
+   },
+   "render_blade_sections.png": "<png>"
+  },
+  "text": "render_blade_sections: OK — wrote render_blade_sections.png (<W>x<H>px, grid=off) to <ATT>/101_sections. The image will be shown in the chat; read it by passing this path to view_images: <ATT>/101_sections/render_blade_sections.png"
+ },
+ "sections_outside": {
+  "files": null,
+  "text": "render_blade_sections: FAILED — <OUT>/parameters.json is outside the attempts directory (<ATT>); point the tool at an attempt's parameters.json."
+ }
+}

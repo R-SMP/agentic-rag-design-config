@@ -7,8 +7,9 @@ Writes 6 PNGs into ``web/render_samples/``:
 
 The 3D geometry samples need the FEG exporter (Node) + the render_mesh pyrender
 stack (OSMesa), so run ``--geo`` INSIDE the app container.  The cross-section
-samples are pure PIL and run anywhere.  See extra_utilities/scripts/feg_render_demo.py
-for the same sidestep-import + OSMesa notes.
+samples are pure PIL and run anywhere.  Both tools' modules are reached
+through the pack loader (``engine/pack_tools.py``), which imports only the
+module asked for -- no agent stack, no LangChain.
 
 Usage:
   python extra_utilities/scripts/gen_render_samples.py --cross   # cross-sections only (local)
@@ -16,16 +17,14 @@ Usage:
   python extra_utilities/scripts/gen_render_samples.py           # both
 """
 import argparse
-import importlib.util
 import json
 import subprocess
 import sys
-import types
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "web" / "render_samples"
-EXPORTER = ROOT / "tools" / "generate_mesh" / "feg_export.mjs"
+sys.path.insert(0, str(ROOT))
 
 # small / medium / large propellers — vary diameter, chords, and angles so the
 # samples span the render-size range the compression slider is tuned against.
@@ -46,22 +45,19 @@ SIZES = {
 }
 
 
-def _load_by_path(name, path):
-    spec = importlib.util.spec_from_file_location(name, str(path))
-    mod = importlib.util.module_from_spec(spec)
-    sys.modules[name] = mod
-    spec.loader.exec_module(mod)
-    return mod
+def _plugin(tool):
+    from engine import pack_tools
+    return pack_tools.plugin(tool)
+
+
+def _generator():
+    from engine import pack_tools
+    return pack_tools.plugin(pack_tools.generators()[0])
 
 
 def gen_cross():
-    """3 blade-section diagrams via tools/render_blade_sections/draw.py."""
-    for n in ("tools", "tools.render_blade_sections"):
-        m = types.ModuleType(n); m.__path__ = []; sys.modules.setdefault(n, m)
-    _load_by_path("tools.render_blade_sections.sections_geom",
-                  ROOT / "tools/render_blade_sections/sections_geom.py")
-    draw = _load_by_path("tools.render_blade_sections.draw",
-                         ROOT / "tools/render_blade_sections/draw.py")
+    """3 blade-section diagrams via the blade-sections tool's draw.py."""
+    draw = _plugin("render_blade_sections").submodule("draw")
     for size, p in SIZES.items():
         dst = OUT / f"cross_{size}.png"
         w, h = draw.render_png(p, False, dst)
@@ -71,16 +67,11 @@ def gen_cross():
 def gen_geo():
     """3 isometric 3D renders: FEG geometry (Node) -> OBJ -> render_mesh pyrender."""
     import trimesh
-    base = Path("/app") if Path("/app/tools/render_mesh").is_dir() else ROOT
-    sys.path.insert(0, str(base))
-    for n in ("agents", "agents.shared", "agents.shared.agent_activity"):
-        sys.modules.setdefault(n, types.ModuleType(n))
-    sys.modules["agents.shared.agent_activity"].tool_active = (
-        lambda *a, **k: (lambda fn: fn))
-    rm = _load_by_path("_render_mesh_standalone",
-                       base / "tools/render_mesh/render_mesh.py")
+    generator = _generator()
+    rm = generator.submodule("render_mesh")
+    exporter = generator.folder / "feg_export.mjs"
     for size, p in SIZES.items():
-        proc = subprocess.run(["node", str(EXPORTER), json.dumps(p)],
+        proc = subprocess.run(["node", str(exporter), json.dumps(p)],
                               capture_output=True, text=True, timeout=180)
         if proc.returncode != 0:
             print(f"geo_{size}: FEG export FAILED:\n{proc.stderr}")

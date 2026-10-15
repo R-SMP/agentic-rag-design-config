@@ -992,6 +992,38 @@
             </div>
           </section>
 
+          <!-- Tools: every design-configurator tool's settings, grouped by
+               tool, as each tool declares them in
+               dc_pack/tools/<tool>/tool.yaml (engine/pack_tools.py).
+               Changes are stored in workflow_settings/tool_settings.json
+               (only the values that differ from the tool's defaults).
+               Filled in by app.js (/api/tool_settings); locked while a
+               session is active. -->
+          <section class="rc-panel" id="tool-settings">
+            <div class="rc-head">
+              <h2>Tools</h2>
+              <p class="rc-note">
+                The settings of the design configurator's tools, grouped by
+                tool, as each tool declares them.  A setting shown in bold
+                differs from the tool's default.  Changes take effect for the
+                <strong>next session</strong>.
+              </p>
+            </div>
+            <div class="mw-table-wrap ar-table-wrap">
+              <table class="mw-table ar-table pa-table ts-table">
+                <thead>
+                  <tr><th>Setting</th><th>Value</th><th>What it does</th></tr>
+                </thead>
+                <tbody id="ts-rows"></tbody>
+              </table>
+            </div>
+            <div class="ps-bar pa-bar">
+              <button id="ts-save" class="primary" type="button">Save</button>
+              <button id="ts-reset" class="ghost" type="button">Reset to tool defaults</button>
+              <span id="ts-status" class="settings-status" role="status"></span>
+            </div>
+          </section>
+
           <!-- Agent roles across topologies: read-only view of
                agents/shared/agent_roles.py (served by /api/agent-roles), the
                table behind database_search's role mapping and the Database

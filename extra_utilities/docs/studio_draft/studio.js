@@ -178,7 +178,7 @@
     if (id === 'parameters') return D.parameters.parameters.length;
     if (id === 'tools') return D.tools.length;
     if (id === 'access') return D.parameter_access.rows.length;
-    if (id === 'settings') return Object.keys(D.settings).length;
+    if (id === 'settings') return D.tool_settings.reduce(function (n, t) { return n + t.settings.length; }, 0) + Object.keys(D.settings).length;
     return slotsOf(id).length;
   }
   function unitMismatch(p) {
@@ -609,7 +609,7 @@
       var m = TOOL_META[t.name] || {};
       var first = t.description.split('\n\n')[0].replace(/\s+/g, ' ');
       var card = h('div', { 'class': 'tcard' + (R.q.test === t.name ? ' selected' : '') }, [
-        h('div', { 'class': 'head' }, [h('span', { 'class': 'n' }, t.name), pill(t.display), kpill(t.kind === 'generator' ? 'generator · primary' : 'second generator'),
+        h('div', { 'class': 'head' }, [h('span', { 'class': 'n' }, t.name), pill(t.display), kpill(t.kind === 'generator' ? 'generator · primary' : t.kind),
           h('span', { 'class': 'grow' }), h('button', null, 'Edit'),
           h('button', { disabled: !local, title: local ? 'Run it with the default parameters' : 'This site never runs a setup’s Python',
             onclick: function () { go('studio', 'tools', withQ({ test: t.name })); } }, 'Test tool')]),
@@ -620,7 +620,7 @@
           h('div', { 'class': 'k' }, 'Settings'), h('div', null, m.settings),
           h('div', { 'class': 'k' }, 'Secrets'), h('div', null, m.secrets),
           h('div', { 'class': 'k' }, 'Dependencies'), h('div', null, m.deps),
-          h('div', { 'class': 'k' }, 'Code'), h('div', { 'class': 'mono', style: 'font-size:11px' }, 'dc_pack/tools/' + t.name + '/tool.py  (today: ' + t.file + ')')
+          h('div', { 'class': 'k' }, 'Code'), h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  manifest dc_pack/tools/' + t.name + '/tool.yaml')
         ]),
         !local ? h('div', { 'class': 'disabled-note', style: 'margin-top:8px' }, 'Test tool is available after download, on your own computer: python -m studio') : null
       ]);
@@ -752,20 +752,15 @@
     }
     add(center, head('Settings & secrets', 'Default values of the tools’ own settings (users change them later in Workflow Settings), and the list of secrets your setup will need.'));
     var t = h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, [
-      h('thead', null, h('tr', null, ['Setting', 'Default', 'Today in settings.py'].map(function (x) { return h('th', null, x); }))),
-      h('tbody', null, [
-        h('tr', { 'class': 'grp' }, h('td', { colspan: 3 }, 'generate_and_render_propeller')),
-        srow('quality_checks', !!S.MESH_CHECKS, null, 'MESH_CHECKS'),
-        srow('render_library', S.RENDER_LIBRARY, ['trimesh', 'pyvista'], 'RENDER_LIBRARY'),
-        srow('backend', S.GEOMETRY_BACKEND, ['feg', 'rhino'], 'GEOMETRY_BACKEND'),
-        srow('view_isometric', !!S.ATTEMPT_VIEW_ISOMETRIC, null, 'ATTEMPT_VIEW_ISOMETRIC'),
-        srow('view_top', !!S.ATTEMPT_VIEW_TOP, null, 'ATTEMPT_VIEW_TOP'),
-        srow('view_side', !!S.ATTEMPT_VIEW_SIDE, null, 'ATTEMPT_VIEW_SIDE'),
-        h('tr', { 'class': 'grp' }, h('td', { colspan: 3 }, 'render_blade_sections')),
-        srow('enabled', !!S.BLADE_SECTIONS_VISUALIZER_ENABLED, null, 'BLADE_SECTIONS_VISUALIZER_ENABLED'),
+      h('thead', null, h('tr', null, ['Setting', 'Default', 'What it is'].map(function (x) { return h('th', null, x); }))),
+      h('tbody', null, D.tool_settings.reduce(function (rows, tool) {
+        rows.push(h('tr', { 'class': 'grp' }, h('td', { colspan: 3 }, tool.tool)));
+        tool.settings.forEach(function (s) { rows.push(srow(s.name, s.default, s.values, s.label)); });
+        return rows;
+      }, []).concat([
         h('tr', { 'class': 'grp' }, h('td', { colspan: 3 }, 'setup')),
-        srow('parameter_primer_image', !!S.DC_PARAMS_PRIMER_ENABLED, null, 'DC_PARAMS_PRIMER_ENABLED')
-      ])]);
+        srow('parameter_primer_image', !!S.DC_PARAMS_PRIMER_ENABLED, null, 'DC_PARAMS_PRIMER_ENABLED (settings.py)')
+      ]))]);
     add(center, t);
     add(center, h('div', { 'class': 'banner info', style: 'margin:6px 16px;border:1px solid #2f4f86;border-radius:7px' },
       'This site never asks for a secret value. These names go into .env.example in the full package, with empty values; you fill them on your own computer or in your hosting provider.'));
@@ -918,7 +913,8 @@
         [V.multiline_phrases.length ? 'bad' : 'ok', 'every one-line field is one line', V.multiline_phrases.join(', ')],
         ['info', V.empty_in_topology7.length + ' fields are empty for the 7-agent topology', 'Used only by the 3-agent topology: ' + V.empty_in_topology7.join(', ')],
         ['warn', unused.length + ' fields are in no prompt (default settings and all features on)', unused.join(', ') + '. Some are kept on purpose (W42); some overlap newer fields (F108).'],
-        ['warn', f104.length + ' fields describe the blade-sections tool or the mesh checks but have no feature marker', 'They stay in the prompts with the feature off (F104): ' + f104.join(', ')]] },
+        f104.length ? ['warn', f104.length + ' fields describe a tool or a tool setting but have no <<IF:...>> marker', 'They stay in the prompts with the feature off: ' + f104.join(', ')]
+                    : ['ok', 'every field about a tool or a tool setting carries its <<IF:...>> marker']] },
       { title: 'Parameters', rows: [
         [dupes.length ? 'bad' : 'ok', P.length + ' unique names'],
         [badRange.length ? 'bad' : 'ok', 'min < max for every parameter'],

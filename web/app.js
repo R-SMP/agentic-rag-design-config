@@ -1395,6 +1395,7 @@ function switchView(name) {
     loadLrRouting();
     loadRenderCompression();
     loadParameterAccess();
+    loadToolSettings();
     loadAgentRoles();
     loadParameterSchema();
     loadModelWindows();
@@ -2105,8 +2106,6 @@ function mwFormatThreshold(window_) {
   return t.toLocaleString() + "  (" + bound + ")";
 }
 
-// Agent roles across topologies -- read-only view of /api/agent-roles.
-// Text nodes only (no innerHTML), so nothing served can become markup.
 // ---------------------------------------------------------------------------
 // Parameter list access — who sees the parameter list, per agent and
 // topology (engine/parameter_access.py).  One dropdown per cell; a cell that
@@ -2205,6 +2204,135 @@ function paCollect() {
   });
 })();
 
+// ---------------------------------------------------------------------------
+// Tools — every design-configurator tool's settings, grouped by tool, as
+// each tool declares them in dc_pack/tools/<tool>/tool.yaml
+// (engine/pack_tools.py).  Yes/no settings use the V/X toggle of the
+// settings list, choices a dropdown; a setting that differs from the tool's
+// default is shown in bold.  Saved to workflow_settings/tool_settings.json;
+// locked during a session by the shared settings lock (the panel is an
+// .rc-panel).  Text nodes only (no innerHTML).
+// ---------------------------------------------------------------------------
+let tsValues = {};
+
+function tsSetStatus(msg, kind) {
+  const el = $("ts-status");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "settings-status" + (kind ? " " + kind : "");
+}
+
+function tsControl(vals, s, mark) {
+  const changed = () => { mark(); tsSetStatus("Not saved yet.", ""); };
+  if (s.type === "bool") {
+    const wrap = document.createElement("div");
+    wrap.className = "toggle";
+    const yes = document.createElement("button");
+    yes.type = "button";
+    yes.className = "yes";
+    yes.textContent = "V";
+    const no = document.createElement("button");
+    no.type = "button";
+    no.className = "no";
+    no.textContent = "X";
+    const paint = () => {
+      yes.classList.toggle("on", vals[s.name] === true);
+      no.classList.toggle("on", vals[s.name] === false);
+    };
+    yes.addEventListener("click", () => { vals[s.name] = true; paint(); changed(); });
+    no.addEventListener("click", () => { vals[s.name] = false; paint(); changed(); });
+    paint();
+    wrap.appendChild(yes);
+    wrap.appendChild(no);
+    return wrap;
+  }
+  const sel = document.createElement("select");
+  for (const v of s.values) {
+    const o = document.createElement("option");
+    o.value = String(v);
+    o.textContent = String(v);
+    sel.appendChild(o);
+  }
+  sel.value = String(vals[s.name]);
+  sel.addEventListener("change", () => {
+    vals[s.name] = s.values.find((v) => String(v) === sel.value);
+    changed();
+  });
+  return sel;
+}
+
+function tsRender(d) {
+  const body = $("ts-rows");
+  if (!body) return;
+  body.textContent = "";
+  tsValues = {};
+  for (const t of d.tools) {
+    const vals = (tsValues[t.tool] = {});
+    const group = document.createElement("tr");
+    group.className = "ts-group";
+    const gtd = document.createElement("td");
+    gtd.colSpan = 3;
+    gtd.textContent = t.name + " (" + t.tool + ")";
+    group.appendChild(gtd);
+    body.appendChild(group);
+    for (const s of t.settings) {
+      vals[s.name] = s.current;
+      const tr = document.createElement("tr");
+      const mark = () => tr.classList.toggle("ts-changed", vals[s.name] !== s.default);
+      const name = document.createElement("td");
+      name.className = "ts-name";
+      name.textContent = s.label || s.name;
+      name.title = s.name;
+      const value = document.createElement("td");
+      value.appendChild(tsControl(vals, s, mark));
+      const what = document.createElement("td");
+      what.className = "ts-desc";
+      what.textContent = s.description || "";
+      tr.appendChild(name);
+      tr.appendChild(value);
+      tr.appendChild(what);
+      body.appendChild(tr);
+      mark();
+    }
+  }
+}
+
+async function loadToolSettings() {
+  if (!$("ts-rows")) return;
+  try {
+    tsRender(await psFetch("/api/tool_settings"));
+    tsSetStatus("", "");
+  } catch (e) {
+    tsSetStatus("Could not load the tools' settings: " + e.message, "err");
+  }
+}
+
+(function wireToolSettings() {
+  const save = $("ts-save"), reset = $("ts-reset");
+  if (save) save.addEventListener("click", async () => {
+    try {
+      tsRender(await psFetch("/api/tool_settings", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ values: tsValues }),
+      }));
+      tsSetStatus("Saved — applies to the next session.", "ok");
+    } catch (e) {
+      tsSetStatus(e.message, "err");
+    }
+  });
+  if (reset) reset.addEventListener("click", async () => {
+    if (!confirm("Reset every tool setting to the tool's default (its tool.yaml)?")) return;
+    try {
+      tsRender(await psFetch("/api/tool_settings/reset", { method: "POST" }));
+      tsSetStatus("Back to the tools' defaults.", "ok");
+    } catch (e) {
+      tsSetStatus(e.message, "err");
+    }
+  });
+})();
+
+// Agent roles across topologies -- read-only view of /api/agent-roles.
+// Text nodes only (no innerHTML), so nothing served can become markup.
 async function loadAgentRoles() {
   const body = $("ar-rows");
   if (!body) return;

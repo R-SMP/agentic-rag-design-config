@@ -91,11 +91,7 @@ from engine import pack as _pack
 from engine import parameter_schema as _parameter_schema
 from engine import parameters as _parameters
 from agents.shared import sessions_queue
-from tools import set_mesh_checks, set_render_library, set_geometry_backend
-from tools.generate_mesh.generate_mesh import (
-    MeshGenerationError,
-    render_mesh_obj_text,
-)
+from engine import pack_tools as _pack_tools
 from workflow_settings import dh_schedule as settings_dh_schedule
 from workflow_settings import editor as settings_editor
 from workflow_settings import llm_routing as settings_llm_routing
@@ -307,9 +303,7 @@ def _build_session() -> Session:
     # tempfile-rename path; this re-import picks up the new values
     # without a uvicorn restart.
     importlib.reload(workflow_settings)
-    set_mesh_checks(workflow_settings.MESH_CHECKS)
-    set_render_library(workflow_settings.RENDER_LIBRARY)
-    set_geometry_backend(workflow_settings.GEOMETRY_BACKEND)
+    generator_settings = _generator_settings()
 
     session_id = _new_session_id()
     log_path = _setup_session_logger(session_id)
@@ -323,14 +317,14 @@ def _build_session() -> Session:
     session = Session(
         session_id=session_id,
         session_ts=datetime.now(timezone.utc),
-        mesh_checks=workflow_settings.MESH_CHECKS,
+        mesh_checks=bool(generator_settings.get("mesh_checks", False)),
         rag_enabled=workflow_settings.RAG_ENABLED,
         dc_inspector_enabled=workflow_settings.DC_INSPECTOR_ENABLED,
         chain_access=workflow_settings.CHAIN_ACCESS,
         keep_images_in_context=workflow_settings.KEEP_IMAGES_IN_CONTEXT,
         dcoi_comparison_mode=workflow_settings.DCOI_COMPARISON_MODE,
         planner_first=workflow_settings.PLANNER_FIRST,
-        render_library=workflow_settings.RENDER_LIBRARY,
+        render_library=generator_settings.get("render_library", "trimesh"),
     )
     _BOX.session = session
     _BOX.log_path = log_path
@@ -492,11 +486,8 @@ app = FastAPI(title="Propeller Design Configurator — JS web UI (local)")
 
 @app.on_event("startup")
 def _startup() -> None:
-    # Same global side-effects the CLI loader applies at
-    # start so the render & mesh tools see the right configuration.
-    set_mesh_checks(workflow_settings.MESH_CHECKS)
-    set_render_library(workflow_settings.RENDER_LIBRARY)
-    set_geometry_backend(workflow_settings.GEOMETRY_BACKEND)
+    # (The render & mesh tools read their settings per call from the tool
+    # settings -- engine/pack_tools.py -- so there is nothing to wire here.)
     logger.info("[WEB] startup; auth_required=%s", _auth_required())
 
 
@@ -597,6 +588,19 @@ def api_auth(body: AuthIn) -> dict:
         return {"ok": True}
     logger.warning("[WEB] invite-code rejected")
     raise HTTPException(status_code=401, detail="Invite code did not match.")
+
+
+def _generator_settings() -> dict:
+    """The generator tool's settings for the session being built (its
+    tool.yaml defaults + the Workflow Settings changes)."""
+    return _pack_tools.settings(_pack_tools.generators()[0])
+
+
+def _geometry():
+    """The propeller generator's geometry module, for the live preview and the
+    deliverable download.  Reached through the pack loader; MAS-blueprint P4
+    makes these web routes generic."""
+    return _pack_tools.plugin(_pack_tools.generators()[0]).submodule("generate_mesh")
 
 
 def _require_auth() -> None:
@@ -976,7 +980,7 @@ def api_preview_mesh(body: PreviewMeshIn) -> Response:
     NOT a param — render_mesh_obj_text derives + injects it.)
 
     This route does NOT go through the agent pipeline — it calls
-    :func:`tools.generate_mesh.generate_mesh.render_mesh_obj_text`
+    the generator's ``render_mesh_obj_text`` (``dc_pack/tools/generate_and_render_propeller/generate_mesh.py``)
     directly, bypassing attempts/ folders, agent-activity
     heartbeats, and tool-caller routing.  Slider tweaks in the
     Parameters Inputs view do NOT create attempt rows or trigger
@@ -1012,9 +1016,10 @@ def api_preview_mesh(body: PreviewMeshIn) -> Response:
         raise HTTPException(status_code=400, detail=str(exc))
 
     # ----- Delegate to the pure helper (Step 5) ---------------------
+    geometry = _geometry()
     try:
-        obj_text, vertex_count, _components = render_mesh_obj_text(coerced)
-    except MeshGenerationError as exc:
+        obj_text, vertex_count, _components = geometry.render_mesh_obj_text(coerced)
+    except geometry.MeshGenerationError as exc:
         raise HTTPException(
             status_code=502,
             detail=f"Mesh generation failed: {exc}",
@@ -1051,12 +1056,12 @@ def api_download_geometry(path: str) -> Response:
     """Download an attempt's geometry as a RhinoCompute-regenerated OBJ.
 
     The agent workflow may have built the on-disk mesh with either backend
-    (see ``GEOMETRY_BACKEND``), but the deliverable download should be the
-    exact Grasshopper geometry.  So this regenerates via RhinoCompute from the
-    attempt's ``parameters.json`` and streams that.  If RhinoCompute is
-    unavailable — or the params can't be read/regenerated — it falls back to
-    serving the saved mesh file (which may be an FEG mesh), so the user always
-    gets a download.  ``path`` is the saved ``propeller_mesh.obj`` path (the
+    (the generator's ``geometry_backend`` setting), but the deliverable
+    download should be the exact Grasshopper geometry.  So this regenerates
+    via RhinoCompute from the attempt's ``parameters.json`` and streams that.
+    If RhinoCompute is unavailable — or the params can't be read/regenerated
+    — it falls back to serving the saved mesh file (which may be an FEG
+    mesh), so the user always gets a download.  ``path`` is the saved ``propeller_mesh.obj`` path (the
     same value ``/api/artefact`` serves).
     """
     _require_auth()
@@ -1091,9 +1096,10 @@ def api_download_geometry(path: str) -> Response:
             exc,
         )
         return _serve_saved("params unusable")
+    geometry = _geometry()
     try:
-        obj_text, _vc, _components = render_mesh_obj_text(coerced)
-    except MeshGenerationError as exc:
+        obj_text, _vc, _components = geometry.render_mesh_obj_text(coerced)
+    except geometry.MeshGenerationError as exc:
         logger.warning(
             "[WEB] download_geometry: RhinoCompute regen failed (%s) — "
             "serving saved file.", exc,
@@ -4447,6 +4453,60 @@ def api_parameter_access_reset() -> dict:
     pa.reset_overrides()
     logger.info("[WEB] parameter access reset to the pack default")
     return _parameter_access_payload()
+
+
+class ToolSettingsIn(BaseModel):
+    values: dict[str, dict]
+
+
+def _tool_settings_payload() -> dict:
+    """Every pack tool's settings for the Workflow Settings panel, grouped by
+    tool in folder order (engine/pack_tools.py): ``default`` comes from the
+    tool's tool.yaml, ``current`` is what the next session uses."""
+    tools = []
+    for name, m in _pack_tools.manifests().items():
+        current = _pack_tools.settings(name)
+        tools.append({"tool": name, "name": m["display_name"], "kind": m["kind"],
+                      "settings": [dict(s, current=current[s["name"]])
+                                   for s in _pack_tools.setting_specs(name)]})
+    return {"tools": tools}
+
+
+@app.get("/api/tool_settings")
+def api_tool_settings_get() -> dict:
+    """The pack tools' settings: each tool's defaults (its tool.yaml) with
+    the Workflow Settings changes laid over them."""
+    _require_auth()
+    try:
+        return _tool_settings_payload()
+    except _pack_tools.PackToolError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/tool_settings")
+def api_tool_settings_save(body: ToolSettingsIn) -> dict:
+    """Store the tools' settings; only values that differ from the tools'
+    defaults are kept (workflow_settings/tool_settings.json).  Locked while
+    a session is active, like every other settings write."""
+    _require_auth()
+    _require_no_session()
+    try:
+        stored = _pack_tools.save_overrides(body.values)
+    except _pack_tools.PackToolError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    logger.info("[WEB] tool settings saved: %d value(s) differ from the tools' "
+                "defaults", sum(len(v) for v in stored.values()))
+    return _tool_settings_payload()
+
+
+@app.post("/api/tool_settings/reset")
+def api_tool_settings_reset() -> dict:
+    """Back to every tool's defaults (dc_pack/tools/<tool>/tool.yaml)."""
+    _require_auth()
+    _require_no_session()
+    _pack_tools.reset_overrides()
+    logger.info("[WEB] tool settings reset to the tools' defaults")
+    return _tool_settings_payload()
 
 
 @app.post("/api/model_windows")

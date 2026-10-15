@@ -11,10 +11,11 @@ When a chain agent calls
    ``<session_id>/attempts/<NNN>__<global_id>/``):
      * ``description.txt`` — per-attempt narrative.
      * ``parameters.json`` — JSON parameter snapshot.
-     * ``render_isometric.png`` / ``render_top.png`` / ``render_side.png``
-       — filtered by the three workflow flags
-       (``ATTEMPT_VIEW_<VIEW>``) AND gated by
-       ``has_renders=TRUE``, written to the local cache folder.
+     * the render images (``render_isometric.png``, ``render_top.png``,
+       ``render_blade_sections.png``, ``render_side.png``) — only the views
+       switched on in Workflow Settings > Tools (each tool's
+       ``view_<view>`` setting; ``agents/shared/attempt_views.py``) AND
+       gated by ``has_renders=TRUE``, written to the local cache folder.
 3. Assembles an XML response (``<retrieve_attempt_meta/>`` + per-attempt
    blocks); trims attempts from the end of the input list when the
    response exceeds ``RETRIEVE_MAX_RESPONSE_TOKENS``.
@@ -70,18 +71,13 @@ _TAG = "retrieve_attempt"
 # ============================================================
 _MAX_RESPONSE_TOKENS = int(workflow_settings.RETRIEVE_MAX_RESPONSE_TOKENS)
 
-# Render-view inclusion policy, ordered.  Isometric first since it
-# is the single most informative single-view render for propeller
-# geometry; top and side follow.  The render_views_in_scope meta
-# attribute joins the enabled names in this order.
-# Views and their flags live in ONE registry shared with the uploader and
-# the save-time render-completion pass -- see agents/shared/attempt_views.py.
-# They used to disagree: render_blade_sections.png was written by its tool
-# but was in neither the upload whitelist nor this map, so no archived
-# attempt anywhere had one.
-_RENDER_VIEWS = tuple(
-    (name, flag) for name, flag, _f in attempt_views.VIEWS
-)
+# Render-view inclusion policy, ordered (the order the tools declare;
+# isometric first).  The render_views_in_scope meta attribute joins the
+# enabled names in this order.  Views and their flags live in ONE registry
+# shared with the uploader and the save-time render-completion pass -- see
+# agents/shared/attempt_views.py.  They used to disagree:
+# render_blade_sections.png was written by its tool but was in neither the
+# upload whitelist nor this map, so no archived attempt anywhere had one.
 
 # Maps view name → R2 filename.  Sourced from the shared registry, so
 # it cannot drift from what the uploader archives.  Filenames stay as the originals in Phase 5A
@@ -147,11 +143,7 @@ def _schema_parameter_count() -> int | None:
 
 def _views_in_scope() -> list[str]:
     """Return the ordered list of render-view names the workflow enables."""
-    out: list[str] = []
-    for view, attr in _RENDER_VIEWS:
-        if bool(getattr(workflow_settings, attr, False)):
-            out.append(view)
-    return out
+    return attempt_views.enabled_views()
 
 
 # ============================================================

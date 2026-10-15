@@ -29,7 +29,7 @@ from config import (
     PREVIOUS_SESSIONS_DIR,
     USER_INPUTS_DIR,
 )
-from tools import set_mesh_checks, set_render_library, set_geometry_backend
+from engine import pack_tools
 from workflow_settings import settings as workflow_settings
 
 
@@ -670,10 +670,12 @@ def run() -> None:
 
         # Settings come from workflow_settings/settings.py — edit that
         # file to change the system's startup behaviour without
-        # re-typing the same answers every session.
-        mesh_checks = workflow_settings.MESH_CHECKS
-        render_library = workflow_settings.RENDER_LIBRARY
-        geometry_backend = workflow_settings.GEOMETRY_BACKEND
+        # re-typing the same answers every session.  The generator's own
+        # settings are tool settings (its tool.yaml + Workflow Settings,
+        # engine/pack_tools.py), checked against their declared values there.
+        generator_settings = pack_tools.settings(pack_tools.generators()[0])
+        mesh_checks = bool(generator_settings.get("mesh_checks", False))
+        render_library = generator_settings.get("render_library", "trimesh")
         rag_enabled = workflow_settings.RAG_ENABLED
         dc_inspector_enabled = workflow_settings.DC_INSPECTOR_ENABLED
         chain_access = workflow_settings.CHAIN_ACCESS
@@ -682,21 +684,9 @@ def run() -> None:
         rate_limit_enabled = workflow_settings.RATE_LIMIT_ENABLED
         rate_limit_rps = workflow_settings.RATE_LIMIT_REQUESTS_PER_SECOND
 
-        # Validate the two non-boolean settings up front; a typo here
-        # should fail loudly before agents are built rather than
-        # silently keeping a default.
-        if render_library not in ("trimesh", "pyvista"):
-            raise ValueError(
-                f"workflow_settings.RENDER_LIBRARY must be 'trimesh' or "
-                f"'pyvista', got {render_library!r}.  Edit "
-                f"workflow_settings/settings.py."
-            )
-        if geometry_backend not in ("feg", "rhino"):
-            raise ValueError(
-                f"workflow_settings.GEOMETRY_BACKEND must be 'feg' or "
-                f"'rhino', got {geometry_backend!r}.  Edit "
-                f"workflow_settings/settings.py."
-            )
+        # Validate the non-boolean settings up front; a typo here should
+        # fail loudly before agents are built rather than silently keeping
+        # a default.
         if dcoi_comparison_mode not in (1, 2, 3):
             raise ValueError(
                 f"workflow_settings.DCOI_COMPARISON_MODE must be 1, 2, "
@@ -709,10 +699,6 @@ def run() -> None:
                 f"> 0 when RATE_LIMIT_ENABLED is True, got "
                 f"{rate_limit_rps!r}.  Edit workflow_settings/settings.py."
             )
-
-        set_mesh_checks(mesh_checks)
-        set_render_library(render_library)
-        set_geometry_backend(geometry_backend)
 
         settings_path = (
             Path(workflow_settings.__file__).resolve()
@@ -766,6 +752,7 @@ def run() -> None:
             session_id=_resolve_session_name(),
             session_ts=datetime.now(timezone.utc),
             mesh_checks=mesh_checks,
+            render_library=render_library,
             rag_enabled=rag_enabled,
             dc_inspector_enabled=dc_inspector_enabled,
             chain_access=chain_access,

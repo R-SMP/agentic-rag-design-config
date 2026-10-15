@@ -3,10 +3,9 @@ blade cross-sections (Inner / Middle / Outer) stacked vertically as a PNG.
 
 Takes the path to a parameters JSON file (the standard 17-param attempt
 file) and draws the SAME airfoils the in-browser "Blade sections" view shows
-(see ``tools/render_blade_sections/draw.py``): each section rotated by its
-angle of attack, colour-coded (Inner blue, Middle green, Outer red), labelled,
-with a bottom-right 0-25 deg protractor whose three rays mark the sections'
-angles of attack.
+(see ``draw.py``): each section rotated by its angle of attack, colour-coded
+(Inner blue, Middle green, Outer red), labelled, with a bottom-right 0-25 deg
+protractor whose three rays mark the sections' angles of attack.
 
 A ``grid`` flag (default False) draws a light 1 mm x 1 mm grid behind the
 sections.  Use it ONLY when a real-millimetre reference genuinely helps and
@@ -17,7 +16,9 @@ The PNG is written under the parameters file's attempt folder (so it
 auto-displays in the chat and can be read back by ``view_images``) and
 the canvas is sized tightly to the content to keep the image small.
 
-No web imports here; like the other tools this is pure agent-layer code.
+No web imports here and no LangChain: this is a plain function, and the
+engine builds the LLM tool from it and from this folder's ``tool.yaml``
+(MAS-blueprint P3c, ``engine/pack_tools.py``).
 """
 
 from __future__ import annotations
@@ -25,11 +26,9 @@ from __future__ import annotations
 import json
 from pathlib import Path
 
-from langchain_core.tools import tool
+import config
 
-from agents.shared.agent_activity import tool_active
-from config import ATTEMPTS_DIR
-from tools.render_blade_sections.draw import render_png
+from .draw import render_png
 
 # Keys the render needs (the blade-section + middle-position params).  The
 # ring params (bladeCount / impeller*) are not used here, so a valid 17-param
@@ -41,8 +40,6 @@ _REQUIRED_KEYS = (
 )
 
 
-@tool
-@tool_active("Blade Sections")
 def render_blade_sections(parameters_path: str, grid: bool = False) -> str:
     """Render the three blade cross-sections (Inner / Middle / Outer) stacked
     vertically into a PNG image.
@@ -83,9 +80,9 @@ def render_blade_sections(parameters_path: str, grid: bool = False) -> str:
     # Keep outputs inside the attempts directory so the render auto-displays
     # in chat and can be re-read by view_images / served by /api/artefact.
     try:
-        root = ATTEMPTS_DIR.resolve()
+        root = config.ATTEMPTS_DIR.resolve()
     except OSError:
-        root = ATTEMPTS_DIR
+        root = config.ATTEMPTS_DIR
     if root != src.parent and root not in src.parents:
         return (f"render_blade_sections: FAILED — {src} is outside the "
                 f"attempts directory ({root}); point the tool at an "

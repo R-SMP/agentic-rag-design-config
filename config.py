@@ -17,15 +17,10 @@ DC_PACK_DIR = Path(os.getenv("DC_PACK_DIR") or "dc_pack")
 if not DC_PACK_DIR.is_absolute():
     DC_PACK_DIR = PROJECT_ROOT / DC_PACK_DIR
 
-# Tools base directory
-TOOLS_DIR = PROJECT_ROOT / "tools"
-
-# generate_mesh tool — only the Grasshopper definition lives in the
-# tool directory; mesh outputs and parameter inputs are no longer
-# stored under tools/.  Each design generation owns an attempt folder
-# under ATTEMPTS_DIR (see below) which is the canonical home for
-# parameters.json, propeller_mesh.obj, and render_*.png.
-GH_DEFINITION_PATH = TOOLS_DIR / "generate_mesh" / "Propeller_Raul_V1.2.gh"
+# The configurator's tools live in the pack (dc_pack/tools/<tool>/, with the
+# propeller's Grasshopper definition); each design generation owns an
+# attempt folder under ATTEMPTS_DIR (see below), the canonical home for
+# parameters.json, the model file and the renders.
 
 # User inputs.  Optional images live in INPUT_IMAGES_DIR; each
 # ``<name>.png``, ``<name>.jpg``, or ``<name>.jpeg`` MUST be paired

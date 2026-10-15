@@ -614,20 +614,23 @@ Design settled 2026-08-20 / 08-21; not described in
   `extracted_inputs.txt` (uploaded to R2 only for sessions saved after
   `5c6154b`) and every image note with the local path of its image;
   `retrieve_attempt` prints the parameters and the attempt's description.
-* **One registry of render views** — `agents/shared/attempt_views.py`
-  (isometric, top, blade sections, side) feeds the R2 upload whitelist, the
-  retrieve tool and the save-time completion pass, so they cannot drift (that
-  drift is how blade-section renders were once written and never archived).
+* **One registry of render views** — `agents/shared/attempt_views.py`, built
+  from the tools' `tool.yaml` files (isometric, top, blade sections, side),
+  feeds the R2 upload whitelist, the retrieve tool and the save-time
+  completion pass, so they cannot drift (that drift is how blade-section
+  renders were once written and never archived).
 * **Saved attempts are complete by construction.**
   `agents/shared/attempt_renders.ensure_renders()` runs in the DH loop just
   before upload: blade sections first (they need only `parameters.json`), then
   the 3D set.  It never raises: it saves what exists and logs what was
   generated, found or failed, per view (End Session must not fail).
-* **One flag per view governs generate + save + retrieve**:
-  `ATTEMPT_VIEW_ISOMETRIC`, `_TOP`, `_BLADE_SECTIONS` (on) and `_SIDE` (off),
-  plus `ATTEMPT_RENDER_COMPLETION_ON_SAVE` / `_TIMEOUT_S`.  **Saving is
-  irreversible:** an attempt saved while a view is off never gets that render
-  archived, and turning the flag on later cannot reach back.
+* **One switch per view governs generate + save + retrieve**: each tool
+  declares its views in its `tool.yaml` — isometric, top (on) and side (off)
+  for the generator, blade sections (on) for the blade-sections tool — and
+  Workflow Settings › Tools switches them; plus
+  `ATTEMPT_RENDER_COMPLETION_ON_SAVE` / `_TIMEOUT_S` in `settings.py`.
+  **Saving is irreversible:** an attempt saved while a view is off never gets
+  that render archived, and turning the view on later cannot reach back.
 * A new setting needs no front-end code: `/api/settings` parses
   `workflow_settings/settings.py`.
 * **Which session made each RAG call** (schema v9, 2026-10-10).  Every

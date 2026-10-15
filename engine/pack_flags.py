@@ -10,52 +10,25 @@ configurator's tools is enabled, or while one of its boolean settings is on:
 other one is removed, and a line that the removal leaves empty disappears
 with it (``agents/shared/prompts.apply_if_flags``).
 
-Which Workflow Settings value sets each flag is declared by the pack, in
-``dc_pack/pack.yaml``:
-
-    tool_switches:  {<tool>: <SETTING>}            -> flag  tool:<tool>
-    tool_settings:  {<tool>.<name>: <SETTING>}     -> flag  setting:<tool>.<name>
-
-A stopgap: when the tools get their own files (MAS-blueprint P3c), each
-tool's file declares its switch and settings instead.  Values are read fresh
-from ``workflow_settings.settings`` on every call (the web app reloads that
-module before a session is built), like every other setting.
+The flags come from the tools themselves (``dc_pack/tools/<tool>/tool.yaml``,
+``engine/pack_tools.py``): ``tool:<name>`` is the tool's on/off switch (true
+for a tool without one), ``setting:<name>.<setting>`` each boolean tool
+setting.  Values are read fresh on every call, with the Workflow Settings
+changes laid over the defaults.
 """
 
 from __future__ import annotations
 
-import yaml
+from engine import pack_tools as _pack_tools
 
-from engine import pack as _pack
-
-
-class PackFlagError(ValueError):
-    """pack.yaml names a flag source that does not exist."""
+PackFlagError = _pack_tools.PackToolError
 
 
-def declared() -> dict[str, str]:
-    """``{flag: SETTING}`` as declared in ``dc_pack/pack.yaml``."""
-    path = _pack.pack_dir() / "pack.yaml"
-    data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
-    out: dict[str, str] = {}
-    for key, prefix in (("tool_switches", "tool:"), ("tool_settings", "setting:")):
-        table = data.get(key) or {}
-        if not isinstance(table, dict):
-            raise PackFlagError(f"{path.name}: {key} must be a mapping")
-        for name, setting in table.items():
-            out[f"{prefix}{name}"] = str(setting)
-    return out
+def declared() -> list[str]:
+    """Every flag the pack's tools offer."""
+    return list(_pack_tools.flag_values())
 
 
 def values() -> dict[str, bool]:
     """Every pack flag with its value for the session being built."""
-    from workflow_settings import settings as _settings
-
-    out: dict[str, bool] = {}
-    for flag, setting in declared().items():
-        if not hasattr(_settings, setting):
-            raise PackFlagError(
-                f"dc_pack/pack.yaml: flag {flag} reads {setting}, which is not "
-                f"in workflow_settings/settings.py")
-        out[flag] = bool(getattr(_settings, setting))
-    return out
+    return _pack_tools.flag_values()

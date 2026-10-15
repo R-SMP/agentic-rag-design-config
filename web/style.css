@@ -895,6 +895,13 @@ button.danger:hover { background: #3a1d1d; }
 }
 .pa-table select.pa-changed { font-weight: 700; border-color: var(--accent); }
 .pa-bar { margin-top: 12px; }
+/* Tools (Workflow Settings): one group row per tool */
+.ts-table tr.ts-group td {
+  font-weight: 600; background: var(--panel); padding-top: 10px;
+}
+.ts-table td.ts-name { white-space: nowrap; }
+.ts-table tr.ts-changed td.ts-name { font-weight: 700; }
+.ts-table td.ts-desc { color: var(--muted); font-size: 12px; }
 /* Database: parameter schema (Workflow Settings).  Stays usable while a
    session is active -- the lock rule further down is overridden for it --
    because it is where an End Session refused for a missing schema is

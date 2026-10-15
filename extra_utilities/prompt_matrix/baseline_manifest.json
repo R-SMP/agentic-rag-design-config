@@ -1,9 +1,9 @@
 {
  "_meta": {
   "branch": "MAS-blueprint",
-  "commit": "223b6a5e7dfb172161261da500b7cf5cc666474b",
+  "commit": "8d0e56ce5628254fdb11d7aaf4aeaf9bbfd229ea",
   "uncommitted_changes": false,
-  "taken": "2026-10-14T12:42:00+00:00",
+  "taken": "2026-10-15T16:21:17+00:00",
   "python": "3.13.13",
   "combinations": {
    "base": {},
@@ -77,24 +77,24 @@
  },
  "base/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "557fc953e133473a51729c88620be091b8cc502a9fed0cbb22dcde0c4cba9a90",
    "dc_input_creator": "ec7e58c9019803970e1a6fec5c275c51436ee2ddfb6f474acd7a78b4a3e8e0f1",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "d9849fcd8aa668067fea4f9a4b86e026021b421dce17c094ecd19e236c118b5f",
-   "orchestrator": "1a35210920286761ab4d9a99d6b748ba923141ad171c8c26bf66847cfd5c250e",
-   "planner": "1ffb98749e52392ee4bde2166ecc63492e693aac79fb187a80321f3b8cad6456",
-   "receptionist": "368b1545d2bde29215f088d903e79336238e4217ef3cd4267aac61bd4ef5ebe6",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "6665882f4eac0c6a7e1a341c45c5c8fa5eb735d9cff86e2caa675cd933817c79",
+   "orchestrator": "7abb45036823bdc04dcd4a11ea82de41e9f8be12b3318e8089362047daf4cb23",
+   "planner": "f5fd092b08bc7a5045d5dcde25430ba21fb9dba92e12be2540ecb850b0326c20",
+   "receptionist": "62e78e4d4bc99039d8dc580938bb14f8881489088ab2452e3e9be1b69a57be48",
    "tool_caller": "cafacfe80815abe9b6dea45dc30462e442b491089217306d2ca64cbfe96f669f",
    "user_input_inspector": "6a7c3b1670f9609f3bd14abca0417e4ae789bffe78a469e68d2730e718c57d81"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24545,
    "dc_input_creator": 24768,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 19917,
-   "orchestrator": 16897,
-   "planner": 21900,
-   "receptionist": 16036,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 19916,
+   "orchestrator": 16845,
+   "planner": 21856,
+   "receptionist": 16026,
    "tool_caller": 9346,
    "user_input_inspector": 14385
   },
@@ -106,32 +106,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "base/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "7b766261ba75e046276e2054a10b06e62ee1eaa518051cc60759386a5e8a973c",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
-   "receptionist": "073ba6d0fd80b70b41818903faad1cdb443cfdec78e20b91adeddec9e858f073",
+   "dc_output_inspector": "ef5c89a8f8c6c87722c880fb6b8f1f43319890d16eb17a2e1d66042625660551",
+   "planner": "befbe926ad4256452c9653cb91b2e30376272025158fc58ce692ec97aaed03bf",
+   "receptionist": "2a80a64ccf5d7dedaeda2ea0679b0297ff8fa67381c60fbb395b9aa2f88a9923",
    "tool_caller": "67d26a5bed9b4a914b7c70e3c3e0744d60b57b169c0dc814103dadcf3b270828",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20112,
-   "planner": 25413,
-   "receptionist": 15978,
+   "dc_output_inspector": 20111,
+   "planner": 25369,
+   "receptionist": 15968,
    "tool_caller": 9069,
    "user_input_inspector": 14392
   },
@@ -143,30 +143,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "base/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "c02504b2899730f7a12797c7a1fea5bfa13db16ba6af7ce93f8df4cb55bec452",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "262d6dc3782c0947a57ab60fa8e28f1dabb98b3f5444089edd26d87f71676c2f",
-   "requirements_analyst": "cee43e9bdf33066d6e785f2d3e8f0617bbf28fd1698a01885d818568ef177a98"
+   "requirements_analyst": "308a2b0bf747c43934d120c9ee464059a5e3e13afc4e2d83a433a2a62916d51c"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 26613,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 15906,
-   "requirements_analyst": 29417
+   "requirements_analyst": 29416
   },
   "unavailable": {},
   "unformatted": {},
@@ -176,36 +176,36 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "rag_on/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "557fc953e133473a51729c88620be091b8cc502a9fed0cbb22dcde0c4cba9a90",
    "dc_input_creator": "b0a0e325232dcc5b2151039dd97cb7faff78063b8f888859053fc774857bb869",
-   "dc_input_inspector": "4011cc263eb61deb8188624bce089e7a1b197e9b0988906a57dfdb916126c5c2",
-   "dc_output_inspector": "74b170c9bea8f9da17f81d516cb7405ab13c8e271c9864aec7e8824515731f13",
-   "orchestrator": "1a35210920286761ab4d9a99d6b748ba923141ad171c8c26bf66847cfd5c250e",
-   "planner": "59cb1efe56ef3babf4cbd3e739ba10271c4d37fabb808b4109fffa092962f555",
-   "receptionist": "368b1545d2bde29215f088d903e79336238e4217ef3cd4267aac61bd4ef5ebe6",
+   "dc_input_inspector": "2692f684ff86b3b8bd7e6c0668be87abb15aa0dbe4858b0f2a3456fc65f2a5b0",
+   "dc_output_inspector": "a67fd1cf6c276480714357e13a835bb209f5be82bc01697f2ada2d3d140b4657",
+   "orchestrator": "7abb45036823bdc04dcd4a11ea82de41e9f8be12b3318e8089362047daf4cb23",
+   "planner": "9856e20dca6a0193553f305902bf93c4564079afe1326526881d7e7af8c6705e",
+   "receptionist": "62e78e4d4bc99039d8dc580938bb14f8881489088ab2452e3e9be1b69a57be48",
    "tool_caller": "d4c2ee6b11459feb3bd33ece06f0c3be37ff1299a8b092111aeb63b8555620f3",
    "user_input_inspector": "93a8603f7ca595f1319919f0376a377335587da12c6a5681487a1a9d186be2b5"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24545,
    "dc_input_creator": 30524,
-   "dc_input_inspector": 25362,
-   "dc_output_inspector": 24817,
-   "orchestrator": 16897,
-   "planner": 26018,
-   "receptionist": 16036,
+   "dc_input_inspector": 25361,
+   "dc_output_inspector": 24816,
+   "orchestrator": 16845,
+   "planner": 25974,
+   "receptionist": 16026,
    "tool_caller": 9668,
    "user_input_inspector": 20571
   },
@@ -217,32 +217,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "rag_on/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "3782ef678c24ac4c1b1fd2a227ba348fa1a1d78837e895fb8fb97416af09d411",
-   "dc_output_inspector": "66519aaf17bc488cdada67f69f0154a1b8e86a0089702a7733c193aabe54b311",
-   "planner": "1419edd1167baebdfb2a2f201066a0cdd8d4f1f59b8963cbbce98d45cdb4b6d4",
-   "receptionist": "073ba6d0fd80b70b41818903faad1cdb443cfdec78e20b91adeddec9e858f073",
+   "dc_output_inspector": "0cb618365643bb4187bffc49dd014c4b9d75bc7d755d5a12c22284773027f3e2",
+   "planner": "9078afa58a7757bfa677c23c8d9a59be96b2d76b4bded8c6b0f84d0620ddcd0b",
+   "receptionist": "2a80a64ccf5d7dedaeda2ea0679b0297ff8fa67381c60fbb395b9aa2f88a9923",
    "tool_caller": "aa259406dd620c4bde39ba13a7c4be9ec070f31ab7c935b62c6d41681b33fe45",
    "user_input_inspector": "1bd67fe0dfb13152a555154c48c515c52b57c9b7857bda731d01676ced06f713"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 29779,
-   "dc_output_inspector": 25012,
-   "planner": 29549,
-   "receptionist": 15978,
+   "dc_output_inspector": 25011,
+   "planner": 29505,
+   "receptionist": 15968,
    "tool_caller": 9391,
    "user_input_inspector": 20578
   },
@@ -254,30 +254,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "rag_on/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "b05636f38a51afb81bd3363b0accf772130aca00c082f335b72f3bab4b5a8f36",
-   "planner": "e33ce267aa065a89c1aff75a1990a3a588e115df9b3c707b13cf73cb3d4aa051",
+   "planner": "1fbe9d7ca2a7944ad3c9d29b983214b840d36400cb5e220f3fe5529ba2513607",
    "receptionist": "262d6dc3782c0947a57ab60fa8e28f1dabb98b3f5444089edd26d87f71676c2f",
-   "requirements_analyst": "91eb27b8444d10b32a685d6bcc12624ae326f9eb49648c562462c64950fe2d8d"
+   "requirements_analyst": "d51864d19851fa8cc5187e3c154fc5f83e19d00c84c776822d0e6d1779f8624a"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 32470,
-   "planner": 28776,
+   "planner": 28775,
    "receptionist": 15906,
-   "requirements_analyst": 36478
+   "requirements_analyst": 36477
   },
   "unavailable": {},
   "unformatted": {},
@@ -287,36 +287,36 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "rag_all/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "557fc953e133473a51729c88620be091b8cc502a9fed0cbb22dcde0c4cba9a90",
    "dc_input_creator": "97954681363b971326050cf8b447f3352ca6b0f48c313007c32774ede306f40b",
-   "dc_input_inspector": "4011cc263eb61deb8188624bce089e7a1b197e9b0988906a57dfdb916126c5c2",
-   "dc_output_inspector": "2b2ee11ba1f4424a3459b2725c45ce889940689fc8cf368fb3b9478da5d1221a",
-   "orchestrator": "403828f9b3cda69cd5e1d0ae8dc14838b972e258a39ee8790f539885a7841aaa",
-   "planner": "26923de3629c8e9c8034943754b6fb48c28e5264d29ce069e9b5506e6a07d36d",
-   "receptionist": "41e6c34dc5089d45caa6627e3f5af1767cd1fc09ecc299995056f87ed37094ca",
+   "dc_input_inspector": "2692f684ff86b3b8bd7e6c0668be87abb15aa0dbe4858b0f2a3456fc65f2a5b0",
+   "dc_output_inspector": "e79f94a329e8a91269ce6fd1a1260f2bb500e26ba254e170183f4a6dc03322c4",
+   "orchestrator": "a6126220d782ddb30dac0d4281d719db88bcd1e38c861de73669e5e11514c94a",
+   "planner": "bbef0e09f714c3b98f16633cb38fcc2a22cc0f70238b6a18a9d3742d70202503",
+   "receptionist": "d5c9917e17da8f65d7ff507181a35cb554af9b4a013775b6ff6bf5f55083a163",
    "tool_caller": "8829bfea1e18d14d0f5c9e125e08603459009e32ffdaaebb4dfe0d3a072ecde3",
    "user_input_inspector": "93a8603f7ca595f1319919f0376a377335587da12c6a5681487a1a9d186be2b5"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24545,
    "dc_input_creator": 30950,
-   "dc_input_inspector": 25362,
-   "dc_output_inspector": 25243,
-   "orchestrator": 21781,
-   "planner": 27558,
-   "receptionist": 21761,
+   "dc_input_inspector": 25361,
+   "dc_output_inspector": 25242,
+   "orchestrator": 21729,
+   "planner": 27514,
+   "receptionist": 21751,
    "tool_caller": 14551,
    "user_input_inspector": 20571
   },
@@ -328,32 +328,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "rag_all/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "d3bf7e57d799f83cbe2fad73500d1e871b34a75ac89cbcc90fdddbfeb0c6d47a",
-   "dc_output_inspector": "c2783a31234a9e6f29b5e26ccb6fc9f76e2add69bee80ff04baddff9965afa57",
-   "planner": "dc0f120dfa4f551ea8decdf60dd9012d7e9dde7f2eb026cb573c554ef190b4c6",
-   "receptionist": "ba8d33108002be4d397ac2d8fc4391e45744ecc3b03be09bd4215128f7c087df",
+   "dc_output_inspector": "b8b58b48e68fc9dad8f34e35a7aa03f020511ce7e6404c6307c5ee24dd1721eb",
+   "planner": "9308d147ff30704d3cdd6eadae4c654df196905d81a2fbdb806842f6f2edd112",
+   "receptionist": "f8bf06368107d4ca59b2293bf8277cd37f4569fedac6e600eca7a12a3921e0ee",
    "tool_caller": "2078f1b384a005c097a56cd4efaefed6dcedbee87767c3cdf893b2d186f83847",
    "user_input_inspector": "1bd67fe0dfb13152a555154c48c515c52b57c9b7857bda731d01676ced06f713"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 30205,
-   "dc_output_inspector": 25438,
-   "planner": 31089,
-   "receptionist": 21689,
+   "dc_output_inspector": 25437,
+   "planner": 31045,
+   "receptionist": 21679,
    "tool_caller": 14274,
    "user_input_inspector": 20578
   },
@@ -365,30 +365,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "rag_all/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "8a9f01e2528e5546606ca84b6e58f6be0dfa1dcfc2c396d4a56febc895c6f0d7",
-   "planner": "4a5cb6fd47a61456d004a95a753a8767f807638334f8b2636c820c9343aeb616",
+   "planner": "28f1b28fe1b8eed963badc044dcdb24626c95096b3f8975389393fd80f07efa6",
    "receptionist": "1638595d7a02bdd901db8625c4742618b396d38830b5cdf10b3341a5a6e2a5ea",
-   "requirements_analyst": "91eb27b8444d10b32a685d6bcc12624ae326f9eb49648c562462c64950fe2d8d"
+   "requirements_analyst": "d51864d19851fa8cc5187e3c154fc5f83e19d00c84c776822d0e6d1779f8624a"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 32896,
-   "planner": 30316,
+   "planner": 30315,
    "receptionist": 21605,
-   "requirements_analyst": 36478
+   "requirements_analyst": 36477
   },
   "unavailable": {},
   "unformatted": {},
@@ -398,37 +398,37 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "bsv_off/7": {
   "prompts": {
-   "database_handler": "2a6028b0c9eb0d04ca32018521598f2c1929f7ba1db9f5ad57d47c63aa9e01d4",
+   "database_handler": "4b38a5af14b6d57c1c2c105b225344f9967b8371a9bbd515be3905c70d71b80e",
    "dc_input_creator": "ec7e58c9019803970e1a6fec5c275c51436ee2ddfb6f474acd7a78b4a3e8e0f1",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "d9849fcd8aa668067fea4f9a4b86e026021b421dce17c094ecd19e236c118b5f",
-   "orchestrator": "3d512eb0a5ebd4456db9bda6b53ff8cdf902fbda69bd50a6e5a379bbf2a4c0af",
-   "planner": "ae93b1828f024572f8041a56726b839287441466232ca22233f8b98ada14a163",
-   "receptionist": "bc94fb05931faaed322014f1bd881ed6067852a45853028cb1a0ecd762f3c7e2",
-   "tool_caller": "53ceaee59907163ae99d2a7d3577b84768fbe0eed3625a796617128c8f2d803b",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "10c9682555af75fc3d7ef86775c96ff41e365c67dea2602bbbbf96366a15acf4",
+   "orchestrator": "f34d351b4c5ff635fc3317c7999f9db4bab8d004ada3f92aa857b76c1d7a82e1",
+   "planner": "45201aa81419f946907d07ddf92bb34a30660e38b9d2f6d90e0bebdeca338409",
+   "receptionist": "c35eb465f70b676c7a125e606d05069bb1ce5d5f4988e5f4213135afaacdd0df",
+   "tool_caller": "5768adf96fafa08935f89ab3b410cdb898150c0c7fffcfc8e904c16796e6caa0",
    "user_input_inspector": "6a7c3b1670f9609f3bd14abca0417e4ae789bffe78a469e68d2730e718c57d81"
   },
   "chars": {
-   "database_handler": 23592,
+   "database_handler": 23549,
    "dc_input_creator": 24768,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 19917,
-   "orchestrator": 16736,
-   "planner": 20625,
-   "receptionist": 15953,
-   "tool_caller": 8559,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 19787,
+   "orchestrator": 16684,
+   "planner": 20238,
+   "receptionist": 15911,
+   "tool_caller": 8554,
    "user_input_inspector": 14385
   },
   "unavailable": {},
@@ -439,33 +439,33 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": false,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "bsv_off/5": {
   "prompts": {
-   "database_handler": "b45b5844d9664d3ef165fa80e10878f67bc9550fba49cdb1dd6b0769cea3e533",
+   "database_handler": "4cd06aa65c75b060aa75e7edeb6c3d85e587e4618c31e59f88b3ca862b2ad302",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "7b766261ba75e046276e2054a10b06e62ee1eaa518051cc60759386a5e8a973c",
-   "planner": "8215bff8c41cbd5bf2fe2dfcc007b0ec6274e8025f5595a94a43f54a2716b8de",
-   "receptionist": "5823e793f808e2b0904dcf0592bf92eab9cced10adacca7ef9c31795f8066e23",
-   "tool_caller": "80e19beae24a7bf0627895c02193d2d59f3079d7fcfd28d397f38ecd2e3efa09",
+   "dc_output_inspector": "585e74dd5529e9e1a40e60a09cafc45c10dd2f06d95d7c8c49c7f57424313d31",
+   "planner": "19faf5e9c0f1d0699d53383591bcbc5f1dd14dccc73e4059d7aaf9e357bbdf03",
+   "receptionist": "f9f5504731f16838bdf4366d472243a708b57b7223c0703ae1f709f2d2bef50d",
+   "tool_caller": "ecf8530ae9b83245bec2ddc68f7f45209c8381f9c3ba0ebdd88a4682103da7fb",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 23150,
+   "database_handler": 23107,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20112,
-   "planner": 24138,
-   "receptionist": 15895,
-   "tool_caller": 8259,
+   "dc_output_inspector": 19982,
+   "planner": 23751,
+   "receptionist": 15853,
+   "tool_caller": 8254,
    "user_input_inspector": 14392
   },
   "unavailable": {},
@@ -476,30 +476,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": false,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "bsv_off/3": {
   "prompts": {
    "database_handler": "de35617ad35bd544fdef4edba61f734c0005cf185e998b24d19da92a3c0bea11",
-   "design_engineer": "7499eace9999ebf127e5abf97b5fcdc370334108ffdc92f963137fbb2269c38b",
-   "planner": "b8a0d454cc74d06d6a6454bf05f8190ab2fd6bb3d283261528e4b97dddacf53d",
-   "receptionist": "139cba71ebb5fc2fc79a36d79047ae6aa628e7229bfb028f890cb3c5d53cf642",
-   "requirements_analyst": "cee43e9bdf33066d6e785f2d3e8f0617bbf28fd1698a01885d818568ef177a98"
+   "design_engineer": "e639213ff28b8bdc371205636d2f731102b9b5d98a02a6036e2f9b11d8171654",
+   "planner": "5a3b8c8f16287d7a1c52713a30f27fe077cc7d80695ff5e5e5540d0c6b8602e8",
+   "receptionist": "d24be31f3cfe7a5a6923ae3262e6f426041422ffc0c826c7bae1ba99fd15d27c",
+   "requirements_analyst": "3f1ef72caf846e0c92369ec4dabae36fafedab6a1f5901eb18d2e5114310d846"
   },
   "chars": {
    "database_handler": 21345,
-   "design_engineer": 25724,
-   "planner": 23362,
-   "receptionist": 15823,
-   "requirements_analyst": 29417
+   "design_engineer": 25718,
+   "planner": 22981,
+   "receptionist": 15791,
+   "requirements_analyst": 29287
   },
   "unavailable": {},
   "unformatted": {},
@@ -509,35 +509,35 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": false,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "mesh_on/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "2257a117b06ef46ff000d3a8b14e46cba0882bb9dfceaf16c5ede1c197763734",
    "dc_input_creator": "f7a2e66e75c29bd2334af8ff7f5c8c67548db9fd23e952797326b1b57acdbb5a",
    "dc_input_inspector": "f61299a0bd6c01c9bc4c52ac1539cbbd1960aa6d9fafc23ad2fdcb224517ad9a",
    "dc_output_inspector": "ca8005c6bc632922feaf58cab7a82b7a822f8b643279bed41ae35d46b4865796",
    "orchestrator": "1a35210920286761ab4d9a99d6b748ba923141ad171c8c26bf66847cfd5c250e",
-   "planner": "1ffb98749e52392ee4bde2166ecc63492e693aac79fb187a80321f3b8cad6456",
+   "planner": "faa37e08c4100502a283d85e26401827517e8e8fb592012f99e129148ee959c1",
    "receptionist": "41a6414bccbf8291dc7aee98baced9792a482644ebe46b16d7de63a29e8f73ff",
    "tool_caller": "1ab1c8a1f1b8b8072b6a43d7500b30873a008d26973d4e2ed5571a59e173dfdf",
    "user_input_inspector": "6a7c3b1670f9609f3bd14abca0417e4ae789bffe78a469e68d2730e718c57d81"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24590,
    "dc_input_creator": 24848,
    "dc_input_inspector": 19223,
    "dc_output_inspector": 20190,
    "orchestrator": 16897,
-   "planner": 21900,
+   "planner": 21899,
    "receptionist": 16254,
    "tool_caller": 10705,
    "user_input_inspector": 14385
@@ -550,31 +550,31 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "mesh_on/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "b69934415ddaab474f1e33ce0b88589bd10358729e8e2047e9bd4450ee049f5f",
    "dc_input_creator": "ce41505035f0ecc6a3d6d12e985535efe15f81970f38d94d02675f8a07bdc86f",
    "dc_output_inspector": "795e2c497e504620f360c1e77d3818b28327285a590ff807e8e53b6efbd2298a",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
+   "planner": "be82078cbcf64755ef14fae1d9012ee27269dd3fff4bb2ef2578b002d4434bd8",
    "receptionist": "49fd8d246c91d64d5d8ad81240b724deba05b7f930b8d1c9a6716adb6698c936",
    "tool_caller": "822331741e27b9708bc06f8fd546348b9f8c1847fed76cc019f426e1672687de",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24148,
    "dc_input_creator": 23869,
    "dc_output_inspector": 20385,
-   "planner": 25413,
+   "planner": 25412,
    "receptionist": 16196,
    "tool_caller": 10428,
    "user_input_inspector": 14392
@@ -587,28 +587,28 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "mesh_on/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "13cb16e6ac14c55539ccf328b1847de549863d5cecf726e0fdc5c5bdd937431c",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "9a9baf0f4566f79b0907f4a3a586fdbd552c1079a45e7622e7bb59a4acdf33fc",
    "requirements_analyst": "070c6197af2ded4618d26ee10548707a04316173f26216d7eb0415aea70ec3b6"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 27972,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 16124,
    "requirements_analyst": 29722
   },
@@ -620,35 +620,35 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "mesh_on_pyvista/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "2257a117b06ef46ff000d3a8b14e46cba0882bb9dfceaf16c5ede1c197763734",
    "dc_input_creator": "f7a2e66e75c29bd2334af8ff7f5c8c67548db9fd23e952797326b1b57acdbb5a",
    "dc_input_inspector": "f61299a0bd6c01c9bc4c52ac1539cbbd1960aa6d9fafc23ad2fdcb224517ad9a",
    "dc_output_inspector": "ca8005c6bc632922feaf58cab7a82b7a822f8b643279bed41ae35d46b4865796",
    "orchestrator": "1a35210920286761ab4d9a99d6b748ba923141ad171c8c26bf66847cfd5c250e",
-   "planner": "1ffb98749e52392ee4bde2166ecc63492e693aac79fb187a80321f3b8cad6456",
+   "planner": "faa37e08c4100502a283d85e26401827517e8e8fb592012f99e129148ee959c1",
    "receptionist": "41a6414bccbf8291dc7aee98baced9792a482644ebe46b16d7de63a29e8f73ff",
    "tool_caller": "7ee8bc5355a967806d5a505f114bb965dd9c468fbdfaed5a3caa85f27ece7c7c",
    "user_input_inspector": "6a7c3b1670f9609f3bd14abca0417e4ae789bffe78a469e68d2730e718c57d81"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24590,
    "dc_input_creator": 24848,
    "dc_input_inspector": 19223,
    "dc_output_inspector": 20190,
    "orchestrator": 16897,
-   "planner": 21900,
+   "planner": 21899,
    "receptionist": 16254,
    "tool_caller": 11373,
    "user_input_inspector": 14385
@@ -661,31 +661,31 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "pyvista",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "mesh_on_pyvista/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "b69934415ddaab474f1e33ce0b88589bd10358729e8e2047e9bd4450ee049f5f",
    "dc_input_creator": "ce41505035f0ecc6a3d6d12e985535efe15f81970f38d94d02675f8a07bdc86f",
    "dc_output_inspector": "795e2c497e504620f360c1e77d3818b28327285a590ff807e8e53b6efbd2298a",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
+   "planner": "be82078cbcf64755ef14fae1d9012ee27269dd3fff4bb2ef2578b002d4434bd8",
    "receptionist": "49fd8d246c91d64d5d8ad81240b724deba05b7f930b8d1c9a6716adb6698c936",
    "tool_caller": "2fd8a1b76a02ea2577951dbafe5b06d404c783f57937b2c69663aea968dbc0aa",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24148,
    "dc_input_creator": 23869,
    "dc_output_inspector": 20385,
-   "planner": 25413,
+   "planner": 25412,
    "receptionist": 16196,
    "tool_caller": 11096,
    "user_input_inspector": 14392
@@ -698,28 +698,28 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "pyvista",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "mesh_on_pyvista/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "0a40a11d7cbb8a18c2872044daeebe6a28d99c49a236f3b745fece9ce0409b75",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "9a9baf0f4566f79b0907f4a3a586fdbd552c1079a45e7622e7bb59a4acdf33fc",
    "requirements_analyst": "070c6197af2ded4618d26ee10548707a04316173f26216d7eb0415aea70ec3b6"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 28640,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 16124,
    "requirements_analyst": 29722
   },
@@ -731,36 +731,36 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "pyvista",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "pf_on/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "557fc953e133473a51729c88620be091b8cc502a9fed0cbb22dcde0c4cba9a90",
    "dc_input_creator": "ec7e58c9019803970e1a6fec5c275c51436ee2ddfb6f474acd7a78b4a3e8e0f1",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "d9849fcd8aa668067fea4f9a4b86e026021b421dce17c094ecd19e236c118b5f",
-   "orchestrator": "ac8cdc26ee776587499708a9f44aaf812da7f78a53b7f3b520b44fcbe26061df",
-   "planner": "caf108e25c91e4bf77eb34dcba609d82a15e9cc0b01989e0692dc0204df011f8",
-   "receptionist": "368b1545d2bde29215f088d903e79336238e4217ef3cd4267aac61bd4ef5ebe6",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "6665882f4eac0c6a7e1a341c45c5c8fa5eb735d9cff86e2caa675cd933817c79",
+   "orchestrator": "af8574d0a37549a4bed9d9e3e09d57a92b0fe6401ecabaa048e4da46ad1719df",
+   "planner": "85f4c2f37d09ac17f4655d4f7c56f0fadff914cfa1ac73242512f2476ddc6d0d",
+   "receptionist": "62e78e4d4bc99039d8dc580938bb14f8881489088ab2452e3e9be1b69a57be48",
    "tool_caller": "cafacfe80815abe9b6dea45dc30462e442b491089217306d2ca64cbfe96f669f",
    "user_input_inspector": "57c305d680c0535c84fc6717efa6aa8ae99fdfdbbbb65b8d0cea3bc795e1be99"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24545,
    "dc_input_creator": 24768,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 19917,
-   "orchestrator": 17028,
-   "planner": 25733,
-   "receptionist": 16036,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 19916,
+   "orchestrator": 16976,
+   "planner": 25689,
+   "receptionist": 16026,
    "tool_caller": 9346,
    "user_input_inspector": 18554
   },
@@ -772,32 +772,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": true,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "pf_on/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "7b766261ba75e046276e2054a10b06e62ee1eaa518051cc60759386a5e8a973c",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
-   "receptionist": "073ba6d0fd80b70b41818903faad1cdb443cfdec78e20b91adeddec9e858f073",
+   "dc_output_inspector": "ef5c89a8f8c6c87722c880fb6b8f1f43319890d16eb17a2e1d66042625660551",
+   "planner": "befbe926ad4256452c9653cb91b2e30376272025158fc58ce692ec97aaed03bf",
+   "receptionist": "2a80a64ccf5d7dedaeda2ea0679b0297ff8fa67381c60fbb395b9aa2f88a9923",
    "tool_caller": "67d26a5bed9b4a914b7c70e3c3e0744d60b57b169c0dc814103dadcf3b270828",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20112,
-   "planner": 25413,
-   "receptionist": 15978,
+   "dc_output_inspector": 20111,
+   "planner": 25369,
+   "receptionist": 15968,
    "tool_caller": 9069,
    "user_input_inspector": 14392
   },
@@ -809,30 +809,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": true,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "pf_on/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "c02504b2899730f7a12797c7a1fea5bfa13db16ba6af7ce93f8df4cb55bec452",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "262d6dc3782c0947a57ab60fa8e28f1dabb98b3f5444089edd26d87f71676c2f",
-   "requirements_analyst": "cee43e9bdf33066d6e785f2d3e8f0617bbf28fd1698a01885d818568ef177a98"
+   "requirements_analyst": "308a2b0bf747c43934d120c9ee464059a5e3e13afc4e2d83a433a2a62916d51c"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 26613,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 15906,
-   "requirements_analyst": 29417
+   "requirements_analyst": 29416
   },
   "unavailable": {},
   "unformatted": {},
@@ -842,36 +842,36 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": true,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "dcii_off/7": {
   "prompts": {
-   "database_handler": "5a1837e3ff1f8b1ed38de2f1ea97f17af0a6921a21ef75f6b5ccbdfec51ade77",
+   "database_handler": "2ddf05868b291d0c845cba98f62201145bbce4d04111381c25860f90e862cef5",
    "dc_input_creator": "8552f778df2a9f0fb24a2096af93cb2bb96095bd292641606b7737a4c654c4dd",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "4f0318f6f1ebe1eeb5c0d1aebbf004f983f962f71e414ccddfede7bf06d87f0e",
-   "orchestrator": "da14be5971ce823e42e3af51de75b4944e780317d2f1fa141f9639b5cd09eda4",
-   "planner": "c9d7001265786363576ae8caa89f11c9050f89db07c34a948ea112e44618f458",
-   "receptionist": "368b1545d2bde29215f088d903e79336238e4217ef3cd4267aac61bd4ef5ebe6",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "d28444ff9e5230effd9a1027a975b9bb5c710dd368a20e83af11b6252c46701c",
+   "orchestrator": "7499faca552bde639ef8f620bc0c5c03c5db4fe45c8fb036cedb5ca72c8d11bd",
+   "planner": "423d582ac53584b4e80557eeaa0c2beeb75b061adbfddced52b303e04c75cc81",
+   "receptionist": "62e78e4d4bc99039d8dc580938bb14f8881489088ab2452e3e9be1b69a57be48",
    "tool_caller": "cb975539ed635eec14ba8050503e7945c1c39a831f81fbaab14a19ebed22e1d0",
    "user_input_inspector": "6a7c3b1670f9609f3bd14abca0417e4ae789bffe78a469e68d2730e718c57d81"
   },
   "chars": {
-   "database_handler": 24171,
+   "database_handler": 24125,
    "dc_input_creator": 23750,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 19848,
-   "orchestrator": 16504,
-   "planner": 21574,
-   "receptionist": 16036,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 19847,
+   "orchestrator": 16452,
+   "planner": 21530,
+   "receptionist": 16026,
    "tool_caller": 9342,
    "user_input_inspector": 14385
   },
@@ -883,32 +883,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "dcii_off/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "7b766261ba75e046276e2054a10b06e62ee1eaa518051cc60759386a5e8a973c",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
-   "receptionist": "073ba6d0fd80b70b41818903faad1cdb443cfdec78e20b91adeddec9e858f073",
+   "dc_output_inspector": "ef5c89a8f8c6c87722c880fb6b8f1f43319890d16eb17a2e1d66042625660551",
+   "planner": "befbe926ad4256452c9653cb91b2e30376272025158fc58ce692ec97aaed03bf",
+   "receptionist": "2a80a64ccf5d7dedaeda2ea0679b0297ff8fa67381c60fbb395b9aa2f88a9923",
    "tool_caller": "67d26a5bed9b4a914b7c70e3c3e0744d60b57b169c0dc814103dadcf3b270828",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20112,
-   "planner": 25413,
-   "receptionist": 15978,
+   "dc_output_inspector": 20111,
+   "planner": 25369,
+   "receptionist": 15968,
    "tool_caller": 9069,
    "user_input_inspector": 14392
   },
@@ -920,30 +920,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "dcii_off/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "c02504b2899730f7a12797c7a1fea5bfa13db16ba6af7ce93f8df4cb55bec452",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "262d6dc3782c0947a57ab60fa8e28f1dabb98b3f5444089edd26d87f71676c2f",
-   "requirements_analyst": "cee43e9bdf33066d6e785f2d3e8f0617bbf28fd1698a01885d818568ef177a98"
+   "requirements_analyst": "308a2b0bf747c43934d120c9ee464059a5e3e13afc4e2d83a433a2a62916d51c"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 26613,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 15906,
-   "requirements_analyst": 29417
+   "requirements_analyst": 29416
   },
   "unavailable": {},
   "unformatted": {},
@@ -953,36 +953,36 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "pf_on_dcii_off/7": {
   "prompts": {
-   "database_handler": "5a1837e3ff1f8b1ed38de2f1ea97f17af0a6921a21ef75f6b5ccbdfec51ade77",
+   "database_handler": "2ddf05868b291d0c845cba98f62201145bbce4d04111381c25860f90e862cef5",
    "dc_input_creator": "8552f778df2a9f0fb24a2096af93cb2bb96095bd292641606b7737a4c654c4dd",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "4f0318f6f1ebe1eeb5c0d1aebbf004f983f962f71e414ccddfede7bf06d87f0e",
-   "orchestrator": "e1485ff47be632449e55938f5cdbed9e901e52ff5e56e1bd6e581104b8776224",
-   "planner": "d4eaafbf2aa618cd74af527454238e1068044c16b18e65d919b61c1af6c697ff",
-   "receptionist": "368b1545d2bde29215f088d903e79336238e4217ef3cd4267aac61bd4ef5ebe6",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "d28444ff9e5230effd9a1027a975b9bb5c710dd368a20e83af11b6252c46701c",
+   "orchestrator": "27af87642c89607f08583c82896adae95f60444ff66958dfba65f57784496854",
+   "planner": "4b6258048df95ad83e38c4b48cbb8ebd49f130549b2d16c582cf4b2705be4eab",
+   "receptionist": "62e78e4d4bc99039d8dc580938bb14f8881489088ab2452e3e9be1b69a57be48",
    "tool_caller": "cb975539ed635eec14ba8050503e7945c1c39a831f81fbaab14a19ebed22e1d0",
    "user_input_inspector": "98c4966fb33575fc0ba4e60c9af2c5bee60f5205a0fc25a683e166758c333151"
   },
   "chars": {
-   "database_handler": 24171,
+   "database_handler": 24125,
    "dc_input_creator": 23750,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 19848,
-   "orchestrator": 16635,
-   "planner": 25386,
-   "receptionist": 16036,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 19847,
+   "orchestrator": 16583,
+   "planner": 25342,
+   "receptionist": 16026,
    "tool_caller": 9342,
    "user_input_inspector": 18533
   },
@@ -994,32 +994,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": true,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "pf_on_dcii_off/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "7b766261ba75e046276e2054a10b06e62ee1eaa518051cc60759386a5e8a973c",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
-   "receptionist": "073ba6d0fd80b70b41818903faad1cdb443cfdec78e20b91adeddec9e858f073",
+   "dc_output_inspector": "ef5c89a8f8c6c87722c880fb6b8f1f43319890d16eb17a2e1d66042625660551",
+   "planner": "befbe926ad4256452c9653cb91b2e30376272025158fc58ce692ec97aaed03bf",
+   "receptionist": "2a80a64ccf5d7dedaeda2ea0679b0297ff8fa67381c60fbb395b9aa2f88a9923",
    "tool_caller": "67d26a5bed9b4a914b7c70e3c3e0744d60b57b169c0dc814103dadcf3b270828",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20112,
-   "planner": 25413,
-   "receptionist": 15978,
+   "dc_output_inspector": 20111,
+   "planner": 25369,
+   "receptionist": 15968,
    "tool_caller": 9069,
    "user_input_inspector": 14392
   },
@@ -1031,30 +1031,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": true,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "pf_on_dcii_off/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "c02504b2899730f7a12797c7a1fea5bfa13db16ba6af7ce93f8df4cb55bec452",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "262d6dc3782c0947a57ab60fa8e28f1dabb98b3f5444089edd26d87f71676c2f",
-   "requirements_analyst": "cee43e9bdf33066d6e785f2d3e8f0617bbf28fd1698a01885d818568ef177a98"
+   "requirements_analyst": "308a2b0bf747c43934d120c9ee464059a5e3e13afc4e2d83a433a2a62916d51c"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 26613,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 15906,
-   "requirements_analyst": 29417
+   "requirements_analyst": 29416
   },
   "unavailable": {},
   "unformatted": {},
@@ -1064,36 +1064,36 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": true,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "uii_params_on/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "557fc953e133473a51729c88620be091b8cc502a9fed0cbb22dcde0c4cba9a90",
    "dc_input_creator": "ec7e58c9019803970e1a6fec5c275c51436ee2ddfb6f474acd7a78b4a3e8e0f1",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "d9849fcd8aa668067fea4f9a4b86e026021b421dce17c094ecd19e236c118b5f",
-   "orchestrator": "1a35210920286761ab4d9a99d6b748ba923141ad171c8c26bf66847cfd5c250e",
-   "planner": "1ffb98749e52392ee4bde2166ecc63492e693aac79fb187a80321f3b8cad6456",
-   "receptionist": "368b1545d2bde29215f088d903e79336238e4217ef3cd4267aac61bd4ef5ebe6",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "6665882f4eac0c6a7e1a341c45c5c8fa5eb735d9cff86e2caa675cd933817c79",
+   "orchestrator": "7abb45036823bdc04dcd4a11ea82de41e9f8be12b3318e8089362047daf4cb23",
+   "planner": "f5fd092b08bc7a5045d5dcde25430ba21fb9dba92e12be2540ecb850b0326c20",
+   "receptionist": "62e78e4d4bc99039d8dc580938bb14f8881489088ab2452e3e9be1b69a57be48",
    "tool_caller": "cafacfe80815abe9b6dea45dc30462e442b491089217306d2ca64cbfe96f669f",
    "user_input_inspector": "9458bc77caeea9681a72a9e4ae6915c91d3dc359720310d9116d62e3b1b59f2c"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24545,
    "dc_input_creator": 24768,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 19917,
-   "orchestrator": 16897,
-   "planner": 21900,
-   "receptionist": 16036,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 19916,
+   "orchestrator": 16845,
+   "planner": 21856,
+   "receptionist": 16026,
    "tool_caller": 9346,
    "user_input_inspector": 16083
   },
@@ -1105,32 +1105,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": true
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "uii_params_on/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "7b766261ba75e046276e2054a10b06e62ee1eaa518051cc60759386a5e8a973c",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
-   "receptionist": "073ba6d0fd80b70b41818903faad1cdb443cfdec78e20b91adeddec9e858f073",
+   "dc_output_inspector": "ef5c89a8f8c6c87722c880fb6b8f1f43319890d16eb17a2e1d66042625660551",
+   "planner": "befbe926ad4256452c9653cb91b2e30376272025158fc58ce692ec97aaed03bf",
+   "receptionist": "2a80a64ccf5d7dedaeda2ea0679b0297ff8fa67381c60fbb395b9aa2f88a9923",
    "tool_caller": "67d26a5bed9b4a914b7c70e3c3e0744d60b57b169c0dc814103dadcf3b270828",
    "user_input_inspector": "88a61dbfd8690fa84b12216b5b7a14fd52b9acf9f216e51015c2a6ab6815dd06"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20112,
-   "planner": 25413,
-   "receptionist": 15978,
+   "dc_output_inspector": 20111,
+   "planner": 25369,
+   "receptionist": 15968,
    "tool_caller": 9069,
    "user_input_inspector": 16090
   },
@@ -1142,30 +1142,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": true
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "uii_params_on/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "c02504b2899730f7a12797c7a1fea5bfa13db16ba6af7ce93f8df4cb55bec452",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "262d6dc3782c0947a57ab60fa8e28f1dabb98b3f5444089edd26d87f71676c2f",
-   "requirements_analyst": "cee43e9bdf33066d6e785f2d3e8f0617bbf28fd1698a01885d818568ef177a98"
+   "requirements_analyst": "308a2b0bf747c43934d120c9ee464059a5e3e13afc4e2d83a433a2a62916d51c"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 26613,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 15906,
-   "requirements_analyst": 29417
+   "requirements_analyst": 29416
   },
   "unavailable": {},
   "unformatted": {},
@@ -1175,36 +1175,36 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": true
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "dcoi_ranges_on/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "557fc953e133473a51729c88620be091b8cc502a9fed0cbb22dcde0c4cba9a90",
    "dc_input_creator": "ec7e58c9019803970e1a6fec5c275c51436ee2ddfb6f474acd7a78b4a3e8e0f1",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "495347f8ecb14b490b74a27409bacd1b4aecdfe4db6821c19a5ceb4dc8a94d86",
-   "orchestrator": "1a35210920286761ab4d9a99d6b748ba923141ad171c8c26bf66847cfd5c250e",
-   "planner": "1ffb98749e52392ee4bde2166ecc63492e693aac79fb187a80321f3b8cad6456",
-   "receptionist": "368b1545d2bde29215f088d903e79336238e4217ef3cd4267aac61bd4ef5ebe6",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "0e2de7b9b5e4cf5e2a750941e19cd377504bd539cacfea8cb84c9e7fc82ac2e5",
+   "orchestrator": "7abb45036823bdc04dcd4a11ea82de41e9f8be12b3318e8089362047daf4cb23",
+   "planner": "f5fd092b08bc7a5045d5dcde25430ba21fb9dba92e12be2540ecb850b0326c20",
+   "receptionist": "62e78e4d4bc99039d8dc580938bb14f8881489088ab2452e3e9be1b69a57be48",
    "tool_caller": "cafacfe80815abe9b6dea45dc30462e442b491089217306d2ca64cbfe96f669f",
    "user_input_inspector": "6a7c3b1670f9609f3bd14abca0417e4ae789bffe78a469e68d2730e718c57d81"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24545,
    "dc_input_creator": 24768,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 20258,
-   "orchestrator": 16897,
-   "planner": 21900,
-   "receptionist": 16036,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 20257,
+   "orchestrator": 16845,
+   "planner": 21856,
+   "receptionist": 16026,
    "tool_caller": 9346,
    "user_input_inspector": 14385
   },
@@ -1216,32 +1216,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": true,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "dcoi_ranges_on/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "4c0a96409651785153ff0a1e59587afa82ac0f11760fabe995a556cd290b8cc1",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
-   "receptionist": "073ba6d0fd80b70b41818903faad1cdb443cfdec78e20b91adeddec9e858f073",
+   "dc_output_inspector": "7d963417f6481b0ebbe03c8ca4aab3b5180c71ad7652a2ffefde387a9af3e3ab",
+   "planner": "befbe926ad4256452c9653cb91b2e30376272025158fc58ce692ec97aaed03bf",
+   "receptionist": "2a80a64ccf5d7dedaeda2ea0679b0297ff8fa67381c60fbb395b9aa2f88a9923",
    "tool_caller": "67d26a5bed9b4a914b7c70e3c3e0744d60b57b169c0dc814103dadcf3b270828",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20453,
-   "planner": 25413,
-   "receptionist": 15978,
+   "dc_output_inspector": 20452,
+   "planner": 25369,
+   "receptionist": 15968,
    "tool_caller": 9069,
    "user_input_inspector": 14392
   },
@@ -1253,30 +1253,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": true,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "dcoi_ranges_on/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "c02504b2899730f7a12797c7a1fea5bfa13db16ba6af7ce93f8df4cb55bec452",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "262d6dc3782c0947a57ab60fa8e28f1dabb98b3f5444089edd26d87f71676c2f",
-   "requirements_analyst": "efc8b2637c3d247a322c0f233b31588623da2457e30be9ccbe03790872c5f60d"
+   "requirements_analyst": "288e241776be386bd0363ab21c78655275523db5851d0df74f95ca0239ee3c6e"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 26613,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 15906,
-   "requirements_analyst": 29623
+   "requirements_analyst": 29622
   },
   "unavailable": {},
   "unformatted": {},
@@ -1286,36 +1286,36 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": true,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "cmp_mode_1/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "557fc953e133473a51729c88620be091b8cc502a9fed0cbb22dcde0c4cba9a90",
    "dc_input_creator": "ec7e58c9019803970e1a6fec5c275c51436ee2ddfb6f474acd7a78b4a3e8e0f1",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "8ffe98f1f243d832c0bf444413e94f366f8ba627d467808d105f134b2130bd7d",
-   "orchestrator": "1a35210920286761ab4d9a99d6b748ba923141ad171c8c26bf66847cfd5c250e",
-   "planner": "1ffb98749e52392ee4bde2166ecc63492e693aac79fb187a80321f3b8cad6456",
-   "receptionist": "368b1545d2bde29215f088d903e79336238e4217ef3cd4267aac61bd4ef5ebe6",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "1dfe6c4652b9effe15e94b18b714742c6e8a6845c052101b458fb02b4166dbea",
+   "orchestrator": "7abb45036823bdc04dcd4a11ea82de41e9f8be12b3318e8089362047daf4cb23",
+   "planner": "f5fd092b08bc7a5045d5dcde25430ba21fb9dba92e12be2540ecb850b0326c20",
+   "receptionist": "62e78e4d4bc99039d8dc580938bb14f8881489088ab2452e3e9be1b69a57be48",
    "tool_caller": "cafacfe80815abe9b6dea45dc30462e442b491089217306d2ca64cbfe96f669f",
    "user_input_inspector": "6a7c3b1670f9609f3bd14abca0417e4ae789bffe78a469e68d2730e718c57d81"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24545,
    "dc_input_creator": 24768,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 19880,
-   "orchestrator": 16897,
-   "planner": 21900,
-   "receptionist": 16036,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 19879,
+   "orchestrator": 16845,
+   "planner": 21856,
+   "receptionist": 16026,
    "tool_caller": 9346,
    "user_input_inspector": 14385
   },
@@ -1327,32 +1327,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 1,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "cmp_mode_1/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "5738d200c7b9d1dc4ff6988b2ba10404b15fddf7dfd753b56e32a20a75eec38c",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
-   "receptionist": "073ba6d0fd80b70b41818903faad1cdb443cfdec78e20b91adeddec9e858f073",
+   "dc_output_inspector": "e9fe96766472a0ef37a8c514aa933301fa7b1b3824dd5e5177150ecd21c74ea3",
+   "planner": "befbe926ad4256452c9653cb91b2e30376272025158fc58ce692ec97aaed03bf",
+   "receptionist": "2a80a64ccf5d7dedaeda2ea0679b0297ff8fa67381c60fbb395b9aa2f88a9923",
    "tool_caller": "67d26a5bed9b4a914b7c70e3c3e0744d60b57b169c0dc814103dadcf3b270828",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20075,
-   "planner": 25413,
-   "receptionist": 15978,
+   "dc_output_inspector": 20074,
+   "planner": 25369,
+   "receptionist": 15968,
    "tool_caller": 9069,
    "user_input_inspector": 14392
   },
@@ -1364,30 +1364,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 1,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "cmp_mode_1/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "c02504b2899730f7a12797c7a1fea5bfa13db16ba6af7ce93f8df4cb55bec452",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "262d6dc3782c0947a57ab60fa8e28f1dabb98b3f5444089edd26d87f71676c2f",
-   "requirements_analyst": "cee43e9bdf33066d6e785f2d3e8f0617bbf28fd1698a01885d818568ef177a98"
+   "requirements_analyst": "308a2b0bf747c43934d120c9ee464059a5e3e13afc4e2d83a433a2a62916d51c"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 26613,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 15906,
-   "requirements_analyst": 29417
+   "requirements_analyst": 29416
   },
   "unavailable": {},
   "unformatted": {},
@@ -1397,36 +1397,36 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 1,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "cmp_mode_2/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "557fc953e133473a51729c88620be091b8cc502a9fed0cbb22dcde0c4cba9a90",
    "dc_input_creator": "ec7e58c9019803970e1a6fec5c275c51436ee2ddfb6f474acd7a78b4a3e8e0f1",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "8f8a94c8e57000dfd43f65601d32c872226f65ea44b02777d796f3962ee0042c",
-   "orchestrator": "1a35210920286761ab4d9a99d6b748ba923141ad171c8c26bf66847cfd5c250e",
-   "planner": "1ffb98749e52392ee4bde2166ecc63492e693aac79fb187a80321f3b8cad6456",
-   "receptionist": "368b1545d2bde29215f088d903e79336238e4217ef3cd4267aac61bd4ef5ebe6",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "c1a7b3cd51ea9249b55d4ca23e2076c6c0c8623ac2ca7fb3c61e050c8c87d638",
+   "orchestrator": "7abb45036823bdc04dcd4a11ea82de41e9f8be12b3318e8089362047daf4cb23",
+   "planner": "f5fd092b08bc7a5045d5dcde25430ba21fb9dba92e12be2540ecb850b0326c20",
+   "receptionist": "62e78e4d4bc99039d8dc580938bb14f8881489088ab2452e3e9be1b69a57be48",
    "tool_caller": "cafacfe80815abe9b6dea45dc30462e442b491089217306d2ca64cbfe96f669f",
    "user_input_inspector": "6a7c3b1670f9609f3bd14abca0417e4ae789bffe78a469e68d2730e718c57d81"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24545,
    "dc_input_creator": 24768,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 20127,
-   "orchestrator": 16897,
-   "planner": 21900,
-   "receptionist": 16036,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 20126,
+   "orchestrator": 16845,
+   "planner": 21856,
+   "receptionist": 16026,
    "tool_caller": 9346,
    "user_input_inspector": 14385
   },
@@ -1438,32 +1438,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 2,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "cmp_mode_2/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "a5846eaeb7dc921749d68a4981e3b5b57aca05759916baa972ecf07daf6816ea",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
-   "receptionist": "073ba6d0fd80b70b41818903faad1cdb443cfdec78e20b91adeddec9e858f073",
+   "dc_output_inspector": "3770bf6e5cd3a7d97c4f2bc9cf007c1cb5b3a0898570ce8f8500d55063885582",
+   "planner": "befbe926ad4256452c9653cb91b2e30376272025158fc58ce692ec97aaed03bf",
+   "receptionist": "2a80a64ccf5d7dedaeda2ea0679b0297ff8fa67381c60fbb395b9aa2f88a9923",
    "tool_caller": "67d26a5bed9b4a914b7c70e3c3e0744d60b57b169c0dc814103dadcf3b270828",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20322,
-   "planner": 25413,
-   "receptionist": 15978,
+   "dc_output_inspector": 20321,
+   "planner": 25369,
+   "receptionist": 15968,
    "tool_caller": 9069,
    "user_input_inspector": 14392
   },
@@ -1475,30 +1475,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 2,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "cmp_mode_2/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "c02504b2899730f7a12797c7a1fea5bfa13db16ba6af7ce93f8df4cb55bec452",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "262d6dc3782c0947a57ab60fa8e28f1dabb98b3f5444089edd26d87f71676c2f",
-   "requirements_analyst": "cee43e9bdf33066d6e785f2d3e8f0617bbf28fd1698a01885d818568ef177a98"
+   "requirements_analyst": "308a2b0bf747c43934d120c9ee464059a5e3e13afc4e2d83a433a2a62916d51c"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 26613,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 15906,
-   "requirements_analyst": 29417
+   "requirements_analyst": 29416
   },
   "unavailable": {},
   "unformatted": {},
@@ -1508,36 +1508,36 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 2,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "keep_imgs_noch/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "557fc953e133473a51729c88620be091b8cc502a9fed0cbb22dcde0c4cba9a90",
    "dc_input_creator": "ec7e58c9019803970e1a6fec5c275c51436ee2ddfb6f474acd7a78b4a3e8e0f1",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "b1733be95d78ed04dc12dcc595b4c719f5c2b5dccf02bc65839d9581a9eeb866",
-   "orchestrator": "35d21d90b60702e142f60c01587ef3b554a40d3ae4847f2262998efc1e49655c",
-   "planner": "1ffb98749e52392ee4bde2166ecc63492e693aac79fb187a80321f3b8cad6456",
-   "receptionist": "368b1545d2bde29215f088d903e79336238e4217ef3cd4267aac61bd4ef5ebe6",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "c2a46ff2f2877a612619ea42bf4fe9b38f22895d340aa55e0879c97c965d7045",
+   "orchestrator": "bc4f8978d5b6c9fb6f0bd1572064fae24d5337b06c132d3def25e97709263e6b",
+   "planner": "f5fd092b08bc7a5045d5dcde25430ba21fb9dba92e12be2540ecb850b0326c20",
+   "receptionist": "62e78e4d4bc99039d8dc580938bb14f8881489088ab2452e3e9be1b69a57be48",
    "tool_caller": "cafacfe80815abe9b6dea45dc30462e442b491089217306d2ca64cbfe96f669f",
    "user_input_inspector": "6a7c3b1670f9609f3bd14abca0417e4ae789bffe78a469e68d2730e718c57d81"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24545,
    "dc_input_creator": 24768,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 19833,
-   "orchestrator": 16735,
-   "planner": 21900,
-   "receptionist": 16036,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 19832,
+   "orchestrator": 16683,
+   "planner": 21856,
+   "receptionist": 16026,
    "tool_caller": 9346,
    "user_input_inspector": 14385
   },
@@ -1549,32 +1549,32 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": false,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": true,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "keep_imgs_noch/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "a8f7981ebeb856c9c8d70437823b9097979bdc1db433f38e560f23cf17370a59",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "7eb879ab8a6412bf0122e814784d128b29776dfd467eb68f205a8bc2430fbc0f",
-   "planner": "a63312192f08faf20058cc6d3873ede35c0b8558ecebbcce24581399cf86ab8e",
-   "receptionist": "073ba6d0fd80b70b41818903faad1cdb443cfdec78e20b91adeddec9e858f073",
+   "dc_output_inspector": "846977a759b50c940e6bd4b9ea73cbca34e63e8a2f211e74e687c11ed2411db7",
+   "planner": "befbe926ad4256452c9653cb91b2e30376272025158fc58ce692ec97aaed03bf",
+   "receptionist": "2a80a64ccf5d7dedaeda2ea0679b0297ff8fa67381c60fbb395b9aa2f88a9923",
    "tool_caller": "67d26a5bed9b4a914b7c70e3c3e0744d60b57b169c0dc814103dadcf3b270828",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24103,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20028,
-   "planner": 25413,
-   "receptionist": 15978,
+   "dc_output_inspector": 20027,
+   "planner": 25369,
+   "receptionist": 15968,
    "tool_caller": 9069,
    "user_input_inspector": 14392
   },
@@ -1586,30 +1586,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": false,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": true,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "keep_imgs_noch/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "c02504b2899730f7a12797c7a1fea5bfa13db16ba6af7ce93f8df4cb55bec452",
-   "planner": "e78801fd8065ca4c36f9ba91f92f1f30c25ccb46a8eeef386e4982a97df48e64",
+   "planner": "133fc899bc66b0a8464958c99d531c498cd5fabdbd14cab1c4aa347ef99a747c",
    "receptionist": "262d6dc3782c0947a57ab60fa8e28f1dabb98b3f5444089edd26d87f71676c2f",
-   "requirements_analyst": "ac203f70779ac4cfe9662d166dd8cfa036678cef99ee46feecceaae248437d1c"
+   "requirements_analyst": "30a90c422d98e9013cbc36cb66d58132ffa8cba66db79e352bf0d16ae703066d"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 26613,
-   "planner": 24640,
+   "planner": 24639,
    "receptionist": 15906,
-   "requirements_analyst": 29333
+   "requirements_analyst": 29332
   },
   "unavailable": {},
   "unformatted": {},
@@ -1619,35 +1619,35 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": false,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": true,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "all_on/7": {
   "prompts": {
-   "database_handler": "dd61d05eae18fb93efdfb64d94bd52faf43c6c326c255a82aa885f473058db75",
+   "database_handler": "2257a117b06ef46ff000d3a8b14e46cba0882bb9dfceaf16c5ede1c197763734",
    "dc_input_creator": "1861650e84f86009a3b92b729f5af77746f5bffea6c0dbf5caaf907d7fc5ba01",
    "dc_input_inspector": "af966788ee495b8f9f05f55f95574609545b425041703add5f10d22ab1c8eb5f",
    "dc_output_inspector": "f256bee2b6da4c2705a1e2d5b9318e410bfb6b1dbe6a3712d3e2c3160e88e6be",
    "orchestrator": "be9a38612908d3fad8520247bbc68aea3d2e0d39416b4d4e3907a7dbf091a11e",
-   "planner": "a790cfde67199e3f7434d591647b2a2390b34e30d4b337ffa93ae05c1f3eb617",
+   "planner": "6e069036ecae8e34a42587620449343b93bdf8b8be97031d4e39901c4ca1f375",
    "receptionist": "544c7061f7b04bd020039cb105d48fb189b3600831384a76d27b13661e3b3e1f",
    "tool_caller": "d0f34c6bf5732138455b1fc7f6ecddc8460ab329c9495933f43cd3f1979ccb16",
    "user_input_inspector": "2e2ebab4876fc87c34645f0456bb8134e41ae4f226afaa5185b94e1b754fb41c"
   },
   "chars": {
-   "database_handler": 24591,
+   "database_handler": 24590,
    "dc_input_creator": 31030,
    "dc_input_inspector": 25463,
    "dc_output_inspector": 25857,
    "orchestrator": 21912,
-   "planner": 31391,
+   "planner": 31390,
    "receptionist": 21979,
    "tool_caller": 15910,
    "user_input_inspector": 26438
@@ -1660,31 +1660,31 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": true,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": true,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": true
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "all_on/5": {
   "prompts": {
-   "database_handler": "def9214326f65d3e18d028ef07ae872021fdef7bb725d5ff743cf9ee43fcdcd9",
+   "database_handler": "b69934415ddaab474f1e33ce0b88589bd10358729e8e2047e9bd4450ee049f5f",
    "dc_input_creator": "7cd8e9a589777e7721344229d31024d5ed68a6268a107c15c9ea42e9a76c17a2",
    "dc_output_inspector": "c04f3414c961e7529853ef52f2e70087e4ef964aac57ce780fa77e5deebba764",
-   "planner": "dc0f120dfa4f551ea8decdf60dd9012d7e9dde7f2eb026cb573c554ef190b4c6",
+   "planner": "9208b6b91bf0f8b913abbb1aebc7e67ae51793cbd52ba8fcc296217ecf5a4ce5",
    "receptionist": "9c614cf4f0dddb5e9ba31fe91d44e450e34ebc55012b9b67489fc84f4b701787",
    "tool_caller": "af2fb72db8270531ab40dbf1e6e92fa90018614a3eedd154aef7dcca36e39b32",
    "user_input_inspector": "ab28f48e9b58948e5f1a3d78bfcb10db5b8b97740c3d717018d138dd47f8e3dd"
   },
   "chars": {
-   "database_handler": 24149,
+   "database_handler": 24148,
    "dc_input_creator": 30285,
    "dc_output_inspector": 26052,
-   "planner": 31089,
+   "planner": 31088,
    "receptionist": 21907,
    "tool_caller": 15633,
    "user_input_inspector": 22276
@@ -1697,28 +1697,28 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": true,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": true,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": true
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "all_on/3": {
   "prompts": {
-   "database_handler": "5e1f038d874a43f3ce9344142554f05614d1688a580b8dedacd3f7310aa75e39",
+   "database_handler": "3327dcf77aa937bc1ab378d979da6d259586d45dcefc8f1e0fdd59fb26425309",
    "design_engineer": "ac1f11cb65c5918f1a655cd9fd51f64c08e9e830036245b8a8c1a9c16549ca2f",
-   "planner": "4a5cb6fd47a61456d004a95a753a8767f807638334f8b2636c820c9343aeb616",
+   "planner": "28f1b28fe1b8eed963badc044dcdb24626c95096b3f8975389393fd80f07efa6",
    "receptionist": "cd3f2cacb038550b1a3a4e4dafeb9e4e66135a1b93523d86cefa06b92b5d8aa6",
    "requirements_analyst": "1549dd1c0f7f09692db84dbc0a8addaed54b9d9f70750487703c30a99fb88f58"
   },
   "chars": {
-   "database_handler": 22330,
+   "database_handler": 22329,
    "design_engineer": 34255,
-   "planner": 30316,
+   "planner": 30315,
    "receptionist": 21823,
    "requirements_analyst": 36989
   },
@@ -1730,37 +1730,37 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": true,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": true,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": true,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": true,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": true
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "all_off/7": {
   "prompts": {
-   "database_handler": "4da57157bfc49b3c91ae3ac4fb59771c4a8fb2c9b809b1682869c97fc23f3402",
+   "database_handler": "299fbed8d6ece8d3d78ebf710410f9d45714213488239760cf4b38041296ba33",
    "dc_input_creator": "8552f778df2a9f0fb24a2096af93cb2bb96095bd292641606b7737a4c654c4dd",
-   "dc_input_inspector": "912293848945075d3a596c311505b565371af9508663c1899ac364a328ff9f35",
-   "dc_output_inspector": "4f0318f6f1ebe1eeb5c0d1aebbf004f983f962f71e414ccddfede7bf06d87f0e",
-   "orchestrator": "e7805ab813fbfafee2e593e9f3c9aaa72be61e6241060dc1f73918f049ab0f2c",
-   "planner": "56a3cd6a5985c439be43baa55736b4aa7f32614100884dd0efa7319fba4d24ee",
-   "receptionist": "bc94fb05931faaed322014f1bd881ed6067852a45853028cb1a0ecd762f3c7e2",
-   "tool_caller": "2b266d429cdaa261b63a39ac26d4fc9bd23fd0b93c17fd31d87be16a57718d15",
+   "dc_input_inspector": "89c0b33a52234c45a3ef638a44581b82685ab031d8b5d969ef7899a47b2e1b23",
+   "dc_output_inspector": "66ccaefdbb2eb2c46398e1de46ecfc064bc0f5f27c69f4f06250bdac1dbd4414",
+   "orchestrator": "a1a6be8ae24ad54918cdc28a0fa3323a99406d46b90a02f955e18cb21751c460",
+   "planner": "b30762605eaf5cbcb36742a494469207538b0ccfce9d6a29082f9b48c040dfc5",
+   "receptionist": "c35eb465f70b676c7a125e606d05069bb1ce5d5f4988e5f4213135afaacdd0df",
+   "tool_caller": "1b840ca572581c4cf0ec1eb8ac3ebf5f443dfe1aeb48a426a32dd4df8e602ccb",
    "user_input_inspector": "6a7c3b1670f9609f3bd14abca0417e4ae789bffe78a469e68d2730e718c57d81"
   },
   "chars": {
-   "database_handler": 23172,
+   "database_handler": 23129,
    "dc_input_creator": 23750,
-   "dc_input_inspector": 19122,
-   "dc_output_inspector": 19848,
-   "orchestrator": 16343,
-   "planner": 20299,
-   "receptionist": 15953,
-   "tool_caller": 8555,
+   "dc_input_inspector": 19121,
+   "dc_output_inspector": 19718,
+   "orchestrator": 16291,
+   "planner": 19912,
+   "receptionist": 15911,
+   "tool_caller": 8550,
    "user_input_inspector": 14385
   },
   "unavailable": {},
@@ -1771,33 +1771,33 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": false,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "all_off/5": {
   "prompts": {
-   "database_handler": "b45b5844d9664d3ef165fa80e10878f67bc9550fba49cdb1dd6b0769cea3e533",
+   "database_handler": "4cd06aa65c75b060aa75e7edeb6c3d85e587e4618c31e59f88b3ca862b2ad302",
    "dc_input_creator": "72859a5f7dde28d84ed8cb67e8ccd9a6cea12d7844345315a2373b8fa856ca1a",
-   "dc_output_inspector": "7b766261ba75e046276e2054a10b06e62ee1eaa518051cc60759386a5e8a973c",
-   "planner": "8215bff8c41cbd5bf2fe2dfcc007b0ec6274e8025f5595a94a43f54a2716b8de",
-   "receptionist": "5823e793f808e2b0904dcf0592bf92eab9cced10adacca7ef9c31795f8066e23",
-   "tool_caller": "80e19beae24a7bf0627895c02193d2d59f3079d7fcfd28d397f38ecd2e3efa09",
+   "dc_output_inspector": "585e74dd5529e9e1a40e60a09cafc45c10dd2f06d95d7c8c49c7f57424313d31",
+   "planner": "19faf5e9c0f1d0699d53383591bcbc5f1dd14dccc73e4059d7aaf9e357bbdf03",
+   "receptionist": "f9f5504731f16838bdf4366d472243a708b57b7223c0703ae1f709f2d2bef50d",
+   "tool_caller": "ecf8530ae9b83245bec2ddc68f7f45209c8381f9c3ba0ebdd88a4682103da7fb",
    "user_input_inspector": "f3ff91d84131b402f816df88f8db91b78e1bf70d3cd70d731addc961f56fb17c"
   },
   "chars": {
-   "database_handler": 23150,
+   "database_handler": 23107,
    "dc_input_creator": 23789,
-   "dc_output_inspector": 20112,
-   "planner": 24138,
-   "receptionist": 15895,
-   "tool_caller": 8259,
+   "dc_output_inspector": 19982,
+   "planner": 23751,
+   "receptionist": 15853,
+   "tool_caller": 8254,
    "user_input_inspector": 14392
   },
   "unavailable": {},
@@ -1808,30 +1808,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": false,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "all_off/3": {
   "prompts": {
    "database_handler": "de35617ad35bd544fdef4edba61f734c0005cf185e998b24d19da92a3c0bea11",
-   "design_engineer": "7499eace9999ebf127e5abf97b5fcdc370334108ffdc92f963137fbb2269c38b",
-   "planner": "b8a0d454cc74d06d6a6454bf05f8190ab2fd6bb3d283261528e4b97dddacf53d",
-   "receptionist": "139cba71ebb5fc2fc79a36d79047ae6aa628e7229bfb028f890cb3c5d53cf642",
-   "requirements_analyst": "cee43e9bdf33066d6e785f2d3e8f0617bbf28fd1698a01885d818568ef177a98"
+   "design_engineer": "e639213ff28b8bdc371205636d2f731102b9b5d98a02a6036e2f9b11d8171654",
+   "planner": "5a3b8c8f16287d7a1c52713a30f27fe077cc7d80695ff5e5e5540d0c6b8602e8",
+   "receptionist": "d24be31f3cfe7a5a6923ae3262e6f426041422ffc0c826c7bae1ba99fd15d27c",
+   "requirements_analyst": "3f1ef72caf846e0c92369ec4dabae36fafedab6a1f5901eb18d2e5114310d846"
   },
   "chars": {
    "database_handler": 21345,
-   "design_engineer": 25724,
-   "planner": 23362,
-   "receptionist": 15823,
-   "requirements_analyst": 29417
+   "design_engineer": 25718,
+   "planner": 22981,
+   "receptionist": 15791,
+   "requirements_analyst": 29287
   },
   "unavailable": {},
   "unformatted": {},
@@ -1841,14 +1841,14 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": false,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": false,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": false,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "rag_all_bsv_off_dcii_off_mesh_on/7": {
@@ -1856,22 +1856,22 @@
    "database_handler": "4da57157bfc49b3c91ae3ac4fb59771c4a8fb2c9b809b1682869c97fc23f3402",
    "dc_input_creator": "272901ca641dca3c82260c980a8fe7739eeb815cfe30437bd5af6de843a918e0",
    "dc_input_inspector": "af966788ee495b8f9f05f55f95574609545b425041703add5f10d22ab1c8eb5f",
-   "dc_output_inspector": "4e163e8b184f71a5e1ea8a0c215558c5df16032c5dd1b0d6e39d42b093b294ca",
+   "dc_output_inspector": "48e2cc01cda6685424817b9768d57900c633cb5d66083eccb2f37154452776e0",
    "orchestrator": "2c2bb6aabc29d4ac89e57b53f99559ea491256c9fa6f635d7d23d95db66559a7",
-   "planner": "53d6d9e73451cf7f364b00cdc102d3121d99e2ff1063941bdbdbf449dae30087",
-   "receptionist": "73fe7ac14461c5f6d42c40e6824f0454cc5ce5506b7b4fdccd97775ba1b9fe43",
-   "tool_caller": "9a18f0cd46625b2cefd9c24357149efb4f17df07df31dd5bbe437bfd85479e27",
+   "planner": "bda8404d9a62bb990f7a2707172acba351c7d4f9fcf127deff32f90147d0e012",
+   "receptionist": "feb9d5dc4524ae6303bb6628142aa2fadeb0c74282909e6f6d43a780cc8ce034",
+   "tool_caller": "7301aae727d0f9a115233fae633438d45284bb5269047f70b6fcffc22af86cf1",
    "user_input_inspector": "93a8603f7ca595f1319919f0376a377335587da12c6a5681487a1a9d186be2b5"
   },
   "chars": {
    "database_handler": 23172,
    "dc_input_creator": 30012,
    "dc_input_inspector": 25463,
-   "dc_output_inspector": 25447,
+   "dc_output_inspector": 25318,
    "orchestrator": 21227,
-   "planner": 25957,
-   "receptionist": 21889,
-   "tool_caller": 15119,
+   "planner": 25613,
+   "receptionist": 21857,
+   "tool_caller": 15114,
    "user_input_inspector": 20571
   },
   "unavailable": {},
@@ -1882,33 +1882,33 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": false,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "rag_all_bsv_off_dcii_off_mesh_on/5": {
   "prompts": {
    "database_handler": "b45b5844d9664d3ef165fa80e10878f67bc9550fba49cdb1dd6b0769cea3e533",
    "dc_input_creator": "7cd8e9a589777e7721344229d31024d5ed68a6268a107c15c9ea42e9a76c17a2",
-   "dc_output_inspector": "52bd24cb458d8ad425650c9dd43c82159a6fde6e3acd856639d6f23e41ebb264",
-   "planner": "9030e2a1895e5f7a66ca8fc6f7b4a4ffde16176ce134231c6db8d8114d88ea0c",
-   "receptionist": "ff77910ad98196806d39bd877a8e8cc9364b60276593bacb92cc61d9136286e9",
-   "tool_caller": "1b6380e597186f39136e947a019e2a0a33a0c97ea12b68696cbdfafbe7aec4e8",
+   "dc_output_inspector": "b5ea5c1126111bac9a48e32f2b6f6b36908c2b0aa13089a6ce8c384122475363",
+   "planner": "1b5df424486159284d637a69bab4a2be316ebb221c82342f689153ae56ba88a2",
+   "receptionist": "d70da998e8de5f629bd0bc30c1cc72c78c1ff2c8628ad7e81acfd8f76f44fb35",
+   "tool_caller": "040f8a964284f96c5ce67f25bd34b66875abbca216cea287c885fea2f643e235",
    "user_input_inspector": "1bd67fe0dfb13152a555154c48c515c52b57c9b7857bda731d01676ced06f713"
   },
   "chars": {
    "database_handler": 23150,
    "dc_input_creator": 30285,
-   "dc_output_inspector": 25711,
-   "planner": 29814,
-   "receptionist": 21824,
-   "tool_caller": 14823,
+   "dc_output_inspector": 25582,
+   "planner": 29470,
+   "receptionist": 21792,
+   "tool_caller": 14818,
    "user_input_inspector": 20578
   },
   "unavailable": {},
@@ -1919,30 +1919,30 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": false,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  },
  "rag_all_bsv_off_dcii_off_mesh_on/3": {
   "prompts": {
    "database_handler": "de35617ad35bd544fdef4edba61f734c0005cf185e998b24d19da92a3c0bea11",
-   "design_engineer": "9148918355b92a82b95265f857c92ef83141e90f4fe022dc86e9407c9074302f",
-   "planner": "97e9fc4afb9f3610bb528b44f87d6413e2ba8d76b7976546b7bf9ba949ac26b2",
-   "receptionist": "2caa1adb19bcb716daecdd1ff137a06145e913df4e82a323625b2570ea016137",
-   "requirements_analyst": "8f8474ab2a40563130d26a44132256cee2a7611b656ffcaee81e1c23c21bbdec"
+   "design_engineer": "9e2d47e4b780dbea5e163fe8a5e4661a7f752ef9e0a4cc7bc390e9cd0ea42961",
+   "planner": "11fb8363890a5ba502a5dfcd1629a8a6356a451e3d29a928146457b460b487b4",
+   "receptionist": "191c2262ae80fd5d8b0aac37cb1e7463bf7ed673953585ce551bb2f9354b54ac",
+   "requirements_analyst": "2c72348ba47e5609a8e7272eb0506cb895fb8c1be2393c42631e315cab44ca37"
   },
   "chars": {
    "database_handler": 21345,
-   "design_engineer": 33366,
-   "planner": 29038,
-   "receptionist": 21740,
-   "requirements_analyst": 36783
+   "design_engineer": 33360,
+   "planner": 28657,
+   "receptionist": 21708,
+   "requirements_analyst": 36654
   },
   "unavailable": {},
   "unformatted": {},
@@ -1952,14 +1952,14 @@
    "BLADE_SECTIONS_VISUALIZER_ENABLED": false,
    "CHAIN_ACCESS": true,
    "DCOI_COMPARISON_MODE": 3,
-   "DCOI_KNOWS_PARAMS_RANGES": false,
+   "DCOI_KNOWS_PARAMS_RANGES": null,
    "DC_INSPECTOR_ENABLED": false,
    "KEEP_IMAGES_IN_CONTEXT": false,
    "MESH_CHECKS": true,
    "PLANNER_FIRST": false,
    "RAG_ENABLED": true,
    "RENDER_LIBRARY": "trimesh",
-   "UII_PARAMETER_LIST_ENABLED": false
+   "UII_PARAMETER_LIST_ENABLED": null
   }
  }
 }

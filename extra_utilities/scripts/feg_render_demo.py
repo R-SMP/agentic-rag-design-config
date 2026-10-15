@@ -6,8 +6,8 @@ Two render modes:
   * default (LOCAL, no Docker): a self-contained PIL software rasteriser —
     flat-shaded, depth-sorted, 3 views (isometric/top/side).  Approximate
     style; runs anywhere PIL + Node are available.  Files: preview_*.png
-  * --render-mesh (FAITHFUL): the REAL agent pipeline (tools/render_mesh,
-    pyrender, 800x600, 3 views).  Run this INSIDE the app container (it needs
+  * --render-mesh (FAITHFUL): the REAL agent pipeline (the generator's
+    render_mesh.py, pyrender, 800x600, 3 views).  Run this INSIDE the app container (it needs
     pyrender + OSMesa).  Files: render_*.png
 
 Requires Node (host) for geometry generation unless you pass an existing --obj.
@@ -31,7 +31,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPORTER = ROOT / "tools" / "generate_mesh" / "feg_export.mjs"
+EXPORTER = ROOT / "dc_pack" / "tools" / "generate_and_render_propeller" / "feg_export.mjs"
 DEFAULT_OUT = ROOT / "extra_utilities" / "feg_render_examples"
 
 # A representative in-range sample (matches the Task-3 sketch's section dims).
@@ -45,7 +45,7 @@ DEFAULT_PARAMS = {
     "outerChord": 20, "outerAngle": 15,
 }
 
-# (name, eye-direction-from-centre, up) — identical to tools/render_mesh.
+# (name, eye-direction-from-centre, up) — identical to the generator's render_mesh.py.
 VIEWS = [
     ("isometric", (1.0, 1.0, 0.7), (0.0, 0.0, 1.0)),
     ("top",       (0.0, 0.0, 1.0), (0.0, 1.0, 0.0)),
@@ -131,29 +131,14 @@ def software_render(obj, out_dir, prefix="preview", W=800, H=600):
 def rendermesh_render(obj, out_dir):
     """Faithful render via the real render_mesh pipeline (run in the container).
 
-    render_mesh.py lives in the ``tools`` package, whose __init__ eagerly pulls
-    the whole agents stack -> a circular import when render_mesh is imported
-    fresh/standalone (the app avoids it via its own import order).  Sidestep it:
-    put the repo root on sys.path (for ``config``), stub the single agent
-    decorator render_mesh.py imports, then load render_mesh.py BY FILE PATH so
-    ``tools/__init__`` never runs.  The render code itself is reused verbatim.
+    render_mesh.py is the propeller generator's render core, in the pack
+    (dc_pack/tools/generate_and_render_propeller/).  The pack loader imports
+    just that module -- no agent stack -- with the repo root on sys.path for
+    ``config``.  The render code itself is reused verbatim.
     """
-    import importlib.util
-    import types
-
-    base = Path("/app") if Path("/app/tools/render_mesh").is_dir() else ROOT
-    sys.path.insert(0, str(base))
-    for name in ("agents", "agents.shared", "agents.shared.agent_activity"):
-        sys.modules.setdefault(name, types.ModuleType(name))
-    sys.modules["agents.shared.agent_activity"].tool_active = (
-        lambda *a, **k: (lambda fn: fn)
-    )
-    spec = importlib.util.spec_from_file_location(
-        "_render_mesh_standalone",
-        base / "tools" / "render_mesh" / "render_mesh.py",
-    )
-    rm = importlib.util.module_from_spec(spec)
-    spec.loader.exec_module(rm)
+    sys.path.insert(0, str(ROOT))
+    from engine import pack_tools
+    rm = pack_tools.plugin(pack_tools.generators()[0]).submodule("render_mesh")
 
     import trimesh
     loaded = trimesh.load(str(obj))

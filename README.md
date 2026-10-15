@@ -71,11 +71,11 @@ Each topology keeps its own prompt tree: the 7-agent prompts sit beside their ag
 ├── dc_pack/                      # the design-configurator pack (propeller today)
 │   ├── fragments/dc/             # parameters, structure, capabilities, constraints
 │   ├── fragments/tools/          # tool inventory, render-check library
+│   ├── tools/                    # the DC's tools, one folder each (tool.yaml + Python):
+│   │                             #   generate_and_render_propeller/, render_blade_sections/
 │   └── parameters.json, pack.yaml, assets/
-├── engine/                       # pack loader, slot registry, parameters + database schema
-├── tools/
-│   ├── generate_mesh/            # RhinoCompute + Grasshopper definition (DC tool)
-│   ├── render_mesh/              # trimesh + pyvista backends (DC tool)
+├── engine/                       # pack loader, slot registry, parameters, tool loader + database schema
+├── tools/                        # the engine's own tools
 │   ├── calculate/  visualize_model/
 └── extra_utilities/              # TODO list, warnings_developer.md, extra_info.md, docs/,
                                   # db_design/, tests/, scripts/, prompt_pdf/
@@ -521,12 +521,10 @@ Three minor edges flagged for follow-up — none affect correctness in the happy
 
 ## Configuration
 
-All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/settings.py):
+The engine's runtime flags live in [`workflow_settings/settings.py`](workflow_settings/settings.py).  The design configurator's tool settings — the geometry backend, the render library, the mesh checks, which render views an attempt carries, and the blade-sections switch — are not there: each tool declares its own in `dc_pack/tools/<tool>/tool.yaml`, and Workflow Settings › Tools changes them for the next session (stored in `workflow_settings/tool_settings.json`, only the values that differ from the tool's defaults).
 
 | Flag | Default | Notes |
 |---|---|---|
-| `MESH_CHECKS` | `False` | watertight / volume / degenerate-face checks |
-| `RENDER_LIBRARY` | `"trimesh"` | `"trimesh"` or `"pyvista"` metric backend |
 | `RAG_ENABLED` | `True` | Master switch for the `database_search` tool (Phase 4).  When `True`, the 8 chain agents get `database_search` bound at session start AND the `$database_search_tool` fragment in their system prompts — *subject to* the per-agent DBa flag in `workflow_settings/database_access.json` (AND semantics).  When `False`, no agent gets database access regardless of any per-agent flag.  Per-agent flags are edited via the **DBa** toggle button on each agent box in the LLM-routing chart.  See `warnings_developer.md` W33 for the full lifecycle + filter mechanism. |
 | `SYSTEM_TOPOLOGY` | `7` | `7`, `5` or `3` — which agent set to build (see [Topologies](#topologies)) |
 | `DC_INSPECTOR_ENABLED` | `True` | run DCII before mesh generation — **7-agent only**, forced off in topologies 5 and 3 |
@@ -552,7 +550,6 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
 | `STITCHING_PROVIDER` | `"OpenAI"` | LLM provider for the Database Handler's Option B paragraph-rewrite step (which becomes the input to the embedding model).  Currently OpenAI only; the architecture allows swapping to `"Anthropic"` / `"Google"` when the matching API key is set.  See architecture doc §6.1. |
 | `STITCHING_MODEL` | `"gpt-4o-mini"` | Cheap model name for the rewrite step.  See architecture doc §6.1. |
 | `UII_MAY_READ_PREVIOUS_EXTRACTION` | `True` | Whether the User Input Inspector receives the prior turn's `extracted_inputs.txt` as part of the `read_user_inputs` bundle.  Default `True` preserves historical behaviour; flip to `False` when you suspect the UII is carrying stale state forward despite the prompt's "do not copy lines forward" rule.  Gated in `agents/shared/file_utils.py:load_user_inputs_bundle` via the new `exclude_root_files` kwarg.  See the UII's prompt section "Temporal scope and Parameters Inputs interface blocks" for the full extraction contract. |
-| `BLADE_SECTIONS_VISUALIZER_ENABLED` | `True` | Master switch for the `render_blade_sections` tool (Tool Caller only).  When `True`, the tool is bound and the whole workflow's prompts carry the capability fragments (`<<IF:tool:render_blade_sections>>` regions — a brief awareness for every agent, full call usage for the Tool Caller, a read-by-path note for the DC Output Inspector).  When `False`, the tool is not bound and the prompts carry only the minimal "exists but OFF" note (`<<IFNOT:tool:render_blade_sections>>`), so the system behaves exactly as before.  Read fresh per session via `workflow_settings/blade_sections_access.py`.  The tool renders the three blade cross-sections (Inner / Middle / Outer) stacked vertically as a PNG into the attempt folder (auto-displayed in chat, readable via `view_images`); a `grid=True` arg draws a 1 mm reference grid behind. |
 
 ## Status & known issues
 

@@ -13,7 +13,7 @@ import trimesh
 import pyrender
 from PIL import Image
 
-from config import ATTEMPTS_DIR
+import config
 
 # Module-level toggle: when False the deterministic quality checks
 # (watertight, volume, degenerate faces) are skipped.  Visual rendering
@@ -53,9 +53,9 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
             f"absolute path."
         )
     try:
-        attempts_root = ATTEMPTS_DIR.resolve()
+        attempts_root = config.ATTEMPTS_DIR.resolve()
     except OSError:
-        attempts_root = ATTEMPTS_DIR
+        attempts_root = config.ATTEMPTS_DIR
     if attempts_root not in path.parents and path != attempts_root:
         return None, (
             f"Error: '{path}' is not an attempt folder under "

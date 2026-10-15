@@ -21,15 +21,11 @@ pyrender>=0.1.45
 # putting it here would make pip's resolver fail the build outright
 # (it correctly refuses to satisfy both ``==3.1.0`` and ``>=3.1.7``
 # inside a single resolution pass).  See Dockerfile for the override.
-# pyvista is the ALTERNATIVE render backend selected by
-# workflow_settings.RENDER_LIBRARY = "pyvista".  ``tools/__init__.py``
-# imports the pyvista wrapper UNCONDITIONALLY at module load time
-# (line 17, ``from tools.render_mesh.render_mesh_pyvista import ...``),
-# so the container needs pyvista on PYTHONPATH even when the trimesh
-# backend is the active one.  Without it the web app fails to
-# import.  Lazy-importing the pyvista backend would let us drop this
-# dep when only trimesh is configured — defer that refactor unless
-# image size becomes a real concern (pyvista pulls in VTK, ~100 MB).
+# pyvista is the ALTERNATIVE render backend, chosen by the generator's
+# render_library setting (Workflow Settings › Tools).  Since
+# MAS-blueprint P3c it is imported only when that value is chosen, but
+# it stays installed so the choice works in the container (it pulls in
+# VTK, ~100 MB).
 Pillow>=10.0.0
 pyvista>=0.43.0
 # Cloudflare R2 mirror for the post-session database.  R2 is

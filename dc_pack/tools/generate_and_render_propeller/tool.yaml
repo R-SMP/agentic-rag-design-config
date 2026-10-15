@@ -1,0 +1,91 @@
+# The propeller generator: builds the 3D geometry from an attempt's
+# parameters.json, then renders it (and, when mesh_checks is on, checks it).
+# The engine builds the LLM tool from this file (engine/pack_tools.py); the
+# code is tool.py (build, render) and the modules beside it.
+name: generate_and_render_propeller
+display_name: Propeller Configurator
+kind: generator
+roles: [tool_runner]
+build: tool.py:build
+render: tool.py:render
+
+# What the LLM reads: the tool description and its one argument.
+description: |-
+  Generate the propeller 3D geometry from an attempt's own
+  ``parameters.json``, save it to that attempt's ``propeller_mesh.obj``,
+  THEN render it (three views —
+  isometric, top, side) and run mesh quality checks, all in one call.  The
+  render step is the automatic next step after a successful geometry build
+  and is skipped only if the geometry generation itself fails.  (The
+  outer-ring height is NOT a parameter — it is derived from the outer blade
+  section and injected automatically so the mesh matches the 3D preview.)
+
+  Geometry backend: chosen by the ``GEOMETRY_BACKEND`` workflow setting —
+  either RhinoCompute + the Grasshopper definition (the exact geometry) or a
+  headless-Node FEG export of the same ``web/feg`` modules the 3D preview
+  uses (a fast, local, visually-faithful sub-mm approximation).  If the
+  selected backend fails, the tool AUTOMATICALLY falls back to the other, so
+  a RhinoCompute outage no longer blocks a run.  The return string names the
+  backend actually used (and flags a fallback).  Regardless of which backend
+  built the working mesh here, the user's downloadable deliverable is
+  regenerated via RhinoCompute.
+
+  ``parameters_path`` MUST be the absolute path of an attempt's
+  ``parameters.json`` (written earlier by the agent that authored the attempt).  You do NOT
+  pass the values themselves and you do NOT pass an output directory: the
+  tool reads the record and writes into that record's own folder, so a mesh
+  can never be built from one attempt's numbers into another attempt's
+  folder.  If that folder already contains ``propeller_mesh.obj`` the
+  existing mesh is REUSED in place (append-only — never overwritten) and the
+  tool proceeds straight to the render step.
+
+  Returns a combined status string: the geometry summary (saved/reused mesh
+  path, vertex count, parts, backend) followed by the render+check report
+  (the three saved render paths plus any quality warnings).  On geometry
+  failure (both backends) it returns an ``Error:`` / ``RhinoCompute error:``
+  / ``FEG error:`` message and does NOT render.
+args:
+  parameters_path: |-
+    Absolute path of the attempt's ``parameters.json`` — from your hand-off, or from the call that created the attempt.  The mesh and the render PNGs are written into that file's OWN attempt folder, so the geometry can never be built from one attempt's numbers into another attempt's folder.
+
+outputs:
+  model_file: propeller_mesh.obj
+  # The views the render step writes.  Each one is a Workflow Settings
+  # switch (view_<view>): ON = created at save time if missing, uploaded
+  # with the attempt, fetched by retrieve_attempt.  Saving is irreversible:
+  # a view left OFF is missing from every attempt archived meanwhile.
+  # order = their order in a response (isometric first: the most
+  # informative single view of a propeller).
+  images:
+    - {view: isometric, file: render_isometric.png, order: 10, default_enabled: true, label: "Render view: isometric"}
+    - {view: top, file: render_top.png, order: 20, default_enabled: true, label: "Render view: top"}
+    - {view: side, file: render_side.png, order: 40, default_enabled: false, label: "Render view: side"}
+
+settings:
+  - name: geometry_backend
+    type: enum
+    values: [feg, rhino]
+    default: feg
+    label: Geometry backend
+    description: >-
+      feg = headless Node running the same web/feg modules as the browser 3D
+      preview (local, fast, a visually faithful sub-mm approximation);
+      rhino = RhinoCompute + the Grasshopper definition (exact, but needs an
+      external server).  Whichever is chosen, the other is the automatic
+      fallback.  The downloadable deliverable always comes from RhinoCompute.
+  - name: render_library
+    type: enum
+    values: [trimesh, pyvista]
+    default: trimesh
+    label: Mesh-check / rendering library
+    description: >-
+      Which library computes the quality-check metrics (watertight / volume /
+      degenerate faces).  Rendering goes through the same pyrender pipeline
+      either way, so the three PNGs look the same.
+  - name: mesh_checks
+    type: bool
+    default: false
+    label: Mesh quality checks
+    description: >-
+      ON = the render step also reports watertightness, volume and degenerate
+      faces; OFF = only the renders, and the agents judge visually.

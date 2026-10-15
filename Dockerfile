@@ -3,9 +3,9 @@
 # Layers:
 #   1. python:3.13-slim base (matches the project venv per W15).
 #   2. System libs for pyrender / trimesh headless rendering.
-#      Required even when no mesh is generated at runtime because
-#      ``tools/__init__.py`` imports ``render_mesh.py`` at module
-#      load time, which imports pyrender unconditionally.
+#      Needed by every render (pyrender), whichever render library
+#      is chosen; the renderer itself is imported only when a render
+#      runs.
 #   3. Project requirements (installed before app code so docker
 #      can cache the dep layer when only source changes).
 #   4. Project source (filtered by .dockerignore — see that file
@@ -46,8 +46,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 #     blade-sections labels and the side-by-side label bars unreadable.
 #   * curl — used by the HEALTHCHECK below.
 #   * nodejs / npm — Node runtime for the headless FEG geometry backend
-#     (tools/generate_mesh/feg_export.mjs runs web/feg/* via Node + three,
-#     when GEOMETRY_BACKEND="feg" or as the RhinoCompute fallback).
+#     (dc_pack/tools/generate_and_render_propeller/feg_export.mjs runs
+#     web/feg/* via Node + three, when the generator's geometry_backend
+#     is "feg" or as the RhinoCompute fallback).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 \
         libglu1-mesa \

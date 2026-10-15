@@ -22,7 +22,7 @@ caller passed a dict, it had to retype 16 values read from
 transcription slip was a prompt rule forbidding it.  Reading the record
 removes the step instead of policing it -- the same move
 ``generate_and_render_propeller`` already made (see the note at
-``tools/generate_mesh/generate_mesh.py:181``).
+``dc_pack/tools/generate_and_render_propeller/generate_mesh.py:155``).
 
 What this tool does NOT do
 --------------------------
@@ -73,7 +73,7 @@ from config import ATTEMPTS_DIR
 
 # Canonical 16-parameter INPUT set (impellerHeight removed — the ring
 # height is derived, not proposed).  Duplicated from
-# ``tools/generate_mesh/generate_mesh.py::_CANONICAL_PARAM_NAMES``
+# ``dc_pack/tools/generate_and_render_propeller/generate_mesh.py::_CANONICAL_PARAM_NAMES``
 # rather than imported to keep this tool module independent of the
 # mesh-tool's import chain (this tool only signals the UI; it does
 # not call RhinoCompute).

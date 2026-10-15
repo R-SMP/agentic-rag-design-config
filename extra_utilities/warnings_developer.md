@@ -1918,10 +1918,11 @@ there `smoke_test_topology_fragments.py` (PACK-MIRROR) catches it.
 A per-agent-only slot (`missing: empty` in the registry), so missing and empty
 both yield `""` — deleting them changes no assembled prompt byte.  **But leave
 them.**  Their emptiness marks an open documentation gap:
-`tool_caller.py:97-98` binds `render_blade_sections` whenever
-`blade_sections_access.is_enabled()`, while the Tool Caller prompt declares
-its four-item tool list as exhaustive, and this overlay is where that would be
-patched.  Deleting the files deletes the reminder.
+the Tool Caller is given `render_blade_sections` whenever the tool's switch
+is on (Workflow Settings › Tools; `engine/pack_tools.py`), while the Tool
+Caller prompt declares its four-item tool list as exhaustive, and this
+overlay is where that would be patched.  Deleting the files deletes the
+reminder.
 
 **Rule of thumb.**  A 0-byte file in `dc_pack/fragments/` or under a topology
 tree (`agents/<N>agent/`) is a decision.  Before removing one, find out what

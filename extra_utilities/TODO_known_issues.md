@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F113**.
+branches (F36 is taken on a sibling branch).  Next free id: **F114**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -126,6 +126,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F110` | OPEN | Mesh checks OFF leaves the inspector's role list numbered 1, 3 |
 | `F111` | OPEN | The slider page reads its parameters through a served script — review and replace |
 | `F112` | OPEN | One Database window for everything database-related |
+| `F113` | OPEN | The generator's description still names the removed `GEOMETRY_BACKEND` setting |
 
 ---
 
@@ -4648,7 +4649,10 @@ slots added by the generic-fragments audit, nor the inline re-wrap
 measure prompts with `$slot` literals in them.  Re-sync it or make it call
 `agents.shared.prompts` through `prompt_pdf/bootstrap.py`.  Since MAS-blueprint
 P1 its paths point at the removed `DC_prompt_fragments/`, so it no longer runs
-at all.
+at all.  It also still looks for the old `<<BSV_ON>>` markers (renamed
+`<<IF:tool:render_blade_sections>>` in P3b) and reads
+`BLADE_SECTIONS_VISUALIZER_ENABLED` from `settings.py` (moved to the
+blade-sections tool's settings in P3c).
 
 ---
 
@@ -4703,4 +4707,22 @@ to do and more flexible.
 Gather the database pages of the web app — "Database" (developer console),
 "Database options", "Upload to database" and the "Database schema" view P2
 adds — into one Database window, as tabs.
+
+---
+
+### F113. The generator's description still names the removed `GEOMETRY_BACKEND` setting
+
+**Status.** OPEN (2026-10-15), found during MAS-blueprint P3c.
+
+The text the agents read about `generate_and_render_propeller` -- its
+`description` in `dc_pack/tools/generate_and_render_propeller/tool.yaml` --
+still says "Geometry backend: chosen by the ``GEOMETRY_BACKEND`` workflow
+setting".  P3c moved that setting into the tool: it is now the generator's
+`geometry_backend` tool setting (Workflow Settings › Tools).  P3c kept the
+text byte-identical so the move could be proven against the tool baseline.
+Changing it changes the tool's description for every agent that has the tool
+(the Tool Caller in topologies 7 and 5, the Design Engineer in 3), so it needs
+its own wording approval and a new tool baseline.  Suggested wording: "chosen
+by the generator's ``geometry_backend`` tool setting (Workflow Settings ›
+Tools)".
 

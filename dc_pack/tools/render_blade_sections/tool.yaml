@@ -1,0 +1,48 @@
+# The blade-sections tool: renders the three blade cross-sections (Inner /
+# Middle / Outer) of an attempt as one PNG.  A plain function
+# (render_blade_sections.py); the engine builds the LLM tool from it and
+# from this file (engine/pack_tools.py).
+name: render_blade_sections
+display_name: Blade Sections
+kind: helper
+roles: [tool_runner]
+entrypoint: render_blade_sections.py:render_blade_sections
+
+description: |-
+  Render the three blade cross-sections (Inner / Middle / Outer) stacked
+  vertically into a PNG image.
+
+  Pass the absolute path to a parameters JSON file (an attempt's
+  ``parameters.json``).  The image shows each section's airfoil rotated by
+  its angle of attack, colour-coded with a name label, plus a small angle
+  protractor.  The PNG is written into that attempt's folder and will be
+  shown to the user in the chat; any agent with an image-reading tool
+  (``view_images``) can view it by passing the returned path.
+
+  Args:
+      parameters_path: Absolute path to the parameters ``.json`` file
+          (must sit inside the attempts directory).
+      grid: When True, draw a light 1 mm x 1 mm reference grid behind the
+          sections.  Default False.  Only enable it when a true-millimetre
+          grid genuinely helps and will not mislead — e.g. do NOT enable it
+          when matching a user's drawing whose own grid squares are not
+          1 mm, because the scales would not correspond.  When in doubt,
+          leave it off.
+
+  Returns:
+      A short message stating the written PNG path (and its size), or
+      precisely why the render could not be produced.
+
+# On / off for the whole tool: OFF = not bound to any agent, and the
+# <<IF:tool:render_blade_sections>> regions leave the prompts (the
+# <<IFNOT:...>> "exists but currently OFF" note stays).
+switch:
+  default: true
+  label: Blade sections tool
+  description: >-
+    ON = the tool runner can render the blade cross-sections and every agent
+    is told the capability exists; OFF = the system works without it.
+
+outputs:
+  images:
+    - {view: blade_sections, file: render_blade_sections.png, order: 30, default_enabled: true, label: "Render view: blade sections"}

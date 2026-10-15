@@ -93,9 +93,8 @@ from agents.shared.user_inputs_tool import (
 )
 from agents.shared import token_usage
 from agents.step_caps import MAX_DESIGN_ENGINEER_STEPS
-from tools import get_render_library, get_tools
-from tools.render_blade_sections.render_blade_sections import render_blade_sections
-from workflow_settings import blade_sections_access
+from tools.calculate.calculate import calculate
+from engine import pack_tools
 
 logger = logging.getLogger("propeller_agent")
 
@@ -161,10 +160,9 @@ class DesignEngineer(BaseChainAgent):
         self._read_tool = build_read_user_inputs(
             doc=read_inputs_doc(self.AGENT_KEY))
         self._write_tool = new_attempt_parameters
-        # From the Tool Caller half.  The render backend is chosen by
-        # ``set_render_library`` before this agent is built.
+        # From the Tool Caller half: the generator's settings this session.
         self.mesh_checks = session.mesh_checks
-        self.render_library = get_render_library()
+        self.render_library = session.render_library
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
         self.system_prompt: str = ""
@@ -181,18 +179,19 @@ class DesignEngineer(BaseChainAgent):
         this class exists only under topology 3, whose edge set is fixed, so
         the neighbours are stated here rather than threaded in from the hub.
         """
-        # Keyed by NAME, which also de-duplicates: ``get_tools()`` already
-        # returns ``calculate``, and the DC Input Creator half binds it too.
+        # Keyed by NAME, which also de-duplicates: ``calculate`` comes with
+        # both halves (the Tool Caller's and the DC Input Creator's).
         self._extra_utility_tools_by_name = {
             read_attempts.name: read_attempts,
         }
-        for _t in get_tools():
+        # The pack's tools for the roles this agent holds (it is the tool
+        # runner in the 3-agent system -- engine/pack_tools.py): the
+        # generators, the calculator, then the others (blade sections,
+        # while its Workflow Settings switch is on).
+        for _t in (pack_tools.agent_tools(self.AGENT_KEY, ("generator",))
+                   + [calculate]
+                   + pack_tools.agent_tools(self.AGENT_KEY, ("helper",))):
             self._extra_utility_tools_by_name[_t.name] = _t
-        # Blade-sections visualizer (global toggle).  Read fresh so a
-        # Workflow-Settings edit takes effect on the next session.
-        if blade_sections_access.is_enabled():
-            self._extra_utility_tools_by_name[
-                render_blade_sections.name] = render_blade_sections
         # Which of the three database tools this agent holds is a
         # per-(profile, agent, tool) decision; dba_tools_for owns it.
         for _dba_tool in dba_tools_for(self.AGENT_KEY):

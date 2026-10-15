@@ -21,7 +21,7 @@ import math
 
 from PIL import Image, ImageDraw, ImageFont
 
-from tools.render_blade_sections.sections_geom import (
+from .sections_geom import (
     build_section_overlays,
     build_section_points,
 )

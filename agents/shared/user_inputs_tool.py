@@ -613,11 +613,13 @@ def _attempt_params_blocks(loaded) -> list:
     upstream agent to relay them.  One block per attempt folder; silently
     skipped when the folder has no readable/complete ``parameters.json``.
     """
-    # Imported lazily: reaching tools.render_blade_sections executes
-    # tools/__init__, which pulls the heavy 3D render stack (trimesh / pyrender
-    # / pyvista).  This module is a light shared image utility, so we only pay
-    # that when a render is actually viewed.
-    from tools.render_blade_sections.sections_geom import rendered_params_block
+    # The block comes from the pack's blade-sections tool (its
+    # sections_geom module, pure maths: no render stack).  Loaded lazily, when
+    # a render is actually viewed.  Propeller-specific engine code: MAS-blueprint
+    # P4 makes this generic.
+    from engine import pack_tools
+    rendered_params_block = pack_tools.plugin(
+        "render_blade_sections").submodule("sections_geom").rendered_params_block
 
     out, seen = [], set()
     for raw in loaded:

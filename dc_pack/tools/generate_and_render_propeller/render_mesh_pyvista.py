@@ -3,7 +3,7 @@ shared pyrender pipeline for the visual renders.
 
 Exposes :func:`render_and_check_pv` — the render+check step that the merged
 ``generate_and_render_propeller`` tool runs after a successful geometry
-build.  Mirrors the contract of :func:`tools.render_mesh.render_mesh.render_and_check`
+build.  Mirrors the contract of :func:`render_mesh.render_and_check`
 (the trimesh-metrics backend): same arguments, same three render filenames,
 same attempt-folder integrity rules, same ``set_mesh_checks`` toggle.  Only
 the deterministic-checks library differs here — the visual renders go through
@@ -20,8 +20,8 @@ import numpy as np
 import pyvista as pv
 import trimesh
 
-from config import ATTEMPTS_DIR
-from tools.render_mesh.render_mesh import _render_mesh_views
+import config
+from .render_mesh import _render_mesh_views
 
 # Module-level toggle: when False the deterministic quality checks
 # (watertight, volume, degenerate faces) are skipped.  Visual rendering
@@ -61,9 +61,9 @@ def _validate_output_dir(raw: str) -> tuple[Path | None, str | None]:
             f"absolute path."
         )
     try:
-        attempts_root = ATTEMPTS_DIR.resolve()
+        attempts_root = config.ATTEMPTS_DIR.resolve()
     except OSError:
-        attempts_root = ATTEMPTS_DIR
+        attempts_root = config.ATTEMPTS_DIR
     if attempts_root not in path.parents and path != attempts_root:
         return None, (
             f"Error: '{path}' is not an attempt folder under "
@@ -110,7 +110,7 @@ def _load_polydata(mesh_path: Path) -> pv.PolyData:
 def _load_trimesh_for_render(mesh_path: Path) -> "trimesh.Trimesh":
     """Re-load *mesh_path* via trimesh so the shared pyrender pipeline
     can render it.  Mirrors the loader logic in
-    ``tools/render_mesh/render_mesh.py`` (Scene → concatenated mesh)."""
+    ``render_mesh.py`` (Scene → concatenated mesh)."""
     loaded = trimesh.load(str(mesh_path))
     if isinstance(loaded, trimesh.Scene):
         geometries = list(loaded.geometry.values())

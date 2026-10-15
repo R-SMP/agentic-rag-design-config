@@ -13,66 +13,15 @@ the comparison-mode integer is NOT a free-form number.
 After editing this file, just run ``python main.py`` as usual.  The
 loader prints the loaded settings at startup so you can confirm
 what's active.
+
+The design configurator's TOOL settings -- the generator's geometry
+backend, render library, mesh checks and render views, and the
+blade-sections switch -- are not here: each tool declares its own in
+``dc_pack/tools/<tool>/tool.yaml`` and Workflow Settings > Tools changes
+them (``workflow_settings/tool_settings.json``; MAS-blueprint P3c).
 """
 
 import os
-
-# ===========================================================
-# 1.  Deterministic mesh quality checks
-# ===========================================================
-# Whether the render step of ``generate_and_render_propeller`` runs the
-# watertight / volume / degenerate-face checks on every generated
-# mesh.
-#
-#   True   the tool reports the four metrics alongside the renders
-#   False  only the visual renders are produced; QC numbers are
-#          skipped and the agents fall back to visual judgement
-#          only
-#
-# Valid values: True, False
-MESH_CHECKS: bool = False
-
-
-# ===========================================================
-# 2.  Mesh-check / rendering library
-# ===========================================================
-# Which library powers the render step of ``generate_and_render_propeller``
-# (its metric computations).  Both backends report the same metrics
-# (watertight / volume / degenerate-face count); rendering goes
-# through the shared pyrender pipeline either way so the three PNG
-# outputs are visually identical.
-#
-#   "trimesh"  trimesh's mesh.is_watertight / area_faces — the
-#              original backend, lighter, simpler API
-#   "pyvista"  PyVista (VTK) — older battle-tested library; uses
-#              VTK's mesh-quality routines for the metrics
-#
-# Valid values: "trimesh", "pyvista"
-RENDER_LIBRARY: str = "trimesh"
-
-
-# ===========================================================
-# 2b. Geometry backend — RhinoCompute vs headless FEG
-# ===========================================================
-# Which engine the AGENT workflow uses to generate the propeller
-# mesh it renders and inspects each attempt:
-#
-#   "feg"    headless Node running the SAME web/feg/* modules the
-#            browser 3D preview uses — local, fast, no external
-#            server; a visually-faithful sub-mm approximation of
-#            the Grasshopper geometry.
-#   "rhino"  RhinoCompute + the Grasshopper definition — the exact
-#            geometry, but depends on an external server that can be
-#            unreachable.
-#
-# Whichever is chosen, the workflow AUTOMATICALLY falls back to the
-# other backend if the first fails, so a RhinoCompute outage no
-# longer blocks a run.  The downloadable deliverable is regenerated
-# via RhinoCompute regardless of this setting.
-#
-# Valid values: "feg", "rhino"
-GEOMETRY_BACKEND: str = "feg"
-
 
 # ===========================================================
 # 3.  RAG retrieval — master switch for the database_search tool
@@ -552,37 +501,13 @@ DATABASE_SEARCH_CANDIDATE_POOL_MAGNIFIER: int = 10
 
 
 # ===========================================================
-# 21. Attempt render views — generate, save AND retrieve
+# 21. Attempt renders — completed at save time
 # ===========================================================
-# ONE flag per view.  A flag ON means that view's render is:
-#   * CREATED at save time if it is missing (from the attempt's
-#     parameters.json, using the same tools the live workflow uses);
-#   * UPLOADED to R2 with the attempt;
-#   * FETCHED when an agent calls retrieve_attempt.
+# Which render views an attempt carries (created at save time if
+# missing, uploaded with the attempt, fetched by retrieve_attempt) is
+# switched per view in Workflow Settings > Tools: each tool declares
+# its views in its tool.yaml.
 #
-# SAVING IS IRREVERSIBLE, RETRIEVAL IS NOT.  A view left OFF is
-# unrecoverable for every attempt archived while it was off — turning
-# it back ON cannot reach back.  Turning a view OFF is a decision about
-# the PERMANENT RECORD, not a display preference.  Turning one ON only
-# affects attempts saved from then on.
-#
-# (These replaced RETRIEVE_ATTEMPT_INCLUDE_<VIEW>_VIEW, whose name became
-# misleading once the flag governed saving too.)
-#
-# Blade sections render from parameters.json ALONE — no mesh needed —
-# which is why that one is always attemptable.  The other three come from
-# the 3D render core, which writes all three in ONE call, so enabling any
-# of them generates the set; the flags then govern upload and retrieval.
-#
-# Future work: F30 tracks letting the calling agent choose views per-call
-# rather than the developer choosing globally.
-#
-# Valid values: True, False
-ATTEMPT_VIEW_ISOMETRIC:      bool = True
-ATTEMPT_VIEW_TOP:            bool = True
-ATTEMPT_VIEW_BLADE_SECTIONS: bool = True
-ATTEMPT_VIEW_SIDE:           bool = False
-
 # Master off-switch for the save-time render-completion pass.  When False,
 # attempts are archived with whatever renders they happen to have — the
 # behaviour before completion existed.  Turn it off if End Session becomes
@@ -660,35 +585,6 @@ OCR_ENABLED: bool = True
 OCR_ENGINE: str = "google_vision"
 OCR_WHOLE_IMAGE_DEFAULT: bool = True
 OCR_MAX_TEXT_CHARS: int = 2000
-
-
-# ===========================================================
-# 25. Blade sections visualizer tool
-# ===========================================================
-# When ON, the Tool Caller gets the ``render_blade_sections`` tool: it
-# takes the path to a parameters JSON file and renders a PNG of the
-# three blade cross-sections (Inner / Middle / Outer) stacked
-# vertically — the same airfoils the in-browser Parameters Inputs
-# "Blade sections" view draws — written under the attempt folder so it
-# auto-displays in chat and can be read back by ``view_images``.
-# The tool also takes a ``grid`` flag (default False): when True a light
-# 1 mm × 1 mm grid is drawn behind the sections.
-#
-# The whole workflow is told (briefly) that this capability exists, so
-# agents can decide to use it; the Tool Caller is the only agent that
-# can call it.  This is a NEW capability — turning it OFF makes the
-# system behave exactly as before, and the agents are told only that
-# the capability exists but is currently OFF (minimal mention).
-#
-#   BLADE_SECTIONS_VISUALIZER_ENABLED
-#       master switch.  True  = the tool is bound to the Tool Caller and
-#                               the full prompt fragments are included.
-#                       False = the tool is NOT bound; the system works
-#                               exactly like before and the prompts carry
-#                               only the minimal "exists but OFF" note.
-#
-# Valid values: True, False
-BLADE_SECTIONS_VISUALIZER_ENABLED: bool = True
 
 
 # DC_PARAMS_PRIMER_ENABLED - the DC-parameter reference diagram.
