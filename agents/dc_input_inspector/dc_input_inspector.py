@@ -64,6 +64,7 @@ from agents.shared.stop_signal import check_stop_or_raise
 from agents.step_caps import MAX_DCII_STEPS
 from tools.calculate.calculate import calculate
 from agents.shared.dba_tools import dba_tools_for
+from agents.shared.dc_params_tool import param_tools_for
 
 logger = logging.getLogger("propeller_agent")
 
@@ -129,6 +130,10 @@ class DCInputInspector(BaseChainAgent):
         # per-(profile, agent, tool) decision; dba_tools_for owns it.
         for _dba_tool in dba_tools_for("dc_input_inspector"):
             self._extra_utility_tools_by_name[_dba_tool.name] = _dba_tool
+        # dc_params_list, when this agent's parameter-access cell says
+        # "tool" (engine/parameter_access.py).
+        for _t in param_tools_for(self.AGENT_KEY):
+            self._extra_utility_tools_by_name[_t.name] = _t
         all_tools = (
             [self._read_inputs_tool, self._read_extraction_tool]
             + list(self._extra_utility_tools_by_name.values())

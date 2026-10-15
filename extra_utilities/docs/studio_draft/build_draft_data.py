@@ -165,13 +165,9 @@ def _norm(t: str):
 def _child(combo: str, topology: int) -> int:
     _bootstrap()
     import prompt_matrix as PM
-    import workflow_settings.settings as S
-    ov = dict(PM.CONFIGS[combo])
-    if ov.pop("_ALL_DB_TOOLS", False):
-        from workflow_settings import database_access as D
-        D.is_enabled_for = lambda agent, tool=None: True
-    for k, v in ov.items():
-        setattr(S, k, v)
+    # The same combination set-up as the prompt matrix, including the
+    # parameter-access cells its old setting names stand for.
+    PM.apply_config(combo)
     import topology_prompt_snapshot as T
     from agents.shared import prompts as P
 
@@ -338,6 +334,21 @@ def _roles() -> dict:
             "roles_of": {k: list(v) for k, v in AR.ROLES_OF.items()},
             "holder": {str(k): v for k, v in AR._HOLDER_BY_TOPOLOGY.items()},
             "display": disp}
+
+
+def _parameter_access() -> dict:
+    """The pack's parameter-access grid (engine/parameter_access.py), for the
+    Agent access screen: one row per agent, its cell per topology."""
+    from agents.shared import agent_roles
+    from engine import parameter_access as pa
+    names = dict(agent_roles.DISPLAY, database_handler="Database Handler")
+    return {
+        "states": [{"id": s, "short": s, "label": pa.LABELS[s]} for s in pa.STATES],
+        "no_tool": sorted(pa.NO_TOOL_AGENTS),
+        "rows": [{"agent": a, "name": names.get(a, a),
+                  "cells": {str(t): s for t, s in row.items()}}
+                 for a, row in pa.default_table().items()],
+    }
 
 
 def _settings_values(names) -> dict:
@@ -511,8 +522,8 @@ def main() -> int:
         "settings": _settings_values({
             "MESH_CHECKS", "RENDER_LIBRARY", "GEOMETRY_BACKEND", "ATTEMPT_VIEW_ISOMETRIC",
             "ATTEMPT_VIEW_TOP", "ATTEMPT_VIEW_SIDE", "ATTEMPT_VIEW_BLADE_SECTIONS",
-            "BLADE_SECTIONS_VISUALIZER_ENABLED", "DC_PARAMS_PRIMER_ENABLED",
-            "UII_PARAMETER_LIST_ENABLED", "DCOI_KNOWS_PARAMS_RANGES"}),
+            "BLADE_SECTIONS_VISUALIZER_ENABLED", "DC_PARAMS_PRIMER_ENABLED"}),
+        "parameter_access": _parameter_access(),
         "validate": _validate(slots, set(P._build_slots())),
         # TODO F104 (extra_utilities/TODO_known_issues.md): fragments about the
         # blade-sections tool / the mesh checks that carry no feature marker.

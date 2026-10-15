@@ -12,10 +12,10 @@ $tool_inventory
 ## Domain Structure
 $dc_structure
 
-## Complete Parameter List (all $parameter_count required)
+<<IF:param_list>>## Complete Parameter List (all $parameter_count required)
 $parameter_list
 
-$lever_map
+<</IF:param_list>>$lever_map
 
 ## Modelling Notes
 $modelling_notes

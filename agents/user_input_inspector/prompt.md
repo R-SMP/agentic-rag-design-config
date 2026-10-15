@@ -9,10 +9,10 @@ clearly-labelled ROUGH estimate is extraction, not invention.
 ## Domain Structure
 $dc_structure
 
-<<UII_PARAMS_ON>>## Design Configurator Parameters (for reference)
+<<IF:param_list>>## Design Configurator Parameters (for reference)
 $parameter_list
 
-<</UII_PARAMS_ON>>## What to extract
+<</IF:param_list>>## What to extract
 
 Sort every observation — text, image notes, image annotations — by the
 NATURE of the data, not by whether it matches a configurator parameter:

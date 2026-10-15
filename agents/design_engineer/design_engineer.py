@@ -54,6 +54,7 @@ from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import create_attempt, read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.dba_tools import dba_tools_for
+from agents.shared.dc_params_tool import param_tools_for
 from agents.shared.dc_primer import primed_history
 from agents.shared.file_utils import (
     ai_text,
@@ -196,6 +197,10 @@ class DesignEngineer(BaseChainAgent):
         # per-(profile, agent, tool) decision; dba_tools_for owns it.
         for _dba_tool in dba_tools_for(self.AGENT_KEY):
             self._extra_utility_tools_by_name[_dba_tool.name] = _dba_tool
+        # dc_params_list, when this agent's parameter-access cell says
+        # "tool" (engine/parameter_access.py).
+        for _t in param_tools_for(self.AGENT_KEY):
+            self._extra_utility_tools_by_name[_t.name] = _t
 
         all_tools = (
             # NO image tools: neither parent binds one, so the union has none.

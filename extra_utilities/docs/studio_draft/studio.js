@@ -47,19 +47,18 @@
     examples: 'Short examples spliced INTO generic sentences. Each one is a phrase: keep it on one line and keep its shape (parentheses, quotes, a leading comma).',
     inputs: 'How the agents treat a sketch or reference image the user uploads.'
   };
-  // brief §4.6: the parameter list each role receives (propeller today)
+  // the seven-agent roles a tool binds to (brief §5.4)
   var ROLE_ROWS = [
-    { role: 'receptionist', label: 'Receptionist', key: 'receptionist', access: 'tool' },
-    { role: 'hub', label: 'Hub', key: 'orchestrator', access: 'tool' },
-    { role: 'planner', label: 'Planner', key: 'planner', access: 'tool' },
-    { role: 'input_extractor', label: 'Input extractor', key: 'user_input_inspector', access: 'none' },
-    { role: 'parameter_author', label: 'Parameter author', key: 'dc_input_creator', access: 'full' },
-    { role: 'parameter_checker', label: 'Parameter checker', key: 'dc_input_inspector', access: 'full' },
-    { role: 'tool_runner', label: 'Tool runner', key: 'tool_caller', access: 'full' },
-    { role: 'output_inspector', label: 'Output inspector', key: 'dc_output_inspector', access: 'names' },
-    { role: 'database_handler', label: 'Database handler', key: 'database_handler', access: null }
+    { role: 'receptionist', label: 'Receptionist', key: 'receptionist' },
+    { role: 'hub', label: 'Hub', key: 'orchestrator' },
+    { role: 'planner', label: 'Planner', key: 'planner' },
+    { role: 'input_extractor', label: 'Input extractor', key: 'user_input_inspector' },
+    { role: 'parameter_author', label: 'Parameter author', key: 'dc_input_creator' },
+    { role: 'parameter_checker', label: 'Parameter checker', key: 'dc_input_inspector' },
+    { role: 'tool_runner', label: 'Tool runner', key: 'tool_caller' },
+    { role: 'output_inspector', label: 'Output inspector', key: 'dc_output_inspector' },
+    { role: 'database_handler', label: 'Database handler', key: 'database_handler' }
   ];
-  var ACCESS = [['full', 'full list'], ['names', 'names only'], ['tool', 'via tool'], ['none', 'none']];
   var RUNTIME = { routing_instructions: 1, render_check_library_block: 1, image_persistence_block: 1,
                   comparison_mode_block: 1, chain_access_block: 1, user_inputs_dir: 1,
                   input_images_subdir: 1, extraction_output_file: 1 };
@@ -178,7 +177,7 @@
   function sectionCount(id) {
     if (id === 'parameters') return D.parameters.parameters.length;
     if (id === 'tools') return D.tools.length;
-    if (id === 'access') return ROLE_ROWS.length;
+    if (id === 'access') return D.parameter_access.rows.length;
     if (id === 'settings') return Object.keys(D.settings).length;
     return slotsOf(id).length;
   }
@@ -700,31 +699,31 @@
    * Agent access
    * ==================================================================== */
   function renderAccess(center, right) {
-    add(center, head('Agent access', 'Which agent sees the parameter list, and how. A row is a role; the columns show which agent holds that role in each topology (merged agents hold several).'));
+    var PA = D.parameter_access;
+    add(center, head('Agent access', 'Who sees the parameter list, and how: one choice per agent and topology (a cell exists only where the agent does). This is the setup’s default; Workflow Settings can change it for the next session.'));
     var t = h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, h('thead', null, h('tr', null,
-      ['Role', '3-agent', '5-agent', '7-agent', 'Parameter list'].map(function (x) { return h('th', null, x); }))));
+      ['Agent', '7-agent', '5-agent', '3-agent'].map(function (x) { return h('th', null, x); }))));
     var tb = h('tbody');
-    ROLE_ROWS.forEach(function (r) {
-      add(tb, h('tr', null, [h('td', null, [h('b', null, r.label), h('div', { 'class': 'muted mono', style: 'font-size:10.5px' }, r.role)])].concat(
-        [3, 5, 7].map(function (t) {
-          var a = holder(r.key, t);
-          var merged = a && a !== r.key && r.key !== 'orchestrator';
-          return h('td', null, a ? [disp(a), merged ? h('span', { 'class': 'kpill', style: 'margin-left:5px' }, 'merged') : null,
-            r.key === 'orchestrator' && a !== 'orchestrator' ? h('span', { 'class': 'kpill', style: 'margin-left:5px' }, 'hub') : null] : h('span', { 'class': 'na' }, '—'));
-        }), [h('td', null, r.access ? h('span', { 'class': 'seg' }, ACCESS.map(function (o) {
-          return h('button', { 'class': o[0] === r.access ? 'on' : '' }, o[1]); })) : h('span', { 'class': 'muted' }, 'not applicable'))])));
+    PA.rows.forEach(function (r) {
+      add(tb, h('tr', null, [h('td', null, [h('b', null, r.name), h('div', { 'class': 'muted mono', style: 'font-size:10.5px' }, r.agent)])].concat(
+        ['7', '5', '3'].map(function (k) {
+          var st = r.cells[k];
+          if (!st) return h('td', null, h('span', { 'class': 'na' }, '—'));
+          return h('td', null, h('span', { 'class': 'seg' }, PA.states.filter(function (o) {
+            return !(o.id === 'tool' && PA.no_tool.indexOf(r.agent) >= 0); }).map(function (o) {
+            return h('button', { 'class': o.id === st ? 'on' : '' }, o.short); })));
+        }))));
     });
     t.appendChild(tb);
     add(center, t);
     add(right, h('div', { 'class': 'insp' }, [
       h('h4', null, 'The four choices'),
       h('div', { 'class': 'kv', style: 'grid-template-columns:90px 1fr;margin-top:6px' }, [
-        h('div', { 'class': 'k' }, 'full list'), h('div', null, 'names, types, units, ranges and notes in the prompt'),
-        h('div', { 'class': 'k' }, 'names only'), h('div', null, 'names and units in the prompt'),
-        h('div', { 'class': 'k' }, 'via tool'), h('div', null, 'nothing in the prompt; the agent calls dc_params_list when it needs the list'),
+        h('div', { 'class': 'k' }, 'full'), h('div', null, 'the parameter list in the prompt, ranges included'),
+        h('div', { 'class': 'k' }, 'names'), h('div', null, 'the list in the prompt with every [min; max] range removed'),
+        h('div', { 'class': 'k' }, 'tool'), h('div', null, 'nothing in the prompt; the agent calls dc_params_list when it needs the list'),
         h('div', { 'class': 'k' }, 'none'), h('div', null, 'neither')]),
-      h('div', { 'class': 'block' }, [h('h4', null, 'Replaces'), h('p', null, 'the settings UII_PARAMETER_LIST_ENABLED (now ' + D.settings.UII_PARAMETER_LIST_ENABLED +
-        ') and DCOI_KNOWS_PARAMS_RANGES (now ' + D.settings.DCOI_KNOWS_PARAMS_RANGES + '), and the tool bindings written into the agent classes.')]),
+      h('div', { 'class': 'block' }, [h('h4', null, 'Stored in'), h('p', null, 'dc_pack/pack.yaml → parameter_access (the default). Workflow Settings › Parameter list access stores changed cells for the next session. The Database Handler cannot take “tool”.')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Later'), h('p', { 'class': 'muted' }, 'Editing the role map itself (which agent holds which role) is TODO F102, not in this version.')])
     ]));
   }

@@ -16,7 +16,10 @@ quantitative parameters that fully describe one design.  See the
 agents' own histories for the specific values used during this
 session.
 
-### Tools used across the system (high-level only, for context)
+<<IF:param_list>>### Design Configurator Parameters (for reference)
+$parameter_list
+
+<</IF:param_list>>### Tools used across the system (high-level only, for context)
 $agent_tools_overview_brief
 
 $sections_tool_block_full

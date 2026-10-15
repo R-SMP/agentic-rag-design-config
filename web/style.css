@@ -888,6 +888,13 @@ button.danger:hover { background: #3a1d1d; }
   vertical-align: middle; margin-left: 6px;
 }
 .ar-notes { margin-top: 12px; padding-left: 18px; }
+/* Parameter list access (Workflow Settings) */
+.pa-table select {
+  font: inherit; font-size: 13px; padding: 3px 6px; background: var(--bg);
+  color: var(--text); border: 1px solid var(--border); border-radius: 5px;
+}
+.pa-table select.pa-changed { font-weight: 700; border-color: var(--accent); }
+.pa-bar { margin-top: 12px; }
 /* Database: parameter schema (Workflow Settings).  Stays usable while a
    session is active -- the lock rule further down is overridden for it --
    because it is where an End Session refused for a missing schema is

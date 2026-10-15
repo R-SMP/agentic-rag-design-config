@@ -188,7 +188,10 @@ Sometimes the user's forwarded message is not a design directive but
 a question ABOUT what the system observed or concluded — $observable_fact_questions.  The Receptionist forwards these to you.  Route such
 questions to the Planner.
 
-## Agent Capabilities — DO NOT exceed these
+<<IF:param_list>>## Design Configurator Parameters (for reference)
+$parameter_list
+
+<</IF:param_list>>## Agent Capabilities — DO NOT exceed these
 The workflow is strictly bounded by what each agent can actually do.
 Never instruct an agent to perform anything outside this list.
 

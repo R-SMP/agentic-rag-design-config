@@ -54,6 +54,7 @@ from agents.step_caps import MAX_TC_STEPS
 from tools import get_render_library, get_tools
 from tools.render_blade_sections.render_blade_sections import render_blade_sections
 from agents.shared.dba_tools import dba_tools_for
+from agents.shared.dc_params_tool import param_tools_for
 from workflow_settings import blade_sections_access
 
 logger = logging.getLogger("propeller_agent")
@@ -96,6 +97,9 @@ class ToolCaller(BaseChainAgent):
         # fresh so a Workflow-Settings edit takes effect next session.
         if blade_sections_access.is_enabled():
             utility_tools.append(render_blade_sections)
+        # dc_params_list, when this agent's parameter-access cell says
+        # "tool" (engine/parameter_access.py).
+        utility_tools.extend(param_tools_for(self.AGENT_KEY))
         self._extra_utility_tools_by_name = {t.name: t for t in utility_tools}
         self.mesh_checks = session.mesh_checks
         self.render_library = get_render_library()

@@ -232,7 +232,8 @@ mitigation for the risk D2 accepts.
 - **The UII gains two new jobs**: recording the standing no-ask-back directive
   in DESIGN INTENT, and applying the D5 degrade marker.  NOTE (round 5,
   2026-08-26): the UII no longer detects out-of-range.  Its `$parameter_list`
-  is gated by `UII_PARAMETER_LIST_ENABLED` (default False) and the
+  is off by default (its parameter-access cell is `none`; formerly
+  `UII_PARAMETER_LIST_ENABLED`) and the
   "Flag OUT OF RANGE values" rule was removed, so the range gates are now the
   DCII and the Tool Caller only.
 - **Routing verdicts need re-checking**: several agents' `ESCALATE` verdicts

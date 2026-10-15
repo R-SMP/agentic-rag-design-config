@@ -4385,6 +4385,70 @@ def api_parameter_schema_upload() -> dict:
             "plan": plan, **state}
 
 
+class ParameterAccessIn(BaseModel):
+    cells: dict[str, dict[str, str]]
+
+
+def _parameter_access_payload() -> dict:
+    """The parameter-access grid for the Workflow Settings panel: one row per
+    agent of the pack's table, in its order; ``default`` is the pack's cell,
+    ``current`` the one the next session uses."""
+    from engine import parameter_access as pa
+    from agents.shared import agent_roles
+    default = pa.default_table()
+    current = pa.table()
+    names = dict(agent_roles.DISPLAY, database_handler="Database Handler")
+    return {
+        "topologies": list(pa.TOPOLOGIES),
+        "states": [{"id": s, "label": pa.LABELS[s]} for s in pa.STATES],
+        "no_tool": sorted(pa.NO_TOOL_AGENTS),
+        "rows": [{"agent": a, "name": names.get(a, a),
+                  "default": {str(t): s for t, s in default[a].items()},
+                  "current": {str(t): s for t, s in current[a].items()}}
+                 for a in default],
+    }
+
+
+@app.get("/api/parameter_access")
+def api_parameter_access_get() -> dict:
+    """Who sees the parameter list, per agent and topology
+    (engine/parameter_access.py): the pack default and the Workflow Settings
+    changes laid over it."""
+    _require_auth()
+    from engine import parameter_access as pa
+    try:
+        return _parameter_access_payload()
+    except pa.ParameterAccessError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+
+
+@app.post("/api/parameter_access")
+def api_parameter_access_save(body: ParameterAccessIn) -> dict:
+    """Store the grid; only cells that differ from the pack default are kept.
+    Locked while a session is active, like every other settings write."""
+    _require_auth()
+    _require_no_session()
+    from engine import parameter_access as pa
+    try:
+        stored = pa.save_overrides(body.cells)
+    except pa.ParameterAccessError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    logger.info("[WEB] parameter access saved: %d agent(s) differ from the "
+                "pack default", len(stored))
+    return _parameter_access_payload()
+
+
+@app.post("/api/parameter_access/reset")
+def api_parameter_access_reset() -> dict:
+    """Back to the pack default (dc_pack/pack.yaml)."""
+    _require_auth()
+    _require_no_session()
+    from engine import parameter_access as pa
+    pa.reset_overrides()
+    logger.info("[WEB] parameter access reset to the pack default")
+    return _parameter_access_payload()
+
+
 @app.post("/api/model_windows")
 def api_model_windows_save(body: ModelWindowsIn) -> dict:
     """Persist the table.  Locked while a session is active, like every other

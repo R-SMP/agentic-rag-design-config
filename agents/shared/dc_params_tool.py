@@ -1,15 +1,13 @@
 """``dc_params_list`` — the design-parameter list as an on-demand tool.
 
-The Planner and the Orchestrator do not carry the ``$parameter_list``
-fragment inline in their system prompts (2026-08-22 prompt reduction),
-and the Receptionist stopped carrying it in round 5 (see
-extra_utilities/extra_info.md §7.1 and §8).  All three retrieve it only when they
-explicitly need it, via this tool.
-
-The UII does NOT bind it: its inline fragment is gated by
-``UII_PARAMETER_LIST_ENABLED`` (default False) precisely so the UII works
-in the user's vocabulary rather than the configurator's, and handing it a
-retrieval path would defeat that.
+Which agents hold it is the parameter-access table
+(``engine/parameter_access.py``; default in ``dc_pack/pack.yaml``): an agent
+whose cell says ``tool`` in the running topology gets it, through
+:func:`param_tools_for`, and nobody else does.  By default that is the
+Receptionist, the Planner and the Orchestrator, which do not carry the
+``$parameter_list`` fragment inline (2026-08-22 prompt reduction, round 5;
+see extra_utilities/extra_info.md §7.1 and §8) and retrieve it only when
+they need it.
 
 The tool returns exactly what the ``$parameter_list`` slot renders —
 ``dc_pack/fragments/dc/parameter_list.md`` (or the active topology's
@@ -42,15 +40,11 @@ _USE_DEFAULT = (
 )
 
 _USE_BY_AGENT = {
-    # The Planner directs in words and never picks values, so it rarely needs
-    # this at all — and the printed ranges are exactly what tempted it to pick
-    # from them (runs ID278 / ID279).
-    "planner": (
-        "Reference only: which parameters exist and what each one means.  You "
-        "rarely need it — describe the change you want in plain words and let "
-        "the DC Input Creator pick the parameter and the value.  Takes NO "
-        "arguments."
-    ),
+    # No "planner" entry: the 7-agent Planner has always been given the
+    # default wording (it bound the default instance before the access table
+    # existed).  The 5- and 3-agent Planners have their own wording in
+    # agents/topology5/tool_text.py and agents/topology3/tool_text.py.
+    #
     # The Receptionist never validates numbers; it answers and clarifies.
     "receptionist": (
         "Call this to answer a user question about what the system accepts "
@@ -88,6 +82,15 @@ def build_dc_params_list(agent_key: str = ""):
     return tool("dc_params_list")(_impl)
 
 
-# Default-wording instance, kept as a module-level name because the Planner
-# and the Orchestrator bind it by import.
-dc_params_list = build_dc_params_list()
+def param_tools_for(agent_key: str) -> list:
+    """``[dc_params_list]`` when *agent_key*'s cell in the parameter-access
+    table says ``tool`` in the running topology, else ``[]``.
+
+    Every agent class binds the tool through this, at the place in its tool
+    list where it has always sat, so the list's order does not move.
+    """
+    from engine import parameter_access
+
+    if parameter_access.state(agent_key, _topology.topology()) == "tool":
+        return [build_dc_params_list(agent_key)]
+    return []

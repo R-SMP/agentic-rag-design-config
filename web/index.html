@@ -959,6 +959,39 @@
             </div>
           </section>
 
+          <!-- Parameter list access: who sees the parameter list, per agent
+               and topology (engine/parameter_access.py).  The pack default is
+               dc_pack/pack.yaml; changes here are stored in
+               workflow_settings/parameter_access.json.  Filled in by app.js
+               (/api/parameter_access); locked while a session is active. -->
+          <section class="rc-panel" id="parameter-access">
+            <div class="rc-head">
+              <h2>Parameter list access</h2>
+              <p class="rc-note">
+                How each agent gets the list of design parameters:
+                <strong>Full list</strong> in its instructions, ranges included;
+                <strong>Names only</strong> in its instructions, without the
+                ranges; <strong>Through the tool</strong>, a tool it can call
+                when it needs the list; or <strong>Nothing</strong>.  A cell
+                shown in bold differs from the setup's default.  Changes take
+                effect for the <strong>next session</strong>.
+              </p>
+            </div>
+            <div class="mw-table-wrap ar-table-wrap">
+              <table class="mw-table ar-table pa-table">
+                <thead>
+                  <tr><th>Agent</th><th>7-agent system</th><th>5-agent system</th><th>3-agent system</th></tr>
+                </thead>
+                <tbody id="pa-rows"></tbody>
+              </table>
+            </div>
+            <div class="ps-bar pa-bar">
+              <button id="pa-save" class="primary" type="button">Save</button>
+              <button id="pa-reset" class="ghost" type="button">Reset to setup default</button>
+              <span id="pa-status" class="settings-status" role="status"></span>
+            </div>
+          </section>
+
           <!-- Agent roles across topologies: read-only view of
                agents/shared/agent_roles.py (served by /api/agent-roles), the
                table behind database_search's role mapping and the Database

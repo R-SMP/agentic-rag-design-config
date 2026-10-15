@@ -24,7 +24,7 @@ from langchain_core.tools import tool
 from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
-from agents.shared.dc_params_tool import dc_params_list
+from agents.shared.dc_params_tool import param_tools_for
 from agents.shared.file_utils import (
     ai_text,
     flush_pending_image_blocks,
@@ -138,7 +138,7 @@ class Planner(BaseChainAgent):
         all_tools = (
             [read_user_inputs, read_extracted_inputs]
             + extra_utility
-            + [read_attempts, dc_params_list]
+            + [read_attempts, *param_tools_for(self.AGENT_KEY)]
             + list(tools)
         )
         # Which of the three database tools this agent holds is a

@@ -6,7 +6,7 @@ Why a matrix
 ``topology_prompt_snapshot.py`` assembles the prompts under the settings that
 are on disk.  Most prompt text is conditional, though: ``<<RAG_ON>>``,
 ``<<HAS_DBA>>``, ``<<BSV_ON>>``, ``<<MESH_ON>>``, ``<<DCII_ONLY>>``,
-``<<PF_ON>>``, the UII-parameter and DCOI-ranges regions, the per-agent
+``<<PF_ON>>``, the per-agent parameter-access regions, the per-agent
 database-tool slots, and the runtime blocks chosen by ``RENDER_LIBRARY``,
 ``DCOI_COMPARISON_MODE``, ``KEEP_IMAGES_IN_CONTEXT`` and ``CHAIN_ACCESS``.  A
 change that is byte-identical under one setting can still move a prompt under
@@ -115,18 +115,39 @@ _WATCHED = sorted({k for ov in CONFIGS.values() for k in ov
 # Assembly (child process, one per combination x topology)
 # ---------------------------------------------------------------------------
 
-def _child_main(repo: str, config: str, topology: int) -> int:
-    repo_p = Path(repo)
-    for p in ("extra_utilities/scripts", "extra_utilities/prompt_pdf", "."):
-        sys.path.insert(0, str(repo_p / p))
-    sys.modules["simplejson"] = None          # type: ignore[assignment]
-    sys.modules["chardet"] = None             # type: ignore[assignment]
-    import bootstrap                          # noqa: E402
-    bootstrap.install()
+# The two settings the parameter-access table replaced (MAS-blueprint P3a),
+# as the table cells they meant: True -> these cells, False -> the cells'
+# old "off" state.  The combinations keep their names and meaning, so the
+# baseline taken before the table existed still compares like for like.
+_ACCESS_FROM_SETTING = {
+    "UII_PARAMETER_LIST_ENABLED": (
+        {"user_input_inspector": {7: "full", 5: "full"}},
+        {"user_input_inspector": {7: "none", 5: "none"}}),
+    "DCOI_KNOWS_PARAMS_RANGES": (
+        {"dc_output_inspector": {7: "full", 5: "full"},
+         "requirements_analyst": {3: "full"}},
+        {"dc_output_inspector": {7: "names", 5: "names"},
+         "requirements_analyst": {3: "names"}}),
+}
 
-    import workflow_settings.settings as S    # noqa: E402
+
+def apply_config(config: str):
+    """Apply combination *config* to this (child) process and return the
+    settings module.  Shared with ``tool_matrix.py``."""
+    import workflow_settings.settings as S
     overrides = dict(CONFIGS[config])
     all_db_tools = overrides.pop("_ALL_DB_TOOLS", False)
+    try:
+        from engine import parameter_access as PA
+    except ImportError:                       # before the table existed
+        PA = None
+    if PA is not None:
+        cells: dict = {}
+        for name, (on, off) in _ACCESS_FROM_SETTING.items():
+            if name in overrides:
+                for agent, row in (on if overrides.pop(name) else off).items():
+                    cells.setdefault(agent, {}).update(row)
+        PA.read_overrides = lambda: {a: dict(r) for a, r in cells.items()}
     missing = [k for k in overrides if not hasattr(S, k)]
     if missing:
         raise SystemExit(f"{config}: not in workflow_settings.settings: "
@@ -138,6 +159,19 @@ def _child_main(repo: str, config: str, topology: int) -> int:
         if not hasattr(D, "is_enabled_for"):
             raise SystemExit(f"{config}: database_access.is_enabled_for is gone")
         D.is_enabled_for = lambda agent, tool=None: True
+    return S
+
+
+def _child_main(repo: str, config: str, topology: int) -> int:
+    repo_p = Path(repo)
+    for p in ("extra_utilities/scripts", "extra_utilities/prompt_pdf", "."):
+        sys.path.insert(0, str(repo_p / p))
+    sys.modules["simplejson"] = None          # type: ignore[assignment]
+    sys.modules["chardet"] = None             # type: ignore[assignment]
+    import bootstrap                          # noqa: E402
+    bootstrap.install()
+
+    S = apply_config(config)
 
     import topology_prompt_snapshot as T      # noqa: E402
     payload = T._assemble(topology)

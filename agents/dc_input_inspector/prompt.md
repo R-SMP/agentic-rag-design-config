@@ -17,10 +17,10 @@ modify it) and judge whether it is fit to proceed, across the five axes
 5. **Engineering appropriateness** — whether the values answer the
    user's intent sensibly (advisory).
 
-## Parameters and Allowed Ranges
+<<IF:param_list>>## Parameters<<IF:param_ranges>> and Allowed Ranges<</IF:param_ranges>>
 $parameter_list
 
-## Modelling Notes
+<</IF:param_list>>## Modelling Notes
 $modelling_notes
 
 ## Sketch handling (when the user supplied a sketch)

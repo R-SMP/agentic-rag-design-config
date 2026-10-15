@@ -71,7 +71,7 @@ Each topology keeps its own prompt tree: the 7-agent prompts sit beside their ag
 ├── dc_pack/                      # the design-configurator pack (propeller today)
 │   ├── fragments/dc/             # parameters, structure, capabilities, constraints
 │   ├── fragments/tools/          # tool inventory, render-check library
-│   └── parameters.json, assets/
+│   └── parameters.json, pack.yaml, assets/
 ├── engine/                       # pack loader, slot registry, parameters + database schema
 ├── tools/
 │   ├── generate_mesh/            # RhinoCompute + Grasshopper definition (DC tool)

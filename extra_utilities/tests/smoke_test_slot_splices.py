@@ -55,7 +55,8 @@ GENERIC_FRAGMENTS_DIR = ROOT / "agents" / "shared" / "prompt_fragments"
 FRAGMENT_DIRS = (PACK_FRAGMENTS_DIR, GENERIC_FRAGMENTS_DIR)
 
 SLOT_RE = re.compile(r"\$([a-z_][a-z0-9_]*)")
-MARKER_RE = re.compile(r"<</?[A-Z_]+>>")
+# <<RAG_ON>>-style markers, and the per-agent <<IF:flag>> / <<IFNOT:flag>> ones.
+MARKER_RE = re.compile(r"<</?(?:[A-Z_]+|IF(?:NOT)?:[a-z][a-z0-9_]*)>>")
 _PACK_SUFFIX_RE = re.compile(r"\.t\d+$")
 
 

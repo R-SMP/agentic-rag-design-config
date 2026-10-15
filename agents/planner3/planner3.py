@@ -59,7 +59,7 @@ from agents.database_handler import DatabaseHandler
 from agents.design_engineer import DesignEngineer
 from agents.receptionist import Receptionist
 from agents.shared.attempts_tool import read_attempts
-from agents.shared.dc_params_tool import build_dc_params_list
+from agents.shared.dc_params_tool import param_tools_for
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.context_pruner import ContextPruner
 from agents.shared.file_utils import ai_text
@@ -358,7 +358,7 @@ class Planner3(BaseChainAgent):
             read_user_inputs,
             history_tool,
             read_attempts,
-            build_dc_params_list(self.AGENT_KEY),
+            *param_tools_for(self.AGENT_KEY),
             build_routing_tool(self.AGENT_KEY, "design_engineer", self, cl),
             build_routing_tool(self.AGENT_KEY, "requirements_analyst",
                                self, cl),

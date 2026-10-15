@@ -153,15 +153,15 @@ RULE above).  When you cite a
 prior number, mark it as prior $prior_finding_citation_example so the reader isn't confused about which belong to the
 design under review.
 
-## The $parameter_count parameter names — the ONLY parameters that exist
+<<IF:param_list>>## The $parameter_count parameter names — the ONLY parameters that exist
 $parameter_list
 
-<<DCOI_RANGES_OFF>>You are given the NAMES, not the allowed ranges.<</DCOI_RANGES_OFF>><<DCOI_RANGES_ON>>You are given the NAMES and the allowed ranges.  Use the ranges to tell a
+<<IFNOT:param_ranges>>You are given the NAMES, not the allowed ranges.<</IFNOT:param_ranges>><<IF:param_ranges>>You are given the NAMES and the allowed ranges.  Use the ranges to tell a
 gap you can ask to close from one you cannot: never ask for a value outside
 its range, and when the mismatch traces to a parameter already at its bound,
-say so instead of asking for more.<</DCOI_RANGES_ON>>
+say so instead of asking for more.<</IF:param_ranges>>
 
-$visual_inspection_guide
+<</IF:param_list>>$visual_inspection_guide
 
 ## How to phrase your feedback
 

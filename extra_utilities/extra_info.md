@@ -380,8 +380,9 @@ Both first builds were replaced (§1, §2).  As built:
   values are filled at agent construction (`set_routing_tools` etc.).
 * **Conditional regions** resolved at assembly: `<<DCII_ONLY>>` /
   `<<DCII_OFF>>`, `<<PF_ON>>` / `<<PF_OFF>>`, `<<CHAIN_ONLY>>` (stripped for the
-  user-facing agents), `<<HAS_DBA>>`, `<<BSV_ON>>`, `<<DCOI_RANGES_ON>>`,
-  `<<UII_PARAMS_ON>>`, `<<CAN_SEE>>` / `<<CANNOT_SEE>>`.
+  user-facing agents), `<<HAS_DBA>>`, `<<BSV_ON>>`, `<<IF:param_list>>` /
+  `<<IF:param_ranges>>` (per agent, from the parameter-access table),
+  `<<CAN_SEE>>` / `<<CANNOT_SEE>>`.
   `_dcii_effective()` / `_planner_first_effective()` key on "is the hub the
   Orchestrator", not on the topology number — keying on the number broke the
   unknown-topology fallback.
@@ -527,8 +528,9 @@ Decisions that shaped today's prompts:
   rule was removed, so the range gates are the DCII and the Tool Caller and an
   impossible value surfaces one hop later.  The DCIC and DCII keep their
   Verbatim vs Real-world-quantity split, so a user who types a parameter name
-  still works.  `UII_PARAMETER_LIST_ENABLED` (default False) gates the UII's
-  own parameter list.
+  still works.  Whether the UII has its own parameter list is its cell in the
+  parameter-access table (default `none`; until MAS-blueprint P3a the setting
+  `UII_PARAMETER_LIST_ENABLED`).
 * **The Receptionist** lost its static parameter list (it calls
   `dc_params_list` when the user asks about capabilities) and its
   parameter-name check.

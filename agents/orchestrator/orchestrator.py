@@ -30,7 +30,7 @@ from agents.dc_output_inspector import DCOutputInspector
 from agents.planner import Planner
 from agents.receptionist import Receptionist
 from agents.shared.attempts_tool import read_attempts
-from agents.shared.dc_params_tool import dc_params_list
+from agents.shared.dc_params_tool import param_tools_for
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.context_pruner import ContextPruner
 from agents.shared.file_utils import ai_text
@@ -439,7 +439,7 @@ class Orchestrator(BaseChainAgent):
                                self, cl),
             build_routing_tool("orchestrator", "receptionist", self, cl),
             read_attempts,
-            dc_params_list,
+            *param_tools_for("orchestrator"),
             # F71.  prompt.md:386 has always told the hub to verify a
             # failing agent's account against the tool's LITERAL result
             # ("The agent's prose is one account; the tool's actual return

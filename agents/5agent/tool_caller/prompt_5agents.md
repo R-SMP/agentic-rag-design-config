@@ -23,10 +23,10 @@ $geometry_tools_loading_rule
 $render_type_choice
 
 
-## Parameters and Allowed Ranges
+<<IF:param_list>>## Parameters<<IF:param_ranges>> and Allowed Ranges<</IF:param_ranges>>
 $parameter_list
 
-## Range check before you generate (HARD — independent of upstream)
+<</IF:param_list>>## Range check before you generate (HARD — independent of upstream)
 
 You are the last agent to see ``parameters.json`` before the generator runs.
 Before you call a design tool

@@ -50,7 +50,7 @@ from agents.dc_output_inspector import DCOutputInspector
 from agents.receptionist import Receptionist
 from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import read_attempts
-from agents.shared.dc_params_tool import build_dc_params_list
+from agents.shared.dc_params_tool import param_tools_for
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.context_pruner import ContextPruner
 from agents.shared.file_utils import ai_text
@@ -401,7 +401,7 @@ class Planner5(BaseChainAgent):
             read_extracted_inputs,
             history_tool,
             read_attempts,
-            build_dc_params_list(self.AGENT_KEY),
+            *param_tools_for(self.AGENT_KEY),
             build_routing_tool(self.AGENT_KEY, "user_input_inspector",
                                self, cl),
             build_routing_tool(self.AGENT_KEY, "dc_input_creator", self, cl),

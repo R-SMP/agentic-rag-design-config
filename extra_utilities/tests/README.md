@@ -1,6 +1,6 @@
 # Offline checks
 
-Eight hand-run scripts that need no network, no database and no API spend.
+Nine hand-run scripts that need no network, no database and no API spend.
 There is no CI and no pytest: run each one directly from the **repository
 root**.
 
@@ -30,6 +30,7 @@ what it guarded and how to restore it from git.
 | `smoke_test_agent_roles.py` | any change to `agents/shared/agent_roles.py`, a hub's roster, `database_search`'s ACL or the DH question loader | The agent role map across topologies: `ROSTER` matches what each hub builds and `DISPLAY` matches `routing_tools.AGENT_DISPLAY`; who may read which past answers per topology (both directions, the hub taking the Orchestrator's role, the `RAG_DCIC_READS_DCII` toggle); that the question table maps "Agent from" downward only and drops a skipped row's sub-rows; and that a real assembled `database_search` response carries the `<agent_roles>` legend once, right after `<search_meta>`, listing only the agents found.  Offline (stubbed imports). |
 | `smoke_test_ring_height.py` | any change to `web/feg/` or `tools/generate_mesh/ring_height.py` | The Python port of the outer-ring height fit must match the real `web/feg` JavaScript (run under Node) to within 1e-9 mm over 552 parameter sets.  **It is the only guard for that port — never remove it.**  Needs Node and `node_modules/three` (`npm install` in the repo root); without them it prints SKIP. |
 | `smoke_test_parameters.py` | any change to `dc_pack/parameters.json`, a `parameter_list*.md` fragment, `engine/parameters.py` or `engine/parameter_schema.py` | `parameters.json` is valid (each kind of broken file is caught); every hand-written parameter list in `dc_pack/fragments/dc/` names the same parameters, in the same order, with the same `[min; max]`; what the validator, slider page, preview check and database get from the file is well-formed; and the schema upload (matching, automatic numbering, retirements) behaves, against a stand-in database — never the live one. |
+| `smoke_test_parameter_access.py` | any change to the `parameter_access` table in `dc_pack/pack.yaml`, `engine/parameter_access.py` or a prompt's `<<IF:param_list>>` region | The grid has exactly one cell per agent each topology builds (plus the Database Handler); every agent prompt has one `<<IF:param_list>>` region around `$parameter_list`; each state shows the list with its ranges, without them, or not at all, binds `dc_params_list` only for "tool", and leaves no marker; the settings file stores only changed cells. |
 
 ## Things worth knowing before you trust a result
 
@@ -50,3 +51,8 @@ what it guarded and how to restore it from git.
   assembles 357 prompts (17 setting combinations x topologies 7, 5 and 3), and
   `diff extra_utilities/prompt_matrix/baseline_manifest.json extra_utilities/prompt_matrix/snapshots/<name>`
   must report 0 differences.  `wsdiff` and `classify` explain any that remain.
+- **For a change that must move no tool**, compare the tools every agent is
+  given: `py -3.13 extra_utilities/scripts/tool_matrix.py save <file>` records
+  them under the same 17 combinations (name, description, argument schema),
+  and `tool_matrix.py diff extra_utilities/prompt_matrix/tool_baseline.json <file>`
+  must report 0 differences.

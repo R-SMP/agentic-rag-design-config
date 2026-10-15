@@ -76,7 +76,8 @@ IMAGE_PATH = _pack.asset_path("dc_params_primer.png")
 # The UII records what the user said in the user's own words and never maps
 # anything onto a configurator parameter, so the default text — which names
 # every parameter, gives the middlePos formula and its 0.3-0.7 band — would
-# hand it back the vocabulary ``UII_PARAMETER_LIST_ENABLED`` exists to remove.
+# hand it back the vocabulary its parameter-access cell (``none`` by default,
+# engine/parameter_access.py) keeps from it.
 # Its variant keeps the geometry (hub vs 4 mm root, span-fraction, mid-wall
 # diameter, section orientation) and drops the names, formulas and ranges.
 # Note the diagram itself still carries labels; this narrows the leak, it does

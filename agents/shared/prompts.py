@@ -51,6 +51,7 @@ from agents.shared.topology import (
     topology as _topology,
 )
 from engine import pack as _pack
+from engine import parameter_access as _parameter_access
 from engine import parameters as _parameters
 from workflow_settings import settings as _workflow_settings
 
@@ -261,21 +262,14 @@ _MESH_OFF_RE = re.compile(r"<<MESH_OFF>>(.*?)<</MESH_OFF>>", re.DOTALL)
 # when mesh checks are off, so the list keeps no empty line.
 _MESH_ON_LINE_RE = re.compile(
     r"^<<MESH_ON>>(?:(?!<</MESH_ON>>)[^\n])*<</MESH_ON>>\n", re.MULTILINE)
-# Global UII-parameter-list filter, gated by ``UII_PARAMETER_LIST_ENABLED``.
-# The markers appear only in the UII's own prompt and its scoped
-# ``parameters_user_input_inspector.md``, so a global filter is safe: no other
-# agent's template carries them.  See ``apply_uii_params_filter``.
-_UII_PARAMS_ON_RE = re.compile(r"<<UII_PARAMS_ON>>(.*?)<</UII_PARAMS_ON>>",
-                               re.DOTALL)
-_UII_PARAMS_OFF_RE = re.compile(r"<<UII_PARAMS_OFF>>(.*?)<</UII_PARAMS_OFF>>",
-                                re.DOTALL)
-# Global DCOI-ranges filter, gated by ``DCOI_KNOWS_PARAMS_RANGES``.  Same
-# reasoning: the markers live only in the DCOI's prompt and its scoped
-# ``parameters_dc_output_inspector.md``.  See ``apply_dcoi_ranges_filter``.
-_DCOI_RANGES_ON_RE = re.compile(r"<<DCOI_RANGES_ON>>(.*?)<</DCOI_RANGES_ON>>",
-                                re.DOTALL)
-_DCOI_RANGES_OFF_RE = re.compile(
-    r"<<DCOI_RANGES_OFF>>(.*?)<</DCOI_RANGES_OFF>>", re.DOTALL)
+# Per-agent ``<<IF:flag>>…<</IF:flag>>`` / ``<<IFNOT:flag>>…<</IFNOT:flag>>``
+# regions: kept when the flag is true (IF) or false (IFNOT), else removed.
+# The flags come from the parameter-access table (engine/parameter_access.py):
+# ``param_list`` -- the agent sees the list in its prompt (full or names);
+# ``param_ranges`` -- with the ranges (full).  MAS-blueprint step P3b
+# extends the same syntax to tool and setting flags.  See apply_if_flags.
+_IF_RE = re.compile(r"<<(IF|IFNOT):([a-z][a-z0-9_]*)>>(.*?)<</\1:\2>>",
+                    re.DOTALL)
 # Global RAG switch.  Unlike ``<<HAS_DBA>>``, which asks whether THIS agent
 # holds a database tool, ``<<RAG_ON>>`` asks only whether the RAG layer is on
 # at all.  The distinction is load-bearing: the Tool Caller holds no database
@@ -388,36 +382,6 @@ def apply_mesh_checks_filter(text: str) -> str:
     return text
 
 
-def apply_uii_params_filter(text: str) -> str:
-    """Resolve ``<<UII_PARAMS_ON>>`` / ``<<UII_PARAMS_OFF>>`` regions.
-
-    Gated by ``UII_PARAMETER_LIST_ENABLED``, read fresh so a toggle saved in
-    the Workflow Settings editor takes effect on the next session — the same
-    contract as the BSV / MESH / DBa toggles.
-    """
-    if bool(getattr(_workflow_settings, "UII_PARAMETER_LIST_ENABLED", False)):
-        text = _UII_PARAMS_OFF_RE.sub("", text)
-        text = _UII_PARAMS_ON_RE.sub(lambda m: m.group(1), text)
-    else:
-        text = _UII_PARAMS_ON_RE.sub("", text)
-        text = _UII_PARAMS_OFF_RE.sub(lambda m: m.group(1), text)
-    return text
-
-
-def apply_dcoi_ranges_filter(text: str) -> str:
-    """Resolve ``<<DCOI_RANGES_ON>>`` / ``<<DCOI_RANGES_OFF>>`` regions.
-
-    Gated by ``DCOI_KNOWS_PARAMS_RANGES``, read fresh, same contract as above.
-    """
-    if bool(getattr(_workflow_settings, "DCOI_KNOWS_PARAMS_RANGES", False)):
-        text = _DCOI_RANGES_OFF_RE.sub("", text)
-        text = _DCOI_RANGES_ON_RE.sub(lambda m: m.group(1), text)
-    else:
-        text = _DCOI_RANGES_ON_RE.sub("", text)
-        text = _DCOI_RANGES_OFF_RE.sub(lambda m: m.group(1), text)
-    return text
-
-
 def apply_rag_on_filter(text: str) -> str:
     """Resolve ``<<RAG_ON>>`` regions against the global RAG master switch.
 
@@ -519,29 +483,39 @@ def apply_chain_only_filter(text: str, agent_dir_name: str) -> str:
 
 
 def apply_flag_filters(text: str) -> str:
-    """Apply the DCII, PLANNER_FIRST, BSV, MESH_CHECKS, UII-parameter-list,
-    DCOI-ranges and RAG_ON filters in sequence.
-
-    The last two are global even though their markers appear in only one
-    agent's files each: the marker names are unique, so a template that does
-    not carry them is untouched.
+    """Apply the DCII, PLANNER_FIRST, BSV, MESH_CHECKS and RAG_ON filters in
+    sequence.
 
     NOTE: per-agent filters (:func:`apply_dba_filter`,
-    :func:`apply_chain_only_filter`) are applied separately in
+    :func:`apply_chain_only_filter`, :func:`apply_if_flags` for the
+    parameter-access regions) are applied separately in
     :func:`_build_template` because they need to know which agent's
     template is being assembled.
     """
     return apply_rag_on_filter(
-        apply_dcoi_ranges_filter(
-            apply_uii_params_filter(
-                apply_mesh_checks_filter(
-                    apply_bsv_filter(
-                        apply_planner_first_filter(apply_dcii_filter(text))
-                    )
-                )
+        apply_mesh_checks_filter(
+            apply_bsv_filter(
+                apply_planner_first_filter(apply_dcii_filter(text))
             )
         )
     )
+
+
+def apply_if_flags(text: str, flags: dict[str, bool]) -> str:
+    """Resolve every ``<<IF:flag>>`` / ``<<IFNOT:flag>>`` region (see
+    ``_IF_RE``).  A flag not in *flags* is an error, so a misspelt marker
+    fails the build instead of reaching a model."""
+    def keep(m: re.Match) -> str:
+        kind, name, body = m.groups()
+        if name not in flags:
+            raise ValueError(f"unknown prompt flag <<{kind}:{name}>> "
+                             f"(known: {', '.join(sorted(flags))})")
+        return body if flags[name] == (kind == "IF") else ""
+
+    prev = None
+    while prev != text:              # nested regions resolve outside-in
+        prev, text = text, _IF_RE.sub(keep, text)
+    return text
 
 
 def read_pack_fragment(slot: str, agent_dir_name: str | None = None) -> str:
@@ -987,6 +961,13 @@ def _build_template(agent_dir_name: str) -> str:
         **_build_slots(),
         **_scoped_fragments_for(agent_dir_name),
     }
+    # Who sees the parameter list (engine/parameter_access.py): "names"
+    # removes the ranges from this agent's list; the <<IF:param_list>> /
+    # <<IF:param_ranges>> regions are resolved after the substitution.
+    access = _parameter_access.state(agent_dir_name, _topology())
+    if access == "names":
+        slots["parameter_list"] = _parameter_access.strip_ranges(
+            slots["parameter_list"])
     # A database tool this agent does NOT hold must not be described to it.
     # ``<<HAS_DBA>>`` is all-or-nothing (it asks "holds ANY database tool"),
     # so the per-TOOL decision lands here: each slot blanks itself when its
@@ -1002,7 +983,8 @@ def _build_template(agent_dir_name: str) -> str:
     slots = mark_inline_slots(slots)
     once = Template(raw).safe_substitute(slots)
     twice = Template(once).safe_substitute(slots)
-    filtered = apply_flag_filters(twice)
+    filtered = apply_if_flags(apply_flag_filters(twice),
+                              _parameter_access.prompt_flags(access))
     # apply_dba_filter and apply_chain_only_filter are per-agent — they
     # consult, respectively, the per-agent DBa flag in database_access.json
     # (+ the RAG_ENABLED master switch) and the user-facing-vs-chain agent

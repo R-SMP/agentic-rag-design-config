@@ -59,7 +59,7 @@ extra_utilities/
 │   ├── populate_dc_parameter_schemas.py   upload the parameter schema (fallback for the button)
 │   └── drop_all_tables.sql                wipe before re-applying the schema
 │
-├── tests/                    eight offline checks + their README
+├── tests/                    nine offline checks + their README
 ├── scripts/                  hand-run tools (see below)
 ├── prompt_pdf/               builds the assembled-prompts PDF, and reads a marked-up
 │                             copy back into file + line edits (its own README)
@@ -79,6 +79,8 @@ Upgrading an older database needs the migration ledger from git history —
 |---|---|
 | `gen_render_samples.py` | Regenerates `web/render_samples/` (the Render-compression panel's samples).  **The app runs this one** — do not move it without updating `web_app.py`. |
 | `topology_prompt_snapshot.py` | `save <dir>` assembles and hashes every agent's full prompt per topology; `diff <a> <b>` shows which agents moved.  The standard check before and after any prompt edit. |
+| `prompt_matrix.py` | `save <dir>` assembles every agent's prompt under 17 setting combinations × topologies 7, 5 and 3 (357 prompts); `diff` against `extra_utilities/prompt_matrix/baseline_manifest.json` must report 0 differences for a change that must move no prompt.  `wsdiff` / `classify` explain any that remain. |
+| `tool_matrix.py` | `save <file>` builds every hub under the same combinations and records the tools each agent is given (name, description, argument schema); `diff` against `extra_utilities/prompt_matrix/tool_baseline.json` must report 0 differences for a change that must move no tool. |
 | `hub_registry.py` | Reads which agents a hub really builds from its `_agents_by_key` literal; used by the snapshot script. |
 | `check_mesh_components.py` | Per-component report for a generated `.obj` (watertightness, volume, degenerate faces). |
 | `feg_render_demo.py` | Builds a propeller with the headless FEG exporter and renders it three ways. |

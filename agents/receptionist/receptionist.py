@@ -50,7 +50,7 @@ from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
 from agents.shared.stop_signal import check_stop_or_raise
 from tools.visualize_model.visualize_model import visualize_3d_model
 from agents.shared.dba_tools import dba_tools_for
-from agents.shared.dc_params_tool import build_dc_params_list
+from agents.shared.dc_params_tool import param_tools_for
 from agents.receptionist.propose_attempt_tool import propose_attempt
 
 logger = logging.getLogger("propeller_agent")
@@ -118,7 +118,7 @@ class Receptionist(BaseChainAgent):
         all_tools = list(tools) + [
             read_attempts,
             visualize_3d_model,
-            build_dc_params_list("receptionist"),
+            *param_tools_for("receptionist"),
             # Step 9 of the Parameters Inputs redesign — UI-update
             # side-effect tool.  Receptionist calls this to surface a
             # 17-param dict as the system's PROPOSED SATISFYING

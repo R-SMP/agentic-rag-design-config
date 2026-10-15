@@ -16,7 +16,10 @@ $available_agents
 ## Normal Pipeline Flow (for reference)
 $pipeline_flow
 
-## Output mechanics — every turn ends with a routing call
+<<IF:param_list>>## Design Configurator Parameters (for reference)
+$parameter_list
+
+<</IF:param_list>>## Output mechanics — every turn ends with a routing call
 
 When your reasoning is worth keeping, structure the turn in two parts:
 

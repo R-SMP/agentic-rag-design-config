@@ -1,0 +1,26 @@
+# The design-configurator pack's own settings.  Edited by the Studio; the
+# engine reads this file and never writes it.
+
+# Who sees the parameter list, per agent and per topology (the 7-, 5- and
+# 3-agent systems; a cell exists only where the agent does):
+#
+#   full   the list in the agent's system prompt, ranges included
+#   names  the list in the prompt with every [min; max] range removed
+#   tool   not in the prompt; the agent can call dc_params_list
+#   none   neither
+#
+# This is the setup's DEFAULT.  Workflow Settings > "Parameter list access"
+# changes cells for the next session (workflow_settings/parameter_access.json).
+# The Database Handler cannot take "tool".  See engine/parameter_access.py.
+parameter_access:
+  receptionist:         {7: tool,  5: tool,  3: tool}
+  orchestrator:         {7: tool}
+  planner:              {7: tool,  5: tool,  3: tool}
+  user_input_inspector: {7: none,  5: none}
+  dc_input_creator:     {7: full,  5: full}
+  dc_input_inspector:   {7: full}
+  tool_caller:          {7: full,  5: full}
+  dc_output_inspector:  {7: names, 5: names}
+  design_engineer:      {3: full}
+  requirements_analyst: {3: names}
+  database_handler:     {7: none,  5: none,  3: none}

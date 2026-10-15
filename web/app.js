@@ -1394,6 +1394,7 @@ function switchView(name) {
     if (!settingsLoaded) loadSettings();
     loadLrRouting();
     loadRenderCompression();
+    loadParameterAccess();
     loadAgentRoles();
     loadParameterSchema();
     loadModelWindows();
@@ -2106,6 +2107,104 @@ function mwFormatThreshold(window_) {
 
 // Agent roles across topologies -- read-only view of /api/agent-roles.
 // Text nodes only (no innerHTML), so nothing served can become markup.
+// ---------------------------------------------------------------------------
+// Parameter list access — who sees the parameter list, per agent and
+// topology (engine/parameter_access.py).  One dropdown per cell; a cell that
+// differs from the setup's default (dc_pack/pack.yaml) is shown in bold.
+// Saved to workflow_settings/parameter_access.json; locked during a session
+// by the shared settings lock (the panel is an .rc-panel).
+// ---------------------------------------------------------------------------
+let paData = null;
+
+function paSetStatus(msg, kind) {
+  const el = $("pa-status");
+  if (!el) return;
+  el.textContent = msg || "";
+  el.className = "settings-status" + (kind ? " " + kind : "");
+}
+
+function paRender(d) {
+  paData = d;
+  const body = $("pa-rows");
+  if (!body) return;
+  body.textContent = "";
+  for (const r of d.rows) {
+    const tr = document.createElement("tr");
+    const name = document.createElement("td");
+    name.textContent = r.name;
+    tr.appendChild(name);
+    for (const t of d.topologies) {
+      const td = document.createElement("td");
+      const key = String(t);
+      if (!(key in r.current)) {
+        td.textContent = "—";
+        td.className = "ar-none";
+        tr.appendChild(td);
+        continue;
+      }
+      const sel = document.createElement("select");
+      sel.dataset.agent = r.agent;
+      sel.dataset.topology = key;
+      for (const s of d.states) {
+        if (s.id === "tool" && d.no_tool.includes(r.agent)) continue;
+        const o = document.createElement("option");
+        o.value = s.id;
+        o.textContent = s.label;
+        sel.appendChild(o);
+      }
+      sel.value = r.current[key];
+      const mark = () => sel.classList.toggle("pa-changed", sel.value !== r.default[key]);
+      sel.addEventListener("change", () => { mark(); paSetStatus("Not saved yet.", ""); });
+      mark();
+      td.appendChild(sel);
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  }
+}
+
+async function loadParameterAccess() {
+  if (!$("pa-rows")) return;
+  try {
+    paRender(await psFetch("/api/parameter_access"));
+    paSetStatus("", "");
+  } catch (e) {
+    paSetStatus("Could not load the table: " + e.message, "err");
+  }
+}
+
+function paCollect() {
+  const cells = {};
+  for (const sel of document.querySelectorAll("#pa-rows select")) {
+    (cells[sel.dataset.agent] = cells[sel.dataset.agent] || {})[sel.dataset.topology] = sel.value;
+  }
+  return cells;
+}
+
+(function wireParameterAccess() {
+  const save = $("pa-save"), reset = $("pa-reset");
+  if (save) save.addEventListener("click", async () => {
+    try {
+      paRender(await psFetch("/api/parameter_access", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cells: paCollect() }),
+      }));
+      paSetStatus("Saved — applies to the next session.", "ok");
+    } catch (e) {
+      paSetStatus(e.message, "err");
+    }
+  });
+  if (reset) reset.addEventListener("click", async () => {
+    if (!confirm("Reset every cell to the setup's default (dc_pack/pack.yaml)?")) return;
+    try {
+      paRender(await psFetch("/api/parameter_access/reset", { method: "POST" }));
+      paSetStatus("Back to the setup's default.", "ok");
+    } catch (e) {
+      paSetStatus(e.message, "err");
+    }
+  });
+})();
+
 async function loadAgentRoles() {
   const body = $("ar-rows");
   if (!body) return;

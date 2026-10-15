@@ -40,6 +40,7 @@ from agents.shared.prompts import (
     routing_instructions,
 )
 from agents.shared.dba_tools import dba_tools_for
+from agents.shared.dc_params_tool import param_tools_for
 from workflow_settings import settings as workflow_settings
 from agents.shared.routing_tools import (
     AgentHop,
@@ -153,6 +154,10 @@ class UserInputInspector(BaseChainAgent):
         # per-(profile, agent, tool) decision; dba_tools_for owns it.
         for _dba_tool in dba_tools_for("user_input_inspector"):
             self._extra_utility_tools_by_name[_dba_tool.name] = _dba_tool
+        # dc_params_list, when this agent's parameter-access cell says
+        # "tool" (engine/parameter_access.py).
+        for _t in param_tools_for(self.AGENT_KEY):
+            self._extra_utility_tools_by_name[_t.name] = _t
         # No text-file tools: ``read_user_inputs`` already reads every
         # text file at once (image notes included) and lists the image
         # paths, so only ``view_images`` (+ ``reread_text_regions`` when OCR is
