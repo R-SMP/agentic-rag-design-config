@@ -72,7 +72,8 @@ _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _REF_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\.py:([A-Za-z_][A-Za-z0-9_]*)$")
 
 _TOP_KEYS = {"name", "display_name", "kind", "roles", "description", "build",
-             "render", "entrypoint", "args", "outputs", "switch", "settings"}
+             "render", "entrypoint", "args", "outputs", "switch", "settings",
+             "list_order", "prompt_slots"}
 _SETTING_KEYS = {"name", "type", "values", "default", "label", "description"}
 _IMAGE_KEYS = {"view", "file", "order", "default_enabled", "label"}
 
@@ -144,6 +145,64 @@ def _check_manifest(folder: Path, m) -> list[str]:
                 p.append(f"{where}: setting {s.get('name')}: values must list the default")
         else:
             p.append(f"{where}: setting {s.get('name')}: type is bool or enum")
+    # Its place in the tool runner's numbered tool list, and the text it owns.
+    runner = isinstance(roles, list) and "tool_runner" in roles
+    order = m.get("list_order")
+    if runner and (not isinstance(order, int) or isinstance(order, bool)):
+        p.append(f"{where}: a tool_runner tool needs list_order: <number> "
+                 f"(its place in the tool runner's tool list)")
+    if not runner and order is not None:
+        p.append(f"{where}: list_order is for tool_runner tools only")
+    if runner and not (folder / _pack.TOOL_PROMPTS / f"{_pack.TOOL_LIST_ENTRY}.md").is_file() \
+            and not list((folder / _pack.TOOL_PROMPTS).glob(f"{_pack.TOOL_LIST_ENTRY}.t*.md")):
+        p.append(f"{where}: a tool_runner tool needs {_pack.TOOL_PROMPTS}/"
+                 f"{_pack.TOOL_LIST_ENTRY}.md (its entry in the tool list)")
+    owned = m.get("prompt_slots", [])
+    if not isinstance(owned, list) or any(not isinstance(s, str) for s in owned):
+        p.append(f"{where}: prompt_slots lists slot names")
+        owned = []
+    if len(set(owned)) != len(owned):
+        p.append(f"{where}: prompt_slots names a slot twice")
+    reg = _pack.registry()
+    for s in owned:
+        if reg.get(s, {}).get("filled_by") != "tool":
+            p.append(f"{where}: prompt_slots: ${s} is not a tool-text slot "
+                     f"(filled_by: tool in engine/slot_registry.yaml)")
+    return p
+
+
+def _check_tool_texts(found: dict[str, dict]) -> list[str]:
+    """Who owns which text: one owner per slot, every owned slot has a file
+    in its tool's ``prompts/``, every file there belongs to a slot the tool
+    lists, and no tool-text slot keeps a file in ``fragments/``."""
+    p: list[str] = []
+    owner: dict[str, str] = {}
+    for name, m in found.items():
+        owned = m.get("prompt_slots") if isinstance(m, dict) else None
+        owned = [s for s in owned if isinstance(s, str)] if isinstance(owned, list) else []
+        for s in owned:
+            if s in owner:
+                p.append(f"${s} is claimed by both {owner[s]} and {name}")
+            owner.setdefault(s, name)
+        d = _pack.tool_prompts_dir(name)
+        files = sorted(d.glob("*.md")) if d.is_dir() else []
+        slots_with_files = {_pack.slot_of_file(f.name) for f in files}
+        for s in owned:
+            if s not in slots_with_files:
+                p.append(f"{name}/{_pack.TOOL_PROMPTS}/: no file for ${s}, "
+                         f"which its tool.yaml lists")
+        for f in files:
+            s = _pack.slot_of_file(f.name)
+            if s != _pack.TOOL_LIST_ENTRY and s not in owned:
+                p.append(f"{name}/{_pack.TOOL_PROMPTS}/{f.name}: its slot ${s} "
+                         f"is not in the tool's prompt_slots")
+    for folder in _pack.FOLDERS:
+        d = _pack.fragments_dir() / folder
+        for f in sorted(d.glob("*.md")) if d.is_dir() else []:
+            s = _pack.slot_of_file(f.name)
+            if _pack.registry().get(s, {}).get("filled_by") == "tool":
+                p.append(f"fragments/{folder}/{f.name}: ${s} is tool text -- "
+                         f"it belongs in the prompts/ folder of the tool that owns it")
     return p
 
 
@@ -160,6 +219,7 @@ def manifests() -> dict[str, dict]:
         m = yaml.safe_load(f.read_text(encoding="utf-8"))
         problems += _check_manifest(folder, m)
         out[folder.name] = m
+    problems += _check_tool_texts(out)
     if problems:
         raise PackToolError("\n".join(problems))
     return out
@@ -288,11 +348,16 @@ def _validated(raw, source: str) -> dict[str, dict]:
 
 
 def read_overrides() -> dict[str, dict]:
-    """The values changed in Workflow Settings."""
+    """The values changed in Workflow Settings.  Values saved for a tool
+    that is no longer in the pack (its folder was removed) are left out,
+    like the tool itself; the next save drops them from the file."""
     try:
         raw = json.loads(OVERRIDES_PATH.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
+    if isinstance(raw, dict):
+        present = manifests()
+        raw = {t: v for t, v in raw.items() if t in present}
     return _validated(raw, OVERRIDES_PATH.name)
 
 
@@ -366,6 +431,18 @@ def flag_values() -> dict[str, bool]:
             if s["type"] == "bool" and s["name"] != "enabled":
                 out[f"setting:{name}.{s['name']}"] = bool(vals[s["name"]])
     return out
+
+
+_FLAG_TOOL_RE = re.compile(
+    r"^(?:tool:([a-z][a-z0-9_]*)|setting:([a-z][a-z0-9_]*)\.[a-z0-9_]+)$")
+
+
+def names_absent_tool(flag: str) -> bool:
+    """True for a ``tool:<name>`` / ``setting:<name>.<setting>`` flag whose
+    tool is not in the pack (removed): the prompts read it as switched off.
+    A misspelt setting of a tool that IS in the pack stays an error."""
+    m = _FLAG_TOOL_RE.match(flag)
+    return bool(m) and (m.group(1) or m.group(2)) not in manifests()
 
 
 def image_outputs() -> list[dict]:
@@ -580,3 +657,36 @@ def agent_tools(agent_key: str, kinds: tuple[str, ...] = KINDS) -> list:
             if any(_holds(agent_key, r) for r in m["roles"]):
                 out.append(llm_tool(name))
     return out
+
+
+# ---------------------------------------------------------------------------
+# The tool runner's numbered tool list ($tool_inventory)
+# ---------------------------------------------------------------------------
+
+# The engine tools the list names around the pack's own: the parameter
+# author's tool first when the tool runner also writes the parameters (the
+# Design Engineer in topology 3), then calculate and read_attempts.  Their
+# entries are pack text: the slots tool_entry_<tool> in fragments/tools/.
+_LIST_BEFORE = (("parameter_author", "new_attempt_parameters"),)
+_LIST_AFTER = ("calculate", "read_attempts")
+
+
+def tool_list(agent_key: str) -> str:
+    """The numbered list of the tools *agent_key* runs, for its
+    ``$tool_inventory``: the engine tools above, and between them every
+    switched-on pack tool of the ``tool_runner`` role, in ``list_order``,
+    each with its ``prompts/tool_list_entry.md``.  "" for an agent that does
+    not run the tools."""
+    if not _holds(agent_key, "tool_runner"):
+        return ""
+    from agents.shared.topology import topology
+    topo = topology()
+    entries = [_pack.read(f"tool_entry_{tool}", topo)
+               for role, tool in _LIST_BEFORE if _holds(agent_key, role)]
+    ours = sorted((m["list_order"], name) for name, m in manifests().items()
+                  if "tool_runner" in m["roles"] and is_enabled(name))
+    for _order, name in ours:
+        path = _pack.tool_list_entry_path(name, topo)
+        entries.append(path.read_text(encoding="utf-8").rstrip())
+    entries += [_pack.read(f"tool_entry_{tool}", topo) for tool in _LIST_AFTER]
+    return "\n".join(f"{i}. {text}" for i, text in enumerate(entries, 1))

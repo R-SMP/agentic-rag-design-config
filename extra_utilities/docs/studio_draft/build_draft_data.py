@@ -110,8 +110,13 @@ def _bootstrap():
 def _pack_slots(P) -> dict[str, str]:
     """slot -> 'dc' | 'tool', for every $slot whose text lives in the pack
     (from the slot registry; runtime fragments are not $slots)."""
-    return {name: ("dc" if spec["folder"] == "dc" else "tool")
-            for name, spec in P._pack.slots(source="pack", use="prompt").items()}
+    out = {name: ("dc" if spec["folder"] == "dc" else "tool")
+           for name, spec in P._pack.slots(source="pack", use="prompt").items()}
+    # The tool runner's numbered list ($tool_inventory) is built by the engine
+    # from each tool's own entry (MAS-blueprint P3d): still tool text.
+    out.update({name: "tool" for name, spec in P._pack.slots(source="generated").items()
+                if spec["from"] in P._GENERATED_PER_AGENT})
+    return out
 
 
 # ---------------------------------------------------------------------------
@@ -295,13 +300,16 @@ def _topology_texts(pack, folder: Path, base: str, spec: dict) -> dict:
 
 def _slots(P, pack_origin: dict, roles: dict) -> list:
     """Every pack $slot with its three topology texts and per-agent copies,
-    read from dc_pack/ through the registry (engine/pack.py naming)."""
+    read from dc_pack/ through the registry (engine/pack.py naming).  A slot a
+    tool owns is read from that tool's prompts/ folder and names its owner."""
     pack = P._pack
+    claims = pack.tool_claims()
     order = {s: i for lst in SECTION_OF.values() for i, s in enumerate(lst)}
     agents = sorted({a for t in roles["roster"].values() for a in t} | {"database_handler"})
     out = []
     for slot, spec in sorted(pack.slots(source="pack", use="prompt").items()):
-        folder = pack.fragments_dir() / spec["folder"]
+        folder = (pack.tool_prompts_dir(claims[slot]) if slot in claims
+                  else pack.fragments_dir() / spec["folder"])
         overlay = spec.get("missing") == "empty"
         vals = ({"7": "", "5": "", "3": ""} if overlay
                 else _topology_texts(pack, folder, slot, spec))
@@ -313,6 +321,7 @@ def _slots(P, pack_origin: dict, roles: dict) -> list:
         present = [x for x in vals.values() if x is not None]
         out.append({
             "slot": slot, "origin": pack_origin.get(slot, "dc"),
+            "owner": claims.get(slot),
             "kind": spec["kind"],
             "section": spec.get("section", "other"), "order": order.get(slot, 999),
             "description": spec.get("description", "") or (
@@ -372,7 +381,9 @@ def _tools() -> list:
         ref = m.get("build") or m.get("entrypoint")
         out.append({"name": name, "display": m["display_name"], "kind": m["kind"],
                     "file": f"dc_pack/tools/{name}/{ref.split(':')[0]}",
-                    "description": m["description"]})
+                    "description": m["description"],
+                    "owns": list(m.get("prompt_slots") or []),
+                    "list_order": m.get("list_order")})
     return out
 
 

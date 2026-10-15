@@ -11,8 +11,8 @@ chooses another pack; the default is this folder.
 | Path | What it holds |
 | --- | --- |
 | `fragments/dc/` | Text about the configurator: parameter list, structure, modelling notes, capabilities, examples, … |
-| `fragments/tools/` | Text about the bound tools: tool inventory, tool rules, output vocabulary, render-check blocks, … |
-| `tools/<tool>/` | One folder per tool: `tool.yaml` (its name, its kind — `generator` or `helper` —, the role that may call it, the text the agents read, its outputs, and its settings with their defaults) plus plain Python with no LangChain in it (the contract is `engine/tooling.py`).  The engine loads them, builds the agents' tools and gives each to whichever agent holds its role in the running topology (`engine/pack_tools.py`).  A tool's switch and settings are its `<<IF:tool:…>>` / `<<IF:setting:…>>` flags; Workflow Settings › Tools changes them for the next session (`workflow_settings/tool_settings.json`). |
+| `fragments/tools/` | Tool text that no one tool owns: the output vocabulary, the texts about the engine's own tools (database search, retrieval, `calculate` …, with their entries in the tool runner's tool list), the tool rules every agent gets, … |
+| `tools/<tool>/` | One folder per tool: `tool.yaml` (its name, its kind — `generator` or `helper` —, the role that may call it, the text the agents read, its outputs, and its settings with their defaults) plus plain Python with no LangChain in it (the contract is `engine/tooling.py`).  The engine loads them, builds the agents' tools and gives each to whichever agent holds its role in the running topology (`engine/pack_tools.py`).  A tool's switch and settings are its `<<IF:tool:…>>` / `<<IF:setting:…>>` flags; Workflow Settings › Tools changes them for the next session (`workflow_settings/tool_settings.json`).  Its `prompts/` folder holds the prompt text it owns — the slots its `tool.yaml` lists under `prompt_slots`, named as in `fragments/` — and `tool_list_entry.md`, its entry in the tool runner's numbered tool list (placed by `list_order`).  Delete a tool's folder and its text goes with it: its slots read empty, and a marked passage about it elsewhere reads as switched off. |
 | `parameters.json` | The parameters: names in canonical (JSON) order, types, ranges, steps, defaults, groups, and each consumer's wording (slider label/unit, database unit/description).  The one source for the validator, `$parameter_count`, the slider page, the preview check and the database schema (`engine/parameters.py`).  The agents' parameter lists stay hand-written; `smoke_test_parameters.py` checks they agree. |
 | `pack.yaml` | The pack's own settings.  `parameter_access`, who sees the parameter list for each agent and topology (full list / names only / through the `dc_params_list` tool / nothing).  It is the default; Workflow Settings › Parameter list access changes cells for the next session (`engine/parameter_access.py`). |
 | `assets/` | Images — the parameter primer (`dc_params_primer.png`). |
@@ -39,6 +39,9 @@ else the slot's text for the topology, else the linked text, else the 7-agent
 text.  **Editing a linked file changes every topology that uses it**; to
 change one topology only, replace `<slot>.md` by `.t7` / `.t5` / `.t3` files
 first.
+
+A slot a tool owns (`filled_by: tool` in the registry, listed in the tool's
+`prompt_slots`) follows the same rules inside that tool's `prompts/` folder.
 
 * **An empty file is a decision.**  It resolves to nothing and ends the
   search; deleting it can restore longer text or crash the session build
@@ -86,13 +89,17 @@ index in `prompts.py` are derived from the registry.
 
 ## Fields read by Python rather than spliced (`use: runtime`)
 
-* `render_check_library_trimesh` / `_pyvista` / `_off` — the render + mesh-check
-  block the Tool Caller (Design Engineer in topology 3) receives through its
-  `{render_check_library_block}` placeholder, chosen by the generator's
-  `render_library` and `mesh_checks` settings.  A new backend is a new
-  `render_library` value in the generator's `tool.yaml` with its branch in its
-  `tool.py`, the block choice in `tool_caller.py` / `design_engineer.py`
-  (until P4), plus one such field.
+* `render_check_library_trimesh` / `_pyvista` / `_off` (in the generator's
+  `prompts/`) — the render + mesh-check block the Tool Caller (Design Engineer
+  in topology 3) receives through its `{render_check_library_block}`
+  placeholder, chosen by the generator's `render_library` and `mesh_checks`
+  settings.  A new backend is a new `render_library` value in the generator's
+  `tool.yaml` with its branch in its `tool.py`, the block choice in
+  `tool_caller.py` / `design_engineer.py` (until P4), plus one such field.
+* `tool_entry_calculate` / `_read_attempts` / `_new_attempt_parameters` — the
+  engine tools' entries in the tool runner's numbered tool list
+  (`$tool_inventory`), which the engine builds around the pack tools'
+  `tool_list_entry.md` (`engine/pack_tools.tool_list`).
 * `dc_params_primer_text` — the text sent with the parameter primer image at
   invoke time (`agents/shared/dc_primer.py`); an agent with its own copy gets
   that instead.

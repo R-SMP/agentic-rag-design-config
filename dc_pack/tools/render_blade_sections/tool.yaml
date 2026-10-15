@@ -46,3 +46,19 @@ switch:
 outputs:
   images:
     - {view: blade_sections, file: render_blade_sections.png, order: 30, default_enabled: true, label: "Render view: blade sections"}
+
+# Its place in the tool runner's numbered tool list (its entry is
+# prompts/tool_list_entry.md), and the prompt text it owns: the files of
+# these slots live in prompts/ (engine/pack.py).
+list_order: 10
+prompt_slots:
+  - precision_multi_phase_rule
+  - render_type_choice
+  - roster_sections_tool_sentence
+  - routing_sections_alternative
+  - sections_rerun_case
+  - blade_sections_visualizer
+  - blade_sections_visualizer_off
+  - blade_sections_visualizer_per_agent
+  - sections_tool_block_full
+  - sections_tool_block_overlay

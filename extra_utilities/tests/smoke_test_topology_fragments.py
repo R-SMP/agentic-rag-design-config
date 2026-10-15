@@ -80,6 +80,10 @@ sys.modules["langchain_core.tools"] = _lct
 from agents.shared import prompts, routing, routing_tools, topology  # noqa: E402
 
 PACK_FRAGMENTS_DIR = prompts._pack.fragments_dir().resolve()
+# The text a tool owns (dc_pack/tools/<tool>/prompts/) is pack text too.
+PACK_TEXT_DIRS = [PACK_FRAGMENTS_DIR] + [
+    d.resolve() for d in prompts._pack.text_dirs()
+    if d.name == prompts._pack.TOOL_PROMPTS]
 GENERIC_FRAGMENTS_DIR = ROOT / "agents" / "shared" / "prompt_fragments"
 _PACK_TOPOLOGY_RE = re.compile(r"\.t(\d+)\.md$")
 
@@ -366,7 +370,7 @@ def check_case(topo: int, planner_first: bool) -> None:
         p for p in read
         if p not in ov and str(GENERIC_FRAGMENTS_DIR) in str(p)
     ]
-    pack_read = [p for p in read if PACK_FRAGMENTS_DIR in p.parents]
+    pack_read = [p for p in read if any(d in p.parents for d in PACK_TEXT_DIRS)]
     own = [p for p in pack_read if _PACK_TOPOLOGY_RE.search(p.name)]
     notes.append(
         f"{case}: {len(shared_read)} fragments read from the shared trees, "

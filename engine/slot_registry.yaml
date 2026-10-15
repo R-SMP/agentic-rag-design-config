@@ -8,7 +8,14 @@
 #
 #   source  pack | engine | setting | generated
 #   folder  dc | tools                 (pack)  dc_pack/fragments/<folder>/
-#   from    (generated) what computes it -- prompts._GENERATED_SLOTS
+#   filled_by tool                     (pack)  text about one of the pack's
+#                                      tools: it lives in the prompts/ folder
+#                                      of the tool that lists it in its
+#                                      tool.yaml (prompt_slots), and reads as
+#                                      empty when no tool does
+#   from    (generated) what computes it -- prompts._GENERATED_SLOTS, or
+#                                      _GENERATED_PER_AGENT for text that
+#                                      differs per agent
 #   kind    phrase | block | word      phrase = one line spliced into a
 #                                      sentence, re-wrapped at 80 columns
 #   use     prompt (default) | runtime runtime = read by Python, not a $slot
@@ -206,12 +213,14 @@ slots:
   render_view_list:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: outputs
     description: "The fixed render views the geometry tool produces, in parentheses."
   geometry_model_filename:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: outputs
     description: "File name of the 3D model the geometry tool writes (code-quoted)."
@@ -224,6 +233,7 @@ slots:
   precision_match_subject:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: outputs
     description: "What a precision job matches against, naming its possible targets."
@@ -236,23 +246,46 @@ slots:
   precision_match_targets:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: outputs
     description: "What a precision directive can name as the target to match."
   values_only_excluded_outputs:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: outputs
     description: "The geometry outputs a VALUES ONLY directive excludes (list). (topology 3 only)"
 
 # --- 5 Tools ---------------------------------------------------------------
   tool_inventory:
+    source: generated
+    from: tool_list
+    kind: block
+    section: tools
+    description: "Numbered list of the tools the tool runner is bound to, built by the engine from each tool's prompts/tool_list_entry.md and the tool_entry_* slots below."
+  tool_entry_new_attempt_parameters:
     source: pack
     folder: tools
     kind: block
+    use: runtime
     section: tools
-    description: "Numbered list of utility tools the Tool Caller is bound to (name, behaviour, what they return, plus any tool-produced metric lists)."
+    description: "Tool-list entry for new_attempt_parameters, first in the list when the tool runner also writes the parameters (topology 3)."
+  tool_entry_calculate:
+    source: pack
+    folder: tools
+    kind: block
+    use: runtime
+    section: tools
+    description: "Tool-list entry for calculate, after the configurator's own tools."
+  tool_entry_read_attempts:
+    source: pack
+    folder: tools
+    kind: block
+    use: runtime
+    section: tools
+    description: "Tool-list entry for read_attempts, last in the list."
   tool_caller_instructions:
     source: pack
     folder: tools
@@ -262,6 +295,7 @@ slots:
   tool_caller_capabilities:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     section: tools
     description: "One-paragraph description of the Tool Caller's bounded capability — used by the Orchestrator's \"Agent Capabilities\" section."
@@ -285,136 +319,159 @@ slots:
   geometry_tool_name:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Name of the DC tool that generates the geometry and renders it (code-quoted)."
   geometry_tools_loading_rule:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Tool-runner sentence: how the geometry tool(s) read the parameters file."
   render_type_choice:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     section: tools
     description: "Tool-runner paragraph: which DC tool to call for which output type (BSV only)."
   roster_sections_tool_sentence:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Roster sentence (with its <<IF:tool:render_blade_sections>> regions) naming the extra sections-only tool; empty for a single-tool DC."
   roster_tools_clause:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Roster clause naming the DC's geometry tools, ending with the main tool's name ('... Or it points <tool>')."
   routing_sections_alternative:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Hub routing clause (with its <<IF:tool:render_blade_sections>> regions) offering the sections-only render; empty for a single-tool DC."
   sections_rerun_case:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Inspector routing: the extra no-design-change case only a sections render creates (leading ', or ...')."
   directive_output_choice:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "What a standing directive imposes when geometry must be created, naming the alternative outputs."
   precision_multi_phase_rule:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Planner rule for runs with more than one precision phase; empty when the DC has one output type."
   precision_continue_directive_example:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     section: tools
     description: "Example STANDING DIRECTIVES body that moves a precision job to its next phase."
   sections_tool_block_full:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     section: tools
     description: "Sections-tool block (BSV markers + its fragments) for the Database Handler."
   sections_tool_block_overlay:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     section: tools
     description: "Sections-tool block (BSV markers + per-agent overlay) for the Planner."
   blade_sections_visualizer:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     section: tools
   blade_sections_visualizer_off:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     section: tools
   blade_sections_visualizer_per_agent:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     missing: empty
     section: tools
   geometry_editing_ban:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Sentence stating which geometry post-processing operations do NOT exist (Planner)."
   mesh_editing_operations_actions:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "The same operations as verbs ('You cannot ...')."
   recommendation_exclusions:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "What a REVISE recommendation must not contain."
   quality_check_numbers:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "The geometry tool's quality-check output, as 'the ... numbers'."
   quality_check_report:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Name of the geometry tool's quality-check report."
   mesh_check_role_item:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     section: tools
     description: "Inspector role-list item (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) for the quality-check report."
   qc_numerics_verdict_rule:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Sentence (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) allowing a verdict on quality-check figures alone."
   no_render_fallback_qc:
     source: pack
     folder: tools
+    filled_by: tool
     kind: phrase
     section: tools
     description: "Clause (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) adding the quality-check report to the no-render fallback. (topology 3 only)"
@@ -452,18 +509,21 @@ slots:
   render_check_library_off:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     use: runtime
     section: tools
   render_check_library_pyvista:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     use: runtime
     section: tools
   render_check_library_trimesh:
     source: pack
     folder: tools
+    filled_by: tool
     kind: block
     use: runtime
     section: tools

@@ -21,7 +21,7 @@ to the prompt-fragment library** (rather than to any single
 | `routing_planner_planner_first.md` / `routing_planner_uii_first.md` | Planner's "Available routing tools" subsection. The first variant is used when the Planner is first; the second when the UII is first. | (loaded by `routing.py` based on `PLANNER_FIRST`) |
 | `routing_user_input_inspector_planner_first.md` / `routing_user_input_inspector_uii_first.md` | UII's "Available routing tools" subsection, dual-variant on `PLANNER_FIRST`. | (loaded by `routing.py`) |
 | `routing_dc_input_creator_planner_first.md` / `routing_dc_input_creator_uii_first.md` | DCIC's "Available routing tools" subsection, dual-variant on `PLANNER_FIRST`. | (loaded by `routing.py`) |
-| `available_agents.md` | Directory of every agent in the system with role descriptions (used by the Planner). May reference other `$`-slots (e.g. `$parameter_count`, `$tool_inventory`); `_build_template` runs a second pass to resolve them. | `$available_agents` |
+| `available_agents.md` | Directory of every agent in the system with role descriptions (used by the Planner). May reference other `$`-slots (e.g. `$parameter_count`); `_build_template` runs a second pass to resolve them. | `$available_agents` |
 
 **Configurator-agnostic.**  Nothing in this folder (or in an agent's prompt
 body) names the design configurator, its tools or their outputs.  Where a

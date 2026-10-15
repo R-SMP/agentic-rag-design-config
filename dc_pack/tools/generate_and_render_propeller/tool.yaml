@@ -89,3 +89,31 @@ settings:
     description: >-
       ON = the render step also reports watertightness, volume and degenerate
       faces; OFF = only the renders, and the agents judge visually.
+
+# Its place in the tool runner's numbered tool list (its entry is
+# prompts/tool_list_entry.md), and the prompt text it owns: the files of
+# these slots live in prompts/ (engine/pack.py).
+list_order: 20
+prompt_slots:
+  - geometry_tool_name
+  - geometry_model_filename
+  - geometry_editing_ban
+  - mesh_editing_operations_actions
+  - recommendation_exclusions
+  - render_view_list
+  - render_check_library_trimesh
+  - render_check_library_pyvista
+  - render_check_library_off
+  - mesh_check_role_item
+  - no_render_fallback_qc
+  - qc_numerics_verdict_rule
+  - quality_check_numbers
+  - quality_check_report
+  - precision_match_subject
+  - precision_match_targets
+  - values_only_excluded_outputs
+  - directive_output_choice
+  - geometry_tools_loading_rule
+  - precision_continue_directive_example
+  - roster_tools_clause
+  - tool_caller_capabilities

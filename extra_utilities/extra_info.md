@@ -366,9 +366,10 @@ Both first builds were replaced (§1, §2).  As built:
   ```
 
   Topology 7 has no folder, so it always reads the shared files.
-* **Pack fragments** (`dc_pack/fragments/{dc,tools}/`, `engine/pack.py`) —
-  `<slot>.md` is one text for every topology, `<slot>.t<N>.md` topology N's
-  own; the lookup tries `.t<N>`, then the linked file, then `.t7`.
+* **Pack fragments** (`dc_pack/fragments/{dc,tools}/` and each tool's
+  `dc_pack/tools/<tool>/prompts/`, `engine/pack.py`) — `<slot>.md` is one text
+  for every topology, `<slot>.t<N>.md` topology N's own; the lookup tries
+  `.t<N>`, then the linked file, then `.t7`.
 * **Agent-scoped fragments** — `scoped_fragment_path(slot, agent)`.  Any pack
   slot can have one: `<slot>@<agent>.md` / `.t<N>.md`.  An engine slot can
   only if it is marked `scoped: true` in `engine/slot_registry.yaml` (listed
@@ -413,8 +414,9 @@ Both first builds were replaced (§1, §2).  As built:
 * **A topology-N change only touches files under `agents/<N>agent/`** (and
   `agents/topologyN/` for tool text) **and the pack's `.t<N>.md` files**.
   Every shared engine file is topology 7's live prompt, and a linked pack file
-  (`dc_pack/fragments/<folder>/<slot>.md`) is every topology's: editing it
-  moves all of them — unlink it first to change one topology only.
+  (`<slot>.md` in `dc_pack/fragments/<folder>/` or a tool's `prompts/`) is
+  every topology's: editing it moves all of them — unlink it first to change
+  one topology only.
 * **Always assemble and compare.**  Snapshot before and after with
   `extra_utilities/scripts/topology_prompt_snapshot.py save <dir>` /
   `diff <dirA> <dirB>`, and state which agents moved and which are

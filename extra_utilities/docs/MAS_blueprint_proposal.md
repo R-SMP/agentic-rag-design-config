@@ -419,6 +419,13 @@ Empty sections disappear with their heading.  Phase 3 must move today's propelle
 texts into these sections **without** changing the assembled prompts, or show the owner every
 difference for approval.  TODO: "insert anywhere".
 
+**As built (P3d, 2026-10-16).**  The propeller's tool text did not move under new headings:
+it moved, unchanged, into the tools' own folders (`dc_pack/tools/<tool>/prompts/`, listed in
+each `tool.yaml` under `prompt_slots`), so all 357 prompts stayed byte-identical.  The one
+section built from the tools is the tool runner's numbered tool list (`$tool_inventory`),
+assembled from each tool's `tool_list_entry.md`.  The three headings above remain an option
+for later.
+
 ### 5.6 Testing a tool in the Studio
 
 **Local mode only (§0A)** — the hosted Studio never runs pack code; there the button is

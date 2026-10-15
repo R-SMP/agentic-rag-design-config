@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F114**.
+branches (F36 is taken on a sibling branch).  Next free id: **F115**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -127,6 +127,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F111` | OPEN | The slider page reads its parameters through a served script — review and replace |
 | `F112` | OPEN | One Database window for everything database-related |
 | `F113` | OPEN | The generator's description still names the removed `GEOMETRY_BACKEND` setting |
+| `F114` | OPEN | Blade-sections texts name the generator literally |
 
 ---
 
@@ -4725,4 +4726,21 @@ Changing it changes the tool's description for every agent that has the tool
 its own wording approval and a new tool baseline.  Suggested wording: "chosen
 by the generator's ``geometry_backend`` tool setting (Workflow Settings ›
 Tools)".
+
+---
+
+### F114. Blade-sections texts name the generator literally
+
+**Status.** OPEN (2026-10-16), found during MAS-blueprint P3d.
+
+Six files the blade-sections tool owns write the generator's name by hand,
+``generate_and_render_propeller``: `render_type_choice` (`.t7` / `.t5` /
+`.t3`) and the Planner's blade-sections note
+(`blade_sections_visualizer_per_agent@planner.t7` / `.t5` / `.t3`), all in
+`dc_pack/tools/render_blade_sections/prompts/`.  A renamed or swapped
+generator would leave a stale name there.  Write `$geometry_tool_name`
+instead (the generator's own slot, which fills in the same code-quoted
+name).  The words stay the same, but phrase slots are re-wrapped at 80
+columns, so check the assembled prompts for moved line breaks before
+applying.
 

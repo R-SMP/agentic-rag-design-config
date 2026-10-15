@@ -70,9 +70,10 @@ Each topology keeps its own prompt tree: the 7-agent prompts sit beside their ag
 │   └── 3agent/  planner3/  topology3/  design_engineer/  requirements_analyst/  # topology 3
 ├── dc_pack/                      # the design-configurator pack (propeller today)
 │   ├── fragments/dc/             # parameters, structure, capabilities, constraints
-│   ├── fragments/tools/          # tool inventory, render-check library
-│   ├── tools/                    # the DC's tools, one folder each (tool.yaml + Python):
-│   │                             #   generate_and_render_propeller/, render_blade_sections/
+│   ├── fragments/tools/          # tool text no one tool owns: output words, engine-tool texts
+│   ├── tools/                    # the DC's tools, one folder each (tool.yaml + Python +
+│   │                             #   prompts/, the text it owns): generate_and_render_propeller/,
+│   │                             #   render_blade_sections/
 │   └── parameters.json, pack.yaml, assets/
 ├── engine/                       # pack loader, slot registry, parameters, tool loader + database schema
 ├── tools/                        # the engine's own tools

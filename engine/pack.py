@@ -9,14 +9,21 @@ engine reads it on every session build and never writes into it.
                              (engine/parameters.py)
       assets/                images (the parameter primer)
       fragments/dc/          text about the configurator
-      fragments/tools/       text about its tools
+      fragments/tools/       text about its tools that no one tool owns
+      tools/<tool>/prompts/  the text a tool owns (its tool.yaml lists the
+                             slots under ``prompt_slots``), plus its entry
+                             in the tool runner's numbered tool list
+                             (``tool_list_entry.md``)
 
 The slot registry, ``engine/slot_registry.yaml``, lists every ``$slot`` the
 engine offers and how to read it.  It belongs to the engine; a pack only
-supplies the text.
+supplies the text.  A slot marked ``filled_by: tool`` is text about one of
+the pack's tools: the tool that claims it holds its files, and with no tool
+claiming it -- the tool was removed -- it reads as empty.
 
-Fragment files in ``dc_pack/fragments/<folder>/``.  Which of them exist IS
-the link state -- the Studio's link icon -- and is stored nowhere else:
+Fragment files in ``dc_pack/fragments/<folder>/`` (or a tool's ``prompts/``).
+Which of them exist IS the link state -- the Studio's link icon -- and is
+stored nowhere else:
 
     <slot>.md                one text for every topology ("linked")
     <slot>.t<N>.md           topology N's own text ("unlinked")
@@ -50,6 +57,8 @@ ENGINE_DIR = Path(__file__).resolve().parent
 REGISTRY_PATH = ENGINE_DIR / "slot_registry.yaml"
 REFERENCE_TOPOLOGY = 7
 FOLDERS = ("dc", "tools")
+TOOL_PROMPTS = "prompts"            # dc_pack/tools/<tool>/prompts/
+TOOL_LIST_ENTRY = "tool_list_entry"  # its entry in the tool runner's list
 
 _TOPOLOGY_SUFFIX_RE = re.compile(r"\.t\d+$")
 
@@ -70,6 +79,47 @@ def fragments_dir() -> Path:
 
 def asset_path(name: str) -> Path:
     return pack_dir() / "assets" / name
+
+
+def tools_dir() -> Path:
+    return pack_dir() / "tools"
+
+
+def tool_prompts_dir(tool: str) -> Path:
+    return tools_dir() / tool / TOOL_PROMPTS
+
+
+_claims_cache: dict[tuple, dict[str, str]] = {}
+
+
+def tool_claims() -> dict[str, str]:
+    """slot -> the tool whose folder holds its text (each ``tool.yaml``'s
+    ``prompt_slots``).  Re-read whenever a ``tool.yaml`` changes; a slot two
+    tools claim goes to the first here and is reported by
+    ``engine/pack_tools.manifests()``."""
+    root = tools_dir()
+    files = sorted(root.glob("*/tool.yaml")) if root.is_dir() else []
+    key = (str(root), tuple((f.parent.name, f.stat().st_mtime_ns) for f in files))
+    if key not in _claims_cache:
+        claims: dict[str, str] = {}
+        for f in files:
+            m = yaml.safe_load(f.read_text(encoding="utf-8"))
+            listed = m.get("prompt_slots") if isinstance(m, dict) else None
+            for slot in listed if isinstance(listed, list) else []:
+                claims.setdefault(str(slot), f.parent.name)
+        _claims_cache.clear()
+        _claims_cache[key] = claims
+    return _claims_cache[key]
+
+
+def text_dirs() -> list[Path]:
+    """Every folder that holds slot text: ``fragments/<folder>/`` and each
+    tool's ``prompts/``."""
+    dirs = [fragments_dir() / f for f in FOLDERS]
+    root = tools_dir()
+    if root.is_dir():
+        dirs += [p / TOOL_PROMPTS for p in sorted(root.iterdir()) if p.is_dir()]
+    return [d for d in dirs if d.is_dir()]
 
 
 # ---------------------------------------------------------------------------
@@ -126,16 +176,30 @@ def _first(folder: Path, names: list[str]) -> Path | None:
 
 
 def _folder(slot: str) -> Path:
+    tool = tool_claims().get(slot)
+    if tool is not None:
+        return tool_prompts_dir(tool)
     return fragments_dir() / slot_spec(slot)["folder"]
+
+
+def unclaimed_tool_slot(slot: str) -> bool:
+    """True for a ``filled_by: tool`` slot no tool of the pack fills: it
+    reads as empty."""
+    return (slot_spec(slot).get("filled_by") == "tool"
+            and slot not in tool_claims())
 
 
 def agent_copy_path(slot: str, topology: int, agent: str) -> Path | None:
     """*agent*'s own copy of *slot* in *topology*, or None if it has none."""
+    if unclaimed_tool_slot(slot):
+        return None
     return _first(_folder(slot), _candidates(f"{slot}@{agent}", topology))
 
 
 def shared_path(slot: str, topology: int) -> Path | None:
     """The text of *slot* every agent without its own copy gets."""
+    if unclaimed_tool_slot(slot):
+        return None
     return _first(_folder(slot), _candidates(slot, topology))
 
 
@@ -158,7 +222,7 @@ def read(slot: str, topology: int, agent: str | None = None) -> str:
     spec = slot_spec(slot)
     path = fragment_path(slot, topology, agent)
     if path is None:
-        if spec.get("missing") == "empty":
+        if spec.get("missing") == "empty" or unclaimed_tool_slot(slot):
             return ""
         raise FileNotFoundError(
             f"no file for ${slot} (topology {topology}) in {_folder(slot)}")
@@ -172,11 +236,9 @@ def agent_copies(agent: str, topology: int) -> dict[str, str]:
     caller can lay the result over the shared slot map.
     """
     found: set[str] = set()
-    for folder in FOLDERS:
-        d = fragments_dir() / folder
-        if d.is_dir():
-            for pattern in (f"*@{agent}.md", f"*@{agent}.t*.md"):
-                found.update(slot_of_file(p.name) for p in d.glob(pattern))
+    for d in text_dirs():
+        for pattern in (f"*@{agent}.md", f"*@{agent}.t*.md"):
+            found.update(slot_of_file(p.name) for p in d.glob(pattern))
     out: dict[str, str] = {}
     for slot in sorted(found):
         path = agent_copy_path(slot, topology, agent)
@@ -186,10 +248,23 @@ def agent_copies(agent: str, topology: int) -> dict[str, str]:
 
 
 def fragment_files() -> list[Path]:
-    """Every fragment file in the pack."""
+    """Every slot file in the pack: ``fragments/<folder>/`` and each tool's
+    ``prompts/`` (its tool-list entry is not a slot: see
+    :func:`tool_list_entry_files`)."""
     out: list[Path] = []
-    for folder in FOLDERS:
-        d = fragments_dir() / folder
-        if d.is_dir():
-            out.extend(sorted(d.glob("*.md")))
+    for d in text_dirs():
+        out.extend(p for p in sorted(d.glob("*.md"))
+                   if slot_of_file(p.name) != TOOL_LIST_ENTRY)
     return out
+
+
+def tool_list_entry_path(tool: str, topology: int) -> Path | None:
+    """*tool*'s entry in the tool runner's numbered tool list, for
+    *topology* (same lookup as a slot's shared text)."""
+    return _first(tool_prompts_dir(tool), _candidates(TOOL_LIST_ENTRY, topology))
+
+
+def tool_list_entry_files() -> list[Path]:
+    """Every tool's ``tool_list_entry*.md``."""
+    root = tools_dir()
+    return sorted(root.glob(f"*/{TOOL_PROMPTS}/{TOOL_LIST_ENTRY}*.md")) if root.is_dir() else []

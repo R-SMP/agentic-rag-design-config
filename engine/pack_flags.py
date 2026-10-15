@@ -15,6 +15,10 @@ The flags come from the tools themselves (``dc_pack/tools/<tool>/tool.yaml``,
 for a tool without one), ``setting:<name>.<setting>`` each boolean tool
 setting.  Values are read fresh on every call, with the Workflow Settings
 changes laid over the defaults.
+
+A flag naming a tool that is not in the pack -- its folder was removed --
+reads as switched off (:func:`absent`), so text marked for that tool leaves
+the prompts as it does when the tool is switched off.
 """
 
 from __future__ import annotations
@@ -32,3 +36,8 @@ def declared() -> list[str]:
 def values() -> dict[str, bool]:
     """Every pack flag with its value for the session being built."""
     return _pack_tools.flag_values()
+
+
+def absent(flag: str) -> bool:
+    """True when *flag* names a tool that is not in the pack."""
+    return _pack_tools.names_absent_tool(flag)

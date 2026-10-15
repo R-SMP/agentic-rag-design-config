@@ -52,6 +52,7 @@ from agents.shared.topology import (
 )
 from engine import pack as _pack
 from engine import pack_flags as _pack_flags
+from engine import pack_tools as _pack_tools
 from engine import parameter_access as _parameter_access
 from engine import parameters as _parameters
 from workflow_settings import settings as _workflow_settings
@@ -456,7 +457,9 @@ def apply_if_flags(text: str, flags: dict[str, bool], *,
     ``_IF_RE``), then drop each line the removals left empty.
 
     A flag not in *flags* is an error, so a misspelt marker fails the build
-    instead of reaching a model.  With *per_agent_later* (the global pass in
+    instead of reaching a model -- except a ``tool:`` / ``setting:`` flag
+    naming a tool that is not in the pack (removed), which reads as switched
+    off.  With *per_agent_later* (the global pass in
     :func:`apply_flag_filters`), a region whose flag has no ``tool:`` /
     ``setting:`` prefix is left for the per-agent pass in
     :func:`_build_template`.
@@ -466,6 +469,8 @@ def apply_if_flags(text: str, flags: dict[str, bool], *,
         if name not in flags:
             if per_agent_later and ":" not in name:
                 return m.group(0)
+            if _pack_flags.absent(name):
+                return body if kind == "IFNOT" else _REMOVED
             raise ValueError(f"unknown prompt flag <<{kind}:{name}>> "
                              f"(known: {', '.join(sorted(flags))})")
         return body if flags[name] == (kind == "IF") else _REMOVED
@@ -546,7 +551,7 @@ RENDER_CHECK_LIBRARY_OFF = read_pack_fragment("render_check_library_off")
 # The Planner additionally needs a directory of every agent in the
 # system (with role descriptions); authored in ``available_agents.md``
 # and spliced via ``$available_agents``.  This fragment itself
-# references ``$parameter_count`` and ``$tool_inventory``, so
+# references ``$parameter_count``, so
 # ``_build_template`` runs a second substitution pass to resolve the
 # nested $-placeholders.
 # ---------------------------------------------------------------------------
@@ -841,6 +846,14 @@ _GENERATED_SLOTS = {
     "parameter_count": lambda: str(_parameters.count()),
 }
 
+# Generated slots that differ per agent: "" in the shared map, filled for the
+# agent being assembled in _build_template.
+_GENERATED_PER_AGENT = {
+    # $tool_inventory: the tool runner's numbered tool list, built from each
+    # tool's own entry (engine/pack_tools.tool_list).
+    "tool_list": _pack_tools.tool_list,
+}
+
 
 def _build_slots() -> dict[str, str]:
     """Re-read every fragment from disk and assemble the $-slot map.
@@ -861,7 +874,8 @@ def _build_slots() -> dict[str, str]:
         elif source == "engine":
             slots[name] = _read_generic_fragment(_engine_fragment_file(spec))
         elif source == "generated":
-            slots[name] = _GENERATED_SLOTS[spec["from"]]()
+            slots[name] = ("" if spec["from"] in _GENERATED_PER_AGENT
+                           else _GENERATED_SLOTS[spec["from"]]())
         else:
             slots[name] = _SETTING_SLOT_VALUES[name]
     return slots
@@ -901,7 +915,7 @@ def _build_template(agent_dir_name: str) -> str:
 
     Two passes are run so a fragment may itself reference another
     ``$slot`` (e.g. ``available_agents.md`` references
-    ``$parameter_count`` and ``$tool_inventory``).  One level of
+    ``$parameter_count``).  One level of
     nesting is enough for current usage; deeper nesting would require
     more passes or a fixed-point loop.
 
@@ -919,6 +933,9 @@ def _build_template(agent_dir_name: str) -> str:
         **_build_slots(),
         **_scoped_fragments_for(agent_dir_name),
     }
+    for _name, _spec in _pack.slots(source="generated").items():
+        if _spec["from"] in _GENERATED_PER_AGENT:
+            slots[_name] = _GENERATED_PER_AGENT[_spec["from"]](agent_dir_name)
     # Who sees the parameter list (engine/parameter_access.py): "names"
     # removes the ranges from this agent's list; the <<IF:param_list>> /
     # <<IF:param_ranges>> regions are resolved after the substitution.

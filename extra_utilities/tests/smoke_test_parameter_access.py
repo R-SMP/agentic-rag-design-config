@@ -20,11 +20,12 @@ the ``dc_params_list`` tool, or nothing.  The default lives in
    default, rejects a cell the grid does not have, and resetting removes it.
    Written to a temporary path, never the real one.
 5. THE FLAGS.  Every ``<<IF:flag>>`` / ``<<IFNOT:flag>>`` in a prompt or a
-   fragment names a known flag -- ``param_list``, ``param_ranges``, or one
-   ``dc_pack/pack.yaml`` declares (``tool:…``, ``setting:…``, read by
-   ``engine/pack_flags.py``) -- and is closed in the same file; every
-   declared flag reads a setting that exists.  A misspelt flag would
-   otherwise fail only when a session is built.
+   fragment (a tool's own ``prompts/`` included) names a known flag --
+   ``param_list``, ``param_ranges``, or one the pack's tools declare
+   (``tool:…``, ``setting:…``, ``engine/pack_tools.py``) -- and is closed in
+   the same file.  A misspelt flag would otherwise fail only when a session
+   is built -- or, if it names no tool of the pack, read as a removed tool
+   and silently switch its text off.
 
 Run from the repo root:
     py -3.13 extra_utilities/tests/smoke_test_parameter_access.py
@@ -168,7 +169,8 @@ def check_flags() -> int:
         check(False, f"[FLAGS] {exc}")
         return 0
     files = sorted(set((ROOT / "agents").rglob("*.md"))
-                   | set(pack.fragments_dir().rglob("*.md")))
+                   | set(pack.fragments_dir().rglob("*.md"))
+                   | set(pack.tools_dir().glob(f"*/{pack.TOOL_PROMPTS}/*.md")))
     files = [f for f in files if f.name != "README.md"]
     for f in files:
         text = f.read_text(encoding="utf-8")

@@ -405,6 +405,7 @@
       h('span', { 'class': 'nm' }, agent ? '↳ ' + disp(agent) : s.slot),
       h('span', { 'class': 'meta' }, agent ? [kpill('own copy for this agent')] : [
         kpill(s.kind), kpill(s.origin === 'tool' ? 'tool' : 'DC', s.origin === 'tool' ? 'tool' : 'dc'),
+        s.owner ? kpill('owned by ' + ownerName(s.owner)) : null,
         present.length > 1 ? h('span', { 'class': 'link ' + (unlinked ? 'off' : 'on'), title: unlinked ? 'Click to link: choose which text to keep for all' : 'Click to unlink: give each topology its own text' },
           unlinked ? '⛓ unlinked' : '🔗 linked') : null])
     ]);
@@ -461,6 +462,7 @@
     var box = h('div', { 'class': 'insp' }, [
       h('div', { 'class': 'title' }, s.slot + (agent ? '  @' + agent : '')),
       h('div', { 'class': 'pills' }, [kpill(s.kind), kpill(s.origin === 'tool' ? 'tool text' : 'DC text', s.origin === 'tool' ? 'tool' : 'dc'),
+        s.owner ? kpill('owned by ' + ownerName(s.owner)) : null,
         s.linked ? kpill('linked 3·5·7') : kpill('per topology'), f104All().indexOf(s.slot) >= 0 ? pill('F104', 'warn', 'mentions a feature but has no feature marker') : null]),
       h('p', null, s.description || h('span', { 'class': 'muted' }, 'No description yet (the registry will hold one per field).')),
       h('div', { 'class': 'block' }, [h('h4', null, 'Propeller value'), h('div', { 'class': 'refval' }, v7 || '(empty)'),
@@ -620,6 +622,7 @@
           h('div', { 'class': 'k' }, 'Settings'), h('div', null, m.settings),
           h('div', { 'class': 'k' }, 'Secrets'), h('div', null, m.secrets),
           h('div', { 'class': 'k' }, 'Dependencies'), h('div', null, m.deps),
+          h('div', { 'class': 'k' }, 'Prompt text'), h('div', null, t.owns.length + ' fields it owns (they leave with it) + its entry in the tool runner\u2019s numbered list, place ' + t.list_order),
           h('div', { 'class': 'k' }, 'Code'), h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  manifest dc_pack/tools/' + t.name + '/tool.yaml')
         ]),
         !local ? h('div', { 'class': 'disabled-note', style: 'margin-top:8px' }, 'Test tool is available after download, on your own computer: python -m studio') : null
@@ -629,7 +632,7 @@
     });
     add(center, wrap);
     add(center, h('div', { style: 'padding:6px 16px 4px' }, [h('h4', null, 'Tool text the agents read · ' + slotsOf('tools').length + ' fields'),
-      h('div', { 'class': 'muted', style: 'font-size:11.5px' }, 'Today’s propeller tool text. With the tool contract (phase P3) most of it moves into each tool’s own sections.')]));
+      h('div', { 'class': 'muted', style: 'font-size:11.5px' }, 'A field owned by a tool lives in that tool’s folder (dc_pack/tools/<tool>/prompts/) and leaves with it; the others are shared by all tools.')]));
     add(center, grid(slotsOf('tools')));
     if (R.q.field) { add(right, inspectField(slotByName(R.q.field))); if (R.q.modal === 'newtool') openNewTool(); return; }
     add(right, h('div', { 'class': 'insp' }, [
@@ -637,8 +640,8 @@
       h('p', null, 'A tool is bound to a ROLE, not to an agent. The engine gives it to whichever agent holds that role in the running topology.'),
       h('div', { 'class': 'block' }, [h('h4', null, 'tool runner'), h('div', { 'class': 'kv', style: 'grid-template-columns:70px 1fr' },
         [3, 5, 7].reduce(function (acc, t) { var a = holder('tool_caller', t); return acc.concat([h('div', { 'class': 'k' }, t + '-agent'), h('div', null, a ? disp(a) : '—')]); }, []))]),
-      h('div', { 'class': 'block' }, [h('h4', null, 'Text the agents read about tools'), h('p', null, 'Each tool adds its text to fixed sections of the agents that hold its role: “How to use your configurator tools”, “Hard constraints — tools” and “Reporting tool results”. Today’s propeller tool text is in the ' +
-        slotsOf('tools').length + ' fields below the cards.')]),
+      h('div', { 'class': 'block' }, [h('h4', null, 'Text the agents read about tools'), h('p', null, 'Each tool owns the text about it: ' +
+        D.tools.reduce(function (n, t) { return n + t.owns.length; }, 0) + ' fields live in the tools’ own folders, and the tool runner’s numbered tool list is built from each tool’s entry. Removing a tool removes its text; a marked passage about it elsewhere reads as switched off.')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'On this site'), h('p', null, local ? 'Local mode: tools are imported and run on this computer, in a separate process.' :
         'Hosted: a tool’s Python file is stored in your setup file and checked as text only. It is never imported or run here.')])
     ]));
@@ -781,8 +784,13 @@
    * Prompt viewer (inside the main window)
    * ==================================================================== */
   function topoAgents(t) { return Object.keys(D.prompts[String(t)].prompts); }
+  function ownerName(tool) { var t = D.tools.filter(function (x) { return x.name === tool; })[0]; return t ? t.display : tool; }
+  // Built by the engine from each tool's own entry (the tool runner's list):
+  // tool text, but no single field to open.
+  var ENGINE_BUILT = { tool_inventory: 1 };
   function originOf(name) {
     if (RUNTIME[name]) return 'rt';
+    if (ENGINE_BUILT[name]) return 'tool';
     var s = slotByName(name);
     return s ? (s.origin === 'tool' ? 'tool' : 'dc') : 'dc';
   }
@@ -818,7 +826,7 @@
     var cnt = { gen: 0, dc: 0, tool: 0, rt: 0 };
     for (var i = 0; i < text.length; i++) cnt[own[i] || 'gen']++;
     var used = {};
-    spans.forEach(function (sp) { if (!RUNTIME[sp[2]]) used[sp[2]] = (used[sp[2]] || 0) + 1; });
+    spans.forEach(function (sp) { if (!RUNTIME[sp[2]] && !ENGINE_BUILT[sp[2]]) used[sp[2]] = (used[sp[2]] || 0) + 1; });
     var col = { gen: '#4a4d57', dc: 'var(--a)', tool: 'var(--b)', rt: 'var(--c)' };
     add(right, h('div', { 'class': 'insp' }, [
       h('div', { 'class': 'title' }, disp(agent) + ' · topology ' + topo),
@@ -847,7 +855,7 @@
       var j = i;
       while (j < text.length && own[j] === own[i] && nm[j] === nm[i]) j++;
       var chunk = esc(text.slice(i, j));
-      out.push(own[i] ? '<span class="o-' + own[i] + '" title="' + esc(nm[i]) + '"' + (own[i] !== 'rt' ? ' data-slot="' + esc(nm[i]) + '"' : '') + '>' + chunk + '</span>' : chunk);
+      out.push(own[i] ? '<span class="o-' + own[i] + '" title="' + esc(nm[i]) + '"' + (own[i] !== 'rt' && !ENGINE_BUILT[nm[i]] ? ' data-slot="' + esc(nm[i]) + '"' : '') + '>' + chunk + '</span>' : chunk);
       i = j;
     }
     return out.join('');

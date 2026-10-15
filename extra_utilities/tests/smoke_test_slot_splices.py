@@ -51,8 +51,14 @@ PACK_DIR = Path(os.getenv("DC_PACK_DIR") or "dc_pack")
 if not PACK_DIR.is_absolute():
     PACK_DIR = ROOT / PACK_DIR
 PACK_FRAGMENTS_DIR = PACK_DIR / "fragments"
+# The text a tool owns lives in its own folder (dc_pack/tools/<tool>/prompts/),
+# named by the same rule; its tool_list_entry*.md is one entry of the
+# engine-built $tool_inventory.
+TOOL_PROMPT_DIRS = tuple(sorted(p for p in (PACK_DIR / "tools").glob("*/prompts")
+                                if p.is_dir()))
+PACK_TEXT_DIRS = (PACK_FRAGMENTS_DIR, *TOOL_PROMPT_DIRS)
 GENERIC_FRAGMENTS_DIR = ROOT / "agents" / "shared" / "prompt_fragments"
-FRAGMENT_DIRS = (PACK_FRAGMENTS_DIR, GENERIC_FRAGMENTS_DIR)
+FRAGMENT_DIRS = (*PACK_TEXT_DIRS, GENERIC_FRAGMENTS_DIR)
 
 SLOT_RE = re.compile(r"\$([a-z_][a-z0-9_]*)")
 # <<RAG_ON>>-style markers, and the <<IF:flag>> / <<IFNOT:flag>> ones (flag
@@ -82,7 +88,9 @@ def _fragment_shapes() -> dict:
             if f.is_file() and f.suffix in (".md", ".txt"):
                 body = f.read_text(encoding="utf-8").rstrip()
                 shape = (len(body), body.count("\n") + 1 if body else 0)
-                slot = _pack_slot(f.stem) if d == PACK_FRAGMENTS_DIR else f.stem
+                slot = _pack_slot(f.stem) if d in PACK_TEXT_DIRS else f.stem
+                if slot == "tool_list_entry":
+                    slot = "tool_inventory"   # one entry of the engine-built list
                 if shape[1] > shapes.get(slot, (0, 0))[1]:
                     shapes[slot] = shape
                 else:
