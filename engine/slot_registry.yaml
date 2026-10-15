@@ -305,7 +305,7 @@ slots:
     folder: tools
     kind: phrase
     section: tools
-    description: "Roster sentence (with its <<BSV_ON>> markers) naming the extra sections-only tool; empty for a single-tool DC."
+    description: "Roster sentence (with its <<IF:tool:render_blade_sections>> regions) naming the extra sections-only tool; empty for a single-tool DC."
   roster_tools_clause:
     source: pack
     folder: tools
@@ -317,7 +317,7 @@ slots:
     folder: tools
     kind: phrase
     section: tools
-    description: "Hub routing clause (with <<BSV_ON>> markers) offering the sections-only render; empty for a single-tool DC."
+    description: "Hub routing clause (with its <<IF:tool:render_blade_sections>> regions) offering the sections-only render; empty for a single-tool DC."
   sections_rerun_case:
     source: pack
     folder: tools
@@ -405,19 +405,19 @@ slots:
     folder: tools
     kind: block
     section: tools
-    description: "Inspector role-list item (with <<MESH_ON>> markers) for the quality-check report."
+    description: "Inspector role-list item (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) for the quality-check report."
   qc_numerics_verdict_rule:
     source: pack
     folder: tools
     kind: phrase
     section: tools
-    description: "Sentence (with <<MESH_ON>> markers) allowing a verdict on quality-check figures alone."
+    description: "Sentence (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) allowing a verdict on quality-check figures alone."
   no_render_fallback_qc:
     source: pack
     folder: tools
     kind: phrase
     section: tools
-    description: "Clause (with <<MESH_ON>> markers) adding the quality-check report to the no-render fallback. (topology 3 only)"
+    description: "Clause (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) adding the quality-check report to the no-render fallback. (topology 3 only)"
   visualize_3d_model_tool:
     source: pack
     folder: tools

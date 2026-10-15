@@ -442,8 +442,8 @@
     if (/^\(/.test(v)) out.push('Keep the parentheses: the sentence expects "( … )".');
     if (/^,/.test(v)) out.push('Starts with a comma: it continues the sentence before it.');
     if (/^"/.test(v)) out.push('A quoted list: "…", "…".');
-    if (/<<BSV_ON>>/.test(v)) out.push('Carries <<BSV_ON>>: shown only while the blade-sections tool is on.');
-    if (/<<MESH_ON>>/.test(v)) out.push('Carries <<MESH_ON>>: shown only while mesh checks are on.');
+    if (/<<IF(NOT)?:tool:/.test(v)) out.push('Carries an <<IF:tool:…>> region: part of it depends on whether that tool is on.');
+    if (/<<IF(NOT)?:setting:/.test(v)) out.push('Carries an <<IF:setting:…>> region: part of it depends on that tool setting.');
     return out;
   }
   function inspectField(s) {

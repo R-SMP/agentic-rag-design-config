@@ -209,7 +209,7 @@ Never instruct an agent to perform anything outside this list.
   AND judges whether parameter changes originating from other agents
   are appropriate, within ranges, and coming from an authorised source.
 <</DCII_ONLY>>- $tool_caller_capabilities
-- **DC Output Inspector**: inspects $output_images_long + $quality_check_report.
+- **DC Output Inspector**: inspects $output_images_long$quality_check_report.
 
 ## Escalation Hierarchy (CRITICAL)
 The workflow has exactly THREE decision authorities, in this order:

@@ -13,7 +13,7 @@ chooses another pack; the default is this folder.
 | `fragments/dc/` | Text about the configurator: parameter list, structure, modelling notes, capabilities, examples, … |
 | `fragments/tools/` | Text about the bound tools: tool inventory, tool rules, output vocabulary, render-check blocks, … |
 | `parameters.json` | The parameters: names in canonical (JSON) order, types, ranges, steps, defaults, groups, and each consumer's wording (slider label/unit, database unit/description).  The one source for the validator, `$parameter_count`, the slider page, the preview check and the database schema (`engine/parameters.py`).  The agents' parameter lists stay hand-written; `smoke_test_parameters.py` checks they agree. |
-| `pack.yaml` | The pack's own settings.  Today one: `parameter_access`, who sees the parameter list for each agent and topology (full list / names only / through the `dc_params_list` tool / nothing).  It is the default; Workflow Settings › Parameter list access changes cells for the next session (`engine/parameter_access.py`). |
+| `pack.yaml` | The pack's own settings.  `parameter_access`, who sees the parameter list for each agent and topology (full list / names only / through the `dc_params_list` tool / nothing).  It is the default; Workflow Settings › Parameter list access changes cells for the next session (`engine/parameter_access.py`); and `tool_switches` / `tool_settings`, which Workflow Settings value turns each `<<IF:tool:…>>` / `<<IF:setting:…>>` flag on (until the tools get their own files). |
 | `assets/` | Images — the parameter primer (`dc_params_primer.png`). |
 
 The engine's own text — the DOs / DON'Ts every agent inherits, the routing
@@ -67,7 +67,7 @@ a fragment holds:
    only because this DC has two geometry tools / output types (blade-section
    renders vs the full 3D model, "Never both", "Both geometry tools",
    multi-phase precision) is ONE fragment, including its connecting words and
-   its `<<BSV_ON>>` / `<<MESH_ON>>` markers.  A single-tool DC empties or
+   its `<<IF:tool:…>>` / `<<IF:setting:…>>` markers.  A single-tool DC empties or
    rewrites that one fragment.
 
 ## Adding a slot

@@ -1,1 +1,1 @@
-<<BSV_ON>>, or render just its blade sections (``render_blade_sections``)<</BSV_ON>>
+<<IF:tool:render_blade_sections>>, or render just its blade sections (``render_blade_sections``)<</IF:tool:render_blade_sections>>

@@ -1,1 +1,1 @@
-<<MESH_ON>>  Forming a verdict on QC numerics alone is fine; pretending it came from images you didn't load is not.<</MESH_ON>>
+<<IF:setting:generate_and_render_propeller.mesh_checks>>  Forming a verdict on QC numerics alone is fine; pretending it came from images you didn't load is not.<</IF:setting:generate_and_render_propeller.mesh_checks>>

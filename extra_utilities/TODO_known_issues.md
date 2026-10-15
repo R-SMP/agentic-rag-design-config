@@ -118,7 +118,6 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F100` | DONE | The shared retrieval fragment told the DCIC and Design Engineer to look at images they hold no tool to open |
 | `F102` | OPEN | Make the agent role map user-customizable in Workflow Settings |
 | `F103` | OPEN | Retire `RAG_DCIC_READS_DCII` once F102 lands |
-| `F104` | OPEN | Feature-gated fragments that still ship when their feature is OFF |
 | `F105` | OPEN | Rename `visualize_3d_model` and `propose_attempt` to configurator-neutral names |
 | `F106` | OPEN | DC / tool wording left in Python-side prompt text |
 | `F107` | OPEN | `measure_prompts.py` replicates a slot map that no longer matches |
@@ -4602,26 +4601,6 @@ just an entry in it.  Remove the flag, its `_INERT_UNDER_TOPOLOGY` entry in
 `workflow_settings/editor.py`, `agent_roles.dcic_reads_dcii()` and the
 special case in `agent_roles.holder()`, and the "(setting 3b …)" hint in the
 Workflow Settings panel (`loadAgentRoles` in `web/app.js`).
-
----
-
-### F104. Feature-gated fragments that still ship when their feature is OFF
-
-**Status.** OPEN — found by the generic-fragments audit (2026-10-13); a pure
-relocation, so the gap was moved, not fixed.
-
-These `tools_config/` fragments describe the blade-sections tool or the mesh
-checks but carry no `<<BSV_ON>>` / `<<MESH_ON>>` marker, so they reach the
-agents with `BLADE_SECTIONS_VISUALIZER_ENABLED` or `MESH_CHECKS` off:
-blade sections — `directive_output_choice`, `precision_multi_phase_rule`,
-`precision_continue_directive_example`, `precision_match_subject`,
-`precision_match_targets`, `sections_rerun_case`, `values_only_excluded_outputs`
-(topology 3), `geometry_tools_loading_rule` ("Both geometry tools");
-mesh checks — `quality_check_numbers`, `quality_check_report`,
-`observable_fact_questions` ("what did the checks say?"),
-`tool_run_history_contents` ("+ metrics").  Each fix is now confined to the
-fragment file (all three topology copies) and changes the assembled prompts
-only with the feature off — show each one to the owner first.
 
 ---
 

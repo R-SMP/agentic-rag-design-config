@@ -37,10 +37,13 @@ gate optional content:
   resolved against `DC_INSPECTOR_ENABLED`.
 - `<<PF_ON>>…<</PF_ON>>` and `<<PF_OFF>>…<</PF_OFF>>` — resolved
   against `PLANNER_FIRST`.
-- `<<BSV_ON>>…<</BSV_ON>>` / `<<BSV_OFF>>…<</BSV_OFF>>` — resolved
-  against `BLADE_SECTIONS_VISUALIZER_ENABLED`.  These regions (and the
-  `<<MESH_ON>>` ones) now live only inside the pack's `fragments/tools/` files; the
-  generic files carry none.
+- `<<IF:flag>>…<</IF:flag>>` / `<<IFNOT:flag>>…<</IFNOT:flag>>` — kept when
+  the flag is on (IF) or off (IFNOT); a line the removal leaves empty
+  disappears with it.  The pack's flags, `tool:<tool>` and
+  `setting:<tool>.<name>`, are declared in `dc_pack/pack.yaml`
+  (`engine/pack_flags.py`) and live only in the pack's fragments; the
+  per-agent `param_list` / `param_ranges` come from the parameter-access
+  table.  The generic files carry no pack flag.
 - `<<HAS_DBA>>…<</HAS_DBA>>` — **per-agent**, kept only for agents that
   have `database_search` access.
 - `<<CHAIN_ONLY>>…<</CHAIN_ONLY>>` — **per-agent**, stripped for the two

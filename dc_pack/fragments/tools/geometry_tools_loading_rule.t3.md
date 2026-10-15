@@ -1,1 +1,1 @@
-Both geometry tools read ``parameters.json`` from disk themselves.
+<<IF:tool:render_blade_sections>>Both geometry tools read ``parameters.json`` from disk themselves.<</IF:tool:render_blade_sections>><<IFNOT:tool:render_blade_sections>>The geometry tool reads ``parameters.json`` from disk itself.<</IFNOT:tool:render_blade_sections>>

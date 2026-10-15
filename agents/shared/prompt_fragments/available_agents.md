@@ -21,7 +21,7 @@
 <</DCII_ONLY>>- **Tool Caller (TC)**: points $geometry_tool_name
   at an attempt's ``parameters.json`` and calls it once — the tool reads
   that record itself and produces the $output_model file
-  AND, as its built-in final step, the $output_images and (if enabled) $quality_check_numbers.$roster_sections_tool_sentence  Also has a ``calculate`` tool for
+  AND, as its built-in final step, the $output_images$quality_check_numbers.$roster_sections_tool_sentence  Also has a ``calculate`` tool for
   arithmetic.  Reports the produced file paths for the DC Output
   Inspector.
 - **DC Output Inspector (DCOI)**: loads the $output_image_files using the

@@ -1,3 +1,3 @@
-<<MESH_ON>>### Domain hard rules
+<<IF:setting:generate_and_render_propeller.mesh_checks>>### Domain hard rules
 - The ONLY mesh metrics are watertightness, volume and degenerate-face
-  count.<</MESH_ON>>
+  count.<</IF:setting:generate_and_render_propeller.mesh_checks>>

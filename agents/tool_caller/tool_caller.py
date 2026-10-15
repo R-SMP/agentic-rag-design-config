@@ -131,7 +131,7 @@ class ToolCaller(BaseChainAgent):
         # Mesh checks OFF => the render step emits no metrics at all
         # (render_mesh.py:281 guards the findings, :329 the summary), so a
         # backend's metric semantics would describe a report this agent
-        # never receives.  Gated HERE rather than with <<MESH_ON>> markers
+        # never receives.  Gated HERE rather than with an <<IF:setting:…>> region
         # because .format() runs AFTER apply_flag_filters — a marker inside
         # the injected fragment would never be filtered.
         # Read HERE, not from the module-level RENDER_CHECK_LIBRARY_*

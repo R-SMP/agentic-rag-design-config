@@ -34,7 +34,7 @@ line or it is not.
 THE ONE LEGITIMATE EXCEPTION is a conditional region written inline, which the
 marker syntax requires:
 
-    <</BSV_ON>><<BSV_OFF>>$blade_sections_visualizer_off<</BSV_OFF>>
+    <</IF:tool:render_blade_sections>><<IFNOT:tool:render_blade_sections>>$blade_sections_visualizer_off
     <</DCII_ONLY>>- $tool_caller_capabilities
 
 so markers and a leading list bullet are stripped before the aloneness test.
@@ -55,8 +55,9 @@ GENERIC_FRAGMENTS_DIR = ROOT / "agents" / "shared" / "prompt_fragments"
 FRAGMENT_DIRS = (PACK_FRAGMENTS_DIR, GENERIC_FRAGMENTS_DIR)
 
 SLOT_RE = re.compile(r"\$([a-z_][a-z0-9_]*)")
-# <<RAG_ON>>-style markers, and the per-agent <<IF:flag>> / <<IFNOT:flag>> ones.
-MARKER_RE = re.compile(r"<</?(?:[A-Z_]+|IF(?:NOT)?:[a-z][a-z0-9_]*)>>")
+# <<RAG_ON>>-style markers, and the <<IF:flag>> / <<IFNOT:flag>> ones (flag
+# param_list, tool:<tool>, setting:<tool>.<name>).
+MARKER_RE = re.compile(r"<</?(?:[A-Z_]+|IF(?:NOT)?:[a-z][a-z0-9_]*(?::[a-z0-9_.]+)?)>>")
 _PACK_SUFFIX_RE = re.compile(r"\.t\d+$")
 
 

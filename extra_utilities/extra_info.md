@@ -380,7 +380,8 @@ Both first builds were replaced (§1, §2).  As built:
   values are filled at agent construction (`set_routing_tools` etc.).
 * **Conditional regions** resolved at assembly: `<<DCII_ONLY>>` /
   `<<DCII_OFF>>`, `<<PF_ON>>` / `<<PF_OFF>>`, `<<CHAIN_ONLY>>` (stripped for the
-  user-facing agents), `<<HAS_DBA>>`, `<<BSV_ON>>`, `<<IF:param_list>>` /
+  user-facing agents), `<<HAS_DBA>>`, the pack's `<<IF:tool:…>>` / `<<IF:setting:…>>`,
+  `<<IF:param_list>>` /
   `<<IF:param_ranges>>` (per agent, from the parameter-access table),
   `<<CAN_SEE>>` / `<<CANNOT_SEE>>`.
   `_dcii_effective()` / `_planner_first_effective()` key on "is the hub the

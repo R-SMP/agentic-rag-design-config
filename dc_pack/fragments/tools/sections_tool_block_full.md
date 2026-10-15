@@ -1,5 +1,5 @@
-<<BSV_ON>>
+<<IF:tool:render_blade_sections>>
 $blade_sections_visualizer
 
 $blade_sections_visualizer_per_agent
-<</BSV_ON>><<BSV_OFF>>$blade_sections_visualizer_off<</BSV_OFF>>
+<</IF:tool:render_blade_sections>><<IFNOT:tool:render_blade_sections>>$blade_sections_visualizer_off<</IFNOT:tool:render_blade_sections>>

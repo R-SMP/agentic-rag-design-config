@@ -22,8 +22,7 @@
   the record of the $parameter_count parameter values the DCIC
   authored.$roster_tools_clause at that ``parameters.json``
   and calls it once — the tool reads the record itself and produces the
-  $output_model file AND, as its built-in final step, the $output_images and (if
-  enabled) $quality_check_numbers.  Also has a ``calculate`` tool
+  $output_model file AND, as its built-in final step, the $output_images$quality_check_numbers.  Also has a ``calculate`` tool
   for arithmetic.  Reports the produced file paths for the DC Output
   Inspector.
 - **DC Output Inspector (DCOI)**: loads the $output_image_files using the

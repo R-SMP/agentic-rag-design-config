@@ -613,8 +613,8 @@ parts.append("""
     <li>every conditional region resolved for the settings in force &mdash;
         <span class="m">&lt;&lt;DCII_ONLY&gt;&gt;</span>,
         <span class="m">&lt;&lt;PF_ON/OFF&gt;&gt;</span>,
-        <span class="m">&lt;&lt;BSV_ON/OFF&gt;&gt;</span>,
-        <span class="m">&lt;&lt;MESH_ON/OFF&gt;&gt;</span>,
+        <span class="m">&lt;&lt;IF / IFNOT:tool:&hellip; / setting:&hellip;&gt;&gt;</span>,
+        <span class="m">&lt;&lt;IF / IFNOT:param_list / param_ranges&gt;&gt;</span>,
         <span class="m">&lt;&lt;CHAIN_ONLY&gt;&gt;</span>,
         <span class="m">&lt;&lt;HAS_DBA&gt;&gt;</span>;</li>
     <li>the runtime <span class="m">{{slot}}</span> values each agent fills in at

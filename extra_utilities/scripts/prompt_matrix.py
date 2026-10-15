@@ -5,7 +5,7 @@ Why a matrix
 ------------
 ``topology_prompt_snapshot.py`` assembles the prompts under the settings that
 are on disk.  Most prompt text is conditional, though: ``<<RAG_ON>>``,
-``<<HAS_DBA>>``, ``<<BSV_ON>>``, ``<<MESH_ON>>``, ``<<DCII_ONLY>>``,
+``<<HAS_DBA>>``, the pack's ``<<IF:tool:…>>`` / ``<<IF:setting:…>>``, ``<<DCII_ONLY>>``,
 ``<<PF_ON>>``, the per-agent parameter-access regions, the per-agent
 database-tool slots, and the runtime blocks chosen by ``RENDER_LIBRARY``,
 ``DCOI_COMPARISON_MODE``, ``KEEP_IMAGES_IN_CONTEXT`` and ``CHAIN_ACCESS``.  A

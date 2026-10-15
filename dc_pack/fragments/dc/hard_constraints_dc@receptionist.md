@@ -1,5 +1,5 @@
 ### Domain hard rules
 - The $parameter_count named parameters are the ONLY design levers:
-  geometry changes only by changing them.<<MESH_ON>>
+  geometry changes only by changing them.<<IF:setting:generate_and_render_propeller.mesh_checks>>
 - The ONLY mesh metrics are watertightness, volume and degenerate-face
-  count.<</MESH_ON>>
+  count.<</IF:setting:generate_and_render_propeller.mesh_checks>>

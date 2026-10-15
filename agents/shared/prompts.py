@@ -51,6 +51,7 @@ from agents.shared.topology import (
     topology as _topology,
 )
 from engine import pack as _pack
+from engine import pack_flags as _pack_flags
 from engine import parameter_access as _parameter_access
 from engine import parameters as _parameters
 from workflow_settings import settings as _workflow_settings
@@ -204,7 +205,7 @@ _HAS_DBA_RE = re.compile(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>", re.DOTALL)
 _HAS_USER_INPUTS_RE = re.compile(
     r"<<HAS_USER_INPUTS>>(.*?)<</HAS_USER_INPUTS>>", re.DOTALL)
 # Two VERSIONS of a passage, not a show/hide: whichever does not apply is
-# stripped, so exactly one survives.  Same shape as <<BSV_ON>>/<<BSV_OFF>>.
+# stripped, so exactly one survives.  Same shape as an <<IF:…>> / <<IFNOT:…>> pair.
 #
 # The alternative -- one passage with "if you hold an image tool ..." in it --
 # was rejected deliberately.  It asks the model to introspect about its own
@@ -242,34 +243,28 @@ _DBA_TOOL_SLOTS: tuple[tuple[str, tuple[str, ...]], ...] = (
     ("retrieve_user_inputs_tool",  ("user_inputs", "attempt")),
     ("retrieve_attempt_tool",      ("attempt",)),
 )
-# Global Blade-sections-visualizer filter — mirrors the DCII_ONLY pattern,
-# gated by the ``BLADE_SECTIONS_VISUALIZER_ENABLED`` master switch (read fresh
-# via ``workflow_settings.blade_sections_access`` so a Workflow-Settings edit
-# takes effect next session).  See ``apply_bsv_filter``.
-_BSV_ON_RE = re.compile(r"<<BSV_ON>>(.*?)<</BSV_ON>>", re.DOTALL)
-_BSV_OFF_RE = re.compile(r"<<BSV_OFF>>(.*?)<</BSV_OFF>>", re.DOTALL)
-# Global mesh-quality-checks filter — mirrors the BSV pattern, gated by the
-# ``MESH_CHECKS`` workflow setting.  With the checks off the pipeline never
-# produces watertightness / volume / degenerate-face numbers, so prose
-# describing them is dead text in every prompt that carries it.  Read fresh,
-# not captured at import, because ``web_app._build_session`` reloads
-# ``workflow_settings`` in place and the Sessions Queue switches settings
-# between runs inside one process.  See ``apply_mesh_checks_filter``.
-_MESH_ON_RE = re.compile(r"<<MESH_ON>>(.*?)<</MESH_ON>>", re.DOTALL)
-_MESH_OFF_RE = re.compile(r"<<MESH_OFF>>(.*?)<</MESH_OFF>>", re.DOTALL)
-# A <<MESH_ON>> region that is a whole line on its own (e.g. an inspector
-# role-list item spliced from tools_config) goes together with its line
-# when mesh checks are off, so the list keeps no empty line.
-_MESH_ON_LINE_RE = re.compile(
-    r"^<<MESH_ON>>(?:(?!<</MESH_ON>>)[^\n])*<</MESH_ON>>\n", re.MULTILINE)
-# Per-agent ``<<IF:flag>>…<</IF:flag>>`` / ``<<IFNOT:flag>>…<</IFNOT:flag>>``
-# regions: kept when the flag is true (IF) or false (IFNOT), else removed.
-# The flags come from the parameter-access table (engine/parameter_access.py):
-# ``param_list`` -- the agent sees the list in its prompt (full or names);
-# ``param_ranges`` -- with the ranges (full).  MAS-blueprint step P3b
-# extends the same syntax to tool and setting flags.  See apply_if_flags.
-_IF_RE = re.compile(r"<<(IF|IFNOT):([a-z][a-z0-9_]*)>>(.*?)<</\1:\2>>",
-                    re.DOTALL)
+# ``<<IF:flag>>…<</IF:flag>>`` / ``<<IFNOT:flag>>…<</IFNOT:flag>>`` regions:
+# kept when the flag is true (IF) or false (IFNOT), else removed -- and a line
+# the removal leaves empty disappears with it.  Two families of flags:
+#
+#   * the pack's, global: ``tool:<tool>`` (the tool is enabled) and
+#     ``setting:<tool>.<name>`` (a boolean tool setting), declared in
+#     dc_pack/pack.yaml (engine/pack_flags.py) and resolved in
+#     apply_flag_filters, so routing fragments get them too;
+#   * per agent, from the parameter-access table
+#     (engine/parameter_access.py): ``param_list`` -- the agent sees the list
+#     in its prompt (full or names); ``param_ranges`` -- with the ranges.
+#
+# See apply_if_flags.
+_IF_RE = re.compile(
+    r"<<(IF|IFNOT):([a-z][a-z0-9_]*(?::[a-z0-9_.]+)?)>>(.*?)<</\1:\2>>",
+    re.DOTALL)
+# Where a region was removed, until the emptied lines are dropped.
+_REMOVED = "\x04"
+# A line holding nothing but removed regions, blanks and the inline-slot
+# delimiters: it goes, newline included, so no empty line is left behind.
+_EMPTIED_LINE_RE = re.compile(
+    r"^[ \t\x02\x03]*\x04[ \t\x02\x03\x04]*(?:\n|\Z)", re.MULTILINE)
 # Global RAG switch.  Unlike ``<<HAS_DBA>>``, which asks whether THIS agent
 # holds a database tool, ``<<RAG_ON>>`` asks only whether the RAG layer is on
 # at all.  The distinction is load-bearing: the Tool Caller holds no database
@@ -334,51 +329,6 @@ def apply_planner_first_filter(text: str) -> str:
     else:
         text = _PF_ON_RE.sub("", text)
         text = _PF_OFF_RE.sub(lambda m: m.group(1), text)
-    return text
-
-
-def apply_bsv_filter(text: str) -> str:
-    """Resolve ``<<BSV_ON>>`` / ``<<BSV_OFF>>`` regions for the Blade-sections
-    visualizer tool.
-
-    Gated by the global ``BLADE_SECTIONS_VISUALIZER_ENABLED`` switch, read
-    fresh (``web_app._build_session`` reloads ``workflow_settings`` before
-    building the agents) so a toggle saved in the Workflow Settings editor
-    takes effect on the next session — the same contract as the DBa / OCR
-    toggles.
-
-    On  = strip the OFF blocks, unwrap the ON blocks (full / brief fragments).
-    Off = strip the ON blocks, unwrap the OFF blocks (the minimal
-          "exists but currently OFF" note).
-    """
-    from workflow_settings import blade_sections_access
-
-    if blade_sections_access.is_enabled():
-        text = _BSV_OFF_RE.sub("", text)
-        text = _BSV_ON_RE.sub(lambda m: m.group(1), text)
-    else:
-        text = _BSV_ON_RE.sub("", text)
-        text = _BSV_OFF_RE.sub(lambda m: m.group(1), text)
-    return text
-
-
-def apply_mesh_checks_filter(text: str) -> str:
-    """Resolve ``<<MESH_ON>>`` / ``<<MESH_OFF>>`` regions.
-
-    Gated by the ``MESH_CHECKS`` workflow setting, read fresh so a toggle
-    saved in the Workflow Settings editor takes effect on the next session —
-    the same contract as the BSV / DBa / OCR toggles.
-
-    On  = strip the OFF blocks, unwrap the ON blocks.
-    Off = strip the ON blocks, unwrap the OFF blocks.
-    """
-    if bool(_workflow_settings.MESH_CHECKS):
-        text = _MESH_OFF_RE.sub("", text)
-        text = _MESH_ON_RE.sub(lambda m: m.group(1), text)
-    else:
-        text = _MESH_ON_LINE_RE.sub("", text)
-        text = _MESH_ON_RE.sub("", text)
-        text = _MESH_OFF_RE.sub(lambda m: m.group(1), text)
     return text
 
 
@@ -483,8 +433,8 @@ def apply_chain_only_filter(text: str, agent_dir_name: str) -> str:
 
 
 def apply_flag_filters(text: str) -> str:
-    """Apply the DCII, PLANNER_FIRST, BSV, MESH_CHECKS and RAG_ON filters in
-    sequence.
+    """Apply the DCII and PLANNER_FIRST filters, the pack's ``<<IF:tool:…>>``
+    / ``<<IF:setting:…>>`` flags, and the RAG_ON filter, in sequence.
 
     NOTE: per-agent filters (:func:`apply_dba_filter`,
     :func:`apply_chain_only_filter`, :func:`apply_if_flags` for the
@@ -493,29 +443,37 @@ def apply_flag_filters(text: str) -> str:
     template is being assembled.
     """
     return apply_rag_on_filter(
-        apply_mesh_checks_filter(
-            apply_bsv_filter(
-                apply_planner_first_filter(apply_dcii_filter(text))
-            )
+        apply_if_flags(
+            apply_planner_first_filter(apply_dcii_filter(text)),
+            _pack_flags.values(), per_agent_later=True,
         )
     )
 
 
-def apply_if_flags(text: str, flags: dict[str, bool]) -> str:
+def apply_if_flags(text: str, flags: dict[str, bool], *,
+                   per_agent_later: bool = False) -> str:
     """Resolve every ``<<IF:flag>>`` / ``<<IFNOT:flag>>`` region (see
-    ``_IF_RE``).  A flag not in *flags* is an error, so a misspelt marker
-    fails the build instead of reaching a model."""
+    ``_IF_RE``), then drop each line the removals left empty.
+
+    A flag not in *flags* is an error, so a misspelt marker fails the build
+    instead of reaching a model.  With *per_agent_later* (the global pass in
+    :func:`apply_flag_filters`), a region whose flag has no ``tool:`` /
+    ``setting:`` prefix is left for the per-agent pass in
+    :func:`_build_template`.
+    """
     def keep(m: re.Match) -> str:
         kind, name, body = m.groups()
         if name not in flags:
+            if per_agent_later and ":" not in name:
+                return m.group(0)
             raise ValueError(f"unknown prompt flag <<{kind}:{name}>> "
                              f"(known: {', '.join(sorted(flags))})")
-        return body if flags[name] == (kind == "IF") else ""
+        return body if flags[name] == (kind == "IF") else _REMOVED
 
     prev = None
     while prev != text:              # nested regions resolve outside-in
         prev, text = text, _IF_RE.sub(keep, text)
-    return text
+    return _EMPTIED_LINE_RE.sub("", text).replace(_REMOVED, "")
 
 
 def read_pack_fragment(slot: str, agent_dir_name: str | None = None) -> str:
@@ -983,8 +941,9 @@ def _build_template(agent_dir_name: str) -> str:
     slots = mark_inline_slots(slots)
     once = Template(raw).safe_substitute(slots)
     twice = Template(once).safe_substitute(slots)
-    filtered = apply_if_flags(apply_flag_filters(twice),
-                              _parameter_access.prompt_flags(access))
+    filtered = apply_if_flags(
+        apply_flag_filters(twice),
+        {**_pack_flags.values(), **_parameter_access.prompt_flags(access)})
     # apply_dba_filter and apply_chain_only_filter are per-agent — they
     # consult, respectively, the per-agent DBa flag in database_access.json
     # (+ the RAG_ENABLED master switch) and the user-facing-vs-chain agent

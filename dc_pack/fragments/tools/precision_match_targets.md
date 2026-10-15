@@ -1,1 +1,1 @@
-the blade sections, the whole-propeller 3D views, or both in the same job
+<<IF:tool:render_blade_sections>>the blade sections, the whole-propeller 3D views, or both in the same job<</IF:tool:render_blade_sections>><<IFNOT:tool:render_blade_sections>>the whole-propeller 3D views<</IFNOT:tool:render_blade_sections>>

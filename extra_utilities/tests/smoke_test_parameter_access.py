@@ -1,10 +1,10 @@
-"""The parameter-access table, offline: who sees the parameter list.
+"""The parameter-access table and the prompt flags, offline.
 
 ``engine/parameter_access.py`` gives every agent, in every topology, one of
 four states -- full list in its prompt, names only (ranges removed), through
 the ``dc_params_list`` tool, or nothing.  The default lives in
 ``dc_pack/pack.yaml``; Workflow Settings stores changed cells in
-``workflow_settings/parameter_access.json``.  Four groups of checks:
+``workflow_settings/parameter_access.json``.  Five groups of checks:
 
 1. THE GRID.  ``pack.yaml`` has exactly one cell per agent the topology
    builds (``agents/shared/agent_roles.ROSTER``), plus the Database Handler
@@ -19,6 +19,12 @@ the ``dc_params_list`` tool, or nothing.  The default lives in
 4. THE SETTINGS FILE.  Saving stores only the cells that differ from the
    default, rejects a cell the grid does not have, and resetting removes it.
    Written to a temporary path, never the real one.
+5. THE FLAGS.  Every ``<<IF:flag>>`` / ``<<IFNOT:flag>>`` in a prompt or a
+   fragment names a known flag -- ``param_list``, ``param_ranges``, or one
+   ``dc_pack/pack.yaml`` declares (``tool:…``, ``setting:…``, read by
+   ``engine/pack_flags.py``) -- and is closed in the same file; every
+   declared flag reads a setting that exists.  A misspelt flag would
+   otherwise fail only when a session is built.
 
 Run from the repo root:
     py -3.13 extra_utilities/tests/smoke_test_parameter_access.py
@@ -45,10 +51,13 @@ from agents.shared import agent_roles     # noqa: E402
 from agents.shared import prompts as P    # noqa: E402
 from agents.shared.dc_params_tool import param_tools_for  # noqa: E402
 from engine import pack                   # noqa: E402
+from engine import pack_flags as PF     # noqa: E402
 from engine import parameter_access as PA  # noqa: E402
 
 FAILURES: list[str] = []
 _IF_PARAM_LIST_RE = re.compile(r"<<IF:param_list>>(.*?)<</IF:param_list>>", re.DOTALL)
+_FLAG_OPEN_RE = re.compile(r"<<(IF|IFNOT):([^<>]+)>>")
+_FLAG_CLOSE_RE = re.compile(r"<</(IF|IFNOT):([^<>]+)>>")
 
 
 def check(ok: bool, what: str) -> None:
@@ -152,22 +161,45 @@ def check_settings_file(default: dict) -> None:
             PA.OVERRIDES_PATH = real_path
 
 
+def check_flags() -> int:
+    try:
+        known = set(PF.values()) | {"param_list", "param_ranges"}
+    except PF.PackFlagError as exc:
+        check(False, f"[FLAGS] {exc}")
+        return 0
+    files = sorted(set((ROOT / "agents").rglob("*.md"))
+                   | set(pack.fragments_dir().rglob("*.md")))
+    files = [f for f in files if f.name != "README.md"]
+    for f in files:
+        text = f.read_text(encoding="utf-8")
+        rel = f.relative_to(ROOT).as_posix()
+        opens = _FLAG_OPEN_RE.findall(text)
+        closes = _FLAG_CLOSE_RE.findall(text)
+        for kind, name in opens:
+            check(name in known, f"[FLAGS] {rel}: unknown flag <<{kind}:{name}>>")
+        check(sorted(opens) == sorted(closes),
+              f"[FLAGS] {rel}: opening and closing flag markers do not pair up")
+    return len(files)
+
+
 def main() -> int:
     default = PA.default_table()
     check_grid(default)
     n_files = check_prompt_files()
     n_builds = check_states(default)
     check_settings_file(default)
+    n_flag_files = check_flags()
     print(f"{sum(len(r) for r in default.values())} cells; {n_files} prompt files; "
-          f"{n_builds} prompts assembled across the four states")
+          f"{n_builds} prompts assembled across the four states; "
+          f"{n_flag_files} files scanned for prompt flags")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
             print("  " + f)
         return 1
     print("\nPASS - the grid matches the agents, every prompt can take every "
-          "state, each state shows what it should, and the settings file "
-          "stores only changes.")
+          "state, each state shows what it should, the settings file stores "
+          "only changes, and every prompt flag is known and closed.")
     return 0
 
 

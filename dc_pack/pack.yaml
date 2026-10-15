@@ -24,3 +24,12 @@ parameter_access:
   design_engineer:      {3: full}
   requirements_analyst: {3: names}
   database_handler:     {7: none,  5: none,  3: none}
+
+# Which Workflow Settings value turns each prompt flag on, for the
+# <<IF:tool:...>> and <<IF:setting:...>> regions in fragments/.  Read fresh
+# for every session (engine/pack_flags.py).  Temporary: when the tools get
+# their own files (MAS-blueprint P3c), each tool file declares these.
+tool_switches:            # flag tool:<tool> -- the tool is enabled
+  render_blade_sections: BLADE_SECTIONS_VISUALIZER_ENABLED
+tool_settings:            # flag setting:<tool>.<name> -- a boolean tool setting
+  generate_and_render_propeller.mesh_checks: MESH_CHECKS

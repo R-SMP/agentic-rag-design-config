@@ -1,1 +1,1 @@
-Both geometry tools take the hand-off's ``Parameters file:`` path and read it themselves: pass that path verbatim, never values.
+<<IF:tool:render_blade_sections>>Both geometry tools take the hand-off's ``Parameters file:`` path and read it themselves: pass that path verbatim, never values.<</IF:tool:render_blade_sections>><<IFNOT:tool:render_blade_sections>>The geometry tool takes the hand-off's ``Parameters file:`` path and reads it itself: pass that path verbatim, never values.<</IFNOT:tool:render_blade_sections>>

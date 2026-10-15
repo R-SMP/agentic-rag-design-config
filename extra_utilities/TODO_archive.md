@@ -1760,3 +1760,24 @@ topology-selector `O9` obstacle, now folded into
 `$mesh_check_role_item` sits on its own line in the DC Output Inspector and
 Requirements Analyst role lists, so with `MESH_CHECKS` off the list shows an
 empty line where item 2 (topology 3: item 3) was.  Whitespace only.
+
+---
+
+### F104. Feature-gated fragments that still ship when their feature is OFF
+
+**Status.** DONE — MAS-blueprint P3b (2026-10-15): the twelve fragments carry
+`<<IF:tool:render_blade_sections>>` / `<<IF:setting:generate_and_render_propeller.mesh_checks>>`
+regions, with owner-approved wording for the feature-off case.
+
+These `tools_config/` fragments describe the blade-sections tool or the mesh
+checks but carry no `<<BSV_ON>>` / `<<MESH_ON>>` marker, so they reach the
+agents with `BLADE_SECTIONS_VISUALIZER_ENABLED` or `MESH_CHECKS` off:
+blade sections — `directive_output_choice`, `precision_multi_phase_rule`,
+`precision_continue_directive_example`, `precision_match_subject`,
+`precision_match_targets`, `sections_rerun_case`, `values_only_excluded_outputs`
+(topology 3), `geometry_tools_loading_rule` ("Both geometry tools");
+mesh checks — `quality_check_numbers`, `quality_check_report`,
+`observable_fact_questions` ("what did the checks say?"),
+`tool_run_history_contents` ("+ metrics").  Each fix is now confined to the
+fragment file (all three topology copies) and changes the assembled prompts
+only with the feature off — show each one to the owner first.
