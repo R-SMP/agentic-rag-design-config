@@ -5,7 +5,8 @@ pack: ``dc_pack/`` unless ``DC_PACK_DIR`` names another (``config.py``).  The
 engine reads it on every session build and never writes into it.
 
     dc_pack/
-      parameter_keys.txt     parameter names and types (phase P2 replaces it)
+      parameters.json        the parameters: names, types, ranges, groups
+                             (engine/parameters.py)
       assets/                images (the parameter primer)
       fragments/dc/          text about the configurator
       fragments/tools/       text about its tools
@@ -65,10 +66,6 @@ def pack_dir() -> Path:
 
 def fragments_dir() -> Path:
     return pack_dir() / "fragments"
-
-
-def parameter_keys_path() -> Path:
-    return pack_dir() / "parameter_keys.txt"
 
 
 def asset_path(name: str) -> Path:

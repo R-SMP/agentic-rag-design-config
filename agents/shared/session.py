@@ -48,6 +48,15 @@ _DEFAULT_PLANNER_FIRST              = False
 _DEFAULT_RENDER_LIBRARY             = "trimesh"
 
 
+def _pack_dc_name() -> str:
+    """The design configurator's short name, from the pack (``$dc_name``),
+    read when a Session is created.  Imported here, not at module level, to
+    keep this module's imports as light as they were."""
+    from agents.shared.topology import topology
+    from engine import pack
+    return pack.read("dc_name", topology())
+
+
 # Every chain agent + hub + DH gets one AgentState entry inside
 # Session.agent_states.  These are the legal keys (matches AGENT_DISPLAY in
 # routing_tools.py plus 'database_handler').
@@ -156,12 +165,15 @@ class Session:
     session_ts: datetime
     user_id: str | None = None
 
-    # DC-side identity (matches sessions table columns).
-    dc_name: str = "propeller"
-    # New sessions use schema_version 2 — the 16-param set (impellerHeight
-    # removed, ring height derived).  Old sessions persisted with 1 keep it,
-    # so their attempts still resolve against the V1 (17-param) schema.
-    schema_version: int = 2
+    # DC-side identity (matches sessions table columns).  The design
+    # configurator's short name, from the pack ($dc_name).
+    dc_name: str = field(default_factory=_pack_dc_name)
+    # Which parameter set (table dc_parameter_schemas) this session's values
+    # belong to.  None until the save resolves it: the database version that
+    # matches dc_pack/parameters.json (engine/parameter_schema.py).  A save
+    # with no matching version stops and asks for an upload.  Old sessions
+    # keep the version they were saved with.
+    schema_version: int | None = None
 
     # Session-config flags (defaults baked from workflow_settings.py
     # so v4 Sessions match v4 behaviour with no overrides needed).

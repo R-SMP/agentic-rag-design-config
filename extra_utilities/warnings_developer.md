@@ -1365,9 +1365,8 @@ TRUNCATE TABLE chunks, dc_attempt_parameters, dc_attempts,
 ```
 
 * `dc_parameter_schemas` is intentionally absent from the
-  `RESET_TABLES` list in `web_app.py`.  Preserves the 17-parameter
-  schema seed so the system stays usable without re-running
-  `populate_dc_parameter_schemas.py`.
+  `RESET_TABLES` list in `web_app.py`.  Preserves the parameter-schema
+  versions, so sessions can still be saved without a new upload.
 * The `session_counter` SEQUENCE is left alone.  Next session
   continues from the current count, not reset to 1.  Operator can
   manually `ALTER SEQUENCE session_counter RESTART WITH 1;` via

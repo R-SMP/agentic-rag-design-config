@@ -6,8 +6,9 @@
 # whether a field is linked across topologies or has per-agent copies is read
 # from which files exist there (engine/pack.py), never stored here.
 #
-#   source  pack | engine | setting
+#   source  pack | engine | setting | generated
 #   folder  dc | tools                 (pack)  dc_pack/fragments/<folder>/
+#   from    (generated) what computes it -- prompts._GENERATED_SLOTS
 #   kind    phrase | block | word      phrase = one line spliced into a
 #                                      sentence, re-wrapped at 80 columns
 #   use     prompt (default) | runtime runtime = read by Python, not a $slot
@@ -36,8 +37,8 @@ slots:
 
 # --- 2 Parameters ----------------------------------------------------------
   parameter_count:
-    source: pack
-    folder: dc
+    source: generated
+    from: parameter_count
     kind: word
     strip: both
     section: parameters

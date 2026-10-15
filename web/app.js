@@ -610,6 +610,29 @@ async function performEndSession(wantSave, feedback) {
     return;
   }
 
+  // HTTP 412 — the save was refused before anything started: the
+  // database has no parameter schema matching this setup's parameters
+  // (engine/parameter_schema.py).  Nothing ran and the session is still
+  // open, so undo the locked state, say what to do, and let the user
+  // upload the schema (Workflow Settings) and click End Session again.
+  if (endResp.status === 412) {
+    let detail = "Upload the parameter schema first (Workflow Settings › Database).";
+    try { detail = (await endResp.json()).detail || detail; } catch (_) { /* keep default */ }
+    console.warn("[End Session] /api/end refused with HTTP 412: " + detail);
+    if (endSessionTimeoutId !== null) {
+      clearTimeout(endSessionTimeoutId);
+      endSessionTimeoutId = null;
+    }
+    endSessionState = null;
+    endBtn.disabled = false;
+    endBtn.textContent = originalEndText || "End Session";
+    if (pendingBubble) pendingBubble.remove();
+    addBubble("assistant",
+      "The session was NOT saved and is still open.  " + detail +
+      "  Then click End Session again.");
+    return;
+  }
+
   // HTTP 202 Accepted — the server has kicked off the End Session
   // work in a background task and will publish a session_save_done
   // event on /api/events when it finishes.  The SSE handler in
@@ -1029,20 +1052,23 @@ if (logClearBtn) logClearBtn.addEventListener("click", clearLogView);
 // Left side menu — switch between the interfaces
 // ---------------------------------------------------------------------------
 // --------------------------------------------------------------------
+// The design configurator's parameters, from dc_pack/parameters.json:
+// /pack/parameters.js (loaded by index.html before this file) sets
+// window.PACK_PARAMETERS = {names, groups}.  A stopgap (TODO F111).
+// --------------------------------------------------------------------
+const PACK_PARAMETERS = window.PACK_PARAMETERS || { names: [], groups: [] };
+if (!window.PACK_PARAMETERS) {
+  console.error("/pack/parameters.js did not load: no parameters to show.");
+}
+
+// --------------------------------------------------------------------
 // Upload content to database
 //
-// The 16 parameter names, in the canonical order.  Mirrors
-// dc_pack/parameter_keys.txt; the form sends only
+// The parameter names, in the canonical order.  The form sends only
 // the boxes that were actually filled, because a PARTIAL set is allowed
 // and the retrieval layer reports it as partial="true" keys="N/16".
 // --------------------------------------------------------------------
-const UDB_PARAMS = [
-  "bladeCount", "impellerRadius", "impellerThickness",
-  "innerThickness", "innerMaxPos", "innerCamber", "innerChord",
-  "innerAngle", "middlePos", "middleChord", "middleAngle",
-  "outerThickness", "outerMaxPos", "outerCamber", "outerChord",
-  "outerAngle",
-];
+const UDB_PARAMS = PACK_PARAMETERS.names;
 const udbFiles = new Map();   // filename -> {file, note, degree}
 
 function udbRenderParams() {
@@ -1369,6 +1395,7 @@ function switchView(name) {
     loadLrRouting();
     loadRenderCompression();
     loadAgentRoles();
+    loadParameterSchema();
     loadModelWindows();
     // Pick up the latest lock state when the user opens the view;
     // otherwise a session started in another tab/turn could leave the
@@ -1412,6 +1439,7 @@ function switchView(name) {
     }
   }
   if (name === "db_options") loadDbOptions();
+  if (name === "db_schema") loadDbSchema();
 }
 
 for (const b of navItems) {
@@ -2109,6 +2137,194 @@ async function loadAgentRoles() {
     }
   } catch (e) {
     /* read-only panel: leave it empty rather than block the view */
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Parameter schema — the Workflow Settings "Database: parameter schema"
+// panel (state + upload button) and the read-only "Database schema" view.
+// Both read /api/parameter_schema: this setup's parameters
+// (dc_pack/parameters.json) against the versions in dc_parameter_schemas
+// (engine/parameter_schema.py).  The panel is NOT session-locked: it is
+// where an End Session refused with HTTP 412 is unblocked.
+// ---------------------------------------------------------------------------
+async function psFetch(url, opts) {
+  const res = await fetch(url, opts);
+  let d = {};
+  try { d = await res.json(); } catch (_) { /* non-JSON error page */ }
+  if (!res.ok) throw new Error(d.detail || ("HTTP " + res.status));
+  return d;
+}
+
+function psStateText(d) {
+  if (!d.database) return d.message;
+  const m = d.matching_version, latest = d.latest_version;
+  if (d.state === "current") {
+    return "Up to date: database version " + m + " matches this setup's " +
+      "parameters, and sessions are saved against it.";
+  }
+  if (d.state === "older") {
+    return "Database version " + m + " matches this setup, but the latest " +
+      "version is " + latest + ".  Sessions are saved against version " + m +
+      "; database search still uses version " + latest + "'s ranges.  " +
+      "Upload to make this setup the latest version.";
+  }
+  if (latest == null) {
+    return "The database holds no parameter schema yet.  Saving a session " +
+      "is refused until you upload one (it becomes version 1).";
+  }
+  return "No database version matches this setup's parameters (the latest " +
+    "is version " + latest + ").  Saving a session is refused until you " +
+    "upload; the upload adds version " + d.next_upload.version + ".";
+}
+
+function psStateKind(d) {
+  if (!d.database) return "";
+  return d.state === "current" ? "ok" : (d.state === "missing" ? "err" : "");
+}
+
+async function loadParameterSchema() {
+  const st = $("ps-state"), btn = $("ps-upload");
+  if (!st) return;
+  st.textContent = "Checking the database…";
+  st.className = "ps-state";
+  try {
+    const d = await psFetch("/api/parameter_schema");
+    st.textContent = psStateText(d);
+    st.className = "ps-state " + psStateKind(d);
+    if (btn) btn.disabled = !d.database;
+  } catch (e) {
+    st.textContent = "Could not read the parameter schema: " + e.message;
+    st.className = "ps-state err";
+  }
+}
+
+async function psUpload() {
+  const btn = $("ps-upload"), out = $("ps-status");
+  let d;
+  try {
+    d = await psFetch("/api/parameter_schema");
+  } catch (e) {
+    out.textContent = "Could not read the parameter schema: " + e.message;
+    out.className = "settings-status err";
+    return;
+  }
+  if (!d.database) { loadParameterSchema(); return; }
+  const plan = d.next_upload || {};
+  if (plan.action === "none") {
+    out.textContent = "Nothing to upload: version " + plan.version +
+      " already matches this setup.";
+    out.className = "settings-status ok";
+    return;
+  }
+  let ask = "Upload this setup's " + d.setup.length + " parameters to the " +
+    "database as parameter-schema version " + plan.version + "?";
+  if (plan.retire && plan.retire.length) {
+    ask += "\n\nVersion " + plan.previous + "'s " + plan.retire.join(", ") +
+      " will be marked retired (rows are never deleted).";
+  }
+  if (!confirm(ask)) return;
+  btn.disabled = true;
+  out.textContent = "Uploading…";
+  out.className = "settings-status";
+  try {
+    const r = await psFetch("/api/parameter_schema/upload", { method: "POST" });
+    out.textContent = r.uploaded
+      ? "Uploaded as version " + r.plan.version + "."
+      : "Nothing to upload: version " + r.plan.version + " already matches.";
+    out.className = "settings-status ok";
+  } catch (e) {
+    out.textContent = e.message;
+    out.className = "settings-status err";
+  } finally {
+    btn.disabled = false;
+    loadParameterSchema();
+  }
+}
+
+(function wireParameterSchema() {
+  const btn = $("ps-upload");
+  if (btn) btn.addEventListener("click", psUpload);
+})();
+
+function dbsTable(title, when, rows, tags) {
+  const sec = document.createElement("section");
+  sec.className = "dbs-version";
+  const h = document.createElement("h2");
+  h.className = "dbs-title";
+  h.textContent = title;
+  for (const t of tags) {
+    const s = document.createElement("span");
+    s.className = "ar-tag";
+    s.textContent = t;
+    h.appendChild(s);
+  }
+  if (when) {
+    const w = document.createElement("span");
+    w.className = "dbs-when";
+    w.textContent = when;
+    h.appendChild(w);
+  }
+  sec.appendChild(h);
+  const wrap = document.createElement("div");
+  wrap.className = "mw-table-wrap ar-table-wrap";
+  const table = document.createElement("table");
+  table.className = "mw-table ar-table";
+  const head = document.createElement("thead");
+  const hr = document.createElement("tr");
+  for (const c of ["Parameter", "Min", "Max", "Unit", "Description", "Retired"]) {
+    const th = document.createElement("th");
+    th.textContent = c;
+    hr.appendChild(th);
+  }
+  head.appendChild(hr);
+  table.appendChild(head);
+  const body = document.createElement("tbody");
+  for (const r of rows) {
+    const tr = document.createElement("tr");
+    const cells = [r.param_name, r.min_value, r.max_value, r.unit,
+      r.description, r.retired_at ? r.retired_at.slice(0, 10) : ""];
+    for (const v of cells) {
+      const td = document.createElement("td");
+      td.textContent = v == null ? "" : String(v);
+      tr.appendChild(td);
+    }
+    body.appendChild(tr);
+  }
+  table.appendChild(body);
+  wrap.appendChild(table);
+  sec.appendChild(wrap);
+  return sec;
+}
+
+async function loadDbSchema() {
+  const st = $("dbs-status"), box = $("dbs-versions");
+  if (!st || !box) return;
+  st.textContent = "Loading…";
+  st.className = "db-opt-status";
+  box.textContent = "";
+  let d;
+  try {
+    d = await psFetch("/api/parameter_schema");
+  } catch (e) {
+    st.textContent = "Could not read the parameter schema: " + e.message;
+    st.className = "db-opt-status err";
+    return;
+  }
+  st.textContent = psStateText(d);
+  st.className = "db-opt-status " + psStateKind(d);
+  // Show what an upload would add when no version holds it yet.
+  if (!d.database || d.state === "missing") {
+    box.appendChild(dbsTable("This setup's parameters", "", d.setup || [],
+      ["not in the database"]));
+  }
+  for (const v of d.versions || []) {
+    const tags = [];
+    if (v.version === d.latest_version) tags.push("latest");
+    if (v.version === d.matching_version) tags.push("matches this setup");
+    const first = (v.rows || []).map((r) => r.introduced_at).filter(Boolean).sort()[0];
+    box.appendChild(dbsTable("Version " + v.version,
+      first ? "uploaded " + first.slice(0, 10) : "", v.rows || [], tags));
   }
 }
 
@@ -5863,62 +6079,13 @@ startEventStream();
 // (Step 3 wires VARY ↔ FIXED on slider modification; Step 10 wires
 // PROPOSED from the propose_attempt SSE event).
 //
-// Slider ranges are sourced from dc_pack/fragments/dc/parameter_list.md
-// (the SAME ranges agents validate against).  Defaults are the
-// reference's pragmatic mid-of-range values.  Units (from
-// parameters.md) appear in the min / current / max display and
-// (Step 8) in the auto-appended FIXED block sent to the agents.
+// The groups, their images and every slider (label, unit, range, step,
+// default) come from dc_pack/parameters.json -- PACK_PARAMETERS, near the
+// top of this file -- the SAME file the agents' validator and the database
+// schema are read from.  Units appear in the min / current / max display
+// and (Step 8) in the auto-appended FIXED block sent to the agents.
 
-const PARAM_GROUPS = [
-  {
-    key: "general",
-    label: "General Parameters",
-    image: "/static/images/general-profile.png",
-    imageAlt: "General profile diagram",
-    params: [
-      { key: "impellerRadius",    label: "Propeller Radius",     unit: "mm",                 min: 60,  max: 80,  step: 1,    value: 71 },
-      { key: "impellerThickness", label: "Propeller Thickness",  unit: "mm",                 min: 1,   max: 5,   step: 1,    value: 2  },
-      { key: "bladeCount",        label: "Blade Count",          unit: "",                   min: 3,   max: 6,   step: 1,    value: 3  },
-    ],
-  },
-  {
-    key: "inner",
-    label: "Inner Profile",
-    image: "/static/images/inner-profile.png",
-    imageAlt: "Inner profile diagram",
-    params: [
-      { key: "innerThickness",    label: "Thickness",            unit: "% of chord",         min: 3,   max: 24,  step: 1,    value: 6  },
-      { key: "innerMaxPos",       label: "Max Position",         unit: "tenths of chord",    min: 2,   max: 8,   step: 1,    value: 4  },
-      { key: "innerCamber",       label: "Camber",               unit: "% of chord",         min: 0,   max: 9,   step: 1,    value: 4  },
-      { key: "innerChord",        label: "Chord Length",         unit: "mm",                 min: 3,   max: 11,  step: 1,    value: 11 },
-      { key: "innerAngle",        label: "Angle of Attack",      unit: "degrees",            min: 2,   max: 25,  step: 1,    value: 25 },
-    ],
-  },
-  {
-    key: "middle",
-    label: "Middle Profile",
-    image: "/static/images/middle-profile.png",
-    imageAlt: "Middle profile diagram",
-    params: [
-      { key: "middlePos",         label: "Radial Position",      unit: "× impellerRadius",   min: 0.3, max: 0.7, step: 0.05, value: 0.3 },
-      { key: "middleChord",       label: "Chord Length",         unit: "mm",                 min: 10,  max: 30,  step: 1,    value: 20 },
-      { key: "middleAngle",       label: "Angle of Attack",      unit: "degrees",            min: 2,   max: 25,  step: 1,    value: 15 },
-    ],
-  },
-  {
-    key: "outer",
-    label: "Outer Profile",
-    image: "/static/images/outer-profile.png",
-    imageAlt: "Outer profile diagram",
-    params: [
-      { key: "outerThickness",    label: "Thickness",            unit: "% of chord",         min: 3,   max: 24,  step: 1,    value: 6  },
-      { key: "outerMaxPos",       label: "Max Position",         unit: "tenths of chord",    min: 2,   max: 8,   step: 1,    value: 4  },
-      { key: "outerCamber",       label: "Camber",               unit: "% of chord",         min: 0,   max: 9,   step: 1,    value: 4  },
-      { key: "outerChord",        label: "Chord Length",         unit: "mm",                 min: 10,  max: 30,  step: 1,    value: 15 },
-      { key: "outerAngle",        label: "Angle of Attack",      unit: "degrees",            min: 2,   max: 25,  step: 1,    value: 10 },
-    ],
-  },
-];
+const PARAM_GROUPS = PACK_PARAMETERS.groups;
 
 // Per-key live state.  Mirrors slider values in JS so we can read them
 // at submit / copy time without re-querying the DOM.

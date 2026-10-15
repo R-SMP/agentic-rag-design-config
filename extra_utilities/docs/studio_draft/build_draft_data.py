@@ -7,9 +7,8 @@ no modules), so the data is written as one script, ``window.DRAFT_DATA``.
 
 What it reads
 -------------
-* the parameter set from its three hand-synced copies (the pack's
-  ``parameter_keys.txt`` and ``$parameter_list`` text, the slider list in
-  ``web/app.js``);
+* the parameter set from ``dc_pack/parameters.json`` (``engine/parameters.py``),
+  with the units and descriptions of the agents' ``$parameter_list`` text;
 * every pack fragment (``dc_pack/fragments/``) with its per-topology and
   per-agent files, and each slot's kind, section and description from the
   slot registry (``engine/slot_registry.yaml``);
@@ -257,52 +256,30 @@ def _read(p: Path, strip_both=False):
 
 
 def _parameters(pack) -> dict:
-    keys = []
-    for line in pack.parameter_keys_path().read_text(encoding="utf-8").splitlines():
-        line = line.split("#", 1)[0].strip()
-        if line:
-            k, _, t = line.partition(":")
-            keys.append((k.strip(), (t.strip() or "float")))
+    """The parameter set from its single source, ``dc_pack/parameters.json``
+    (``engine/parameters.py``), plus each parameter's unit and description
+    as the agents' hand-written ``$parameter_list`` text words them.
+    ``copies_agree``: that text gives the same range as the file."""
+    from engine import parameters as ep
+    spec = ep.load()
     md = {}
-    group = None
     for line in pack.shared_path("parameter_list", pack.REFERENCE_TOPOLOGY).read_text(
             encoding="utf-8").splitlines():
-        if line.startswith("### "):
-            group = line[4:].strip()
         m = re.match(r"\s*\d+\.\s+(\w+)\s+\((.*?)\)\s+—\s+(.*?)\s*\[([\d.]+);\s*([\d.]+)\]\s*$", line)
         if m:
-            md[m.group(1)] = {"group": group, "unit_prompt": m.group(2),
-                              "description": m.group(3),
+            md[m.group(1)] = {"unit_prompt": m.group(2), "description": m.group(3),
                               "min": float(m.group(4)), "max": float(m.group(5))}
-    ui = {}
-    gi = None
-    for line in (REPO / "web/app.js").read_text(encoding="utf-8").splitlines():
-        g = re.match(r'\s*key:\s*"(general|inner|middle|outer)",', line)
-        if g:
-            gi = g.group(1)
-        m = re.match(r'\s*\{\s*key:\s*"(\w+)",\s*label:\s*"([^"]*)",\s*unit:\s*"([^"]*)",'
-                     r'\s*min:\s*([\d.]+),\s*max:\s*([\d.]+),\s*step:\s*([\d.]+),'
-                     r'\s*value:\s*([\d.]+)\s*\}', line)
-        if m:
-            ui[m.group(1)] = {"label": m.group(2), "unit_ui": m.group(3),
-                              "min": float(m.group(4)), "max": float(m.group(5)),
-                              "step": float(m.group(6)), "default": float(m.group(7)),
-                              "group_ui": gi or "general"}
     params = []
-    for k, t in keys:
-        a, b = md.get(k, {}), ui.get(k, {})
+    for p in spec["parameters"]:
+        a = md.get(p["name"], {})
         params.append({
-            "name": k, "type": t, "group": b.get("group_ui", "general"),
-            "label": b.get("label", k), "unit": b.get("unit_ui", ""),
+            "name": p["name"], "type": p["type"], "group": p["group"],
+            "label": p["label"], "unit": p["unit"],
             "unit_prompt": a.get("unit_prompt", ""), "description": a.get("description", ""),
-            "min": b.get("min", a.get("min")), "max": b.get("max", a.get("max")),
-            "step": b.get("step"), "default": b.get("default"),
-            "copies_agree": (a.get("min"), a.get("max")) == (b.get("min"), b.get("max")),
+            "min": p["min"], "max": p["max"], "step": p["step"], "default": p["default"],
+            "copies_agree": (a.get("min"), a.get("max")) == (float(p["min"]), float(p["max"])),
         })
-    groups = [{"id": "general", "label": "General / ring"},
-              {"id": "inner", "label": "Inner blade section"},
-              {"id": "middle", "label": "Middle blade section"},
-              {"id": "outer", "label": "Outer blade section"}]
+    groups = [{"id": g["id"], "label": g["label"]} for g in spec["groups"]]
     return {"groups": groups, "parameters": params}
 
 
@@ -512,7 +489,7 @@ def main() -> int:
     data = {
         "pack": {"name": P._pack.read("dc_name", 7),
                  "domain": P._pack.read("domain_description", 7),
-                 "parameter_count": P._pack.read("parameter_count", 7)},
+                 "parameter_count": P._GENERATED_SLOTS["parameter_count"]()},
         "parameters": _parameters(P._pack),
         "slots": slots,
         "roles": roles,

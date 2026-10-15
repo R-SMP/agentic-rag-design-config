@@ -12,7 +12,7 @@ chooses another pack; the default is this folder.
 | --- | --- |
 | `fragments/dc/` | Text about the configurator: parameter list, structure, modelling notes, capabilities, examples, … |
 | `fragments/tools/` | Text about the bound tools: tool inventory, tool rules, output vocabulary, render-check blocks, … |
-| `parameter_keys.txt` | The canonical parameter names and types (`: int` / `: float`), in JSON order; read by the runtime validator, not a prompt slot.  Order must match the parameter list. |
+| `parameters.json` | The parameters: names in canonical (JSON) order, types, ranges, steps, defaults, groups, and each consumer's wording (slider label/unit, database unit/description).  The one source for the validator, `$parameter_count`, the slider page, the preview check and the database schema (`engine/parameters.py`).  The agents' parameter lists stay hand-written; `smoke_test_parameters.py` checks they agree. |
 | `assets/` | Images — the parameter primer (`dc_params_primer.png`). |
 
 The engine's own text — the DOs / DON'Ts every agent inherits, the routing

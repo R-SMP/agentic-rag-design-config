@@ -92,6 +92,7 @@ from agents.shared.prompts import PARAMETER_NAMES, _build_template
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_DH_TURNS_PER_FIELD
 from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
+from engine import parameter_schema
 from workflow_settings import settings as workflow_settings
 
 # DH events go to a DEDICATED logger that writes to
@@ -1300,6 +1301,31 @@ class DatabaseHandler(BaseChainAgent):
                     "False; SKIPPING all Postgres-side writes for "
                     "this save (R2 mirror unaffected)."
                 )
+
+            # The parameter schema the rows record (engine/parameter_schema.py):
+            # the database version that matches dc_pack/parameters.json.
+            # /api/end resolves it before the save starts and refuses the save
+            # when there is none; this covers every other way in (the REPL).
+            # Still none -> no Postgres writes, as with no database, rather
+            # than rows recorded against a parameter set they do not match.
+            if db_writer_available and self.session.schema_version is None:
+                try:
+                    self.session.schema_version = (
+                        parameter_schema.resolve_version())
+                except Exception as exc:
+                    logger.error(
+                        f"[DH]  parameter-schema lookup FAILED: "
+                        f"{type(exc).__name__}: {exc}"
+                    )
+                if self.session.schema_version is None:
+                    logger.error(
+                        f"[DH]  No parameter schema in the database matches "
+                        f"dc_pack/parameters.json.  "
+                        f"{parameter_schema.UPLOAD_FIRST_MESSAGE}.  SKIPPING "
+                        f"all Postgres-side writes for this save (R2 mirror "
+                        f"unaffected)."
+                    )
+                    db_writer_available = False
 
             # Phase 3C — upsert the sessions row FIRST, before any
             # schedule processing.  Pre-creates the parent row that

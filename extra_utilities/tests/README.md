@@ -1,6 +1,6 @@
 # Offline checks
 
-Six hand-run scripts that need no network, no database and no API spend.
+Eight hand-run scripts that need no network, no database and no API spend.
 There is no CI and no pytest: run each one directly from the **repository
 root**.
 
@@ -18,7 +18,7 @@ These six were kept when the other ~50 test scripts were removed on
 2026-10-10.  `extra_utilities/extra_info.md` §13 lists every removed script,
 what it guarded and how to restore it from git.
 
-## The six checks
+## The checks
 
 | Script | Run it after… | What it proves |
 |---|---|---|
@@ -29,6 +29,7 @@ what it guarded and how to restore it from git.
 | `smoke_test_prompt_format.py` | any prompt edit | Formats every agent template of topologies 7, 5 and 3 (one subprocess per topology) with a stub mapping, under RAG off, RAG on, and RAG on with every database tool forced on, catching a literal `{` / `}` or an unmatched brace before it reaches agent construction (see `warnings_developer.md` W45; TODO F101). |
 | `smoke_test_agent_roles.py` | any change to `agents/shared/agent_roles.py`, a hub's roster, `database_search`'s ACL or the DH question loader | The agent role map across topologies: `ROSTER` matches what each hub builds and `DISPLAY` matches `routing_tools.AGENT_DISPLAY`; who may read which past answers per topology (both directions, the hub taking the Orchestrator's role, the `RAG_DCIC_READS_DCII` toggle); that the question table maps "Agent from" downward only and drops a skipped row's sub-rows; and that a real assembled `database_search` response carries the `<agent_roles>` legend once, right after `<search_meta>`, listing only the agents found.  Offline (stubbed imports). |
 | `smoke_test_ring_height.py` | any change to `web/feg/` or `tools/generate_mesh/ring_height.py` | The Python port of the outer-ring height fit must match the real `web/feg` JavaScript (run under Node) to within 1e-9 mm over 552 parameter sets.  **It is the only guard for that port — never remove it.**  Needs Node and `node_modules/three` (`npm install` in the repo root); without them it prints SKIP. |
+| `smoke_test_parameters.py` | any change to `dc_pack/parameters.json`, a `parameter_list*.md` fragment, `engine/parameters.py` or `engine/parameter_schema.py` | `parameters.json` is valid (each kind of broken file is caught); every hand-written parameter list in `dc_pack/fragments/dc/` names the same parameters, in the same order, with the same `[min; max]`; what the validator, slider page, preview check and database get from the file is well-formed; and the schema upload (matching, automatic numbering, retirements) behaves, against a stand-in database — never the live one. |
 
 ## Things worth knowing before you trust a result
 

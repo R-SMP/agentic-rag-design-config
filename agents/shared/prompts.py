@@ -51,6 +51,7 @@ from agents.shared.topology import (
     topology as _topology,
 )
 from engine import pack as _pack
+from engine import parameters as _parameters
 from workflow_settings import settings as _workflow_settings
 
 AGENTS_DIR = Path(__file__).resolve().parent.parent
@@ -575,50 +576,15 @@ def _read_generic_fragment(rel_path: str) -> str:
 DC_NAME = read_pack_fragment("dc_name")
 
 
-def _parse_parameter_keys(path: Path) -> tuple[tuple[str, ...], dict[str, type]]:
-    """Parse ``parameter_keys.txt`` into an ordered name tuple + type map."""
-    # The ONE pack reader here with no topology dimension.  The design
-    # configurator's parameters do not depend on the topology: this file is
-    # DATA (the canonical key list used by the runtime validator and for JSON
-    # ordering), not prompt text, and it is not a $slot.  So there is nothing
-    # to fork, and a per-topology copy would be a second source of truth for
-    # one fact.
-    rel_path = path.name
-    raw = path.read_text(encoding="utf-8")
-    names: list[str] = []
-    types: dict[str, type] = {}
-    for line in raw.splitlines():
-        line = line.strip()
-        if not line or line.startswith("#"):
-            continue
-        if ":" in line:
-            key, _, type_str = line.partition(":")
-            key = key.strip()
-            type_str = type_str.strip().lower()
-            if type_str == "int":
-                t = int
-            elif type_str in ("float", ""):
-                t = float
-            else:
-                raise ValueError(
-                    f"Unknown type '{type_str}' for parameter '{key}' "
-                    f"in {rel_path}.  Use 'int' or 'float'."
-                )
-        else:
-            key = line
-            t = float
-        if key in types:
-            raise ValueError(
-                f"Duplicate parameter key '{key}' in {rel_path}."
-            )
-        names.append(key)
-        types[key] = t
-    return tuple(names), types
-
-
-PARAMETER_NAMES, PARAMETER_TYPES = _parse_parameter_keys(
-    _pack.parameter_keys_path()
-)
+# The design configurator's parameters, from dc_pack/parameters.json
+# (engine/parameters.py): the canonical names in JSON order and their types,
+# used by the runtime validator.  DATA, not prompt text, and with no topology
+# dimension: the parameters do not depend on the topology, so there is
+# nothing to fork, and a per-topology copy would be a second source of truth
+# for one fact.
+_PARAMETER_SPEC = _parameters.load()
+PARAMETER_NAMES = _parameters.names(_PARAMETER_SPEC)
+PARAMETER_TYPES = _parameters.types(_PARAMETER_SPEC)
 
 
 # ---------------------------------------------------------------------------
@@ -936,13 +902,22 @@ def _engine_fragment_file(spec: dict) -> str:
     return spec["file"]
 
 
+# The registry's ``source: generated`` slots: computed from the pack's data on
+# every build, never written by hand.  Keyed by the entry's ``from``.
+_GENERATED_SLOTS = {
+    # $parameter_count: how many parameters dc_pack/parameters.json lists.
+    "parameter_count": lambda: str(_parameters.count()),
+}
+
+
 def _build_slots() -> dict[str, str]:
     """Re-read every fragment from disk and assemble the $-slot map.
 
     One entry per registry slot: pack slots from ``dc_pack/`` for the active
     topology (a per-agent-only slot is "" here), engine slots from
     ``agents/shared/prompt_fragments/``, setting slots from the values
-    captured at import.  Runtime fragments (``use: runtime``) are read by
+    captured at import, generated slots computed from the pack's data
+    (``_GENERATED_SLOTS``).  Runtime fragments (``use: runtime``) are read by
     Python where they are used and are not $slots.
     """
     topo = _topology()
@@ -953,6 +928,8 @@ def _build_slots() -> dict[str, str]:
             slots[name] = _pack.read(name, topo)
         elif source == "engine":
             slots[name] = _read_generic_fragment(_engine_fragment_file(spec))
+        elif source == "generated":
+            slots[name] = _GENERATED_SLOTS[spec["from"]]()
         else:
             slots[name] = _SETTING_SLOT_VALUES[name]
     return slots

@@ -64,6 +64,8 @@ from psycopg import errors as pg_errors
 
 from agents.shared import image_compression, postgres_pool, r2_uploader
 from agents.database_handler import db_writer
+from agents.shared.prompts import read_pack_fragment
+from engine import parameter_schema
 from tools import retrieval_common
 
 logger = logging.getLogger("propeller_agent")
@@ -78,10 +80,6 @@ _USER_INPUT_SUFFIXES = (".txt", ".png", ".jpg", ".jpeg", ".json")
 # anyway.  Verified 2026-09-15.
 FIELD_MANUAL = "User Uploaded Content"
 AGENT_MANUAL = "User"
-
-# New entries use the 16-parameter set, like any new session.
-SCHEMA_VERSION = 2
-DC_NAME = "propeller"
 
 
 class ManualEntryError(RuntimeError):
@@ -331,6 +329,15 @@ def create_manual_entry(
     validate(text=text, images=images, parameters=parameters,
              is_user_input_image=is_user_input_image, is_render=is_render)
 
+    # Like any saved session, the entry records which parameter set its
+    # values belong to: the database version matching dc_pack/parameters.json
+    # (engine/parameter_schema.py).  None -> refuse before writing anything.
+    with postgres_pool.connection() as conn:
+        schema_version = parameter_schema.matching_version(conn)
+    if schema_version is None:
+        raise ManualEntryError(parameter_schema.UPLOAD_FIRST_MESSAGE + ".")
+    dc_name = read_pack_fragment("dc_name")
+
     # An attempt is written when there are parameters to record, OR when
     # images were marked as renders -- otherwise those images would have no
     # attempt folder to live in and retrieve_attempt could never reach them,
@@ -360,7 +367,7 @@ def create_manual_entry(
                     " dc_inspector_enabled, schema_version,"
                     " user_provided_images)"
                     " VALUES (%s, NOW(), %s, %s, %s, %s)",
-                    (session_id, DC_NAME, False, SCHEMA_VERSION,
+                    (session_id, dc_name, False, schema_version,
                      bool(images) and is_user_input_image))
                 conn.commit()
 
@@ -371,7 +378,7 @@ def create_manual_entry(
                 attempt_id = db_writer.upsert_attempt(
                     session_id=session_id,
                     attempt_label=attempt_label,
-                    schema_version=SCHEMA_VERSION,
+                    schema_version=schema_version,
                     parameters_json=parameters,
                     has_geometry=False,
                     has_renders=bool(images) and is_render,
@@ -422,7 +429,7 @@ def create_manual_entry(
             field_type="Semantic",
             question=None,
             body=text,
-            dc_name=DC_NAME,
+            dc_name=dc_name,
             skip_stitch=True,          # embed the text as written
             safety_scope="session",
             safety_filename=f"{session_id}__manual_entry.txt",

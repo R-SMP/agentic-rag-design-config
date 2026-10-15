@@ -204,12 +204,12 @@ it just stores the result.
   NULL`) schema entry per `param_name`. This means old attempts are
   renormalised under today's ranges, so masked-RMSE queries can compare
   attempts across all schema versions on a common scale.
-- `param_name`, `min_value`, `max_value`, and `unit` mirror the Grasshopper
-  input names declared in
-  `dc_pack/parameter_keys.txt` and
-  `dc_pack/fragments/dc/parameter_list.md`. The Grasshopper file is
-  the source of truth; `dc_parameter_schemas` reflects whatever is
-  declared there at the moment of each schema bump.
+- `param_name`, `min_value`, `max_value`, `unit` and `description` come
+  from `dc_pack/parameters.json` (the Grasshopper input names). A new
+  version is added only by the "Upload parameter schema" button (Workflow
+  Settings) or its fallback `populate_dc_parameter_schemas.py`, and is
+  numbered automatically. A session can be saved only when one version
+  matches the file exactly (`engine/parameter_schema.py`).
 
 ## D8. Masked-RMSE behaviour quirks
 

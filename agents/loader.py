@@ -538,6 +538,18 @@ def _end_session(
                 )
                 logger.info(f"[DH]  wrote {written} entries")
                 print(f"Database entries written: {written} -> {session_db_dir.resolve()}")
+                # populate_database skips the Postgres writes when no
+                # parameter schema in the database matches the setup
+                # (engine/parameter_schema.py); say so where the REPL user
+                # is looking, not only in the log.
+                from agents.shared import postgres_pool
+                from engine.parameter_schema import UPLOAD_FIRST_MESSAGE
+                session = getattr(dh, "session", None)
+                if (postgres_pool.is_enabled() and session is not None
+                        and session.schema_version is None):
+                    print("Postgres NOT written: no parameter schema in the "
+                          "database matches dc_pack/parameters.json.  "
+                          f"{UPLOAD_FIRST_MESSAGE}.")
         except Exception as exc:
             try:
                 logger.exception(

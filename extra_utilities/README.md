@@ -56,10 +56,10 @@ extra_utilities/
 │   ├── database_PostgreSQL_schema_v9.sql  the current schema
 │   ├── migrations/migrate_v8_to_v9.sql    upgrades a v8 database (idempotent)
 │   ├── apply_schema.py                    run a .sql file against DATABASE_URL
-│   ├── populate_dc_parameter_schemas.py   seed dc_parameter_schemas (idempotent)
+│   ├── populate_dc_parameter_schemas.py   upload the parameter schema (fallback for the button)
 │   └── drop_all_tables.sql                wipe before re-applying the schema
 │
-├── tests/                    seven offline checks + their README
+├── tests/                    eight offline checks + their README
 ├── scripts/                  hand-run tools (see below)
 ├── prompt_pdf/               builds the assembled-prompts PDF, and reads a marked-up
 │                             copy back into file + line edits (its own README)

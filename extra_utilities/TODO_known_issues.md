@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F111**.
+branches (F36 is taken on a sibling branch).  Next free id: **F113**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -125,6 +125,8 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F108` | OPEN | Overlapping fragments to merge in the single DC interface |
 | `F109` | DONE | Mesh checks OFF leaves an empty line in the inspector's role list |
 | `F110` | OPEN | Mesh checks OFF leaves the inspector's role list numbered 1, 3 |
+| `F111` | OPEN | The slider page reads its parameters through a served script — review and replace |
+| `F112` | OPEN | One Database window for everything database-related |
 
 ---
 
@@ -4700,4 +4702,26 @@ design matches …".  Topology 3 is unaffected: the Requirements Analyst's
 mesh item is the last one in its list.  A fix is a prompt edit (renumber, or
 an unnumbered list): show it to the owner first, and compare the `base` and
 `mesh_on` combinations of `extra_utilities/scripts/prompt_matrix.py`.
+
+---
+
+### F111. The slider page reads its parameters through a served script — review and replace
+
+**Status.** OPEN — owner request (2026-10-15), when P2 chose this for now.
+
+Since MAS-blueprint P2 the Parameters view gets its groups and sliders from
+`dc_pack/parameters.json` through a small script the server builds
+(`/pack/parameters.js`, setting `window.PACK_PARAMETERS`), loaded before
+`web/app.js`.  It is a stopgap: review it and change it to something easier
+to do and more flexible.
+
+---
+
+### F112. One Database window for everything database-related
+
+**Status.** OPEN — owner request (2026-10-15), during MAS-blueprint P2.
+
+Gather the database pages of the web app — "Database" (developer console),
+"Database options", "Upload to database" and the "Database schema" view P2
+adds — into one Database window, as tabs.
 

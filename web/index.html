@@ -78,6 +78,9 @@
         <button class="nav-item" type="button" data-view="upload_db">
           <span class="nav-ico">✍️</span><span>Upload to database</span>
         </button>
+        <button class="nav-item" type="button" data-view="db_schema">
+          <span class="nav-ico">📐</span><span>Database schema</span>
+        </button>
       </div>
     </nav>
 
@@ -930,6 +933,32 @@
             <span id="settings-status" class="settings-status" role="status"></span>
           </div>
 
+          <!-- Database: the parameter schema.  Compares dc_pack/parameters.json
+               with table dc_parameter_schemas (/api/parameter_schema) and
+               uploads it as the next version when the button is pressed --
+               never automatically.  NOT locked while a session is active:
+               an End Session refused for a missing schema is unblocked
+               here.  The versions are listed in the Database schema view. -->
+          <section class="rc-panel ps-panel" id="parameter-schema">
+            <div class="rc-head">
+              <h2>Database: parameter schema</h2>
+              <p class="rc-note">
+                Every saved session records which parameter set its values
+                belong to.  The database keeps each set as a numbered version,
+                and a session can be saved only when one version matches this
+                setup's parameters exactly.  Uploading adds this setup as the
+                next version, or does nothing when the latest version already
+                matches.  Every version is listed under
+                <em>Database schema</em> in the side menu.
+              </p>
+            </div>
+            <p id="ps-state" class="ps-state" role="status">Checking the database…</p>
+            <div class="ps-bar">
+              <button id="ps-upload" class="primary" type="button">Upload parameter schema</button>
+              <span id="ps-status" class="settings-status" role="status"></span>
+            </div>
+          </section>
+
           <!-- Agent roles across topologies: read-only view of
                agents/shared/agent_roles.py (served by /api/agent-roles), the
                table behind database_search's role mapping and the Database
@@ -1286,6 +1315,27 @@
         </div>
       </section>
 
+      <!-- Database schema: read-only list of every parameter-schema version
+           in table dc_parameter_schemas, newest first, and which one matches
+           this setup (/api/parameter_schema).  Uploading is in Workflow
+           Settings.  Gathering every database page into one window is
+           TODO F112. -->
+      <section class="view db-schema-view" data-view="db_schema" hidden>
+        <div class="db-opt-scroll">
+          <div class="db-opt-header">
+            <h1>Database schema</h1>
+            <p class="db-opt-sub">
+              The parameter sets stored in the database (table
+              <code>dc_parameter_schemas</code>), newest first.  Read only:
+              to add this setup's parameters as a new version, use
+              <em>Upload parameter schema</em> in Workflow Settings.
+            </p>
+          </div>
+          <div id="dbs-status" class="db-opt-status" role="status"></div>
+          <div id="dbs-versions" class="dbs-versions"></div>
+        </div>
+      </section>
+
       <!-- Upload content to database: curated entries put in by hand.
            Written as if they were a saved session, so the retrieval tools
            find them unmodified -- see
@@ -1463,6 +1513,9 @@
   </div>
 
   <script type="module" src="/static/viewer.js"></script>
+  <!-- window.PACK_PARAMETERS, from dc_pack/parameters.json: must load
+       before app.js (TODO F111). -->
+  <script src="/pack/parameters.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

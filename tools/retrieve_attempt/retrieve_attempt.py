@@ -133,15 +133,14 @@ def _read_local(dest: Path, name: str) -> str | None:
 def _schema_parameter_count() -> int | None:
     """How many parameters a COMPLETE set has, or None when unreadable.
 
-    Read from the pack fragment that already holds it (``engine.pack``)
-    rather than importing ``agents.shared.prompts`` -- that module pulls the
-    routing + topology stack, and ``tools`` must not depend on it.  None
-    disables the ``partial`` attribute entirely rather than guessing a
-    denominator.
+    Read from the pack's parameter file (``engine.parameters``) rather than
+    importing ``agents.shared.prompts`` -- that module pulls the routing +
+    topology stack, and ``tools`` must not depend on it.  None disables the
+    ``partial`` attribute entirely rather than guessing a denominator.
     """
     try:
-        from engine import pack
-        return int(pack.read("parameter_count", pack.REFERENCE_TOPOLOGY))
+        from engine import parameters
+        return parameters.count()
     except Exception:  # noqa: BLE001
         return None
 

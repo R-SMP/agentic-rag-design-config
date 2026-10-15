@@ -88,6 +88,8 @@ from config import (
     USER_INPUTS_DIR,
 )
 from engine import pack as _pack
+from engine import parameter_schema as _parameter_schema
+from engine import parameters as _parameters
 from agents.shared import sessions_queue
 from tools import set_mesh_checks, set_render_library, set_geometry_backend
 from tools.generate_mesh.generate_mesh import (
@@ -146,8 +148,8 @@ RESET_PHRASE               = "reset_database"
 CLEAR_PREV_SESSIONS_PHRASE = "clear_previous_sessions"
 # Order is intentional only for the SELECT COUNT(*) snapshot; the
 # TRUNCATE ... CASCADE doesn't care about order.  dc_parameter_schemas
-# is deliberately ABSENT — it holds the 17-parameter schema seed and
-# must be preserved.
+# is deliberately ABSENT — it holds the parameter-schema versions saved
+# sessions refer to, and must be preserved.
 RESET_TABLES = [
     "chunks",
     "dc_attempt_parameters",
@@ -554,6 +556,23 @@ def index() -> FileResponse:
     return FileResponse(WEB_DIR / "index.html")
 
 
+@app.get("/pack/parameters.js")
+def pack_parameters_js() -> Response:
+    """The Parameters view's groups and sliders, from dc_pack/parameters.json,
+    as a script ``web/index.html`` loads before ``app.js``: it sets
+    ``window.PACK_PARAMETERS = {names, groups}``.  No auth -- the page needs
+    it before sign-in, and it holds what the page's own script held before.
+    A stopgap (TODO F111)."""
+    # ASCII-escaped, so the script reads the same whatever charset it is
+    # decoded with (a non-text media type carries none).
+    payload = json.dumps(_parameters.page_payload())
+    return Response(
+        content=f"window.PACK_PARAMETERS = {payload};\n",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
 @app.get("/api/config")
 def api_config() -> dict:
     return {
@@ -880,38 +899,10 @@ def api_parameters() -> dict:
 # /api/preview_mesh  (Step 6 of the Parameters Inputs redesign)
 # ---------------------------------------------------------------------------
 
-# Range + type spec for each of the 17 canonical parameters.  Used by
-# /api/preview_mesh to validate the request body BEFORE the RhinoCompute
-# round-trip.  Mirrors dc_pack/fragments/dc/parameter_list.md;
-# hardcoded rather than parsed from the .md so this validator is robust
-# against future formatting edits in that file.
-#
-# Keep in sync with PROPELLER_DC_PARAMETERS_V2 (the 16-param INPUT set —
-# impellerHeight removed, ring height derived) in
-# extra_utilities/db_design/populate_dc_parameter_schemas.py — both
-# represent the same parameter set, just for different consumers.
-_PREVIEW_PARAM_SPEC: dict[str, dict] = {
-    # General / ring
-    "bladeCount":        {"type": "int",   "min": 3,    "max": 6},
-    "impellerRadius":    {"type": "float", "min": 60,   "max": 80},
-    "impellerThickness": {"type": "float", "min": 1,    "max": 5},
-    # Inner blade section
-    "innerThickness":    {"type": "float", "min": 3,    "max": 24},
-    "innerMaxPos":       {"type": "int",   "min": 2,    "max": 8},
-    "innerCamber":       {"type": "float", "min": 0,    "max": 9},
-    "innerChord":        {"type": "float", "min": 3,    "max": 11},
-    "innerAngle":        {"type": "float", "min": 2,    "max": 25},
-    # Middle blade section
-    "middlePos":         {"type": "float", "min": 0.3,  "max": 0.7},
-    "middleChord":       {"type": "float", "min": 10,   "max": 30},
-    "middleAngle":       {"type": "float", "min": 2,    "max": 25},
-    # Outer blade section
-    "outerThickness":    {"type": "float", "min": 3,    "max": 24},
-    "outerMaxPos":       {"type": "int",   "min": 2,    "max": 8},
-    "outerCamber":       {"type": "float", "min": 0,    "max": 9},
-    "outerChord":        {"type": "float", "min": 10,   "max": 30},
-    "outerAngle":        {"type": "float", "min": 2,    "max": 25},
-}
+# The range + type of every parameter, used by /api/preview_mesh and
+# /api/download_geometry to validate the request body BEFORE the geometry
+# round-trip: dc_pack/parameters.json, read fresh on every request
+# (engine/parameters.preview_spec).
 
 
 class PreviewMeshIn(BaseModel):
@@ -925,7 +916,7 @@ class PreviewMeshIn(BaseModel):
 
 
 def _coerce_preview_params(raw_params: dict) -> dict[str, int | float]:
-    """Validate + coerce a raw 16-param dict against ``_PREVIEW_PARAM_SPEC``.
+    """Validate + coerce a raw parameter dict against the pack's parameters.
 
     Drops a stray legacy ``impellerHeight`` key.  Raises :class:`ValueError`
     (message names the failing param(s)) on missing/unknown keys, out-of-range
@@ -935,7 +926,8 @@ def _coerce_preview_params(raw_params: dict) -> dict[str, int | float]:
     raw = dict(raw_params)
     raw.pop("impellerHeight", None)
 
-    expected_keys = set(_PREVIEW_PARAM_SPEC.keys())
+    param_spec = _parameters.preview_spec()
+    expected_keys = set(param_spec.keys())
     received_keys = set(raw.keys())
     missing = expected_keys - received_keys
     extra = received_keys - expected_keys
@@ -949,7 +941,7 @@ def _coerce_preview_params(raw_params: dict) -> dict[str, int | float]:
 
     coerced: dict[str, int | float] = {}
     problems = []
-    for name, spec in _PREVIEW_PARAM_SPEC.items():
+    for name, spec in param_spec.items():
         v = raw[name]
         if not isinstance(v, (int, float)) or isinstance(v, bool):
             problems.append(f"{name}={v!r} (must be a number)")
@@ -1453,6 +1445,36 @@ async def api_end(body: EndIn | None = None) -> dict:
     # feedback (legacy clients, or "Save without feedback" path) →
     # the feedback round is skipped, DH save runs as before.
     feedback        = body.feedback if (body and save_requested) else None
+
+    # A save records which parameter set the session's values belong to:
+    # the database version matching dc_pack/parameters.json
+    # (engine/parameter_schema.py).  None -> refuse BEFORE anything starts,
+    # with 412, not 409 -- the page reads 409 as "a save is already running"
+    # and any other refusal as "end the session anyway".  On 412 it keeps
+    # the session open, so the owner can upload the schema (Workflow
+    # Settings) and end the session again.  A lookup that itself fails is
+    # logged and the save goes ahead: the Database Handler looks again and
+    # skips only the Postgres writes if it still finds none.
+    if save_requested and session_present:
+        from agents.shared import postgres_pool
+        if postgres_pool.is_enabled():
+            try:
+                version = await asyncio.to_thread(
+                    _parameter_schema.resolve_version)
+            except Exception as exc:
+                logger.warning(
+                    "[WEB] /api/end parameter-schema check failed (%s: %s); "
+                    "the save goes ahead.", type(exc).__name__, exc)
+            else:
+                if version is None:
+                    _END_IN_FLIGHT = False
+                    logger.info(
+                        "[WEB] /api/end refused with HTTP 412: no parameter "
+                        "schema in the database matches the setup.")
+                    raise HTTPException(
+                        status_code=412,
+                        detail=_parameter_schema.UPLOAD_FIRST_MESSAGE + ".")
+                _BOX.session.schema_version = version
 
     # Schedule the actual work on the running event loop and return.
     # The task runs INDEPENDENTLY of this HTTP request's lifecycle,
@@ -4290,6 +4312,77 @@ def api_agent_roles_get() -> dict:
         ],
         "dcic_reads_dcii": agent_roles.dcic_reads_dcii(),
     }
+
+
+_NO_DATABASE_MESSAGE = (
+    "No database is configured on this deploy (DATABASE_URL / "
+    "DATABASE_PUBLIC_URL are not set), so there is no parameter schema to "
+    "compare or upload.")
+
+
+@app.get("/api/parameter_schema")
+def api_parameter_schema_get() -> dict:
+    """The setup's parameters (dc_pack/parameters.json) against table
+    dc_parameter_schemas, read-only: the Workflow Settings "Database" panel
+    and the "Database schema" view.  ``state``: current | older | missing
+    (engine/parameter_schema.status)."""
+    _require_auth()
+    from agents.shared import postgres_pool
+    try:
+        spec = _parameters.load()
+    except _parameters.ParameterSpecError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    if not postgres_pool.is_enabled():
+        return {"database": False, "message": _NO_DATABASE_MESSAGE,
+                "setup": _parameter_schema.shown_rows(
+                    _parameter_schema.setup_rows(spec))}
+    try:
+        with postgres_pool.connection() as conn:
+            state = _parameter_schema.status(conn, spec)
+    except Exception as exc:
+        logger.exception("[WEB] reading the parameter schema failed")
+        raise HTTPException(
+            status_code=502,
+            detail=f"Could not read the parameter schema: "
+                   f"{type(exc).__name__}: {exc}")
+    return {"database": True, **state}
+
+
+@app.post("/api/parameter_schema/upload")
+def api_parameter_schema_upload() -> dict:
+    """Upload the setup's parameters as the next schema version -- or do
+    nothing when the latest version already matches.  The web app's only
+    write to dc_parameter_schemas, and never automatic: the "Upload
+    parameter schema" button.  Allowed while a session is active: it is how
+    an End Session refused with 412 gets unblocked."""
+    _require_auth()
+    from agents.shared import postgres_pool
+    if not postgres_pool.is_enabled():
+        raise HTTPException(status_code=503, detail=_NO_DATABASE_MESSAGE)
+    try:
+        spec = _parameters.load()
+    except _parameters.ParameterSpecError as exc:
+        raise HTTPException(status_code=500, detail=str(exc))
+    try:
+        with postgres_pool.connection() as conn:
+            plan = _parameter_schema.upload(
+                conn, _parameter_schema.setup_rows(spec))
+            state = _parameter_schema.status(conn, spec)
+    except Exception as exc:
+        logger.exception("[WEB] parameter-schema upload failed")
+        raise HTTPException(
+            status_code=502,
+            detail=f"The upload failed and nothing was written: "
+                   f"{type(exc).__name__}: {exc}")
+    if plan["action"] == "insert":
+        logger.info("[WEB] parameter schema uploaded as version %s "
+                    "(retired from version %s: %s)", plan["version"],
+                    plan["previous"], plan["retire"] or "none")
+    else:
+        logger.info("[WEB] parameter-schema upload: version %s already "
+                    "matches, nothing written", plan["version"])
+    return {"database": True, "uploaded": plan["action"] == "insert",
+            "plan": plan, **state}
 
 
 @app.post("/api/model_windows")

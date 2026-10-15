@@ -1,0 +1,26 @@
+{
+  "groups": [
+    {"id": "general", "label": "General Parameters", "image": "/static/images/general-profile.png", "image_alt": "General profile diagram", "order": ["impellerRadius", "impellerThickness", "bladeCount"]},
+    {"id": "inner", "label": "Inner Profile", "image": "/static/images/inner-profile.png", "image_alt": "Inner profile diagram", "order": ["innerThickness", "innerMaxPos", "innerCamber", "innerChord", "innerAngle"]},
+    {"id": "middle", "label": "Middle Profile", "image": "/static/images/middle-profile.png", "image_alt": "Middle profile diagram", "order": ["middlePos", "middleChord", "middleAngle"]},
+    {"id": "outer", "label": "Outer Profile", "image": "/static/images/outer-profile.png", "image_alt": "Outer profile diagram", "order": ["outerThickness", "outerMaxPos", "outerCamber", "outerChord", "outerAngle"]}
+  ],
+  "parameters": [
+    {"name": "bladeCount", "type": "int", "min": 3, "max": 6, "step": 1, "default": 3, "group": "general", "label": "Blade Count", "unit": "", "db_unit": "count", "db_description": "Number of blades"},
+    {"name": "impellerRadius", "type": "float", "min": 60, "max": 80, "step": 1, "default": 71, "group": "general", "label": "Propeller Radius", "unit": "mm", "db_unit": "mm", "db_description": "Outer radius of the impeller ring"},
+    {"name": "impellerThickness", "type": "float", "min": 1, "max": 5, "step": 1, "default": 2, "group": "general", "label": "Propeller Thickness", "unit": "mm", "db_unit": "mm", "db_description": "Wall thickness of the outer ring"},
+    {"name": "innerThickness", "type": "float", "min": 3, "max": 24, "step": 1, "default": 6, "group": "inner", "label": "Thickness", "unit": "% of chord", "db_unit": "% of chord", "db_description": "Inner blade section profile thickness"},
+    {"name": "innerMaxPos", "type": "int", "min": 2, "max": 8, "step": 1, "default": 4, "group": "inner", "label": "Max Position", "unit": "tenths of chord", "db_unit": "tenths of chord", "db_description": "Inner blade section chordwise position of max camber (high-point)"},
+    {"name": "innerCamber", "type": "float", "min": 0, "max": 9, "step": 1, "default": 4, "group": "inner", "label": "Camber", "unit": "% of chord", "db_unit": "% of chord", "db_description": "Inner blade section profile camber"},
+    {"name": "innerChord", "type": "float", "min": 3, "max": 11, "step": 1, "default": 11, "group": "inner", "label": "Chord Length", "unit": "mm", "db_unit": "mm", "db_description": "Inner blade section chord length"},
+    {"name": "innerAngle", "type": "float", "min": 2, "max": 25, "step": 1, "default": 25, "group": "inner", "label": "Angle of Attack", "unit": "degrees", "db_unit": "degrees", "db_description": "Inner blade section angle of attack"},
+    {"name": "middlePos", "type": "float", "min": 0.3, "max": 0.7, "step": 0.05, "default": 0.3, "group": "middle", "label": "Radial Position", "unit": "× impellerRadius", "db_unit": "x impellerRadius", "db_description": "Middle blade section radial position as multiplier of propeller radius"},
+    {"name": "middleChord", "type": "float", "min": 10, "max": 30, "step": 1, "default": 20, "group": "middle", "label": "Chord Length", "unit": "mm", "db_unit": "mm", "db_description": "Middle blade section chord length"},
+    {"name": "middleAngle", "type": "float", "min": 2, "max": 25, "step": 1, "default": 15, "group": "middle", "label": "Angle of Attack", "unit": "degrees", "db_unit": "degrees", "db_description": "Middle blade section angle of attack"},
+    {"name": "outerThickness", "type": "float", "min": 3, "max": 24, "step": 1, "default": 6, "group": "outer", "label": "Thickness", "unit": "% of chord", "db_unit": "% of chord", "db_description": "Outer blade section profile thickness"},
+    {"name": "outerMaxPos", "type": "int", "min": 2, "max": 8, "step": 1, "default": 4, "group": "outer", "label": "Max Position", "unit": "tenths of chord", "db_unit": "tenths of chord", "db_description": "Outer blade section chordwise position of max camber (high-point)"},
+    {"name": "outerCamber", "type": "float", "min": 0, "max": 9, "step": 1, "default": 4, "group": "outer", "label": "Camber", "unit": "% of chord", "db_unit": "% of chord", "db_description": "Outer blade section profile camber"},
+    {"name": "outerChord", "type": "float", "min": 10, "max": 30, "step": 1, "default": 15, "group": "outer", "label": "Chord Length", "unit": "mm", "db_unit": "mm", "db_description": "Outer blade section chord length"},
+    {"name": "outerAngle", "type": "float", "min": 2, "max": 25, "step": 1, "default": 10, "group": "outer", "label": "Angle of Attack", "unit": "degrees", "db_unit": "degrees", "db_description": "Outer blade section angle of attack"}
+  ]
+}
