@@ -55,7 +55,7 @@ from agents.shared import postgres_pool
 from agents.shared import attempt_views
 from tools import retrieval_common
 from agents.shared.agent_activity import generic_tool
-from config import ATTEMPTS_DIR, PROJECT_ROOT
+from config import ATTEMPTS_DIR
 from workflow_settings import settings as workflow_settings
 
 logger = logging.getLogger("propeller_agent")
@@ -133,15 +133,15 @@ def _read_local(dest: Path, name: str) -> str | None:
 def _schema_parameter_count() -> int | None:
     """How many parameters a COMPLETE set has, or None when unreadable.
 
-    Read from the fragment that already holds it rather than importing
-    ``agents.shared.prompts`` -- that module pulls the routing + topology
-    stack, and ``tools`` must not depend on it.  None disables the
-    ``partial`` attribute entirely rather than guessing a denominator.
+    Read from the pack fragment that already holds it (``engine.pack``)
+    rather than importing ``agents.shared.prompts`` -- that module pulls the
+    routing + topology stack, and ``tools`` must not depend on it.  None
+    disables the ``partial`` attribute entirely rather than guessing a
+    denominator.
     """
     try:
-        return int((PROJECT_ROOT / "DC_prompt_fragments" / "dc_config"
-                    / "parameter_count.txt").read_text(
-                        encoding="utf-8").strip())
+        from engine import pack
+        return int(pack.read("parameter_count", pack.REFERENCE_TOPOLOGY))
     except Exception:  # noqa: BLE001
         return None
 

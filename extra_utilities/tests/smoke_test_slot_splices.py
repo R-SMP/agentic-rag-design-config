@@ -39,21 +39,39 @@ marker syntax requires:
 
 so markers and a leading list bullet are stripped before the aloneness test.
 """
+import os
 import re
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-FRAGMENT_DIRS = (
-    ROOT / "DC_prompt_fragments",
-    ROOT / "agents" / "shared" / "prompt_fragments",
-)
+# The design-configurator pack (config.DC_PACK_DIR; a relative path is taken
+# from the repo root).  Read here without importing config, so the check
+# stays standard-library only.
+PACK_DIR = Path(os.getenv("DC_PACK_DIR") or "dc_pack")
+if not PACK_DIR.is_absolute():
+    PACK_DIR = ROOT / PACK_DIR
+PACK_FRAGMENTS_DIR = PACK_DIR / "fragments"
+GENERIC_FRAGMENTS_DIR = ROOT / "agents" / "shared" / "prompt_fragments"
+FRAGMENT_DIRS = (PACK_FRAGMENTS_DIR, GENERIC_FRAGMENTS_DIR)
 
 SLOT_RE = re.compile(r"\$([a-z_][a-z0-9_]*)")
 MARKER_RE = re.compile(r"<</?[A-Z_]+>>")
+_PACK_SUFFIX_RE = re.compile(r"\.t\d+$")
+
+
+def _pack_slot(stem: str) -> str:
+    """``hard_constraints_dc@tool_caller.t5`` -> ``hard_constraints_dc``
+    (the naming rule of engine/pack.py)."""
+    return _PACK_SUFFIX_RE.sub("", stem.split("@", 1)[0])
 
 
 def _fragment_shapes() -> dict:
-    """slot name -> (chars, lines) of what it resolves to."""
+    """slot name -> (chars, lines) of what it resolves to.
+
+    A pack file is named after its slot; when a slot has several files (per
+    topology, per agent) the LONGEST shape counts, since any of them may be
+    what a given prompt receives.  An engine file keeps its own stem.
+    """
     shapes = {}
     for d in FRAGMENT_DIRS:
         if not d.is_dir():
@@ -61,7 +79,12 @@ def _fragment_shapes() -> dict:
         for f in d.rglob("*"):
             if f.is_file() and f.suffix in (".md", ".txt"):
                 body = f.read_text(encoding="utf-8").rstrip()
-                shapes[f.stem] = (len(body), body.count("\n") + 1 if body else 0)
+                shape = (len(body), body.count("\n") + 1 if body else 0)
+                slot = _pack_slot(f.stem) if d == PACK_FRAGMENTS_DIR else f.stem
+                if shape[1] > shapes.get(slot, (0, 0))[1]:
+                    shapes[slot] = shape
+                else:
+                    shapes.setdefault(slot, shape)
     return shapes
 
 
@@ -83,18 +106,15 @@ def _scan_targets() -> list:
     ``$tool_inventory`` (881 chars) exploding inside an ``Available Agents``
     roster sentence, in the 7-agent shared copy and twice in the 5-agent one.
 
-    Variant dirs (``agents/5agent``, ``agents/7agent_reduced``) are included:
-    that is where two of the three lived.  Shape lookup still comes from the
-    canonical dirs only — override files carry suffixed stems, so they define
-    no slot of their own and would add nothing.
+    Topology dirs (``agents/5agent``, ``agents/3agent``) are included: that is
+    where two of the three lived.  Every pack file is scanned too, whatever
+    its topology or agent suffix.  Engine shape lookup comes from the shared
+    dir only — engine override files carry suffixed stems, so they define no
+    slot of their own and would add nothing.
     """
     targets = set(ROOT.glob("agents/**/prompt*.md"))
     for d in list(FRAGMENT_DIRS) + sorted(
-        p for p in ROOT.rglob("prompt_fragments") if p.is_dir()
-    ) + sorted(
-        p for p in ROOT.rglob("tools_config") if p.is_dir()
-    ) + sorted(
-        p for p in ROOT.rglob("dc_config") if p.is_dir()
+        p for p in (ROOT / "agents").rglob("prompt_fragments") if p.is_dir()
     ):
         for f in d.rglob("*"):
             # README.md documents the slot syntax; it is prose ABOUT slots,

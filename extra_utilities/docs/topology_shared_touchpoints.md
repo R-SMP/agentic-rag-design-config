@@ -74,13 +74,12 @@ Each override is suffixed `_<N>agents` and filed under a sub-folder
 ```
 agents/5agent/prompt_fragments/generic_constraints_5agents.md
      overrides  agents/shared/prompt_fragments/generic_constraints.md
-agents/5agent/dc_config/hard_constraints_dc_5agents.md
-     overrides  DC_prompt_fragments/dc_config/hard_constraints_dc.md
-agents/5agent/tools_config/database_search_creator_5agents.md
-     overrides  DC_prompt_fragments/tools_config/database_search_creator.md
 agents/5agent/receptionist/prompt_5agents.md
      overrides  agents/receptionist/prompt.md
 ```
+
+The pack's per-topology texts are not here: they are `<slot>.t<N>.md` files in
+`dc_pack/fragments/` (`dc_pack/README.md`).
 
 Two rules that make this safe:
 

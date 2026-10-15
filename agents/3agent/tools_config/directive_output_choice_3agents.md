@@ -1,1 +1,0 @@
-to impose the ONE output this phase creates: the blade-section renders, or the full 3D geometry.  Never both in one directive; when a job needs both, finish one and issue a NEW directive for the other.

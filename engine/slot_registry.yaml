@@ -1,0 +1,710 @@
+# The slot registry: every $slot the engine offers, in one place.
+#
+# Read by agents/shared/prompts.py (which file fills each slot, and how) and
+# by the Studio (which form field shows it).  Owned by the engine: a pack
+# never edits it.  The TEXT of a pack slot lives in dc_pack/fragments/<folder>/;
+# whether a field is linked across topologies or has per-agent copies is read
+# from which files exist there (engine/pack.py), never stored here.
+#
+#   source  pack | engine | setting
+#   folder  dc | tools                 (pack)  dc_pack/fragments/<folder>/
+#   kind    phrase | block | word      phrase = one line spliced into a
+#                                      sentence, re-wrapped at 80 columns
+#   use     prompt (default) | runtime runtime = read by Python, not a $slot
+#   missing crash (default) | empty    empty = no shared text, per-agent only
+#   strip   right (default) | both
+#   section the Studio section that shows the field
+
+format: 1
+slots:
+
+# --- 1 Identity ------------------------------------------------------------
+  dc_name:
+    source: pack
+    folder: dc
+    kind: word
+    strip: both
+    section: identity
+    description: "Short DC name, e.g. `propeller`."
+  domain_description:
+    source: pack
+    folder: dc
+    kind: word
+    strip: both
+    section: identity
+    description: "Domain phrase used in agent introductions, e.g. `propeller design configurator system`."
+
+# --- 2 Parameters ----------------------------------------------------------
+  parameter_count:
+    source: pack
+    folder: dc
+    kind: word
+    strip: both
+    section: parameters
+    description: "Total number of design parameters, e.g. `17`."
+  parameter_list:
+    source: pack
+    folder: dc
+    kind: block
+    section: parameters
+    description: "The full ordered parameter list, names + units + ranges (LLM-facing prose)."
+  dc_params_primer_text:
+    source: pack
+    folder: dc
+    kind: block
+    use: runtime
+    section: parameters
+
+# --- 3 Configurator description --------------------------------------------
+  dc_structure:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "Anatomy of the object the DC produces (rings, blades, sections — for a different DC, replace with that DC's structure)."
+  modelling_notes:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "Any DC-specific notes (e.g. NACA airfoils, integer vs float discipline)."
+  lever_map:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "The 'Which lever moves what' section: which parameters change which aspect (block, with heading)."
+  qualitative_examples:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "Worked examples of \"qualitative phrase → numeric direction\"."
+  invalid_parameter_examples:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "Examples of parameter names that DON'T exist (anti-hallucination)."
+  capabilities_can:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "What the system CAN do — bullet list (Receptionist + Orchestrator use this when offering follow-ups)."
+  capabilities_cannot:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "What the system CANNOT do — bullet list."
+  hard_constraints_dc:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "DC-specific DOs and DON'Ts (positive + negative reinforcement)."
+  geometry_modification_rule:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "Hard rule on how the geometry may be modified."
+  output_file_locations:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "Where outputs land on disk."
+  ratio_vs_absolute_feedback:
+    source: pack
+    folder: dc
+    kind: block
+    section: description
+    description: "Block: name the quantity (ratio vs absolute size) for this DC's ratio parameters."
+
+# --- 4 Outputs & vocabulary ------------------------------------------------
+  output_model:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "The kind of geometry model the geometry tool generates."
+  output_model_label:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "Hand-off label for the generated model file (without the colon)."
+  output_image:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "Singular noun for one output image (also used as a modifier: '... paths')."
+  output_images:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "Plural noun for the output images the inspector judges."
+  output_image_caps:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "Capitalised (emphasised) form of the output image noun."
+  output_images_long:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "The images the geometry tool produces for inspection (long form)."
+  output_image_files:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "The output image files, as named in the agent roster."
+  output_images_label:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "Hand-off label under which the tool runner lists the output images (without the colon)."
+  output_produced:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "Adjective/participle: produced by the geometry tool's imaging step."
+  output_action:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "Verb: produce the output images."
+  output_reaction:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "Verb: produce the output images again."
+  output_reactions:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "Verb, 3rd person: produces the output images again."
+  output_action_noun:
+    source: pack
+    folder: tools
+    kind: word
+    section: outputs
+    description: "Noun for the act of producing the output images."
+  render_view_list:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: outputs
+    description: "The fixed render views the geometry tool produces, in parentheses."
+  geometry_model_filename:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: outputs
+    description: "File name of the 3D model the geometry tool writes (code-quoted)."
+  visual_inspection_guide:
+    source: pack
+    folder: dc
+    kind: block
+    section: outputs
+    description: "What a correct rendered output looks like (used by the DC Output Inspector)."
+  precision_match_subject:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: outputs
+    description: "What a precision job matches against, naming its possible targets."
+  precision_gap_description:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: outputs
+    description: "What the inspector's fidelity verdict reports, naming this DC's model ceiling."
+  precision_match_targets:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: outputs
+    description: "What a precision directive can name as the target to match."
+  values_only_excluded_outputs:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: outputs
+    description: "The geometry outputs a VALUES ONLY directive excludes (list). (topology 3 only)"
+
+# --- 5 Tools ---------------------------------------------------------------
+  tool_inventory:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+    description: "Numbered list of utility tools the Tool Caller is bound to (name, behaviour, what they return, plus any tool-produced metric lists)."
+  tool_caller_instructions:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+    description: "How the Tool Caller should use its tools, including Tool-Caller-only DOs/DON'Ts (e.g. \"call generate_and_render_propeller once — it builds the mesh AND renders/checks it in one call\", \"call calculate for arithmetic\", \"do NOT call your utility tools to 'fix' a mesh — ESCALATE instead\")."
+  tool_caller_capabilities:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+    description: "One-paragraph description of the Tool Caller's bounded capability — used by the Orchestrator's \"Agent Capabilities\" section."
+  agent_tools_overview:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+    description: "\"Agent tools at a glance\" — what each agent reads / writes via its bound tools (Orchestrator-facing)."
+  agent_tools_overview_brief:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+  hard_constraints_tools:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+    description: "Tool-related DOs and DON'Ts that apply to **every** agent in the system (no inventing tools, no guessing paths, no calling read tools in a loop, copy paths verbatim).  Tool-Caller-specific tool rules live in `tool_caller_instructions.md`, not here."
+  geometry_tool_name:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Name of the DC tool that generates the geometry and renders it (code-quoted)."
+  geometry_tools_loading_rule:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Tool-runner sentence: how the geometry tool(s) read the parameters file."
+  render_type_choice:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+    description: "Tool-runner paragraph: which DC tool to call for which output type (BSV only)."
+  roster_sections_tool_sentence:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Roster sentence (with its <<BSV_ON>> markers) naming the extra sections-only tool; empty for a single-tool DC."
+  roster_tools_clause:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Roster clause naming the DC's geometry tools, ending with the main tool's name ('... Or it points <tool>')."
+  routing_sections_alternative:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Hub routing clause (with <<BSV_ON>> markers) offering the sections-only render; empty for a single-tool DC."
+  sections_rerun_case:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Inspector routing: the extra no-design-change case only a sections render creates (leading ', or ...')."
+  directive_output_choice:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "What a standing directive imposes when geometry must be created, naming the alternative outputs."
+  precision_multi_phase_rule:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Planner rule for runs with more than one precision phase; empty when the DC has one output type."
+  precision_continue_directive_example:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+    description: "Example STANDING DIRECTIVES body that moves a precision job to its next phase."
+  sections_tool_block_full:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+    description: "Sections-tool block (BSV markers + its fragments) for the Database Handler."
+  sections_tool_block_overlay:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+    description: "Sections-tool block (BSV markers + per-agent overlay) for the Planner."
+  blade_sections_visualizer:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+  blade_sections_visualizer_off:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+  blade_sections_visualizer_per_agent:
+    source: pack
+    folder: tools
+    kind: block
+    missing: empty
+    section: tools
+  geometry_editing_ban:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Sentence stating which geometry post-processing operations do NOT exist (Planner)."
+  mesh_editing_operations_actions:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "The same operations as verbs ('You cannot ...')."
+  recommendation_exclusions:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "What a REVISE recommendation must not contain."
+  quality_check_numbers:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "The geometry tool's quality-check output, as 'the ... numbers'."
+  quality_check_report:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Name of the geometry tool's quality-check report."
+  mesh_check_role_item:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+    description: "Inspector role-list item (with <<MESH_ON>> markers) for the quality-check report."
+  qc_numerics_verdict_rule:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Sentence (with <<MESH_ON>> markers) allowing a verdict on quality-check figures alone."
+  no_render_fallback_qc:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: tools
+    description: "Clause (with <<MESH_ON>> markers) adding the quality-check report to the no-render fallback. (topology 3 only)"
+  visualize_3d_model_tool:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+  propose_attempt_tool:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+  database_search_tool:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+  database_search_per_agent:
+    source: pack
+    folder: tools
+    kind: block
+    missing: empty
+    section: tools
+  retrieve_user_inputs_tool:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+  retrieve_attempt_tool:
+    source: pack
+    folder: tools
+    kind: block
+    section: tools
+  render_check_library_off:
+    source: pack
+    folder: tools
+    kind: block
+    use: runtime
+    section: tools
+  render_check_library_pyvista:
+    source: pack
+    folder: tools
+    kind: block
+    use: runtime
+    section: tools
+  render_check_library_trimesh:
+    source: pack
+    folder: tools
+    kind: block
+    use: runtime
+    section: tools
+
+# --- 6 Examples ------------------------------------------------------------
+  past_run_lookup_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example factual questions about an earlier run, in parentheses."
+  extraction_only_examples_user:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example user requests that ask only for extraction (Receptionist list)."
+  extraction_only_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example forwarded requests that ask only for extraction (hub list)."
+  observable_fact_questions:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: examples
+    description: "Example user questions about what the system observed or concluded."
+  tool_run_history_contents:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: examples
+    description: "What the tool runner's history holds about a run."
+  non_consumable_input_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example inputs the configurator cannot consume (quoted list)."
+  quantitative_input_example:
+    source: pack
+    folder: dc
+    kind: block
+    section: examples
+    description: "Two example QUANTITATIVE INPUTS lines (block)."
+  countable_feature_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "A countable feature of this DC, as 'the ... for example'."
+  stated_count_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "A count written beside a drawing, quoted."
+  soft_target_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "One example extraction line with a SOFT TARGET marker."
+  soft_target_marker_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "A shorter SOFT TARGET marker example (Design Engineer value states). (topology 3 only)"
+  parameter_level_entry_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example of a user quantity that maps directly onto one parameter, in parentheses."
+  non_applicable_input_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example entries that do not apply to the configurator, in parentheses."
+  visual_claim_examples:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: examples
+    description: "Example phrases that count as visual claims, in parentheses."
+  shape_gap_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example free-form description of a visual shape gap (quoted)."
+  unlocked_lever_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example unlocked levers that could improve a mismatch."
+  sub_resolution_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example quantities the renders cannot resolve, in parentheses."
+  prior_finding_citation_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example of marking a prior-cycle finding, in parentheses."
+  feature_feedback_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example feature / parameter direction feedback, in parentheses."
+  relative_magnitude_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example relative-magnitude requests (quoted list)."
+  dh_artefact_reference_examples:
+    source: pack
+    folder: tools
+    kind: phrase
+    section: examples
+    description: "Example generic references to an archived artefact, in parentheses."
+  dh_parameter_dump_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example of how a parameter-value dump looks, in parentheses."
+  dh_concrete_noun_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example pronoun-to-concrete-noun replacements, in parentheses."
+  dh_parameter_name_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "This DC's parameter naming convention with one example name."
+  dh_numeric_fact_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Example of spelling out a numeric fact, in parentheses."
+  dh_structural_marker_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    section: examples
+    description: "Structural markers in agents' answers to preserve, in parentheses."
+
+# --- 7 User input types ----------------------------------------------------
+  sketch_handling:
+    source: pack
+    folder: dc
+    kind: block
+    section: inputs
+  sketch_notes:
+    source: pack
+    folder: dc
+    kind: block
+    section: inputs
+  sketch_precision_examples:
+    source: pack
+    folder: dc
+    kind: block
+    section: inputs
+  sketch_crop_example:
+    source: pack
+    folder: dc
+    kind: block
+    section: inputs
+  useful_input_images_example:
+    source: pack
+    folder: dc
+    kind: block
+    section: inputs
+    description: "Worked USEFUL INPUT IMAGES block for one image (block)."
+
+# =============================================================================
+# Engine slots: text owned by the blueprint itself, never by a pack.  The
+# Studio shows them read-only.  `file` is under agents/shared/prompt_fragments/
+# (a topology's agents/<N>agent/prompt_fragments/<name>_<N>agents.md wins);
+# `scoped: true` lets an agent own a copy (<name>_<agent>.md).
+# =============================================================================
+  hard_constraints_generic:
+    source: engine
+    kind: block
+    file: generic_constraints.md
+    scoped: true
+  value_states:
+    source: engine
+    kind: block
+    file: value_states.md
+    scoped: true
+  available_agents:
+    source: engine
+    kind: block
+    file: available_agents.md
+    scoped: true
+  routing_receptionist:
+    source: engine
+    kind: block
+    file: routing_receptionist.md
+  routing_hub:
+    source: engine
+    kind: block
+    file_from: hub            # routing_<hub agent>.md of the running topology
+    files: [routing_orchestrator.md]
+  pipeline_flow:
+    source: engine
+    kind: block
+    file_from: pipeline_flow  # pipeline_flow.md, or the PLANNER_FIRST pair
+    files: [pipeline_flow_planner_first.md, pipeline_flow_uii_first.md]
+    scoped: true
+    scoped_file: pipeline_flow.md
+
+# Values read from workflow_settings/settings.py when prompts.py is imported.
+  embedding_provider:
+    source: setting
+    kind: word
+    setting: EMBEDDING_PROVIDER
+  embedding_model:
+    source: setting
+    kind: word
+    setting: EMBEDDING_MODEL
+  embedding_vector_dims:
+    source: setting
+    kind: word
+    setting: EMBEDDING_VECTOR_DIMS
+  embedding_max_response_tokens:
+    source: setting
+    kind: word
+    setting: EMBEDDING_MAX_RESPONSE_TOKENS

@@ -2,11 +2,11 @@
 
 The live assets are:
 
-* `DC_prompt_fragments/dc_config/images/dc_params_primer.png` — the image the
+* `dc_pack/assets/dc_params_primer.png` — the image the
   four DC agents (and the 5/3-agent Creator / Designer) receive at invoke
   time, injected by `agents/shared/dc_primer.py` behind
   `DC_PARAMS_PRIMER_ENABLED`.
-* `DC_prompt_fragments/dc_config/dc_params_primer_text.txt` — the paired text
+* `dc_pack/fragments/dc/dc_params_primer_text.md` — the paired text
   block, sent in the same `HumanMessage` BEFORE the image.
 
 This folder holds what regenerates them:
@@ -27,7 +27,7 @@ regenerating, reproduce that step:
 from PIL import Image
 im = Image.open("dc_params_primer.png")          # 1094x364 generator output
 im.resize((930, 309), Image.LANCZOS).save(
-    "DC_prompt_fragments/dc_config/images/dc_params_primer.png",
+    "dc_pack/assets/dc_params_primer.png",
     optimize=True)
 ```
 
@@ -65,5 +65,5 @@ Two rules the pipeline depends on:
    injection reads the file bytes directly, so the per-image compression
    sidecars do not apply.  Do not route it through `encode_image`.
 2. The high-point bullet in the text block quotes the canonical sentence
-   from `DC_prompt_fragments/dc_config/parameters.md` **verbatim** — keep
+   from `dc_pack/fragments/dc/parameter_list.md` **verbatim** — keep
    them in lockstep (guarded by `extra_utilities/smoke_test_dc_primer.py` *(removed 2026-10-10; in git history)*).

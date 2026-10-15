@@ -4665,7 +4665,9 @@ replica of `_build_slots()` and `SCOPED_FRAGMENTS`.  It knows none of the 68
 slots added by the generic-fragments audit, nor the inline re-wrap
 (`wrap_inline_lines`) or the `$` pass in routing fragments, so it would
 measure prompts with `$slot` literals in them.  Re-sync it or make it call
-`agents.shared.prompts` through `prompt_pdf/bootstrap.py`.
+`agents.shared.prompts` through `prompt_pdf/bootstrap.py`.  Since MAS-blueprint
+P1 its paths point at the removed `DC_prompt_fragments/`, so it no longer runs
+at all.
 
 ---
 

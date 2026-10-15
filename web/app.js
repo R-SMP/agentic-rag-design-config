@@ -1032,7 +1032,7 @@ if (logClearBtn) logClearBtn.addEventListener("click", clearLogView);
 // Upload content to database
 //
 // The 16 parameter names, in the canonical order.  Mirrors
-// DC_prompt_fragments/dc_config/parameter_keys.txt; the form sends only
+// dc_pack/parameter_keys.txt; the form sends only
 // the boxes that were actually filled, because a PARTIAL set is allowed
 // and the retrieval layer reports it as partial="true" keys="N/16".
 // --------------------------------------------------------------------
@@ -5863,7 +5863,7 @@ startEventStream();
 // (Step 3 wires VARY ↔ FIXED on slider modification; Step 10 wires
 // PROPOSED from the propose_attempt SSE event).
 //
-// Slider ranges are sourced from DC_prompt_fragments/dc_config/parameters.md
+// Slider ranges are sourced from dc_pack/fragments/dc/parameter_list.md
 // (the SAME ranges agents validate against).  Defaults are the
 // reference's pragmatic mid-of-range values.  Units (from
 // parameters.md) appear in the min / current / max display and

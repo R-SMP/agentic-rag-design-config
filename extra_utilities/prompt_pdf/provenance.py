@@ -1,9 +1,9 @@
 """Which fragment FILES feed each agent's prompt, per topology.
 
-Resolution is done by the loader itself: the two fragment readers are
-patched to return a sentinel naming the file they resolved to, so the
-answer honours topology overrides, variant overrides and per-agent scoped
-copies without re-implementing any of those rules here.
+Resolution is done by the loaders themselves -- ``engine/pack.py`` for the
+pack's slots, ``prompts._topology_override`` for the engine's -- so the
+answer honours topology files, per-agent copies and overlays without
+re-implementing any of those rules here.
 
 Usage
 -----
@@ -43,17 +43,11 @@ if not _DUMP.is_file():
 with io.open(_DUMP, encoding="utf-8") as _f:
     AGENTS = list(json.load(_f)["agents"])
 
-_real_dc = P._read_dc_fragment
-_real_generic = P._read_generic_fragment
+pack = P._pack
 
 
 def rel(p):
     return str(p).replace(str(REPO), "").lstrip("\\/").replace("\\", "/")
-
-
-def _resolved_dc(rel_path):
-    p = P._topology_override(rel_path) or (P.DC_FRAGMENTS_DIR / rel_path)
-    return p
 
 
 def _resolved_generic(rel_path):
@@ -62,18 +56,21 @@ def _resolved_generic(rel_path):
     return p
 
 
-# slot -> resolved file, by running the real slot builder with sentinel readers
-P._read_dc_fragment = lambda rp: "@@" + rel(_resolved_dc(rp)) + "@@"
-P._read_generic_fragment = lambda rp: "@@" + rel(_resolved_generic(rp)) + "@@"
+# slot -> the file that fills it for every agent without its own copy
 SLOT_FILE = {}
-for slot, val in P._build_slots().items():
-    m = re.fullmatch(r"@@(.*)@@", str(val))
-    SLOT_FILE[slot] = m.group(1) if m else None
-P._read_dc_fragment = _real_dc
-P._read_generic_fragment = _real_generic
+for slot, spec in pack.slots(use="prompt").items():
+    if spec["source"] == "pack":
+        p = pack.shared_path(slot, TOPOLOGY)
+        SLOT_FILE[slot] = rel(p) if p is not None else None
+    elif spec["source"] == "engine":
+        SLOT_FILE[slot] = rel(_resolved_generic(P._engine_fragment_file(spec)))
+    else:
+        SLOT_FILE[slot] = None          # a setting value, no file
 
 # slot -> real text, for the nested-slot pass
 SLOT_TEXT = P._build_slots()
+_OVERLAY_SLOTS = {s for s, sp in pack.slots(source="pack").items()
+                  if sp.get("missing") == "empty"}
 
 SLOT_RE = re.compile(r"\$([a-z_][a-z0-9_]*)")
 
@@ -90,17 +87,12 @@ for agent in AGENTS:
         if sp is not None:
             scoped[slot] = rel(sp)
 
-    dbs_rel = "tools_config/database_search_%s.md" % agent
-    dbs = P._topology_override(dbs_rel) or (P.TOOLS_CONFIG_DIR /
-                                            ("database_search_%s.md" % agent))
-    bsv_rel = "tools_config/blade_sections_visualizer_%s.md" % agent
-    bsv = P._topology_override(bsv_rel) or (P.TOOLS_CONFIG_DIR /
-                                            ("blade_sections_visualizer_%s.md" % agent))
     overlay = {}
-    if dbs.exists():
-        overlay["database_search_per_agent"] = rel(dbs)
-    if bsv.exists():
-        overlay["blade_sections_visualizer_per_agent"] = rel(bsv)
+    for slot in pack.agent_copies(agent, TOPOLOGY):
+        if pack.slot_spec(slot).get("use", "prompt") != "prompt":
+            continue
+        sp = rel(pack.agent_copy_path(slot, TOPOLOGY, agent))
+        (overlay if slot in _OVERLAY_SLOTS else scoped)[slot] = sp
 
     def file_for(slot):
         if slot in scoped:

@@ -18,6 +18,14 @@ Nothing is hard-coded about WHICH fragments have a 5-agent copy — the
 expected mapping is derived by walking ``agents/<N>agent/`` on disk, so
 adding or removing an override needs no edit here.
 
+Two kinds of per-topology text are checked.  The ENGINE's (agents' prompts,
+``prompt_fragments/``) are ``<name>_<N>agents.md`` copies under
+``agents/<N>agent/``.  The PACK's are files in ``dc_pack/fragments/``:
+``<slot>.md`` is one text for every topology, ``<slot>.t<N>.md`` is topology
+N's own (``engine/pack.py``).  For the pack the rule is: topology N reads
+only ``<slot>.md`` or ``<slot>.t<N>.md`` -- reading another topology's
+``.t<M>.md`` means its own file is missing and a foreign text stood in.
+
 Every case is run under BOTH settings of ``PLANNER_FIRST``, because that
 flag branches some fragment names and only means something in the 7-agent
 system.  A third, non-existent topology is exercised to confirm the
@@ -71,8 +79,9 @@ sys.modules["langchain_core.tools"] = _lct
 
 from agents.shared import prompts, routing, routing_tools, topology  # noqa: E402
 
-DC_FRAGMENTS_DIR = ROOT / "DC_prompt_fragments"
+PACK_FRAGMENTS_DIR = prompts._pack.fragments_dir().resolve()
 GENERIC_FRAGMENTS_DIR = ROOT / "agents" / "shared" / "prompt_fragments"
+_PACK_TOPOLOGY_RE = re.compile(r"\.t(\d+)\.md$")
 
 # Which agents each topology actually builds.  The Database Handler sits
 # outside the design chain and exists in both.
@@ -260,8 +269,6 @@ def shared_original(override: Path, topo: int) -> Path | None:
     original = f"{stem}{override.suffix}"
     if sub == "prompt_fragments":
         return GENERIC_FRAGMENTS_DIR / inner / original
-    if sub in ("dc_config", "tools_config"):
-        return DC_FRAGMENTS_DIR / sub / inner / original
     # Otherwise <agent>/prompt.md — an agent that also exists in 7-agent.
     return ROOT / "agents" / sub / inner / original
 
@@ -357,15 +364,27 @@ def check_case(topo: int, planner_first: bool) -> None:
     # --- SHARING: everything else comes from the shared trees -------------
     shared_read = [
         p for p in read
-        if p not in ov and (
-            str(GENERIC_FRAGMENTS_DIR) in str(p)
-            or str(DC_FRAGMENTS_DIR) in str(p)
-        )
+        if p not in ov and str(GENERIC_FRAGMENTS_DIR) in str(p)
     ]
+    pack_read = [p for p in read if PACK_FRAGMENTS_DIR in p.parents]
+    own = [p for p in pack_read if _PACK_TOPOLOGY_RE.search(p.name)]
     notes.append(
         f"{case}: {len(shared_read)} fragments read from the shared trees, "
-        f"{len([p for p in ov if p in read])}/{len(ov)} overrides read"
+        f"{len([p for p in ov if p in read])}/{len(ov)} overrides read; "
+        f"pack: {len(pack_read) - len(own)} linked + {len(own)} per-topology files read"
     )
+
+    # --- PACK: topology N reads <slot>.md or <slot>.t<N>.md, nothing else --
+    # Reading another topology's .t<M>.md means this topology's own file is
+    # missing and the resolver fell back to it -- for a mirrored topology
+    # that is the 7-agent text silently standing in (the pack's MIRROR
+    # failure); for topology 7 it cannot happen unless the resolver regresses.
+    for p in sorted(pack_read):
+        m = _PACK_TOPOLOGY_RE.search(p.name)
+        if m and int(m.group(1)) != topo:
+            fail(case, "PACK-MIRROR" if topo in MIRRORED_TOPOLOGIES else "PACK-ISOLATION",
+                 f"topology {topo} read another topology's pack text "
+                 f"{rel(p)} -- its own .t{topo}.md (or a linked file) is missing")
 
     # --- MIRROR: a fully-forked topology must read NOTHING shared ---------
     # The strongest statement the harness can make about the fork: if even one
@@ -825,9 +844,13 @@ _SCOPE_AGENTS = [
 _before = {a: prompts._build_template(a) for a in _SCOPE_AGENTS}
 
 # (1) inertness — no scoped file exists for any registered slot right now.
+#     Engine slots are listed in SCOPED_FRAGMENTS; ANY pack slot can have an
+#     agent copy (<slot>@<agent>.md), so the pack's are found on disk.
 _live = [
     (slot, a) for slot in prompts.SCOPED_FRAGMENTS for a in _SCOPE_AGENTS
     if prompts.scoped_fragment_path(slot, a) is not None
+] + [
+    (slot, a) for a in _SCOPE_AGENTS for slot in prompts._pack.agent_copies(a, 7)
 ]
 if _live:
     notes.append(
@@ -835,8 +858,7 @@ if _live:
     )
 
 # (2) precedence + isolation.
-_probe = (ROOT / "DC_prompt_fragments" / "tools_config"
-          / "hard_constraints_tools_tool_caller.md")
+_probe = PACK_FRAGMENTS_DIR / "tools" / "hard_constraints_tools@tool_caller.md"
 if _probe.exists():
     failures.append(
         f"[SCOPED] probe path {_probe.name} already exists — refusing to "

@@ -206,8 +206,8 @@ it just stores the result.
   attempts across all schema versions on a common scale.
 - `param_name`, `min_value`, `max_value`, and `unit` mirror the Grasshopper
   input names declared in
-  `DC_prompt_fragments/dc_config/parameter_keys.txt` and
-  `DC_prompt_fragments/dc_config/parameters.md`. The Grasshopper file is
+  `dc_pack/parameter_keys.txt` and
+  `dc_pack/fragments/dc/parameter_list.md`. The Grasshopper file is
   the source of truth; `dc_parameter_schemas` reflects whatever is
   declared there at the moment of each schema bump.
 

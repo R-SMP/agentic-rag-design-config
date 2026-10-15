@@ -3,18 +3,20 @@
 Each agent's per-agent template lives at ``agents/<agent>/prompt.md``.
 
 DC-specific and tool-specific fragments (parameter list, structure,
-modelling notes, capabilities, tool inventory, …) live in the
-top-level ``DC_prompt_fragments/`` folder, split into ``dc_config/``
-and ``tools_config/``.  Edit those when retargeting the system at a
-different design configurator or swapping the bound tools.
+modelling notes, capabilities, tool inventory, …) live in the design-
+configurator pack, ``dc_pack/fragments/`` (``dc/`` and ``tools/``), read
+through ``engine/pack.py``.  Every ``$slot`` -- pack, engine or setting --
+is listed in ``engine/slot_registry.yaml``; ``_build_slots``,
+``INLINE_FRAGMENT_SLOTS``, ``SCOPED_FRAGMENTS`` and ``FRAGMENT_TO_SLOT``
+are all derived from it.
 
-The single generic-constraints fragment (DOs / DON'Ts every agent
-inherits) lives at ``agents/shared/prompt_fragments/generic_constraints.md``.
+The engine's own fragments (the DOs / DON'Ts every agent inherits, the
+routing text, the pipeline flow) live in ``agents/shared/prompt_fragments/``.
 
 Two placeholder syntaxes are used and they do NOT collide:
 
-- ``$slot`` (Python ``string.Template``) — DC + tool fragments,
-  filled at IMPORT TIME by ``_build_template()``.
+- ``$slot`` (Python ``string.Template``) — pack + engine fragments,
+  filled when each agent is built by ``_build_template()``.
 - ``{slot}`` (Python ``.format()``) — per-agent runtime values
   (``{routing_instructions}``, ``{natural_pipeline}``,
   ``{chain_access_block}``, ``{user_inputs_dir}``,
@@ -48,28 +50,25 @@ from agents.shared.topology import (
     hub_key as _hub_agent,
     topology as _topology,
 )
+from engine import pack as _pack
 from workflow_settings import settings as _workflow_settings
 
 AGENTS_DIR = Path(__file__).resolve().parent.parent
 REPO_ROOT = AGENTS_DIR.parent
-DC_FRAGMENTS_DIR = REPO_ROOT / "DC_prompt_fragments"
-TOOLS_CONFIG_DIR = DC_FRAGMENTS_DIR / "tools_config"
 GENERIC_FRAGMENTS_DIR = Path(__file__).resolve().parent / "prompt_fragments"
 
 
 # ---------------------------------------------------------------------------
 # Agent topology
 #
-# A topology owns ``agents/<N>agent/``, holding ONLY the files that differ
-# from the 7-agent originals.  Each is named with an ``_<N>agents`` suffix
-# and filed under a sub-folder mirroring its SOURCE root:
+# A topology owns ``agents/<N>agent/``, holding its copies of the ENGINE's
+# files (the pack's per-topology texts are ``<slot>.t<N>.md`` files in
+# ``dc_pack/``, see ``engine/pack.py``).  Each is named with an
+# ``_<N>agents`` suffix and filed under a sub-folder mirroring its SOURCE
+# root:
 #
 #   agents/5agent/prompt_fragments/generic_constraints_5agents.md
 #        overrides  agents/shared/prompt_fragments/generic_constraints.md
-#   agents/5agent/dc_config/hard_constraints_dc_5agents.md
-#        overrides  DC_prompt_fragments/dc_config/hard_constraints_dc.md
-#   agents/5agent/tools_config/database_search_creator_5agents.md
-#        overrides  DC_prompt_fragments/tools_config/database_search_creator.md
 #   agents/5agent/receptionist/prompt_5agents.md
 #        overrides  agents/receptionist/prompt.md
 #
@@ -88,8 +87,8 @@ def _topology_override(rel_path: str) -> Path | None:
     """This topology's override of ``rel_path``, or None for the shared file.
 
     ``rel_path`` is relative to the topology directory and keeps its source
-    sub-folder (``dc_config/x.md``, ``prompt_fragments/y.md``,
-    ``<agent>/prompt.md``); only the basename gains the suffix.  Returning
+    sub-folder (``prompt_fragments/y.md``, ``<agent>/prompt.md``); only the
+    basename gains the suffix.  Returning
     None is every caller's signal to read the shared original, which is what
     makes topology 7 — with no topology directory at all — behave exactly as
     it did before.
@@ -544,11 +543,10 @@ def apply_flag_filters(text: str) -> str:
     )
 
 
-def _read_dc_fragment(rel_path: str) -> str:
-    """Read a DC- or tool-specific fragment under ``DC_prompt_fragments/``,
-    preferring the active topology's override when one exists."""
-    path = _topology_override(rel_path) or (DC_FRAGMENTS_DIR / rel_path)
-    return path.read_text(encoding="utf-8").rstrip()
+def read_pack_fragment(slot: str, agent_dir_name: str | None = None) -> str:
+    """The pack text of *slot* for the active topology -- *agent_dir_name*'s
+    own copy when it has one.  Resolution rules: ``engine/pack.py``."""
+    return _pack.read(slot, _topology(), agent_dir_name)
 
 
 def _read_generic_fragment(rel_path: str) -> str:
@@ -571,21 +569,22 @@ def _read_generic_fragment(rel_path: str) -> str:
 # are safe only because they are OFF the prompt-assembly path -- see the
 # note above _build_slots(), which re-reads every fragment from disk on
 # every call.  Do NOT consume these constants at agent-construction time:
-# call _read_dc_fragment() / _read_generic_fragment() there instead.
+# call read_pack_fragment() / _read_generic_fragment() there instead.
 # ---------------------------------------------------------------------------
 
-DC_NAME = _read_dc_fragment("dc_config/name.txt").strip()
+DC_NAME = read_pack_fragment("dc_name")
 
 
-def _parse_parameter_keys(rel_path: str) -> tuple[tuple[str, ...], dict[str, type]]:
+def _parse_parameter_keys(path: Path) -> tuple[tuple[str, ...], dict[str, type]]:
     """Parse ``parameter_keys.txt`` into an ordered name tuple + type map."""
-    # The ONE reader here that deliberately does NOT go through
-    # _topology_override.  The design configurator's parameters do not
-    # depend on the topology: this file is DATA (the canonical key list
-    # used by the runtime validator and for JSON ordering), not prompt
-    # text, and it is not a $slot.  So there is nothing to fork, and a
-    # per-topology copy would be a second source of truth for one fact.
-    raw = (DC_FRAGMENTS_DIR / rel_path).read_text(encoding="utf-8")
+    # The ONE pack reader here with no topology dimension.  The design
+    # configurator's parameters do not depend on the topology: this file is
+    # DATA (the canonical key list used by the runtime validator and for JSON
+    # ordering), not prompt text, and it is not a $slot.  So there is nothing
+    # to fork, and a per-topology copy would be a second source of truth for
+    # one fact.
+    rel_path = path.name
+    raw = path.read_text(encoding="utf-8")
     names: list[str] = []
     types: dict[str, type] = {}
     for line in raw.splitlines():
@@ -618,7 +617,7 @@ def _parse_parameter_keys(rel_path: str) -> tuple[tuple[str, ...], dict[str, typ
 
 
 PARAMETER_NAMES, PARAMETER_TYPES = _parse_parameter_keys(
-    "dc_config/parameter_keys.txt"
+    _pack.parameter_keys_path()
 )
 
 
@@ -628,22 +627,15 @@ PARAMETER_NAMES, PARAMETER_TYPES = _parse_parameter_keys(
 
 # Paired render / mesh-check backend fragments — exactly one is
 # spliced into the Tool Caller's prompt per session via the runtime
-# ``{render_check_library_block}`` placeholder.  See
-# DC_prompt_fragments/tools_config/render_check_library/README.md.
+# ``{render_check_library_block}`` placeholder (registry: ``use: runtime``).
 # The agents read the fragment fresh at wiring time; these three
 # constants are read only by the prompt snapshot and PDF tools
 # (extra_utilities/scripts/topology_prompt_snapshot.py, prompt_pdf/dump.py).
-RENDER_CHECK_LIBRARY_TRIMESH = _read_dc_fragment(
-    "tools_config/render_check_library/trimesh.md"
-)
-RENDER_CHECK_LIBRARY_PYVISTA = _read_dc_fragment(
-    "tools_config/render_check_library/pyvista.md"
-)
+RENDER_CHECK_LIBRARY_TRIMESH = read_pack_fragment("render_check_library_trimesh")
+RENDER_CHECK_LIBRARY_PYVISTA = read_pack_fragment("render_check_library_pyvista")
 # Substituted for the backend block when the session has mesh checks OFF —
 # the metrics those fragments describe are then never produced.
-RENDER_CHECK_LIBRARY_OFF = _read_dc_fragment(
-    "tools_config/render_check_library/off.md"
-)
+RENDER_CHECK_LIBRARY_OFF = read_pack_fragment("render_check_library_off")
 
 
 # ---------------------------------------------------------------------------
@@ -690,251 +682,107 @@ EMBEDDING_MAX_RESPONSE_TOKENS = str(
     _workflow_settings.EMBEDDING_MAX_RESPONSE_TOKENS
 )
 
+# The registry's ``source: setting`` slots, captured at import like the
+# constants above (today: the four embedding settings).
+_SETTING_SLOT_VALUES: dict[str, str] = {
+    name: str(getattr(_workflow_settings, spec["setting"]))
+    for name, spec in _pack.slots(source="setting").items()
+}
+
 
 # ---------------------------------------------------------------------------
 # Reverse index: fragment FILE -> the $slot it feeds
 #
-# Lives HERE, next to _build_slots below, so a new $slot and its
-# reverse-index entry are one screen apart — if you add a $slot, add the FRAGMENT_TO_SLOT entry in the
-# same commit.
+# Derived, not hand-kept: a pack file is named after its slot
+# (engine/pack.py) and an engine file is named in the registry.  Paths are
+# relative to the repo root (absolute for a pack outside it).
 # ---------------------------------------------------------------------------
 
-# Path → $-slot name.  Paths are RELATIVE to the repo root.  Every
-# fragment that _build_slots reads is listed here, .md or .txt.  The
-# tree-builder filters by .md extension; the .txt entries exist so
-# any caller (including future validation) can reverse-resolve them.
-FRAGMENT_TO_SLOT: dict[str, str] = {
-    # DC-config fragments
-    "DC_prompt_fragments/dc_config/name.txt":                      "dc_name",
-    "DC_prompt_fragments/dc_config/domain_description.txt":        "domain_description",
-    "DC_prompt_fragments/dc_config/parameter_count.txt":           "parameter_count",
-    "DC_prompt_fragments/dc_config/structure.md":                  "dc_structure",
-    "DC_prompt_fragments/dc_config/parameters.md":                 "parameter_list",
-    "DC_prompt_fragments/dc_config/modelling_notes.md":            "modelling_notes",
-    "DC_prompt_fragments/dc_config/qualitative_examples.md":       "qualitative_examples",
-    "DC_prompt_fragments/dc_config/visual_inspection_guide.md":    "visual_inspection_guide",
-    "DC_prompt_fragments/dc_config/capabilities_can.md":           "capabilities_can",
-    "DC_prompt_fragments/dc_config/capabilities_cannot.md":        "capabilities_cannot",
-    "DC_prompt_fragments/dc_config/output_file_locations.md":      "output_file_locations",
-    "DC_prompt_fragments/dc_config/geometry_modification_rule.md": "geometry_modification_rule",
-    "DC_prompt_fragments/dc_config/invalid_parameter_examples.md": "invalid_parameter_examples",
-    "DC_prompt_fragments/dc_config/hard_constraints_dc.md":        "hard_constraints_dc",
-    # User-input-type fragments
-    "DC_prompt_fragments/dc_config/user_input_types/sketch_handling.md": "sketch_handling",
-    "DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md":    "sketch_notes",
-    # DC-SPECIFIC EXAMPLES split out of sketch_handling so the surrounding
-    # guidance can stay configurator-agnostic: the verdict wording a sketch
-    # precision statement uses, and a worked crop-box example.  Referenced
-    # today only by the 7-agent reduced variant's scoped sketch_handling; the
-    # shared originals exist so the slots always resolve.
-    "DC_prompt_fragments/dc_config/user_input_types/sketch_precision_examples.md": "sketch_precision_examples",
-    "DC_prompt_fragments/dc_config/user_input_types/sketch_crop_example.md":       "sketch_crop_example",
-    # Tools-config fragments
-    "DC_prompt_fragments/tools_config/tool_inventory.md":             "tool_inventory",
-    "DC_prompt_fragments/tools_config/tool_caller_instructions.md":   "tool_caller_instructions",
-    "DC_prompt_fragments/tools_config/tool_caller_capabilities.md":   "tool_caller_capabilities",
-    "DC_prompt_fragments/tools_config/agent_tools_overview.md":       "agent_tools_overview",
-    "DC_prompt_fragments/tools_config/agent_tools_overview_brief.md": "agent_tools_overview_brief",
-    "DC_prompt_fragments/tools_config/hard_constraints_tools.md":     "hard_constraints_tools",
-    "DC_prompt_fragments/tools_config/visualize_3d_model.md":         "visualize_3d_model_tool",
-    "DC_prompt_fragments/tools_config/propose_attempt.md":            "propose_attempt_tool",
-    "DC_prompt_fragments/tools_config/database_search.md":            "database_search_tool",
-    "DC_prompt_fragments/tools_config/retrieve_user_inputs.md":       "retrieve_user_inputs_tool",
-    "DC_prompt_fragments/tools_config/retrieve_attempt.md":           "retrieve_attempt_tool",
-    # Relocated DC- / tool-specific text (generic-fragments audit, 2026-10)
-    "DC_prompt_fragments/tools_config/geometry_tool_name.md":                   "geometry_tool_name",
-    "DC_prompt_fragments/tools_config/quality_check_numbers.md":                "quality_check_numbers",
-    "DC_prompt_fragments/tools_config/quality_check_report.md":                 "quality_check_report",
-    "DC_prompt_fragments/tools_config/mesh_check_role_item.md":                 "mesh_check_role_item",
-    "DC_prompt_fragments/tools_config/qc_numerics_verdict_rule.md":             "qc_numerics_verdict_rule",
-    "DC_prompt_fragments/tools_config/no_render_fallback_qc.md":                "no_render_fallback_qc",
-    "DC_prompt_fragments/tools_config/geometry_model_filename.md":              "geometry_model_filename",
-    "DC_prompt_fragments/tools_config/render_view_list.md":                     "render_view_list",
-    "DC_prompt_fragments/tools_config/roster_sections_tool_sentence.md":        "roster_sections_tool_sentence",
-    "DC_prompt_fragments/tools_config/roster_tools_clause.md":                  "roster_tools_clause",
-    "DC_prompt_fragments/tools_config/routing_sections_alternative.md":         "routing_sections_alternative",
-    "DC_prompt_fragments/tools_config/sections_rerun_case.md":                  "sections_rerun_case",
-    "DC_prompt_fragments/tools_config/directive_output_choice.md":              "directive_output_choice",
-    "DC_prompt_fragments/tools_config/precision_multi_phase_rule.md":           "precision_multi_phase_rule",
-    "DC_prompt_fragments/tools_config/geometry_tools_loading_rule.md":          "geometry_tools_loading_rule",
-    "DC_prompt_fragments/tools_config/sections_tool_block_full.md":             "sections_tool_block_full",
-    "DC_prompt_fragments/tools_config/sections_tool_block_overlay.md":          "sections_tool_block_overlay",
-    "DC_prompt_fragments/tools_config/precision_match_subject.md":              "precision_match_subject",
-    "DC_prompt_fragments/tools_config/precision_gap_description.md":            "precision_gap_description",
-    "DC_prompt_fragments/tools_config/precision_match_targets.md":              "precision_match_targets",
-    "DC_prompt_fragments/tools_config/values_only_excluded_outputs.md":         "values_only_excluded_outputs",
-    "DC_prompt_fragments/tools_config/precision_continue_directive_example.md": "precision_continue_directive_example",
-    "DC_prompt_fragments/tools_config/render_type_choice.md":                   "render_type_choice",
-    "DC_prompt_fragments/tools_config/geometry_editing_ban.md":                 "geometry_editing_ban",
-    "DC_prompt_fragments/tools_config/mesh_editing_operations_actions.md":      "mesh_editing_operations_actions",
-    "DC_prompt_fragments/tools_config/recommendation_exclusions.md":            "recommendation_exclusions",
-    "DC_prompt_fragments/dc_config/past_run_lookup_examples.md":                "past_run_lookup_examples",
-    "DC_prompt_fragments/dc_config/extraction_only_examples_user.md":           "extraction_only_examples_user",
-    "DC_prompt_fragments/dc_config/extraction_only_examples.md":                "extraction_only_examples",
-    "DC_prompt_fragments/tools_config/observable_fact_questions.md":            "observable_fact_questions",
-    "DC_prompt_fragments/tools_config/tool_run_history_contents.md":            "tool_run_history_contents",
-    "DC_prompt_fragments/dc_config/non_consumable_input_examples.md":           "non_consumable_input_examples",
-    "DC_prompt_fragments/dc_config/quantitative_input_example.md":              "quantitative_input_example",
-    "DC_prompt_fragments/dc_config/countable_feature_example.md":               "countable_feature_example",
-    "DC_prompt_fragments/dc_config/stated_count_example.md":                    "stated_count_example",
-    "DC_prompt_fragments/dc_config/soft_target_example.md":                     "soft_target_example",
-    "DC_prompt_fragments/dc_config/soft_target_marker_example.md":              "soft_target_marker_example",
-    "DC_prompt_fragments/dc_config/useful_input_images_example.md":             "useful_input_images_example",
-    "DC_prompt_fragments/dc_config/lever_map.md":                               "lever_map",
-    "DC_prompt_fragments/dc_config/parameter_level_entry_example.md":           "parameter_level_entry_example",
-    "DC_prompt_fragments/dc_config/non_applicable_input_examples.md":           "non_applicable_input_examples",
-    "DC_prompt_fragments/tools_config/visual_claim_examples.md":                "visual_claim_examples",
-    "DC_prompt_fragments/dc_config/shape_gap_example.md":                       "shape_gap_example",
-    "DC_prompt_fragments/dc_config/unlocked_lever_examples.md":                 "unlocked_lever_examples",
-    "DC_prompt_fragments/dc_config/sub_resolution_examples.md":                 "sub_resolution_examples",
-    "DC_prompt_fragments/dc_config/prior_finding_citation_example.md":          "prior_finding_citation_example",
-    "DC_prompt_fragments/dc_config/feature_feedback_examples.md":               "feature_feedback_examples",
-    "DC_prompt_fragments/dc_config/relative_magnitude_examples.md":             "relative_magnitude_examples",
-    "DC_prompt_fragments/dc_config/ratio_vs_absolute_feedback.md":              "ratio_vs_absolute_feedback",
-    "DC_prompt_fragments/tools_config/dh_artefact_reference_examples.md":       "dh_artefact_reference_examples",
-    "DC_prompt_fragments/dc_config/dh_parameter_dump_example.md":               "dh_parameter_dump_example",
-    "DC_prompt_fragments/dc_config/dh_concrete_noun_examples.md":               "dh_concrete_noun_examples",
-    "DC_prompt_fragments/dc_config/dh_parameter_name_example.md":               "dh_parameter_name_example",
-    "DC_prompt_fragments/dc_config/dh_numeric_fact_example.md":                 "dh_numeric_fact_example",
-    "DC_prompt_fragments/dc_config/dh_structural_marker_examples.md":           "dh_structural_marker_examples",
-    "DC_prompt_fragments/tools_config/output_images_label.md":                  "output_images_label",
-    "DC_prompt_fragments/tools_config/output_model_label.md":                   "output_model_label",
-    "DC_prompt_fragments/tools_config/output_images_long.md":                   "output_images_long",
-    "DC_prompt_fragments/tools_config/output_image_files.md":                   "output_image_files",
-    "DC_prompt_fragments/tools_config/output_reactions.md":                     "output_reactions",
-    "DC_prompt_fragments/tools_config/output_reaction.md":                      "output_reaction",
-    "DC_prompt_fragments/tools_config/output_action_noun.md":                   "output_action_noun",
-    "DC_prompt_fragments/tools_config/output_produced.md":                      "output_produced",
-    "DC_prompt_fragments/tools_config/output_image_caps.md":                    "output_image_caps",
-    "DC_prompt_fragments/tools_config/output_action.md":                        "output_action",
-    "DC_prompt_fragments/tools_config/output_images.md":                        "output_images",
-    "DC_prompt_fragments/tools_config/output_image.md":                         "output_image",
-    "DC_prompt_fragments/tools_config/output_model.md":                         "output_model",
-    # Generic fragments
-    "agents/shared/prompt_fragments/generic_constraints.md":  "hard_constraints_generic",
-    "agents/shared/prompt_fragments/value_states.md":         "value_states",
-    "agents/shared/prompt_fragments/routing_receptionist.md": "routing_receptionist",
-    # $routing_hub has one source file PER TOPOLOGY; only the active
-    # topology's is ever read.  Same many-to-one shape as $pipeline_flow.
-    # (The other 5-agent override paths are not in this index yet — that is
-    # part of the System-Prompts-UI surface step.)
-    "agents/shared/prompt_fragments/routing_orchestrator.md": "routing_hub",
-    "agents/5agent/prompt_fragments/routing_planner_5agents.md": "routing_hub",
-    "agents/shared/prompt_fragments/available_agents.md":     "available_agents",
-    # $pipeline_flow has TWO source files; only the file matching the
-    # current PLANNER_FIRST flag is read by _build_slots.  Both are
-    # listed so this map stays complete whichever way the flag is set --
-    # a reader (or a tool) walking it must find both contributors, not
-    # just the one the current flag happens to select.
-    "agents/shared/prompt_fragments/pipeline_flow_planner_first.md": "pipeline_flow",
-    "agents/shared/prompt_fragments/pipeline_flow_uii_first.md":     "pipeline_flow",
-}
+def _repo_rel(path: Path) -> str:
+    try:
+        return path.resolve().relative_to(REPO_ROOT).as_posix()
+    except ValueError:
+        return path.as_posix()
+
+
+def _fragment_to_slot() -> dict[str, str]:
+    out = {_repo_rel(p): _pack.slot_of_file(p.name) for p in _pack.fragment_files()}
+    for name, spec in _pack.slots(source="engine").items():
+        for f in ([spec["file"]] if "file" in spec else spec.get("files", [])):
+            out[_repo_rel(GENERIC_FRAGMENTS_DIR / f)] = name
+    return out
+
+
+FRAGMENT_TO_SLOT: dict[str, str] = _fragment_to_slot()
 
 
 # ---------------------------------------------------------------------------
 # Per-agent SCOPED COPIES of shared fragments
 #
-# Same file-naming idiom as the ``$blade_sections_visualizer_per_agent`` /
-# ``$database_search_per_agent`` overlays: a file whose basename carries the
-# agent's directory name wins over the shared one.  ONE difference, and it is
-# the whole point — an overlay falls back to "" under its own ``_per_agent``
-# slot; a SCOPED COPY replaces the value of the SHARED slot and falls back to
-# the SHARED FILE.
+# An agent may own a copy of a fragment.  The copy replaces the shared text
+# under the SAME $slot name, so no prompt.md changes anywhere: an agent with
+# no copy assembles exactly what it assembled before, an agent with one gets
+# its own text under the $slot its prompt already references.
 #
-# Consequence: no prompt.md changes anywhere.  An agent with no scoped file
-# assembles byte-for-byte what it assembles today; an agent with one gets its
-# own text under the same $slot name its prompt already references.  There is
-# no "registered but not referenced" or "referenced but not registered" state
-# to get wrong, because no new slot name is introduced.
+#   * Pack slots: ANY of them, as ``<slot>@<agent>.md`` (or ``.t<N>.md``) in
+#     ``dc_pack/fragments/`` -- see engine/pack.py.
+#   * Engine slots: those marked ``scoped: true`` in the registry, as
+#     ``<file stem>_<agent>.md`` beside the shared file in
+#     ``agents/shared/prompt_fragments/`` (or the topology's copy of it).
+#     SCOPED_FRAGMENTS lists them, as (root, file) for that lookup.
 #
 # NOTE this can TAILOR but not REMOVE: every prompt.md puts a heading directly
 # above the slot (``## Hard constraints — DC-specific``), so an empty scoped
 # file leaves a bare heading.  Dropping a fragment from an agent entirely means
 # deleting the ``$slot`` line AND its heading from that agent's prompt.md.
-#
-# Keys are $-slot names.  Values are (root, path-relative-to-that-root), where
-# "dc" means DC_prompt_fragments/ and "generic" means
-# agents/shared/prompt_fragments/ — the two roots ``_read_dc_fragment`` and
-# ``_read_generic_fragment`` already use.  Registering a slot costs one
-# ``is_file()`` check per agent per template build and nothing else, so this
-# table is deliberately a SUPERSET of what has a scoped copy today.
 # ---------------------------------------------------------------------------
 
 SCOPED_FRAGMENTS: dict[str, tuple[str, str]] = {
-    "hard_constraints_generic": ("generic", "generic_constraints.md"),
-    "available_agents":         ("generic", "available_agents.md"),
-    "hard_constraints_dc":      ("dc", "dc_config/hard_constraints_dc.md"),
-    "hard_constraints_tools":   ("dc", "tools_config/hard_constraints_tools.md"),
-    "sketch_handling":          ("dc", "dc_config/user_input_types/sketch_handling.md"),
-    "sketch_notes":             ("dc", "dc_config/user_input_types/sketch_notes.md"),
-    "parameter_list":           ("dc", "dc_config/parameters.md"),
-    # ``pipeline_flow`` is registered under the flag-free name even though
-    # the shared file is ``pipeline_flow_uii_first.md`` /
-    # ``pipeline_flow_planner_first.md`` — the registered name is only used
-    # to BUILD the scoped filename (``pipeline_flow_orchestrator.md``),
-    # never to read the shared file, so it cannot collide with the
-    # flag-suffixed shared pair.
-    "pipeline_flow":            ("generic", "pipeline_flow.md"),
-    "value_states":             ("generic", "value_states.md"),
-    "dc_structure":             ("dc", "dc_config/structure.md"),
-    # Round 2 of the prompt reduction (extra_utilities/extra_info.md §7.1).
-    "modelling_notes":          ("dc", "dc_config/modelling_notes.md"),
-    "qualitative_examples":     ("dc", "dc_config/qualitative_examples.md"),
-    "tool_inventory":           ("dc", "tools_config/tool_inventory.md"),
-    # Round 3 of the prompt reduction -- the DC Output
-    # Inspector cuts 9 spans from the visual-inspection guide; the
-    # 5-agent DCOI reads the shared file and must not move.
-    "visual_inspection_guide":  ("dc", "dc_config/visual_inspection_guide.md"),
-    # Do NOT register ``blade_sections_visualizer``: its scoped name for the
-    # Planner would collide with the existing per-agent OVERLAY file
-    # ``blade_sections_visualizer_planner.md``, which feeds the different
-    # ``$blade_sections_visualizer_per_agent`` slot.
+    name: ("generic", spec.get("scoped_file") or spec["file"])
+    for name, spec in _pack.slots(source="engine").items()
+    if spec.get("scoped")
 }
 
 
 def scoped_fragment_path(slot: str, agent_dir_name: str) -> Path | None:
     """Path of *agent_dir_name*'s own copy of *slot*, or None if it has none.
 
-    Honours the active topology + variant exactly as ``_read_dc_fragment`` and
-    ``_read_generic_fragment`` do, so the 7-agent reduced variant can ship
-    ``agents/7agent_reduced/dc_config/hard_constraints_dc_<agent>_7agents_reduced.md``
-    and a 5-agent Creator could ship its own twin.
-
-    Public because ``extra_utilities/tests/smoke_test_topology_fragments.py``
+    Honours the active topology exactly as the shared lookup does.  Public
+    because ``extra_utilities/tests/smoke_test_topology_fragments.py``
     resolves the same question; a second copy of this naming rule there is
-    exactly the drift 13e0bab had to consolidate away.  (It was also read by
-    the System Prompts UI's "used by" badge, removed 2026-08-21 -- the smoke
-    test is now the only caller.)
+    exactly the drift 13e0bab had to consolidate away.
     """
-    try:
-        root, rel = SCOPED_FRAGMENTS[slot]
-    except KeyError:
-        return None
-    p = Path(rel)
-    # as_posix(), never str(): _topology_override re-parses this string, and a
-    # Windows backslash would not survive the Linux container.
-    scoped_rel = (p.parent / f"{p.stem}_{agent_dir_name}{p.suffix}").as_posix()
-    if root == "generic":
+    if slot in SCOPED_FRAGMENTS:
+        _root, rel = SCOPED_FRAGMENTS[slot]
+        p = Path(rel)
+        # as_posix(), never str(): _topology_override re-parses this string, and a
+        # Windows backslash would not survive the Linux container.
+        scoped_rel = (p.parent / f"{p.stem}_{agent_dir_name}{p.suffix}").as_posix()
         path = (
             _topology_override(f"prompt_fragments/{scoped_rel}")
             or GENERIC_FRAGMENTS_DIR / scoped_rel
         )
-    else:
-        path = _topology_override(scoped_rel) or DC_FRAGMENTS_DIR / scoped_rel
-    return path if path.is_file() else None
+        return path if path.is_file() else None
+    if _pack.registry().get(slot, {}).get("source") == "pack":
+        return _pack.agent_copy_path(slot, _topology(), agent_dir_name)
+    return None
 
 
 def _scoped_fragments_for(agent_dir_name: str) -> dict[str, str]:
-    """Slot → text, for every shared fragment this agent has its own copy of.
+    """Slot → text, for every fragment this agent has its own copy of.
 
-    Only slots with an existing scoped file are returned, so the caller can
-    splat the result over the shared slot map and leave the rest alone.
+    Only slots with an existing copy are returned, so the caller can splat
+    the result over the shared slot map and leave the rest alone.  Runtime
+    fragments (``use: runtime``) are not $slots and are left out.
     """
     out: dict[str, str] = {}
     for slot in SCOPED_FRAGMENTS:
         path = scoped_fragment_path(slot, agent_dir_name)
         if path is not None:
             out[slot] = path.read_text(encoding="utf-8").rstrip()
+    for slot, text in _pack.agent_copies(agent_dir_name, _topology()).items():
+        if _pack.slot_spec(slot).get("use", "prompt") == "prompt":
+            out[slot] = text
     return out
 
 
@@ -999,9 +847,10 @@ PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
 # The few module-level constants above (DC_NAME, PARAMETER_NAMES) are
 # data captured at import time; ``_build_template`` does not use them.
 #
-# Per-agent overlays (``database_search_<agent_dir>.md``) are NOT in
-# this dict — they are merged in by :func:`_build_template` because
-# the choice of overlay depends on which agent is being assembled.
+# A per-agent-only slot (``missing: empty`` in the registry --
+# ``$database_search_per_agent``, ``$blade_sections_visualizer_per_agent``)
+# is "" in this dict; :func:`_build_template` lays each agent's own copy
+# over it, because which text applies depends on the agent being assembled.
 # ---------------------------------------------------------------------------
 
 
@@ -1015,60 +864,16 @@ PROMPT_MD_RUNTIME_SLOTS: dict[str, frozenset[str]] = {
 # these lengthened past _INLINE_WRAP_WIDTH is re-wrapped at word
 # boundaries.  Lines without one are never touched.
 #
-# A new phrase slot is listed here as well as in _build_slots.  The output
-# vocabulary ($output_images = "renders", ...) is NOT: a vocabulary slot puts
-# the author's own word back in its own place, so it never makes a line
-# longer than the author wrote it.
+# A phrase slot is one with ``kind: phrase`` in engine/slot_registry.yaml.
+# The output vocabulary ($output_images = "renders", ...) is ``kind: word``,
+# not phrase: a vocabulary slot puts the author's own word back in its own
+# place, so it never makes a line longer than the author wrote it.
 # ---------------------------------------------------------------------------
 
-INLINE_FRAGMENT_SLOTS: frozenset[str] = frozenset({
-    "geometry_tool_name",
-    "quality_check_numbers",
-    "quality_check_report",
-    "qc_numerics_verdict_rule",
-    "no_render_fallback_qc",
-    "geometry_model_filename",
-    "render_view_list",
-    "roster_sections_tool_sentence",
-    "roster_tools_clause",
-    "routing_sections_alternative",
-    "sections_rerun_case",
-    "directive_output_choice",
-    "precision_multi_phase_rule",
-    "geometry_tools_loading_rule",
-    "precision_match_subject",
-    "precision_gap_description",
-    "precision_match_targets",
-    "values_only_excluded_outputs",
-    "geometry_editing_ban",
-    "mesh_editing_operations_actions",
-    "recommendation_exclusions",
-    "past_run_lookup_examples",
-    "extraction_only_examples_user",
-    "extraction_only_examples",
-    "observable_fact_questions",
-    "tool_run_history_contents",
-    "non_consumable_input_examples",
-    "countable_feature_example",
-    "stated_count_example",
-    "soft_target_example",
-    "soft_target_marker_example",
-    "parameter_level_entry_example",
-    "non_applicable_input_examples",
-    "visual_claim_examples",
-    "shape_gap_example",
-    "unlocked_lever_examples",
-    "sub_resolution_examples",
-    "prior_finding_citation_example",
-    "feature_feedback_examples",
-    "relative_magnitude_examples",
-    "dh_artefact_reference_examples",
-    "dh_parameter_dump_example",
-    "dh_concrete_noun_examples",
-    "dh_parameter_name_example",
-    "dh_numeric_fact_example",
-    "dh_structural_marker_examples",
-})
+INLINE_FRAGMENT_SLOTS: frozenset[str] = frozenset(
+    name for name, spec in _pack.registry().items()
+    if spec.get("kind") == "phrase"
+)
 _INLINE_WRAP_WIDTH = 80
 # Invisible delimiters around an inline slot's text, so the lines it lands
 # on can be found after the substitution passes and the flag filters.
@@ -1114,145 +919,43 @@ def wrap_inline_lines(text: str) -> str:
     return "\n".join(out)
 
 
-def _build_slots() -> dict[str, str]:
-    """Re-read every fragment from disk and assemble the $-slot map."""
-    return {
-        # DC-specific
-        "dc_name": _read_dc_fragment("dc_config/name.txt").strip(),
-        "domain_description": _read_dc_fragment("dc_config/domain_description.txt").strip(),
-        "parameter_count": _read_dc_fragment("dc_config/parameter_count.txt").strip(),
-        "dc_structure": _read_dc_fragment("dc_config/structure.md"),
-        "parameter_list": _read_dc_fragment("dc_config/parameters.md"),
-        "modelling_notes": _read_dc_fragment("dc_config/modelling_notes.md"),
-        "qualitative_examples": _read_dc_fragment("dc_config/qualitative_examples.md"),
-        "visual_inspection_guide": _read_dc_fragment("dc_config/visual_inspection_guide.md"),
-        "capabilities_can": _read_dc_fragment("dc_config/capabilities_can.md"),
-        "capabilities_cannot": _read_dc_fragment("dc_config/capabilities_cannot.md"),
-        "output_file_locations": _read_dc_fragment("dc_config/output_file_locations.md"),
-        "geometry_modification_rule": _read_dc_fragment("dc_config/geometry_modification_rule.md"),
-        "invalid_parameter_examples": _read_dc_fragment("dc_config/invalid_parameter_examples.md"),
-        "hard_constraints_dc": _read_dc_fragment("dc_config/hard_constraints_dc.md"),
-        # User-input-type fragments (one pair per accepted type)
-        "sketch_handling": _read_dc_fragment("dc_config/user_input_types/sketch_handling.md"),
-        "sketch_notes": _read_dc_fragment("dc_config/user_input_types/sketch_notes.md"),
-        "sketch_precision_examples": _read_dc_fragment(
-            "dc_config/user_input_types/sketch_precision_examples.md"),
-        "sketch_crop_example": _read_dc_fragment(
-            "dc_config/user_input_types/sketch_crop_example.md"),
-        # Tool-specific
-        "tool_inventory": _read_dc_fragment("tools_config/tool_inventory.md"),
-        "tool_caller_instructions": _read_dc_fragment("tools_config/tool_caller_instructions.md"),
-        "tool_caller_capabilities": _read_dc_fragment("tools_config/tool_caller_capabilities.md"),
-        "agent_tools_overview": _read_dc_fragment("tools_config/agent_tools_overview.md"),
-        "agent_tools_overview_brief": _read_dc_fragment("tools_config/agent_tools_overview_brief.md"),
-        "hard_constraints_tools": _read_dc_fragment("tools_config/hard_constraints_tools.md"),
-        "visualize_3d_model_tool": _read_dc_fragment("tools_config/visualize_3d_model.md"),
-        "propose_attempt_tool": _read_dc_fragment("tools_config/propose_attempt.md"),
-        "database_search_tool": _read_dc_fragment("tools_config/database_search.md"),
-        "retrieve_user_inputs_tool": _read_dc_fragment("tools_config/retrieve_user_inputs.md"),
-        "retrieve_attempt_tool": _read_dc_fragment("tools_config/retrieve_attempt.md"),
-        # Blade-sections visualizer — shared brief awareness (all agents) +
-        # the minimal "OFF" note; gated by <<BSV_ON>>/<<BSV_OFF>> regions.  The
-        # per-agent overlay ($blade_sections_visualizer_per_agent) is loaded in
-        # _build_template, like $database_search_per_agent.
-        "blade_sections_visualizer": _read_dc_fragment("tools_config/blade_sections_visualizer.md"),
-        "blade_sections_visualizer_off": _read_dc_fragment("tools_config/blade_sections_visualizer_off.md"),
-        # Relocated DC- / tool-specific text (generic-fragments audit,
-        # 2026-10): phrases and blocks that were inline in a generic
-        # fragment or an agent body.  Described in the dc_config /
-        # tools_config READMEs.
-        "geometry_tool_name": _read_dc_fragment("tools_config/geometry_tool_name.md"),
-        "quality_check_numbers": _read_dc_fragment("tools_config/quality_check_numbers.md"),
-        "quality_check_report": _read_dc_fragment("tools_config/quality_check_report.md"),
-        "mesh_check_role_item": _read_dc_fragment("tools_config/mesh_check_role_item.md"),
-        "qc_numerics_verdict_rule": _read_dc_fragment("tools_config/qc_numerics_verdict_rule.md"),
-        "no_render_fallback_qc": _read_dc_fragment("tools_config/no_render_fallback_qc.md"),
-        "geometry_model_filename": _read_dc_fragment("tools_config/geometry_model_filename.md"),
-        "render_view_list": _read_dc_fragment("tools_config/render_view_list.md"),
-        "roster_sections_tool_sentence": _read_dc_fragment("tools_config/roster_sections_tool_sentence.md"),
-        "roster_tools_clause": _read_dc_fragment("tools_config/roster_tools_clause.md"),
-        "routing_sections_alternative": _read_dc_fragment("tools_config/routing_sections_alternative.md"),
-        "sections_rerun_case": _read_dc_fragment("tools_config/sections_rerun_case.md"),
-        "directive_output_choice": _read_dc_fragment("tools_config/directive_output_choice.md"),
-        "precision_multi_phase_rule": _read_dc_fragment("tools_config/precision_multi_phase_rule.md"),
-        "geometry_tools_loading_rule": _read_dc_fragment("tools_config/geometry_tools_loading_rule.md"),
-        "sections_tool_block_full": _read_dc_fragment("tools_config/sections_tool_block_full.md"),
-        "sections_tool_block_overlay": _read_dc_fragment("tools_config/sections_tool_block_overlay.md"),
-        "precision_match_subject": _read_dc_fragment("tools_config/precision_match_subject.md"),
-        "precision_gap_description": _read_dc_fragment("tools_config/precision_gap_description.md"),
-        "precision_match_targets": _read_dc_fragment("tools_config/precision_match_targets.md"),
-        "values_only_excluded_outputs": _read_dc_fragment("tools_config/values_only_excluded_outputs.md"),
-        "precision_continue_directive_example": _read_dc_fragment("tools_config/precision_continue_directive_example.md"),
-        "render_type_choice": _read_dc_fragment("tools_config/render_type_choice.md"),
-        "geometry_editing_ban": _read_dc_fragment("tools_config/geometry_editing_ban.md"),
-        "mesh_editing_operations_actions": _read_dc_fragment("tools_config/mesh_editing_operations_actions.md"),
-        "recommendation_exclusions": _read_dc_fragment("tools_config/recommendation_exclusions.md"),
-        "past_run_lookup_examples": _read_dc_fragment("dc_config/past_run_lookup_examples.md"),
-        "extraction_only_examples_user": _read_dc_fragment("dc_config/extraction_only_examples_user.md"),
-        "extraction_only_examples": _read_dc_fragment("dc_config/extraction_only_examples.md"),
-        "observable_fact_questions": _read_dc_fragment("tools_config/observable_fact_questions.md"),
-        "tool_run_history_contents": _read_dc_fragment("tools_config/tool_run_history_contents.md"),
-        "non_consumable_input_examples": _read_dc_fragment("dc_config/non_consumable_input_examples.md"),
-        "quantitative_input_example": _read_dc_fragment("dc_config/quantitative_input_example.md"),
-        "countable_feature_example": _read_dc_fragment("dc_config/countable_feature_example.md"),
-        "stated_count_example": _read_dc_fragment("dc_config/stated_count_example.md"),
-        "soft_target_example": _read_dc_fragment("dc_config/soft_target_example.md"),
-        "soft_target_marker_example": _read_dc_fragment("dc_config/soft_target_marker_example.md"),
-        "useful_input_images_example": _read_dc_fragment("dc_config/useful_input_images_example.md"),
-        "lever_map": _read_dc_fragment("dc_config/lever_map.md"),
-        "parameter_level_entry_example": _read_dc_fragment("dc_config/parameter_level_entry_example.md"),
-        "non_applicable_input_examples": _read_dc_fragment("dc_config/non_applicable_input_examples.md"),
-        "visual_claim_examples": _read_dc_fragment("tools_config/visual_claim_examples.md"),
-        "shape_gap_example": _read_dc_fragment("dc_config/shape_gap_example.md"),
-        "unlocked_lever_examples": _read_dc_fragment("dc_config/unlocked_lever_examples.md"),
-        "sub_resolution_examples": _read_dc_fragment("dc_config/sub_resolution_examples.md"),
-        "prior_finding_citation_example": _read_dc_fragment("dc_config/prior_finding_citation_example.md"),
-        "feature_feedback_examples": _read_dc_fragment("dc_config/feature_feedback_examples.md"),
-        "relative_magnitude_examples": _read_dc_fragment("dc_config/relative_magnitude_examples.md"),
-        "ratio_vs_absolute_feedback": _read_dc_fragment("dc_config/ratio_vs_absolute_feedback.md"),
-        "dh_artefact_reference_examples": _read_dc_fragment("tools_config/dh_artefact_reference_examples.md"),
-        "dh_parameter_dump_example": _read_dc_fragment("dc_config/dh_parameter_dump_example.md"),
-        "dh_concrete_noun_examples": _read_dc_fragment("dc_config/dh_concrete_noun_examples.md"),
-        "dh_parameter_name_example": _read_dc_fragment("dc_config/dh_parameter_name_example.md"),
-        "dh_numeric_fact_example": _read_dc_fragment("dc_config/dh_numeric_fact_example.md"),
-        "dh_structural_marker_examples": _read_dc_fragment("dc_config/dh_structural_marker_examples.md"),
-        "output_images_label": _read_dc_fragment("tools_config/output_images_label.md"),
-        "output_model_label": _read_dc_fragment("tools_config/output_model_label.md"),
-        "output_images_long": _read_dc_fragment("tools_config/output_images_long.md"),
-        "output_image_files": _read_dc_fragment("tools_config/output_image_files.md"),
-        "output_reactions": _read_dc_fragment("tools_config/output_reactions.md"),
-        "output_reaction": _read_dc_fragment("tools_config/output_reaction.md"),
-        "output_action_noun": _read_dc_fragment("tools_config/output_action_noun.md"),
-        "output_produced": _read_dc_fragment("tools_config/output_produced.md"),
-        "output_image_caps": _read_dc_fragment("tools_config/output_image_caps.md"),
-        "output_action": _read_dc_fragment("tools_config/output_action.md"),
-        "output_images": _read_dc_fragment("tools_config/output_images.md"),
-        "output_image": _read_dc_fragment("tools_config/output_image.md"),
-        "output_model": _read_dc_fragment("tools_config/output_model.md"),
-        # Generic
-        "hard_constraints_generic": _read_generic_fragment("generic_constraints.md"),
-        "value_states": _read_generic_fragment("value_states.md"),
-        # Per-agent routing fragments (Receptionist + the topology's hub;
-        # the chain agents load theirs via routing_instructions()).
-        #
+def _engine_fragment_file(spec: dict) -> str:
+    """The file an engine slot reads in the active topology."""
+    which = spec.get("file_from")
+    if which == "hub":
         # The hub's fragment is named per topology — routing_orchestrator.md
         # in the 7-agent system, routing_planner_5agents.md in the 5-agent
-        # one, whose hub IS the Planner —
-        # but BOTH hub prompts reference the single topology-neutral slot
-        # $routing_hub.  Only the active topology's file is ever asked for,
-        # so there is no "might be missing" case to tolerate: a genuine typo
-        # still raises FileNotFoundError, loudly, as it should.
-        "routing_receptionist": _read_generic_fragment("routing_receptionist.md"),
-        "routing_hub": _read_generic_fragment(f"routing_{_hub_agent()}.md"),
-        # Cross-agent organisational fragments (Planner + Orchestrator)
-        "pipeline_flow": _read_generic_fragment(_pipeline_flow_fragment_name()),
-        "available_agents": _read_generic_fragment("available_agents.md"),
-        # Embedding (DH only) — settings.py values, captured at import time
-        "embedding_provider": EMBEDDING_PROVIDER,
-        "embedding_model": EMBEDDING_MODEL,
-        "embedding_vector_dims": EMBEDDING_VECTOR_DIMS,
-        "embedding_max_response_tokens": EMBEDDING_MAX_RESPONSE_TOKENS,
-    }
+        # one, whose hub IS the Planner — but BOTH hub prompts reference the
+        # single topology-neutral slot $routing_hub.  Only the active
+        # topology's file is ever asked for, so there is no "might be
+        # missing" case to tolerate: a genuine typo still raises
+        # FileNotFoundError, loudly, as it should.
+        return f"routing_{_hub_agent()}.md"
+    if which == "pipeline_flow":
+        return _pipeline_flow_fragment_name()
+    return spec["file"]
+
+
+def _build_slots() -> dict[str, str]:
+    """Re-read every fragment from disk and assemble the $-slot map.
+
+    One entry per registry slot: pack slots from ``dc_pack/`` for the active
+    topology (a per-agent-only slot is "" here), engine slots from
+    ``agents/shared/prompt_fragments/``, setting slots from the values
+    captured at import.  Runtime fragments (``use: runtime``) are read by
+    Python where they are used and are not $slots.
+    """
+    topo = _topology()
+    slots: dict[str, str] = {}
+    for name, spec in _pack.slots(use="prompt").items():
+        source = spec["source"]
+        if source == "pack":
+            slots[name] = _pack.read(name, topo)
+        elif source == "engine":
+            slots[name] = _read_generic_fragment(_engine_fragment_file(spec))
+        else:
+            slots[name] = _SETTING_SLOT_VALUES[name]
+    return slots
 
 
 def _prompt_path(agent_dir_name: str) -> Path:
@@ -1299,43 +1002,12 @@ def _build_template(agent_dir_name: str) -> str:
     restart.
     """
     raw = _prompt_path(agent_dir_name).read_text(encoding="utf-8")
-    # Per-agent overlay onto the global slot map: load this agent's
-    # ``database_search_<agent_dir_name>.md`` fragment if present and
-    # expose it as ``$database_search_per_agent``.  Agents without a
-    # matching fragment (currently just the Database Handler, which is
-    # write-only post-session and has no <<HAS_DBA>> block in its
-    # prompt) get an empty string — harmless because their prompt.md
-    # does not reference the slot.
-    per_agent_dbs_rel = f"tools_config/database_search_{agent_dir_name}.md"
-    per_agent_dbs_file = (
-        _topology_override(per_agent_dbs_rel)
-        or TOOLS_CONFIG_DIR / f"database_search_{agent_dir_name}.md"
-    )
-    per_agent_dbs = (
-        per_agent_dbs_file.read_text(encoding="utf-8").rstrip()
-        if per_agent_dbs_file.exists()
-        else ""
-    )
-    # Per-agent Blade-sections-visualizer overlay (Tool Caller = full tool
-    # usage, DC Output Inspector = read-by-path; others have no file → empty,
-    # so only the shared brief awareness shows).  Same idiom as the DBa overlay.
-    per_agent_bsv_rel = (
-        f"tools_config/blade_sections_visualizer_{agent_dir_name}.md"
-    )
-    per_agent_bsv_file = (
-        _topology_override(per_agent_bsv_rel)
-        or TOOLS_CONFIG_DIR / f"blade_sections_visualizer_{agent_dir_name}.md"
-    )
-    per_agent_bsv = (
-        per_agent_bsv_file.read_text(encoding="utf-8").rstrip()
-        if per_agent_bsv_file.exists()
-        else ""
-    )
+    # The agent's own copies go LAST, so they win over the shared text.  The
+    # per-agent-only slots ($database_search_per_agent,
+    # $blade_sections_visualizer_per_agent) are "" in the shared map and get
+    # their text here, for the agents that have a file.
     slots = {
         **_build_slots(),
-        "database_search_per_agent": per_agent_dbs,
-        "blade_sections_visualizer_per_agent": per_agent_bsv,
-        # LAST, so a per-agent scoped copy wins over the shared fragment.
         **_scoped_fragments_for(agent_dir_name),
     }
     # A database tool this agent does NOT hold must not be described to it.
@@ -1370,6 +1042,7 @@ def _build_template(agent_dir_name: str) -> str:
 __all__ = [
     "natural_pipeline",
     "routing_instructions",
+    "read_pack_fragment",
     "DC_NAME",
     "PARAMETER_NAMES",
     "PARAMETER_TYPES",

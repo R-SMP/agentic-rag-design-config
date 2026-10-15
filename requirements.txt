@@ -7,6 +7,9 @@ compute-rhino3d>=0.12.0
 rhino3dm>=8.0.0
 DracoPy>=0.4.0
 python-dotenv>=1.0.0
+# The slot registry (engine/slot_registry.yaml).  Also installed by
+# langchain, but the engine depends on it directly.
+PyYAML>=6.0
 numpy>=2.0.0
 trimesh>=4.0.0
 pyrender>=0.1.45

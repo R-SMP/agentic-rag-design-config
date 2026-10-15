@@ -4,8 +4,8 @@ This script is the source-of-truth Python representation of the
 propeller DC parameter inventory: ``schema_version = 1`` (17 params —
 history) and ``schema_version = 2`` (16 params — ``impellerHeight``
 removed, the CURRENT set new sessions use).  It mirrors
-``DC_prompt_fragments/dc_config/parameters.md`` and
-``DC_prompt_fragments/dc_config/parameter_keys.txt`` exactly — keep
+``dc_pack/fragments/dc/parameter_list.md`` and
+``dc_pack/parameter_keys.txt`` exactly — keep
 the three in sync if any change here lands.
 
 Usage (from the repo root):
@@ -49,7 +49,7 @@ load_dotenv(REPO_ROOT / ".env")
 # ------------------------------------------------------------------
 # Immutable per-version parameter sets.  Each schema_version is history:
 # rows are only ever APPENDED (INSERT ... ON CONFLICT DO NOTHING), never
-# overwritten or deleted.  Mirrors DC_prompt_fragments/dc_config/parameters.md.
+# overwritten or deleted.  Mirrors dc_pack/fragments/dc/parameter_list.md.
 # ------------------------------------------------------------------
 PROPELLER_DC_PARAMETERS_V1 = [
     # Global / ring
@@ -77,7 +77,7 @@ PROPELLER_DC_PARAMETERS_V1 = [
 
 assert len(PROPELLER_DC_PARAMETERS_V1) == 17, (
     f"Expected exactly 17 propeller parameters, got {len(PROPELLER_DC_PARAMETERS_V1)}. "
-    "Cross-check against DC_prompt_fragments/dc_config/parameters.md."
+    "Cross-check against dc_pack/fragments/dc/parameter_list.md."
 )
 
 # schema_version = 2 — impellerHeight REMOVED (the outer-ring height is now

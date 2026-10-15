@@ -1,1 +1,0 @@
-``propeller_mesh.obj``

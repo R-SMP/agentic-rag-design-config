@@ -356,22 +356,25 @@ Both first builds were replaced (§1, §2).  As built:
   unknown number.
 * **`agents/hub.py`** is the only place that maps a topology to a hub class:
   `hub_class()` (no construction, no API key) and `build_hub(session)`.
-* **Prompt files** — `prompts._topology_override(rel)` looks for
+* **Engine prompt files** — `prompts._topology_override(rel)` looks for
   `agents/<N>agent/<same sub-path>/<basename>_<N>agents.md` and falls back to
   the shared file.  Only the basename gains the suffix:
 
   ```
   agents/planner/prompt.md              → agents/3agent/planner/prompt_3agents.md
   agents/shared/prompt_fragments/x.md   → agents/3agent/prompt_fragments/x_3agents.md
-  DC_prompt_fragments/dc_config/y.md    → agents/3agent/dc_config/y_3agents.md
-  DC_prompt_fragments/tools_config/z.md → agents/3agent/tools_config/z_3agents.md
   ```
 
   Topology 7 has no folder, so it always reads the shared files.
-* **Agent-scoped fragments** — `scoped_fragment_path(slot, agent)` resolves
-  `<slot>_<agent>_<N>agents.md` (agent key BEFORE the topology suffix).  The
-  scoped copy wins and can differ in substance from the base fragment.  Only
-  slots registered in `prompts.SCOPED_FRAGMENTS` are looked up.
+* **Pack fragments** (`dc_pack/fragments/{dc,tools}/`, `engine/pack.py`) —
+  `<slot>.md` is one text for every topology, `<slot>.t<N>.md` topology N's
+  own; the lookup tries `.t<N>`, then the linked file, then `.t7`.
+* **Agent-scoped fragments** — `scoped_fragment_path(slot, agent)`.  Any pack
+  slot can have one: `<slot>@<agent>.md` / `.t<N>.md`.  An engine slot can
+  only if it is marked `scoped: true` in `engine/slot_registry.yaml` (listed
+  in `prompts.SCOPED_FRAGMENTS`): `<file stem>_<agent>_<N>agents.md` (agent
+  key BEFORE the topology suffix).  The scoped copy wins and can differ in
+  substance from the base fragment.
 * **Two substitution layers** — `$slot` fragments are spliced when the
   template is built (`_build_slots` / `_build_template`); `{slot}` runtime
   values are filled at agent construction (`set_routing_tools` etc.).
@@ -406,8 +409,10 @@ Both first builds were replaced (§1, §2).  As built:
 ## 5. Editing a topology's prompts safely
 
 * **A topology-N change only touches files under `agents/<N>agent/`** (and
-  `agents/topologyN/` for tool text).  Every shared file is topology 7's live
-  prompt.
+  `agents/topologyN/` for tool text) **and the pack's `.t<N>.md` files**.
+  Every shared engine file is topology 7's live prompt, and a linked pack file
+  (`dc_pack/fragments/<folder>/<slot>.md`) is every topology's: editing it
+  moves all of them — unlink it first to change one topology only.
 * **Always assemble and compare.**  Snapshot before and after with
   `extra_utilities/scripts/topology_prompt_snapshot.py save <dir>` /
   `diff <dirA> <dirB>`, and state which agents moved and which are
@@ -575,8 +580,8 @@ Decisions that shaped today's prompts:
   creates is the folder it writes into, so the two can never disagree.
 * **`dc_params_list()`** returns the parameter list on demand instead of every
   prompt carrying it (owner: retrieved "if it explicitly CALLS FOR IT").  It
-  reads the shared `dc_config/parameters.md` by fixed path, so a scoped copy
-  of that fragment is not what it returns.
+  reads the shared `$parameter_list` text (`dc_pack/fragments/dc/parameter_list.md`),
+  so an agent's own copy of that fragment is not what it returns.
 * **One `read_user_inputs`** replaced three text-file readers
   (`list_input_files`, `read_input_text`, `read_image_notes`) wherever they
   were bound; the Planner has no image tools.

@@ -64,13 +64,14 @@ from pathlib import Path
 from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.shared.llm_provider import make_image_block, system_cache_control
+from agents.shared.topology import topology as _topology
+from engine import pack as _pack
 
-_DC_CONFIG_DIR = (
-    Path(__file__).resolve().parent.parent.parent / "DC_prompt_fragments" / "dc_config"
-)
-IMAGE_PATH = _DC_CONFIG_DIR / "images" / "dc_params_primer.png"
+IMAGE_PATH = _pack.asset_path("dc_params_primer.png")
 
-# Agents that get a DIFFERENT primer text.  The IMAGE is always the same.
+# Agents that get a DIFFERENT primer text own a copy of the pack's
+# ``dc_params_primer_text`` (``dc_params_primer_text@<agent>...md``).  The
+# IMAGE is always the same.
 #
 # The UII records what the user said in the user's own words and never maps
 # anything onto a configurator parameter, so the default text — which names
@@ -80,43 +81,22 @@ IMAGE_PATH = _DC_CONFIG_DIR / "images" / "dc_params_primer.png"
 # diameter, section orientation) and drops the names, formulas and ranges.
 # Note the diagram itself still carries labels; this narrows the leak, it does
 # not close it.
-_TEXT_NAME_BY_AGENT = {
-    "user_input_inspector": "dc_params_primer_text_user_input_inspector.txt",
-    # 3-agent: the Requirements Analyst absorbs the UII, so it inherits
-    # the UII's variant text.  Registered only once the file exists --
-    # this table resolves to a PATH, so a row added before its file is
-    # forked points at a missing shared original.  The Design Engineer
-    # needs no row: of its two parents only the DC Input Creator receives
-    # the primer, and it takes the default text.
-    "requirements_analyst": "dc_params_primer_text_requirements_analyst.txt",
-}
-
-_TEXT_NAME_DEFAULT = "dc_params_primer_text.txt"
+#
+# 3-agent: the Requirements Analyst absorbs the UII, so it has the UII's
+# variant text.  The Design Engineer has none: of its two parents only the DC
+# Input Creator receives the primer, and it takes the default text.
 
 
 def _text_path(agent_key: "str | None") -> Path:
-    """The primer text this agent gets — its variant, or the default.
+    """The primer text this agent gets — its own copy, or the default.
 
-    Resolved through ``prompts._topology_override`` so a topology can own
-    its own primer text, exactly as it owns its own prompt fragments.
-
-    This matters more here than anywhere else in the prompt layer: the
-    primer is injected at INVOKE time, not spliced into the system prompt,
-    so it bypasses every prompt-level filter.  Before this, a
-    ``agents/<N>agent/dc_config/dc_params_primer_text*_<N>agents.txt``
-    could sit on disk and be silently inert -- the paths were built
-    absolute from ``_DC_CONFIG_DIR`` and never consulted the resolver.
-
-    Imported lazily, the way ``routing._load_routing_fragment`` does it:
-    ``prompts`` pulls in this module's neighbours at its own import time,
-    so a module-level import here would be circular.  Topology 7 has no
-    ``agents/7agent/``, so the override always misses there and the shared
-    file is read exactly as before.
+    Resolved through the pack for the ACTIVE topology, so a topology can own
+    its own primer text exactly as it owns its own prompt fragments.  That
+    matters more here than anywhere else in the prompt layer: the primer is
+    injected at INVOKE time, not spliced into the system prompt, so it
+    bypasses every prompt-level filter.
     """
-    from agents.shared.prompts import _topology_override
-
-    name = _TEXT_NAME_BY_AGENT.get(agent_key or "", _TEXT_NAME_DEFAULT)
-    return _topology_override(f"dc_config/{name}") or (_DC_CONFIG_DIR / name)
+    return _pack.fragment_path("dc_params_primer_text", _topology(), agent_key)
 
 # The agents that receive the primer.  The injection sites are explicit in
 # each agent file; this set exists for the OTHER consumer — the Context

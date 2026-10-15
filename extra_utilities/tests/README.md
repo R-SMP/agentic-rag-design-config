@@ -23,7 +23,7 @@ what it guarded and how to restore it from git.
 | Script | Run it after… | What it proves |
 |---|---|---|
 | `dry_run_topology.py` | any change to routing, a hub, an agent's run loop or the dispatcher | Drives ONE complete turn per topology (7, 5 and 3) against a scripted fake LLM.  Everything except the LLM call is the production path: the real `dispatch_turn`, the real Receptionist, every agent's run loop, the real routing tools and hub dispatch.  It asserts the exact sequence of hops, so a mis-route fails naming who was called and who should have been, and an unbound tool name stalls the turn.  `--topology N` runs one topology; each runs in its own subprocess.  This is the only check that catches the defects both early 5-agent live runs hit (a blank user reply, a discarded start target, a hub calling an agent it never built). |
-| `smoke_test_topology_fragments.py` | any prompt or fragment edit | Builds every prompt for topologies 7, 5 and 3 and checks that no topology reads another's files, no `$slot` is left unsubstituted, the hub routing resolves correctly, and topologies 5 and 3 read **nothing** from the shared prompt trees (the MIRROR invariant).  Findings awaiting an owner-approved prompt edit are printed as KNOWN-PENDING rather than passed silently.  Needs Python ≥ 3.10.  **Writes probe fragments into the real tree and removes them** — check `git status` afterwards. |
+| `smoke_test_topology_fragments.py` | any prompt or fragment edit | Builds every prompt for topologies 7, 5 and 3 and checks that no topology reads another's files, no `$slot` is left unsubstituted, the hub routing resolves correctly, and topologies 5 and 3 read **nothing** from the shared prompt trees (the MIRROR invariant) and, in `dc_pack/`, topologies read only their own `.t<N>` or linked files (PACK-MIRROR).  Findings awaiting an owner-approved prompt edit are printed as KNOWN-PENDING rather than passed silently.  Needs Python ≥ 3.10.  **Writes probe fragments into the real tree and removes them** — check `git status` afterwards. |
 | `smoke_test_hub_attributes.py` | any change to a hub class | Pure AST, imports nothing.  For every hub: every `self.<attr>.<method>()` refers to an attribute the class actually has (the defect that left an old hub calling three agents its topology never built), and the wired routing edges match the expected edge set read from the source. |
 | `smoke_test_slot_splices.py` | any fragment edit | Scans every prompt and fragment and fails when a `$slot` that expands to several lines does not stand alone on its own line.  Pure standard library. |
 | `smoke_test_prompt_format.py` | any prompt edit | Formats every agent template of topologies 7, 5 and 3 (one subprocess per topology) with a stub mapping, under RAG off, RAG on, and RAG on with every database tool forced on, catching a literal `{` / `}` or an unmatched brace before it reaches agent construction (see `warnings_developer.md` W45; TODO F101). |
@@ -32,11 +32,9 @@ what it guarded and how to restore it from git.
 
 ## Things worth knowing before you trust a result
 
-- **`smoke_test_slot_splices.py` false-fails when run from the main
-  checkout** if `.claude/worktrees/` holds other checkouts: it walks the
-  whole tree and scans them too.  If a failure names a path under
-  `.claude/worktrees/`, it is not about this checkout.  The same trap applies
-  to any repo-wide grep run from the main checkout.
+- **A repo-wide grep run from the main checkout** walks `.claude/worktrees/`
+  too and scans the other checkouts.  If a hit names a path under
+  `.claude/worktrees/`, it is not about this checkout.
 - **A stale `.pyc` can serve the wrong `SYSTEM_TOPOLOGY`** (switching 7 → 5 → 3
   is a size-preserving edit).  If a check contradicts an earlier green run,
   delete every `__pycache__` folder and run it again.

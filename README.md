@@ -2,7 +2,7 @@
 
 A multi-agent system that turns natural-language design requests (plus optional reference images) into a parametric **propeller mesh + 3 renders + a quality-check report**, with optional post-session persistence of each agent's reflections into an embedding-ready database for later RAG.
 
-Built on **LangChain** with swappable LLM backends (OpenAI / Anthropic / Google). The prompt and tool architecture is **DC-agnostic** by design — propeller-specific knowledge lives in `DC_prompt_fragments/` and can be swapped for another design configurator.
+Built on **LangChain** with swappable LLM backends (OpenAI / Anthropic / Google). The prompt and tool architecture is **DC-agnostic** by design — propeller-specific knowledge lives in the pack, `dc_pack/`, and can be swapped for another design configurator.
 
 ## How it works
 
@@ -68,9 +68,11 @@ Each topology keeps its own prompt tree: the 7-agent prompts sit beside their ag
 │   ├── database_handler/         # post-session interviewer (opt-in)
 │   ├── 5agent/  planner5/  topology5/                      # topology 5: prompts, hub, overlays
 │   └── 3agent/  planner3/  topology3/  design_engineer/  requirements_analyst/  # topology 3
-├── DC_prompt_fragments/          # DC-specific prompt fragments (propeller today)
-│   ├── dc_config/                # parameters, structure, capabilities, constraints
-│   └── tools_config/             # tool inventory, render-check library
+├── dc_pack/                      # the design-configurator pack (propeller today)
+│   ├── fragments/dc/             # parameters, structure, capabilities, constraints
+│   ├── fragments/tools/          # tool inventory, render-check library
+│   └── parameter_keys.txt, assets/
+├── engine/                       # pack loader + slot registry
 ├── tools/
 │   ├── generate_mesh/            # RhinoCompute + Grasshopper definition (DC tool)
 │   ├── render_mesh/              # trimesh + pyvista backends (DC tool)
@@ -192,7 +194,7 @@ Below the 3D viewer in the Chat view sit two small buttons:
 | **Download geometry** | Disabled until a propeller mesh is loaded. Saves the currently displayed `.obj` via a programmatic `<a download>` click against the `/api/artefact` URL the viewer is already using. |
 | **Copy parameters list** | Fetches `/api/parameters` and writes the response to `navigator.clipboard`. Falls back to a hidden-textarea + `document.execCommand("copy")` path for plain-HTTP contexts so it works on the local Docker URL too. Brief "Copied!" / "Copy failed" feedback. |
 
-The `/api/parameters` endpoint currently serves the canonical 17-parameter reference list (`DC_prompt_fragments/dc_config/parameters.md`) as `{"text": "..."}`. *(See TODO F9 — once a mesh is on screen the endpoint should ideally return that attempt's actual `parameters.json` values instead of the generic reference list.)*
+The `/api/parameters` endpoint currently serves the canonical 17-parameter reference list (`dc_pack/fragments/dc/parameter_list.md`) as `{"text": "..."}`. *(See TODO F9 — once a mesh is on screen the endpoint should ideally return that attempt's actual `parameters.json` values instead of the generic reference list.)*
 
 ## Parameters Inputs view
 
@@ -561,7 +563,7 @@ All runtime flags live in [`workflow_settings/settings.py`](workflow_settings/se
   - **F11** — tighten the Stop button to cancel at the next tool call / message / LLM call boundary instead of only at Orchestrator hop boundaries; tool calls issued after Stop is pressed should not execute.
   - **F24** — RESOLVED.  Live 3D preview in the Parameters Inputs view (Phase 3 of the redesign — see "Parameters Inputs view" above).
   - **F25 / F26 / F27 / F28** — post-redesign polish items: pre-compute the active FIXED set in Python (instead of UII's in-prompt walk); verify Planner behaviour in non-happy-path cases; live-preview ON/OFF toggle; `sessionStorage` persistence of panel state across reload.  All open as low-priority exploration items, none committed to being implemented.
-- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W47) that must not regress.  **W42** is the one to read before deleting any 0-byte fragment.  W18 + W20 are the per-turn force-tool pattern (DH's `save_attempt_data`; Orchestrator's `submit_feedback_dispatch`).  W19 is the disjoint-R2-key-namespace invariant for the upload paths.  **W21** is the "empty `to_agents` in the DH schedule means all primary agents, NOT no agents" rule (Postgres ingest contract).  **W22** is the natural-language convention for the spontaneous `propose_attempt` mechanism — Receptionist's LLM interprets the Planner's APPROVE-branch wording; endorsement vocabulary in Receptionist / Planner / `DC_prompt_fragments/tools_config/propose_attempt.md` MUST stay consistent.  **W30 / W33 / W35** govern the RAG / retrieve_* stack — Phase-5A R2 attempt key shape, per-agent DBa gating, and the dispatcher pattern that lets retrieve_* tool calls deliver both XML and image content blocks.
+- [`extra_utilities/warnings_developer.md`](extra_utilities/warnings_developer.md) — load-bearing invariants (W1–W47) that must not regress.  **W42** is the one to read before deleting any 0-byte fragment.  W18 + W20 are the per-turn force-tool pattern (DH's `save_attempt_data`; Orchestrator's `submit_feedback_dispatch`).  W19 is the disjoint-R2-key-namespace invariant for the upload paths.  **W21** is the "empty `to_agents` in the DH schedule means all primary agents, NOT no agents" rule (Postgres ingest contract).  **W22** is the natural-language convention for the spontaneous `propose_attempt` mechanism — Receptionist's LLM interprets the Planner's APPROVE-branch wording; endorsement vocabulary in Receptionist / Planner / `dc_pack/fragments/tools/propose_attempt_tool.md` MUST stay consistent.  **W30 / W33 / W35** govern the RAG / retrieve_* stack — Phase-5A R2 attempt key shape, per-agent DBa gating, and the dispatcher pattern that lets retrieve_* tool calls deliver both XML and image content blocks.
 - [`extra_utilities/docs/web_interface_notes.md`](extra_utilities/docs/web_interface_notes.md) — full design + locked-decisions log for the Parameters Inputs redesign (§§1–8) plus a closing wrap-up (§9) describing the delivered state as of 2026-06-02.
 
 ## Roadmap

@@ -7,10 +7,12 @@ no modules), so the data is written as one script, ``window.DRAFT_DATA``.
 
 What it reads
 -------------
-* the parameter set from its three hand-synced copies (``parameter_keys.txt``,
-  ``parameters.md``, the slider list in ``web/app.js``);
-* every DC / tool fragment and its topology-5 / topology-3 mirror, with the
-  slot descriptions from the fragment READMEs;
+* the parameter set from its three hand-synced copies (the pack's
+  ``parameter_keys.txt`` and ``$parameter_list`` text, the slider list in
+  ``web/app.js``);
+* every pack fragment (``dc_pack/fragments/``) with its per-topology and
+  per-agent files, and each slot's kind, section and description from the
+  slot registry (``engine/slot_registry.yaml``);
 * the assembled prompts of every agent, topologies 7 / 5 / 3, under two
   setting combinations of ``prompt_matrix.py`` (``base`` and ``all_on``).
 
@@ -107,15 +109,10 @@ def _bootstrap():
 
 
 def _pack_slots(P) -> dict[str, str]:
-    """slot -> 'dc' | 'tool', for every slot whose text lives in the pack."""
-    out = {}
-    for path, slot in P.FRAGMENT_TO_SLOT.items():
-        if path.startswith("DC_prompt_fragments/"):
-            out[slot] = "dc" if "/dc_config/" in path else "tool"
-    for extra in ("blade_sections_visualizer", "blade_sections_visualizer_off",
-                  "blade_sections_visualizer_per_agent", "database_search_per_agent"):
-        out[extra] = "tool"
-    return out
+    """slot -> 'dc' | 'tool', for every $slot whose text lives in the pack
+    (from the slot registry; runtime fragments are not $slots)."""
+    return {name: ("dc" if spec["folder"] == "dc" else "tool")
+            for name, spec in P._pack.slots(source="pack", use="prompt").items()}
 
 
 # ---------------------------------------------------------------------------
@@ -259,17 +256,16 @@ def _read(p: Path, strip_both=False):
     return t.strip() if strip_both else t.rstrip()
 
 
-def _parameters() -> dict:
+def _parameters(pack) -> dict:
     keys = []
-    for line in (REPO / "DC_prompt_fragments/dc_config/parameter_keys.txt").read_text(
-            encoding="utf-8").splitlines():
+    for line in pack.parameter_keys_path().read_text(encoding="utf-8").splitlines():
         line = line.split("#", 1)[0].strip()
         if line:
             k, _, t = line.partition(":")
             keys.append((k.strip(), (t.strip() or "float")))
     md = {}
     group = None
-    for line in (REPO / "DC_prompt_fragments/dc_config/parameters.md").read_text(
+    for line in pack.shared_path("parameter_list", pack.REFERENCE_TOPOLOGY).read_text(
             encoding="utf-8").splitlines():
         if line.startswith("### "):
             group = line[4:].strip()
@@ -310,84 +306,49 @@ def _parameters() -> dict:
     return {"groups": groups, "parameters": params}
 
 
-def _readme_descriptions() -> dict:
-    desc = {}
-    for rd in ("DC_prompt_fragments/dc_config/README.md",
-               "DC_prompt_fragments/tools_config/README.md"):
-        for line in (REPO / rd).read_text(encoding="utf-8").splitlines():
-            cells = [c.strip() for c in line.strip().strip("|").split("|")]
-            if len(cells) >= 3 and cells[0].startswith("`") and cells[0].endswith("`"):
-                fname = cells[0].strip("`")
-                if len(cells) >= 5:          # File | Kind | Used in | What | Value
-                    desc[fname] = {"what": cells[3], "used_in": cells[2]}
-                else:                        # File | What | Slots
-                    desc[fname] = {"what": cells[1], "used_in": ""}
-    return desc
+def _topology_texts(pack, folder: Path, base: str, spec: dict) -> dict:
+    """{"7"|"5"|"3": text or None} as stored on disk: the linked file for all
+    three, else each topology's own ``.t<N>.md`` (None where there is none)."""
+    linked = folder / f"{base}.md"
+    if linked.is_file():
+        t = pack._clean(spec, linked.read_text(encoding="utf-8"))
+        return {"7": t, "5": t, "3": t}
+    out = {}
+    for n in ("7", "5", "3"):
+        p = folder / f"{base}.t{n}.md"
+        out[n] = pack._clean(spec, p.read_text(encoding="utf-8")) if p.is_file() else None
+    return out
 
 
-def _slots(P, pack: dict, roles: dict) -> list:
-    readme = _readme_descriptions()
-    paths = {slot: path for path, slot in P.FRAGMENT_TO_SLOT.items()
-             if path.startswith("DC_prompt_fragments/")}
-    paths.setdefault("blade_sections_visualizer",
-                     "DC_prompt_fragments/tools_config/blade_sections_visualizer.md")
-    paths.setdefault("blade_sections_visualizer_off",
-                     "DC_prompt_fragments/tools_config/blade_sections_visualizer_off.md")
-    section = {s: sec for sec, lst in SECTION_OF.items() for s in lst}
+def _slots(P, pack_origin: dict, roles: dict) -> list:
+    """Every pack $slot with its three topology texts and per-agent copies,
+    read from dc_pack/ through the registry (engine/pack.py naming)."""
+    pack = P._pack
     order = {s: i for lst in SECTION_OF.values() for i, s in enumerate(lst)}
     agents = sorted({a for t in roles["roster"].values() for a in t} | {"database_handler"})
-    scoped = P.SCOPED_FRAGMENTS
     out = []
-    for slot, path in sorted(paths.items()):
-        rel = Path(path).relative_to("DC_prompt_fragments")
-        stem, ext = rel.stem, rel.suffix
-        both = ext == ".txt"
-        vals = {
-            "7": _read(REPO / path, both),
-            "5": _read(REPO / "agents/5agent" / rel.parent / f"{stem}_5agents{ext}", both),
-            "3": _read(REPO / "agents/3agent" / rel.parent / f"{stem}_3agents{ext}", both),
-        }
-        variants = []
-        if slot in scoped and scoped[slot][0] == "dc":
-            for ag in agents:
-                v = {
-                    "7": _read(REPO / "DC_prompt_fragments" / rel.parent / f"{stem}_{ag}{ext}"),
-                    "5": _read(REPO / "agents/5agent" / rel.parent / f"{stem}_{ag}_5agents{ext}"),
-                    "3": _read(REPO / "agents/3agent" / rel.parent / f"{stem}_{ag}_3agents{ext}"),
-                }
-                if any(x is not None for x in v.values()):
-                    variants.append({"agent": ag, "values": v})
-        r = readme.get(rel.name, {})
-        present = [x for x in vals.values() if x is not None]
-        out.append({
-            "slot": slot, "file": rel.as_posix(), "origin": pack.get(slot, "dc"),
-            "kind": "word" if slot in WORDS else (
-                "phrase" if slot in P.INLINE_FRAGMENT_SLOTS else "block"),
-            "section": section.get(slot, "other"), "order": order.get(slot, 999),
-            "description": r.get("what", ""), "used_in": r.get("used_in", ""),
-            "values": vals,
-            "linked": len(present) == 3 and len(set(present)) == 1,
-            "variants": variants,
-        })
-    # per-agent overlays: base value "" + one file per agent
-    for slot, prefix in (("database_search_per_agent", "database_search_"),
-                         ("blade_sections_visualizer_per_agent", "blade_sections_visualizer_")):
+    for slot, spec in sorted(pack.slots(source="pack", use="prompt").items()):
+        folder = pack.fragments_dir() / spec["folder"]
+        overlay = spec.get("missing") == "empty"
+        vals = ({"7": "", "5": "", "3": ""} if overlay
+                else _topology_texts(pack, folder, slot, spec))
         variants = []
         for ag in agents:
-            v = {
-                "7": _read(REPO / f"DC_prompt_fragments/tools_config/{prefix}{ag}.md"),
-                "5": _read(REPO / f"agents/5agent/tools_config/{prefix}{ag}_5agents.md"),
-                "3": _read(REPO / f"agents/3agent/tools_config/{prefix}{ag}_3agents.md"),
-            }
+            v = _topology_texts(pack, folder, f"{slot}@{ag}", spec)
             if any(x is not None for x in v.values()):
                 variants.append({"agent": ag, "values": v})
-        out.append({"slot": slot, "file": f"tools_config/{prefix}<agent>.md",
-                    "origin": "tool", "kind": "block", "section": "tools",
-                    "order": order.get(slot, 999),
-                    "description": "Per-agent overlay: each agent's own text for this tool; "
-                                   "agents without a file get nothing.",
-                    "used_in": "", "values": {"7": "", "5": "", "3": ""},
-                    "linked": True, "variants": variants})
+        present = [x for x in vals.values() if x is not None]
+        out.append({
+            "slot": slot, "origin": pack_origin.get(slot, "dc"),
+            "kind": spec["kind"],
+            "section": spec.get("section", "other"), "order": order.get(slot, 999),
+            "description": spec.get("description", "") or (
+                "Per-agent overlay: each agent's own text for this tool; "
+                "agents without a file get nothing." if overlay else ""),
+            "values": vals,
+            "linked": overlay or (len(present) == 3 and len(set(present)) == 1),
+            "variants": variants,
+        })
     return out
 
 
@@ -425,11 +386,8 @@ def _docstring(path: str, func: str) -> str:
 
 def _validate(slots: list, engine_slots: set) -> dict:
     """The hosted Validate's STATIC checks, run for real on today's files."""
-    roots = ("DC_prompt_fragments", "agents/5agent/dc_config", "agents/5agent/tools_config",
-             "agents/3agent/dc_config", "agents/3agent/tools_config")
-    files = [p for root in roots for p in (REPO / root).rglob("*")
-             if p.is_file() and p.suffix in (".md", ".txt")
-             and p.name not in ("README.md", "parameter_keys.txt")]
+    from engine import pack
+    files = pack.fragment_files()
     braces = [p.relative_to(REPO).as_posix() for p in files
               if re.search(r"[{}]", p.read_text(encoding="utf-8"))]
     known = {s["slot"] for s in slots} | engine_slots
@@ -526,10 +484,10 @@ def _matrix_summary() -> dict:
 
 
 def _pack_bytes() -> int:
-    roots = ["DC_prompt_fragments", "agents/5agent/dc_config", "agents/5agent/tools_config",
-             "agents/3agent/dc_config", "agents/3agent/tools_config", "web/images",
-             "tools/generate_mesh", "tools/render_blade_sections"]
-    return sum(p.stat().st_size for r in roots for p in (REPO / r).rglob("*")
+    from engine import pack
+    roots = [pack.pack_dir(), REPO / "web/images",
+             REPO / "tools/generate_mesh", REPO / "tools/render_blade_sections"]
+    return sum(p.stat().st_size for r in roots for p in r.rglob("*")
                if p.is_file() and "__pycache__" not in p.parts)
 
 
@@ -552,10 +510,10 @@ def main() -> int:
     roles = _roles()
     slots = _slots(P, pack, roles)
     data = {
-        "pack": {"name": _read(REPO / "DC_prompt_fragments/dc_config/name.txt", True),
-                 "domain": _read(REPO / "DC_prompt_fragments/dc_config/domain_description.txt", True),
-                 "parameter_count": _read(REPO / "DC_prompt_fragments/dc_config/parameter_count.txt", True)},
-        "parameters": _parameters(),
+        "pack": {"name": P._pack.read("dc_name", 7),
+                 "domain": P._pack.read("domain_description", 7),
+                 "parameter_count": P._pack.read("parameter_count", 7)},
+        "parameters": _parameters(P._pack),
         "slots": slots,
         "roles": roles,
         "where": _where(prompts),

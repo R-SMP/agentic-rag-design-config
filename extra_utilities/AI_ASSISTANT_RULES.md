@@ -53,10 +53,14 @@ the current conversation conflict, ask.
     agent names / topology references re-pointed; conflicts the owner agreed to
     remove or tailor; a concept present in both sources collapsed to one copy.
     When in doubt, keep the original wording.
-11. **Every fragment gets a per-topology copy** tailored to that topology.  The
+11. **Every fragment has a text per topology** tailored to that topology.  The
     Receptionist is an extra agent in every topology — not one of the "7", "5"
     or "3".  A change made for one topology must not move another topology's
-    assembled prompts (`extra_info.md` §5 has the procedure).
+    assembled prompts (`extra_info.md` §5 has the procedure).  The one
+    exception is a LINKED pack field — one `dc_pack/fragments/<folder>/<slot>.md`
+    for every topology (owner decision, 2026-10-14): editing it changes every
+    topology that uses it, on purpose; to change one topology only, unlink it
+    into `.t7` / `.t5` / `.t3` files first.
 12. **Preserve agent freedom.**  Write prompt guidance as guidelines for the
     known cases, not as closed rule-sets; keep agents' judgement and their
     free-form messages to each other.

@@ -12,10 +12,10 @@ in the user's vocabulary rather than the configurator's, and handing it a
 retrieval path would defeat that.
 
 The tool returns exactly what the ``$parameter_list`` slot renders —
-``DC_prompt_fragments/dc_config/parameters.md`` (honouring any active
-topology override), read fresh from disk on every call.  Note this is the
-SHARED file: a per-agent scoped copy (``parameters_<agent>.md``) changes
-that agent's PROMPT but not what this tool returns.
+``dc_pack/fragments/dc/parameter_list.md`` (or the active topology's
+``parameter_list.t<N>.md``), read fresh from disk on every call.  Note this
+is the SHARED text: an agent's own copy (``parameter_list@<agent>.md``)
+changes that agent's PROMPT but not what this tool returns.
 
 WHY A FACTORY.  The schema is identical for every binder but the
 "when to call it" sentence is not — the Receptionist reaches for it to
@@ -78,9 +78,9 @@ def build_dc_params_list(agent_key: str = ""):
         # import time; reading through its fragment loader here keeps one
         # source of truth (including topology overrides) without widening
         # this module's import-time dependencies.
-        from agents.shared.prompts import _read_dc_fragment
+        from agents.shared.prompts import read_pack_fragment
 
-        return _read_dc_fragment("dc_config/parameters.md")
+        return read_pack_fragment("parameter_list")
 
     # ``generic_tool`` is a ``functools.wraps`` wrapper, so this lands on the
     # object ``tool()`` reads the description from.

@@ -68,7 +68,7 @@ from agents.shared.llm_retry import invoke_with_retry
 from agents.shared.prompts import (
     PARAMETER_NAMES,
     _build_template,
-    _read_dc_fragment,
+    read_pack_fragment,
     routing_instructions,
 )
 from agents.shared.retrieve_tool_dispatcher import dispatch_retrieve_tool
@@ -223,14 +223,13 @@ class DesignEngineer(BaseChainAgent):
         # fragment to whatever SYSTEM_TOPOLOGY was on disk when the process
         # started, and the Sessions Queue switches topology between runs
         # inside one process.
-        render_check_block = _read_dc_fragment(
-            "tools_config/render_check_library/"
+        render_check_block = read_pack_fragment(
+            "render_check_library_"
             + (
                 ("pyvista" if self.render_library == "pyvista" else "trimesh")
                 if self.mesh_checks
                 else "off"
             )
-            + ".md"
         )
         # Built fresh at construction time so live edits to .md fragments on
         # disk take effect on the NEXT session without a Python restart.

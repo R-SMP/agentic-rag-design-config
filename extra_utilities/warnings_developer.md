@@ -1856,76 +1856,80 @@ back later:
   likewise always `"false"` — left in place pending a separate decision.
 
 
-## W42. Five 0-byte `.md` fragments are LOAD-BEARING — in two OPPOSITE directions.
+## W42. Empty fragment files are LOAD-BEARING — in two OPPOSITE directions.
 
 **Recorded 2026-08-21** during the documentation audit, after
 `extra_utilities/prompt_efficiency/PROMPT_SHRINK_PROPOSAL_7agent.md:707-708` *(removed 2026-10-10; in git history)*
 was found prescribing DELETE for three of them.  **That instruction is wrong.**
+**Updated 2026-10-15 for the `dc_pack/` layout** (MAS-blueprint P1): the files
+below are named as they are today; `find dc_pack/fragments -size 0` lists all
+28 empty ones.
 An empty file here is not an authoring accident — it is a decision, and in one
 of the two groups it is not even substitutable by absence.
 
-### Group 1 — delete these and the app does not boot
+### Group 1 — delete these and no session can run
 
-    DC_prompt_fragments/tools_config/retrieve_attempt.md
-    DC_prompt_fragments/tools_config/tool_caller_instructions.md
+    dc_pack/fragments/tools/retrieve_attempt_tool.md
+    dc_pack/fragments/tools/tool_caller_instructions.md
 
-The loader is `_read_dc_fragment` in `agents/shared/prompts.py`:
-
-    path = _topology_override(rel_path) or (DC_FRAGMENTS_DIR / rel_path)
-    return path.read_text(encoding="utf-8").rstrip()
-
-There is **no `exists()` / `is_file()` guard**, and `_build_slots()` reads both
-(slots `tool_caller_instructions` and `retrieve_attempt_tool`) every time ANY
-agent is constructed, in every topology.  So a missing file raises
-`FileNotFoundError` as soon as a session builds its agents: the web app starts,
-but no session can run.  *(Until 2026-10-10 both were also read at module
-scope, so the app failed at import instead; those import-time copies were
-removed with TODO F90.)*
+`_build_slots()` reads every slot in `engine/slot_registry.yaml` each time ANY
+agent is constructed, in every topology, through `engine/pack.py`'s `read()`,
+and a slot with no file at all raises `FileNotFoundError`.  So the web app
+starts, but no session can build its agents.  *(Until 2026-10-10 both were
+also read at module scope, so the app failed at import instead; those
+import-time copies were removed with TODO F90.)*
 
 Empty content is the INTENDED state — the slot renders nothing.  Both were
 emptied deliberately (see `design_tool_merges.md` *(removed 2026-10-10; summarised in `extra_utilities/extra_info.md` §8)*, commit `251ff5b`: "retrieve_*
-fragments — lean fully on the tool schemas"), with `retrieve_user_inputs.md`
+fragments — lean fully on the tool schemas"), with `retrieve_user_inputs_tool.md`
 covering both retrieval tools.
 
-**If you genuinely want one gone, you must delete the file (and its
-`agents/5agent/` and `agents/3agent/` copies) AND its `_build_slots` entry AND
-its row in `FRAGMENT_TO_SLOT`, in the same commit.**  Never the file alone.
+**If you genuinely want one gone, delete the file AND its entry in
+`engine/slot_registry.yaml` AND every `$slot` reference, in the same commit.**
+Never the file alone.
 
 ### Group 2 — delete these and the prompt silently changes, with no error
 
-    agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_input_inspector_7agents_reduced.md
-    agents/7agent_reduced/dc_config/user_input_types/sketch_notes_dc_output_inspector_7agents_reduced.md
+    dc_pack/fragments/dc/sketch_notes@dc_input_inspector.t7.md
+    dc_pack/fragments/dc/sketch_notes@dc_output_inspector.t5.md
+    dc_pack/fragments/dc/sketch_notes@dc_output_inspector.t7.md
+    dc_pack/fragments/dc/sketch_notes@requirements_analyst.t3.md
+    dc_pack/fragments/dc/hard_constraints_dc@user_input_inspector.t5.md
+    dc_pack/fragments/dc/hard_constraints_dc@user_input_inspector.t7.md
 
-These resolve through `scoped_fragment_path` / `_topology_override`
-(`agents/shared/prompts.py:123-164`), which selects with `if cand.is_file()`.
-So **present-and-empty is NOT the same as absent**:
+These are agents' OWN copies, and the lookup takes the most specific file that
+exists (`engine/pack.py`).  So **present-and-empty is NOT the same as
+absent**:
 
-* present + empty → suppresses the shared
-  `DC_prompt_fragments/dc_config/user_input_types/sketch_notes.md` for that agent
-* absent → falls through and silently RESTORES all 1,736 characters of it
+* present + empty → that agent gets nothing for the slot
+* absent → falls through to the shared text and silently RESTORES it (all
+  1,708 characters of `sketch_notes.md`, for the `sketch_notes` copies)
 
-`extra_utilities/fork_manifest.json:69-73` states the intent verbatim: *"the
-file being empty IS the override"*.  This is the worse failure mode of the two:
-no crash, no warning, just text quietly reappearing in a prompt the reduced
-variant decided to cut.
+This is the worse failure mode of the two: no crash, no warning, just text
+quietly reappearing in a prompt that decided to cut it.  An empty
+per-topology file (`<slot>.t<N>.md`, e.g. `geometry_tool_name.t3.md`) behaves
+the same way — delete it and topology N falls back to the 7-agent text — but
+there `smoke_test_topology_fragments.py` (PACK-MIRROR) catches it.
 
 ### The one that is genuinely optional
 
-    DC_prompt_fragments/tools_config/blade_sections_visualizer_tool_caller.md
+    dc_pack/fragments/tools/blade_sections_visualizer_per_agent@tool_caller.t5.md
+    dc_pack/fragments/tools/blade_sections_visualizer_per_agent@tool_caller.t7.md
 
-A per-agent overlay resolved by naming convention and guarded by `.exists()`
-(`prompts.py:1005-1008`), so missing and empty both yield `""` — deleting it
-changes no assembled prompt byte.  **But leave it.**  Its emptiness marks an
-open documentation gap: `tool_caller.py:116-118` binds `render_blade_sections`
-whenever `blade_sections_access.is_enabled()`, while the Tool Caller prompt
-declares its four-item tool list as exhaustive, and this overlay is where that
-would be patched.  Deleting the file deletes the reminder.
+A per-agent-only slot (`missing: empty` in the registry), so missing and empty
+both yield `""` — deleting them changes no assembled prompt byte.  **But leave
+them.**  Their emptiness marks an open documentation gap:
+`tool_caller.py:97-98` binds `render_blade_sections` whenever
+`blade_sections_access.is_enabled()`, while the Tool Caller prompt declares
+its four-item tool list as exhaustive, and this overlay is where that would be
+patched.  Deleting the files deletes the reminder.
 
-**Rule of thumb.**  A 0-byte file under `DC_prompt_fragments/` or under a
-topology/variant tree is a decision.  Before removing one, find its loader and
-check whether it is read unguarded (Group 1) or selected by `is_file()`
-(Group 2).  `__init__.py` files are a different thing entirely and are not
-covered by this warning.
+**Rule of thumb.**  A 0-byte file in `dc_pack/fragments/` or under a topology
+tree (`agents/<N>agent/`) is a decision.  Before removing one, find out what
+it is: a slot's only file (missing = crash), an agent's or a topology's own
+copy (missing = the next text in line silently stands in), or a
+`missing: empty` slot (missing = nothing).  `__init__.py` files are a
+different thing entirely and are not covered by this warning.
 
 ---
 

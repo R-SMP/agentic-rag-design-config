@@ -87,6 +87,7 @@ from config import (
     PREVIOUS_SESSIONS_DIR,
     USER_INPUTS_DIR,
 )
+from engine import pack as _pack
 from agents.shared import sessions_queue
 from tools import set_mesh_checks, set_render_library, set_geometry_backend
 from tools.generate_mesh.generate_mesh import (
@@ -829,12 +830,9 @@ async def api_turn(body: TurnIn) -> dict:
     return {"ok": True, "status": "started", "turn_id": turn_id}
 
 
-_PARAMETERS_MD = (
-    Path(__file__).parent
-    / "DC_prompt_fragments"
-    / "dc_config"
-    / "parameters.md"
-)
+# The pack's parameter list as the 7-agent system reads it (the reference
+# text every topology was forked from).
+_PARAMETERS_MD = _pack.shared_path("parameter_list", _pack.REFERENCE_TOPOLOGY)
 
 
 @app.get("/api/parameters")
@@ -848,8 +846,8 @@ def api_parameters() -> dict:
 
     When no mesh has been visualised yet (cold start, or after End
     Session resets the cache), fall back to the canonical
-    17-parameter REFERENCE list at
-    ``DC_prompt_fragments/dc_config/parameters.md``.
+    17-parameter REFERENCE list, the pack's ``$parameter_list`` text
+    (``dc_pack/fragments/dc/parameter_list.md``).
 
     The "currently-visualised attempt" is tracked server-side via the
     viz_bus cache that ``visualize_3d_model`` writes every time it
@@ -884,7 +882,7 @@ def api_parameters() -> dict:
 
 # Range + type spec for each of the 17 canonical parameters.  Used by
 # /api/preview_mesh to validate the request body BEFORE the RhinoCompute
-# round-trip.  Mirrors DC_prompt_fragments/dc_config/parameters.md;
+# round-trip.  Mirrors dc_pack/fragments/dc/parameter_list.md;
 # hardcoded rather than parsed from the .md so this validator is robust
 # against future formatting edits in that file.
 #

@@ -25,9 +25,8 @@ to the prompt-fragment library** (rather than to any single
 
 **Configurator-agnostic.**  Nothing in this folder (or in an agent's prompt
 body) names the design configurator, its tools or their outputs.  Where a
-sentence needs such a word or example it names a `$slot` from
-`DC_prompt_fragments/dc_config/` or `tools_config/` — see
-`DC_prompt_fragments/README.md`, "Phrase slots".  The routing fragments loaded
+sentence needs such a word or example it names a `$slot` whose text lives in the pack,
+`dc_pack/fragments/` — see `dc_pack/README.md`, "Phrase slots".  The routing fragments loaded
 by `routing.py` get the same `$slot` substitution (and inline re-wrap) since
 2026-10.
 
@@ -40,7 +39,7 @@ gate optional content:
   against `PLANNER_FIRST`.
 - `<<BSV_ON>>…<</BSV_ON>>` / `<<BSV_OFF>>…<</BSV_OFF>>` — resolved
   against `BLADE_SECTIONS_VISUALIZER_ENABLED`.  These regions (and the
-  `<<MESH_ON>>` ones) now live only inside `tools_config/` fragments; the
+  `<<MESH_ON>>` ones) now live only inside the pack's `fragments/tools/` files; the
   generic files carry none.
 - `<<HAS_DBA>>…<</HAS_DBA>>` — **per-agent**, kept only for agents that
   have `database_search` access.
@@ -61,16 +60,16 @@ fragments are spliced into their `prompt.md` at import time via the
 `$`-slot mechanism in `agents/shared/prompts.py`.
 
 **User-input-type fragments (e.g. how to handle sketches, photos,
-or 3D renderings) are DC-specific** — they live under
-`DC_prompt_fragments/dc_config/user_input_types/`, not here. This
+or 3D renderings) are DC-specific** — they live in the pack
+(`dc_pack/fragments/dc/sketch_*.md`), not here. This
 is because different DCs accept different reference types: a
 photo-based DC has no use for sketch-handling rules, and a
 sketch-based DC has no use for photo-handling rules.
 
 The DC-specific and tool-specific fragments (parameter list, structure,
-modelling notes, capabilities, tool inventory, …) have moved to the
-top-level `DC_prompt_fragments/` folder, split into `dc_config/` and
-`tools_config/`. Edit those when retargeting the system at a different
+modelling notes, capabilities, tool inventory, …) live in the
+design-configurator pack, `dc_pack/fragments/`, split into `dc/` and
+`tools/`. Edit those when retargeting the system at a different
 design configurator or swapping the bound tools.
 
 Per-agent templates themselves live in `agents/<agent_name>/prompt.md`.
