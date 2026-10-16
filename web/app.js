@@ -58,7 +58,7 @@ function loadMesh(url, name, attempt) {
   if (window.modelViewer) window.modelViewer.load(url, name, attempt);
   currentMesh = {
     url,
-    name: name || "propeller_mesh.obj",
+    name: name || (PACK_PAGE.model ? PACK_PAGE.model.file : ""),
     attempt: attempt || null,
   };
   const dlBtn = document.getElementById("download-mesh");
@@ -2374,7 +2374,8 @@ function tsControl(vals, s, mark) {
   for (const v of s.values) {
     const o = document.createElement("option");
     o.value = String(v);
-    o.textContent = String(v);
+    // A choice among tools shows their display names (s.labels).
+    o.textContent = String(s.labels && s.labels[v] !== undefined ? s.labels[v] : v);
     sel.appendChild(o);
   }
   sel.value = String(vals[s.name]);
@@ -2396,7 +2397,8 @@ function tsRender(d) {
     group.className = "ts-group";
     const gtd = document.createElement("td");
     gtd.colSpan = 3;
-    gtd.textContent = t.name + " (" + t.tool + ")";
+    // The Download buttons' choice is not a tool: no folder name after it.
+    gtd.textContent = t.kind === "downloads" ? t.name : t.name + " (" + t.tool + ")";
     group.appendChild(gtd);
     body.appendChild(group);
     for (const s of t.settings) {
@@ -2453,6 +2455,19 @@ async function loadToolSettings() {
       tsSetStatus(e.message, "err");
     }
   });
+})();
+
+// A setup whose generator makes no model (PACK_PAGE.model null): no 3D
+// viewer and no Download buttons in the chat or on the Parameters page --
+// the tools' images are what the user sees.
+(function hideModelControlsWithoutModel() {
+  if (PACK_PAGE.model) return;
+  for (const el of [document.querySelector("#viewer-panel .viewer-toolbar"),
+                    document.getElementById("viewer"),
+                    document.getElementById("download-mesh"),
+                    document.getElementById("params-download-mesh")]) {
+    if (el) el.style.display = "none";
+  }
 })();
 
 // Agent roles across topologies -- read-only view of /api/agent-roles.
@@ -5380,11 +5395,12 @@ const copyParametersBtn = document.getElementById("copy-parameters");
 if (downloadMeshBtn) {
   downloadMeshBtn.addEventListener("click", () => {
     if (!currentMesh.url) return;
-    // Prefer the Rhino-regenerated deliverable: /api/download_geometry
-    // rebuilds the exact Grasshopper geometry from the attempt's
-    // parameters.json (falling back server-side to the saved mesh file if
-    // RhinoCompute is down).  Fall back to the raw saved-file URL when the
-    // mesh path can't be extracted (e.g. a non-attempt preview mesh).
+    // Prefer the deliverable: /api/download_geometry rebuilds the model
+    // from the attempt's parameters.json with the geometry tool chosen for
+    // downloads (Workflow Settings > Tools > Downloads), falling back
+    // server-side to the saved model file.  Fall back to the raw
+    // saved-file URL when the model path can't be extracted (e.g. a
+    // non-attempt preview model).
     let href = currentMesh.url;
     try {
       const meshPath = new URL(currentMesh.url, location.origin)
@@ -5398,7 +5414,7 @@ if (downloadMeshBtn) {
     // Content-Disposition: attachment either way.
     const a = document.createElement("a");
     a.href = href;
-    a.download = currentMesh.name || "propeller_mesh.obj";
+    a.download = currentMesh.name || (PACK_PAGE.model ? PACK_PAGE.model.file : "");
     document.body.appendChild(a);
     a.click();
     a.remove();
@@ -6609,11 +6625,11 @@ function paramsRequestFEG() {
 }
 
 async function paramsDownloadMesh() {
-  // Download the PRECISE RhinoCompute geometry (RCG) for the current
-  // parameter set.  Unlike the live preview (FEG, built in-browser), this
-  // does a server round-trip to /api/preview_mesh — the same mesh the agent
-  // pipeline would generate — and saves it as propeller.obj.  Fetch-on-click
-  // with a brief "Generating…" status (the round-trip is ~1-2 s).
+  // Download the model of the current parameter set, made by the geometry
+  // tool chosen for downloads (Workflow Settings > Tools > Downloads; the
+  // generator's own when that is the saved file): a server round-trip to
+  // /api/preview_mesh, saved as <dc_name><model ext> (propeller.obj).
+  // Fetch-on-click with a brief "Generating…" status.
   const status = document.getElementById("params-status");
   const dlBtn = document.getElementById("params-download-mesh");
   if (status) {
@@ -6650,7 +6666,7 @@ async function paramsDownloadMesh() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = "propeller.obj";
+    a.download = PACK_PAGE.words.dc_name + (PACK_PAGE.model ? PACK_PAGE.model.ext : "");
     document.body.appendChild(a);
     a.click();
     a.remove();

@@ -192,7 +192,7 @@ Below the 3D viewer in the Chat view sit two small buttons:
 
 | Button | Behaviour |
 |---|---|
-| **Download geometry** | Disabled until a propeller mesh is loaded. Saves the currently displayed `.obj` via a programmatic `<a download>` click against the `/api/artefact` URL the viewer is already using. |
+| **Download geometry** | Disabled until a propeller mesh is loaded. Downloads the displayed model rebuilt from its attempt's `parameters.json` by the geometry tool chosen in Workflow Settings › Tools › Downloads (`/api/download_geometry`; RhinoCompute by default), or the saved file when that is the choice or the tool fails. |
 | **Copy parameters list** | Fetches `/api/parameters` and writes the response to `navigator.clipboard`. Falls back to a hidden-textarea + `document.execCommand("copy")` path for plain-HTTP contexts so it works on the local Docker URL too. Brief "Copied!" / "Copy failed" feedback. |
 
 The `/api/parameters` endpoint currently serves the canonical 17-parameter reference list (`dc_pack/fragments/dc/parameter_list.md`) as `{"text": "..."}`. *(See TODO F9 — once a mesh is on screen the endpoint should ideally return that attempt's actual `parameters.json` values instead of the generic reference list.)*
@@ -278,8 +278,8 @@ A few one-shot endpoints round out the surface:
 
 - `POST /api/stop` — sets the cooperative-cancellation flag in `agents/shared/stop_signal.py`. Polled today only at Orchestrator hop boundaries (see TODO F11 for the planned tighter cancellation).
 - `GET /api/parameters` — serves the canonical parameter list for the Copy parameters list button (see above and TODO F9).
-- `GET /api/artefact?path=...` — sandboxed read of any `.png` / `.obj` produced this session, scoped to `ATTEMPTS_DIR`. Used for both inline render display and the Download geometry button.
-- `POST /api/preview_mesh` — generates a propeller mesh on demand from a 17-parameter dict and returns it as OBJ bytes (the **RCG**). Backs the Parameters Inputs view's **Download geometry** button (the live preview itself is now the in-browser FEG and does NOT call this route). Validates the dict's keys / ranges / integer-typed params; calls the pure `render_mesh_obj_text` helper that's also used internally by the agent path's `generate_and_render_propeller` tool. Bypasses the agent pipeline entirely — a download does NOT create attempt folders, does NOT trigger any chain agent, does NOT show up in the LOG view. Memoised via `lru_cache(maxsize=64)`; identical parameter dicts return cached OBJ bytes instantly.
+- `GET /api/artefact?path=...` — sandboxed read of any `.png` / model file (the generator's format, `.obj`) produced this session, scoped to `ATTEMPTS_DIR`. Used for both inline render display and the Download geometry button.
+- `POST /api/preview_mesh` — builds the model of a full parameter set on demand with the geometry tool chosen for downloads (or the generator's own when that is the saved file) and returns it (`model/obj`). Backs the Parameters Inputs view's **Download geometry** button (the live preview itself is the in-browser FEG and does NOT call this route). Validates the set against `dc_pack/parameters.json` (keys, ranges, integer-typed parameters). Bypasses the agent pipeline entirely — a download does NOT create attempt folders, does NOT trigger any chain agent, does NOT show up in the LOG view. The geometry tools memoise their results, so an identical parameter set returns instantly.
 
 ### Frontend dispatch (`web/app.js`)
 

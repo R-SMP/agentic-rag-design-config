@@ -31,7 +31,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPORTER = ROOT / "dc_pack" / "tools" / "generate_and_render_propeller" / "feg_export.mjs"
+EXPORTER = ROOT / "dc_pack" / "tools" / "feg_geometry" / "feg_export.mjs"
 DEFAULT_OUT = ROOT / "extra_utilities" / "feg_render_examples"
 
 # A representative in-range sample (matches the Task-3 sketch's section dims).

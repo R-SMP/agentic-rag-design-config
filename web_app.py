@@ -95,6 +95,7 @@ from engine import parameter_schema as _parameter_schema
 from engine import parameters as _parameters
 from agents.shared import sessions_queue
 from engine import pack_tools as _pack_tools
+from engine.tooling import ToolError as _ToolError
 from workflow_settings import dh_schedule as settings_dh_schedule
 from workflow_settings import editor as settings_editor
 from workflow_settings import llm_routing as settings_llm_routing
@@ -548,9 +549,14 @@ class ImageCompressionIn(BaseModel):
 def index() -> HTMLResponse:
     """The page, with the pack's words filled in as it is served
     (``$app_title``, ``$dc_name`` ...; ``agents/shared/pack_text.py``),
-    HTML-escaped.  ``$$`` in the file is a literal dollar sign."""
+    HTML-escaped.  ``$$`` in the file is a literal dollar sign;
+    ``$download_tool`` is the geometry tool the Parameters page's Download
+    button uses (:func:`_page_download_tool`)."""
     page = (WEB_DIR / "index.html").read_bytes().decode("utf-8")
-    return HTMLResponse(_fill(page, escape=html.escape))
+    download = (_pack_tools.manifest(_page_download_tool())["display_name"]
+                if _pack_tools.model_info() else "")
+    return HTMLResponse(_fill(page, escape=html.escape,
+                              extra={"download_tool": download}))
 
 
 @app.get("/pack/parameters.js")
@@ -572,21 +578,24 @@ def pack_parameters_js() -> Response:
 
 # The pack's words the page's SCRIPT uses (the page itself is filled as it
 # is served).
-_PAGE_WORDS = ("dc_name",)
+_PAGE_WORDS = ("dc_name", "output_model")
 
 
 @app.get("/pack/page.js")
 def pack_page_js() -> Response:
     """What the page's script takes from the pack, as a script
     ``web/index.html`` loads before ``app.js``: it sets
-    ``window.PACK_PAGE = {words, tools}`` -- the words in
-    :data:`_PAGE_WORDS`, and the tools the LOG and Status flowchart's
+    ``window.PACK_PAGE = {words, tools, model}`` -- the words in
+    :data:`_PAGE_WORDS`; the tools the LOG and Status flowchart's
     TOOLS panel and the LLM routing chart draw: the pack's switched-on
-    tools, then the engine's standard ones.  No auth, like
+    tools, then the engine's standard ones; and the generator's model
+    (``engine/pack_tools.model_info``: file, extension, format, up axis),
+    null when it makes none.  No auth, like
     ``/pack/parameters.js``: it holds what the page's own files held."""
     payload = json.dumps({
         "words": {w: _fill("$" + w) for w in _PAGE_WORDS},
         "tools": {"pack": _pack_tools.page_tools(), "standard": list(STANDARD_TOOLS)},
+        "model": _pack_tools.model_info(),
     })
     return Response(
         content=f"window.PACK_PAGE = {payload};\n",
@@ -621,11 +630,16 @@ def api_auth(body: AuthIn) -> dict:
     raise HTTPException(status_code=401, detail="Invite code did not match.")
 
 
-def _geometry():
-    """The propeller generator's geometry module, for the live preview and the
-    deliverable download.  Reached through the pack loader; MAS-blueprint P4
-    makes these web routes generic."""
-    return _pack_tools.plugin(_pack_tools.generators()[0]).submodule("generate_mesh")
+def _page_download_tool() -> str:
+    """The geometry tool the Parameters page's Download button uses: the
+    Download buttons' choice (Workflow Settings > Tools > Downloads) or --
+    when that is the saved file, which slider values do not have -- the
+    generator's own geometry tool."""
+    tool = _pack_tools.download_tool()
+    if tool == _pack_tools.SAVED:
+        gen = _pack_tools.generators()[0]
+        tool = _pack_tools.settings(gen)[_pack_tools.GEOMETRY_SETTING]
+    return tool
 
 
 def _require_auth() -> None:
@@ -754,17 +768,19 @@ async def _run_turn_in_background(
         )
         reply     = result.reply_text
         forwarded = result.forwarded
+        model = _pack_tools.model_info()
         for p in result.new_artefacts_paths:
-            # The per-component diagnostic sidecar is not a user-facing mesh
-            # (only offline diagnostics read it; the live tools never do).
-            # Skip it so the primary propeller_mesh.obj is what the 3D viewer
-            # auto-loads and the Download-geometry button targets — otherwise
-            # the later-written sidecar sorts last and becomes currentMesh.
-            if p.name == "propeller_mesh_components.obj":
-                continue
+            # The model file is what the 3D viewer auto-loads and the
+            # Download-geometry button targets.  Another file with its
+            # extension -- a geometry tool's companion file, e.g. a
+            # per-component sidecar, read only by offline diagnostics -- is
+            # skipped: written later, it would sort last and become
+            # currentMesh.
             sfx = p.suffix.lower()
-            kind = "image" if sfx == ".png" else ("mesh" if sfx == ".obj"
-                                                  else "file")
+            if model and sfx == model["ext"] and p.name != model["file"]:
+                continue
+            kind = "image" if sfx == ".png" else (
+                "mesh" if model and p.name == model["file"] else "file")
             # Annotate the artefact with the attempt number when the
             # path sits inside a canonical ``YYYYMMDD_HHMMSS_NNN_<slug>``
             # attempt folder.  The frontend uses ``attempt_label`` to
@@ -982,9 +998,10 @@ def _coerce_preview_params(raw_params: dict) -> dict[str, int | float]:
             )
             continue
         if spec["type"] == "int":
-            # JSON delivers 4 or 4.0 indistinguishably; render_mesh_obj_text
-            # uses ``isinstance(v, int)`` to choose System.Int32 vs Double
-            # for RhinoCompute, so coerce explicitly.  Reject non-integer
+            # JSON delivers 4 or 4.0 indistinguishably, and a geometry tool
+            # may tell them apart (rhino_geometry picks System.Int32 vs Double
+            # for RhinoCompute by ``isinstance(v, int)``), so coerce
+            # explicitly.  Reject non-integer
             # floats (e.g. bladeCount=3.5) — those are silent-rounding
             # foot-guns.
             if v != int(v):
@@ -1000,39 +1017,31 @@ def _coerce_preview_params(raw_params: dict) -> dict[str, int | float]:
 
 @app.post("/api/preview_mesh")
 def api_preview_mesh(body: PreviewMeshIn) -> Response:
-    """Generate a propeller mesh from the 16-parameter dict and return
-    it as OBJ bytes.  Used by the Parameters Inputs view's live-
-    preview pipeline (Step 7 of the redesign).  (The outer-ring height is
-    NOT a param — render_mesh_obj_text derives + injects it.)
+    """Build the model from the Parameters page's slider values and return
+    it: the page's Download geometry button.
 
-    This route does NOT go through the agent pipeline — it calls
-    the generator's ``render_mesh_obj_text`` (``dc_pack/tools/generate_and_render_propeller/generate_mesh.py``)
-    directly, bypassing attempts/ folders, agent-activity
-    heartbeats, and tool-caller routing.  Slider tweaks in the
-    Parameters Inputs view do NOT create attempt rows or trigger
-    Receptionist / UII / DCIC / DCII / DCOI.
-
-    The underlying helper is memoised via ``lru_cache(maxsize=64)``
-    (keyed on a sorted params tuple + the GH file's mtime_ns), so
-    repeated identical requests — e.g. the user dragging a slider
-    back and forth — are served from cache without re-running
-    RhinoCompute.
+    The geometry tool is the Download buttons' choice (Workflow Settings >
+    Tools > Downloads), or the generator's own when that choice is the saved
+    file (:func:`_page_download_tool`).  This route does NOT go through
+    the agent pipeline: no attempt folder, no agent-activity events, no
+    agent.  The geometry tools memoise their results, so the same values
+    asked again are served from memory.
 
     Auth: same ``_require_auth()`` gate as ``/api/turn``.
 
     Body shape::
-        {"params": {"bladeCount": 4, "impellerRadius": 71, …}}
+        {"params": {"<parameter>": <value>, …}}
 
     Responses:
-      - **200 OK** — Content-Type ``model/obj``, body is the OBJ
-        text (UTF-8).  Custom header ``X-Vertex-Count`` carries the
-        decoded vertex count (diagnostic).
-      - **400 Bad Request** — params dict missing keys, has unknown
-        keys, out-of-range values, or non-integer values for
-        integer-typed params (bladeCount / innerMaxPos / outerMaxPos).
-        Detail message names the failing param(s).
-      - **502 Bad Gateway** — RhinoCompute failed or returned no
-        usable mesh.  Detail message includes the upstream error.
+      - **200 OK** — the model, as its format's media type (``model/obj``).
+        Custom header ``X-Vertex-Count`` carries its vertex count
+        (diagnostic).
+      - **400 Bad Request** — the values are incomplete, unknown, out of
+        range, or not whole numbers where the parameter is an integer
+        (``dc_pack/parameters.json``).  The detail names them.
+      - **404 Not Found** — the setup makes no model.
+      - **502 Bad Gateway** — the geometry tool failed.  The detail
+        carries its error.
     """
     _require_auth()
 
@@ -1040,26 +1049,20 @@ def api_preview_mesh(body: PreviewMeshIn) -> Response:
         coerced = _coerce_preview_params(body.params)
     except ValueError as exc:
         raise HTTPException(status_code=400, detail=str(exc))
-
-    # ----- Delegate to the pure helper (Step 5) ---------------------
-    geometry = _geometry()
+    model = _pack_tools.model_info()
+    if model is None:
+        raise HTTPException(status_code=404, detail="This setup makes no model.")
     try:
-        obj_text, vertex_count, _components = geometry.render_mesh_obj_text(coerced)
-    except geometry.MeshGenerationError as exc:
+        made = _pack_tools.make_model(coerced, [_page_download_tool()])
+    except _ToolError as exc:
         raise HTTPException(
             status_code=502,
-            detail=f"Mesh generation failed: {exc}",
+            detail=_fill("$Output_model generation failed: ") + str(exc),
         )
-
-    # ----- Return OBJ bytes ----------------------------------------
-    # The frontend (Step 7) fetches this with OBJLoader.load(blobUrl);
-    # the Content-Type is mostly informational (Three.js parses the
-    # body regardless).  X-Vertex-Count exposed for diagnostics —
-    # the frontend can log it but doesn't need it for rendering.
     return Response(
-        content=obj_text,
-        media_type="model/obj",
-        headers={"X-Vertex-Count": str(vertex_count)},
+        content=made.result.model,
+        media_type=model["media_type"],
+        headers={"X-Vertex-Count": str(made.result.vertex_count)},
     )
 
 
@@ -1070,7 +1073,8 @@ def api_artefact(path: str) -> FileResponse:
     target = Path(path).resolve()
     if root != target and root not in target.parents:
         raise HTTPException(status_code=403, detail="Path outside attempts dir.")
-    if target.suffix.lower() not in {".png", ".obj"}:
+    model = _pack_tools.model_info()
+    if target.suffix.lower() not in {".png"} | ({model["ext"]} if model else set()):
         raise HTTPException(status_code=403, detail="Unsupported artefact type.")
     if not target.is_file():
         raise HTTPException(status_code=404, detail="Artefact not found.")
@@ -1079,37 +1083,42 @@ def api_artefact(path: str) -> FileResponse:
 
 @app.get("/api/download_geometry")
 def api_download_geometry(path: str) -> Response:
-    """Download an attempt's geometry as a RhinoCompute-regenerated OBJ.
-
-    The agent workflow may have built the on-disk mesh with either backend
-    (the generator's ``geometry_backend`` setting), but the deliverable
-    download should be the exact Grasshopper geometry.  So this regenerates
-    via RhinoCompute from the attempt's ``parameters.json`` and streams that.
-    If RhinoCompute is unavailable — or the params can't be read/regenerated
-    — it falls back to serving the saved mesh file (which may be an FEG
-    mesh), so the user always gets a download.  ``path`` is the saved ``propeller_mesh.obj`` path (the
-    same value ``/api/artefact`` serves).
+    """Download an attempt's model, rebuilt from its ``parameters.json`` by
+    the Download buttons' geometry tool (Workflow Settings > Tools >
+    Downloads).  The agents may have built the saved model with another
+    geometry tool (the generator's setting), and the deliverable is the
+    one chosen for downloads.  When that choice is the saved file, or the
+    tool fails, or the parameters cannot be read or rebuilt, the saved
+    model file is served, so the user always gets a download.  ``path``
+    is the saved model file's path (the same value ``/api/artefact``
+    serves).
     """
     _require_auth()
-    mesh_name = "propeller_mesh.obj"
+    model = _pack_tools.model_info()
+    if model is None:
+        raise HTTPException(status_code=404, detail="This setup makes no model.")
+    model_name = model["file"]
     root = ATTEMPTS_DIR.resolve()
     target = Path(path).resolve()
     if root != target and root not in target.parents:
         raise HTTPException(status_code=403, detail="Path outside attempts dir.")
-    if target.name != mesh_name:
+    if target.name != model_name:
         raise HTTPException(status_code=403, detail="Unsupported download target.")
 
     def _serve_saved(reason: str) -> Response:
         if not target.is_file():
-            raise HTTPException(status_code=404, detail="Mesh not found.")
+            raise HTTPException(status_code=404, detail=_fill("$Output_model not found."))
         logger.info(
             "[WEB] download_geometry serving saved file (%s): %s", reason, target
         )
         return FileResponse(
-            target, media_type="model/obj", filename=mesh_name,
+            target, media_type=model["media_type"], filename=model_name,
             headers={"X-Geometry-Source": "saved-file"},
         )
 
+    tool = _pack_tools.download_tool()
+    if tool == _pack_tools.SAVED:
+        return _serve_saved("the saved file is the download choice")
     params_path = target.parent / "parameters.json"
     if not params_path.is_file():
         return _serve_saved("no parameters.json")
@@ -1122,21 +1131,21 @@ def api_download_geometry(path: str) -> Response:
             exc,
         )
         return _serve_saved("params unusable")
-    geometry = _geometry()
     try:
-        obj_text, _vc, _components = geometry.render_mesh_obj_text(coerced)
-    except geometry.MeshGenerationError as exc:
+        made = _pack_tools.make_model(coerced, [tool])
+    except _ToolError as exc:
+        shown = _pack_tools.manifest(tool)["display_name"]
         logger.warning(
-            "[WEB] download_geometry: RhinoCompute regen failed (%s) — "
-            "serving saved file.", exc,
+            "[WEB] download_geometry: %s regen failed (%s) — "
+            "serving saved file.", shown, exc,
         )
-        return _serve_saved("RhinoCompute unavailable")
+        return _serve_saved(f"{shown} unavailable")
     return Response(
-        content=obj_text,
-        media_type="model/obj",
+        content=made.result.model,
+        media_type=model["media_type"],
         headers={
-            "Content-Disposition": f'attachment; filename="{mesh_name}"',
-            "X-Geometry-Source": "rhino",
+            "Content-Disposition": f'attachment; filename="{model_name}"',
+            "X-Geometry-Source": tool,
         },
     )
 
@@ -4487,12 +4496,24 @@ class ToolSettingsIn(BaseModel):
 
 def _tool_settings_payload() -> dict:
     """Every pack tool's settings for the Workflow Settings panel, grouped by
-    tool in folder order (engine/pack_tools.py): ``default`` comes from the
-    tool's tool.yaml, ``current`` is what the next session uses."""
+    tool in folder order (engine/pack_tools.py), then the Download buttons'
+    choice: ``default`` comes from the tool's tool.yaml (the Downloads
+    choice's from pack.yaml), ``current`` is what the next session uses; a
+    choice among tools also carries ``labels`` (their display names)."""
     tools = []
     for name, m in _pack_tools.manifests().items():
+        specs = _pack_tools.setting_specs(name)
+        if not specs:
+            continue      # nothing to set (a geometry tool)
         current = _pack_tools.settings(name)
         tools.append({"tool": name, "name": m["display_name"], "kind": m["kind"],
+                      "settings": [dict(s, current=current[s["name"]])
+                                   for s in specs]})
+    if _pack_tools.model_info() is not None:
+        # The Download buttons' choice (engine/pack_tools.download_specs).
+        name = _pack_tools.DOWNLOADS
+        current = _pack_tools.settings(name)
+        tools.append({"tool": name, "name": "Downloads", "kind": name,
                       "settings": [dict(s, current=current[s["name"]])
                                    for s in _pack_tools.setting_specs(name)]})
     return {"tools": tools}

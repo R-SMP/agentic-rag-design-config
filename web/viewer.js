@@ -212,6 +212,14 @@ export class Viewer {
    * restored with a short error message.
    */
   load(url, name, attempt) {
+    // The generator's model (window.PACK_PAGE.model, from tool.yaml): its
+    // format picks the loader -- OBJ is the one there is -- and its up
+    // axis the rotation into the viewer's Y-up frame.
+    const model = (window.PACK_PAGE && window.PACK_PAGE.model) || null;
+    if (!model || model.format !== "obj") {
+      console.error("No loader for this model format:", model && model.format);
+      return;
+    }
     const loader = new OBJLoader();
     loader.load(
       url,
@@ -225,9 +233,9 @@ export class Viewer {
             child.material = this._makeSurfaceMaterial();
           }
         });
-        // Rhino is Z-up; the viewer is Y-up. Rotate so the propeller's
-        // axis of rotation points up instead of lying horizontal.
-        obj.rotation.x = -Math.PI / 2;
+        // The viewer is Y-up; a Z-up model (Rhino, FEG) is turned so its
+        // up axis points up instead of lying horizontal.
+        if (model.up_axis === "z") obj.rotation.x = -Math.PI / 2;
         this.currentModel = obj;
         this.scene.add(obj);
         this._frameObject(obj);
@@ -241,7 +249,7 @@ export class Viewer {
         if (this.placeholderEl) {
           this.placeholderEl.style.display = "flex";
           this.placeholderEl.textContent =
-            "Could not load the 3D model (" + (name || "mesh") + ").";
+            "Could not load the 3D model (" + (name || window.PACK_PAGE.words.output_model) + ").";
         }
       }
     );

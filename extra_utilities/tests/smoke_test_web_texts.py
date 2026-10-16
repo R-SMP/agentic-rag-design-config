@@ -8,9 +8,12 @@ checks, against the real FastAPI app (only packages that are not installed
 are stubbed; no database):
 
 1. PAGE.  With the propeller pack the page shows exactly the texts it carried
-   before (the title, the chat box, the empty viewer, the database-entry
-   example and checkbox), no ``$name`` is left unfilled, and
-   ``/pack/page.js`` carries the words and the tools.
+   before (the title, the chat box, the empty viewer and its Download
+   button, the database-entry example and checkbox), the Parameters page's
+   Download button names the geometry tool chosen for downloads, the
+   Copy-parameters button gives the parameter count from the pack, no
+   ``$name`` is left unfilled, and ``/pack/page.js`` carries the words, the
+   tools and the generator's model (file, format, up axis).
 2. PACK WORDS.  With a copy of the pack whose words are stand-ins (one of
    them with ``<`` and ``&``), the page and ``/pack/page.js`` say the
    stand-ins, escaped, and no longer the propeller's texts.
@@ -90,7 +93,16 @@ PROPELLER_TEXTS = [
     "No model yet — generate a propeller and it will appear here.",
     'placeholder="e.g. A five-blade ring propeller with a deliberately thin ring..."',
     "Is this a render of a propeller generated with our design tool?",
+    'title="Save the displayed .obj mesh"',
 ]
+# Written since P4c (b): the Parameters page's Download button names the
+# geometry tool chosen for downloads (pack.yaml's default: RhinoCompute).
+PAGE_TEXTS_P4C = [
+    'title="Generate and download the geometry made by RhinoCompute (.obj)"',
+    'title="Copy the canonical 16-parameter list to your clipboard"',
+]
+MODEL = {"file": "propeller_mesh.obj", "ext": ".obj", "format": "obj",
+         "media_type": "model/obj", "up_axis": "z"}
 
 # Stand-in words for the PACK WORDS check: pack file -> text.
 _STAND_INS = {
@@ -98,6 +110,7 @@ _STAND_INS = {
     "fragments/dc/dc_name.md": "turbine",
     "fragments/dc/manual_entry_text_example.md": "A three-vane turbine with a wide hub...",
     "fragments/tools/output_image.md": "drawing",
+    "fragments/tools/output_model.md": "widget",
 }
 
 
@@ -119,14 +132,27 @@ def check_page() -> None:
     page = r.text
     check(r.status_code == 200 and "text/html" in r.headers.get("content-type", ""),
           f"[PAGE] GET / answered {r.status_code} {r.headers.get('content-type')}")
-    for text in PROPELLER_TEXTS:
+    for text in PROPELLER_TEXTS + PAGE_TEXTS_P4C:
         check(page.count(text) == 1, f"[PAGE] the page does not show {text!r} once")
     left = sorted(set(re.findall(r"\$[A-Za-z_][A-Za-z0-9_]*", page)))
     check(not left, f"[PAGE] unfilled words on the page: {left}")
     check("\\d{6}$</code>" in page, "[PAGE] the page's literal dollar sign ($$) is not a '$'")
     check('<script src="/pack/page.js"></script>' in page, "[PAGE] the page does not load /pack/page.js")
-    words = _page_js()["words"]
-    check(words == {"dc_name": "propeller"}, f"[PAGE] /pack/page.js words: {words}")
+    js = _page_js()
+    check(js["words"] == {"dc_name": "propeller", "output_model": "mesh"},
+          f"[PAGE] /pack/page.js words: {js['words']}")
+    check(js["model"] == MODEL, f"[PAGE] /pack/page.js model: {js['model']}")
+    # The Download choice reaches the Parameters page's button.
+    try:
+        pack_tools.settings_override_for_tests({"downloads": {"geometry_tool": "feg_geometry"}})
+        check('title="Generate and download the geometry made by FEG (.obj)"'
+              in CLIENT.get("/").text, "[PAGE] the Download choice does not reach the page")
+        pack_tools.settings_override_for_tests({"downloads": {"geometry_tool": "saved"}})
+        check('title="Generate and download the geometry made by FEG (.obj)"'
+              in CLIENT.get("/").text,
+              "[PAGE] with the saved file chosen, the page does not name the generator's tool")
+    finally:
+        pack_tools.settings_override_for_tests(None)
 
 
 def check_pack_words() -> int:
@@ -144,12 +170,14 @@ def check_pack_words() -> int:
                      'placeholder="Describe the turbine you want to design…"',
                      "No model yet — generate a turbine and it will appear here.",
                      'placeholder="e.g. A three-vane turbine with a wide hub..."',
-                     "Is this a drawing of a turbine generated with our design tool?"):
+                     "Is this a drawing of a turbine generated with our design tool?",
+                     'title="Save the displayed .obj widget"'):
             check(text in page, f"[PACK WORDS] the page does not show {text!r}")
         for text in PROPELLER_TEXTS:
             check(text not in page, f"[PACK WORDS] the page still shows {text!r}")
         words = _page_js()["words"]
-        check(words == {"dc_name": "turbine"}, f"[PACK WORDS] /pack/page.js words: {words}")
+        check(words == {"dc_name": "turbine", "output_model": "widget"},
+              f"[PACK WORDS] /pack/page.js words: {words}")
     except Exception as exc:                                        # noqa: BLE001
         check(False, f"[PACK WORDS] {type(exc).__name__}: {str(exc)[:200]}")
     finally:

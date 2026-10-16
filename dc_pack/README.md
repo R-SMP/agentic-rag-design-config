@@ -12,9 +12,9 @@ chooses another pack; the default is this folder.
 | --- | --- |
 | `fragments/dc/` | Text about the configurator: parameter list, structure, modelling notes, capabilities, examples, … |
 | `fragments/tools/` | Tool text that no one tool owns: the output vocabulary, the texts about the engine's own tools (database search, retrieval, `calculate` …, with their entries in the tool runner's tool list), the tool rules every agent gets, … |
-| `tools/<tool>/` | One folder per tool: `tool.yaml` (its name, its kind — `generator` or `helper` —, the role that may call it, the text the agents read, its outputs, and its settings with their defaults) plus plain Python with no LangChain in it (the contract is `engine/tooling.py`).  The engine loads them, builds the agents' tools and gives each to whichever agent holds its role in the running topology (`engine/pack_tools.py`).  A tool's switch and settings are its `<<IF:tool:…>>` / `<<IF:setting:…>>` flags; Workflow Settings › Tools changes them for the next session (`workflow_settings/tool_settings.json`).  Its `prompts/` folder holds the prompt text it owns — the slots its `tool.yaml` lists under `prompt_slots`, named as in `fragments/` — and `tool_list_entry.md`, its entry in the tool runner's numbered tool list (placed by `list_order`).  Delete a tool's folder and its text goes with it: its slots read empty, and a marked passage about it elsewhere reads as switched off. |
+| `tools/<tool>/` | One folder per tool: `tool.yaml` (its name, its kind — `generator`, `helper` or `geometry` —, the role that may call it (a geometry tool has none: the engine calls it, for the generator and the Download buttons), the text the agents read, its outputs, and its settings with their defaults) plus plain Python with no LangChain in it (the contract is `engine/tooling.py`).  The engine loads them, builds the agents' tools and gives each to whichever agent holds its role in the running topology (`engine/pack_tools.py`).  A tool's switch and settings are its `<<IF:tool:…>>` / `<<IF:setting:…>>` flags; Workflow Settings › Tools changes them for the next session (`workflow_settings/tool_settings.json`).  Its `prompts/` folder holds the prompt text it owns — the slots its `tool.yaml` lists under `prompt_slots`, named as in `fragments/` — and `tool_list_entry.md`, its entry in the tool runner's numbered tool list (placed by `list_order`).  Delete a tool's folder and its text goes with it: its slots read empty, and a marked passage about it elsewhere reads as switched off. |
 | `parameters.json` | The parameters: names in canonical (JSON) order, types, ranges, steps, defaults, groups, and each consumer's wording (slider label/unit, database unit/description).  The one source for the validator, `$parameter_count`, the slider page, the preview check and the database schema (`engine/parameters.py`).  The agents' parameter lists stay hand-written; `smoke_test_parameters.py` checks they agree.  Names under `retired` were parameters once: a record that still carries one is read without it (the web app's preview check, `propose_attempt`). |
-| `pack.yaml` | The pack's own settings.  `parameter_access`, who sees the parameter list for each agent and topology (full list / names only / through the `dc_params_list` tool / nothing).  It is the default; Workflow Settings › Parameter list access changes cells for the next session (`engine/parameter_access.py`). |
+| `pack.yaml` | The pack's own settings.  `parameter_access`, who sees the parameter list for each agent and topology (full list / names only / through the `dc_params_list` tool / nothing).  It is the default; Workflow Settings › Parameter list access changes cells for the next session (`engine/parameter_access.py`).  `downloads.geometry_tool`, the geometry tool that rebuilds the model the web app's Download buttons give (or `saved`, the file the run built); Workflow Settings › Tools › Downloads changes it for the next session. |
 | `assets/` | Images — the parameter primer (`dc_params_primer.png`). |
 
 The engine's own text — the DOs / DON'Ts every agent inherits, the routing
@@ -124,7 +124,19 @@ index in `prompts.py` are derived from the registry.
 * **The model file** — the generator's `outputs.model_file`
   (`propeller_mesh.obj`).  Every place that looks for an attempt's model
   uses this one name: `read_attempts`, the save step, the upload,
-  `visualize_3d_model`.
+  `visualize_3d_model`, the web app's 3D viewer and Download buttons.  With
+  it, `model_format` (`obj`: the viewer's loader and the downloads' media
+  type) and `up_axis` (`z`: the viewer turns the model upright).  When the
+  setup makes no model, the web app shows no 3D viewer and no Download
+  buttons (a generator without a model file: TODO F119).
+* **Geometry tools** — `kind: geometry`, making the generator's
+  `model_format`: one function, `make_model(params) -> GeometryResult`
+  (`engine/tooling.py`), never given to an agent.  The generator's
+  `geometry_tool` / `fallback_geometry_tool` settings (`type: tool`,
+  `tool_kind: geometry`) choose which one builds an attempt's model, and
+  `downloads.geometry_tool` in `pack.yaml` which one rebuilds a download.
+  The propeller's are `feg_geometry` (FEG) and `rhino_geometry`
+  (RhinoCompute).
 * **Images** — `outputs.images`, one entry per view, under one contract that
   `engine/pack_tools.py` checks when the pack loads:
   * an image of view `V` is the PNG `render_<V>.png`, written into the

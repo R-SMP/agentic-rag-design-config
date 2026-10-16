@@ -6,9 +6,10 @@ validates the record, reuses a ``propeller_mesh.obj`` already in the folder
 (append-only: never overwritten) and joins the two results into the text
 the agent gets.  This file only:
 
-* :func:`build` -- generates the mesh with the selected geometry backend
-  (FEG or RhinoCompute, falling back to the other) and writes it, its
-  per-component sidecar and the provenance record;
+* :func:`build` -- has the engine build the mesh with the geometry tool
+  its ``geometry_tool`` setting picks (``feg_geometry`` or
+  ``rhino_geometry``; ``fallback_geometry_tool`` when it fails) and writes
+  it, the files the geometry tool adds beside it and the provenance record;
 * :func:`render` -- renders the three views and, when the ``mesh_checks``
   setting is on, runs the quality checks, with the render core chosen by
   the ``render_library`` setting.
@@ -21,32 +22,31 @@ from __future__ import annotations
 import json
 import logging
 
-from engine.tooling import BuildResult, GeneratorInput, RenderResult
+from engine.tooling import BuildResult, GeneratorInput, MadeModel, RenderResult
 
-from . import generate_mesh as _geometry
-from .generate_mesh import (
-    MESH_PROVENANCE_FILE,
-    MeshGenerationError,  # noqa: F401  (raised through build; web callers catch it)
-    _COMPONENTS_FILENAME,
-    _backend_label,
-    render_agent_mesh_obj_text,
-)
+from .mesh_provenance import MESH_PROVENANCE_FILE
 
 logger = logging.getLogger("mas_agent")
 
 
+def _backend_label(made: MadeModel) -> str:
+    """The geometry tool that built the mesh, for the summary, noting when
+    the fallback did."""
+    if made.made_by != made.chosen:
+        return f"{made.made_by} (fallback — {made.chosen} unavailable)"
+    return made.made_by
+
+
 def build(inp: GeneratorInput) -> BuildResult:
-    """Generate the mesh into ``inp.model_path``.  Raises
-    ``MeshGenerationError`` when both geometry backends fail."""
-    _geometry.set_geometry_backend(inp.settings["geometry_backend"])
+    """Generate the mesh into ``inp.model_path``.  Raises ``ToolError``
+    when the geometry tool (and the fallback) fail."""
     out_path_dir, output_path = inp.attempt_dir, inp.model_path
 
-    # Delegate to the backend dispatcher (selected backend + bidirectional
-    # fallback).  On MeshGenerationError the geometry failed on BOTH
-    # backends — the engine returns the error and does NOT render.
-    mesh_text, vertex_count, components_text, backend_used = (
-        render_agent_mesh_obj_text(inp.params)
-    )
+    # The engine runs the chosen geometry tool, then the fallback.  On
+    # ToolError no geometry was built — the engine returns the error and
+    # does NOT render.
+    made = inp.make_model(inp.params)
+    mesh_text, vertex_count = made.result.model, made.result.vertex_count
 
     # Write the primary mesh.
     output_path.write_text(mesh_text, encoding="utf-8")
@@ -77,23 +77,20 @@ def build(inp: GeneratorInput) -> BuildResult:
                 parts_used_set.append(name)
     parts_used = ", ".join(parts_used_set) if parts_used_set else "MeshFinal"
 
-    # Sidecar: when MeshFinal was the primary output, also save the
-    # four named components to a separate .obj so the offline
-    # diagnostic script can inspect each one individually.  Skipped
-    # on the fallback path (the four components are already present
-    # as ``g`` groups inside ``propeller_mesh.obj``).  Written
-    # silently — the live tools never read this file.
+    # The files the geometry tool adds beside the model (RhinoCompute's
+    # per-component sidecar, for the offline diagnostic script).  Written
+    # silently — the live tools never read them.
     files = [output_path]
-    if components_text is not None:
-        sidecar_path = out_path_dir / _COMPONENTS_FILENAME
-        sidecar_path.write_text(components_text, encoding="utf-8")
+    for name, text in made.result.extra_files.items():
+        sidecar_path = out_path_dir / name
+        sidecar_path.write_text(text, encoding="utf-8")
         files.append(sidecar_path)
 
     return BuildResult(
         summary=(
             f"Mesh saved to {output_path.resolve()} ({file_size} bytes, "
             f"{vertex_count} vertices). Parts: {parts_used}. "
-            f"Geometry backend: {_backend_label(backend_used)}."
+            f"Geometry backend: {_backend_label(made)}."
         ),
         model_files=files,
     )

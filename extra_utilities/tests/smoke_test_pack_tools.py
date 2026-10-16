@@ -60,6 +60,23 @@ settings -- the manifests declare them (the picture contract):
 11. BLOCK.  The generator's runtime block picks, for every setting, the
    render-check slot the engine used to pick by name.
 
+Since MAS-blueprint P4c the geometry is made by geometry tools of their
+own (``kind: geometry``: ``feg_geometry``, ``rhino_geometry``), which the
+generator's ``geometry_tool`` / ``fallback_geometry_tool`` settings and
+the Download buttons' choice pick (``engine/pack_tools.make_model``):
+
+12. GEOMETRY.  Both load as geometry tools no agent is given, making the
+   generator's model format; the generator's two settings list them
+   (with "none" for the fallback) and the Downloads choice lists them
+   and "the saved file", with its default from ``pack.yaml``; a value
+   still saved for the removed ``geometry_backend`` setting is skipped;
+   ``make_model`` with stand-in geometry tools uses the first, falls back
+   to the second, raises one tool's own error or -- when both fail -- the
+   two by display name, and passes the files a tool adds; and five
+   broken copies of the pack (a geometry tool with roles, without
+   entrypoint or with another format, a setting naming a geometry tool
+   the pack lacks, a tool folder called ``downloads``) are refused.
+
 Run from the repo root:  py -3.13 extra_utilities/tests/smoke_test_pack_tools.py
 """
 from __future__ import annotations
@@ -112,7 +129,7 @@ def check_manifests() -> None:
         return
     check(set(m) >= {GEN, SEC}, f"[MANIFEST] tools found: {sorted(m)}")
     check(T.generators() == [GEN], f"[MANIFEST] generators: {T.generators()}")
-    for name in m:
+    for name in (n for n in m if m[n]["kind"] in T.KINDS):
         t = T.llm_tool(name)
         check(t.name == name and t.description.strip(),
               f"[MANIFEST] {name}: LLM tool name {t.name!r} / empty description")
@@ -122,7 +139,9 @@ def check_manifests() -> None:
 
 
 def check_settings() -> None:
-    check(T.settings(GEN) == {"geometry_backend": "feg", "render_library": "trimesh",
+    check(T.settings(GEN) == {"geometry_tool": "feg_geometry",
+                              "fallback_geometry_tool": "rhino_geometry",
+                              "render_library": "trimesh",
                               "mesh_checks": False, "view_isometric": True,
                               "view_top": True, "view_side": False},
           f"[SETTINGS] generator defaults {T.settings(GEN)}")
@@ -402,6 +421,126 @@ def check_runtime_block() -> None:
           "[BLOCK] a placeholder no tool declares gave a slot")
 
 
+def check_geometry() -> int:
+    """The geometry tools, the settings that pick them, make_model, and
+    the manifests it refuses."""
+    from engine.tooling import GeometryResult, ToolError
+    FEG, RH = "feg_geometry", "rhino_geometry"
+    try:
+        check(T.geometry_tools() == [FEG, RH], f"[GEOMETRY] geometry tools {T.geometry_tools()}")
+        check(all(T.manifest(n)["outputs"]["model_format"] == "obj" for n in (FEG, RH))
+              and T.model_info() == {"file": "propeller_mesh.obj", "ext": ".obj",
+                                     "format": "obj", "media_type": "model/obj",
+                                     "up_axis": "z"},
+              f"[GEOMETRY] model info {T.model_info()}")
+        for n in (FEG, RH):
+            try:
+                T.llm_tool(n)
+                check(False, f"[GEOMETRY] {n} became an LLM tool")
+            except T.PackToolError:
+                pass
+        specs = {s["name"]: s for s in T.setting_specs(GEN)}
+        check(specs["geometry_tool"]["values"] == [FEG, RH]
+              and specs["fallback_geometry_tool"]["values"] == [FEG, RH, "none"]
+              and specs["geometry_tool"]["labels"] == {FEG: "FEG", RH: "RhinoCompute"},
+              f"[GEOMETRY] the generator's geometry settings: {specs['geometry_tool']} "
+              f"{specs['fallback_geometry_tool']}")
+        dl = T.setting_specs(T.DOWNLOADS)[0]
+        check(dl["values"] == [FEG, RH, "saved"] and dl["default"] == RH
+              and T.download_tool() == RH and dl["labels"]["saved"] == "the saved file",
+              f"[GEOMETRY] the Downloads choice: {dl}")
+        check(T.geometry_order(T.settings(GEN)) == [FEG, RH]
+              and T.geometry_order({"geometry_tool": RH, "fallback_geometry_tool": "none"}) == [RH]
+              and T.geometry_order({"geometry_tool": FEG, "fallback_geometry_tool": FEG}) == [FEG],
+              "[GEOMETRY] geometry_order")
+        # A value saved for the removed geometry_backend setting is skipped.
+        real = T.OVERRIDES_PATH
+        with tempfile.TemporaryDirectory() as tmp:
+            T.OVERRIDES_PATH = Path(tmp) / "tool_settings.json"
+            try:
+                T.OVERRIDES_PATH.write_text(json.dumps(
+                    {GEN: {"geometry_backend": "rhino", "mesh_checks": True},
+                     "downloads": {"geometry_tool": FEG}}), encoding="utf-8")
+                check(T.settings(GEN)["mesh_checks"] is True
+                      and "geometry_backend" not in T.settings(GEN)
+                      and T.download_tool() == FEG,
+                      f"[GEOMETRY] stale saved settings: {T.settings(GEN)}")
+                for bad in ({"downloads": {"geometry_tool": "blender"}},
+                            {GEN: {"geometry_tool": "none"}}):
+                    try:
+                        T.save_overrides(bad)
+                        check(False, f"[GEOMETRY] {bad} was accepted")
+                    except T.PackToolError:
+                        pass
+            finally:
+                T.OVERRIDES_PATH = real
+        # make_model with stand-in geometry tools.
+        made: list = []
+        behaviour = {}
+        real_fn = T.Plugin.function
+
+        def fake_function(self, ref):
+            if self.name not in (FEG, RH):
+                return real_fn(self, ref)
+
+            def fn(params):
+                made.append(self.name)
+                if behaviour[self.name]:
+                    raise ToolError(behaviour[self.name])
+                return GeometryResult(f"v {self.name}", 1,
+                                      {"extra.txt": "x"} if self.name == RH else {})
+            return fn
+        T.Plugin.function = fake_function
+        try:
+            p = {"a": 1}
+            behaviour.update({FEG: None, RH: None})
+            r = T.make_model(p, [FEG, RH])
+            check(made == [FEG] and (r.made_by, r.chosen) == ("FEG", "FEG")
+                  and r.result.model == f"v {FEG}", f"[GEOMETRY] first tool: {made} {r}")
+            made.clear()
+            behaviour.update({FEG: "FEG error: no node"})
+            r = T.make_model(p, [FEG, RH])
+            check(made == [FEG, RH] and (r.made_by, r.chosen) == ("RhinoCompute", "FEG")
+                  and r.result.extra_files == {"extra.txt": "x"},
+                  f"[GEOMETRY] fallback: {made} {r}")
+            behaviour.update({RH: "RhinoCompute error: refused"})
+            for order, want in (([FEG, RH], "All geometry backends failed — FEG: FEG error: "
+                                             "no node | RhinoCompute: RhinoCompute error: refused"),
+                                 ([FEG], "FEG error: no node")):
+                try:
+                    T.make_model(p, order)
+                    check(False, f"[GEOMETRY] {order}: both failing gave a model")
+                except ToolError as exc:
+                    check(str(exc) == want, f"[GEOMETRY] {order}: {exc!s} != {want!r}")
+        finally:
+            T.Plugin.function = real_fn
+    except Exception as exc:                                        # noqa: BLE001
+        check(False, f"[GEOMETRY] {type(exc).__name__}: {str(exc)[:200]}")
+    tools = lambda d: d / "tools"                                   # noqa: E731
+    cases = [
+        ("a geometry tool with roles",
+         lambda d: _append(tools(d) / FEG / "tool.yaml", "roles: [tool_runner]\r\n"),
+         "a geometry tool has no roles"),
+        ("a geometry tool without entrypoint",
+         lambda d: _rewrite(tools(d) / RH / "tool.yaml",
+                            "entrypoint: rhino_geometry.py:make_model", ""),
+         "entrypoint must be"),
+        ("a geometry tool making another format",
+         lambda d: _rewrite(tools(d) / FEG / "tool.yaml", "model_format: obj",
+                            "model_format: glb"),
+         "a geometry tool's outputs are exactly model_format"),
+        ("a setting naming a geometry tool the pack lacks",
+         lambda d: shutil.rmtree(tools(d) / FEG),
+         "is not one of the pack's geometry tools"),
+        ("a tool folder called downloads",
+         lambda d: (shutil.copytree(tools(d) / FEG, tools(d) / "downloads"),
+                    _rewrite(tools(d) / "downloads" / "tool.yaml", "name: feg_geometry",
+                             "name: downloads")),
+         "is reserved"),
+    ]
+    return _refused(cases, "[GEOMETRY]")
+
+
 def check_tool_list() -> None:
     from agents.shared import agent_roles
     from workflow_settings import settings as S
@@ -441,7 +580,8 @@ def check_removal() -> int:
     config.DC_PACK_DIR = copy
     built = 0
     try:
-        check(list(T.manifests()) == [GEN], f"[REMOVAL] tools: {list(T.manifests())}")
+        agent_kinds = [n for n, m in T.manifests().items() if m["kind"] in T.KINDS]
+        check(agent_kinds == [GEN], f"[REMOVAL] tools: {list(T.manifests())}")
         check(all(PK.read(s, 7) == "" for s in sec_slots),
               "[REMOVAL] a slot of the removed tool still has text")
         check([r["view"] for r in T.image_outputs()] == ["isometric", "top", "side"],
@@ -485,7 +625,9 @@ def check_golden() -> int:
     real_att = config.ATTEMPTS_DIR
     config.ATTEMPTS_DIR = att
     gen = T.plugin(GEN).module
-    real_dispatch, real_render = gen.render_agent_mesh_obj_text, gen.render_and_check
+    real_dispatch, real_render = T.make_model, gen.render_and_check
+    from engine.tooling import GeometryResult, MadeModel, ToolError
+    shown = {"feg": "FEG", "rhino": "RhinoCompute"}
     params = {p["name"]: p["default"] for p in json.loads(
         (ROOT / "dc_pack" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
     calls: list = []
@@ -498,16 +640,22 @@ def check_golden() -> int:
                 s = s.replace(form, tag)
         return s.replace("\\", "/")
 
+    # The stand-in for the engine's make_model: the geometry tool *used*
+    # made the model; the settings chose order[0].
     def backend_ok(comps="g Comp1\nv 9 9 9\n", used="feg"):
-        def f(p):
+        def f(p, order):
             calls.append(["backend", sorted(p.items())])
-            return ("g Blade\nv 0 0 0\ng Ring\nv 1 1 1\ng Blade\n", 1234, comps, used)
+            extra = {"propeller_mesh_components.obj": comps} if comps is not None else {}
+            return MadeModel(GeometryResult("g Blade\nv 0 0 0\ng Ring\nv 1 1 1\ng Blade\n",
+                                            1234, extra),
+                             made_by=shown[used],
+                             chosen=T.manifest(order[0])["display_name"])
         return f
 
     def backend_raises(msg):
-        def f(p):
+        def f(p, order):
             calls.append(["backend", sorted(p.items())])
-            raise gen.MeshGenerationError(msg)
+            raise ToolError(msg)
         return f
 
     def render_ok(mesh, out):
@@ -546,9 +694,9 @@ def check_golden() -> int:
 
     def gen_case(name, path, *, backend=None, render=render_ok, selected="feg", look=None):
         calls.clear()
-        gen.render_agent_mesh_obj_text = backend or backend_ok()
+        T.make_model = backend or backend_ok()
         gen.render_and_check = lambda mesh, out, settings: render(mesh, out)
-        T.settings_override_for_tests({GEN: {"geometry_backend": selected}})
+        T.settings_override_for_tests({GEN: {"geometry_tool": f"{selected}_geometry"}})
         text = T.llm_tool(GEN).invoke({"parameters_path": str(path)})
         got[name] = {"text": norm(text), "calls": json.loads(json.dumps(calls)),
                      "files": snapshot(look) if look else None}
@@ -611,7 +759,7 @@ def check_golden() -> int:
         d = folder("105_sections_nonnum", dict(params, innerAngle="x"))
         sec_case("sections_non_numeric", {"parameters_path": str(d / "parameters.json")})
     finally:
-        gen.render_agent_mesh_obj_text, gen.render_and_check = real_dispatch, real_render
+        T.make_model, gen.render_and_check = real_dispatch, real_render
         T.settings_override_for_tests(None)
         config.ATTEMPTS_DIR = real_att
         shutil.rmtree(att, ignore_errors=True)
@@ -641,12 +789,13 @@ def main() -> int:
     n_saves = check_save_step()
     check_compression()
     check_runtime_block()
+    n_geometry = check_geometry()
     print(f"{len(T.manifests())} tools; {n} golden cases compared with "
           f"{FIXTURE.relative_to(ROOT).as_posix()}; {len(PK.tool_claims())} tool-text "
           f"slots owned, {n_broken} broken packs refused; 6 tool lists compared with "
           f"{LISTS.relative_to(ROOT).as_posix()}; {n_built} prompts built without "
           f"the blade-sections tool; {n_contract} pictures-contract breaks refused; "
-          f"{n_saves} save-step cases")
+          f"{n_saves} save-step cases; {n_geometry} broken geometry packs refused")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
@@ -656,8 +805,9 @@ def main() -> int:
           "tool runner of each topology gets the tools, both tools answer exactly "
           "what they answered before the move, each owns its prompt text, the "
           "tool list is built exactly as it was written, a tool can be removed, "
-          "and the picture contract, the save step, the shrink strengths and the "
-          "runtime block come from the manifests.")
+          "the picture contract, the save step, the shrink strengths and the "
+          "runtime block come from the manifests, and the geometry tools are "
+          "chosen and fall back as their settings say.")
     return 0
 
 

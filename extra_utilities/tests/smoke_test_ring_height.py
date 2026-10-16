@@ -1,5 +1,5 @@
-"""Drift guard: cross-check the propeller generator's ring_height.fitted_ring_height
-(dc_pack/tools/generate_and_render_propeller/ring_height.py)
+"""Drift guard: cross-check the RhinoCompute geometry tool's ring_height.fitted_ring_height
+(dc_pack/tools/rhino_geometry/ring_height.py)
 against the REAL web/feg modules (via Node), proving the server-side derived
 ring height is bit-identical to the in-browser FEG 3D preview.
 
@@ -31,7 +31,7 @@ TOL = 1e-9
 # Load the port BY FILE PATH (it imports only ``math``), so this guard needs
 # neither the agents stack nor the pack loader.
 _spec = importlib.util.spec_from_file_location(
-    "ring_height", REPO_ROOT / "dc_pack" / "tools" / "generate_and_render_propeller"
+    "ring_height", REPO_ROOT / "dc_pack" / "tools" / "rhino_geometry"
     / "ring_height.py")
 _rh = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_rh)  # type: ignore[union-attr]

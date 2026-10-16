@@ -16,7 +16,7 @@ Panel B : 3x3 grid  - camber across, high-point down.  Sections are drawn
                       the angle of attack (measured from the horizontal).
 
 The airfoil math is a port of web/feg/naca.js (the same code path as the
-generator's ring_height.py and the blade-sections tool, in dc_pack/tools/),
+RhinoCompute geometry tool's ring_height.py and the blade-sections tool, in dc_pack/tools/),
 so the shapes are the ones the DC actually builds.  Sections are drawn TE-left /
 LE-right to match the render_blade_sections output the agents already see.
 

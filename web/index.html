@@ -111,11 +111,11 @@
           </div>
           <div class="viewer-footer">
             <button id="download-mesh" class="ghost" type="button"
-                    disabled title="Save the displayed .obj mesh">
+                    disabled title="Save the displayed $model_ext $output_model">
               Download geometry
             </button>
             <button id="copy-parameters" class="ghost" type="button"
-                    title="Copy the canonical 17-parameter list to your clipboard">
+                    title="Copy the canonical $parameter_count-parameter list to your clipboard">
               Copy parameters list
             </button>
           </div>
@@ -273,14 +273,14 @@
           </div>
           <!--
             Footer mirroring the chat viewer's Download geometry button.
-            The live preview above is the fast in-browser FEG; this button
-            fetches the PRECISE RhinoCompute geometry (RCG) for the current
-            parameters and downloads it (handler: paramsDownloadMesh).
+            This button has the geometry tool chosen for downloads build
+            the model of the current parameters and downloads it
+            (handler: paramsDownloadMesh; route /api/preview_mesh).
           -->
           <div class="viewer-footer">
             <button id="params-download-mesh" class="ghost" type="button"
                     disabled
-                    title="Generate and download the precise RhinoCompute geometry (.obj)">
+                    title="Generate and download the geometry made by $download_tool ($model_ext)">
               Download geometry
             </button>
           </div>

@@ -270,7 +270,8 @@ CFG_ROWS = [
      "no watertightness / volume metrics; the Tool Caller gets the "
      "\u201cchecks off\u201d render fragment"),
     ("generator: render_library", '"' + CFG["RENDER_LIBRARY"] + '"', "render backend"),
-    ("generator: geometry_backend", '"' + CFG["GEOMETRY_BACKEND"] + '"',
+    # (dump.json files written before P4c name the old setting.)
+    ("generator: geometry_tool", '"' + CFG.get("GEOMETRY_TOOL", CFG.get("GEOMETRY_BACKEND")) + '"',
      "headless-Node FEG rather than RhinoCompute"),
     ("render_blade_sections: enabled", CFG["BLADE_SECTIONS_VISUALIZER_ENABLED"],
      "render_blade_sections bound to the Tool Caller"),

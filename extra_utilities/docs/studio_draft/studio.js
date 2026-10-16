@@ -591,9 +591,13 @@
    * Tools (+ New tool overlay, + local-mode Test tool)
    * ==================================================================== */
   var TOOL_META = {
-    generate_and_render_propeller: { roles: ['tool_runner'], outputs: 'model: .obj · images: isometric, top, side (side off by default) · quality-check numbers',
-      settings: 'quality_checks, render_library, backend, views', secrets: 'RHINO_COMPUTE_URL, RHINO_COMPUTE_API_KEY (both optional)',
-      deps: 'trimesh, pyrender, pyvista, compute-rhino3d, rhino3dm, DracoPy · apt: libosmesa6, nodejs' },
+    generate_and_render_propeller: { roles: ['tool_runner'], outputs: 'model: .obj (made by a geometry tool) · images: isometric, top, side (side off by default) · quality-check numbers',
+      settings: 'geometry tool + fallback, quality_checks, render_library, views', secrets: 'none',
+      deps: 'trimesh, pyrender, pyvista · apt: libosmesa6' },
+    feg_geometry: { outputs: 'the model (.obj), for the generator and the Download buttons', settings: 'none',
+      secrets: 'none', deps: 'apt: nodejs (+ three, from npm)' },
+    rhino_geometry: { outputs: 'the model (.obj) + a per-component file, for the generator and the Download buttons', settings: 'none',
+      secrets: 'RHINO_COMPUTE_URL, RHINO_COMPUTE_API_KEY', deps: 'compute-rhino3d, rhino3dm, DracoPy' },
     render_blade_sections: { roles: ['tool_runner'], outputs: 'model: none · images: blade_sections.png', settings: 'enabled',
       secrets: 'none', deps: 'Pillow' }
   };
@@ -617,12 +621,15 @@
             onclick: function () { go('studio', 'tools', withQ({ test: t.name })); } }, 'Test tool')]),
         h('div', { 'class': 'd' }, first),
         h('div', { 'class': 'grid2' }, [
-          h('div', { 'class': 'k' }, 'Called by'), h('div', null, 'tool runner: ' + rolesLine('tool_runner')),
+          h('div', { 'class': 'k' }, 'Called by'), h('div', null, t.kind === 'geometry'
+            ? 'the engine, never an agent: the generator\u2019s geometry tool setting, the Download buttons'
+            : 'tool runner: ' + rolesLine('tool_runner')),
           h('div', { 'class': 'k' }, 'Produces'), h('div', null, m.outputs),
           h('div', { 'class': 'k' }, 'Settings'), h('div', null, m.settings),
           h('div', { 'class': 'k' }, 'Secrets'), h('div', null, m.secrets),
           h('div', { 'class': 'k' }, 'Dependencies'), h('div', null, m.deps),
-          h('div', { 'class': 'k' }, 'Prompt text'), h('div', null, t.owns.length + ' fields it owns (they leave with it) + its entry in the tool runner\u2019s numbered list, place ' + t.list_order),
+          h('div', { 'class': 'k' }, 'Prompt text'), h('div', null, t.kind === 'geometry' ? 'none (no agent reads about it)'
+            : t.owns.length + ' fields it owns (they leave with it) + its entry in the tool runner\u2019s numbered list, place ' + t.list_order),
           h('div', { 'class': 'k' }, 'Code'), h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  manifest dc_pack/tools/' + t.name + '/tool.yaml')
         ]),
         !local ? h('div', { 'class': 'disabled-note', style: 'margin-top:8px' }, 'Test tool is available after download, on your own computer: python -m studio') : null
@@ -914,7 +921,7 @@
       { title: 'Setup file', rows: [
         ['ok', 'pack.yaml: name, setup format 1, engine 0.1'],
         ['ok', 'parameters.json matches its schema (' + P.length + ' parameters, ' + D.parameters.groups.length + ' groups)'],
-        ['ok', D.tools.length + ' tool manifests, exactly one primary generator (' + D.tools[0].name + ')']] },
+        ['ok', D.tools.length + ' tool manifests, exactly one primary generator (' + D.tools.filter(function (t) { return t.kind === 'generator'; })[0].name + ')']] },
       { title: 'Text fields', rows: [
         [V.brace_files.length ? 'bad' : 'ok', V.fragment_files + ' text files: no { or } in any of them', V.brace_files.length ? V.brace_files.join(', ') : 'A brace silently strips the routing section of a prompt (W45).'],
         [V.unknown_dollar.length ? 'bad' : 'ok', 'every $name refers to a known field', V.unknown_dollar.join(', ')],

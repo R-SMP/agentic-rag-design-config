@@ -22,7 +22,12 @@ The engine side of the tool contract (``engine/tooling.py``):
   ``setting:<name>.<setting>`` (a boolean setting), for the ``<<IF:…>>``
   regions of the pack's fragments (``engine/pack_flags.py``);
 * **render views** -- the images the tools produce, in order, for the view
-  registry (``agents/shared/attempt_views.py``).
+  registry (``agents/shared/attempt_views.py``);
+* **geometry tools** -- ``kind: geometry``: they build the model from the
+  parameters for a generator (its ``geometry_tool`` /
+  ``fallback_geometry_tool`` settings, :func:`make_model`) and for the web
+  app's Download buttons (the ``downloads`` choice, default in
+  ``dc_pack/pack.yaml``); no agent is given one.
 
 Imports nothing from ``agents`` at module level: ``prompts`` reads the flags
 through here while ``agents`` is still being imported.
@@ -33,6 +38,7 @@ from __future__ import annotations
 import importlib
 import importlib.util
 import json
+import logging
 import os
 import re
 import sys
@@ -48,9 +54,26 @@ import yaml
 import config
 from engine import pack as _pack
 from engine import parameters as _parameters
-from engine.tooling import GeneratorInput, ToolError
+from engine.tooling import GeneratorInput, MadeModel, ToolError
 
+logger = logging.getLogger("mas_agent")
+
+# The kinds of tool an agent can be given; a ``geometry`` tool is called by
+# the engine only (a generator's geometry_tool, the Download buttons).
 KINDS = ("generator", "helper")
+GEOMETRY = "geometry"
+ALL_KINDS = KINDS + (GEOMETRY,)
+# The model formats the web app's 3D viewer can load, with the media type
+# a download is served as.  A generator without outputs.model_file has no
+# model (format "none"): the viewer and the Download buttons are hidden.
+MODEL_FORMATS = {"obj": "model/obj"}
+UP_AXES = ("y", "z")
+# The generator settings that pick its geometry tools (type: tool).
+GEOMETRY_SETTING, FALLBACK_SETTING = "geometry_tool", "fallback_geometry_tool"
+NONE = "none"
+# The Download buttons' choice is stored with the tools' settings under
+# this name (so no tool may be called so); SAVED = the file the run built.
+DOWNLOADS, SAVED = "downloads", "saved"
 # The roles a tool can serve, named for what the agent does, and the
 # seven-agent agent that holds each one in the 7-agent system.  In the other
 # topologies the holder comes from agents/shared/agent_roles.py.
@@ -76,7 +99,8 @@ _TOP_KEYS = {"name", "display_name", "kind", "roles", "description", "build",
              "render", "entrypoint", "args", "outputs", "switch", "settings",
              "list_order", "prompt_slots", "fill_on_save", "image_note",
              "runtime_blocks"}
-_SETTING_KEYS = {"name", "type", "values", "default", "label", "description"}
+_SETTING_KEYS = {"name", "type", "values", "default", "label", "description",
+                 "tool_kind", "none"}
 _IMAGE_KEYS = {"view", "file", "order", "default_enabled", "label", "compression",
                "variants"}
 # The picture contract: a tool's picture of view V is the PNG file
@@ -113,13 +137,19 @@ def _check_manifest(folder: Path, m) -> list[str]:
     p = [f"{where}: unknown field {k!r}" for k in sorted(set(m) - _TOP_KEYS)]
     if m.get("name") != folder.name:
         p.append(f"{where}: name must be the folder name {folder.name!r}")
+    if folder.name == DOWNLOADS:
+        p.append(f"{where}: {DOWNLOADS!r} is reserved (the Download buttons' settings)")
     for k in ("display_name", "description"):
         if not isinstance(m.get(k), str) or not m.get(k).strip():
             p.append(f"{where}: {k} is required text")
-    if m.get("kind") not in KINDS:
-        p.append(f"{where}: kind must be one of {', '.join(KINDS)}")
+    if m.get("kind") not in ALL_KINDS:
+        p.append(f"{where}: kind must be one of {', '.join(ALL_KINDS)}")
     roles = m.get("roles")
-    if not isinstance(roles, list) or not roles or any(r not in ROLES for r in roles):
+    if m.get("kind") == GEOMETRY:
+        if roles is not None or m.get("args") is not None or m.get("switch") is not None:
+            p.append(f"{where}: a geometry tool has no roles, args or switch "
+                     f"(the engine calls it, never an agent)")
+    elif not isinstance(roles, list) or not roles or any(r not in ROLES for r in roles):
         p.append(f"{where}: roles must list some of {', '.join(ROLES)}")
     if m.get("kind") == "generator":
         for k in ("build", "render"):
@@ -128,14 +158,27 @@ def _check_manifest(folder: Path, m) -> list[str]:
         args = m.get("args") or {}
         if set(args) != {"parameters_path"} or not isinstance(args.get("parameters_path"), str):
             p.append(f"{where}: a generator's args are exactly parameters_path: <text>")
-        if not isinstance((m.get("outputs") or {}).get("model_file"), str):
+        out = m.get("outputs") or {}
+        if not isinstance(out.get("model_file"), str):
             p.append(f"{where}: a generator declares outputs.model_file")
-    elif m.get("kind") == "helper":
+        elif out.get("model_format") not in MODEL_FORMATS \
+                or Path(out["model_file"]).suffix != f".{out.get('model_format')}":
+            p.append(f"{where}: outputs.model_format is one of "
+                     f"{', '.join(MODEL_FORMATS)}, the model file's extension")
+        if out.get("up_axis", "y") not in UP_AXES:
+            p.append(f"{where}: outputs.up_axis is one of {', '.join(UP_AXES)}")
+    elif m.get("kind") in ("helper", GEOMETRY):
         if not _REF_RE.match(str(m.get("entrypoint", ""))):
             p.append(f"{where}: entrypoint must be '<module>.py:<function>'")
     outputs = m.get("outputs") or {}
-    if not isinstance(outputs, dict) or set(outputs) - {"model_file", "images"}:
-        p.append(f"{where}: outputs holds model_file and images only")
+    if m.get("kind") == GEOMETRY:
+        if not isinstance(outputs, dict) or set(outputs) != {"model_format"} \
+                or outputs["model_format"] not in MODEL_FORMATS:
+            p.append(f"{where}: a geometry tool's outputs are exactly model_format: "
+                     f"one of {', '.join(MODEL_FORMATS)}")
+    elif not isinstance(outputs, dict) or set(outputs) - {
+            "model_file", "model_format", "up_axis", "images"}:
+        p.append(f"{where}: outputs holds model_file, model_format, up_axis and images only")
     images = (outputs or {}).get("images") or []
     for i, img in enumerate(images):
         if not isinstance(img, dict) or set(img) - _IMAGE_KEYS or not {
@@ -175,8 +218,19 @@ def _check_manifest(folder: Path, m) -> list[str]:
             vals = s.get("values")
             if not isinstance(vals, list) or s.get("default") not in vals:
                 p.append(f"{where}: setting {s.get('name')}: values must list the default")
+        elif s.get("type") == "tool":
+            # The choices are the pack's tools of that kind (manifests()
+            # checks the default names one of them).
+            if s.get("tool_kind") != GEOMETRY or "values" in s \
+                    or not isinstance(s.get("none", False), bool) \
+                    or not isinstance(s.get("default"), str):
+                p.append(f"{where}: setting {s.get('name')}: a tool setting is "
+                         f"{{tool_kind: {GEOMETRY}, default: <tool>, none: true|false}}")
         else:
-            p.append(f"{where}: setting {s.get('name')}: type is bool or enum")
+            p.append(f"{where}: setting {s.get('name')}: type is bool, enum or tool")
+        if s.get("type") != "tool" and ({"tool_kind", "none"} & set(s)):
+            p.append(f"{where}: setting {s.get('name')}: tool_kind / none are for "
+                     f"type: tool")
     # Its place in the tool runner's numbered tool list, and the text it owns.
     runner = isinstance(roles, list) and "tool_runner" in roles
     order = m.get("list_order")
@@ -283,9 +337,34 @@ def manifests() -> dict[str, dict]:
         problems += _check_manifest(folder, m)
         out[folder.name] = m
     problems += _check_tool_texts(out)
+    problems += _check_geometry(out)
     if problems:
         raise PackToolError("\n".join(problems))
     return out
+
+
+def _check_geometry(found: dict[str, dict]) -> list[str]:
+    """A tool setting's default names one of the pack's geometry tools (or
+    ``none`` where allowed), and every geometry tool makes the model in the
+    generator's format."""
+    p: list[str] = []
+    ok = [n for n, m in found.items() if isinstance(m, dict) and m.get("kind") == GEOMETRY]
+    formats = {(m.get("outputs") or {}).get("model_format")
+               for m in found.values() if isinstance(m, dict) and m.get("kind") == "generator"}
+    for name in ok:
+        fmt = (found[name].get("outputs") or {}).get("model_format")
+        if formats and fmt not in formats:
+            p.append(f"{name}/tool.yaml: makes {fmt!r} models, the generator's are "
+                     f"{', '.join(sorted(map(str, formats)))}")
+    for name, m in found.items():
+        for s in (m.get("settings") or []) if isinstance(m, dict) else []:
+            if isinstance(s, dict) and s.get("type") == "tool":
+                allowed = ok + ([NONE] if s.get("none") else [])
+                if s.get("default") not in allowed:
+                    p.append(f"{name}/tool.yaml: setting {s.get('name')}: the default "
+                             f"{s.get('default')!r} is not one of the pack's geometry "
+                             f"tools ({', '.join(allowed) or 'none'})")
+    return p
 
 
 def manifest(name: str) -> dict:
@@ -351,9 +430,52 @@ def plugin(name: str) -> Plugin:
 _test_overrides: dict[str, dict] = {}
 
 
+def _choices(kind: str, none: bool, extra: dict | None = None) -> tuple[list, dict]:
+    """The values and their labels of a choice among the pack's tools of
+    *kind* (display names), with ``none`` and *extra* choices."""
+    tools = {n: m["display_name"] for n, m in manifests().items() if m["kind"] == kind}
+    labels = dict(tools, **(extra or {}), **({NONE: NONE} if none else {}))
+    return list(labels), labels
+
+
+def _resolved(s: dict) -> dict:
+    """A declared setting as the panel and the checks see it: a ``tool``
+    setting becomes an enum of the pack's tools of its kind, with labels."""
+    s = dict(s)
+    if s.get("type") == "tool":
+        s["values"], s["labels"] = _choices(s.pop("tool_kind"), s.pop("none", False))
+        s["type"] = "enum"
+    return s
+
+
+def download_specs() -> list[dict]:
+    """The Download buttons' choice: which geometry tool rebuilds the model a
+    user downloads, or the file the run saved.  Its default is
+    ``downloads.geometry_tool`` in ``dc_pack/pack.yaml``."""
+    values, labels = _choices(GEOMETRY, False, {SAVED: "the saved file"})
+    try:
+        data = yaml.safe_load((_pack.pack_dir() / "pack.yaml").read_text(encoding="utf-8")) or {}
+    except FileNotFoundError:
+        data = {}
+    default = ((data.get("downloads") or {}).get("geometry_tool")) or SAVED
+    if default not in values:
+        raise PackToolError(f"pack.yaml: downloads.geometry_tool {default!r} is not one "
+                            f"of {', '.join(values)}")
+    return [{"name": "geometry_tool", "type": "enum", "values": values,
+             "labels": labels, "default": default,
+             "label": "Download geometry with",
+             "description": ("The tool that makes the geometry the Download buttons "
+                             "give (from the attempt's parameters, or from the sliders "
+                             "on the Parameters page).  If it fails, the saved file is "
+                             "downloaded.  the saved file = the geometry the run built.")}]
+
+
 def setting_specs(name: str) -> list[dict]:
     """Every setting of the tool: its switch (``enabled``), its declared
-    settings, and one ``view_<view>`` per image it produces."""
+    settings, and one ``view_<view>`` per image it produces.  (For
+    :data:`DOWNLOADS`: the Download buttons' choice.)"""
+    if name == DOWNLOADS:
+        return download_specs()
     m = manifest(name)
     specs: list[dict] = []
     if m.get("switch") is not None:
@@ -361,7 +483,7 @@ def setting_specs(name: str) -> list[dict]:
         specs.append({"name": "enabled", "type": "bool", "default": sw["default"],
                       "label": sw.get("label", "Enabled"),
                       "description": sw.get("description", "")})
-    specs += [dict(s) for s in m.get("settings") or []]
+    specs += [_resolved(s) for s in m.get("settings") or []]
     for img in (m.get("outputs") or {}).get("images") or []:
         specs.append({"name": f"view_{img['view']}", "type": "bool",
                       "default": img["default_enabled"],
@@ -389,7 +511,7 @@ def _validated(raw, source: str) -> dict[str, dict]:
     problems, out = [], {}
     tools = manifests()
     for tool, values in raw.items():
-        if tool not in tools:
+        if tool not in tools and tool != DOWNLOADS:
             problems.append(f"{source}: no tool {tool!r} in the pack")
             continue
         if not isinstance(values, dict):
@@ -410,17 +532,35 @@ def _validated(raw, source: str) -> dict[str, dict]:
     return out
 
 
+_warned_stale: set[str] = set()     # stale saved settings already logged
+
+
 def read_overrides() -> dict[str, dict]:
     """The values changed in Workflow Settings.  Values saved for a tool
-    that is no longer in the pack (its folder was removed) are left out,
-    like the tool itself; the next save drops them from the file."""
+    that is no longer in the pack (its folder was removed), or for a setting
+    a tool no longer has, are left out, like the tool or the setting; the
+    next save drops them from the file."""
     try:
         raw = json.loads(OVERRIDES_PATH.read_text(encoding="utf-8"))
     except FileNotFoundError:
         return {}
     if isinstance(raw, dict):
-        present = manifests()
-        raw = {t: v for t, v in raw.items() if t in present}
+        present = set(manifests()) | {DOWNLOADS}
+        kept = {}
+        for t, v in raw.items():
+            if t not in present:
+                continue
+            if isinstance(v, dict):
+                names = {s["name"] for s in setting_specs(t)}
+                for k in sorted(f"{t}.{k}" for k in set(v) - names):
+                    if k not in _warned_stale:
+                        _warned_stale.add(k)
+                        logger.warning("[TOOLS] %s: ignoring the saved setting %r, "
+                                       "which the tool no longer has",
+                                       OVERRIDES_PATH.name, k)
+                v = {k: x for k, x in v.items() if k in names}
+            kept[t] = v
+        raw = kept
     return _validated(raw, OVERRIDES_PATH.name)
 
 
@@ -477,6 +617,15 @@ def setting(name: str, key: str):
 
 def generators() -> list[str]:
     return [n for n, m in manifests().items() if m["kind"] == "generator"]
+
+
+def geometry_tools() -> list[str]:
+    return [n for n, m in manifests().items() if m["kind"] == GEOMETRY]
+
+
+def download_tool() -> str:
+    """The Download buttons' choice: a geometry tool's name, or SAVED."""
+    return settings(DOWNLOADS)["geometry_tool"]
 
 
 def page_tools() -> list[dict]:
@@ -548,6 +697,19 @@ def compression_kind(file_name: str) -> str | None:
         if file_name == r["file"] or file_name in r["variant_files"]:
             return r["compression"]
     return None
+
+
+def model_info() -> dict | None:
+    """The generator's model as the web app shows it -- ``{file, ext,
+    format, media_type, up_axis}`` -- or None when it makes none."""
+    gens = generators()
+    out = manifest(gens[0])["outputs"] if gens else {}
+    if not out.get("model_file"):
+        return None
+    fmt = out["model_format"]
+    return {"file": out["model_file"], "ext": Path(out["model_file"]).suffix,
+            "format": fmt, "media_type": MODEL_FORMATS[fmt],
+            "up_axis": out.get("up_axis", "y")}
 
 
 def model_file() -> str | None:
@@ -669,6 +831,40 @@ def _model_word() -> str:
     return _pack.read("output_model", _pack.REFERENCE_TOPOLOGY)
 
 
+def make_model(params: dict, order: list[str]) -> MadeModel:
+    """The model built from *params* by the first geometry tool of *order*
+    that succeeds (each failure is logged).  Raises ToolError: one tool's
+    own error, or -- when every one failed -- all of them, by display name."""
+    errors: list[ToolError] = []
+    for name in order:
+        m = manifest(name)
+        try:
+            result = plugin(name).function(m["entrypoint"])(dict(params))
+        except ToolError as exc:
+            logger.warning("Geometry tool %r failed: %s", name, exc)
+            errors.append(exc)
+            continue
+        if errors:
+            logger.warning("Geometry tool %r failed; used %r as fallback.",
+                           order[0], name)
+        return MadeModel(result=result, made_by=m["display_name"],
+                         chosen=manifest(order[0])["display_name"])
+    if len(errors) == 1:
+        raise errors[0]
+    raise ToolError("All geometry backends failed — " + " | ".join(
+        f"{manifest(n)['display_name']}: {e}" for n, e in zip(order, errors)))
+
+
+def geometry_order(values: dict) -> list[str]:
+    """A generator's geometry tools in the order to try them: its
+    ``geometry_tool``, then its ``fallback_geometry_tool`` (unless none)."""
+    first = values.get(GEOMETRY_SETTING)
+    if not first:
+        return []
+    second = values.get(FALLBACK_SETTING, NONE)
+    return [first] + ([second] if second not in (NONE, first) else [])
+
+
 def generator_input(name: str, parameters_path: str):
     """``(GeneratorInput, None)`` or ``(None, error text)`` for a generator
     call: the attempt folder and the parameter record, checked."""
@@ -680,8 +876,11 @@ def generator_input(name: str, parameters_path: str):
     if err is not None:
         return None, err
     model_path = out_dir / manifest(name)["outputs"]["model_file"]
-    return GeneratorInput(params=values, attempt_dir=out_dir,
-                          model_path=model_path, settings=settings(name)), None
+    values_ = settings(name)
+    order = geometry_order(values_)
+    return GeneratorInput(
+        params=values, attempt_dir=out_dir, model_path=model_path, settings=values_,
+        make_model=(lambda p: make_model(p, order)) if order else None), None
 
 
 def run_generator(name: str, parameters_path: str) -> str:
@@ -737,6 +936,9 @@ def _make_llm_tool(name: str):
     from agents.shared.agent_activity import tool_active
 
     m = manifest(name)
+    if m["kind"] == GEOMETRY:
+        raise PackToolError(f"{name} is a geometry tool: the engine calls it, "
+                            f"no agent does")
     if m["kind"] == "generator":
         def impl(parameters_path):
             return run_generator(name, parameters_path)
@@ -807,7 +1009,7 @@ def tool_list(agent_key: str) -> str:
     entries = [_pack.read(f"tool_entry_{tool}", topo)
                for role, tool in _LIST_BEFORE if _holds(agent_key, role)]
     ours = sorted((m["list_order"], name) for name, m in manifests().items()
-                  if "tool_runner" in m["roles"] and is_enabled(name))
+                  if "tool_runner" in (m.get("roles") or []) and is_enabled(name))
     for _order, name in ours:
         path = _pack.tool_list_entry_path(name, topo)
         entries.append(path.read_text(encoding="utf-8").rstrip())

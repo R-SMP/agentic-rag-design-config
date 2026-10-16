@@ -6,7 +6,7 @@ imports the code, builds the LLM-facing tool from the manifest (name,
 description, argument texts) and binds it to the agents that hold the
 tool's roles.  The tool code only does the configurator-specific work.
 
-Two kinds of tool:
+Three kinds of tool:
 
 * **generator** -- builds the design from an attempt's ``parameters.json``.
   It provides two functions, named in its manifest:
@@ -23,10 +23,27 @@ Two kinds of tool:
   summary and the render report into the tool's answer.  ``render`` is also
   what the save-time pass calls to re-create missing views.
 
+  A generator whose settings include ``geometry_tool`` (and, optionally,
+  ``fallback_geometry_tool``) -- settings of ``type: tool``, ``tool_kind:
+  geometry`` -- gets ``inp.make_model``: it builds the model with the
+  chosen geometry tool, then the fallback, and returns a :class:`MadeModel`.
+
 * **helper** -- one plain function with type hints, e.g.
   ``render_blade_sections(parameters_path: str, grid: bool = False) -> str``.
   The engine builds the LLM tool from its signature and the manifest's
   description; the function returns the text the agent gets.
+
+* **geometry** -- builds the model from the parameters, for a generator
+  (its ``geometry_tool`` setting) and for the web app's Download buttons
+  (Workflow Settings > Tools > Downloads); never given to an agent.  One
+  plain function, named by ``entrypoint``::
+
+      make_model(params: dict) -> GeometryResult
+
+  ``params`` is already checked against ``dc_pack/parameters.json``
+  (complete, typed, canonical order).  It writes nothing: it returns the
+  model in the format its manifest declares (``outputs.model_format``, the
+  generator's), and raises :class:`ToolError` when it cannot.
 
 A tool that makes images of an attempt follows the image contract in
 ``dc_pack/README.md`` ("What the engine reads from a tool's outputs").
@@ -39,6 +56,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from pathlib import Path
+from typing import Callable
 
 
 class ToolError(Exception):
@@ -48,11 +66,26 @@ class ToolError(Exception):
 
 
 @dataclass
+class GeometryResult:
+    model: str                       # the model file's content
+    vertex_count: int | None = None  # for the summary the agent reads
+    extra_files: dict = field(default_factory=dict)  # name -> content, beside the model
+
+
+@dataclass
+class MadeModel:
+    result: GeometryResult
+    made_by: str                     # display name of the geometry tool that made it
+    chosen: str                      # display name of the one the settings chose first
+
+
+@dataclass
 class GeneratorInput:
     params: dict                     # the record, validated, canonical order
     attempt_dir: Path                # the attempt folder (resolved)
     model_path: Path                 # attempt_dir / the manifest's model_file
     settings: dict = field(default_factory=dict)
+    make_model: Callable[[dict], MadeModel] | None = None
 
 
 @dataclass

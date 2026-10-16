@@ -5,7 +5,7 @@
 // OBJ that the existing Python render pipeline (render_mesh.py) renders the
 // same way it renders a RhinoCompute OBJ.
 //
-// Usage:  node dc_pack/tools/generate_and_render_propeller/feg_export.mjs '<params-json>'
+// Usage:  node dc_pack/tools/feg_geometry/feg_export.mjs '<params-json>'
 //         (17 canonical params) — OBJ text -> stdout, one-line stats -> stderr.
 //
 // The blade is an InstancedMesh (blade x bladeCount around Z); each instance is

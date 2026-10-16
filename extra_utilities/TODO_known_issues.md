@@ -131,6 +131,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F116` | OPEN | The save step hides why the generator failed |
 | `F117` | OPEN | Vocabulary entries that name the configurator with its article ("a propeller", "an impeller") |
 | `F118` | OPEN | Workflow Settings descriptions still name propeller things |
+| `F119` | OPEN | Generators that make no model file |
 
 ---
 
@@ -4700,14 +4701,19 @@ adds — into one Database window, as tabs.
 The text the agents read about `generate_and_render_propeller` -- its
 `description` in `dc_pack/tools/generate_and_render_propeller/tool.yaml` --
 still says "Geometry backend: chosen by the ``GEOMETRY_BACKEND`` workflow
-setting".  P3c moved that setting into the tool: it is now the generator's
-`geometry_backend` tool setting (Workflow Settings › Tools).  P3c kept the
-text byte-identical so the move could be proven against the tool baseline.
+setting".  P3c moved that setting into the tool; P4c (b) then replaced it
+with two geometry tools of their own (`feg_geometry`, `rhino_geometry`),
+chosen by the generator's `geometry_tool` / `fallback_geometry_tool`
+settings (Workflow Settings › Tools), and downloads now come from the tool
+chosen under Tools › Downloads -- so "the user's downloadable deliverable
+is regenerated via RhinoCompute" is only the default now.  Both steps kept
+the text byte-identical so they could be proven against the tool baseline.
 Changing it changes the tool's description for every agent that has the tool
 (the Tool Caller in topologies 7 and 5, the Design Engineer in 3), so it needs
 its own wording approval and a new tool baseline.  Suggested wording: "chosen
-by the generator's ``geometry_backend`` tool setting (Workflow Settings ›
-Tools)".
+by the generator's ``geometry_tool`` setting (Workflow Settings › Tools),
+with ``fallback_geometry_tool`` when it fails", and for the download: "the
+user's download is rebuilt by the tool chosen under Tools › Downloads".
 
 ---
 
@@ -4787,4 +4793,19 @@ image-compression block, `IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE`,
 propeller's tools or outputs ("mesh", "blade sections",
 `render_blade_sections*`).  Reword each in the engine's terms, or with pack
 words the settings page fills; each rewording is shown for approval.
+
+---
+
+### F119. Generators that make no model file
+
+**Status.** OPEN — owner-approved (2026-10-16), during MAS-blueprint P4c (b).
+
+Since P4c (b) the web app hides its 3D viewer and Download buttons when the
+setup makes no model (`engine/pack_tools.model_info()` is None).  The rest
+of the engine still requires a generator to declare `outputs.model_file`:
+the manifest check refuses one without it, `run_generator` reuses or builds
+a model, the save step and the R2 upload look for it, and the Receptionist
+is given `visualize_3d_model`.  A DC whose generator makes only images --
+the P8 test DC may -- needs an optional model file (format "none"), a
+build step that writes none, and the Receptionist's 3D tool left out.
 

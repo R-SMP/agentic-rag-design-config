@@ -1,0 +1,17 @@
+# The RhinoCompute geometry tool: builds the propeller's model from its
+# parameters with RhinoCompute and the Grasshopper definition beside this
+# file.  The engine calls it -- the generator's geometry_tool /
+# fallback_geometry_tool settings, the web app's Download buttons -- never an
+# agent (engine/tooling.py, kind: geometry).
+name: rhino_geometry
+display_name: RhinoCompute
+kind: geometry
+entrypoint: rhino_geometry.py:make_model
+
+description: >-
+  Builds the propeller with RhinoCompute and the Grasshopper definition
+  Propeller_Raul_V1.2.gh: the exact geometry; needs the RhinoCompute server
+  (RHINO_COMPUTE_URL).
+
+outputs:
+  model_format: obj

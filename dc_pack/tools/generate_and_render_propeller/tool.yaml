@@ -1,7 +1,9 @@
 # The propeller generator: builds the 3D geometry from an attempt's
 # parameters.json, then renders it (and, when mesh_checks is on, checks it).
 # The engine builds the LLM tool from this file (engine/pack_tools.py); the
-# code is tool.py (build, render) and the modules beside it.
+# code is tool.py (build, render) and the modules beside it.  The geometry
+# itself comes from a geometry tool (feg_geometry, rhino_geometry), chosen
+# by the geometry_tool / fallback_geometry_tool settings below.
 name: generate_and_render_propeller
 display_name: Propeller Configurator
 kind: generator
@@ -50,6 +52,10 @@ args:
 
 outputs:
   model_file: propeller_mesh.obj
+  # The model's format (the web app's 3D viewer and downloads) and the axis
+  # that points up in it (Rhino and FEG are Z-up; the viewer is Y-up).
+  model_format: obj
+  up_axis: z
   # The views the render step writes.  Each one is a Workflow Settings
   # switch (view_<view>): ON = created at save time if missing, uploaded
   # with the attempt, fetched by retrieve_attempt.  Saving is irreversible:
@@ -78,17 +84,25 @@ runtime_blocks:
     off_slot: render_check_library_off
 
 settings:
-  - name: geometry_backend
-    type: enum
-    values: [feg, rhino]
-    default: feg
-    label: Geometry backend
+  # The geometry tools to build the model with: the pack's tools of kind
+  # geometry (engine/pack_tools.make_model).
+  - name: geometry_tool
+    type: tool
+    tool_kind: geometry
+    default: feg_geometry
+    label: Geometry tool
     description: >-
-      feg = headless Node running the same web/feg modules as the browser 3D
-      preview (local, fast, a visually faithful sub-mm approximation);
-      rhino = RhinoCompute + the Grasshopper definition (exact, but needs an
-      external server).  Whichever is chosen, the other is the automatic
-      fallback.  The downloadable deliverable always comes from RhinoCompute.
+      The tool that builds the 3D geometry from an attempt's parameters.
+      FEG: the browser 3D preview's own code run by Node — local, fast, a
+      visually faithful sub-mm approximation.  RhinoCompute: the Grasshopper
+      definition — exact, but needs the RhinoCompute server.
+  - name: fallback_geometry_tool
+    type: tool
+    tool_kind: geometry
+    none: true
+    default: rhino_geometry
+    label: Fallback geometry tool
+    description: Used when the geometry tool fails; none = the failure is reported.
   - name: render_library
     type: enum
     values: [trimesh, pyvista]

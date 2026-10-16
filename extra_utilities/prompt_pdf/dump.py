@@ -428,7 +428,7 @@ out = {
         # Tool settings since MAS-blueprint P3c; the keys stay for build_html.
         "MESH_CHECKS": bool(_GEN["mesh_checks"]),
         "RENDER_LIBRARY": _GEN["render_library"],
-        "GEOMETRY_BACKEND": _GEN["geometry_backend"],
+        "GEOMETRY_TOOL": _GEN["geometry_tool"],
         "BLADE_SECTIONS_VISUALIZER_ENABLED": pack_tools.is_enabled("render_blade_sections"),
         "OCR_ENABLED": bool(S.OCR_ENABLED),
         "CHAIN_ACCESS": bool(S.CHAIN_ACCESS),

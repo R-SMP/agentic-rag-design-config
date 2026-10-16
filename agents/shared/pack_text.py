@@ -120,14 +120,17 @@ class _Escaped(dict):
         return value
 
 
-def fill(template: str, topology: int | None = None, escape=None) -> str:
+def fill(template: str, topology: int | None = None, escape=None,
+         extra: dict | None = None) -> str:
     """*template* with every ``$name`` replaced by the pack's word for the
     active topology (or *topology*), passed through *escape* when given
-    (the web page: ``html.escape``)."""
+    (the web page: ``html.escape``).  *extra* adds words of the caller's
+    own (the web page: the tool chosen for downloads)."""
     if topology is None:
         from agents.shared.topology import topology as _active
         topology = _active()
     words = _Words(topology)
+    words.update(extra or {})
     return Template(template).substitute(_Escaped(words, escape) if escape else words)
 
 

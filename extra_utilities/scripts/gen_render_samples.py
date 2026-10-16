@@ -69,7 +69,7 @@ def gen_geo():
     import trimesh
     generator = _generator()
     rm = generator.submodule("render_mesh")
-    exporter = generator.folder / "feg_export.mjs"
+    exporter = _plugin("feg_geometry").folder / "feg_export.mjs"
     for size, p in SIZES.items():
         proc = subprocess.run(["node", str(exporter), json.dumps(p)],
                               capture_output=True, text=True, timeout=180)

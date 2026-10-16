@@ -24,3 +24,12 @@ parameter_access:
   design_engineer:      {3: full}
   requirements_analyst: {3: names}
   database_handler:     {7: none,  5: none,  3: none}
+
+# The web app's Download buttons: which geometry tool (dc_pack/tools/, kind:
+# geometry) rebuilds the model a user downloads -- from the attempt's
+# parameters.json, or from the Parameters page's sliders -- or "saved", the
+# model file the run built.  If the tool fails, the saved file is downloaded.
+# This is the DEFAULT; Workflow Settings > Tools > Downloads changes it for
+# the next session (workflow_settings/tool_settings.json, under "downloads").
+downloads:
+  geometry_tool: rhino_geometry
