@@ -25,8 +25,8 @@ Usage::
     from langchain_core.tools import tool
 
     @tool
-    @tool_active("Propeller Configurator")
-    def generate_and_render_propeller(...) -> str:
+    @tool_active("<the tool's display name>")
+    def my_tool(...) -> str:
         ...
 
 ``@tool_active`` MUST sit BELOW ``@tool`` so it wraps the plain
@@ -38,23 +38,33 @@ from __future__ import annotations
 import functools
 from typing import Callable
 
+# The engine's standard tools, by the name each reports (:func:`generic_tool`),
+# in the order the LOG and Status flowchart's TOOLS panel shows them after
+# the pack's own tools.  smoke_test_web_texts.py checks that every
+# ``@generic_tool`` name is listed here.
+STANDARD_TOOLS: tuple[str, ...] = (
+    "Read attempts", "Calculate", "View images", "Database search",
+    "Retrieve attempt", "Retrieve user inputs", "Read user inputs",
+    "Read extracted inputs", "Open attempt + write parameters",
+    "Read text regions (OCR)", "Write extracted inputs", "List DC parameters",
+    "Read agent history", "Visualize 3D model", "Propose attempt",
+)
+
 
 def generic_tool(name: str) -> Callable[[Callable], Callable]:
-    """Decorator for "generic" tools — every tool that is NOT one of
-    the tools that have their own box on the flowchart (Propeller
-    Configurator, Blade Sections).
+    """Decorator for "generic" tools — the engine's standard tools, as
+    opposed to the pack's own (whose calls :func:`tool_active` reports).
 
     A generic tool call does NOT swap which agent is active — the
     calling agent stays "in flight" while the helper runs (reading
     a file, listing attempts, writing parameters, etc.).  So the
-    frontend keeps the agent's box highlighted and merely shows a
-    small floating text label next to it carrying ``name`` while
-    the call is in progress.  The label disappears when the call
-    returns (or raises).
+    frontend keeps the agent's box highlighted, notes ``name`` under
+    it as the agent's last tool, and lights the tool's box in the
+    TOOLS panel while the call is in progress.
 
     The display ``name`` you pass here is what shows up next to the
-    agent's box on the flowchart — keep it short and human-readable
-    (e.g. "Read user inputs", "New attempt", "Calculate").
+    agent's box on the flowchart and on the tool's own box — keep it
+    short and human-readable, and list it in :data:`STANDARD_TOOLS`.
 
     These events are intentionally NOT routed through ``_trace`` —
     the on-disk agent-flow file is meant to record agent-level

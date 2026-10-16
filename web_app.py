@@ -28,6 +28,7 @@ from __future__ import annotations
 import asyncio
 import functools
 import hmac
+import html
 import io
 import json
 import logging
@@ -45,7 +46,7 @@ from urllib.parse import quote
 
 from fastapi import FastAPI, File, Form, HTTPException, UploadFile
 from fastapi.concurrency import run_in_threadpool
-from fastapi.responses import FileResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, HTMLResponse, Response, StreamingResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -54,7 +55,9 @@ import importlib
 from agents.database_handler import manual_entry
 from agents.dispatch import dispatch_turn
 from agents.loader import _archive_previous_session
+from agents.shared.agent_activity import STANDARD_TOOLS
 from agents.shared.attempts_tool import attempt_label_for_path
+from agents.shared.pack_text import fill as _fill
 from agents.shared.file_utils import pair_input_images
 from agents.shared.image_compression import (
     compress_for_model,
@@ -480,7 +483,7 @@ def _end_session(was_saved: bool = False) -> None:
 # App
 # --------------------------------------------------------------------------
 
-app = FastAPI(title="Propeller Design Configurator — JS web UI (local)")
+app = FastAPI(title=_fill("$app_title — JS web UI (local)"))
 
 
 @app.on_event("startup")
@@ -542,8 +545,12 @@ class ImageCompressionIn(BaseModel):
 
 
 @app.get("/")
-def index() -> FileResponse:
-    return FileResponse(WEB_DIR / "index.html")
+def index() -> HTMLResponse:
+    """The page, with the pack's words filled in as it is served
+    (``$app_title``, ``$dc_name`` ...; ``agents/shared/pack_text.py``),
+    HTML-escaped.  ``$$`` in the file is a literal dollar sign."""
+    page = (WEB_DIR / "index.html").read_bytes().decode("utf-8")
+    return HTMLResponse(_fill(page, escape=html.escape))
 
 
 @app.get("/pack/parameters.js")
@@ -558,6 +565,31 @@ def pack_parameters_js() -> Response:
     payload = json.dumps(_parameters.page_payload())
     return Response(
         content=f"window.PACK_PARAMETERS = {payload};\n",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+# The pack's words the page's SCRIPT uses (the page itself is filled as it
+# is served).
+_PAGE_WORDS = ("dc_name",)
+
+
+@app.get("/pack/page.js")
+def pack_page_js() -> Response:
+    """What the page's script takes from the pack, as a script
+    ``web/index.html`` loads before ``app.js``: it sets
+    ``window.PACK_PAGE = {words, tools}`` -- the words in
+    :data:`_PAGE_WORDS`, and the tools the LOG and Status flowchart's
+    TOOLS panel and the LLM routing chart draw: the pack's switched-on
+    tools, then the engine's standard ones.  No auth, like
+    ``/pack/parameters.js``: it holds what the page's own files held."""
+    payload = json.dumps({
+        "words": {w: _fill("$" + w) for w in _PAGE_WORDS},
+        "tools": {"pack": _pack_tools.page_tools(), "standard": list(STANDARD_TOOLS)},
+    })
+    return Response(
+        content=f"window.PACK_PAGE = {payload};\n",
         media_type="application/javascript",
         headers={"Cache-Control": "no-store"},
     )
@@ -915,13 +947,14 @@ class PreviewMeshIn(BaseModel):
 def _coerce_preview_params(raw_params: dict) -> dict[str, int | float]:
     """Validate + coerce a raw parameter dict against the pack's parameters.
 
-    Drops a stray legacy ``impellerHeight`` key.  Raises :class:`ValueError`
+    Drops the names parameters.json lists as retired.  Raises :class:`ValueError`
     (message names the failing param(s)) on missing/unknown keys, out-of-range
     values, non-numeric values, or non-integer values for integer-typed params.
     Shared by ``/api/preview_mesh`` and ``/api/download_geometry``.
     """
     raw = dict(raw_params)
-    raw.pop("impellerHeight", None)
+    for name in _parameters.retired():
+        raw.pop(name, None)
 
     param_spec = _parameters.preview_spec()
     expected_keys = set(param_spec.keys())

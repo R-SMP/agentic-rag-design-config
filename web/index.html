@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Propeller Design Configurator</title>
+  <title>$app_title</title>
   <link rel="stylesheet" href="/static/style.css" />
   <!-- Three.js (no build step) — CDN import map. Needs internet. -->
   <script type="importmap">
@@ -18,7 +18,7 @@
 <body>
   <header>
     <div>
-      <h1>Propeller Design Configurator</h1>
+      <h1>$app_title</h1>
       <span class="subtitle">Multi-agent design assistant — local JS UI</span>
     </div>
     <div class="header-actions">
@@ -91,7 +91,7 @@
           <div id="messages" class="messages"></div>
           <form id="composer" class="composer">
             <textarea id="input" rows="2"
-              placeholder="Describe the propeller you want to design…"></textarea>
+              placeholder="Describe the $dc_name you want to design…"></textarea>
             <button id="send-btn" type="submit" class="primary">Send</button>
           </form>
         </main>
@@ -105,7 +105,7 @@
           </div>
           <div id="viewer" class="viewer">
             <div id="viewer-placeholder" class="viewer-placeholder">
-              No model yet — generate a propeller and it will appear here.
+              No model yet — generate a $dc_name and it will appear here.
               <br /><small>Drag to rotate · scroll to zoom</small>
             </div>
           </div>
@@ -477,7 +477,10 @@
               system is waiting for it).  Two extra agents
               (<em>Database Handler</em>, <em>Context Pruner</em>) are
               shown in the side panel — they will light up once they
-              are wired into the live flow.
+              are wired into the live flow.  The TOOLS panel below has
+              one box per tool: the configurator's own tools first, then
+              the standard ones.  A tool's box lights while it runs,
+              linked to the agent that called it.
             </p>
           </div>
           <div class="flow-wrap">
@@ -546,7 +549,9 @@
                    agent_active event.  Toggled by
                    applyDynamicArrow() in web/app.js.  Class
                    .orch-dyn-link kept for CSS reuse (light-gray
-                   stroke + display:none when hidden). -->
+                   stroke + display:none when hidden).  The lines
+                   from the TOOLS panel to a calling agent go in
+                   #flow-tool-links, behind the boxes. -->
               <line id="dyn-orch-planner" class="orch-dyn-link"
                     x1="462" y1="319" x2="398" y2="334"
                     marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
@@ -559,12 +564,7 @@
               <line id="dyn-orch-tc" class="orch-dyn-link"
                     x1="658" y1="319" x2="797" y2="352"
                     marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
-              <line id="dyn-tc-propeller" class="orch-dyn-link"
-                    x1="963" y1="366" x2="1012" y2="363"
-                    marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
-              <line id="dyn-tc-blade" class="orch-dyn-link"
-                    x1="976" y1="420" x2="1012" y2="438"
-                    marker-start="url(#arrow-gray)" marker-end="url(#arrow-gray)" hidden />
+              <g id="flow-tool-links"></g>
 
               <!-- User -->
               <g id="agent-user" class="flow-box flow-box-user">
@@ -638,21 +638,6 @@
                       class="agent-tool-label"></text>
               </g>
 
-              <!-- TOOL: Propeller Generator (generates the 3D geometry AND
-                   its visual renders — one merged tool) -->
-              <g id="agent-propeller-configurator" class="flow-box flow-box-tool">
-                <rect x="1020" y="325" width="160" height="64" rx="3" ry="3" />
-                <text x="1100" y="350" text-anchor="middle" class="tool-prefix">TOOL:</text>
-                <text x="1100" y="372" text-anchor="middle">Propeller Generator</text>
-              </g>
-
-              <!-- TOOL: Blade Sections (cross-section diagram renderer) -->
-              <g id="agent-blade-sections" class="flow-box flow-box-tool">
-                <rect x="1020" y="450" width="160" height="64" rx="3" ry="3" />
-                <text x="1100" y="475" text-anchor="middle" class="tool-prefix">TOOL:</text>
-                <text x="1100" y="497" text-anchor="middle">Blade Sections</text>
-              </g>
-
               <!-- Database Handler (floating, no arrows) -->
               <g id="agent-database-handler" class="flow-box flow-box-agent">
                 <rect x="340" y="625" width="180" height="55" rx="3" ry="3" />
@@ -668,6 +653,11 @@
                 <text x="690" y="694" text-anchor="middle"
                       class="agent-tool-label"></text>
               </g>
+
+              <!-- TOOLS panel: one box per tool, built by
+                   buildFlowToolsPanel() in web/app.js from
+                   /pack/page.js (the viewBox grows to fit it). -->
+              <g id="flow-tools-panel"></g>
             </svg>
           </div>
         </div>
@@ -1279,7 +1269,7 @@
             <p class="db-blurb">
               Valid session_id shape:
               <code>ID042_20260602_140000</code>
-              (regex <code>^ID\d+_\d{8}_\d{6}$</code>).
+              (regex <code>^ID\d+_\d{8}_\d{6}$$</code>).
             </p>
             <ul id="db-ignore-list" class="db-list">
               <li class="db-ignore-empty"><em>(empty — no sessions ignored)</em></li>
@@ -1422,7 +1412,7 @@
             <span class="udb-hint">This is what gets embedded and searched.</span>
           </label>
           <textarea id="udb-text" class="udb-text" rows="6"
-                    placeholder="e.g. A five-blade ring propeller with a deliberately thin ring..."></textarea>
+                    placeholder="e.g. $manual_entry_text_example"></textarea>
 
           <label class="udb-label">Images <span class="udb-hint">optional</span></label>
           <div class="udb-drop">
@@ -1437,7 +1427,7 @@
             <label><input id="udb-is-user-image" type="checkbox" />
               Is this a user input image?</label>
             <label><input id="udb-is-render" type="checkbox" />
-              Is this a render of a propeller generated with our design tool?</label>
+              Is this a $output_image of a $dc_name generated with our design tool?</label>
           </div>
 
           <label class="udb-label">
@@ -1581,6 +1571,7 @@
   <!-- window.PACK_PARAMETERS, from dc_pack/parameters.json: must load
        before app.js (TODO F111). -->
   <script src="/pack/parameters.js"></script>
+  <script src="/pack/page.js"></script>
   <script src="/static/app.js"></script>
 </body>
 </html>

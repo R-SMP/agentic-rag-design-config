@@ -15,6 +15,10 @@ is a ``$name`` filled from the pack here.  :func:`fill` accepts:
 * the words it derives from the tool manifests -- :data:`FROM_MANIFESTS`
   (the model's file name and extension).
 
+The web page takes its words the same way: ``web_app.py`` fills
+``web/index.html`` with them (HTML-escaped) as it serves it, and hands the
+page's script the ones it needs in ``/pack/page.js``.
+
 An unknown ``$name`` is an error, so a misspelt word fails loudly; write
 ``$$`` for a literal dollar sign.
 
@@ -103,13 +107,28 @@ class _Words(dict):
         return value
 
 
-def fill(template: str, topology: int | None = None) -> str:
+class _Escaped(dict):
+    """The words of one fill, each passed through *escape*."""
+
+    def __init__(self, words: _Words, escape):
+        super().__init__()
+        self.words, self.escape = words, escape
+
+    def __missing__(self, name: str) -> str:
+        value = self.escape(self.words[name])
+        self[name] = value
+        return value
+
+
+def fill(template: str, topology: int | None = None, escape=None) -> str:
     """*template* with every ``$name`` replaced by the pack's word for the
-    active topology (or *topology*)."""
+    active topology (or *topology*), passed through *escape* when given
+    (the web page: ``html.escape``)."""
     if topology is None:
         from agents.shared.topology import topology as _active
         topology = _active()
-    return Template(template).substitute(_Words(topology))
+    words = _Words(topology)
+    return Template(template).substitute(_Escaped(words, escape) if escape else words)
 
 
 _DESCRIBED: list[tuple[object, str]] = []

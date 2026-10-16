@@ -78,6 +78,10 @@ def check_validation(spec: dict) -> None:
         'unknown field "colour"': lambda s: _param(s, first).update(colour="red"),
         'missing field "db_unit"': lambda s: _param(s, first).pop("db_unit"),
         "must be numbers": lambda s: _param(s, first).update(min="3"),
+        "listed as retired but still a parameter": lambda s: s.update(retired=[first]),
+        "listed as retired twice": lambda s: s.update(retired=["gone", "gone"]),
+        "must be a list of names": lambda s: s.update(retired="gone"),
+        'and, optionally, "retired"': lambda s: s.update(colours=[]),
     }
     for expected, edit in cases.items():
         problems = _broken(spec, edit)
@@ -86,6 +90,12 @@ def check_validation(spec: dict) -> None:
               f"(got {problems})")
     check(parameters.validate({"parameters": []}) != [],
           "[VALIDATION] a file without groups was accepted")
+    no_retired = copy.deepcopy(spec)
+    no_retired.pop("retired", None)
+    check(parameters.validate(no_retired) == [] and parameters.retired(no_retired) == (),
+          "[VALIDATION] a file without the optional retired list was not accepted")
+    check(set(parameters.retired(spec)).isdisjoint(parameters.names(spec)),
+          "[VALIDATION] a retired name is still a parameter")
 
 
 # ---------------------------------------------------------------------------

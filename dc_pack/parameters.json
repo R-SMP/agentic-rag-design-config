@@ -22,5 +22,6 @@
     {"name": "outerCamber", "type": "float", "min": 0, "max": 9, "step": 1, "default": 4, "group": "outer", "label": "Camber", "unit": "% of chord", "db_unit": "% of chord", "db_description": "Outer blade section profile camber"},
     {"name": "outerChord", "type": "float", "min": 10, "max": 30, "step": 1, "default": 15, "group": "outer", "label": "Chord Length", "unit": "mm", "db_unit": "mm", "db_description": "Outer blade section chord length"},
     {"name": "outerAngle", "type": "float", "min": 2, "max": 25, "step": 1, "default": 10, "group": "outer", "label": "Angle of Attack", "unit": "degrees", "db_unit": "degrees", "db_description": "Outer blade section angle of attack"}
-  ]
+  ],
+  "retired": ["impellerHeight"]
 }

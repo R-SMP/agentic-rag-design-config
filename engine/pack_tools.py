@@ -479,6 +479,15 @@ def generators() -> list[str]:
     return [n for n, m in manifests().items() if m["kind"] == "generator"]
 
 
+def page_tools() -> list[dict]:
+    """The switched-on tools the agents can call, as the web app shows
+    them (the flowchart's TOOLS panel, the LLM routing chart): name and
+    display name, generators first, each kind in folder order."""
+    return [{"name": n, "label": m["display_name"]}
+            for kind in KINDS for n, m in manifests().items()
+            if m["kind"] == kind and is_enabled(n)]
+
+
 # ---------------------------------------------------------------------------
 # Prompt flags and render views
 # ---------------------------------------------------------------------------

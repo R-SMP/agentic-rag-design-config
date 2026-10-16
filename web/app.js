@@ -412,6 +412,7 @@ async function finalizeEndSession(evt) {
   _clearActiveBoxes();
   clearAllToolLabels();
   hideAllDynamicArrows();
+  flowToolsReset();
   const cfg = await (await fetch("/api/config")).json().catch(() => ({}));
   if (cfg.auth_required && !cfg.authed) showGate();
   else input.focus();
@@ -739,34 +740,154 @@ const FLOW_BOX_BY_NAME = {
   "DC Input Inspector":    "agent-dc-input-inspector",
   "Tool Caller":           "agent-tool-caller",
   "DC Output Inspector":   "agent-dc-output-inspector",
-  // Tool boxes (published from tools/*.py via the @tool_active
-  // decorator).  Also listed in TOOL_NAMES below so that "<agent> →
-  // <tool>" transitions keep BOTH the calling agent and the tool
-  // highlighted — the agent is still semantically in flight, waiting
-  // for the tool's return.  The matching tool→agent exit event then
-  // clears the tool box and leaves the caller solo-lit.
-  // "Propeller Configurator" is generate_and_render_propeller, which
-  // builds the 3D geometry AND its renders in one call (the render
-  // step is its built-in final phase); "Blade Sections" is the
-  // cross-section diagram renderer (render_blade_sections).
-  "Propeller Configurator":  "agent-propeller-configurator",
-  "Blade Sections":          "agent-blade-sections",
+  // The tools' boxes (the TOOLS panel) are added by
+  // buildFlowToolsPanel(), under each tool's display name: the pack's
+  // tools report their calls through the @tool_active wrapper
+  // (engine/pack_tools.py), and are added to TOOL_NAMES below too.
   // Extra agents — not yet wired into trace(); reserved so they'll
   // light up automatically once instrumentation lands.
   "Database Handler":      "agent-database-handler",
   "Context Pruner":        "agent-context-pruner",
 };
 
+// "<agent> → <tool>" transitions keep BOTH the calling agent and the tool
+// highlighted — the agent is still semantically in flight, waiting for
+// the tool's return; the matching tool→agent exit event then clears the
+// tool box and leaves the caller solo-lit.  buildFlowToolsPanel() adds
+// the pack's tools.
 const TOOL_NAMES = new Set([
-  "Propeller Configurator",
-  "Blade Sections",
   // Context Pruner is treated as a tool-like overlay: when an agent's
   // history exceeds the configured token threshold its pre-invoke
   // hook lights up the CP box ALONGSIDE the calling agent (multi-
   // active), and the matching exit event clears CP while leaving the
-  // caller solo-lit.  Same lifecycle as the two DC tools.
+  // caller solo-lit.  Same lifecycle as the pack's tools.
   "Context Pruner",
 ]);
+
+// --------------------------------------------------------------------
+// What the page takes from the pack beyond its parameters:
+// /pack/page.js (loaded by index.html before this file) sets
+// window.PACK_PAGE = {words, tools} -- the pack's words this script
+// writes, and the tools the flowchart and the LLM routing chart draw.
+// --------------------------------------------------------------------
+const PACK_PAGE = window.PACK_PAGE ||
+  { words: {}, tools: { pack: [], standard: [] } };
+if (!window.PACK_PAGE) {
+  console.error("/pack/page.js did not load: no tools or pack words to show.");
+}
+
+// --------------------------------------------------------------------
+// LOG and Status: the TOOLS panel -- one box per tool, the pack's own
+// (PACK_PAGE.tools.pack, from tool.yaml) first, then the engine's
+// standard tools.  A pack tool's box lights on its agent_active entry
+// event and goes dark on the "tool returned" one, like an agent's; a
+// standard tool's on its generic_tool start / end events, kept lit at
+// least FLOW_TOOL_MIN_LIT_MS because most finish in milliseconds.
+// While lit, a gray line joins the box to the agent that called it.
+// --------------------------------------------------------------------
+const FLOW_TOOLS = { x: 30, top: 742, cols: 5, w: 216, h: 32, gapX: 12, gapY: 10 };
+const FLOW_TOOL_MIN_LIT_MS = 1500;
+const flowToolRuns = {};   // standard tool name -> {count, started, timer}
+
+function _flowToolId(name) {
+  return "flowtool-" + String(name).toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+}
+
+function buildFlowToolsPanel() {
+  const svg = document.getElementById("flow-svg");
+  const panel = document.getElementById("flow-tools-panel");
+  const links = document.getElementById("flow-tool-links");
+  if (!svg || !panel || !links) return;
+  const c = FLOW_TOOLS;
+  const tools = PACK_PAGE.tools.pack.map((t) => ({ name: t.label, pack: true }))
+    .concat(PACK_PAGE.tools.standard.map((n) => ({ name: n, pack: false })));
+  const title = _svg("text", { x: c.x, y: c.top - 10, class: "flow-panel-title" });
+  title.textContent = "TOOLS";
+  panel.appendChild(title);
+  tools.forEach((t, i) => {
+    const x = c.x + (i % c.cols) * (c.w + c.gapX);
+    const y = c.top + Math.floor(i / c.cols) * (c.h + c.gapY);
+    const id = _flowToolId(t.name);
+    const g = _svg("g", {
+      id, class: "flow-box flow-box-tool " + (t.pack ? "flow-tool-pack" : "flow-tool-std"),
+    });
+    g.appendChild(_svg("rect", { x, y, width: c.w, height: c.h, rx: 3, ry: 3 }));
+    const label = _svg("text", { x: x + c.w / 2, y: y + c.h / 2 + 4, "text-anchor": "middle" });
+    label.textContent = t.name;
+    g.appendChild(label);
+    panel.appendChild(g);
+    links.appendChild(_svg("line", { id: id + "-link", class: "orch-dyn-link", hidden: "" }));
+    FLOW_BOX_BY_NAME[t.name] = id;
+    if (t.pack) TOOL_NAMES.add(t.name);
+  });
+  const rows = Math.ceil(tools.length / c.cols);
+  const bottom = c.top + rows * (c.h + c.gapY);
+  svg.setAttribute("viewBox", `0 0 1200 ${Math.max(720, bottom)}`);
+}
+
+// The gray line from a tool's box (top edge) to its caller's box (bottom
+// edge).  No line when the caller has no box in this chart.
+function _showFlowToolLink(toolName, agentName) {
+  const id = _flowToolId(toolName);
+  const line = document.getElementById(id + "-link");
+  const tool = document.querySelector(`#${id} rect`);
+  const agentId = FLOW_BOX_BY_NAME[agentName];
+  const agent = agentId && document.querySelector(`#${agentId} rect`);
+  if (!line || !tool || !agent) return;
+  const n = (el, a) => Number(el.getAttribute(a));
+  line.setAttribute("x1", n(tool, "x") + n(tool, "width") / 2);
+  line.setAttribute("y1", n(tool, "y") - 2);
+  line.setAttribute("x2", n(agent, "x") + n(agent, "width") / 2);
+  line.setAttribute("y2", n(agent, "y") + n(agent, "height") + 2);
+  line.removeAttribute("hidden");
+}
+
+function _hideFlowToolLink(toolName) {
+  const line = document.getElementById(_flowToolId(toolName) + "-link");
+  if (line) line.setAttribute("hidden", "");
+}
+
+function hidePackToolLinks() {
+  for (const t of PACK_PAGE.tools.pack) _hideFlowToolLink(t.label);
+}
+
+function flowToolStart(name, agentName) {
+  const box = document.getElementById(_flowToolId(name));
+  if (!box || TOOL_NAMES.has(name)) return;
+  const run = flowToolRuns[name] || (flowToolRuns[name] = { count: 0 });
+  clearTimeout(run.timer);
+  run.count += 1;
+  run.started = Date.now();
+  box.classList.add("running");
+  _showFlowToolLink(name, agentName);
+}
+
+function flowToolEnd(name) {
+  const run = flowToolRuns[name];
+  if (!run) return;
+  run.count = Math.max(0, run.count - 1);
+  if (run.count) return;
+  const wait = Math.max(0, FLOW_TOOL_MIN_LIT_MS - (Date.now() - run.started));
+  run.timer = setTimeout(() => {
+    const box = document.getElementById(_flowToolId(name));
+    if (box) box.classList.remove("running");
+    _hideFlowToolLink(name);
+    delete flowToolRuns[name];
+  }, wait);
+}
+
+// End Session: every tool box dark, every line hidden.
+function flowToolsReset() {
+  for (const name of Object.keys(flowToolRuns)) {
+    clearTimeout(flowToolRuns[name].timer);
+    delete flowToolRuns[name];
+  }
+  document.querySelectorAll(".flow-box.running").forEach((el) =>
+    el.classList.remove("running"));
+  document.querySelectorAll("#flow-tool-links line").forEach((el) =>
+    el.setAttribute("hidden", ""));
+}
 
 function _clearActiveBoxes() {
   document.querySelectorAll(".flow-box.active").forEach((el) =>
@@ -824,7 +945,7 @@ function clearAllToolLabels() {
   });
 }
 
-// Dynamic gray arrows around the Orchestrator and the Tool Caller.
+// Dynamic gray arrows around the Orchestrator.
 // Each <line> in the SVG represents one specific connection and is
 // only visible while that handoff is the most recent agent_active
 // event.  Static arrows (always-visible black) cover User ↔
@@ -840,8 +961,6 @@ const DYNAMIC_ARROW_BY_EDGE = {
   "dc input creator|orchestrator":           "dyn-orch-dic",
   "dc input inspector|orchestrator":         "dyn-orch-dii",
   "orchestrator|tool caller":                "dyn-orch-tc",
-  "propeller configurator|tool caller":  "dyn-tc-propeller",
-  "blade sections|tool caller":          "dyn-tc-blade",
 };
 const DYNAMIC_ARROW_IDS = Object.values(DYNAMIC_ARROW_BY_EDGE);
 
@@ -876,9 +995,9 @@ function applyDynamicArrow(fromName, toName) {
 function applyAgentActive(fromName, toName) {
   // Dynamic gray arrows toggle on EVERY handoff (including
   // tool-entry events), so this call runs BEFORE the
-  // tool-vs-agent branch so e.g. dyn-tc-propeller shows while
-  // Tool Caller is calling the configurator.
+  // tool-vs-agent branch; so do the lines to the pack's tools.
   applyDynamicArrow(fromName, toName);
+  hidePackToolLinks();
 
   // Two cases for the box-highlight policy:
   //   * Tool entry (to == one of TOOL_NAMES): keep the calling
@@ -891,6 +1010,7 @@ function applyAgentActive(fromName, toName) {
     _clearActiveBoxes();
     _activateById(FLOW_BOX_BY_NAME[fromName]);
     _activateById(FLOW_BOX_BY_NAME[toName]);
+    _showFlowToolLink(toName, fromName);
     return;
   }
   _clearActiveBoxes();
@@ -919,8 +1039,12 @@ function startEventStream() {
           // currently-active agent (gray italic under its name).
           // The `end` event is intentionally ignored — the label
           // sticks until a newer tool overwrites it.
+          // The tool's own box in the TOOLS panel follows both.
           if (data.state === "start") {
             recordToolUsedByActiveAgent(data.name, data.agent);
+            flowToolStart(data.name, data.agent);
+          } else if (data.state === "end") {
+            flowToolEnd(data.name);
           }
         } else if (data.type === "session_save_done") {
           // The server-side End Session background task has finished
@@ -2744,11 +2868,8 @@ const LR_BOXES_7 = [
     label: "Input Inspector" },
   { key: "tool_caller",           role: "agent", x: 420, y: 450, w: 140, h: 95,
     label: "Tool Caller" },
-  // Tools — display only.
-  { key: "propeller_configurator",   role: "tool", x: 610, y: 275, w: 180, h: 60,
-    label: "Propeller Configurator", toolPrefix: true },
-  { key: "blade_sections", role: "tool", x: 610, y: 480, w: 180, h: 60,
-    label: "Blade Sections", toolPrefix: true },
+  // Tools — display only: the pack's, put here by lrBoxes().
+  { role: "tools" },
   // Extra agents panel + boxes.
   { key: "__extra_frame__",       role: "extra-frame", x: 600, y: 10, w: 200, h: 245,
     label: "EXTRA AGENTS" },
@@ -2784,11 +2905,8 @@ const LR_BOXES_5 = [
     label: "Input Creator" },
   { key: "tool_caller",           role: "agent", x: 420, y: 450, w: 140, h: 95,
     label: "Tool Caller" },
-  // Tools — display only.
-  { key: "propeller_configurator",   role: "tool", x: 610, y: 275, w: 180, h: 60,
-    label: "Propeller Configurator", toolPrefix: true },
-  { key: "blade_sections", role: "tool", x: 610, y: 480, w: 180, h: 60,
-    label: "Blade Sections", toolPrefix: true },
+  // Tools — display only: the pack's, put here by lrBoxes().
+  { role: "tools" },
   // Extra agents panel + boxes.
   { key: "__extra_frame__",       role: "extra-frame", x: 600, y: 10, w: 200, h: 245,
     label: "EXTRA AGENTS" },
@@ -2819,11 +2937,8 @@ const LR_BOXES_3 = [
     label: "Requirements Analyst" },
   { key: "design_engineer",       role: "agent", x: 330, y: 400, w: 140, h: 95,
     label: "Design Engineer" },
-  // Tools — display only.
-  { key: "propeller_configurator",   role: "tool", x: 610, y: 275, w: 180, h: 60,
-    label: "Propeller Configurator", toolPrefix: true },
-  { key: "blade_sections", role: "tool", x: 610, y: 480, w: 180, h: 60,
-    label: "Blade Sections", toolPrefix: true },
+  // Tools — display only: the pack's, put here by lrBoxes().
+  { role: "tools" },
   // Extra agents panel + boxes.
   { key: "__extra_frame__",       role: "extra-frame", x: 600, y: 10, w: 200, h: 245,
     label: "EXTRA AGENTS" },
@@ -2843,7 +2958,40 @@ let lrTopology = 7;
 // the two 7-agent buttons share a chart because they are the same agents.
 
 function lrBoxes() {
-  return LR_BOXES_BY_TOPOLOGY[lrTopology] || LR_BOXES_7;
+  const boxes = LR_BOXES_BY_TOPOLOGY[lrTopology] || LR_BOXES_7;
+  return boxes.flatMap((b) => (b.role === "tools" ? lrToolBoxes() : [b]));
+}
+
+// The pack's tools (PACK_PAGE.tools.pack, switched on): one box each in
+// the column below the EXTRA AGENTS panel, spread evenly over the span
+// the propeller's two tools take, each with an arrow from the topology's
+// tool runner (LR_TOOL_RUNNER_EDGE: where those arrows leave its box).
+const LR_TOOL_COLUMN = { x: 610, w: 180, top: 275, span: 205, h: 60 };
+const LR_TOOL_RUNNER_EDGE = {
+  7: { x: 564, y: 470, span: 60 },
+  5: { x: 564, y: 470, span: 60 },
+  3: { x: 474, y: 440, span: 35 },
+};
+
+function lrToolBoxes() {
+  const c = LR_TOOL_COLUMN;
+  const tools = PACK_PAGE.tools.pack;
+  const step = tools.length > 1 ? c.span / (tools.length - 1) : 0;
+  const h = tools.length > 1 ? Math.min(c.h, step - 5) : c.h;
+  return tools.map((t, i) => ({
+    key: t.name, role: "tool", x: c.x, y: Math.round(c.top + i * step),
+    w: c.w, h, label: t.label, toolPrefix: true,
+  }));
+}
+
+function lrToolArrows() {
+  const from = LR_TOOL_RUNNER_EDGE[lrTopology] || LR_TOOL_RUNNER_EDGE[7];
+  const boxes = lrToolBoxes();
+  const step = boxes.length > 1 ? from.span / (boxes.length - 1) : 0;
+  return boxes.map((b, i) => ({
+    x1: from.x, y1: Math.round(from.y + i * step),
+    x2: b.x - 4, y2: Math.round(b.y + b.h / 2),
+  }));
 }
 
 // Static black arrows between boxes (drawn first so they sit behind).
@@ -2864,10 +3012,7 @@ const LR_ARROWS_7 = [
   { x1: 374, y1: 498, x2: 416, y2: 498 },
   // Tool Caller ↔ Output Inspector (vertical, x≈490)
   { x1: 490, y1: 446, x2: 490, y2: 299 },
-  // Tool Caller ↔ Propeller Configurator (diagonal)
-  { x1: 564, y1: 470, x2: 606, y2: 305 },
-  // Tool Caller ↔ Blade Sections (diagonal)
-  { x1: 564, y1: 530, x2: 606, y2: 510 },
+  // Tool Caller ↔ each tool: lrToolArrows()
 ];
 
 // 5-agent: the hub is the PLANNER.  Receptionist -> Planner, and the
@@ -2886,8 +3031,7 @@ const LR_ARROWS_5 = [
   { x1: 300, y1: 299, x2: 300, y2: 446 },   // Planner - Input Creator
   { x1: 374, y1: 498, x2: 416, y2: 498 },   // Input Creator - Tool Caller
   { x1: 490, y1: 446, x2: 490, y2: 299 },   // Tool Caller - Output Inspector
-  { x1: 564, y1: 470, x2: 606, y2: 305 },   // Tool Caller - Propeller Configurator
-  { x1: 564, y1: 530, x2: 606, y2: 510 },   // Tool Caller - Blade Sections
+  // Tool Caller - each tool: lrToolArrows()
 ];
 
 // 3-agent: Receptionist -> Planner, and the Planner reaches BOTH merged
@@ -2897,7 +3041,7 @@ const LR_ARROWS_5 = [
 // deliberately NOT in: they route back and forth on their own, and the hub
 // is reached at phase boundaries and on escalation.
 //
-// The two diagonals to the tools are new.  The old 3-agent chart drew none
+// The diagonals to the tools are new.  The old 3-agent chart drew none
 // at all, exactly as the old 5-agent one did -- an omission, since the agent
 // that absorbed the Tool Caller is the one that calls the generators.
 const LR_ARROWS_3 = [
@@ -2906,8 +3050,7 @@ const LR_ARROWS_3 = [
   { x1: 262, y1: 297, x2: 208, y2: 398 },   // Planner - Requirements Analyst
   { x1: 338, y1: 297, x2: 392, y2: 398 },   // Planner - Design Engineer
   { x1: 274, y1: 447, x2: 326, y2: 447 },   // Requirements Analyst <-> Design Engineer
-  { x1: 474, y1: 440, x2: 606, y2: 305 },   // Design Engineer - Propeller Configurator
-  { x1: 474, y1: 475, x2: 606, y2: 510 },   // Design Engineer - Blade Sections
+  // Design Engineer - each tool: lrToolArrows()
 ];
 
 const LR_ARROWS_BY_TOPOLOGY = {
@@ -2915,7 +3058,7 @@ const LR_ARROWS_BY_TOPOLOGY = {
 };
 
 function lrArrows() {
-  return LR_ARROWS_BY_TOPOLOGY[lrTopology] || LR_ARROWS_7;
+  return (LR_ARROWS_BY_TOPOLOGY[lrTopology] || LR_ARROWS_7).concat(lrToolArrows());
 }
 
 function lrEl(id) { return document.getElementById(id); }
@@ -6285,6 +6428,7 @@ async function sqImportSet(files) {
   const fi = document.getElementById("sq-import-file"); if (fi) fi.value = "";
 }
 
+buildFlowToolsPanel();
 init();
 startEventStream();
 
@@ -6736,7 +6880,7 @@ function paramsBuildSubmitMessage() {
   // clipboard payload is self-contained (no auto-append context
   // since clipboard ≠ chat).
   const lines = [
-    "I want to generate a propeller with the following parameters:",
+    `I want to generate a ${PACK_PAGE.words.dc_name} with the following parameters:`,
     "",
   ];
   for (const group of PARAM_GROUPS) {

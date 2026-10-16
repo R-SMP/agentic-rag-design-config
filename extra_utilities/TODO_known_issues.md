@@ -129,6 +129,8 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F114` | OPEN | Blade-sections texts name the generator literally |
 | `F115` | OPEN | A check for propeller-related words in the prompts |
 | `F116` | OPEN | The save step hides why the generator failed |
+| `F117` | OPEN | Vocabulary entries that name the configurator with its article ("a propeller", "an impeller") |
+| `F118` | OPEN | Workflow Settings descriptions still name propeller things |
 
 ---
 
@@ -4754,4 +4756,35 @@ answer text instead of raising, so the save step never sees it: it finds no
 images and logs every view as "mesh built but render absent", even when no
 mesh was built.  Fix: keep `run_generator`'s answer, and when the model file
 is still missing, log "mesh generation failed: <answer>" instead.
+
+---
+
+### F117. Vocabulary entries that name the configurator with its article
+
+**Status.** OPEN — owner request (2026-10-16), during MAS-blueprint P4c.
+
+Sentences that name the configurator through `$dc_name` put "a" in front
+of it ("generate a $dc_name"), which reads wrong for a name that starts
+with a vowel sound ("a impeller").  The vocabulary the user fills in the
+Studio, with the propeller as the example, should also hold the name WITH
+its article — e.g. "a propeller" / "an impeller" (and any other form a
+sentence needs) — and every prompt, engine text and web-page text that puts
+an article before the name should use that entry instead.  The propeller
+pack fills it with "a propeller", so its prompts stay identical.
+
+---
+
+### F118. Workflow Settings descriptions still name propeller things
+
+**Status.** OPEN — found during MAS-blueprint P4c (2026-10-16).
+
+The descriptions the Workflow Settings page shows come from the comments in
+`workflow_settings/settings.py`.  Those of `DC_INSPECTOR_ENABLED`,
+`CONTEXT_PRUNER_MAX_INDIVIDUAL_MESSAGE_TOKENS`,
+`ATTEMPT_RENDER_COMPLETION_TIMEOUT_S`, `DC_PARAMS_PRIMER_ENABLED`, the
+image-compression block, `IMAGE_COMPRESSION_CROSS_SECTIONS_DEGREE`,
+`MAX_ORCHESTRATOR_STEPS` and `MAX_SECTIONS_REFINE_ROUNDS` still name the
+propeller's tools or outputs ("mesh", "blade sections",
+`render_blade_sections*`).  Reword each in the engine's terms, or with pack
+words the settings page fills; each rewording is shown for approval.
 

@@ -167,9 +167,9 @@ A red **Stop** button appears in the header while a turn is running. Clicking it
 
 A split pane: SVG flowchart on the left, live session log on the right (Server-Sent Events from `/api/log/stream`, dumps the full current-session log on open then tails new bytes).
 
-**Layout.** The Orchestrator sits in the centre of the chart with open space around it. Each chain agent (UII, Planner, Input Creator, Input inspector, Tool Caller, Output inspector) lives in a fixed column; the two DC tool boxes (`Propeller Configurator` — the merged geometry+renders tool — and `Blade Sections`) sit on the right, next to the Tool Caller. The **EXTRA AGENTS** panel holds the **Database Handler** (lights up at End Session → Save while it interviews each agent for the post-session database) and the **Context Pruner** (lights up alongside whichever agent's history just exceeded the token threshold; see [Context Pruner](#context-pruner) below).
+**Layout.** The Orchestrator sits in the centre of the chart with open space around it. Each chain agent (UII, Planner, Input Creator, Input inspector, Tool Caller, Output inspector) lives in a fixed column.  A **TOOLS** panel below the chart holds one box per tool: the configurator's own tools first (each `tool.yaml`'s display name, switched-on tools only — for the propeller `Propeller Configurator` and `Blade Sections`), then the engine's standard tools (`agent_activity.STANDARD_TOOLS`, under the names they report).  The **EXTRA AGENTS** panel holds the **Database Handler** (lights up at End Session → Save while it interviews each agent for the post-session database) and the **Context Pruner** (lights up alongside whichever agent's history just exceeded the token threshold; see [Context Pruner](#context-pruner) below).
 
-**Static black arrows** connect User ↔ Receptionist ↔ Orchestrator (the always-present top of the pipeline), UII → Planner → Input Creator → Input inspector → Tool Caller, and Tool Caller ↔ Output inspector / Propeller Configurator (the merged geometry+renders tool) / Blade Sections. These never change.
+**Static black arrows** connect User ↔ Receptionist ↔ Orchestrator (the always-present top of the pipeline), UII → Planner → Input Creator → Input inspector → Tool Caller, and Tool Caller ↔ Output inspector. These never change.
 
 **Two dynamic gray arrows** around the Orchestrator visualise its most recent transition:
 
@@ -178,9 +178,9 @@ A split pane: SVG flowchart on the left, live session log on the right (Server-S
 
 Receptionist ↔ Orchestrator always uses the static black arrow, so the dynamic arrows stay hidden whenever Receptionist is the other side. At most one of the two dynamic arrows is visible at a time — the rules are summarised in `web/app.js:applyAgentActive`. *(See TODO F10 — the arrows are wired but the deployed build still needs a debug pass; they may not appear yet end-to-end.)*
 
-**Live highlighting.** Every agent box lights up yellow ("strict transitions") between the moment another agent hands off to it and the moment it hands off to someone else. Utility tool calls do NOT change which agent is lit — the calling agent stays highlighted while it runs `calculate`, `read_extracted_inputs`, etc. The two DC tool boxes (Propeller Configurator, Blade Sections) are the exception: their boxes light up alongside Tool Caller while Tool Caller is waiting on them, because they represent real cross-process work.
+**Live highlighting.** Every agent box lights up yellow ("strict transitions") between the moment another agent hands off to it and the moment it hands off to someone else. Utility tool calls do NOT change which agent is lit — the calling agent stays highlighted while it runs `calculate`, `read_extracted_inputs`, etc. The configurator's own tools are the exception: their boxes light up alongside Tool Caller while Tool Caller is waiting on them, because they represent real cross-process work.  Every tool's box in the TOOLS panel lights while the tool runs, joined by a gray line to the agent that called it; a standard tool's box stays lit at least 1.5 s, since most finish in milliseconds.
 
-**Generic helpers** — `read_user_inputs`, `write_extraction`, `read_extracted_inputs`, `new_attempt_parameters`, `read_attempts`, `view_images`, `calculate`, `visualize_3d_model`, etc. — complete in milliseconds and are too fast to flash. Each agent box therefore also carries a small **gray-italic caption below the box recording the most recent generic tool that agent invoked**. The caption persists across handoffs so the chart shows each agent's history at a glance; it wipes on End Session.
+**Generic helpers** — `read_user_inputs`, `write_extraction`, `read_extracted_inputs`, `new_attempt_parameters`, `read_attempts`, `view_images`, `calculate`, `visualize_3d_model`, etc. — complete in milliseconds. Besides their own box in the TOOLS panel, each agent box also carries a small **gray-italic caption below the box recording the most recent generic tool that agent invoked**. The caption persists across handoffs so the chart shows each agent's history at a glance; it wipes on End Session.
 
 **Session log.** The right-hand pane streams `/api/log/stream` and now shows tool calls from **every** agent, including the Receptionist (`[TOOL CALL] Receptionist -> calculate ...`). The `[RECEPTIONIST] forward=...` line no longer echoes the message body — the full message is logged exactly once, by the routing tool, as `[AGENT MSG] Receptionist -> Orchestrator <message>`.
 
@@ -283,7 +283,7 @@ A few one-shot endpoints round out the surface:
 
 ### Frontend dispatch (`web/app.js`)
 
-A single SSE handler in `startEventStream()` routes incoming events to either the viewer (`visualize`), the flowchart (`agent_active` → `applyAgentActive`), or the per-agent caption (`generic_tool` → `recordToolUsedByActiveAgent`). The strict-transitions highlighting policy lives entirely in `applyAgentActive`: at most one agent box is lit at a time, except during a DC-tool call where both the agent and the tool box are highlighted together.
+A single SSE handler in `startEventStream()` routes incoming events to either the viewer (`visualize`), the flowchart (`agent_active` → `applyAgentActive`), or the per-agent caption and the tool's own box (`generic_tool` → `recordToolUsedByActiveAgent`, `flowToolStart` / `flowToolEnd`). The strict-transitions highlighting policy lives entirely in `applyAgentActive`: at most one agent box is lit at a time, except during a call to one of the configurator's own tools, where both the agent and the tool box are highlighted together.
 
 ## Context Pruner
 
@@ -343,7 +343,7 @@ The system prompt is rebuilt fresh at every invoke from the untouched `self.syst
 
 ### Live feedback
 
-While the Pruner runs, the LOG-and-Status chart highlights the **Context Pruner** box in the EXTRA AGENTS panel alongside the calling agent's box (same multi-active pattern as the two DC tools — see `applyAgentActive` and `TOOL_NAMES` in `web/app.js`). The matching exit handoff clears the CP box and leaves the caller solo-lit. The CP box stays lit through the whole escalation chain — entry / exit are published ONCE per `prune_history_if_needed` invocation, not per tier. Each tier emits its own `[CP] <agent_key> tier N: ...` line in the session log, e.g.:
+While the Pruner runs, the LOG-and-Status chart highlights the **Context Pruner** box in the EXTRA AGENTS panel alongside the calling agent's box (same multi-active pattern as the configurator's own tools — see `applyAgentActive` and `TOOL_NAMES` in `web/app.js`). The matching exit handoff clears the CP box and leaves the caller solo-lit. The CP box stays lit through the whole escalation chain — entry / exit are published ONCE per `prune_history_if_needed` invocation, not per tier. Each tier emits its own `[CP] <agent_key> tier N: ...` line in the session log, e.g.:
 
 ```
 [CP]  planner tier 1: pruned 42 -> 7 messages, ~95000 -> ~72000 tokens

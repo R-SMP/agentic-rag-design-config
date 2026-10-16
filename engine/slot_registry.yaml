@@ -41,6 +41,14 @@ slots:
     strip: both
     section: identity
     description: "Domain phrase used in agent introductions, e.g. `propeller design configurator system`."
+  app_title:
+    source: pack
+    folder: dc
+    kind: word
+    strip: both
+    use: runtime
+    section: identity
+    description: "The web app's name: the browser tab and the page heading, e.g. `Propeller Design Configurator`."
 
 # --- 2 Parameters ----------------------------------------------------------
   parameter_count:
@@ -748,6 +756,13 @@ slots:
     use: runtime
     section: examples
     description: "The stitching prompt's worked example: the paragraph written from that answer (one line)."
+  manual_entry_text_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    use: runtime
+    section: examples
+    description: "Example text for a hand-made database entry (the web app's Upload to database page, after 'e.g.')."
 
 # --- 7 User input types ----------------------------------------------------
   sketch_handling:

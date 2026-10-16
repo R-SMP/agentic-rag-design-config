@@ -61,7 +61,7 @@ to judge appropriateness."""
 MAX_TC_STEPS = _ws.MAX_TC_STEPS
 """Tool Caller's ``run()``.  Higher than the others because the
 generation pipeline is sequential: ``read_parameters`` →
-``generate_and_render_propeller`` (builds the mesh AND renders it in one
+the generator (builds the model AND renders it in one
 call) → routing call, with potential ``calculate`` calls between, plus
 the LLM sometimes inserts intermediate text turns."""
 

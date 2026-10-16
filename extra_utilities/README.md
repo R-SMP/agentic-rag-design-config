@@ -59,7 +59,7 @@ extra_utilities/
 │   ├── populate_dc_parameter_schemas.py   upload the parameter schema (fallback for the button)
 │   └── drop_all_tables.sql                wipe before re-applying the schema
 │
-├── tests/                    eleven offline checks + their README
+├── tests/                    twelve offline checks + their README
 ├── scripts/                  hand-run tools (see below)
 ├── prompt_pdf/               builds the assembled-prompts PDF, and reads a marked-up
 │                             copy back into file + line edits (its own README)

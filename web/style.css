@@ -1060,7 +1060,7 @@ button.danger:hover { background: #3a1d1d; }
 /* Per-box colors for the new LOG and Status layout.  The default
    .flow-box rect fill (#2c6cb7 blue) above is overridden per-ID so
    each agent gets its own palette tile.  Boxes with light fills
-   (User, Receptionist, the two tool boxes, DH, CP) also override
+   (User, Receptionist, DH, CP, the pack's tools) also override
    the white default text fill to dark for contrast. */
 #agent-user rect                        { fill: #b8bcc4; }
 #agent-receptionist rect                { fill: #b8bcc4; }
@@ -1071,21 +1071,34 @@ button.danger:hover { background: #3a1d1d; }
 #agent-dc-input-creator rect            { fill: #2e9c5a; }
 #agent-dc-input-inspector rect          { fill: #2e9c5a; }
 #agent-tool-caller rect                 { fill: #2e9c5a; }
-#agent-propeller-configurator rect      { fill: #c8e6c9; }
-#agent-blade-sections rect              { fill: #c8e6c9; }
 #agent-database-handler rect            { fill: #cfe2f3; }
 #agent-context-pruner rect              { fill: #cfe2f3; }
 
 #agent-user text:not(.agent-tool-label),
 #agent-receptionist text:not(.agent-tool-label),
-#agent-propeller-configurator text:not(.agent-tool-label),
-#agent-blade-sections text:not(.agent-tool-label),
+.flow-tool-pack text,
 #agent-database-handler text:not(.agent-tool-label),
 #agent-context-pruner text:not(.agent-tool-label) {
   fill: #1f1f1f;
 }
 
-/* Active state — yellow frame + soft glow */
+/* The TOOLS panel (buildFlowToolsPanel in web/app.js): the pack's
+   tools in the light-green tool tile, the standard tools in gray. */
+.flow-panel-title {
+  fill: #9aa1ad;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+.flow-tool-pack rect { fill: #c8e6c9; }
+.flow-tool-std rect  { fill: #3a404c; stroke: #565d6b; }
+.flow-tool-pack text,
+.flow-tool-std text  { font-size: 12px; }
+.flow-tool-std text  { fill: #d6dae3; }
+
+/* Active state — yellow frame + soft glow (a standard tool's box:
+   .running, which a handoff does not clear) */
+.flow-box.running rect,
 .flow-box.active rect {
   stroke: #ffd23f;
   stroke-width: 3.5;
@@ -1107,11 +1120,11 @@ button.danger:hover { background: #3a1d1d; }
   pointer-events: none;
 }
 
-/* Dynamic gray arrows.  Six fixed <line> elements (one per
-   dynamic connection: Orch ↔ Planner / DIC / DII / TC, plus
-   Tool Caller ↔ each of the two DC tools).  Each one is hidden
+/* Dynamic gray arrows.  Four fixed <line> elements (one per
+   dynamic connection: Orch ↔ Planner / DIC / DII / TC), hidden
    by default and toggled by applyDynamicArrow() in web/app.js
-   based on the most recent agent_active event. */
+   based on the most recent agent_active event; plus one line per
+   tool from the TOOLS panel to the agent calling it. */
 .orch-dyn-link {
   stroke: #b8b8b8;
   stroke-width: 2;

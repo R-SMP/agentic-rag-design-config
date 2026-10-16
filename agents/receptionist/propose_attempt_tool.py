@@ -66,6 +66,7 @@ from typing import Annotated
 
 from langchain_core.tools import tool
 
+from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import attempt_label_for_path
 from agents.shared.pack_text import described
 from agents.shared.viz_bus import publish
@@ -75,6 +76,7 @@ from engine import parameters as _parameters
 
 @described
 @tool
+@generic_tool("Propose attempt")
 def propose_attempt(
     parameters_path: Annotated[
         str,
@@ -156,10 +158,10 @@ def propose_attempt(
         return (f"Error: propose_attempt — {target} does not contain a JSON "
                 f"object (got {type(values).__name__}).")
 
-    # Lenient read: impellerHeight was removed as an input (ring height is
-    # derived).  Drop a stray one rather than rejecting the proposal.
-    if "impellerHeight" in values:
-        values = {k: v for k, v in values.items() if k != "impellerHeight"}
+    # Lenient read: a name parameters.json lists as retired (a parameter
+    # since removed) is dropped rather than rejecting the proposal.
+    retired = set(_parameters.retired())
+    values = {k: v for k, v in values.items() if k not in retired}
 
     names = frozenset(_parameters.names())
     received = set(values.keys())

@@ -19,6 +19,10 @@ parameters, in the same order, with the same ranges.
 
 No version number lives here: the database assigns one when the parameters
 are uploaded (``engine/parameter_schema.py``).
+
+``retired`` (optional) lists names that were parameters once and are no
+longer: a record that still carries one is read without it
+(:func:`retired`), instead of being rejected for an unknown name.
 """
 
 from __future__ import annotations
@@ -51,8 +55,10 @@ def _number(v) -> bool:
 
 def validate(spec) -> list[str]:
     """Every problem in *spec* (an already-parsed parameters.json), or []."""
-    if not isinstance(spec, dict) or set(spec) != {"groups", "parameters"}:
-        return ['the file must be an object with exactly "groups" and "parameters"']
+    if not isinstance(spec, dict) or not (
+            {"groups", "parameters"} <= set(spec) <= {"groups", "parameters", "retired"}):
+        return ['the file must be an object with "groups" and "parameters" '
+                '(and, optionally, "retired")']
     problems: list[str] = []
     groups, params = spec["groups"], spec["parameters"]
     if not isinstance(groups, list) or not isinstance(params, list) or not params:
@@ -113,6 +119,17 @@ def validate(spec) -> list[str]:
                 problems.append(f"{n}: listed in two groups ({placed[n]}, {gid})")
             else:
                 placed[n] = gid
+    retired = spec.get("retired", [])
+    if not isinstance(retired, list):
+        problems.append('"retired" must be a list of names')
+    else:
+        for n in retired:
+            if not isinstance(n, str) or not _NAME_RE.match(n):
+                problems.append(f"retired name {n!r}: must be a plain identifier")
+            elif n in names:
+                problems.append(f"{n}: listed as retired but still a parameter")
+            elif retired.count(n) > 1:
+                problems.append(f"{n}: listed as retired twice")
     for p in params:
         if not isinstance(p, dict) or p.get("name") not in names:
             continue
@@ -155,6 +172,12 @@ def types(spec: dict | None = None) -> dict[str, type]:
 
 def count(spec: dict | None = None) -> int:
     return len((spec or load())["parameters"])
+
+
+def retired(spec: dict | None = None) -> tuple[str, ...]:
+    """Names that are parameters no longer: a record carrying one is read
+    without it (the web app's preview check, ``propose_attempt``)."""
+    return tuple((spec or load()).get("retired", []))
 
 
 def preview_spec(spec: dict | None = None) -> dict[str, dict]:
