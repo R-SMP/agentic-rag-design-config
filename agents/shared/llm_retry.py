@@ -41,7 +41,7 @@ from typing import Any
 
 from agents.shared import token_usage
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 # ---------------------------------------------------------------------------
 # Retry policy constants

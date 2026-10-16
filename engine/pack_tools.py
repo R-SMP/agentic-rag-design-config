@@ -41,6 +41,7 @@ import threading
 import types
 from dataclasses import dataclass
 from pathlib import Path
+from string import Template
 
 import yaml
 
@@ -73,9 +74,24 @@ _REF_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\.py:([A-Za-z_][A-Za-z0-9_]*)$")
 
 _TOP_KEYS = {"name", "display_name", "kind", "roles", "description", "build",
              "render", "entrypoint", "args", "outputs", "switch", "settings",
-             "list_order", "prompt_slots"}
+             "list_order", "prompt_slots", "fill_on_save", "image_note",
+             "runtime_blocks"}
 _SETTING_KEYS = {"name", "type", "values", "default", "label", "description"}
-_IMAGE_KEYS = {"view", "file", "order", "default_enabled", "label"}
+_IMAGE_KEYS = {"view", "file", "order", "default_enabled", "label", "compression",
+               "variants"}
+# The picture contract: a tool's picture of view V is the PNG file
+# render_<V>.png in the attempt folder it is given (a variant X of it:
+# render_<V>_<X>.png), and it states which of the two Workflow Settings
+# shrink strengths applies to it.
+IMAGE_PREFIX, IMAGE_SUFFIX = "render_", ".png"
+COMPRESSION_KINDS = ("cross_sections", "3d_render")
+_BLOCK_KEYS = {"slot", "off_unless", "off_slot"}
+_SETTING_REF_RE = re.compile(r"\$\{?([a-z][a-z0-9_]*)\}?")
+
+
+def image_file(view: str, variant: str | None = None) -> str:
+    """The file name of a picture of *view* (or of its *variant*)."""
+    return f"{IMAGE_PREFIX}{view}{'_' + variant if variant else ''}{IMAGE_SUFFIX}"
 
 
 class PackToolError(ValueError):
@@ -120,11 +136,27 @@ def _check_manifest(folder: Path, m) -> list[str]:
     outputs = m.get("outputs") or {}
     if not isinstance(outputs, dict) or set(outputs) - {"model_file", "images"}:
         p.append(f"{where}: outputs holds model_file and images only")
-    for i, img in enumerate((outputs or {}).get("images") or []):
+    images = (outputs or {}).get("images") or []
+    for i, img in enumerate(images):
         if not isinstance(img, dict) or set(img) - _IMAGE_KEYS or not {
-                "view", "file", "order", "default_enabled"} <= set(img):
+                "view", "file", "order", "default_enabled", "compression"} <= set(img):
             p.append(f"{where}: outputs.images[{i}] needs view, file, order, "
-                     f"default_enabled (and optionally label)")
+                     f"default_enabled, compression (and optionally label, variants)")
+            continue
+        if not _NAME_RE.match(str(img["view"])) or img["file"] != image_file(img["view"]):
+            p.append(f"{where}: outputs.images[{i}]: the picture of view "
+                     f"{img['view']!r} must be the file {image_file(str(img['view']))!r}")
+        if img["compression"] not in COMPRESSION_KINDS:
+            p.append(f"{where}: outputs.images[{i}]: compression is one of "
+                     f"{', '.join(COMPRESSION_KINDS)}")
+        variants = img.get("variants", [])
+        if not isinstance(variants, list) or any(not _NAME_RE.match(str(v)) for v in variants):
+            p.append(f"{where}: outputs.images[{i}]: variants lists short names")
+    if images and not isinstance(m.get("fill_on_save"), bool):
+        p.append(f"{where}: a tool that makes pictures says fill_on_save: true|false "
+                 f"(may the save step use it to add missing pictures)")
+    if m.get("image_note") is not None and not _REF_RE.match(str(m["image_note"])):
+        p.append(f"{where}: image_note must be '<module>.py:<function>'")
     sw = m.get("switch")
     if sw is not None and (not isinstance(sw, dict) or not isinstance(sw.get("default"), bool)
                            or set(sw) - {"default", "label", "description"}):
@@ -168,6 +200,37 @@ def _check_manifest(folder: Path, m) -> list[str]:
         if reg.get(s, {}).get("filled_by") != "tool":
             p.append(f"{where}: prompt_slots: ${s} is not a tool-text slot "
                      f"(filled_by: tool in engine/slot_registry.yaml)")
+    # runtime_blocks: a {placeholder} of the tool runner's prompt that one of
+    # this tool's slots fills, chosen by the tool's own settings.
+    blocks = m.get("runtime_blocks") or {}
+    if not isinstance(blocks, dict):
+        p.append(f"{where}: runtime_blocks maps a placeholder to {{slot, off_unless, off_slot}}")
+        blocks = {}
+    specs = {s.get("name"): s for s in (m.get("settings") or []) if isinstance(s, dict)}
+    for name, b in blocks.items():
+        if not _NAME_RE.match(str(name)) or not isinstance(b, dict) or set(b) - _BLOCK_KEYS \
+                or not isinstance(b.get("slot"), str):
+            p.append(f"{where}: runtime_blocks.{name} is {{slot, off_unless, off_slot}}")
+            continue
+        refs = _SETTING_REF_RE.findall(b["slot"])
+        if any(specs.get(r, {}).get("type") != "enum" for r in refs):
+            p.append(f"{where}: runtime_blocks.{name}: its slot may only name enum settings")
+            continue
+        slots = [b["slot"]]
+        for r in refs:
+            slots = [Template(s).safe_substitute({r: v}) for s in slots
+                     for v in specs[r]["values"]]
+        if "off_unless" in b:
+            if specs.get(b["off_unless"], {}).get("type") != "bool" \
+                    or not isinstance(b.get("off_slot"), str):
+                p.append(f"{where}: runtime_blocks.{name}: off_unless names a bool "
+                         f"setting, with an off_slot")
+                continue
+            slots.append(b["off_slot"])
+        for s in slots:
+            if s not in owned:
+                p.append(f"{where}: runtime_blocks.{name} can read ${s}, which is not "
+                         f"in the tool's prompt_slots")
     return p
 
 
@@ -447,13 +510,17 @@ def names_absent_tool(flag: str) -> bool:
 
 def image_outputs() -> list[dict]:
     """Every image the tools produce, in their declared order:
-    ``{view, file, order, tool, setting}`` (``setting``: its on/off switch)."""
+    ``{view, file, order, tool, setting, compression, variant_files}``
+    (``setting``: its on/off switch)."""
     rows = []
     for name, m in manifests().items():
         for img in (m.get("outputs") or {}).get("images") or []:
             rows.append({"view": img["view"], "file": img["file"],
                          "order": img["order"], "tool": name,
-                         "setting": f"view_{img['view']}"})
+                         "setting": f"view_{img['view']}",
+                         "compression": img["compression"],
+                         "variant_files": [image_file(img["view"], v)
+                                           for v in img.get("variants") or []]})
     return sorted(rows, key=lambda r: r["order"])
 
 
@@ -462,6 +529,53 @@ def view_enabled(view: str) -> bool:
         if r["view"] == view:
             return bool(settings(r["tool"])[r["setting"]])
     return False
+
+
+def compression_kind(file_name: str) -> str | None:
+    """The shrink strength (one of :data:`COMPRESSION_KINDS`) a tool declares
+    for the picture *file_name* (or a variant of it); None for any other
+    file."""
+    for r in image_outputs():
+        if file_name == r["file"] or file_name in r["variant_files"]:
+            return r["compression"]
+    return None
+
+
+def model_file() -> str | None:
+    """The file name of the generator's model (``outputs.model_file``)."""
+    gens = generators()
+    return manifest(gens[0])["outputs"]["model_file"] if gens else None
+
+
+def image_notes(params: dict) -> list[str]:
+    """The notes the tools write under an attempt's opened picture
+    (``image_note`` in tool.yaml), from that attempt's parameters, in folder
+    order.  Every tool that declares one, switched on or not."""
+    out = []
+    for name, m in manifests().items():
+        if m.get("image_note"):
+            out.append(plugin(name).function(m["image_note"])(params))
+    return out
+
+
+def settings_snapshot() -> dict[str, dict]:
+    """Every tool's settings, as one session takes them at its start."""
+    return {name: settings(name) for name in manifests()}
+
+
+def runtime_block_slot(placeholder: str, snapshot: dict[str, dict]) -> str | None:
+    """The slot that fills *placeholder* of the tool runner's prompt
+    (``runtime_blocks`` in a tool.yaml), chosen by the tool's settings in
+    *snapshot* (:func:`settings_snapshot`); None when no tool declares it."""
+    for name, m in manifests().items():
+        b = (m.get("runtime_blocks") or {}).get(placeholder)
+        if b is None:
+            continue
+        vals = snapshot.get(name) or settings(name)
+        if "off_unless" in b and not vals.get(b["off_unless"]):
+            return b["off_slot"]
+        return Template(b["slot"]).substitute({k: v for k, v in vals.items()})
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -501,7 +615,7 @@ def _read_record(params_file: Path) -> tuple[dict | None, str | None]:
     not a parameter (a legacy ``impellerHeight``) is ignored."""
     if not params_file.is_file():
         return None, (
-            f"Error: no parameters.json at {params_file}.  An attempt's mesh "
+            f"Error: no parameters.json at {params_file}.  An attempt's {_model_word()} "
             f"is built FROM its parameter record, so the record must exist "
             f"first — point this call at an attempt that has one."
         )
@@ -534,7 +648,7 @@ def _read_record(params_file: Path) -> tuple[dict | None, str | None]:
         if non_numeric:
             parts.append(f"Non-numeric values: {sorted(non_numeric)}")
         parts.append(
-            "No mesh was built.  Fix the record on a NEW attempt rather than "
+            f"No {_model_word()} was built.  Fix the record on a NEW attempt rather than "
             "editing this one — attempt folders are append-only."
         )
         return None, "  ".join(parts)

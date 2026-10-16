@@ -41,6 +41,7 @@ via ``db_writer``.
 from __future__ import annotations
 
 from langchain_core.tools import tool
+from agents.shared.pack_text import described
 
 
 # Public name used in:
@@ -50,6 +51,7 @@ from langchain_core.tools import tool
 SAVE_ATTEMPT_DATA_TOOL_NAME = "save_attempt_data"
 
 
+@described
 @tool(SAVE_ATTEMPT_DATA_TOOL_NAME)
 def save_attempt_data(attempt_ids: list[str]) -> str:
     """Save the data of one OR MORE design attempts to the database
@@ -69,7 +71,7 @@ def save_attempt_data(attempt_ids: list[str]) -> str:
       inside this session's ``attempts/`` tree, then:
         - reads ``parameters.json`` and upserts the attempt into
           Postgres (``dc_attempts`` + ``dc_attempt_parameters``);
-        - uploads ``parameters.json``, ``propeller_mesh.obj``,
+        - uploads ``parameters.json``, ``$model_file``,
           ``render_*.png``, and ``description.txt`` (whichever
           exist) per attempt to the R2 mirror — renamed with the
           session and attempt ids — under the path

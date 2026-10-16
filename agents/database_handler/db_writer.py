@@ -57,7 +57,7 @@ from workflow_settings.fixed_feedback_questions import (
     FIXED_FEEDBACK_QUESTIONS,
 )
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 # ============================================================

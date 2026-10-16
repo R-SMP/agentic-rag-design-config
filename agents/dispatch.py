@@ -51,7 +51,7 @@ from agents.shared.stop_signal import StopRequestedError
 from agents.shared.trace import trace as _trace
 from config import ATTEMPTS_DIR as _CONFIG_ATTEMPTS_DIR
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 # The Receptionist's call_orchestrator routing tool prepends this label
 # to every forward message; the kickoff already carries its own
@@ -207,14 +207,19 @@ def save_receptionist_reply(text: str, inputs_dir: Path) -> None:
         )
 
 
-_ARTEFACT_PATTERNS: tuple[str, ...] = ("render_*.png", "*.obj")
+def _artefact_patterns() -> tuple[str, ...]:
+    """The pictures (render_*.png, the picture contract) and the generator's
+    model files (its extension, engine/pack_tools.py)."""
+    from engine import pack_tools
+    model = pack_tools.model_file()
+    return ("render_*.png",) + ((f"*{Path(model).suffix}",) if model else ())
 # Mirrors tools.retrieve_attempt._RETRIEVED_SUBDIR.
 _RETRIEVED_SUBDIR = "_retrieved"
 
 
 def _snapshot_artefact_paths(attempts_dir: Path) -> set[Path]:
     """Return the absolute paths of every artefact currently under
-    ``attempts_dir`` matching ``_ARTEFACT_PATTERNS``.
+    ``attempts_dir`` matching ``_artefact_patterns()``.
 
     Used to diff before vs. after one hub ``dispatch`` so the
     web handler can display only the artefacts that were created
@@ -225,7 +230,7 @@ def _snapshot_artefact_paths(attempts_dir: Path) -> set[Path]:
     if not attempts_dir.exists():
         return set()
     found: set[Path] = set()
-    for pattern in _ARTEFACT_PATTERNS:
+    for pattern in _artefact_patterns():
         for p in attempts_dir.rglob(pattern):
             if not p.is_file():
                 continue

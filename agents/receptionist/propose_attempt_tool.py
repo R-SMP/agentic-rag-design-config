@@ -70,32 +70,7 @@ from agents.shared.attempts_tool import attempt_label_for_path
 from agents.shared.pack_text import described
 from agents.shared.viz_bus import publish
 from config import ATTEMPTS_DIR
-
-
-# Canonical 16-parameter INPUT set (impellerHeight removed — the ring
-# height is derived, not proposed).  Duplicated from
-# ``dc_pack/tools/generate_and_render_propeller/generate_mesh.py::_CANONICAL_PARAM_NAMES``
-# rather than imported to keep this tool module independent of the
-# mesh-tool's import chain (this tool only signals the UI; it does
-# not call RhinoCompute).
-_CANONICAL_PARAM_NAMES = frozenset({
-    "bladeCount",
-    "impellerRadius",
-    "impellerThickness",
-    "innerThickness",
-    "innerMaxPos",
-    "innerCamber",
-    "innerChord",
-    "innerAngle",
-    "middlePos",
-    "middleChord",
-    "middleAngle",
-    "outerThickness",
-    "outerMaxPos",
-    "outerCamber",
-    "outerChord",
-    "outerAngle",
-})
+from engine import parameters as _parameters
 
 
 @described
@@ -186,9 +161,10 @@ def propose_attempt(
     if "impellerHeight" in values:
         values = {k: v for k, v in values.items() if k != "impellerHeight"}
 
+    names = frozenset(_parameters.names())
     received = set(values.keys())
-    missing = _CANONICAL_PARAM_NAMES - received
-    extra = received - _CANONICAL_PARAM_NAMES
+    missing = names - received
+    extra = received - names
     if missing or extra:
         problems: list[str] = []
         if missing:

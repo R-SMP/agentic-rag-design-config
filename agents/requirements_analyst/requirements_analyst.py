@@ -80,7 +80,7 @@ from agents.step_caps import MAX_REQUIREMENTS_ANALYST_STEPS
 from tools.calculate.calculate import calculate
 from agents.shared.pack_text import fill
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 # Carried verbatim from the DC Output Inspector: which of the two blocks the

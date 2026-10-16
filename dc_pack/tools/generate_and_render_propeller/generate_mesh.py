@@ -52,7 +52,7 @@ compute_rhino3d.Util.url = RHINO_COMPUTE_URL
 if RHINO_COMPUTE_API_KEY:
     compute_rhino3d.Util.apiKey = RHINO_COMPUTE_API_KEY
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 _MESH_FILENAME = "propeller_mesh.obj"

@@ -68,7 +68,7 @@ from agents.shared.prompts import read_pack_fragment
 from engine import parameter_schema
 from tools import retrieval_common
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 # Everything user_inputs/ may carry.  NOT the uploader's default, which is
 # (".txt",) -- see trap 1 in the module docstring.

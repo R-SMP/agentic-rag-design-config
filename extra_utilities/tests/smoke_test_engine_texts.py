@@ -13,16 +13,18 @@ what an agent reads, which neither matrix sees:
   (both copies), ``view_images``, ``database_search``, the Database
   Handler's ``save_attempt_data`` and the hubs' ``submit_feedback_dispatch``
   -- in topologies 7, 5 and 3.
-* ANSWERS.  What ``read_attempts``, ``visualize_3d_model`` and
-  ``view_images`` return, on a fixture attempts folder.
+* ANSWERS.  What ``read_attempts``, ``visualize_3d_model``,
+  ``view_images`` and ``database_search`` return, on a fixture attempts
+  folder -- ``database_search``'s answer to an empty search, and the note
+  under an opened image, included.
 * TEXTS.  The Context Pruner's three prompts, the Database Handler's reply
-  reminder and stitching prompt, the hubs' end-of-session instructions, the
-  hubs' refine-cap message and the Receptionist's "this cycle's images"
-  block (the last two evaluated straight from the source line that builds
-  them).
+  reminder and stitching prompt, the Sessions Queue's run classifier, the
+  hubs' end-of-session instructions, the hubs' refine-cap message and the
+  Receptionist's "this cycle's images" block (the last two evaluated
+  straight from the source line that builds them).
 
 All of it must equal ``fixtures/engine_texts.json``, recorded on the code
-before P4a (``27797dc``).  Paths are written as ``<ATT>``.
+before P4b (``683d1bf``).  Paths are written as ``<ATT>``.
 
 PACK WORDS.  Then the same texts are rebuilt from a temporary copy of the
 pack whose words are swapped for stand-ins ("mesh" -> "widget", "renders"
@@ -121,10 +123,28 @@ def _answers() -> dict:
     (a1 / "description.txt").write_text("five thin blades", encoding="utf-8")
     (a2 / "parameters.json").write_text('{"bladeCount": 3}', encoding="utf-8")
     (a2 / "description.txt").write_text("three blades\nwide ring", encoding="utf-8")
+    # A complete parameter set, for the note under an opened picture.
+    a3 = att / "20260101_000200_003_full"
+    a3.mkdir()
+    defaults = {p["name"]: p["default"] for p in json.loads(
+        (ROOT / "dc_pack" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
+    (a3 / "parameters.json").write_text(json.dumps(defaults), encoding="utf-8")
+    (a3 / "render_top.png").write_bytes(b"png")
+    from agents.shared import user_inputs_tool
     real = attempts_tool.ATTEMPTS_DIR
     attempts_tool.ATTEMPTS_DIR = att
+    real_ui = user_inputs_tool.ATTEMPTS_DIR
+    user_inputs_tool.ATTEMPTS_DIR = att
     out = {}
     try:
+        out["view_images/image_note"] = _norm("\n\n".join(
+            user_inputs_tool._attempt_params_blocks([str(a3 / "render_top.png")])), att)
+        from tools.database_search import param_rank
+        try:
+            param_rank.validate_query({}, {})
+            out["database_search/no_parameters"] = "(accepted)"
+        except Exception as exc:                                    # noqa: BLE001
+            out["database_search/no_parameters"] = f"{type(exc).__name__}: {exc}"
         ra = attempts_tool.read_attempts
         for key, args in (("all", {}), ("detail_1_2", {"local_attempt_numbers": [1, 2]}),
                           ("missing", {"local_attempt_numbers": [9]})):
@@ -156,6 +176,7 @@ def _answers() -> dict:
             out[f"view_images/no_paths@{agent}"] = _Agent.messages[-1].content
     finally:
         attempts_tool.ATTEMPTS_DIR = real
+        user_inputs_tool.ATTEMPTS_DIR = real_ui
         shutil.rmtree(att, ignore_errors=True)
     return out
 
@@ -189,6 +210,8 @@ def _texts() -> dict:
     tail = getattr(dh, "agent_facing_tail", None)
     out["database_handler/reply_reminder"] = tail() if tail else dh.DatabaseHandler._AGENT_FACING_TAIL
     out["database_handler/stitching_prompt"] = db_writer._load_stitching_prompt()
+    from agents.shared import sessions_queue
+    out["sessions_queue/classifier_prompt"] = sessions_queue._CLASSIFIER_SYSTEM
     for hub in ("orchestrator.orchestrator", "planner5.planner5", "planner3.planner3"):
         mod = importlib.import_module(f"agents.{hub}")
         out[f"{hub}/role4_instructions"] = mod._load_role4_instructions()

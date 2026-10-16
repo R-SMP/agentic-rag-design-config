@@ -44,7 +44,7 @@ from workflow_settings import settings as workflow_settings
 # reference here stays valid AND uses whatever handlers the
 # session-time setup attaches.  Needed by _resolve_session_name's
 # Postgres-down fallback (Phase 3E).
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 _LOG_TS_RE = re.compile(r"session_(\d{8}_\d{6})\.log$")
 
@@ -331,7 +331,7 @@ def _archive_previous_session(
     #
     # Wrapped in try/except so a transient R2 failure cannot break
     # the archive sweep — same best-effort stance as the DH save's
-    # ``upload_directory`` call.  Logging via ``propeller_agent`` so
+    # ``upload_directory`` call.  Logging via ``mas_agent`` so
     # the operator sees what landed in R2.
     if not was_saved:
         try:
@@ -344,7 +344,7 @@ def _archive_previous_session(
         )
         if not _allow:
             try:
-                logging.getLogger("propeller_agent").info(
+                logging.getLogger("mas_agent").info(
                     f"[R2]  skipped session-log mirror for "
                     f"{session_name} (was_saved=False AND "
                     f"SAVE_LOGS_FOR_UNSAVED_SESSIONS=False)"
@@ -355,7 +355,7 @@ def _archive_previous_session(
     try:
         from agents.shared import r2_uploader as _r2
         if _r2.is_enabled():
-            _r2_log = logging.getLogger("propeller_agent")
+            _r2_log = logging.getLogger("mas_agent")
             _uploaded = 0
             _skipped  = 0
             # The three flat-at-root families: log_files (which
@@ -409,7 +409,7 @@ def _archive_previous_session(
     except Exception as _exc:
         # Best-effort: never let an R2 problem fail the archive sweep.
         try:
-            logging.getLogger("propeller_agent").warning(
+            logging.getLogger("mas_agent").warning(
                 f"[R2]  session-log mirror failed: "
                 f"{type(_exc).__name__}: {_exc}"
             )
@@ -429,7 +429,7 @@ def _setup_logger() -> logging.Logger:
     timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
     log_path = LOGS_DIR / f"session_{timestamp}.log"
 
-    logger = logging.getLogger("propeller_agent")
+    logger = logging.getLogger("mas_agent")
     logger.setLevel(logging.DEBUG)
     logger.handlers.clear()
 
@@ -672,10 +672,9 @@ def run() -> None:
         # file to change the system's startup behaviour without
         # re-typing the same answers every session.  The generator's own
         # settings are tool settings (its tool.yaml + Workflow Settings,
-        # engine/pack_tools.py), checked against their declared values there.
-        generator_settings = pack_tools.settings(pack_tools.generators()[0])
-        mesh_checks = bool(generator_settings.get("mesh_checks", False))
-        render_library = generator_settings.get("render_library", "trimesh")
+        # engine/pack_tools.py), checked against their declared values there;
+        # the session takes all of them, as one snapshot.
+        tool_settings = pack_tools.settings_snapshot()
         rag_enabled = workflow_settings.RAG_ENABLED
         dc_inspector_enabled = workflow_settings.DC_INSPECTOR_ENABLED
         chain_access = workflow_settings.CHAIN_ACCESS
@@ -708,8 +707,9 @@ def run() -> None:
         print("(edit that file to change any of the values below)")
         print()
         _print_agent_llm_summary(logger)
-        print(f"  Mesh quality checks: {'ON' if mesh_checks else 'OFF'}")
-        print(f"  Render/check library: {render_library}")
+        for tool, values in tool_settings.items():
+            shown = ", ".join(f"{k}={v}" for k, v in values.items())
+            print(f"  {pack_tools.manifest(tool)['display_name']}: {shown}")
         print(f"  RAG retrieval:       {'ON (not yet implemented)' if rag_enabled else 'OFF'}")
         print(f"  DC Input Inspector:  {'ON' if dc_inspector_enabled else 'OFF (skipped)'}")
         # 7-agent only.  The reduced topologies' hubs have no chain-access
@@ -730,8 +730,7 @@ def run() -> None:
 
         logger.info("=== Multi-Agent Design Configurator ===")
         logger.info(
-            f"[CONFIG]  mesh_checks={mesh_checks}  "
-            f"render_library={render_library}  rag={rag_enabled}  "
+            f"[CONFIG]  tools={tool_settings}  rag={rag_enabled}  "
             f"dc_inspector={dc_inspector_enabled}  chain_access={chain_access}  "
             f"keep_images_in_context={keep_images_in_context}  "
             f"rate_limit={'on@' + str(rate_limit_rps) + 'rps' if rate_limit_enabled else 'off'}  "
@@ -751,8 +750,7 @@ def run() -> None:
         session = Session(
             session_id=_resolve_session_name(),
             session_ts=datetime.now(timezone.utc),
-            mesh_checks=mesh_checks,
-            render_library=render_library,
+            tool_settings=tool_settings,
             rag_enabled=rag_enabled,
             dc_inspector_enabled=dc_inspector_enabled,
             chain_access=chain_access,
@@ -773,7 +771,8 @@ def run() -> None:
             "Tool Caller"
         )
 
-        print("Describe the propeller you want to design.  Type 'quit' to exit.\n")
+        from agents.shared.pack_text import fill
+        print(fill("Describe the $dc_name you want to design.  Type 'quit' to exit.\n"))
 
         while True:
             user_input = input("You: ").strip()

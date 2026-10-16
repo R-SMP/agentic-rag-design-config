@@ -43,7 +43,7 @@ from typing import Any
 
 # The session logger, so a schedule defect surfaces in the session log
 # (and therefore in the R2-archived copy) rather than only on stderr.
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 _THIS_DIR = Path(__file__).resolve().parent
 _PROJECT_ROOT = _THIS_DIR.parent
@@ -302,7 +302,7 @@ def _seed_and_write() -> dict[str, Any]:
     _atomic_write(payload)
     try:
         import logging as _logging
-        _logging.getLogger("propeller_agent").info(
+        _logging.getLogger("mas_agent").info(
             f"[dh_schedule] seeded runtime file with {len(questions)} "
             f"questions from {source}"
         )

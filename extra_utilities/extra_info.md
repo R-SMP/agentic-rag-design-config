@@ -623,8 +623,11 @@ Design settled 2026-08-20 / 08-21; not described in
   renders were once written and never archived).
 * **Saved attempts are complete by construction.**
   `agents/shared/attempt_renders.ensure_renders()` runs in the DH loop just
-  before upload: blade sections first (they need only `parameters.json`), then
-  the 3D set.  It never raises: it saves what exists and logs what was
+  before upload and asks the tool that declares each missing image to make
+  it: the helper tools first (blade sections need only `parameters.json`),
+  then the generator (it builds the model if absent, else re-renders).  A tool
+  whose `tool.yaml` says `fill_on_save: false` is not asked.  It never
+  raises: it saves what exists and logs what was
   generated, found or failed, per view (End Session must not fail).
 * **One switch per view governs generate + save + retrieve**: each tool
   declares its views in its `tool.yaml` — isometric, top (on) and side (off)

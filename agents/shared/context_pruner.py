@@ -56,7 +56,7 @@ from agents.shared import token_usage
 from agents.shared.file_utils import ai_text
 from agents.shared.pack_text import fill
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 # ---------------------------------------------------------------------------
 # Pruning prompts — a shared base + a short per-tier delta.  Only ONE tier

@@ -53,7 +53,7 @@ from agents.shared import postgres_pool
 from agents.shared import r2_uploader
 from agents.shared import rag_queries_link
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 # ============================================================

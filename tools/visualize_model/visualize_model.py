@@ -28,7 +28,7 @@ from config import ATTEMPTS_DIR
 @tool
 @generic_tool("Visualize 3D model")
 def visualize_3d_model(obj_path: str) -> str:
-    """Display a generated 3D model (.obj) in the web interface's
+    """Display a generated 3D model ($model_ext) in the web interface's
     interactive viewer.
 
     Use this when a design attempt has produced a $dc_name $output_model and
@@ -39,8 +39,8 @@ def visualize_3d_model(obj_path: str) -> str:
     appearance.
 
     Args:
-        obj_path: Absolute path to the ``.obj`` $output_model file.  Must be
-            an existing ``.obj`` inside the attempts directory.
+        obj_path: Absolute path to the ``$model_ext`` $output_model file.  Must be
+            an existing ``$model_ext`` inside the attempts directory.
 
     Returns:
         A short message stating whether the model was sent to the
@@ -48,16 +48,16 @@ def visualize_3d_model(obj_path: str) -> str:
     """
     raw = (obj_path or "").strip()
     if not raw:
-        return ("visualize_3d_model: FAILED — no obj_path given. Pass "
-                "the absolute path to the attempt's propeller_mesh.obj.")
+        return fill("visualize_3d_model: FAILED — no obj_path given. Pass "
+                    "the absolute path to the attempt's $model_file.")
     try:
         target = Path(raw).resolve()
     except Exception as exc:
         return f"visualize_3d_model: FAILED — invalid path {raw!r}: {exc}"
 
-    if target.suffix.lower() != ".obj":
-        return (f"visualize_3d_model: FAILED — {target} is not an .obj "
-                + fill("file. Only $output_model .obj files can be visualised."))
+    if target.suffix.lower() != fill("$model_ext").lower():
+        return (f"visualize_3d_model: FAILED — {target} is not an "
+                + fill("$model_ext file. Only $output_model $model_ext files can be visualised."))
     if not target.is_file():
         return (f"visualize_3d_model: FAILED — no file at {target}. "
                 f"Check the attempt folder path.")

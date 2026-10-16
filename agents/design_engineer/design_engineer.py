@@ -97,7 +97,7 @@ from agents.step_caps import MAX_DESIGN_ENGINEER_STEPS
 from tools.calculate.calculate import calculate
 from engine import pack_tools
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 # ---------------------------------------------------------------------------
@@ -163,8 +163,6 @@ class DesignEngineer(BaseChainAgent):
             doc=read_inputs_doc(self.AGENT_KEY))
         self._write_tool = new_attempt_parameters
         # From the Tool Caller half: the generator's settings this session.
-        self.mesh_checks = session.mesh_checks
-        self.render_library = session.render_library
         self._routing_tools_by_name: dict = {}
         self._extra_utility_tools_by_name: dict = {}
         self.system_prompt: str = ""
@@ -218,25 +216,16 @@ class DesignEngineer(BaseChainAgent):
             prev_agent="Planner",
             fragment_name="routing_design_engineer.md",
         )
-        # Mesh checks OFF => the render step emits no metrics at all, so a
-        # backend's metric semantics would describe a report this agent never
-        # receives.  Gated HERE rather than with markers because ``.format()``
-        # runs AFTER apply_flag_filters — a marker inside the injected
-        # fragment would never be filtered.
-        #
-        # Read HERE, not from the module-level RENDER_CHECK_LIBRARY_*
-        # constants: those resolve at prompts-import time and would pin the
-        # fragment to whatever SYSTEM_TOPOLOGY was on disk when the process
-        # started, and the Sessions Queue switches topology between runs
+        # The tool that declares this placeholder (runtime_blocks in its
+        # tool.yaml) says which of its slots fills it, from the settings the
+        # session started with.  Filled HERE rather than with markers because
+        # ``.format()`` runs AFTER apply_flag_filters -- a marker inside the
+        # injected fragment would never be filtered -- and read here, per
+        # session, because the Sessions Queue switches topology between runs
         # inside one process.
         render_check_block = read_pack_fragment(
-            "render_check_library_"
-            + (
-                ("pyvista" if self.render_library == "pyvista" else "trimesh")
-                if self.mesh_checks
-                else "off"
-            )
-        )
+            pack_tools.runtime_block_slot(
+                "render_check_library_block", self.session.tool_settings))
         # Built fresh at construction time so live edits to .md fragments on
         # disk take effect on the NEXT session without a Python restart.
         self.system_prompt = _build_template(self.AGENT_KEY).format(

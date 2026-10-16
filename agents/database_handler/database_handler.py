@@ -95,6 +95,7 @@ from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
 from engine import parameter_schema
 from workflow_settings import settings as workflow_settings
 from agents.shared.pack_text import fill
+from engine import pack_tools as _pack_tools
 
 # DH events go to a DEDICATED logger that writes to
 # ``logs/database_handler_<ts>.log`` and does NOT propagate to the
@@ -3468,7 +3469,8 @@ class DatabaseHandler(BaseChainAgent):
                         parameters_json = _json.loads(
                             params_path.read_text(encoding="utf-8")
                         )
-                        has_geometry = any(folder.glob("*.obj"))
+                        has_geometry = any(folder.glob(
+                            f"*{Path(_pack_tools.model_file() or '-').suffix}"))
                         has_renders  = any(folder.glob("render_*.png"))
                         # Long-format scalar mirror: numeric-only per
                         # v5 dc_attempt_parameters.raw_value DOUBLE

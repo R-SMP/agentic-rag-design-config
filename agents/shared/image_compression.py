@@ -43,7 +43,7 @@ from typing import Optional
 
 from PIL import Image, ImageOps
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 try:  # Pillow >= 9.1
     _LANCZOS = Image.Resampling.LANCZOS
@@ -237,20 +237,16 @@ def _normalize_mode(im: "Image.Image", out_format: str) -> "Image.Image":
     return im.convert("RGB")
 
 
-_CROSS_SECTION_PREFIX = "render_blade_sections"
-_3D_RENDER_NAMES = frozenset(
-    ("render_isometric.png", "render_top.png", "render_side.png"))
+# The tools' manifests say which shrink strength each of their pictures takes.
+_KIND_BY_COMPRESSION = {"cross_sections": "cross", "3d_render": "3d"}
 
 
 def render_kind(image_path) -> Optional[str]:
-    """"cross" for a blade-sections diagram, "3d" for a 3D mesh view, else None
-    — decided by the render's canonical filename."""
-    name = Path(image_path).name
-    if name.startswith(_CROSS_SECTION_PREFIX):
-        return "cross"
-    if name in _3D_RENDER_NAMES:
-        return "3d"
-    return None
+    """"cross" for a picture whose tool declares ``compression:
+    cross_sections``, "3d" for ``3d_render``, else None -- decided by the
+    picture's file name (engine/pack_tools.compression_kind)."""
+    from engine import pack_tools
+    return _KIND_BY_COMPRESSION.get(pack_tools.compression_kind(Path(image_path).name))
 
 
 def render_degree_and_floor(image_path):

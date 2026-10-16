@@ -128,6 +128,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F113` | OPEN | The generator's description still names the removed `GEOMETRY_BACKEND` setting |
 | `F114` | OPEN | Blade-sections texts name the generator literally |
 | `F115` | OPEN | A check for propeller-related words in the prompts |
+| `F116` | OPEN | The save step hides why the generator failed |
 
 ---
 
@@ -4738,4 +4739,19 @@ everything once with a copy of the pack whose texts are swapped for neutral
 stand-ins -- any propeller word left came from the engine.  Until MAS-blueprint
 P4 is finished the engine still writes some, so the check needs an allow-list
 of what is pending, shrinking to empty.
+
+---
+
+### F116. The save step hides why the generator failed
+
+**Status.** OPEN — found during MAS-blueprint P4b (2026-10-16); the code
+before P4b behaves the same.
+
+When an attempt is archived without its model, the save step
+(`agents/shared/attempt_renders.py`, `_fill_from_generator`) runs the
+generator.  `pack_tools.run_generator` returns a failure as the tool's
+answer text instead of raising, so the save step never sees it: it finds no
+images and logs every view as "mesh built but render absent", even when no
+mesh was built.  Fix: keep `run_generator`'s answer, and when the model file
+is still missing, log "mesh generation failed: <answer>" instead.
 

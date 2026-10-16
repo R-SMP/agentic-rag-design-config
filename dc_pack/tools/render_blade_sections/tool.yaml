@@ -44,8 +44,17 @@ switch:
     is told the capability exists; OFF = the system works without it.
 
 outputs:
+  # grid=True writes the variant render_blade_sections_grid.png.
   images:
-    - {view: blade_sections, file: render_blade_sections.png, order: 30, default_enabled: true, label: "Render view: blade sections"}
+    - {view: blade_sections, file: render_blade_sections.png, order: 30, default_enabled: true, compression: cross_sections, variants: [grid], label: "Render view: blade sections"}
+
+# May the save step use this tool to add a missing picture to an attempt it
+# archives (agents/shared/attempt_renders.py)?
+fill_on_save: true
+
+# The note added under an attempt's opened picture: the values it was drawn
+# from, per section (view_images).
+image_note: sections_geom.py:rendered_params_block
 
 # Its place in the tool runner's numbered tool list (its entry is
 # prompts/tool_list_entry.md), and the prompt text it owns: the files of

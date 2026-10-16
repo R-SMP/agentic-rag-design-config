@@ -32,7 +32,7 @@ from pathlib import Path
 
 from agents.shared.routing_tools import AGENT_DISPLAY
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 # Defaults baked from workflow_settings/settings.py (the v4-REPL
@@ -40,12 +40,17 @@ logger = logging.getLogger("propeller_agent")
 # Session by passing keyword arguments to the constructor or factory.
 _DEFAULT_RAG_ENABLED                = False
 _DEFAULT_DC_INSPECTOR_ENABLED       = True
-_DEFAULT_MESH_CHECKS                = False
 _DEFAULT_CHAIN_ACCESS               = True
 _DEFAULT_KEEP_IMAGES_IN_CONTEXT     = False
 _DEFAULT_DCOI_COMPARISON_MODE       = 3
 _DEFAULT_PLANNER_FIRST              = False
-_DEFAULT_RENDER_LIBRARY             = "trimesh"
+
+
+def _pack_tool_settings() -> dict:
+    """Every pack tool's settings when a Session is created
+    (engine/pack_tools.py): the session runs with them throughout."""
+    from engine import pack_tools
+    return pack_tools.settings_snapshot()
 
 
 def _pack_dc_name() -> str:
@@ -179,12 +184,13 @@ class Session:
     # so v4 Sessions match v4 behaviour with no overrides needed).
     dc_inspector_enabled:   bool = _DEFAULT_DC_INSPECTOR_ENABLED
     rag_enabled:            bool = _DEFAULT_RAG_ENABLED
-    mesh_checks:            bool = _DEFAULT_MESH_CHECKS
     chain_access:           bool = _DEFAULT_CHAIN_ACCESS
     keep_images_in_context: bool = _DEFAULT_KEEP_IMAGES_IN_CONTEXT
     dcoi_comparison_mode:   int  = _DEFAULT_DCOI_COMPARISON_MODE
     planner_first:          bool = _DEFAULT_PLANNER_FIRST
-    render_library:         str  = _DEFAULT_RENDER_LIBRARY
+    # Every pack tool's settings (tool -> {setting: value}), taken when the
+    # session starts.
+    tool_settings:          dict = field(default_factory=_pack_tool_settings)
 
     # Cached DH-save identifiers — set on FIRST resolve in
     # ``web_app._run_dh_save`` and re-used by every subsequent call
@@ -276,12 +282,11 @@ class Session:
             "schema_version":         self.schema_version,
             "dc_inspector_enabled":   self.dc_inspector_enabled,
             "rag_enabled":            self.rag_enabled,
-            "mesh_checks":            self.mesh_checks,
             "chain_access":           self.chain_access,
             "keep_images_in_context": self.keep_images_in_context,
             "dcoi_comparison_mode":   self.dcoi_comparison_mode,
             "planner_first":          self.planner_first,
-            "render_library":         self.render_library,
+            "tool_settings":          self.tool_settings,
             "resolved_session_name":      self.resolved_session_name,
             "resolved_session_timestamp": self.resolved_session_timestamp,
             "chain_log_exchanges":    list(self.chain_log_exchanges),

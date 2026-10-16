@@ -29,7 +29,7 @@ import threading
 
 from agents.shared import postgres_pool
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 _LOCK = threading.Lock()
 _ROW_IDS: list[int] = []

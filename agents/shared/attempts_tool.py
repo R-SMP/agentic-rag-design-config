@@ -40,6 +40,7 @@ from langchain_core.tools import tool
 from agents.shared.agent_activity import generic_tool
 from agents.shared.pack_text import described, fill
 from config import ATTEMPTS_DIR
+from engine import pack_tools
 
 # Folder names produced by ``create_attempt`` have the form
 # ``YYYYMMDD_HHMMSS_NNN_<slug>`` — the third group is the 1-based
@@ -145,7 +146,7 @@ def _classify_files(folder: Path) -> tuple[list[str], dict[str, bool]]:
         }
     flags = {
         "parameters": "parameters.json" in names,
-        "mesh": "propeller_mesh.obj" in names,
+        "mesh": pack_tools.model_file() in names,
         "renders": any(
             n.startswith("render_") and n.lower().endswith(
                 (".png", ".jpg", ".jpeg")
@@ -203,7 +204,7 @@ def _attempt_summary(n: int, folder: Path, detailed: bool) -> list[str]:
     if render_paths:
         lines.append(fill("    $Output_image paths:"))
         lines += [f"      {p}" for p in render_paths]
-    mesh = folder / "propeller_mesh.obj"
+    mesh = folder / (pack_tools.model_file() or "-")
     if mesh.is_file():
         lines.append(fill("    $Output_model path: ") + str(mesh.resolve()))
     if detailed:
@@ -239,8 +240,7 @@ def read_attempts(local_attempt_numbers: list[int] | None = None) -> str:
         those attempts, each with its full ``parameters.json`` content
         as well.  Attempt numbers only — never paths, never global ids.
 
-    In both modes each attempt's ``render_*.png`` (including
-    ``render_blade_sections.png``) and $geometry_model_filename are listed
+    In both modes each attempt's ``render_*.png``$extra_images_note and $geometry_model_filename are listed
     as ABSOLUTE PATHS, ready to hand to a tool that takes a path — $output_model
     contents and image bytes are never returned inline.  Returns
     ``'No attempts created yet.'`` when no folder exists.

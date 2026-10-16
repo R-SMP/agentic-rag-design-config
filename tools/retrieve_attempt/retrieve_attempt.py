@@ -60,7 +60,7 @@ from agents.shared.pack_text import filled
 from config import ATTEMPTS_DIR
 from workflow_settings import settings as workflow_settings
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 # Log prefix: the two retrieve tools are told apart in the session
 # log by this, which is why the shared helpers take a ``tag``.

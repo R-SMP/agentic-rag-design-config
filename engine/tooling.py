@@ -28,6 +28,9 @@ Two kinds of tool:
   The engine builds the LLM tool from its signature and the manifest's
   description; the function returns the text the agent gets.
 
+A tool that makes images of an attempt follows the image contract in
+``dc_pack/README.md`` ("What the engine reads from a tool's outputs").
+
 ``inp.settings`` holds the tool's own settings (declared in its manifest,
 changed in Workflow Settings), read fresh for every call.
 """

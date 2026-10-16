@@ -53,8 +53,9 @@ from agents.shared.dba_tools import dba_tools_for
 from agents.shared.dc_params_tool import param_tools_for
 from agents.receptionist.propose_attempt_tool import propose_attempt
 from agents.shared.pack_text import fill
+from engine import pack_tools
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 class Receptionist(BaseChainAgent):
@@ -347,10 +348,10 @@ class Receptionist(BaseChainAgent):
                         f"{params_path.read_text(encoding='utf-8')}"
                     )
 
-                render_names = (
-                    "render_isometric.png", "render_top.png",
-                    "render_side.png",
-                )
+                # The generator's pictures (its tool.yaml).
+                render_names = tuple(
+                    r["file"] for r in pack_tools.image_outputs()
+                    if pack_tools.manifest(r["tool"])["kind"] == "generator")
                 render_files = [
                     str((latest_attempt / n).resolve())
                     for n in render_names

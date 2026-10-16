@@ -40,7 +40,7 @@ from agents.shared import llm_client_cache as _default_llm_cache
 from agents.shared.routing_tools import AgentHop
 from agents.shared.session import AgentState, Session
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 class BaseChainAgent:

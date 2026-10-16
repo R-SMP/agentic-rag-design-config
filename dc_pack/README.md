@@ -92,17 +92,19 @@ index in `prompts.py` are derived from the registry.
 * `render_check_library_trimesh` / `_pyvista` / `_off` (in the generator's
   `prompts/`) — the render + mesh-check block the Tool Caller (Design Engineer
   in topology 3) receives through its `{render_check_library_block}`
-  placeholder, chosen by the generator's `render_library` and `mesh_checks`
-  settings.  A new backend is a new `render_library` value in the generator's
-  `tool.yaml` with its branch in its `tool.py`, the block choice in
-  `tool_caller.py` / `design_engineer.py` (until P4), plus one such field.
+  placeholder.  The generator's `tool.yaml` picks it (`runtime_blocks`): the
+  `_off` block while `mesh_checks` is off, else the one named after
+  `render_library`.  A new backend is a new `render_library` value with its
+  branch in `tool.py` plus its `render_check_library_<value>.md` (listed in
+  `prompt_slots` and the registry).
 * `tool_entry_calculate` / `_read_attempts` / `_new_attempt_parameters` — the
   engine tools' entries in the tool runner's numbered tool list
   (`$tool_inventory`), which the engine builds around the pack tools'
   `tool_list_entry.md` (`engine/pack_tools.tool_list`).
 * `attempt_slug_example`, `crop_reuse_example`, `search_query_examples`,
   `parameter_search_example` (without its braces: the engine writes them),
-  `dh_stitching_example_answer` / `_paragraph`, `refine_cap_limits` and the
+  `dh_stitching_example_answer` / `_paragraph`, `refine_cap_limits`,
+  `produced_outputs_examples` (the Sessions Queue's run classifier) and the
   word `output_models` — the configurator's words in the text Python writes
   for the agents (tool descriptions, tool answers, runtime blocks), filled in
   by `agents/shared/pack_text.py` together with the vocabulary those texts
@@ -110,6 +112,36 @@ index in `prompts.py` are derived from the registry.
 * `dc_params_primer_text` — the text sent with the parameter primer image at
   invoke time (`agents/shared/dc_primer.py`); an agent with its own copy gets
   that instead.
+
+## What the engine reads from a tool's outputs
+
+* **The model file** — the generator's `outputs.model_file`
+  (`propeller_mesh.obj`).  Every place that looks for an attempt's model
+  uses this one name: `read_attempts`, the save step, the upload,
+  `visualize_3d_model`.
+* **Images** — `outputs.images`, one entry per view, under one contract that
+  `engine/pack_tools.py` checks when the pack loads:
+  * an image of view `V` is the PNG `render_<V>.png`, written into the
+    attempt folder the tool is given; a variant `X` of it (blade sections'
+    1 mm grid) is `render_<V>_<X>.png`, listed under `variants`;
+  * `compression: 3d_render` or `cross_sections` — which shrink strength
+    applies before a model sees it (Workflow Settings › Render compression);
+  * `default_enabled` — its switch (Workflow Settings › Tools): a view left
+    off is not made, not saved and not fetched.
+* **`fill_on_save: true|false`** (required when a tool lists images) — may
+  the save step (`agents/shared/attempt_renders.py`) ask this tool for an
+  image an attempt is missing when it is archived?  A helper is called with
+  the attempt's `parameters.json` path as its first argument; a generator
+  builds its model if it is absent, else re-renders.
+* **`image_note`** (optional, `file.py:function`) — called with an attempt's
+  parameters; its text is shown under that attempt's opened images
+  (`view_images`).  Blade sections print the values each section was drawn
+  from.
+
+"render" in these names — and in the database's `has_renders`,
+`retrieve_attempt`'s `<renders>`, the generator's `render()` step — is the
+engine's word for "an image a tool made"; the agents read the pack's own
+word (`$output_image`).
 
 ## User input types
 

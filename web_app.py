@@ -97,7 +97,7 @@ from workflow_settings import editor as settings_editor
 from workflow_settings import llm_routing as settings_llm_routing
 from workflow_settings import settings as workflow_settings
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 WEB_DIR = Path(__file__).parent / "web"
 INVITE_CODE_ENV = "INVITE_CODE"
@@ -303,7 +303,6 @@ def _build_session() -> Session:
     # tempfile-rename path; this re-import picks up the new values
     # without a uvicorn restart.
     importlib.reload(workflow_settings)
-    generator_settings = _generator_settings()
 
     session_id = _new_session_id()
     log_path = _setup_session_logger(session_id)
@@ -317,14 +316,14 @@ def _build_session() -> Session:
     session = Session(
         session_id=session_id,
         session_ts=datetime.now(timezone.utc),
-        mesh_checks=bool(generator_settings.get("mesh_checks", False)),
         rag_enabled=workflow_settings.RAG_ENABLED,
         dc_inspector_enabled=workflow_settings.DC_INSPECTOR_ENABLED,
         chain_access=workflow_settings.CHAIN_ACCESS,
         keep_images_in_context=workflow_settings.KEEP_IMAGES_IN_CONTEXT,
         dcoi_comparison_mode=workflow_settings.DCOI_COMPARISON_MODE,
         planner_first=workflow_settings.PLANNER_FIRST,
-        render_library=generator_settings.get("render_library", "trimesh"),
+        # Every pack tool's settings, as the session starts with them.
+        tool_settings=_pack_tools.settings_snapshot(),
     )
     _BOX.session = session
     _BOX.log_path = log_path
@@ -588,12 +587,6 @@ def api_auth(body: AuthIn) -> dict:
         return {"ok": True}
     logger.warning("[WEB] invite-code rejected")
     raise HTTPException(status_code=401, detail="Invite code did not match.")
-
-
-def _generator_settings() -> dict:
-    """The generator tool's settings for the session being built (its
-    tool.yaml defaults + the Workflow Settings changes)."""
-    return _pack_tools.settings(_pack_tools.generators()[0])
 
 
 def _geometry():

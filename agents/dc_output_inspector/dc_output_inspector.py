@@ -65,7 +65,7 @@ from agents.shared.dba_tools import dba_tools_for
 from agents.shared.dc_params_tool import param_tools_for
 from agents.shared.pack_text import fill
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 _IMAGE_PERSISTENCE_ON = fill("""\

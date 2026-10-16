@@ -43,6 +43,23 @@ runner's numbered tool list is built from each tool's entry:
    slots read empty, its view and its list entry are gone, and the tool
    runner is given the generator only.
 
+Since MAS-blueprint P4b the engine names none of the tools' files or
+settings -- the manifests declare them (the picture contract):
+
+8. CONTRACT.  A copy of the pack breaking the picture contract in one way
+   (a picture not named render_<view>.png, a missing or unknown
+   ``compression``, no ``fill_on_save``, a malformed ``image_note``, a
+   runtime block reading a slot the tool does not own or naming a bool
+   setting) is refused, naming the problem.
+9. SAVE STEP.  With stand-in tools, the save step makes a missing picture
+   with the tool that declares it -- the helper first, then the generator
+   (building the model when absent, rendering only when present) -- and
+   does not use a tool whose ``fill_on_save`` is false.
+10. COMPRESSION.  Each picture's shrink strength, now declared, is the one
+   today's file-name rule picked.
+11. BLOCK.  The generator's runtime block picks, for every setting, the
+   render-check slot the engine used to pick by name.
+
 Run from the repo root:  py -3.13 extra_utilities/tests/smoke_test_pack_tools.py
 """
 from __future__ import annotations
@@ -218,6 +235,12 @@ def check_tool_texts() -> int:
          lambda d: (tools(d) / SEC / "prompts" / "tool_list_entry.md").unlink(),
          "tool_list_entry.md"),
     ]
+    return _refused(cases, "[TEXTS]")
+
+
+def _refused(cases, tag: str) -> int:
+    """Each (what, break-the-copy, expected words) must make the manifests
+    refuse a copy of the pack, naming the problem."""
     real = config.DC_PACK_DIR
     for what, breakit, needle in cases:
         copy = _pack_copy()
@@ -226,14 +249,157 @@ def check_tool_texts() -> int:
             config.DC_PACK_DIR = copy
             try:
                 T.manifests()
-                check(False, f"[TEXTS] {what}: the broken pack was accepted")
+                check(False, f"{tag} {what}: the broken pack was accepted")
             except T.PackToolError as exc:
-                check(needle in str(exc), f"[TEXTS] {what}: refused, but not for "
+                check(needle in str(exc), f"{tag} {what}: refused, but not for "
                                           f"that reason: {str(exc)[:200]}")
         finally:
             config.DC_PACK_DIR = real
             shutil.rmtree(copy.parent, ignore_errors=True)
     return len(cases)
+
+
+def _rewrite(path: Path, old: str, new: str) -> None:
+    text = path.read_bytes().decode("utf-8")
+    assert text.count(old) == 1, (path, old)
+    path.write_bytes(text.replace(old, new).encode("utf-8"))
+
+
+# ---------------------------------------------------------------------------
+# 8-11. The picture contract, the save step, the shrink strength, the
+# runtime block (MAS-blueprint P4b)
+# ---------------------------------------------------------------------------
+
+def check_contract() -> int:
+    gen = lambda d: d / "tools" / GEN / "tool.yaml"                  # noqa: E731
+    sec = lambda d: d / "tools" / SEC / "tool.yaml"                  # noqa: E731
+    cases = [
+        ("a picture named against the rule",
+         lambda d: _rewrite(gen(d), "file: render_top.png", "file: top.png"),
+         "must be the file 'render_top.png'"),
+        ("a picture without its compression",
+         lambda d: _rewrite(gen(d), "default_enabled: true, compression: 3d_render, "
+                                    "label: \"Render view: isometric\"",
+                            "default_enabled: true, label: \"Render view: isometric\""),
+         "needs view, file, order, default_enabled, compression"),
+        ("an unknown compression",
+         lambda d: _rewrite(sec(d), "compression: cross_sections", "compression: heavy"),
+         "compression is one of"),
+        ("a picture-making tool that does not say fill_on_save",
+         lambda d: _rewrite(sec(d), "fill_on_save: true", ""),
+         "fill_on_save"),
+        ("an image_note that is not module.py:function",
+         lambda d: _rewrite(sec(d), "image_note: sections_geom.py:rendered_params_block",
+                            "image_note: rendered_params_block"),
+         "image_note must be"),
+        ("a runtime block reading a slot the tool does not own",
+         lambda d: _rewrite(gen(d), "off_slot: render_check_library_off",
+                            "off_slot: tool_caller_instructions"),
+         "not in the tool's prompt_slots"),
+        ("a runtime block whose slot names a bool setting",
+         lambda d: _rewrite(gen(d), "slot: render_check_library_${render_library}",
+                            "slot: render_check_library_${mesh_checks}"),
+         "may only name enum settings"),
+    ]
+    return _refused(cases, "[CONTRACT]")
+
+
+def check_save_step() -> int:
+    """The save step (agents/shared/attempt_renders.py) asks the tool that
+    declares a missing picture to make it: helpers first, then the
+    generator; a tool whose fill_on_save is false is not used."""
+    from agents.shared import attempt_renders as AR
+    folder = Path(tempfile.mkdtemp(prefix="save_step_")) / "20260101_000000_001_x"
+    folder.mkdir()
+    params = {p["name"]: p["default"] for p in json.loads(
+        (ROOT / "dc_pack" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
+    (folder / "parameters.json").write_text(json.dumps(params), encoding="utf-8")
+    calls: list = []
+    real = (T.Plugin.function, T.run_generator, T.render_existing, config.DC_PACK_DIR)
+
+    def fake_function(self, ref):
+        def fn(parameters_path, *a, **k):
+            calls.append(("helper", self.name))
+            (Path(parameters_path).parent / "render_blade_sections.png").write_bytes(b"p")
+            return "drawn"
+        return fn
+
+    def draw_generator_pictures(where: Path) -> None:
+        for name in ("render_isometric.png", "render_top.png"):
+            (where / name).write_bytes(b"p")
+
+    def fake_run(name, parameters_path):
+        calls.append(("build", name))
+        (Path(parameters_path).parent / T.model_file()).write_text("v 0 0 0\n")
+        draw_generator_pictures(Path(parameters_path).parent)
+        return "built"
+
+    def fake_render(name, attempt_dir):
+        calls.append(("render", name))
+        draw_generator_pictures(Path(attempt_dir))
+        return "rendered"
+
+    cases = 0
+    try:
+        T.Plugin.function, T.run_generator, T.render_existing = fake_function, fake_run, fake_render
+        report = AR.ensure_renders(folder)
+        cases += 1
+        check(calls == [("helper", SEC), ("build", GEN)],
+              f"[SAVE STEP] calls {calls}: want the blade-sections tool, then the generator's build")
+        check(sorted(report["generated"]) == ["blade_sections", "isometric", "top"]
+              and not report["failed"], f"[SAVE STEP] report {report}")
+        # The model is there now: a missing picture is rendered, not rebuilt.
+        (folder / "render_top.png").unlink()
+        calls.clear()
+        report = AR.ensure_renders(folder)
+        cases += 1
+        check(calls == [("render", GEN)] and report["generated"] == ["top"],
+              f"[SAVE STEP] with the model present: calls {calls}, report {report}")
+        # A tool that may not fill pictures at save time is not used.
+        copy = _pack_copy()
+        _rewrite(copy / "tools" / SEC / "tool.yaml", "fill_on_save: true", "fill_on_save: false")
+        config.DC_PACK_DIR = copy
+        (folder / "render_blade_sections.png").unlink()
+        calls.clear()
+        report = AR.ensure_renders(folder)
+        cases += 1
+        check(calls == [] and report["failed"] == [
+            ("blade_sections", "its tool does not add pictures at save time")],
+              f"[SAVE STEP] fill_on_save false: calls {calls}, report {report}")
+        shutil.rmtree(copy.parent, ignore_errors=True)
+    except Exception as exc:                                        # noqa: BLE001
+        check(False, f"[SAVE STEP] {type(exc).__name__}: {str(exc)[:200]}")
+    finally:
+        T.Plugin.function, T.run_generator, T.render_existing, config.DC_PACK_DIR = real
+        shutil.rmtree(folder.parent, ignore_errors=True)
+    return cases
+
+
+def check_compression() -> None:
+    """The shrink strength of each picture, now declared in the manifests,
+    is the one today's file-name rule picked."""
+    from agents.shared import image_compression as IC
+    want = {"render_blade_sections.png": "cross", "render_blade_sections_grid.png": "cross",
+            "render_isometric.png": "3d", "render_top.png": "3d", "render_side.png": "3d",
+            "render_comparison_1.png": None, "render_unknown.png": None, "sketch.png": None}
+    for name, kind in want.items():
+        check(IC.render_kind(name) == kind,
+              f"[COMPRESSION] {name}: {IC.render_kind(name)!r}, want {kind!r}")
+
+
+def check_runtime_block() -> None:
+    """The generator's runtime block picks, for every setting, the slot the
+    engine used to pick by name."""
+    snap = T.settings_snapshot()
+    for mesh, lib, want in ((False, "trimesh", "render_check_library_off"),
+                            (False, "pyvista", "render_check_library_off"),
+                            (True, "trimesh", "render_check_library_trimesh"),
+                            (True, "pyvista", "render_check_library_pyvista")):
+        s = {**snap, GEN: {**snap[GEN], "mesh_checks": mesh, "render_library": lib}}
+        got = T.runtime_block_slot("render_check_library_block", s)
+        check(got == want, f"[BLOCK] mesh_checks={mesh} render_library={lib}: {got}, want {want}")
+    check(T.runtime_block_slot("no_such_block", snap) is None,
+          "[BLOCK] a placeholder no tool declares gave a slot")
 
 
 def check_tool_list() -> None:
@@ -471,11 +637,16 @@ def main() -> int:
     n_broken = check_tool_texts()
     check_tool_list()
     n_built = check_removal()
+    n_contract = check_contract()
+    n_saves = check_save_step()
+    check_compression()
+    check_runtime_block()
     print(f"{len(T.manifests())} tools; {n} golden cases compared with "
           f"{FIXTURE.relative_to(ROOT).as_posix()}; {len(PK.tool_claims())} tool-text "
           f"slots owned, {n_broken} broken packs refused; 6 tool lists compared with "
           f"{LISTS.relative_to(ROOT).as_posix()}; {n_built} prompts built without "
-          f"the blade-sections tool")
+          f"the blade-sections tool; {n_contract} pictures-contract breaks refused; "
+          f"{n_saves} save-step cases")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
@@ -484,7 +655,9 @@ def main() -> int:
     print("\nPASS - the manifests load, the settings and their checks behave, the "
           "tool runner of each topology gets the tools, both tools answer exactly "
           "what they answered before the move, each owns its prompt text, the "
-          "tool list is built exactly as it was written, and a tool can be removed.")
+          "tool list is built exactly as it was written, a tool can be removed, "
+          "and the picture contract, the save step, the shrink strengths and the "
+          "runtime block come from the manifests.")
     return 0
 
 

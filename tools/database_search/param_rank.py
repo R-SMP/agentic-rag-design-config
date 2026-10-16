@@ -58,8 +58,9 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass
+from agents.shared.pack_text import fill
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 # Ranking is scale-free because every difference is divided by that
 # parameter's legal span, so each term is <= 1 and the RMSE lands in
@@ -161,10 +162,10 @@ def validate_query(
     is not history; it is a typo.
     """
     if not isinstance(params, dict) or not params:
-        raise ParameterQueryError(
+        raise ParameterQueryError(fill(
             "Supply at least one design parameter, as a JSON object of "
             "parameter name -> numeric value, e.g. "
-            '{"bladeCount": 5, "impellerRadius": 70}.')
+            "{$parameter_search_example}."))
 
     clean: dict[str, float] = {}
     for key, raw in params.items():

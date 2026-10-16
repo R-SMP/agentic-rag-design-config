@@ -37,7 +37,7 @@ from langchain_core.messages import ToolMessage
 
 from agents.shared.routing_tools import log_tool_call
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 def _emit_error_tool_message(

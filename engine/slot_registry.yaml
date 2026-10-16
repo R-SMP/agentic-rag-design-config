@@ -250,6 +250,13 @@ slots:
     kind: phrase
     section: outputs
     description: "What the inspector's fidelity verdict reports, naming this DC's model ceiling."
+  produced_outputs_examples:
+    source: pack
+    folder: tools
+    kind: phrase
+    use: runtime
+    section: outputs
+    description: "What a run can produce, as a list (the Sessions Queue classifier: 'even if no ... were produced')."
   refine_cap_limits:
     source: pack
     folder: tools

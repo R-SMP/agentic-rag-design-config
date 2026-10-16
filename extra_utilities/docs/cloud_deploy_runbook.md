@@ -290,7 +290,7 @@ running service.)
        (Generate Domain).
 
    Do NOT expect a ``[WEB] startup; auth_required=...`` line here.
-   ``web_app.py``'s ``propeller_agent`` logger only gets a handler
+   ``web_app.py``'s ``mas_agent`` logger only gets a handler
    attached per session, so that startup INFO line does not reach
    Railway's stdout — its absence says nothing about auth.  Whether
    ``INVITE_CODE`` is enforced is verified authoritatively by the

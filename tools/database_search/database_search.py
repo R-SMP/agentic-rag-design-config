@@ -67,7 +67,7 @@ from workflow_settings import settings as workflow_settings
 from workflow_settings import db_options_config
 from agents.shared.pack_text import fill
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 # ============================================================

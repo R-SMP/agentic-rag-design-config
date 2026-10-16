@@ -52,7 +52,7 @@ import os
 from pathlib import Path
 from typing import Iterable
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 _REQUIRED_ENV_VARS = (
     "R2_ACCOUNT_ID",
@@ -242,12 +242,12 @@ def upload_bytes(
 # ``save_attempt_data`` tool.  ``propeller_mesh_components.obj``
 # is intentionally NOT on the list (the user spec explicitly excludes
 # it).  Files outside this set are ignored even if they exist.
-# Artefacts every attempt carries regardless of which views are enabled.
-_ATTEMPT_BASE_ARTEFACTS: tuple[str, ...] = (
-    "parameters.json",
-    "propeller_mesh.obj",
-    "description.txt",
-)
+# Artefacts every attempt carries regardless of which views are enabled:
+# the parameter record, the generator's model (its tool.yaml's
+# outputs.model_file) and the description.
+def _attempt_base_artefacts() -> tuple[str, ...]:
+    from engine import pack_tools
+    return tuple(f for f in ("parameters.json", pack_tools.model_file(), "description.txt") if f)
 
 
 def attempt_artefact_whitelist() -> tuple[str, ...]:
@@ -261,7 +261,7 @@ def attempt_artefact_whitelist() -> tuple[str, ...]:
     used to be written by its tool but archived by nobody).
     """
     from agents.shared import attempt_views
-    return _ATTEMPT_BASE_ARTEFACTS + tuple(attempt_views.enabled_view_files())
+    return _attempt_base_artefacts() + tuple(attempt_views.enabled_view_files())
 
 
 

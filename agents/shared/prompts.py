@@ -528,18 +528,6 @@ PARAMETER_TYPES = _parameters.types(_PARAMETER_SPEC)
 # Tools-specific content
 # ---------------------------------------------------------------------------
 
-# Paired render / mesh-check backend fragments — exactly one is
-# spliced into the Tool Caller's prompt per session via the runtime
-# ``{render_check_library_block}`` placeholder (registry: ``use: runtime``).
-# The agents read the fragment fresh at wiring time; these three
-# constants are read only by the prompt snapshot and PDF tools
-# (extra_utilities/scripts/topology_prompt_snapshot.py, prompt_pdf/dump.py).
-RENDER_CHECK_LIBRARY_TRIMESH = read_pack_fragment("render_check_library_trimesh")
-RENDER_CHECK_LIBRARY_PYVISTA = read_pack_fragment("render_check_library_pyvista")
-# Substituted for the backend block when the session has mesh checks OFF —
-# the metrics those fragments describe are then never produced.
-RENDER_CHECK_LIBRARY_OFF = read_pack_fragment("render_check_library_off")
-
 
 # ---------------------------------------------------------------------------
 # Cross-agent organisational fragments
@@ -981,8 +969,6 @@ __all__ = [
     "DC_NAME",
     "PARAMETER_NAMES",
     "PARAMETER_TYPES",
-    "RENDER_CHECK_LIBRARY_TRIMESH",
-    "RENDER_CHECK_LIBRARY_PYVISTA",
     "EMBEDDING_PROVIDER",
     "EMBEDDING_MODEL",
     "EMBEDDING_VECTOR_DIMS",

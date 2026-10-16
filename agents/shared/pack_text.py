@@ -11,7 +11,9 @@ is a ``$name`` filled from the pack here.  :func:`fill` accepts:
   for the active topology): the vocabulary, ``$domain_description``,
   ``$dc_name``, ``$geometry_model_filename``, the small example slots;
 * ``$parameter_count`` (from ``dc_pack/parameters.json``);
-* the forms the engine derives from the vocabulary -- :data:`DERIVED`.
+* the forms the engine derives from the vocabulary -- :data:`DERIVED`;
+* the words it derives from the tool manifests -- :data:`FROM_MANIFESTS`
+  (the model's file name and extension).
 
 An unknown ``$name`` is an error, so a misspelt word fails loudly; write
 ``$$`` for a literal dollar sign.
@@ -35,6 +37,7 @@ When the words are read:
 
 from __future__ import annotations
 
+from pathlib import Path
 from string import Template
 
 from engine import pack as _pack
@@ -54,6 +57,28 @@ DERIVED = {
 }
 
 
+def _model_file() -> str:
+    from engine import pack_tools
+    return pack_tools.model_file() or ""
+
+
+def _extra_images_note() -> str:
+    """' (including\\n``<file>``)' for the pictures the helper tools make,
+    "" when none does -- read_attempts' description."""
+    from engine import pack_tools
+    files = [r["file"] for r in pack_tools.image_outputs()
+             if pack_tools.manifest(r["tool"])["kind"] == "helper"]
+    return " (including\n" + ", ".join(f"``{f}``" for f in files) + ")" if files else ""
+
+
+# Words the engine derives from the tool manifests (engine/pack_tools.py).
+FROM_MANIFESTS = {
+    "model_file": _model_file,                                    # "propeller_mesh.obj"
+    "model_ext": lambda: Path(_model_file()).suffix,              # ".obj"
+    "extra_images_note": _extra_images_note,
+}
+
+
 class _Words(dict):
     """The words of one fill, read from the pack on first use."""
 
@@ -65,6 +90,8 @@ class _Words(dict):
         if name in DERIVED:
             base, how = DERIVED[name]
             value = how(self[base])
+        elif name in FROM_MANIFESTS:
+            value = FROM_MANIFESTS[name]()
         elif name == "parameter_count":
             value = str(_parameters.count())
         else:

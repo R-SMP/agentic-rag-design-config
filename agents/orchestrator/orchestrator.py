@@ -67,7 +67,7 @@ from agents.user_input_inspector import UserInputInspector
 from agents.shared.dba_tools import dba_tools_for
 from agents.shared.pack_text import fill
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 # Component C — the chain agents that must carry a standing directive forward
@@ -148,7 +148,6 @@ class Orchestrator(BaseChainAgent):
         # without touching session.* directly.
         self.rag_enabled = session.rag_enabled
         self.dc_inspector_enabled = session.dc_inspector_enabled
-        self.mesh_checks = session.mesh_checks
         self.dcoi_comparison_mode = session.dcoi_comparison_mode
         self.chain_access = session.chain_access
 

@@ -106,7 +106,7 @@ from agents.shared.hub_format import (
 from config import INPUT_IMAGES_SUBDIR, LOGS_DIR, USER_INPUTS_DIR
 from agents.shared.pack_text import fill
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 
@@ -175,7 +175,6 @@ class Planner3(BaseChainAgent):
         # ``dc_inspector_enabled`` is deliberately absent: topology 3 has no
         # DC Input Inspector to enable.
         self.rag_enabled = session.rag_enabled
-        self.mesh_checks = session.mesh_checks
         self.dcoi_comparison_mode = session.dcoi_comparison_mode
         # ``chain_access`` is deliberately absent: see dispatch().
 

@@ -76,7 +76,7 @@ from workflow_settings import ocr_access
 from workflow_settings import ocr_region_crops_access
 from workflow_settings import settings as workflow_settings
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 ALLOWED_IMAGE_SUFFIXES = {".png", ".jpg", ".jpeg"}
 # Mirrors tools.retrieval_common.RETRIEVED_SUBDIR.  A literal, not an
@@ -614,13 +614,10 @@ def _attempt_params_blocks(loaded) -> list:
     upstream agent to relay them.  One block per attempt folder; silently
     skipped when the folder has no readable/complete ``parameters.json``.
     """
-    # The block comes from the pack's blade-sections tool (its
-    # sections_geom module, pure maths: no render stack).  Loaded lazily, when
-    # a render is actually viewed.  Propeller-specific engine code: MAS-blueprint
-    # P4 makes this generic.
+    # The note is the tools': each one that declares an ``image_note`` in its
+    # tool.yaml writes its part (engine/pack_tools.image_notes).  Loaded
+    # lazily, when a picture is actually viewed.
     from engine import pack_tools
-    rendered_params_block = pack_tools.plugin(
-        "render_blade_sections").submodule("sections_geom").rendered_params_block
 
     out, seen = [], set()
     for raw in loaded:
@@ -633,8 +630,9 @@ def _attempt_params_blocks(loaded) -> list:
         seen.add(folder)
         try:
             params = json.loads(pj.read_text(encoding="utf-8"))
-            if isinstance(params, dict):
-                out.append(f"{folder.name}:\n" + rendered_params_block(params))
+            notes = pack_tools.image_notes(params) if isinstance(params, dict) else []
+            if notes:
+                out.append(f"{folder.name}:\n" + "\n\n".join(notes))
         except Exception:  # unreadable / partial params — not worth failing a view
             continue
     return out

@@ -35,8 +35,9 @@ from typing import Any
 
 from agents.shared import token_usage
 from config import PREVIOUS_SESSIONS_DIR
+from agents.shared.pack_text import fill
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 # ---------------------------------------------------------------------------
 # Paths
@@ -369,9 +370,10 @@ def classifier_key_present(provider: str) -> bool:
 # Intermediate-vs-final classifier
 # ---------------------------------------------------------------------------
 
-_CLASSIFIER_SYSTEM = (
+# The configurator's words come from the pack, filled at import.
+_CLASSIFIER_SYSTEM = fill(
     "You are a strict classifier for an automated benchmark runner driving a "
-    "multi-agent propeller-design assistant. Your ONLY job: decide whether the "
+    "multi-agent $dc_name-design assistant. Your ONLY job: decide whether the "
     "assistant's latest reply has DELIVERED what the user asked for in THIS "
     "run, or whether the assistant is still working — i.e. it paused, is asking "
     "a clarifying question, gave only a partial / intermediate result, or is "
@@ -379,11 +381,11 @@ _CLASSIFIER_SYSTEM = (
     "\n"
     "Judge STRICTLY against what the user actually requested in their query "
     "(and the explicit acceptance criterion, if one is given) — NOT against any "
-    "assumption about what a 'complete' propeller job normally involves. In "
+    "assumption about what a 'complete' $dc_name job normally involves. In "
     "particular: if the user asked only for extracted parameter values, a "
     "specific number, or any text answer, then a reply that contains exactly "
-    "that IS final — even if no 3D geometry, mesh, blade-section drawings, or "
-    "renders were produced. Absent geometry means 'not done' ONLY when the user "
+    "that IS final — even if no $produced_outputs_examples were produced. "
+    "Absent geometry means 'not done' ONLY when the user "
     "asked for geometry. Do not invent extra steps the user did not request.\n"
     "\n"
     "Refine that with three rules:\n"
@@ -399,7 +401,7 @@ _CLASSIFIER_SYSTEM = (
     "from the values (a generated 3D model, a built or rendered geometry), a "
     "parameter list or a described plan is NOT yet final — finality needs the "
     "produced result to actually exist (the files-produced line should name a "
-    "real mesh/render). If unsure, prefer INTERMEDIATE.\n"
+    "real $output_model/$output_image). If unsure, prefer INTERMEDIATE.\n"
     "\n"
     "- OPTIONAL/WELCOMED WORK. Steps the user only permits or welcomes but does "
     "not require do not by themselves gate finality: a complete required answer "

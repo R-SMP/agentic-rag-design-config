@@ -32,7 +32,7 @@ from .generate_mesh import (
     render_agent_mesh_obj_text,
 )
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 def build(inp: GeneratorInput) -> BuildResult:

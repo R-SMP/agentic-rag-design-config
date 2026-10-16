@@ -112,7 +112,7 @@ def _load_font(size):
     global _FONT_WARNED
     if not _FONT_WARNED:
         _FONT_WARNED = True
-        logging.getLogger("propeller_agent").error(
+        logging.getLogger("mas_agent").error(
             "[render_blade_sections]  no system TrueType font found; using "
             "PIL's EMBEDDED fallback face at the requested size.  Labels stay "
             "readable, but the metrics are not the DejaVu the layout was tuned "

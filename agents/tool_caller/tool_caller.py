@@ -56,7 +56,7 @@ from agents.shared.dba_tools import dba_tools_for
 from agents.shared.dc_params_tool import param_tools_for
 from engine import pack_tools
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 # ---------------------------------------------------------------------------
@@ -100,8 +100,6 @@ class ToolCaller(BaseChainAgent):
         # "tool" (engine/parameter_access.py).
         utility_tools.extend(param_tools_for(self.AGENT_KEY))
         self._extra_utility_tools_by_name = {t.name: t for t in utility_tools}
-        self.mesh_checks = session.mesh_checks
-        self.render_library = session.render_library
         self._routing_tools_by_name: dict = {}
         self.system_prompt: str = ""
 
@@ -127,25 +125,16 @@ class ToolCaller(BaseChainAgent):
             prev_agent=prev_agent,
             fragment_name="routing_tool_caller.md",
         )
-        # Mesh checks OFF => the render step emits no metrics at all
-        # (render_mesh.py:281 guards the findings, :329 the summary), so a
-        # backend's metric semantics would describe a report this agent
-        # never receives.  Gated HERE rather than with an <<IF:setting:…>> region
-        # because .format() runs AFTER apply_flag_filters — a marker inside
-        # the injected fragment would never be filtered.
-        # Read HERE, not from the module-level RENDER_CHECK_LIBRARY_*
-        # constants: those are resolved at prompts-import time and would pin
-        # the fragment to whatever SYSTEM_TOPOLOGY was on disk when the
-        # process started (topology.py:11-15 -- the Sessions Queue switches
-        # topology between runs inside one process).
+        # The tool that declares this placeholder (runtime_blocks in its
+        # tool.yaml) says which of its slots fills it, from the settings the
+        # session started with.  Filled HERE rather than with markers because
+        # ``.format()`` runs AFTER apply_flag_filters -- a marker inside the
+        # injected fragment would never be filtered -- and read here, per
+        # session, because the Sessions Queue switches topology between runs
+        # inside one process.
         render_check_block = read_pack_fragment(
-            "render_check_library_"
-            + (
-                ("pyvista" if self.render_library == "pyvista" else "trimesh")
-                if self.mesh_checks
-                else "off"
-            )
-        )
+            pack_tools.runtime_block_slot(
+                "render_check_library_block", self.session.tool_settings))
         # Built fresh at construction time so live edits to .md
         # fragments on disk take effect on the
         # NEXT session without a Python restart.

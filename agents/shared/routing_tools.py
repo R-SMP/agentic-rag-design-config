@@ -40,7 +40,7 @@ from agents.shared.trace import trace as _trace
 if TYPE_CHECKING:
     from agents.shared.session import Session
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 # ---------------------------------------------------------------------------

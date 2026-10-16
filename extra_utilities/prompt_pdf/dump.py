@@ -142,14 +142,9 @@ def runtime_slots():
                 prev_agent="DC Input Inspector" if DCII_ON else "DC Input Creator",
                 fragment_name="routing_tool_caller.md",
             ),
-            render_check_library_block=(
-                (
-                    P.RENDER_CHECK_LIBRARY_PYVISTA
-                    if _GEN["render_library"] == "pyvista"
-                    else P.RENDER_CHECK_LIBRARY_TRIMESH
-                )
-                if _GEN["mesh_checks"] else P.RENDER_CHECK_LIBRARY_OFF
-            ),
+            render_check_library_block=P.read_pack_fragment(
+                pack_tools.runtime_block_slot(
+                    "render_check_library_block", pack_tools.settings_snapshot())),
         ),
         "dc_output_inspector": dict(
             routing_instructions=P.routing_instructions(

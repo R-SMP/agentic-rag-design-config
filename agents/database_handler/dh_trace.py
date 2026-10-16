@@ -9,7 +9,7 @@ database?`` at the end of the session):
       agent it interviewed, which field it filled, when each
       conversation started / finished, file write paths, and any
       warnings or errors.  Written via the ``database_handler``
-      logger; does NOT propagate to the main ``propeller_agent``
+      logger; does NOT propagate to the main ``mas_agent``
       session logger, so the main session log stays focused on the
       session itself.
 

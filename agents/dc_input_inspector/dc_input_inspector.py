@@ -66,7 +66,7 @@ from tools.calculate.calculate import calculate
 from agents.shared.dba_tools import dba_tools_for
 from agents.shared.dc_params_tool import param_tools_for
 
-logger = logging.getLogger("propeller_agent")
+logger = logging.getLogger("mas_agent")
 
 
 # ---------------------------------------------------------------------------

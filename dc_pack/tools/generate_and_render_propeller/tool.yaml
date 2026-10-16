@@ -56,10 +56,26 @@ outputs:
   # a view left OFF is missing from every attempt archived meanwhile.
   # order = their order in a response (isometric first: the most
   # informative single view of a propeller).
+  # The picture contract (engine/pack_tools.py): a picture of view V is the
+  # PNG render_<V>.png the tool writes into the attempt folder it is given;
+  # compression = which Workflow Settings shrink strength applies to it.
   images:
-    - {view: isometric, file: render_isometric.png, order: 10, default_enabled: true, label: "Render view: isometric"}
-    - {view: top, file: render_top.png, order: 20, default_enabled: true, label: "Render view: top"}
-    - {view: side, file: render_side.png, order: 40, default_enabled: false, label: "Render view: side"}
+    - {view: isometric, file: render_isometric.png, order: 10, default_enabled: true, compression: 3d_render, label: "Render view: isometric"}
+    - {view: top, file: render_top.png, order: 20, default_enabled: true, compression: 3d_render, label: "Render view: top"}
+    - {view: side, file: render_side.png, order: 40, default_enabled: false, compression: 3d_render, label: "Render view: side"}
+
+# May the save step use this tool to add a missing picture to an attempt it
+# archives (agents/shared/attempt_renders.py)?
+fill_on_save: true
+
+# The {render_check_library_block} of the tool runner's prompt: one of this
+# tool's slots, chosen by its settings -- the "off" block while mesh checks
+# are off, else the block for the render library.
+runtime_blocks:
+  render_check_library_block:
+    slot: render_check_library_${render_library}
+    off_unless: mesh_checks
+    off_slot: render_check_library_off
 
 settings:
   - name: geometry_backend
