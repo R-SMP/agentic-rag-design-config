@@ -76,6 +76,13 @@ the Download buttons' choice pick (``engine/pack_tools.make_model``):
    broken copies of the pack (a geometry tool with roles, without
    entrypoint or with another format, a setting naming a geometry tool
    the pack lacks, a tool folder called ``downloads``) are refused.
+13. IMAGE RUN.  ``engine/image_run.run`` (the generic Preview, the
+   render-compression samples) with stand-in tools: the helpers first,
+   called with the parameter file, then the generator; only switched-on
+   views; the run's own attempts root (the session's restored after);
+   errors reported per tool; the samples keep, per compression kind, the
+   first picture of that kind for each of ``pack.yaml``'s sample sets,
+   and a sample set missing a parameter is refused.
 
 Run from the repo root:  py -3.13 extra_utilities/tests/smoke_test_pack_tools.py
 """
@@ -541,6 +548,86 @@ def check_geometry() -> int:
     return _refused(cases, "[GEOMETRY]")
 
 
+def check_image_run() -> int:
+    """The image runner's order, views, attempts root, errors and samples,
+    with stand-in tools."""
+    from engine import image_run as IR
+    cases = 0
+    root = Path(tempfile.mkdtemp(prefix="image_run_")).resolve()
+    calls: list = []
+    real = (T.Plugin.function, T.run_generator, config.ATTEMPTS_DIR, IR.run_in_child)
+    params = {p["name"]: p["default"] for p in json.loads(
+        (ROOT / "dc_pack" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
+
+    def fake_function(self, ref):
+        def fn(parameters_path, *a, **k):
+            calls.append(("helper", self.name, str(config.ATTEMPTS_DIR) == str(root)))
+            (Path(parameters_path).parent / "render_blade_sections.png").write_bytes(b"sec")
+            return "drawn"
+        return fn
+
+    def fake_run(name, parameters_path):
+        calls.append(("generator", name, str(config.ATTEMPTS_DIR) == str(root)))
+        for f in ("render_isometric.png", "render_top.png", "render_side.png"):
+            (Path(parameters_path).parent / f).write_bytes(f.encode())
+        return "Mesh saved.\n\nreport"
+    try:
+        T.Plugin.function, T.run_generator = fake_function, fake_run
+        res = IR.run(params, root, "preview")
+        cases += 1
+        check([c[:2] for c in calls] == [("helper", SEC), ("generator", GEN)]
+              and all(c[2] for c in calls),
+              f"[IMAGE RUN] calls {calls}: want the helper, then the generator, in the run's root")
+        check(config.ATTEMPTS_DIR == real[2], "[IMAGE RUN] the attempts root was not restored")
+        check([i["view"] for i in res["images"]] == ["isometric", "top", "blade_sections"]
+              and not res["errors"],
+              f"[IMAGE RUN] images {[i['view'] for i in res['images']]} errors {res['errors']} "
+              f"(want the switched-on views in order; side is off)")
+        T.run_generator = lambda name, path: "FEG error: no node"
+        res = IR.run(params, root, "broken")
+        cases += 1
+        check(res["errors"] == [{"tool": GEN, "message": "FEG error: no node"}]
+              and [i["view"] for i in res["images"]] == ["blade_sections"],
+              f"[IMAGE RUN] a failing generator: {res}")
+        # The samples: one picture per compression kind and set.
+        T.run_generator = fake_run
+
+        def fake_child(sets, timeout=0):
+            out_root = Path(tempfile.mkdtemp(prefix="image_run_child_"))
+            return {n: IR.run(p, out_root, n) for n, p in sets.items()}, out_root
+        IR.run_in_child = fake_child
+        out = Path(tempfile.mkdtemp(prefix="samples_"))
+        res = IR.make_render_samples(out)
+        cases += 1
+        want = sorted(f"{k}_{s}.png" for k in ("cross", "geo")
+                      for s in ("small", "medium", "large"))
+        check(sorted(res["written"]) == want
+              and (out / "geo_small.png").read_bytes() == b"render_isometric.png"
+              and (out / "cross_large.png").read_bytes() == b"sec",
+              f"[IMAGE RUN] samples written {res['written']}")
+        shutil.rmtree(out, ignore_errors=True)
+        sets = IR.render_sample_sets()
+        check(list(sets) == ["small", "medium", "large"]
+              and all(list(v) == list(params) for v in sets.values()),
+              f"[IMAGE RUN] pack.yaml's sample sets: {list(sets)}")
+        broken = Path(tempfile.mkdtemp(prefix="packyaml_")) / "pack.yaml"
+        text = (ROOT / "dc_pack" / "pack.yaml").read_text(encoding="utf-8")
+        broken.write_text(text.replace("  small: {bladeCount: 3, ", "  small: {"),
+                          encoding="utf-8")
+        try:
+            IR.render_sample_sets(broken)
+            check(False, "[IMAGE RUN] a sample set without bladeCount was accepted")
+        except T.PackToolError:
+            pass
+        shutil.rmtree(broken.parent, ignore_errors=True)
+    except Exception as exc:                                        # noqa: BLE001
+        check(False, f"[IMAGE RUN] {type(exc).__name__}: {str(exc)[:200]}")
+    finally:
+        T.Plugin.function, T.run_generator, config.ATTEMPTS_DIR, IR.run_in_child = real
+        shutil.rmtree(root, ignore_errors=True)
+    return cases
+
+
 def check_tool_list() -> None:
     from agents.shared import agent_roles
     from workflow_settings import settings as S
@@ -790,12 +877,14 @@ def main() -> int:
     check_compression()
     check_runtime_block()
     n_geometry = check_geometry()
+    n_runs = check_image_run()
     print(f"{len(T.manifests())} tools; {n} golden cases compared with "
           f"{FIXTURE.relative_to(ROOT).as_posix()}; {len(PK.tool_claims())} tool-text "
           f"slots owned, {n_broken} broken packs refused; 6 tool lists compared with "
           f"{LISTS.relative_to(ROOT).as_posix()}; {n_built} prompts built without "
           f"the blade-sections tool; {n_contract} pictures-contract breaks refused; "
-          f"{n_saves} save-step cases; {n_geometry} broken geometry packs refused")
+          f"{n_saves} save-step cases; {n_geometry} broken geometry packs refused; "
+          f"{n_runs} image-run cases")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
@@ -806,8 +895,9 @@ def main() -> int:
           "what they answered before the move, each owns its prompt text, the "
           "tool list is built exactly as it was written, a tool can be removed, "
           "the picture contract, the save step, the shrink strengths and the "
-          "runtime block come from the manifests, and the geometry tools are "
-          "chosen and fall back as their settings say.")
+          "runtime block come from the manifests, the geometry tools are "
+          "chosen and fall back as their settings say, and the image runner "
+          "makes the tools' pictures in a root of its own.")
     return 0
 
 

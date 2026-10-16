@@ -771,10 +771,26 @@ const TOOL_NAMES = new Set([
 // writes, and the tools the flowchart and the LLM routing chart draw.
 // --------------------------------------------------------------------
 const PACK_PAGE = window.PACK_PAGE ||
-  { words: {}, tools: { pack: [], standard: [] } };
+  { words: {}, tools: { pack: [], standard: [] }, model: null, preview: false };
 if (!window.PACK_PAGE) {
   console.error("/pack/page.js did not load: no tools or pack words to show.");
 }
+
+// The pack's browser preview for the Parameters page (dc_pack/preview/,
+// served at /pack/preview/preview.js): what it exports drives the left
+// pane -- the 3D model, extra views, the highlight of the group being
+// edited -- and the drawings beside the group pictures.  Loaded once;
+// null for a pack without one, which gets the generic Preview button
+// instead (paramsUseImagePreview).
+let packPreview = null;
+const packPreviewReady = PACK_PAGE.preview
+  ? import("/pack/preview/preview.js")
+      .then((m) => { packPreview = m; window.packPreview = m; return m; })
+      .catch((e) => {
+        console.error("/pack/preview/preview.js did not load:", e);
+        return null;
+      })
+  : Promise.resolve(null);
 
 // --------------------------------------------------------------------
 // LOG and Status: the TOOLS panel -- one box per tool, the pack's own
@@ -2033,7 +2049,8 @@ settingsReload &&
 
 // ---------------------------------------------------------------------------
 // Render compression panel — per-type degree (cross-section diagrams vs 3D
-// geometry) previewed live against the bundled web/render_samples/ renders.
+// geometry) previewed live against sample pictures: the ones Generate
+// samples made (web/render_samples/), else the ones the pack ships.
 // ---------------------------------------------------------------------------
 const RC_KINDS = ["cross", "geo"];
 let rcSizes = ["small", "medium", "large"];
@@ -2077,9 +2094,7 @@ async function rcRefreshSamples(kind) {
   if (!wrap) return;
   if (!rcAvail[kind]) {
     wrap.innerHTML =
-      '<p class="rc-missing">Samples not generated yet — run ' +
-      '<code>python extra_utilities/scripts/gen_render_samples.py --geo</code> in the ' +
-      'app container, then commit <code>web/render_samples/geo_*.png</code>. ' +
+      '<p class="rc-missing">Samples not made yet — press Generate samples. ' +
       'The degree still applies to real renders.</p>';
     return;
   }
@@ -2149,7 +2164,7 @@ async function saveRenderCompression() {
 
 function updateGeoGenButton() {
   const btn = $("rc-geo-generate");
-  if (btn) btn.textContent = rcAvail.geo ? "Regenerate 3D samples" : "Generate 3D samples";
+  if (btn) btn.textContent = rcAvail.geo ? "Regenerate samples" : "Generate samples";
 }
 
 // ---- Model context windows -----------------------------------------------
@@ -2793,8 +2808,9 @@ async function saveModelWindows() {
   }
 }
 
-// Run gen_render_samples.py --geo server-side (needs Node + pyrender, both in
-// the app container).  Ephemeral — a redeploy wipes the samples, re-run then.
+// Make the sample pictures server-side: the pack's image tools on its sample
+// sets (needs what the tools need -- Node + pyrender for the propeller, both
+// in the app container).  Ephemeral — a redeploy wipes them, re-run then.
 async function generateGeoSamples() {
   const btn = $("rc-geo-generate");
   const st = $("rc-geo-gen-status");
@@ -2804,14 +2820,14 @@ async function generateGeoSamples() {
   if (btn) btn.disabled = true;
   setGen("Generating… (~30s, don't leave the page)", "");
   try {
-    const res = await fetch("/api/render_compression/generate_geo", { method: "POST" });
+    const res = await fetch("/api/render_compression/generate", { method: "POST" });
     const d = await res.json().catch(() => ({}));
     if (res.status === 409) { setGen("Locked — end the session first.", "err"); return; }
     if (!res.ok) { setGen(d.detail || "Generation failed.", "err"); return; }
-    rcAvail.geo = true;
+    rcAvail = { cross: !!d.cross_available, geo: !!d.geo_available };
     updateGeoGenButton();
     setGen("Generated.", "ok");
-    rcRefreshSamples("geo");
+    for (const kind of RC_KINDS) rcRefreshSamples(kind);
   } catch (e) {
     setGen("Network error: " + e, "err");
   } finally {
@@ -6505,23 +6521,25 @@ const paramRowState = {};
 
 
 // ---------------------------------------------------------------------------
-// Live 3D preview pipeline — front-end geometry (FEG).
+// Live 3D preview pipeline — the pack's browser preview (packPreview).
 //
-// On every slider input we rebuild the propeller IN THE BROWSER (three.js,
-// web/feg/*) and show it in the params-view Viewer instance — no server
-// round-trip.  The precise RhinoCompute geometry (RCG) is fetched only when
-// the user clicks Download geometry (see paramsDownloadMesh).
+// On every slider input the model is rebuilt IN THE BROWSER by the pack's
+// preview module (three.js; the propeller's is FEG) and shown in the
+// params-view Viewer instance — no server round-trip.  The model a user
+// downloads is made on the server by the geometry tool chosen for
+// downloads (see paramsDownloadMesh).
 //
 // Rebuilds are coalesced with requestAnimationFrame so a fast drag rebuilds
-// at most once per frame (the FEG geometry is small, so this feels instant).
+// at most once per frame.
 // ---------------------------------------------------------------------------
 
 let paramsFegRafId = null;          // pending rAF handle (null = none queued)
 
 function paramsBuildPreviewBody() {
-  // Snapshot the current 17-param values into a plain dict.  Reads
-  // paramState (kept in sync by the slider input handler).  Used by both
-  // the FEG build and the RCG download (/api/preview_mesh body).
+  // Snapshot the current parameter values into a plain dict.  Reads
+  // paramState (kept in sync by the slider input handler).  Used by the
+  // browser preview, the generic Preview and the download
+  // (/api/preview_mesh body).
   const out = {};
   for (const key of Object.keys(paramSpecByKey)) {
     out[key] = paramState[key];
@@ -6530,54 +6548,58 @@ function paramsBuildPreviewBody() {
 }
 
 function paramsRenderFEG() {
-  // Build + show the FEG from the current paramState.  Synchronous —
-  // delegates to Viewer.loadFromParams (web/feg/*).  No-op if the params
-  // viewer isn't available.
+  // Build + show the model from the current paramState.  Synchronous —
+  // delegates to Viewer.loadFromParams (the pack's preview module).  No-op
+  // if the params viewer or the module isn't available.
   if (!window.paramsViewer || !window.paramsViewer.loadFromParams) return;
   const ok = window.paramsViewer.loadFromParams(paramsBuildPreviewBody(), "");
   if (!ok) return;
-  // There is now a parameter set worth sending to RhinoCompute, so the
-  // Download geometry (RCG) button becomes meaningful.
+  // There is now a parameter set worth building on the server, so the
+  // Download geometry button becomes meaningful.
   const dlBtn = document.getElementById("params-download-mesh");
   if (dlBtn) dlBtn.disabled = false;
 }
 
-// Redraw the per-section 2D cross-section canvases (Inner/Middle/Outer) from
-// the current paramState.  Independent of the 3D viewer — needs only
-// window.fegDrawProfile2D (set by viewer.js) and the canvases.  Each tab
-// shows only its own section, so all are drawn "active" (green), matching the
-// 3D active outline.
+// Redraw the drawings beside the group pictures (the propeller's Inner /
+// Middle / Outer cross-sections) from the current paramState.  Independent
+// of the 3D viewer — needs only the pack's drawGroupFigure and the canvases
+// paramsAddGroupFigures made.
 function paramsRedrawSections() {
-  if (!window.fegDrawProfile2D) return;
+  if (!packPreview || !packPreview.drawGroupFigure) return;
   const params = paramsBuildPreviewBody();
   document
-    .querySelectorAll(".param-section-canvas[data-section]")
+    .querySelectorAll(".param-section-canvas[data-group]")
     .forEach((canvas) => {
-      const kind = canvas.getAttribute("data-section");
       try {
-        window.fegDrawProfile2D(canvas, kind, params, { active: true });
+        packPreview.drawGroupFigure(canvas, canvas.dataset.group, params);
       } catch (e) {
-        // Degenerate params can throw in the morph math; skip this canvas.
+        // Degenerate params can throw in the drawing math; skip this canvas.
       }
     });
 }
 
-// Left-pane preview mode: "3d" (FEG WebGL) or "sections" (2D blade-sections).
+// Left-pane preview mode: "3d" (the WebGL model) or the id of one of the
+// preview module's extra views (the propeller's "sections").
 let paramsViewMode = "3d";
 
-// Redraw the Blade-sections 2D view (Inner/Middle/Outer airfoils on a 1mm
-// grid + a corner angle-of-attack protractor) from the current paramState.
+function paramsExtraView(id) {
+  return ((packPreview && packPreview.views) || []).find((v) => v.id === id) || null;
+}
+
+// Redraw the active extra view (the propeller's Blade sections: Inner /
+// Middle / Outer airfoils on a 1 mm grid) from the current paramState.
 function paramsRedrawBladeSections() {
-  const canvas = document.getElementById("params-sections-canvas");
-  if (!canvas || !window.fegDrawBladeSections) return;
-  window.fegDrawBladeSections(canvas, paramsBuildPreviewBody());
+  const canvas = document.getElementById("params-extra-view-canvas");
+  const view = paramsExtraView(paramsViewMode);
+  if (!canvas || !view) return;
+  view.draw(canvas, paramsBuildPreviewBody());
 }
 
 // Refresh the previews from the current paramState.  The left pane shows
-// either the 3D FEG or the 2D blade-sections (whichever mode is active); the
-// per-tab section cross-sections in the right column always redraw.
+// either the 3D model or an extra view (whichever mode is active); the
+// drawings beside the group pictures always redraw.
 function paramsUpdatePreview() {
-  if (paramsViewMode === "sections") {
+  if (paramsExtraView(paramsViewMode)) {
     paramsRedrawBladeSections();
   } else {
     paramsRenderFEG();
@@ -6585,17 +6607,17 @@ function paramsUpdatePreview() {
   paramsRedrawSections();
 }
 
-// Switch the left pane between the 3D FEG preview and the 2D Blade-sections
-// view.  refresh=false only sets the UI/visibility (used by End-Session reset,
+// Switch the left pane between the 3D model and an extra view.
+// refresh=false only sets the UI/visibility (used by End-Session reset,
 // which must NOT rebuild into the just-unloaded viewer).
 function paramsSetViewMode(mode, { refresh = true } = {}) {
-  paramsViewMode = mode === "sections" ? "sections" : "3d";
-  const showSections = paramsViewMode === "sections";
+  paramsViewMode = paramsExtraView(mode) ? mode : "3d";
+  const showSections = paramsViewMode !== "3d";
   document.querySelectorAll(".params-viewmode-toggle button").forEach((b) => {
     b.classList.toggle("active", b.dataset.pmode === paramsViewMode);
   });
   const viewer3d = document.getElementById("params-viewer");
-  const sections = document.getElementById("params-sections");
+  const sections = document.getElementById("params-extra-view");
   const resetBtn = document.getElementById("params-viewer-reset");
   if (viewer3d) viewer3d.hidden = showSections;
   if (sections) sections.hidden = !showSections;
@@ -6829,19 +6851,10 @@ function paramsBuildSectionHeader(group) {
   img.alt = group.imageAlt;
   media.appendChild(img);
 
-  // The three airfoil sections get a live 2D cross-section canvas alongside
-  // the parameter image; General (ring/impeller params) gets the image only.
-  const kind = group.key === "general" ? null : group.key;  // inner|middle|outer
-  if (kind) {
-    const canvas = document.createElement("canvas");
-    canvas.className = "param-section-canvas";
-    canvas.dataset.section = kind;
-    canvas.width = 360;     // drawing buffer (CSS scales the display size)
-    canvas.height = 180;
-    media.appendChild(canvas);
-    header.classList.add("has-canvas");
-  }
-
+  // The groups the pack's preview module draws (groupFigures) get a live
+  // drawing beside the picture, added by paramsAddGroupFigures once the
+  // module has loaded.
+  header.dataset.group = group.key;
   header.appendChild(media);
 
   const title = document.createElement("h3");
@@ -6867,15 +6880,101 @@ function paramsBuildAll() {
   }
 }
 
-// Maps a parameter tab to the FEG section outline highlighted green in the
-// params viewer (general tab → none, so all three stay blue).  See
-// Viewer.setActiveProfile().
-const TAB_TO_PROFILE = {
-  general: null,
-  inner: "InnerProfile",
-  middle: "MiddleProfile",
-  outer: "OuterProfile",
-};
+// Add a live-drawing canvas beside the picture of every group the pack's
+// preview module draws (packPreview.groupFigures).
+function paramsAddGroupFigures() {
+  const groups = (packPreview && packPreview.groupFigures) || [];
+  for (const key of groups) {
+    const header = document.querySelector(`.param-section-header[data-group="${key}"]`);
+    const media = header && header.querySelector(".param-section-media");
+    if (!media || media.querySelector(".param-section-canvas")) continue;
+    const canvas = document.createElement("canvas");
+    canvas.className = "param-section-canvas";
+    canvas.dataset.group = key;
+    canvas.width = 360;     // drawing buffer (CSS scales the display size)
+    canvas.height = 180;
+    media.appendChild(canvas);
+    header.classList.add("has-canvas");
+  }
+}
+
+// The left-pane toggle: the 3D button's tooltip and one button per extra
+// view of the pack's preview module (the propeller's Blade sections).
+function paramsAddPreviewViews() {
+  const toggle = document.querySelector(".params-viewmode-toggle");
+  if (!toggle) return;
+  const btn3d = toggle.querySelector('button[data-pmode="3d"]');
+  if (btn3d && packPreview.modelTitle) btn3d.title = packPreview.modelTitle;
+  for (const v of packPreview.views || []) {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.dataset.pmode = v.id;
+    if (v.title) b.title = v.title;
+    b.textContent = v.label;
+    b.addEventListener("click", () => paramsSetViewMode(v.id));
+    toggle.appendChild(b);
+  }
+  if (!(packPreview.views || []).length) toggle.style.display = "none";
+}
+
+// A pack without a browser preview module: the left pane offers the
+// generic Preview -- the tools' pictures of the current values, made on
+// the server in a process of its own (POST /api/preview_images).
+function paramsUseImagePreview() {
+  for (const sel of [".params-viewmode-toggle", "#params-viewer", "#params-extra-view",
+                     "#params-viewer-reset"]) {
+    const el = document.querySelector(sel);
+    if (el) el.style.display = "none";
+  }
+  const pane = document.getElementById("params-image-preview");
+  if (pane) pane.hidden = false;
+  const dlBtn = document.getElementById("params-download-mesh");
+  if (dlBtn && PACK_PAGE.model) dlBtn.disabled = false;
+  const btn = document.getElementById("params-preview-btn");
+  if (btn) btn.addEventListener("click", paramsRunImagePreview);
+}
+
+async function paramsRunImagePreview() {
+  const btn = document.getElementById("params-preview-btn");
+  const status = document.getElementById("params-preview-status");
+  const gallery = document.getElementById("params-preview-gallery");
+  const say = (msg, err) => {
+    if (!status) return;
+    status.textContent = msg;
+    status.classList.toggle("error", !!err);
+  };
+  if (btn) btn.disabled = true;
+  say("Making the pictures…", false);
+  try {
+    const res = await fetch("/api/preview_images", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ params: paramsBuildPreviewBody() }),
+    });
+    if (res.status === 401) { showGate(); return; }
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok) { say("Preview failed: " + (d.detail || res.status), true); return; }
+    gallery.textContent = "";
+    for (const img of d.images || []) {
+      const fig = document.createElement("figure");
+      fig.className = "params-preview-fig";
+      const el = document.createElement("img");
+      el.src = img.src;
+      el.alt = img.label;
+      const cap = document.createElement("figcaption");
+      cap.textContent = img.label;
+      fig.appendChild(el);
+      fig.appendChild(cap);
+      gallery.appendChild(fig);
+    }
+    const errs = (d.errors || []).map((e) => e.message);
+    say(errs.length ? "Preview failed: " + errs.join(" | ") : "", errs.length > 0);
+  } catch (e) {
+    say("Preview failed: " + e, true);
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+}
 
 function paramsSwitchTab(tabKey) {
   document.querySelectorAll(".params-tab-btn").forEach((b) => {
@@ -6884,9 +6983,10 @@ function paramsSwitchTab(tabKey) {
   document.querySelectorAll(".params-pane").forEach((p) => {
     p.classList.toggle("active", p.dataset.paramtab === tabKey);
   });
-  // Recolour the matching 3D section outline green (instant; no rebuild).
-  if (window.paramsViewer && window.paramsViewer.setActiveProfile) {
-    window.paramsViewer.setActiveProfile(TAB_TO_PROFILE[tabKey] || null);
+  // Highlight the part this group shapes (the propeller's section outline,
+  // green; instant, no rebuild).
+  if (window.paramsViewer && window.paramsViewer.setActiveGroup) {
+    window.paramsViewer.setActiveGroup(tabKey);
   }
 }
 
@@ -7207,19 +7307,31 @@ function paramsInit() {
   // preview).
   const dlBtn = document.getElementById("params-download-mesh");
   if (dlBtn) dlBtn.addEventListener("click", paramsDownloadMesh);
-  // Wire the "3D view / Blade sections" left-pane toggle.
+  // Wire the left-pane toggle's 3D button (the extra views' buttons are
+  // added, wired, by paramsAddPreviewViews).
   document.querySelectorAll(".params-viewmode-toggle button").forEach((b) => {
     b.addEventListener("click", () => paramsSetViewMode(b.dataset.pmode));
   });
-  // Refit the Blade-sections canvas when its pane resizes (fit-to-pane scale).
-  const sectionsEl = document.getElementById("params-sections");
+  // Refit the extra view's canvas when its pane resizes (fit-to-pane scale).
+  const sectionsEl = document.getElementById("params-extra-view");
   if (sectionsEl && typeof ResizeObserver !== "undefined") {
     new ResizeObserver(() => {
-      if (paramsViewMode === "sections") paramsRedrawBladeSections();
+      if (paramsExtraView(paramsViewMode)) paramsRedrawBladeSections();
     }).observe(sectionsEl);
   }
   // Default to General Parameters on first render.
   paramsSwitchTab("general");
+  // The pack's preview module drives the rest of the pane once loaded.
+  packPreviewReady.then(() => {
+    if (packPreview) {
+      paramsAddPreviewViews();
+      paramsAddGroupFigures();
+    } else {
+      paramsUseImagePreview();
+    }
+    const view = document.querySelector('.view[data-view="params"]');
+    if (view && !view.hidden) paramsUpdatePreview();
+  });
 }
 
 paramsInit();

@@ -1,9 +1,9 @@
 {
   "groups": [
-    {"id": "general", "label": "General Parameters", "image": "/static/images/general-profile.png", "image_alt": "General profile diagram", "order": ["impellerRadius", "impellerThickness", "bladeCount"]},
-    {"id": "inner", "label": "Inner Profile", "image": "/static/images/inner-profile.png", "image_alt": "Inner profile diagram", "order": ["innerThickness", "innerMaxPos", "innerCamber", "innerChord", "innerAngle"]},
-    {"id": "middle", "label": "Middle Profile", "image": "/static/images/middle-profile.png", "image_alt": "Middle profile diagram", "order": ["middlePos", "middleChord", "middleAngle"]},
-    {"id": "outer", "label": "Outer Profile", "image": "/static/images/outer-profile.png", "image_alt": "Outer profile diagram", "order": ["outerThickness", "outerMaxPos", "outerCamber", "outerChord", "outerAngle"]}
+    {"id": "general", "label": "General Parameters", "image": "/pack/assets/general-profile.png", "image_alt": "General profile diagram", "order": ["impellerRadius", "impellerThickness", "bladeCount"]},
+    {"id": "inner", "label": "Inner Profile", "image": "/pack/assets/inner-profile.png", "image_alt": "Inner profile diagram", "order": ["innerThickness", "innerMaxPos", "innerCamber", "innerChord", "innerAngle"]},
+    {"id": "middle", "label": "Middle Profile", "image": "/pack/assets/middle-profile.png", "image_alt": "Middle profile diagram", "order": ["middlePos", "middleChord", "middleAngle"]},
+    {"id": "outer", "label": "Outer Profile", "image": "/pack/assets/outer-profile.png", "image_alt": "Outer profile diagram", "order": ["outerThickness", "outerMaxPos", "outerCamber", "outerChord", "outerAngle"]}
   ],
   "parameters": [
     {"name": "bladeCount", "type": "int", "min": 3, "max": 6, "step": 1, "default": 3, "group": "general", "label": "Blade Count", "unit": "", "db_unit": "count", "db_description": "Number of blades"},

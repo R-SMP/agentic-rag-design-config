@@ -7,7 +7,7 @@ geometry's ring height stays identical to the in-browser FEG 3D preview: the
 computed value is injected into the ``.gh`` definition in place of the old
 ``impellerHeight`` input.
 
-It ports, verbatim, the height-relevant part of ``web/feg``:
+It ports, verbatim, the height-relevant part of ``dc_pack/preview/feg``:
   * ``naca.js``      — symmetric NACA thickness + camber mean-line + morph
   * ``placement.js`` — the axial (Z) coordinate of the placed outer section
   * ``ring.js``      — ``fittedHeight = (zMax - zMin) + 2·clearance``
@@ -18,20 +18,20 @@ fitted height therefore depends on exactly five params: ``outerThickness,
 outerMaxPos, outerCamber, outerChord, outerAngle``.
 
 **Drift guard:** ``extra_utilities/tests/smoke_test_ring_height.py`` verifies this
-port bit-for-bit against the real ``web/feg`` modules (Python vs Node,
-< 1e-9 mm) over hundreds of param sets.  Keep this module and ``web/feg`` in
-sync; the constants below mirror ``web/feg/constants.js``.
+port bit-for-bit against the real ``dc_pack/preview/feg`` modules (Python vs Node,
+< 1e-9 mm) over hundreds of param sets.  Keep this module and ``dc_pack/preview/feg`` in
+sync; the constants below mirror ``dc_pack/preview/feg/constants.js``.
 """
 from __future__ import annotations
 
 import math
 
-# Mirror web/feg/constants.js (guarded by smoke_test_ring_height.py).
+# Mirror dc_pack/preview/feg/constants.js (guarded by smoke_test_ring_height.py).
 _COUNT_I = 25
 _CLEARANCE = 1.0
 
 
-# ---- Port of web/feg/naca.js ------------------------------------------------
+# ---- Port of dc_pack/preview/feg/naca.js ------------------------------------------------
 def _build_symmetric_profile(count_i: int, thickness_pct: float):
     n = count_i + 1
     samples = [i / (n - 1) for i in range(n)]

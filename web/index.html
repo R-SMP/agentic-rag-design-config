@@ -250,25 +250,37 @@
             <button id="params-viewer-reset" class="ghost"
                     title="Reset view">Reset view</button>
           </div>
-          <!-- The two left-pane views (3D / Blade sections) share this
+          <!-- The left-pane views (3D, and any the pack's preview module
+               adds -- the propeller's "Blade sections") share this
                positioning context; the view-mode toggle floats centred over
-               the top of whichever is shown (handler: paramsSetViewMode). -->
+               the top of whichever is shown (handler: paramsSetViewMode;
+               the extra views' buttons are added by paramsAddPreviewViews). -->
           <div class="params-viewer-stack">
             <div class="params-viewmode-toggle" role="group" aria-label="Preview mode">
-              <button type="button" data-pmode="3d" class="active"
-                      title="Fast in-browser preview (FEG). Use Download geometry for the precise RhinoCompute mesh.">3D view</button>
-              <button type="button" data-pmode="sections"
-                      title="Show the three blade-section airfoils (Inner/Middle/Outer) on a 1&nbsp;mm grid">Blade sections</button>
+              <button type="button" data-pmode="3d" class="active">3D view</button>
             </div>
             <div id="params-viewer" class="viewer">
               <div id="params-viewer-placeholder" class="viewer-placeholder">
                 Preview (approximate). Move any slider to update.
               </div>
             </div>
-            <!-- Blade-sections 2D view; shown when the toggle is on
-                 "Blade sections". -->
-            <div id="params-sections" class="viewer params-sections" hidden>
-              <canvas id="params-sections-canvas"></canvas>
+            <!-- An extra view of the pack's preview module (the
+                 propeller's "Blade sections"); shown when its toggle
+                 button is on. -->
+            <div id="params-extra-view" class="viewer params-extra-view" hidden>
+              <canvas id="params-extra-view-canvas"></canvas>
+            </div>
+          </div>
+          <!-- The generic Preview, for a pack without a browser preview
+               module: the tools' pictures of the current values, made on
+               the server (POST /api/preview_images; paramsUseImagePreview). -->
+          <div id="params-image-preview" class="params-image-preview" hidden>
+            <div class="params-image-preview-bar">
+              <button id="params-preview-btn" class="primary" type="button">Preview</button>
+              <span id="params-preview-status" class="params-preview-status" role="status"></span>
+            </div>
+            <div id="params-preview-gallery" class="params-preview-gallery">
+              <p class="params-preview-empty">Press Preview to have the tools make their pictures of the current values.</p>
             </div>
           </div>
           <!--
@@ -890,7 +902,7 @@
               </div>
               <div class="rc-samples" id="rc-geo-samples"></div>
               <div class="rc-geo-actions">
-                <button id="rc-geo-generate" type="button">Generate 3D samples</button>
+                <button id="rc-geo-generate" type="button">Generate samples</button>
                 <span id="rc-geo-gen-status" class="rc-gen-status" role="status"></span>
               </div>
               <input class="rc-slider" id="rc-geo-slider" type="range"

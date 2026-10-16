@@ -2,9 +2,9 @@
 
 Everything in this folder is developer-facing: the TODO list, the invariant
 registry, explanation documents, the database schema and a few hand-run
-scripts.  The running app imports nothing from here; the one exception is
-`scripts/gen_render_samples.py`, which `web_app.py` runs as a subprocess when
-the Render-compression panel regenerates its sample images.
+scripts.  The running app imports and runs nothing from here (the
+Render-compression panel's samples are made by `engine/image_run.py`;
+`scripts/gen_render_samples.py` is its command-line front).
 
 The folder was cleaned up on 2026-10-10, at the end of development.  Build
 plans, hand-over notes, prompt-review records, most test scripts and the old
@@ -77,7 +77,7 @@ Upgrading an older database needs the migration ledger from git history —
 
 | Script | What it does |
 |---|---|
-| `gen_render_samples.py` | Regenerates `web/render_samples/` (the Render-compression panel's samples).  **The app runs this one** — do not move it without updating `web_app.py`. |
+| `gen_render_samples.py` | Makes the Render-compression panel's samples (`web/render_samples/`) — the same as the panel's Generate samples button (`engine/image_run.make_render_samples`). |
 | `topology_prompt_snapshot.py` | `save <dir>` assembles and hashes every agent's full prompt per topology; `diff <a> <b>` shows which agents moved.  The standard check before and after any prompt edit. |
 | `prompt_matrix.py` | `save <dir>` assembles every agent's prompt under 17 setting combinations × topologies 7, 5 and 3 (357 prompts); `diff` against `extra_utilities/prompt_matrix/baseline_manifest.json` must report 0 differences for a change that must move no prompt.  `wsdiff` / `classify` explain any that remain. |
 | `tool_matrix.py` | `save <file>` builds every hub under the same combinations and records the tools each agent is given (name, description, argument schema); `diff` against `extra_utilities/prompt_matrix/tool_baseline.json` must report 0 differences for a change that must move no tool. |
@@ -111,7 +111,6 @@ source.  Before filing a new one, take the highest id in BOTH TODO files (or in
 - **Five 0-byte `.md` prompt fragments are load-bearing**, two of them in a
   way that crashes the app at import and two in a way that silently changes a
   prompt.  Read `warnings_developer.md` **W42** before deleting any empty file.
-- **`scripts/gen_render_samples.py`** is run by `web_app.py` by path.
 - **`prompt_pdf/bootstrap.py`** stubs the heavy imports so the agent tree loads
   without `trimesh` / `langchain_*`; two of the tests and the snapshot script
   depend on it.

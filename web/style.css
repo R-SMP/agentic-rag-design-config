@@ -1921,13 +1921,35 @@ button.danger:hover { background: #3a1d1d; }
   color: #15171c;
 }
 
-/* Blade-sections 2D view fills the viewer area; its canvas fills it. */
-.params-sections { background: #f7f7f7; }
-.params-sections canvas {
+/* An extra view of the pack's preview module (the propeller's Blade
+   sections) fills the viewer area; its canvas fills it. */
+.params-extra-view { background: #f7f7f7; }
+.params-extra-view canvas {
   display: block;
   width: 100%;
   height: 100%;
 }
+
+/* The generic Preview (a pack without a browser preview module): a button
+   bar above the tools' pictures. */
+.params-image-preview {
+  flex: 1 1 auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px;
+  overflow: auto;
+}
+.params-image-preview[hidden] { display: none; }
+.params-image-preview-bar { display: flex; align-items: center; gap: 10px; }
+.params-preview-status { font-size: 12px; color: var(--muted, #9aa1ad); }
+.params-preview-status.error { color: #e57373; }
+.params-preview-gallery { display: flex; flex-direction: column; gap: 12px; }
+.params-preview-empty { color: var(--muted, #9aa1ad); font-size: 13px; margin: 0; }
+.params-preview-fig { margin: 0; }
+.params-preview-fig img { display: block; width: 100%; height: auto; background: #f7f7f7; }
+.params-preview-fig figcaption { font-size: 12px; color: var(--muted, #9aa1ad); margin-top: 4px; }
 
 /* RIGHT side: tabbed parameter column. */
 .params-column {

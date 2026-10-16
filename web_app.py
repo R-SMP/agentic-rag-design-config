@@ -36,6 +36,7 @@ import base64
 import os
 import queue
 import re
+import shutil
 import time
 import uuid
 import zipfile
@@ -94,6 +95,7 @@ from engine import pack as _pack
 from engine import parameter_schema as _parameter_schema
 from engine import parameters as _parameters
 from agents.shared import sessions_queue
+from engine import image_run as _image_run
 from engine import pack_tools as _pack_tools
 from engine.tooling import ToolError as _ToolError
 from workflow_settings import dh_schedule as settings_dh_schedule
@@ -576,6 +578,10 @@ def pack_parameters_js() -> Response:
     )
 
 
+def _pack_has_preview() -> bool:
+    return (_pack.pack_dir() / "preview" / "preview.js").is_file()
+
+
 # The pack's words the page's SCRIPT uses (the page itself is filled as it
 # is served).
 _PAGE_WORDS = ("dc_name", "output_model")
@@ -588,14 +594,17 @@ def pack_page_js() -> Response:
     ``window.PACK_PAGE = {words, tools, model}`` -- the words in
     :data:`_PAGE_WORDS`; the tools the LOG and Status flowchart's
     TOOLS panel and the LLM routing chart draw: the pack's switched-on
-    tools, then the engine's standard ones; and the generator's model
+    tools, then the engine's standard ones; the generator's model
     (``engine/pack_tools.model_info``: file, extension, format, up axis),
-    null when it makes none.  No auth, like
+    null when it makes none; and whether the pack has a browser preview
+    for the Parameters page (``dc_pack/preview/preview.js``, served at
+    /pack/preview/).  No auth, like
     ``/pack/parameters.js``: it holds what the page's own files held."""
     payload = json.dumps({
         "words": {w: _fill("$" + w) for w in _PAGE_WORDS},
         "tools": {"pack": _pack_tools.page_tools(), "standard": list(STANDARD_TOOLS)},
         "model": _pack_tools.model_info(),
+        "preview": _pack_has_preview(),
     })
     return Response(
         content=f"window.PACK_PAGE = {payload};\n",
@@ -1064,6 +1073,38 @@ def api_preview_mesh(body: PreviewMeshIn) -> Response:
         media_type=model["media_type"],
         headers={"X-Vertex-Count": str(made.result.vertex_count)},
     )
+
+
+@app.post("/api/preview_images")
+async def api_preview_images(body: PreviewMeshIn) -> dict:
+    """The Parameters page's generic Preview (a pack without a browser
+    preview module): every switched-on tool that makes pictures, run on
+    the slider values -- the helpers first, then the generator, like the
+    save step -- in a process of its own with a throw-away attempts
+    folder (``engine/image_run.py``), so the session's attempts are never
+    touched.  Returns ``{images: [{tool, view, label, src}], errors:
+    [{tool, message}]}``, each picture as a data URL."""
+    _require_auth()
+    try:
+        coerced = _coerce_preview_params(body.params)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+    try:
+        result, root = await run_in_threadpool(
+            _image_run.run_in_child, {"preview": coerced})
+    except RuntimeError as exc:
+        raise HTTPException(status_code=502, detail=f"Preview failed: {exc}")
+    try:
+        res = result.get("preview", {})
+        images = []
+        for img in res.get("images", []):
+            raw = Path(img["path"]).read_bytes()
+            images.append({"tool": img["tool"], "view": img["view"],
+                           "label": img["label"],
+                           "src": "data:image/png;base64," + base64.b64encode(raw).decode()})
+    finally:
+        shutil.rmtree(root, ignore_errors=True)
+    return {"images": images, "errors": res.get("errors", [])}
 
 
 @app.get("/api/artefact")
@@ -4294,13 +4335,23 @@ def api_images_compression_save(body: ImageCompressionIn) -> dict:
 
 # ---------------------------------------------------------------------------
 # Render compression — per-type degrees (cross-section diagrams vs 3D geometry)
-# previewed against bundled sample renders (web/render_samples/) in the
-# Workflow settings panel.  The two degrees are hidden settings, written via
-# the editor's internal path; this panel is their dedicated control surface.
+# previewed against sample pictures in the Workflow settings panel.  The two
+# degrees are hidden settings, written via the editor's internal path; this
+# panel is their dedicated control surface.  A sample <kind>_<size>.png is
+# the one the Generate samples button made (web/render_samples/, made at
+# run time) or else the one the pack ships (dc_pack/assets/render_samples/);
+# the sizes are the pack's sample sets (render_samples in dc_pack/pack.yaml).
 # ---------------------------------------------------------------------------
 RENDER_SAMPLES_DIR = WEB_DIR / "render_samples"
-_RENDER_SAMPLE_KINDS = ("cross", "geo")
-_RENDER_SAMPLE_SIZES = ("small", "medium", "large")
+_RENDER_SAMPLE_KINDS = tuple(_image_run.SAMPLE_NAMES.values())     # cross, geo
+
+
+def _render_sample_sizes() -> tuple[str, ...]:
+    return tuple(_image_run.render_sample_sets())
+
+
+def _pack_samples_dir() -> Path:
+    return _pack.pack_dir() / "assets" / "render_samples"
 
 
 class RenderCompressionIn(BaseModel):
@@ -4576,9 +4627,19 @@ def api_model_windows_save(body: ModelWindowsIn) -> dict:
 
 
 def _render_sample_path(kind: str, size: str) -> Path:
-    if kind not in _RENDER_SAMPLE_KINDS or size not in _RENDER_SAMPLE_SIZES:
+    """The sample the panel shows: the generated one, else the pack's."""
+    if kind not in _RENDER_SAMPLE_KINDS or size not in _render_sample_sizes():
         raise HTTPException(status_code=400, detail="Unknown render sample.")
-    return RENDER_SAMPLES_DIR / f"{kind}_{size}.png"
+    name = f"{kind}_{size}.png"
+    made = RENDER_SAMPLES_DIR / name
+    return made if made.is_file() else _pack_samples_dir() / name
+
+
+def _render_sample_url(path: Path) -> str:
+    """Where the page fetches *path* (a sample of _render_sample_path)."""
+    if path.parent == RENDER_SAMPLES_DIR:
+        return f"/static/render_samples/{path.name}"
+    return f"/pack/assets/render_samples/{path.name}"
 
 
 @app.get("/api/render_compression")
@@ -4587,8 +4648,10 @@ def api_render_compression_get() -> dict:
     _require_auth()
     importlib.reload(workflow_settings)
 
+    sizes = _render_sample_sizes()
+
     def _avail(kind: str) -> bool:
-        return all(_render_sample_path(kind, s).is_file() for s in _RENDER_SAMPLE_SIZES)
+        return bool(sizes) and all(_render_sample_path(kind, s).is_file() for s in sizes)
 
     return {
         "cross_degree": int(getattr(workflow_settings,
@@ -4597,7 +4660,7 @@ def api_render_compression_get() -> dict:
                                   "IMAGE_COMPRESSION_3D_RENDER_DEGREE", 0)),
         "render_floor": int(getattr(workflow_settings,
                                     "IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE", 320)),
-        "sizes": list(_RENDER_SAMPLE_SIZES),
+        "sizes": list(sizes),
         "cross_available": _avail("cross"),
         "geo_available": _avail("geo"),
     }
@@ -4605,7 +4668,7 @@ def api_render_compression_get() -> dict:
 
 @app.get("/api/render_compression/sample")
 def api_render_compression_sample(kind: str, size: str, degree: int) -> dict:
-    """Compress a bundled sample render at *degree* (with the render floor) and
+    """Compress a sample render at *degree* (with the render floor) and
     return the preview + before/after dimensions and per-provider token
     estimates — exactly how an agent would see that render type at this degree."""
     _require_auth()
@@ -4620,7 +4683,7 @@ def api_render_compression_sample(kind: str, size: str, degree: int) -> dict:
     ow, oh = _image_wh(out)
     if out == raw:
         # Unchanged (0% or already <= floor) — reuse the statically-served file.
-        preview = f"/static/render_samples/{kind}_{size}.png"
+        preview = _render_sample_url(path)
     else:
         preview = "data:" + sniff_media_type(out) + ";base64," + \
             base64.b64encode(out).decode()
@@ -4651,42 +4714,32 @@ def api_render_compression_save(body: RenderCompressionIn) -> dict:
     return {"ok": True, "cross_degree": cross, "geo_degree": geo}
 
 
-@app.post("/api/render_compression/generate_geo")
-async def api_render_compression_generate_geo() -> dict:
-    """(Re)generate the 3D isometric sample renders (``web/render_samples/geo_*.png``)
-    by running ``gen_render_samples.py --geo`` as an ISOLATED subprocess (so its
-    import-sidestep tricks never touch the running app).  Needs Node + the
-    pyrender stack — both present in the app container.  The output is ephemeral
-    (a redeploy wipes it), so this endpoint repopulates the samples on demand."""
-    import subprocess
-    import sys
+@app.post("/api/render_compression/generate")
+async def api_render_compression_generate() -> dict:
+    """(Re)make the sample pictures (``web/render_samples/<kind>_<size>.png``):
+    every image tool run on each of the pack's sample sets, in a process of
+    its own (``engine/image_run.make_render_samples``), keeping per
+    compression kind the first picture of that kind.  Needs what the tools
+    need (Node + the pyrender stack for the propeller's 3D views -- both in
+    the app container).  The output is ephemeral (a redeploy wipes it); the
+    pack's own samples are shown until then."""
     _require_auth()
     _require_no_session()
-    script = (Path(__file__).resolve().parent / "extra_utilities" / "scripts"
-              / "gen_render_samples.py")
-
-    def _run() -> "subprocess.CompletedProcess":
-        return subprocess.run(
-            [sys.executable, str(script), "--geo"],
-            capture_output=True, text=True, timeout=240,
-        )
-
     try:
-        proc = await run_in_threadpool(_run)
-    except subprocess.TimeoutExpired:
-        raise HTTPException(status_code=504, detail="Sample generation timed out.")
-    except Exception as exc:  # noqa: BLE001 — surface any launch failure
-        raise HTTPException(status_code=500, detail=f"Could not start generation: {exc}")
-
-    geo_ok = all(_render_sample_path("geo", s).is_file() for s in _RENDER_SAMPLE_SIZES)
-    if proc.returncode != 0 or not geo_ok:
-        tail = ((proc.stderr or proc.stdout) or "").strip()[-600:]
-        logger.warning("[WEB] geo sample generation failed (rc=%s): %s",
-                       proc.returncode, tail)
-        raise HTTPException(status_code=500,
-                            detail="Generation failed: " + (tail or "no output"))
-    logger.info("[WEB] geo render samples generated")
-    return {"ok": True, "geo_available": True}
+        res = await run_in_threadpool(_image_run.make_render_samples, RENDER_SAMPLES_DIR)
+    except Exception as exc:  # noqa: BLE001 — surface any failure
+        logger.warning("[WEB] sample generation failed: %s", exc)
+        raise HTTPException(status_code=500, detail=f"Generation failed: {exc}")
+    sizes = _render_sample_sizes()
+    avail = {k: bool(sizes) and all(_render_sample_path(k, s).is_file() for s in sizes)
+             for k in _RENDER_SAMPLE_KINDS}
+    if res["errors"] and not res["written"]:
+        detail = "; ".join(f"{e.get('tool')}: {e['message']}" for e in res["errors"])
+        logger.warning("[WEB] sample generation failed: %s", detail)
+        raise HTTPException(status_code=500, detail="Generation failed: " + detail[:600])
+    logger.info("[WEB] render samples generated: %s", ", ".join(res["written"]))
+    return {"ok": True, "written": res["written"], "errors": res["errors"],
+            "cross_available": avail["cross"], "geo_available": avail["geo"]}
 
 
 @app.get("/api/events")
@@ -4905,4 +4958,11 @@ async def api_log_stream() -> StreamingResponse:
 
 
 # Mounted last so it does not shadow the explicit routes above.
+# The pack's browser preview module and pictures (the group diagrams of
+# parameters.json, the render-compression samples it ships).  Mounted only
+# when the pack has them.
+for _sub in ("preview", "assets"):
+    if (_pack.pack_dir() / _sub).is_dir():
+        app.mount(f"/pack/{_sub}", StaticFiles(directory=_pack.pack_dir() / _sub),
+                  name=f"pack_{_sub}")
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")

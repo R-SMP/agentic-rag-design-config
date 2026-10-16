@@ -4,7 +4,7 @@ the Grasshopper definition beside this module -- the exact geometry.
 Needs the RhinoCompute server (``RHINO_COMPUTE_URL`` /
 ``RHINO_COMPUTE_API_KEY`` in ``config.py``).  The ring height is not a
 parameter: it is derived (``ring_height.fitted_ring_height``, a port of
-``web/feg``) and fed to the definition's ``impellerHeight`` input, so the
+``dc_pack/preview/feg``) and fed to the definition's ``impellerHeight`` input, so the
 ring matches the FEG geometry.  When the definition's merged ``MeshFinal``
 output is used, the four components also come back as a separate file
 (``propeller_mesh_components.obj``) for offline diagnostics.
@@ -144,7 +144,7 @@ def _make_cached(
     # Ring height is DERIVED, not an input: inject the fitted height into the
     # .gh's ``impellerHeight`` port so the RhinoCompute geometry's ring
     # matches the FEG 3D preview exactly.  ring_height.fitted_ring_height is
-    # a port of web/feg verified bit-for-bit by smoke_test_ring_height.py.
+    # a port of dc_pack/preview/feg verified bit-for-bit by smoke_test_ring_height.py.
     param_values["impellerHeight"] = fitted_ring_height(param_values)
 
     # Build Grasshopper DataTree inputs.

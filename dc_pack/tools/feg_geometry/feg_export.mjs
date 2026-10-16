@@ -1,6 +1,6 @@
-// Headless Node runner for the browser FEG geometry (web/feg/*).
+// Headless Node runner for the browser FEG geometry (dc_pack/preview/feg/*).
 //
-// Reuses the EXACT web/feg modules the browser 3D preview uses, so the
+// Reuses the EXACT dc_pack/preview/feg modules the browser 3D preview uses, so the
 // agent-facing geometry matches the preview with zero port-drift.  Outputs an
 // OBJ that the existing Python render pipeline (render_mesh.py) renders the
 // same way it renders a RhinoCompute OBJ.
@@ -18,7 +18,7 @@ import { dirname, resolve } from 'node:path';
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const propellerUrl = pathToFileURL(
-  resolve(__dirname, '..', '..', '..', 'web', 'feg', 'propeller.js'),
+  resolve(__dirname, '..', '..', 'preview', 'feg', 'propeller.js'),
 ).href;
 const { buildPropellerGroup } = await import(propellerUrl);
 

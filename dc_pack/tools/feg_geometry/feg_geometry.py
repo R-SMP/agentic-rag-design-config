@@ -1,9 +1,9 @@
 """The FEG geometry tool: the propeller built by the browser 3D preview's own
-code (``web/feg/*``), run headless by Node through ``feg_export.mjs``.
+code (``dc_pack/preview/feg/*``), run headless by Node through ``feg_export.mjs``.
 
 Local, fast, no server; a visually faithful sub-mm approximation of the
 Grasshopper geometry (``rhino_geometry``).  :func:`make_model` is memoised on
-the parameters and the newest mtime of the exporter and ``web/feg/*.js``, so
+the parameters and the newest mtime of the exporter and ``preview/feg/*.js``, so
 editing the geometry code evicts stale entries.  The engine calls it
 (``engine/pack_tools.make_model``: the generator's geometry tool, the web
 app's Download buttons) with parameters it has already checked.
@@ -18,7 +18,7 @@ from engine.tooling import GeometryResult, ToolError
 
 # Headless FEG exporter + its source tree (used for cache invalidation).
 _FEG_EXPORTER = Path(__file__).resolve().parent / "feg_export.mjs"
-_FEG_SOURCE_DIR = Path(__file__).resolve().parents[3] / "web" / "feg"
+_FEG_SOURCE_DIR = Path(__file__).resolve().parents[2] / "preview" / "feg"
 
 # Repeated builds of the same parameters (a download after the run) are
 # served from memory.
@@ -26,7 +26,7 @@ _CACHE_SIZE = 64
 
 
 def _sources_mtime_ns() -> int:
-    """Newest mtime across the FEG exporter + web/feg/*.js — part of the FEG
+    """Newest mtime across the FEG exporter + preview/feg/*.js — part of the FEG
     cache key so editing the geometry code evicts stale entries."""
     paths = [_FEG_EXPORTER, *_FEG_SOURCE_DIR.glob("*.js")]
     try:
@@ -43,7 +43,7 @@ def _make_cached(
     """Memoised implementation of :func:`make_model`: ``(obj_text,
     vertex_count, None)``.
 
-    ``feg_mtime_ns`` is cache-key only (evicts on a web/feg edit)."""
+    ``feg_mtime_ns`` is cache-key only (evicts on a preview/feg edit)."""
     del feg_mtime_ns
     params = dict(params_tuple)
     try:

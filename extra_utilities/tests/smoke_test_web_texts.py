@@ -25,6 +25,13 @@ are stubbed; no database):
 4. RETIRED.  A record carrying a name ``parameters.json`` lists as retired
    is read without it by the web app's preview check and by
    ``propose_attempt``.
+5. PREVIEW.  The pack's browser preview module and pictures are served
+   (/pack/preview/, /pack/assets/), ``/pack/page.js`` says the pack has a
+   preview, the slider page's group pictures point there, the
+   render-compression panel offers the pack's sample sizes and shows the
+   pack's own samples; and -- under Node, when ``three`` resolves -- the
+   module exports the contract and builds the model, its extra view and
+   its group figures from the default parameters.
 
 Run from the repo root:  py -3.13 extra_utilities/tests/smoke_test_web_texts.py
 """
@@ -249,21 +256,83 @@ def _run(group, tag: str):
         return 0
 
 
+_NODE_CONTRACT = r'''
+import { pathToFileURL } from "node:url";
+const mod = await import(pathToFileURL(process.env.PREVIEW_JS).href);
+const params = JSON.parse(process.env.PREVIEW_PARAMS);
+const THREE = await import("three");
+const model = mod.buildModel(params, new THREE.MeshStandardMaterial());
+let meshes = 0, lines = 0;
+model.traverse((c) => { if (c.isMesh) meshes++; if (c.userData && c.userData.isProfileLine) lines++; });
+mod.highlightGroup(model, "inner");
+console.log(JSON.stringify({
+  exports: Object.keys(mod).sort(), meshes, lines,
+  views: mod.views.map((v) => v.id), groups: mod.groupFigures,
+  title: typeof mod.modelTitle,
+}));
+'''
+
+
+def check_preview() -> str:
+    import subprocess
+    js = _page_js()
+    check(js.get("preview") is True, f"[PREVIEW] /pack/page.js preview: {js.get('preview')}")
+    r = CLIENT.get("/pack/preview/preview.js")
+    check(r.status_code == 200 and "buildModel" in r.text,
+          f"[PREVIEW] /pack/preview/preview.js: {r.status_code}")
+    for path in ("/pack/preview/feg/propeller.js", "/pack/assets/general-profile.png",
+                 "/pack/assets/render_samples/cross_small.png"):
+        check(CLIENT.get(path).status_code == 200, f"[PREVIEW] {path} is not served")
+    groups = parameters.load()["groups"]
+    check(all(g["image"] == f"/pack/assets/{g['id']}-profile.png" for g in groups),
+          f"[PREVIEW] group pictures: {[g['image'] for g in groups]}")
+    d = CLIENT.get("/api/render_compression").json()
+    check(d["sizes"] == ["small", "medium", "large"] and d["cross_available"] is True,
+          f"[PREVIEW] render compression: {d}")
+    s = CLIENT.get("/api/render_compression/sample",
+                   params={"kind": "cross", "size": "small", "degree": 0}).json()
+    check(s.get("preview") == "/pack/assets/render_samples/cross_small.png",
+          f"[PREVIEW] the pack's sample is not what the panel shows: {s.get('preview')}")
+    # The module's contract, under Node (as feg_geometry's exporter runs it).
+    params = {p["name"]: p["default"] for p in parameters.load()["parameters"]}
+    # --eval resolves "three" from the working directory (the repo root).
+    env = dict(os.environ, PREVIEW_JS=str(ROOT / "dc_pack" / "preview" / "preview.js"),
+               PREVIEW_PARAMS=json.dumps(params))
+    try:
+        p = subprocess.run(["node", "--input-type=module", "-e", _NODE_CONTRACT],
+                           capture_output=True, text=True, cwd=str(ROOT), env=env, timeout=120)
+    except FileNotFoundError:
+        return "SKIP (no node)"
+    if p.returncode != 0 and "Cannot find package 'three'" in p.stderr:
+        return "SKIP (three not installed)"
+    if p.returncode != 0:
+        check(False, f"[PREVIEW] the module failed under Node: {p.stderr.strip()[-300:]}")
+        return "failed"
+    got = json.loads(p.stdout.strip().splitlines()[-1])
+    check(got["exports"] == ["buildModel", "drawGroupFigure", "groupFigures",
+                              "highlightGroup", "modelTitle", "views"]
+          and got["meshes"] > 0 and got["lines"] == 3 and got["views"] == ["sections"]
+          and got["groups"] == ["inner", "middle", "outer"] and got["title"] == "string",
+          f"[PREVIEW] the module's contract under Node: {got}")
+    return f"{got['meshes']} meshes, {got['lines']} section outlines"
+
+
 def main() -> int:
     _run(check_page, "[PAGE]")
     n_words = _run(check_pack_words, "[PACK WORDS]")
     _run(check_tools, "[TOOLS]")
     _run(check_retired, "[RETIRED]")
+    node = _run(check_preview, "[PREVIEW]")
     print(f"{len(PROPELLER_TEXTS)} page texts checked; {n_words} pack words swapped for "
           f"stand-ins; {len(pack_tools.page_tools())} pack tools + {len(STANDARD_TOOLS)} "
-          f"standard tools listed")
+          f"standard tools listed; the preview module under Node: {node}")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
             print("  " + f)
         return 1
-    print("\nPASS - the page takes the configurator's words and tools from the pack, "
-          "escaped, and a record's retired parameter names are dropped.")
+    print("\nPASS - the page takes the configurator's words, tools and browser preview "
+          "from the pack, escaped, and a record's retired parameter names are dropped.")
     return 0
 
 

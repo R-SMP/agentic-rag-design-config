@@ -20,17 +20,10 @@
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
 import { OBJLoader } from "three/addons/loaders/OBJLoader.js";
-import { buildPropellerGroup } from "./feg/propeller.js";
-import { drawProfile2D } from "./feg/curves.js";
-import { drawBladeSections } from "./feg/sections_view.js";
 
-// Expose the 2D drawers to the classic (non-module) app.js, which renders the
-// per-section cross-section canvases and the Blade-sections view in the
-// Parameters Inputs view.  app.js only calls these from event handlers (after
-// this module has evaluated), so the globals are always set by the time
-// they're used.
-window.fegDrawProfile2D = drawProfile2D;
-window.fegDrawBladeSections = drawBladeSections;
+// The Parameters page's live model comes from the pack's browser preview
+// module (window.packPreview, loaded by app.js from /pack/preview/):
+// buildModel and highlightGroup -- see loadFromParams / setActiveGroup.
 
 
 export class Viewer {
@@ -256,13 +249,14 @@ export class Viewer {
   }
 
   /**
-   * Build the in-browser front-end geometry (FEG) propeller from a
-   * 17-parameter dict and show it, replacing any current model.
+   * Build the model of a parameter dict in the browser with the pack's
+   * preview module (window.packPreview.buildModel) and show it, replacing
+   * any current model.
    *
    * Synchronous — unlike load(), there is NO server round-trip.  Used by
-   * the Parameters Inputs view's live-preview pipeline: the FEG is a fast,
-   * disposable approximation of the propeller; the precise RhinoCompute
-   * geometry (RCG) is fetched separately by the Download geometry button.
+   * the Parameters Inputs view's live-preview pipeline: a fast,
+   * disposable preview; the model a user downloads is made on the server
+   * by the Download geometry button.
    *
    * The propeller is anchored at the origin (NOT re-centred) and the camera
    * is framed only ONCE — on the first build after the view opens — then
@@ -271,22 +265,25 @@ export class Viewer {
    * view re-normalising every rebuild.  `unload()` resets the frame latch so
    * each new session re-frames once.
    *
-   * @param {object} params  the 17 canonical parameters (raw geom units).
+   * @param {object} params  the parameters (raw geom units).
    * @param {string} [name]  optional label for the viewer toolbar.
-   * @returns {boolean} true if a model was built and shown, false on error.
+   * @returns {boolean} true if a model was built and shown, false on error
+   *   (or when the pack has no preview module).
    */
   loadFromParams(params, name) {
+    const preview = window.packPreview;
+    if (!preview || !preview.buildModel) return false;
     let group;
     try {
       // A fresh material per build so it disposes cleanly alongside the
       // group on the next swap / unload (matches load()'s per-load
-      // material pattern).  Blade, ring and hub share this one instance.
+      // material pattern).  Every part of the model shares this one instance.
       const material = this._makeSurfaceMaterial();
-      group = buildPropellerGroup(params, material);
+      group = preview.buildModel(params, material);
     } catch (err) {
-      // Degenerate parameter combos can throw inside the loft/morph math.
+      // Degenerate parameter combos can throw inside the model's math.
       // Keep the previous model on screen rather than blanking the viewer.
-      console.error("FEG build failed:", err);
+      console.error("Preview build failed:", err);
       return false;
     }
 
@@ -298,11 +295,13 @@ export class Viewer {
       this.currentModel = null;
     }
 
-    // FEG is built Z-up (Rhino convention); the viewer is Y-up.  Match the
-    // load() path's rotation so the FEG preview and the RCG look identical.
-    // NO re-centring: the propeller's spin axis stays on the origin so a
-    // radius change grows/shrinks the ring symmetrically about it.
-    group.rotation.x = -Math.PI / 2;
+    // The preview is built in the model's own axes (the generator's up
+    // axis); the viewer is Y-up.  Match the load() path's rotation so the
+    // preview and the downloaded model look identical.  NO re-centring:
+    // the model stays anchored at the origin, so a size change grows or
+    // shrinks it about that point.
+    const model = window.PACK_PAGE && window.PACK_PAGE.model;
+    if (model && model.up_axis === "z") group.rotation.x = -Math.PI / 2;
     this.currentModel = group;
     this.scene.add(group);
 
@@ -312,8 +311,8 @@ export class Viewer {
       this._fegFramed = true;
     }
 
-    // Colour the tab-active section outline (green) per the stored state.
-    this._applyActiveProfile();
+    // Highlight the part the open tab's group shapes, per the stored state.
+    this._applyActiveGroup();
 
     if (this.placeholderEl) this.placeholderEl.style.display = "none";
     if (this.nameEl) this.nameEl.textContent = name || "";
@@ -350,29 +349,24 @@ export class Viewer {
   }
 
   /**
-   * Set which blade section's outline is highlighted (green) in the params
-   * preview; the others stay blue.  `null` / unknown → all blue.  Persists
-   * across rebuilds (loadFromParams re-applies it) and recolours in place
-   * without rebuilding, so tab switches are instant.
+   * Set which parameter group is being edited: the pack's preview module
+   * highlights the part it shapes (highlightGroup; the propeller's section
+   * outline, green).  Persists across rebuilds (loadFromParams re-applies
+   * it) and recolours in place without rebuilding, so tab switches are
+   * instant.
    *
-   * @param {string|null} profileName  "InnerProfile" | "MiddleProfile" |
-   *   "OuterProfile" | null.
+   * @param {string|null} groupId  a parameters.json group id, or null.
    */
-  setActiveProfile(profileName) {
-    this._activeProfile = profileName || null;
-    this._applyActiveProfile();
+  setActiveGroup(groupId) {
+    this._activeGroup = groupId || null;
+    this._applyActiveGroup();
   }
 
-  /** Recolour the section outline lines from the stored active profile. */
-  _applyActiveProfile() {
-    if (!this.currentModel) return;
-    this.currentModel.traverse((child) => {
-      if (child.userData && child.userData.isProfileLine && child.material) {
-        const isActive = child.name === this._activeProfile;
-        child.material.color.set(isActive ? 0x42a832 : 0x2196f3);
-        child.material.needsUpdate = true;
-      }
-    });
+  /** Re-apply the stored active group's highlight to the current model. */
+  _applyActiveGroup() {
+    const preview = window.packPreview;
+    if (!this.currentModel || !preview || !preview.highlightGroup) return;
+    preview.highlightGroup(this.currentModel, this._activeGroup);
   }
 
   /** Dispose every geometry + material under an object3D (meshes + lines). */

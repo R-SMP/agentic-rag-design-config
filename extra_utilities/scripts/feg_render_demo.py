@@ -1,5 +1,5 @@
 """FEG render demo — build a propeller with the browser FEG geometry (headless
-Node, reusing web/feg/*) and render it, so you can see how the agent-facing
+Node, reusing dc_pack/preview/feg/*) and render it, so you can see how the agent-facing
 renders come out.
 
 Two render modes:
@@ -11,7 +11,7 @@ Two render modes:
     pyrender + OSMesa).  Files: render_*.png
 
 Requires Node (host) for geometry generation unless you pass an existing --obj.
-Reuses web/feg/* verbatim, so the geometry matches the browser live preview.
+Reuses dc_pack/preview/feg/* verbatim, so the geometry matches the browser live preview.
 
 Usage:
   python extra_utilities/scripts/feg_render_demo.py                     # local PIL preview

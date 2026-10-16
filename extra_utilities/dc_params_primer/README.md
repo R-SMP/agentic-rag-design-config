@@ -38,7 +38,7 @@ Two different radii:
 
 | | radius | where it comes from |
 |---|---|---|
-| hub cylinder | **8 mm** | `web/feg/constants.js` `CONSTANTS.hub` |
+| hub cylinder | **8 mm** | `dc_pack/preview/feg/constants.js` `CONSTANTS.hub` |
 | inner blade section | **4 mm** | `constants.js` `innerRadiusFixed` (`inner_profile.cs`) |
 
 The inner section sits **inside** the hub, and `r = 4 mm` — not the hub — is

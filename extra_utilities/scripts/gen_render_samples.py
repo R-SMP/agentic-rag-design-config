@@ -1,24 +1,19 @@
-"""Generate the fixed sample renders for the "Render compression" settings panel.
+"""Make the sample pictures of the "Render compression" settings panel.
 
-Writes 6 PNGs into ``web/render_samples/``:
-  cross_{small,medium,large}.png — blade-section diagrams (pure PIL; runs anywhere)
-  geo_{small,medium,large}.png   — 3D isometric mesh renders (FEG geometry via
-                                   headless Node + the pyrender pipeline)
+The same as the panel's Generate samples button: every image tool of the
+pack is run on each of the pack's sample parameter sets (``render_samples``
+in ``dc_pack/pack.yaml``), in a process of its own, and per compression
+kind the first picture of that kind is kept as
+``web/render_samples/<cross|geo>_<size>.png`` (``engine/image_run.py``).
 
-The 3D geometry samples need the FEG exporter (Node) + the render_mesh pyrender
-stack (OSMesa), so run ``--geo`` INSIDE the app container.  The cross-section
-samples are pure PIL and run anywhere.  Both tools' modules are reached
-through the pack loader (``engine/pack_tools.py``), which imports only the
-module asked for -- no agent stack, no LangChain.
+The 3D pictures need what the generator needs (Node for FEG, the pyrender
+stack and OSMesa for the render), so run it INSIDE the app container; the
+pack ships its own cross-section samples (``dc_pack/assets/render_samples/``)
+for when none were made.
 
 Usage:
-  python extra_utilities/scripts/gen_render_samples.py --cross   # cross-sections only (local)
-  python extra_utilities/scripts/gen_render_samples.py --geo     # 3D isometrics (container)
-  python extra_utilities/scripts/gen_render_samples.py           # both
+  python extra_utilities/scripts/gen_render_samples.py
 """
-import argparse
-import json
-import subprocess
 import sys
 from pathlib import Path
 
@@ -26,84 +21,16 @@ ROOT = Path(__file__).resolve().parents[2]
 OUT = ROOT / "web" / "render_samples"
 sys.path.insert(0, str(ROOT))
 
-# small / medium / large propellers — vary diameter, chords, and angles so the
-# samples span the render-size range the compression slider is tuned against.
-_BASE = dict(impellerThickness=2, innerMaxPos=4, outerMaxPos=4, middlePos=0.6)
-SIZES = {
-    "small": dict(_BASE, bladeCount=3, impellerRadius=60,
-                  innerThickness=8, innerCamber=1, innerChord=4, innerAngle=8,
-                  middleChord=12, middleAngle=12,
-                  outerThickness=8, outerCamber=2, outerChord=8, outerAngle=16),
-    "medium": dict(_BASE, bladeCount=5, impellerRadius=70,
-                   innerThickness=5, innerCamber=1, innerChord=7, innerAngle=10,
-                   middleChord=22, middleAngle=15,
-                   outerThickness=6, outerCamber=2, outerChord=16, outerAngle=20),
-    "large": dict(_BASE, bladeCount=6, impellerRadius=80,
-                  innerThickness=6, innerCamber=2, innerChord=12, innerAngle=12,
-                  middleChord=30, middleAngle=18,
-                  outerThickness=7, outerCamber=3, outerChord=30, outerAngle=24),
-}
-
-
-def _plugin(tool):
-    from engine import pack_tools
-    return pack_tools.plugin(tool)
-
-
-def _generator():
-    from engine import pack_tools
-    return pack_tools.plugin(pack_tools.generators()[0])
-
-
-def gen_cross():
-    """3 blade-section diagrams via the blade-sections tool's draw.py."""
-    draw = _plugin("render_blade_sections").submodule("draw")
-    for size, p in SIZES.items():
-        dst = OUT / f"cross_{size}.png"
-        w, h = draw.render_png(p, False, dst)
-        print(f"cross_{size}: {w}x{h} -> {dst}")
-
-
-def gen_geo():
-    """3 isometric 3D renders: FEG geometry (Node) -> OBJ -> render_mesh pyrender."""
-    import trimesh
-    generator = _generator()
-    rm = generator.submodule("render_mesh")
-    exporter = _plugin("feg_geometry").folder / "feg_export.mjs"
-    for size, p in SIZES.items():
-        proc = subprocess.run(["node", str(exporter), json.dumps(p)],
-                              capture_output=True, text=True, timeout=180)
-        if proc.returncode != 0:
-            print(f"geo_{size}: FEG export FAILED:\n{proc.stderr}")
-            continue
-        obj = OUT / f"_geo_{size}.obj"
-        obj.write_text(proc.stdout, encoding="utf-8")
-        loaded = trimesh.load(str(obj))
-        mesh = (trimesh.util.concatenate(list(loaded.geometry.values()))
-                if isinstance(loaded, trimesh.Scene) else loaded)
-        tmp = OUT / f"_tmp_{size}"
-        tmp.mkdir(exist_ok=True)
-        rm._render_mesh_views(mesh, tmp)   # writes render_isometric/_top/_side.png
-        (OUT / f"geo_{size}.png").write_bytes((tmp / "render_isometric.png").read_bytes())
-        for f in tmp.iterdir():
-            f.unlink()
-        tmp.rmdir()
-        obj.unlink()
-        print(f"geo_{size}: isometric -> {OUT / f'geo_{size}.png'}")
-
 
 def main():
-    ap = argparse.ArgumentParser(description="Render-compression sample generator")
-    ap.add_argument("--cross", action="store_true", help="cross-section samples only")
-    ap.add_argument("--geo", action="store_true", help="3D isometric samples only")
-    args = ap.parse_args()
-    OUT.mkdir(parents=True, exist_ok=True)
-    both = not (args.cross or args.geo)
-    if args.cross or both:
-        gen_cross()
-    if args.geo or both:
-        gen_geo()
+    from engine import image_run
+    res = image_run.make_render_samples(OUT)
+    for name in res["written"]:
+        print(f"{name} -> {OUT / name}")
+    for e in res["errors"]:
+        print(f"FAILED ({e.get('set')}, {e.get('tool')}): {e['message']}")
+    return 0 if res["written"] else 1
 
 
 if __name__ == "__main__":
-    main()
+    raise SystemExit(main())

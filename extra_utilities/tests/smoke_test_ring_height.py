@@ -1,12 +1,12 @@
 """Drift guard: cross-check the RhinoCompute geometry tool's ring_height.fitted_ring_height
 (dc_pack/tools/rhino_geometry/ring_height.py)
-against the REAL web/feg modules (via Node), proving the server-side derived
+against the REAL dc_pack/preview/feg modules (via Node), proving the server-side derived
 ring height is bit-identical to the in-browser FEG 3D preview.
 
 The Python port and the FEG JS are two implementations of the same geometry;
 this test is what keeps them from drifting.  It builds hundreds of param sets
 (random across the outer-param ranges + all-min/all-max corners + integer
-samples), runs the real web/feg via Node to get each fittedHeight, and asserts
+samples), runs the real dc_pack/preview/feg via Node to get each fittedHeight, and asserts
 the Python port matches within 1e-9 mm.
 
 Dev/local only: needs Node + ``npm install three`` (node_modules/three).  If
@@ -25,7 +25,7 @@ import tempfile
 from pathlib import Path
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
-FEG_DIR = REPO_ROOT / "web" / "feg"
+FEG_DIR = REPO_ROOT / "dc_pack" / "preview" / "feg"
 TOL = 1e-9
 
 # Load the port BY FILE PATH (it imports only ``math``), so this guard needs
@@ -37,8 +37,8 @@ _rh = importlib.util.module_from_spec(_spec)
 _spec.loader.exec_module(_rh)  # type: ignore[union-attr]
 fitted_ring_height = _rh.fitted_ring_height
 
-# Node reference: the REAL web/feg outer-section + ring computation.  %FEG% is
-# replaced with a JSON-quoted absolute path to web/feg.
+# Node reference: the REAL dc_pack/preview/feg outer-section + ring computation.  %FEG% is
+# replaced with a JSON-quoted absolute path to dc_pack/preview/feg.
 _NODE_REF = r'''
 import { pathToFileURL } from 'node:url';
 import { readFileSync } from 'node:fs';

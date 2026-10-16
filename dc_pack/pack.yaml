@@ -33,3 +33,14 @@ parameter_access:
 # the next session (workflow_settings/tool_settings.json, under "downloads").
 downloads:
   geometry_tool: rhino_geometry
+
+# The render-compression panel's sample pictures (Workflow Settings > Render
+# compression): the image tools are run on these parameter sets -- small,
+# medium and large propellers spanning the render sizes the slider is tuned
+# against -- and one picture per compression kind is kept per set
+# (engine/image_run.py).  They are pictures, not designs: a value may lie
+# outside its parameter's range.
+render_samples:
+  small: {bladeCount: 3, impellerRadius: 60, impellerThickness: 2, innerThickness: 8, innerMaxPos: 4, innerCamber: 1, innerChord: 4, innerAngle: 8, middlePos: 0.6, middleChord: 12, middleAngle: 12, outerThickness: 8, outerMaxPos: 4, outerCamber: 2, outerChord: 8, outerAngle: 16}
+  medium: {bladeCount: 5, impellerRadius: 70, impellerThickness: 2, innerThickness: 5, innerMaxPos: 4, innerCamber: 1, innerChord: 7, innerAngle: 10, middlePos: 0.6, middleChord: 22, middleAngle: 15, outerThickness: 6, outerMaxPos: 4, outerCamber: 2, outerChord: 16, outerAngle: 20}
+  large: {bladeCount: 6, impellerRadius: 80, impellerThickness: 2, innerThickness: 6, innerMaxPos: 4, innerCamber: 2, innerChord: 12, innerAngle: 12, middlePos: 0.6, middleChord: 30, middleAngle: 18, outerThickness: 7, outerMaxPos: 4, outerCamber: 3, outerChord: 30, outerAngle: 24}
