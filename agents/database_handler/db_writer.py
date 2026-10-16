@@ -164,7 +164,9 @@ def _load_stitching_prompt() -> str:
             end = raw.find("\n---\n", 4)
             if end != -1:
                 raw = raw[end + 5:]
-        _stitching_prompt_cache = raw.strip()
+        # The configurator's name and the worked example come from the pack.
+        from agents.shared.pack_text import fill
+        _stitching_prompt_cache = fill(raw).strip()
         return _stitching_prompt_cache
 
 

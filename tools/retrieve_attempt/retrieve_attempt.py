@@ -56,6 +56,7 @@ from agents.shared import postgres_pool
 from agents.shared import attempt_views
 from tools import retrieval_common
 from agents.shared.agent_activity import generic_tool
+from agents.shared.pack_text import filled
 from config import ATTEMPTS_DIR
 from workflow_settings import settings as workflow_settings
 
@@ -739,12 +740,13 @@ def make_retrieve_attempt_tool(caller_agent: str):
     ``append_pending_images``).
     """
 
+    @filled
     @tool
     @generic_tool("Retrieve attempt")
     def retrieve_attempt(
         past_attempts_global_ids: list[int],
     ) -> str:
-        """Retrieve PAST SESSIONS' attempts in full — description, parameters, renders.
+        """Retrieve PAST SESSIONS' attempts in full — description, parameters, $output_images.
 
         For an attempt of THIS session use ``read_attempts`` instead — that
         one takes local attempt numbers (1, 2, 3 …).  This tool takes GLOBAL

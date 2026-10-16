@@ -50,6 +50,7 @@ from langchain_core.tools import tool
 
 from agents.shared import topology as _topology
 from agents.shared.agent_activity import generic_tool
+from agents.shared.pack_text import fill
 from agents.shared.file_utils import (
     append_pending_images,
     load_user_inputs_bundle,
@@ -97,8 +98,8 @@ RETRIEVED_SUBDIR = "_retrieved"
 _VIEW_IMAGES_CROP_SOURCE_DEFAULT = (
     "The User Input "
     "Inspector identifies them from the raw images and records them in the "
-    "extraction's ``USEFUL INPUT IMAGES`` section; other agents (e.g. the "
-    "DC Output Inspector comparing blade sections) REUSE a recorded crop "
+    "extraction's ``USEFUL INPUT IMAGES`` section; other agents (e.g. "
+    "$crop_reuse_example) REUSE a recorded crop "
     "region when it helps.  Prefer a recorded or handed-off crop region "
     "over one you derive yourself."
 )
@@ -121,14 +122,14 @@ _VIEW_IMAGES_PATHS_BY_AGENT = {
         "from the image listing ``read_user_inputs`` returns",
     "dc_input_inspector":
         "from the image listing ``read_user_inputs`` returns, from "
-        "``read_attempts`` for an attempt's renders, or relayed in the "
+        "``read_attempts`` for an attempt's $output_images, or relayed in the "
         "hand-off",
     # Its usual case is this cycle's renders, named in the Tool Caller's
     # hand-off; the extraction's ``USEFUL INPUT IMAGES`` section is NOT a
     # path source -- it names images by filename and gives crop boxes.
     "dc_output_inspector":
-        "from the hand-off's ``Render images:`` line, from ``read_attempts`` "
-        "for a PRIOR attempt's renders, or from the image listing "
+        "from the hand-off's ``$output_images_label:`` line, from ``read_attempts`` "
+        "for a PRIOR attempt's $output_images, or from the image listing "
         "``read_user_inputs`` returns",
 }
 
@@ -162,7 +163,7 @@ def _view_images_base_doc(paths_from: str, ocr_on: bool = True) -> str:
     )
     return (
         "View one or more images so you can see them — user sketches (under "
-        "``inputs/``) and/or tool-generated renders (under ``attempts/``), "
+        "``inputs/``) and/or tool-generated $output_images (under ``attempts/``), "
         "interchangeably.\n\n"
         "``paths``: a LIST of absolute image paths (``.png`` / ``.jpg`` / "
         "``.jpeg``) " + paths_from + ". "
@@ -197,7 +198,7 @@ _VIEW_IMAGES_OCR_TAIL = (
     "you pass to ``reread_text_regions``; they are TEXT blocks, not crop "
     "regions.  It is "
     "machine-recognised, so check it against the image before relying on a "
-    "value.  Renders are never OCR'd.  Pass ``extract_text=False`` to skip OCR."
+    "value.  $Output_images are never OCR'd.  Pass ``extract_text=False`` to skip OCR."
 )
 
 
@@ -218,13 +219,13 @@ def _build_view_images(ocr_on: bool, agent_key: str = ""):
                   layout: str = "match_height", crop_regions: list = None,
                   extract_text: bool = True) -> str:
             return ""  # handled by dispatch_user_inputs_tool
-        _impl.__doc__ = base + _VIEW_IMAGES_OCR_TAIL
+        _impl.__doc__ = fill(base + _VIEW_IMAGES_OCR_TAIL)
     else:
         def _impl(paths: list[str], side_by_side: bool = False,
                   layout: str = "match_height",
                   crop_regions: list = None) -> str:
             return ""  # handled by dispatch_user_inputs_tool
-        _impl.__doc__ = base
+        _impl.__doc__ = fill(base)
     return tool("view_images")(_impl)
 
 
@@ -694,9 +695,9 @@ def _handle_view_images(agent, tc: dict, agent_key: str) -> None:
     if isinstance(raw_paths, str):
         raw_paths = [raw_paths]
     if not isinstance(raw_paths, list) or not raw_paths:
-        summary = (
+        summary = fill(
             "Error: 'paths' must be a non-empty list of absolute image paths "
-            "(user images under inputs/ or renders under attempts/).  Get "
+            "(user images under inputs/ or $output_images under attempts/).  Get "
             "valid paths " + _view_images_paths_clause(agent_key) + "."
         )
         log_tool_call(agent_key, tc["name"], tc.get("args"), summary)

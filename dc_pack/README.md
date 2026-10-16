@@ -100,6 +100,13 @@ index in `prompts.py` are derived from the registry.
   engine tools' entries in the tool runner's numbered tool list
   (`$tool_inventory`), which the engine builds around the pack tools'
   `tool_list_entry.md` (`engine/pack_tools.tool_list`).
+* `attempt_slug_example`, `crop_reuse_example`, `search_query_examples`,
+  `parameter_search_example` (without its braces: the engine writes them),
+  `dh_stitching_example_answer` / `_paragraph`, `refine_cap_limits` and the
+  word `output_models` — the configurator's words in the text Python writes
+  for the agents (tool descriptions, tool answers, runtime blocks), filled in
+  by `agents/shared/pack_text.py` together with the vocabulary those texts
+  share with the prompts.
 * `dc_params_primer_text` — the text sent with the parameter primer image at
   invoke time (`agents/shared/dc_primer.py`); an agent with its own copy gets
   that instead.

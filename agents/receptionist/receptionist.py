@@ -52,6 +52,7 @@ from tools.visualize_model.visualize_model import visualize_3d_model
 from agents.shared.dba_tools import dba_tools_for
 from agents.shared.dc_params_tool import param_tools_for
 from agents.receptionist.propose_attempt_tool import propose_attempt
+from agents.shared.pack_text import fill
 
 logger = logging.getLogger("propeller_agent")
 
@@ -357,8 +358,8 @@ class Receptionist(BaseChainAgent):
                 ]
                 if render_files:
                     text += (
-                        "\n\nConfirmed render files produced this cycle "
-                        "(attempt folder: "
+                        fill("\n\nConfirmed $output_image files produced this cycle ")
+                        + "(attempt folder: "
                         f"{latest_attempt.resolve()}):\n"
                         + "\n".join(render_files)
                     )

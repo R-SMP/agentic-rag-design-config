@@ -22,6 +22,7 @@ from langchain_core.messages import HumanMessage, ToolMessage
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
+from agents.shared.pack_text import described
 from agents.shared.attempts_tool import create_attempt, read_attempts
 from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import (
@@ -98,6 +99,7 @@ def read_extracted_inputs(path: str) -> str:
     return ""  # Actual read is performed by _handle_read_tool.
 
 
+@described
 @tool
 def new_attempt_parameters(parameters: dict,
                            slug: str = "attempt",
@@ -120,7 +122,7 @@ def new_attempt_parameters(parameters: dict,
                    prompt, each mapped to a number.
       slug:        short, filename-safe label that appears in the folder
                    name after the timestamp + sequence number (e.g.
-                   ``'4blades_thick_ring'``).  Optional.
+                   $attempt_slug_example).  Optional.
       description: optional one-paragraph note explaining what this
                    attempt is for; written to ``description.txt``.
 

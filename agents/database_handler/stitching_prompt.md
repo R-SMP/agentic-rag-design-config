@@ -39,7 +39,7 @@ optimised for semantic search.
 
 Your output is stored as the embedding-input for that Q+A row and
 fed to an embedding model.  Future agent queries (free-text natural
-language like "what worked for a thin propeller?") will be matched
+language like "what worked for a thin $dc_name?") will be matched
 against your output via cosine similarity.  The original QUESTION
 and ANSWER are stored separately and shown to agents at retrieval
 time — your paragraph exists only to produce a good embedding.
@@ -84,7 +84,7 @@ time — your paragraph exists only to produce a good embedding.
 The user message will be exactly:
 
 ```
-DC_NAME: <design-configurator name, e.g. "propeller">
+DC_NAME: <design-configurator name, e.g. "$dc_name">
 FIELD: <field name, e.g. "Bad Attempt">
 QUESTION: <question text, single or multi-line>
 ANSWER: <answer text, may span multiple lines>
@@ -99,22 +99,22 @@ preamble, no postamble.
 
 INPUT:
 ```
-DC_NAME: propeller
+DC_NAME: $dc_name
 FIELD: Bad Attempt
 QUESTION: Which design attempt was the weakest match to the user's requirements?
-ANSWER: No attempt was a clear mismatch. All three designs met the core requirements of a continuous ring, a central hub, and five broad blades connecting hub to ring. The second attempt was the weakest overall match because its ring read noticeably heavier than the sketch intent, which called for a relatively thin ring. It still fit the brief well enough to approve qualitatively, but it was the least aligned stylistically compared with the other two.
+ANSWER: $dh_stitching_example_answer
 ```
 
 OUTPUT:
 ```
-Regarding the bad-attempt assessment for this propeller design, no attempt was a clear mismatch. All three designs met the core requirements of a continuous ring, a central hub, and five broad blades connecting hub to ring. One of the designs was the weakest overall match because its ring read noticeably heavier than the sketch intent, which called for a relatively thin ring. It still fit the brief well enough to approve qualitatively, but it was the least aligned stylistically.
+$dh_stitching_example_paragraph
 ```
 
 ## Second worked example — short "none" answer
 
 INPUT:
 ```
-DC_NAME: propeller
+DC_NAME: $dc_name
 FIELD: Problem - UII
 QUESTION: Was there any problem in the analysis of user inputs this session?
 ANSWER: No problem occurred this session.
@@ -122,5 +122,5 @@ ANSWER: No problem occurred this session.
 
 OUTPUT:
 ```
-On the propeller design session, the user-input-inspection step encountered no problems.
+On the $dc_name design session, the user-input-inspection step encountered no problems.
 ```

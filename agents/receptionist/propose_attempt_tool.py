@@ -67,6 +67,7 @@ from typing import Annotated
 from langchain_core.tools import tool
 
 from agents.shared.attempts_tool import attempt_label_for_path
+from agents.shared.pack_text import described
 from agents.shared.viz_bus import publish
 from config import ATTEMPTS_DIR
 
@@ -97,6 +98,7 @@ _CANONICAL_PARAM_NAMES = frozenset({
 })
 
 
+@described
 @tool
 def propose_attempt(
     parameters_path: Annotated[
@@ -110,14 +112,14 @@ def propose_attempt(
         "the user is shown is always what the attempt actually holds.",
     ],
 ) -> str:
-    """Surface a set of 16 propeller parameter values in the
+    """Surface a set of $parameter_count $dc_name parameter values in the
     Parameters Inputs view as the system's PROPOSED SATISFYING
     SOLUTION.
 
     Call this AFTER ``visualize_3d_model`` when you have decided
     (or have been told so in your hand-off) that a given attempt
     satisfies the user's requirements.  Pass the PATH to that
-    attempt's ``parameters.json`` — the tool reads all 16 values out
+    attempt's ``parameters.json`` — the tool reads all $parameter_count values out
     of the record, so the panel can only ever show what the attempt
     actually holds.  The frontend marks ``PROPOSED`` on every
     parameter the user has not user-FIXED, and shows "PROPOSED

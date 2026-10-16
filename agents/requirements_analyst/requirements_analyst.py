@@ -78,6 +78,7 @@ from agents.shared.user_inputs_tool import (
 from agents.shared import token_usage
 from agents.step_caps import MAX_REQUIREMENTS_ANALYST_STEPS
 from tools.calculate.calculate import calculate
+from agents.shared.pack_text import fill
 
 logger = logging.getLogger("propeller_agent")
 
@@ -85,20 +86,20 @@ logger = logging.getLogger("propeller_agent")
 # Carried verbatim from the DC Output Inspector: which of the two blocks the
 # prompt's {image_persistence_block} slot receives depends on the session's
 # KEEP IMAGES IN CONTEXT setting.
-_IMAGE_PERSISTENCE_ON = """\
-Render images loaded in earlier cycles remain in
+_IMAGE_PERSISTENCE_ON = fill("""\
+$output_images_label loaded in earlier cycles remain in
 your message history as full image blocks AND paired
 ``Loaded image (path: …):`` text blocks (the path block sits
 immediately before each image block).  Those images describe PAST
-designs, not the current one."""
+designs, not the current one.""")
 
-_IMAGE_PERSISTENCE_OFF = """\
-Render images loaded in earlier cycles have their
+_IMAGE_PERSISTENCE_OFF = fill("""\
+$output_images_label loaded in earlier cycles have their
 image bytes stripped from your history at every operation hand-off;
 only the paired ``Loaded image (path: …):`` text blocks survive as a
 path-only record of which images you had loaded.  To see those earlier
-renders again you must explicitly re-load them from those paths via
-``view_images``."""
+$output_images again you must explicitly re-load them from those paths via
+``view_images``.""")
 
 
 # The comparison-source block filled into the prompt's
@@ -114,7 +115,7 @@ renders again you must explicitly re-load them from those paths via
 # user's own material, always.  (Closes the rebuild plan's open item O2: the
 # question was what to do about grading an extraction it wrote itself, and
 # the answer is that there is no extraction.)
-_COMPARISON_MODE_1 = """\
+_COMPARISON_MODE_1 = fill("""\
 Compare the generated design DIRECTLY against the USER INPUTS —
 the user's typed prompt (``user_query.txt``), the user-supplied
 reference image(s), and their paired ``_note.txt`` description(s).
@@ -122,10 +123,10 @@ reference image(s), and their paired ``_note.txt`` description(s).
   * ``read_user_inputs()`` — the typed prompt for this design, plus
     what each reference image depicts and where the images are.
   * ``view_images([...])`` — load the relevant user reference
-    image(s) so you can compare them against the renders.
+    image(s) so you can compare them against the $output_images.
 
 The comparison source(s) in scope this session: ``user_query.txt``
-plus any paired image+note in ``inputs/input_images/``."""
+plus any paired image+note in ``inputs/input_images/``.""")
 
 # ---------------------------------------------------------------------------
 # Utility tool schemas (actual I/O handled by RequirementsAnalyst)

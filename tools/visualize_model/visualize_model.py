@@ -19,25 +19,27 @@ from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
 from agents.shared.attempts_tool import attempt_label_for_path
+from agents.shared.pack_text import described, fill
 from agents.shared.viz_bus import publish, set_last_visualized_attempt_dir
 from config import ATTEMPTS_DIR
 
 
+@described
 @tool
 @generic_tool("Visualize 3D model")
 def visualize_3d_model(obj_path: str) -> str:
     """Display a generated 3D model (.obj) in the web interface's
     interactive viewer.
 
-    Use this when a design attempt has produced a propeller mesh and
+    Use this when a design attempt has produced a $dc_name $output_model and
     the user should see it: pass the absolute path to that attempt's
-    ``propeller_mesh.obj``.  The model loads live in the web UI's 3D
+    $geometry_model_filename.  The model loads live in the web UI's 3D
     panel where the user can rotate and zoom it.  This tool does NOT
-    let you observe the mesh — you still never describe its
+    let you observe the $output_model — you still never describe its
     appearance.
 
     Args:
-        obj_path: Absolute path to the ``.obj`` mesh file.  Must be
+        obj_path: Absolute path to the ``.obj`` $output_model file.  Must be
             an existing ``.obj`` inside the attempts directory.
 
     Returns:
@@ -55,7 +57,7 @@ def visualize_3d_model(obj_path: str) -> str:
 
     if target.suffix.lower() != ".obj":
         return (f"visualize_3d_model: FAILED — {target} is not an .obj "
-                f"file. Only mesh .obj files can be visualised.")
+                + fill("file. Only $output_model .obj files can be visualised."))
     if not target.is_file():
         return (f"visualize_3d_model: FAILED — no file at {target}. "
                 f"Check the attempt folder path.")
@@ -66,8 +68,8 @@ def visualize_3d_model(obj_path: str) -> str:
         root = ATTEMPTS_DIR
     if root != target and root not in target.parents:
         return (f"visualize_3d_model: FAILED — {target} is outside the "
-                f"attempts directory ({root}); only generated meshes "
-                f"under attempts/ can be shown.")
+                f"attempts directory ({root}); "
+                + fill("only generated $output_models under attempts/ can be shown."))
 
     # Caption the viewer with the attempt number when the mesh lives
     # inside a canonical ``YYYYMMDD_HHMMSS_NNN_<slug>`` attempt folder

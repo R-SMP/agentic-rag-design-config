@@ -65,6 +65,7 @@ from agents.database_handler import db_writer
 from agents.shared import voyage_mm
 from workflow_settings import settings as workflow_settings
 from workflow_settings import db_options_config
+from agents.shared.pack_text import fill
 
 logger = logging.getLogger("propeller_agent")
 
@@ -1812,10 +1813,10 @@ _N_DOC = (
     "expanded to all Q+A within it that you're allowed to see.  "
     "Typical value: 3-10."
 )
-_QUERY_DOC = (
+# The examples are the pack's (dc_pack/fragments/dc/), filled at import.
+_QUERY_DOC = fill(
     "Natural-language search query.  Describe what past Q+A "
-    "you're looking for — e.g. 'thin propeller designs that "
-    "worked well', 'failure cases for blade counts above 8'.  "
+    "you're looking for — e.g. $search_query_examples.  "
     "Embedded with the same model the corpus was indexed with "
     "(see <search_meta embedding_model=.../> in the response)."
 )
@@ -1825,9 +1826,9 @@ _QUERY_DOC_EITHER = _QUERY_DOC + (
     "  Pass \"\" when searching by ``parameters`` instead; supplying "
     "both is an error."
 )
-_PARAMETERS_DOC = (
+_PARAMETERS_DOC = fill(
     "Design parameters to find the CLOSEST saved attempts to, as "
-    "{name: number} — e.g. {\"bladeCount\": 5, \"impellerRadius\": 70}.  "
+    "{name: number} — e.g. {$parameter_search_example}.  "
     "Any subset works; omitted ones are ignored, not zeroed.  "
     "Mutually exclusive with ``query``."
 )

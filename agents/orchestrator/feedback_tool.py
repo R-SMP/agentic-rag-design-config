@@ -149,9 +149,12 @@ def build_submit_feedback_dispatch():
 
     from agents.shared import topology as _topology
 
-    doc = _topology.overlay_value(
+    from agents.shared.pack_text import fill
+
+    # The topology's text, with the pack's words filled in.
+    doc = fill(_topology.overlay_value(
         "SUBMIT_FEEDBACK_DISPATCH_DOC", submit_feedback_dispatch.description
-    )
+    ))
     if doc == submit_feedback_dispatch.description:
         return submit_feedback_dispatch          # the identical object
     return StructuredTool.from_function(

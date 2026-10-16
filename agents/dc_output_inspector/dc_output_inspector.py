@@ -63,30 +63,31 @@ from config import USER_INPUTS_DIR
 from tools.calculate.calculate import calculate
 from agents.shared.dba_tools import dba_tools_for
 from agents.shared.dc_params_tool import param_tools_for
+from agents.shared.pack_text import fill
 
 logger = logging.getLogger("propeller_agent")
 
 
-_IMAGE_PERSISTENCE_ON = """\
-Render images loaded in earlier cycles remain in
+_IMAGE_PERSISTENCE_ON = fill("""\
+$output_images_label loaded in earlier cycles remain in
 your message history as full image blocks AND paired
 ``Loaded image (path: …):`` text blocks (the path block sits
 immediately before each image block).  Those images describe PAST
-designs, not the current one."""
+designs, not the current one.""")
 
-_IMAGE_PERSISTENCE_OFF = """\
-Render images loaded in earlier cycles have their
+_IMAGE_PERSISTENCE_OFF = fill("""\
+$output_images_label loaded in earlier cycles have their
 image bytes stripped from your history at every operation hand-off;
 only the paired ``Loaded image (path: …):`` text blocks survive as a
 path-only record of which images you had loaded.  To see those earlier
-renders again you must explicitly re-load them from those paths via
-``view_images``."""
+$output_images again you must explicitly re-load them from those paths via
+``view_images``.""")
 
 
 # Comparison-source blocks — one per startup choice (1 / 2 / 3).
 # Filled into the {comparison_mode_block} placeholder of the DCOI's prompt.
 
-_COMPARISON_MODE_1 = """\
+_COMPARISON_MODE_1 = fill("""\
 Compare the generated design DIRECTLY against the USER INPUTS —
 the user's typed prompt (``user_query.txt``), the user-supplied
 reference image(s), and their paired ``_note.txt`` description(s).
@@ -96,12 +97,12 @@ this mode; you compare against the user's own material.
   * ``read_user_inputs()`` — the typed prompt for this design, plus
     what each reference image depicts and where the images are.
   * ``view_images([...])`` — load the relevant user reference
-    image(s) so you can compare them against the renders.
+    image(s) so you can compare them against the $output_images.
 
 The comparison source(s) in scope this session: ``user_query.txt``
 plus any paired image+note in ``inputs/input_images/``.  Do NOT
 read ``extracted_inputs.txt`` in this mode — it is the UII's
-interpretation, not the user's own input."""
+interpretation, not the user's own input.""")
 
 _COMPARISON_MODE_2 = """\
 Compare the generated design against the UII's STRUCTURED

@@ -33,6 +33,7 @@ from typing import TYPE_CHECKING
 from langchain_core.tools import StructuredTool
 
 from agents.shared import topology as _topology
+from agents.shared.pack_text import fill
 from agents.shared.topology import hub_key as _hub_key
 from agents.shared.trace import trace as _trace
 
@@ -244,8 +245,8 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
     "call_dc_output_inspector": (
         "Call the DC Output Inspector.  The ``message`` argument IS "
         "the hand-off text the DC Output Inspector will see.  Include "
-        "the full paths of any rendered images that the Inspector "
-        "should analyse, under a 'Render images:' label."
+        "the full paths of any $output_produced images that the Inspector "
+        "should analyse, under a '$output_images_label:' label."
     ),
     "call_orchestrator": (
         "Return control to the Orchestrator.  The ``message`` argument "
@@ -258,7 +259,7 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "Call the Design Engineer.  The ``message`` argument IS the "
         "hand-off text it will see — write it as free-form prose.  It "
         "authors the complete parameter set AND runs the generation / "
-        "render tools itself, so state the qualitative direction you "
+        "$output_image tools itself, so state the qualitative direction you "
         "want rather than concrete numbers."
     ),
     "call_requirements_analyst": (
@@ -266,8 +267,8 @@ _TOOL_DESCRIPTIONS: dict[str, str] = {
         "the hand-off text it will see — write it as free-form prose.  "
         "It owns the requirements at both ends: it derives them from "
         "the user's material and judges the output against them, so "
-        "include the full paths of any rendered images it should "
-        "analyse, under a 'Render images:' label."
+        "include the full paths of any $output_produced images it should "
+        "analyse, under a '$output_images_label:' label."
     ),
     "call_receptionist": (
         "Hand a user-facing result to the Receptionist, which composes "
@@ -301,9 +302,10 @@ def build_routing_tool(
     # generic fallback below still covers a tool the active table omits.
     descriptions = _topology.overlay_value(
         "TOOL_DESCRIPTIONS", _TOOL_DESCRIPTIONS)
-    description = descriptions.get(
+    # Its words about the configurator's outputs come from the pack.
+    description = fill(descriptions.get(
         tool_name, f"Call the {target_display} with a short hand-off message."
-    )
+    ))
 
     def _invoke(message: str) -> str:
         message = _carry_over_prose(caller_agent, message, caller_display)

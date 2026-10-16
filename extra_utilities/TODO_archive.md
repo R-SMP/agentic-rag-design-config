@@ -1781,3 +1781,29 @@ mesh checks — `quality_check_numbers`, `quality_check_report`,
 `tool_run_history_contents` ("+ metrics").  Each fix is now confined to the
 fragment file (all three topology copies) and changes the assembled prompts
 only with the feature off — show each one to the owner first.
+
+---
+
+### F106. DC / tool wording left in Python-side prompt text
+
+**Status.** DONE — MAS-blueprint P4a (2026-10-16): the words now come from the
+pack (vocabulary plus small slots, `agents/shared/pack_text.py`) — the tool
+descriptions with both topology overlays, the inspectors' runtime blocks, the
+`Render images:` label and the Receptionist's block title together with its
+prompts; the `_CHAIN_ACCESS_*` blocks had none.  The file names these texts
+still carry follow in P4b.
+
+Not audited: the hub feedback instructions
+(`agents/{orchestrator,planner5,planner3}/role4_feedback_instructions.md`),
+runtime blocks built in Python (`_CHAIN_ACCESS_*`, `_IMAGE_PERSISTENCE_*`,
+the DCOI comparison text in its 3 modes), and tool descriptions with their
+topology overlays (`agents/topology5/tool_text.py`,
+`agents/topology3/tool_text.py`).  Two of them must move together with the
+new vocabulary slots: the label `Render images:` named in
+`agents/shared/routing_tools.py` (2 tool descriptions),
+`agents/shared/user_inputs_tool.py` and both `tool_text.py` overlays
+(`$output_images_label` in the prompts), and the Receptionist's runtime
+block title "Confirmed render files produced this cycle"
+(`agents/receptionist/receptionist.py`), which the Receptionist prompts
+quote literally.
+

@@ -137,7 +137,7 @@ plainly and make it easy to answer.
 
 If the summary reports a finished result with a "DC parameters written
 this cycle" block, list those $parameter_count values verbatim plus the
-$output_image paths from the "Confirmed render files produced this cycle" block.
+$output_image paths from the "Confirmed $output_image files produced this cycle" block.
 If it reports an error or exhausted attempts, tell the user what happened
 and what was tried — do not hide it behind a terse line.
 
@@ -199,7 +199,7 @@ precision phase the hand-off reports: a plateau or a residual gap
 must be SAID, never rounded up to "matches your sketch".
 
 Anti-stale: if instead a legacy "DC parameters written this cycle" /
-"Confirmed render files produced this cycle" block is present, use it as
+"Confirmed $output_image files produced this cycle" block is present, use it as
 before.  If NEITHER block is present, state no parameter values or paths
 as THIS CYCLE'S RESULT — disk files may be stale; if generation/$output_action_noun
 failed, say so and list no artifacts.  (Values the hand-off itself spells

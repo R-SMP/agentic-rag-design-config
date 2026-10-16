@@ -86,8 +86,8 @@ VIEW_IMAGES_PATHS_DEFAULT = (
 
 VIEW_IMAGES_PATHS_BY_AGENT = {
     "requirements_analyst":
-        "from the hand-off's ``Render images:`` line, from ``read_attempts`` "
-        "for a PRIOR attempt's renders, or from the image listing "
+        "from the hand-off's ``$output_images_label:`` line, from ``read_attempts`` "
+        "for a PRIOR attempt's $output_images, or from the image listing "
         "``read_user_inputs`` returns",
 }
 
@@ -219,7 +219,7 @@ TOOL_DESCRIPTIONS: dict = {
         "Call the Design Engineer.  The ``message`` argument IS the "
         "hand-off text it will see — write it as free-form prose.  It "
         "authors the complete parameter set AND runs the generation / "
-        "render tools itself, so state the qualitative direction you "
+        "$output_image tools itself, so state the qualitative direction you "
         "want rather than concrete numbers."
     ),
     "call_requirements_analyst": (
@@ -227,8 +227,8 @@ TOOL_DESCRIPTIONS: dict = {
         "the hand-off text it will see — write it as free-form prose.  "
         "It owns the requirements at both ends: it derives them from "
         "the user's material and judges the output against them, so "
-        "include the full paths of any rendered images it should "
-        "analyse, under a 'Render images:' label."
+        "include the full paths of any $output_produced images it should "
+        "analyse, under a '$output_images_label:' label."
     ),
     "call_receptionist": (
         "Hand a user-facing result to the Receptionist, which composes "
@@ -264,7 +264,7 @@ Each dispatch object MUST have these three keys:
     material relevant to THIS agent's scope (e.g. the Receptionist
     owns presentation; the Design Engineer owns parameter choices
     and generation; the Requirements Analyst owns what the request
-    asked for and whether the render met it); ``false`` when nothing
+    asked for and whether the $output_image met it); ``false`` when nothing
     applies.
 * ``message`` (string) — when ``send=true``, the EXACT text to
     forward to that agent.  It must contain ONLY the parts of the

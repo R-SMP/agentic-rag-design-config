@@ -54,6 +54,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 
 from agents.shared import token_usage
 from agents.shared.file_utils import ai_text
+from agents.shared.pack_text import fill
 
 logger = logging.getLogger("propeller_agent")
 
@@ -63,16 +64,17 @@ logger = logging.getLogger("propeller_agent")
 # base keeps the keep/drop philosophy DRY.
 # ---------------------------------------------------------------------------
 
-_PRUNER_BASE = """\
-You are the Context Pruner for a propeller design configurator system.
+# The configurator's words come from the pack, filled at import.
+_PRUNER_BASE = fill("""\
+You are the Context Pruner for a $domain_description.
 Your output REPLACES the history you are given: whatever you leave out is
 gone for good, so anything the next decision needs must survive in it.
 (The agent's own system prompt is never part of your input and is never
 lost; each pass below says what else the reader still sees.)
 
-KEEP the signal — current design state (latest parameters, mesh / render,
+KEEP the signal — current design state (latest parameters, $output_model / $output_image,
 assessment), specific values + attempt ids, the CURRENT paths the hand-off
-carries (attempt folder, parameters file, render images, extracted
+carries (attempt folder, parameters file, $output_images_label_lower, extracted
 inputs) — an agent may not guess a path, so a dropped one is
 unrecoverable — any ``=== STANDING DIRECTIVES ===`` block VERBATIM, key
 decisions and their reasoning, the most recent error / unresolved issue,
@@ -82,7 +84,7 @@ raw outputs (keep only key metrics + warnings), superseded attempts and
 their paths, and resolved exchanges.
 
 Output: keep chronological order; a numbered list of
-``<role>: <condensed content>`` works well."""
+``<role>: <condensed content>`` works well.""")
 
 # Tier 1 — broad-strokes summary of the older portion; the latest window
 # survives verbatim, so this pass can be aggressive.

@@ -38,6 +38,7 @@ from pathlib import Path
 from langchain_core.tools import tool
 
 from agents.shared.agent_activity import generic_tool
+from agents.shared.pack_text import described, fill
 from config import ATTEMPTS_DIR
 
 # Folder names produced by ``create_attempt`` have the form
@@ -173,11 +174,12 @@ def _indent_block(text: str, prefix: str) -> str:
 def _attempt_summary(n: int, folder: Path, detailed: bool) -> list[str]:
     """The per-attempt lines shared by both ``read_attempts`` modes."""
     names, flags = _classify_files(folder)
+    # The model and image roles are named in the pack's words.
     present_roles = [
         label for label, ok in (
             ("parameters", flags["parameters"]),
-            ("mesh", flags["mesh"]),
-            ("renders", flags["renders"]),
+            (fill("$output_model"), flags["mesh"]),
+            (fill("$output_images"), flags["renders"]),
             ("description", flags["description"]),
         ) if ok
     ]
@@ -199,11 +201,11 @@ def _attempt_summary(n: int, folder: Path, detailed: bool) -> list[str]:
         and p.suffix.lower() in (".png", ".jpg", ".jpeg")
     ) if names else []
     if render_paths:
-        lines.append("    Render paths:")
+        lines.append(fill("    $Output_image paths:"))
         lines += [f"      {p}" for p in render_paths]
     mesh = folder / "propeller_mesh.obj"
     if mesh.is_file():
-        lines.append(f"    Mesh path: {mesh.resolve()}")
+        lines.append(fill("    $Output_model path: ") + str(mesh.resolve()))
     if detailed:
         params = _read_small_text(folder / "parameters.json")
         if params is not None:
@@ -212,6 +214,7 @@ def _attempt_summary(n: int, folder: Path, detailed: bool) -> list[str]:
     return lines
 
 
+@described
 @tool
 @generic_tool("Read attempts")
 def read_attempts(local_attempt_numbers: list[int] | None = None) -> str:
@@ -219,10 +222,10 @@ def read_attempts(local_attempt_numbers: list[int] | None = None) -> str:
 
     An attempt folder is the canonical container for one design-
     generation process: it may hold the DC inputs (``parameters.json``),
-    the generated mesh (``propeller_mesh.obj``), the rendered analysis
+    the generated $output_model ($geometry_model_filename), the $output_produced analysis
     images (``render_*.png``), and an optional ``description.txt``.
     Folders may be partial — e.g. a folder with only parameters.json
-    means no mesh was generated yet for that input set.
+    means no $output_model was generated yet for that input set.
 
     For an attempt from a PAST session use ``retrieve_attempt`` instead —
     that one takes GLOBAL ids, a different numbering space.
@@ -237,8 +240,8 @@ def read_attempts(local_attempt_numbers: list[int] | None = None) -> str:
         as well.  Attempt numbers only — never paths, never global ids.
 
     In both modes each attempt's ``render_*.png`` (including
-    ``render_blade_sections.png``) and ``propeller_mesh.obj`` are listed
-    as ABSOLUTE PATHS, ready to hand to a tool that takes a path — mesh
+    ``render_blade_sections.png``) and $geometry_model_filename are listed
+    as ABSOLUTE PATHS, ready to hand to a tool that takes a path — $output_model
     contents and image bytes are never returned inline.  Returns
     ``'No attempts created yet.'`` when no folder exists.
     """

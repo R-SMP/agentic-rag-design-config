@@ -83,8 +83,8 @@ VIEW_IMAGES_PATHS_BY_AGENT = {
     # hand-off; the extraction's ``USEFUL INPUT IMAGES`` section is NOT a
     # path source -- it names images by filename and gives crop boxes.
     "dc_output_inspector":
-        "from the hand-off's ``Render images:`` line, from ``read_attempts`` "
-        "for a PRIOR attempt's renders, or from the image listing "
+        "from the hand-off's ``$output_images_label:`` line, from ``read_attempts`` "
+        "for a PRIOR attempt's $output_images, or from the image listing "
         "``read_user_inputs`` returns",
 }
 
@@ -226,8 +226,8 @@ TOOL_DESCRIPTIONS: dict = {
     "call_dc_output_inspector": (
         "Call the DC Output Inspector.  The ``message`` argument IS "
         "the hand-off text the DC Output Inspector will see.  Include "
-        "the full paths of any rendered images that the Inspector "
-        "should analyse, under a 'Render images:' label."
+        "the full paths of any $output_produced images that the Inspector "
+        "should analyse, under a '$output_images_label:' label."
     ),
     "call_receptionist": (
         "Hand a user-facing result to the Receptionist, which composes "

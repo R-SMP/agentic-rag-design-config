@@ -94,6 +94,7 @@ from agents.step_caps import MAX_DH_TURNS_PER_FIELD
 from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
 from engine import parameter_schema
 from workflow_settings import settings as workflow_settings
+from agents.shared.pack_text import fill
 
 # DH events go to a DEDICATED logger that writes to
 # ``logs/database_handler_<ts>.log`` and does NOT propagate to the
@@ -2297,10 +2298,11 @@ class DatabaseHandler(BaseChainAgent):
     # appended to every question the DH sends every agent.  Deriving it
     # means the same drift cannot recur the next time the DC's
     # parameter list changes.
-    _AGENT_FACING_TAIL = (
+    # The image word is the pack's.
+    _AGENT_FACING_TAIL = fill(
         "\n\n[Reminder for your reply, from the Database Handler:\n"
         "Do not include file paths, directory names, or absolute "
-        "paths of any kind (no /app/... paths, no render PNG paths, "
+        "paths of any kind (no /app/... paths, no $output_image PNG paths, "
         "no parameters.json references, no attempt-folder slugs).  "
         f"Do not enumerate the {len(PARAMETER_NAMES)} design parameters "
         "as a value list — "

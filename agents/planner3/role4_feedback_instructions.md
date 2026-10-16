@@ -27,7 +27,7 @@ it to another agent.
   * **Requirements Analyst** — reading the user's inputs: accuracy of
     extracted quantitative values, fidelity of qualitative descriptions,
     capture of design intent and authorisations, image-count signals; and
-    judging the renders: visual / QC verdicts, countable-feature checks,
+    judging the $output_images: visual / QC verdicts, countable-feature checks,
     comparison-source claims, override decisions, and whether visual claims
     were grounded in images loaded that turn.
   * **Design Engineer** — parameter choices for unlocked values,

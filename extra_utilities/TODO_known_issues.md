@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F115**.
+branches (F36 is taken on a sibling branch).  Next free id: **F116**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -119,7 +119,6 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F102` | OPEN | Make the agent role map user-customizable in Workflow Settings |
 | `F103` | OPEN | Retire `RAG_DCIC_READS_DCII` once F102 lands |
 | `F105` | OPEN | Rename `visualize_3d_model` and `propose_attempt` to configurator-neutral names |
-| `F106` | OPEN | DC / tool wording left in Python-side prompt text |
 | `F107` | OPEN | `measure_prompts.py` replicates a slot map that no longer matches |
 | `F108` | OPEN | Overlapping fragments to merge in the single DC interface |
 | `F109` | DONE | Mesh checks OFF leaves an empty line in the inspector's role list |
@@ -128,6 +127,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F112` | OPEN | One Database window for everything database-related |
 | `F113` | OPEN | The generator's description still names the removed `GEOMETRY_BACKEND` setting |
 | `F114` | OPEN | Blade-sections texts name the generator literally |
+| `F115` | OPEN | A check for propeller-related words in the prompts |
 
 ---
 
@@ -4618,27 +4618,6 @@ that name them.  One tool change at a time (AI_ASSISTANT_RULES rule 6).
 
 ---
 
-### F106. DC / tool wording left in Python-side prompt text
-
-**Status.** OPEN — out of the generic-fragments audit's scope (owner,
-2026-10-13).
-
-Not audited: the hub feedback instructions
-(`agents/{orchestrator,planner5,planner3}/role4_feedback_instructions.md`),
-runtime blocks built in Python (`_CHAIN_ACCESS_*`, `_IMAGE_PERSISTENCE_*`,
-the DCOI comparison text in its 3 modes), and tool descriptions with their
-topology overlays (`agents/topology5/tool_text.py`,
-`agents/topology3/tool_text.py`).  Two of them must move together with the
-new vocabulary slots: the label `Render images:` named in
-`agents/shared/routing_tools.py` (2 tool descriptions),
-`agents/shared/user_inputs_tool.py` and both `tool_text.py` overlays
-(`$output_images_label` in the prompts), and the Receptionist's runtime
-block title "Confirmed render files produced this cycle"
-(`agents/receptionist/receptionist.py`), which the Receptionist prompts
-quote literally.
-
----
-
 ### F107. `measure_prompts.py` replicates a slot map that no longer matches
 
 **Status.** OPEN (2026-10-13).
@@ -4743,4 +4722,20 @@ instead (the generator's own slot, which fills in the same code-quoted
 name).  The words stay the same, but phrase slots are re-wrapped at 80
 columns, so check the assembled prompts for moved line breaks before
 applying.
+
+---
+
+### F115. A check for propeller-related words in the prompts
+
+**Status.** OPEN — owner request (2026-10-16), during MAS-blueprint P4.
+
+An offline check that fails when a propeller-related word (propeller, mesh,
+render, blade, impeller, airfoil, chord, Grasshopper, RhinoCompute, FEG, …)
+reaches what an agent reads from anywhere but the pack: every assembled prompt
+(topologies 7 / 5 / 3, the settings matrix), every tool description and
+argument text, and the text Python writes at run time.  One way: assemble
+everything once with a copy of the pack whose texts are swapped for neutral
+stand-ins -- any propeller word left came from the engine.  Until MAS-blueprint
+P4 is finished the engine still writes some, so the check needs an allow-list
+of what is pending, shrinking to empty.
 

@@ -138,6 +138,13 @@ slots:
     kind: word
     section: outputs
     description: "The kind of geometry model the geometry tool generates."
+  output_models:
+    source: pack
+    folder: tools
+    kind: word
+    use: runtime
+    section: outputs
+    description: "Plural of the model noun ('only generated ... can be shown')."
   output_model_label:
     source: pack
     folder: tools
@@ -243,6 +250,13 @@ slots:
     kind: phrase
     section: outputs
     description: "What the inspector's fidelity verdict reports, naming this DC's model ceiling."
+  refine_cap_limits:
+    source: pack
+    folder: tools
+    kind: phrase
+    use: runtime
+    section: outputs
+    description: "The configurator's limits a capped precision job names as its remaining gap, per kind of match (the hubs' refine-cap message)."
   precision_match_targets:
     source: pack
     folder: tools
@@ -685,6 +699,48 @@ slots:
     kind: phrase
     section: examples
     description: "Structural markers in agents' answers to preserve, in parentheses."
+  attempt_slug_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    use: runtime
+    section: examples
+    description: "Example attempt-folder label (code-quoted), in new_attempt_parameters' description."
+  crop_reuse_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    use: runtime
+    section: examples
+    description: "Example of an agent reusing a recorded crop region, in view_images' description ('e.g. ...')."
+  search_query_examples:
+    source: pack
+    folder: dc
+    kind: phrase
+    use: runtime
+    section: examples
+    description: "Example database_search queries, each single-quoted."
+  parameter_search_example:
+    source: pack
+    folder: dc
+    kind: phrase
+    use: runtime
+    section: examples
+    description: "Example parameter set for database_search, as name: number pairs WITHOUT the braces (the engine writes them)."
+  dh_stitching_example_answer:
+    source: pack
+    folder: dc
+    kind: phrase
+    use: runtime
+    section: examples
+    description: "The stitching prompt's worked example: an agent's ANSWER (one line)."
+  dh_stitching_example_paragraph:
+    source: pack
+    folder: dc
+    kind: phrase
+    use: runtime
+    section: examples
+    description: "The stitching prompt's worked example: the paragraph written from that answer (one line)."
 
 # --- 7 User input types ----------------------------------------------------
   sketch_handling:

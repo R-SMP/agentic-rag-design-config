@@ -49,6 +49,11 @@ def build_hub(session, *, llm_cache=None):
 
     Constructing a hub materialises the whole agent set: each sub-agent
     builds its own LLM and its own system prompt.  That is why there is
-    exactly one of these per session rather than one per call site.
+    exactly one of these per session rather than one per call site.  The
+    tool descriptions that name the pack's words are filled again first, for
+    this session's topology (``agents/shared/pack_text.py``).
     """
+    from agents.shared.pack_text import refresh_tools
+
+    refresh_tools()
     return hub_class()(session=session, llm_cache=llm_cache)

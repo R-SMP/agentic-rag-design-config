@@ -28,7 +28,10 @@ body) names the design configurator, its tools or their outputs.  Where a
 sentence needs such a word or example it names a `$slot` whose text lives in the pack,
 `dc_pack/fragments/` — see `dc_pack/README.md`, "Phrase slots".  The routing fragments loaded
 by `routing.py` get the same `$slot` substitution (and inline re-wrap) since
-2026-10.
+2026-10.  The same holds for the text the engine writes for the agents in
+Python (tool descriptions, tool answers, runtime blocks) since MAS-blueprint
+P4a: its words about the configurator are `$names` filled from the pack by
+`agents/shared/pack_text.py`; the file names it still carries follow in P4b.
 
 **Conditional regions inside fragments and prompts.** Several flags
 gate optional content:

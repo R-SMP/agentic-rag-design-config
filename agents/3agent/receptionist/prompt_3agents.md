@@ -197,7 +197,7 @@ precision phase the hand-off reports: a plateau or a residual gap
 must be SAID, never rounded up to "matches your sketch".
 
 Anti-stale: if instead a "DC parameters written this cycle" /
-"Confirmed render files produced this cycle" block is present — the
+"Confirmed $output_image files produced this cycle" block is present — the
 fallback the system attaches when the hand-off names no attempt — list
 those $parameter_count values verbatim plus those $output_image paths.  If
 NEITHER block is present, state no parameter values or paths

@@ -65,6 +65,7 @@ from agents.shared.stop_signal import check_stop_or_raise
 from agents.tool_caller import ToolCaller
 from agents.user_input_inspector import UserInputInspector
 from agents.shared.dba_tools import dba_tools_for
+from agents.shared.pack_text import fill
 
 logger = logging.getLogger("propeller_agent")
 
@@ -90,7 +91,7 @@ def _load_role4_instructions() -> str:
     ~100-line block no longer ships in the Orchestrator's live-pipeline
     system prompt on every turn.
     """
-    return _ROLE4_INSTRUCTIONS_PATH.read_text(encoding="utf-8")
+    return fill(_ROLE4_INSTRUCTIONS_PATH.read_text(encoding="utf-8"))
 
 
 _CHAIN_ACCESS_ON = """\
@@ -710,9 +711,9 @@ class Orchestrator(BaseChainAgent):
                         f"{MAX_SECTIONS_REFINE_ROUNDS}-round cap.  STOP iterating: "
                         "finalize with the best attempt so far and report honestly "
                         "how closely it matched the sketch, naming any remaining gap "
-                        "as the configurator's limit (the airfoil-model ceiling for a "
-                        "sections match, or the geometry / locked-parameter limit for "
-                        "a 3D match) rather than ordering another cycle."
+                        "as the configurator's limit ("
+                        + fill("$refine_cap_limits")
+                        + ") rather than ordering another cycle."
                     )
 
             # Component C: capture a Planner-issued standing directive, then
