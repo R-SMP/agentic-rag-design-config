@@ -2,9 +2,11 @@
 
 The engine side of the tool contract (``engine/tooling.py``):
 
-* **loading** -- every ``tool.yaml`` is read and checked; a tool's code is
-  imported on first use, as a package of its own folder, so its modules
-  import each other relatively (``from .ring_height import …``);
+* **loading** -- every ``tool.yaml`` is read and checked, and kept while
+  the files it was read and checked from are unchanged (``engine/pack.py``:
+  their size and modification time); a tool's code is imported on first
+  use, as a package of its own folder, so its modules import each other
+  relatively (``from .ring_height import …``);
 * **the LLM tool** -- built from the manifest: its name, description and
   argument texts, with the flowchart label (``display_name``) around it.
   For a generator the engine also runs the steps around the tool's own
@@ -323,13 +325,30 @@ def _check_tool_texts(found: dict[str, dict]) -> list[str]:
     return p
 
 
-def manifests() -> dict[str, dict]:
-    """``{name: manifest}`` for every tool of the pack, in folder order.
-    Raises PackToolError listing every problem."""
+_manifests_cache: dict[tuple, dict[str, dict]] = {}
+
+
+def _checked_manifests() -> dict[str, dict]:
+    """The checked manifests, kept while the files they are read and
+    checked from are unchanged (``engine/pack.py``: the tools' stamp and
+    the ``fragments/`` folders').  The kept dict is never handed out."""
+    key = (_pack.tools_stamp(),
+           tuple(_pack.stamp(_pack.fragments_dir() / f) for f in _pack.FOLDERS))
+    found = _manifests_cache.get(key)
+    if found is None:
+        found = _read_manifests()
+        _manifests_cache.clear()
+        if _pack.settled(key[0] + key[1]):
+            _manifests_cache[key] = found
+    return found
+
+
+def _read_manifests() -> dict[str, dict]:
     out: dict[str, dict] = {}
     problems: list[str] = []
     root = tools_dir()
-    for folder in sorted(p for p in root.iterdir() if p.is_dir()) if root.is_dir() else []:
+    for name in _pack.tool_folders():
+        folder = root / name
         f = folder / "tool.yaml"
         if not f.is_file():
             continue
@@ -341,6 +360,22 @@ def manifests() -> dict[str, dict]:
     if problems:
         raise PackToolError("\n".join(problems))
     return out
+
+
+def _copy(value):
+    """A deep copy of plain YAML data (dicts, lists, scalars)."""
+    if isinstance(value, dict):
+        return {k: _copy(v) for k, v in value.items()}
+    if isinstance(value, list):
+        return [_copy(v) for v in value]
+    return value
+
+
+def manifests() -> dict[str, dict]:
+    """``{name: manifest}`` for every tool of the pack, in folder order: a
+    copy of its own for each caller.  Raises PackToolError listing every
+    problem."""
+    return _copy(_checked_manifests())
 
 
 def _check_geometry(found: dict[str, dict]) -> list[str]:
@@ -369,7 +404,7 @@ def _check_geometry(found: dict[str, dict]) -> list[str]:
 
 def manifest(name: str) -> dict:
     try:
-        return manifests()[name]
+        return _copy(_checked_manifests()[name])
     except KeyError:
         raise PackToolError(f"the pack has no tool {name!r}") from None
 

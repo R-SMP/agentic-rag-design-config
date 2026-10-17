@@ -45,7 +45,9 @@ contributes nothing.
 
 from __future__ import annotations
 
+import os
 import re
+import time
 from functools import lru_cache
 from pathlib import Path
 
@@ -89,36 +91,108 @@ def tool_prompts_dir(tool: str) -> Path:
     return tools_dir() / tool / TOOL_PROMPTS
 
 
+# ---------------------------------------------------------------------------
+# Kept while unchanged
+# ---------------------------------------------------------------------------
+# A prompt build asks for the tools' manifests and for "which tool owns this
+# text" hundreds of times.  What is read from the tools' files is therefore
+# kept, together with the STAMP of those files -- each one's size and
+# modification time (a folder's moves when a file in it is added, removed
+# or renamed) -- and read again as soon as a stamp differs.  File times are
+# coarse (a few milliseconds), so an edit made in the same instant as a
+# read could leave its stamp unchanged: a value read while one of its
+# stamps was younger than SETTLE_NS is used but not kept (git's rule for
+# "racy" files).
+
+SETTLE_NS = 2_000_000_000
+
+
+def stamp(path: Path) -> tuple[int, int] | None:
+    """(size, modification time in ns) of a file or folder; None if absent."""
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_size, st.st_mtime_ns)
+
+
+def settled(key: tuple) -> bool:
+    """True when every stamp in *key* is old enough that a change made
+    since would have moved it (see SETTLE_NS)."""
+    limit = time.time_ns() - SETTLE_NS
+    return all(part[1] < limit for part in key
+               if isinstance(part, tuple) and len(part) == 2
+               and all(isinstance(x, int) for x in part))
+
+
+_folders_cache: dict[tuple, list[str]] = {}
+
+
+def tool_folders() -> list[str]:
+    """The names of the folders in ``tools/``, sorted.  Listed again when
+    the tools folder changes (a folder added, removed or renamed)."""
+    root = tools_dir()
+    key = (str(root), stamp(root))
+    names = _folders_cache.get(key)
+    if names is None:
+        # Sorted as paths, as the folders were before (case-insensitive on
+        # Windows).
+        names = ([p.name for p in sorted(Path(e.path) for e in os.scandir(root) if e.is_dir())]
+                 if root.is_dir() else [])
+        _folders_cache.clear()
+        if settled(key):
+            _folders_cache[key] = names
+    return list(names)
+
+
+def tools_stamp(prompts: bool = True) -> tuple:
+    """The stamp of what the tools' manifests are read from: the tools
+    folder, each tool's ``tool.yaml`` and -- unless *prompts* is False --
+    its ``prompts/`` folder.  It changes when a tool is added, removed or
+    renamed, a ``tool.yaml`` is edited, or a file comes or goes in a
+    ``prompts/`` folder."""
+    root = tools_dir()
+    parts: list = [str(root), stamp(root)]
+    for name in tool_folders():
+        parts += [name, stamp(root / name / "tool.yaml")]
+        if prompts:
+            parts.append(stamp(root / name / TOOL_PROMPTS))
+    return tuple(parts)
+
+
 _claims_cache: dict[tuple, dict[str, str]] = {}
 
 
 def tool_claims() -> dict[str, str]:
     """slot -> the tool whose folder holds its text (each ``tool.yaml``'s
-    ``prompt_slots``).  Re-read whenever a ``tool.yaml`` changes; a slot two
-    tools claim goes to the first here and is reported by
+    ``prompt_slots``).  Kept while the tools folder and every
+    ``tool.yaml`` are unchanged (:func:`tools_stamp`); a slot two tools
+    claim goes to the first here and is reported by
     ``engine/pack_tools.manifests()``."""
-    root = tools_dir()
-    files = sorted(root.glob("*/tool.yaml")) if root.is_dir() else []
-    key = (str(root), tuple((f.parent.name, f.stat().st_mtime_ns) for f in files))
-    if key not in _claims_cache:
-        claims: dict[str, str] = {}
-        for f in files:
+    key = tools_stamp(prompts=False)
+    claims = _claims_cache.get(key)
+    if claims is None:
+        claims = {}
+        root = tools_dir()
+        for name in tool_folders():
+            f = root / name / "tool.yaml"
+            if not f.is_file():
+                continue
             m = yaml.safe_load(f.read_text(encoding="utf-8"))
             listed = m.get("prompt_slots") if isinstance(m, dict) else None
             for slot in listed if isinstance(listed, list) else []:
-                claims.setdefault(str(slot), f.parent.name)
+                claims.setdefault(str(slot), name)
         _claims_cache.clear()
-        _claims_cache[key] = claims
-    return _claims_cache[key]
+        if settled(key):
+            _claims_cache[key] = claims
+    return claims
 
 
 def text_dirs() -> list[Path]:
     """Every folder that holds slot text: ``fragments/<folder>/`` and each
     tool's ``prompts/``."""
     dirs = [fragments_dir() / f for f in FOLDERS]
-    root = tools_dir()
-    if root.is_dir():
-        dirs += [p / TOOL_PROMPTS for p in sorted(root.iterdir()) if p.is_dir()]
+    dirs += [tools_dir() / name / TOOL_PROMPTS for name in tool_folders()]
     return [d for d in dirs if d.is_dir()]
 
 

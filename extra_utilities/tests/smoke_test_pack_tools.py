@@ -84,6 +84,17 @@ the Download buttons' choice pick (``engine/pack_tools.make_model``):
    first picture of that kind for each of ``pack.yaml``'s sample sets,
    and a sample set missing a parameter is refused.
 
+Since MAS-blueprint P5 (G1) what is read from the tools' files is kept while
+they are unchanged (``engine/pack.py``: stamps of size and modification
+time):
+
+14. KEPT.  On a copy of the pack, a second call reads no ``tool.yaml``
+   again; each caller gets a copy of its own; and the next call sees a
+   ``tool.yaml`` edited without changing its size, one edited in the same
+   instant as the read before it (same stamp), a tool folder removed or
+   added, a file added to a tool's ``prompts/`` folder or tool text put in
+   ``fragments/`` (the ownership checks run again), and a changed claim.
+
 Run from the repo root:  py -3.13 extra_utilities/tests/smoke_test_pack_tools.py
 """
 from __future__ import annotations
@@ -95,6 +106,7 @@ import re
 import shutil
 import sys
 import tempfile
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -864,6 +876,154 @@ def check_golden() -> int:
     return len(got)
 
 
+# ---------------------------------------------------------------------------
+# 14. Kept while unchanged (MAS-blueprint P5, G1)
+# ---------------------------------------------------------------------------
+
+def _reads(fn):
+    """(fn(), how many YAML files it parsed)."""
+    import yaml
+    real, n = yaml.safe_load, [0]
+
+    def counting(*a, **k):
+        n[0] += 1
+        return real(*a, **k)
+    yaml.safe_load = counting
+    try:
+        return fn(), n[0]
+    finally:
+        yaml.safe_load = real
+
+
+def _age(path: Path, seconds: int = 120) -> None:
+    """Give *path* a modification time *seconds* in the past (as if the
+    edit had been made then), so what is read from it may be kept."""
+    t = time.time_ns() - seconds * 1_000_000_000
+    os.utime(path, ns=(t, t))
+
+
+def check_kept() -> int:
+    real = config.DC_PACK_DIR
+    copy = _pack_copy()
+    n = 0
+    try:
+        config.DC_PACK_DIR = copy
+        tools = copy / "tools"
+        sec_yaml = tools / SEC / "tool.yaml"
+        n_tools = len([d for d in tools.iterdir() if (d / "tool.yaml").is_file()])
+
+        # Kept: the second call reads nothing again.
+        _, first = _reads(T.manifests)
+        _, second = _reads(T.manifests)
+        _, c_first = _reads(PK.tool_claims)
+        _, c_second = _reads(PK.tool_claims)
+        check(first == n_tools and second == 0 and c_first == n_tools and c_second == 0,
+              f"[KEPT] tool.yaml files parsed by two calls: manifests {first} then {second}, "
+              f"claims {c_first} then {c_second} (want {n_tools} then 0)")
+        n += 1
+
+        # A copy of its own for each caller.
+        m = T.manifests()
+        m[SEC]["display_name"] = "changed"
+        m[SEC]["outputs"]["images"].append({"view": "x"})
+        T.manifest(GEN)["settings"].clear()
+        again = T.manifests()
+        check(again[SEC]["display_name"] == "Blade Sections"
+              and len(again[SEC]["outputs"]["images"]) == 1 and again[GEN]["settings"],
+              "[KEPT] a caller changing its manifests changed what the next caller gets")
+        n += 1
+
+        # A tool.yaml edited without changing its size, then left to settle.
+        _rewrite(sec_yaml, "display_name: Blade Sections", "display_name: Blade Sectionz")
+        _age(sec_yaml)
+        got = T.manifests()[SEC]["display_name"]
+        _, later = _reads(T.manifests)
+        check(got == "Blade Sectionz" and later == 0,
+              f"[KEPT] a same-size tool.yaml edit: read {got!r}, then {later} files parsed again")
+        n += 1
+
+        # An edit in the same instant as the read before it: same size, same
+        # stamp.  A value read while its file was that young is not kept.
+        _rewrite(sec_yaml, "display_name: Blade Sectionz", "display_name: Blade Sectiony")
+        st = os.stat(sec_yaml)
+        got_y = T.manifests()[SEC]["display_name"]
+        _rewrite(sec_yaml, "display_name: Blade Sectiony", "display_name: Blade Sectionx")
+        os.utime(sec_yaml, ns=(st.st_atime_ns, st.st_mtime_ns))
+        got_x = T.manifests()[SEC]["display_name"]
+        check((got_y, got_x) == ("Blade Sectiony", "Blade Sectionx"),
+              f"[KEPT] an edit with the same stamp as the read before it: read {got_y!r} "
+              f"then {got_x!r}")
+        n += 1
+
+        # A changed claim (pack.tool_claims, read without the checks).
+        _rewrite(sec_yaml, "  - render_type_choice", "  - render_type_choicX")
+        _age(sec_yaml, 90)
+        claims = PK.tool_claims()
+        check(claims.get("render_type_choicX") == SEC and "render_type_choice" not in claims,
+              "[KEPT] a changed prompt_slots entry is not seen by tool_claims()")
+        _rewrite(sec_yaml, "render_type_choicX", "render_type_choice")
+        _rewrite(sec_yaml, "display_name: Blade Sectionx", "display_name: Blade Sections")
+        _age(sec_yaml, 80)
+        n += 1
+
+        # A tool folder removed, then put back.
+        away = copy.parent / "away"
+        shutil.move(str(tools / SEC), str(away))
+        _age(tools, 70)
+        gone = T.manifests()
+        gone_claims = PK.tool_claims()
+        shutil.move(str(away), str(tools / SEC))
+        _age(tools, 60)
+        back = T.manifests()
+        check(SEC not in gone and "render_type_choice" not in gone_claims and SEC in back
+              and PK.tool_claims().get("render_type_choice") == SEC,
+              f"[KEPT] a tool folder removed then put back: {sorted(gone)} -> {sorted(back)}")
+        n += 1
+
+        def refused(what, needle):
+            try:
+                T.manifests()
+                check(False, f"[KEPT] {what}: not seen (the manifests were not checked again)")
+            except T.PackToolError as exc:
+                check(needle in str(exc), f"[KEPT] {what}: refused for another reason: "
+                                          f"{str(exc)[:200]}")
+
+        # A tool folder added (a second copy of blade sections claims its texts).
+        shutil.copytree(tools / SEC, tools / "zz_twin")
+        _age(tools, 50)
+        refused("a tool folder added", "claimed by both")
+        shutil.rmtree(tools / "zz_twin")
+        _age(tools, 40)
+        check(sorted(T.manifests()) == sorted(back), "[KEPT] the added folder, removed, is still seen")
+        n += 1
+
+        # A file added to a tool's prompts/: the ownership checks run again.
+        stray = tools / SEC / "prompts" / "geometry_editing_ban.md"
+        shutil.copy(tools / GEN / "prompts" / "geometry_editing_ban.md", stray)
+        _age(stray.parent, 30)
+        refused("a file added to a prompts/ folder", "is not in the tool's prompt_slots")
+        stray.unlink()
+        _age(stray.parent, 20)
+        T.manifests()               # read and kept: the next change is the only one
+        n += 1
+
+        # Tool text put in fragments/.
+        moved = copy / "fragments" / "tools" / "geometry_editing_ban.md"
+        shutil.copy(tools / GEN / "prompts" / "geometry_editing_ban.md", moved)
+        _age(moved.parent, 10)
+        refused("tool text put in fragments/", "is tool text")
+        moved.unlink()
+        try:
+            T.manifests()
+        except T.PackToolError as exc:
+            check(False, f"[KEPT] the pack put right is still refused: {str(exc)[:200]}")
+        n += 1
+    finally:
+        config.DC_PACK_DIR = real
+        shutil.rmtree(copy.parent, ignore_errors=True)
+    return n
+
+
 def main() -> int:
     check_manifests()
     check_settings()
@@ -878,13 +1038,14 @@ def main() -> int:
     check_runtime_block()
     n_geometry = check_geometry()
     n_runs = check_image_run()
+    n_kept = check_kept()
     print(f"{len(T.manifests())} tools; {n} golden cases compared with "
           f"{FIXTURE.relative_to(ROOT).as_posix()}; {len(PK.tool_claims())} tool-text "
           f"slots owned, {n_broken} broken packs refused; 6 tool lists compared with "
           f"{LISTS.relative_to(ROOT).as_posix()}; {n_built} prompts built without "
           f"the blade-sections tool; {n_contract} pictures-contract breaks refused; "
           f"{n_saves} save-step cases; {n_geometry} broken geometry packs refused; "
-          f"{n_runs} image-run cases")
+          f"{n_runs} image-run cases; {n_kept} kept-while-unchanged cases")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
@@ -896,8 +1057,9 @@ def main() -> int:
           "tool list is built exactly as it was written, a tool can be removed, "
           "the picture contract, the save step, the shrink strengths and the "
           "runtime block come from the manifests, the geometry tools are "
-          "chosen and fall back as their settings say, and the image runner "
-          "makes the tools' pictures in a root of its own.")
+          "chosen and fall back as their settings say, the image runner "
+          "makes the tools' pictures in a root of its own, and what is read "
+          "from the tools' files is kept only while they are unchanged.")
     return 0
 
 
