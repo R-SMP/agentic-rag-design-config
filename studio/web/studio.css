@@ -1,0 +1,219 @@
+/* =========================================================================
+   studio.css -- what the MAS Studio adds on top of base.css (the studio UI
+   kit's shared theme, copied unchanged).  No new colours: the three origin
+   colours are the kit's --a / --b / --c.  From the Studio draft
+   (extra_utilities/docs/studio_draft/), whose rules for the screens that
+   come later (landing, import, New tool, Validate, downloads) are kept.
+     --a  orange  DC fragment  (dc_config)
+     --b  teal    tool text    (tools_config)
+     --c  purple  runtime block (filled per session)
+   ========================================================================= */
+
+/* ---- full-page screens (landing / start / import) ---------------------- */
+.page { max-width:1120px; margin:0 auto; padding:34px 28px 20px; display:flex;
+        flex-direction:column; min-height:100vh; }
+.page h1 { margin:0; font-size:22px; font-weight:600; letter-spacing:.01em; }
+.page .sub { margin:6px 0 0; color:var(--muted); font-size:13px; line-height:1.5; max-width:760px; }
+.page .back { color:var(--muted); font-size:12px; cursor:pointer; margin-bottom:14px; display:inline-block; }
+.page .back:hover { color:var(--txt); }
+.cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(260px, 1fr));
+         gap:16px; margin:26px 0 18px; }
+.bigcard { display:flex; flex-direction:column; gap:10px; padding:22px 20px 18px;
+           border-radius:12px; background:var(--panel); border:1px solid var(--line);
+           cursor:pointer; text-align:left; min-height:230px; }
+.bigcard:hover { background:#333741; border-color:var(--accent); }
+.bigcard .ic { width:42px; height:42px; border-radius:10px; display:flex; align-items:center;
+               justify-content:center; font-size:20px; background:#1b1c20; border:1px solid var(--line); }
+.bigcard .t { font-size:17px; font-weight:600; }
+.bigcard .b { font-size:12.5px; color:var(--muted); line-height:1.55; }
+.bigcard .state { margin-top:auto; font-size:11.5px; color:var(--accent); letter-spacing:.02em; }
+.bigcard.feat { border-color:#2f4f86; background:#232a38; }
+.bigcard.feat:hover { background:#29324a; }
+.foot { margin-top:auto; border-top:1px solid var(--line); padding-top:10px; color:var(--muted);
+        font-size:11.5px; display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+.foot code, .mono-inline { font-family:var(--mono); color:#c9ccd3; background:#15161a;
+        border:1px solid var(--line); border-radius:4px; padding:0 5px; font-size:11.5px; }
+
+.dropzone { border:2px dashed var(--line); border-radius:12px; padding:38px; text-align:center;
+            color:var(--muted); background:#202127; margin-top:22px; }
+.dropzone b { color:var(--txt); }
+.dropzone.done { border-style:solid; border-color:#2b6a37; background:#18241b; color:#8ce99a; }
+.kv { display:grid; grid-template-columns:200px 1fr; gap:6px 14px; font-size:12.5px; }
+.kv .k { color:var(--muted); }
+.codeflag { color:#ffd8a0; }
+
+/* ---- studio shell additions --------------------------------------------- */
+.toolbar .pack { color:var(--muted); font-size:12px; }
+.toolbar .pack b { color:var(--txt); }
+.toolbar .sep { width:1px; align-self:stretch; background:var(--line); margin:0 2px; }
+.pill.mode-hosted { color:#a5c8ff; border-color:#2f4f86; background:#172238; }
+.pill.mode-local { color:#d0bfff; border-color:#5b4a8f; background:#221d33; }
+
+.nav { padding:8px 0; }
+.nav .grp { padding:10px 14px 4px; }
+.nav a { display:flex; align-items:center; gap:8px; padding:6px 14px; color:var(--txt);
+         text-decoration:none; cursor:pointer; font-size:12.5px; border-left:3px solid transparent; }
+.nav a:hover { background:#30333b; }
+.nav a.on { background:#1e2129; border-left-color:var(--accent); }
+.nav .num { width:16px; color:var(--muted); font-size:11px; text-align:right; }
+.nav .lab { flex:1 1 auto; }
+.nav .st { font-size:11px; }
+.nav .cnt { color:var(--muted); font-size:11px; font-variant-numeric:tabular-nums; }
+.progressline { margin:4px 14px 10px; height:4px; background:#1b1c20; border-radius:2px; overflow:hidden; }
+.progressline > div { height:100%; background:var(--good); }
+
+.center-head { padding:12px 16px 10px; border-bottom:1px solid var(--line); background:#191a1f; }
+.center-head h2 { margin:0; font-size:15px; font-weight:600; }
+.center-head .sub { margin:3px 0 0; color:var(--muted); font-size:12px; line-height:1.45; }
+.center-head .tools { display:flex; gap:6px; margin-top:8px; align-items:center; flex-wrap:wrap; }
+.legend { display:flex; gap:12px; flex-wrap:wrap; font-size:11px; color:var(--muted); }
+.legend span { display:inline-flex; align-items:center; gap:5px; }
+.sw { width:10px; height:10px; border-radius:2px; display:inline-block; }
+.sw.dc { background:var(--a); } .sw.tool { background:var(--b); } .sw.rt { background:var(--c); }
+.sw.gen { background:#4a4d57; }
+
+/* the centre column is a flex column: its blocks must keep their height and scroll */
+#center > * { flex-shrink:0; }
+.modal.xwide { width:1120px; max-width:94vw; }
+
+/* ---- the 3 / 5 / 7 topology grid (D6) ----------------------------------- */
+.tgrid { display:grid; grid-template-columns:210px 1fr 1fr 1fr; gap:0; padding:0 16px 24px; }
+.tgrid .gh { position:sticky; top:0; padding:8px 8px 6px; color:var(--muted); font-size:10.5px;
+             font-weight:600; text-transform:uppercase; letter-spacing:.05em;
+             border-bottom:1px solid var(--line); background:#15161a; z-index:2; }
+.trow { display:contents; }
+.trow > div { padding:8px; border-bottom:1px solid #2a2c33; }
+.trow .fl { display:flex; flex-direction:column; gap:4px; min-width:0; cursor:pointer; }
+.trow .fl .nm { font-family:var(--mono); font-size:11.5px; color:#dfe3ea; word-break:break-all; }
+.trow .fl .meta { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
+.trow.sel > div { background:#1d2230; }
+.trow.unlinked > div.cell { box-shadow:inset 0 0 0 1px rgba(240,162,74,.55); background:#211c16; }
+.trow.unlinked.sel > div.cell { background:#26201a; }
+.trow.sub .fl { padding-left:22px; }
+.trow.sub .fl .nm { color:#b9bec8; }
+.cell { min-width:0; }
+.cell input, .cell textarea { width:100%; }
+.cell textarea.phrase { font-family:inherit; font-size:12px; resize:none; min-height:0; overflow:hidden; }
+.cell textarea { font-family:var(--mono); font-size:11.5px; line-height:1.45; resize:vertical;
+                 min-height:34px; white-space:pre-wrap; }
+.cell .na { color:#5f6470; font-size:11px; font-style:italic; padding:6px 2px; }
+.cell .empty-ok { color:var(--muted); font-size:11px; padding:6px 2px; }
+.link { border:1px solid var(--line); background:#1b1c20; border-radius:5px; padding:1px 6px;
+        font-size:10.5px; cursor:pointer; color:var(--muted); }
+.link.on { color:#a5c8ff; border-color:#2f4f86; }
+.link.off { color:#ffc078; border-color:#7a5a1a; }
+.kpill { font-size:10px; padding:0 6px; border-radius:999px; border:1px solid var(--line);
+         color:var(--muted); background:#1b1c20; }
+.kpill.dc { color:#f6c58f; border-color:#6b4a22; }
+.kpill.tool { color:#8fe0d5; border-color:#21615a; }
+
+/* ---- inspector ------------------------------------------------------------ */
+.insp { padding:12px 14px; }
+.insp .title { font-family:var(--mono); font-size:12.5px; word-break:break-all; margin-bottom:6px; }
+.insp .pills { display:flex; gap:5px; flex-wrap:wrap; margin-bottom:10px; }
+.insp .block { margin:12px 0; }
+.insp p { margin:0; line-height:1.5; font-size:12.5px; }
+.refval { font-family:var(--mono); font-size:11.5px; white-space:pre-wrap; color:#b9bec8;
+          background:#1b1c20; border:1px solid var(--line); border-radius:6px; padding:7px 8px;
+          max-height:150px; overflow:auto; }
+.checks { list-style:none; margin:0; padding:0; font-size:12px; }
+.checks li { padding:2px 0; display:flex; gap:6px; }
+.where { border:1px solid var(--line); border-radius:7px; padding:8px 9px; margin-bottom:8px;
+         background:#202228; }
+.where .who { font-size:11px; color:var(--muted); margin-bottom:4px; display:flex; gap:6px;
+              flex-wrap:wrap; align-items:center; }
+.where .who b { color:#dfe3ea; font-weight:600; }
+.where .topo { font-family:var(--mono); font-size:10.5px; color:#a5c8ff; }
+.where .sec { font-size:10.5px; color:var(--muted); margin-bottom:4px; font-style:italic; }
+.where .s { font-size:12px; line-height:1.5; color:#c9ccd3; }
+mark { background:rgba(240,162,74,.22); color:#ffd9ad; border-radius:3px; padding:0 2px; }
+mark.tool { background:rgba(56,178,163,.22); color:#a6efe5; }
+
+/* ---- parameters ------------------------------------------------------------ */
+table.ptab { width:100%; border-collapse:collapse; font-size:12px; }
+table.ptab th { position:sticky; top:0; background:#15161a; text-align:left; color:var(--muted);
+                font-weight:600; font-size:10.5px; text-transform:uppercase; letter-spacing:.04em;
+                padding:7px 6px; border-bottom:1px solid var(--line); z-index:2; }
+table.ptab td { padding:4px 6px; border-bottom:1px solid #2a2c33; vertical-align:middle; }
+table.ptab td input { width:100%; }
+table.ptab td.num input { text-align:right; font-family:var(--mono); }
+table.ptab tr.grp td { background:#202228; color:var(--muted); font-size:11px; font-weight:600;
+                       text-transform:uppercase; letter-spacing:.05em; padding:8px 6px; }
+table.ptab tr.sel td { background:#1d2230; }
+table.ptab tr.warnrow td:first-child { box-shadow:inset 3px 0 0 var(--warn); }
+.pname { font-family:var(--mono); color:#dfe3ea; }
+.thumb { height:22px; vertical-align:middle; border-radius:3px; margin-left:8px; opacity:.85;
+         background:#fff; }
+
+/* ---- tools ------------------------------------------------------------------ */
+.toolcards { display:grid; grid-template-columns:1fr; gap:12px; padding:14px 16px; }
+.tcard { background:#202228; border:1px solid var(--line); border-radius:10px; padding:12px 14px; }
+.tcard.selected { border-color:var(--accent); }
+.tcard .head { display:flex; align-items:center; gap:8px; margin-bottom:6px; }
+.tcard .head .n { font-family:var(--mono); font-size:13px; font-weight:600; }
+.tcard .head .grow { flex:1 1 auto; }
+.tcard .d { color:#b9bec8; font-size:12px; line-height:1.5; margin:4px 0 8px; }
+.tcard .grid2 { display:grid; grid-template-columns:130px 1fr; gap:3px 10px; font-size:11.5px; }
+.tcard .grid2 .k { color:var(--muted); }
+.disabled-note { font-size:11px; color:var(--muted); }
+.testres { border:1px solid #5b4a8f; border-radius:10px; background:#1f1b2b; padding:12px 14px; }
+.testres img { max-width:100%; border-radius:6px; border:1px solid var(--line); background:#fff; }
+
+/* ---- form in the New-tool modal ---------------------------------------------- */
+.modal.wide { width:860px; max-width:92vw; }
+.modal .body.scroll { max-height:70vh; overflow:auto; }
+.frm { display:grid; grid-template-columns:150px 1fr; gap:8px 12px; align-items:start; font-size:12px; }
+.frm > label { color:var(--muted); padding-top:5px; }
+.frm .chks { display:flex; flex-wrap:wrap; gap:10px 16px; }
+.frm .chks label { display:flex; gap:5px; align-items:center; color:var(--txt); }
+.frm textarea { width:100%; font-family:var(--mono); font-size:11.5px; }
+.frm input[type=text], .frm select { width:100%; }
+.frm .row2 { display:flex; gap:8px; align-items:center; }
+
+/* ---- prompt viewer ------------------------------------------------------------- */
+.pv { display:flex; flex-direction:column; min-height:0; }
+.flow { padding:10px 16px 4px; }
+.flow svg { width:100%; height:150px; }
+.flow .node rect { fill:#23252b; stroke:#3a3d46; rx:8; }
+.flow .node.hub rect { stroke:#2f4f86; }
+.flow .node.on rect { fill:#1d2a44; stroke:var(--accent); }
+.flow .node text { fill:#dfe3ea; font-size:12px; font-family:Segoe UI, sans-serif; }
+.flow .node .tk { fill:var(--muted); font-size:10px; }
+.flow .edge { stroke:#4a4d57; stroke-width:1.4; }
+.flow .node { cursor:pointer; }
+.prompt { margin:6px 16px 20px; font-family:var(--mono); font-size:11.5px; line-height:1.5;
+          white-space:pre-wrap; word-break:break-word; background:#15161a; border:1px solid var(--line);
+          border-radius:8px; padding:12px 14px; color:#aeb3bd; }
+.prompt .o-dc { background:rgba(240,162,74,.16); color:#ffd9ad; border-radius:2px; }
+.prompt .o-tool { background:rgba(56,178,163,.16); color:#a6efe5; border-radius:2px; }
+.prompt .o-rt { background:rgba(155,127,224,.14); color:#d6c9ff; border-radius:2px; }
+.prompt .o-dc:hover, .prompt .o-tool:hover { outline:1px solid #fff3; cursor:pointer; }
+.stack { display:flex; height:10px; border-radius:5px; overflow:hidden; margin:6px 0 4px; }
+.stack > div { height:100%; }
+
+/* ---- validate -------------------------------------------------------------------- */
+.vsum { display:flex; gap:10px; align-items:center; padding:12px 16px; }
+.vgroup { margin:0 16px 12px; border:1px solid var(--line); border-radius:9px; overflow:hidden; }
+.vgroup .vh { background:#23252b; padding:8px 12px; font-weight:600; font-size:12.5px;
+              display:flex; gap:8px; align-items:center; }
+.vgroup .vh .grow { flex:1 1 auto; }
+.vrow { display:grid; grid-template-columns:22px 1fr; gap:8px; padding:7px 12px;
+        border-top:1px solid #2a2c33; font-size:12px; line-height:1.45; }
+.vrow .detail { color:var(--muted); font-size:11.5px; margin-top:2px; }
+.vrow .detail code { font-family:var(--mono); font-size:11px; color:#c9ccd3; }
+
+/* ---- downloads modal ---------------------------------------------------------------- */
+.dl { display:grid; grid-template-columns:1fr 1fr; gap:14px; }
+.dlcard { border:1px solid var(--line); border-radius:9px; padding:12px; background:#202228; }
+.dlcard h3 { margin:0 0 4px; font-size:14px; }
+.tree { font-family:var(--mono); font-size:11.2px; line-height:1.55; white-space:pre; color:#c9ccd3;
+        background:#15161a; border:1px solid var(--line); border-radius:6px; padding:8px 10px;
+        margin:8px 0; overflow:auto; }
+
+/* ---- read-only (MAS-blueprint P5a; editing comes in P6) ------------------------------ */
+.cell textarea[readonly], .cell input[readonly], table.ptab input[readonly] { cursor:default; }
+.cell textarea[readonly]:focus, .cell input[readonly]:focus,
+table.ptab input[readonly]:focus { border-color:var(--line); }
+.trow .link { cursor:default; }
+.seg.ro button { pointer-events:none; }
+.nav .later { color:var(--muted); font-size:10.5px; }

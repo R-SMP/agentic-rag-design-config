@@ -9,6 +9,11 @@ the way the hosted server will (`POST /api/<name>` → `{ok: true, …}`).
 Open `index.html` in a browser (double-click).  The look is the studio UI
 kit's (`base.css`, copied unchanged; `studio.css` adds the Studio's pieces).
 
+The real Studio is `studio/` (`python -m studio`, MAS-blueprint P5a): these
+screens made real, read-only for now, with the screens that come later
+marked.  This draft stays as the picture of those later screens (the landing
+page, import, New tool, Validate, the downloads, local Test tool).
+
 ## The process, in pictures
 
 `images/00_overview.png` strings the 15 steps together; one PNG per step:
@@ -33,17 +38,18 @@ kit's (`base.css`, copied unchanged; `studio.css` adds the Studio's pieces).
 
 ## What is real and what is not
 
-Real (read from this branch by `build_draft_data.py`): the 16 parameters, the
-101 text fields and their three topology copies, every "where it lands"
-sentence and every prompt colour (marker-assembled and checked against the
-real prompts), the role map, the settings, the environment-variable names,
-the Validate findings, the 357-prompt matrix summary, and the local-mode test
-run (`render_blade_sections` really run on the default parameters).
+Real (read from this branch by `build_draft_data.py`, through the Studio's own
+functions in `studio/engine_view.py`): the 16 parameters, the 99 text fields
+and their three topology copies, every "where it lands" sentence and every
+prompt colour (marker-assembled and checked against the real prompts), the
+role map, the settings, the environment-variable names, the Validate
+findings, the 357-prompt matrix summary, and the local-mode test run
+(`render_blade_sections` really run on the default parameters).
 
-Not real yet: the setup-file format (`pack.yaml`, `tool.yaml`, the
-`dc_pack/` layout are the proposal's), the downloads, saving, the New-tool
-form's example values (a made-up turbine wheel), and the section each field
-is filed under (a proposal for the slot registry's `section` field).
+Not real yet: the downloads, saving, and the New-tool form's example values
+(a made-up turbine wheel).  The setup's files (`pack.yaml`, `tool.yaml`, the
+`dc_pack/` layout) and the section each field is filed under (the slot
+registry's `section`) are real since P1-P4.
 
 ## Rebuild
 

@@ -78,6 +78,7 @@ Each topology keeps its own prompt tree: the 7-agent prompts sit beside their ag
 ├── engine/                       # pack loader, slot registry, parameters, tool loader + database schema
 ├── tools/                        # the engine's own tools
 │   ├── calculate/  visualize_model/
+├── studio/                       # the MAS Studio: python -m studio (local; read-only for now)
 └── extra_utilities/              # TODO list, warnings_developer.md, extra_info.md, docs/,
                                   # db_design/, tests/, scripts/, prompt_pdf/
                                   # -- start at extra_utilities/README.md
@@ -122,6 +123,14 @@ python main.py
 ```
 
 A REPL opens. Type a design request (and optionally drop reference images into `inputs/input_images/` paired with `<name>_note.txt` files). Type `quit` to end the session; the system will ask whether to save to the database.
+
+## Studio
+
+```powershell
+python -m studio                     # http://127.0.0.1:8770/  (--pack <folder>, --port N)
+```
+
+The MAS Studio shows the setup in `dc_pack/` (or `--pack <folder>`) as the engine reads and assembles it: its parameters, every text field with its 3- / 5- / 7-agent texts and the sentences of the agents' prompts it lands in, its tools and their settings, who sees the parameter list, and every agent's prompt coloured by where each part comes from.  Read-only for now (MAS-blueprint P5a; editing comes in P6).  The first page load assembles every prompt in child processes (about 40 s); the result is kept until a file of the setup changes.  It runs on your own computer: `studio/` is not in the Docker image.
 
 ## Web UI
 

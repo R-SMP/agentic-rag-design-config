@@ -52,11 +52,16 @@ database/
 !.env.example
 
 # --- Docs / development scaffolding -------------------------------
-# Keep extra_utilities/ inside the image — web_app.py runs
-# extra_utilities/scripts/gen_render_samples.py as a subprocess (the
-# Render-compression panel).  Strip only the ad-hoc files that should
-# never run server-side.
+# extra_utilities/ is still copied into the image, although the web
+# app runs nothing from it since MAS-blueprint P4c (the Render-compression
+# panel's samples come from engine/image_run.py).  Strip only the ad-hoc
+# files that should never run server-side.
 prompts_backup_*/
+
+# --- The Studio -------------------------------------------------------
+# python -m studio runs on the developer's own computer, never in the
+# deployed web app (MAS-blueprint P5).
+studio/
 
 # --- Containerisation metadata ------------------------------------
 # No need to recursively include the Dockerfile / compose file

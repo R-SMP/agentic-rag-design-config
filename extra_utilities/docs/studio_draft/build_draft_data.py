@@ -7,51 +7,42 @@ no modules), so the data is written as one script, ``window.DRAFT_DATA``.
 
 What it reads
 -------------
-* the parameter set from ``dc_pack/parameters.json`` (``engine/parameters.py``),
-  with the units and descriptions of the agents' ``$parameter_list`` text;
-* every pack fragment (``dc_pack/fragments/``) with its per-topology and
-  per-agent files, and each slot's kind, section and description from the
-  slot registry (``engine/slot_registry.yaml``);
-* the assembled prompts of every agent, topologies 7 / 5 / 3, under two
-  setting combinations of ``prompt_matrix.py`` (``base`` and ``all_on``).
+The data the real Studio shows, through the same functions
+(``studio/engine_view.py``, MAS-blueprint P5a): the parameter set, every
+pack fragment with its per-topology and per-agent files, the role map, the
+tools and their settings, the parameter-access grid, and the assembled
+prompts of every agent, topologies 7 / 5 / 3, under the ``base`` and
+``all_on`` combinations of ``prompt_matrix.py`` -- with the exact place of
+every field's text in them ("where it lands", explained there).
 
-"Where it lands" without guessing
----------------------------------
-Each topology is assembled TWICE in a child process: once as is, once with
-every pack slot's text wrapped in invisible private-use markers (and the
-runtime blocks too).  The markers are stripped again and the result must
-equal the real prompt -- byte for byte, or, where a marker lengthened a line
-enough to change a re-wrap, after whitespace normalisation.  The marker
-positions are then exact spans in the REAL prompt.  An agent whose prompts
-do not line up gets no spans and is reported, never approximated.
+Plus the draft's own, for screens the Studio gets later: the hosted
+Validate's static checks, the prompt-matrix summary, the setup's size, and a
+local-mode test run of ``render_blade_sections``.
 """
 
 from __future__ import annotations
 
-import ast
 import json
 import re
 import subprocess
 import sys
-from collections import defaultdict
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
 REPO = HERE.parents[2]
 OUT = HERE / "draft_data.js"
-COMBOS = ("base", "all_on")
-TOPOLOGIES = (7, 5, 3)
+sys.path.insert(0, str(REPO))
 
-START, END, ID0 = "", "", 0xF0000
+from studio import engine_view as V  # noqa: E402
 
 VOCAB = ("output_model", "output_model_label", "output_image", "output_images",
          "output_image_caps", "output_images_long", "output_image_files",
          "output_images_label", "output_produced", "output_action",
          "output_reaction", "output_reactions", "output_action_noun")
-WORDS = VOCAB + ("dc_name", "domain_description", "parameter_count")
 
-# Studio section of every pack slot (brief §6.1).  A DRAFT proposal: the
-# registry's ``section`` field, to be approved with the registry in P1/P5.
+# The order of the fields in each section, as the draft's pictures show it
+# (the slot registry's ``section`` field files each slot; the real Studio
+# orders them by the registry, the same order).
 SECTION_OF = {
     "identity": ["dc_name", "domain_description"],
     "parameters": ["parameter_count", "parameter_list"],
@@ -98,305 +89,6 @@ SECTION_OF = {
 }
 
 
-def _bootstrap():
-    for p in ("extra_utilities/scripts", "extra_utilities/prompt_pdf", "."):
-        sys.path.insert(0, str(REPO / p))
-    sys.modules["simplejson"] = None          # type: ignore[assignment]
-    sys.modules["chardet"] = None             # type: ignore[assignment]
-    import bootstrap
-    bootstrap.install()
-
-
-def _pack_slots(P) -> dict[str, str]:
-    """slot -> 'dc' | 'tool', for every $slot whose text lives in the pack
-    (from the slot registry; runtime fragments are not $slots)."""
-    out = {name: ("dc" if spec["folder"] == "dc" else "tool")
-           for name, spec in P._pack.slots(source="pack", use="prompt").items()}
-    # The tool runner's numbered list ($tool_inventory) is built by the engine
-    # from each tool's own entry (MAS-blueprint P3d): still tool text.
-    out.update({name: "tool" for name, spec in P._pack.slots(source="generated").items()
-                if spec["from"] in P._GENERATED_PER_AGENT})
-    return out
-
-
-# ---------------------------------------------------------------------------
-# child: assemble one (combination, topology) twice, return spans
-# ---------------------------------------------------------------------------
-
-def _strip(marked: str, names: list[str]):
-    text, spans, stack = [], [], []
-    n = 0
-    i = 0
-    while i < len(marked):
-        c = marked[i]
-        if c == START and i + 1 < len(marked):
-            stack.append((ord(marked[i + 1]) - ID0, n))
-            i += 2
-            continue
-        if c == END:
-            if stack:
-                idx, s = stack.pop()
-                if n > s:
-                    spans.append([s, n, names[idx], len(stack)])
-            i += 1
-            continue
-        text.append(c)
-        n += 1
-        i += 1
-    while stack:
-        idx, s = stack.pop()
-        if n > s:
-            spans.append([s, n, names[idx], len(stack)])
-    return "".join(text), spans
-
-
-def _norm(t: str):
-    """Collapse whitespace runs; return (normalised, n_of[i] for i in t, idx)."""
-    out, idx, n_of = [], [], []
-    prev_ws = False
-    for i, c in enumerate(t):
-        ws = c.isspace()
-        if ws and prev_ws:
-            n_of.append(len(out) - 1)
-            continue
-        n_of.append(len(out))
-        out.append(" " if ws else c)
-        idx.append(i)
-        prev_ws = ws
-    n_of.append(len(out))
-    return "".join(out), n_of, idx
-
-
-def _child(combo: str, topology: int) -> int:
-    _bootstrap()
-    import prompt_matrix as PM
-    # The same combination set-up as the prompt matrix, including the
-    # parameter-access cells its old setting names stand for.
-    PM.apply_config(combo)
-    import topology_prompt_snapshot as T
-    from agents.shared import prompts as P
-
-    real = T._assemble(topology)["prompts"]
-    pack = _pack_slots(P)
-    names = sorted(pack) + ["routing_instructions", "render_check_library_block",
-                            "image_persistence_block", "comparison_mode_block",
-                            "chain_access_block", "user_inputs_dir",
-                            "input_images_subdir", "extraction_output_file"]
-    ids = {nm: i for i, nm in enumerate(names)}
-
-    orig_mark = P.mark_inline_slots
-
-    def marked_slots(slots):
-        return orig_mark({k: (START + chr(ID0 + ids[k]) + v + END
-                              if k in pack and v else v)
-                          for k, v in slots.items()})
-    P.mark_inline_slots = marked_slots
-
-    orig_rt = T._runtime_slots
-
-    def marked_runtime(agent, P_, S_):
-        d = orig_rt(agent, P_, S_)
-        if d is None:
-            return None
-        return {k: (START + chr(ID0 + ids[k]) + v + END if k in ids and v else v)
-                for k, v in d.items()}
-    T._runtime_slots = marked_runtime
-
-    marked = T._assemble(topology)["prompts"]
-    result = {"prompts": real, "spans": {}, "align": {}}
-    for agent, text in real.items():
-        stripped, spans = _strip(marked.get(agent, ""), names)
-        if stripped == text:
-            result["align"][agent] = "exact"
-            result["spans"][agent] = spans
-            continue
-        ns, n_of_s, _ = _norm(stripped)
-        nr, _, idx_r = _norm(text)
-        if ns != nr:
-            result["align"][agent] = "FAILED"
-            result["spans"][agent] = []
-            continue
-        mapped = []
-        for s, e, nm, depth in spans:
-            a, b = n_of_s[s], n_of_s[e]
-            if b <= a:
-                continue
-            mapped.append([idx_r[a], idx_r[b - 1] + 1, nm, depth])
-        result["align"][agent] = "normalized"
-        result["spans"][agent] = mapped
-    sys.stdout.buffer.write(json.dumps(result).encode("utf-8"))
-    return 0
-
-
-def _run_children() -> dict:
-    out = {}
-    for combo in COMBOS:
-        for n in TOPOLOGIES:
-            proc = subprocess.run(
-                [sys.executable, str(Path(__file__).resolve()), "_child", combo, str(n)],
-                capture_output=True, cwd=str(REPO))
-            if proc.returncode != 0:
-                raise SystemExit(proc.stderr.decode("utf-8", "replace")[-3000:])
-            out[(combo, n)] = json.loads(proc.stdout.decode("utf-8"))
-            bad = [a for a, s in out[(combo, n)]["align"].items() if s == "FAILED"]
-            print(f"  {combo:<7} topology {n}: "
-                  + ", ".join(f"{a}={s}" for a, s in sorted(out[(combo, n)]["align"].items()))
-                  + (f"   !! no spans for {bad}" if bad else ""))
-    return out
-
-
-# ---------------------------------------------------------------------------
-# parent: static pack data
-# ---------------------------------------------------------------------------
-
-def _read(p: Path, strip_both=False):
-    if not p.is_file():
-        return None
-    t = p.read_text(encoding="utf-8")
-    return t.strip() if strip_both else t.rstrip()
-
-
-def _parameters(pack) -> dict:
-    """The parameter set from its single source, ``dc_pack/parameters.json``
-    (``engine/parameters.py``), plus each parameter's unit and description
-    as the agents' hand-written ``$parameter_list`` text words them.
-    ``copies_agree``: that text gives the same range as the file."""
-    from engine import parameters as ep
-    spec = ep.load()
-    md = {}
-    for line in pack.shared_path("parameter_list", pack.REFERENCE_TOPOLOGY).read_text(
-            encoding="utf-8").splitlines():
-        m = re.match(r"\s*\d+\.\s+(\w+)\s+\((.*?)\)\s+—\s+(.*?)\s*\[([\d.]+);\s*([\d.]+)\]\s*$", line)
-        if m:
-            md[m.group(1)] = {"unit_prompt": m.group(2), "description": m.group(3),
-                              "min": float(m.group(4)), "max": float(m.group(5))}
-    params = []
-    for p in spec["parameters"]:
-        a = md.get(p["name"], {})
-        params.append({
-            "name": p["name"], "type": p["type"], "group": p["group"],
-            "label": p["label"], "unit": p["unit"],
-            "unit_prompt": a.get("unit_prompt", ""), "description": a.get("description", ""),
-            "min": p["min"], "max": p["max"], "step": p["step"], "default": p["default"],
-            "copies_agree": (a.get("min"), a.get("max")) == (float(p["min"]), float(p["max"])),
-        })
-    groups = [{"id": g["id"], "label": g["label"]} for g in spec["groups"]]
-    return {"groups": groups, "parameters": params}
-
-
-def _topology_texts(pack, folder: Path, base: str, spec: dict) -> dict:
-    """{"7"|"5"|"3": text or None} as stored on disk: the linked file for all
-    three, else each topology's own ``.t<N>.md`` (None where there is none)."""
-    linked = folder / f"{base}.md"
-    if linked.is_file():
-        t = pack._clean(spec, linked.read_text(encoding="utf-8"))
-        return {"7": t, "5": t, "3": t}
-    out = {}
-    for n in ("7", "5", "3"):
-        p = folder / f"{base}.t{n}.md"
-        out[n] = pack._clean(spec, p.read_text(encoding="utf-8")) if p.is_file() else None
-    return out
-
-
-def _slots(P, pack_origin: dict, roles: dict) -> list:
-    """Every pack $slot with its three topology texts and per-agent copies,
-    read from dc_pack/ through the registry (engine/pack.py naming).  A slot a
-    tool owns is read from that tool's prompts/ folder and names its owner."""
-    pack = P._pack
-    claims = pack.tool_claims()
-    order = {s: i for lst in SECTION_OF.values() for i, s in enumerate(lst)}
-    agents = sorted({a for t in roles["roster"].values() for a in t} | {"database_handler"})
-    out = []
-    for slot, spec in sorted(pack.slots(source="pack", use="prompt").items()):
-        folder = (pack.tool_prompts_dir(claims[slot]) if slot in claims
-                  else pack.fragments_dir() / spec["folder"])
-        overlay = spec.get("missing") == "empty"
-        vals = ({"7": "", "5": "", "3": ""} if overlay
-                else _topology_texts(pack, folder, slot, spec))
-        variants = []
-        for ag in agents:
-            v = _topology_texts(pack, folder, f"{slot}@{ag}", spec)
-            if any(x is not None for x in v.values()):
-                variants.append({"agent": ag, "values": v})
-        present = [x for x in vals.values() if x is not None]
-        out.append({
-            "slot": slot, "origin": pack_origin.get(slot, "dc"),
-            "owner": claims.get(slot),
-            "kind": spec["kind"],
-            "section": spec.get("section", "other"), "order": order.get(slot, 999),
-            "description": spec.get("description", "") or (
-                "Per-agent overlay: each agent's own text for this tool; "
-                "agents without a file get nothing." if overlay else ""),
-            "values": vals,
-            "linked": overlay or (len(present) == 3 and len(set(present)) == 1),
-            "variants": variants,
-        })
-    return out
-
-
-def _roles() -> dict:
-    from agents.shared import agent_roles as AR
-    from agents.shared.routing_tools import AGENT_DISPLAY
-    disp = {k: (v if isinstance(v, str) else str(v)) for k, v in AGENT_DISPLAY.items()}
-    disp.setdefault("database_handler", "Database Handler")
-    return {"roster": {str(k): list(v) for k, v in AR.ROSTER.items()},
-            "roles_of": {k: list(v) for k, v in AR.ROLES_OF.items()},
-            "holder": {str(k): v for k, v in AR._HOLDER_BY_TOPOLOGY.items()},
-            "display": disp}
-
-
-def _parameter_access() -> dict:
-    """The pack's parameter-access grid (engine/parameter_access.py), for the
-    Agent access screen: one row per agent, its cell per topology."""
-    from agents.shared import agent_roles
-    from engine import parameter_access as pa
-    names = dict(agent_roles.DISPLAY, database_handler="Database Handler")
-    return {
-        "states": [{"id": s, "short": s, "label": pa.LABELS[s]} for s in pa.STATES],
-        "no_tool": sorted(pa.NO_TOOL_AGENTS),
-        "rows": [{"agent": a, "name": names.get(a, a),
-                  "cells": {str(t): s for t, s in row.items()}}
-                 for a, row in pa.default_table().items()],
-    }
-
-
-def _settings_values(names) -> dict:
-    tree = ast.parse((REPO / "workflow_settings/settings.py").read_text(encoding="utf-8"))
-    out = {}
-    for node in tree.body:
-        if isinstance(node, ast.AnnAssign) and isinstance(node.target, ast.Name):
-            if node.target.id in names and node.value is not None:
-                try:
-                    out[node.target.id] = ast.literal_eval(node.value)
-                except ValueError:
-                    pass
-    return out
-
-
-def _tools() -> list:
-    """The pack's tools, from their manifests (engine/pack_tools.py)."""
-    from engine import pack_tools
-    out = []
-    for name, m in pack_tools.manifests().items():
-        ref = m.get("build") or m.get("entrypoint")
-        out.append({"name": name, "display": m["display_name"], "kind": m["kind"],
-                    "file": f"dc_pack/tools/{name}/{ref.split(':')[0]}",
-                    "description": m["description"],
-                    "owns": list(m.get("prompt_slots") or []),
-                    "list_order": m.get("list_order")})
-    return out
-
-
-def _tool_settings() -> list:
-    """Each tool's settings with their defaults (the Settings screen)."""
-    from engine import pack_tools
-    return [{"tool": name, "settings": [
-                {"name": s["name"], "type": s["type"], "default": s["default"],
-                 "values": s.get("values"), "label": s.get("label", "")}
-                for s in pack_tools.setting_specs(name)]}
-            for name in pack_tools.manifests()]
-
-
 def _validate(slots: list, engine_slots: set) -> dict:
     """The hosted Validate's STATIC checks, run for real on today's files."""
     from engine import pack
@@ -415,50 +107,11 @@ def _validate(slots: list, engine_slots: set) -> dict:
             "empty_in_topology7": empties}
 
 
-def _where(prompts: dict) -> dict:
-    """slot -> list of landing sentences, grouped across agents/topologies."""
-    groups = defaultdict(lambda: defaultdict(list))
-    for (combo, topo), data in prompts.items():
-        for agent, text in data["prompts"].items():
-            for s, e, nm, _depth in data["spans"].get(agent, []):
-                head = ""
-                for line in reversed(text[:s].split("\n")):
-                    if line.startswith("#"):
-                        head = line.lstrip("#").strip()
-                        break
-                a = max(text.rfind(". ", 0, s) + 2, text.rfind("\n\n", 0, s) + 2, s - 220, 0)
-                b_candidates = [x for x in (text.find(". ", e), text.find("\n\n", e)) if x != -1]
-                b = min(b_candidates + [e + 220, len(text)])
-                before = " ".join(text[a:s].split())
-                value = " ".join(text[s:e].split())
-                after = " ".join(text[e:b + 1].split())
-                if len(value) > 260:
-                    value = value[:240] + " …"
-                key = (head, before, value, after)
-                groups[nm][key].append((combo, topo, agent))
-    out = {}
-    for nm, g in groups.items():
-        rows = []
-        for (head, before, value, after), where in g.items():
-            agents = defaultdict(set)
-            combos = set()
-            for combo, topo, agent in where:
-                agents[agent].add(topo)
-                combos.add(combo)
-            rows.append({"heading": head, "before": before, "value": value,
-                         "after": after,
-                         "agents": {a: sorted(t, reverse=True) for a, t in agents.items()},
-                         "only_with_features": combos == {"all_on"}})
-        rows.sort(key=lambda r: (r["only_with_features"], -sum(len(t) for t in r["agents"].values())))
-        out[nm] = rows
-    return out
-
-
 def _test_child(out_png: str, params_json: str) -> int:
     """What local mode's "Test tool" does for render_blade_sections: run the
     tool's own drawing function on the parameter defaults, in a subprocess."""
     import time
-    _bootstrap()
+    V.load_engine()
     from engine import pack_tools
     render_png = pack_tools.plugin("render_blade_sections").submodule("draw").render_png
     t0 = time.perf_counter()
@@ -504,47 +157,43 @@ def _pack_bytes() -> int:
                if p.is_file() and "__pycache__" not in p.parts)
 
 
-def _env_names() -> list:
-    return sorted({ln.split("=", 1)[0].strip() for ln in
-                   (REPO / ".env.example").read_text(encoding="utf-8").splitlines()
-                   if re.match(r"^[A-Z][A-Z0-9_]*=", ln)})
-
-
 def main() -> int:
-    if sys.argv[1:2] == ["_child"]:
-        return _child(sys.argv[2], int(sys.argv[3]))
     if sys.argv[1:2] == ["_test"]:
         return _test_child(sys.argv[2], sys.argv[3])
     print("assembling (2 combinations x 3 topologies, twice each) ...")
-    prompts = _run_children()
-    _bootstrap()
+    prompts = V.run_children(V.ASSEMBLY_JOBS)
+    for (combo, n), res in prompts.items():
+        bad = [a for a, s in res["align"].items() if s == "FAILED"]
+        print(f"  {combo:<7} topology {n}: "
+              + ", ".join(f"{a}={s}" for a, s in sorted(res["align"].items()))
+              + (f"   !! no spans for {bad}" if bad else ""))
+    V.load_engine()
     from agents.shared import prompts as P
-    pack = _pack_slots(P)
-    roles = _roles()
-    slots = _slots(P, pack, roles)
+    pack = V.pack_slots(P)
+    roles = V.roles()
+    order = {s: i for lst in SECTION_OF.values() for i, s in enumerate(lst)}
+    slots = V.slots(P, pack, roles, order=order)
     data = {
         "pack": {"name": P._pack.read("dc_name", 7),
                  "domain": P._pack.read("domain_description", 7),
                  "parameter_count": P._GENERATED_SLOTS["parameter_count"]()},
-        "parameters": _parameters(P._pack),
+        "parameters": V.parameters(P._pack),
         "slots": slots,
         "roles": roles,
-        "where": _where(prompts),
-        "prompts": {f"{n}": {"prompts": prompts[("base", n)]["prompts"],
-                             "spans": prompts[("base", n)]["spans"]}
-                    for n in TOPOLOGIES},
-        "align": {f"{c}/{n}": prompts[(c, n)]["align"] for c, n in prompts},
-        "tools": _tools(),
-        "tool_settings": _tool_settings(),
-        "settings": _settings_values({"DC_PARAMS_PRIMER_ENABLED"}),
-        "parameter_access": _parameter_access(),
+        "where": V.where(prompts),
+        "prompts": V.base_prompts(prompts),
+        "align": V.alignment(prompts),
+        "tools": V.tools(),
+        "tool_settings": V.tool_settings(),
+        "settings": V.settings_values({"DC_PARAMS_PRIMER_ENABLED"}),
+        "parameter_access": V.parameter_access(),
         "validate": _validate(slots, set(P._build_slots())),
         # TODO F104 is closed (MAS-blueprint P3b): every field about the
         # blade-sections tool or the mesh checks carries its <<IF:...>> marker.
         "f104": {"blade_sections": [], "mesh_checks": []},
         "matrix": _matrix_summary(),
         "pack_bytes": _pack_bytes(),
-        "env_vars": _env_names(),
+        "env_vars": V.env_names(),
     }
     data["test_run"] = _test_run(data["parameters"]["parameters"])
     print(f"  test run of render_blade_sections: {data['test_run']}")
