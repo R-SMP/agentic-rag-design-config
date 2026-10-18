@@ -31,8 +31,8 @@ PROV = json.load(open(HERE / "provenance.json", encoding="utf-8"))
 EXTRA = [
     "agents/shared/routing.py",
     "reduced7/agents/shared/routing.py",   # pre-promotion fork; skipped when absent
-    "agents/shared/prompt_fragments/routing_planner_uii_first.md",
-    "agents/shared/prompt_fragments/routing_user_input_inspector_uii_first.md",
+    "agents/shared/prompt_fragments/routing_planner.md",
+    "agents/shared/prompt_fragments/routing_user_input_inspector.md",
     "agents/shared/prompt_fragments/routing_receptionist.md",
     "agents/shared/prompt_fragments/routing_orchestrator.md",
     "agents/shared/user_inputs_tool.py",

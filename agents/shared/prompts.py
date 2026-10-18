@@ -139,23 +139,18 @@ def _topology_override(rel_path: str) -> Path | None:
 # ---------------------------------------------------------------------------
 
 DCII_ENABLED = bool(_workflow_settings.DC_INSPECTOR_ENABLED)
-PLANNER_FIRST = bool(_workflow_settings.PLANNER_FIRST)
 
 
-# Both constants above are IMPORT-time snapshots, and both describe axes
-# that exist ONLY in the 7-agent system:
+# The constant above is an IMPORT-time snapshot, and it describes an axis
+# that exists ONLY in the 7-agent system: topology 5 has no DC Input
+# Inspector at all -- it was merged away -- so <<DCII_ONLY>> text there names
+# an agent that is never built.
 #
-#   * topology 5 has no DC Input Inspector at all -- it was merged away --
-#     so <<DCII_ONLY>> text there names an agent that is never built;
-#   * topology 5's hub IS the Planner, so there is no Planner/UII ordering
-#     to choose and <<PF_ON>>/<<PF_OFF>> has nothing to select between.
+# The helper below forces the axis off for every topology that does not have
+# the agent, and reads the topology fresh on each call because the Sessions
+# Queue switches it between runs inside one process (see topology.py).
 #
-# The two helpers below force both axes off for every topology that does not
-# have the agents they describe, and read the topology fresh on each call
-# because the Sessions Queue switches it between runs inside one process (see
-# topology.py).
-#
-# They key on the resolved HUB, not on ``topology() == 7``.  Any topology
+# It keys on the resolved HUB, not on ``topology() == 7``.  Any topology
 # whose hub is the Orchestrator IS the 7-agent agent set -- including an
 # UNREGISTERED topology number, which ``_HUB_BY_TOPOLOGY`` deliberately falls
 # back to the Orchestrator for.  Keying on the number instead made that
@@ -183,14 +178,8 @@ def dcii_effective() -> bool:
     return _dcii_effective()
 
 
-def _planner_first_effective() -> bool:
-    """Does the ACTIVE topology have a Planner/UII ordering to choose?"""
-    return PLANNER_FIRST if _hub_agent() == "orchestrator" else False
-
 _DCII_ONLY_RE = re.compile(r"<<DCII_ONLY>>(.*?)<</DCII_ONLY>>", re.DOTALL)
 _DCII_OFF_RE = re.compile(r"<<DCII_OFF>>(.*?)<</DCII_OFF>>", re.DOTALL)
-_PF_ON_RE = re.compile(r"<<PF_ON>>(.*?)<</PF_ON>>", re.DOTALL)
-_PF_OFF_RE = re.compile(r"<<PF_OFF>>(.*?)<</PF_OFF>>", re.DOTALL)
 # Per-agent DBa filter — mirrors the DCII_ONLY pattern but the
 # enabling flag is per-agent (workflow_settings/database_access.py +
 # global RAG_ENABLED master switch).  Stripped at template-build
@@ -318,21 +307,6 @@ def apply_dcii_filter(text: str) -> str:
     return text
 
 
-def apply_planner_first_filter(text: str) -> str:
-    """Resolve <<PF_ON>> / <<PF_OFF>> conditional regions.
-
-    PF_ON  = Planner runs BEFORE the UII (v5 standard flow).
-    PF_OFF = UII runs BEFORE the Planner.
-    """
-    if _planner_first_effective():
-        text = _PF_OFF_RE.sub("", text)
-        text = _PF_ON_RE.sub(lambda m: m.group(1), text)
-    else:
-        text = _PF_ON_RE.sub("", text)
-        text = _PF_OFF_RE.sub(lambda m: m.group(1), text)
-    return text
-
-
 def apply_rag_on_filter(text: str) -> str:
     """Resolve ``<<RAG_ON>>`` regions against the global RAG master switch.
 
@@ -434,8 +408,8 @@ def apply_chain_only_filter(text: str, agent_dir_name: str) -> str:
 
 
 def apply_flag_filters(text: str) -> str:
-    """Apply the DCII and PLANNER_FIRST filters, the pack's ``<<IF:tool:…>>``
-    / ``<<IF:setting:…>>`` flags, and the RAG_ON filter, in sequence.
+    """Apply the DCII filter, the pack's ``<<IF:tool:…>>`` /
+    ``<<IF:setting:…>>`` flags, and the RAG_ON filter, in sequence.
 
     NOTE: per-agent filters (:func:`apply_dba_filter`,
     :func:`apply_chain_only_filter`, :func:`apply_if_flags` for the
@@ -445,7 +419,7 @@ def apply_flag_filters(text: str) -> str:
     """
     return apply_rag_on_filter(
         apply_if_flags(
-            apply_planner_first_filter(apply_dcii_filter(text)),
+            apply_dcii_filter(text),
             _pack_flags.values(), per_agent_later=True,
         )
     )
@@ -543,24 +517,6 @@ PARAMETER_TYPES = _parameters.types(_PARAMETER_SPEC)
 # ``_build_template`` runs a second substitution pass to resolve the
 # nested $-placeholders.
 # ---------------------------------------------------------------------------
-
-def _pipeline_flow_fragment_name() -> str:
-    """Which pipeline-flow fragment this topology + flag combination wants.
-
-    ``PLANNER_FIRST`` picks the Planner/UII ordering, but that choice only
-    exists in the 7-agent system — in the 5-agent one the Conductor IS the
-    planner, so there is no ordering to pick and a single flow file covers
-    both settings of the flag.  A topology shipping its own
-    ``pipeline_flow_<N>agents.md`` therefore uses it unconditionally; one
-    that does not falls through to the historic two-file choice.
-    """
-    if _topology_override("prompt_fragments/pipeline_flow.md") is not None:
-        return "pipeline_flow.md"
-    return (
-        "pipeline_flow_planner_first.md" if _planner_first_effective()
-        else "pipeline_flow_uii_first.md"
-    )
-
 
 # Embedding-related settings consumed by the Database Handler's
 # system prompt.  The DH uses these to shape SEMANTIC answers so they
@@ -822,8 +778,6 @@ def _engine_fragment_file(spec: dict) -> str:
         # missing" case to tolerate: a genuine typo still raises
         # FileNotFoundError, loudly, as it should.
         return f"routing_{_hub_agent()}.md"
-    if which == "pipeline_flow":
-        return _pipeline_flow_fragment_name()
     return spec["file"]
 
 

@@ -377,11 +377,10 @@ def dispatch_turn(
             "",
             # Deliberately names no agent.  This used to say "handing off
             # to the Planner", which contradicted the prompt it was
-            # feeding: under the live PLANNER_FIRST=False the
-            # Orchestrator's own prompt says it kicks off the User Input
-            # Inspector, and in the 5-agent system the Planner IS the hub
-            # being addressed.  The hub's prompt already states exactly who
-            # it starts, per topology and per flag; the dispatcher should
+            # feeding: the Orchestrator's own prompt says it kicks off the
+            # User Input Inspector, and in the 5-agent system the Planner IS
+            # the hub being addressed.  The hub's prompt already states
+            # exactly who it starts, per topology; the dispatcher should
             # not second-guess it.
             "Decide freely how to proceed — your own prompt states who you "
             "kick off.  Carry whatever context from the Receptionist "

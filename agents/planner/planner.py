@@ -37,7 +37,6 @@ from agents.shared.llm_provider import (
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import (
-    PLANNER_FIRST,
     _build_template,
     routing_instructions,
 )
@@ -146,20 +145,12 @@ class Planner(BaseChainAgent):
         all_tools.extend(dba_tools_for("planner"))
         self.llm = self.base_llm.bind_tools(all_tools)
         self._tools_by_name = {t.name: t for t in all_tools}
-        if PLANNER_FIRST:
-            routing_block = routing_instructions(
-                agent_name="Planner",
-                next_agent="User Input Inspector",
-                prev_agent=None,
-                fragment_name="routing_planner_planner_first.md",
-            )
-        else:
-            routing_block = routing_instructions(
-                agent_name="Planner",
-                next_agent="DC Input Creator",
-                prev_agent="User Input Inspector",
-                fragment_name="routing_planner_uii_first.md",
-            )
+        routing_block = routing_instructions(
+            agent_name="Planner",
+            next_agent="DC Input Creator",
+            prev_agent="User Input Inspector",
+            fragment_name="routing_planner.md",
+        )
         # Built fresh at construction time so live edits to .md
         # fragments on disk take effect on the
         # NEXT session without a Python restart.

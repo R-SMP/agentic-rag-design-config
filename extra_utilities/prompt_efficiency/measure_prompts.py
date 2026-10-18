@@ -88,7 +88,6 @@ def _read_setting_bool(name: str, default: bool) -> bool:
 
 
 DCII_ON = _read_setting_bool("DC_INSPECTOR_ENABLED", True)
-PF_ON = _read_setting_bool("PLANNER_FIRST", False)
 BSV_ON = _read_setting_bool("BLADE_SECTIONS_VISUALIZER_ENABLED", True)
 RAG_ON = _read_setting_bool("RAG_ENABLED", True)
 
@@ -119,8 +118,6 @@ _ONLY = {k: _rx(rf"<<{t}_ONLY>>(.*?)<</{t}_ONLY>>") for k, t in [("dcii", "DCII"
 _R = {
     "dcii_only": _rx(r"<<DCII_ONLY>>(.*?)<</DCII_ONLY>>"),
     "dcii_off": _rx(r"<<DCII_OFF>>(.*?)<</DCII_OFF>>"),
-    "pf_on": _rx(r"<<PF_ON>>(.*?)<</PF_ON>>"),
-    "pf_off": _rx(r"<<PF_OFF>>(.*?)<</PF_OFF>>"),
     "bsv_on": _rx(r"<<BSV_ON>>(.*?)<</BSV_ON>>"),
     "bsv_off": _rx(r"<<BSV_OFF>>(.*?)<</BSV_OFF>>"),
     "has_dba": _rx(r"<<HAS_DBA>>(.*?)<</HAS_DBA>>"),
@@ -135,10 +132,6 @@ def apply_flags(t: str) -> str:
         t = _R["dcii_off"].sub("", t); t = _R["dcii_only"].sub(_KEEP, t)
     else:
         t = _R["dcii_only"].sub("", t); t = _R["dcii_off"].sub(_KEEP, t)
-    if PF_ON:
-        t = _R["pf_off"].sub("", t); t = _R["pf_on"].sub(_KEEP, t)
-    else:
-        t = _R["pf_on"].sub("", t); t = _R["pf_off"].sub(_KEEP, t)
     if BSV_ON:
         t = _R["bsv_off"].sub("", t); t = _R["bsv_on"].sub(_KEEP, t)
     else:
@@ -163,7 +156,7 @@ def apply_chain_only(t: str, agent: str) -> str:
 def build_slots() -> dict:
     dc = lambda r: _rd(DCF_DIR / r)
     gn = lambda r: _rd(GEN_DIR / r)
-    pf_flow = "pipeline_flow_planner_first.md" if PF_ON else "pipeline_flow_uii_first.md"
+    pf_flow = "pipeline_flow.md"
     return {
         "dc_name": dc("dc_config/name.txt").strip(),
         "domain_description": dc("dc_config/domain_description.txt").strip(),
@@ -210,8 +203,7 @@ def build_slots() -> dict:
 # Routing block (verbatim transcription of routing.py:routing_instructions)
 # --------------------------------------------------------------------------
 def _natural_pipeline() -> str:
-    head = ("Orchestrator → Planner → User Input Inspector → " if PF_ON
-            else "Orchestrator → User Input Inspector → Planner → ")
+    head = "Orchestrator → User Input Inspector → Planner → "
     middle = ("DC Input Creator → DC Input Inspector → " if DCII_ON
               else "DC Input Creator → ")
     return head + middle + "Tool Caller → DC Output Inspector → Orchestrator"
@@ -328,22 +320,14 @@ def routing_for(agent: str):
     dcii_next_for_dcic = "DC Input Inspector" if DCII_ON else "Tool Caller"
     tc_prev = "DC Input Inspector" if DCII_ON else "DC Input Creator"
     if agent == "planner":
-        if PF_ON:
-            return routing_block("Planner", "User Input Inspector", None,
-                                 "routing_planner_planner_first.md")
         return routing_block("Planner", "DC Input Creator", "User Input Inspector",
-                             "routing_planner_uii_first.md")
+                             "routing_planner.md")
     if agent == "user_input_inspector":
-        if PF_ON:
-            return routing_block("User Input Inspector", "DC Input Creator", "Planner",
-                                 "routing_user_input_inspector_planner_first.md")
         return routing_block("User Input Inspector", "Planner", None,
-                             "routing_user_input_inspector_uii_first.md")
+                             "routing_user_input_inspector.md")
     if agent == "dc_input_creator":
-        frag = ("routing_dc_input_creator_planner_first.md" if PF_ON
-                else "routing_dc_input_creator_uii_first.md")
-        prev = "User Input Inspector" if PF_ON else "Planner"
-        return routing_block("DC Input Creator", dcii_next_for_dcic, prev, frag)
+        return routing_block("DC Input Creator", dcii_next_for_dcic, "Planner",
+                             "routing_dc_input_creator.md")
     if agent == "dc_input_inspector":
         return routing_block("DC Input Inspector", "Tool Caller", "DC Input Creator",
                              "routing_dc_input_inspector.md")
@@ -551,7 +535,7 @@ def main() -> int:
     known = set(slots) | {"database_search_per_agent", "blade_sections_visualizer_per_agent"}
     runtime_slots = _parse_runtime_slots()
 
-    print(f"config: PLANNER_FIRST={PF_ON} DCII={DCII_ON} BSV={BSV_ON} RAG={RAG_ON}")
+    print(f"config: DCII={DCII_ON} BSV={BSV_ON} RAG={RAG_ON}")
     print(f"DBa-on agents: {sorted(a for a in CHAIN_AGENTS if dba_on(a))}\n")
 
     tokens = {a: approx_tokens(build_filled(a)) for a in AGENTS}

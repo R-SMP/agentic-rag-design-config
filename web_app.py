@@ -327,7 +327,6 @@ def _build_session() -> Session:
         chain_access=workflow_settings.CHAIN_ACCESS,
         keep_images_in_context=workflow_settings.KEEP_IMAGES_IN_CONTEXT,
         dcoi_comparison_mode=workflow_settings.DCOI_COMPARISON_MODE,
-        planner_first=workflow_settings.PLANNER_FIRST,
         # Every pack tool's settings, as the session starts with them.
         tool_settings=_pack_tools.settings_snapshot(),
     )

@@ -241,10 +241,9 @@ are what remain.
   a read-trace misses module-level constants and fragments read at agent
   construction.  Owner: from that moment "any edit on one will not apply to
   the other and vice versa".
-* **Inert settings.**  Under topologies 5 and 3, `PLANNER_FIRST` is ignored
-  and `DC_INSPECTOR_ENABLED` is forced off.  Both stay visible in Workflow
-  Settings with their real value, greyed out; `editor._do_write` refuses a
-  change (`_INERT_UNDER_TOPOLOGY`, keyed on the topology the write would
+* **Inert settings.**  Under topologies 5 and 3, `DC_INSPECTOR_ENABLED` is
+  forced off.  It stays visible in Workflow Settings with its real value,
+  greyed out; `editor._do_write` refuses a change (`_INERT_UNDER_TOPOLOGY`, keyed on the topology the write would
   produce).
 * **Overlays, not edits.**  Topology-specific tool text lives in
   `agents/topology5/tool_text.py`, read through `topology.overlay_value()`,
@@ -380,16 +379,16 @@ Both first builds were replaced (§1, §2).  As built:
   template is built (`_build_slots` / `_build_template`); `{slot}` runtime
   values are filled at agent construction (`set_routing_tools` etc.).
 * **Conditional regions** resolved at assembly: `<<DCII_ONLY>>` /
-  `<<DCII_OFF>>`, `<<PF_ON>>` / `<<PF_OFF>>`, `<<CHAIN_ONLY>>` (stripped for the
+  `<<DCII_OFF>>`, `<<CHAIN_ONLY>>` (stripped for the
   user-facing agents), `<<HAS_DBA>>`, the pack's `<<IF:tool:…>>` / `<<IF:setting:…>>`,
   `<<IF:param_list>>` /
   `<<IF:param_ranges>>` (per agent, from the parameter-access table),
   `<<CAN_SEE>>` / `<<CANNOT_SEE>>`.
-  `_dcii_effective()` / `_planner_first_effective()` key on "is the hub the
-  Orchestrator", not on the topology number — keying on the number broke the
+  `_dcii_effective()` keys on "is the hub the Orchestrator", not on the
+  topology number — keying on the number broke the
   unknown-topology fallback.
-* **Routing fragments** — topology 7 has `_uii_first` / `_planner_first`
-  variants; 5 and 3 have one `routing_<agent>_<N>agents.md` per agent.  The
+* **Routing fragments** — topology 7 has one `routing_<agent>.md` per agent;
+  5 and 3 have their own copies, `routing_<agent>_<N>agents.md`.  The
   Receptionist and the topology-7 Orchestrator use the static
   `$routing_receptionist` / `$routing_hub` fragments instead of a generated
   routing block.
@@ -475,18 +474,14 @@ Both first builds were replaced (§1, §2).  As built:
 11. **A refine ROUND is a full cycle, not a hop.**  The counter increments once
     per arrival at the inspector/critic, so `MAX_SECTIONS_REFINE_ROUNDS = 12`
     means 12 render-and-judge cycles in every topology.
-12. **`prompts.py` captures two flags at import.**  `PLANNER_FIRST` and
-    `DC_INSPECTOR_ENABLED` are read once, when `agents.shared.prompts` is first
-    imported, while `SYSTEM_TOPOLOGY` is read fresh on every call.  That is why
+12. **`prompts.py` captures a flag at import.**  `DC_INSPECTOR_ENABLED` is
+    read once, when `agents.shared.prompts` is first imported, while `SYSTEM_TOPOLOGY` is read fresh on every call.  That is why
     the snapshot and dry-run scripts use one subprocess per topology.  (Until
     2026-10-10 the import also built every agent template under the on-disk
     topology — TODO F90, now archived.)
-13. **`_load_routing_fragment`'s shared fallback uses the original branched
-    name**, so a missing collapsed override silently falls through to the
-    Orchestrator-naming shared file.
-14. **`agents/loader.py` (the terminal REPL) logs the 7-agent roster
+13. **`agents/loader.py` (the terminal REPL) logs the 7-agent roster
     literally** under every topology.  Cosmetic, but wrong in 5 and 3 logs.
-15. **Local environment.**  Use `py -3.13` (3.8 cannot parse the PEP-604
+14. **Local environment.**  Use `py -3.13` (3.8 cannot parse the PEP-604
     hints).  Where `trimesh` / `langchain_*` are not installed,
     `extra_utilities/prompt_pdf/bootstrap.py` stubs them so the agent tree
     imports; set `OPENAI_API_KEY=sk-dummy` to construct agents (no network

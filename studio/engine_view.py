@@ -247,8 +247,7 @@ def assemble_marked(topology: int) -> dict:
 
 # The engine settings that change what an agent sees, found by flipping
 # every setting of settings.py in turn (P5b): RAG (its own control), these,
-# each tool's switch and the tool settings the prompts read.  PLANNER_FIRST
-# also does, but the owner retired it: the viewer leaves it at its default.
+# each tool's switch and the tool settings the prompts read.
 VIEWER_SETTINGS = ("DC_INSPECTOR_ENABLED", "DCOI_COMPARISON_MODE",
                    "KEEP_IMAGES_IN_CONTEXT", "CHAIN_ACCESS", "OCR_ENABLED")
 RAG_CHOICES = ("off", "on", "all")      # all = every agent holds every database tool

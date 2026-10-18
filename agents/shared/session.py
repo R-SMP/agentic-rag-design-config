@@ -43,7 +43,6 @@ _DEFAULT_DC_INSPECTOR_ENABLED       = True
 _DEFAULT_CHAIN_ACCESS               = True
 _DEFAULT_KEEP_IMAGES_IN_CONTEXT     = False
 _DEFAULT_DCOI_COMPARISON_MODE       = 3
-_DEFAULT_PLANNER_FIRST              = False
 
 
 def _pack_tool_settings() -> dict:
@@ -187,7 +186,6 @@ class Session:
     chain_access:           bool = _DEFAULT_CHAIN_ACCESS
     keep_images_in_context: bool = _DEFAULT_KEEP_IMAGES_IN_CONTEXT
     dcoi_comparison_mode:   int  = _DEFAULT_DCOI_COMPARISON_MODE
-    planner_first:          bool = _DEFAULT_PLANNER_FIRST
     # Every pack tool's settings (tool -> {setting: value}), taken when the
     # session starts.
     tool_settings:          dict = field(default_factory=_pack_tool_settings)
@@ -285,7 +283,6 @@ class Session:
             "chain_access":           self.chain_access,
             "keep_images_in_context": self.keep_images_in_context,
             "dcoi_comparison_mode":   self.dcoi_comparison_mode,
-            "planner_first":          self.planner_first,
             "tool_settings":          self.tool_settings,
             "resolved_session_name":      self.resolved_session_name,
             "resolved_session_timestamp": self.resolved_session_timestamp,

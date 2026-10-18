@@ -26,10 +26,11 @@ N's own (``engine/pack.py``).  For the pack the rule is: topology N reads
 only ``<slot>.md`` or ``<slot>.t<N>.md`` -- reading another topology's
 ``.t<M>.md`` means its own file is missing and a foreign text stood in.
 
-Every case is run under BOTH settings of ``PLANNER_FIRST``, because that
-flag branches some fragment names and only means something in the 7-agent
-system.  A third, non-existent topology is exercised to confirm the
-override machinery degrades to plain shared reads rather than crashing.
+A third, non-existent topology is exercised to confirm the override
+machinery degrades to plain shared reads rather than crashing.  And Planner
+first, removed on 2026-10-18, must stay gone (RETIRED): no ``<<PF_ON>>`` /
+``<<PF_OFF>>`` marker, no ``*_planner_first*`` / ``*_uii_first*`` file, no
+``PLANNER_FIRST`` name in the engine, its settings, the Studio or the pack.
 
 Run with Python >= 3.10 (``prompts.py`` uses PEP-604 ``X | None``
 annotations at runtime)::
@@ -106,31 +107,26 @@ AGENTS_BY_TOPOLOGY = {
 }
 
 # The ``fragment_name=`` values each topology's chain agents pass to
-# ``routing_instructions`` (grepped from the agent classes).  ``{pf}``
-# expands to whichever PLANNER_FIRST branch is in force for the case.
+# ``routing_instructions`` (grepped from the agent classes).
 ROUTING_FRAGMENTS_BY_TOPOLOGY = {
     7: [
-        "routing_planner_{pf}.md",
-        "routing_user_input_inspector_{pf}.md",
-        "routing_dc_input_creator_{pf}.md",
+        "routing_planner.md",
+        "routing_user_input_inspector.md",
+        "routing_dc_input_creator.md",
         "routing_dc_input_inspector.md",
         "routing_tool_caller.md",
         "routing_dc_output_inspector.md",
     ],
-    # The hub's fragment is listed unbranched because ``Planner5`` passes the
-    # uii_first name unconditionally: PLANNER_FIRST does not exist here, and
-    # _load_routing_fragment collapses the suffix to reach the override.
     5: [
-        "routing_planner_uii_first.md",
-        "routing_user_input_inspector_{pf}.md",
-        "routing_dc_input_creator_{pf}.md",
+        "routing_planner.md",
+        "routing_user_input_inspector.md",
+        "routing_dc_input_creator.md",
         "routing_tool_caller.md",
         "routing_dc_output_inspector.md",
     ],
-    # Topology 3 ships ONE fragment per merged agent; the hub passes the
-    # uii_first name unconditionally, exactly as Planner5 does.
+    # Topology 3 ships ONE fragment per merged agent.
     3: [
-        "routing_planner_uii_first.md",
+        "routing_planner.md",
         "routing_design_engineer.md",
         "routing_requirements_analyst.md",
     ],
@@ -224,9 +220,7 @@ KNOWN_PENDING: tuple = (
     # keep failing loudly if it ever regresses.
     ("[HUB] topology 3", "names an agent this topology does not build"),
     # In topology 7 the two UII path labels are emitted by the ORCHESTRATOR
-    # alone -- the Planner carries them only inside a <<PF_ON>> block, which
-    # is stripped whenever PLANNER_FIRST is False.  Topology 5 has no
-    # Orchestrator and its hub IS the Planner, so nobody states them.  A real
+    # alone.  Topology 5 has no Orchestrator and its hub IS the Planner, so nobody states them.  A real
     # gap, and one of the fifteen responsibilities that lived only in the
     # Orchestrator's prompt; it needs a prompt edit, not a code change.
     ("[UII-PATHS] topology 5", "never emits a"),
@@ -289,11 +283,10 @@ def overrides_for(topo: int) -> dict:
 
 
 # ---------------------------------------------------------------------------
-# Assemble every prompt for one (topology, PLANNER_FIRST) case
+# Assemble every prompt for one topology
 # ---------------------------------------------------------------------------
 
-def assemble(topo: int, planner_first: bool, *, as_topology: int | None = None
-             ) -> tuple[set, dict]:
+def assemble(topo: int, *, as_topology: int | None = None) -> tuple[set, dict]:
     """Build every prompt for one case, returning (files read, templates).
 
     ``as_topology`` selects WHICH agent/routing set to build when the
@@ -302,7 +295,6 @@ def assemble(topo: int, planner_first: bool, *, as_topology: int | None = None
     """
     which = as_topology if as_topology is not None else topo
     prompts._workflow_settings.SYSTEM_TOPOLOGY = topo
-    prompts.PLANNER_FIRST = planner_first
     seen: set = set()
     original = Path.read_text
 
@@ -310,23 +302,21 @@ def assemble(topo: int, planner_first: bool, *, as_topology: int | None = None
         seen.add(self.resolve())
         return original(self, *a, **k)
 
-    pf = "planner_first" if planner_first else "uii_first"
     built: dict = {}
     Path.read_text = spy
     try:
         for agent in AGENTS_BY_TOPOLOGY[which]:
             built[agent] = prompts._build_template(agent)
-        for frag in ROUTING_FRAGMENTS_BY_TOPOLOGY[which]:
-            name = frag.format(pf=pf)
+        for name in ROUTING_FRAGMENTS_BY_TOPOLOGY[which]:
             built[f"routing::{name}"] = routing._load_routing_fragment(name)
     finally:
         Path.read_text = original
     return seen, built
 
 
-def check_case(topo: int, planner_first: bool) -> None:
-    case = f"topology {topo}, PLANNER_FIRST={planner_first}"
-    read, built = assemble(topo, planner_first)
+def check_case(topo: int) -> None:
+    case = f"topology {topo}"
+    read, built = assemble(topo)
     ov = overrides_for(topo)
 
     # --- COVERAGE: every override for this topology is actually read ------
@@ -455,13 +445,12 @@ def check_case(topo: int, planner_first: bool) -> None:
     # REQUIRED with no default, so an agent that calls the UII without
     # stating them leaves the UII guessing.  That is exactly how the
     # 7-agent system regressed unnoticed: the only emitter sat inside a
-    # <<PF_ON>> block, PLANNER_FIRST flipped to False, and the block was
-    # silently stripped.
+    # region a setting switched off, and the region was silently stripped.
     # Only the agent that KICKS OFF the UII is required to state them.
     # Agents that merely CLARIFY back to the UII later in the same turn are
     # exempt: agents are stateful within a session, so a UII that already
     # ran still holds the original hand-off — and its paths — in its own
-    # message history.  (The Planner under PF_OFF is exactly such a case.)
+    # message history.  (The Planner is exactly such a case.)
     #
     # The label must BEGIN a line, i.e. actually be emitted, not merely
     # mentioned: a shared fragment discusses "the paths a hand-off label
@@ -542,23 +531,22 @@ def check_case(topo: int, planner_first: bool) -> None:
 # ---------------------------------------------------------------------------
 
 for _topo in (7, 5, 3):
-    for _pf in (False, True):
-        check_case(_topo, _pf)
+    check_case(_topo)
 
 # --- HUB: the routing boilerplate must name the ACTIVE topology's hub -----
 # Chain agents whose ## Routing section is built by routing_instructions(),
 # with the natural neighbours each topology gives them.
 CHAIN_BY_TOPOLOGY = {
     7: [("User Input Inspector", "Planner", None,
-         "routing_user_input_inspector_{pf}.md"),
+         "routing_user_input_inspector.md"),
         ("Tool Caller", "DC Output Inspector", "DC Input Inspector",
          "routing_tool_caller.md"),
         ("DC Output Inspector", None, "Tool Caller",
          "routing_dc_output_inspector.md")],
     5: [("User Input Inspector", "Planner", None,
-         "routing_user_input_inspector_{pf}.md"),
+         "routing_user_input_inspector.md"),
         ("DC Input Creator", "Tool Caller", "Planner",
-         "routing_dc_input_creator_{pf}.md"),
+         "routing_dc_input_creator.md"),
         ("Tool Caller", "DC Output Inspector", "DC Input Creator",
          "routing_tool_caller.md"),
         ("DC Output Inspector", None, "Tool Caller",
@@ -579,85 +567,82 @@ CHAIN_BY_TOPOLOGY = {
 # ACTIVE topology does not build.  ABSENT_DISPLAYS carries that per topology.
 for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
     _absent = ABSENT_DISPLAYS[_topo]
-    for _pf_flag in (False, True):
-        prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
-        prompts.PLANNER_FIRST = _pf_flag
-        _case = f"topology {_topo}, PLANNER_FIRST={_pf_flag}"
-        _pf = "planner_first" if _pf_flag else "uii_first"
-        _hub_disp = topology.hub_display()
+    prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
+    _case = f"topology {_topo}"
+    _hub_disp = topology.hub_display()
 
-        # natural_pipeline() must describe THIS topology.
-        _flow = routing.natural_pipeline()
+    # natural_pipeline() must describe THIS topology.
+    _flow = routing.natural_pipeline()
+    for _gone in _absent:
+        if _gone in _flow:
+            fail(_case, "HUB",
+                 f"natural_pipeline() names an agent this topology does "
+                 f"not build ({_gone}): {_flow}")
+    if _hub_disp not in _flow:
+        fail(_case, "HUB",
+             f"natural_pipeline() never names its own hub: {_flow}")
+
+    for _name, _next, _prev, _frag in _rows:
+        block = routing.routing_instructions(
+            agent_name=_name, next_agent=_next, prev_agent=_prev,
+            fragment_name=_frag,
+        )
         for _gone in _absent:
-            if _gone in _flow:
+            if _gone in block:
+                bad = [ln.strip() for ln in block.splitlines()
+                       if _gone in ln]
+                tag = ("names the other hub" if _gone == "Orchestrator"
+                       else "names an agent this topology does not build")
                 fail(_case, "HUB",
-                     f"natural_pipeline() names an agent this topology does "
-                     f"not build ({_gone}): {_flow}")
-        if _hub_disp not in _flow:
+                     f"{_name}'s routing section {tag} "
+                     f"({_gone}): {bad[:2]}")
+        # The 2026-08-22 prompt reduction cut most routing boilerplate
+        # for some agents (routing._ROUTING_SECTIONS_BY_AGENT) — assert
+        # each section's content only where that section is still
+        # emitted, deriving the expectation from the same allow-list
+        # the builder uses.
+        # Ask the BUILDER, not the raw table: _sections_for applies the
+        # topology gate the builder actually uses.
+        _sections = routing._sections_for(_name)
+        # routing.py is now the SOLE owner of FORWARD-is-default:
+        # generic_constraints.md dropped its copy as provably
+        # duplicated, so nothing else in the system states it.
+        if ("decide" in _sections
+                and "route FORWARD to the next agent" not in block):
+            fail(_case, "ROUTING",
+                 f"{_name}'s routing block never states FORWARD-is-"
+                 f"default -- generic_constraints.md no longer does")
+        # The Tool Caller is the ONE agent with no edge to its hub
+        # under topology 5: planner5._wire_routing gives it
+        # call_dc_output_inspector and call_dc_input_creator only,
+        # because work enters the DC loop through the DCIC.  Naming
+        # the Planner in its routing section would advertise a tool it
+        # does not hold, so the silence is correct -- an exemption,
+        # not a defect awaiting a fix.
+        _no_hub_edge = (_topo == 5 and _name == "Tool Caller")
+        if not _no_hub_edge and f"the {_hub_disp}" not in block:
             fail(_case, "HUB",
-                 f"natural_pipeline() never names its own hub: {_flow}")
-
-        for _name, _next, _prev, _frag in _rows:
-            block = routing.routing_instructions(
-                agent_name=_name, next_agent=_next, prev_agent=_prev,
-                fragment_name=_frag.format(pf=_pf),
-            )
-            for _gone in _absent:
-                if _gone in block:
-                    bad = [ln.strip() for ln in block.splitlines()
-                           if _gone in ln]
-                    tag = ("names the other hub" if _gone == "Orchestrator"
-                           else "names an agent this topology does not build")
-                    fail(_case, "HUB",
-                         f"{_name}'s routing section {tag} "
-                         f"({_gone}): {bad[:2]}")
-            # The 2026-08-22 prompt reduction cut most routing boilerplate
-            # for some agents (routing._ROUTING_SECTIONS_BY_AGENT) — assert
-            # each section's content only where that section is still
-            # emitted, deriving the expectation from the same allow-list
-            # the builder uses.
-            # Ask the BUILDER, not the raw table: _sections_for applies the
-            # topology / PLANNER_FIRST gate the builder actually uses.
-            _sections = routing._sections_for(_name)
-            # routing.py is now the SOLE owner of FORWARD-is-default:
-            # generic_constraints.md dropped its copy as provably
-            # duplicated, so nothing else in the system states it.
-            if ("decide" in _sections
-                    and "route FORWARD to the next agent" not in block):
-                fail(_case, "ROUTING",
-                     f"{_name}'s routing block never states FORWARD-is-"
-                     f"default -- generic_constraints.md no longer does")
-            # The Tool Caller is the ONE agent with no edge to its hub
-            # under topology 5: planner5._wire_routing gives it
-            # call_dc_output_inspector and call_dc_input_creator only,
-            # because work enters the DC loop through the DCIC.  Naming
-            # the Planner in its routing section would advertise a tool it
-            # does not hold, so the silence is correct -- an exemption,
-            # not a defect awaiting a fix.
-            _no_hub_edge = (_topo == 5 and _name == "Tool Caller")
-            if not _no_hub_edge and f"the {_hub_disp}" not in block:
-                fail(_case, "HUB",
-                     f"{_name}'s routing section never names its own hub "
-                     f"({_hub_disp})")
-            # The Planner is a distinct grantor ONLY in the 7-agent system,
-            # and the grantor list lives in the permission section.
-            has_planner_grantor = "from the Planner" in block
-            if (_topo == 7 and "permission" in _sections
-                    and not has_planner_grantor):
-                fail(_case, "HUB",
-                     f"{_name}: 7-agent lost the Planner as an "
-                     f"authorisation source")
-            if _topo != 7 and has_planner_grantor:
-                fail(_case, "HUB",
-                     f"{_name}: names the Planner as an authorisation "
-                     f"source, but it is merged into the hub here")
-
-        # stuck_escalation must target the active hub, not a literal.
-        hop = routing_tools.stuck_escalation("Tool Caller", "calculate")
-        if hop.target != HUB_BY_TOPOLOGY[_topo]:
+                 f"{_name}'s routing section never names its own hub "
+                 f"({_hub_disp})")
+        # The Planner is a distinct grantor ONLY in the 7-agent system,
+        # and the grantor list lives in the permission section.
+        has_planner_grantor = "from the Planner" in block
+        if (_topo == 7 and "permission" in _sections
+                and not has_planner_grantor):
             fail(_case, "HUB",
-                 f"stuck_escalation targets {hop.target!r}, expected "
-                 f"{HUB_BY_TOPOLOGY[_topo]!r}")
+                 f"{_name}: 7-agent lost the Planner as an "
+                 f"authorisation source")
+        if _topo != 7 and has_planner_grantor:
+            fail(_case, "HUB",
+                 f"{_name}: names the Planner as an authorisation "
+                 f"source, but it is merged into the hub here")
+
+    # stuck_escalation must target the active hub, not a literal.
+    hop = routing_tools.stuck_escalation("Tool Caller", "calculate")
+    if hop.target != HUB_BY_TOPOLOGY[_topo]:
+        fail(_case, "HUB",
+             f"stuck_escalation targets {hop.target!r}, expected "
+             f"{HUB_BY_TOPOLOGY[_topo]!r}")
 
 # --- FACTORY: build_hub must return the active topology's hub -------------
 # The real hub classes cannot be constructed here (they need a live
@@ -786,8 +771,8 @@ for _key, _disp in topology._HUB_BY_TOPOLOGY.values():
 # topology whose files are missing must fail loudly, never silently run the
 # 7-agent set.  Only a genuinely unknown N tests the fall-back path.
 try:
-    base_read, base_built = assemble(7, False)
-    deg_read, deg_built = assemble(99, False, as_topology=7)
+    base_read, base_built = assemble(7)
+    deg_read, deg_built = assemble(99, as_topology=7)
     if deg_read != base_read:
         failures.append(
             f"[DEGRADE] an unregistered topology read a different file set "
@@ -805,22 +790,31 @@ except Exception as exc:  # noqa: BLE001
         f"{type(exc).__name__}: {exc}"
     )
 
-# --- PRECEDENCE: an exact-name override must beat the collapsed one -------
-prompts._workflow_settings.SYSTEM_TOPOLOGY = 5
-_exact = (ROOT / "agents" / "5agent" / "prompt_fragments"
-          / "routing_user_input_inspector_uii_first_5agents.md")
-try:
-    _exact.write_text("### EXACT-NAME PROBE\n", encoding="utf-8")
-    got = routing._load_routing_fragment(
-        "routing_user_input_inspector_uii_first.md"
-    )
-    if "EXACT-NAME PROBE" not in got:
-        failures.append(
-            "[PRECEDENCE] a branched override (…_uii_first_5agents.md) exists "
-            "but the collapsed name won instead"
-        )
-finally:
-    _exact.unlink(missing_ok=True)
+# --- RETIRED: Planner first (removed 2026-10-18) must stay gone ------------
+_retired_files = sorted(
+    p.relative_to(ROOT).as_posix()
+    for base in ("agents", "dc_pack")
+    for p in (ROOT / base).rglob("*")
+    if p.is_file() and ("_planner_first" in p.name or "_uii_first" in p.name))
+if _retired_files:
+    failures.append(f"[RETIRED] Planner-first files are back: {_retired_files}")
+_retired_names = []
+for _base, _pattern in (("agents", "*.md"), ("agents", "*.py"), ("engine", "*"),
+                        ("workflow_settings", "*.py"), ("studio", "*"),
+                        ("dc_pack", "*")):
+    for _p in (ROOT / _base).rglob(_pattern):
+        if not _p.is_file() or "__pycache__" in _p.parts \
+                or _p.suffix not in (".md", ".py", ".yaml", ".js", ".json"):
+            continue
+        _text = _p.read_text(encoding="utf-8", errors="replace")
+        for _needle in ("<<PF_ON>>", "<<PF_OFF>>", "PLANNER_FIRST", "planner_first"):
+            if _needle in _text:
+                _retired_names.append(f"{_p.relative_to(ROOT).as_posix()}: {_needle}")
+for _p in (ROOT / "web_app.py",):
+    if "PLANNER_FIRST" in _p.read_text(encoding="utf-8"):
+        _retired_names.append(f"{_p.name}: PLANNER_FIRST")
+if _retired_names:
+    failures.append(f"[RETIRED] Planner first is named again: {_retired_names[:6]}")
 
 # --- SCOPED FRAGMENTS: per-agent copies of a shared fragment --------------
 #
@@ -838,7 +832,6 @@ finally:
 # moved slot as well as agent.  It must always target a (slot, agent) pair that
 # is still free on disk -- see the 'free pairs' census in the round-4 notes.)
 prompts._workflow_settings.SYSTEM_TOPOLOGY = 7
-prompts.PLANNER_FIRST = False
 
 _SCOPE_AGENTS = [
     "receptionist", "orchestrator", "planner", "user_input_inspector",

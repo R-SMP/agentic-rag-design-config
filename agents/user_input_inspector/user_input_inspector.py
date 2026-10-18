@@ -35,7 +35,6 @@ from agents.shared.dc_primer import primed_history
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import (
-    PLANNER_FIRST,
     _build_template,
     routing_instructions,
 )
@@ -170,22 +169,12 @@ class UserInputInspector(BaseChainAgent):
         )
         self.llm = self.base_llm.bind_tools(all_tools)
         self._routing_tools_by_name = {t.name: t for t in tools}
-        if PLANNER_FIRST:
-            routing_block = routing_instructions(
-                agent_name="User Input Inspector",
-                next_agent=next_agent,
-                prev_agent="Planner",
-                fragment_name=
-                    "routing_user_input_inspector_planner_first.md",
-            )
-        else:
-            routing_block = routing_instructions(
-                agent_name="User Input Inspector",
-                next_agent=next_agent,
-                prev_agent=None,
-                fragment_name=
-                    "routing_user_input_inspector_uii_first.md",
-            )
+        routing_block = routing_instructions(
+            agent_name="User Input Inspector",
+            next_agent=next_agent,
+            prev_agent=None,
+            fragment_name="routing_user_input_inspector.md",
+        )
         # Built fresh at construction time so live edits to .md
         # fragments on disk take effect on the
         # NEXT session without a Python restart.
@@ -204,8 +193,8 @@ class UserInputInspector(BaseChainAgent):
         self._routing_retry_used = False
         # The routing tool already prefixes "[Incoming from: <sender>]"
         # (routing_tools.py:311), so naming a sender here can only
-        # contradict it — under PLANNER_FIRST=False the UII is called by
-        # the Orchestrator, not the Planner.  Same agnostic form as
+        # contradict it — the UII is called by the Orchestrator, not the
+        # Planner.  Same agnostic form as
         # tool_caller.py:168, the one agent that already gets this right.
         text = f"Hand-off from previous agent:\n{message}"
         self.messages.append(HumanMessage(content=text))

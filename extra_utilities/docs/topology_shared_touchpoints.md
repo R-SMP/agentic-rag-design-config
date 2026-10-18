@@ -162,14 +162,14 @@ reload its importers, and the Sessions Queue switches topology between runs
 inside one process.  A module constant would pin the topology to whatever
 was on disk at process start.
 
-**The PF-collapse rule.**  `PLANNER_FIRST` splits some routing fragments into
-`*_planner_first.md` / `*_uii_first.md`.  That axis exists ONLY in the
-7-agent system, so a reduced topology ships ONE fragment per agent and
-`_load_routing_fragment` tries the branch-suffix-stripped name as a second
-candidate.  Without it, the 5-agent UII silently loaded the **7-agent**
-fragment and was told to call `call_planner` — an agent that does not exist
-there.  The same trap applies to `pipeline_flow`, handled in
-`_pipeline_flow_fragment_name()`.
+**Routing fragments.**  Each agent has ONE routing fragment,
+`routing_<agent>.md`; a reduced topology's copy is
+`routing_<agent>_<N>agents.md`, which `_topology_override` finds first, and
+`pipeline_flow.md` works the same way.  (Until 2026-10-18 Planner first split
+some of them into `*_planner_first.md` / `*_uii_first.md`, and the engine
+stripped the branch suffix to reach a topology's copy -- without that, the
+5-agent UII once loaded the **7-agent** fragment and was told to call an
+agent that does not exist there.)
 
 ## §C — Build ORDER (learned the hard way — do NOT invert)
 

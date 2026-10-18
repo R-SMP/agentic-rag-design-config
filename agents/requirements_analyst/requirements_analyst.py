@@ -111,7 +111,7 @@ $output_images again you must explicitly re-load them from those paths via
 # would name a file that can never exist.  ``DCOI_COMPARISON_MODE`` is
 # therefore inert under topology 3 -- visible in the settings UI showing its
 # real value, greyed out, a write refused -- by the same mechanism as
-# PLANNER_FIRST and DC_INSPECTOR_ENABLED.  This agent compares against the
+# DC_INSPECTOR_ENABLED.  This agent compares against the
 # user's own material, always.  (Closes the rebuild plan's open item O2: the
 # question was what to do about grading an extraction it wrote itself, and
 # the answer is that there is no extraction.)

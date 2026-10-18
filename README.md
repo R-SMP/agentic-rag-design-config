@@ -8,7 +8,7 @@ Built on **LangChain** with swappable LLM backends (OpenAI / Anthropic / Google)
 
 Nine stateful sub-agents collaborate via a flat horizontal dispatcher (eight in-session, one post-session) — that is the **7-agent topology**, the default. `SYSTEM_TOPOLOGY` also selects a **5-agent topology** of seven (six in-session, one post-session) and a **3-agent topology** of five (four in-session, one post-session); see [Topologies](#topologies).
 
-**Default flow (`PLANNER_FIRST=False`, UII-first):**
+**Default flow:**
 
 ```
 user → Receptionist → Orchestrator → User Input Inspector
@@ -543,7 +543,6 @@ The engine's runtime flags live in [`workflow_settings/settings.py`](workflow_se
 | `RATE_LIMIT_ENABLED` | `True` | throttle every `llm.invoke()` |
 | `RATE_LIMIT_REQUESTS_PER_SECOND` | `1.0` | steady-state call rate |
 | `DCOI_COMPARISON_MODE` | `3` | 1=user inputs, 2=extraction, 3=both — inert in topology 3 (always 1: there is no extraction file) |
-| `PLANNER_FIRST` | `False` | True = Planner runs before UII — **7-agent only**; in topologies 5 and 3 the hub IS the planner |
 | `EMBEDDING_MODEL` | `"text-embedding-3-large"` | for DH-shaped Semantic bodies |
 | `EMBEDDING_VECTOR_DIMS` | `1024` | MRL truncation dim at index time |
 | `EMBEDDING_MAX_RESPONSE_TOKENS` | `700` | DH cap for Semantic bodies |

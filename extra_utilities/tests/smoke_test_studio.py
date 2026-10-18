@@ -29,7 +29,7 @@ Since MAS-blueprint P5b the prompt viewer shows any choice of the settings
 that change what an agent sees (``POST /api/view``):
 
 7. VIEWER.  Every combination of ``prompt_matrix.py`` the viewer can
-   express (all but Planner first), in topologies 7 / 5 / 3: the prompts
+   express, in topologies 7 / 5 / 3: the prompts
    are the matrix baseline's and each agent's tools are the tool
    baseline's (``tool_baseline.json``), byte for byte; the token counts
    are tiktoken cl100k's of the text shown; a choice the setup does not
@@ -335,19 +335,16 @@ def check_cache_unit() -> None:
               f"[CACHE] a failed build is kept instead of retried: {len(calls)} builds")
 
 
-def _matrix_choices() -> tuple[dict, list]:
+def _matrix_choices() -> dict:
     """``prompt_matrix.py``'s combinations as viewer choices, through the
     matrix's own translation tables: combination -> (the choice without
-    topology and access, {topology: access cells}).  Planner first is not
-    offered by the viewer: those combinations are listed apart."""
+    topology and access, {topology: access cells}).  A setting the viewer
+    does not offer stays in the choice, and the viewer refuses it."""
     sys.path.insert(0, str(ROOT / "extra_utilities" / "scripts"))
     import prompt_matrix as PM
-    out, skipped = {}, []
+    out = {}
     for combo, overrides in PM.CONFIGS.items():
         ov = dict(overrides)
-        if "PLANNER_FIRST" in ov:
-            skipped.append(combo)
-            continue
         choice: dict = {"settings": {}, "tools": {}}
         rag, all_db = ov.pop("RAG_ENABLED", None), ov.pop("_ALL_DB_TOOLS", False)
         if all_db:
@@ -365,7 +362,7 @@ def _matrix_choices() -> tuple[dict, list]:
                 choice["tools"].setdefault(tool, {})[key] = ov.pop(name)
         choice["settings"] = ov
         out[combo] = (choice, access)
-    return out, skipped
+    return out
 
 
 def _tool_sha(tool: dict) -> str:
@@ -382,7 +379,7 @@ def check_viewer(st: Studio) -> str:
                          .read_text(encoding="utf-8"))
     tools = json.loads((ROOT / "extra_utilities/prompt_matrix/tool_baseline.json")
                        .read_text(encoding="utf-8"))
-    combos, skipped = _matrix_choices()
+    combos = _matrix_choices()
     jobs = [(combo, n, dict(choice, topology=n, access=access.get(n, {})))
             for combo, (choice, access) in combos.items() for n in (7, 5, 3)]
 
@@ -429,9 +426,8 @@ def check_viewer(st: Studio) -> str:
         status, d = st.call("view", dict(bad, topology=7))
         check(d.get("ok") is False and needle in d.get("error", ""),
               f"[VIEWER] the choice {bad} was not refused by name: {d}")
-    return (f"{len(jobs)} views ({len(combos)} matrix combinations x 3 topologies, "
-            f"{len(skipped)} with Planner first left out) in {secs:.0f} s: {n_prompts} prompts "
-            f"and {n_tools} tools as the baselines")
+    return (f"{len(jobs)} views ({len(combos)} matrix combinations x 3 topologies) "
+            f"in {secs:.0f} s: {n_prompts} prompts and {n_tools} tools as the baselines")
 
 
 def check_choices(D: dict) -> None:

@@ -97,8 +97,8 @@ class StubKwargs(dict):
 # were invisible to this test.
 #
 # One SUBPROCESS per topology, never a loop in one process: ``prompts.py``
-# captures PLANNER_FIRST and DC_INSPECTOR_ENABLED at IMPORT, so a second
-# topology would inherit the first one's flags -- the same reason
+# captures DC_INSPECTOR_ENABLED at IMPORT, so a second topology would
+# inherit the first one's flag -- the same reason
 # extra_utilities/scripts/topology_prompt_snapshot.py spawns one per topology.
 #
 # Three states per agent, because each ships different text:

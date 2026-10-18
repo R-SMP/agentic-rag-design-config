@@ -261,34 +261,6 @@ DCOI_COMPARISON_MODE: int = 3
 
 
 # ===========================================================
-# 10. Planner / UII order along the standard pipeline
-# ===========================================================
-# Whether the Planner runs BEFORE the User Input Inspector (the
-# original v5 flow) or AFTER it.
-#
-#   True   Standard v5 flow:
-#            user → Receptionist → Orchestrator → Planner → UII
-#            → DCIC → [DCII] → TC → DCOI → Orchestrator
-#            → Receptionist → user
-#          The Planner kicks off, glances at the raw user inputs,
-#          decides on a strategy, and hands off to the UII.
-#
-#   False  UII-first flow:
-#            user → Receptionist → Orchestrator → UII → Planner
-#            → DCIC → [DCII] → TC → DCOI → Orchestrator
-#            → Receptionist → user
-#          The UII writes extracted_inputs.txt first; the Planner
-#          then reads the structured extraction and (only if it
-#          judges necessary) the raw user inputs (texts + notes
-#          preferred over images).  Recommended when you want the
-#          Planner's strategy to be informed by the structured
-#          extraction rather than the raw user text.
-#
-# Valid values: True, False
-PLANNER_FIRST: bool = False
-
-
-# ===========================================================
 # 12. LLM routing mode
 # ===========================================================
 # Controlled exclusively via the LLM-routing chart at the top of

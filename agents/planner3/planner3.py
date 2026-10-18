@@ -40,9 +40,9 @@ Differences from Planner5, every one a consequence of the two merges:
 
 Everything else is inherited: the PLANNER's prompt and its four runtime
 slots, ``_persist_plan`` / ``_save_plan_to_file`` so ``current_plan.txt``
-keeps being written, no chain-log feed, and no ``PLANNER_FIRST`` /
-``DC_INSPECTOR_ENABLED`` branching (``prompts`` forces both off for any hub
-that is not the Orchestrator).
+keeps being written, no chain-log feed, and no ``DC_INSPECTOR_ENABLED``
+branching (``prompts`` forces it off for any hub that is not the
+Orchestrator).
 
 The dispatch contract is unchanged, so all three hubs stay drop-in
 interchangeable for ``agents/hub.py``: same seven public methods, same three
@@ -279,8 +279,7 @@ class Planner3(BaseChainAgent):
         attribute; the dispatcher reads that hop once the caller's run loop
         exits.
 
-        NO branches: topology 3 has no ``PLANNER_FIRST`` ordering to choose
-        (the hub IS the planner) and no DC Input Inspector to switch in or
+        NO branches: topology 3 has no DC Input Inspector to switch in or
         out, so the edge set is fixed::
 
             Receptionist         -> Planner
@@ -384,7 +383,7 @@ class Planner3(BaseChainAgent):
             agent_name="Planner",
             next_agent="Design Engineer",
             prev_agent="Requirements Analyst",
-            fragment_name="routing_planner_uii_first.md",
+            fragment_name="routing_planner.md",
         )
         # Built fresh at construction time so live edits to .md fragments on
         # disk take effect on the NEXT session without a Python restart.

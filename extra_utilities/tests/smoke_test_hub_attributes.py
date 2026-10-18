@@ -55,21 +55,19 @@ CONTRACT_HINTS = ("run", "reset", "set_tools", "set_routing_tools",
 # claims.  ``self.AGENT_KEY`` is resolved to the class's own key.
 #
 # Topology 7 is transcribed from the live Orchestrator under its committed
-# flags (PLANNER_FIRST=False, DC_INSPECTOR_ENABLED=True), including the
-# branches that only one flag combination reaches -- the extractor sees every
-# call site regardless of branch, so the expected set is their union.
+# flag (DC_INSPECTOR_ENABLED=True), including the branch only the other value
+# reaches -- the extractor sees every call site regardless of branch, so the
+# expected set is their union.
 EXPECTED_EDGES = {
     "Orchestrator": {
         ("planner", "user_input_inspector"),
         ("planner", "orchestrator"),
         ("planner", "dc_input_creator"),
         ("receptionist", "orchestrator"),
-        ("user_input_inspector", "dc_input_creator"),
         ("user_input_inspector", "planner"),
         ("user_input_inspector", "orchestrator"),
         ("dc_input_creator", "dc_input_inspector"),
         ("dc_input_creator", "tool_caller"),
-        ("dc_input_creator", "user_input_inspector"),
         ("dc_input_creator", "planner"),
         ("dc_input_creator", "orchestrator"),
         ("dc_input_inspector", "tool_caller"),

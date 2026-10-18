@@ -39,7 +39,6 @@ from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import (
     PARAMETER_NAMES,
-    PLANNER_FIRST,
     _build_template,
     routing_instructions,
 )
@@ -189,22 +188,12 @@ class DCInputCreator(BaseChainAgent):
         )
         self.llm = self.base_llm.bind_tools(all_tools)
         self._routing_tools_by_name = {t.name: t for t in tools}
-        if PLANNER_FIRST:
-            routing_block = routing_instructions(
-                agent_name="DC Input Creator",
-                next_agent=next_agent,
-                prev_agent="User Input Inspector",
-                fragment_name=
-                    "routing_dc_input_creator_planner_first.md",
-            )
-        else:
-            routing_block = routing_instructions(
-                agent_name="DC Input Creator",
-                next_agent=next_agent,
-                prev_agent="Planner",
-                fragment_name=
-                    "routing_dc_input_creator_uii_first.md",
-            )
+        routing_block = routing_instructions(
+            agent_name="DC Input Creator",
+            next_agent=next_agent,
+            prev_agent="Planner",
+            fragment_name="routing_dc_input_creator.md",
+        )
         # Built fresh at construction time so live edits to .md
         # fragments on disk take effect on the
         # NEXT session without a Python restart.

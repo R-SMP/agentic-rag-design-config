@@ -29,8 +29,8 @@ removals:
   ``current_plan.txt`` keeps being written under topology 5;
 * it does NOT feed itself the chain log -- the "what happened while I was
   waiting" view was the Orchestrator's power and left with it;
-* no ``PLANNER_FIRST`` or ``DC_INSPECTOR_ENABLED`` branching -- neither axis
-  exists here (``prompts._planner_first_effective`` forces both off).
+* no ``DC_INSPECTOR_ENABLED`` branching -- the axis does not exist here
+  (``prompts._dcii_effective`` forces it off).
 
 The dispatch contract is unchanged, so both hubs stay drop-in
 interchangeable for ``agents/hub.py``: same seven public methods, same three
@@ -300,8 +300,7 @@ class Planner5(BaseChainAgent):
         exits.
 
         Unlike the Orchestrator's version there are NO branches.  Topology 5
-        has no ``PLANNER_FIRST`` ordering to choose (the hub IS the planner)
-        and no DC Input Inspector to switch in or out, so the edge set is
+        has no DC Input Inspector to switch in or out, so the edge set is
         fixed::
 
             Receptionist        -> Planner
@@ -429,7 +428,7 @@ class Planner5(BaseChainAgent):
             agent_name="Planner",
             next_agent="DC Input Creator",
             prev_agent="User Input Inspector",
-            fragment_name="routing_planner_uii_first.md",
+            fragment_name="routing_planner.md",
         )
         # Built fresh at construction time so live edits to .md fragments on
         # disk take effect on the NEXT session without a Python restart.

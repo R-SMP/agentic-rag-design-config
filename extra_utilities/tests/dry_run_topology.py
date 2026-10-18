@@ -37,9 +37,9 @@ and never routes, so the turn stalls.
 
 One subprocess per topology, for the same reason
 ``topology_prompt_snapshot.py`` uses one: ``prompts.py`` reads
-``SYSTEM_TOPOLOGY`` fresh on every call but captures ``PLANNER_FIRST`` and
-``DC_INSPECTOR_ENABLED`` at IMPORT, so two topologies in one process would
-give the second the first's flags.
+``SYSTEM_TOPOLOGY`` fresh on every call but captures ``DC_INSPECTOR_ENABLED``
+at IMPORT, so two topologies in one process would give the second the
+first's flag.
 
 Usage
 -----

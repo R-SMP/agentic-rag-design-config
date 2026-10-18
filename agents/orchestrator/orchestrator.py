@@ -41,7 +41,7 @@ from agents.shared.llm_provider import (
 )
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
-from agents.shared.prompts import _build_template, PLANNER_FIRST
+from agents.shared.prompts import _build_template
 from agents.shared.stop_signal import is_stop_requested
 from agents.shared.routing_tools import (
     AGENT_DISPLAY,
@@ -279,25 +279,15 @@ class Orchestrator(BaseChainAgent):
         # history provider.
         history_tool = build_read_agent_history_tool(self.get_agent_messages)
 
-        # Planner — FORWARD target depends on PLANNER_FIRST.
-        #   PF_ON:  FORWARD → UII, RETURN → Orchestrator
-        #   PF_OFF: FORWARD → DCIC, CLARIFY → UII, RETURN → Orchestrator
-        if PLANNER_FIRST:
-            planner_tools = [
-                build_routing_tool("planner", "user_input_inspector",
-                                   self.planner, cl),
-                build_routing_tool("planner", "orchestrator",
-                                   self.planner, cl),
-            ]
-        else:
-            planner_tools = [
-                build_routing_tool("planner", "dc_input_creator",
-                                   self.planner, cl),
-                build_routing_tool("planner", "user_input_inspector",
-                                   self.planner, cl),
-                build_routing_tool("planner", "orchestrator",
-                                   self.planner, cl),
-            ]
+        # Planner — FORWARD → DCIC, CLARIFY → UII, RETURN → Orchestrator.
+        planner_tools = [
+            build_routing_tool("planner", "dc_input_creator",
+                               self.planner, cl),
+            build_routing_tool("planner", "user_input_inspector",
+                               self.planner, cl),
+            build_routing_tool("planner", "orchestrator",
+                               self.planner, cl),
+        ]
         self.planner.set_routing_tools(
             tools=planner_tools,
             history_tool=history_tool,
@@ -314,34 +304,21 @@ class Orchestrator(BaseChainAgent):
             ),
         ])
 
-        # UII — neighbours depend on PLANNER_FIRST.
-        #   PF_ON:  FORWARD → DCIC, CLARIFY → Planner, ESCALATE → Orchestrator
-        #   PF_OFF: FORWARD → Planner,                 ESCALATE → Orchestrator
-        if PLANNER_FIRST:
-            uii_tools = [
-                build_routing_tool("user_input_inspector", "dc_input_creator",
-                                   self.user_input_inspector, cl),
-                build_routing_tool("user_input_inspector", "planner",
-                                   self.user_input_inspector, cl),
-                build_routing_tool("user_input_inspector", "orchestrator",
-                                   self.user_input_inspector, cl),
-            ]
-            uii_next_agent = "DC Input Creator"
-        else:
-            uii_tools = [
-                build_routing_tool("user_input_inspector", "planner",
-                                   self.user_input_inspector, cl),
-                build_routing_tool("user_input_inspector", "orchestrator",
-                                   self.user_input_inspector, cl),
-            ]
-            uii_next_agent = "Planner"
+        # UII — FORWARD → Planner, ESCALATE → Orchestrator.
+        uii_tools = [
+            build_routing_tool("user_input_inspector", "planner",
+                               self.user_input_inspector, cl),
+            build_routing_tool("user_input_inspector", "orchestrator",
+                               self.user_input_inspector, cl),
+        ]
+        uii_next_agent = "Planner"
         self.user_input_inspector.set_routing_tools(
             tools=uii_tools,
             next_agent=uii_next_agent,
         )
 
         # DCIC — FORWARD target depends on whether DCII is enabled;
-        # CLARIFY-back target depends on PLANNER_FIRST.
+        # CLARIFY goes back to the Planner.
         if self.dc_inspector_enabled:
             dcic_forward_tool = build_routing_tool(
                 "dc_input_creator", "dc_input_inspector",
@@ -364,16 +341,10 @@ class Orchestrator(BaseChainAgent):
             dcic_next_agent = "Tool Caller"
             dcic_skip_dcii_tools = []  # forward already renders directly
 
-        if PLANNER_FIRST:
-            dcic_clarify_tool = build_routing_tool(
-                "dc_input_creator", "user_input_inspector",
-                self.dc_input_creator, cl,
-            )
-        else:
-            dcic_clarify_tool = build_routing_tool(
-                "dc_input_creator", "planner",
-                self.dc_input_creator, cl,
-            )
+        dcic_clarify_tool = build_routing_tool(
+            "dc_input_creator", "planner",
+            self.dc_input_creator, cl,
+        )
 
         self.dc_input_creator.set_routing_tools(
             tools=[

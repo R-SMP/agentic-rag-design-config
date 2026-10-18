@@ -62,12 +62,10 @@ import agents.dc_input_inspector.dc_input_inspector as DCII_M
 import agents.dc_output_inspector.dc_output_inspector as DCOI_M
 from agents.database_handler import dh_tools, batch_tools
 
-# Both axes exist only where the hub is the Orchestrator; prompts.py forces
-# them off elsewhere, so read the EFFECTIVE values rather than the raw flags.
+# The DCII axis exists only where the hub is the Orchestrator; prompts.py
+# forces it off elsewhere, so read the EFFECTIVE value rather than the flag.
 DCII_ON = P._dcii_effective()
-PF = P._planner_first_effective()
 if TOPOLOGY == 7:
-    assert not PF, "this dump assumes the committed default PLANNER_FIRST=False"
     assert DCII_ON, ("this dump assumes the committed default "
                      "DC_INSPECTOR_ENABLED=True")
 
@@ -108,7 +106,7 @@ def runtime_slots():
             routing_instructions=P.routing_instructions(
                 agent_name="Planner", next_agent="DC Input Creator",
                 prev_agent="User Input Inspector",
-                fragment_name="routing_planner_uii_first.md",
+                fragment_name="routing_planner.md",
             ),
             user_inputs_dir=USER_INPUTS_DIR,
             input_images_subdir=INPUT_IMAGES_SUBDIR,
@@ -118,7 +116,7 @@ def runtime_slots():
             routing_instructions=P.routing_instructions(
                 agent_name="User Input Inspector", next_agent="Planner",
                 prev_agent=None,
-                fragment_name="routing_user_input_inspector_uii_first.md",
+                fragment_name="routing_user_input_inspector.md",
             ),
         ),
         "dc_input_creator": dict(
@@ -126,7 +124,7 @@ def runtime_slots():
                 agent_name="DC Input Creator",
                 next_agent="DC Input Inspector" if DCII_ON else "Tool Caller",
                 prev_agent="Planner",
-                fragment_name="routing_dc_input_creator_uii_first.md",
+                fragment_name="routing_dc_input_creator.md",
             ),
         ),
         "dc_input_inspector": dict(
@@ -210,11 +208,9 @@ def tools_for(agent):
                  + [rt("planner", tgt) for tgt in _EDGES_5["planner"]])
             t.extend(dba_tools_for("planner"))
             return t
-        routing = ([rt("planner", "dc_input_creator"),
-                    rt("planner", "user_input_inspector"),
-                    rt("planner", "orchestrator")] if not PF else
-                   [rt("planner", "user_input_inspector"),
-                    rt("planner", "orchestrator")])
+        routing = [rt("planner", "dc_input_creator"),
+                   rt("planner", "user_input_inspector"),
+                   rt("planner", "orchestrator")]
         t = ([build_read_user_inputs(doc=READ_INPUTS_DOC_PLANNER,
                                      direct_provider="openai"),
               PLAN.read_extracted_inputs]
@@ -226,11 +222,8 @@ def tools_for(agent):
 
     if agent == "user_input_inspector":
         extra = list(dba_tools_for("user_input_inspector"))
-        routing = ([rt("user_input_inspector", "planner"),
-                    rt("user_input_inspector", "orchestrator")] if not PF else
-                   [rt("user_input_inspector", "dc_input_creator"),
-                    rt("user_input_inspector", "planner"),
-                    rt("user_input_inspector", "orchestrator")])
+        routing = [rt("user_input_inspector", "planner"),
+                   rt("user_input_inspector", "orchestrator")]
         return ([UII_M._build_read_user_inputs("user_input_inspector"),
                  UII_M.write_extraction]
                 + extra
@@ -242,8 +235,7 @@ def tools_for(agent):
         extra += dba_tools_for("dc_input_creator")
         routing = [rt("dc_input_creator",
                       "dc_input_inspector" if DCII_ON else "tool_caller"),
-                   rt("dc_input_creator",
-                      "user_input_inspector" if PF else "planner"),
+                   rt("dc_input_creator", "planner"),
                    rt("dc_input_creator", "orchestrator")]
         if DCII_ON:
             routing.append(rt("dc_input_creator", "tool_caller"))
@@ -424,7 +416,6 @@ out = {
         "SYSTEM_TOPOLOGY": S.SYSTEM_TOPOLOGY,
         "dba_profile": database_access.profile_key(),
         "DC_INSPECTOR_ENABLED": bool(S.DC_INSPECTOR_ENABLED),
-        "PLANNER_FIRST": bool(S.PLANNER_FIRST),
         # Tool settings since MAS-blueprint P3c; the keys stay for build_html.
         "MESH_CHECKS": bool(_GEN["mesh_checks"]),
         "RENDER_LIBRARY": _GEN["render_library"],

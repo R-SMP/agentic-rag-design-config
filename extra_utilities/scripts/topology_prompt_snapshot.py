@@ -23,9 +23,9 @@ this rebuild works to: never claim "unchanged" without it.
 Why a subprocess per topology
 -----------------------------
 ``prompts.py`` reads ``SYSTEM_TOPOLOGY`` fresh on every call, but it
-captures ``PLANNER_FIRST`` and ``DC_INSPECTOR_ENABLED`` at IMPORT.  Once
-those two are forced per topology (plan D6), assembling two topologies in
-one process would give the second one the first one's flags.  One process
+captures ``DC_INSPECTOR_ENABLED`` at IMPORT.  Once that flag is forced per
+topology (plan D6), assembling two topologies in one process would give the
+second one the first one's flag.  One process
 per topology sidesteps that permanently.
 
 Why the agent list is not hard-coded
@@ -78,11 +78,11 @@ _INPUT_IMAGES_SUBDIR = "input_images"
 _ROUTING_SHAPE: dict[str, tuple] = {
     # agent: (agent_name, next_agent, prev_agent, fragment_name)
     "planner": ("Planner", "DC Input Creator", "User Input Inspector",
-                "routing_planner_uii_first.md"),
+                "routing_planner.md"),
     "user_input_inspector": ("User Input Inspector", "Planner", None,
-                             "routing_user_input_inspector_uii_first.md"),
+                             "routing_user_input_inspector.md"),
     "dc_input_creator": ("DC Input Creator", None, "Planner",
-                         "routing_dc_input_creator_uii_first.md"),
+                         "routing_dc_input_creator.md"),
     "dc_input_inspector": ("DC Input Inspector", "Tool Caller",
                            "DC Input Creator", "routing_dc_input_inspector.md"),
     "tool_caller": ("Tool Caller", "DC Output Inspector", None,
@@ -208,7 +208,6 @@ def _assemble(topology: int) -> dict:
         "topology": T.topology(),
         "hub_key": T.hub_key(),
         "hub_display": T.hub_display(),
-        "planner_first": bool(getattr(P, "PLANNER_FIRST", False)),
         "dcii_enabled": bool(P._dcii_effective()),
         "prompts": {},
         "unavailable": {},
@@ -302,14 +301,13 @@ def cmd_save(outdir: Path, topology: int | None) -> int:
         manifest[str(n)] = {
             "hub_key": data["hub_key"],
             "hub_display": data["hub_display"],
-            "planner_first": data["planner_first"],
             "dcii_enabled": data["dcii_enabled"],
             "prompts": rows,
             "unavailable": data["unavailable"],
             "unformatted": data.get("unformatted", {}),
         }
         print(f"[{n}-agent] hub={data['hub_key']} "
-              f"PF={data['planner_first']} DCII={data['dcii_enabled']} "
+              f"DCII={data['dcii_enabled']} "
               f"built={len(rows)} unavailable={len(data['unavailable'])}")
         print(f"    {'agent':<24} {'full':>7} {'sha':<13}"
               f"{'template':>9} {'sha':<13}")
@@ -349,7 +347,7 @@ def cmd_diff(a: Path, b: Path, context: int) -> int:
                 print(f"  !! {agent:<23} {side}: runtime slots NOT "
                       f"filled, snapshot is a raw TEMPLATE -- {err}")
                 moved += 1
-        for key in ("hub_key", "hub_display", "planner_first", "dcii_enabled"):
+        for key in ("hub_key", "hub_display", "dcii_enabled"):
             if ra.get(key) != rb.get(key):
                 print(f"  ! {key}: {ra.get(key)!r} -> {rb.get(key)!r}")
                 moved += 1

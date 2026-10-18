@@ -262,10 +262,6 @@ CFG_ROWS = [
      "DC Input Inspector is in the chain" if TOPOLOGY == 7 else
      "raw setting \u2014 forced OFF here: this topology has no DC Input "
      "Inspector (prompts._dcii_effective)"),
-    ("PLANNER_FIRST", CFG["PLANNER_FIRST"],
-     "UII runs before the Planner" if TOPOLOGY == 7 else
-     "raw setting \u2014 forced OFF here: the hub IS the planner "
-     "(prompts._planner_first_effective)"),
     ("generator: mesh_checks", CFG["MESH_CHECKS"],
      "no watertightness / volume metrics; the Tool Caller gets the "
      "\u201cchecks off\u201d render fragment"),
@@ -613,7 +609,6 @@ parts.append("""
         replace the shared text for one agent only;</li>
     <li>every conditional region resolved for the settings in force &mdash;
         <span class="m">&lt;&lt;DCII_ONLY&gt;&gt;</span>,
-        <span class="m">&lt;&lt;PF_ON/OFF&gt;&gt;</span>,
         <span class="m">&lt;&lt;IF / IFNOT:tool:&hellip; / setting:&hellip;&gt;&gt;</span>,
         <span class="m">&lt;&lt;IF / IFNOT:param_list / param_ranges&gt;&gt;</span>,
         <span class="m">&lt;&lt;CHAIN_ONLY&gt;&gt;</span>,

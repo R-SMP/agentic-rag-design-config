@@ -6,14 +6,15 @@ Why a matrix
 ``topology_prompt_snapshot.py`` assembles the prompts under the settings that
 are on disk.  Most prompt text is conditional, though: ``<<RAG_ON>>``,
 ``<<HAS_DBA>>``, the pack's ``<<IF:tool:…>>`` / ``<<IF:setting:…>>``, ``<<DCII_ONLY>>``,
-``<<PF_ON>>``, the per-agent parameter-access regions, the per-agent
+the per-agent parameter-access regions, the per-agent
 database-tool slots, and the runtime blocks chosen by the generator's
 ``render_library`` / ``mesh_checks`` settings, ``DCOI_COMPARISON_MODE``,
 ``KEEP_IMAGES_IN_CONTEXT`` and ``CHAIN_ACCESS``.  A
 change that is byte-identical under one setting can still move a prompt under
-another.  The 17 combinations below switch each of those at least once; times
-three topologies that is 357 prompts.  They are the combinations that
-verified ``MAS-generalized-v2`` (2026-10-13/14).
+another.  The 15 combinations below switch each of those at least once; times
+three topologies that is 315 prompts.  They are the combinations that
+verified ``MAS-generalized-v2`` (2026-10-13/14), less the two with Planner
+first (removed 2026-10-18).
 
 Usage
 -----
@@ -42,8 +43,8 @@ Exit status is 0 when nothing differs (for ``classify``: no TEXT hunk), else 1.
 Isolation
 ---------
 One child process per (combination, topology): ``prompts.py`` captures
-``PLANNER_FIRST`` and ``DC_INSPECTOR_ENABLED`` at import, so two assemblies in
-one process would share those flags.  The children compile into a fresh,
+``DC_INSPECTOR_ENABLED`` at import, so two assemblies in one process would
+share that flag.  The children compile into a fresh,
 temporary bytecode cache (``PYTHONPYCACHEPREFIX``), so a stale ``.pyc`` in the
 tree can never serve old code (a size-preserving edit once served the wrong
 ``SYSTEM_TOPOLOGY``; see extra_utilities/tests/README.md).
@@ -83,9 +84,7 @@ CONFIGS: dict[str, dict] = {
     "bsv_off":         {"BLADE_SECTIONS_VISUALIZER_ENABLED": False},
     "mesh_on":         {"MESH_CHECKS": True},
     "mesh_on_pyvista": {"MESH_CHECKS": True, "RENDER_LIBRARY": "pyvista"},
-    "pf_on":           {"PLANNER_FIRST": True},
     "dcii_off":        {"DC_INSPECTOR_ENABLED": False},
-    "pf_on_dcii_off":  {"PLANNER_FIRST": True, "DC_INSPECTOR_ENABLED": False},
     "uii_params_on":   {"UII_PARAMETER_LIST_ENABLED": True},
     "dcoi_ranges_on":  {"DCOI_KNOWS_PARAMS_RANGES": True},
     "cmp_mode_1":      {"DCOI_COMPARISON_MODE": 1},
@@ -93,7 +92,7 @@ CONFIGS: dict[str, dict] = {
     "keep_imgs_noch":  {"KEEP_IMAGES_IN_CONTEXT": True, "CHAIN_ACCESS": False},
     "all_on":          {"RAG_ENABLED": True, "_ALL_DB_TOOLS": True,
                         "MESH_CHECKS": True, "UII_PARAMETER_LIST_ENABLED": True,
-                        "DCOI_KNOWS_PARAMS_RANGES": True, "PLANNER_FIRST": True},
+                        "DCOI_KNOWS_PARAMS_RANGES": True},
     "all_off":         {"RAG_ENABLED": False,
                         "BLADE_SECTIONS_VISUALIZER_ENABLED": False,
                         "MESH_CHECKS": False, "DC_INSPECTOR_ENABLED": False,
@@ -275,13 +274,12 @@ def cmd_save(outdir: Path, repo: Path, jobs: int) -> int:
             "chars": chars,
             "unavailable": data.get("unavailable", {}),
             "unformatted": data.get("unformatted", {}),
-            "pf": data.get("planner_first"),
             "dcii": data.get("dcii_enabled"),
             "settings": data.get("settings", {}),
         }
         bad = sorted(data.get("unformatted", {}))
-        print(f"{c:<34} {n}  agents={len(shas)}  pf={data.get('planner_first')!s:<5}"
-              f" dcii={data.get('dcii_enabled')!s:<5}"
+        print(f"{c:<34} {n}  agents={len(shas)}"
+              f"  dcii={data.get('dcii_enabled')!s:<5}"
               + (f"  !! NOT FORMATTED: {bad}" if bad else ""))
     (outdir / "manifest.json").write_text(
         json.dumps(manifest, indent=1, sort_keys=False) + "\n",
@@ -326,7 +324,7 @@ def cmd_diff(a: Path, b: Path) -> int:
                 ca, cb = ra.get("chars", {}).get(agent), rb.get("chars", {}).get(agent)
                 size = f"  {ca} -> {cb} chars" if ca is not None and cb is not None else ""
                 print(f"DIFF        {key} {agent}{size}")
-        for fld in ("unavailable", "unformatted", "pf", "dcii"):
+        for fld in ("unavailable", "unformatted", "dcii"):
             if ra.get(fld) != rb.get(fld):
                 differ += 1
                 print(f"DIFF        {key} {fld}: {ra.get(fld)!r} -> {rb.get(fld)!r}")
@@ -450,7 +448,7 @@ def main(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(
         description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     sub = ap.add_subparsers(dest="cmd", required=True)
-    s = sub.add_parser("save", help="assemble all 357 prompts")
+    s = sub.add_parser("save", help="assemble all 315 prompts")
     s.add_argument("outdir", type=Path)
     s.add_argument("--repo", type=Path, default=REPO,
                    help="checkout to assemble (default: this script's repo)")

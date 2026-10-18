@@ -135,13 +135,6 @@ _INERT_UNDER_TOPOLOGY: dict[str, tuple[frozenset, str]] = {
         "for this flag to switch on: prompts._dcii_effective() forces it "
         "False whenever SYSTEM_TOPOLOGY is not 7.",
     ),
-    "PLANNER_FIRST": (
-        frozenset({5, 3}),
-        "Only meaningful in the 7-agent topology.  In the reduced "
-        "topologies the hub IS the planner, so there is no Planner/UII "
-        "ordering to choose: prompts._planner_first_effective() forces it "
-        "False whenever SYSTEM_TOPOLOGY is not 7.",
-    ),
     "DCOI_COMPARISON_MODE": (
         frozenset({3}),
         "Only meaningful where an extraction file exists.  Modes 2 and 3 compare the render against extracted_inputs.txt, and in the 3-agent topology nothing writes that file: the Requirements Analyst states what it found in its hand-off instead.  It therefore always compares against the user's own material, which is mode 1, whatever this says.",
@@ -457,7 +450,7 @@ def _do_write(updates: dict[str, Any], *, allow_hidden: bool) -> None:
         # these out, but SettingsIn.values is an untyped dict, so without
         # this the grey-out would be cosmetic only.  The topology CHECKED is
         # the one this same write produces, so switching to 7 and flipping
-        # PLANNER_FIRST in a single save is still allowed.
+        # DC_INSPECTOR_ENABLED in a single save is still allowed.
         effective_topology = updates.get(
             "SYSTEM_TOPOLOGY", merged.get("SYSTEM_TOPOLOGY"))
         reason = _inert_reason(name, effective_topology)

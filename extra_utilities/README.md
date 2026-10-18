@@ -79,7 +79,7 @@ Upgrading an older database needs the migration ledger from git history —
 |---|---|
 | `gen_render_samples.py` | Makes the Render-compression panel's samples (`web/render_samples/`) — the same as the panel's Generate samples button (`engine/image_run.make_render_samples`). |
 | `topology_prompt_snapshot.py` | `save <dir>` assembles and hashes every agent's full prompt per topology; `diff <a> <b>` shows which agents moved.  The standard check before and after any prompt edit. |
-| `prompt_matrix.py` | `save <dir>` assembles every agent's prompt under 17 setting combinations × topologies 7, 5 and 3 (357 prompts); `diff` against `extra_utilities/prompt_matrix/baseline_manifest.json` must report 0 differences for a change that must move no prompt.  `wsdiff` / `classify` explain any that remain. |
+| `prompt_matrix.py` | `save <dir>` assembles every agent's prompt under 15 setting combinations × topologies 7, 5 and 3 (315 prompts); `diff` against `extra_utilities/prompt_matrix/baseline_manifest.json` must report 0 differences for a change that must move no prompt.  `wsdiff` / `classify` explain any that remain. |
 | `tool_matrix.py` | `save <file>` builds every hub under the same combinations and records the tools each agent is given (name, description, argument schema); `diff` against `extra_utilities/prompt_matrix/tool_baseline.json` must report 0 differences for a change that must move no tool. |
 | `hub_registry.py` | Reads which agents a hub really builds from its `_agents_by_key` literal; used by the snapshot script. |
 | `check_mesh_components.py` | Per-component report for a generated `.obj` (watertightness, volume, degenerate faces). |

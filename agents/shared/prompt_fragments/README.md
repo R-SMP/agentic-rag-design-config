@@ -16,11 +16,7 @@ to the prompt-fragment library** (rather than to any single
 | `routing_dc_input_inspector.md` | DCII's "Available routing tools" subsection. | (loaded by `routing.py`) |
 | `routing_tool_caller.md` | Tool Caller's "Available routing tools" subsection. | (loaded by `routing.py`) |
 | `routing_dc_output_inspector.md` | DCOI's "Available routing tools" subsection. | (loaded by `routing.py`) |
-| `pipeline_flow_planner_first.md` | Canonical "Normal Pipeline Flow" description used when `PLANNER_FIRST=True`. | `$pipeline_flow` (selected by flag) |
-| `pipeline_flow_uii_first.md` | Same but for `PLANNER_FIRST=False` (UII runs before Planner). | `$pipeline_flow` (selected by flag) |
-| `routing_planner_planner_first.md` / `routing_planner_uii_first.md` | Planner's "Available routing tools" subsection. The first variant is used when the Planner is first; the second when the UII is first. | (loaded by `routing.py` based on `PLANNER_FIRST`) |
-| `routing_user_input_inspector_planner_first.md` / `routing_user_input_inspector_uii_first.md` | UII's "Available routing tools" subsection, dual-variant on `PLANNER_FIRST`. | (loaded by `routing.py`) |
-| `routing_dc_input_creator_planner_first.md` / `routing_dc_input_creator_uii_first.md` | DCIC's "Available routing tools" subsection, dual-variant on `PLANNER_FIRST`. | (loaded by `routing.py`) |
+| `pipeline_flow.md` | Canonical "Normal Pipeline Flow" description (the User Input Inspector runs before the Planner); the 5- and 3-agent systems have their own copy. | `$pipeline_flow` |
 | `available_agents.md` | Directory of every agent in the system with role descriptions (used by the Planner). May reference other `$`-slots (e.g. `$parameter_count`); `_build_template` runs a second pass to resolve them. | `$available_agents` |
 
 **Configurator-agnostic.**  Nothing in this folder (or in an agent's prompt
@@ -38,8 +34,6 @@ gate optional content:
 
 - `<<DCII_ONLY>>…<</DCII_ONLY>>` and `<<DCII_OFF>>…<</DCII_OFF>>` —
   resolved against `DC_INSPECTOR_ENABLED`.
-- `<<PF_ON>>…<</PF_ON>>` and `<<PF_OFF>>…<</PF_OFF>>` — resolved
-  against `PLANNER_FIRST`.
 - `<<IF:flag>>…<</IF:flag>>` / `<<IFNOT:flag>>…<</IFNOT:flag>>` — kept when
   the flag is on (IF) or off (IFNOT); a line the removal leaves empty
   disappears with it.  The pack's flags, `tool:<tool>` and

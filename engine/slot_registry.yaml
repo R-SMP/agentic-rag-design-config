@@ -825,10 +825,8 @@ slots:
   pipeline_flow:
     source: engine
     kind: block
-    file_from: pipeline_flow  # pipeline_flow.md, or the PLANNER_FIRST pair
-    files: [pipeline_flow_planner_first.md, pipeline_flow_uii_first.md]
+    file: pipeline_flow.md
     scoped: true
-    scoped_file: pipeline_flow.md
 
 # Values read from workflow_settings/settings.py when prompts.py is imported.
   embedding_provider:

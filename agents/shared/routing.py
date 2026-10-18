@@ -30,13 +30,12 @@ from agents.shared import topology as _topology
 # inter-agent flow string never names DCII when DCII is off.
 # ---------------------------------------------------------------------------
 
-# Topologies whose flow is FIXED — no PLANNER_FIRST ordering to choose and
-# no separable DC Input Inspector to switch off, because both were merged
-# into other agents.
+# Topologies whose flow is FIXED — no separable DC Input Inspector to switch
+# off, because it was merged into another agent.
 #
 # Both strings start and end at the hub, because in both topologies the
 # Receptionist hands to the hub rather than into the chain.  The 5-agent
-# string is the 7-agent PF_OFF one with the Orchestrator replaced by the
+# string is the 7-agent one with the Orchestrator replaced by the
 # Planner and the two removed agents dropped; the Planner appears twice
 # because it is both the origin and the terminus there.
 _PIPELINE_BY_TOPOLOGY = {
@@ -87,17 +86,12 @@ def natural_pipeline() -> str:
 
     A function rather than a constant: it depends on ``SYSTEM_TOPOLOGY``,
     which the Sessions Queue switches between runs inside one process, and
-    in the 7-agent case also on ``PLANNER_FIRST`` and
-    ``DC_INSPECTOR_ENABLED``.
+    in the 7-agent case also on ``DC_INSPECTOR_ENABLED``.
     """
     fixed = _PIPELINE_BY_TOPOLOGY.get(_topology.topology())
     if fixed is not None:
         return fixed
-    head = (
-        "Orchestrator → Planner → User Input Inspector → "
-        if _workflow_settings.PLANNER_FIRST
-        else "Orchestrator → User Input Inspector → Planner → "
-    )
+    head = "Orchestrator → User Input Inspector → Planner → "
     middle = (
         "DC Input Creator → DC Input Inspector → "
         if _workflow_settings.DC_INSPECTOR_ENABLED
@@ -124,9 +118,8 @@ def _load_routing_fragment(fragment_name: str) -> str:
     the agent bodies use, so a routing fragment can splice in DC- or
     tool-specific text kept in the pack, ``dc_pack/`` (e.g.
     ``$routing_render_rerun_cases``).  Then the DCII conditional
-    regions (``<<DCII_ONLY>>`` / ``<<DCII_OFF>>``) and the
-    PLANNER_FIRST conditional regions (``<<PF_ON>>`` / ``<<PF_OFF>>``)
-    are resolved, as in ``_build_template``.
+    regions (``<<DCII_ONLY>>`` / ``<<DCII_OFF>>``) are resolved, as in
+    ``_build_template``.
 
     The active topology's override is preferred when one exists, so the
     5-agent chain loads ``routing_creator_5agents.md`` while a fragment
@@ -140,29 +133,8 @@ def _load_routing_fragment(fragment_name: str) -> str:
         mark_inline_slots, wrap_inline_lines,
     )
 
-    # PLANNER_FIRST splits some of these fragments into a
-    # ``*_planner_first.md`` / ``*_uii_first.md`` pair.  That axis exists
-    # ONLY in the 7-agent system: a topology whose hub IS the planner has
-    # no Planner/UII ordering to choose, so it ships ONE fragment per
-    # agent and its override cannot match the branched name the caller
-    # passes.  Try the exact name first — a topology CAN still branch if
-    # it ever needs to — then the name with the branch suffix removed.
-    candidates = [fragment_name]
-    stem, suffix = Path(fragment_name).stem, Path(fragment_name).suffix
-    for branch in ("_planner_first", "_uii_first"):
-        if stem.endswith(branch):
-            candidates.append(f"{stem[: -len(branch)]}{suffix}")
-            break
-
-    path = None
-    for name in candidates:
-        path = _topology_override(f"prompt_fragments/{name}")
-        if path is not None:
-            break
-    # The shared fallback always uses the ORIGINAL name, never the
-    # collapsed one, so topology 7 reads exactly what it always read.
-    if path is None:
-        path = _FRAGMENTS_DIR / fragment_name
+    path = (_topology_override(f"prompt_fragments/{fragment_name}")
+            or _FRAGMENTS_DIR / fragment_name)
     text = path.read_text(encoding="utf-8").rstrip()
     slots = mark_inline_slots(_build_slots())
     return wrap_inline_lines(
@@ -181,12 +153,11 @@ def _load_routing_fragment(fragment_name: str) -> str:
 # ⚠ Keyed by the ``agent_name`` DISPLAY string, which is NOT unique across
 # configurations: the 5-agent topology builds its UII from the same class
 # with the same display name.  The reduction is therefore gated by
-# :func:`_reduced_sections_apply` to the ONE configuration it was reviewed
-# in — 7-agent, UII-first.  That gate is load-bearing, not defensive: the
-# text these sections carry was MOVED into
-# ``routing_user_input_inspector_uii_first.md``, and no other
-# configuration's fragment absorbed it, so suppressing the sections
-# anywhere else deletes rules with nothing standing in for them.
+# :func:`_sections_for` to the topologies it was reviewed in.  That gate is
+# load-bearing, not defensive: the text these sections carry was MOVED into
+# ``routing_user_input_inspector.md`` (and the topologies' copies of it),
+# and no other fragment absorbed it, so suppressing the sections anywhere
+# else deletes rules with nothing standing in for them.
 #
 # Section names:
 #   header         ``## Routing`` + natural-flow string + position bullets
@@ -209,7 +180,7 @@ _ROUTING_SECTIONS_BY_AGENT: dict[str, tuple[str, ...]] = {
     # prompt; its fragment supplies the tool list, and only the
     # don't-announce paragraph survives from the mandate section.
     "Planner": ("fragment", "mandatory_tail"),
-    # The UII's fragment (routing_user_input_inspector_uii_first.md)
+    # The UII's fragment (routing_user_input_inspector.md)
     # absorbed the surviving CLARIFY sentence, the forwarding rules and the
     # mandate remains, so the fragment IS the whole routing section.
     "User Input Inspector": ("fragment",),
@@ -237,14 +208,6 @@ _ROUTING_SECTIONS_BY_AGENT: dict[str, tuple[str, ...]] = {
     "Design Engineer": ("fragment", "mandatory_tail"),
     "Requirements Analyst": ("fragment",),
 }
-
-# Agents whose reduction is safe ONLY under PLANNER_FIRST=False.  Round 1
-# moved their suppressed text into the ``*_uii_first`` fragments alone, so
-# the ``*_planner_first`` variants would lose rules with nothing standing in
-# for them.  Round 2 folded the decision bullets into BOTH DC Input Creator
-# variants and into the single DCII / TC / DCOI fragments, so those four are
-# safe under either ordering.
-_PF_SENSITIVE_AGENTS = frozenset({"Planner", "User Input Inspector"})
 
 # The closing paragraph of the mandate section, split so the reduced
 # emission ("mandatory_tail") and the full section stay byte-identical to
@@ -282,33 +245,13 @@ _MANDATORY_TAIL_REDUCED = (
 def _sections_for(agent_name: str) -> tuple[str, ...]:
     """Which routing sections *agent_name* gets in the ACTIVE configuration.
 
-    The reduction applies only to the 7-agent, UII-first system — the one
-    the prompts were reviewed in, and the only one whose per-agent routing
-    fragments were rewritten to carry the text the suppressed sections
-    used to state.  Every other topology, and the PLANNER_FIRST=True
-    ordering (which selects a different, un-rewritten fragment), keeps the
-    full historic set.
-
-    ⚠ PLANNER_FIRST is read from ``prompts``, NOT from ``workflow_settings``
-    — deliberately.  ``prompts.PLANNER_FIRST`` is captured at import, and it
-    is the value each agent's ``set_routing_tools`` uses to pick WHICH
-    fragment to load.  Reading the settings module fresh here would let the
-    two disagree after ``web_app._build_session`` reloads
-    ``workflow_settings`` in place: the agent would load a
-    ``*_planner_first.md`` fragment (which never absorbed the moved text)
-    while this gate suppressed the sections, deleting rules with nothing
-    standing in for them.  Same source = they cannot disagree.
+    The reduction applies to the topologies the prompts were reviewed in --
+    7, 5 and 3 -- whose per-agent routing fragments were rewritten to carry
+    the text the suppressed sections used to state.  Any other topology
+    keeps the full historic set.
     """
-    from agents.shared.prompts import PLANNER_FIRST
-
     topo = _topology.topology()
     if topo not in (7, 5, 3):
-        return _ROUTING_SECTIONS_DEFAULT
-    # PLANNER_FIRST is a 7-agent-only axis.  Topology 5 always ships the
-    # branch-COLLAPSED fragments, which carry the uii_first text -- i.e.
-    # the text that absorbed what the reduction removed -- so the
-    # PF gate must not fire there.
-    if topo == 7 and PLANNER_FIRST and agent_name in _PF_SENSITIVE_AGENTS:
         return _ROUTING_SECTIONS_DEFAULT
     return _ROUTING_SECTIONS_BY_AGENT.get(
         agent_name, _ROUTING_SECTIONS_DEFAULT,
