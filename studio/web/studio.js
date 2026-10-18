@@ -616,7 +616,9 @@
   }
 
   /* ======================================================================
-   * Prompt viewer (inside the main window)
+   * Prompt viewer (inside the main window): every agent's prompt and tools
+   * under any choice of the settings that change them (P5b), assembled by
+   * the engine (POST /api/view)
    * ==================================================================== */
   function topoAgents(t) { return Object.keys(D.prompts[String(t)].prompts); }
   function ownerName(tool) { var t = D.tools.filter(function (x) { return x.name === tool; })[0]; return t ? t.display : tool; }
@@ -629,21 +631,125 @@
     var s = slotByName(name);
     return s ? (s.origin === 'tool' ? 'tool' : 'dc') : 'dc';
   }
+  // The bar's names for the engine settings it offers (studio/engine_view.py
+  // VIEWER_SETTINGS); each one's help text in settings.py is its tooltip.
+  var SETTING_LABELS = { DC_INSPECTOR_ENABLED: 'DC Input Inspector', DCOI_COMPARISON_MODE: 'Comparison mode',
+                         KEEP_IMAGES_IN_CONTEXT: 'Keep images in context', CHAIN_ACCESS: 'Chain access', OCR_ENABLED: 'OCR' };
+  var RAG_LABELS = { off: 'off', on: 'on', all: 'on, every database tool' };
+  var TOKENS_NOTE = 'Counted with tiktoken cl100k_base, the engine’s own counter; other providers’ tokenizers differ by a few percent.';
+  var VIEWS = {}, VIEW_ERRORS = {}, VIEW_PENDING = {};   // by choice
+  function viewTopo() { var t = parseInt(R.q.topo || '7', 10); return [3, 5, 7].indexOf(t) < 0 ? 7 : t; }
+  function fromQuery(s, q) {
+    if (s.type === 'bool') return q === '1';
+    return s.values.filter(function (x) { return String(x) === q; })[0];
+  }
+  // The choice in the address: rag=, s.<SETTING>=, t.<tool>.<setting>=,
+  // a.<agent>= (its parameter-list access); a missing key is the default.
+  function viewChoice() {
+    var V = D.viewer;
+    var c = { topology: viewTopo(), rag: R.q.rag || V.rag_default, settings: {}, tools: {}, access: {} };
+    V.settings.forEach(function (s) {
+      if (R.q['s.' + s.name] !== undefined) c.settings[s.name] = fromQuery(s, R.q['s.' + s.name]);
+    });
+    V.tools.forEach(function (t) {
+      var specs = t.settings.concat(t['switch'] ? [{ name: 'enabled', type: 'bool' }] : []), vals = {};
+      specs.forEach(function (s) {
+        var q = R.q['t.' + t.tool + '.' + s.name];
+        if (q !== undefined) vals[s.name] = fromQuery(s, q);
+      });
+      if (Object.keys(vals).length) c.tools[t.tool] = vals;
+    });
+    Object.keys(R.q).forEach(function (k) { if (k.indexOf('a.') === 0) c.access[k.slice(2)] = R.q[k]; });
+    return c;
+  }
+  function setChoice(key, value, dflt) {
+    var q = {};
+    q[key] = value === dflt ? null : (typeof value === 'boolean' ? (value ? '1' : '0') : String(value));
+    go('studio', 'prompts', withQ(q));
+  }
+  function vcheck(label, value, onchange, disabled, title) {
+    return h('label', { 'class': 'vchk' + (disabled ? ' off' : ''), title: title || null }, [
+      h('input', { type: 'checkbox', checked: !!value, disabled: !!disabled,
+        onchange: function (e) { onchange(e.target.checked); } }), label]);
+  }
+  function vselect(label, values, value, onchange, disabled, title) {
+    return h('label', { 'class': 'vchk' + (disabled ? ' off' : ''), title: title || null }, [label,
+      h('select', { disabled: !!disabled, onchange: function (e) {
+        onchange(values.filter(function (x) { return String(x) === e.target.value; })[0]); } },
+        values.map(function (x) { return h('option', { value: String(x), selected: x === value }, String(x)); }))]);
+  }
+  function viewerBar(topo, agent) {
+    var V = D.viewer, c = viewChoice(), bar = [];
+    function group(label, kids, title) {
+      return h('span', { 'class': 'vgrp', title: title || null }, [h('span', { 'class': 'vlab' }, label)].concat(kids));
+    }
+    bar.push(group('Topology', h('span', { 'class': 'seg' }, [3, 5, 7].map(function (t) {
+      return h('button', { 'class': t === topo ? 'on' : '', onclick: function () { go('studio', 'prompts', withQ({ topo: t, agent: null })); } }, String(t)); }))));
+    bar.push(group('RAG', h('span', { 'class': 'seg' }, ['off', 'on', 'all'].map(function (r) {
+      return h('button', { 'class': c.rag === r ? 'on' : '', onclick: function () { setChoice('rag', r, V.rag_default); } }, RAG_LABELS[r]); })), V.rag_help));
+    V.tools.forEach(function (t) {
+      var vals = c.tools[t.tool] || {}, kids = [];
+      function val(s) { return vals[s.name] !== undefined ? vals[s.name] : s['default']; }
+      var on = t['switch'] ? (vals.enabled !== undefined ? vals.enabled : t['switch']['default']) : true;
+      if (t['switch']) kids.push(vcheck(t['switch'].label, on, function (v) { setChoice('t.' + t.tool + '.enabled', v, t['switch']['default']); }));
+      t.settings.forEach(function (s) {
+        var gate = s.only_with ? t.settings.filter(function (x) { return x.name === s.only_with; })[0] : null;
+        var gateOn = !gate || !!val(gate);
+        var title = !on ? 'The tool is off.' : !gateOn ? 'Read only while “' + gate.label + '” is on.' : null;
+        var set = function (v) { setChoice('t.' + t.tool + '.' + s.name, v, s['default']); };
+        kids.push(s.type === 'bool' ? vcheck(s.label, val(s), set, !on || !gateOn, title)
+                                    : vselect(s.label, s.values, val(s), set, !on || !gateOn, title));
+      });
+      bar.push(group(t.display, kids));
+    });
+    bar.push(group('Settings', V.settings.map(function (s) {
+      var value = c.settings[s.name] !== undefined ? c.settings[s.name] : s['default'];
+      var inert = s.topologies.indexOf(topo) < 0;
+      var title = (inert ? 'Does nothing in the ' + topo + '-agent topology. ' : '') + s.help;
+      var set = function (v) { setChoice('s.' + s.name, v, s['default']); };
+      return s.type === 'bool' ? vcheck(SETTING_LABELS[s.name] || s.name, value, set, inert, title)
+                               : vselect(SETTING_LABELS[s.name] || s.name, s.values, value, set, inert, title);
+    })));
+    var PA = D.parameter_access, row = PA.rows.filter(function (r) { return r.agent === agent; })[0];
+    var cell = row && row.cells[String(topo)];
+    if (cell) {
+      var state = c.access[agent] || cell;
+      bar.push(group('Parameter list · ' + disp(agent), h('span', { 'class': 'seg' }, PA.states.filter(function (o) {
+        return !(o.id === 'tool' && PA.no_tool.indexOf(agent) >= 0); }).map(function (o) {
+        return h('button', { 'class': o.id === state ? 'on' : '', title: o.label,
+          onclick: function () { setChoice('a.' + agent, o.id, cell); } }, o.short); })), 'Agent access: who sees the parameter list, and how.'));
+    }
+    bar.push(h('button', { onclick: function () { go('studio', 'prompts', { topo: R.q.topo || null, agent: R.q.agent || null }); } }, 'Defaults'));
+    return bar;
+  }
   function renderPrompts(center, right) {
-    var topo = parseInt(R.q.topo || '7', 10);
-    if ([3, 5, 7].indexOf(topo) < 0) topo = 7;
-    var agents = topoAgents(topo);
+    var topo = viewTopo(), choice = viewChoice(), key = JSON.stringify(choice);
+    var view = VIEWS[key];
+    var agents = view ? Object.keys(view.prompts) : topoAgents(topo);
     var agent = R.q.agent && agents.indexOf(R.q.agent) >= 0 ? R.q.agent : 'receptionist';
-    var bar = [h('span', { 'class': 'muted', style: 'font-size:11.5px' }, 'Topology'), h('span', { 'class': 'seg' }, [3, 5, 7].map(function (t) {
-      return h('button', { 'class': t === topo ? 'on' : '', onclick: function () { go('studio', 'prompts', withQ({ topo: t, agent: null })); } }, String(t)); })),
-      h('span', { 'class': 'muted', style: 'font-size:11.5px' }, 'Shown with this setup’s default settings; any combination comes in P5b.')];
-    add(center, head('Prompt viewer', 'The exact system prompt each agent receives, assembled by the engine from this setup. Click an agent.', bar));
-    add(center, h('div', { 'class': 'flow' }, flowchart(topo, agent)));
+    add(center, head('Prompt viewer', 'The exact system prompt and tools each agent receives, assembled by the engine from this setup under the settings above. Click an agent.', viewerBar(topo, agent)));
+    if (!view) {
+      if (VIEW_ERRORS[key]) {
+        add(center, h('div', { 'class': 'banner warn', style: 'margin:10px 16px;white-space:pre-wrap' }, VIEW_ERRORS[key]));
+        return;
+      }
+      add(center, h('div', { 'class': 'insp muted' }, 'Assembling this combination…'));
+      if (!VIEW_PENDING[key]) {
+        VIEW_PENDING[key] = true;
+        call('view', choice).then(function (r) {
+          if (r && r.ok) VIEWS[key] = r.data; else VIEW_ERRORS[key] = (r && r.error) || 'The view failed.';
+        }, function (e) { VIEW_ERRORS[key] = String(e && e.message ? e.message : e); }).then(function () {
+          delete VIEW_PENDING[key];
+          if (R.page === 'studio' && R.section === 'prompts' && JSON.stringify(viewChoice()) === key) render();
+        });
+      }
+      return;
+    }
+    add(center, h('div', { 'class': 'flow' }, flowchart(topo, agent, view)));
     add(center, h('div', { style: 'padding:0 16px' }, h('div', { 'class': 'legend' }, [
       h('span', null, [h('span', { 'class': 'sw gen' }), 'engine text (generic)']), h('span', null, [h('span', { 'class': 'sw dc' }), 'your DC text']),
       h('span', null, [h('span', { 'class': 'sw tool' }), 'your tool text']), h('span', null, [h('span', { 'class': 'sw rt' }), 'filled in per session'])])));
-    var data = D.prompts[String(topo)];
-    var text = data.prompts[agent], spans = data.spans[agent] || [];
+    var text = view.prompts[agent], spans = view.spans[agent] || [], tools = view.tools[agent] || [];
     var pre = h('div', { 'class': 'prompt' });
     pre.innerHTML = colourise(text, spans);
     pre.addEventListener('click', function (ev) {
@@ -662,9 +768,11 @@
     var used = {};
     spans.forEach(function (sp) { if (!RUNTIME[sp[2]] && !ENGINE_BUILT[sp[2]]) used[sp[2]] = (used[sp[2]] || 0) + 1; });
     var col = { gen: '#4a4d57', dc: 'var(--a)', tool: 'var(--b)', rt: 'var(--c)' };
+    var toolTokens = tools.reduce(function (n, t) { return n + t.tokens; }, 0);
     add(right, h('div', { 'class': 'insp' }, [
       h('div', { 'class': 'title' }, disp(agent) + ' · topology ' + topo),
-      h('div', { 'class': 'pills' }, [kpill(fmt(text.length) + ' characters'), kpill('≈ ' + fmt(Math.round(text.length / 4)) + ' tokens')]),
+      h('div', { 'class': 'pills', title: TOKENS_NOTE }, [kpill(fmt(text.length) + ' characters'), kpill(fmt(view.tokens[agent]) + ' tokens (cl100k)'),
+        kpill(tools.length + ' tools · ' + fmt(toolTokens) + ' tokens')]),
       h('h4', null, 'Where the text comes from'),
       h('div', { 'class': 'stack' }, ['gen', 'dc', 'tool', 'rt'].map(function (k) { return h('div', { style: 'width:' + (100 * cnt[k] / text.length) + '%;background:' + col[k] }); })),
       h('div', { 'class': 'kv', style: 'grid-template-columns:120px 1fr;font-size:11.5px' }, [
@@ -672,11 +780,18 @@
         h('div', { 'class': 'k' }, 'your DC text'), h('div', null, Math.round(100 * cnt.dc / text.length) + ' %'),
         h('div', { 'class': 'k' }, 'your tool text'), h('div', null, Math.round(100 * cnt.tool / text.length) + ' %'),
         h('div', { 'class': 'k' }, 'per session'), h('div', null, Math.round(100 * cnt.rt / text.length) + ' %')]),
+      h('div', { 'class': 'block' }, [h('h4', null, 'Tools this agent is given · ' + tools.length),
+        tools.length ? null : h('p', { 'class': 'muted' }, 'None when the team is built.')].concat(tools.map(function (t) {
+          return h('details', { 'class': 'vtool' }, [
+            h('summary', null, [h('span', { 'class': 'mono' }, t.name), h('span', { 'class': 'muted' }, ' · ' + fmt(t.tokens) + ' tokens')]),
+            h('div', { 'class': 'd' }, t.description),
+            h('pre', { 'class': 'args' }, JSON.stringify(t.args, null, 1))]);
+        }))),
       h('div', { 'class': 'block' }, [h('h4', null, 'Your fields in this prompt · ' + Object.keys(used).length),
         h('div', null, Object.keys(used).sort().map(function (n) {
           return h('a', { href: link('studio', (slotByName(n) || {}).section || 'tools', { field: n }), 'class': 'kpill ' + originOf(n), style: 'display:inline-block;margin:2px;text-decoration:none' }, n + (used[n] > 1 ? ' ×' + used[n] : ''));
         }))]),
-      h('div', { 'class': 'block' }, [h('h4', null, 'Exact'), h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Colours come from markers placed while the engine assembled this prompt, then checked against the real prompt (' + D.align[('base/' + topo)][agent] + ').')])
+      h('div', { 'class': 'block' }, [h('h4', null, 'Exact'), h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Colours come from markers placed while the engine assembled this prompt, then checked against the real prompt (' + view.align[agent] + ').')])
     ]));
   }
   function colourise(text, spans) {
@@ -694,8 +809,8 @@
     }
     return out.join('');
   }
-  function flowchart(topo, sel) {
-    var agents = topoAgents(topo).filter(function (a) { return a !== 'receptionist' && a !== 'database_handler'; });
+  function flowchart(topo, sel, view) {
+    var agents = Object.keys(view.prompts).filter(function (a) { return a !== 'receptionist' && a !== 'database_handler'; });
     var hub = topo === 7 ? 'orchestrator' : 'planner';
     var ORDER = ['planner', 'user_input_inspector', 'dc_input_creator', 'dc_input_inspector', 'tool_caller',
                  'dc_output_inspector', 'design_engineer', 'requirements_analyst'];
@@ -714,7 +829,7 @@
       tx.setAttribute('x', x); tx.setAttribute('y', y + 4); tx.setAttribute('text-anchor', 'middle'); tx.textContent = disp(key);
       var tk = doc.createElementNS(ns, 'text');
       tk.setAttribute('x', x); tk.setAttribute('y', y + 30); tk.setAttribute('text-anchor', 'middle'); tk.setAttribute('class', 'tk');
-      tk.textContent = '≈' + fmt(Math.round(D.prompts[String(topo)].prompts[key].length / 4)) + ' tok';
+      tk.textContent = fmt(view.tokens[key]) + ' tok';
       g.appendChild(r); g.appendChild(tx); g.appendChild(tk);
       return g;
     }

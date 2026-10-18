@@ -45,6 +45,7 @@ contributes nothing.
 
 from __future__ import annotations
 
+import fnmatch
 import os
 import re
 import time
@@ -103,22 +104,46 @@ def tool_prompts_dir(tool: str) -> Path:
 # read could leave its stamp unchanged: a value read while one of its
 # stamps was younger than SETTLE_NS is used but not kept (git's rule for
 # "racy" files).
+#
+# A process that lives a few seconds and is answered for one state of the
+# pack (the Studio's workers and build children) may call hold_stamps():
+# from then on each stamp is read once and held for the life of the
+# process.  The web app never does.
 
 SETTLE_NS = 2_000_000_000
+_held: dict[str, tuple[int, int] | None] | None = None
+
+
+def hold_stamps() -> None:
+    """Take the pack's files as unchanging for the rest of this process:
+    each stamp is read once, then held.  For short-lived processes only
+    (the Studio's): the files' TEXT is still read fresh, but a file added,
+    removed or edited meanwhile is not noticed."""
+    global _held
+    if _held is None:
+        _held = {}
 
 
 def stamp(path: Path) -> tuple[int, int] | None:
     """(size, modification time in ns) of a file or folder; None if absent."""
+    if _held is not None and str(path) in _held:
+        return _held[str(path)]
     try:
         st = os.stat(path)
+        out = (st.st_size, st.st_mtime_ns)
     except OSError:
-        return None
-    return (st.st_size, st.st_mtime_ns)
+        out = None
+    if _held is not None:
+        _held[str(path)] = out
+    return out
 
 
 def settled(key: tuple) -> bool:
     """True when every stamp in *key* is old enough that a change made
-    since would have moved it (see SETTLE_NS)."""
+    since would have moved it (see SETTLE_NS) -- always, in a process that
+    holds its stamps."""
+    if _held is not None:
+        return True
     limit = time.time_ns() - SETTLE_NS
     return all(part[1] < limit for part in key
                if isinstance(part, tuple) and len(part) == 2
@@ -196,6 +221,26 @@ def text_dirs() -> list[Path]:
     return [d for d in dirs if d.is_dir()]
 
 
+_names_cache: dict[str, tuple] = {}
+
+
+def file_names(folder: Path) -> frozenset[str]:
+    """The names of the files in *folder* (none if it does not exist).
+    Kept while the folder's stamp is unchanged: adding, removing or
+    renaming a file moves it; editing a file's text needs no new list."""
+    st = stamp(folder)
+    hit = _names_cache.get(str(folder))
+    if hit is not None and hit[0] == st:
+        return hit[1]
+    names = (frozenset(e.name for e in os.scandir(folder) if e.is_file())
+             if st is not None and os.path.isdir(folder) else frozenset())
+    if settled((st,)):
+        _names_cache[str(folder)] = (st, names)
+    else:
+        _names_cache.pop(str(folder), None)
+    return names
+
+
 # ---------------------------------------------------------------------------
 # The registry
 # ---------------------------------------------------------------------------
@@ -242,17 +287,20 @@ def _candidates(base: str, topology: int) -> list[str]:
 
 
 def _first(folder: Path, names: list[str]) -> Path | None:
+    present = file_names(folder)
     for name in names:
-        path = folder / name
-        if path.is_file():
-            return path
+        if name in present:
+            return folder / name
     return None
 
 
 def _folder(slot: str) -> Path:
-    tool = tool_claims().get(slot)
-    if tool is not None:
-        return tool_prompts_dir(tool)
+    # Only tool text can live in a tool's folder: engine/pack_tools.py
+    # refuses a pack whose tool lists any other slot.
+    if slot_spec(slot).get("filled_by") == "tool":
+        tool = tool_claims().get(slot)
+        if tool is not None:
+            return tool_prompts_dir(tool)
     return fragments_dir() / slot_spec(slot)["folder"]
 
 
@@ -312,7 +360,8 @@ def agent_copies(agent: str, topology: int) -> dict[str, str]:
     found: set[str] = set()
     for d in text_dirs():
         for pattern in (f"*@{agent}.md", f"*@{agent}.t*.md"):
-            found.update(slot_of_file(p.name) for p in d.glob(pattern))
+            found.update(slot_of_file(n) for n in file_names(d)
+                         if fnmatch.fnmatch(n, pattern))
     out: dict[str, str] = {}
     for slot in sorted(found):
         path = agent_copy_path(slot, topology, agent)

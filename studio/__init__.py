@@ -2,7 +2,7 @@
 
     python -m studio [--pack <folder>] [--port 8770]
 
-MAS-blueprint P5a: read-only.  ``engine_view.py`` computes what the screens
+MAS-blueprint P5: read-only.  ``engine_view.py`` computes what the screens
 show (with the engine itself, in child processes), ``server.py`` serves the
-page in ``web/``.
+page in ``web/`` and keeps engine processes waiting for the prompt viewer.
 """

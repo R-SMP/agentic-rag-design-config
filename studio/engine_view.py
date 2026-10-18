@@ -2,6 +2,8 @@
 
     python -m studio.engine_view static
     python -m studio.engine_view assemble <base|all_on> <7|5|3>
+    python -m studio.engine_view view <choice.json>
+    python -m studio.engine_view worker          (then one choice on stdin)
 
 MAS-blueprint P5a.  The Studio's screens read one dict, :func:`build`:
 
@@ -31,6 +33,17 @@ change a re-wrap, after whitespace normalisation.  The marker positions are
 then exact spans in the REAL prompt.  An agent whose prompts do not line up
 gets no spans and is reported (``align``), never approximated.
 
+The prompt viewer (MAS-blueprint P5b)
+------------------------------------
+A VIEW is one topology assembled under a CHOICE of the settings that change
+what an agent sees (:func:`viewer_controls`, measured setting by setting):
+the prompts with their marked spans as above, and the tools each agent is
+given when the team is built (:func:`team_tools`).  A choice is laid over
+the setup's defaults (:func:`setup_defaults`) before any of the engine's
+code loads, so each view runs in a process of its own -- usually a WORKER
+that loaded the third-party libraries while it waited (:data:`PRELOAD`)
+and takes exactly one job.
+
 The Studio draft (``extra_utilities/docs/studio_draft/build_draft_data.py``)
 builds its data from the same functions.
 """
@@ -38,6 +51,7 @@ builds its data from the same functions.
 from __future__ import annotations
 
 import ast
+import importlib
 import json
 import os
 import re
@@ -61,16 +75,38 @@ RUNTIME_SLOTS = ("routing_instructions", "render_check_library_block",
                  "input_images_subdir", "extraction_output_file")
 
 
+_loaded = False
+
+
 def load_engine():
     """Make the engine's prompt layer importable in this (child) process:
     the repo and the assembler's folders on sys.path, the runtime packages
-    stubbed (``extra_utilities/prompt_pdf/bootstrap.py``)."""
+    stubbed (``extra_utilities/prompt_pdf/bootstrap.py``).  Once per
+    process."""
+    global _loaded
+    if _loaded:
+        return
     for p in ("extra_utilities/scripts", "extra_utilities/prompt_pdf", "."):
         sys.path.insert(0, str(REPO / p))
     sys.modules["simplejson"] = None          # type: ignore[assignment]
     sys.modules["chardet"] = None             # type: ignore[assignment]
     import bootstrap
     bootstrap.install()
+    _loaded = True
+
+
+def setup_defaults(combo: str = "base"):
+    """Lay ``prompt_matrix.py``'s combination *combo* over the SETUP's
+    defaults in this (child) process -- settings.py as written, each
+    tool.yaml's defaults, pack.yaml's access table -- and nothing saved on
+    this computer in Workflow Settings (``tool_settings.json``,
+    ``parameter_access.json``).  Before any agent code loads: some
+    settings are read at import.  Returns the settings module."""
+    import prompt_matrix as PM
+    S = PM.apply_config(combo)
+    from engine import pack_tools as PT
+    PT.read_overrides = lambda: {}
+    return S
 
 
 def pack_slots(P) -> dict[str, str]:
@@ -141,10 +177,16 @@ def assemble(combo: str, topology: int) -> dict:
     it: ``{"prompts", "spans", "align"}``.  Patches the prompt layer, so it
     belongs in a process of its own."""
     load_engine()
-    import prompt_matrix as PM
     # The same combination set-up as the prompt matrix, including the
     # parameter-access cells its old setting names stand for.
-    PM.apply_config(combo)
+    setup_defaults(combo)
+    return assemble_marked(topology)
+
+
+def assemble_marked(topology: int) -> dict:
+    """The prompts of *topology* under the settings already in place,
+    assembled twice -- as is and marked -- with the marks turned into spans
+    of the real prompts (see the module's docstring)."""
     import topology_prompt_snapshot as T
     from agents.shared import prompts as P
 
@@ -171,7 +213,10 @@ def assemble(combo: str, topology: int) -> dict:
                 for k, v in d.items()}
     T._runtime_slots = marked_runtime
 
-    marked = T._assemble(topology)["prompts"]
+    try:
+        marked = T._assemble(topology)["prompts"]
+    finally:
+        P.mark_inline_slots, T._runtime_slots = orig_mark, orig_rt
     result = {"prompts": real, "spans": {}, "align": {}}
     for agent, text in real.items():
         stripped, spans = strip_markers(marked.get(agent, ""), names)
@@ -194,6 +239,262 @@ def assemble(combo: str, topology: int) -> dict:
         result["align"][agent] = "normalized"
         result["spans"][agent] = mapped
     return result
+
+
+# ---------------------------------------------------------------------------
+# the prompt viewer (MAS-blueprint P5b)
+# ---------------------------------------------------------------------------
+
+# The engine settings that change what an agent sees, found by flipping
+# every setting of settings.py in turn (P5b): RAG (its own control), these,
+# each tool's switch and the tool settings the prompts read.  PLANNER_FIRST
+# also does, but the owner retired it: the viewer leaves it at its default.
+VIEWER_SETTINGS = ("DC_INSPECTOR_ENABLED", "DCOI_COMPARISON_MODE",
+                   "KEEP_IMAGES_IN_CONTEXT", "CHAIN_ACCESS", "OCR_ENABLED")
+RAG_CHOICES = ("off", "on", "all")      # all = every agent holds every database tool
+
+_FLAG_IN_TEXT_RE = re.compile(r"<<(?:IF|IFNOT):((?:tool|setting):[a-z0-9_.]+)>>")
+
+
+def _prompt_texts() -> list[Path]:
+    """Every file prompt text is assembled from: the engine's (agents/)
+    and the pack's (fragments and the tools' prompts/)."""
+    from engine import pack
+    files = {f for f in (REPO / "agents").rglob("*.md") if f.name != "README.md"}
+    files |= set(pack.fragment_files()) | set(pack.tool_list_entry_files())
+    return sorted(files)
+
+
+def viewer_controls() -> dict:
+    """The prompt viewer's settings bar, with the setup's defaults: RAG; the
+    engine settings of :data:`VIEWER_SETTINGS` (with the topologies each
+    one acts in, from Workflow Settings' own list, and its help text from
+    settings.py); per tool its on/off switch and the settings its prompt
+    text reads -- named in an ``<<IF:setting:...>>`` marker or in one of its
+    runtime blocks."""
+    from engine import pack_tools
+    from workflow_settings import editor
+    helps = {item["name"]: item.get("help", "") for item in editor.read_schema()}
+    values = settings_values(set(VIEWER_SETTINGS) | {"RAG_ENABLED"})
+    engine = []
+    for name in VIEWER_SETTINGS:
+        inert = editor._INERT_UNDER_TOPOLOGY.get(name, (frozenset(), ""))[0]
+        engine.append({
+            "name": name,
+            "type": "enum" if name in editor.ENUM_OPTIONS else "bool",
+            "values": editor.ENUM_OPTIONS.get(name),
+            "default": values[name],
+            "topologies": [n for n in TOPOLOGIES if n not in inert],
+            "help": helps.get(name, ""),
+        })
+    used = set()
+    for f in _prompt_texts():
+        used.update(_FLAG_IN_TEXT_RE.findall(f.read_text(encoding="utf-8")))
+    tools = []
+    for name, m in pack_tools.manifests().items():
+        specs = pack_tools.setting_specs(name)
+        # A runtime block reads the settings its slot names, and only while
+        # its off_unless setting is on.
+        in_blocks: dict[str, str | None] = {}
+        for b in (m.get("runtime_blocks") or {}).values():
+            for ref in pack_tools._SETTING_REF_RE.findall(b["slot"]):
+                in_blocks[ref] = b.get("off_unless")
+            if b.get("off_unless"):
+                in_blocks.setdefault(b["off_unless"], None)
+        switch = next((s for s in specs if s["name"] == "enabled"), None)
+        read = [{"name": s["name"], "type": s["type"], "values": s.get("values"),
+                 "default": s["default"], "label": s.get("label", s["name"]),
+                 "only_with": in_blocks.get(s["name"])}
+                for s in specs if s["name"] != "enabled"
+                and (f"setting:{name}.{s['name']}" in used or s["name"] in in_blocks)]
+        if switch or read:
+            tools.append({"tool": name, "display": m["display_name"],
+                          "switch": ({"default": switch["default"],
+                                      "label": switch.get("label", name)} if switch else None),
+                          "settings": read})
+    return {"rag_default": "on" if values["RAG_ENABLED"] else "off",
+            "rag_help": helps.get("RAG_ENABLED", ""), "settings": engine, "tools": tools}
+
+
+class ChoiceError(ValueError):
+    """A viewer choice the setup does not offer."""
+
+
+def canonical_choice(raw: dict, data: dict) -> dict:
+    """A viewer choice, checked against the Studio's data (*data*:
+    :func:`static_data`) and filled with the setup's defaults:
+    ``{"topology", "rag", "settings": {name: value}, "tools": {tool:
+    {setting: value}}, "access": {agent: state}}``.  A setting that does
+    nothing in the topology is put back to its default, and an access cell
+    equal to the setup's is dropped, so equal views have equal choices.
+    Pure: the Studio's server calls it."""
+    raw = dict(raw or {})
+    known = {"topology", "rag", "settings", "tools", "access"}
+    if set(raw) - known:
+        raise ChoiceError(f"unknown parts: {', '.join(sorted(set(raw) - known))}")
+    v = data["viewer"]
+    topo = raw.get("topology", 7)
+    if topo not in TOPOLOGIES:
+        raise ChoiceError(f"topology is one of {', '.join(map(str, TOPOLOGIES))}")
+    rag = raw.get("rag", v["rag_default"])
+    if rag not in RAG_CHOICES:
+        raise ChoiceError(f"rag is one of {', '.join(RAG_CHOICES)}")
+    specs = {s["name"]: s for s in v["settings"]}
+    given = dict(raw.get("settings") or {})
+    if set(given) - set(specs):
+        raise ChoiceError(f"unknown settings: {', '.join(sorted(set(given) - set(specs)))}")
+    settings = {}
+    for name, s in specs.items():
+        val = given.get(name, s["default"])
+        if s["type"] == "bool" and not isinstance(val, bool) or \
+                s["type"] == "enum" and val not in s["values"]:
+            raise ChoiceError(f"{name}: {val!r} is not allowed")
+        settings[name] = val if topo in s["topologies"] else s["default"]
+    tool_specs = {t["tool"]: t for t in v["tools"]}
+    given_tools = dict(raw.get("tools") or {})
+    if set(given_tools) - set(tool_specs):
+        raise ChoiceError(f"unknown tools: {', '.join(sorted(set(given_tools) - set(tool_specs)))}")
+    tools = {}
+    for name, t in tool_specs.items():
+        g = dict(given_tools.get(name) or {})
+        allowed = {s["name"]: s for s in t["settings"]}
+        if t["switch"]:
+            allowed["enabled"] = {"type": "bool", "default": t["switch"]["default"]}
+        if set(g) - set(allowed):
+            raise ChoiceError(f"{name}: unknown settings {', '.join(sorted(set(g) - set(allowed)))}")
+        vals = {}
+        for key, s in allowed.items():
+            val = g.get(key, s["default"])
+            if s["type"] == "bool" and not isinstance(val, bool) or \
+                    s["type"] == "enum" and val not in s["values"]:
+                raise ChoiceError(f"{name}.{key}: {val!r} is not allowed")
+            vals[key] = val
+        tools[name] = vals
+    pa = data["parameter_access"]
+    states = [s["id"] for s in pa["states"]]
+    cells = {r["agent"]: r["cells"] for r in pa["rows"]}
+    access = {}
+    for agent, state in dict(raw.get("access") or {}).items():
+        cell = cells.get(agent, {}).get(str(topo))
+        if cell is None:
+            raise ChoiceError(f"access: {agent} has no cell in topology {topo}")
+        if state not in states or (state == "tool" and agent in pa["no_tool"]):
+            raise ChoiceError(f"access: {agent} cannot take {state!r}")
+        if state != cell:
+            access[agent] = state
+    return {"topology": topo, "rag": rag, "settings": settings, "tools": tools,
+            "access": access}
+
+
+def apply_choice(choice: dict):
+    """Lay a canonical *choice* over the setup's defaults in this (child)
+    process, before any agent code loads."""
+    S = setup_defaults("base")
+    for name, value in choice["settings"].items():
+        setattr(S, name, value)
+    S.RAG_ENABLED = choice["rag"] != "off"
+    S.SYSTEM_TOPOLOGY = choice["topology"]
+    from engine import pack_tools as PT
+    PT.settings_override_for_tests(choice["tools"])
+    from engine import parameter_access as PA
+    cells = {agent: {choice["topology"]: state} for agent, state in choice["access"].items()}
+    PA.read_overrides = lambda: {a: dict(r) for a, r in cells.items()}
+    if choice["rag"] == "all":
+        from workflow_settings import database_access as DA
+        DA.is_enabled_for = lambda agent, tool=None: True
+    return S
+
+
+def team_tools(topology: int) -> dict:
+    """agent -> the tools it is given when the team of *topology* is built:
+    ``[{name, description, args}]``.  The real hub, built with a stand-in
+    model that records what each agent is bound to (the way of
+    ``extra_utilities/scripts/tool_matrix.py``).  Tools an agent is given
+    for one turn later (the Database Handler's) are not here."""
+    import datetime
+    from unittest.mock import MagicMock
+
+    import tool_matrix as TM
+    import workflow_settings.settings as S
+    from agents.hub import build_hub
+    from agents.shared import base_chain_agent, llm_provider
+    from agents.shared.session import Session
+
+    S.SYSTEM_TOPOLOGY = topology
+    bound: dict[str, list] = {}
+
+    class Recorder:
+        def get_for_agent(self, agent_key):
+            provider, model, _ = llm_provider._resolve_config(agent_key)
+            llm = MagicMock(name=f"llm:{agent_key}")
+
+            def bind_tools(tools, **kwargs):
+                # An agent is bound once while it is built; were it bound
+                # again, the later tools are the ones it keeps.
+                bound[agent_key] = [TM._describe(t) for t in tools]
+                return MagicMock(name=f"bound:{agent_key}")
+            llm.bind_tools.side_effect = bind_tools
+            return llm, provider, model
+
+    rec = Recorder()
+    base_chain_agent._default_llm_cache = rec
+    build_hub(Session(session_id=f"studio_view_{topology}",
+                      session_ts=datetime.datetime.now(datetime.timezone.utc)), llm_cache=rec)
+    return bound
+
+
+def view(choice: dict) -> dict:
+    """One view: *choice*'s topology assembled under it (prompts, spans,
+    align) and its team's tools."""
+    load_engine()
+    apply_choice(choice)
+    out = assemble_marked(choice["topology"])
+    out["tools"] = team_tools(choice["topology"])
+    return out
+
+
+# Third-party libraries a view loads.  A waiting worker loads them before
+# it is given its job: none reads a setting of ours, and our own code loads
+# only once the job's settings are in place.  LangChain loads its modules
+# lazily, so these name the modules themselves (measured for P5b: they load
+# 279 of the 280 third-party modules a view needs).  A name missing here
+# only costs time; a name that is not installed is skipped.
+PRELOAD = ("langchain_core.tools.base", "langchain_core.tools.structured",
+           "langchain_core.tools.convert", "langchain_core.tools.simple",
+           "langchain_core.callbacks.manager", "langchain_core.messages",
+           "langchain_core.messages.utils", "langchain_core.runnables.base",
+           "langchain_core.outputs", "langchain_core.utils.function_calling",
+           "langchain_core.rate_limiters", "langsmith.client", "langsmith.run_trees",
+           "langsmith.run_helpers", "pydantic.type_adapter", "pydantic.dataclasses",
+           "numpy", "PIL.ImageDraw", "PIL.ImageFont", "PIL.ImageOps", "httpx", "anyio",
+           "yaml")
+
+
+def hold_files() -> None:
+    """This process answers for one state of the setup and lives a few
+    seconds: take its files as unchanging (``engine/pack.py``
+    ``hold_stamps``), so they are not checked again on every lookup."""
+    load_engine()
+    from engine import pack
+    pack.hold_stamps()
+
+
+def worker() -> int:
+    """Load :data:`PRELOAD`, then wait for ONE choice (a JSON line on stdin),
+    answer its view on stdout and end.  An empty line ends it unused."""
+    load_engine()
+    for name in PRELOAD:
+        try:
+            importlib.import_module(name)
+        except Exception:                                   # noqa: BLE001
+            pass
+    hold_files()
+    line = sys.stdin.readline()
+    if not line.strip():
+        return 0
+    payload = view(json.loads(line))
+    sys.stdout.buffer.write(json.dumps(payload, default=str).encode("utf-8"))
+    return 0
 
 
 # ---------------------------------------------------------------------------
@@ -521,6 +822,7 @@ def static_data() -> dict:
         "parameter_access": parameter_access(),
         "env_vars": env_names(),
         "env_sections": env_sections(),
+        "viewer": viewer_controls(),
     }
 
 
@@ -537,14 +839,20 @@ def build(pack_dir: Path | None = None) -> dict:
 
 
 def _main(argv: list[str]) -> int:
+    if argv[:1] in (["static"], ["assemble"], ["view"]):
+        hold_files()
     if argv[:1] == ["static"]:
         payload = static_data()
     elif argv[:1] == ["assemble"] and len(argv) == 3:
         payload = assemble(argv[1], int(argv[2]))
+    elif argv[:1] == ["view"] and len(argv) == 2:
+        payload = view(json.loads(Path(argv[1]).read_text(encoding="utf-8")))
+    elif argv[:1] == ["worker"]:
+        return worker()
     else:
         sys.stderr.write(__doc__.split("\n\n")[1] + "\n")
         return 2
-    sys.stdout.buffer.write(json.dumps(payload).encode("utf-8"))
+    sys.stdout.buffer.write(json.dumps(payload, default=str).encode("utf-8"))
     return 0
 
 

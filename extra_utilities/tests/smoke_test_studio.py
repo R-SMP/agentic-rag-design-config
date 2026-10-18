@@ -25,12 +25,28 @@ page and its one call (``POST /api/get_all``) are checked:
    setup), and the Studio draft's data builder uses the Studio's functions
    instead of copies of them.
 
-Takes about two minutes (two full assemblies).  Run from the repo root:
+Since MAS-blueprint P5b the prompt viewer shows any choice of the settings
+that change what an agent sees (``POST /api/view``):
+
+7. VIEWER.  Every combination of ``prompt_matrix.py`` the viewer can
+   express (all but Planner first), in topologies 7 / 5 / 3: the prompts
+   are the matrix baseline's and each agent's tools are the tool
+   baseline's (``tool_baseline.json``), byte for byte; the token counts
+   are tiktoken cl100k's of the text shown; a choice the setup does not
+   offer is refused, and equal views get equal choices (a setting that
+   does nothing in the topology, an access cell equal to the setup's).
+   The worker pool: each job is answered by a process of its own (a
+   waiting one, or a cold one when none waits), and closing the pool
+   ends the waiting ones.  After a change to a file of the setup (group
+   5), the default view shows it.
+
+Takes about two minutes.  Run from the repo root:
     py -3.13 extra_utilities/tests/smoke_test_studio.py
 """
 from __future__ import annotations
 
 import ast
+import concurrent.futures
 import hashlib
 import json
 import os
@@ -92,7 +108,8 @@ class Studio:
             self.port = s.getsockname()[1]
         env = dict(os.environ, PYTHONIOENCODING="utf-8")
         self.proc = subprocess.Popen(
-            [sys.executable, "-m", "studio", "--pack", str(pack_dir), "--port", str(self.port)],
+            [sys.executable, "-m", "studio", "--pack", str(pack_dir), "--port", str(self.port),
+             "--workers", "4"],
             cwd=str(ROOT), env=env, stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
         deadline = time.time() + 60
         while time.time() < deadline:
@@ -244,6 +261,9 @@ def check_cache(st: Studio, D: dict, copy: Path, first_secs: float) -> str:
                   and s["linked"] and any(not r["only_with_features"] for r in D["where"].get(s["slot"], [])))
     rel = D["files"][target["slot"]][""][0]
     path = copy.parent / rel
+    # The default view, kept before the change (the views kept are the most
+    # recent ones): after the change it must not be the one answered.
+    st.call("view", {"topology": 7})
     marker = "Studio smoke marker 7341: this sentence was added by the check."
     raw = path.read_bytes()
     path.write_bytes(raw.rstrip() + ("\n\n" + marker + "\n").encode("utf-8"))
@@ -265,6 +285,10 @@ def check_cache(st: Studio, D: dict, copy: Path, first_secs: float) -> str:
               for agent, p in new["prompts"][t]["prompts"].items()
               for s, e, nm, _ in new["prompts"][t]["spans"].get(agent, [])),
           f"[CACHE] {rel} changed, the field's place in the prompts does not hold it")
+    status, v = st.call("view", {"topology": 7})
+    check(status == 200 and v.get("ok")
+          and any(marker in p for p in v["data"]["prompts"].values()),
+          f"[VIEWER] {rel} changed, the default view still shows the old prompts")
     return f"kept copy in {again:.2f} s; after a change to {rel}, rebuilt in {rebuilt:.0f} s"
 
 
@@ -311,6 +335,153 @@ def check_cache_unit() -> None:
               f"[CACHE] a failed build is kept instead of retried: {len(calls)} builds")
 
 
+def _matrix_choices() -> tuple[dict, list]:
+    """``prompt_matrix.py``'s combinations as viewer choices, through the
+    matrix's own translation tables: combination -> (the choice without
+    topology and access, {topology: access cells}).  Planner first is not
+    offered by the viewer: those combinations are listed apart."""
+    sys.path.insert(0, str(ROOT / "extra_utilities" / "scripts"))
+    import prompt_matrix as PM
+    out, skipped = {}, []
+    for combo, overrides in PM.CONFIGS.items():
+        ov = dict(overrides)
+        if "PLANNER_FIRST" in ov:
+            skipped.append(combo)
+            continue
+        choice: dict = {"settings": {}, "tools": {}}
+        rag, all_db = ov.pop("RAG_ENABLED", None), ov.pop("_ALL_DB_TOOLS", False)
+        if all_db:
+            choice["rag"] = "all"
+        elif rag is not None:
+            choice["rag"] = "on" if rag else "off"
+        access: dict = {}
+        for name, (on, off) in PM._ACCESS_FROM_SETTING.items():
+            if name in ov:
+                for agent, row in (on if ov.pop(name) else off).items():
+                    for n, state in row.items():
+                        access.setdefault(n, {})[agent] = state
+        for name, (tool, key) in PM._TOOL_SETTING_FROM_SETTING.items():
+            if name in ov:
+                choice["tools"].setdefault(tool, {})[key] = ov.pop(name)
+        choice["settings"] = ov
+        out[combo] = (choice, access)
+    return out, skipped
+
+
+def _tool_sha(tool: dict) -> str:
+    """As tool_matrix.py hashes a bound tool: name, description, arguments."""
+    d = {"name": tool["name"], "description": tool["description"], "args": tool["args"]}
+    return hashlib.sha256(json.dumps(d, sort_keys=True, ensure_ascii=False)
+                          .encode("utf-8")).hexdigest()
+
+
+def check_viewer(st: Studio) -> str:
+    import tiktoken
+    enc = tiktoken.get_encoding("cl100k_base")
+    prompts = json.loads((ROOT / "extra_utilities/prompt_matrix/baseline_manifest.json")
+                         .read_text(encoding="utf-8"))
+    tools = json.loads((ROOT / "extra_utilities/prompt_matrix/tool_baseline.json")
+                       .read_text(encoding="utf-8"))
+    combos, skipped = _matrix_choices()
+    jobs = [(combo, n, dict(choice, topology=n, access=access.get(n, {})))
+            for combo, (choice, access) in combos.items() for n in (7, 5, 3)]
+
+    def one(job):
+        combo, n, choice = job
+        return combo, n, st.call("view", choice)
+
+    t0 = time.time()
+    with concurrent.futures.ThreadPoolExecutor(max_workers=6) as pool:
+        results = list(pool.map(one, jobs))
+    secs = time.time() - t0
+    n_prompts = n_tools = 0
+    for combo, n, (status, d) in results:
+        where = f"{combo}/{n}"
+        if not (status == 200 and d.get("ok")):
+            check(False, f"[VIEWER] {where}: {str(d)[:300]}")
+            continue
+        v = d["data"]
+        want = prompts[where]["prompts"]
+        check(set(v["prompts"]) == set(want), f"[VIEWER] {where}: agents {sorted(v['prompts'])}")
+        for agent, text in v["prompts"].items():
+            n_prompts += 1
+            check(hashlib.sha256(text.encode("utf-8")).hexdigest() == want.get(agent),
+                  f"[VIEWER] {where} {agent}: not the prompt matrix's prompt")
+            check(v["tokens"][agent] == len(enc.encode(text)),
+                  f"[VIEWER] {where} {agent}: {v['tokens'][agent]} tokens, cl100k says "
+                  f"{len(enc.encode(text))}")
+        want_tools = {a: calls[-1]["tools"] for a, calls in tools[where].items()}
+        got_tools = {a: [{"name": x["name"], "sha": _tool_sha(x)} for x in ts]
+                     for a, ts in v["tools"].items()}
+        check(got_tools == want_tools,
+              f"[VIEWER] {where}: tools differ from the tool baseline for "
+              f"{sorted(a for a in set(got_tools) | set(want_tools) if got_tools.get(a) != want_tools.get(a))}")
+        for ts in v["tools"].values():
+            for x in ts:
+                n_tools += 1
+                check(x["tokens"] == len(enc.encode(studio_server.tool_text(x))),
+                      f"[VIEWER] {where} {x['name']}: tool tokens are not cl100k's")
+    # A choice the setup does not offer.
+    for bad, needle in (({"settings": {"NO_SUCH": True}}, "NO_SUCH"),
+                        ({"rag": "maybe"}, "rag"),
+                        ({"access": {"database_handler": "tool"}}, "database_handler"),
+                        ({"tools": {"no_such_tool": {}}}, "no_such_tool")):
+        status, d = st.call("view", dict(bad, topology=7))
+        check(d.get("ok") is False and needle in d.get("error", ""),
+              f"[VIEWER] the choice {bad} was not refused by name: {d}")
+    return (f"{len(jobs)} views ({len(combos)} matrix combinations x 3 topologies, "
+            f"{len(skipped)} with Planner first left out) in {secs:.0f} s: {n_prompts} prompts "
+            f"and {n_tools} tools as the baselines")
+
+
+def check_choices(D: dict) -> None:
+    from studio import engine_view as V
+    base5 = V.canonical_choice({"topology": 5}, D)
+    same = V.canonical_choice({"topology": 5, "settings": {"DC_INSPECTOR_ENABLED": False,
+                                                           "CHAIN_ACCESS": False}}, D)
+    check(same == base5, "[VIEWER] settings that do nothing in topology 5 make another choice")
+    cell = next(r["cells"]["7"] for r in D["parameter_access"]["rows"]
+                if r["agent"] == "user_input_inspector")
+    check(V.canonical_choice({"topology": 7, "access": {"user_input_inspector": cell}}, D)
+          == V.canonical_choice({"topology": 7}, D),
+          "[VIEWER] an access cell equal to the setup's makes another choice")
+    try:
+        V.canonical_choice({"topology": 3, "access": {"user_input_inspector": "full"}}, D)
+        check(False, "[VIEWER] an access cell for an agent the topology lacks was accepted")
+    except V.ChoiceError:
+        pass
+
+
+def check_pool(D: dict, copy: Path) -> str:
+    from studio import engine_view as V
+    choice = V.canonical_choice({"topology": 3}, D)
+    pool = studio_server.WorkerPool(copy, size=1)
+    try:
+        pool.fill()
+        answers = []
+        for _ in range(2):
+            view, pooled = pool.run(choice)
+            answers.append(pooled)
+            deadline = time.time() + 30
+            while pool.started < len(answers) + 1 and time.time() < deadline:
+                time.sleep(0.1)
+        check(answers == [True, True] and pool.started == 3,
+              f"[VIEWER] the pool: jobs answered by waiting workers {answers}, "
+              f"{pool.started} processes started (want 3: one per job + one waiting)")
+        waiting = list(pool._idle)
+        pool.close()
+        time.sleep(0.5)
+        check(waiting and all(p.poll() is not None for p in waiting),
+              "[VIEWER] closing the pool left a waiting worker running")
+        cold = studio_server.WorkerPool(copy, size=0)
+        view_cold, pooled = cold.run(choice)
+        check(pooled is False and view_cold["prompts"] == view["prompts"],
+              "[VIEWER] a job with no worker waiting: not answered the same by a cold process")
+    finally:
+        pool.close()
+    return "pool: one process per job, cold when none waits"
+
+
 def check_generic() -> None:
     js = STUDIO_JS.read_text(encoding="utf-8").lower()
     for word in ("propeller", "blade", "impeller", "rhino", "feg", "airfoil"):
@@ -348,6 +519,9 @@ def main() -> int:
             summary["fields"] = _run(lambda: check_fields(D, copy), "[FIELDS]")
             summary["where"] = _run(lambda: check_where(D), "[WHERE]")
             summary["prompts"] = _run(lambda: check_prompts(D), "[PROMPTS]")
+            summary["viewer"] = _run(lambda: check_viewer(st), "[VIEWER]")
+            _run(lambda: check_choices(D), "[VIEWER]")
+            summary["pool"] = _run(lambda: check_pool(D, copy), "[VIEWER]")
             summary["cache"] = _run(lambda: check_cache(st, D, copy, first), "[CACHE]")
             summary["first"] = f"{first:.0f} s"
     finally:
@@ -357,14 +531,15 @@ def main() -> int:
     print(f"first assembly {summary.get('first')}; {summary.get('fields')} fields shown as the "
           f"engine reads them; {summary.get('where')} field texts (per topology) found in a "
           f"prompt, each with its sentences there; {summary.get('prompts')} prompts = the prompt matrix's base; "
-          f"{summary.get('cache')}")
+          f"{summary.get('cache')}; {summary.get('viewer')}; {summary.get('pool')}")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
             print("  " + f)
         return 1
     print("\nPASS - the Studio shows every field of the setup, where each one lands, and "
-          "the engine's own prompts, and sees a changed file.")
+          "the engine's own prompts and tools under every choice of settings, and sees "
+          "a changed file.")
     return 0
 
 

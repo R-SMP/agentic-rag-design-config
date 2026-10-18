@@ -217,3 +217,18 @@ table.ptab input[readonly]:focus { border-color:var(--line); }
 .trow .link { cursor:default; }
 .seg.ro button { pointer-events:none; }
 .nav .later { color:var(--muted); font-size:10.5px; }
+
+/* ---- prompt viewer: the settings bar and the tools (MAS-blueprint P5b) ------------- */
+.vgrp { display:inline-flex; gap:8px; align-items:center; flex-wrap:wrap; padding:3px 8px;
+        border:1px solid var(--line); border-radius:7px; background:#1d1e23; }
+.vlab { font-size:10.5px; color:var(--muted); text-transform:uppercase; letter-spacing:.04em; }
+.vchk { display:inline-flex; gap:5px; align-items:center; font-size:11.5px; color:var(--txt); }
+.vchk.off { color:var(--muted); }
+.vchk select { font-size:11.5px; padding:1px 4px; }
+details.vtool { border:1px solid var(--line); border-radius:7px; padding:5px 8px; margin-bottom:6px;
+                background:#202228; }
+details.vtool summary { cursor:pointer; font-size:11.5px; }
+details.vtool .d { font-size:11.5px; color:#b9bec8; white-space:pre-wrap; margin:6px 0; line-height:1.45; }
+details.vtool pre.args { font-family:var(--mono); font-size:10.5px; color:#aeb3bd; background:#15161a;
+                         border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin:0;
+                         max-height:220px; overflow:auto; }

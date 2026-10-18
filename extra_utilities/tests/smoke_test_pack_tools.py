@@ -94,6 +94,12 @@ time):
    instant as the read before it (same stamp), a tool folder removed or
    added, a file added to a tool's ``prompts/`` folder or tool text put in
    ``fragments/`` (the ownership checks run again), and a changed claim.
+   Since P5b the same holds for a text's files: an agent copy or a
+   per-topology file added, removed or renamed is seen on the next read
+   (also when the folder's stamp did not move), and a text edited in place
+   always is; a process that holds its stamps (the Studio's short-lived
+   processes) does not see a file added after its first read, while a
+   process that does not hold them does.
 
 Run from the repo root:  py -3.13 extra_utilities/tests/smoke_test_pack_tools.py
 """
@@ -1017,6 +1023,88 @@ def check_kept() -> int:
             T.manifests()
         except T.PackToolError as exc:
             check(False, f"[KEPT] the pack put right is still refused: {str(exc)[:200]}")
+        n += 1
+
+        # A text's files: an agent copy or a per-topology file added,
+        # removed or renamed is seen on the next read (the folder's file
+        # list is kept by its stamp), and a text edit always is.
+        dc = copy / "fragments" / "dc"
+        slot, agent = "capabilities_can", "planner"
+        shared = PK.read(slot, 7)
+        _age(dc, 300)
+        PK.read(slot, 7, agent)                      # the list, kept
+        own = dc / f"{slot}@{agent}.t7.md"
+        own.write_text("The Planner's own copy.\n", encoding="utf-8")
+        _age(own, 290)
+        _age(dc, 280)
+        got_own = (PK.read(slot, 7, agent), PK.agent_copies(agent, 7).get(slot))
+        own.unlink()
+        _age(dc, 270)
+        got_gone = (PK.read(slot, 7, agent), slot in PK.agent_copies(agent, 7))
+        check(got_own == ("The Planner's own copy.", "The Planner's own copy.")
+              and got_gone == (shared, False),
+              f"[KEPT] an agent copy added then removed: read {got_own!r}, then {got_gone!r}")
+        t5 = dc / f"{slot}.t5.md"
+        t5.write_text("Topology 5's own text.\n", encoding="utf-8")
+        _age(t5, 260)
+        _age(dc, 250)
+        got5 = (PK.read(slot, 5), PK.read(slot, 7))
+        t5.rename(dc / f"{slot}.t3.md")
+        _age(dc, 240)
+        got_renamed = (PK.read(slot, 5), PK.read(slot, 3))
+        (dc / f"{slot}.t3.md").unlink()
+        _age(dc, 230)
+        check(got5 == ("Topology 5's own text.", shared)
+              and got_renamed == (shared, "Topology 5's own text."),
+              f"[KEPT] a per-topology file added then renamed: {got5!r}, then {got_renamed!r}")
+        # A file added in the same instant as the read before it: the
+        # folder keeps its stamp, but a list read while the folder was that
+        # young is not kept.
+        young = dc / f"{slot}.t5.md"
+        young.write_text("Young.\n", encoding="utf-8")
+        st = os.stat(dc)
+        got_young = PK.read(slot, 5)
+        young.unlink()
+        os.utime(dc, ns=(st.st_atime_ns, st.st_mtime_ns))
+        try:
+            got_after = PK.read(slot, 5)
+        except OSError as exc:              # a kept list naming the removed file
+            got_after = f"{type(exc).__name__}: {exc}"
+        _age(dc, 225)
+        check((got_young, got_after) == ("Young.", shared),
+              f"[KEPT] a file removed with the folder's stamp unchanged: read {got_young!r}, "
+              f"then {got_after!r}")
+        linked = dc / f"{slot}.md"
+        raw = linked.read_bytes()
+        linked.write_bytes((b"#" if raw[:1] != b"#" else b"*") + raw[1:])
+        _age(linked, 220)
+        check(PK.read(slot, 7)[1:] == shared[1:] and PK.read(slot, 7) != shared,
+              "[KEPT] a text edited in place is not read fresh")
+        n += 4
+
+        # The hold switch (the Studio's short-lived processes): a process
+        # that holds its stamps does not see a copy added after its first
+        # read; this process, which does not hold, does.
+        probe = (
+            "import json, os, sys, time\n"
+            "sys.path.insert(0, sys.argv[1])\n"
+            "import config\n"
+            "from engine import pack as PK\n"
+            "PK.hold_stamps()\n"
+            "first = PK.read(sys.argv[2], 7, sys.argv[3])\n"
+            "f = os.path.join(sys.argv[4], sys.argv[2] + '@' + sys.argv[3] + '.t7.md')\n"
+            "open(f, 'w', encoding='utf-8').write('Added while held.\\n')\n"
+            "t = time.time_ns() - 200 * 10**9\n"
+            "os.utime(f, ns=(t, t)); os.utime(sys.argv[4], ns=(t, t))\n"
+            "print(json.dumps([first, PK.read(sys.argv[2], 7, sys.argv[3])]))\n")
+        import subprocess
+        p = subprocess.run([sys.executable, "-c", probe, str(ROOT), slot, agent, str(dc)],
+                           capture_output=True, text=True, encoding="utf-8", cwd=str(ROOT),
+                           env=dict(os.environ, DC_PACK_DIR=str(copy)))
+        held = json.loads(p.stdout.strip().splitlines()[-1]) if p.returncode == 0 else p.stderr[-300:]
+        here = PK.read(slot, 7, agent)
+        check(held == [PK.read(slot, 7), PK.read(slot, 7)] and here == "Added while held.",
+              f"[KEPT] the hold switch: the holding process read {held!r}; this one {here!r}")
         n += 1
     finally:
         config.DC_PACK_DIR = real
