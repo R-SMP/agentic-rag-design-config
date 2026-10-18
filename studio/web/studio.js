@@ -1,5 +1,5 @@
 /* ======================================================================
- * studio.js -- the MAS Studio (MAS-blueprint P5a-P5b, P6a).
+ * studio.js -- the MAS Studio (MAS-blueprint P5a-P5b, P6a-P6b).
  *
  * Plain ES5 in one IIFE, as the studio UI kit asks.  Every call to the
  * server goes through call()/req() and bridge.js (POST /api/<name>):
@@ -12,6 +12,9 @@
  * its Save (save_field); the link icon, own copies and Undo are calls of
  * their own (studio/editing.py), and each change re-reads the setup.  The
  * prompt viewer compares with the setup as the Studio opened it (diff).
+ * P6b edits the parameters (parameters.json, its groups and pictures; the
+ * server keeps the agents' parameter lists in step) and the agent-access
+ * grid (pack.yaml).
  *
  * Screens are hash routes, so each one has an address:
  *   #/studio/<section>[?field=..]     the Studio: sections | fields | inspector
@@ -51,8 +54,6 @@
   };
   // The texts of the screens that come later.
   var LATER = {
-    params: 'Editing the parameters comes in P6b.',
-    access: 'Editing agent access comes in P6b.',
     tools: 'New tool and Edit come in P6c.',
     test: 'Test tool comes in P6c.',
     settings: 'Editing the settings comes in P6c.',
@@ -223,8 +224,8 @@
       laterButton('Prepare for GitHub', LATER.prepare)
     ]);
     var banner = h('div', { 'class': 'banner info' },
-      'Editing the setup in ' + D.pack_dir + ': each text field saves on its own, straight to its files, and Undo puts a field back as it was when the Studio opened. ' +
-      'Parameters and agent access come in P6b, tools and settings in P6c.');
+      'Editing the setup in ' + D.pack_dir + ': each text field, parameter, group and access cell saves on its own, straight to its files, and Undo puts it back as it was when the Studio opened. ' +
+      'Tools and settings come in P6c.');
     var left = h('div', { 'class': 'col side', id: 'colLeft', style: 'width:250px' }, renderNav());
     var center = h('div', { 'class': 'col center', id: 'center' });
     var right = h('div', { 'class': 'col side', id: 'colRight', style: 'width:380px' });
@@ -662,9 +663,14 @@
     var right = el('colRight');
     if (right) { right.innerHTML = ''; add(right, inspectField(s)); }
   }
+  function unsavedKeys() {
+    return Object.keys(EDITS).map(function (k) { return k.replace('|', ' @').replace(/ @$/, ''); })
+      .concat(Object.keys(PEDITS).map(function (k) { return 'parameter ' + (PEDITS[k].name || k); }))
+      .concat(Object.keys(GEDITS).map(function (k) { return 'group ' + (GEDITS[k].label || k); }));
+  }
   function unsavedPill() {
-    var n = Object.keys(EDITS).length;
-    return n ? pill(n + ' unsaved', 'warn', Object.keys(EDITS).map(function (k) { return k.replace('|', ' @').replace(/ @$/, ''); }).join('\n')) : null;
+    var keys = unsavedKeys();
+    return keys.length ? pill(keys.length + ' unsaved', 'warn', keys.join('\n')) : null;
   }
   function status(text, cls) {
     STATUS = { text: text, cls: cls || '' };
@@ -867,59 +873,668 @@
   }
 
   /* ======================================================================
-   * Parameters
+   * Parameters (P6b): parameters.json, its groups and pictures; the
+   * agents' parameter lists are kept in step by the server
+   * (studio/params_edit.py).  A row's unsaved fields live in PEDITS, a
+   * group's in GEDITS, until its Save; every change is previewed by the
+   * server (preview_parameters) and saved whole (save_parameters).
    * ==================================================================== */
-  function renderParams(center, right) {
-    var P = D.parameters.parameters;
-    add(center, head('Parameters', 'The one parameter file (parameters.json): the validator, the parameter sliders, the database and the agents’ parameter count read it; the agents’ own parameter lists are checked against it. ' +
-      P.length + ' parameters in ' + D.parameters.groups.length + ' groups.', [
-      laterButton('Import JSON…', LATER.params), laterButton('Paste CSV…', LATER.params),
-      laterButton('+ Add parameter', LATER.params), laterButton('+ Add group', LATER.params)]));
-    var t = h('table', { 'class': 'ptab' }, h('thead', null, h('tr', null,
-      ['Name', 'Label', 'Type', 'Min', 'Max', 'Step', 'Default', 'Unit'].map(function (x) { return h('th', null, x); }))));
-    var tb = h('tbody');
-    D.parameters.groups.forEach(function (g) {
-      var img = D.group_images[g.id];
-      add(tb, h('tr', { 'class': 'grp' }, h('td', { colspan: 8 }, [g.label,
-        img ? h('img', { 'class': 'thumb', src: img, alt: '' }) : null])));
-      P.filter(function (p) { return p.group === g.id; }).forEach(function (p) {
-        var bad = unitMismatch(p);
-        add(tb, h('tr', { 'class': (R.q.param === p.name ? 'sel ' : '') + (bad ? 'warnrow' : ''), style: 'cursor:pointer',
-          onclick: function () { go('studio', 'parameters', withQ({ param: p.name })); } }, [
-          h('td', null, h('span', { 'class': 'pname' }, p.name)),
-          h('td', null, h('input', { type: 'text', value: p.label, readonly: true, title: LATER.params })),
-          h('td', { style: 'width:80px' }, h('select', { disabled: true }, ['int', 'float'].map(function (o) { return h('option', { selected: o === p.type }, o); }))),
-          h('td', { 'class': 'num', style: 'width:70px' }, h('input', { type: 'text', value: p.min, readonly: true })),
-          h('td', { 'class': 'num', style: 'width:70px' }, h('input', { type: 'text', value: p.max, readonly: true })),
-          h('td', { 'class': 'num', style: 'width:64px' }, h('input', { type: 'text', value: p.step, readonly: true })),
-          h('td', { 'class': 'num', style: 'width:70px' }, h('input', { type: 'text', value: p.default, readonly: true })),
-          h('td', null, h('input', { type: 'text', value: p.unit, readonly: true, 'class': bad ? 'invalid' : null }))
-        ]));
+  var PEDITS = {};         // unsaved parameter rows: saved name or 'new:N' -> fields
+  var GEDITS = {};         // unsaved groups: id or 'new:N' -> fields
+  var NEWSEQ = 0;
+  var NUMERIC = { min: 1, max: 1, step: 1, 'default': 1 };
+  var P_KEYS = ['name', 'type', 'min', 'max', 'step', 'default', 'group', 'label', 'unit', 'db_unit', 'db_description'];
+  var G_KEYS = ['id', 'label', 'image', 'image_alt', 'order'];
+  function PE() { return D.params_edit; }
+  function clone(o) { return JSON.parse(JSON.stringify(o)); }
+  function savedParam(name) { return PE().spec.parameters.filter(function (p) { return p.name === name; })[0] || null; }
+  function openedParam(name) { return PE().opened.parameters.filter(function (p) { return p.name === name; })[0] || null; }
+  function savedGroup(id) { return PE().spec.groups.filter(function (g) { return g.id === id; })[0] || null; }
+  function openedGroup(id) { return PE().opened.groups.filter(function (g) { return g.id === id; })[0] || null; }
+  // the opened name of the parameter now called *name* (null: added since opening)
+  function openedNameOf(name) {
+    var s = PE().since_opened || {};
+    for (var o in s) if (s[o] === name) return o;
+    return openedParam(name) && !s[name] ? name : null;
+  }
+  function paramChanged(name) {
+    var o = openedNameOf(name);
+    return !o || JSON.stringify(savedParam(name)) !== JSON.stringify(openedParam(o));
+  }
+  function groupChanged(id) { var o = openedGroup(id); return !o || JSON.stringify(savedGroup(id)) !== JSON.stringify(o); }
+  // parameters of the setup as opened that are gone now (not renamed)
+  function removedParams() {
+    var s = PE().since_opened || {}, now = PE().spec.parameters.map(function (p) { return p.name; });
+    return PE().opened.parameters.filter(function (p) { return now.indexOf(s[p.name] || p.name) < 0; });
+  }
+  function removedGroups() {
+    var now = PE().spec.groups.map(function (g) { return g.id; });
+    return PE().opened.groups.filter(function (g) { return now.indexOf(g.id) < 0; });
+  }
+  function paramsChanged() {
+    return (D.changed || []).some(function (c) { return c === 'parameters.json' || c.indexOf('assets/') === 0; });
+  }
+  function rowFields(key) {
+    if (PEDITS[key]) return PEDITS[key];
+    var p = savedParam(key), f = {};
+    P_KEYS.forEach(function (k) { f[k] = p[k]; });
+    return f;
+  }
+  function parseNum(v) {
+    if (typeof v === 'number') return v;
+    var s = String(v).trim();
+    return s !== '' && isFinite(Number(s)) ? Number(s) : s;
+  }
+  function entryOf(f) {
+    var e = {};
+    P_KEYS.forEach(function (k) { e[k] = NUMERIC[k] ? parseNum(f[k]) : f[k]; });
+    return e;
+  }
+  function removeFromOrders(spec, name) {
+    spec.groups.forEach(function (g) { g.order = (g.order || []).filter(function (n) { return n !== name; }); });
+  }
+  function groupOf(spec, id) { return spec.groups.filter(function (g) { return g.id === id; })[0] || null; }
+  // The saved parameters with one row's unsaved fields: {spec, renames}.
+  function specWithRow(key) {
+    var spec = clone(PE().spec), e = entryOf(rowFields(key)), renames = {};
+    if (key.indexOf('new:') === 0) {
+      var last = -1;
+      spec.parameters.forEach(function (p, i) { if (p.group === e.group) last = i; });
+      spec.parameters.splice(last < 0 ? spec.parameters.length : last + 1, 0, e);
+      var g = groupOf(spec, e.group);
+      if (g) g.order.push(e.name);
+      return { spec: spec, renames: renames };
+    }
+    var i = spec.parameters.map(function (p) { return p.name; }).indexOf(key), old = spec.parameters[i];
+    spec.parameters[i] = e;
+    if (e.name !== old.name) {
+      renames[old.name] = e.name;
+      spec.groups.forEach(function (g) { g.order = g.order.map(function (n) { return n === old.name ? e.name : n; }); });
+    }
+    if (e.group !== old.group) {
+      removeFromOrders(spec, e.name);
+      var ng = groupOf(spec, e.group);
+      if (ng) ng.order.push(e.name);
+    }
+    return { spec: spec, renames: renames };
+  }
+  function specWithGroup(key) {
+    var spec = clone(PE().spec), f = GEDITS[key];
+    if (key.indexOf('new:') === 0) {
+      spec.groups.push({ id: f.id, label: f.label, image: f.image, image_alt: f.image_alt, order: [] });
+    } else {
+      var g = groupOf(spec, key);
+      g.label = f.label; g.image = f.image; g.image_alt = f.image_alt; g.order = f.order.slice();
+    }
+    return spec;
+  }
+  function rowProblems(key) { return validateSpec(specWithRow(key).spec); }
+  function groupProblems(key) { return validateSpec(specWithGroup(key)); }
+
+  // -- engine/parameters.py validate, word for word (the server repeats it with the engine's own)
+  function pyRepr(v) {
+    if (v === null || v === undefined) return 'None';
+    if (typeof v === 'string') return v.indexOf("'") >= 0 && v.indexOf('"') < 0 ? '"' + v + '"' : "'" + v.replace(/'/g, "\\'") + "'";
+    return String(v);
+  }
+  function isNum(v) { return typeof v === 'number' && isFinite(v); }
+  function symDiff(a, b) {
+    return a.filter(function (k) { return b.indexOf(k) < 0; }).concat(b.filter(function (k) { return a.indexOf(k) < 0; })).sort();
+  }
+  function validateSpec(spec) {
+    var NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+    var isObj = function (o) { return o !== null && typeof o === 'object' && !(o instanceof Array); };
+    if (!isObj(spec) || !('groups' in spec) || !('parameters' in spec) ||
+        Object.keys(spec).some(function (k) { return ['groups', 'parameters', 'retired'].indexOf(k) < 0; })) {
+      return ['the file must be an object with "groups" and "parameters" (and, optionally, "retired")'];
+    }
+    var problems = [], groups = spec.groups, params = spec.parameters;
+    if (!(groups instanceof Array) || !(params instanceof Array) || !params.length) {
+      return ['"groups" and "parameters" must be lists, "parameters" not empty'];
+    }
+    var names = [];
+    params.forEach(function (p, i) {
+      var where = 'parameter #' + (i + 1);
+      if (!isObj(p)) { problems.push(where + ': must be an object'); return; }
+      var name = p.name;
+      if (typeof name === 'string') where = name;
+      symDiff(P_KEYS, Object.keys(p)).forEach(function (k) {
+        problems.push(where + ': ' + (k in p ? 'unknown' : 'missing') + ' field "' + k + '"');
       });
+      if (typeof name !== 'string' || !NAME.test(name)) { problems.push(where + ': name must be a plain identifier (letters, digits, _)'); return; }
+      if (names.indexOf(name) >= 0) problems.push(name + ': duplicate name');
+      names.push(name);
+      if (p.type !== 'int' && p.type !== 'float') problems.push(name + ': type must be "int" or "float"');
+      var lo = p.min, hi = p.max, step = p.step, def = p['default'];
+      if (![lo, hi, step, def].every(isNum)) { problems.push(name + ': min, max, step and default must be numbers'); return; }
+      if (!(lo < hi)) problems.push(name + ': min (' + lo + ') must be smaller than max (' + hi + ')');
+      if (step <= 0) problems.push(name + ': step must be positive');
+      if (!(lo <= def && def <= hi)) problems.push(name + ': default ' + def + ' is outside [' + lo + '; ' + hi + ']');
+      if (p.type === 'int' && ![lo, hi, step, def].every(function (v) { return Math.floor(v) === v; })) {
+        problems.push(name + ': an int parameter needs whole-number min, max, step and default');
+      }
+      ['label', 'unit', 'db_unit', 'db_description', 'group'].forEach(function (k) {
+        if (k in p && typeof p[k] !== 'string') problems.push(name + ': ' + k + ' must be text');
+      });
+    });
+    var gids = [], placed = {};
+    groups.forEach(function (g, i) {
+      if (!isObj(g)) { problems.push('group #' + (i + 1) + ': must be an object'); return; }
+      var gid = typeof g.id === 'string' ? g.id : 'group #' + (i + 1);
+      symDiff(G_KEYS, Object.keys(g)).forEach(function (k) {
+        problems.push('group ' + gid + ': ' + (k in g ? 'unknown' : 'missing') + ' field "' + k + '"');
+      });
+      if (gids.indexOf(gid) >= 0) problems.push('group ' + gid + ': duplicate id');
+      gids.push(gid);
+      (g.order || []).forEach(function (n) {
+        if (names.indexOf(n) < 0) problems.push('group ' + gid + ': lists ' + pyRepr(n) + ', which is not a parameter');
+        else if (placed[n] !== undefined) problems.push(n + ': listed in two groups (' + placed[n] + ', ' + gid + ')');
+        else placed[n] = gid;
+      });
+    });
+    var retired = 'retired' in spec ? spec.retired : [];
+    if (!(retired instanceof Array)) problems.push('"retired" must be a list of names');
+    else retired.forEach(function (n, i) {
+      if (typeof n !== 'string' || !NAME.test(n)) problems.push('retired name ' + pyRepr(n) + ': must be a plain identifier');
+      else if (names.indexOf(n) >= 0) problems.push(n + ': listed as retired but still a parameter');
+      else if (retired.filter(function (x) { return x === n; }).length > 1) problems.push(n + ': listed as retired twice');
+    });
+    params.forEach(function (p) {
+      if (!isObj(p) || names.indexOf(p.name) < 0) return;
+      var gid = p.group;
+      if (gids.indexOf(gid) < 0) problems.push(p.name + ': group ' + pyRepr(gid) + ' does not exist');
+      else if (placed[p.name] !== gid) problems.push(p.name + ': not listed in the order of its group ' + pyRepr(gid));
+    });
+    return problems;
+  }
+  // -- end validate
+
+  // where a name is mentioned in the setup's text fields (not the parameter lists)
+  function textMentions(name) {
+    var re = new RegExp('\\b' + name + '\\b'), out = [];
+    D.slots.forEach(function (s) {
+      if (s.slot === 'parameter_list') return;
+      [{ agent: null, values: s.values }].concat(s.variants || []).forEach(function (v) {
+        if (['7', '5', '3'].some(function (t) { return v.values[t] && re.test(v.values[t]); })) out.push(s.slot + (v.agent ? '@' + v.agent : ''));
+      });
+    });
+    return out;
+  }
+  // this parameter's entry in each of the agents' lists
+  function listEntries(name) {
+    var s = slotByName('parameter_list'), out = [];
+    if (!s) return out;
+    var re = new RegExp('^\\s*\\d+\\.\\s+' + name + '\\b');
+    [{ agent: null, values: s.values }].concat(s.variants || []).forEach(function (v) {
+      var seen = {};
+      ['7', '5', '3'].forEach(function (t) {
+        var txt = v.values[t];
+        if (txt === null || txt === undefined) return;
+        var line = txt.split('\n').filter(function (l) { return re.test(l); })[0] || '';
+        (seen[line] = seen[line] || []).push(t);
+      });
+      Object.keys(seen).forEach(function (line) {
+        out.push({ who: (v.agent ? disp(v.agent) : 'shared') + ' · ' + seen[line].join('·'), line: line });
+      });
+    });
+    return out;
+  }
+
+  function renderParams(center, right) {
+    var spec = PE().spec;
+    var fileIn = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none', onchange: function (e) { importJson(e.target.files[0]); e.target.value = ''; } });
+    add(center, head('Parameters', 'The one parameter file (parameters.json): the validator, the parameter sliders, the database and the agents’ parameter count read it, and the agents’ parameter lists are kept in step with it. ' +
+      spec.parameters.length + ' parameters in ' + spec.groups.length + ' groups.', [
+      fileIn,
+      h('button', { disabled: BUSY, onclick: function () { fileIn.click(); } }, 'Import JSON…'),
+      h('button', { disabled: BUSY, onclick: askCsv }, 'Paste CSV…'),
+      h('button', { disabled: BUSY, onclick: addParam }, '+ Add parameter'),
+      h('button', { disabled: BUSY, onclick: addGroup }, '+ Add group'),
+      h('span', { 'class': 'grow' }),
+      h('button', { disabled: BUSY || !paramsChanged(), title: paramsChanged() ? null : 'Nothing has changed since the Studio opened.', onclick: askUndoAll }, 'Undo all parameter changes')]));
+    if (databaseChanged()) {
+      add(center, h('div', { 'class': 'banner info', style: 'margin:8px 16px 0;border:1px solid #2f4f86;border-radius:7px' },
+        'Names, types or ranges differ from the setup as opened: once it is deployed, the database needs a new parameter schema (Workflow Settings › Upload).'));
+    }
+    var t = h('table', { 'class': 'ptab pedit' }, h('thead', null, h('tr', null,
+      ['', 'Name', 'Label', 'Type', 'Min', 'Max', 'Step', 'Default', 'Unit', 'Group', ''].map(function (x) { return h('th', null, x); }))));
+    var tb = h('tbody');
+    var groups = spec.groups.slice();
+    Object.keys(GEDITS).filter(function (k) { return k.indexOf('new:') === 0; }).forEach(function (k) {
+      groups.push({ id: k, label: GEDITS[k].label, image: GEDITS[k].image, order: [], unsaved: true });
+    });
+    groups.forEach(function (g, gi) { add(tb, groupRow(g, gi, groups.length)); paramRows(tb, g); });
+    removedGroups().forEach(function (g) {
+      add(tb, h('tr', { 'class': 'grp gone' }, h('td', { colspan: 11 }, [h('s', null, g.label), ' · group removed since the Studio opened ',
+        h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { undoGroup(g.id); } }, 'Undo')])));
     });
     t.appendChild(tb);
     add(center, h('div', { style: 'padding:0 16px 20px' }, t));
-    var p = P.filter(function (x) { return x.name === R.q.param; })[0] || P[0];
-    var bad = unitMismatch(p);
-    add(right, h('div', { 'class': 'insp' }, [
-      h('div', { 'class': 'title' }, p.name),
-      h('div', { 'class': 'pills' }, [kpill(p.type), kpill('[' + p.min + '; ' + p.max + ']'), kpill('default ' + p.default)]),
-      h('p', null, p.description),
-      bad ? h('div', { 'class': 'banner warn', style: 'border:1px solid #7a5a1a;border-radius:7px;margin:10px 0' }, [
-        h('b', null, 'Two texts disagree on the unit. '), 'The agents’ parameter list says “' + p.unit_prompt + '”; the slider page says “' +
-        p.unit + '”. The agents’ list is hand-written text ($parameter_list), checked against parameters.json for names, order and ranges only.']) : null,
-      h('div', { 'class': 'block' }, [h('h4', null, 'Unit'), h('div', { 'class': 'kv', style: 'grid-template-columns:110px 1fr' }, [
-        h('div', { 'class': 'k' }, 'slider label'), h('div', null, p.unit || '—'),
-        h('div', { 'class': 'k' }, 'agents’ text'), h('div', null, p.unit_prompt || '—')])]),
-      h('div', { 'class': 'block' }, [h('h4', null, 'Read from this one entry (parameters.json)'), h('ul', { 'class': 'checks' }, [
-        'the key list and types the validator enforces', 'the parameter count in the agents’ prompts ($parameter_count)',
-        'the slider on the Parameters page of the web app', 'the in-browser preview’s input check',
-        'the database’s parameter schema (a new version on each upload)'].map(function (x) {
-        return h('li', null, ['•', h('span', null, x)]); }))]),
-      h('div', { 'class': 'block' }, [h('h4', null, 'Checked against it'), h('ul', { 'class': 'checks' }, [
-        'the parameter list in the agents’ prompts ($parameter_list and its per-agent copies; full or names only per agent — see Agent access): same names, order and ranges'].map(function (x) {
-        return h('li', null, ['•', h('span', null, x)]); }))])
-    ]));
+    if (R.q.group) add(right, inspectGroup(R.q.group));
+    else add(right, inspectParam(R.q.param && (savedParam(R.q.param) || PEDITS[R.q.param]) ? R.q.param : (spec.parameters[0] || {}).name));
+  }
+  function databaseChanged() {
+    var key = function (s) { return JSON.stringify(s.parameters.map(function (p) { return [p.name, p.type, p.min, p.max]; })); };
+    return key(PE().spec) !== key(PE().opened);
+  }
+  function groupRow(g, gi, n) {
+    var img = g.image ? h('img', { 'class': 'thumb', src: g.image, alt: '' }) : null;
+    var sel = R.q.group === g.id;
+    return h('tr', { 'class': 'grp' + (sel ? ' sel' : '') + (GEDITS[g.id] ? ' dirty' : ''), 'data-gk': g.id, style: 'cursor:pointer',
+      onclick: function () { go('studio', 'parameters', { group: g.id }); } }, h('td', { colspan: 11 }, [
+      h('span', { 'class': 'mv' }, [
+        h('button', { 'class': 'mini', disabled: BUSY || g.unsaved || gi === 0, title: 'Move the group up (the slider page’s order)', onclick: stopped(function () { moveGroup(g.id, -1); }) }, '↑'),
+        h('button', { 'class': 'mini', disabled: BUSY || g.unsaved || gi === n - 1, title: 'Move the group down', onclick: stopped(function () { moveGroup(g.id, 1); }) }, '↓')]),
+      (GEDITS[g.id] || g).label, img, g.unsaved ? pill('unsaved', 'warn') : null,
+      !g.unsaved && groupChanged(g.id) ? pill('changed', 'warn', 'Changed since the Studio opened.') : null]));
+  }
+  function stopped(fn) { return function (ev) { ev.stopPropagation(); fn(); }; }
+  function paramRows(tb, g) {
+    var spec = PE().spec;
+    var keys = spec.parameters.filter(function (p) { return p.group === g.id; }).map(function (p) { return p.name; });
+    Object.keys(PEDITS).filter(function (k) { return k.indexOf('new:') === 0 && PEDITS[k].group === g.id; }).forEach(function (k) { keys.push(k); });
+    // a saved row whose unsaved group is another shows under its saved group
+    keys.forEach(function (key, i) { add(tb, paramRow(key, i, keys)); });
+    removedParams().filter(function (p) { return p.group === g.id; }).forEach(function (p) {
+      add(tb, h('tr', { 'class': 'gone' }, [h('td'), h('td', { colspan: 9 }, [h('s', { 'class': 'pname' }, p.name), ' · removed since the Studio opened']),
+        h('td', null, h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { undoRemoved(p.name); } }, 'Undo'))]));
+    });
+  }
+  function paramRow(key, i, keys) {
+    var isNew = key.indexOf('new:') === 0, f = rowFields(key), dirty = !!PEDITS[key];
+    var p = isNew ? null : savedParam(key), info = isNew ? null : (D.parameters.parameters.filter(function (x) { return x.name === key; })[0] || null);
+    var bad = info && unitMismatch(info);
+    var sel = R.q.param === key && !R.q.group;
+    function cell(k, style) {
+      return h('td', { 'class': NUMERIC[k] ? 'num' : null, style: style || null }, h('input', {
+        type: 'text', value: f[k] === undefined || f[k] === null ? '' : String(f[k]), spellcheck: 'false', 'data-fk': 'param|' + key, 'data-t': k,
+        'class': k === 'unit' && bad ? 'invalid' : null,
+        oninput: function (e) { onParamInput(key, k, e.target.value); }, onfocus: function () { selectParam(key); } }));
+    }
+    var groups = PE().spec.groups;
+    var same = keys.filter(function (k) { return k.indexOf('new:') < 0; });
+    var pos = same.indexOf(key);
+    return h('tr', { 'class': (sel ? 'sel ' : '') + (dirty ? 'dirty ' : '') + (bad ? 'warnrow' : ''), 'data-pk': key }, [
+      h('td', { 'class': 'mv' }, isNew ? null : [
+        h('button', { 'class': 'mini', disabled: BUSY || dirty || pos <= 0, title: 'Move up (the order of the agents’ lists and the database)', onclick: function () { moveParam(key, -1); } }, '↑'),
+        h('button', { 'class': 'mini', disabled: BUSY || dirty || pos < 0 || pos >= same.length - 1, title: 'Move down', onclick: function () { moveParam(key, 1); } }, '↓')]),
+      cell('name', 'width:150px'), cell('label'),
+      h('td', { style: 'width:72px' }, h('select', { 'data-fk': 'param|' + key, 'data-t': 'type', onchange: function (e) { onParamInput(key, 'type', e.target.value); },
+        onfocus: function () { selectParam(key); } }, ['int', 'float'].map(function (o) { return h('option', { selected: o === f.type }, o); }))),
+      cell('min', 'width:64px'), cell('max', 'width:64px'), cell('step', 'width:58px'), cell('default', 'width:64px'), cell('unit'),
+      h('td', { style: 'width:120px' }, h('select', { 'data-fk': 'param|' + key, 'data-t': 'group', onchange: function (e) { onParamInput(key, 'group', e.target.value); },
+        onfocus: function () { selectParam(key); } }, groups.map(function (g) { return h('option', { value: g.id, selected: g.id === f.group }, g.label); }))),
+      h('td', { 'class': 'racts', 'data-pacts': key }, paramActions(key))
+    ]);
+  }
+  function paramActions(key) {
+    var isNew = key.indexOf('new:') === 0;
+    if (PEDITS[key]) {
+      var problems = rowProblems(key);
+      return [problems.length ? pill(problems.length + (problems.length === 1 ? ' problem' : ' problems'), 'bad', problems.join('\n')) : null,
+        h('button', { 'class': 'primary mini', disabled: BUSY || problems.length > 0, title: problems.length ? 'Fix the problems first (see the inspector).' : null,
+          onclick: function () { saveParamRow(key); } }, 'Save'),
+        h('button', { 'class': 'mini', onclick: function () { delete PEDITS[key]; render(); } }, 'Discard')];
+    }
+    return [paramChanged(key) ? h('button', { 'class': 'mini', disabled: BUSY, title: openedNameOf(key) ? 'Put this parameter back as it was when the Studio opened.' : 'Remove this parameter, added since the Studio opened.',
+        onclick: function () { undoParam(key); } }, 'Undo') : null,
+      isNew ? null : h('button', { 'class': 'mini danger', disabled: BUSY, title: 'Remove this parameter', onclick: function () { removeParam(key); } }, '×')];
+  }
+  function onParamInput(key, k, value) {
+    if (!PEDITS[key]) PEDITS[key] = rowFields(key);
+    PEDITS[key] = clone(PEDITS[key]);
+    PEDITS[key][k] = value;
+    if (key.indexOf('new:') < 0 && JSON.stringify(entryOf(PEDITS[key])) === JSON.stringify(entryOf(rowFields2(key)))) delete PEDITS[key];
+    var a = doc.querySelector('[data-pacts="' + key + '"]');
+    if (a) { a.innerHTML = ''; add(a, paramActions(key)); }
+    var tr = doc.querySelector('tr[data-pk="' + key + '"]');
+    if (tr) tr.classList.toggle('dirty', !!PEDITS[key]);
+    var u = el('unsavedCount');
+    if (u) { u.innerHTML = ''; add(u, unsavedPill()); }
+    if (R.q.param === key) { var right = el('colRight'); right.innerHTML = ''; add(right, inspectParam(key)); }
+  }
+  function rowFields2(key) { var p = savedParam(key), f = {}; P_KEYS.forEach(function (k) { f[k] = p[k]; }); return f; }
+  function selectParam(key) {
+    if (R.q.param === key && !R.q.group) return;
+    root.history.replaceState(null, '', link('studio', 'parameters', { param: key }));
+    parse();
+    Array.prototype.forEach.call(doc.querySelectorAll('tr.sel'), function (x) { x.classList.remove('sel'); });
+    var tr = doc.querySelector('tr[data-pk="' + key + '"]');
+    if (tr) tr.classList.add('sel');
+    var right = el('colRight');
+    if (right) { right.innerHTML = ''; add(right, inspectParam(key)); }
+  }
+
+  /* -- the changes ------------------------------------------------------------ */
+  // Every change: the server's preview first; a change that touches the
+  // agents' lists, removes or renames a parameter is shown before it is saved.
+  function applyParams(spec, renames, title, after) {
+    if (BUSY) return;
+    BUSY = true;
+    status('Checking the parameters…', 'busy');
+    call('preview_parameters', spec, PE().sha, renames).then(function (r) {
+      BUSY = false;
+      if (!r || r.ok === false) {
+        status((r && r.error) || 'The check failed.', 'err');
+        render();
+        showModal(r && r.conflict ? 'The parameters changed on disk' : 'The parameters cannot be saved',
+          h('div', null, [h('p', { style: 'margin:0 0 8px' }, (r && r.error) || '')].concat((r && r.problems || []).map(function (p) { return h('div', { 'class': 'probline' }, '✗ ' + p); }))),
+          [r && r.conflict ? h('button', { 'class': 'primary', onclick: function () { closeModal(); reloadParams(); } }, 'Reload') : null,
+           h('button', { onclick: closeModal }, 'Close')]);
+        return;
+      }
+      if (r.same) { status('Nothing to save: the parameters are already so.', ''); render(); if (after) after(); return; }
+      var c = r.changes, quiet = !title && !r.lists.length && !c.removed.length && !Object.keys(c.renamed).length;
+      if (quiet) { saveParams(spec, renames, after); return; }
+      render();
+      showModal(title || 'Save the parameters', previewBody(r), [
+        h('button', { onclick: closeModal }, 'Cancel'),
+        h('button', { 'class': 'primary', onclick: function () { closeModal(); saveParams(spec, renames, after); } }, title ? 'Apply' : 'Save')]);
+    }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+  }
+  function saveParams(spec, renames, after) {
+    change('save_parameters', [spec, PE().sha, renames], 'params', 'Saved the parameters' + (Object.keys(renames).length ? ' (renamed: ' +
+      Object.keys(renames).map(function (k) { return k + ' → ' + renames[k]; }).join(', ') + ')' : '') + '.', after);
+  }
+  function reloadParams() {
+    BUSY = true; status('Reading the setup again…', 'busy'); render();
+    reload().then(function () { BUSY = false; status('The parameters show what is on disk now.', 'ok'); render(); },
+      function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+  }
+  function previewBody(r) {
+    var c = r.changes, items = [];
+    if (c.added.length) items.push('Added: ' + c.added.join(', '));
+    c.removed.forEach(function (n) { items.push('Removed: ' + n + ' (its name joins “retired”: an old record that carries it is read without it)'); });
+    Object.keys(c.renamed).forEach(function (o) { items.push('Renamed: ' + o + ' → ' + c.renamed[o] + ' (the old name joins “retired”)'); });
+    Object.keys(c.fields).forEach(function (n) {
+      items.push(n + ': ' + Object.keys(c.fields[n]).map(function (k) { return k + ' ' + JSON.stringify(c.fields[n][k][0]) + ' → ' + JSON.stringify(c.fields[n][k][1]); }).join(', '));
+    });
+    if (c.order) items.push('The order of the parameters changes (the agents’ lists and the database follow it).');
+    c.groups.added.forEach(function (g) { items.push('Group added: ' + g); });
+    c.groups.removed.forEach(function (g) { items.push('Group removed: ' + g); });
+    Object.keys(c.groups.changed).forEach(function (g) {
+      items.push('Group ' + g + ': ' + Object.keys(c.groups.changed[g]).map(function (k) { return k + ' ' + JSON.stringify(c.groups.changed[g][k][0]) + ' → ' + JSON.stringify(c.groups.changed[g][k][1]); }).join(', '));
+    });
+    if (c.groups.order) items.push('The order of the groups changes (the slider page follows it).');
+    var gone = c.removed.concat(Object.keys(c.renamed));
+    var warn = gone.map(function (n) {
+      var code = r.code_uses[n] || [], text = textMentions(n);
+      if (!code.length && !text.length) return null;
+      return h('div', null, [h('b', null, n), ' is still named in ' + [code.length ? code.map(function (u) { return u[0] + (u[1] > 1 ? ' (' + u[1] + '×)' : ''); }).join(', ') : null,
+        text.length ? 'the text fields ' + text.join(', ') : null].filter(function (x) { return x; }).join('; and in ') + '.']);
+    }).filter(function (x) { return x; });
+    var body = h('div', { 'class': 'pprev' }, [
+      h('ul', { 'class': 'checks' }, items.map(function (x) { return h('li', null, ['•', h('span', null, x)]); })),
+      warn.length ? h('div', { 'class': 'banner warn boxed' }, warn.concat([h('div', { style: 'margin-top:4px' }, 'The Studio does not change code or other texts: update them yourself (tools come in P6c).')])) : null,
+      r.database ? h('div', { 'class': 'banner info boxed' }, 'Names, types or ranges change: once the setup is deployed, the database needs a new parameter schema (Workflow Settings › Upload).') : null,
+      h('h4', null, r.lists.length ? 'The agents’ parameter lists · ' + r.lists.length + ' of ' + PE().lists.length + ' change' : 'The agents’ parameter lists do not change')
+    ].concat(r.lists.map(function (l) {
+      return h('details', { 'class': 'vtool' }, [h('summary', null, h('span', { 'class': 'mono' }, l.file)),
+        h('div', { 'class': 'diff' }, l.lines.map(function (x) {
+          return h('div', { 'class': x[0] === '+' ? 'd-add' : x[0] === '-' ? 'd-del' : x[0] === '…' ? 'd-fold' : 'd-eq' }, (x[0] === '=' ? '  ' : x[0] === '…' ? '⋯' : x[0] + ' ') + x[1]);
+        }))]);
+    })));
+    return body;
+  }
+  function saveParamRow(key) {
+    var r = specWithRow(key), f = entryOf(rowFields(key));
+    applyParams(r.spec, r.renames, null, function () {
+      delete PEDITS[key];
+      root.history.replaceState(null, '', link('studio', 'parameters', { param: f.name }));
+    });
+  }
+  function addParam() {
+    var g = R.q.group && savedGroup(R.q.group) ? R.q.group : (PE().spec.groups[0] || {}).id;
+    var key = 'new:' + (++NEWSEQ);
+    PEDITS[key] = { name: '', type: 'float', min: '0', max: '1', step: '1', 'default': '0', group: g, label: '', unit: '', db_unit: '', db_description: '' };
+    root.history.replaceState(null, '', link('studio', 'parameters', { param: key }));
+    render();
+    var n = doc.querySelector('[data-fk="param|' + key + '"][data-t="name"]');
+    if (n) n.focus();
+  }
+  function moveParam(key, dir) {
+    var spec = clone(PE().spec), ps = spec.parameters, i = ps.map(function (p) { return p.name; }).indexOf(key), j = i + dir;
+    while (j >= 0 && j < ps.length && ps[j].group !== ps[i].group) j += dir;
+    if (j < 0 || j >= ps.length) return;
+    var a = ps[i]; ps[i] = ps[j]; ps[j] = a;
+    applyParams(spec, {}, null);
+  }
+  function removeParam(key) {
+    var spec = clone(PE().spec);
+    spec.parameters = spec.parameters.filter(function (p) { return p.name !== key; });
+    removeFromOrders(spec, key);
+    applyParams(spec, {}, null, function () { root.history.replaceState(null, '', link('studio', 'parameters', {})); });
+  }
+  function undoParam(key) {
+    var o = openedNameOf(key), spec = clone(PE().spec), renames = {};
+    if (!o) { removeParam(key); return; }
+    var op = clone(openedParam(o)), i = spec.parameters.map(function (p) { return p.name; }).indexOf(key), cur = spec.parameters[i];
+    spec.parameters[i] = op;
+    if (key !== o) {
+      renames[key] = o;
+      spec.groups.forEach(function (g) { g.order = g.order.map(function (n) { return n === key ? o : n; }); });
+    }
+    if (cur.group !== op.group) {
+      var og = groupOf(spec, op.group);
+      if (!og) { status('Its group ' + op.group + ' is gone: put the group back first, or use Undo all parameter changes.', 'err'); return; }
+      removeFromOrders(spec, o);
+      var at = (openedGroup(op.group).order || []).indexOf(o);
+      og.order.splice(Math.min(at < 0 ? og.order.length : at, og.order.length), 0, o);
+    }
+    applyParams(spec, renames, null, function () { root.history.replaceState(null, '', link('studio', 'parameters', { param: o })); });
+  }
+  function undoRemoved(name) {
+    var spec = clone(PE().spec), op = clone(openedParam(name)), g = groupOf(spec, op.group);
+    if (!g) { status('Its group ' + op.group + ' is gone: put the group back first.', 'err'); return; }
+    var at = PE().opened.parameters.map(function (p) { return p.name; }).indexOf(name);
+    spec.parameters.splice(Math.min(at, spec.parameters.length), 0, op);
+    var gat = (openedGroup(op.group).order || []).indexOf(name);
+    g.order.splice(Math.min(gat < 0 ? g.order.length : gat, g.order.length), 0, name);
+    if (spec.retired) spec.retired = spec.retired.filter(function (n) { return n !== name; });
+    applyParams(spec, {}, null);
+  }
+  function askUndoAll() {
+    showModal('Undo all parameter changes', h('p', { style: 'margin:0;font-size:12.5px;line-height:1.5' },
+      'parameters.json and the agents’ parameter lists go back to exactly how they were when the Studio opened; a picture uploaded since then that no group uses is removed. The agent-access grid is not touched.'), [
+      h('button', { onclick: closeModal }, 'Cancel'),
+      h('button', { 'class': 'danger', onclick: function () {
+        closeModal(); PEDITS = {}; GEDITS = {};
+        change('undo_parameters', [], 'params', 'The parameters and their lists are back as they were when the Studio opened.');
+      } }, 'Undo all')]);
+  }
+
+  /* -- groups ---------------------------------------------------------------- */
+  function slug(s) { return String(s).toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '') || 'group'; }
+  function addGroup() {
+    var key = 'new:' + (++NEWSEQ);
+    GEDITS[key] = { id: '', label: 'New group', image: '', image_alt: '', order: [] };
+    go('studio', 'parameters', { group: key });
+  }
+  function groupFields(key) {
+    if (GEDITS[key]) return GEDITS[key];
+    var g = savedGroup(key);
+    return g ? { id: g.id, label: g.label, image: g.image, image_alt: g.image_alt, order: g.order.slice() } : null;
+  }
+  function onGroupInput(key, k, value) {
+    var f = clone(groupFields(key));
+    f[k] = value;
+    if (key.indexOf('new:') === 0 && k === 'label') {
+      var id = slug(value), ids = PE().spec.groups.map(function (g) { return g.id; }), n = 2, base = id;
+      while (ids.indexOf(id) >= 0) id = base + '_' + (n++);
+      f.id = id;
+    }
+    GEDITS[key] = f;
+    var g = savedGroup(key);
+    if (g && JSON.stringify({ id: g.id, label: g.label, image: g.image, image_alt: g.image_alt, order: g.order }) === JSON.stringify(f)) delete GEDITS[key];
+    var right = el('colRight');
+    if (right) {
+      var a = right.querySelector('[data-gacts]');
+      if (a) { a.innerHTML = ''; add(a, groupActions(key)); }
+    }
+    var row = doc.querySelector('tr[data-gk="' + key + '"]');
+    if (row) row.classList.toggle('dirty', !!GEDITS[key]);
+  }
+  function groupActions(key) {
+    var isNew = key.indexOf('new:') === 0;
+    if (GEDITS[key]) {
+      var problems = groupProblems(key);
+      return [problems.length ? h('div', { 'class': 'checks bad', style: 'margin-bottom:6px' }, problems.map(function (p) { return h('div', null, '✗ ' + p); })) : null,
+        h('button', { 'class': 'primary', disabled: BUSY || problems.length > 0, onclick: function () {
+          var spec = specWithGroup(key), id = GEDITS[key].id;
+          applyParams(spec, {}, null, function () { delete GEDITS[key]; root.history.replaceState(null, '', link('studio', 'parameters', { group: id })); });
+        } }, isNew ? 'Add the group' : 'Save'),
+        h('button', { onclick: function () { delete GEDITS[key]; if (isNew) go('studio', 'parameters', {}); else render(); } }, 'Discard')];
+    }
+    if (isNew) return [];
+    var g = savedGroup(key), empty = g && !g.order.length && !PE().spec.parameters.some(function (p) { return p.group === key; });
+    return [groupChanged(key) ? h('button', { disabled: BUSY, onclick: function () { undoGroup(key); } }, 'Undo') : null,
+      h('button', { 'class': 'danger', disabled: BUSY || !empty, title: empty ? null : 'Only an empty group can be deleted: move its parameters first.',
+        onclick: function () { deleteGroup(key); } }, 'Delete the group')];
+  }
+  function inspectGroup(key) {
+    var f = groupFields(key);
+    if (!f) return h('div', { 'class': 'insp muted' }, 'This group is gone.');
+    var assets = PE().assets.slice();
+    var cur = (f.image || '').split('/').pop();
+    if (cur && assets.indexOf(cur) < 0) assets.push(cur);
+    var picIn = h('input', { type: 'file', accept: 'image/png', style: 'display:none', onchange: function (e) { uploadPicture(key, e.target.files[0]); e.target.value = ''; } });
+    var orderBox = h('div', { 'class': 'order' }, f.order.map(function (n, i) {
+      return h('div', { 'class': 'orow' }, [h('span', { 'class': 'pname' }, n), h('span', { 'class': 'grow' }),
+        h('button', { 'class': 'mini', disabled: i === 0, onclick: function () { var o = f.order.slice(); o.splice(i - 1, 0, o.splice(i, 1)[0]); onGroupInput(key, 'order', o); render(); } }, '↑'),
+        h('button', { 'class': 'mini', disabled: i === f.order.length - 1, onclick: function () { var o = f.order.slice(); o.splice(i + 1, 0, o.splice(i, 1)[0]); onGroupInput(key, 'order', o); render(); } }, '↓')]);
+    }));
+    return h('div', { 'class': 'insp' }, [
+      h('div', { 'class': 'title' }, key.indexOf('new:') === 0 ? 'New group' + (f.id ? ' · ' + f.id : '') : 'Group · ' + key),
+      h('div', { 'class': 'kv', style: 'grid-template-columns:90px 1fr;align-items:center' }, [
+        h('div', { 'class': 'k' }, 'Label'), h('input', { type: 'text', value: f.label, 'data-fk': 'group|' + key, 'data-t': 'label', oninput: function (e) { onGroupInput(key, 'label', e.target.value); } }),
+        h('div', { 'class': 'k' }, 'Picture'), h('div', { 'class': 'row2' }, [
+          h('select', { onchange: function (e) { onGroupInput(key, 'image', e.target.value ? '/pack/assets/' + e.target.value : ''); render(); } },
+            [h('option', { value: '', selected: !cur }, '(none)')].concat(assets.map(function (a) { return h('option', { value: a, selected: a === cur }, a); }))),
+          picIn, h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { picIn.click(); } }, 'Upload PNG…')]),
+        h('div', { 'class': 'k' }, 'Picture text'), h('input', { type: 'text', value: f.image_alt, 'data-fk': 'group|' + key, 'data-t': 'image_alt', oninput: function (e) { onGroupInput(key, 'image_alt', e.target.value); } })]),
+      f.image ? h('img', { 'class': 'gpic', src: f.image, alt: f.image_alt }) : null,
+      h('div', { 'class': 'block' }, [h('h4', null, 'Slider order · ' + f.order.length),
+        h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, 'The order of this group’s sliders on the Parameters page of the web app. The agents’ lists and the database follow the table’s order instead.'),
+        f.order.length ? orderBox : h('p', { 'class': 'muted' }, 'No parameter in this group yet.')]),
+      h('div', { 'class': 'block', 'data-gacts': '1' }, groupActions(key))
+    ]);
+  }
+  function uploadPicture(key, file) {
+    if (!file) return;
+    var fr = new root.FileReader();
+    fr.onload = function () {
+      var b64 = String(fr.result).split(',')[1] || '';
+      BUSY = true; status('Uploading ' + file.name + '…', 'busy'); render();
+      call('upload_picture', file.name, b64).then(function (r) {
+        BUSY = false;
+        if (!r || r.ok === false) { status((r && r.error) || 'The upload failed.', 'err'); render(); return; }
+        PE().assets.push(r.file);
+        onGroupInput(key, 'image', r.path);
+        status('Uploaded assets/' + r.file + ': save the group to use it.', 'ok');
+        render();
+      }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+    };
+    fr.readAsDataURL(file);
+  }
+  function moveGroup(id, dir) {
+    var spec = clone(PE().spec), i = spec.groups.map(function (g) { return g.id; }).indexOf(id), j = i + dir;
+    if (j < 0 || j >= spec.groups.length) return;
+    var a = spec.groups[i]; spec.groups[i] = spec.groups[j]; spec.groups[j] = a;
+    applyParams(spec, {}, null);
+  }
+  function deleteGroup(id) {
+    var spec = clone(PE().spec);
+    spec.groups = spec.groups.filter(function (g) { return g.id !== id; });
+    applyParams(spec, {}, null, function () { root.history.replaceState(null, '', link('studio', 'parameters', {})); });
+  }
+  function undoGroup(id) {
+    var spec = clone(PE().spec), og = clone(openedGroup(id));
+    if (!og) {
+      spec.groups = spec.groups.filter(function (g) { return g.id !== id; });
+      applyParams(spec, {}, null, function () { root.history.replaceState(null, '', link('studio', 'parameters', {})); call('drop_pictures'); });
+      return;
+    }
+    var g = groupOf(spec, id), mine = spec.parameters.filter(function (p) { return p.group === id; }).map(function (p) { return p.name; });
+    var order = og.order.filter(function (n) { return mine.indexOf(n) >= 0; });
+    mine.forEach(function (n) { if (order.indexOf(n) < 0) order.push(n); });
+    og.order = order;
+    if (g) spec.groups[spec.groups.indexOf(g)] = og;
+    else spec.groups.splice(Math.min(PE().opened.groups.map(function (x) { return x.id; }).indexOf(id), spec.groups.length), 0, og);
+    applyParams(spec, {}, null, function () { call('drop_pictures'); });
+  }
+
+  /* -- Import JSON / Paste CSV -------------------------------------------------- */
+  function importJson(file) {
+    if (!file) return;
+    var fr = new root.FileReader();
+    fr.onload = function () {
+      var spec;
+      try { spec = JSON.parse(String(fr.result)); } catch (e) { status(file.name + ' is not valid JSON: ' + e.message, 'err'); return; }
+      applyParams(spec, {}, 'Import ' + file.name);
+    };
+    fr.readAsText(file);
+  }
+  function askCsv() {
+    // the example rows come from the setup: its first parameter, and a new one in its first group
+    var p0 = PE().spec.parameters[0], g0 = PE().spec.groups[0];
+    var ta = h('textarea', { rows: 10, spellcheck: 'false', style: 'width:100%;font-family:var(--mono);font-size:11.5px',
+      placeholder: 'name,min,max,unit,group\n' + (p0 ? p0.name + ',' + p0.min + ',' + p0.max + ',' + p0.unit + ',\n' : '') +
+        'newParameter,0,10,,' + (g0 ? g0.label : '') });
+    var msg = h('div');
+    showModal('Paste CSV', h('div', null, [
+      h('p', { style: 'margin:0 0 8px;font-size:12.5px;line-height:1.5' }, 'One row per parameter, matched by name; the first row names the columns: name, type, min, max, step, default, unit, label, group, description. Only the columns you give change; a new name is added (it needs a group, min and max); parameters the CSV does not name stay. Commas, semicolons or tabs.'),
+      ta, msg]), [
+      h('button', { onclick: closeModal }, 'Cancel'),
+      h('button', { 'class': 'primary', onclick: function () {
+        call('csv_parameters', ta.value).then(function (r) {
+          if (!r || r.ok === false || (r.problems || []).length) {
+            msg.innerHTML = '';
+            add(msg, [h('div', { 'class': 'probline' }, (r && r.error) || '')].concat(((r && r.problems) || []).map(function (p) { return h('div', { 'class': 'probline' }, '✗ ' + p); })));
+            return;
+          }
+          closeModal();
+          applyParams(r.spec, {}, 'Paste CSV');
+        });
+      } }, 'Preview')]);
+  }
+
+  function inspectParam(key) {
+    if (!key) return h('div', { 'class': 'insp empty' }, 'Select a parameter.');
+    var f = rowFields(key), isNew = key.indexOf('new:') === 0, dirty = !!PEDITS[key];
+    var info = isNew ? null : D.parameters.parameters.filter(function (x) { return x.name === key; })[0];
+    var bad = info && unitMismatch(info), problems = dirty ? rowProblems(key) : [];
+    var code = isNew ? [] : (PE().code_uses[key] || []), text = isNew ? [] : textMentions(key), lines = isNew ? [] : listEntries(key);
+    var o = isNew ? null : openedNameOf(key);
+    function input(k) {
+      return h('input', { type: 'text', value: f[k] || '', spellcheck: 'false', 'data-fk': 'param|' + key, 'data-t': k,
+        oninput: function (e) { onParamInput(key, k, e.target.value); } });
+    }
+    return h('div', { 'class': 'insp' }, [
+      h('div', { 'class': 'title' }, isNew ? (f.name || 'New parameter') : key),
+      h('div', { 'class': 'pills' }, [kpill(f.type), kpill('[' + f.min + '; ' + f.max + ']'), kpill('default ' + f['default']),
+        dirty ? pill('unsaved', 'warn') : null, !isNew && paramChanged(key) ? pill(o ? 'changed since opened' : 'added since opened', 'warn') : null,
+        o && o !== key ? kpill('was ' + o) : null]),
+      h('div', { 'class': 'block' }, [h('h4', null, 'Checks')].concat(
+        !dirty ? [h('p', { 'class': 'muted' }, 'No unsaved change.')] :
+          problems.length ? [h('ul', { 'class': 'checks bad' }, problems.map(function (p) { return h('li', null, ['✗', h('span', null, p)]); }))] :
+          [h('ul', { 'class': 'checks good' }, [h('li', null, ['✓', h('span', null, 'No problems: it can be saved.')])])])),
+      h('div', { 'class': 'block' }, [h('h4', null, 'The database’s words'), h('div', { 'class': 'kv', style: 'grid-template-columns:90px 1fr;align-items:center' }, [
+        h('div', { 'class': 'k' }, 'unit'), input('db_unit'), h('div', { 'class': 'k' }, 'description'), input('db_description')])]),
+      bad ? h('div', { 'class': 'banner warn boxed' }, [h('b', null, 'Two texts disagree on the unit. '), 'The agents’ parameter list says “' + info.unit_prompt + '”; the slider page says “' +
+        info.unit + '”. The agents’ lists are hand-written text ($parameter_list); the Studio keeps their names, order and ranges in step, not their units.']) : null,
+      lines.length ? h('div', { 'class': 'block' }, [h('h4', null, 'In the agents’ parameter lists · ' + lines.length),
+        h('div', { 'class': 'lentries' }, lines.map(function (x) { return h('div', null, [h('span', { 'class': 'muted' }, x.who), h('div', { 'class': 'mono' }, x.line || '(no entry)')]); })),
+        h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-top:4px' }, 'A Save changes its name and [min; max] in every list, or adds / removes its entry; the rest of each line is yours (Configurator description › parameter_list).')]) : null,
+      h('div', { 'class': 'block' }, [h('h4', null, 'Named in code · ' + code.length),
+        code.length ? h('ul', { 'class': 'checks' }, code.map(function (u) { return h('li', null, ['•', h('span', { 'class': 'mono' }, u[0] + (u[1] > 1 ? '  ×' + u[1] : ''))]); }))
+          : h('p', { 'class': 'muted' }, 'No code or configuration file of the setup names it.'),
+        code.length ? h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-top:4px' }, 'Renaming or removing it leaves these files naming the old name: update them yourself (tools come in P6c).') : null]),
+      text.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Mentioned in text fields · ' + text.length),
+        h('div', null, text.map(function (n) {
+          var parts = n.split('@'), s = slotByName(parts[0]);
+          return h('a', { 'class': 'kpill', style: 'display:inline-block;margin:2px;text-decoration:none', href: link('studio', s ? s.section : 'description', { field: parts[0], agent: parts[1] || null }) }, n);
+        }))]) : null
+    ]);
   }
 
   /* ======================================================================
@@ -984,20 +1599,29 @@
    * Agent access
    * ==================================================================== */
   function renderAccess(center, right) {
-    var PA = D.parameter_access;
-    add(center, head('Agent access', 'Who sees the parameter list, and how: one choice per agent and topology (a cell exists only where the agent does). This is the setup’s default; Workflow Settings can change it for the next session.'));
+    var PA = D.parameter_access, opened = PE().access_opened || {};
+    add(center, head('Agent access', 'Who sees the parameter list, and how: one choice per agent and topology (a cell exists only where the agent does). Click a choice to save it: this is the setup’s default (pack.yaml); Workflow Settings can still change it for the next session.'));
     var t = h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, h('thead', null, h('tr', null,
-      ['Agent', '7-agent', '5-agent', '3-agent'].map(function (x) { return h('th', null, x); }))));
+      ['Agent', '7-agent', '5-agent', '3-agent', ''].map(function (x) { return h('th', null, x); }))));
     var tb = h('tbody');
     PA.rows.forEach(function (r) {
+      var then = opened[r.agent] || {};
+      var rowChanged = Object.keys(r.cells).some(function (k) { return then[k] !== r.cells[k]; });
       add(tb, h('tr', null, [h('td', null, [h('b', null, r.name), h('div', { 'class': 'muted mono', style: 'font-size:10.5px' }, r.agent)])].concat(
         ['7', '5', '3'].map(function (k) {
           var st = r.cells[k];
           if (!st) return h('td', null, h('span', { 'class': 'na' }, '—'));
-          return h('td', null, h('span', { 'class': 'seg ro', title: LATER.access }, PA.states.filter(function (o) {
-            return !(o.id === 'tool' && PA.no_tool.indexOf(r.agent) >= 0); }).map(function (o) {
-            return h('button', { 'class': o.id === st ? 'on' : '' }, o.short); })));
-        }))));
+          var chg = then[k] !== undefined && then[k] !== st;
+          return h('td', { 'class': chg ? 'chg' : null, title: chg ? 'Was “' + then[k] + '” when the Studio opened.' : null },
+            h('span', { 'class': 'seg' }, PA.states.filter(function (o) {
+              return !(o.id === 'tool' && PA.no_tool.indexOf(r.agent) >= 0); }).map(function (o) {
+              return h('button', { 'class': o.id === st ? 'on' : '', disabled: BUSY, title: o.label, onclick: function () {
+                if (o.id === st) return;
+                change('set_access', [r.agent, k, o.id, PE().pack_yaml_sha], 'access',
+                  r.name + ', ' + k + '-agent: ' + o.label.toLowerCase() + ' (saved to pack.yaml).');
+              } }, o.short); })));
+        }), [h('td', { 'class': 'racts' }, rowChanged ? h('button', { 'class': 'mini', disabled: BUSY, title: 'Put this row back as it was when the Studio opened.',
+          onclick: function () { change('undo_access', [r.agent], 'access', r.name + '’s row is back as it was when the Studio opened.'); } }, 'Undo') : null)])));
     });
     t.appendChild(tb);
     add(center, t);
@@ -1009,6 +1633,7 @@
         h('div', { 'class': 'k' }, 'tool'), h('div', null, 'nothing in the prompt; the agent calls dc_params_list when it needs the list'),
         h('div', { 'class': 'k' }, 'none'), h('div', null, 'neither')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Stored in'), h('p', null, 'dc_pack/pack.yaml → parameter_access (the default). Workflow Settings › Parameter list access stores changed cells for the next session. The Database Handler cannot take “tool”.')]),
+      h('div', { 'class': 'block' }, [h('h4', null, 'See the effect'), h('p', null, 'The Prompt viewer’s “Changes since opened” shows each agent’s prompt against the setup as the Studio opened it.')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Later'), h('p', { 'class': 'muted' }, 'Editing the role map itself (which agent holds which role) is TODO F102, not in this version.')])
     ]));
   }
@@ -1407,7 +2032,9 @@
       if (rel > center.clientHeight * 0.55) center.scrollTop = Math.max(0, rel + center.scrollTop - 110);
     }
     // the field being typed in keeps the cursor (focusing another one would select it)
-    if (fk && fk === fkey(R.q.field || '', R.q.agent || null)) {
+    var shown = R.section === 'parameters' ? (R.q.group ? 'group|' + R.q.group : 'param|' + (R.q.param || ''))
+      : fkey(R.q.field || '', R.q.agent || null);
+    if (fk && fk === shown) {
       var back = doc.querySelector('[data-fk="' + fk + '"][data-t="' + ft + '"]');
       if (back) {
         back.focus();
@@ -1424,7 +2051,7 @@
       root.addEventListener('hashchange', render);
       // an unsaved change is lost with the page: ask first
       root.addEventListener('beforeunload', function (e) {
-        if (Object.keys(EDITS).length) { e.preventDefault(); e.returnValue = ''; }
+        if (unsavedKeys().length) { e.preventDefault(); e.returnValue = ''; }
       });
       render();
     }).catch(function (e) {

@@ -264,3 +264,30 @@ label.pick .refval { max-height:120px; }
 .diff .d-eq { color:#8a8f99; }
 .diff .d-fold { color:var(--muted); font-style:italic; padding:3px 0; border-top:1px dashed #2a2c33;
                 border-bottom:1px dashed #2a2c33; margin:3px 0; }
+
+/* ---- editing the parameters and agent access (MAS-blueprint P6b) ---------------------- */
+.center-head .tools .grow { flex:1 1 auto; }
+table.pedit td { padding:3px 4px; }
+table.pedit td input, table.pedit td select { width:100%; font-size:12px; padding:2px 5px; }
+table.pedit td.num input { text-align:right; font-family:var(--mono); }
+table.pedit td.mv, table.pedit tr.grp .mv { white-space:nowrap; width:52px; }
+table.pedit tr.grp .mv { display:inline-flex; gap:2px; margin-right:8px; vertical-align:middle; }
+table.pedit tr.grp.sel td { background:#1d2230; }
+table.pedit tr.grp.dirty td { box-shadow:inset 3px 0 0 var(--warn); }
+table.ptab tr.dirty td { background:#262016; }
+table.ptab td.racts { white-space:nowrap; }
+tr.gone td { color:var(--muted); font-style:italic; }
+tr.gone s, tr.gone .pname { color:#8a8f99; }
+table.ptab td.chg { box-shadow:inset 0 0 0 1px rgba(240,140,0,.6); background:#262016; }
+.seg button:disabled { opacity:.55; }
+.insp .gpic { max-width:100%; max-height:150px; margin:8px 0 2px; border-radius:6px; background:#fff;
+              border:1px solid var(--line); }
+.insp .order { border:1px solid var(--line); border-radius:7px; background:#202228; padding:4px 6px; }
+.insp .orow { display:flex; gap:4px; align-items:center; padding:2px 0; font-size:12px; }
+.insp .orow .grow { flex:1 1 auto; }
+.insp .lentries > div { padding:3px 0; border-bottom:1px dashed #2a2c33; font-size:11px; }
+.insp .lentries .mono { white-space:pre-wrap; word-break:break-word; color:#c9ccd3; }
+.probline { color:#ffb3b3; font-size:12px; padding:2px 0; }
+.pprev h4 { margin:12px 0 6px; }
+.pprev .diff { font-family:var(--mono); font-size:11px; white-space:pre-wrap; word-break:break-word;
+               background:#15161a; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-top:6px; }

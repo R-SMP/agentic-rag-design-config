@@ -15,7 +15,8 @@ small file and a local Studio may change it between sessions.
 The agents' parameter LISTS are hand-written text in ``dc_pack/fragments/``
 (``$parameter_list`` and its per-agent copies), not generated from here;
 ``extra_utilities/tests/smoke_test_parameters.py`` checks they name the same
-parameters, in the same order, with the same ranges.
+parameters, in the same order, with the same ranges, and the Studio keeps
+them so when it saves this file (``studio/params_edit.py``).
 
 No version number lives here: the database assigns one when the parameters
 are uploaded (``engine/parameter_schema.py``).

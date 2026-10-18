@@ -20,6 +20,12 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
   (``studio/editing.py``), on the setup's own files -- and ``diff``: a view
   compared with the same view of the setup as the Studio OPENED it (a copy
   taken when the server starts, also what Undo restores).
+* the parameter editor (P6b, ``studio/params_edit.py``) --
+  ``preview_parameters`` / ``save_parameters`` / ``undo_parameters``,
+  ``csv_parameters``, ``upload_picture`` / ``drop_pictures``, and the
+  access grid's ``set_access`` / ``undo_access``.  A new parameter file is
+  checked by the engine's own validator, in one engine process that stays
+  (``python -m studio.engine_view checker``).
 
 This process never imports the engine: the assembler stubs runtime
 packages (FastAPI among them) in the process that runs it.
@@ -46,7 +52,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from studio import editing, engine_view
+from studio import editing, engine_view, params_edit
 
 WEB = Path(__file__).resolve().parent / "web"
 
@@ -191,6 +197,49 @@ class WorkerPool:
             self._idle = []
 
 
+class Checker:
+    """One engine process that answers parameter checks
+    (``python -m studio.engine_view checker``), started when first needed
+    and again if it ends."""
+
+    def __init__(self, pack_dir: Path):
+        self.pack_dir = pack_dir
+        self._proc: subprocess.Popen | None = None
+        self._lock = threading.Lock()
+
+    def _start(self) -> subprocess.Popen:
+        env = dict(os.environ, PYTHONIOENCODING="utf-8", DC_PACK_DIR=str(self.pack_dir),
+                   DATABASE_URL="", DATABASE_PUBLIC_URL="")
+        env.setdefault("OPENAI_API_KEY", "sk-dummy")
+        return subprocess.Popen([sys.executable, "-m", "studio.engine_view", "checker"],
+                                cwd=str(engine_view.REPO), env=env, stdin=subprocess.PIPE,
+                                stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
+
+    def check(self, spec: dict) -> list[str]:
+        line = (json.dumps({"parameters": spec}) + "\n").encode("utf-8")
+        with self._lock:
+            for attempt in (1, 2):
+                if self._proc is None or self._proc.poll() is not None:
+                    self._proc = self._start()
+                try:
+                    self._proc.stdin.write(line)
+                    self._proc.stdin.flush()
+                    answer = self._proc.stdout.readline()
+                    if answer:
+                        return json.loads(answer.decode("utf-8"))["problems"]
+                except (OSError, ValueError):
+                    pass
+                self._proc.kill()
+                self._proc = None
+        raise RuntimeError("the engine's parameter check did not answer")
+
+    def close(self) -> None:
+        with self._lock:
+            if self._proc is not None:
+                self._proc.kill()
+                self._proc = None
+
+
 _ENCODING = None
 
 
@@ -302,12 +351,16 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     # view still being made when the first edit lands is kept under that.
     opened_key = "opened:" + fingerprint(opened_dir)
     editor = editing.Editor(pack_dir, opened_dir)
+    checker = Checker(pack_dir)
+    params = params_edit.ParamsEditor(pack_dir, opened_dir, checker.check)
     changed_cache: dict = {}
 
-    def changed(data: dict, fp: str) -> list[str]:
+    def changed(data: dict, fp: str) -> dict:
+        """The changed fields and files, and the parameter editor's state."""
         if fp not in changed_cache:
             changed_cache.clear()
-            changed_cache[fp] = editor.changed(data)
+            changed_cache[fp] = {"changed": editor.changed(data) + params.changed(),
+                                 "params_edit": params.state(data)}
         return changed_cache[fp]
 
     def first_build() -> None:
@@ -323,6 +376,7 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
         threading.Thread(target=lambda: _quiet(first_build), daemon=True).start()
         yield
         pool.close()
+        checker.close()
         shutil.rmtree(opened_root, ignore_errors=True)
 
     app = FastAPI(title="MAS Studio", lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -330,6 +384,7 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     app.state.pool = pool
     app.state.views = views
     app.state.editor = editor
+    app.state.params = params
 
     @app.middleware("http")
     async def no_stale_page(request: Request, call_next):
@@ -347,7 +402,7 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     async def get_all():
         try:
             data, fp = await asyncio.to_thread(view.get_with_fingerprint)
-            data = dict(data, changed=await asyncio.to_thread(changed, data, fp))
+            data = dict(data, **await asyncio.to_thread(changed, data, fp))
         except Exception as exc:  # noqa: BLE001
             return _fail(f"The engine could not assemble this setup: {exc}")
         return _ok(data=data)
@@ -359,24 +414,47 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
             return []
 
     def _edit(fn):
-        """An editing call: ``fn(data, *args)`` on the latest data; refusals
-        answer ``{ok: false, error, problems}``."""
+        """An editing call: ``fn(data, *args)`` on the latest data, answering
+        its dict (or its warnings); refusals answer ``{ok: false, error,
+        problems, conflict}``."""
         async def endpoint(request: Request):
             args = await _args(request)
             try:
                 data = await asyncio.to_thread(view.latest)
-                warnings = await asyncio.to_thread(fn, data, *args)
+                result = await asyncio.to_thread(fn, data, *args)
             except editing.EditError as exc:
                 return JSONResponse({"ok": False, "error": str(exc), "problems": exc.problems,
                                      "conflict": isinstance(exc, editing.Conflict)})
             except TypeError as exc:
                 return _fail(f"Wrong arguments: {exc}")
-            return _ok(warnings=warnings or [])
+            except Exception as exc:  # noqa: BLE001 -- answered, never a bare 500
+                return _fail(f"The Studio could not do this: {type(exc).__name__}: {exc}")
+            if isinstance(result, dict):
+                return _ok(**result)
+            return _ok(warnings=result or [])
         return endpoint
+
+    def undo_field(data: dict, slot: str, agent=None):
+        # A parameter list put back as opened is brought in step with the
+        # parameters as they are now.
+        warnings = editor.undo(data, slot, agent)
+        if slot == params_edit.LIST_SLOT:
+            params.sync_lists(data)
+        return warnings
+
+    def csv_parameters(data: dict, text: str):
+        _raw, spec = params._spec(pack_dir)
+        new, problems = params_edit.from_csv(str(text), spec)
+        return {"spec": new, "problems": problems}
 
     for name, fn in (("save_field", editor.save), ("unlink_field", editor.unlink),
                      ("link_field", editor.link), ("own_copy", editor.own_copy),
-                     ("remove_copy", editor.remove_copy), ("undo_field", editor.undo)):
+                     ("remove_copy", editor.remove_copy), ("undo_field", undo_field),
+                     ("preview_parameters", params.preview), ("save_parameters", params.save),
+                     ("undo_parameters", params.undo_all), ("csv_parameters", csv_parameters),
+                     ("upload_picture", params.upload_picture),
+                     ("drop_pictures", params.drop_unused_pictures),
+                     ("set_access", params.set_access), ("undo_access", params.undo_access)):
         app.add_api_route(f"/api/{name}", _edit(fn), methods=["POST"])
 
     @app.post("/api/diff")
@@ -421,8 +499,9 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
         return _fail(f"The Studio has no {name} call yet.", 404)
 
     app.mount("/static", StaticFiles(directory=WEB), name="static")
-    if (pack_dir / "assets").is_dir():
-        app.mount("/pack/assets", StaticFiles(directory=pack_dir / "assets"), name="assets")
+    # Pictures uploaded later (P6b) are served too: the folder may not exist yet.
+    app.mount("/pack/assets", StaticFiles(directory=pack_dir / "assets", check_dir=False),
+              name="assets")
     return app
 
 

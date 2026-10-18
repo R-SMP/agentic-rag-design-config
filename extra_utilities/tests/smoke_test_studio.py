@@ -1,4 +1,4 @@
-"""The Studio (MAS-blueprint P5a-P6a): the real server on a copy of the pack.
+"""The Studio (MAS-blueprint P5a-P6b): the real server on a copy of the pack.
 
 ``python -m studio --pack <copy>`` is started as the user starts it, and its
 page and its one call (``POST /api/get_all``) are checked:
@@ -57,12 +57,33 @@ Since MAS-blueprint P6a the Studio edits the text fields
    them writes anything.  A file keeps its line endings.  The page checks
    a text exactly as the server does (Node runs the page's own code).
 
-Takes about four minutes.  Run from the repo root:
+Since MAS-blueprint P6b it edits the parameters and the access grid
+(``studio/params_edit.py``, ``POST /api/save_parameters`` and the others):
+
+9. PARAMS.  ``parameters.json`` is written back in its own layout byte for
+   byte.  Every parameter's range is changed, it is renamed (the old name
+   retired), removed, moved within its group; a new parameter is added at
+   the end of each group -- each time every agent's parameter list is in
+   step with the file (the drift check's own parser), a new entry in the
+   list's own shape, and saving the file as it was leaves the setup byte for
+   byte as it was.  With every range changed, every prompt that showed a
+   range shows the new one and the diff shows it; a list's Undo stays in
+   step.  Groups, a moved parameter and an uploaded picture, an import and a
+   CSV are undone by Undo all, byte for byte; previews write nothing.  Bad
+   files are refused with the engine's own problems, a stale page as a
+   conflict; a non-PNG, too large or existing picture, a CSV with an
+   unknown column, no name column, a bad number or a new name without a
+   group, are refused.  Every access cell goes through every state and back
+   (pack.yaml byte for byte); the Database Handler cannot take "tool".  The
+   page checks a parameter file exactly as the engine does (Node).
+
+Takes about six minutes.  Run from the repo root:
     py -3.13 extra_utilities/tests/smoke_test_studio.py
 """
 from __future__ import annotations
 
 import ast
+import base64
 import concurrent.futures
 import hashlib
 import json
@@ -520,10 +541,10 @@ def _snapshot(folder: Path) -> dict:
             if p.is_file() and "__pycache__" not in p.parts}
 
 
-def _same_files(copy: Path, ref: dict, what: str) -> bool:
+def _same_files(copy: Path, ref: dict, what: str, tag: str = "[EDIT]") -> bool:
     now = _snapshot(copy)
     differ = sorted(set(now) ^ set(ref)) + sorted(k for k in set(now) & set(ref) if now[k] != ref[k])
-    check(not differ, f"[EDIT] {what}: the setup is not byte for byte as it was: {differ[:6]}"
+    check(not differ, f"{tag} {what}: the setup is not byte for byte as it was: {differ[:6]}"
                       + (f" (+{len(differ) - 6} more)" if len(differ) > 6 else ""))
     return not differ
 
@@ -564,7 +585,7 @@ def _js_checks(D: dict, texts: list) -> list | None:
     prog = ("var D = " + json.dumps(stub) + ";\n" + js[start:end]
             + "\nvar cases = " + json.dumps(texts) + ";\n"
             + "process.stdout.write(JSON.stringify(cases.map(function (c) { return checkText(c[0], c[1]); })));\n")
-    p = subprocess.run([node, "-e", prog], capture_output=True, text=True, encoding="utf-8", timeout=60)
+    p = subprocess.run([node], input=prog, capture_output=True, text=True, encoding="utf-8", timeout=60)
     if p.returncode != 0:
         check(False, f"[EDIT] the page's checks do not run: {p.stderr[-300:]}")
         return []
@@ -798,6 +819,321 @@ def check_edit(st: Studio, copy: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
+# the parameter editor and the access grid (P6b)
+# ---------------------------------------------------------------------------
+
+def _lists_agree(copy: Path, rels: list, spec: dict, what: str) -> bool:
+    """Every parameter list names the file's parameters, in order, with its
+    ranges, numbered 1..n -- read by the drift check's own parser."""
+    from smoke_test_parameters import parse_parameter_list
+    want = [(p["name"], (float(p["min"]), float(p["max"]))) for p in spec["parameters"]]
+    ok = True
+    for rel in rels:
+        got = parse_parameter_list((copy / rel).read_bytes().decode("utf-8"))
+        good = ([n for n, _, _ in got] == list(range(1, len(got) + 1))
+                and [(nm, r) for _, nm, r in got] == want)
+        check(good, f"[PARAMS] {what}: {rel} is not in step with parameters.json "
+                    f"({[(nm, r) for _, nm, r in got][:3]}... vs {want[:3]}...)")
+        ok = ok and good
+    return ok
+
+
+def _save(st: Studio, what: str, spec: dict, sha: str, renames: dict | None = None) -> str:
+    """save_parameters; the new file's fingerprint (the old one if refused)."""
+    status, r = st.call("save_parameters", spec, sha, renames or {})
+    check(r.get("ok") is True, f"[PARAMS] {what}: save refused: {str(r)[:300]}")
+    return r.get("sha", sha)
+
+
+def _js_validate(specs: list) -> list | None:
+    """The page's own validateSpec (studio/web/studio.js) run by Node."""
+    node = shutil.which("node")
+    if not node:
+        return None
+    js = STUDIO_JS.read_text(encoding="utf-8")
+    start, end = js.index("  // -- engine/parameters.py validate"), js.index("  // -- end validate")
+    head = "var P_KEYS = " + json.dumps(["name", "type", "min", "max", "step", "default", "group",
+                                         "label", "unit", "db_unit", "db_description"]) + \
+           ";\nvar G_KEYS = " + json.dumps(["id", "label", "image", "image_alt", "order"]) + ";\n"
+    prog = (head + js[start:end] + "\nvar cases = " + json.dumps(specs) + ";\n"
+            "process.stdout.write(JSON.stringify(cases.map(validateSpec)));\n")
+    p = subprocess.run([node], input=prog, capture_output=True, text=True, encoding="utf-8", timeout=60)
+    if p.returncode != 0:
+        check(False, f"[PARAMS] the page's parameter check does not run: {p.stderr[-300:]}")
+        return []
+    return json.loads(p.stdout)
+
+
+def check_params(st: Studio, copy: Path) -> str:
+    """Every parameter changed through the server -- its range, its name,
+    gone, moved, a new one in each group -- with the agents' lists in step
+    and each change undone byte for byte; groups and a picture; imports
+    and CSV; the refusals; every access cell; the page's own check."""
+    import copy as copymod
+    from engine import parameters as eparams
+    from studio import params_edit as PE
+    ref = _snapshot(copy)
+
+    def _same(what):
+        return _same_files(copy, ref, what, "[PARAMS]")
+    status, d = st.call("get_all")
+    D0 = d["data"]
+    P0 = D0["params_edit"]
+    spec, sha0, lists = P0["spec"], P0["sha"], P0["lists"]
+    check(D0["changed"] == [], f"[PARAMS] fresh setup: changed {D0['changed']}")
+    raw = (copy / "parameters.json").read_bytes()
+    check(PE.format_spec(json.loads(raw), PE.eol_of(raw)) == raw,
+          "[PARAMS] the writer does not reproduce parameters.json byte for byte")
+    check(len(lists) >= 1 and all((copy / r).is_file() for r in lists),
+          f"[PARAMS] the parameter lists: {lists}")
+    names = [p["name"] for p in spec["parameters"]]
+    sha = sha0
+    cases = 0
+
+    def back(what):
+        nonlocal sha
+        sha = _save(st, f"{what}, back", spec, sha)
+        _same(f"{what}, then back")
+
+    # 1. Each parameter: its range, its name, gone -- and back.
+    for i, name in enumerate(names):
+        s = copymod.deepcopy(spec)
+        p = s["parameters"][i]
+        p["max"] = p["max"] + p["step"] * 2
+        sha = _save(st, f"{name} range", s, sha)
+        _lists_agree(copy, lists, s, f"{name} range")
+        back(f"{name} range")
+        s = copymod.deepcopy(spec)
+        new = name + "Qx"
+        s["parameters"][i]["name"] = new
+        for g in s["groups"]:
+            g["order"] = [new if n == name else n for n in g["order"]]
+        sha = _save(st, f"{name} renamed", s, sha, {name: new})
+        saved = json.loads((copy / "parameters.json").read_bytes())
+        check(name in saved.get("retired", []), f"[PARAMS] {name} renamed: the old name is not retired")
+        _lists_agree(copy, lists, s, f"{name} renamed")
+        sha = _save(st, f"{name} renamed, back", spec, sha, {new: name})
+        _same(f"{name} renamed, then back")
+        s = copymod.deepcopy(spec)
+        del s["parameters"][i]
+        for g in s["groups"]:
+            g["order"] = [n for n in g["order"] if n != name]
+        sha = _save(st, f"{name} removed", s, sha)
+        _lists_agree(copy, lists, s, f"{name} removed")
+        back(f"{name} removed")
+        # moved within its group (the order the lists follow)
+        j = next((k for k in range(i + 1, len(names)) if spec["parameters"][k]["group"] == spec["parameters"][i]["group"]), None)
+        if j is not None:
+            s = copymod.deepcopy(spec)
+            s["parameters"][i], s["parameters"][j] = s["parameters"][j], s["parameters"][i]
+            sha = _save(st, f"{name} moved", s, sha)
+            _lists_agree(copy, lists, s, f"{name} moved")
+            back(f"{name} moved")
+        cases += 1
+    # An imported order that moves a parameter across another group's
+    # parameters (and so across the lists' headings), then back.
+    for gi in range(len(spec["groups"]) - 1):
+        a = max(k for k, p in enumerate(spec["parameters"]) if p["group"] == spec["groups"][gi]["id"])
+        b = min(k for k, p in enumerate(spec["parameters"]) if p["group"] == spec["groups"][gi + 1]["id"])
+        s = copymod.deepcopy(spec)
+        s["parameters"][a], s["parameters"][b] = s["parameters"][b], s["parameters"][a]
+        sha = _save(st, f"order across {spec['groups'][gi]['id']}/{spec['groups'][gi + 1]['id']}", s, sha)
+        _lists_agree(copy, lists, s, f"order across groups {gi}")
+        back(f"order across groups {gi}")
+    # 2. A new parameter at the end of each group, in each list's own shape.
+    for g in spec["groups"]:
+        s = copymod.deepcopy(spec)
+        last = max(k for k, p in enumerate(s["parameters"]) if p["group"] == g["id"])
+        s["parameters"].insert(last + 1, {"name": "qzxNew", "type": "int", "min": 1, "max": 4, "step": 1,
+                                          "default": 2, "group": g["id"], "label": "Qzx", "unit": "",
+                                          "db_unit": "", "db_description": "A test parameter"})
+        next(x for x in s["groups"] if x["id"] == g["id"])["order"].append("qzxNew")
+        sha = _save(st, f"new parameter in {g['id']}", s, sha)
+        _lists_agree(copy, lists, s, f"new parameter in {g['id']}")
+        for rel in lists:
+            line = next((ln for ln in (copy / rel).read_bytes().decode("utf-8").splitlines() if "qzxNew" in ln), "")
+            # in the list's own shape: with a "— description" where its entries carry one
+            described = any("— " in ln for ln in ref[rel].decode("utf-8").splitlines()
+                            if re.match(r"^\s*\d+\.", ln))
+            want = "(integer)" in line and (line.rstrip().endswith("— A test parameter [1; 4]") if described
+                                            else line.rstrip().endswith("[1; 4]") and "—" not in line)
+            check(want, f"[PARAMS] new parameter in {g['id']}: {rel} entry {line!r}")
+        back(f"new parameter in {g['id']}")
+    # 3. The prompts: every range changed at once, then the diff and the prompts show it.
+    s = copymod.deepcopy(spec)
+    for p in s["parameters"]:
+        p["max"] = p["max"] + p["step"]
+    sha = _save(st, "every range", s, sha)
+    status, d = st.call("get_all")
+    D1 = d["data"]
+    shown = 0
+    for t in ("7", "5", "3"):
+        for agent, text in D0["prompts"][t]["prompts"].items():
+            for p, q in zip(spec["parameters"], s["parameters"]):
+                old = f"[{PE.num(p['min'])}; {PE.num(p['max'])}]"
+                if re.search(rf"\b{p['name']}\b[^\n]*{re.escape(old)}", text):
+                    new = f"[{PE.num(q['min'])}; {PE.num(q['max'])}]"
+                    ok = re.search(rf"\b{q['name']}\b[^\n]*{re.escape(new)}", D1["prompts"][t]["prompts"][agent])
+                    check(bool(ok), f"[PARAMS] every range: {agent}'s prompt (topology {t}) does not show {q['name']} {new}")
+                    shown += 1
+    check(shown > 0, "[PARAMS] every range: no prompt showed a parameter range")
+    status, r = st.call("diff", {"topology": 7}, "dc_input_creator")
+    check(r.get("ok") and "dc_input_creator" in r["data"]["changed_agents"]
+          and any(op == "+" and "]" in ln for op, ln in r["data"]["lines"]),
+          f"[PARAMS] every range: the diff does not show the Parameter author's changed list: {str(r)[:200]}")
+    # A text field's Undo of a list keeps it in step with the parameters now.
+    lst = D0["slot_specs"][PE.LIST_SLOT]
+    shared = f"{lst['dir']}/{PE.LIST_SLOT}.md"
+    if shared in lists:
+        _call_ok(st, "list undo", "undo_field", PE.LIST_SLOT, None)
+        _lists_agree(copy, [shared], s, "a list's Undo after a range change")
+    back("every range")
+    # 4. Groups and a picture; Undo all.
+    s = copymod.deepcopy(spec)
+    png = next((copy / "assets").glob("*.png")).read_bytes()
+    status, r = st.call("upload_picture", "Qzx Group.png", base64.b64encode(png).decode())
+    check(r.get("ok") and r.get("path") == "/pack/assets/qzx-group.png", f"[PARAMS] upload: {str(r)[:200]}")
+    for fname, bad, why in (("Qzx Bad1.png", b"not a png", "Only PNG"),
+                            ("Qzx Bad2.png", b"\x89PNG\r\n\x1a\n" + b"0" * (2 * 1024 * 1024), "limit is 2 MB"),
+                            ("Qzx Group.png", png, "already exists")):
+        status, r = st.call("upload_picture", fname, base64.b64encode(bad).decode())
+        check(r.get("ok") is False and why in r.get("error", ""), f"[PARAMS] upload refused ({why}): {str(r)[:200]}")
+    moved = s["parameters"][-1]["name"]
+    for g in s["groups"]:
+        g["order"] = [n for n in g["order"] if n != moved]
+    s["groups"].append({"id": "qzx", "label": "Qzx", "image": "/pack/assets/qzx-group.png",
+                        "image_alt": "Qzx", "order": [moved]})
+    s["parameters"][-1]["group"] = "qzx"
+    s["groups"][0]["label"] += " Q"
+    s["groups"][0], s["groups"][1] = s["groups"][1], s["groups"][0]
+    sha = _save(st, "groups", s, sha)
+    _lists_agree(copy, lists, s, "groups")
+    r = _call_ok(st, "undo all", "undo_parameters")
+    sha = r.get("sha", sha)
+    _same("groups and a picture, then Undo all")
+    # 5. Imports: the same file, a changed one; a CSV.
+    status, r = st.call("preview_parameters", spec, sha, {})
+    check(r.get("ok") and r.get("same") is True and not r.get("lists"),
+          f"[PARAMS] importing the same file: not \"no change\": {str(r)[:200]}")
+    s = copymod.deepcopy(spec)
+    s["parameters"][0]["max"] += s["parameters"][0]["step"]
+    gone = s["parameters"].pop(3)["name"]
+    for g in s["groups"]:
+        g["order"] = [n for n in g["order"] if n != gone]
+    status, r = st.call("preview_parameters", s, sha, {})
+    c = r.get("changes") or {}
+    code_ok = (gone in r.get("code_uses", {})) == bool(PE.code_uses(copy, [gone])[gone])
+    check(bool(r.get("ok")) and c.get("removed") == [gone] and names[0] in c.get("fields", {})
+          and len(r.get("lists", [])) == len(lists) and r.get("database") is True and code_ok,
+          f"[PARAMS] import preview: {str(r)[:300]}")
+    _same("after previews (nothing written)")
+    sha = _save(st, "import", s, sha)
+    _lists_agree(copy, lists, s, "import")
+    sha = _call_ok(st, "undo all", "undo_parameters").get("sha", sha)
+    _same("import, then Undo all")
+    p1 = spec["parameters"][1]
+    csv_text = f"name,max,label\n{p1['name']},{PE.num(p1['max'] + p1['step'])},Qzx label\n"
+    status, r = st.call("csv_parameters", csv_text)
+    s = r.get("spec") or {}
+    check(r.get("ok") and r.get("problems") == [] and s.get("parameters", [{}, {}])[1].get("label") == "Qzx label",
+          f"[PARAMS] CSV: {str(r)[:200]}")
+    if s:
+        sha = _save(st, "CSV", s, sha)
+        _lists_agree(copy, lists, s, "CSV")
+        back("CSV")
+    for text, words in (("name,qzx\na,1\n", "Unknown column"), ("min,max\n1,2\n", "no \"name\""),
+                        (f"name,max\n{p1['name']},abc\n", "not a number"), ("name,min,max\nqzxNew,1,2\n", "needs a group"),
+                        ("name,min,max,group\nqzxNew,1,2,nogroup\n", "does not exist")):
+        status, r = st.call("csv_parameters", text)
+        check(any(words in p for p in r.get("problems", [])), f"[PARAMS] CSV {text!r}: not refused ({words}): {r.get('problems')}")
+    # 6. Refusals: the engine's own messages; nothing written.
+    opened = json.loads(raw)
+    bad_specs = []
+
+    def bad(edit):
+        s = copymod.deepcopy(spec)
+        edit(s)
+        bad_specs.append(s)
+    bad(lambda s: s["parameters"][0].update(min=s["parameters"][0]["max"] + 1))
+    bad(lambda s: s["parameters"][1].update(default=10 ** 6))
+    bad(lambda s: s["parameters"][0].update(step=0.5, type="int"))
+    bad(lambda s: s["parameters"][2].update(name="2bad"))
+    bad(lambda s: s["parameters"][3].update(name=s["parameters"][4]["name"]))
+    bad(lambda s: s["parameters"][5].pop("unit"))
+    bad(lambda s: s["parameters"][6].update(colour="red"))
+    bad(lambda s: s["parameters"][7].update(group="qzx_missing"))
+    bad(lambda s: s["groups"][0]["order"].append("qzx_nobody"))
+    bad(lambda s: s["groups"][1]["order"].append(s["groups"][0]["order"][0]))
+    bad(lambda s: s["parameters"][8].update(min="a"))
+    bad(lambda s: s["groups"][0].pop("image_alt"))
+    bad(lambda s: s["parameters"][0].update(step=0))
+    bad(lambda s: s["parameters"][1].update(type="double"))
+    bad(lambda s: s["parameters"][2].update(label=7))
+    bad(lambda s: s.update(retired=["qzxOld", "qzxOld", "9bad"]))
+    bad(lambda s: s.update(retired="qzxOld"))
+    bad(lambda s: s["groups"].append(dict(s["groups"][0], order=[])))
+    bad(lambda s: s["groups"].append("qzx"))
+    bad(lambda s: s["parameters"].append("qzx"))
+    for s in bad_specs:
+        status, r = st.call("save_parameters", s, sha, {})
+        want = eparams.validate(PE.retire(spec, PE.normalise(s), opened))
+        check(r.get("ok") is False and r.get("problems") == want and want,
+              f"[PARAMS] a bad file: refused with {r.get('problems')}, the engine says {want}")
+    status, r = st.call("save_parameters", spec, "0" * 64, {})
+    check(r.get("ok") is False and r.get("conflict") is True, f"[PARAMS] a stale page: not a conflict: {str(r)[:200]}")
+    status, r = st.call("save_parameters", spec, sha, {"qzxA": "qzxB"})
+    check(r.get("ok") is False and any("renaming" in p for p in r.get("problems", [])),
+          f"[PARAMS] a rename that does not match: not refused: {str(r)[:200]}")
+    _same("after the refused saves")
+    # The page checks a file exactly as the engine does (Node runs the page's own code).
+    js = _js_validate([spec] + bad_specs + [{"groups": [], "parameters": []}, [], {"groups": [], "parameters": [{}], "x": 1}])
+    if js is not None:
+        for s, got in zip([spec] + bad_specs + [{"groups": [], "parameters": []}, [], {"groups": [], "parameters": [{}], "x": 1}], js):
+            want = eparams.validate(s)
+            check(got == want, f"[PARAMS] the page checks a file otherwise than the engine: {got} != {want}")
+    # 7. Every access cell through every state, and back; the refusals.
+    yref = (copy / "pack.yaml").read_bytes()
+    ysha = P0["pack_yaml_sha"]
+    pa = D0["parameter_access"]
+    states = [x["id"] for x in pa["states"]]
+    cells = 0
+    for row in pa["rows"]:
+        for t, orig in row["cells"].items():
+            for state in states:
+                if state == orig:
+                    continue
+                status, r = st.call("set_access", row["agent"], t, state, ysha)
+                if state == "tool" and row["agent"] in pa["no_tool"]:
+                    check(r.get("ok") is False, f"[PARAMS] {row['agent']} took \"tool\"")
+                    continue
+                check(r.get("ok") is True, f"[PARAMS] access {row['agent']} {t} {state}: {str(r)[:200]}")
+                ysha = r.get("pack_yaml_sha", ysha)
+                now = PE.access_rows((copy / "pack.yaml").read_bytes().decode("utf-8").replace("\r\n", "\n"))
+                check(now[row["agent"]][1][t] == state, f"[PARAMS] access {row['agent']} {t}: not {state} in pack.yaml")
+                status, r = st.call("set_access", row["agent"], t, orig, ysha)
+                ysha = r.get("pack_yaml_sha", ysha)
+                check((copy / "pack.yaml").read_bytes() == yref,
+                      f"[PARAMS] access {row['agent']} {t} {state} and back: pack.yaml not byte for byte")
+                cells += 1
+    for args, words in ((("qzx_agent", "7", "full"), "has no cell"), (("planner", "9", "full"), "has no cell"),
+                        (("planner", "7", "qzx"), "is not a state")):
+        status, r = st.call("set_access", *args, ysha)
+        check(r.get("ok") is False and words in r.get("error", ""), f"[PARAMS] access {args}: {str(r)[:200]}")
+    status, r = st.call("set_access", "planner", "7", "full", "0" * 64)
+    check(r.get("ok") is False and r.get("conflict") is True, "[PARAMS] access with a stale page: not a conflict")
+    hub = next(r for r in pa["rows"] if r["agent"] == "planner")
+    other = next(x for x in states if x != hub["cells"]["7"] and x != "tool")
+    status, r = st.call("set_access", "planner", "7", other, ysha)
+    _call_ok(st, "undo access", "undo_access", "planner")
+    check((copy / "pack.yaml").read_bytes() == yref, "[PARAMS] undo_access: pack.yaml not byte for byte")
+    _same("after the parameter editor")
+    return (f"{cases} parameters each changed / renamed / removed / moved and back, a new one in each of "
+            f"{len(spec['groups'])} groups, {len(lists)} lists kept in step, {shown} ranges seen in the "
+            f"prompts, groups + a picture, imports, CSV, {len(bad_specs)} bad files refused, {cells} access "
+            f"changes; byte for byte" + ("" if js is not None else "; Node not found: page check not run"))
+
+
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     _run(check_cache_unit, "[CACHE]")
@@ -825,6 +1161,7 @@ def main() -> int:
             summary["pool"] = _run(lambda: check_pool(D, copy), "[VIEWER]")
             summary["cache"] = _run(lambda: check_cache(st, D, copy, first), "[CACHE]")
             summary["edit"] = _run(lambda: check_edit(st, copy), "[EDIT]")
+            summary["params"] = _run(lambda: check_params(st, copy), "[PARAMS]")
             summary["first"] = f"{first:.0f} s"
     finally:
         if st is not None:
@@ -834,7 +1171,7 @@ def main() -> int:
           f"engine reads them; {summary.get('where')} field texts (per topology) found in a "
           f"prompt, each with its sentences there; {summary.get('prompts')} prompts = the prompt matrix's base; "
           f"{summary.get('cache')}; {summary.get('viewer')}; {summary.get('pool')}; "
-          f"editing: {summary.get('edit')}")
+          f"editing: {summary.get('edit')}; parameters: {summary.get('params')}")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
@@ -842,7 +1179,8 @@ def main() -> int:
         return 1
     print("\nPASS - the Studio shows every field of the setup, where each one lands, and "
           "the engine's own prompts and tools under every choice of settings, sees "
-          "a changed file, and edits every text field and puts it back byte for byte.")
+          "a changed file, edits every text field, parameter and access cell, and puts "
+          "each back byte for byte.")
     return 0
 
 

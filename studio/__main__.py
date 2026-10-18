@@ -23,12 +23,13 @@ def default_pack() -> Path:
 def main(argv: list[str] | None = None) -> int:
     ap = argparse.ArgumentParser(
         prog="python -m studio",
-        description="The MAS Studio (MAS-blueprint P5-P6a): a setup's "
+        description="The MAS Studio (MAS-blueprint P5-P6b): a setup's "
                     "parameters, text fields, tools and settings, where each "
                     "text lands in the agents' prompts, and every agent's "
                     "prompt and tools under any choice of settings, as the "
-                    "engine assembles them; it edits the text fields, in the "
-                    "setup's own files.")
+                    "engine assembles them; it edits the text fields, the "
+                    "parameters and the agent access, in the setup's own "
+                    "files.")
     ap.add_argument("--pack", type=Path, default=None,
                     help="the setup folder (default: dc_pack/ of this repository, "
                          "or DC_PACK_DIR)")

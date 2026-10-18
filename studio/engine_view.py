@@ -4,6 +4,7 @@
     python -m studio.engine_view assemble <base|all_on> <7|5|3>
     python -m studio.engine_view view <choice.json>
     python -m studio.engine_view worker          (then one choice on stdin)
+    python -m studio.engine_view checker         (then parameter files on stdin)
 
 MAS-blueprint P5a.  The Studio's screens read one dict, :func:`build`:
 
@@ -890,6 +891,26 @@ def build(pack_dir: Path | None = None) -> dict:
     return data
 
 
+def checker() -> int:
+    """The engine's own parameter check (``engine/parameters.py``
+    ``validate``) for the Studio's parameter editor (P6b): one JSON line in
+    -- ``{"parameters": <a parameters.json>}`` --, one line out --
+    ``{"problems": [...]}`` --, until stdin closes.  The check reads nothing
+    but the file it is given, so one process answers every change."""
+    load_engine()
+    from engine import parameters as ep
+    for line in sys.stdin:
+        if not line.strip():
+            continue
+        try:
+            out = {"problems": ep.validate(json.loads(line)["parameters"])}
+        except Exception as exc:                            # noqa: BLE001
+            out = {"problems": [f"the check failed: {type(exc).__name__}: {exc}"]}
+        sys.stdout.write(json.dumps(out) + "\n")
+        sys.stdout.flush()
+    return 0
+
+
 def _main(argv: list[str]) -> int:
     if argv[:1] in (["static"], ["assemble"], ["view"]):
         hold_files()
@@ -901,6 +922,8 @@ def _main(argv: list[str]) -> int:
         payload = view(json.loads(Path(argv[1]).read_text(encoding="utf-8")))
     elif argv[:1] == ["worker"]:
         return worker()
+    elif argv[:1] == ["checker"]:
+        return checker()
     else:
         sys.stderr.write(__doc__.split("\n\n")[1] + "\n")
         return 2
