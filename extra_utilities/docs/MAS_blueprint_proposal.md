@@ -1,8 +1,10 @@
 # MAS Blueprint — a multi-agent system you set up for your own design configurator
 
 **Proposal v1 — 2026-10-14, revision 1 the same day** (§0A: the Studio becomes a hosted web
-app).  Written from a design review of the owner's concept, with the owner's decisions
-recorded in §1.  This is the brief for the coding session that will build it.
+app), **revision 2 on 2026-10-18** (§0B: choice and on/off parameters; a CAD model dropped
+into the Studio becomes a configurator).  Written from a design review of the owner's
+concept, with the owner's decisions recorded in §1.  This is the brief for the coding
+session that will build it.
 
 MAS = multi-agent system.  DC = design configurator (the parametric model the agents
 drive — today, the propeller).  "Pack" = the one folder that holds everything specific to
@@ -78,6 +80,140 @@ needs the multi-user work (F22) and a bring-your-own-key policy, so it comes aft
   upload; the server stores nothing after the browser session.
 * **Hosting.**  The Studio is deployed as its own service (not inside the propeller app),
   holding no engine secrets (no LLM, database or R2 keys) — nothing in it is worth stealing.
+
+---
+
+## 0B. Revision 2 (2026-10-18): choice and on/off parameters; a CAD model dropped into the Studio becomes a configurator
+
+**What the owner asked.**  A configurator built in a CAD tool should become a working tool
+of the system by dropping its file into the Studio: the Studio connects the geometry file
+and writes everything around it (the runner, the parameter file, the agents' lists), so it
+works straight away.  The first case is the **vacuum hose adapter**, an OpenSCAD model
+(`ostat/vacuum-hose-adapter-openscad`; a copy is in `MT Coding/DCs/vacuum-hose-adapter-openscad-main/`).
+The file to drop is `combined/vacuum-hose-adapter.scad` (388 KB, every include pasted in,
+needs no other file).  Two owner decisions come with it: **`parameters.json` must allow
+choices and on/off switches**, and **pairs and triples are split into separate
+parameters**.
+
+**What such a file holds.**  An OpenSCAD "customizer" file starts with its settings, each
+with optional comments, and ends with one call that builds the model from them.  Measured
+on that file:
+
+| In the file | Count | Becomes |
+|---|---|---|
+| Settings, in groups (`/* [Connector 1 - Flange] */`) | 194 in 23 groups | parameters and their groups |
+| A comment line above a setting | 157 | its label and description |
+| Numbers | 131 — **none with a `[min:max]` range**, only a step (`//0.1`) | number parameters; their ranges must be filled in |
+| Choices with labels (`// [hose: Hose connector, mag: Magnetic Flange, …]`) | 34 (one of them a list of numbers) | choice parameters |
+| `true` / `false` | 10 | on/off switches |
+| Pairs and triples (`[100,0]`, `[0,0]`, `[10,5,10]`, `["",1]`) | 16 | split parameters (B) |
+| Free text | 3 | left out, or fixed values |
+
+**A. Choice and on/off parameters (engine).**  Two types join `int` and `float` in
+`parameters.json`:
+
+```json
+{"name": "End1_Style", "type": "choice", "default": "hose", "group": "end1", "label": "Connector style",
+ "choices": [{"value": "hose", "label": "Hose connector"}, {"value": "mag", "label": "Magnetic flange"}], ...}
+{"name": "End1_Barbs_Symmetrical", "type": "bool", "default": false, "group": "end1", "label": "Symmetrical barbs", ...}
+```
+
+and an optional `"used_when": {"End1_Style": "mag"}` on a parameter that only matters for
+some choices: the agents are told, and the slider page can hide it otherwise.  Everything
+that reads the parameter types must learn the new ones:
+
+* the validator (`engine/parameters.py`) and the check of the record each agent writes;
+* the slider page (a dropdown, a checkbox);
+* the database's parameter schema, and the parameter search (numbers compare by distance;
+  choices and switches match or not);
+* the agents' parameter lists — a new entry shape, e.g.
+  ` 5. End1_Style (choice) — Connector style: hose | mag | flange` — and `dc_params_list`;
+* the "names only" access mode and the drift check;
+* the Studio's parameter editor (a type with a values editor), Paste CSV and the list
+  updater (`studio/params_edit.py`).
+
+The propeller setup uses neither type, so every one of its prompts and tool sets must stay
+identical.
+
+**B. Pairs and triples are split.**  The parameter file stays a list of single values; the
+tool puts the parts back together before the model runs.  An `[x, y]` offset or a nozzle's
+`[w, h, d]` becomes two or three numbers.  **A `[mm, inch]` pair is one value in two units,
+not two values**: the library uses the inch number whenever it is above 0
+(`modules/connectors/connector_object.scad` line 172, `input[inch] * 25.4`), otherwise the
+mm number.  So it becomes ONE millimetre parameter, with the inch part fixed at 0 — exposing
+both would let an agent set both, and the inch value would silently win.  Colours
+(`["", 1]`) are cosmetic and left out.
+
+**C. One OpenSCAD runner, in the engine.**  No Python is written per configurator: the
+generator's `tool.yaml` names the model file instead of code.
+
+```yaml
+kind: generator
+backend: openscad            # the engine's runner
+model: vacuum-hose-adapter.scad
+parts:                       # how split parameters go back together (B)
+  End1_Diameter: [End1_Diameter_mm, 0]
+  Transition_Offset: [Transition_Offset_x, Transition_Offset_y]
+fixed: {Enable_Debug_Slice: "disable", Enable_Help: false}   # settings the agents never change
+detail: {agent: {fa: 6, fs: 1}, download: {fa: 3, fs: 0.1}}
+timeout: 120
+```
+
+The runner:
+
+1. writes the values as an OpenSCAD parameter set (the JSON that `openscad -p set.json -P
+   name` reads; safer than `-D` flags for text and lists);
+2. runs OpenSCAD within the time limit;
+3. reads the STL and converts it to OBJ with trimesh (the engine's model format stays `obj`);
+4. renders the views with the shared renderer — today `render_mesh.py` in the propeller
+   tool, already generic; it moves into the engine;
+5. returns the report, with OpenSCAD's own ECHO / WARNING / ERROR lines for the agent.
+
+The same declaration serves as the geometry tool for the Download buttons.  OpenSCAD is
+found through `OPENSCAD_PATH` or the PATH; a missing program gives a clear error, and the
+Studio says so.
+
+**D. The Studio import ("New tool from a CAD file").**  It lives in P6c's New tool overlay.
+The user drops a `.scad` file (or a zip with its includes, then picks the main file).  The
+Studio reads the customizer — groups, comment lines, choice lists, ranges where present,
+steps, `true` / `false`, pairs — and shows one review table:
+
+* each setting becomes a parameter, a fixed value or nothing (proposed: the "other" and
+  "Model detail" groups, colours and free text are not parameters);
+* pairs and triples are split (B);
+* missing ranges are marked, and **required before saving**;
+* dependencies are proposed from the group names ("Connector 1 - Magnetic Connector" →
+  `used_when: {End1_Style: mag}`) for the user to confirm.
+
+Saving writes `tools/<name>/` (the `.scad` file and its `tool.yaml`), `parameters.json`,
+the agents' parameter lists generated from it (hand-editable afterwards, and kept in step as
+in P6b), and `pack.yaml`'s Download tool and render samples (from the defaults, or from an
+OpenSCAD presets file when one comes with the model).  **Test tool** then builds the
+defaults and shows the renders.
+
+**What stays with the user** (a file cannot say it):
+
+* the ranges;
+* which settings the agents may change, and the dependencies (proposed, then confirmed);
+* the configurator's texts — name, description, structure, examples (99 fields); an AI
+  draft from the model's own readme and docs is §12's "Draft with AI", approved by the owner;
+* OpenSCAD installed where the agents run: the user's computer, and the Railway image
+  (Debian's `openscad` package is the 2021 version — to be tested with the file; the
+  author tests with a 2026 snapshot).
+
+**Order** (§10): P6d parameter types → P6e the OpenSCAD runner → P6f the Studio import,
+after P6c's New tool overlay.  The hose adapter is the acceptance case of P6e and P6f.
+
+**Open questions for the owner**, asked before each step:
+
+* the agents' list format for choices and switches;
+* whether the "names only" access mode shows the choices;
+* whether the web app's 3D viewer should also read STL, instead of converting to OBJ;
+* the hosted Studio (P7b): an uploaded `.scad` file is code run on the server — keep the
+  import local-only, or sandbox it;
+* **licence**: the hose adapter is GPL-3, and its header asks not to host the script on any
+  site and to credit generated models with a link to the repo — fine on the owner's
+  computer; ask the author before deploying it.
 
 ---
 
@@ -599,7 +735,10 @@ steps 1, 3 and 6 run on the user's machine.*
 | P3 | Tool contract, plugin loader, role binding, insertion sections, `IF` flags, tool settings; port the propeller generator and blade-sections tool to plugins. | Prompts identical (or every diff approved); tool schema texts identical; a propeller run produces the same files and hand-off. |
 | P4 | Python-side DC text (C10 / F106); engine-generated hand-off labels; the web app made generic (§7). | Prompts identical; web app works with the propeller pack. |
 | P5 | Studio, read-only: pack browser, the 3-column grid, prompt viewer. | Every slot visible with "where it lands". |
-| P6 | Studio editing: grid with the link icon, parameters editor, New tool overlay + Test tool, settings & secrets. | Round-trip: editing then reverting leaves the pack byte-identical. |
+| P6 | Studio editing: grid with the link icon, parameters editor, New tool overlay + Test tool, settings & secrets (owner, 2026-10-18: three steps — P6a text fields, P6b parameters and agent access, P6c tools and settings). | Round-trip: editing then reverting leaves the pack byte-identical. |
+| P6d | Choice and on/off parameter types and `used_when` (§0B-A): validator, agents' records, slider page, database schema and parameter search, agents' lists and `dc_params_list`, access modes, drift check, Studio editor / Paste CSV / list updater. | Propeller: 315 prompts and 270 tool sets identical; a test setup with choices and switches validates, shows them on the slider page and in the lists, and saves to a database stand-in. |
+| P6e | The engine's OpenSCAD runner (§0B-B/C): a `backend: openscad` generator and geometry tool — parameter set → OpenSCAD → STL → OBJ → shared renderer; `parts`, `fixed`, `detail`, `timeout`. | The hose adapter's sample configurations (`samples/*.stl`, e.g. `50mm_hose_to_30mm_hose`) rebuilt from parameters match the samples (bounding box and volume within tolerance); a missing OpenSCAD gives a clear error. |
+| P6f | "New tool from a CAD file" in the Studio (§0B-D): customizer reader, review table, generated tool / parameters / lists / `pack.yaml`, Test tool. | Dropping `combined/vacuum-hose-adapter.scad`, filling the ranges and pressing Test tool renders the default adapter; removing the tool again leaves the setup byte-identical. |
 | P7 | Validate; the two downloads (setup file, full package); local `prepare` command; `DEPLOY.md`. | Studio → propeller example → Validate green → download full package → `prepare` → deploys on Railway; the setup file re-imports byte-identically. |
 | P7b | Hosted Studio: landing page (3 buttons), `STUDIO_MODE=hosted`, own service, upload limits, browser autosave. | No code path in hosted mode imports pack Python (test: a pack whose tool raises on import validates and downloads fine). |
 | P8 | User docs ("Getting started", "Write a tool", "Adapters"); **acceptance test with a throw-away second DC** (not shipped, per D3) built only through the Studio. | The throw-away DC runs a full session. |
@@ -680,3 +819,6 @@ with the feature off — fixable once flags are generic, §4.5), F105 (rename
 * **Hosted Studio abuse**: uploads are limited in size and type, nothing is kept server-side,
   and no pack code runs there (§0A); the propeller demo keeps its invite code.
 * **Licensing** of example assets (the Grasshopper file, images) before any public release.
+* **Third-party CAD runtimes** (OpenSCAD, §0B): render time at fine detail, differences
+  between OpenSCAD versions, and an uploaded model is code — the hosted Studio must not run
+  it unsandboxed.
