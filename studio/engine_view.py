@@ -479,8 +479,9 @@ def hold_files() -> None:
 
 
 def worker() -> int:
-    """Load :data:`PRELOAD`, then wait for ONE choice (a JSON line on stdin),
-    answer its view on stdout and end.  An empty line ends it unused."""
+    """Load :data:`PRELOAD`, then wait for ONE choice (a JSON line on stdin;
+    ``pack_dir`` in it names another copy of the setup), answer its view on
+    stdout and end.  An empty line ends it unused."""
     load_engine()
     for name in PRELOAD:
         try:
@@ -491,7 +492,14 @@ def worker() -> int:
     line = sys.stdin.readline()
     if not line.strip():
         return 0
-    payload = view(json.loads(line))
+    job = json.loads(line)
+    # A job may name another copy of the setup (the Studio's OPENED copy,
+    # for the prompt diff); engine/pack.py reads config.DC_PACK_DIR per call.
+    other = job.pop("pack_dir", None)
+    if other:
+        import config
+        config.DC_PACK_DIR = Path(other)
+    payload = view(job)
     sys.stdout.buffer.write(json.dumps(payload, default=str).encode("utf-8"))
     return 0
 
@@ -606,8 +614,8 @@ def slots(P, pack_origin: dict, roles: dict, order: dict | None = None) -> list:
         for ag in agents:
             v = _topology_texts(pack, folder, f"{slot}@{ag}", spec)
             if any(x is not None for x in v.values()):
-                variants.append({"agent": ag, "values": v})
-        present = [x for x in vals.values() if x is not None]
+                variants.append({"agent": ag, "values": v,
+                                 "linked": (folder / f"{slot}@{ag}.md").is_file()})
         out.append({
             "slot": slot, "origin": pack_origin.get(slot, "dc"),
             "owner": claims.get(slot),
@@ -617,7 +625,9 @@ def slots(P, pack_origin: dict, roles: dict, order: dict | None = None) -> list:
                 "Per-agent overlay: each agent's own text for this tool; "
                 "agents without a file get nothing." if overlay else ""),
             "values": vals,
-            "linked": overlay or (len(present) == 3 and len(set(present)) == 1),
+            # Linked = ONE file for every topology (what an edit changes);
+            # an overlay has no shared text at all.
+            "linked": overlay or (folder / f"{slot}.md").is_file(),
             "variants": variants,
         })
     return out
@@ -797,6 +807,47 @@ def tool_info() -> dict:
     return out
 
 
+def editing_data(P, slot_list: list) -> dict:
+    """What the Studio's editor needs (P6a), read through the engine: each
+    text field's folder (``dir``, relative to the setup; None for text
+    about a tool the setup lacks), kind and trimming; the ``$names`` and
+    ``<<IF:...>>`` flags a text may use; the setup's tool names; and, per
+    field and topology, the file the engine actually reads (``resolve``:
+    a topology without its own file reads another one)."""
+    from engine import pack_flags, pack_tools
+    pack = P._pack
+    root = pack.pack_dir()
+    claims = pack.tool_claims()
+    specs = {}
+    for name, spec in pack.slots(source="pack", use="prompt").items():
+        if name in claims:
+            folder = pack.tool_prompts_dir(claims[name]).relative_to(root).as_posix()
+        elif spec.get("filled_by") == "tool":
+            folder = None
+        else:
+            folder = (pack.fragments_dir() / spec["folder"]).relative_to(root).as_posix()
+        specs[name] = {"dir": folder, "kind": spec["kind"],
+                       "strip": spec.get("strip", "right"),
+                       "missing": spec.get("missing", "crash")}
+
+    def rel(path):
+        return None if path is None else f"{root.name}/{path.relative_to(root).as_posix()}"
+    resolve = {}
+    for s in slot_list:
+        rows = {"": {str(n): rel(pack.fragment_path(s["slot"], n)) for n in TOPOLOGIES}}
+        for v in s["variants"]:
+            rows[v["agent"]] = {str(n): rel(pack.fragment_path(s["slot"], n, v["agent"]))
+                                for n in TOPOLOGIES}
+        resolve[s["slot"]] = rows
+    return {
+        "slot_specs": specs,
+        "text_names": sorted(set(P._build_slots()) | set(pack.registry())),
+        "text_flags": sorted(set(pack_flags.values()) | {"param_list", "param_ranges"}),
+        "pack_tools": sorted(pack_tools.manifests()),
+        "resolve": resolve,
+    }
+
+
 def static_data() -> dict:
     """Everything the Studio shows that is read, not assembled."""
     load_engine()
@@ -804,6 +855,7 @@ def static_data() -> dict:
     from engine import parameters as ep
     pack = P._pack
     role_map = roles()
+    slot_list = slots(P, pack_slots(P), role_map)
     return {
         "pack": {"name": pack.read("dc_name", 7),
                  "domain": pack.read("domain_description", 7),
@@ -811,8 +863,9 @@ def static_data() -> dict:
         "pack_dir": str(pack.pack_dir()),
         "parameters": parameters(pack),
         "group_images": {g["id"]: g.get("image") for g in ep.load()["groups"]},
-        "slots": slots(P, pack_slots(P), role_map),
+        "slots": slot_list,
         "files": slot_files(pack),
+        **editing_data(P, slot_list),
         "roles": role_map,
         "tools": tools(),
         "tool_info": tool_info(),

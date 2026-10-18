@@ -210,11 +210,10 @@ table.ptab tr.warnrow td:first-child { box-shadow:inset 3px 0 0 var(--warn); }
         background:#15161a; border:1px solid var(--line); border-radius:6px; padding:8px 10px;
         margin:8px 0; overflow:auto; }
 
-/* ---- read-only (MAS-blueprint P5a; editing comes in P6) ------------------------------ */
+/* ---- read-only screens (parameters, access: P6b; tools, settings: P6c) ---------------- */
 .cell textarea[readonly], .cell input[readonly], table.ptab input[readonly] { cursor:default; }
 .cell textarea[readonly]:focus, .cell input[readonly]:focus,
 table.ptab input[readonly]:focus { border-color:var(--line); }
-.trow .link { cursor:default; }
 .seg.ro button { pointer-events:none; }
 .nav .later { color:var(--muted); font-size:10.5px; }
 
@@ -232,3 +231,36 @@ details.vtool .d { font-size:11.5px; color:#b9bec8; white-space:pre-wrap; margin
 details.vtool pre.args { font-family:var(--mono); font-size:10.5px; color:#aeb3bd; background:#15161a;
                          border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin:0;
                          max-height:220px; overflow:auto; }
+
+/* ---- editing the text fields (MAS-blueprint P6a) ------------------------------------ */
+button.mini { padding:1px 8px; font-size:11px; }
+button.link { font-family:inherit; line-height:1.5; }
+button.link:disabled { cursor:default; }
+.trow .racts, td .racts { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
+.trow .racts:empty, td .racts:empty { display:none; }
+td .racts { margin-top:4px; }
+.trow.dirty > div { background:#262016; }
+.trow.dirty > div.fl { box-shadow:inset 3px 0 0 var(--warn); }
+table.ptab tr.dirty td:first-child { box-shadow:inset 3px 0 0 var(--warn); }
+.cell .inh { display:flex; flex-direction:column; gap:4px; align-items:flex-start; }
+.cell textarea::placeholder, .cell input::placeholder { color:#5f6470; font-style:italic; }
+.checks.bad li { color:#ffb3b3; } .checks.good li { color:#8ce99a; } .checks.warn li { color:#ffd8a0; }
+.banner.boxed { border:1px solid #7a2a2a; border-radius:7px; margin:4px 0 8px; line-height:1.5; }
+mark.unsaved { background:rgba(240,200,74,.28); color:#ffe9a8; outline:1px dashed #ffd8a0; }
+.insp .row2 { display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+.insp .row2 select { flex:1 1 160px; min-width:0; }
+.statusbar .msg.busy { color:#a5c8ff; } .statusbar .msg.ok { color:#8ce99a; }
+.statusbar .msg.err { color:#ffb3b3; } .statusbar .msg.warn { color:#ffd8a0; }
+label.pick { display:flex; gap:8px; align-items:flex-start; padding:8px; margin-bottom:6px; cursor:pointer;
+             border:1px solid var(--line); border-radius:7px; background:#202228; font-size:12.5px; }
+label.pick .refval { max-height:120px; }
+
+/* the prompt viewer: changes since the Studio opened */
+.sw.chg { background:var(--warn); }
+.flow .node.chg rect { stroke:var(--warn); }
+.flow .chgdot { fill:var(--warn); }
+.diff .d-add { background:rgba(64,192,87,.14); color:#b2f2bb; }
+.diff .d-del { background:rgba(250,82,82,.14); color:#ffc9c9; text-decoration:line-through; text-decoration-color:#ff8787aa; }
+.diff .d-eq { color:#8a8f99; }
+.diff .d-fold { color:var(--muted); font-style:italic; padding:3px 0; border-top:1px dashed #2a2c33;
+                border-bottom:1px dashed #2a2c33; margin:3px 0; }

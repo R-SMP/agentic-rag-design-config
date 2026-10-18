@@ -1,4 +1,4 @@
-"""The Studio's web server (MAS-blueprint P5: read-only).
+"""The Studio's web server (MAS-blueprint P5-P6: local mode).
 
 Serves the page (``studio/web/``), the setup's pictures (``/pack/assets/``)
 and answers the page's calls: ``POST /api/<name>`` with ``{"args": [...]}``
@@ -15,6 +15,11 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
   a pool of engine processes that wait with the big libraries loaded and
   take one job each; kept per (fingerprint, choice), the 32 most recent.
   The three default views are made right after the first build.
+* the editing calls (P6a) -- ``save_field``, ``unlink_field``,
+  ``link_field``, ``own_copy``, ``remove_copy``, ``undo_field``
+  (``studio/editing.py``), on the setup's own files -- and ``diff``: a view
+  compared with the same view of the setup as the Studio OPENED it (a copy
+  taken when the server starts, also what Undo restores).
 
 This process never imports the engine: the assembler stubs runtime
 packages (FastAPI among them) in the process that runs it.
@@ -23,11 +28,14 @@ packages (FastAPI among them) in the process that runs it.
 from __future__ import annotations
 
 import asyncio
+import difflib
 import hashlib
 import json
 import os
+import shutil
 import subprocess
 import sys
+import tempfile
 import threading
 from collections import OrderedDict
 from concurrent.futures import Future
@@ -38,7 +46,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from studio import engine_view
+from studio import editing, engine_view
 
 WEB = Path(__file__).resolve().parent / "web"
 
@@ -72,6 +80,15 @@ class PackView:
     def get(self) -> dict:
         """The data for the setup as it is now."""
         return self.get_with_fingerprint()[0]
+
+    def latest(self) -> dict:
+        """The last data built, without waiting for a rebuild (what the
+        editing calls need -- folders, names, the roster -- does not change
+        with a text edit); the first build when there is none yet."""
+        with self._lock:
+            if self._data is not None:
+                return self._data
+        return self.get()
 
     def get_with_fingerprint(self) -> tuple[dict, str]:
         """The data for the setup as it is now, and the fingerprint it was
@@ -141,8 +158,10 @@ class WorkerPool:
             while len(self._idle) < self.size:
                 self._idle.append(self._spawn())
 
-    def run(self, choice: dict, timeout: float = 300) -> tuple[dict, bool]:
-        """The view of *choice*, and whether a waiting worker answered it."""
+    def run(self, choice: dict, timeout: float = 300,
+            pack_dir: Path | None = None) -> tuple[dict, bool]:
+        """The view of *choice* (of the setup in *pack_dir*, default the
+        pool's), and whether a waiting worker answered it."""
         with self._lock:
             proc = None
             while self._idle and proc is None:
@@ -154,7 +173,8 @@ class WorkerPool:
                 proc = self._spawn()
         threading.Thread(target=self.fill, daemon=True).start()
         try:
-            out, err = proc.communicate((json.dumps(choice) + "\n").encode("utf-8"),
+            job = dict(choice, pack_dir=str(pack_dir)) if pack_dir else choice
+            out, err = proc.communicate((json.dumps(job) + "\n").encode("utf-8"),
                                         timeout=timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
@@ -211,7 +231,9 @@ class ViewCache:
         self._pending: dict = {}
         self.jobs = 0
 
-    def get(self, fp: str, choice: dict) -> dict:
+    def get(self, fp: str, choice: dict, pack_dir: Path | None = None) -> dict:
+        """The view of *choice* for the setup whose fingerprint is *fp*
+        (*pack_dir*: another copy than the pool's)."""
         key = (fp, json.dumps(choice, sort_keys=True))
         with self._lock:
             if key in self._done:
@@ -221,12 +243,13 @@ class ViewCache:
             if fut is None:
                 fut = Future()
                 self._pending[key] = fut
-                threading.Thread(target=self._run, args=(key, choice, fut), daemon=True).start()
+                threading.Thread(target=self._run, args=(key, choice, fut, pack_dir),
+                                 daemon=True).start()
         return fut.result()
 
-    def _run(self, key, choice: dict, fut: Future) -> None:
+    def _run(self, key, choice: dict, fut: Future, pack_dir: Path | None = None) -> None:
         try:
-            data, pooled = self.pool.run(choice)
+            data, pooled = self.pool.run(choice, pack_dir=pack_dir)
             data["tokens"] = {a: count_tokens(t) for a, t in data["prompts"].items()}
             for tools in data["tools"].values():
                 for t in tools:
@@ -254,10 +277,38 @@ def _fail(error: str, status: int = 200) -> JSONResponse:
     return JSONResponse({"ok": False, "error": error}, status_code=status)
 
 
+def prompt_diff(before: str, after: str) -> list[list[str]]:
+    """Line diff: ``[["=" | "-" | "+", line], ...]``."""
+    a, b = before.split("\n"), after.split("\n")
+    out: list[list[str]] = []
+    for op, i1, i2, j1, j2 in difflib.SequenceMatcher(None, a, b, autojunk=False).get_opcodes():
+        if op == "equal":
+            out += [["=", ln] for ln in a[i1:i2]]
+        else:
+            out += [["-", ln] for ln in a[i1:i2]] + [["+", ln] for ln in b[j1:j2]]
+    return out
+
+
 def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     view = PackView(pack_dir)
     pool = WorkerPool(pack_dir, size=workers)
     views = ViewCache(pool)
+    # The setup as the Studio opened it: Undo restores from it, the prompt
+    # diff compares with it.
+    opened_root = Path(tempfile.mkdtemp(prefix="studio_opened_"))
+    opened_dir = editing.copy_setup(pack_dir, opened_root / pack_dir.name)
+    # Its views are kept under a key of their own: a copy keeps the files'
+    # times, so its fingerprint is the setup's at opening -- and a default
+    # view still being made when the first edit lands is kept under that.
+    opened_key = "opened:" + fingerprint(opened_dir)
+    editor = editing.Editor(pack_dir, opened_dir)
+    changed_cache: dict = {}
+
+    def changed(data: dict, fp: str) -> list[str]:
+        if fp not in changed_cache:
+            changed_cache.clear()
+            changed_cache[fp] = editor.changed(data)
+        return changed_cache[fp]
 
     def first_build() -> None:
         # The data, then the three default views (the prompt viewer opens on
@@ -272,11 +323,13 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
         threading.Thread(target=lambda: _quiet(first_build), daemon=True).start()
         yield
         pool.close()
+        shutil.rmtree(opened_root, ignore_errors=True)
 
     app = FastAPI(title="MAS Studio", lifespan=lifespan, docs_url=None, redoc_url=None)
     app.state.view = view
     app.state.pool = pool
     app.state.views = views
+    app.state.editor = editor
 
     @app.middleware("http")
     async def no_stale_page(request: Request, call_next):
@@ -293,10 +346,59 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     @app.post("/api/get_all")
     async def get_all():
         try:
-            data = await asyncio.to_thread(view.get)
+            data, fp = await asyncio.to_thread(view.get_with_fingerprint)
+            data = dict(data, changed=await asyncio.to_thread(changed, data, fp))
         except Exception as exc:  # noqa: BLE001
             return _fail(f"The engine could not assemble this setup: {exc}")
         return _ok(data=data)
+
+    async def _args(request: Request) -> list:
+        try:
+            return list((await request.json()).get("args") or [])
+        except Exception:  # noqa: BLE001
+            return []
+
+    def _edit(fn):
+        """An editing call: ``fn(data, *args)`` on the latest data; refusals
+        answer ``{ok: false, error, problems}``."""
+        async def endpoint(request: Request):
+            args = await _args(request)
+            try:
+                data = await asyncio.to_thread(view.latest)
+                warnings = await asyncio.to_thread(fn, data, *args)
+            except editing.EditError as exc:
+                return JSONResponse({"ok": False, "error": str(exc), "problems": exc.problems,
+                                     "conflict": isinstance(exc, editing.Conflict)})
+            except TypeError as exc:
+                return _fail(f"Wrong arguments: {exc}")
+            return _ok(warnings=warnings or [])
+        return endpoint
+
+    for name, fn in (("save_field", editor.save), ("unlink_field", editor.unlink),
+                     ("link_field", editor.link), ("own_copy", editor.own_copy),
+                     ("remove_copy", editor.remove_copy), ("undo_field", editor.undo)):
+        app.add_api_route(f"/api/{name}", _edit(fn), methods=["POST"])
+
+    @app.post("/api/diff")
+    async def api_diff(request: Request):
+        args = await _args(request)
+        try:
+            data, fp = await asyncio.to_thread(view.get_with_fingerprint)
+            choice = engine_view.canonical_choice(args[0] if args else {}, data)
+            now, then = await asyncio.gather(
+                asyncio.to_thread(views.get, fp, choice),
+                asyncio.to_thread(views.get, opened_key, choice, opened_dir))
+        except engine_view.ChoiceError as exc:
+            return _fail(f"This setup does not offer that choice: {exc}")
+        except Exception as exc:  # noqa: BLE001
+            return _fail(f"The engine could not assemble this view: {exc}")
+        agents = sorted(set(now["prompts"]) | set(then["prompts"]))
+        changed_agents = [a for a in agents
+                          if now["prompts"].get(a) != then["prompts"].get(a)]
+        agent = args[1] if len(args) > 1 else None
+        lines = (prompt_diff(then["prompts"].get(agent, ""), now["prompts"].get(agent, ""))
+                 if agent else [])
+        return _ok(data={"changed_agents": changed_agents, "lines": lines})
 
     @app.post("/api/view")
     async def api_view(request: Request):

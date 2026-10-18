@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <title>MAS Studio</title>
-<!-- The MAS Studio (MAS-blueprint P5a, read-only), served by
+<!-- The MAS Studio (MAS-blueprint P5a-P6a), served by
      studio/server.py.  bridge.js sends the page's calls to the server
      (POST /api/<name> -> {ok: true, ...} / {ok: false, error}); studio.js
      draws the screens from the data it answers. -->
@@ -13,6 +13,13 @@
 </head>
 <body>
 <div id="app"></div>
+<div class="modal-back" id="modal">
+  <div class="modal" id="modalBox">
+    <header id="modalTitle"></header>
+    <div class="body" id="modalBody"></div>
+    <footer id="modalFoot"></footer>
+  </div>
+</div>
 <script src="/static/studio.js"></script>
 </body>
 </html>

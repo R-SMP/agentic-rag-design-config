@@ -1,4 +1,4 @@
-"""The Studio, read-only (MAS-blueprint P5a): the real server on a copy of the pack.
+"""The Studio (MAS-blueprint P5a-P6a): the real server on a copy of the pack.
 
 ``python -m studio --pack <copy>`` is started as the user starts it, and its
 page and its one call (``POST /api/get_all``) are checked:
@@ -40,7 +40,24 @@ that change what an agent sees (``POST /api/view``):
    ends the waiting ones.  After a change to a file of the setup (group
    5), the default view shows it.
 
-Takes about two minutes.  Run from the repo root:
+Since MAS-blueprint P6a the Studio edits the text fields
+(``studio/editing.py``, ``POST /api/save_field`` and the others):
+
+8. EDIT.  Every field -- each shared text and each agent's own copy -- is
+   saved with a marker of its own: the Studio lists it as changed, shows
+   it, and every prompt that held the field's text holds the marked one;
+   the comparison with the setup as the Studio opened it names exactly the
+   agents whose prompts changed.  Put back, the setup is byte for byte as
+   it was.  Unlinking every linked field and giving every shared text an
+   own copy changes no prompt; linking again and removing the copies, or
+   linking an unlinked field and Undo, leave the setup byte for byte as it
+   was.  Braces, a line break in a one-line field, an unknown $name or
+   flag, an unclosed marker are refused with their reason; a stale page,
+   and a change to a field whose files changed, as a conflict; none of
+   them writes anything.  A file keeps its line endings.  The page checks
+   a text exactly as the server does (Node runs the page's own code).
+
+Takes about four minutes.  Run from the repo root:
     py -3.13 extra_utilities/tests/smoke_test_studio.py
 """
 from __future__ import annotations
@@ -289,6 +306,7 @@ def check_cache(st: Studio, D: dict, copy: Path, first_secs: float) -> str:
     check(status == 200 and v.get("ok")
           and any(marker in p for p in v["data"]["prompts"].values()),
           f"[VIEWER] {rel} changed, the default view still shows the old prompts")
+    path.write_bytes(raw)                    # the setup as it was, for group 8
     return f"kept copy in {again:.2f} s; after a change to {rel}, rebuilt in {rebuilt:.0f} s"
 
 
@@ -493,6 +511,293 @@ def check_generic() -> None:
 
 
 # ---------------------------------------------------------------------------
+# editing (P6a)
+# ---------------------------------------------------------------------------
+
+def _snapshot(folder: Path) -> dict:
+    """Every file of a setup folder: relative path -> bytes."""
+    return {p.relative_to(folder).as_posix(): p.read_bytes() for p in sorted(folder.rglob("*"))
+            if p.is_file() and "__pycache__" not in p.parts}
+
+
+def _same_files(copy: Path, ref: dict, what: str) -> bool:
+    now = _snapshot(copy)
+    differ = sorted(set(now) ^ set(ref)) + sorted(k for k in set(now) & set(ref) if now[k] != ref[k])
+    check(not differ, f"[EDIT] {what}: the setup is not byte for byte as it was: {differ[:6]}"
+                      + (f" (+{len(differ) - 6} more)" if len(differ) > 6 else ""))
+    return not differ
+
+
+def _fields(D: dict) -> list:
+    """Every editable field: (slot, agent or None, kind, strip, values, linked)."""
+    out = []
+    for s in D["slots"]:
+        spec = D["slot_specs"][s["slot"]]
+        if spec["missing"] != "empty":
+            out.append((s["slot"], None, s["kind"], spec["strip"], s["values"], s["linked"]))
+        for v in s["variants"]:
+            out.append((s["slot"], v["agent"], s["kind"], spec["strip"], v["values"], v["linked"]))
+    return out
+
+
+def _topologies(D: dict, agent) -> list:
+    if agent is None or agent == "database_handler":
+        return ["7", "5", "3"]
+    return [t for t in ("7", "5", "3") if agent in D["roles"]["roster"][t]]
+
+
+def _call_ok(st: Studio, what: str, name: str, *args) -> dict:
+    status, r = st.call(name, *args)
+    check(status == 200 and r.get("ok") is True, f"[EDIT] {what}: {name} answered {status} {str(r)[:300]}")
+    return r
+
+
+def _js_checks(D: dict, texts: list) -> list | None:
+    """The page's own checkText (studio/web/studio.js) run by Node on *texts*;
+    None when Node is not installed."""
+    node = shutil.which("node")
+    if not node:
+        return None
+    js = STUDIO_JS.read_text(encoding="utf-8")
+    start, end = js.index("  var NAME_RE"), js.index("  function problemsOf")
+    stub = {k: D[k] for k in ("text_names", "text_flags", "pack_tools")}
+    prog = ("var D = " + json.dumps(stub) + ";\n" + js[start:end]
+            + "\nvar cases = " + json.dumps(texts) + ";\n"
+            + "process.stdout.write(JSON.stringify(cases.map(function (c) { return checkText(c[0], c[1]); })));\n")
+    p = subprocess.run([node, "-e", prog], capture_output=True, text=True, encoding="utf-8", timeout=60)
+    if p.returncode != 0:
+        check(False, f"[EDIT] the page's checks do not run: {p.stderr[-300:]}")
+        return []
+    return json.loads(p.stdout)
+
+
+def check_edit(st: Studio, copy: Path) -> str:
+    """Every text field through the server: to a marker and back, unlinked
+    and linked again, given an own copy and freed of it, Undo; the refusals;
+    the comparison with the setup as the Studio opened it."""
+    from studio import editing
+    ref = _snapshot(copy)
+    status, d = st.call("get_all")
+    D0 = d["data"]
+    check(D0.get("changed") == [], f"[EDIT] fresh setup: changed fields {D0.get('changed')}")
+    status, r = st.call("diff", {"topology": 7}, "planner")
+    check(r.get("ok") and r["data"]["changed_agents"] == []
+          and all(op == "=" for op, _ in r["data"]["lines"]),
+          f"[EDIT] nothing changed, yet the diff shows changes: {str(r)[:300]}")
+    fields = _fields(D0)
+
+    # 1. Every field to a marker of its own: saved, shown, in the prompts.
+    marks = {}
+    for i, (slot, agent, kind, strip, values, linked) in enumerate(fields):
+        tag = f"QZX{i}"
+        mark = (lambda t: t + ("\n\n" if kind == "block" else " ") + tag)
+        if linked:
+            vals, base = {"all": mark(values["7"])}, {"all": values["7"]}
+        else:
+            keys = [t for t in _topologies(D0, agent) if values[t] is not None]
+            vals, base = {t: mark(values[t]) for t in keys}, {t: values[t] for t in keys}
+        _call_ok(st, f"{slot}@{agent} to a marker", "save_field", slot, agent, vals, base)
+        marks[(slot, agent)] = tag
+    status, d = st.call("get_all")
+    D1 = d["data"]
+    names = sorted(slot + (f"@{agent}" if agent else "") for slot, agent, *_ in fields)
+    check(D1["changed"] == names,
+          f"[EDIT] changed fields after marking all {len(names)}: {len(D1['changed'])} listed")
+    shown = {(f[0], f[1]): f[4] for f in _fields(D1)}
+    for (slot, agent), tag in marks.items():
+        vals = shown.get((slot, agent), {})
+        check(all(v is None or v.endswith(tag) for v in vals.values()) and any(vals.values()),
+              f"[EDIT] {slot}@{agent}: the Studio does not show the saved text")
+    # Wherever a field's text was in a prompt, the marked text is now.
+    slots = {f[0] for f in fields} | {s["slot"] for s in D0["slots"]}
+    places = {(t, agent, nm) for t in ("7", "5", "3")
+              for agent, spans in D0["prompts"][t]["spans"].items()
+              for _s, _e, nm, _d in spans if nm in slots}
+    landed = 0
+    for t, agent, slot in sorted(places):
+        text = D1["prompts"][t]["prompts"][agent]
+        ok = any(nm == slot and "QZX" in text[s:e]
+                 for s, e, nm, _ in D1["prompts"][t]["spans"].get(agent, []))
+        check(ok, f"[EDIT] {slot}: marked, but {agent}'s prompt (topology {t}) does not show it there")
+        landed += ok
+    # The comparison with the setup as it was opened.
+    want = sorted(a for a in D1["prompts"]["7"]["prompts"]
+                  if D1["prompts"]["7"]["prompts"][a] != D0["prompts"]["7"]["prompts"][a])
+    status, r = st.call("diff", {"topology": 7}, want[0] if want else "planner")
+    got = r.get("data") or {}
+    check(r.get("ok") and got.get("changed_agents") == want,
+          f"[EDIT] diff: changed agents {got.get('changed_agents')} != {want}")
+    check(any(op == "+" and "QZX" in ln for op, ln in got.get("lines", []))
+          and any(op == "-" for op, ln in got.get("lines", [])),
+          "[EDIT] diff: the marked lines are not shown as changed")
+    # ...and back to the opened texts: byte for byte.
+    for slot, agent, kind, strip, values, linked in fields:
+        now = shown[(slot, agent)]
+        if linked:
+            vals, base = {"all": values["7"]}, {"all": now["7"]}
+        else:
+            keys = [t for t in _topologies(D0, agent) if values[t] is not None]
+            vals, base = {t: values[t] for t in keys}, {t: now[t] for t in keys}
+        _call_ok(st, f"{slot}@{agent} back", "save_field", slot, agent, vals, base)
+    _same_files(copy, ref, f"{len(fields)} fields marked and put back")
+
+    # 2. Unlink every linked field, give every shared text an own copy: no
+    #    prompt changes.  Then link again, remove the copies: byte for byte.
+    readers: dict = {}
+    for slot, rows in D0["where"].items():
+        for row in rows:
+            readers.setdefault(slot, set()).update(row["agents"])
+    all_agents = sorted({a for t in D0["roles"]["roster"].values() for a in t} | {"database_handler"})
+    unlinked, copies = [], []
+    for i, (slot, agent, kind, strip, values, linked) in enumerate(fields):
+        has = {a for s, a, *_ in fields if s == slot and a}
+        if agent is None:
+            free = [a for a in sorted(readers.get(slot, ())) if a not in has] + \
+                   [a for a in all_agents if a not in has]
+            if i % 2 and linked and len(_topologies(D0, None)) > 1:
+                _call_ok(st, f"{slot} unlink", "unlink_field", slot, None)
+                unlinked.append((slot, None))
+                linked = False
+            if free:
+                _call_ok(st, f"{slot} own copy for {free[0]}", "own_copy", slot, free[0])
+                copies.append((slot, free[0]))
+        if linked and len(_topologies(D0, agent)) > 1:
+            _call_ok(st, f"{slot}@{agent} unlink", "unlink_field", slot, agent)
+            unlinked.append((slot, agent))
+    for s in D0["slots"]:                       # the per-agent-only fields: a new, empty copy
+        if D0["slot_specs"][s["slot"]]["missing"] == "empty":
+            has = {v["agent"] for v in s["variants"]}
+            free = [a for a in all_agents if a not in has]
+            if free:
+                _call_ok(st, f"{s['slot']} own copy for {free[0]}", "own_copy", s["slot"], free[0])
+                copies.append((s["slot"], free[0]))
+    status, d = st.call("get_all")
+    D2 = d["data"]
+    for t in ("7", "5", "3"):
+        for a, p in D0["prompts"][t]["prompts"].items():
+            check(D2["prompts"][t]["prompts"].get(a) == p,
+                  f"[EDIT] after {len(unlinked)} unlinks and {len(copies)} own copies, "
+                  f"{a}'s prompt (topology {t}) changed")
+    after = {(f[0], f[1]): f for f in _fields(D2)}
+    for slot, agent in unlinked:
+        f = after.get((slot, agent))
+        check(f is not None and f[5] is False
+              and all(f[4][t] is not None for t in _topologies(D0, agent)),
+              f"[EDIT] {slot}@{agent}: after unlink, not one file per topology "
+              f"({None if f is None else {t: f[4][t] is not None for t in f[4]}})")
+    for slot, agent in copies:
+        check((slot, agent) in after, f"[EDIT] {slot}: {agent}'s new own copy is not shown")
+    for slot, agent in copies:
+        _call_ok(st, f"{slot} remove {agent}'s copy", "remove_copy", slot, agent)
+    for slot, agent in unlinked:
+        keep = _topologies(D0, agent)[0]
+        _call_ok(st, f"{slot}@{agent} link", "link_field", slot, agent, keep)
+    _same_files(copy, ref, f"{len(unlinked)} fields unlinked and linked again, "
+                           f"{len(copies)} own copies given and removed")
+
+    # 3. Link every unlinked field (it keeps the 7-agent text, the others
+    #    go), then Undo: byte for byte.
+    relinked = 0
+    for slot, agent, kind, strip, values, linked in fields:
+        if linked or len(_topologies(D0, agent)) < 2:
+            continue
+        keep = next(t for t in _topologies(D0, agent) if values[t] is not None)
+        _call_ok(st, f"{slot}@{agent} link", "link_field", slot, agent, keep)
+        folder = copy / D0["slot_specs"][slot]["dir"]
+        files = editing.field_files(folder, editing.field_name(slot, agent))
+        check(set(files) == {"md"}, f"[EDIT] {slot}@{agent}: after link, files {sorted(files)}")
+        _call_ok(st, f"{slot}@{agent} undo", "undo_field", slot, agent)
+        relinked += 1
+    _same_files(copy, ref, f"{relinked} unlinked fields linked, then Undo")
+
+    # 4. What is refused, and changes nothing.
+    word = next(f for f in fields if f[2] == "word" and f[5] and f[1] is None)
+    phrase = next(f for f in fields if f[2] == "phrase" and f[5] and f[1] is None)
+    block = next(f for f in fields if f[2] == "block" and f[5] and f[1] is None
+                 and f[4]["7"])
+    unl = next(f for f in fields if not f[5] and f[1] is None)
+    overlay = next(s for s in D0["slots"] if D0["slot_specs"][s["slot"]]["missing"] == "empty")
+    with_copy = next((s["slot"], v["agent"]) for s in D0["slots"] for v in s["variants"])
+    missing_tool = "qzx_no_such_tool"
+    refusals = [
+        ("braces", (block[0], None, {"all": "a { b }"}, {"all": block[4]["7"]}), "{ or }"),
+        ("a line break in a phrase", (phrase[0], None, {"all": "a\nb"}, {"all": phrase[4]["7"]}), "one-line"),
+        ("an unknown $name", (block[0], None, {"all": "x $qzx_nope y"}, {"all": block[4]["7"]}), "$qzx_nope"),
+        ("an unclosed marker", (block[0], None, {"all": "<<RAG_ON>>x"}, {"all": block[4]["7"]}), "not closed"),
+        ("an unknown flag", (block[0], None, {"all": "<<IF:qzx>>x<</IF:qzx>>"}, {"all": block[4]["7"]}), "unknown flag"),
+    ]
+    for what, args, words in refusals:
+        status, r = st.call("save_field", *args)
+        check(r.get("ok") is False and any(words in p for p in r.get("problems", [])) and not r.get("conflict"),
+              f"[EDIT] {what}: not refused with its reason: {str(r)[:300]}")
+    conflicts = [
+        ("a stale page", "save_field", (word[0], None, {"all": "x"}, {"all": word[4]["7"] + "?"})),
+        ("linked text for an unlinked field", "save_field",
+         (unl[0], None, {"all": "x"}, {"all": unl[4]["7"]})),
+        ("an own copy that exists", "own_copy", with_copy),
+        ("removing a copy that does not exist", "remove_copy", (word[0], "receptionist")
+         if (word[0], "receptionist") not in {(f[0], f[1]) for f in fields} else (word[0], "tool_caller")),
+        ("linking a linked field", "link_field", (word[0], None, "7")),
+        ("unlinking an unlinked field", "unlink_field", (unl[0], None)),
+    ]
+    for what, name, args in conflicts:
+        status, r = st.call(name, *args)
+        check(r.get("ok") is False and r.get("conflict") is True,
+              f"[EDIT] {what}: not refused as a conflict: {str(r)[:300]}")
+    for what, name, args in [
+            ("a shared text for a per-agent-only field", "save_field",
+             (overlay["slot"], None, {"all": "x"}, {"all": None})),
+            ("an unknown field", "save_field", ("qzx_nope", None, {"all": "x"}, {"all": None})),
+            ("an unknown agent", "own_copy", (word[0], "qzx_agent")),
+            ("no agent", "own_copy", (word[0], None))]:
+        status, r = st.call(name, *args)
+        check(r.get("ok") is False and r.get("error"), f"[EDIT] {what}: not refused: {str(r)[:300]}")
+    _same_files(copy, ref, "after the refused changes")
+    # A flag of a tool the setup lacks reads as off (the engine's rule): allowed.
+    r = _call_ok(st, "a flag of a missing tool", "save_field", block[0], None,
+                 {"all": f"<<IF:tool:{missing_tool}>>x<</IF:tool:{missing_tool}>>"}, {"all": block[4]["7"]})
+    # An empty text is saved, with a warning; Undo puts the field back.
+    r = _call_ok(st, "an empty text", "save_field", block[0], None, {"all": ""},
+                 {"all": f"<<IF:tool:{missing_tool}>>x<</IF:tool:{missing_tool}>>"})
+    check(any("empty" in w for w in r.get("warnings", [])), f"[EDIT] an empty text: no warning {r}")
+    _call_ok(st, "undo", "undo_field", block[0], None)
+    _same_files(copy, ref, "after an edit and Undo")
+    # Line endings: a CRLF file stays CRLF, an LF file LF, the final newline kept.
+    for want in (b"\r\n", b"\n"):
+        f = next((f for f in fields if f[5] and f[2] == "block" and f[4]["7"]
+                  and editing._eol(ref.get(f"{D0['slot_specs'][f[0]]['dir']}/"
+                                           f"{editing.field_name(f[0], f[1])}.md", b"")) == want), None)
+        if f is None:
+            continue
+        rel = f"{D0['slot_specs'][f[0]]['dir']}/{editing.field_name(f[0], f[1])}.md"
+        _call_ok(st, f"{rel} line endings", "save_field", f[0], f[1],
+                 {"all": f[4]["7"] + "\nQZX end"}, {"all": f[4]["7"]})
+        raw = (copy / rel).read_bytes()
+        other = b"\n" if want == b"\r\n" else b"\r\n"
+        check(raw.endswith(b"QZX end" + want) and (want == b"\n" and b"\r" not in raw
+                                                   or want == b"\r\n" and raw.count(b"\n") == raw.count(b"\r\n")),
+              f"[EDIT] {rel}: line endings not kept ({want!r}, not {other!r})")
+        _call_ok(st, "undo", "undo_field", f[0], f[1])
+    _same_files(copy, ref, "after the line-ending edits and Undo")
+
+    # 5. The page checks a text as the server does (Node runs the page's own code).
+    cases = [("block", "a { b"), ("phrase", "a\nb"), ("block", "x $qzx_nope $dc_name"),
+             ("block", "<<RAG_ON>>x"), ("block", "<<IF:qzx>>x<</IF:qzx>>"),
+             ("block", f"<<IF:tool:{missing_tool}>>x<</IF:tool:{missing_tool}>>"),
+             ("word", "fine"), ("block", "}<<A>>\n$qzx_b $qzx_a <<IF:zz>>")]
+    js = _js_checks(D0, cases)
+    if js is not None:
+        names_, flags_, tools_ = set(D0["text_names"]), set(D0["text_flags"]), set(D0["pack_tools"])
+        for (kind, text), got_js in zip(cases, js):
+            want_py = editing.check_text(kind, text, names_, flags_, tools_)
+            check(got_js == want_py, f"[EDIT] the page checks {text!r} otherwise than the server: "
+                                     f"{got_js} != {want_py}")
+    return (f"{len(fields)} fields marked ({landed} landing places) and put back; {len(unlinked)} "
+            f"unlinked and linked again; {len(copies)} own copies given and removed; {relinked} linked "
+            f"then undone; byte for byte" + ("" if js is not None else "; Node not found: page checks not run"))
+
+
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     _run(check_cache_unit, "[CACHE]")
@@ -519,6 +824,7 @@ def main() -> int:
             _run(lambda: check_choices(D), "[VIEWER]")
             summary["pool"] = _run(lambda: check_pool(D, copy), "[VIEWER]")
             summary["cache"] = _run(lambda: check_cache(st, D, copy, first), "[CACHE]")
+            summary["edit"] = _run(lambda: check_edit(st, copy), "[EDIT]")
             summary["first"] = f"{first:.0f} s"
     finally:
         if st is not None:
@@ -527,15 +833,16 @@ def main() -> int:
     print(f"first assembly {summary.get('first')}; {summary.get('fields')} fields shown as the "
           f"engine reads them; {summary.get('where')} field texts (per topology) found in a "
           f"prompt, each with its sentences there; {summary.get('prompts')} prompts = the prompt matrix's base; "
-          f"{summary.get('cache')}; {summary.get('viewer')}; {summary.get('pool')}")
+          f"{summary.get('cache')}; {summary.get('viewer')}; {summary.get('pool')}; "
+          f"editing: {summary.get('edit')}")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
             print("  " + f)
         return 1
     print("\nPASS - the Studio shows every field of the setup, where each one lands, and "
-          "the engine's own prompts and tools under every choice of settings, and sees "
-          "a changed file.")
+          "the engine's own prompts and tools under every choice of settings, sees "
+          "a changed file, and edits every text field and puts it back byte for byte.")
     return 0
 
 
