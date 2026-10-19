@@ -44,11 +44,12 @@ GIT_OUT = (
     ("inputs/input_images/a.png", False, "inputs/input_images/*"),
     ("inputs/user_query.txt", False, "inputs/user_query.txt"),
     ("inputs/extracted_inputs.txt", False, "inputs/extracted_inputs.txt"),
+    ("workspace", True, "workspace/"),
     *((rel, False, rel) for rel in sorted(K.STATE_FILES)),
 )
 GIT_IN = ((".env.example", "!.env.example"),)
 DOCKER_OUT = (".env", ".git/", "logs/", "attempts/", "previous_sessions/", "database/",
-              "node_modules/", "studio/")
+              "node_modules/", "workspace/")
 MARK = "# added by python -m studio prepare"
 
 

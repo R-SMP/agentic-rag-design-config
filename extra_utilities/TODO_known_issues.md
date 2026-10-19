@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F116**.
+branches (F36 is taken on a sibling branch).  Next free id: **F121**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -132,6 +132,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F117` | OPEN | Vocabulary entries that name the configurator with its article ("a propeller", "an impeller") |
 | `F118` | OPEN | Workflow Settings descriptions still name propeller things |
 | `F119` | OPEN | Generators that make no model file |
+| `F120` | OPEN | The online Studio's shared setup does not survive a restart |
 
 ---
 
@@ -4808,4 +4809,19 @@ a model, the save step and the R2 upload look for it, and the Receptionist
 is given `visualize_3d_model`.  A DC whose generator makes only images --
 the P8 test DC may -- needs an optional model file (format "none"), a
 build step that writes none, and the Receptionist's 3D tool left out.
+
+### F120. The online Studio's shared setup does not survive a restart
+
+**Status.** OPEN — owner-approved (2026-10-19), during MAS-blueprint P7b-lite.
+
+The online Studio (`python -m studio --online`, `studio/HOSTING.md`) keeps
+its one shared setup in `workspace/dc_pack` inside its container.  Railway
+gives a container a fresh disk at every restart and every deploy, so the
+setup goes back to the propeller example each time; people keep their work
+with Download setup file and bring it back with Import a setup.  The owner
+chose to start without a volume (2026-10-19).  The fix: a Railway volume on
+the Studio service, mounted at `/app/workspace` (the `--workspace` folder).
+The Studio copies the example in only when that folder holds no setup, so a
+volume keeps the shared setup across restarts and deploys with no code
+change; a small volume costs a few cents a month.
 

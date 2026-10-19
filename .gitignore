@@ -51,6 +51,8 @@ workflow_settings/dh_schedule_3agents.json
 workflow_settings/tool_settings.json
 workflow_settings/parameter_access.json
 workflow_settings/ocr_region_crops_access.json
+# The online Studio's shared setup (python -m studio --online).
+workspace/
 
 # --- Claude Code (per-user) ---
 .claude/settings.local.json

@@ -59,9 +59,11 @@ database/
 prompts_backup_*/
 
 # --- The Studio -------------------------------------------------------
-# python -m studio runs on the developer's own computer, never in the
-# deployed web app (MAS-blueprint P5).
-studio/
+# The image carries the Studio: the online Studio is a service of its own
+# started from this image (python -m studio --online, studio/HOSTING.md);
+# the web app never serves it.  Its shared setup, workspace/, is never baked
+# in.
+workspace/
 
 # --- Containerisation metadata ------------------------------------
 # No need to recursively include the Dockerfile / compose file

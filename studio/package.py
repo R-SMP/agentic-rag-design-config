@@ -25,6 +25,7 @@ from __future__ import annotations
 import fnmatch
 import io
 import json
+import os
 import re
 import subprocess
 import zipfile
@@ -148,17 +149,19 @@ def slug(text: str) -> str:
 
 def engine_version(repo: Path = REPO) -> str:
     """The engine's git commit (with ``+changes`` when its files differ from
-    it), or ``unknown`` outside a git checkout."""
+    it); outside a git checkout -- the online Studio's image -- the commit
+    Railway built (``RAILWAY_GIT_COMMIT_SHA``), else ``unknown``."""
+    built = (os.getenv("RAILWAY_GIT_COMMIT_SHA") or "")[:7] or "unknown"
     try:
         head = subprocess.run(["git", "-C", str(repo), "rev-parse", "--short", "HEAD"],
                               capture_output=True, text=True, timeout=30)
         if head.returncode != 0:
-            return "unknown"
+            return built
         dirty = subprocess.run(["git", "-C", str(repo), "status", "--porcelain", "--",
                                 *ENGINE_DIRS], capture_output=True, text=True, timeout=60)
         return head.stdout.strip() + ("+changes" if dirty.stdout.strip() else "")
     except (OSError, subprocess.TimeoutExpired):
-        return "unknown"
+        return built
 
 
 def pack_format(pack_dir: Path) -> int | None:

@@ -423,7 +423,7 @@ def check_prepare(st: Studio, tmp: Path) -> str:
     # what must stay out, removed; a key and a .env value planted
     _drop_line(folder / ".gitignore", "logs/")
     _drop_line(folder / ".gitignore", "workflow_settings/tool_settings.json")
-    _drop_line(folder / ".dockerignore", "studio/")
+    _drop_line(folder / ".dockerignore", "workspace/")
     value = "sk-qzx-planted-" + "9" * 24
     (folder / ".env").write_text(f"OPENAI_API_KEY={value}\n", encoding="utf-8")
     (folder / "notes.txt").write_text(f"the key: {value}\n", encoding="utf-8")
@@ -434,7 +434,7 @@ def check_prepare(st: Studio, tmp: Path) -> str:
     check(r.returncode == 0 and "Using the Validate report given" in r.stderr,
           f"[PREPARE] prepare answered {r.returncode}: {out[-800:]} {r.stderr[-400:]}")
     check(".gitignore: added logs/, workflow_settings/tool_settings.json" in out
-          and ".dockerignore: added studio/" in out, f"[PREPARE] the ignore files were not repaired: {out[:600]}")
+          and ".dockerignore: added workspace/" in out, f"[PREPARE] the ignore files were not repaired: {out[:600]}")
     rules = K.IgnoreRules((folder / ".gitignore").read_text(encoding="utf-8"))
     check(rules.ignored("logs", True) and rules.ignored("workflow_settings/tool_settings.json")
           and rules.ignored(".env") and not rules.ignored(".env.example"),

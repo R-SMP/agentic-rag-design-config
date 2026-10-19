@@ -9,7 +9,9 @@ parameters and agent access, P6c its tools; P7 validates it
 setup file and the full package, and opens a setup file again
 (``package.py``, the files written for a package in ``package_files/``);
 in a downloaded package, ``prepare.py`` readies it for GitHub and shows the
-git commands (it never runs git).  ``engine_view.py`` computes
+git commands (it never runs git).  P7b-lite runs it online
+(``python -m studio --online``, ``HOSTING.md``): an access code, one shared
+setup, a landing page.  ``engine_view.py`` computes
 what the screens show (with the engine itself, in child processes),
 ``server.py`` serves the page in ``web/`` and keeps engine processes waiting
 for the prompt viewer, ``editing.py`` writes a text field's files,

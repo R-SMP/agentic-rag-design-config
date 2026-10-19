@@ -46,6 +46,12 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
   folder made by Download full package: it checks and fixes the folder and
   answers the git commands; it never runs git.
 
+**Online** (P7b-lite, ``python -m studio --online``): one shared setup for
+everyone who has the access code (:class:`Access`: ``INVITE_CODE``, asked
+once per browser and kept in a signed cookie; every call but the page, its
+scripts, ``session``, ``auth`` and ``config`` needs it), and
+``reset_to_example``: the setup replaced by the example it started from.
+
 This process never imports the engine: the assembler stubs runtime
 packages (FastAPI among them) in the process that runs it.
 """
@@ -57,6 +63,7 @@ import base64
 import binascii
 import difflib
 import hashlib
+import hmac
 import json
 import os
 import shutil
@@ -64,6 +71,7 @@ import subprocess
 import sys
 import tempfile
 import threading
+import time
 from collections import OrderedDict
 from concurrent.futures import Future
 from contextlib import asynccontextmanager
@@ -355,6 +363,42 @@ class ViewCache:
         fut.set_result(data)
 
 
+ACCESS_COOKIE = "studio_access"
+ACCESS_DAYS = 30
+# What the page needs before its access code is typed.
+OPEN_PATHS = {"/", "/api/session", "/api/auth", "/api/config"}
+
+
+class Access:
+    """The online Studio's way in: one access code (``INVITE_CODE``), the
+    propeller app's check (compared in constant time), remembered per
+    browser in a cookie signed with *secret* (``STUDIO_SECRET``, else a
+    random one per process: a restart asks for the code again)."""
+
+    def __init__(self, code: str, secret: bytes | None = None):
+        self.code = code
+        self.secret = secret or os.urandom(32)
+
+    def check_code(self, submitted) -> bool:
+        return isinstance(submitted, str) and hmac.compare_digest(
+            submitted.strip().encode("utf-8"), self.code.encode("utf-8"))
+
+    def _sign(self, issued: str) -> str:
+        return hmac.new(self.secret, issued.encode("ascii"), hashlib.sha256).hexdigest()
+
+    def token(self) -> str:
+        issued = str(int(time.time()))
+        return f"{issued}.{self._sign(issued)}"
+
+    def valid(self, token) -> bool:
+        if not isinstance(token, str) or "." not in token:
+            return False
+        issued, sig = token.split(".", 1)
+        if not issued.isdigit() or not hmac.compare_digest(sig, self._sign(issued)):
+            return False
+        return time.time() - int(issued) < ACCESS_DAYS * 86400
+
+
 class Validation:
     """Validate (``studio/validate.py``) in a thread of its own: one run at
     a time, its progress, its last report."""
@@ -424,7 +468,16 @@ def prompt_diff(before: str, after: str) -> list[list[str]]:
     return out
 
 
-def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
+def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
+               access_code: str | None = None, example_dir: Path | None = None,
+               configurator_url: str | None = None) -> FastAPI:
+    """The Studio for the setup in *pack_dir*.  *online*: behind
+    *access_code* (required), with ``reset_to_example`` from *example_dir*
+    and a link to the configurator at *configurator_url* on the landing
+    page."""
+    if online and not access_code:
+        raise ValueError("the online Studio needs an access code")
+    access = Access(access_code, (os.getenv("STUDIO_SECRET") or "").encode("utf-8") or None) if online else None
     view = PackView(pack_dir)
     pool = WorkerPool(pack_dir, size=workers)
     views = ViewCache(pool)
@@ -444,7 +497,9 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     validator = Validation(pack_dir)
     open_lock = threading.Lock()
     # Prepare for GitHub works in a folder made by Download full package.
-    prepare_why = preparing.check_folder(engine_view.REPO, pack_dir)
+    prepare_why = ("Online, Prepare for GitHub is not here: download the full package and run "
+                   "python -m studio prepare in it, on your computer." if online
+                   else preparing.check_folder(engine_view.REPO, pack_dir))
 
     def changed(data: dict, fp: str) -> dict:
         """The changed fields and files, and the parameter editor's state."""
@@ -453,7 +508,9 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
             changed_cache[fp] = {"changed": editor.changed(data) + params.changed() + tools.changed(),
                                  "params_edit": params.state(data),
                                  "tools_edit": tools.state(data),
-                                 "prepare": {"available": prepare_why is None, "why": prepare_why}}
+                                 "prepare": {"available": prepare_why is None, "why": prepare_why},
+                                 "online": online, "configurator_url": configurator_url,
+                                 "can_reset": example_dir is not None}
         return changed_cache[fp]
 
     def first_build() -> None:
@@ -482,6 +539,17 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     app.state.validator = validator
 
     @app.middleware("http")
+    async def access_gate(request: Request, call_next):
+        # Online, every call but the page, its scripts and the way in needs
+        # the access code's cookie.
+        path = request.url.path
+        if (access is not None and path not in OPEN_PATHS and not path.startswith("/static/")
+                and not access.valid(request.cookies.get(ACCESS_COOKIE))):
+            return JSONResponse({"ok": False, "auth": True, "error": "Type the access code first."},
+                                status_code=401)
+        return await call_next(request)
+
+    @app.middleware("http")
     async def no_stale_page(request: Request, call_next):
         # The page and its scripts change with the Studio: always revalidate.
         response = await call_next(request)
@@ -492,6 +560,30 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     @app.get("/")
     async def index():
         return FileResponse(WEB / "index.html")
+
+    @app.get("/api/config")
+    async def health():
+        # What a platform's health check asks for (the Dockerfile's HEALTHCHECK).
+        return _ok(app="MAS Studio", online=online)
+
+    @app.post("/api/session")
+    async def session(request: Request):
+        return _ok(online=online, authed=access is None
+                   or access.valid(request.cookies.get(ACCESS_COOKIE)))
+
+    @app.post("/api/auth")
+    async def auth(request: Request):
+        if access is None:
+            return _ok()
+        args = await _args(request)
+        if not access.check_code(args[0] if args else None):
+            await asyncio.sleep(0.5)                  # a guess at a time
+            return _fail("The access code did not match.", 401)
+        response = _ok()
+        secure = request.headers.get("x-forwarded-proto", request.url.scheme) == "https"
+        response.set_cookie(ACCESS_COOKIE, access.token(), max_age=ACCESS_DAYS * 86400,
+                            httponly=True, samesite="lax", secure=secure)
+        return response
 
     @app.post("/api/get_all")
     async def get_all():
@@ -561,7 +653,6 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
                 "engine": info["engine"]}
 
     def open_setup(data: dict, b64, filename=None) -> dict:
-        nonlocal opened_key
         try:
             raw = base64.b64decode(str(b64), validate=True)
         except (binascii.Error, ValueError):
@@ -570,6 +661,20 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
             files, info = packaging.read_setup_file(raw)
         except packaging.PackageError as exc:
             raise editing.EditError(str(exc), exc.problems) from None
+        return _replace_with(files, info, filename)
+
+    def reset_to_example(data: dict, word=None) -> dict:
+        if example_dir is None:
+            raise editing.EditError("This Studio has no example to start again from.")
+        if word != "replace":
+            raise editing.EditError("Type replace to confirm: it replaces the setup for everyone.")
+        files = {rel: p.read_bytes() for rel, p in packaging.setup_files(example_dir).items()}
+        return _replace_with(files, None, "the propeller example")
+
+    def _replace_with(files: dict, info, filename) -> dict:
+        """The setup becomes *files*, once the engine's check takes them,
+        and the Studio starts again from it."""
+        nonlocal opened_key
         with open_lock:
             if validator.state()["running"]:
                 raise editing.EditError("Validate is running: open the file once it has finished.")
@@ -619,7 +724,7 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
                      ("remove_tool_preview", tools.remove_preview), ("remove_tool", tools.remove_tool),
                      ("new_tool", tools.new_tool), ("test_tool", tools.test_tool),
                      ("download_preview", download_preview), ("open_setup", open_setup),
-                     ("prepare_run", prepare_run)):
+                     ("prepare_run", prepare_run), ("reset_to_example", reset_to_example)):
         app.add_api_route(f"/api/{name}", _edit(fn), methods=["POST"])
 
     @app.get("/download/{kind}")

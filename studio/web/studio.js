@@ -24,19 +24,22 @@
  * setup file and the full package -- and Open setup file
  * (studio/package.py); and Prepare for GitHub (studio/prepare.py), which
  * never runs git: it shows the commands.
+ * P7b-lite: online (python -m studio --online) the page asks for the access
+ * code first, opens on the landing page, and the setup is one shared one.
  *
  * Screens are hash routes, so each one has an address:
  *   #/studio/<section>[?field=..]     the Studio: sections | fields | inspector
  *      sections: identity parameters description outputs tools examples
  *                inputs access settings prompts validate
  *      extra:    &agent=<key>  &param=<name>  &topo=3|5|7
- *   #/landing  #/start  #/import      later (the hosted Studio, P7b)
+ *   #/landing                         the landing page (online: the start)
  * ====================================================================== */
 (function (root) {
   'use strict';
 
   var doc = root.document;
   var D = null;                        // the setup, from the server
+  var SESSION = { online: false, authed: true };   // online mode and the access code (session)
   var R = { page: 'studio', section: 'identity', q: {} };
 
   var SECTIONS = [
@@ -64,7 +67,6 @@
   // The texts of the screens that come later.
   var LATER = {
     settings: 'DC_PARAMS_PRIMER_ENABLED lives in workflow_settings/settings.py, outside the setup: read-only here.',
-    landing: 'The landing page and Import come with the hosted Studio (P7b).'
   };
   // the seven-agent roles a tool binds to (brief §5.4)
   var ROLE_ROWS = [
@@ -198,16 +200,75 @@
   }
 
   /* ======================================================================
-   * screens that come later: the landing page, Create your own, Import
+   * the landing page (P7b-lite) and the access code
    * ==================================================================== */
-  function renderLater(app) {
-    var p = h('div', { 'class': 'page' });
+  function renderLanding(app) {
+    var p = h('div', { 'class': 'page landing' });
     add(p, [
       h('h1', null, 'MAS Studio'),
-      h('p', { 'class': 'sub' }, LATER.landing),
-      h('div', { style: 'margin-top:18px' }, h('button', { 'class': 'primary', onclick: function () { go('studio', 'identity'); } }, 'Open the Studio →'))
+      h('p', { 'class': 'sub' }, 'Build a multi-agent system for your own design configurator: start from the ' + D.pack.name +
+        ' example, change its parameters, texts and tools, check it with Validate, and download it to deploy.'),
+      h('div', { 'class': 'actions' }, [
+        h('button', { 'class': 'primary', onclick: function () { go('studio', 'identity'); } }, 'Open the Studio →'),
+        h('button', { onclick: askOpen }, 'Import a setup…'),
+        D.can_reset ? h('button', { onclick: askReset }, 'Start again from the ' + D.pack.name + ' example…') : null,
+        D.configurator_url ? h('a', { 'class': 'btn', href: D.configurator_url, target: '_blank', rel: 'noopener' }, 'Use the ' + D.pack.name + ' configurator ↗') : null
+      ]),
+      SESSION.online ? h('p', { 'class': 'note' }, 'This is one shared setup: everyone with the access code sees and changes the same one. ' +
+        'It is not kept when the Studio restarts or is deployed again — use Download setup file to keep your work, and Import a setup to bring it back.') : null
     ]);
     app.appendChild(p);
+  }
+  function renderLogin(app, msg) {
+    var input = h('input', { type: 'password', autocomplete: 'current-password', placeholder: 'access code' });
+    var out = h('p', { 'class': 'err' }, msg || '');
+    function send() {
+      out.textContent = '';
+      call('auth', input.value).then(function (r) {
+        if (r && r.ok) { root.location.reload(); return; }
+        out.textContent = (r && r.error) || 'The access code did not match.';
+        input.select();
+      });
+    }
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') send(); });
+    app.innerHTML = '';
+    app.appendChild(h('div', { 'class': 'page landing' }, [
+      h('h1', null, 'MAS Studio'),
+      h('p', { 'class': 'sub' }, 'Type the access code to open the online Studio. This browser remembers it.'),
+      h('div', { 'class': 'actions row' }, [input, h('button', { 'class': 'primary', onclick: send }, 'Open')]),
+      out]));
+    input.focus();
+  }
+  function askReset() {
+    if (BUSY) return;
+    var word = h('input', { type: 'text', spellcheck: 'false', placeholder: 'replace' });
+    var msg = h('div');
+    var go_ = h('button', { 'class': 'primary', disabled: true }, 'Start again');
+    word.addEventListener('input', function () { go_.disabled = word.value !== 'replace'; });
+    go_.addEventListener('click', function () {
+      msg.innerHTML = '';
+      add(msg, h('p', { 'class': 'muted' }, 'Checking it with the engine…'));
+      call('reset_to_example', word.value).then(function (r) {
+        msg.innerHTML = '';
+        if (!r || r.ok === false) { add(msg, h('div', { 'class': 'banner bad boxed' }, (r && r.error) || 'It could not start again.')); return; }
+        closeModal();
+        BUSY = true; EDITS = {}; PEDITS = {}; GEDITS = {}; TEDITS = {}; FEDITS = {}; TESTS = {}; FIELD_ERRORS = {};
+        status('Starting again from the example. Re-assembling every prompt…', 'busy');
+        reload().then(function () {
+          BUSY = false;
+          status('The setup is the ' + D.pack.name + ' example again: Undo now goes back to it.', 'ok');
+          go('studio', 'identity');
+          render();
+        }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+      });
+    });
+    showModal('Start again from the example', h('div', null, [
+      h('div', { 'class': 'banner warn boxed' }, 'This replaces the setup for everyone who uses this Studio: every text, parameter and tool goes back to the example.'),
+      h('p', { style: 'margin:8px 0' }, h('a', { href: '/download/setup', download: '' }, 'Download the current setup first')),
+      h('p', null, 'Type replace to confirm:'),
+      h('div', { style: 'margin:6px 0' }, word), msg]),
+      [h('button', { onclick: closeModal }, 'Cancel'), go_]);
+    word.focus();
   }
 
   /* ======================================================================
@@ -217,7 +278,8 @@
     var tb = h('div', { 'class': 'toolbar' }, [
       h('span', { 'class': 'title', style: 'cursor:pointer', onclick: function () { go('landing'); } }, 'MAS Studio'),
       h('span', { 'class': 'pack', title: D.pack_dir }, ['setup: ', h('b', null, D.pack.name), ' · ' + D.pack_dir.split(/[\\/]/).pop() + '/']),
-      pill('local', 'mode-local', 'python -m studio on this computer'),
+      SESSION.online ? pill('online', 'mode-hosted', 'The online Studio: one shared setup for everyone with the access code')
+        : pill('local', 'mode-local', 'python -m studio on this computer'),
       h('span', { 'class': 'grow' }),
       h('button', { title: 'Run every check of the setup.', onclick: function () { go('studio', 'validate'); startValidate(); } },
         ['Validate ', h('span', { id: 'valTop' }, valBadge())]),
@@ -229,9 +291,11 @@
         title: D.prepare && D.prepare.available ? 'Check this folder and get the commands that put it on GitHub. Nothing is committed.' : (D.prepare && D.prepare.why) || '' },
         'Prepare for GitHub')
     ]);
-    var banner = h('div', { 'class': 'banner info' },
-      'Editing the setup in ' + D.pack_dir + ': each text field, parameter, group, access cell, tool and setting saves on its own, straight to its files, and Undo puts it back as it was when the Studio opened. ' +
-      'Test tool runs a tool on a throw-away folder: nothing in the setup changes.');
+    var banner = h('div', { 'class': 'banner info' }, SESSION.online
+      ? 'Editing the shared online setup: everyone with the access code sees the same one. Each change saves on its own, and Undo puts it back as it was when the Studio started. ' +
+        'It is not kept when the Studio restarts: use Download setup file to keep your work.'
+      : 'Editing the setup in ' + D.pack_dir + ': each text field, parameter, group, access cell, tool and setting saves on its own, straight to its files, and Undo puts it back as it was when the Studio opened. ' +
+        'Test tool runs a tool on a throw-away folder: nothing in the setup changes.');
     var left = h('div', { 'class': 'col side', id: 'colLeft', style: 'width:250px' }, renderNav());
     var center = h('div', { 'class': 'col center', id: 'center' });
     var right = h('div', { 'class': 'col side', id: 'colRight', style: 'width:380px' });
@@ -2795,7 +2859,7 @@
     var keep = center && lastKey === R.page + '/' + R.section ? center.scrollTop : 0;
     app.innerHTML = '';
     if (R.page === 'studio') renderStudio(app);
-    else renderLater(app);
+    else renderLanding(app);
     lastKey = R.page + '/' + R.section;
     center = el('center');
     if (center && keep) center.scrollTop = keep;
@@ -2819,6 +2883,17 @@
   }
 
   function init() {
+    // An answer that asks for the access code (it ran out): the login again.
+    root.StudioBridge.onAuth = function () { renderLogin(el('app'), 'Type the access code again.'); };
+    call('session').then(function (s) {
+      SESSION = s && s.ok ? s : SESSION;
+      if (SESSION.online && !SESSION.authed) { renderLogin(el('app')); return; }
+      if (SESSION.online && !root.location.hash) root.location.hash = '#/landing';
+      start();
+    }, start);
+  }
+  function start() {
+    el('app').innerHTML = '';
     el('app').appendChild(h('div', { 'class': 'page' }, [h('h1', null, 'MAS Studio'),
       h('p', { 'class': 'sub' }, 'Assembling every prompt of this setup… (first time only)')]));
     req('get_all').then(function (r) {
