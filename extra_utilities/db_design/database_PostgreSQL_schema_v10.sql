@@ -1,8 +1,20 @@
 -- ============================================================
--- Design Copilot — PostgreSQL schema (v9)
+-- Design Copilot — PostgreSQL schema (v10)
 --
 -- Source of truth for the design decisions this schema implements:
 --   extra_utilities/db_design/database_and_RAG_architecture.md
+--
+-- Changes vs v9 (MAS-blueprint P6d, 2026-10-20).  Additive: two
+-- nullable columns, no data touched.  Upgrade an existing v9 database
+-- with ``migrations/migrate_v9_to_v10.sql`` (idempotent; run through
+-- ``apply_schema.py``).
+--   * dc_parameter_schemas — NEW columns ``param_type TEXT`` and
+--     ``choices JSONB``, both NULL for a number.  A setup's choice
+--     parameter has param_type 'choice' and its values in order in
+--     ``choices`` (stored values are positions in that list: 0, 1, ...);
+--     an on/off parameter has 'bool' (stored 0 / 1).  Only a setup with
+--     such a parameter reads or writes them (engine/parameter_schema.py),
+--     so a setup of numbers needs no upgrade.
 --
 -- Changes vs v8 (2026-10-10).  No data is removed by any of them.
 -- Upgrade an existing v8 database with
@@ -225,7 +237,7 @@ CREATE SEQUENCE IF NOT EXISTS session_counter
 -- ------------------------------------------------------------
 -- dc_parameter_schemas
 -- Versioned parameter inventory.  Composite PK.
--- Unchanged from v2.
+-- v10: param_type + choices (choice and on/off parameters).
 -- ------------------------------------------------------------
 CREATE TABLE dc_parameter_schemas (
     schema_version  INTEGER           NOT NULL,             -- composite PK part 1: version number
@@ -236,6 +248,8 @@ CREATE TABLE dc_parameter_schemas (
     description     TEXT,                                   -- human-readable description
     introduced_at   TIMESTAMPTZ       NOT NULL DEFAULT NOW(),  -- when this param was added
     retired_at      TIMESTAMPTZ,                            -- NULL = still active in this schema version
+    param_type      TEXT,                                   -- v10: NULL = a number; 'choice' or 'bool'
+    choices         JSONB,                                  -- v10: a choice's values, in order (stored value = position)
     PRIMARY KEY (schema_version, param_name),
     -- Catch inverted ranges at insert time.  ``<=`` (not ``<``)
     -- permits degenerate ranges where min=max — the canonical way

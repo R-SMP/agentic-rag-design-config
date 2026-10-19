@@ -1050,14 +1050,110 @@
   function groupProblems(key) { return validateSpec(specWithGroup(key)); }
 
   // -- engine/parameters.py validate, word for word (the server repeats it with the engine's own)
+  // a choice's and an on/off parameter's fields (engine/parameters.py _KEYS)
+  var TYPE_KEYS = {
+    'int': P_KEYS, 'float': P_KEYS,
+    choice: ['name', 'type', 'choices', 'default', 'group', 'label', 'unit', 'db_unit', 'db_description'],
+    bool: ['name', 'type', 'default', 'group', 'label', 'unit', 'db_unit', 'db_description']
+  };
   function pyRepr(v) {
     if (v === null || v === undefined) return 'None';
+    if (typeof v === 'boolean') return v ? 'True' : 'False';
     if (typeof v === 'string') return v.indexOf("'") >= 0 && v.indexOf('"') < 0 ? '"' + v + '"' : "'" + v.replace(/'/g, "\\'") + "'";
     return String(v);
   }
   function isNum(v) { return typeof v === 'number' && isFinite(v); }
   function symDiff(a, b) {
     return a.filter(function (k) { return b.indexOf(k) < 0; }).concat(b.filter(function (k) { return a.indexOf(k) < 0; })).sort();
+  }
+  // equal values, true / false never equal to 1 / 0 (engine _same)
+  function same(a, b) { return (typeof a === 'boolean') === (typeof b === 'boolean') && a === b; }
+  var CHOICE_TEXT_BAD = /[|\n\r]| = /;
+  function choiceValues(p) {
+    return p.choices instanceof Array ? p.choices.filter(function (c) {
+      return c !== null && typeof c === 'object' && !(c instanceof Array) && 'value' in c;
+    }).map(function (c) { return c.value; }) : [];
+  }
+  function checkValue(p, v) {
+    if (p.type === 'bool') return typeof v === 'boolean' ? null : 'must be true or false';
+    if (p.type === 'choice') {
+      var values = choiceValues(p);
+      if (values.some(function (x) { return same(v, x); })) return null;
+      return 'must be one of: ' + values.map(function (x) { return typeof x === 'string' ? x : JSON.stringify(x); }).join(', ');
+    }
+    return isNum(v) ? null : 'must be a number';
+  }
+  function checkChoices(name, p, problems) {
+    var ch = p.choices;
+    var isObj = function (o) { return o !== null && typeof o === 'object' && !(o instanceof Array); };
+    if (!(ch instanceof Array) || ch.length < 2 || !ch.every(isObj)) {
+      problems.push(name + ': choices must be a list of at least two {value, label}');
+      return;
+    }
+    var seen = [];
+    ch.forEach(function (c) {
+      var v = c.value;
+      symDiff(['value', 'label'], Object.keys(c)).forEach(function (k) {
+        problems.push(name + ': a choice has ' + (k in c ? 'an unknown field' : 'no') + ' "' + k + '"');
+      });
+      if (!((typeof v === 'string' && v.trim() && !CHOICE_TEXT_BAD.test(v)) || isNum(v))) {
+        problems.push(name + ': a choice\'s value must be a number or text without "|", " = " or a line break (got ' + pyRepr(v) + ')');
+      } else if (seen.some(function (s) { return same(v, s); })) {
+        problems.push(name + ': the choice ' + pyRepr(v) + ' is listed twice');
+      } else {
+        seen.push(v);
+      }
+      if ('label' in c && (typeof c.label !== 'string' || CHOICE_TEXT_BAD.test(c.label))) {
+        problems.push(name + ': the label of the choice ' + pyRepr(v) + ' must be text without "|", " = " or a line break');
+      }
+    });
+    if (!seen.some(function (s) { return same(p['default'], s); })) {
+      problems.push(name + ': default ' + pyRepr(p['default']) + ' is not one of its choices');
+    }
+  }
+  function checkUsedWhen(params, problems) {
+    var isObj = function (o) { return o !== null && typeof o === 'object' && !(o instanceof Array); };
+    var by = new Map(), edges = new Map();
+    params.forEach(function (p) { if (isObj(p) && typeof p.name === 'string') by.set(p.name, p); });
+    by.forEach(function (p, name) {
+      if (!('used_when' in p)) return;
+      var uw = p.used_when;
+      if (!isObj(uw) || !Object.keys(uw).length) {
+        problems.push(name + ': used_when must name at least one choice or on/off parameter and its value(s)');
+        return;
+      }
+      edges.set(name, []);
+      Object.keys(uw).forEach(function (other) {
+        var q = by.get(other), want = uw[other];
+        if (other === name) problems.push(name + ': used_when names the parameter itself');
+        else if (q === undefined) problems.push(name + ': used_when names ' + pyRepr(other) + ', which is not a parameter');
+        else if (q.type !== 'choice' && q.type !== 'bool') {
+          problems.push(name + ': used_when names ' + pyRepr(other) + ', which is not a choice or on/off parameter');
+        } else {
+          edges.get(name).push(other);
+          var wants = want instanceof Array ? want : [want];
+          if (!wants.length) problems.push(name + ': used_when gives ' + other + ' no value');
+          wants.forEach(function (w) {
+            if (checkValue(q, w) !== null) problems.push(name + ': used_when: ' + other + ' has no value ' + pyRepr(w));
+          });
+        }
+      });
+    });
+    // a condition may not go round in a circle (A only when B, B only when A)
+    var state = new Map();
+    function visit(n, path) {
+      state.set(n, 1);
+      (edges.get(n) || []).forEach(function (m) {
+        if (state.get(m) === 1) {
+          var loop = path.indexOf(m) >= 0 ? path.slice(path.indexOf(m)).concat([m]) : [n, m];
+          problems.push(loop[0] + ': used_when goes round in a circle (' + loop.join(' -> ') + ')');
+        } else if (!state.has(m)) {
+          visit(m, path.concat([m]));
+        }
+      });
+      state.set(n, 2);
+    }
+    edges.forEach(function (_e, n) { if (!state.has(n)) visit(n, [n]); });
   }
   function validateSpec(spec) {
     var NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
@@ -1076,13 +1172,22 @@
       if (!isObj(p)) { problems.push(where + ': must be an object'); return; }
       var name = p.name;
       if (typeof name === 'string') where = name;
-      symDiff(P_KEYS, Object.keys(p)).forEach(function (k) {
+      var keys = (TYPE_KEYS.hasOwnProperty(p.type) ? TYPE_KEYS[p.type] : P_KEYS).concat('used_when' in p ? ['used_when'] : []);
+      symDiff(keys, Object.keys(p)).forEach(function (k) {
         problems.push(where + ': ' + (k in p ? 'unknown' : 'missing') + ' field "' + k + '"');
       });
       if (typeof name !== 'string' || !NAME.test(name)) { problems.push(where + ': name must be a plain identifier (letters, digits, _)'); return; }
       if (names.indexOf(name) >= 0) problems.push(name + ': duplicate name');
       names.push(name);
-      if (p.type !== 'int' && p.type !== 'float') problems.push(name + ': type must be "int" or "float"');
+      if (!TYPE_KEYS.hasOwnProperty(p.type)) problems.push(name + ': type must be "int", "float", "choice" or "bool"');
+      if (p.type === 'choice' || p.type === 'bool') {
+        if (p.type === 'choice') checkChoices(name, p, problems);
+        else if (typeof p['default'] !== 'boolean') problems.push(name + ': default must be true or false');
+        ['label', 'unit', 'db_unit', 'db_description', 'group'].forEach(function (k) {
+          if (k in p && typeof p[k] !== 'string') problems.push(name + ': ' + k + ' must be text');
+        });
+        return;
+      }
       var lo = p.min, hi = p.max, step = p.step, def = p['default'];
       if (![lo, hi, step, def].every(isNum)) { problems.push(name + ': min, max, step and default must be numbers'); return; }
       if (!(lo < hi)) problems.push(name + ': min (' + lo + ') must be smaller than max (' + hi + ')');
@@ -1117,6 +1222,7 @@
       else if (names.indexOf(n) >= 0) problems.push(n + ': listed as retired but still a parameter');
       else if (retired.filter(function (x) { return x === n; }).length > 1) problems.push(n + ': listed as retired twice');
     });
+    checkUsedWhen(params, problems);
     params.forEach(function (p) {
       if (!isObj(p) || names.indexOf(p.name) < 0) return;
       var gid = p.group;

@@ -688,11 +688,13 @@ and its three traps; the decisions behind it (owner, 2026-09-15):
 
 ## 11. Database schema history
 
-Only the current schema is kept: `db_design/database_PostgreSQL_schema_v9.sql`,
+Only the current schema is kept: `db_design/database_PostgreSQL_schema_v10.sql`,
 with `apply_schema.py`, `populate_dc_parameter_schemas.py` and
 `drop_all_tables.sql`.  That is enough to build a fresh database.  A v8
 database is upgraded with `db_design/migrations/migrate_v8_to_v9.sql`
-(idempotent, one transaction, removes no data; 2026-10-10).
+(idempotent, one transaction, removes no data; 2026-10-10), a v9 one with
+`db_design/migrations/migrate_v9_to_v10.sql` (two nullable columns for
+choice and on/off parameters; MAS-blueprint P6d, 2026-10-20).
 
 Removed: schemas v1–v7 and the older ordered, idempotent migration ledger
 (`db_design/migrations/migrate_v5_to_v6.py`, `_v6_to_v7.py`, `_v7_to_v8.py`).

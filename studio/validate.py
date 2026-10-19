@@ -17,7 +17,8 @@ What it checks (owner, 2026-10-19):
   setup's defaults and with every feature on: built, and nothing left of a
   ``$name`` or a ``<<IF:...>>`` marker; the tokens of each.
 * **C. The parameter lists** -- each agent's hand-written list names the
-  parameters of ``parameters.json``, in order, with their ranges.
+  parameters of ``parameters.json``, in order, with their ranges (a choice
+  or on/off parameter: its values, and when it is used).
 * **D. The tools** -- each run once on the parameters' defaults, as Test
   tool runs it (``studio/tools_edit.run_tool_test``): it answers and makes
   what its manifest declares.  A run that fails because this computer lacks
@@ -214,7 +215,9 @@ def part_load() -> list[dict]:
     # C. the parameter lists
     lines, files = [], 0
     if spec_ok:
-        want = [(p["name"], float(p["min"]), float(p["max"])) for p in spec["parameters"]]
+        # a choice or on/off parameter has no range (MAS-blueprint P6d)
+        want = [(p["name"], float(p["min"]), float(p["max"])) if "min" in p else (p["name"], None, None)
+                for p in spec["parameters"]]
         folder = pack.fragments_dir() / pack.slot_spec(params_edit.LIST_SLOT)["folder"]
         for f in sorted(folder.glob(f"{params_edit.LIST_SLOT}*.md")):
             files += 1
@@ -230,9 +233,13 @@ def part_load() -> list[dict]:
                              f"{[w[0] for w in want]}")
                 continue
             for (name, lo, hi), (_n, wlo, whi) in zip(got, want):
-                if lo is not None and (lo, hi) != (wlo, whi):
+                if lo is not None and wlo is not None and (lo, hi) != (wlo, whi):
                     lines.append(f"{where}: {name} [{lo:g}; {hi:g}], but parameters.json says "
                                  f"[{wlo:g}; {whi:g}]")
+            for (a, b, _), p in zip(entries, spec["parameters"]):
+                why = ep.entry_problem(p, " ".join(text[a:b]))
+                if why:
+                    lines.append(f"{where}: {p['name']} {why}")
         if not files:
             lines.append("no parameter list found")
     else:

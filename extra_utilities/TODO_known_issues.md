@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F121**.
+branches (F36 is taken on a sibling branch).  Next free id: **F122**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -133,6 +133,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F118` | OPEN | Workflow Settings descriptions still name propeller things |
 | `F119` | OPEN | Generators that make no model file |
 | `F120` | OPEN | The online Studio's shared setup does not survive a restart |
+| `F121` | OPEN | Agent prompts still say every parameter value is a number |
 
 ---
 
@@ -4825,3 +4826,25 @@ The Studio copies the example in only when that folder holds no setup, so a
 volume keeps the shared setup across restarts and deploys with no code
 change; a small volume costs a few cents a month.
 
+### F121. Agent prompts still say every parameter value is a number
+
+**Status.** OPEN — logged 2026-10-20, during MAS-blueprint P6d.
+
+P6d gave a setup choice and on/off parameters.  The code's own messages
+follow the setup (a setup of numbers keeps today's words, byte for byte),
+but 19 sentences in 16 prompt texts still describe the values as numbers:
+"numeric parameter values", "a numeric value", "to a number" -- the
+`available_agents*` fragments (shared, 5-agent, 3-agent), the
+`value_states*` fragments, `agent_tools_overview_brief.t3/t5/t7`, the
+orchestrator, the User Input Inspector (7- and 5-agent) and the 3-agent
+Requirements Analyst prompts.  Find them with
+`grep -rniE "numeric (parameter|value|design)|to a number" agents dc_pack`.
+The two record tools' descriptions (`new_attempt_parameters`, DC Input
+Creator and Design Engineer) also still end with "an error naming the
+missing / unexpected / non-numeric fields".
+
+For the propeller they are right.  For a setup with a choice or on/off
+parameter they are slightly wrong; the agents still get the true value list
+(`$parameter_list`, which names each choice) and the tools' error messages
+say what fits.  The fix: a `$slot`-style word (as `$parameter_value` does
+for the tool descriptions), each sentence approved one by one.

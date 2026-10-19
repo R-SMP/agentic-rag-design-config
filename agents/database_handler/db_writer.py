@@ -621,8 +621,13 @@ def upsert_attempt_parameters(
         ON CONFLICT (attempt_id, param_name) DO UPDATE SET
             raw_value = EXCLUDED.raw_value
     """
+    # A choice or on/off value is stored as a number: on/off as 1 / 0, a
+    # choice as its position in the setup's list (MAS-blueprint P6d).
+    from engine import parameters as _parameters
+    spec = _parameters.by_name()
     rows = [
-        (attempt_id, name, float(value))
+        (attempt_id, name,
+         _parameters.to_db(spec[name], value) if name in spec else float(value))
         for name, value in parameters.items()
     ]
     with postgres_pool.connection() as conn:

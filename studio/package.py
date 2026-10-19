@@ -49,7 +49,8 @@ ENGINE_FILES = (
     "extra_utilities/prompt_pdf/bootstrap.py",
     # the database's tables (DEPLOY.md: a database)
     "extra_utilities/db_design/apply_schema.py",
-    "extra_utilities/db_design/database_PostgreSQL_schema_v9.sql",
+    "extra_utilities/db_design/database_PostgreSQL_schema_v10.sql",
+    "extra_utilities/db_design/migrations/migrate_v9_to_v10.sql",
     # the checks Validate runs (studio/validate.py)
     "extra_utilities/tests/dry_run_topology.py",
     "extra_utilities/tests/smoke_test_prompt_format.py",

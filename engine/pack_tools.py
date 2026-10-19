@@ -881,29 +881,40 @@ def _read_record(params_file: Path) -> tuple[dict | None, str | None]:
     except (OSError, ValueError) as exc:
         return None, (
             f"Error: could not read {params_file}: {exc}.  The file must be "
-            f"a JSON object mapping each parameter name to a number."
+            f"a JSON object mapping each parameter name to {_parameters.value_phrase()}."
         )
     if not isinstance(raw_record, dict):
         return None, (
             f"Error: {params_file} is not a JSON object.  It must map each "
-            f"parameter name to a number."
+            f"parameter name to {_parameters.value_phrase()}."
         )
-    values, missing, non_numeric = {}, [], []
+    # Choice and on/off parameters (MAS-blueprint P6d): each value is
+    # checked against its own parameter.
+    typed = not _parameters.all_numbers()
+    by = _parameters.by_name() if typed else {}
+    values, missing, non_numeric, wrong = {}, [], [], []
     for name in _parameters.names():
         if name not in raw_record:
             missing.append(name)
             continue
         v = raw_record[name]
-        if isinstance(v, bool) or not isinstance(v, (int, float)):
+        if typed:
+            why = _parameters.check_value(by[name], v)
+            if why:
+                wrong.append((name, why))
+                continue
+        elif isinstance(v, bool) or not isinstance(v, (int, float)):
             non_numeric.append(name)
             continue
         values[name] = v
-    if missing or non_numeric:
+    if missing or non_numeric or wrong:
         parts = [f"Error: {params_file} is not a complete parameter record."]
         if missing:
             parts.append(f"Missing keys: {sorted(missing)}")
         if non_numeric:
             parts.append(f"Non-numeric values: {sorted(non_numeric)}")
+        if wrong:
+            parts.append(f"Values that do not fit: {_parameters.wrong_text(wrong)}")
         parts.append(
             f"No {_model_word()} was built.  Fix the record on a NEW attempt rather than "
             "editing this one — attempt folders are append-only."

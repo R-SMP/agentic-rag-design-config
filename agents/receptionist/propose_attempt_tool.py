@@ -178,17 +178,29 @@ def propose_attempt(
             + "; ".join(problems)
         )
 
-    # Coerce all values to float for consistent JSON serialisation.
-    # The frontend renders them with the same per-spec precision the
-    # sliders use (so 0.05-step middlePos shows as "0.30", not
-    # "0.30000000000004"); coercing here keeps the wire payload clean.
-    try:
-        sanitized = {k: float(v) for k, v in values.items()}
-    except (TypeError, ValueError) as exc:
-        return (
-            f"Error: propose_attempt could not coerce values to "
-            f"float — {exc}"
-        )
+    if not _parameters.all_numbers():
+        # Choice and on/off parameters (MAS-blueprint P6d): each value is
+        # checked against its own parameter; numbers go out as floats, the
+        # others as they are.
+        wrong = _parameters.wrong_values(values)
+        if wrong:
+            return (f"Error: propose_attempt rejected {target} — values that do "
+                    f"not fit: {_parameters.wrong_text(wrong)}")
+        spec = _parameters.by_name()
+        sanitized = {k: float(v) if spec[k]["type"] in ("int", "float") else v
+                     for k, v in values.items()}
+    else:
+        # Coerce all values to float for consistent JSON serialisation.
+        # The frontend renders them with the same per-spec precision the
+        # sliders use (so 0.05-step middlePos shows as "0.30", not
+        # "0.30000000000004"); coercing here keeps the wire payload clean.
+        try:
+            sanitized = {k: float(v) for k, v in values.items()}
+        except (TypeError, ValueError) as exc:
+            return (
+                f"Error: propose_attempt could not coerce values to "
+                f"float — {exc}"
+            )
 
     publish({
         "type":   "params_proposed",

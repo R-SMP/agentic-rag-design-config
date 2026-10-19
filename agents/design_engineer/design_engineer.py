@@ -104,6 +104,16 @@ logger = logging.getLogger("mas_agent")
 # Utility tool schemas (actual I/O handled by DesignEngineer)
 # ---------------------------------------------------------------------------
 
+from engine import parameters as _parameters  # noqa: E402
+
+
+def _value_words() -> str:
+    """What each value of the record is, in this tool's error: "a numeric
+    value" while every parameter is a number (MAS-blueprint P6d)."""
+    return ("a numeric value" if _parameters.all_numbers()
+            else _parameters.VALUE_PHRASE)
+
+
 @described
 @tool
 def new_attempt_parameters(parameters: dict,
@@ -124,7 +134,7 @@ def new_attempt_parameters(parameters: dict,
 
     Args:
       parameters:  dict carrying ALL the design parameters listed in your
-                   prompt, each mapped to a number.
+                   prompt, each mapped to $parameter_value.
       slug:        short, filename-safe label that appears in the folder
                    name after the timestamp + sequence number (e.g.
                    $attempt_slug_example).  Optional.
@@ -418,8 +428,8 @@ class DesignEngineer(BaseChainAgent):
                 f"problem - 'parameters' is REQUIRED; 'slug' and "
                 f"'description' are optional.  RE-ISSUE the call with "
                 f"'parameters' set to a dict containing exactly these "
-                f"{len(PARAMETER_NAMES)} keys, each mapped to a "
-                f"numeric value: {list(PARAMETER_NAMES)}.  Do NOT "
+                f"{len(PARAMETER_NAMES)} keys, each mapped to "
+                f"{_value_words()}: {list(PARAMETER_NAMES)}.  Do NOT "
                 f"report this as a tool-interface bug; the omission "
                 f"is in your previous call's arguments."
             )
@@ -433,7 +443,11 @@ class DesignEngineer(BaseChainAgent):
             expected = set(PARAMETER_NAMES)
             missing = sorted(expected - provided)
             extra = sorted(provided - expected)
-            non_numeric = [
+            # Choice and on/off parameters (MAS-blueprint P6d): each value
+            # is checked against its own parameter.
+            typed = not _parameters.all_numbers()
+            wrong = _parameters.wrong_values(params) if typed else []
+            non_numeric = [k for k, _ in wrong] if typed else [
                 k for k in PARAMETER_NAMES
                 if k in params and not isinstance(params[k], (int, float))
                 or isinstance(params.get(k), bool)
@@ -449,6 +463,8 @@ class DesignEngineer(BaseChainAgent):
                     parts.append(f"Unexpected keys (remove them): {extra}")
                 if non_numeric:
                     parts.append(
+                        f"Values that do not fit (fix them): "
+                        f"{_parameters.wrong_text(wrong)}" if typed else
                         f"Non-numeric values (must be int or float): "
                         f"{non_numeric}"
                     )

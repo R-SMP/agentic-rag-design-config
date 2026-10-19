@@ -33,10 +33,17 @@
    writes its picture under another name; a several-line text used inside
    a sentence (the slot-splice check).  On the command line a setup with a
    failure answers 1.
+4. CHOICE AND ON/OFF PARAMETERS (MAS-blueprint P6d).  The planter's drain
+   holes become on/off and a finish choice is added, used only with drain
+   holes; its lists and picture samples are written by hand.  The loading
+   checks, the 12 lists, the topology-7 prompts and the parameter check pass;
+   then a list with a changed label, a list without the "(only when ...)",
+   a sample giving the on/off parameter a number and a default that is not
+   one of the choices each fail with their reason.
 
 Takes about five minutes.  Run from the repo root (naming groups runs only
-those: ``second``, ``broken``, ``server``):
-    py -3.13 extra_utilities/tests/smoke_test_validate.py [second] [broken] [server]
+those: ``second``, ``broken``, ``typed``, ``server``):
+    py -3.13 extra_utilities/tests/smoke_test_validate.py [second] [broken] [typed] [server]
 """
 from __future__ import annotations
 
@@ -463,17 +470,100 @@ def check_broken(tmp: Path, planter: Path) -> str:
     return f"{n[0]} broken copies"
 
 
+# ---------------------------------------------------------------------------
+# 4. choice and on/off parameters
+# ---------------------------------------------------------------------------
+
+FINISH = (" 6. finish (choice) — Surface finish: raw = Raw wood | oiled = Oiled"
+          " (only when drainHoles = true)")
+
+
+def typed_planter(tmp: Path, planter: Path) -> Path:
+    """The planter with drainHoles on/off and a finish choice used only with
+    drain holes; the 12 lists and the picture samples follow, by hand."""
+    c = copy_of(planter, tmp / "typed" / planter.name)
+    spec = json.loads((c / "parameters.json").read_text(encoding="utf-8"))
+    holes = next(p for p in spec["parameters"] if p["name"] == "drainHoles")
+    for k in ("min", "max", "step"):
+        holes.pop(k)
+    holes.update(type="bool", default=True, db_unit="on/off")
+    spec["parameters"].append({
+        "name": "finish", "type": "choice",
+        "choices": [{"value": "raw", "label": "Raw wood"}, {"value": "oiled", "label": "Oiled"}],
+        "default": "raw", "group": "walls", "label": "Finish", "unit": "", "db_unit": "choice",
+        "db_description": "Surface finish", "used_when": {"drainHoles": True}})
+    next(g for g in spec["groups"] if g["id"] == "walls")["order"].append("finish")
+    (c / "parameters.json").write_text(json.dumps(spec, indent=2), encoding="utf-8")
+    files = sorted((c / "fragments" / "dc").glob("parameter_list*.md"))
+    for f in files:
+        raw = f.read_bytes().decode("utf-8")
+        eol = "\r\n" if "\r\n" in raw else "\n"
+        lines = raw.replace("\r\n", "\n").split("\n")
+        i = next(i for i, ln in enumerate(lines) if re.match(r"\s*5\.\s+drainHoles\b", ln))
+        assert "[0; 12]" in lines[i], (f, lines[i])
+        lines[i] = re.sub(r" ?\[0; 12\]", ": true | false", lines[i])
+        lines.insert(i + 1, FINISH)
+        f.write_bytes("\n".join(lines).replace("\n", eol).encode("utf-8"))
+    edit(c / "pack.yaml", "wallThickness: 8, drainHoles: 2}",
+         "wallThickness: 8, drainHoles: true, finish: oiled}")
+    edit(c / "pack.yaml", "wallThickness: 20, drainHoles: 8}",
+         "wallThickness: 20, drainHoles: false, finish: raw}")
+    return c
+
+
+def check_typed(tmp: Path, planter: Path) -> str:
+    c = typed_planter(tmp, planter)
+    got = load(c)
+    bad = {t: i for t, i in got.items() if i["status"] == "fail"}
+    check(not bad, f"[TYPED] the loading checks fail: {[(t, i['lines'][:2]) for t, i in bad.items()]}")
+    check((got.get("12 parameter list(s)") or {}).get("status") == "pass",
+          f"[TYPED] the 12 lists: {got.get('12 parameter list(s)')}")
+    check((got.get("The picture samples (pack.yaml)") or {}).get("status") == "pass",
+          f"[TYPED] the picture samples: {got.get('The picture samples (pack.yaml)')}")
+    b = prompts7(c)
+    check(b.get("status") == "pass", f"[TYPED] the topology-7 prompts: {b.get('status')} {b.get('lines', [])[:3]}")
+    x = dev(c, "smoke_test_parameters")
+    check(x.get("status") == "pass", f"[TYPED] the parameter check: {x.get('status')} {x.get('lines', [])[:4]}")
+    n = [0]
+
+    def case() -> Path:
+        n[0] += 1
+        return copy_of(c, tmp / f"typed{n[0]}" / c.name)
+    one = "fragments/dc/parameter_list@tool_caller.t7.md"
+    d = case()
+    edit(d / one, "oiled = Oiled", "oiled = Oil")
+    check(has(load(d)["12 parameter list(s)"], "fail", "parameter_list@tool_caller.t7.md",
+              'finish does not list "raw = Raw wood | oiled = Oiled"'),
+          f"[TYPED] a list with a changed label: {load(d)['12 parameter list(s)']}")
+    d = case()
+    edit(d / one, " (only when drainHoles = true)", "")
+    check(has(load(d)["12 parameter list(s)"], "fail", 'finish does not say "(only when drainHoles = true)"'),
+          "[TYPED] a list without the (only when ...)")
+    d = case()
+    edit(d / "pack.yaml", "drainHoles: true", "drainHoles: 2")
+    check(has(load(d)["The picture samples (pack.yaml)"], "fail", "small",
+              "its value (a number, one of its choices, or true / false)"),
+          f"[TYPED] a sample giving drainHoles a number: {load(d)['The picture samples (pack.yaml)']}")
+    d = case()
+    edit(d / "parameters.json", '"default": "raw"', '"default": "varnished"')
+    check(has(load(d)["parameters.json"], "fail", "finish: default 'varnished' is not one of its choices"),
+          "[TYPED] a default that is not one of the choices")
+    return f"typed planter: passes, {n[0]} broken copies caught"
+
+
 def main(argv: list[str]) -> int:
-    groups = set(argv) or {"second", "broken", "server"}
+    groups = set(argv) or {"second", "broken", "typed", "server"}
     tmp = Path(tempfile.mkdtemp(prefix="validate_smoke_"))
     summary = []
     try:
-        if groups & {"second", "broken"}:
+        if groups & {"second", "broken", "typed"}:
             planter = _run(lambda: build_second_setup(tmp), "[SECOND]")
             if planter is not None and "second" in groups:
                 summary.append(_run(lambda: check_second(tmp, planter), "[SECOND]"))
             if planter is not None and "broken" in groups:
                 summary.append(_run(lambda: check_broken(tmp, planter), "[BROKEN]"))
+            if planter is not None and "typed" in groups:
+                summary.append(_run(lambda: check_typed(tmp, planter), "[TYPED]"))
         if "server" in groups:
             summary.append(_run(lambda: check_server(tmp), "[SERVER]"))
     finally:
@@ -485,8 +575,8 @@ def main(argv: list[str]) -> int:
             print("  " + f)
         return 1
     print("\nPASS - Validate finds no failure in a second, non-propeller setup made through the "
-          "Studio nor in the propeller, says what this computer lacks as a warning, and catches "
-          "each broken copy with its reason.")
+          "Studio, in that setup with choice and on/off parameters, nor in the propeller, says "
+          "what this computer lacks as a warning, and catches each broken copy with its reason.")
     return 0
 
 

@@ -79,7 +79,7 @@ def _resolve_session_name() -> str:
       The 3-digit padding holds for nnn < 1000; beyond that the
       slug naturally extends to 4+ digits.  See architecture doc
       §9.10 + the ``session_counter`` notes in
-      ``database_PostgreSQL_schema_v9.sql``.
+      ``database_PostgreSQL_schema_v10.sql``.
 
     * **Fallback** — Postgres disabled OR ``nextval`` raised
       (per Q-SID-2 = ii — keep the DH save flow alive even when

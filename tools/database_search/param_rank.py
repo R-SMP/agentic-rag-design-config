@@ -161,18 +161,31 @@ def validate_query(
     history and its out-of-range norm is a true signal.  A QUERY value
     is not history; it is a typo.
     """
+    from engine import parameters as _parameters
+    typed = not _parameters.all_numbers()
     if not isinstance(params, dict) or not params:
         raise ParameterQueryError(fill(
             "Supply at least one design parameter, as a JSON object of "
-            "parameter name -> numeric value, e.g. "
-            "{$parameter_search_example}."))
+            "parameter name -> "
+            + (_parameters.VALUE_PHRASE if typed else "numeric value")
+            + ", e.g. {$parameter_search_example}."))
 
+    spec = _parameters.by_name() if typed else {}
     clean: dict[str, float] = {}
     for key, raw in params.items():
         if key not in schema:
             raise ParameterQueryError(
                 f"Unknown design parameter {key!r}.  Searchable "
                 f"parameters are: {', '.join(sorted(schema))}.")
+        p = spec.get(key)
+        if p is not None and p["type"] in ("choice", "bool"):
+            # MAS-blueprint P6d: one of its values / true or false, matched
+            # as it is stored (on/off 1 / 0, a choice its position).
+            why = _parameters.check_value(p, raw)
+            if why:
+                raise ParameterQueryError(f"Parameter {key!r} {why}.")
+            clean[key] = _parameters.to_db(p, raw)
+            continue
         # bool is a subclass of int, so isinstance(True, int) is True.
         # The same trap _is_strict_type() guards in the metafilter
         # parser -- {"bladeCount": True} must not read as 1.
@@ -242,8 +255,8 @@ class ParamHit:
 # rule, and the measurement shows it costs nothing (0/95 invisible for
 # every target agent once the role equivalence is applied).
 _MASKED_RMSE_SQL = """
-WITH q(param_name, q_value) AS (
-    SELECT * FROM unnest(%(keys)s::text[], %(vals)s::float8[])
+WITH q(param_name, q_value, q_cat) AS (
+    SELECT * FROM unnest(%(keys)s::text[], %(vals)s::float8[], %(cats)s::bool[])
 ),
 sch AS (
     SELECT param_name, min_value, max_value
@@ -256,8 +269,12 @@ sch AS (
 scored AS (
     SELECT p.attempt_id,
            COUNT(*) AS matched_keys,
-           sqrt(AVG(POWER((p.raw_value - q.q_value)
-                          / (s.max_value - s.min_value), 2))) AS rmse
+           -- a choice or on/off parameter matches or not (0 / 1); a
+           -- number counts its distance across its range
+           sqrt(AVG(POWER(CASE WHEN q.q_cat
+                               THEN CASE WHEN p.raw_value = q.q_value THEN 0 ELSE 1 END
+                               ELSE (p.raw_value - q.q_value)
+                                    / (s.max_value - s.min_value) END, 2))) AS rmse
       FROM dc_attempt_parameters p
       JOIN q     ON q.param_name = p.param_name
       JOIN sch s ON s.param_name = p.param_name
@@ -307,10 +324,13 @@ def rank_attempts(
     """
     if not params:
         return []
+    from engine import parameters as _parameters
+    spec = _parameters.by_name()
     with conn.cursor() as cur:
         cur.execute(_MASKED_RMSE_SQL, {
             "keys": list(params),
             "vals": [float(v) for v in params.values()],
+            "cats": [spec.get(k, {}).get("type") in ("choice", "bool") for k in params],
             "acl":  acl_identities(caller_agent),
             "n":    int(n),
         })

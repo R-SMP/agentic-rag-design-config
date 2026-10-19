@@ -53,9 +53,10 @@ SAMPLE_NAMES = {"cross_sections": "cross", "3d_render": "geo"}
 
 def render_sample_sets(path: Path | None = None) -> dict[str, dict]:
     """``render_samples`` from ``dc_pack/pack.yaml``: size name -> a full
-    parameter set (every parameter, a number each; the values are pictures
-    for the compression slider, so a range is not enforced).  ``{}`` when
-    the pack names none."""
+    parameter set (every parameter, a number each -- or, for a choice or
+    on/off parameter, one of its values / true or false; the values are
+    pictures for the compression slider, so a range is not enforced).
+    ``{}`` when the pack names none."""
     path = path or _pack.pack_dir() / "pack.yaml"
     try:
         data = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
@@ -63,15 +64,18 @@ def render_sample_sets(path: Path | None = None) -> dict[str, dict]:
         return {}
     sets = data.get("render_samples") or {}
     names = set(_parameters.names())
+    typed = not _parameters.all_numbers()
     problems = []
     if not isinstance(sets, dict):
         problems.append("render_samples maps a size name to a parameter set")
         sets = {}
     for size, values in sets.items():
-        if not isinstance(values, dict) or set(values) != names or any(
-                isinstance(v, bool) or not isinstance(v, (int, float)) for v in values.values()):
+        if not isinstance(values, dict) or set(values) != names or (
+                _parameters.wrong_values(values) if typed else any(
+                    isinstance(v, bool) or not isinstance(v, (int, float))
+                    for v in values.values())):
             problems.append(f"render_samples.{size}: must give every parameter "
-                            f"({len(names)}) a number, and nothing else")
+                            f"({len(names)}) {_parameters.value_phrase()}, and nothing else")
     if problems:
         raise pack_tools.PackToolError(f"{path.name}: " + "; ".join(problems))
     return {size: {n: values[n] for n in _parameters.names()} for size, values in sets.items()}

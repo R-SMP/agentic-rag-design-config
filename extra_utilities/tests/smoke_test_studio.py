@@ -1115,10 +1115,15 @@ def check_params(st: Studio, copy: Path) -> str:
     check(r.get("ok") is False and any("renaming" in p for p in r.get("problems", [])),
           f"[PARAMS] a rename that does not match: not refused: {str(r)[:200]}")
     _same("after the refused saves")
-    # The page checks a file exactly as the engine does (Node runs the page's own code).
-    js = _js_validate([spec] + bad_specs + [{"groups": [], "parameters": []}, [], {"groups": [], "parameters": [{}], "x": 1}])
+    # The page checks a file exactly as the engine does (Node runs the page's own code),
+    # choice and on/off parameters too (MAS-blueprint P6d).
+    from smoke_test_parameters import TYPED_SPEC, typed_bad_specs
+    odd = [{"groups": [], "parameters": []}, [], {"groups": [], "parameters": [{}], "x": 1}]
+    typed = [TYPED_SPEC] + typed_bad_specs()
+    js = _js_validate([spec] + bad_specs + odd + typed)
     if js is not None:
-        for s, got in zip([spec] + bad_specs + [{"groups": [], "parameters": []}, [], {"groups": [], "parameters": [{}], "x": 1}], js):
+        check(len(js) == 1 + len(bad_specs) + len(odd) + len(typed), "[PARAMS] the page checked fewer files than it was given")
+        for s, got in zip([spec] + bad_specs + odd + typed, js):
             want = eparams.validate(s)
             check(got == want, f"[PARAMS] the page checks a file otherwise than the engine: {got} != {want}")
     # 7. Every access cell through every state, and back; the refusals.

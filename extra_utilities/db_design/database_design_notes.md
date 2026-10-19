@@ -349,9 +349,9 @@ discipline for Stage A).
 ## Quick-reference DDL
 
 > **⚠ STALE — this DDL is NOT current (flagged 2026-08-21).**  It shows the
-> five-table, roughly v5-era shape.  The live schema is **v9**: it adds
+> five-table, roughly v5-era shape.  The current schema is **v10**: it adds
 > `rag_queries` and `chunks_mm`, and columns have moved.  The authoritative
-> DDL is `extra_utilities/db_design/database_PostgreSQL_schema_v9.sql`, with
+> DDL is `extra_utilities/db_design/database_PostgreSQL_schema_v10.sql`, with
 > the narrative in `extra_utilities/db_design/database_and_RAG_architecture.md`.
 > The block below is kept as the v5-era record; the D0-D15 doctrine above it
 > is still good.

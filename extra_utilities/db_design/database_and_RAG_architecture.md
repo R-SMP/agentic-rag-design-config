@@ -1,7 +1,7 @@
 # Database and RAG Architecture — Design Decisions
 
 **Status:** design phase. Implementation begins after the user gives the go-ahead.
-**Companion file:** `database_PostgreSQL_schema_v9.sql` (in this folder) — the current schema; `migrations/migrate_v8_to_v9.sql` upgrades a v8 database. Earlier versions (v1–v8) and the older migration ledger are in git history (`extra_utilities/extra_info.md` §11); the version notes below still name them.
+**Companion file:** `database_PostgreSQL_schema_v10.sql` (in this folder) — the current schema; `migrations/migrate_v9_to_v10.sql` upgrades a v9 database, `migrations/migrate_v8_to_v9.sql` a v8 one. Earlier versions (v1–v8) and the older migration ledger are in git history (`extra_utilities/extra_info.md` §11); the version notes below still name them.
 **Last updated:** 2026-06-01.
 
 This file captures every architectural decision made during the

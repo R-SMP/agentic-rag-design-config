@@ -4,7 +4,8 @@
 setup's parameters.json: complete, typed, in order) and returns the model in
 the format the manifest declares; it writes nothing and raises ToolError
 when it cannot (engine/tooling.py).  This template returns a box whose three
-sides are the first three parameter values.
+sides are the first three number values (choice and on/off values are
+skipped).
 """
 
 from __future__ import annotations
@@ -13,7 +14,8 @@ from engine.tooling import GeometryResult
 
 
 def make_model(params: dict) -> GeometryResult:
-    sides = [abs(float(v)) or 1.0 for v in params.values()][:3]
+    sides = [abs(float(v)) or 1.0 for v in params.values()
+             if isinstance(v, (int, float)) and not isinstance(v, bool)][:3]
     while len(sides) < 3:
         sides.append(1.0)
     x, y, z = sides

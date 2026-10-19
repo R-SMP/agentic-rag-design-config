@@ -98,6 +98,9 @@ class _Words(dict):
             value = FROM_MANIFESTS[name]()
         elif name == "parameter_count":
             value = str(_parameters.count())
+        elif name == "parameter_value":
+            # "a number" while every parameter is one (MAS-blueprint P6d)
+            value = _parameters.value_phrase()
         else:
             spec = _pack.registry().get(name)
             if spec is None or spec.get("source") != "pack":

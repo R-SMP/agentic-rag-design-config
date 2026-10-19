@@ -75,7 +75,7 @@ Volumes → New Volume**, mounted at `/app/previous_sessions`.
 3. Create the tables once, from your computer: put the database's
    `DATABASE_PUBLIC_URL` (its **Variables** tab) in `.env`, then run
 
-       python extra_utilities/db_design/apply_schema.py extra_utilities/db_design/database_PostgreSQL_schema_v9.sql
+       python extra_utilities/db_design/apply_schema.py extra_utilities/db_design/database_PostgreSQL_schema_v10.sql
 
 4. In the app: **Workflow Settings › Database › Upload parameter schema**.
 5. Search over past designs with their pictures needs `VOYAGE_API_KEY`;

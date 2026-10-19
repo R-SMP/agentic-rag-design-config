@@ -965,7 +965,9 @@ class PreviewMeshIn(BaseModel):
     GH-definition selector, or a "skip cache" flag) can be added
     without breaking the body shape.
     """
-    params: dict[str, float]
+    # A number, or -- with choice and on/off parameters (MAS-blueprint P6d)
+    # -- a choice's value or true / false; _coerce_preview_params checks each.
+    params: dict[str, float | int | bool | str]
 
 
 def _coerce_preview_params(raw_params: dict) -> dict[str, int | float]:
@@ -997,6 +999,15 @@ def _coerce_preview_params(raw_params: dict) -> dict[str, int | float]:
     problems = []
     for name, spec in param_spec.items():
         v = raw[name]
+        if spec["type"] in ("choice", "bool"):
+            # MAS-blueprint P6d: one of its values / true or false, as it is.
+            why = _parameters.check_value(
+                {"type": spec["type"], "choices": [{"value": c} for c in spec.get("choices", [])]}, v)
+            if why:
+                problems.append(f"{name}={v!r} ({why})")
+            else:
+                coerced[name] = v
+            continue
         if not isinstance(v, (int, float)) or isinstance(v, bool):
             problems.append(f"{name}={v!r} (must be a number)")
             continue
@@ -1258,7 +1269,7 @@ def _run_save_session_feedback_sync(feedback: "FeedbackIn") -> dict:
     the loop (Q-3C-6 = A).  Maps the modal payload to the
     ``FIXED_FEEDBACK_QUESTIONS`` ids and translates the satisfaction
     enum to the SMALLINT 0..10 scale per the
-    ``database_PostgreSQL_schema_v9.sql`` ``sessions.satisfaction``
+    ``database_PostgreSQL_schema_v10.sql`` ``sessions.satisfaction``
     column comment (10=yes, 5=partially, 0=no, NULL=no feedback).
 
     Best-effort: when Postgres is disabled OR an error occurs, log

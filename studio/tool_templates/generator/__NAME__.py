@@ -4,7 +4,8 @@
 ``render`` makes its picture, ``render_<view>.png`` beside it.  The engine
 checks the parameter record, reuses a model that is already there, and joins
 the two answers (engine/tooling.py).  This template builds a box whose three
-sides are the first three parameter values, and draws its front view.
+sides are the first three number values (choice and on/off values are
+skipped), and draws its front view.
 """
 
 from __future__ import annotations
@@ -17,7 +18,8 @@ VIEW = "__NAME__"
 
 
 def _sides(params: dict) -> tuple[float, float, float]:
-    sides = [abs(float(v)) or 1.0 for v in params.values()][:3]
+    sides = [abs(float(v)) or 1.0 for v in params.values()
+             if isinstance(v, (int, float)) and not isinstance(v, bool)][:3]
     while len(sides) < 3:
         sides.append(1.0)
     return sides[0], sides[1], sides[2]

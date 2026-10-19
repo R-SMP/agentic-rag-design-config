@@ -142,6 +142,16 @@ def validate(
         if not 0 <= img.compression_degree <= 100:
             raise ManualEntryError(
                 f"{img.filename!r}: compression degree must be 0-100.")
+    from engine import parameters as _parameters
+    if not _parameters.all_numbers():
+        # Choice and on/off parameters (MAS-blueprint P6d): each value is
+        # checked against its own parameter before anything is written.
+        spec = _parameters.by_name()
+        for name, value in parameters.items():
+            why = _parameters.check_value(spec[name], value) if name in spec else None
+            if why:
+                raise ManualEntryError(f"Parameter {name!r} {why} (got {value!r}).")
+        return
     for name, value in parameters.items():
         try:
             float(value)

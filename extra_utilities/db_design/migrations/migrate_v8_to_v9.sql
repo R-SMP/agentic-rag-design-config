@@ -5,7 +5,7 @@
 -- transaction).  REMOVES NO DATA: it adds one nullable column + index,
 -- drops one redundant constraint, and fills retired_at on rows whose
 -- parameter a later schema version dropped.  See the "Changes vs v8"
--- header of database_PostgreSQL_schema_v9.sql.
+-- header of database_PostgreSQL_schema_v10.sql.
 --
 -- Run from the repo root:
 --   py -3.13 extra_utilities/db_design/apply_schema.py extra_utilities/db_design/migrations/migrate_v8_to_v9.sql

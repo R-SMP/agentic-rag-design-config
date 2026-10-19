@@ -74,7 +74,7 @@ def main() -> int:
     with psycopg.connect(url) as conn:
         if args.dry_run:
             plan = parameter_schema.plan_upload(
-                parameter_schema.read_versions(conn), rows)
+                parameter_schema.read_versions(conn, parameter_schema.typed(rows)), rows)
             conn.rollback()
         else:
             plan = parameter_schema.upload(conn, rows)
