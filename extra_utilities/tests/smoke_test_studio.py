@@ -1,4 +1,4 @@
-"""The Studio (MAS-blueprint P5a-P6b): the real server on a copy of the pack.
+"""The Studio (MAS-blueprint P5a-P6c): the real server on a copy of the pack.
 
 ``python -m studio --pack <copy>`` is started as the user starts it, and its
 page and its one call (``POST /api/get_all``) are checked:
@@ -77,7 +77,25 @@ Since MAS-blueprint P6b it edits the parameters and the access grid
    (pack.yaml byte for byte); the Database Handler cannot take "tool".  The
    page checks a parameter file exactly as the engine does (Node).
 
-Takes about six minutes.  Run from the repo root:
+Since MAS-blueprint P6c it edits the tools (``studio/tools_edit.py``,
+``studio/yaml_patch.py``):
+
+10. TOOLS.  Every value the manifest form edits, of every tool (display
+   name, description, argument texts, roles, the switch, each setting's
+   default / label / description, each picture's label / order / on, the
+   list order) and a declared secret, is saved -- the file reads back as
+   the form's manifest -- and put back byte for byte.  Bad manifests are
+   refused with the engine's own reasons, a stale page as a conflict.  The
+   manifest as text, every text file of every tool, every binary file
+   (replaced), a file added: each back byte for byte; a Python syntax
+   error saves with a warning; uploads outside the folder, into prompts/
+   or over a file without its sha are refused; a tool-list entry with
+   braces is refused.  A tool still named by another tool's setting or by
+   the Download buttons cannot be removed; removing the only generator
+   warns; one tool is removed (the prompts change) and its Undo brings it
+   back byte for byte, as a tool changed in several places is.
+
+Takes about seven minutes.  Run from the repo root:
     py -3.13 extra_utilities/tests/smoke_test_studio.py
 """
 from __future__ import annotations
@@ -1134,6 +1152,226 @@ def check_params(st: Studio, copy: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
+# the tool editor (P6c)
+# ---------------------------------------------------------------------------
+
+def _tool_ok(st: Studio, what: str, name: str, *args) -> dict:
+    status, r = st.call(name, *args)
+    check(status == 200 and r.get("ok") is True, f"[TOOLS] {what}: {name} answered {status} {str(r)[:300]}")
+    return r
+
+
+def _form_changes(m: dict, geometry: list) -> list:
+    """Every value the manifest form edits, each changed: (path, value)."""
+    out = [(["display_name"], m["display_name"] + " QZX"),
+           (["description"], m["description"].rstrip("\n") + "\nQZX added line.")]
+    for a, text in (m.get("args") or {}).items():
+        out.append((["args", a], text + " QZX"))
+    if m.get("roles"):
+        extra = next(r for r in ("output_inspector", "planner") if r not in m["roles"])
+        out.append((["roles"], m["roles"] + [extra]))
+    sw = m.get("switch")
+    if sw:
+        out += [(["switch", "default"], not sw["default"]), (["switch", "label"], sw["label"] + " QZX"),
+                (["switch", "description"], sw["description"] + " QZX")]
+    for i, s in enumerate(m.get("settings") or []):
+        if s["type"] == "bool":
+            new = not s["default"]
+        elif s["type"] == "enum":
+            new = next(v for v in s["values"] if v != s["default"])
+        else:
+            new = next(v for v in geometry + (["none"] if s.get("none") else []) if v != s["default"])
+        out += [(["settings", i, "default"], new), (["settings", i, "label"], s["label"] + " QZX"),
+                (["settings", i, "description"], s["description"] + " QZX")]
+    for i, im in enumerate((m.get("outputs") or {}).get("images") or []):
+        out += [(["outputs", "images", i, "label"], im["label"] + " QZX"),
+                (["outputs", "images", i, "order"], im["order"] + 1),
+                (["outputs", "images", i, "default_enabled"], not im["default_enabled"])]
+    if "list_order" in m:
+        out.append((["list_order"], m["list_order"] + 1))
+    return out
+
+
+def check_tools(st: Studio, copy: Path) -> str:
+    """Every value of every manifest through the form, the manifests as
+    text, every file of every tool, the tool-list entries, removal, Undo --
+    each byte for byte back; the refusals."""
+    import copy as copymod
+    import yaml as _yaml
+    ref = _snapshot(copy)
+
+    def same(what):
+        return _same_files(copy, ref, what, "[TOOLS]")
+    status, d = st.call("get_all")
+    D0 = d["data"]
+    TE = D0["tools_edit"]
+    names = sorted(TE["tools"])
+    check(D0["changed"] == [] and TE["removed"] == [] and len(names) >= 1,
+          f"[TOOLS] fresh setup: changed {D0['changed']}, removed {TE['removed']}")
+    rhino = next((t for t in D0["tools"] if t["name"] == "rhino_geometry"), None)
+    check(rhino is None or [s["env"] for s in rhino["secrets"]] == ["RHINO_COMPUTE_URL", "RHINO_COMPUTE_API_KEY"],
+          "[TOOLS] the data does not carry rhino_geometry's secrets")
+    geometry = [n for n in names if TE["tools"][n]["manifest"].get("kind") == "geometry"]
+
+    def path_value(m, path):
+        for p in path:
+            m = m[p]
+        return m
+
+    # 1. Every value the form edits, changed and back; a secret added and taken out.
+    forms = 0
+    for name in names:
+        m0 = TE["tools"][name]["manifest"]
+        sha = TE["tools"][name]["sha"]
+        changes = _form_changes(m0, geometry) + [(["secrets"], (m0.get("secrets") or []) + [
+            {"env": "QZX_TEST_KEY", "required": True, "description": "A test variable: never set."}])]
+        for path, value in changes:
+            m = copymod.deepcopy(m0)
+            mm = m
+            for p in path[:-1]:
+                mm = mm[p]
+            mm[path[-1]] = value
+            status, r = st.call("save_manifest", name, m, sha)
+            what = f"{name} {'.'.join(map(str, path))}"
+            if not (r.get("ok") is True):
+                check(False, f"[TOOLS] {what}: the form's change was refused: {str(r)[:300]}")
+                continue
+            sha = r["sha"]
+            back = _yaml.safe_load((copy / "tools" / name / "tool.yaml").read_bytes().decode("utf-8"))
+            check(back == m, f"[TOOLS] {what}: tool.yaml does not read back as the form's manifest")
+            r = _tool_ok(st, f"{what}, back", "save_manifest", name, m0, sha)
+            sha = r.get("sha", sha)
+            forms += 1
+        same(f"{name}: every form value changed and back")
+    # 2. Refusals: the engine's own messages; nothing written.
+    name = next(n for n in names if TE["tools"][n]["manifest"].get("kind") != "geometry")
+    m0, sha = TE["tools"][name]["manifest"], TE["tools"][name]["sha"]
+    bad = [("an unknown kind", {"kind": "qzx"}, "kind must be one of"),
+           ("no description", {"description": ""}, "description is required"),
+           ("no role", {"roles": []}, "roles must list"),
+           ("an unknown role", {"roles": ["qzx"]}, "roles must list"),
+           ("an unknown field", {"qzx": 1}, "unknown field 'qzx'"),
+           ("another name", {"name": "qzx_other"}, "name must be the folder name"),
+           ("a bad secret", {"secrets": [{"env": "qzx", "description": "x"}]}, "secrets[0] is")]
+    for what, edit, words in bad:
+        m = dict(copymod.deepcopy(m0), **edit)
+        status, r = st.call("save_manifest", name, m, sha)
+        check(r.get("ok") is False and any(words in p for p in r.get("problems", [])),
+              f"[TOOLS] {what}: not refused with the engine's reason: {str(r)[:300]}")
+    s_bad = next(((i, s) for i, s in enumerate(m0.get("settings") or []) if s["type"] == "enum"), None)
+    if s_bad:
+        m = copymod.deepcopy(m0)
+        m["settings"][s_bad[0]]["default"] = "qzx_not_a_value"
+        status, r = st.call("save_manifest", name, m, sha)
+        check(r.get("ok") is False and any("values must list the default" in p for p in r.get("problems", [])),
+              f"[TOOLS] an enum default not among its values: not refused: {str(r)[:200]}")
+    status, r = st.call("save_manifest", name, dict(m0, display_name="x"), "0" * 64)
+    check(r.get("ok") is False and r.get("conflict") is True, "[TOOLS] a stale page: not a conflict")
+    same("after the refused manifests")
+    # 3. The manifest as text: a comment added and back; broken YAML refused.
+    text0 = (copy / "tools" / name / "tool.yaml").read_bytes().decode("utf-8").replace("\r\n", "\n")
+    r = _tool_ok(st, "tool.yaml text", "save_tool_file", name, "tool.yaml", "# QZX comment\n" + text0, sha)
+    raw = (copy / "tools" / name / "tool.yaml").read_bytes()
+    check(raw.startswith(b"# QZX comment") and (b"\r\n" in raw) == (b"\r\n" in ref[f"tools/{name}/tool.yaml"]),
+          "[TOOLS] tool.yaml text: not written in the file's own line endings")
+    _tool_ok(st, "tool.yaml text, back", "save_tool_file", name, "tool.yaml", text0, r.get("sha"))
+    status, r = st.call("save_tool_file", name, "tool.yaml", text0 + "\n  : [unclosed\n", sha)
+    check(r.get("ok") is False and r.get("problems"), f"[TOOLS] broken YAML text: not refused: {str(r)[:200]}")
+    same("the manifest as text and back")
+    # 4. Every file of every tool: a text file edited and back, a binary
+    #    replaced and back, a file added and taken out.
+    files = 0
+    for tname in names:
+        for f in TE["tools"][tname]["files"]:
+            rel = f["path"]
+            if rel == "tool.yaml" or (f["prompts"] and not f["entry"]):
+                continue
+            if f["text"]:
+                status, r = st.call("tool_file", tname, rel)
+                text = r.get("text")
+                mark = {".py": "# QZX\n", ".mjs": "// QZX\n", ".js": "// QZX\n"}.get(Path(rel).suffix, "QZX\n")
+                new = text + ("" if text.endswith("\n") else "\n") + mark
+                r2 = _tool_ok(st, f"{tname}/{rel}", "save_tool_file", tname, rel, new, r.get("sha"))
+                raw = (copy / "tools" / tname / rel).read_bytes()
+                old = ref[f"tools/{tname}/{rel}"]
+                check((b"\r\n" in raw) == (b"\r\n" in old) or b"\n" not in old,
+                      f"[TOOLS] {tname}/{rel}: line endings not kept")
+                if rel.endswith(".py"):
+                    r3 = _tool_ok(st, f"{tname}/{rel} broken", "save_tool_file", tname, rel, new + "def broken(:\n", r2.get("sha"))
+                    check(any("does not compile" in w for w in r3.get("warnings", [])),
+                          f"[TOOLS] {tname}/{rel}: a syntax error gave no warning")
+            else:
+                _tool_ok(st, f"{tname}/{rel} replaced", "upload_tool_file", tname, rel,
+                         base64.b64encode(b"QZX not the real file").decode(), f["sha"])
+            _tool_ok(st, f"{tname}/{rel} undo", "undo_tool_file", tname, rel)
+            files += 1
+    status, r = st.call("tool_file", names[0], "tool.yaml")
+    _tool_ok(st, "a file added", "upload_tool_file", names[0], "qzx_added.txt", base64.b64encode(b"qzx\n").decode(), None)
+    status, d = st.call("get_all")
+    added = [f for f in d["data"]["tools_edit"]["tools"][names[0]]["files"] if f["path"] == "qzx_added.txt"]
+    check(added and added[0]["added"] and f"tools/{names[0]}/qzx_added.txt" in d["data"]["changed"],
+          "[TOOLS] an added file is not listed as added and changed")
+    _tool_ok(st, "an added file, undo", "undo_tool_file", names[0], "qzx_added.txt")
+    for rel, words in (("../qzx.txt", "not a file name"), ("prompts/qzx.md", "text fields"),
+                       ("__pycache__/x.py", "not a file name")):
+        status, r = st.call("upload_tool_file", names[0], rel, base64.b64encode(b"x").decode(), None)
+        check(r.get("ok") is False and words in r.get("error", ""), f"[TOOLS] upload to {rel}: not refused: {r}")
+    status, r = st.call("upload_tool_file", names[0], "tool.yaml", base64.b64encode(b"x").decode(), None)
+    check(r.get("ok") is False and r.get("conflict") is True, "[TOOLS] an upload over an existing file without its sha: not a conflict")
+    same("every tool file edited or replaced, and back")
+    # 5. The tool-list entries: prompt text, checked like a text field.
+    for tname in names:
+        for f in [f for f in TE["tools"][tname]["files"] if f["entry"]]:
+            status, r = st.call("tool_file", tname, f["path"])
+            status, r2 = st.call("save_tool_file", tname, f["path"], r["text"] + " {QZX}", r["sha"])
+            check(r2.get("ok") is False and any("{ or }" in p for p in r2.get("problems", [])),
+                  f"[TOOLS] {tname} list entry with braces: not refused: {str(r2)[:200]}")
+    same("after the refused list entries")
+    # 6. Removal: what still names a tool blocks it; one is removed, the
+    #    prompts lose it, and Undo brings it back byte for byte.
+    removable = None
+    for tname in names:
+        status, r = st.call("remove_tool_preview", tname)
+        uses = [o for o in names if o != tname and any(
+            s.get("type") == "tool" and s.get("default") == tname
+            for s in TE["tools"][o]["manifest"].get("settings") or [])]
+        check(bool(r.get("blockers")) == bool(uses) or "pack.yaml" in " ".join(r.get("blockers", [])),
+              f"[TOOLS] {tname}: removal blockers {r.get('blockers')} but used by {uses}")
+        if TE["tools"][tname]["manifest"].get("kind") == "generator":
+            check(any("only generator" in w for w in r.get("warnings", [])),
+                  f"[TOOLS] {tname}: no warning for removing the only generator")
+        elif not r.get("blockers") and not r.get("problems") and removable is None:
+            removable = tname
+        if r.get("blockers"):
+            status, r2 = st.call("remove_tool", tname)
+            check(r2.get("ok") is False, f"[TOOLS] {tname}: removed although it is still used")
+    shown = 0
+    if removable:
+        _tool_ok(st, f"remove {removable}", "remove_tool", removable)
+        check(not (copy / "tools" / removable).exists(), f"[TOOLS] {removable}: its folder is still there")
+        status, d = st.call("get_all")
+        D1 = d["data"]
+        check(removable not in [t["name"] for t in D1["tools"]] and D1["tools_edit"]["removed"] == [removable],
+              f"[TOOLS] after removing {removable}: still listed")
+        shown = sum(D1["prompts"][t]["prompts"].get(a) != p
+                    for t in ("7", "5", "3") for a, p in D0["prompts"][t]["prompts"].items())
+        check(shown > 0, f"[TOOLS] after removing {removable}: no prompt changed")
+        _tool_ok(st, f"undo {removable}", "undo_tool", removable)
+        same(f"{removable} removed, then Undo")
+    # 7. A tool with several changes, put back whole.
+    tname = names[-1]
+    m = copymod.deepcopy(TE["tools"][tname]["manifest"])
+    m["display_name"] += " QZX"
+    r = _tool_ok(st, "a manifest change", "save_manifest", tname, m, TE["tools"][tname]["sha"])
+    _tool_ok(st, "a file added", "upload_tool_file", tname, "qzx_more.txt", base64.b64encode(b"q\n").decode(), None)
+    _tool_ok(st, "the tool's Undo", "undo_tool", tname)
+    same("a tool changed in several places, then its Undo")
+    return (f"{forms} form values of {len(names)} manifests changed and back, {files} tool files edited or "
+            f"replaced and back, the refusals, removal of {removable or 'no tool'} ({shown} prompts changed) "
+            f"and its Undo; byte for byte")
+
+
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     _run(check_cache_unit, "[CACHE]")
@@ -1162,6 +1400,7 @@ def main() -> int:
             summary["cache"] = _run(lambda: check_cache(st, D, copy, first), "[CACHE]")
             summary["edit"] = _run(lambda: check_edit(st, copy), "[EDIT]")
             summary["params"] = _run(lambda: check_params(st, copy), "[PARAMS]")
+            summary["tools"] = _run(lambda: check_tools(st, copy), "[TOOLS]")
             summary["first"] = f"{first:.0f} s"
     finally:
         if st is not None:
@@ -1171,7 +1410,8 @@ def main() -> int:
           f"engine reads them; {summary.get('where')} field texts (per topology) found in a "
           f"prompt, each with its sentences there; {summary.get('prompts')} prompts = the prompt matrix's base; "
           f"{summary.get('cache')}; {summary.get('viewer')}; {summary.get('pool')}; "
-          f"editing: {summary.get('edit')}; parameters: {summary.get('params')}")
+          f"editing: {summary.get('edit')}; parameters: {summary.get('params')}; "
+          f"tools: {summary.get('tools')}")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
@@ -1179,8 +1419,8 @@ def main() -> int:
         return 1
     print("\nPASS - the Studio shows every field of the setup, where each one lands, and "
           "the engine's own prompts and tools under every choice of settings, sees "
-          "a changed file, edits every text field, parameter and access cell, and puts "
-          "each back byte for byte.")
+          "a changed file, edits every text field, parameter, access cell and tool, "
+          "and puts each back byte for byte.")
     return 0
 
 

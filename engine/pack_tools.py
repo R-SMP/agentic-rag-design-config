@@ -29,7 +29,10 @@ The engine side of the tool contract (``engine/tooling.py``):
   parameters for a generator (its ``geometry_tool`` /
   ``fallback_geometry_tool`` settings, :func:`make_model`) and for the web
   app's Download buttons (the ``downloads`` choice, default in
-  ``dc_pack/pack.yaml``); no agent is given one.
+  ``dc_pack/pack.yaml``); no agent is given one;
+* **secrets** -- the environment variables a tool reads (``secrets``: the
+  names, whether each is required, a sentence each).  Names only: the
+  values live in ``.env`` or the hosting provider, never in the pack.
 
 Imports nothing from ``agents`` at module level: ``prompts`` reads the flags
 through here while ``agents`` is still being imported.
@@ -96,11 +99,14 @@ _PKG_PREFIX = "_dc_pack_tools"
 _ERROR_LABEL_RE = re.compile(r"^(?:[A-Za-z]+ )?[Ee]rror:")
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 _REF_RE = re.compile(r"^([A-Za-z_][A-Za-z0-9_]*)\.py:([A-Za-z_][A-Za-z0-9_]*)$")
+# An environment variable's name, as a tool declares it under secrets.
+_ENV_RE = re.compile(r"^[A-Z][A-Z0-9_]*$")
+_SECRET_KEYS = {"env", "required", "description"}
 
 _TOP_KEYS = {"name", "display_name", "kind", "roles", "description", "build",
              "render", "entrypoint", "args", "outputs", "switch", "settings",
              "list_order", "prompt_slots", "fill_on_save", "image_note",
-             "runtime_blocks"}
+             "runtime_blocks", "secrets"}
 _SETTING_KEYS = {"name", "type", "values", "default", "label", "description",
                  "tool_kind", "none"}
 _IMAGE_KEYS = {"view", "file", "order", "default_enabled", "label", "compression",
@@ -233,6 +239,23 @@ def _check_manifest(folder: Path, m) -> list[str]:
         if s.get("type") != "tool" and ({"tool_kind", "none"} & set(s)):
             p.append(f"{where}: setting {s.get('name')}: tool_kind / none are for "
                      f"type: tool")
+    # The environment variables it reads: names, never values.
+    secrets = m.get("secrets", [])
+    if not isinstance(secrets, list):
+        p.append(f"{where}: secrets lists {{env: NAME, required: true|false, description}}")
+        secrets = []
+    seen_env: set[str] = set()
+    for i, s in enumerate(secrets):
+        if (not isinstance(s, dict) or set(s) - _SECRET_KEYS
+                or not _ENV_RE.match(str(s.get("env", "")))
+                or not isinstance(s.get("required", False), bool)
+                or not isinstance(s.get("description"), str) or not s["description"].strip()):
+            p.append(f"{where}: secrets[{i}] is {{env: NAME (capitals, digits, _), "
+                     f"required: true|false, description: <text>}}")
+        elif s["env"] in seen_env:
+            p.append(f"{where}: secrets names {s['env']} twice")
+        else:
+            seen_env.add(s["env"])
     # Its place in the tool runner's numbered tool list, and the text it owns.
     runner = isinstance(roles, list) and "tool_runner" in roles
     order = m.get("list_order")

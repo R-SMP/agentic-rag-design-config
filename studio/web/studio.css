@@ -291,3 +291,21 @@ table.ptab td.chg { box-shadow:inset 0 0 0 1px rgba(240,140,0,.6); background:#2
 .pprev h4 { margin:12px 0 6px; }
 .pprev .diff { font-family:var(--mono); font-size:11px; white-space:pre-wrap; word-break:break-word;
                background:#15161a; border:1px solid var(--line); border-radius:6px; padding:6px 8px; margin-top:6px; }
+
+/* ---- editing the tools and their settings (MAS-blueprint P6c) -------------------------- */
+.tcard.gone { opacity:.7; }
+.tcard.gone .head s { font-family:var(--mono); }
+.teditor { padding:10px 16px 24px; }
+.mformwrap .block { margin:14px 0; }
+.kv.mform { grid-template-columns:130px 1fr; align-items:start; }
+.kv.mform input[type=text], .kv.mform textarea, .kv.mform select { width:100%; }
+.kv.mform textarea, textarea.code { font-family:var(--mono); font-size:11.5px; line-height:1.45; }
+.muted.hint { font-size:11.5px; margin-top:3px; }
+.rolechecks { display:flex; flex-direction:column; gap:4px; }
+table.ptab.secrets td input[type=text] { width:100%; }
+.tacts { display:flex; gap:8px; align-items:center; margin-top:10px; }
+.fedit { margin:12px 0; }
+.fhead { display:flex; gap:8px; align-items:center; margin:8px 0 6px; flex-wrap:wrap; }
+.fhead .grow { flex:1 1 auto; }
+textarea.code { width:100%; resize:vertical; white-space:pre; overflow:auto; }
+table.ptab.files td.num { text-align:right; font-family:var(--mono); }

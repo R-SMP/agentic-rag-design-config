@@ -15,3 +15,9 @@ description: >-
 
 outputs:
   model_format: obj
+
+# The environment variables it reads (names only: the values live in .env
+# or the hosting provider, never in the setup).
+secrets:
+  - {env: RHINO_COMPUTE_URL, required: false, description: "The RhinoCompute server's address (default http://localhost:6500/)."}
+  - {env: RHINO_COMPUTE_API_KEY, required: false, description: "Its API key, when the server asks for one."}

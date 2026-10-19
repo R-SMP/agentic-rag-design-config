@@ -1,5 +1,5 @@
 /* ======================================================================
- * studio.js -- the MAS Studio (MAS-blueprint P5a-P5b, P6a-P6b).
+ * studio.js -- the MAS Studio (MAS-blueprint P5a-P5b, P6a-P6c).
  *
  * Plain ES5 in one IIFE, as the studio UI kit asks.  Every call to the
  * server goes through call()/req() and bridge.js (POST /api/<name>):
@@ -15,6 +15,9 @@
  * P6b edits the parameters (parameters.json, its groups and pictures; the
  * server keeps the agents' parameter lists in step) and the agent-access
  * grid (pack.yaml).
+ * P6c edits the tools: their manifests (a form, or the text), their files,
+ * their tool-list entries, their settings' defaults and secrets; removes
+ * them and puts them back (studio/tools_edit.py).
  *
  * Screens are hash routes, so each one has an address:
  *   #/studio/<section>[?field=..]     the Studio: sections | fields | inspector
@@ -54,9 +57,9 @@
   };
   // The texts of the screens that come later.
   var LATER = {
-    tools: 'New tool and Edit come in P6c.',
-    test: 'Test tool comes in P6c.',
-    settings: 'Editing the settings comes in P6c.',
+    tools: 'New tool comes in P6c-2.',
+    test: 'Test tool comes in P6c-2.',
+    settings: 'DC_PARAMS_PRIMER_ENABLED lives in workflow_settings/settings.py, outside the setup: read-only here.',
     validate: 'Validate comes in P7.',
     downloads: 'Downloads come in P7.',
     prepare: 'Prepare for GitHub comes in P7.',
@@ -224,8 +227,8 @@
       laterButton('Prepare for GitHub', LATER.prepare)
     ]);
     var banner = h('div', { 'class': 'banner info' },
-      'Editing the setup in ' + D.pack_dir + ': each text field, parameter, group and access cell saves on its own, straight to its files, and Undo puts it back as it was when the Studio opened. ' +
-      'Tools and settings come in P6c.');
+      'Editing the setup in ' + D.pack_dir + ': each text field, parameter, group, access cell, tool and setting saves on its own, straight to its files, and Undo puts it back as it was when the Studio opened. ' +
+      'New tool and Test tool come in P6c-2.');
     var left = h('div', { 'class': 'col side', id: 'colLeft', style: 'width:250px' }, renderNav());
     var center = h('div', { 'class': 'col center', id: 'center' });
     var right = h('div', { 'class': 'col side', id: 'colRight', style: 'width:380px' });
@@ -666,7 +669,9 @@
   function unsavedKeys() {
     return Object.keys(EDITS).map(function (k) { return k.replace('|', ' @').replace(/ @$/, ''); })
       .concat(Object.keys(PEDITS).map(function (k) { return 'parameter ' + (PEDITS[k].name || k); }))
-      .concat(Object.keys(GEDITS).map(function (k) { return 'group ' + (GEDITS[k].label || k); }));
+      .concat(Object.keys(GEDITS).map(function (k) { return 'group ' + (GEDITS[k].label || k); }))
+      .concat(Object.keys(TEDITS).map(function (k) { return 'manifest of ' + k; }))
+      .concat(Object.keys(FEDITS).map(function (k) { return 'file ' + k; }));
   }
   function unsavedPill() {
     var keys = unsavedKeys();
@@ -684,6 +689,7 @@
   function reload() {
     return req('get_all').then(function (r) {
       D = r.data; GEN++;
+      FILES = {}; FILE_LOADING = {};
       VIEWS = {}; VIEW_ERRORS = {}; VIEW_PENDING = {}; DIFFS = {}; DIFF_ERRORS = {}; DIFF_PENDING = {};
     });
   }
@@ -1538,8 +1544,30 @@
   }
 
   /* ======================================================================
-   * Tools
+   * Tools (P6c): each tool of the setup edited -- its manifest (a form, or
+   * the tool.yaml text), its files, its tool-list entry -- removed, and put
+   * back as the Studio opened it (studio/tools_edit.py).  A form's unsaved
+   * manifest lives in TEDITS, a file's unsaved text in FEDITS.
    * ==================================================================== */
+  var TEDITS = {};          // unsaved manifests from the form: tool -> manifest
+  var FEDITS = {};          // unsaved file texts: tool/path -> text
+  var FILES = {}, FILE_LOADING = {};   // files read from the server: tool/path -> {text, sha, size}
+  var TOOL_TABS = [['form', 'Manifest'], ['yaml', 'tool.yaml'], ['files', 'Files'], ['texts', 'Prompt texts']];
+  function TE() { return D.tools_edit; }
+  function toolState(name) { return (TE().tools || {})[name] || null; }
+  function manifestOf(name) { return TEDITS[name] || toolState(name).manifest; }
+  function toolRoles() { return ROLE_ROWS.filter(function (r) { return r.role !== 'database_handler'; }); }
+  function geometryTools() {
+    return Object.keys(TE().tools).filter(function (n) { return (TE().tools[n].manifest || {}).kind === 'geometry'; });
+  }
+  function setPath(o, path, value) {
+    for (var i = 0; i < path.length - 1; i++) o = o[path[i]];
+    o[path[path.length - 1]] = value;
+  }
+  function getPath(o, path) {
+    for (var i = 0; i < path.length; i++) { if (o === null || o === undefined) return undefined; o = o[path[i]]; }
+    return o;
+  }
   function rolesLine(role) {
     var row = ROLE_ROWS.filter(function (r) { return r.role === role; })[0];
     if (!row) return role;
@@ -1556,29 +1584,41 @@
       return i.view + (i.default_enabled ? '' : ' (off by default)'); }).join(', '));
     return parts.length ? parts.join(' · ') : 'nothing declared';
   }
+
   function renderTools(center, right) {
+    if (R.q.tool && toolState(R.q.tool)) { renderToolEditor(center, right, R.q.tool); return; }
     add(center, head('Tools', 'The functions your agents call to build and look at a design. Each tool is a plain Python function plus a manifest: what it is, which role may call it, what it produces, and the text the agents read about it.', [
       laterButton('+ New tool', LATER.tools, 'primary')]));
     var wrap = h('div', { 'class': 'toolcards' });
     D.tools.forEach(function (t) {
-      var info = D.tool_info[t.name] || { roles: [], images: [], settings: [] };
+      var info = D.tool_info[t.name] || { roles: [], images: [], settings: [] }, st = toolState(t.name) || {};
       var first = t.description.split('\n\n')[0].replace(/\s+/g, ' ');
       var settings = info.settings.length ? info.settings.join(', ') : 'none';
       add(wrap, h('div', { 'class': 'tcard' }, [
         h('div', { 'class': 'head' }, [h('span', { 'class': 'n' }, t.name), pill(t.display), kpill(t.kind === 'generator' ? 'generator · primary' : t.kind),
-          h('span', { 'class': 'grow' }), laterButton('Edit', LATER.tools), laterButton('Test tool', LATER.test)]),
+          st.changed ? pill(st.opened ? 'changed' : 'added', 'warn', 'Changed since the Studio opened.') : null,
+          h('span', { 'class': 'grow' }),
+          st.changed ? h('button', { disabled: BUSY, title: 'Put this tool back as it was when the Studio opened.', onclick: function () { undoTool(t.name); } }, 'Undo') : null,
+          h('button', { 'class': 'primary', onclick: function () { go('studio', 'tools', { tool: t.name }); } }, 'Edit'),
+          laterButton('Test tool', LATER.test),
+          h('button', { 'class': 'danger', disabled: BUSY, onclick: function () { askRemoveTool(t.name); } }, 'Remove…')]),
         h('div', { 'class': 'd' }, first),
         h('div', { 'class': 'grid2' }, [
           h('div', { 'class': 'k' }, 'Called by'), h('div', null, t.kind === 'geometry'
             ? 'the engine, never an agent: the generator’s geometry tool setting, the Download buttons'
             : info.roles.map(function (r) { return roleLabel(r) + ': ' + rolesLine(r); }).join('; ') || 'no role'),
           h('div', { 'class': 'k' }, 'Produces'), h('div', null, produces(info)),
-          h('div', { 'class': 'k' }, 'Settings'), h('div', null, (info.switch ? 'an on/off switch · ' : '') + settings),
+          h('div', { 'class': 'k' }, 'Settings'), h('div', null, (info['switch'] ? 'an on/off switch · ' : '') + settings),
+          h('div', { 'class': 'k' }, 'Secrets'), h('div', null, (t.secrets || []).length ? t.secrets.map(function (s) { return s.env + (s.required ? ' (required)' : ''); }).join(', ') : 'none'),
           h('div', { 'class': 'k' }, 'Prompt text'), h('div', null, t.kind === 'geometry' ? 'none (no agent reads about it)'
             : t.owns.length + ' fields it owns (they leave with it) + its entry in the tool runner’s numbered list, place ' + t.list_order),
           h('div', { 'class': 'k' }, 'Code'), h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  manifest dc_pack/tools/' + t.name + '/tool.yaml')
         ])
       ]));
+    });
+    (TE().removed || []).forEach(function (name) {
+      add(wrap, h('div', { 'class': 'tcard gone' }, h('div', { 'class': 'head' }, [h('s', { 'class': 'n' }, name), h('span', { 'class': 'muted' }, ' · removed since the Studio opened'),
+        h('span', { 'class': 'grow' }), h('button', { disabled: BUSY, onclick: function () { undoTool(name); } }, 'Undo')])));
     });
     add(center, wrap);
     add(center, h('div', { style: 'padding:6px 16px 4px' }, [h('h4', null, 'Tool text the agents read · ' + slotsOf('tools').length + ' fields'),
@@ -1593,6 +1633,274 @@
       h('div', { 'class': 'block' }, [h('h4', null, 'Text the agents read about tools'), h('p', null, 'Each tool owns the text about it: ' +
         D.tools.reduce(function (n, t) { return n + t.owns.length; }, 0) + ' fields live in the tools’ own folders, and the tool runner’s numbered tool list is built from each tool’s entry. Removing a tool removes its text; a marked passage about it elsewhere reads as switched off.')])
     ]));
+  }
+
+  /* -- one tool --------------------------------------------------------------- */
+  function renderToolEditor(center, right, name) {
+    var st = toolState(name), m = st.manifest || {}, tab = R.q.tab || 'form';
+    add(center, head('Tool · ' + (m.display_name || name), name + ' · ' + (m.kind || '?') + (st.opened ? '' : ' · added since the Studio opened'), [
+      h('button', { onclick: function () { go('studio', 'tools', {}); } }, '← All tools'),
+      h('span', { 'class': 'seg' }, TOOL_TABS.map(function (tb) {
+        return h('button', { 'class': tb[0] === tab ? 'on' : '', onclick: function () { go('studio', 'tools', { tool: name, tab: tb[0] }); } }, tb[1]);
+      }))]));
+    var body = h('div', { 'class': 'teditor' });
+    if (tab === 'yaml') add(body, fileEditor(name, 'tool.yaml', 28,
+      'The whole manifest as text. A Save is checked by the engine first: a manifest it would refuse is not written.'));
+    else if (tab === 'files') add(body, filesTab(name));
+    else if (tab === 'texts') add(body, textsTab(name));
+    else add(body, manifestForm(name));
+    add(center, body);
+    add(right, toolInspector(name));
+  }
+  function toolInspector(name) {
+    var st = toolState(name), m = st.manifest || {};
+    var changed = st.files.filter(function (f) { return f.changed && !f.prompts; });
+    return h('div', { 'class': 'insp' }, [
+      h('div', { 'class': 'title' }, name),
+      h('div', { 'class': 'pills' }, [kpill(m.kind || '?'), st.changed ? pill(st.opened ? 'changed since opened' : 'added since opened', 'warn') : null]),
+      m.kind !== 'geometry' ? h('div', { 'class': 'block' }, [h('h4', null, 'Called by'), h('p', null,
+        (m.roles || []).map(function (r) { return roleLabel(r) + ': ' + rolesLine(r); }).join('; ') || 'no role')]) : null,
+      h('div', { 'class': 'block' }, [h('h4', null, 'Changed since the Studio opened · ' + (changed.length + st.gone_files.length)),
+        changed.length || st.gone_files.length ? h('ul', { 'class': 'checks' }, changed.map(function (f) {
+          return h('li', null, ['•', h('span', { 'class': 'mono' }, f.path + (f.added ? '  (added)' : ''))]); }).concat(
+          st.gone_files.map(function (f) { return h('li', null, ['•', h('s', { 'class': 'mono' }, f)]); })))
+          : h('p', { 'class': 'muted' }, 'Nothing.'),
+        h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-top:4px' }, 'Its texts (prompts/) are text fields: their changes show in their own sections.')]),
+      h('div', { 'class': 'block' }, [
+        st.changed ? h('button', { disabled: BUSY, onclick: function () { undoTool(name); } }, 'Undo all changes to this tool') : null,
+        ' ', h('button', { 'class': 'danger', disabled: BUSY, onclick: function () { askRemoveTool(name); } }, 'Remove this tool…')])
+    ]);
+  }
+
+  /* -- the manifest form ------------------------------------------------------ */
+  function manifestForm(name) {
+    var st = toolState(name), m = manifestOf(name), key = 'tool|' + name;
+    if (!m) return h('div', { 'class': 'banner bad boxed', style: 'margin:12px 16px' },
+      'tool.yaml does not read as YAML (' + (st.manifest_error || '?') + '): fix it in the tool.yaml tab.');
+    var saved = st.manifest, err = FIELD_ERRORS[key];
+    function setv(path, value) {
+      var w = clone(manifestOf(name));
+      setPath(w, path, value);
+      // no secret left: the key goes when the manifest as opened had none
+      if (path[0] === 'secrets' && !(w.secrets || []).length && !('secrets' in (st.opened_manifest || {}))) delete w.secrets;
+      TEDITS[name] = w;
+      if (JSON.stringify(w) === JSON.stringify(saved)) delete TEDITS[name];
+      delete FIELD_ERRORS[key];
+      var a = el('toolActs');
+      if (a) { a.innerHTML = ''; add(a, formActions(name)); }
+      var u = el('unsavedCount');
+      if (u) { u.innerHTML = ''; add(u, unsavedPill()); }
+    }
+    function field(label, path, kind, help) {
+      var v = getPath(m, path), fk = key, ft = path.join('.');
+      var input;
+      if (kind === 'text') input = h('textarea', { rows: Math.max(3, Math.min(14, String(v || '').split('\n').length + 1)), spellcheck: 'false', 'data-fk': fk, 'data-t': ft,
+        oninput: function (e) { setv(path, e.target.value); } }, v || '');
+      else if (kind === 'bool') input = h('input', { type: 'checkbox', checked: !!v, 'data-fk': fk, 'data-t': ft, onchange: function (e) { setv(path, e.target.checked); } });
+      else if (kind === 'int') input = h('input', { type: 'text', value: v === undefined ? '' : String(v), 'data-fk': fk, 'data-t': ft, style: 'width:90px',
+        oninput: function (e) { var s = e.target.value.trim(); setv(path, /^-?\d+$/.test(s) ? parseInt(s, 10) : s); } });
+      else input = h('input', { type: 'text', value: v || '', spellcheck: 'false', 'data-fk': fk, 'data-t': ft, oninput: function (e) { setv(path, e.target.value); } });
+      return [h('div', { 'class': 'k' }, label), h('div', null, [input, help ? h('div', { 'class': 'muted hint' }, help) : null])];
+    }
+    var rows = [];
+    rows = rows.concat([h('div', { 'class': 'k' }, 'Name'), h('div', { 'class': 'mono' }, name + '  (the folder’s name)'),
+      h('div', { 'class': 'k' }, 'Kind'), h('div', null, m.kind)]);
+    rows = rows.concat(field('Display name', ['display_name'], 'line', 'The flowchart’s and the log’s label.'));
+    rows = rows.concat(field('Description', ['description'], 'text', 'What the LLM reads about the tool (its schema description).'));
+    Object.keys(m.args || {}).forEach(function (a) { rows = rows.concat(field('Argument · ' + a, ['args', a], 'text')); });
+    var parts = [h('div', { 'class': 'kv mform' }, rows)];
+    if (m.kind !== 'geometry') {
+      var roles = m.roles || [];
+      parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'Roles that may call it'),
+        h('div', { 'class': 'rolechecks' }, toolRoles().map(function (r) {
+          var on = roles.indexOf(r.role) >= 0;
+          return h('label', { 'class': 'vchk' }, [h('input', { type: 'checkbox', checked: on, 'data-fk': key, 'data-t': 'roles.' + r.role, onchange: function (e) {
+            var cur = (manifestOf(name).roles || []).slice();
+            if (e.target.checked && cur.indexOf(r.role) < 0) cur.push(r.role);
+            if (!e.target.checked) cur = cur.filter(function (x) { return x !== r.role; });
+            setv(['roles'], cur);
+          } }), h('span', null, [h('b', null, r.label), h('span', { 'class': 'muted' }, ' · ' + rolesLine(r.role))])]);
+        }))]));
+    }
+    if (m['switch']) {
+      parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'On / off switch'), h('div', { 'class': 'kv mform' },
+        field('On by default', ['switch', 'default'], 'bool').concat(field('Label', ['switch', 'label'], 'line'), field('Description', ['switch', 'description'], 'text')))]));
+    }
+    (m.settings || []).forEach(function (s, i) {
+      var ctl;
+      if (s.type === 'bool') ctl = field('Default', ['settings', i, 'default'], 'bool');
+      else {
+        var opts = s.type === 'tool' ? geometryTools().concat(s.none ? ['none'] : []) : (s.values || []);
+        ctl = [h('div', { 'class': 'k' }, 'Default'), h('div', null, h('select', { 'data-fk': key, 'data-t': 'settings.' + i + '.default', onchange: function (e) { setv(['settings', i, 'default'], e.target.value); } },
+          opts.map(function (o) { return h('option', { value: o, selected: o === s['default'] }, String(o)); })))];
+      }
+      parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'Setting · ' + s.name + ' (' + s.type + ')'), h('div', { 'class': 'kv mform' },
+        ctl.concat(field('Label', ['settings', i, 'label'], 'line'), field('Description', ['settings', i, 'description'], 'text')))]));
+    });
+    ((m.outputs || {}).images || []).forEach(function (im, i) {
+      parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'Picture · ' + im.view + ' (' + im.file + ')'), h('div', { 'class': 'kv mform' },
+        field('Label', ['outputs', 'images', i, 'label'], 'line').concat(field('Order', ['outputs', 'images', i, 'order'], 'int'),
+          field('On by default', ['outputs', 'images', i, 'default_enabled'], 'bool')))]));
+    });
+    if ((m.roles || []).indexOf('tool_runner') >= 0) {
+      parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'Place in the tool runner’s list'),
+        h('div', { 'class': 'kv mform' }, field('List order', ['list_order'], 'int', 'Tools are listed by this number, lowest first.'))]));
+    }
+    var secrets = m.secrets || [];
+    parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'Secrets · ' + secrets.length),
+      h('p', { 'class': 'muted hint' }, 'The environment variables the tool reads: names only. Their values go into .env or the hosting provider, never into the setup.'),
+      h('table', { 'class': 'ptab secrets' }, [h('thead', null, h('tr', null, ['Variable', 'Required', 'What it is', ''].map(function (x) { return h('th', null, x); }))),
+        h('tbody', null, secrets.map(function (s, i) {
+          return h('tr', null, [
+            h('td', { style: 'width:220px' }, h('input', { type: 'text', value: s.env || '', 'data-fk': key, 'data-t': 'secrets.' + i + '.env', oninput: function (e) { setv(['secrets', i, 'env'], e.target.value); } })),
+            h('td', { style: 'width:70px;text-align:center' }, h('input', { type: 'checkbox', checked: !!s.required, onchange: function (e) { setv(['secrets', i, 'required'], e.target.checked); } })),
+            h('td', null, h('input', { type: 'text', value: s.description || '', 'data-fk': key, 'data-t': 'secrets.' + i + '.description', oninput: function (e) { setv(['secrets', i, 'description'], e.target.value); } })),
+            h('td', { style: 'width:30px' }, h('button', { 'class': 'mini danger', onclick: function () {
+              setv(['secrets'], (manifestOf(name).secrets || []).filter(function (x, j) { return j !== i; })); render(); } }, '×'))]);
+        }))]),
+      h('button', { 'class': 'mini', onclick: function () {
+        setv(['secrets'], (manifestOf(name).secrets || []).concat([{ env: '', required: false, description: '' }])); render(); } }, '+ Add a secret')]));
+    parts.push(h('p', { 'class': 'muted hint', style: 'margin:10px 0' }, 'Everything else (the code it runs, outputs, prompt slots, the fields revision 2 adds) is edited in the tool.yaml tab.'));
+    if (err) parts.push(h('div', { 'class': 'banner bad boxed' }, [h('div', null, err.error)].concat(err.problems.map(function (p) { return h('div', null, '• ' + p); }))));
+    parts.push(h('div', { 'class': 'tacts', id: 'toolActs' }, formActions(name)));
+    return h('div', { 'class': 'mformwrap' }, parts);
+  }
+  function formActions(name) {
+    if (!TEDITS[name]) return [h('span', { 'class': 'muted' }, 'No unsaved change.')];
+    return [h('button', { 'class': 'primary', disabled: BUSY, onclick: function () {
+        var desired = TEDITS[name];
+        change('save_manifest', [name, desired, toolState(name).sha], 'tool|' + name, 'Saved ' + name + '’s manifest.', function () {
+          if (JSON.stringify(TEDITS[name]) === JSON.stringify(desired)) delete TEDITS[name];
+        });
+      } }, 'Save'),
+      h('button', { onclick: function () { delete TEDITS[name]; delete FIELD_ERRORS['tool|' + name]; render(); } }, 'Discard')];
+  }
+
+  /* -- files ------------------------------------------------------------------- */
+  function loadFile(name, rel) {
+    var key = name + '/' + rel;
+    if (FILE_LOADING[key]) return;
+    FILE_LOADING[key] = true;
+    var gen = GEN;
+    call('tool_file', name, rel).then(function (r) {
+      delete FILE_LOADING[key];
+      if (gen !== GEN) return;
+      FILES[key] = r && r.ok ? r : { text: null, error: (r && r.error) || 'The file could not be read.' };
+      if (R.section === 'tools' && R.q.tool === name) render();
+    });
+  }
+  function fileEditor(name, rel, rows, intro) {
+    var key = name + '/' + rel, f = FILES[key], st = toolState(name);
+    var info = st.files.filter(function (x) { return x.path === rel; })[0];
+    if (!f || (info && f.sha !== info.sha && !FEDITS[key])) { loadFile(name, rel); return h('div', { 'class': 'insp muted' }, 'Reading ' + rel + '…'); }
+    if (f.error) return h('div', { 'class': 'banner bad boxed' }, f.error);
+    var err = FIELD_ERRORS['file|' + key];
+    var picker = h('input', { type: 'file', style: 'display:none', onchange: function (e) { uploadToolFile(name, rel, e.target.files[0], f.sha); e.target.value = ''; } });
+    var head2 = h('div', { 'class': 'fhead' }, [h('span', { 'class': 'mono' }, rel), h('span', { 'class': 'muted' }, ' · ' + fmt(f.size) + ' bytes' + (f.eol ? ' · ' + f.eol : '')),
+      info && info.changed ? pill(info.added ? 'added' : 'changed', 'warn') : null, h('span', { 'class': 'grow' }), picker,
+      h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { picker.click(); } }, 'Replace by upload…'),
+      info && info.changed ? h('button', { 'class': 'mini', disabled: BUSY, title: info.added ? 'Remove this file, added since the Studio opened.' : 'Put this file back as it was when the Studio opened.',
+        onclick: function () { delete FEDITS[key]; change('undo_tool_file', [name, rel], 'file|' + key, rel + ' is back as it was when the Studio opened.'); } }, 'Undo') : null]);
+    if (f.text === null) return h('div', { 'class': 'fedit' }, [head2, h('p', { 'class': 'muted' }, 'Not a text file (or over 1 MB): it can only be replaced by upload.')]);
+    var cur = FEDITS[key] !== undefined ? FEDITS[key] : f.text;
+    var ta = h('textarea', { 'class': 'code', rows: rows || 22, spellcheck: 'false', 'data-fk': 'file|' + key, 'data-t': 'text',
+      oninput: function (e) {
+        if (e.target.value === f.text) delete FEDITS[key]; else FEDITS[key] = e.target.value;
+        delete FIELD_ERRORS['file|' + key];
+        var a = doc.querySelector('[data-facts="' + key + '"]');
+        if (a) { a.innerHTML = ''; add(a, fileActions(name, rel)); }
+        var u = el('unsavedCount');
+        if (u) { u.innerHTML = ''; add(u, unsavedPill()); }
+      } }, cur);
+    return h('div', { 'class': 'fedit' }, [head2, intro ? h('p', { 'class': 'muted hint' }, intro) : null, ta,
+      err ? h('div', { 'class': 'banner bad boxed' }, [h('div', null, err.error)].concat(err.problems.map(function (p) { return h('div', null, '• ' + p); }))) : null,
+      h('div', { 'class': 'tacts', 'data-facts': key }, fileActions(name, rel))]);
+  }
+  function fileActions(name, rel) {
+    var key = name + '/' + rel;
+    if (FEDITS[key] === undefined) return [h('span', { 'class': 'muted' }, 'No unsaved change.')];
+    return [h('button', { 'class': 'primary', disabled: BUSY, onclick: function () {
+        var text = FEDITS[key];
+        change('save_tool_file', [name, rel, text, FILES[key].sha], 'file|' + key, 'Saved ' + name + '/' + rel + '.', function () {
+          if (FEDITS[key] === text) delete FEDITS[key];
+        });
+      } }, 'Save'),
+      h('button', { onclick: function () { delete FEDITS[key]; delete FIELD_ERRORS['file|' + key]; render(); } }, 'Discard')];
+  }
+  function uploadToolFile(name, rel, file, base) {
+    if (!file) return;
+    var fr = new root.FileReader();
+    fr.onload = function () {
+      var b64 = String(fr.result).split(',')[1] || '';
+      delete FEDITS[name + '/' + rel];
+      change('upload_tool_file', [name, rel, b64, base], 'file|' + name + '/' + rel,
+        (base ? 'Replaced ' : 'Added ') + name + '/' + rel + ' (' + fmt(file.size) + ' bytes).');
+    };
+    fr.readAsDataURL(file);
+  }
+  function filesTab(name) {
+    var st = toolState(name);
+    var list = st.files.filter(function (f) { return !f.prompts && !f.entry && f.path !== 'tool.yaml'; });
+    var sel = R.q.file && list.some(function (f) { return f.path === R.q.file; }) ? R.q.file : (list[0] || {}).path;
+    var adder = h('input', { type: 'file', style: 'display:none', onchange: function (e) {
+      var f = e.target.files[0]; e.target.value = '';
+      if (f) uploadToolFile(name, f.name.replace(/[^A-Za-z0-9._-]+/g, '_'), f, null);
+    } });
+    var table = h('table', { 'class': 'ptab files' }, [h('thead', null, h('tr', null, ['File', 'Size', 'Kind', ''].map(function (x) { return h('th', null, x); }))),
+      h('tbody', null, list.map(function (f) {
+        return h('tr', { 'class': f.path === sel ? 'sel' : '', style: 'cursor:pointer', onclick: function () { go('studio', 'tools', { tool: name, tab: 'files', file: f.path }); } }, [
+          h('td', null, h('span', { 'class': 'mono' }, f.path)), h('td', { 'class': 'num' }, fmt(f.size)), h('td', null, f.text ? 'text' : 'binary'),
+          h('td', null, f.changed ? pill(f.added ? 'added' : 'changed', 'warn') : null)]);
+      }).concat(st.gone_files.filter(function (p) { return p.indexOf('prompts/') !== 0; }).map(function (p) {
+        return h('tr', { 'class': 'gone' }, [h('td', null, h('s', { 'class': 'mono' }, p)), h('td', { colspan: 2 }, 'gone since the Studio opened'),
+          h('td', null, h('button', { 'class': 'mini', disabled: BUSY, onclick: function (ev) { ev.stopPropagation(); change('undo_tool_file', [name, p], 'file|' + name + '/' + p, p + ' is back.'); } }, 'Undo'))]);
+      })))]);
+    return h('div', null, [h('div', { 'class': 'fhead' }, [h('span', { 'class': 'muted' }, list.length + ' files · nothing runs when a file is saved'), h('span', { 'class': 'grow' }), adder,
+      h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { adder.click(); } }, 'Add a file…')]), table,
+      sel ? fileEditor(name, sel, 24) : null]);
+  }
+  function textsTab(name) {
+    var st = toolState(name), m = st.manifest || {};
+    var entries = st.files.filter(function (f) { return f.entry; });
+    var owned = (m.prompt_slots || []).filter(function (s) { return slotByName(s); });
+    return h('div', null, [
+      h('div', { 'class': 'block', style: 'padding:0 16px' }, [h('h4', null, 'Its entry in the tool runner’s numbered tool list'),
+        entries.length ? null : h('p', { 'class': 'muted' }, m.kind === 'geometry' ? 'None: no agent is given a geometry tool.' : 'None: only a tool the tool runner calls has one.')]),
+    ].concat(entries.map(function (f) { return fileEditor(name, f.path, 6, 'Checked like a text field: no braces, only $names the engine knows, closed <<markers>>.'); }), [
+      h('div', { 'class': 'block', style: 'padding:0 16px' }, [h('h4', null, 'The text fields it owns · ' + owned.length),
+        h('p', { 'class': 'muted hint' }, 'They live in its prompts/ folder and leave with it; each is edited in its section, like every text field.'),
+        h('div', null, owned.map(function (s) { var f = slotByName(s);
+          return h('a', { 'class': 'kpill tool', style: 'display:inline-block;margin:2px;text-decoration:none', href: link('studio', f.section, { field: s }) }, s); }))])]));
+  }
+
+  /* -- the whole tool -------------------------------------------------------- */
+  function undoTool(name) {
+    Object.keys(FEDITS).forEach(function (k) { if (k.indexOf(name + '/') === 0) delete FEDITS[k]; });
+    delete TEDITS[name];
+    change('undo_tool', [name], 'tool|' + name, name + ' is back as it was when the Studio opened.');
+  }
+  function askRemoveTool(name) {
+    if (BUSY) return;
+    status('Checking what refers to ' + name + '…', 'busy');
+    call('remove_tool_preview', name).then(function (r) {
+      status('', '');
+      if (!r || r.ok === false) { status((r && r.error) || 'The check failed.', 'err'); return; }
+      var stop = r.blockers.concat(r.problems);
+      var body = h('div', { 'class': 'pprev' }, [
+        stop.length ? h('div', { 'class': 'banner bad boxed' }, [h('b', null, 'It cannot be removed yet:')].concat(stop.map(function (p) { return h('div', null, '• ' + p); }))) : null,
+        r.warnings.length ? h('div', { 'class': 'banner warn boxed' }, r.warnings.map(function (p) { return h('div', null, '• ' + p); })) : null,
+        h('h4', null, 'Its texts leave with it · ' + r.texts.length),
+        h('p', { 'class': 'mono', style: 'font-size:11px;line-height:1.5' }, r.texts.join(', ') || 'none'),
+        r.marked.length ? h('h4', null, 'Texts with a part about it, read as switched off from now on · ' + r.marked.length) : null,
+        r.marked.length ? h('p', { 'class': 'mono', style: 'font-size:11px;line-height:1.5' }, r.marked.join(', ')) : null,
+        h('p', { 'class': 'muted', style: 'margin-top:8px' }, 'Undo puts the whole folder back as it was when the Studio opened. The Prompt viewer’s “Changes since opened” shows what the agents lose.')]);
+      showModal('Remove ' + name, body, [h('button', { onclick: closeModal }, 'Cancel'),
+        h('button', { 'class': 'danger', disabled: stop.length > 0, onclick: function () {
+          closeModal();
+          root.history.replaceState(null, '', link('studio', 'tools', {}));
+          change('remove_tool', [name], 'tool|' + name, 'Removed ' + name + '.');
+        } }, 'Remove')]);
+    });
   }
 
   /* ======================================================================
@@ -1653,37 +1961,73 @@
     VOYAGE_API_KEY: ['image search in the database', 'optional'], GOOGLE_CLOUD_VISION_API_KEY: ['reading text in images (OCR)', 'optional']
   };
   function renderSettings(center, right) {
-    var S = D.settings;
-    function srow(name, value, choices, note) {
-      return h('tr', null, [h('td', null, h('span', { 'class': 'pname' }, name)), h('td', null, typeof value === 'boolean' ?
-        h('span', { 'class': 'seg ro', title: LATER.settings }, [h('button', { 'class': value ? 'on' : '' }, 'on'), h('button', { 'class': value ? '' : 'on' }, 'off')]) :
-        h('select', { disabled: true, title: LATER.settings }, (choices || [value]).map(function (c) { return h('option', { selected: c === value }, c); }))),
-        h('td', { 'class': 'muted', style: 'font-size:11.5px' }, note)]);
-    }
-    add(center, head('Settings & secrets', 'Default values of the tools’ own settings (users change them later in Workflow Settings), and the list of secrets your setup will need.'));
-    var t = h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, [
-      h('thead', null, h('tr', null, ['Setting', 'Default', 'What it is'].map(function (x) { return h('th', null, x); }))),
-      h('tbody', null, D.tool_settings.reduce(function (rows, tool) {
-        rows.push(h('tr', { 'class': 'grp' }, h('td', { colspan: 3 }, tool.tool)));
-        tool.settings.forEach(function (s) { rows.push(srow(s.name, s.default, s.values, s.label)); });
-        return rows;
-      }, []).concat([
-        h('tr', { 'class': 'grp' }, h('td', { colspan: 3 }, 'setup')),
-        srow('parameter_primer_image', !!S.DC_PARAMS_PRIMER_ENABLED, null, 'DC_PARAMS_PRIMER_ENABLED (settings.py)')
-      ]))]);
-    add(center, t);
+    var S = D.settings, rows = [];
+    add(center, head('Settings & secrets', 'Default values of the tools’ own settings, saved into each tool’s tool.yaml (users change them later in Workflow Settings), and the secrets your setup will need.'));
+    Object.keys(TE().tools).forEach(function (name) {
+      var st = toolState(name), m = st.manifest;
+      if (!m) return;
+      var om = st.opened_manifest || {}, items = [];
+      if (m['switch']) items.push({ path: ['switch', 'default'], name: 'enabled', label: (m['switch'].label || 'On / off') + ' — the tool itself',
+        type: 'bool', value: m['switch']['default'], opened: getPath(om, ['switch', 'default']) });
+      (m.settings || []).forEach(function (s, i) {
+        var o = (om.settings || [])[i];
+        items.push({ path: ['settings', i, 'default'], name: s.name, label: s.label || s.name, type: s.type, value: s['default'],
+          values: s.type === 'tool' ? geometryTools().concat(s.none ? ['none'] : []) : (s.values || []),
+          opened: o && o.name === s.name ? o['default'] : undefined });
+      });
+      if (!items.length) return;
+      rows.push(h('tr', { 'class': 'grp' }, h('td', { colspan: 4 }, (m.display_name || name) + ' · ' + name)));
+      items.forEach(function (it) {
+        var changed = it.opened !== undefined && it.opened !== it.value;
+        function set(v) {
+          if (v === it.value || BUSY) return;
+          if (TEDITS[name]) { status('Save or discard the unsaved changes in ' + name + '’s manifest form first.', 'err'); return; }
+          var w = clone(st.manifest);
+          setPath(w, it.path, v);
+          change('save_manifest', [name, w, st.sha], 'tool|' + name, name + ': ' + it.name + ' now defaults to ' + String(v) + ' (saved to its tool.yaml).');
+        }
+        var ctl = it.type === 'bool'
+          ? h('span', { 'class': 'seg' }, [h('button', { 'class': it.value ? 'on' : '', disabled: BUSY, onclick: function () { set(true); } }, 'on'),
+              h('button', { 'class': it.value ? '' : 'on', disabled: BUSY, onclick: function () { set(false); } }, 'off')])
+          : h('select', { disabled: BUSY, onchange: function (e) { set(e.target.value); } },
+              it.values.map(function (c) { return h('option', { value: c, selected: c === it.value }, String(c)); }));
+        rows.push(h('tr', null, [h('td', null, h('span', { 'class': 'pname' }, it.name)),
+          h('td', { 'class': changed ? 'chg' : null, title: changed ? 'Was “' + it.opened + '” when the Studio opened.' : null }, ctl),
+          h('td', { 'class': 'muted', style: 'font-size:11.5px' }, it.label),
+          h('td', { 'class': 'racts' }, changed ? h('button', { 'class': 'mini', disabled: BUSY, title: 'Back to the default it had when the Studio opened.',
+            onclick: function () { set(it.opened); } }, 'Undo') : null)]));
+      });
+    });
+    rows.push(h('tr', { 'class': 'grp' }, h('td', { colspan: 4 }, 'setup')));
+    rows.push(h('tr', null, [h('td', null, h('span', { 'class': 'pname' }, 'parameter_primer_image')),
+      h('td', null, h('span', { 'class': 'seg ro', title: LATER.settings }, [h('button', { 'class': S.DC_PARAMS_PRIMER_ENABLED ? 'on' : '' }, 'on'),
+        h('button', { 'class': S.DC_PARAMS_PRIMER_ENABLED ? '' : 'on' }, 'off')])),
+      h('td', { 'class': 'muted', style: 'font-size:11.5px' }, 'DC_PARAMS_PRIMER_ENABLED (workflow_settings/settings.py, outside the setup: read-only here)'), h('td')]));
+    add(center, h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, [
+      h('thead', null, h('tr', null, ['Setting', 'Default', 'What it is', ''].map(function (x) { return h('th', null, x); }))),
+      h('tbody', null, rows)]));
     add(center, h('div', { 'class': 'banner info', style: 'margin:6px 16px;border:1px solid #2f4f86;border-radius:7px' },
       'The Studio never asks for a secret value. These names go into .env.example in the full package, with empty values; you fill them on your own computer or in your hosting provider.'));
-    var e = h('table', { 'class': 'ptab', style: 'margin:6px 16px 20px;width:calc(100% - 32px)' }, [
+    var toolSecrets = [];
+    D.tools.forEach(function (t) { (t.secrets || []).forEach(function (s) { toolSecrets.push({ tool: t.name, s: s }); }); });
+    add(center, h('div', { style: 'padding:8px 16px 0' }, h('h4', null, 'Declared by the tools · ' + toolSecrets.length)));
+    add(center, h('table', { 'class': 'ptab', style: 'margin:6px 16px;width:calc(100% - 32px)' }, [
+      h('thead', null, h('tr', null, ['Variable', 'Tool', 'What it is', 'Required'].map(function (x) { return h('th', null, x); }))),
+      h('tbody', null, toolSecrets.length ? toolSecrets.map(function (x) {
+        return h('tr', null, [h('td', null, h('span', { 'class': 'pname' }, x.s.env)),
+          h('td', null, h('a', { href: link('studio', 'tools', { tool: x.tool }) }, x.tool)), h('td', null, x.s.description),
+          h('td', { 'class': x.s.required ? 'warn' : 'muted' }, x.s.required ? 'required' : 'optional')]);
+      }) : [h('tr', null, h('td', { colspan: 4, 'class': 'muted' }, 'None: a tool declares the variables it reads in its manifest (Tools › Edit › Secrets).'))])]));
+    add(center, h('div', { style: 'padding:8px 16px 0' }, h('h4', null, 'Read by the engine · ' + D.env_vars.length)));
+    add(center, h('table', { 'class': 'ptab', style: 'margin:6px 16px 20px;width:calc(100% - 32px)' }, [
       h('thead', null, h('tr', null, ['Variable', 'Needed for', 'Required'].map(function (x) { return h('th', null, x); }))),
       h('tbody', null, D.env_vars.map(function (n) {
         var u = ENV_USE[n] || [D.env_sections[n] || '', 'optional'];
         return h('tr', null, [h('td', null, h('span', { 'class': 'pname' }, n)), h('td', null, u[0]),
           h('td', { 'class': u[1] === 'optional' ? 'muted' : 'warn' }, u[1])]);
-      }))]);
-    add(center, e);
+      }))]));
     add(right, h('div', { 'class': 'insp' }, [h('h4', null, 'Where these come from'),
-      h('p', null, 'The settings are each tool’s own (its tool.yaml) and the setup’s (settings.py); the variable names are the engine’s .env.example. No value of a secret is read or shown.')]));
+      h('p', null, 'Each tool’s settings and secrets are its own (its tool.yaml): a change here is saved there, checked by the engine first, and Undo puts the default back as the Studio opened it. The variables in the last table are the engine’s (.env.example). No value of a secret is read or shown.')]));
   }
 
   /* ======================================================================
@@ -2034,6 +2378,7 @@
     // the field being typed in keeps the cursor (focusing another one would select it)
     var shown = R.section === 'parameters' ? (R.q.group ? 'group|' + R.q.group : 'param|' + (R.q.param || ''))
       : fkey(R.q.field || '', R.q.agent || null);
+    if (fk && R.section === 'tools' && R.q.tool && (fk === 'tool|' + R.q.tool || fk.indexOf('file|' + R.q.tool + '/') === 0)) shown = fk;
     if (fk && fk === shown) {
       var back = doc.querySelector('[data-fk="' + fk + '"][data-t="' + ft + '"]');
       if (back) {

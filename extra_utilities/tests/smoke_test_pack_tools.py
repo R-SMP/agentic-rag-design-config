@@ -102,6 +102,14 @@ time):
    process that does not hold them does.
 
 Run from the repo root:  py -3.13 extra_utilities/tests/smoke_test_pack_tools.py
+
+Since MAS-blueprint P6c a tool declares the environment variables it reads:
+
+15. SECRETS.  ``rhino_geometry`` declares RHINO_COMPUTE_URL and
+   RHINO_COMPUTE_API_KEY; a copy of the pack whose declaration is broken in
+   one way (a name not in capitals, no description, a name twice, an
+   unknown field, ``required`` not true / false) is refused, naming the
+   problem.
 """
 from __future__ import annotations
 
@@ -1112,6 +1120,34 @@ def check_kept() -> int:
     return n
 
 
+def check_secrets() -> int:
+    """15. The environment variables a tool reads: names, never values."""
+    declared = [s["env"] for s in T.manifests()["rhino_geometry"].get("secrets", [])]
+    check(declared == ["RHINO_COMPUTE_URL", "RHINO_COMPUTE_API_KEY"],
+          f"[SECRETS] rhino_geometry declares {declared}")
+    rhino = lambda d: d / "tools" / "rhino_geometry" / "tool.yaml"      # noqa: E731
+    cases = [
+        ("a name not in capitals",
+         lambda d: _rewrite(rhino(d), "{env: RHINO_COMPUTE_URL,", "{env: rhino_compute_url,"),
+         "secrets[0] is"),
+        ("no description",
+         lambda d: _rewrite(rhino(d), ', description: "Its API key, when the server asks for one."}', "}"),
+         "secrets[1] is"),
+        ("a name twice",
+         lambda d: _rewrite(rhino(d), "{env: RHINO_COMPUTE_API_KEY,", "{env: RHINO_COMPUTE_URL,"),
+         "names RHINO_COMPUTE_URL twice"),
+        ("an unknown field",
+         lambda d: _rewrite(rhino(d), "{env: RHINO_COMPUTE_URL, required: false,",
+                            "{env: RHINO_COMPUTE_URL, required: false, value: x,"),
+         "secrets[0] is"),
+        ("required not true / false",
+         lambda d: _rewrite(rhino(d), "{env: RHINO_COMPUTE_URL, required: false,",
+                            "{env: RHINO_COMPUTE_URL, required: maybe,"),
+         "secrets[0] is"),
+    ]
+    return _refused(cases, "[SECRETS]")
+
+
 def main() -> int:
     check_manifests()
     check_settings()
@@ -1127,13 +1163,15 @@ def main() -> int:
     n_geometry = check_geometry()
     n_runs = check_image_run()
     n_kept = check_kept()
+    n_secrets = check_secrets()
     print(f"{len(T.manifests())} tools; {n} golden cases compared with "
           f"{FIXTURE.relative_to(ROOT).as_posix()}; {len(PK.tool_claims())} tool-text "
           f"slots owned, {n_broken} broken packs refused; 6 tool lists compared with "
           f"{LISTS.relative_to(ROOT).as_posix()}; {n_built} prompts built without "
           f"the blade-sections tool; {n_contract} pictures-contract breaks refused; "
           f"{n_saves} save-step cases; {n_geometry} broken geometry packs refused; "
-          f"{n_runs} image-run cases; {n_kept} kept-while-unchanged cases")
+          f"{n_runs} image-run cases; {n_kept} kept-while-unchanged cases; "
+          f"{n_secrets} broken secret declarations refused")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
@@ -1146,8 +1184,9 @@ def main() -> int:
           "the picture contract, the save step, the shrink strengths and the "
           "runtime block come from the manifests, the geometry tools are "
           "chosen and fall back as their settings say, the image runner "
-          "makes the tools' pictures in a root of its own, and what is read "
-          "from the tools' files is kept only while they are unchanged.")
+          "makes the tools' pictures in a root of its own, what is read "
+          "from the tools' files is kept only while they are unchanged, and the "
+          "secrets a tool declares are checked.")
     return 0
 
 

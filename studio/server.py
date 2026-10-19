@@ -26,6 +26,12 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
   access grid's ``set_access`` / ``undo_access``.  A new parameter file is
   checked by the engine's own validator, in one engine process that stays
   (``python -m studio.engine_view checker``).
+* the tool editor (P6c, ``studio/tools_edit.py``) -- ``tool_file``,
+  ``save_manifest``, ``save_tool_file``, ``upload_tool_file``,
+  ``undo_tool_file``, ``undo_tool``, ``remove_tool_preview``,
+  ``remove_tool``.  A change that could stop the engine loading the tools is
+  checked first by the engine's own check, on a throw-away copy of the
+  setup (in the same engine process).
 
 This process never imports the engine: the assembler stubs runtime
 packages (FastAPI among them) in the process that runs it.
@@ -52,7 +58,7 @@ from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from studio import editing, engine_view, params_edit
+from studio import editing, engine_view, params_edit, tools_edit
 
 WEB = Path(__file__).resolve().parent / "web"
 
@@ -216,7 +222,15 @@ class Checker:
                                 stdout=subprocess.PIPE, stderr=subprocess.DEVNULL)
 
     def check(self, spec: dict) -> list[str]:
-        line = (json.dumps({"parameters": spec}) + "\n").encode("utf-8")
+        """The engine's check of a parameter file."""
+        return self.ask({"parameters": spec})
+
+    def check_tools(self, pack_copy: Path) -> list[str]:
+        """The engine's check of the tools of a setup copy."""
+        return self.ask({"tools_check": str(pack_copy)})
+
+    def ask(self, job: dict) -> list[str]:
+        line = (json.dumps(job) + "\n").encode("utf-8")
         with self._lock:
             for attempt in (1, 2):
                 if self._proc is None or self._proc.poll() is not None:
@@ -231,7 +245,7 @@ class Checker:
                     pass
                 self._proc.kill()
                 self._proc = None
-        raise RuntimeError("the engine's parameter check did not answer")
+        raise RuntimeError("the engine's check did not answer")
 
     def close(self) -> None:
         with self._lock:
@@ -353,14 +367,16 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     editor = editing.Editor(pack_dir, opened_dir)
     checker = Checker(pack_dir)
     params = params_edit.ParamsEditor(pack_dir, opened_dir, checker.check)
+    tools = tools_edit.ToolsEditor(pack_dir, opened_dir, checker.check_tools, engine_view.REPO)
     changed_cache: dict = {}
 
     def changed(data: dict, fp: str) -> dict:
         """The changed fields and files, and the parameter editor's state."""
         if fp not in changed_cache:
             changed_cache.clear()
-            changed_cache[fp] = {"changed": editor.changed(data) + params.changed(),
-                                 "params_edit": params.state(data)}
+            changed_cache[fp] = {"changed": editor.changed(data) + params.changed() + tools.changed(),
+                                 "params_edit": params.state(data),
+                                 "tools_edit": tools.state(data)}
         return changed_cache[fp]
 
     def first_build() -> None:
@@ -385,6 +401,7 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     app.state.views = views
     app.state.editor = editor
     app.state.params = params
+    app.state.tools = tools
 
     @app.middleware("http")
     async def no_stale_page(request: Request, call_next):
@@ -454,7 +471,11 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
                      ("undo_parameters", params.undo_all), ("csv_parameters", csv_parameters),
                      ("upload_picture", params.upload_picture),
                      ("drop_pictures", params.drop_unused_pictures),
-                     ("set_access", params.set_access), ("undo_access", params.undo_access)):
+                     ("set_access", params.set_access), ("undo_access", params.undo_access),
+                     ("tool_file", tools.read_file), ("save_manifest", tools.save_manifest),
+                     ("save_tool_file", tools.save_file), ("upload_tool_file", tools.upload_file),
+                     ("undo_tool_file", tools.undo_file), ("undo_tool", tools.undo_tool),
+                     ("remove_tool_preview", tools.remove_preview), ("remove_tool", tools.remove_tool)):
         app.add_api_route(f"/api/{name}", _edit(fn), methods=["POST"])
 
     @app.post("/api/diff")

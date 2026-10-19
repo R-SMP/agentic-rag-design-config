@@ -685,7 +685,8 @@ def tools() -> list:
                     "file": f"dc_pack/tools/{name}/{ref.split(':')[0]}",
                     "description": m["description"],
                     "owns": list(m.get("prompt_slots") or []),
-                    "list_order": m.get("list_order")})
+                    "list_order": m.get("list_order"),
+                    "secrets": list(m.get("secrets") or [])})
     return out
 
 
@@ -891,6 +892,37 @@ def build(pack_dir: Path | None = None) -> dict:
     return data
 
 
+def check_tools(pack_dir: Path) -> list[str]:
+    """Every problem the engine finds in the tools of the setup copy in
+    *pack_dir* (``engine/pack_tools.py``: each manifest, who owns which
+    text, the geometry tools) -- [] when it would load them.  For the
+    Studio's tool editor (P6c): a changed manifest is checked in a copy
+    before it is written.  The engine's kept file data is cleared before
+    and after: a copy keeps the files' times."""
+    import yaml
+
+    import config
+    from engine import pack, pack_tools
+
+    def clear():
+        for cache in (pack._folders_cache, pack._claims_cache, pack._names_cache,
+                      pack_tools._manifests_cache):
+            cache.clear()
+    real = config.DC_PACK_DIR
+    config.DC_PACK_DIR = pack_dir
+    clear()
+    try:
+        pack_tools._read_manifests()
+        return []
+    except pack_tools.PackToolError as exc:
+        return [ln for ln in str(exc).split("\n") if ln.strip()]
+    except yaml.YAMLError as exc:
+        return [f"a tool.yaml is not valid YAML: {exc}"]
+    finally:
+        config.DC_PACK_DIR = real
+        clear()
+
+
 def checker() -> int:
     """The engine's own parameter check (``engine/parameters.py``
     ``validate``) for the Studio's parameter editor (P6b): one JSON line in
@@ -903,7 +935,11 @@ def checker() -> int:
         if not line.strip():
             continue
         try:
-            out = {"problems": ep.validate(json.loads(line)["parameters"])}
+            job = json.loads(line)
+            if "tools_check" in job:
+                out = {"problems": check_tools(Path(job["tools_check"]))}
+            else:
+                out = {"problems": ep.validate(job["parameters"])}
         except Exception as exc:                            # noqa: BLE001
             out = {"problems": [f"the check failed: {type(exc).__name__}: {exc}"]}
         sys.stdout.write(json.dumps(out) + "\n")
