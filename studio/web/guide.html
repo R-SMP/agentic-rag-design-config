@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Getting started · MAS Studio</title>
+<!-- The Studio's guide (MAS-blueprint MVP): a static page, served with the
+     page's scripts (/static/), so it opens before the access code online. -->
+<link rel="stylesheet" href="/static/base.css">
+<link rel="stylesheet" href="/static/studio.css">
+</head>
+<body class="guide-body">
+<main class="page guide">
+<p><a class="back" href="/">← Back to the Studio</a></p>
+<h1>Getting started</h1>
+<p class="sub">The MAS Studio turns this multi-agent system into one for your own design configurator.</p>
+
+<h2>What it is</h2>
+<p>A <b>design configurator</b> is a parametric model: a set of numbers, its <b>parameters</b>, that a tool turns into
+a 3D model and pictures.  The agents take a design request in plain words (and sketches), choose the parameters,
+build the design with the configurator's tools, check it and explain it.</p>
+<p>Everything that belongs to one configurator is its <b>setup</b>, the <code>dc_pack/</code> folder: its parameters,
+the texts the agents read about it, and its tools.  The Studio edits the setup; the engine that runs the agents
+stays the same.</p>
+
+<h2>1. Open the Studio</h2>
+<ul>
+<li><b>Online</b>: open the Studio's address and type its access code; this browser remembers it.  The first page
+offers <i>Open the Studio</i>, <i>Import a setup</i> and <i>Start again from the example</i>.</li>
+<li><b>On your own computer</b>: in the repository's folder, run <code>python -m studio</code> and open
+<code>http://127.0.0.1:8770/</code>.</li>
+</ul>
+<p>You start from the example setup, the propeller configurator: change it into yours.</p>
+
+<h2>2. Make the setup yours</h2>
+<p>The left column lists the setup's sections in the order to work through them:</p>
+<ol>
+<li><b>Identity</b>: the configurator's name and how the agents introduce it.</li>
+<li><b>Parameters</b>: each parameter's name, type (whole number or decimal), range, step, default, group, label and
+unit.  <i>Import JSON</i> and <i>Paste CSV</i> bring a whole list in.  The agents' parameter lists follow by
+themselves.</li>
+<li><b>Configurator description</b>: what it builds, how its parameters behave, what it can and cannot do: the
+longer texts the agents read.</li>
+<li><b>Outputs &amp; vocabulary</b>: the words for what it produces (its model, its pictures).</li>
+<li><b>Tools</b>: how a design gets built.  <i>New tool</i> starts one from a template (a helper, a generator, a
+geometry tool) or as a copy of a tool; then change its code and its manifest (<code>tool.yaml</code>).
+<i>Test tool</i> runs it on the parameters' defaults and shows what it answers, its pictures and its model.</li>
+<li><b>Examples</b>: short phrases quoted inside the agents' instructions.  Keep each on one line, in its shape.</li>
+<li><b>User input types</b>: how the agents treat a sketch or a reference picture.</li>
+<li><b>Agent access</b>: which agent sees the parameter list, with or without the ranges.</li>
+<li><b>Settings &amp; secrets</b>: the tools' settings, and the variables (keys) they need.  The values go in
+<code>.env</code> or in the deployment's variables, never in the setup.</li>
+</ol>
+<p>Each field saves on its own, and <i>Undo</i> puts it back as it was when the Studio opened.  A field shows its
+text for the 3-, 5- and 7-agent teams; the link icon makes it one text for all of them, or one per team.</p>
+<p>The <b>Prompt viewer</b> shows every agent's full instructions as the engine builds them, coloured by where each
+part comes from; <i>Changes since opened</i> shows what your edits changed.</p>
+
+<h2>3. Validate</h2>
+<p>Press <b>Validate</b> in the toolbar.  In about a minute it checks that the setup loads, that every agent's
+instructions build, that the parameter lists match, that each tool runs and makes what it declares, and that a
+turn goes through with a stand-in model (no cost).  Fix every failure: a line that names a file opens it.  A
+warning does not stop the setup working: text left about a tool you removed, or something this computer lacks
+(a package, a program) that the deployment has.</p>
+
+<h2>4. Save your work</h2>
+<p><b>Download setup file</b> gives the setup alone; <b>Open setup file</b> (online: <i>Import a setup</i>) brings
+it back, in place of the open setup.  Online, everyone with the access code shares one setup, and it goes back to
+the example when the Studio restarts: download it to keep your work.</p>
+
+<h2>5. Deploy it</h2>
+<ol>
+<li><b>Download full package</b>: the engine and your setup, in one folder.</li>
+<li>On your computer, in that folder, run <code>python -m studio prepare</code>.  It checks the folder (Validate,
+what git must leave out, anything that looks like a key) and prints the git commands; it never runs them.</li>
+<li>Run those commands: they make a private GitHub repository with your system.</li>
+<li>Follow <code>DEPLOY.md</code>: a Railway service from that repository, with your access code and an OpenAI
+key.</li>
+</ol>
+<p>To change it later: <code>python -m studio</code> in that folder, <i>Validate</i>, then commit and push; Railway
+deploys the new version.</p>
+
+<h2>6. What it cannot do yet</h2>
+<ul>
+<li>Parameters are numbers.  Choices and on/off switches come later.</li>
+<li>A tool is Python code.  The Studio does not yet connect an OpenSCAD model, a Grasshopper definition on a compute
+server, a Node script or a web service by itself, nor turn a CAD file into a tool.</li>
+<li>Online, the shared setup is not kept across a restart.</li>
+</ul>
+</main>
+</body>
+</html>

@@ -4,6 +4,8 @@ A multi-agent system for the {{DC}}: agents that turn a design request
 into the configurator's parameters, build the design with its tools, check
 it and explain it.  Made with the MAS Studio.
 
+* **Learn it**: the Studio's guide -- *Guide* in its toolbar, or
+  `studio/web/guide.html`.
 * **Deploy it**: `DEPLOY.md`.
 * **Change it**: `python -m studio` opens the MAS Studio on `dc_pack/` (the
   configurator: its parameters, texts and tools); **Validate** checks it.

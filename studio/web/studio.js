@@ -26,6 +26,8 @@
  * never runs git: it shows the commands.
  * P7b-lite: online (python -m studio --online) the page asks for the access
  * code first, opens on the landing page, and the setup is one shared one.
+ * The guide is a page of its own (web/guide.html), linked from the toolbar
+ * and the landing page.
  *
  * Screens are hash routes, so each one has an address:
  *   #/studio/<section>[?field=..]     the Studio: sections | fields | inspector
@@ -212,7 +214,8 @@
         h('button', { 'class': 'primary', onclick: function () { go('studio', 'identity'); } }, 'Open the Studio →'),
         h('button', { onclick: askOpen }, 'Import a setup…'),
         D.can_reset ? h('button', { onclick: askReset }, 'Start again from the ' + D.pack.name + ' example…') : null,
-        D.configurator_url ? h('a', { 'class': 'btn', href: D.configurator_url, target: '_blank', rel: 'noopener' }, 'Use the ' + D.pack.name + ' configurator ↗') : null
+        D.configurator_url ? h('a', { 'class': 'btn', href: D.configurator_url, target: '_blank', rel: 'noopener' }, 'Use the ' + D.pack.name + ' configurator ↗') : null,
+        h('a', { 'class': 'btn', href: '/static/guide.html', target: '_blank', rel: 'noopener' }, 'Getting started (the guide) ↗')
       ]),
       SESSION.online ? h('p', { 'class': 'note' }, 'This is one shared setup: everyone with the access code sees and changes the same one. ' +
         'It is not kept when the Studio restarts or is deployed again — use Download setup file to keep your work, and Import a setup to bring it back.') : null
@@ -281,6 +284,7 @@
       SESSION.online ? pill('online', 'mode-hosted', 'The online Studio: one shared setup for everyone with the access code')
         : pill('local', 'mode-local', 'python -m studio on this computer'),
       h('span', { 'class': 'grow' }),
+      h('a', { 'class': 'btn', href: '/static/guide.html', target: '_blank', rel: 'noopener', title: 'How to make the setup yours, check it and deploy it.' }, 'Guide'),
       h('button', { title: 'Run every check of the setup.', onclick: function () { go('studio', 'validate'); startValidate(); } },
         ['Validate ', h('span', { id: 'valTop' }, valBadge())]),
       h('button', { title: 'Open a setup file made with the Studio: it replaces this setup.', onclick: askOpen }, 'Open setup file…'),

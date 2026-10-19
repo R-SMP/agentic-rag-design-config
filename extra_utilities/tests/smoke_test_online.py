@@ -7,7 +7,8 @@
    byte; a restart keeps what is there (an edit survives it).
 3. THE WAY IN: without the cookie every call answers 401 (the setup, a
    download, a picture, an unknown call); the page, its scripts, the health
-   answer (``/api/config``) and ``session`` do not.  A wrong code sets no
+   answer (``/api/config``), ``session`` and the guide (``/static/guide.html``,
+   its sections, linked from the toolbar and the landing page) do not.  A wrong code sets no
    cookie; the right one does, and with it the Studio answers; a cookie with
    a changed signature, or older than 30 days, does not open it.
 4. ONLINE: the setup says so (the configurator's address, Start again
@@ -150,6 +151,15 @@ def check_online(tmp: Path) -> str:
                   f"[GATE] {path} without the code: {status}")
         for path in ("/", "/static/studio.js", "/static/bridge.js"):
             check(st.req(path)[0] == 200, f"[GATE] {path} is not served before the code")
+        # the guide opens before the code, whole, and the page links to it
+        status, _h, guide = st.req("/static/guide.html")
+        text = guide.decode("utf-8") if isinstance(guide, bytes) else ""
+        check(status == 200 and all(h in text for h in (
+            "Getting started", "What it is", "1. Open the Studio", "2. Make the setup yours", "3. Validate",
+            "4. Save your work", "5. Deploy it", "6. What it cannot do yet")),
+              f"[GUIDE] the guide before the code: {status}, sections missing")
+        js = (ROOT / "studio" / "web" / "studio.js").read_text(encoding="utf-8")
+        check(js.count("/static/guide.html") == 2, "[GUIDE] the toolbar and the landing page do not both link the guide")
         status, _h, body = st.req("/api/config")
         check(status == 200 and body.get("online") is True, f"[GATE] the health answer: {status} {body}")
         _s, _h, body = st.req("/api/session", [])
