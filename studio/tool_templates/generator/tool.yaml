@@ -1,0 +1,34 @@
+# __DISPLAY__: a generator of this setup -- builds the model from an
+# attempt's parameters.json, then makes its picture (engine/tooling.py).
+# Made from the Studio's generator template: write the code, the texts and
+# the outputs it really has.
+name: __NAME__
+display_name: __DISPLAY_YAML__
+kind: generator
+roles: [tool_runner]
+build: __NAME__.py:build
+render: __NAME__.py:render
+
+description: |-
+  Build the model from an attempt's own ``parameters.json``, save it in
+  that attempt's folder, then make its picture.  (A template: describe here
+  what the tool builds and what it returns.)
+args:
+  parameters_path: |-
+    Absolute path of the attempt's ``parameters.json``: the model and its
+    picture are written into that file's own attempt folder.
+
+outputs:
+  model_file: __NAME__.obj
+  model_format: obj
+  up_axis: z
+  images:
+    - {view: __NAME__, file: render___NAME__.png, order: 90, default_enabled: true, compression: 3d_render, label: __LABEL_YAML__}
+
+# May the save step use this tool to add a missing picture to an attempt it
+# archives?
+fill_on_save: false
+
+# Its place in the tool runner's numbered tool list (its entry is
+# prompts/tool_list_entry.md).
+list_order: 90

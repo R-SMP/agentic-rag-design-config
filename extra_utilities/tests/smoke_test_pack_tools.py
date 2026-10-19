@@ -110,6 +110,9 @@ Since MAS-blueprint P6c a tool declares the environment variables it reads:
    one way (a name not in capitals, no description, a name twice, an
    unknown field, ``required`` not true / false) is refused, naming the
    problem.
+16. OUTPUTS.  Each picture view, and each generator's model file, is one
+   tool's: a copy of the pack where a second tool declares the same view,
+   or a second generator the same model file, is refused.
 """
 from __future__ import annotations
 
@@ -1148,6 +1151,30 @@ def check_secrets() -> int:
     return _refused(cases, "[SECRETS]")
 
 
+def check_outputs() -> int:
+    """16. Two tools never write the same picture or model file."""
+    sec = lambda d: d / "tools" / SEC / "tool.yaml"                    # noqa: E731
+
+    def second_generator(d):
+        shutil.copytree(d / "tools" / GEN, d / "tools" / "qzx_gen",
+                        ignore=shutil.ignore_patterns("prompts", "__pycache__"))
+        y = d / "tools" / "qzx_gen" / "tool.yaml"
+        text = y.read_bytes().decode("utf-8")
+        text = text.replace(f"name: {GEN}", "name: qzx_gen", 1)
+        text = text[:text.index("list_order:")]       # its texts stay with the original
+        for v in ("isometric", "top", "side"):
+            text = text.replace(f"view: {v}, file: render_{v}.png", f"view: q{v}, file: render_q{v}.png")
+        y.write_bytes(text.encode("utf-8"))
+    cases = [
+        ("a picture view declared twice",
+         lambda d: _rewrite(sec(d), "view: blade_sections, file: render_blade_sections.png",
+                            "view: top, file: render_top.png"),
+         "is already"),
+        ("a model file written by two generators", second_generator, "the model file"),
+    ]
+    return _refused(cases, "[OUTPUTS]")
+
+
 def main() -> int:
     check_manifests()
     check_settings()
@@ -1164,6 +1191,7 @@ def main() -> int:
     n_runs = check_image_run()
     n_kept = check_kept()
     n_secrets = check_secrets()
+    n_outputs = check_outputs()
     print(f"{len(T.manifests())} tools; {n} golden cases compared with "
           f"{FIXTURE.relative_to(ROOT).as_posix()}; {len(PK.tool_claims())} tool-text "
           f"slots owned, {n_broken} broken packs refused; 6 tool lists compared with "
@@ -1171,7 +1199,7 @@ def main() -> int:
           f"the blade-sections tool; {n_contract} pictures-contract breaks refused; "
           f"{n_saves} save-step cases; {n_geometry} broken geometry packs refused; "
           f"{n_runs} image-run cases; {n_kept} kept-while-unchanged cases; "
-          f"{n_secrets} broken secret declarations refused")
+          f"{n_secrets} broken secret declarations refused; {n_outputs} shared outputs refused")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:

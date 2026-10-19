@@ -9,5 +9,6 @@ what the screens show (with the engine itself, in child processes),
 for the prompt viewer, ``editing.py`` writes a text field's files,
 ``params_edit.py`` the parameter file, the agents' parameter lists and the
 access grid, ``tools_edit.py`` a tool's files (``yaml_patch.py``: a manifest
-changed in its own layout).
+changed in its own layout), a new tool from ``tool_templates/`` or a copy, and
+a test run (``engine/tool_test.py``).
 """

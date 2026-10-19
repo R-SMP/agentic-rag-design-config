@@ -309,3 +309,15 @@ table.ptab.secrets td input[type=text] { width:100%; }
 .fhead .grow { flex:1 1 auto; }
 textarea.code { width:100%; resize:vertical; white-space:pre; overflow:auto; }
 table.ptab.files td.num { text-align:right; font-family:var(--mono); }
+
+/* ---- New tool and Test tool (MAS-blueprint P6c-2) --------------------------------------- */
+label.pick.off { opacity:.55; cursor:default; }
+table.ptab.tvals { margin-top:6px; }
+table.ptab.tvals td.num input { width:120px; text-align:right; font-family:var(--mono); }
+.treport { margin-top:14px; border-top:1px solid var(--line); padding-top:10px; }
+.treport pre.log { max-height:260px; }
+.treport pre.log.err { color:#ffb3b3; }
+.tpics { display:flex; flex-wrap:wrap; gap:10px; }
+.tpics figure { margin:0; max-width:320px; }
+.tpics img { max-width:320px; max-height:240px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+.tpics figcaption { font-size:11px; color:var(--muted); margin-top:3px; }

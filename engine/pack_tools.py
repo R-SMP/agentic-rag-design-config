@@ -32,7 +32,9 @@ The engine side of the tool contract (``engine/tooling.py``):
   ``dc_pack/pack.yaml``); no agent is given one;
 * **secrets** -- the environment variables a tool reads (``secrets``: the
   names, whether each is required, a sentence each).  Names only: the
-  values live in ``.env`` or the hosting provider, never in the pack.
+  values live in ``.env`` or the hosting provider, never in the pack;
+* **outputs** -- each picture view, and each generator's model file, is one
+  tool's (two tools would write the same file into an attempt).
 
 Imports nothing from ``agents`` at module level: ``prompts`` reads the flags
 through here while ``agents`` is still being imported.
@@ -380,6 +382,7 @@ def _read_manifests() -> dict[str, dict]:
         out[folder.name] = m
     problems += _check_tool_texts(out)
     problems += _check_geometry(out)
+    problems += _check_outputs(out)
     if problems:
         raise PackToolError("\n".join(problems))
     return out
@@ -422,6 +425,31 @@ def _check_geometry(found: dict[str, dict]) -> list[str]:
                     p.append(f"{name}/tool.yaml: setting {s.get('name')}: the default "
                              f"{s.get('default')!r} is not one of the pack's geometry "
                              f"tools ({', '.join(allowed) or 'none'})")
+    return p
+
+
+def _check_outputs(found: dict[str, dict]) -> list[str]:
+    """Each picture view, and each generator's model file, belongs to one
+    tool: two tools writing the same file name would overwrite each other's
+    output in an attempt (and share one view switch)."""
+    p: list[str] = []
+    views: dict[str, str] = {}
+    models: dict[str, str] = {}
+    for name, m in found.items():
+        out = (m.get("outputs") or {}) if isinstance(m, dict) else {}
+        for img in out.get("images") or [] if isinstance(out, dict) else []:
+            v = img.get("view") if isinstance(img, dict) else None
+            if v in views and views[v] != name:
+                p.append(f"{name}/tool.yaml: the picture view {v!r} is already {views[v]}'s "
+                         f"(each view is one tool's)")
+            elif v is not None:
+                views[v] = name
+        f = out.get("model_file") if isinstance(out, dict) and m.get("kind") == "generator" else None
+        if f is not None:
+            if f in models:
+                p.append(f"{name}/tool.yaml: the model file {f!r} is already {models[f]}'s")
+            else:
+                models[f] = name
     return p
 
 

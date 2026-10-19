@@ -17,7 +17,8 @@
  * grid (pack.yaml).
  * P6c edits the tools: their manifests (a form, or the text), their files,
  * their tool-list entries, their settings' defaults and secrets; removes
- * them and puts them back (studio/tools_edit.py).
+ * them and puts them back; makes new ones (a template per kind, or a copy)
+ * and test-runs them (engine/tool_test.py) (studio/tools_edit.py).
  *
  * Screens are hash routes, so each one has an address:
  *   #/studio/<section>[?field=..]     the Studio: sections | fields | inspector
@@ -57,8 +58,6 @@
   };
   // The texts of the screens that come later.
   var LATER = {
-    tools: 'New tool comes in P6c-2.',
-    test: 'Test tool comes in P6c-2.',
     settings: 'DC_PARAMS_PRIMER_ENABLED lives in workflow_settings/settings.py, outside the setup: read-only here.',
     validate: 'Validate comes in P7.',
     downloads: 'Downloads come in P7.',
@@ -228,7 +227,7 @@
     ]);
     var banner = h('div', { 'class': 'banner info' },
       'Editing the setup in ' + D.pack_dir + ': each text field, parameter, group, access cell, tool and setting saves on its own, straight to its files, and Undo puts it back as it was when the Studio opened. ' +
-      'New tool and Test tool come in P6c-2.');
+      'Test tool runs a tool on a throw-away folder: nothing in the setup changes.');
     var left = h('div', { 'class': 'col side', id: 'colLeft', style: 'width:250px' }, renderNav());
     var center = h('div', { 'class': 'col center', id: 'center' });
     var right = h('div', { 'class': 'col side', id: 'colRight', style: 'width:380px' });
@@ -1552,7 +1551,7 @@
   var TEDITS = {};          // unsaved manifests from the form: tool -> manifest
   var FEDITS = {};          // unsaved file texts: tool/path -> text
   var FILES = {}, FILE_LOADING = {};   // files read from the server: tool/path -> {text, sha, size}
-  var TOOL_TABS = [['form', 'Manifest'], ['yaml', 'tool.yaml'], ['files', 'Files'], ['texts', 'Prompt texts']];
+  var TOOL_TABS = [['form', 'Manifest'], ['yaml', 'tool.yaml'], ['files', 'Files'], ['texts', 'Prompt texts'], ['test', 'Test']];
   function TE() { return D.tools_edit; }
   function toolState(name) { return (TE().tools || {})[name] || null; }
   function manifestOf(name) { return TEDITS[name] || toolState(name).manifest; }
@@ -1588,7 +1587,7 @@
   function renderTools(center, right) {
     if (R.q.tool && toolState(R.q.tool)) { renderToolEditor(center, right, R.q.tool); return; }
     add(center, head('Tools', 'The functions your agents call to build and look at a design. Each tool is a plain Python function plus a manifest: what it is, which role may call it, what it produces, and the text the agents read about it.', [
-      laterButton('+ New tool', LATER.tools, 'primary')]));
+      h('button', { 'class': 'primary', disabled: BUSY, onclick: askNewTool }, '+ New tool')]));
     var wrap = h('div', { 'class': 'toolcards' });
     D.tools.forEach(function (t) {
       var info = D.tool_info[t.name] || { roles: [], images: [], settings: [] }, st = toolState(t.name) || {};
@@ -1598,9 +1597,10 @@
         h('div', { 'class': 'head' }, [h('span', { 'class': 'n' }, t.name), pill(t.display), kpill(t.kind === 'generator' ? 'generator · primary' : t.kind),
           st.changed ? pill(st.opened ? 'changed' : 'added', 'warn', 'Changed since the Studio opened.') : null,
           h('span', { 'class': 'grow' }),
-          st.changed ? h('button', { disabled: BUSY, title: 'Put this tool back as it was when the Studio opened.', onclick: function () { undoTool(t.name); } }, 'Undo') : null,
+          st.changed ? h('button', { disabled: BUSY, title: st.opened ? 'Put this tool back as it was when the Studio opened.' : 'Remove this tool, made since the Studio opened.',
+            onclick: function () { undoTool(t.name); } }, 'Undo') : null,
           h('button', { 'class': 'primary', onclick: function () { go('studio', 'tools', { tool: t.name }); } }, 'Edit'),
-          laterButton('Test tool', LATER.test),
+          h('button', { onclick: function () { go('studio', 'tools', { tool: t.name, tab: 'test' }); } }, 'Test tool'),
           h('button', { 'class': 'danger', disabled: BUSY, onclick: function () { askRemoveTool(t.name); } }, 'Remove…')]),
         h('div', { 'class': 'd' }, first),
         h('div', { 'class': 'grid2' }, [
@@ -1648,6 +1648,7 @@
       'The whole manifest as text. A Save is checked by the engine first: a manifest it would refuse is not written.'));
     else if (tab === 'files') add(body, filesTab(name));
     else if (tab === 'texts') add(body, textsTab(name));
+    else if (tab === 'test') add(body, testTab(name));
     else add(body, manifestForm(name));
     add(center, body);
     add(right, toolInspector(name));
@@ -1873,11 +1874,156 @@
           return h('a', { 'class': 'kpill tool', style: 'display:inline-block;margin:2px;text-decoration:none', href: link('studio', f.section, { field: s }) }, s); }))])]));
   }
 
+  /* -- New tool (P6c-2) ---------------------------------------------------------- */
+  var NEW_KINDS = [
+    ['helper', 'Helper', 'one function the tool runner calls with an attempt’s parameters.json; its answer is a text for the agent.'],
+    ['generator', 'Generator', 'builds the model from an attempt’s parameters.json, then makes its pictures.'],
+    ['geometry', 'Geometry tool', 'builds the model from the parameters, for a generator and the Download buttons; no agent calls it.']];
+  function askNewTool() {
+    if (BUSY) return;
+    var tools = Object.keys(TE().tools), mode = 'template', kind = 'helper', src = tools[0];
+    var nameIn = h('input', { type: 'text', spellcheck: 'false', placeholder: 'my_tool' });
+    var dispIn = h('input', { type: 'text', placeholder: 'My tool' });
+    var msg = h('div');
+    function radio(value, label, disabled, extra) {
+      return h('label', { 'class': 'pick' + (disabled ? ' off' : '') }, [
+        h('input', { type: 'radio', name: 'newfrom', value: value, checked: value === mode, disabled: !!disabled,
+          onchange: function () { mode = value; } }),
+        h('span', null, [h('b', null, label)].concat(extra || []))]);
+    }
+    var body = h('div', null, [
+      h('div', { 'class': 'kv mform' }, [
+        h('div', { 'class': 'k' }, 'Name'), h('div', null, [nameIn, h('div', { 'class': 'muted hint' }, 'Lower case: letters, digits and _. It is the folder’s name and the agents’ tool name.')]),
+        h('div', { 'class': 'k' }, 'Display name'), h('div', null, [dispIn, h('div', { 'class': 'muted hint' }, 'The flowchart’s and the log’s label.')])]),
+      h('h4', { style: 'margin:12px 0 6px' }, 'Start from'),
+      radio('template', 'A template', false, [h('div', null, h('select', { onchange: function (e) { kind = e.target.value; } },
+        NEW_KINDS.map(function (k) { return h('option', { value: k[0] }, k[1]); }))),
+        h('div', { 'class': 'muted hint' }, NEW_KINDS.map(function (k) { return k[1] + ': ' + k[2]; }).join(' '))]),
+      radio('copy', 'A copy of a tool', !tools.length, [h('div', null, h('select', { onchange: function (e) { src = e.target.value; } },
+        tools.map(function (t) { return h('option', { value: t }, t); }))),
+        h('div', { 'class': 'muted hint' }, 'Its manifest and code under the new name. Its texts stay with the original, its pictures and model file get names of their own, a helper’s function is renamed after the copy.')]),
+      radio('adapter', 'An adapter (a Grasshopper definition on a compute server, a Node script, an HTTP endpoint)', true, [h('div', { 'class': 'muted hint' }, 'Comes in P6e.')]),
+      radio('cad', 'A CAD file (an OpenSCAD model)', true, [h('div', { 'class': 'muted hint' }, 'Comes in P6f.')]),
+      msg]);
+    showModal('New tool', body, [h('button', { onclick: closeModal }, 'Cancel'),
+      h('button', { 'class': 'primary', onclick: function () {
+        var name = nameIn.value.trim();
+        msg.innerHTML = '';
+        add(msg, h('p', { 'class': 'muted' }, 'Checking with the engine…'));
+        call('new_tool', name, dispIn.value, mode === 'template' ? kind : null, mode === 'copy' ? src : null).then(function (r) {
+          msg.innerHTML = '';
+          if (!r || r.ok === false) {
+            add(msg, h('div', { 'class': 'banner bad boxed' }, [h('div', null, (r && r.error) || 'The tool could not be made.')].concat(
+              ((r && r.problems) || []).map(function (p) { return h('div', null, '• ' + p); }))));
+            return;
+          }
+          closeModal();
+          BUSY = true;
+          status('Made ' + name + '. Re-assembling every prompt…', 'busy');
+          root.history.replaceState(null, '', link('studio', 'tools', { tool: name }));
+          reload().then(function () {
+            BUSY = false;
+            status('Made ' + name + '.' + ((r.warnings || []).length ? '  ' + r.warnings.join(' ') : ''), (r.warnings || []).length ? 'warn' : 'ok');
+            render();
+          }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+        });
+      } }, 'Make the tool')]);
+  }
+
+  /* -- Test tool (P6c-2) --------------------------------------------------------- */
+  var TESTS = {};     // tool -> {source, values, settings, report, running}
+  function testValues(source) {
+    if (source === 'defaults') {
+      var out = {};
+      PE().spec.parameters.forEach(function (p) { out[p.name] = p['default']; });
+      return out;
+    }
+    return clone((TE().samples || {})[source] || {});
+  }
+  function testTab(name) {
+    var st = toolState(name), m = st.manifest || {};
+    var T = TESTS[name] || (TESTS[name] = { source: 'defaults', values: null, settings: {}, report: null, running: false });
+    if (!T.values) T.values = testValues(T.source);
+    var sources = ['defaults'].concat(Object.keys(TE().samples || {}));
+    var srcSel = h('select', { onchange: function (e) {
+      T.source = e.target.value;
+      if (T.source !== 'typed') T.values = testValues(T.source);
+      render();
+    } }, sources.map(function (s) { return h('option', { value: s, selected: s === T.source }, s === 'defaults' ? 'the parameters’ defaults' : 'sample: ' + s); })
+      .concat([h('option', { value: 'typed', selected: T.source === 'typed' }, 'typed values')]));
+    var table = h('table', { 'class': 'ptab tvals' }, [h('thead', null, h('tr', null, ['Parameter', 'Value'].map(function (x) { return h('th', null, x); }))),
+      h('tbody', null, PE().spec.parameters.map(function (p) {
+        return h('tr', null, [h('td', null, h('span', { 'class': 'pname' }, p.name)),
+          h('td', { 'class': 'num' }, h('input', { type: 'text', value: T.values[p.name] === undefined ? '' : String(T.values[p.name]),
+            oninput: function (e) { T.values[p.name] = parseNum(e.target.value); T.source = 'typed'; srcSel.value = 'typed'; } }))]);
+      }))]);
+    var settings = (m.settings || []).map(function (s) {
+      var v = T.settings[s.name] !== undefined ? T.settings[s.name] : s['default'];
+      function set(val) { if (val === s['default']) delete T.settings[s.name]; else T.settings[s.name] = val; render(); }
+      var ctl = s.type === 'bool'
+        ? h('span', { 'class': 'seg' }, [h('button', { 'class': v ? 'on' : '', onclick: function () { set(true); } }, 'on'),
+            h('button', { 'class': v ? '' : 'on', onclick: function () { set(false); } }, 'off')])
+        : h('select', { onchange: function (e) { set(e.target.value); } },
+            (s.type === 'tool' ? geometryTools().concat(s.none ? ['none'] : []) : (s.values || [])).map(function (o) {
+              return h('option', { value: o, selected: o === v }, String(o)); }));
+      return [h('div', { 'class': 'k' }, s.label || s.name), h('div', null, [ctl, T.settings[s.name] !== undefined ? pill('changed for this run', 'warn') : null])];
+    });
+    var parts = [
+      h('p', { 'class': 'muted hint' }, 'Runs the tool the way the system calls it — ' + (m.kind === 'geometry' ? 'as the engine builds a model' : 'as the tool runner calls it, with an attempt’s parameters.json') +
+        ' — in a process of its own, on a throw-away attempt folder. Nothing in the setup changes. It stops after 180 s.'),
+      h('div', { 'class': 'kv mform' }, [h('div', { 'class': 'k' }, 'Parameter values'), h('div', null, srcSel)]),
+      h('details', { 'class': 'vtool' }, [h('summary', null, 'The values (' + Object.keys(T.values).length + ')'), table]),
+      settings.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Its settings for this run'), h('div', { 'class': 'kv mform' }, [].concat.apply([], settings))]) : null,
+      h('div', { 'class': 'tacts' }, [h('button', { 'class': 'primary', disabled: T.running, onclick: function () { runTest(name); } }, T.running ? 'Running…' : 'Run the test'),
+        T.report ? h('span', { 'class': 'muted' }, 'The last run is shown below.') : null])];
+    if (T.report) parts.push(testReport(T.report));
+    return h('div', { 'class': 'mformwrap' }, parts);
+  }
+  function runTest(name) {
+    var T = TESTS[name];
+    if (!T || T.running) return;
+    T.running = true;
+    status('Running ' + name + '…', 'busy');
+    render();
+    call('test_tool', name, T.values, T.settings).then(function (r) {
+      T.running = false;
+      T.report = r && r.ok ? r.report : { failed: true, error: (r && r.error) || 'The run could not start.', pictures: [], files: [], mismatches: [], output: [] };
+      status(T.report.failed ? name + ': the run failed (see the report).' : name + ' ran in ' + T.report.seconds + ' s.', T.report.failed ? 'err' : 'ok');
+      if (R.section === 'tools' && R.q.tool === name) render();
+    }, function (e) { T.running = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+  }
+  function testReport(rep) {
+    var pics = rep.pictures || [], files = rep.files || [], mism = rep.mismatches || [], out = rep.output || [];
+    return h('div', { 'class': 'treport' }, [
+      h('div', { 'class': 'pills' }, [rep.failed ? pill('failed', 'bad') : pill('ran', 'good'),
+        rep.seconds !== null && rep.seconds !== undefined ? kpill(rep.seconds + ' s') : null,
+        mism.length ? pill(mism.length + (mism.length === 1 ? ' mismatch' : ' mismatches'), 'warn') : null]),
+      rep.answer ? h('div', { 'class': 'block' }, [h('h4', null, rep.kind === 'geometry' ? 'What it made' : 'What the agent gets'), h('pre', { 'class': 'log' }, rep.answer)]) : null,
+      rep.error ? h('div', { 'class': 'block' }, [h('h4', null, 'Error'), h('pre', { 'class': 'log err' }, rep.error)]) : null,
+      mism.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Mismatches with the manifest · ' + mism.length),
+        h('ul', { 'class': 'checks warn' }, mism.map(function (x) { return h('li', null, ['!', h('span', null, x)]); }))]) : null,
+      pics.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Pictures · ' + pics.length), h('div', { 'class': 'tpics' }, pics.map(function (p) {
+        return h('figure', null, [p.png ? h('img', { src: 'data:image/png;base64,' + p.png, alt: p.label }) : h('div', { 'class': 'muted' }, 'too large to show'),
+          h('figcaption', null, (p.declared ? '' : 'not declared · ') + p.file + (p.width ? ' · ' + p.width + '×' + p.height : '') + ' · ' + fmt(p.bytes) + ' bytes')]);
+      }))]) : null,
+      rep.model ? h('div', { 'class': 'block' }, [h('h4', null, 'Model'), h('p', { 'class': 'mono' },
+        rep.model.file + ' · ' + fmt(rep.model.bytes) + ' bytes' + (rep.model.vertices !== null ? ' · ' + fmt(rep.model.vertices) + ' vertices' : ''))]) : null,
+      files.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Files it wrote · ' + files.length),
+        h('p', { 'class': 'mono', style: 'font-size:11px' }, files.map(function (f) { return f.file + ' (' + fmt(f.bytes) + ')'; }).join(', '))]) : null,
+      rep.settings ? h('div', { 'class': 'block' }, [h('h4', null, 'Its settings in this run'),
+        h('p', { 'class': 'mono', style: 'font-size:11px' }, Object.keys(rep.settings).map(function (k) { return k + ' = ' + rep.settings[k]; }).join(' · '))]) : null,
+      h('details', { 'class': 'vtool' }, [h('summary', null, 'Its own output · ' + out.length + ' lines' + (rep.output_cut ? ' (the first ' + rep.output_cut + ' cut)' : '')),
+        h('pre', { 'class': 'log' }, out.join('\n') || '(nothing)')])
+    ]);
+  }
+
   /* -- the whole tool -------------------------------------------------------- */
   function undoTool(name) {
     Object.keys(FEDITS).forEach(function (k) { if (k.indexOf(name + '/') === 0) delete FEDITS[k]; });
     delete TEDITS[name];
-    change('undo_tool', [name], 'tool|' + name, name + ' is back as it was when the Studio opened.');
+    var st = toolState(name);
+    change('undo_tool', [name], 'tool|' + name, st && !st.opened ? 'Removed ' + name + ', made since the Studio opened.'
+      : name + ' is back as it was when the Studio opened.');
   }
   function askRemoveTool(name) {
     if (BUSY) return;

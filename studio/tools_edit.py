@@ -13,7 +13,15 @@ Here:
   file replaced or added by upload; nothing is run;
 * **Undo** -- a file, or the whole tool, back as it was when the Studio
   opened (the OPENED copy of the setup, byte for byte);
-* **Remove** -- the folder goes, once nothing names the tool any more.
+* **Remove** -- the folder goes, once nothing names the tool any more;
+* **New tool** (P6c-2) -- from a template of its kind (``tool_templates/``:
+  a helper, a generator, a geometry tool, each a small working starter) or
+  as a copy of a tool (its texts stay with the original, its pictures and
+  model file get names of their own, a helper's function is renamed after
+  the copy);
+* **Test tool** (P6c-2) -- one run in a process of its own
+  (``engine/tool_test.py``) on a throw-away attempt folder: the report, the
+  tool's own output lines, a time limit.
 
 Every change that could stop the engine loading the tools is checked first
 by the engine's own check (``engine/pack_tools.py``), run on a throw-away
@@ -28,8 +36,11 @@ import base64
 import binascii
 import hashlib
 import json
+import os
 import re
 import shutil
+import subprocess
+import sys
 import tempfile
 import threading
 from pathlib import Path
@@ -48,6 +59,9 @@ MANIFEST = "tool.yaml"
 PROMPTS = "prompts"
 # The tool's entry in the tool runner's list: tool text that is no $slot.
 ENTRY_RE = re.compile(r"^prompts/tool_list_entry(\.t\d+)?\.md$")
+# The starters of New tool, one folder per kind (__NAME__ / __DISPLAY__
+# filled in).
+TEMPLATES = Path(__file__).resolve().parent / "tool_templates"
 
 
 def sha(raw: bytes) -> str:
@@ -149,7 +163,12 @@ class ToolsEditor:
                 "changed": tool not in then or any(f["changed"] for f in listing)
                            or bool(set(ofiles) - set(files)),
             }
-        return {"tools": out, "removed": [t for t in then if t not in now]}
+        try:
+            pack = yaml.safe_load((self.pack_dir / "pack.yaml").read_text(encoding="utf-8")) or {}
+        except (OSError, yaml.YAMLError):
+            pack = {}
+        samples = pack.get("render_samples") if isinstance(pack.get("render_samples"), dict) else {}
+        return {"tools": out, "removed": [t for t in then if t not in now], "samples": samples}
 
     def changed(self) -> list[str]:
         """The tools' files (not their texts: those are text fields) that
@@ -428,3 +447,157 @@ class ToolsEditor:
                 raise EditError(f"{tool} cannot be removed yet.", pv["blockers"] + pv["problems"])
             shutil.rmtree(self.pack_dir / "tools" / tool)
             return {"warnings": pv["warnings"]}
+
+    # -- a new tool (P6c-2) ----------------------------------------------------
+
+    def _template_files(self, kind: str, name: str, display: str) -> dict[str, bytes]:
+        """The files of the kind's template with the name filled in: in a
+        manifest the display name goes in as YAML writes it."""
+        folder = TEMPLATES / kind
+        subs = [("__DISPLAY_YAML__", yaml_patch.inline(display)),
+                ("__LABEL_YAML__", yaml_patch.inline(f"Render view: {display}")),
+                ("__DISPLAY__", display), ("__NAME__", name)]
+        out = {}
+        for rel, p in self.files(folder).items():
+            text = p.read_text(encoding="utf-8")
+            for a, b in subs:
+                text = text.replace(a, b)
+                rel = rel.replace(a, b)
+            out[rel] = text.encode("utf-8")
+        return out
+
+    def _copy_files(self, source: str, name: str, display: str) -> dict[str, bytes]:
+        """A copy of *source*'s files as tool *name*: its texts stay with the
+        original (each text has one owner), its pictures and model file get
+        names of their own, a helper's function is renamed after the tool."""
+        folder = self.pack_dir / "tools" / source
+        files = {rel: p.read_bytes() for rel, p in self.files(folder).items()
+                 if rel.split("/")[0] != PROMPTS or ENTRY_RE.match(rel)}
+        m, err = self._manifest_of(self.pack_dir, source)
+        if m is None:
+            raise EditError(f"{source}/tool.yaml does not read as YAML ({err}): fix it first.")
+        want = dict(m, name=name, display_name=display)
+        for k in ("prompt_slots", "runtime_blocks"):
+            want.pop(k, None)
+        out = dict(want.get("outputs") or {})
+        images = [dict(i) for i in out.get("images") or []]
+        for img in images:
+            img["view"] = name if len(images) == 1 else f"{name}_{img['view']}"
+            img["file"] = f"render_{img['view']}.png"
+        if images:
+            out["images"] = images
+        if "model_file" in out:
+            out["model_file"] = name + Path(out["model_file"]).suffix
+        if out:
+            want["outputs"] = out
+        if m.get("kind") == "helper":
+            module, fn = str(m["entrypoint"]).split(":")
+            code = files.get(module)
+            if code is None or f"def {fn}(".encode() not in code:
+                raise EditError(f"{source}: its function {fn} was not found in {module}, so the "
+                                "copy's function could not be named after the copy.")
+            files[module] = code.replace(f"def {fn}(".encode(), f"def {name}(".encode(), 1)
+            want["entrypoint"] = f"{module}:{name}"
+        raw = files[MANIFEST]
+        try:
+            text = yaml_patch.patch(_decode(raw), want)
+        except yaml_patch.PatchError as exc:
+            raise EditError(f"The copy's manifest could not be written ({exc}).") from None
+        files[MANIFEST] = text.replace("\n", _eol(raw)).encode("utf-8")
+        for rel in [r for r in files if ENTRY_RE.match(r)]:
+            files[rel] = files[rel].replace(source.encode(), name.encode())
+        return files
+
+    def new_tool(self, data: dict, name: str, display: str, kind: str | None = None,
+                 copy_of: str | None = None) -> dict:
+        """A new tool folder: from the kind's template, or a copy of
+        *copy_of*; checked by the engine first."""
+        name, display = str(name or "").strip(), str(display or "").strip()
+        if not TOOL_RE.match(name):
+            raise EditError("The name must be lower case: letters, digits and _, starting with a "
+                            "letter (it is the folder's name and the agents' tool name).")
+        if name == "downloads":
+            raise EditError("downloads is reserved (the Download buttons' settings).")
+        if (self.pack_dir / "tools" / name).exists():
+            raise EditError(f"The setup already has a tool {name}.")
+        if (self.opened_dir / "tools" / name).exists():
+            raise EditError(f"A tool {name} was removed since the Studio opened: put it back with "
+                            "its Undo, or choose another name.")
+        if not display or len(display) > 60:
+            raise EditError("Give it a display name (at most 60 characters).")
+        with self._lock:
+            if copy_of:
+                self._tool(copy_of)
+                files = self._copy_files(copy_of, name, display)
+            elif kind in ("helper", "generator", "geometry"):
+                files = self._template_files(kind, name, display)
+            else:
+                raise EditError("Start from a template (helper, generator or geometry) or from a "
+                                "copy of a tool.")
+
+            def write(root: Path):
+                for rel, raw in files.items():
+                    p = root / "tools" / name / rel
+                    p.parent.mkdir(parents=True, exist_ok=True)
+                    p.write_bytes(raw)
+            problems = self._check(write)
+            if problems:
+                raise EditError("The new tool cannot be made.", problems)
+            write(self.pack_dir)
+            warnings = []
+            made = yaml.safe_load(_decode(files[MANIFEST]))
+            if made.get("kind") == "generator":
+                others = [t for t in self.tools(self.pack_dir) if t != name and
+                          (self._manifest_of(self.pack_dir, t)[0] or {}).get("kind") == "generator"]
+                if others:
+                    warnings.append(f"The setup now has {len(others) + 1} generators: the web app's "
+                                    f"3D viewer shows the model of the first by name "
+                                    f"({sorted(others + [name])[0]}); several generators come with P6e.")
+            return {"tool": name, "warnings": warnings}
+
+    # -- a test run (P6c-2) ---------------------------------------------------
+
+    def test_tool(self, data: dict, tool: str, params, settings=None, timeout=180) -> dict:
+        """One run of *tool* on *params* in a process of its own
+        (``engine/tool_test.py``), on a throw-away attempt folder: its
+        report, with the run's own output lines."""
+        self._tool(tool)
+        if not isinstance(params, dict) or not isinstance(settings or {}, dict):
+            raise EditError("The page sent no parameter values.")
+        try:
+            timeout = max(5.0, min(600.0, float(timeout)))
+        except (TypeError, ValueError):
+            timeout = 180.0
+        tmp = Path(tempfile.mkdtemp(prefix="studio_tooltest_"))
+        try:
+            job, out = tmp / "job.json", tmp / "report.json"
+            job.write_text(json.dumps({"tool": tool, "params": params, "settings": settings or {},
+                                       "root": str(tmp / "attempts")}), encoding="utf-8")
+            env = dict(os.environ, PYTHONIOENCODING="utf-8", DC_PACK_DIR=str(self.pack_dir),
+                       DATABASE_URL="", DATABASE_PUBLIC_URL="")
+            try:
+                proc = subprocess.run([sys.executable, "-m", "engine.tool_test", str(job), str(out)],
+                                      cwd=str(self.repo), env=env, capture_output=True, text=True,
+                                      encoding="utf-8", errors="replace", timeout=timeout)
+                output, code = (proc.stdout or "") + (proc.stderr or ""), proc.returncode
+            except subprocess.TimeoutExpired as exc:
+                output = "".join(x.decode("utf-8", "replace") if isinstance(x, bytes) else (x or "")
+                                 for x in (exc.stdout, exc.stderr))
+                report = {"tool": tool, "failed": True, "files": [], "pictures": [], "model": None,
+                          "mismatches": [], "seconds": timeout,
+                          "error": f"The run took longer than {timeout:g} s and was stopped."}
+                code = None
+            else:
+                if out.is_file():
+                    report = json.loads(out.read_text(encoding="utf-8"))
+                else:
+                    report = {"tool": tool, "failed": True, "files": [], "pictures": [], "model": None,
+                              "mismatches": [], "seconds": None,
+                              "error": f"The run ended without a report (exit code {code})."}
+            lines = output.splitlines()
+            report["output"] = lines[-400:]
+            report["output_cut"] = max(0, len(lines) - 400)
+            report["returncode"] = code
+            return {"report": report, "warnings": []}
+        finally:
+            shutil.rmtree(tmp, ignore_errors=True)

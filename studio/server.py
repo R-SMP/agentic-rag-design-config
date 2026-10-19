@@ -29,7 +29,8 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
 * the tool editor (P6c, ``studio/tools_edit.py``) -- ``tool_file``,
   ``save_manifest``, ``save_tool_file``, ``upload_tool_file``,
   ``undo_tool_file``, ``undo_tool``, ``remove_tool_preview``,
-  ``remove_tool``.  A change that could stop the engine loading the tools is
+  ``remove_tool``, ``new_tool`` (a template or a copy) and ``test_tool``
+  (one run, ``engine/tool_test.py``, in a process of its own).  A change that could stop the engine loading the tools is
   checked first by the engine's own check, on a throw-away copy of the
   setup (in the same engine process).
 
@@ -475,7 +476,8 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
                      ("tool_file", tools.read_file), ("save_manifest", tools.save_manifest),
                      ("save_tool_file", tools.save_file), ("upload_tool_file", tools.upload_file),
                      ("undo_tool_file", tools.undo_file), ("undo_tool", tools.undo_tool),
-                     ("remove_tool_preview", tools.remove_preview), ("remove_tool", tools.remove_tool)):
+                     ("remove_tool_preview", tools.remove_preview), ("remove_tool", tools.remove_tool),
+                     ("new_tool", tools.new_tool), ("test_tool", tools.test_tool)):
         app.add_api_route(f"/api/{name}", _edit(fn), methods=["POST"])
 
     @app.post("/api/diff")

@@ -94,8 +94,20 @@ Since MAS-blueprint P6c it edits the tools (``studio/tools_edit.py``,
    the Download buttons cannot be removed; removing the only generator
    warns; one tool is removed (the prompts change) and its Undo brings it
    back byte for byte, as a tool changed in several places is.
+11. NEWTOOL.  A tool from each template (helper, generator, geometry) is
+   made only once the engine takes it, runs cleanly in Test tool on the
+   defaults and on a sample (its answer, picture, model), and the setup
+   assembles with it -- the tool runner lists the new helper and generator;
+   a copy of each tool gets pictures and a model file of its own, no texts
+   of the original, a helper's function renamed after it, and Test tool
+   reports what the copied code still does under the original's names;
+   Undo takes every new tool away byte for byte.  Bad names, an existing or
+   reserved name, a removed tool's name, no display name, no template, an
+   unknown source are refused.  Test tool reports a failing tool instead of
+   failing, keeps the tool's own output lines, and stops a run at its time
+   limit; nothing in the setup changes.
 
-Takes about seven minutes.  Run from the repo root:
+Takes about nine minutes.  Run from the repo root:
     py -3.13 extra_utilities/tests/smoke_test_studio.py
 """
 from __future__ import annotations
@@ -1372,6 +1384,166 @@ def check_tools(st: Studio, copy: Path) -> str:
 
 
 # ---------------------------------------------------------------------------
+# New tool and Test tool (P6c-2)
+# ---------------------------------------------------------------------------
+
+def check_new_tools(st: Studio, copy: Path) -> str:
+    """A tool from each template and a copy of each tool: made only when the
+    engine takes it, run by Test tool, gone again with Undo byte for byte;
+    the refusals; Test tool's report, time limit and output lines."""
+    import yaml as _yaml
+    ref = _snapshot(copy)
+
+    def same(what):
+        return _same_files(copy, ref, what, "[NEWTOOL]")
+
+    def ok(what, name, *args):
+        status, r = st.call(name, *args)
+        check(status == 200 and r.get("ok") is True, f"[NEWTOOL] {what}: {name} answered {status} {str(r)[:300]}")
+        return r
+    status, d = st.call("get_all")
+    D0 = d["data"]
+    tools0 = sorted(D0["tools_edit"]["tools"])
+    params = {p["name"]: p["default"] for p in D0["params_edit"]["spec"]["parameters"]}
+    sample = next(iter((D0["tools_edit"]["samples"] or {}).values()), params)
+    # 1. A tool from each template: it runs cleanly; the setup assembles with it.
+    made = []
+    for kind in ("helper", "generator", "geometry"):
+        name = f"qzx_{kind}"
+        r = ok(f"the {kind} template", "new_tool", name, f"Qzx {kind}: a test", kind)
+        if not r.get("ok"):
+            continue
+        made.append(name)
+        m = _yaml.safe_load((copy / "tools" / name / "tool.yaml").read_bytes().decode("utf-8"))
+        check(m.get("name") == name and m.get("kind") == kind and m.get("display_name") == f"Qzx {kind}: a test",
+              f"[NEWTOOL] the {kind} template: its manifest names {m.get('name')}, {m.get('kind')}, {m.get('display_name')!r}")
+        for values, label in ((params, "defaults"), (sample, "a sample")):
+            status, r = st.call("test_tool", name, values, {})
+            rep = r.get("report") or {}
+            check(r.get("ok") and not rep.get("failed") and not rep.get("mismatches") and rep.get("seconds") is not None,
+                  f"[NEWTOOL] the {kind} template on {label}: the run did not come out clean: "
+                  f"{str({k: rep.get(k) for k in ('failed', 'error', 'answer', 'mismatches')})[:400]}")
+            if kind == "generator":
+                check([p["file"] for p in rep.get("pictures", []) if p["declared"] and p.get("png")] == [f"render_{name}.png"]
+                      and (rep.get("model") or {}).get("vertices") == 8,
+                      f"[NEWTOOL] the generator template: picture {rep.get('pictures')} / model {rep.get('model')}")
+            elif kind == "geometry":
+                check((rep.get("model") or {}).get("vertices") == 8, f"[NEWTOOL] the geometry template: model {rep.get('model')}")
+            else:
+                check(str(rep.get("answer", "")).startswith(f"Read {len(values)} parameter values"),
+                      f"[NEWTOOL] the helper template: answer {str(rep.get('answer'))[:200]!r}")
+    status, d = st.call("get_all")
+    if status == 200 and d.get("ok"):
+        D1 = d["data"]
+        check(sorted(t["name"] for t in D1["tools"]) == sorted(tools0 + made),
+              f"[NEWTOOL] after the templates the setup lists {[t['name'] for t in D1['tools']]}")
+        runner = [a for t in ("7", "5", "3") for a, tl in D1["prompts"][t]["prompts"].items()
+                  if "qzx_helper" in tl and "qzx_generator" in tl]
+        check(bool(runner), "[NEWTOOL] no tool runner's prompt lists the new helper and generator")
+    else:
+        check(False, f"[NEWTOOL] the setup no longer assembles with the template tools: {str(d)[:300]}")
+    # 2. A copy of each tool: its own pictures and model file, no texts of
+    #    its own, a helper's function renamed; then Test tool.
+    copies = []
+    for src in tools0:
+        name = f"copy_{src}"[:30]
+        r = ok(f"a copy of {src}", "new_tool", name, f"Copy of {src}", None, src)
+        if not r.get("ok"):
+            continue
+        copies.append(name)
+        m = _yaml.safe_load((copy / "tools" / name / "tool.yaml").read_bytes().decode("utf-8"))
+        om = D0["tools_edit"]["tools"][src]["manifest"]
+        views = [i["view"] for i in (m.get("outputs") or {}).get("images") or []]
+        oviews = [i["view"] for i in (om.get("outputs") or {}).get("images") or []]
+        check(m["name"] == name and not m.get("prompt_slots") and not set(views) & set(oviews)
+              and all(i["file"] == f"render_{i['view']}.png" for i in (m.get("outputs") or {}).get("images") or []),
+              f"[NEWTOOL] the copy of {src}: name {m['name']}, slots {m.get('prompt_slots')}, views {views}")
+        if om.get("kind") == "generator":
+            check(m["outputs"]["model_file"] != om["outputs"]["model_file"],
+                  f"[NEWTOOL] the copy of {src} writes the same model file")
+        if om.get("kind") == "helper":
+            module, fn = m["entrypoint"].split(":")
+            check(fn == name and f"def {name}(" in (copy / "tools" / name / module).read_text(encoding="utf-8"),
+                  f"[NEWTOOL] the copy of {src}: its function is not named after it ({m['entrypoint']})")
+        texts = [p for p in (copy / "tools" / name / "prompts").glob("*.md")] if (copy / "tools" / name / "prompts").is_dir() else []
+        check(all(p.name.startswith("tool_list_entry") for p in texts),
+              f"[NEWTOOL] the copy of {src} keeps texts of the original: {[p.name for p in texts]}")
+        status, r = st.call("test_tool", name, params, {})
+        rep = r.get("report") or {}
+        check(r.get("ok") and rep.get("seconds") is not None and ("answer" in rep or rep.get("error")),
+              f"[NEWTOOL] Test tool on the copy of {src}: no report: {str(r)[:300]}")
+        if om.get("kind") == "helper" and om.get("outputs", {}).get("images"):
+            # the copied code still writes the original's picture: reported
+            check(any("does not declare" in x for x in rep.get("mismatches", [])),
+                  f"[NEWTOOL] the copy of {src}: its picture under the original's name was not reported: "
+                  f"{rep.get('mismatches')}")
+    # 3. Undo: every new tool goes, byte for byte.
+    for name in made + copies:
+        ok(f"undo {name}", "undo_tool", name)
+    same("the template tools and the copies, then Undo")
+    # 4. The refusals.
+    removable = "render_blade_sections" if "render_blade_sections" in tools0 else None
+    cases = [(("Bad Name", "x", "helper"), "lower case"), ((tools0[0], "x", "helper"), "already has a tool"),
+             (("downloads", "x", "helper"), "reserved"), (("qzx_ok", "", "helper"), "display name"),
+             (("qzx_ok", "x", "qzx"), "Start from a template"), (("qzx_ok", "x", None, "qzx_nope"), "no tool")]
+    # a generator named after a picture view another tool declares: the
+    # engine refuses it (each view is one tool's)
+    taken = next((i["view"] for t in tools0 for i in (D0["tools_edit"]["tools"][t]["manifest"].get("outputs") or {}).get("images") or []
+                  if t != i["view"]), None)
+    if taken:
+        cases.append(((taken, "x", "generator"), "cannot be made"))
+    for args, words in cases:
+        status, r = st.call("new_tool", *args)
+        check(r.get("ok") is False and words in r.get("error", ""), f"[NEWTOOL] new_tool{args}: not refused ({words}): {r}")
+    if removable:
+        ok("remove", "remove_tool", removable)
+        status, r = st.call("new_tool", removable, "x", "helper")
+        check(r.get("ok") is False and "removed since the Studio opened" in r.get("error", ""),
+              f"[NEWTOOL] a new tool under a removed tool's name: not refused: {r}")
+        ok("undo the removal", "undo_tool", removable)
+    same("after the refused new tools")
+    # 5. Test tool: a run that fails is reported, not a crash; the time limit;
+    #    the tool's own output lines; nothing in the setup changes.
+    for name in tools0:
+        status, r = st.call("test_tool", name, params, {})
+        rep = r.get("report") or {}
+        check(r.get("ok") and rep.get("seconds") is not None
+              and (rep.get("failed") is False or rep.get("error") or "Error" in str(rep.get("answer"))
+                   or "failed" in str(rep.get("answer"))),
+              f"[NEWTOOL] Test tool on {name}: {str({k: rep.get(k) for k in ('failed', 'error', 'answer')})[:300]}")
+    ok("a printing helper", "new_tool", "qzx_slow", "Qzx slow", "helper")
+    py = copy / "tools" / "qzx_slow" / "qzx_slow.py"
+    status, rf = st.call("tool_file", "qzx_slow", "qzx_slow.py")
+    text = rf["text"].replace('    path = Path(parameters_path)',
+                              '    import sys, time\n    print("QZX-PRINT", flush=True)\n'
+                              '    print("QZX-ERR", file=sys.stderr, flush=True)\n'
+                              '    if "slow" in parameters_path or Path(parameters_path).parent.name.endswith("test"):\n'
+                              '        time.sleep(float(__import__("os").environ.get("QZX_SLEEP", "0")))\n'
+                              '    path = Path(parameters_path)')
+    ok("the printing helper's code", "save_tool_file", "qzx_slow", "qzx_slow.py", text, rf["sha"])
+    status, r = st.call("test_tool", "qzx_slow", params, {})
+    rep = r.get("report") or {}
+    check("QZX-PRINT" in rep.get("output", []) and "QZX-ERR" in rep.get("output", []) and not rep.get("failed"),
+          f"[NEWTOOL] Test tool did not keep the tool's own output: {rep.get('output')}")
+    text2 = text.replace('time.sleep(float(__import__("os").environ.get("QZX_SLEEP", "0")))', "time.sleep(30)")
+    ok("the slow helper's code", "save_tool_file", "qzx_slow", "qzx_slow.py", text2, py and _sha_of(py))
+    t0 = time.time()
+    status, r = st.call("test_tool", "qzx_slow", params, {}, 5)
+    rep = r.get("report") or {}
+    check(rep.get("failed") and "longer than 5 s" in str(rep.get("error")) and time.time() - t0 < 25,
+          f"[NEWTOOL] the time limit: {str({k: rep.get(k) for k in ('failed', 'error')})} after {time.time() - t0:.0f} s")
+    ok("undo the printing helper", "undo_tool", "qzx_slow")
+    same("after the test runs")
+    return (f"{len(made)} templates made, run clean and undone; {len(copies)} copies made, run and undone; "
+            f"{len(cases) + (1 if removable else 0)} new tools refused; every tool test-run; the time limit "
+            f"and the tool's own output kept; byte for byte")
+
+
+def _sha_of(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+# ---------------------------------------------------------------------------
 
 def main() -> int:
     _run(check_cache_unit, "[CACHE]")
@@ -1401,6 +1573,7 @@ def main() -> int:
             summary["edit"] = _run(lambda: check_edit(st, copy), "[EDIT]")
             summary["params"] = _run(lambda: check_params(st, copy), "[PARAMS]")
             summary["tools"] = _run(lambda: check_tools(st, copy), "[TOOLS]")
+            summary["new_tools"] = _run(lambda: check_new_tools(st, copy), "[NEWTOOL]")
             summary["first"] = f"{first:.0f} s"
     finally:
         if st is not None:
@@ -1411,7 +1584,7 @@ def main() -> int:
           f"prompt, each with its sentences there; {summary.get('prompts')} prompts = the prompt matrix's base; "
           f"{summary.get('cache')}; {summary.get('viewer')}; {summary.get('pool')}; "
           f"editing: {summary.get('edit')}; parameters: {summary.get('params')}; "
-          f"tools: {summary.get('tools')}")
+          f"tools: {summary.get('tools')}; new tools: {summary.get('new_tools')}")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
@@ -1420,7 +1593,7 @@ def main() -> int:
     print("\nPASS - the Studio shows every field of the setup, where each one lands, and "
           "the engine's own prompts and tools under every choice of settings, sees "
           "a changed file, edits every text field, parameter, access cell and tool, "
-          "and puts each back byte for byte.")
+          "makes and test-runs new tools, and puts each back byte for byte.")
     return 0
 
 

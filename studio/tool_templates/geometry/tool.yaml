@@ -1,0 +1,15 @@
+# __DISPLAY__: a geometry tool of this setup -- builds the model from the
+# parameters, for a generator (its geometry tool setting) and for the web
+# app's Download buttons; never for an agent (engine/tooling.py).  Made from
+# the Studio's geometry template.
+name: __NAME__
+display_name: __DISPLAY_YAML__
+kind: geometry
+entrypoint: __NAME__.py:make_model
+
+description: >-
+  Builds the model from the parameters.  (A template: describe here how it
+  builds the model.)
+
+outputs:
+  model_format: obj

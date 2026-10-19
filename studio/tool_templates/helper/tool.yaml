@@ -1,0 +1,24 @@
+# __DISPLAY__: a helper tool of this setup -- one plain function the tool
+# runner can call; the engine builds the agents' tool from it and from this
+# file (engine/tooling.py).  Made from the Studio's helper template: write
+# what it does in the description, the code and its tool-list entry.
+name: __NAME__
+display_name: __DISPLAY_YAML__
+kind: helper
+roles: [tool_runner]
+entrypoint: __NAME__.py:__NAME__
+
+description: |-
+  Read an attempt's parameter values and answer with a short summary of
+  them.  (A template: describe here what the tool does, what to pass and
+  what it returns.)
+
+  Args:
+      parameters_path: Absolute path of an attempt's ``parameters.json``.
+
+  Returns:
+      A short text for the agent.
+
+# Its place in the tool runner's numbered tool list (its entry is
+# prompts/tool_list_entry.md).
+list_order: 90
