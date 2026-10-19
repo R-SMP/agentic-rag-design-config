@@ -345,3 +345,9 @@ table.ptab.tvals td.num input { width:120px; text-align:right; font-family:var(-
 #modalFoot a.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
 #modalFoot a.btn.warnbtn { background:#33260f; border-color:#7a5a1a; color:#ffd8a0; }
 #modalBody a { color:#a5c8ff; }
+
+/* Prepare for GitHub (P7-3) */
+.cmds .cmd { margin:6px 0; }
+.cmds .cmd .row2 { display:flex; gap:8px; align-items:center; }
+.cmds code { flex:1 1 auto; font-family:var(--mono); font-size:12px; background:#15161a; border:1px solid var(--line);
+  border-radius:5px; padding:4px 8px; word-break:break-all; }

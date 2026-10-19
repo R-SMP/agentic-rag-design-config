@@ -22,7 +22,8 @@
  * P7 adds Validate: every check of the setup (studio/validate.py), run on
  * the server while the page polls its progress; the two downloads -- the
  * setup file and the full package -- and Open setup file
- * (studio/package.py).
+ * (studio/package.py); and Prepare for GitHub (studio/prepare.py), which
+ * never runs git: it shows the commands.
  *
  * Screens are hash routes, so each one has an address:
  *   #/studio/<section>[?field=..]     the Studio: sections | fields | inspector
@@ -63,7 +64,6 @@
   // The texts of the screens that come later.
   var LATER = {
     settings: 'DC_PARAMS_PRIMER_ENABLED lives in workflow_settings/settings.py, outside the setup: read-only here.',
-    prepare: 'Prepare for GitHub comes in P7.',
     landing: 'The landing page and Import come with the hosted Studio (P7b).'
   };
   // the seven-agent roles a tool binds to (brief §5.4)
@@ -125,8 +125,6 @@
   function pill(text, cls, title) { return h('span', { 'class': 'pill ' + (cls || ''), title: title || null }, text); }
   function kpill(text, cls) { return h('span', { 'class': 'kpill ' + (cls || '') }, text); }
   function disp(key) { return (D.roles.display[key] || key).replace(/^The /, ''); }
-  // a button of a screen that comes later: shown, disabled, its phase as the tooltip
-  function laterButton(label, why, cls) { return h('button', { 'class': cls || null, disabled: true, title: why }, label); }
 
   /* ---------------- routing ---------------- */
   function parse() {
@@ -227,7 +225,9 @@
       h('button', { title: 'The setup alone, to open again later.', onclick: function () { askDownload('setup'); } }, 'Download setup file'),
       h('button', { 'class': 'primary', title: 'The engine and this setup, ready to deploy.', onclick: function () { askDownload('package'); } }, 'Download full package'),
       h('span', { 'class': 'sep' }),
-      laterButton('Prepare for GitHub', LATER.prepare)
+      h('button', { disabled: !(D.prepare && D.prepare.available), onclick: askPrepare,
+        title: D.prepare && D.prepare.available ? 'Check this folder and get the commands that put it on GitHub. Nothing is committed.' : (D.prepare && D.prepare.why) || '' },
+        'Prepare for GitHub')
     ]);
     var banner = h('div', { 'class': 'banner info' },
       'Editing the setup in ' + D.pack_dir + ': each text field, parameter, group, access cell, tool and setting saves on its own, straight to its files, and Undo puts it back as it was when the Studio opened. ' +
@@ -2568,6 +2568,58 @@
         };
         fr.readAsDataURL(file);
       } }, 'Open')]);
+  }
+
+  /* ======================================================================
+   * Prepare for GitHub (P7-3, studio/prepare.py): it never runs git
+   * ==================================================================== */
+  function copyButton(text) {
+    return h('button', { 'class': 'mini', onclick: function (e) {
+      var b = e.target;
+      (root.navigator.clipboard ? root.navigator.clipboard.writeText(text) : Promise.reject()).then(
+        function () { b.textContent = 'Copied'; }, function () { b.textContent = 'Select and copy it'; });
+    } }, 'Copy');
+  }
+  function askPrepare() {
+    if (BUSY) return;
+    var body = h('div', null, h('p', { 'class': 'muted' }, 'Checking this folder…'));
+    showModal('Prepare for GitHub', body, [h('button', { onclick: closeModal }, 'Close')]);
+    call('prepare_run').then(function (r) {
+      body.innerHTML = '';
+      if (!r || r.ok === false) { add(body, h('div', { 'class': 'banner bad boxed' }, (r && r.error) || 'Prepare could not run.')); return; }
+      if (r.needs_validate) {
+        add(body, [h('p', null, 'Prepare needs Validate on the setup as it is now, with no failure.'),
+          h('button', { 'class': 'primary', style: 'margin-top:8px', onclick: function () { closeModal(); go('studio', 'validate'); startValidate(); } }, 'Run Validate')]);
+        return;
+      }
+      var out = r.result, c = out.validate.counts;
+      add(body, h('div', { 'class': 'pills', style: 'margin-bottom:8px' }, [
+        pill('Validate: ' + (c.fail ? c.fail + ' failed' : 'no failures') + (c.warn ? ', ' + c.warn + (c.warn === 1 ? ' warning' : ' warnings') : ''),
+          out.validate.status === 'fail' ? 'bad' : out.validate.status === 'warn' ? 'warn' : 'good')]));
+      if (!out.ok) {
+        add(body, [h('div', { 'class': 'banner bad boxed' }, 'Validate found failures: fix them first. Nothing was changed.'),
+          h('ul', { 'class': 'checks bad' }, out.failed.map(function (f) { return h('li', null, f.title + (f.lines.length ? ': ' + f.lines[0] : '')); }))]);
+        return;
+      }
+      add(body, h('div', { 'class': 'block' }, [h('h4', null, out.changes.length ? 'What prepare changed' : 'Nothing needed changing'),
+        out.changes.length ? h('ul', { 'class': 'checks' }, out.changes.map(function (x) { return h('li', null, x); })) : null]));
+      if (out.notes.length) add(body, h('div', { 'class': 'block' }, [h('h4', null, 'The tools’ own dependencies'),
+        h('ul', { 'class': 'checks warn' }, out.notes.map(function (n) { return h('li', null, n); }))]));
+      if (out.findings.length) add(body, h('div', { 'class': 'banner warn boxed' }, [
+        h('div', null, h('b', null, 'Something here looks like a key (' + out.findings.length + '): remove it before you commit. Keys belong in .env (which git ignores) or in the deployment’s variables.')),
+        h('ul', { 'class': 'checks warn', style: 'margin-top:4px' }, out.findings.map(function (f) {
+          return h('li', null, h('span', { 'class': 'mono' }, f.file + ':' + f.line + ' — ' + f.what + ': ' + f.shown));
+        }))]));
+      var cmd = out.commands;
+      add(body, h('div', { 'class': 'block' }, [
+        h('h4', null, cmd.case === 'update' ? 'To commit and push (Railway then deploys it)' : 'To commit and create the private GitHub repository'),
+        h('p', { 'class': 'muted' }, 'Nothing was committed: prepare never runs git. In a terminal, in ' + D.pack_dir.replace(/[\\/]dc_pack$/, '') + ':'),
+        h('div', { 'class': 'cmds' }, cmd.steps.map(function (s) {
+          return h('div', { 'class': 'cmd' }, [h('div', { 'class': 'muted' }, s[0]), h('div', { 'class': 'row2' }, [h('code', null, s[1]), copyButton(s[1])])]);
+        })),
+        cmd.manual.length ? h('p', { 'class': 'muted', style: 'margin-top:8px;white-space:pre-wrap' }, cmd.manual.join('\n')) : null]));
+      status('Prepared: ' + (out.changes.length ? out.changes.length + ' change(s)' : 'nothing to change') + '; nothing was committed.', out.findings.length ? 'warn' : 'ok');
+    });
   }
 
   /* ======================================================================

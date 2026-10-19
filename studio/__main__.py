@@ -1,8 +1,11 @@
 """python -m studio [--pack <folder>] [--host 127.0.0.1] [--port 8770] [--workers 2]
 python -m studio validate [--pack <folder>] [--json <report.json>]
+python -m studio prepare [--report <report.json>]
 
 Starts the Studio on this computer and prints its address -- or validates a
-setup (``studio/validate.py``) and prints the report.
+setup (``studio/validate.py``) and prints the report -- or, in a folder made
+by Download full package, makes it ready to commit and prints the git
+commands (``studio/prepare.py``; it never runs git).
 """
 
 from __future__ import annotations
@@ -27,6 +30,9 @@ def main(argv: list[str] | None = None) -> int:
     if argv[:1] == ["validate"]:
         from studio.validate import main as validate
         return validate(argv[1:])
+    if argv[:1] == ["prepare"]:
+        from studio.prepare import main as prepare
+        return prepare(argv[1:])
     ap = argparse.ArgumentParser(
         prog="python -m studio",
         description="The MAS Studio (MAS-blueprint P5-P6c): a setup's "

@@ -22,6 +22,7 @@
 
 from __future__ import annotations
 
+import fnmatch
 import io
 import json
 import re
@@ -168,9 +169,10 @@ def pack_format(pack_dir: Path) -> int | None:
     return data.get("pack_format", 1) if isinstance(data, dict) else None
 
 
-def setup_info(pack_dir: Path, name: str, validation: dict | None) -> dict:
+def setup_info(pack_dir: Path, name: str, validation: dict | None, engine: str | None = None) -> dict:
     """What ``setup_info.json`` says: the setup, the Studio and engine that
-    wrote it, and Validate's last result for the setup as it is now."""
+    wrote it (*engine*, else :func:`engine_version`), and Validate's last
+    result for the setup as it is now."""
     rep = (validation or {}).get("report")
     if rep and (validation or {}).get("current"):
         checked = {"status": rep["status"], "counts": rep["counts"], "when": rep["started"]}
@@ -180,7 +182,7 @@ def setup_info(pack_dir: Path, name: str, validation: dict | None) -> dict:
     else:
         checked = {"status": "not run"}
     return {"configurator": name, "made_by": "MAS Studio", "made": datetime.now().isoformat(timespec="seconds"),
-            "engine": engine_version(), "pack_format": pack_format(pack_dir), "validate": checked}
+            "engine": engine or engine_version(), "pack_format": pack_format(pack_dir), "validate": checked}
 
 
 # ---------------------------------------------------------------------------
@@ -215,6 +217,10 @@ def scan(files: dict[str, bytes]) -> list[dict]:
 # ---------------------------------------------------------------------------
 
 _REQ_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
+# Where the merged part starts: a merge again replaces it (python -m studio
+# prepare runs it on a package whose tools may have changed).
+REQ_MARK = "# ---- this setup's tools ----"
+APT_MARK = "        # ---- this setup's tools (dc_pack/tools/<tool>/apt.txt) ----"
 
 
 def _req_name(line: str) -> str | None:
@@ -229,8 +235,13 @@ def _lines(raw: bytes) -> list[str]:
 
 def merge_requirements(engine_text: str, setup: dict[str, Path]) -> tuple[str, list[str]]:
     """The engine's ``requirements.txt`` with each tool's own
-    ``tools/<tool>/requirements.txt`` added; a package the engine already
-    names is kept as the engine has it (a different version is noted)."""
+    ``tools/<tool>/requirements.txt`` added after :data:`REQ_MARK` (a part
+    merged before is replaced); a package the engine already names is kept
+    as the engine has it (a different version is noted)."""
+    eol = "\r\n" if "\r\n" in engine_text else "\n"
+    at = engine_text.find(eol + REQ_MARK)
+    if at >= 0:
+        engine_text = engine_text[:at]
     have = {}
     for ln in engine_text.splitlines():
         n = _req_name(ln) if ln.strip() and not ln.strip().startswith("#") else None
@@ -258,14 +269,20 @@ def merge_requirements(engine_text: str, setup: dict[str, Path]) -> tuple[str, l
             added += new
     if not added:
         return engine_text, notes
-    eol = "\r\n" if "\r\n" in engine_text else "\n"
     body = engine_text if engine_text.endswith(("\n", "\r\n")) else engine_text + eol
-    return body + eol + "# ---- this setup's tools ----" + eol + eol.join(added) + eol, notes
+    return body + eol + REQ_MARK + eol + eol.join(added) + eol, notes
 
 
 def merge_apt(dockerfile: str, setup: dict[str, Path]) -> tuple[str, list[str]]:
     """The ``Dockerfile`` with each tool's own ``tools/<tool>/apt.txt``
-    packages added to its apt-get line."""
+    packages added to its apt-get line, after :data:`APT_MARK` (a part merged
+    before is replaced)."""
+    eol = "\r\n" if "\r\n" in dockerfile else "\n"
+    lines = dockerfile.split(eol)
+    if APT_MARK in lines:
+        i = lines.index(APT_MARK)
+        j = next((k for k in range(i, len(lines)) if "rm -rf /var/lib/apt/lists/*" in lines[k]), len(lines))
+        dockerfile = eol.join(lines[:i] + lines[j:])
     want, notes = [], []
     for rel, path in sorted(setup.items()):
         parts = rel.split("/")
@@ -279,13 +296,12 @@ def merge_apt(dockerfile: str, setup: dict[str, Path]) -> tuple[str, list[str]]:
                 notes.append(f"{parts[1]}: {ln!r} in its apt.txt is not a package name: left out")
     if not want:
         return dockerfile, notes
-    eol = "\r\n" if "\r\n" in dockerfile else "\n"
     lines = dockerfile.split(eol)
     at = next((i for i, ln in enumerate(lines) if "rm -rf /var/lib/apt/lists/*" in ln), None)
     if at is None:
         return dockerfile, notes + ["the Dockerfile has no apt-get line: the tools' apt.txt "
                                     "packages were not added (" + ", ".join(want) + ")"]
-    lines[at:at] = [f"        {p} \\" for p in want]
+    lines[at:at] = [APT_MARK] + [f"        {p} \\" for p in want]
     return eol.join(lines), notes
 
 
@@ -386,7 +402,7 @@ def package_contents(pack_dir: Path, name: str, title: str, dc: str, info: dict,
     notes += n1 + n2
     out["requirements.txt"], out["Dockerfile"] = req.encode("utf-8"), dock.encode("utf-8")
     secrets = _secrets(setup)
-    out[".env.example"] = env_example((repo / ".env.example").read_text(encoding="utf-8"),
+    out[".env.example"] = env_example((repo / ".env.example").read_bytes().decode("utf-8"),
                                       secrets).encode("utf-8")
     out["README.md"] = readme_md(title, dc).encode("utf-8")
     out["DEPLOY.md"] = deploy_md(title, dc, name, secrets, info).encode("utf-8")
@@ -481,3 +497,101 @@ def replace_setup(pack_dir: Path, files: dict[str, bytes]) -> None:
     for d in sorted((p for p in pack_dir.rglob("*") if p.is_dir()), key=lambda p: -len(p.parts)):
         if d.name != "__pycache__" and not any(d.iterdir()):
             d.rmdir()
+
+
+# ---------------------------------------------------------------------------
+# what git would take (python -m studio prepare; no git is run)
+# ---------------------------------------------------------------------------
+
+class IgnoreRules:
+    """A folder's ``.gitignore`` read the way git reads it, closely enough
+    for prepare: ``#`` comments, ``!`` to take a path back, a trailing ``/``
+    for folders only, a pattern with a ``/`` matched from the folder's root,
+    one without matched against each name; the last rule that matches wins."""
+
+    def __init__(self, text: str):
+        self.rules = []
+        for raw in text.splitlines():
+            ln = raw.rstrip()
+            if not ln or ln.startswith("#"):
+                continue
+            neg = ln.startswith("!")
+            ln = ln[1:] if neg else ln
+            dir_only = ln.endswith("/")
+            ln = ln.rstrip("/")
+            anchored = "/" in ln
+            self.rules.append((ln.lstrip("/"), neg, dir_only, anchored))
+
+    def ignored(self, rel: str, is_dir: bool = False) -> bool:
+        out = False
+        for pat, neg, dir_only, anchored in self.rules:
+            if dir_only and not is_dir:
+                continue
+            if fnmatch.fnmatchcase(rel if anchored else rel.rsplit("/", 1)[-1], pat):
+                out = not neg
+        return out
+
+
+def files_git_takes(folder: Path) -> list[str]:
+    """The files ``git add .`` would take in *folder*, by its ``.gitignore``
+    files (each folder's own one too; a folder they ignore is not entered)."""
+    out = []
+
+    def ignored(chain, r: str, is_dir: bool) -> bool:
+        hit = False
+        for base, rules in chain:                 # the deeper .gitignore decides last
+            sub = r[len(base):]
+            for pat, neg, dir_only, anchored in rules.rules:
+                if dir_only and not is_dir:
+                    continue
+                if fnmatch.fnmatchcase(sub if anchored else sub.rsplit("/", 1)[-1], pat):
+                    hit = not neg
+        return hit
+
+    def walk(d: Path, rel: str, chain: list) -> None:
+        gi = d / ".gitignore"
+        if gi.is_file():
+            chain = chain + [(rel, IgnoreRules(gi.read_text(encoding="utf-8", errors="replace")))]
+        for p in sorted(d.iterdir()):
+            r = f"{rel}{p.name}"
+            if p.name == ".git":                      # a folder, or a worktree's pointer file
+                continue
+            if p.is_dir():
+                if not ignored(chain, r, True):
+                    walk(p, r + "/", chain)
+            elif p.is_file() and not ignored(chain, r, False):
+                out.append(r)
+    walk(folder, "", [])
+    return out
+
+
+def env_values(folder: Path) -> dict[str, str]:
+    """The values set in *folder*'s ``.env`` (8 characters or more): what
+    must not be in a file that is committed."""
+    f = folder / ".env"
+    out = {}
+    if f.is_file():
+        for ln in f.read_text(encoding="utf-8", errors="replace").splitlines():
+            m = re.match(r"^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\s*=\s*(.*)$", ln)
+            if m:
+                v = m.group(2).strip().strip("\"'")
+                if len(v) >= 8:
+                    out[m.group(1)] = v
+    return out
+
+
+def scan_values(files: dict[str, bytes], values: dict[str, str]) -> list[dict]:
+    """``[{file, line, what, shown}]``: where a value of *values* (a name ->
+    its value) appears in the text files."""
+    found = []
+    for rel, raw in sorted(files.items()):
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            continue
+        for n, line in enumerate(text.splitlines(), 1):
+            for name, value in values.items():
+                if value in line:
+                    found.append({"file": rel, "line": n, "what": f"the value of {name} in .env",
+                                  "shown": _mask(value)})
+    return found

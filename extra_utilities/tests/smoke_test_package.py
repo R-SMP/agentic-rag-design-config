@@ -26,9 +26,26 @@
    masked value, and the download still works.
 4. INSIDE THE PACKAGE, unpacked into an empty folder: ``python -m studio
    validate`` finds no failure -- the package holds all Validate needs.
+5. PREPARE FOR GITHUB (P7-3, ``studio/prepare.py``), in that folder: outside
+   a package, and in the blueprint's own repository, it refuses and changes
+   nothing; given the Validate report, it
+   adds what ``.gitignore`` and ``.dockerignore`` miss (git then leaves logs
+   and the saved Workflow Settings out), lists a key and a ``.env`` value
+   planted in a file (``.env`` itself is ignored), leaves
+   ``requirements.txt``, the ``Dockerfile`` and an edited ``README.md`` as
+   they are, writes ``DEPLOY.md`` and ``setup_info.json`` again, and prints
+   the first-time commands -- it never runs git (no ``.git`` appears).  A
+   second run changes nothing in the ignore files; once ``.git/config``
+   names a remote it prints a commit and a push instead; a Validate failure
+   stops it before anything changes.  The merge of the tools' dependencies
+   run again gives the same files, and with the tools' files gone gives the
+   engine's own back.  The Studio's button: unavailable outside a package;
+   inside one it asks for Validate first, then answers the same commands,
+   and asks again once the setup changes.
 
-Takes about two minutes.  Run from the repo root:
-    py -3.13 extra_utilities/tests/smoke_test_package.py
+Takes about five minutes.  Run from the repo root (naming groups runs only
+those: ``setup``, ``package``, ``prepare`` -- the last with 4):
+    py -3.13 extra_utilities/tests/smoke_test_package.py [setup] [package] [prepare]
 """
 from __future__ import annotations
 
@@ -78,13 +95,13 @@ def _run(group, tag: str):
 class Studio:
     """``python -m studio --pack <pack>`` on a free port."""
 
-    def __init__(self, pack_dir: Path):
+    def __init__(self, pack_dir: Path, cwd: Path = ROOT):
         with socket.socket() as s:
             s.bind(("127.0.0.1", 0))
             self.port = s.getsockname()[1]
         self.proc = subprocess.Popen(
             [sys.executable, "-m", "studio", "--pack", str(pack_dir), "--port", str(self.port),
-             "--workers", "0"], cwd=str(ROOT), env=dict(os.environ),
+             "--workers", "0"], cwd=str(cwd), env=dict(os.environ, DC_PACK_DIR=""),
             stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
         deadline = time.time() + 60
         while time.time() < deadline:
@@ -240,6 +257,13 @@ def check_package(st: Studio, copy: Path, tmp: Path) -> str:
               "[PACKAGE] a new engine file not committed yet is left out")
         check("workflow_settings/tool_settings.json" not in git | walk,
               "[PACKAGE] the Workflow Settings saved on this computer are in the package")
+        # prepare's own reading of .gitignore files agrees with git, file for file
+        took = set(K.files_git_takes(ROOT))
+        listed = subprocess.run(["git", "-C", str(ROOT), "ls-files", "-z", "--cached", "--others",
+                                 "--exclude-standard"], capture_output=True).stdout.decode("utf-8")
+        gitset = {r for r in listed.split("\0") if r and (ROOT / r).is_file()}
+        check(took == gitset, f"[PACKAGE] the .gitignore reading differs from git: "
+                              f"{sorted(took ^ gitset)[:6]}")
     finally:
         for f in planted:
             f.unlink(missing_ok=True)
@@ -295,6 +319,14 @@ def check_package(st: Studio, copy: Path, tmp: Path) -> str:
         env = files[".env.example"].decode("utf-8")
         check("QZX_TOOL_KEY=" in env and env.count("RHINO_COMPUTE_URL=") == 1,
               "[PACKAGE] .env.example lacks the tool's variable (or repeats one)")
+        setup_now = K.setup_files(copy)
+        again = K.merge_requirements(req, setup_now)[0], K.merge_apt(dock, setup_now)[0]
+        check(again == (req, dock), "[PACKAGE] merging the tools' dependencies again changes the files")
+        no_tools = {r: q for r, q in setup_now.items() if not r.endswith(("/requirements.txt", "/apt.txt"))}
+        back = K.merge_requirements(req, no_tools)[0], K.merge_apt(dock, no_tools)[0]
+        check(back == ((ROOT / "requirements.txt").read_bytes().decode("utf-8"),
+                       (ROOT / "Dockerfile").read_bytes().decode("utf-8")),
+              "[PACKAGE] with the tools' files gone, the merge does not give the engine's files back")
         dep = files["DEPLOY.md"].decode("utf-8")
         check("# Deploying: Propeller Design Configurator" in dep and "`QZX_TOOL_KEY`" in dep
               and "`RHINO_COMPUTE_URL`" in dep and "{{" not in dep and "INVITE_CODE" in dep
@@ -347,7 +379,129 @@ def check_inside(st: Studio, tmp: Path) -> str:
     return f"inside the package: {rep.get('counts')}"
 
 
-def main() -> int:
+# ---------------------------------------------------------------------------
+# 5. Prepare for GitHub
+# ---------------------------------------------------------------------------
+
+def _prepare(folder: Path, *args) -> subprocess.CompletedProcess:
+    return subprocess.run([sys.executable, "-m", "studio", "prepare", *args], cwd=str(folder),
+                          env=dict(os.environ, DC_PACK_DIR=""), capture_output=True, text=True,
+                          encoding="utf-8", errors="replace", timeout=1200)
+
+
+def _drop_line(path: Path, line: str) -> None:
+    raw = path.read_bytes().decode("utf-8")
+    eol = "\r\n" if "\r\n" in raw else "\n"
+    lines = raw.split(eol)
+    assert line in lines, (path, line)
+    path.write_bytes(eol.join(ln for ln in lines if ln != line).encode("utf-8"))
+
+
+def check_prepare(st: Studio, tmp: Path) -> str:
+    folder = next(p for p in (tmp / "unpacked").iterdir() if p.is_dir())
+    report = str(tmp / "inside.json")
+    # outside a package: a copy of it without setup_info.json -- never this
+    # repository, which a broken guard would change
+    outside = tmp / "outside" / folder.name
+    shutil.copytree(folder, outside)
+    (outside / "setup_info.json").unlink()
+    before = snapshot(outside)
+    r = _prepare(outside)
+    check(r.returncode == 2 and "Download full package" in r.stderr and snapshot(outside) == before,
+          f"[PREPARE] outside a package: {r.returncode} {r.stderr[-300:]}")
+    # ...and a package that holds the blueprint's own docs is its repository
+    (outside / "setup_info.json").write_bytes((folder / "setup_info.json").read_bytes())
+    (outside / "extra_utilities" / "docs").mkdir(parents=True)
+    before = snapshot(outside)
+    r = _prepare(outside)
+    check(r.returncode == 2 and "blueprint's own repository" in r.stderr and snapshot(outside) == before,
+          f"[PREPARE] the blueprint's own repository: {r.returncode} {r.stderr[-300:]}")
+    shutil.rmtree(outside.parent, ignore_errors=True)
+    d = st.call("get_all")["data"]
+    check(d.get("prepare", {}).get("available") is False and "Download full package" in (d["prepare"].get("why") or ""),
+          f"[PREPARE] the Studio's button outside a package: {d.get('prepare')}")
+    # what must stay out, removed; a key and a .env value planted
+    _drop_line(folder / ".gitignore", "logs/")
+    _drop_line(folder / ".gitignore", "workflow_settings/tool_settings.json")
+    _drop_line(folder / ".dockerignore", "studio/")
+    value = "sk-qzx-planted-" + "9" * 24
+    (folder / ".env").write_text(f"OPENAI_API_KEY={value}\n", encoding="utf-8")
+    (folder / "notes.txt").write_text(f"the key: {value}\n", encoding="utf-8")
+    (folder / "README.md").write_bytes((folder / "README.md").read_bytes() + b"\nMy own line.\n")
+    kept = {n: (folder / n).read_bytes() for n in ("requirements.txt", "Dockerfile", "README.md")}
+    r = _prepare(folder, "--report", report)
+    out = r.stdout
+    check(r.returncode == 0 and "Using the Validate report given" in r.stderr,
+          f"[PREPARE] prepare answered {r.returncode}: {out[-800:]} {r.stderr[-400:]}")
+    check(".gitignore: added logs/, workflow_settings/tool_settings.json" in out
+          and ".dockerignore: added studio/" in out, f"[PREPARE] the ignore files were not repaired: {out[:600]}")
+    rules = K.IgnoreRules((folder / ".gitignore").read_text(encoding="utf-8"))
+    check(rules.ignored("logs", True) and rules.ignored("workflow_settings/tool_settings.json")
+          and rules.ignored(".env") and not rules.ignored(".env.example"),
+          "[PREPARE] after the repair, git would still take logs/ or the saved settings")
+    check("notes.txt:1  an OpenAI, Anthropic or OpenRouter key" in out
+          and "notes.txt:1  the value of OPENAI_API_KEY in .env" in out and value not in out
+          and "\n  .env:" not in out, f"[PREPARE] the key scan: {out[out.find('looks like a key'):][:500]}")
+    check(all((folder / n).read_bytes() == b for n, b in kept.items()),
+          "[PREPARE] requirements.txt, the Dockerfile or the edited README.md changed")
+    info = json.loads((folder / "setup_info.json").read_text(encoding="utf-8"))
+    check(info.get("prepared") and info.get("validate", {}).get("status") == "warn",
+          f"[PREPARE] setup_info.json: {info}")
+    check("python -m studio prepare" in (folder / "DEPLOY.md").read_text(encoding="utf-8"),
+          "[PREPARE] DEPLOY.md does not name prepare")
+    check("git init -b main" in out and "gh repo create propeller_design_configurator --private --source . --push" in out
+          and "Nothing was committed: prepare never runs git" in out and not (folder / ".git").exists(),
+          f"[PREPARE] the first-time commands: {out[out.find('Nothing was committed'):][:600]}")
+    # again: nothing to repair
+    r = _prepare(folder, "--report", report)
+    check(r.returncode == 0 and "ignore: added" not in r.stdout, f"[PREPARE] a second run repaired again: {r.stdout[:400]}")
+    # later: a repository with a remote
+    (folder / ".git").mkdir()
+    (folder / ".git" / "config").write_text('[core]\n\tbare = false\n[remote "origin"]\n\turl = https://example.invalid/x.git\n',
+                                            encoding="utf-8")
+    r = _prepare(folder, "--report", report)
+    check(r.returncode == 0 and "git push" in r.stdout and "gh repo create" not in r.stdout
+          and "git init" not in r.stdout, f"[PREPARE] once a remote exists: {r.stdout[-500:]}")
+    # the Studio's button, in the package
+    pst = Studio(folder / "dc_pack", cwd=folder)
+    try:
+        pst.call("get_all")
+        a = pst.call("prepare_run")
+        check(a.get("ok") and a.get("needs_validate"), f"[PREPARE] the button before Validate: {str(a)[:300]}")
+        pst.call("validate_start")
+        deadline = time.time() + 1200
+        while time.time() < deadline and pst.call("validate_state")["data"]["running"]:
+            time.sleep(2)
+        b = pst.call("prepare_run")
+        res = b.get("result") or {}
+        check(b.get("ok") and res.get("ok") and res.get("commands", {}).get("case") == "update"
+              and any(s[1] == "git push" for s in res["commands"]["steps"]),
+              f"[PREPARE] the button after Validate: {str(b)[:400]}")
+        # a change to the setup makes that Validate out of date: asked for again
+        f = folder / "dc_pack" / "fragments" / "dc" / "dc_name.md"
+        f.write_bytes(f.read_bytes() + b"\n")
+        c = pst.call("prepare_run")
+        check(c.get("ok") and c.get("needs_validate"),
+              f"[PREPARE] the button with a Validate older than the setup: {str(c)[:300]}")
+    finally:
+        pst.stop()
+    # a Validate failure stops it before anything changes
+    _drop_line(folder / ".gitignore", "logs/")
+    gi = (folder / ".gitignore").read_bytes()
+    spec = json.loads((folder / "dc_pack" / "parameters.json").read_text(encoding="utf-8"))
+    spec["parameters"][0].update(min=10, max=5)
+    (folder / "dc_pack" / "parameters.json").write_text(json.dumps(spec), encoding="utf-8")
+    r = _prepare(folder)
+    check(r.returncode == 1 and "Validate found failures" in r.stdout and (folder / ".gitignore").read_bytes() == gi,
+          f"[PREPARE] a Validate failure: {r.returncode} {r.stdout[-400:]}")
+    return "prepare: repaired, scanned, commands printed, no git run"
+
+
+def main(argv: list[str]) -> int:
+    groups = set(argv) or {"setup", "package", "prepare"}
+    # This repository is no package: prepare must never have run in it.
+    check(not (ROOT / "setup_info.json").exists(),
+          "[PREPARE] this repository has a setup_info.json at its root: prepare ran here")
     tmp = Path(tempfile.mkdtemp(prefix="package_smoke_"))
     copy = tmp / "dc_pack"
     shutil.copytree(PACK, copy, ignore=shutil.ignore_patterns("__pycache__"))
@@ -356,9 +510,14 @@ def main() -> int:
     try:
         st = Studio(copy)
         st.call("get_all")
-        summary.append(_run(lambda: check_setup_file(st, copy), "[SETUP]"))
-        summary.append(_run(lambda: check_package(st, copy, tmp), "[PACKAGE]"))
-        summary.append(_run(lambda: check_inside(st, tmp), "[INSIDE]"))
+        if "setup" in groups:
+            summary.append(_run(lambda: check_setup_file(st, copy), "[SETUP]"))
+        if "package" in groups:
+            summary.append(_run(lambda: check_package(st, copy, tmp), "[PACKAGE]"))
+        if "prepare" in groups or not argv:
+            summary.append(_run(lambda: check_inside(st, tmp), "[INSIDE]"))
+        if "prepare" in groups:
+            summary.append(_run(lambda: check_prepare(st, tmp), "[PREPARE]"))
     finally:
         if st is not None:
             st.stop()
@@ -371,9 +530,10 @@ def main() -> int:
         return 1
     print("\nPASS - the setup file is the setup and opens back byte for byte, a bad one is "
           "refused, the full package holds the engine, this setup and what is written for it, "
-          "the key scan warns, and Validate passes inside the package.")
+          "the key scan warns, Validate passes inside the package, and prepare readies it "
+          "for GitHub without running git.")
     return 0
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(main(sys.argv[1:]))

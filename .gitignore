@@ -46,6 +46,11 @@ extra_utilities/prompt_matrix/snapshots/
 workflow_settings/dh_schedule.json
 workflow_settings/dh_schedule_5agents.json
 workflow_settings/dh_schedule_3agents.json
+# Workflow Settings saved on this computer (the tools' settings, who sees the
+# parameter list, the per-agent OCR "Crops" toggles): this computer's choices.
+workflow_settings/tool_settings.json
+workflow_settings/parameter_access.json
+workflow_settings/ocr_region_crops_access.json
 
 # --- Claude Code (per-user) ---
 .claude/settings.local.json

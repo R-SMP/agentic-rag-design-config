@@ -42,6 +42,9 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
   /download/setup`` and ``GET /download/package`` (the zip); and
   ``open_setup``: a setup file replaces the setup, once the engine's check
   takes it, and the Studio starts again from it (Undo, the prompt diff).
+* ``prepare_run`` -- Prepare for GitHub (P7-3, ``studio/prepare.py``), in a
+  folder made by Download full package: it checks and fixes the folder and
+  answers the git commands; it never runs git.
 
 This process never imports the engine: the assembler stubs runtime
 packages (FastAPI among them) in the process that runs it.
@@ -73,6 +76,7 @@ from fastapi.staticfiles import StaticFiles
 
 from studio import editing, engine_view, params_edit, tools_edit
 from studio import package as packaging
+from studio import prepare as preparing
 from studio import validate as validation
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -439,6 +443,8 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     changed_cache: dict = {}
     validator = Validation(pack_dir)
     open_lock = threading.Lock()
+    # Prepare for GitHub works in a folder made by Download full package.
+    prepare_why = preparing.check_folder(engine_view.REPO, pack_dir)
 
     def changed(data: dict, fp: str) -> dict:
         """The changed fields and files, and the parameter editor's state."""
@@ -446,7 +452,8 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
             changed_cache.clear()
             changed_cache[fp] = {"changed": editor.changed(data) + params.changed() + tools.changed(),
                                  "params_edit": params.state(data),
-                                 "tools_edit": tools.state(data)}
+                                 "tools_edit": tools.state(data),
+                                 "prepare": {"available": prepare_why is None, "why": prepare_why}}
         return changed_cache[fp]
 
     def first_build() -> None:
@@ -588,6 +595,16 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
             warnings.append(f"It was made with engine {made}; this Studio runs {here}.")
         return {"file": filename, "files": len(files), "info": info, "warnings": warnings}
 
+    def prepare_run(data: dict) -> dict:
+        if prepare_why:
+            raise editing.EditError(prepare_why)
+        state = validator.state()
+        if state["running"]:
+            raise editing.EditError("Validate is running: prepare once it has finished.")
+        if not (state["report"] and state["current"]):
+            return {"needs_validate": True}
+        return {"result": preparing.run(engine_view.REPO, state["report"])}
+
     for name, fn in (("save_field", editor.save), ("unlink_field", editor.unlink),
                      ("link_field", editor.link), ("own_copy", editor.own_copy),
                      ("remove_copy", editor.remove_copy), ("undo_field", undo_field),
@@ -601,7 +618,8 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
                      ("undo_tool_file", tools.undo_file), ("undo_tool", tools.undo_tool),
                      ("remove_tool_preview", tools.remove_preview), ("remove_tool", tools.remove_tool),
                      ("new_tool", tools.new_tool), ("test_tool", tools.test_tool),
-                     ("download_preview", download_preview), ("open_setup", open_setup)):
+                     ("download_preview", download_preview), ("open_setup", open_setup),
+                     ("prepare_run", prepare_run)):
         app.add_api_route(f"/api/{name}", _edit(fn), methods=["POST"])
 
     @app.get("/download/{kind}")

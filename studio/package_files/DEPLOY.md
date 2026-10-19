@@ -10,9 +10,11 @@ key.
 
 ## 1. A private GitHub repository
 
-In this folder:
+In this folder, `python -m studio prepare` checks it first (Validate, what
+git must leave out, anything that looks like a key) and prints these
+commands; it never runs them itself:
 
-    git init
+    git init -b main
     git add .
     git commit -m "{{TITLE}}"
     gh repo create {{NAME}} --private --source . --push
