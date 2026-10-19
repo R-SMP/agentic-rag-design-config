@@ -6,12 +6,13 @@
 What it checks (owner, 2026-10-19):
 
 * **A. The setup loads** -- what the engine reads, with the engine's own
-  checks: ``parameters.json``; ``pack.yaml`` (the agents' access to the
-  parameter list, the Download buttons, the picture samples); every
-  ``tool.yaml`` (with the texts each tool owns, the geometry tools, the
-  outputs); every text, in each topology.  Two warnings: a text condition
-  about a tool the setup does not have (it reads as switched off), and a
-  secret a tool needs that this computer does not set.
+  checks: the setup's format; ``parameters.json``; ``pack.yaml`` (the
+  agents' access to the parameter list, the Download buttons, the picture
+  samples); every ``tool.yaml`` (with the texts each tool owns, the
+  geometry tools, the outputs); every text, in each topology.  Two
+  warnings: a text condition about a tool the setup does not have (it
+  reads as switched off), and a secret a tool needs that this computer
+  does not set.
 * **B. The prompts** -- every agent of topologies 7 / 5 / 3, with the
   setup's defaults and with every feature on: built, and nothing left of a
   ``$name`` or a ``<<IF:...>>`` marker; the tokens of each.
@@ -117,6 +118,11 @@ def _rel(path: Path, root: Path) -> str:
         return path.as_posix()
 
 
+def _raise(problem: str | None) -> None:
+    if problem:
+        raise ValueError(problem)
+
+
 def part_load() -> list[dict]:
     """A and C, in this process, for the setup in ``DC_PACK_DIR``."""
     from studio import engine_view
@@ -142,6 +148,9 @@ def part_load() -> list[dict]:
         except Exception as exc:                            # noqa: BLE001
             return [ln for ln in str(exc).split("\n") if ln.strip()] or [type(exc).__name__]
 
+    # A. the setup's format (pack.yaml: pack_format)
+    lines = attempt(lambda: _raise(pack.format_problem()))
+    out.append(item("A", "The setup's format (pack.yaml)", FAIL if lines else PASS, lines))
     # A. parameters.json
     spec, lines = None, []
     try:

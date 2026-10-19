@@ -5,7 +5,9 @@
 
 MAS-blueprint P5 shows the setup; P6a edits its text fields, P6b its
 parameters and agent access, P6c its tools; P7 validates it
-(``validate.py``: every check, each in a process of its own).  ``engine_view.py`` computes
+(``validate.py``: every check, each in a process of its own) and gives the
+setup file and the full package, and opens a setup file again
+(``package.py``, the files written for a package in ``package_files/``).  ``engine_view.py`` computes
 what the screens show (with the engine itself, in child processes),
 ``server.py`` serves the page in ``web/`` and keeps engine processes waiting
 for the prompt viewer, ``editing.py`` writes a text field's files,

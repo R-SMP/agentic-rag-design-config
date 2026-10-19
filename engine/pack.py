@@ -65,6 +65,11 @@ TOOL_LIST_ENTRY = "tool_list_entry"  # its entry in the tool runner's list
 
 _TOPOLOGY_SUFFIX_RE = re.compile(r"\.t\d+$")
 
+# The setup's format: ``pack_format`` in its pack.yaml.  An engine change
+# that a setup must follow raises it; a setup in a newer format than this
+# engine reads is refused (:func:`format_problem`).
+PACK_FORMAT = 1
+
 
 # ---------------------------------------------------------------------------
 # Where things are
@@ -74,6 +79,26 @@ def pack_dir() -> Path:
     """The active pack.  Read per call, so a changed ``config.DC_PACK_DIR``
     takes effect on the next lookup."""
     return Path(config.DC_PACK_DIR)
+
+
+def pack_format(root: Path | None = None) -> int | None:
+    """``pack_format`` of the setup in *root* (default: the active one): 1
+    for a setup made before the key existed, None when it is not a whole
+    number from 1 up."""
+    data = yaml.safe_load(((root or pack_dir()) / "pack.yaml").read_text(encoding="utf-8")) or {}
+    v = data.get("pack_format", 1) if isinstance(data, dict) else None
+    return v if isinstance(v, int) and not isinstance(v, bool) and v >= 1 else None
+
+
+def format_problem(root: Path | None = None) -> str | None:
+    """Why this engine cannot read the setup in *root*, or None."""
+    v = pack_format(root)
+    if v is None:
+        return "pack.yaml: pack_format must be a whole number from 1 up"
+    if v > PACK_FORMAT:
+        return (f"pack.yaml: this setup is in format {v}, made by a newer engine; this engine "
+                f"reads formats up to {PACK_FORMAT}: update the engine first")
+    return None
 
 
 def fragments_dir() -> Path:

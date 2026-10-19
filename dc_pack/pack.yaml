@@ -1,6 +1,10 @@
 # The design-configurator pack's own settings.  Edited by the Studio; the
 # engine reads this file and never writes it.
 
+# The setup's format (engine/pack.py, PACK_FORMAT): an engine reads setups
+# up to its own format and refuses a newer one.
+pack_format: 1
+
 # Who sees the parameter list, per agent and per topology (the 7-, 5- and
 # 3-agent systems; a cell exists only where the agent does):
 #

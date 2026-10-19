@@ -338,3 +338,10 @@ table.ptab.tvals td.num input { width:120px; text-align:right; font-family:var(-
 .vitem ul.vlines { margin-top:5px; font-family:var(--mono); font-size:11px; }
 .vitem ul.vlines li { display:block; white-space:pre-wrap; word-break:break-word; }
 .vitem .vlink { color:#a5c8ff; cursor:pointer; text-decoration:underline; }
+
+/* the downloads (P7-2) */
+.modal-foot a.btn, #modalFoot a.btn { display:inline-block; padding:5px 12px; border-radius:6px; text-decoration:none;
+  border:1px solid var(--line); color:inherit; font-size:12.5px; }
+#modalFoot a.btn.primary { background:var(--accent); border-color:var(--accent); color:#fff; }
+#modalFoot a.btn.warnbtn { background:#33260f; border-color:#7a5a1a; color:#ffd8a0; }
+#modalBody a { color:#a5c8ff; }

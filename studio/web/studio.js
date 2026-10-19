@@ -20,7 +20,9 @@
  * them and puts them back; makes new ones (a template per kind, or a copy)
  * and test-runs them (engine/tool_test.py) (studio/tools_edit.py).
  * P7 adds Validate: every check of the setup (studio/validate.py), run on
- * the server while the page polls its progress.
+ * the server while the page polls its progress; the two downloads -- the
+ * setup file and the full package -- and Open setup file
+ * (studio/package.py).
  *
  * Screens are hash routes, so each one has an address:
  *   #/studio/<section>[?field=..]     the Studio: sections | fields | inspector
@@ -61,7 +63,6 @@
   // The texts of the screens that come later.
   var LATER = {
     settings: 'DC_PARAMS_PRIMER_ENABLED lives in workflow_settings/settings.py, outside the setup: read-only here.',
-    downloads: 'Downloads come in P7.',
     prepare: 'Prepare for GitHub comes in P7.',
     landing: 'The landing page and Import come with the hosted Studio (P7b).'
   };
@@ -222,8 +223,9 @@
       h('span', { 'class': 'grow' }),
       h('button', { title: 'Run every check of the setup.', onclick: function () { go('studio', 'validate'); startValidate(); } },
         ['Validate ', h('span', { id: 'valTop' }, valBadge())]),
-      laterButton('Download setup file', LATER.downloads),
-      laterButton('Download full package', LATER.downloads, 'primary'),
+      h('button', { title: 'Open a setup file made with the Studio: it replaces this setup.', onclick: askOpen }, 'Open setup file…'),
+      h('button', { title: 'The setup alone, to open again later.', onclick: function () { askDownload('setup'); } }, 'Download setup file'),
+      h('button', { 'class': 'primary', title: 'The engine and this setup, ready to deploy.', onclick: function () { askDownload('package'); } }, 'Download full package'),
       h('span', { 'class': 'sep' }),
       laterButton('Prepare for GitHub', LATER.prepare)
     ]);
@@ -2479,6 +2481,93 @@
     svg.appendChild(node('database_handler', 860, hy, 170));
     spokes.forEach(function (a, i) { svg.appendChild(node(a, 30 + step * (i + 0.5), 112, Math.min(170, step - 12))); });
     return svg;
+  }
+
+  /* ======================================================================
+   * the downloads and Open setup file (P7-2, studio/package.py)
+   * ==================================================================== */
+  var DL_WHAT = {
+    setup: ['The setup alone: its parameters, texts, tools and pictures (dc_pack/), and setup_info.json. Open it again here with Open setup file.'],
+    package: ['The engine and this setup, ready to put on GitHub and deploy:',
+      'the app (agents/, engine/, tools/, web/, workflow_settings/, web_app.py, the Dockerfile), the Studio and the checks Validate runs;',
+      'this setup as dc_pack/;',
+      'DEPLOY.md (how to put it on Railway), README.md, .env.example with the variables its tools declare, setup_info.json.',
+      'Not in it: .env, logs, attempts, past sessions, the Workflow Settings saved on this computer.']
+  };
+  function dlValidate(v) {
+    if (v.status === 'not run') return pill('Validate has not run since the Studio started', 'warn');
+    if (v.status === 'out of date') return pill('Validate ran before the last change', 'warn');
+    return pill('Validate: ' + (v.counts.fail ? v.counts.fail + ' failed' : 'no failures') + (v.counts.warn ? ', ' + v.counts.warn + (v.counts.warn === 1 ? ' warning' : ' warnings') : ''),
+      v.status === 'fail' ? 'bad' : v.status === 'warn' ? 'warn' : 'good');
+  }
+  function askDownload(kind) {
+    var title = kind === 'setup' ? 'Download setup file' : 'Download full package';
+    var body = h('div', null, h('p', { 'class': 'muted' }, 'Checking what goes in…'));
+    showModal(title, body, [h('button', { onclick: closeModal }, 'Cancel')]);
+    call('download_preview', kind).then(function (r) {
+      body.innerHTML = '';
+      if (!r || r.ok === false) { add(body, h('div', { 'class': 'banner bad boxed' }, (r && r.error) || 'The download could not be prepared.')); return; }
+      var found = r.findings || [], notes = r.notes || [];
+      add(body, [
+        h('p', null, [h('b', { 'class': 'mono' }, r.file), ' · ' + fmt(r.files) + ' files · ' + fmt(Math.round(r.bytes / 1024)) + ' KB before packing']),
+        h('ul', { 'class': 'checks', style: 'margin:8px 0' }, DL_WHAT[kind].map(function (x) { return h('li', null, x); })),
+        h('div', { 'class': 'pills', style: 'margin:8px 0' }, [dlValidate(r.validate), kpill('engine ' + r.engine)]),
+        r.validate.status !== 'pass' && r.validate.status !== 'warn' ? h('p', { 'class': 'muted' }, 'setup_info.json records this. Validate checks the setup before you deploy it.') : null,
+        found.length ? h('div', { 'class': 'banner warn boxed' }, [
+          h('div', null, h('b', null, 'Something here looks like a key (' + found.length + '). Keys belong in .env or in the deployment’s variables, never in the setup.')),
+          h('ul', { 'class': 'checks warn', style: 'margin-top:4px' }, found.map(function (f) {
+            return h('li', null, h('span', { 'class': 'mono' }, f.file + ':' + f.line + ' — ' + f.what + ': ' + f.shown));
+          }))]) : null,
+        notes.length ? h('div', { 'class': 'block' }, [h('h4', null, 'The tools’ own dependencies'),
+          h('ul', { 'class': 'checks warn' }, notes.map(function (n) { return h('li', null, n); }))]) : null
+      ]);
+      var foot = el('modalFoot'); foot.innerHTML = '';
+      add(foot, [h('button', { onclick: closeModal }, 'Cancel'),
+        h('a', { 'class': 'btn ' + (found.length ? 'warnbtn' : 'primary'), href: '/download/' + kind, download: r.file,
+          onclick: function () { closeModal(); status('Downloading ' + r.file + '…', 'busy'); setTimeout(function () { status('Downloaded ' + r.file + '.', 'ok'); }, 2500); } },
+          found.length ? 'Download anyway' : 'Download')]);
+    });
+  }
+  function askOpen() {
+    if (BUSY) return;
+    var file = null;
+    var msg = h('div');
+    var pick = h('input', { type: 'file', accept: '.zip', onchange: function (e) { file = e.target.files[0] || null; } });
+    var body = h('div', null, [
+      h('div', { 'class': 'banner warn boxed' }, 'Opening a setup file replaces the setup in ' + D.pack_dir + ': every file of it. Download it first to keep it.' +
+        (unsavedKeys().length ? '  Your ' + unsavedKeys().length + ' unsaved change(s) are dropped too.' : '')),
+      h('p', { style: 'margin:8px 0' }, h('a', { href: '/download/setup', download: '' }, 'Download the current setup first')),
+      h('p', { 'class': 'muted' }, 'A setup file made with Download setup file — or a full package, whose dc_pack/ is taken. The engine checks it before anything is replaced; afterwards Undo and the prompt viewer’s changes start from it.'),
+      h('div', { style: 'margin:10px 0' }, pick), msg]);
+    showModal('Open setup file', body, [h('button', { onclick: closeModal }, 'Cancel'),
+      h('button', { 'class': 'primary', onclick: function () {
+        msg.innerHTML = '';
+        if (!file) { add(msg, h('p', { 'class': 'err' }, 'Choose a file first.')); return; }
+        add(msg, h('p', { 'class': 'muted' }, 'Checking it with the engine…'));
+        var fr = new root.FileReader();
+        fr.onload = function () {
+          var b64 = String(fr.result).split(',')[1] || '';
+          call('open_setup', b64, file.name).then(function (r) {
+            msg.innerHTML = '';
+            if (!r || r.ok === false) {
+              add(msg, h('div', { 'class': 'banner bad boxed' }, [h('div', null, (r && r.error) || 'The file could not be opened.')].concat(
+                ((r && r.problems) || []).map(function (p) { return h('div', null, '• ' + p); }))));
+              return;
+            }
+            closeModal();
+            BUSY = true; EDITS = {}; PEDITS = {}; GEDITS = {}; TEDITS = {}; FEDITS = {}; TESTS = {}; FIELD_ERRORS = {};
+            status('Opened ' + file.name + '. Re-assembling every prompt…', 'busy');
+            reload().then(function () {
+              BUSY = false;
+              status('Opened ' + file.name + ' (' + r.files + ' files): Undo now goes back to it.' + ((r.warnings || []).length ? '  ' + r.warnings.join(' ') : ''),
+                (r.warnings || []).length ? 'warn' : 'ok');
+              go('studio', 'identity');
+              render();
+            }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+          });
+        };
+        fr.readAsDataURL(file);
+      } }, 'Open')]);
   }
 
   /* ======================================================================

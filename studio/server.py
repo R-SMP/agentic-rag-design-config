@@ -37,6 +37,11 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
   ``studio/validate.py``): one run at a time, in a thread of its own, its
   progress and its last report, and whether the setup is still as it was
   when that run started.
+* the downloads (P7-2, ``studio/package.py``) -- ``download_preview`` (what a
+  download holds, the key scan, Validate's last result), ``GET
+  /download/setup`` and ``GET /download/package`` (the zip); and
+  ``open_setup``: a setup file replaces the setup, once the engine's check
+  takes it, and the Studio starts again from it (Undo, the prompt diff).
 
 This process never imports the engine: the assembler stubs runtime
 packages (FastAPI among them) in the process that runs it.
@@ -45,6 +50,8 @@ packages (FastAPI among them) in the process that runs it.
 from __future__ import annotations
 
 import asyncio
+import base64
+import binascii
 import difflib
 import hashlib
 import json
@@ -61,9 +68,11 @@ from pathlib import Path
 
 from fastapi import FastAPI, Request
 from fastapi.responses import FileResponse, JSONResponse
+from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 
 from studio import editing, engine_view, params_edit, tools_edit
+from studio import package as packaging
 from studio import validate as validation
 
 WEB = Path(__file__).resolve().parent / "web"
@@ -234,6 +243,10 @@ class Checker:
     def check_tools(self, pack_copy: Path) -> list[str]:
         """The engine's check of the tools of a setup copy."""
         return self.ask({"tools_check": str(pack_copy)})
+
+    def check_setup(self, pack_copy: Path) -> list[str]:
+        """The engine's check of a whole setup copy (a setup file opened)."""
+        return self.ask({"setup_check": str(pack_copy)})
 
     def ask(self, job: dict) -> list[str]:
         line = (json.dumps(job) + "\n").encode("utf-8")
@@ -425,6 +438,7 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     tools = tools_edit.ToolsEditor(pack_dir, opened_dir, checker.check_tools, engine_view.REPO)
     changed_cache: dict = {}
     validator = Validation(pack_dir)
+    open_lock = threading.Lock()
 
     def changed(data: dict, fp: str) -> dict:
         """The changed fields and files, and the parameter editor's state."""
@@ -521,6 +535,59 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
         new, problems = params_edit.from_csv(str(text), spec)
         return {"spec": new, "problems": problems}
 
+    def _download(data: dict, kind: str):
+        """(file name, its files, the dependency notes, its folder, setup_info)."""
+        if kind not in ("setup", "package"):
+            raise editing.EditError(f"There is no {kind!r} download.")
+        pk = data.get("pack") or {}
+        name, title, dc = packaging.names(pack_dir, pk.get("title") or pk.get("name"))
+        info = packaging.setup_info(pack_dir, dc, validator.state())
+        if kind == "setup":
+            return f"{name}_setup.zip", packaging.setup_contents(pack_dir, info), [], None, info
+        files, notes = packaging.package_contents(pack_dir, name, title, dc, info, engine_view.REPO)
+        return f"{name}_package.zip", files, notes, name, info
+
+    def download_preview(data: dict, kind: str) -> dict:
+        fname, files, notes, _folder, info = _download(data, kind)
+        return {"file": fname, "files": len(files), "bytes": sum(len(v) for v in files.values()),
+                "findings": packaging.scan(files), "notes": notes, "validate": info["validate"],
+                "engine": info["engine"]}
+
+    def open_setup(data: dict, b64, filename=None) -> dict:
+        nonlocal opened_key
+        try:
+            raw = base64.b64decode(str(b64), validate=True)
+        except (binascii.Error, ValueError):
+            raise editing.EditError("The file did not arrive whole.") from None
+        try:
+            files, info = packaging.read_setup_file(raw)
+        except packaging.PackageError as exc:
+            raise editing.EditError(str(exc), exc.problems) from None
+        with open_lock:
+            if validator.state()["running"]:
+                raise editing.EditError("Validate is running: open the file once it has finished.")
+            stage_root = Path(tempfile.mkdtemp(prefix="studio_open_"))
+            try:
+                stage = stage_root / pack_dir.name
+                packaging.replace_setup(stage, files)
+                problems = checker.check_setup(stage)
+                if problems:
+                    raise editing.EditError("This setup file cannot be opened.", problems)
+                packaging.replace_setup(pack_dir, files)
+            finally:
+                shutil.rmtree(stage_root, ignore_errors=True)
+            # The Studio starts again from it: Undo and the prompt diff.
+            shutil.rmtree(opened_dir, ignore_errors=True)
+            editing.copy_setup(pack_dir, opened_dir)
+            opened_key = "opened:" + fingerprint(opened_dir)
+            params.since_opened = {}
+            changed_cache.clear()
+        warnings = []
+        made, here = str((info or {}).get("engine") or ""), packaging.engine_version()
+        if made and made != "unknown" and here != "unknown" and made.split("+")[0] != here.split("+")[0]:
+            warnings.append(f"It was made with engine {made}; this Studio runs {here}.")
+        return {"file": filename, "files": len(files), "info": info, "warnings": warnings}
+
     for name, fn in (("save_field", editor.save), ("unlink_field", editor.unlink),
                      ("link_field", editor.link), ("own_copy", editor.own_copy),
                      ("remove_copy", editor.remove_copy), ("undo_field", undo_field),
@@ -533,8 +600,23 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
                      ("save_tool_file", tools.save_file), ("upload_tool_file", tools.upload_file),
                      ("undo_tool_file", tools.undo_file), ("undo_tool", tools.undo_tool),
                      ("remove_tool_preview", tools.remove_preview), ("remove_tool", tools.remove_tool),
-                     ("new_tool", tools.new_tool), ("test_tool", tools.test_tool)):
+                     ("new_tool", tools.new_tool), ("test_tool", tools.test_tool),
+                     ("download_preview", download_preview), ("open_setup", open_setup)):
         app.add_api_route(f"/api/{name}", _edit(fn), methods=["POST"])
+
+    @app.get("/download/{kind}")
+    async def download(kind: str):
+        if kind not in ("setup", "package"):
+            return _fail(f"There is no {kind} download.", 404)
+        try:
+            data = await asyncio.to_thread(view.latest)
+            fname, files, _notes, folder, _info = await asyncio.to_thread(_download, data, kind)
+            tmp = Path(tempfile.mkdtemp(prefix="studio_download_"))
+            path = await asyncio.to_thread(packaging.write_zip, files, tmp / fname, folder)
+        except Exception as exc:  # noqa: BLE001
+            return _fail(f"The download could not be made: {type(exc).__name__}: {exc}")
+        return FileResponse(path, filename=fname, media_type="application/zip",
+                            background=BackgroundTask(shutil.rmtree, tmp, True))
 
     @app.post("/api/validate_start")
     async def validate_start():

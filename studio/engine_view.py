@@ -850,6 +850,14 @@ def editing_data(P, slot_list: list) -> dict:
     }
 
 
+def _title(pack) -> str:
+    """The web app's title (``$app_title``), "" when the setup has none."""
+    try:
+        return pack.read("app_title", 7)
+    except (KeyError, OSError):
+        return ""
+
+
 def static_data() -> dict:
     """Everything the Studio shows that is read, not assembled."""
     load_engine()
@@ -860,6 +868,7 @@ def static_data() -> dict:
     slot_list = slots(P, pack_slots(P), role_map)
     return {
         "pack": {"name": pack.read("dc_name", 7),
+                 "title": _title(pack),
                  "domain": pack.read("domain_description", 7),
                  "parameter_count": P._GENERATED_SLOTS["parameter_count"]()},
         "pack_dir": str(pack.pack_dir()),
@@ -923,12 +932,37 @@ def check_tools(pack_dir: Path) -> list[str]:
         clear()
 
 
+def check_setup(pack_dir: Path) -> list[str]:
+    """Why the engine could not show the setup in *pack_dir* (a setup file
+    being opened, P7-2): its format, its ``parameters.json``, its tools --
+    [] when it can.  The rest is Validate's."""
+    import yaml
+
+    from engine import pack
+    from engine import parameters as ep
+    try:
+        problem = pack.format_problem(pack_dir)
+    except yaml.YAMLError as exc:
+        return [f"pack.yaml is not valid YAML: {exc}"]
+    if problem:
+        return [problem]
+    try:
+        spec = json.loads((pack_dir / "parameters.json").read_text(encoding="utf-8"))
+    except FileNotFoundError:
+        return ["parameters.json is missing"]
+    except ValueError as exc:
+        return [f"parameters.json is not valid JSON: {exc}"]
+    return [f"parameters.json: {p}" for p in ep.validate(spec)] + check_tools(pack_dir)
+
+
 def checker() -> int:
     """The engine's own parameter check (``engine/parameters.py``
     ``validate``) for the Studio's parameter editor (P6b): one JSON line in
     -- ``{"parameters": <a parameters.json>}`` --, one line out --
     ``{"problems": [...]}`` --, until stdin closes.  The check reads nothing
-    but the file it is given, so one process answers every change."""
+    but the file it is given, so one process answers every change.  Also
+    ``{"tools_check": <folder>}`` (:func:`check_tools`) and
+    ``{"setup_check": <folder>}`` (:func:`check_setup`)."""
     load_engine()
     from engine import parameters as ep
     for line in sys.stdin:
@@ -938,6 +972,8 @@ def checker() -> int:
             job = json.loads(line)
             if "tools_check" in job:
                 out = {"problems": check_tools(Path(job["tools_check"]))}
+            elif "setup_check" in job:
+                out = {"problems": check_setup(Path(job["setup_check"]))}
             else:
                 out = {"problems": ep.validate(job["parameters"])}
         except Exception as exc:                            # noqa: BLE001
