@@ -2,8 +2,9 @@
 
 **Proposal v1 — 2026-10-14, revision 1 the same day** (§0A: the Studio becomes a hosted web
 app), **revision 2 on 2026-10-18** (§0B: choice and on/off parameters; a CAD model dropped
-into the Studio becomes a configurator).  Written from a design review of the owner's
-concept, with the owner's decisions recorded in §1.  This is the brief for the coding
+into the Studio becomes a configurator), **revision 3 on 2026-10-19** (§0C: a minimum viable
+product first).  Written from a design review of the owner's concept, with the owner's
+decisions recorded in §1.  This is the brief for the coding
 session that will build it.
 
 MAS = multi-agent system.  DC = design configurator (the parametric model the agents
@@ -217,12 +218,49 @@ after P6c's New tool overlay.  The hose adapter is the acceptance case of P6e an
 
 ---
 
+## 0C. Revision 3 (2026-10-19): a minimum viable product first
+
+**What the owner asked.**  A working product as soon as possible.  Keeping the users of the
+online Studio apart is not needed.
+
+**The MVP.**  Open the Studio at a URL, turn the propeller example into your own
+configurator (texts, parameters, tools made from a template or a copy, each tested), check
+it, download it and deploy it.
+
+**Order** (§10): P6c-2 → P7 → **P7b-lite** → a short "Getting started" = the MVP.  Then
+P6d → P6e → P6f → P8, as planned.  Until P6e, a new configurator's geometry comes from
+Python tool code (the templates) or the propeller's tools.
+
+**What changes against §0A** (owner, 2026-10-19):
+
+* **One shared workspace.**  The online Studio edits one setup on the server, as the local
+  Studio does: everyone with the code sees and edits the same setup.  No accounts, no copy
+  per user; the browser autosave is dropped.
+* **One access code.**  The propeller app's invite-code check (`INVITE_CODE`, compared in
+  constant time).  Unlike the propeller app, which opens for everyone once anyone enters
+  it, the Studio remembers the code per browser (a signed cookie).
+* **Test tool online**, behind the code (this reverses §0A's "never").  The Studio service
+  is built from the configurator's Docker image, so the tools' dependencies are there.  It
+  still holds no engine secrets (no LLM, database or R2 keys) and none of a tool's own
+  secrets: a tool that needs one fails its test online with a clear message.
+* **Unchanged:** its own service, Validate, the two downloads, Import a setup, the upload
+  limits.
+
+**Open questions for the owner**, asked at P7b-lite:
+
+* Railway's disk is wiped on every redeploy: a Railway volume keeps the shared setup, or
+  the setup-file download is the only save;
+* the landing page: "Create your own" and "Import a setup" replace the shared setup (after
+  a warning to download it first).
+
+---
+
 ## 1. Decisions already taken by the owner
 
 | # | Question | Decision |
 |---|---|---|
 | D1 | Where does DC-specific content live? | **One "DC pack" folder.** The engine reads it at runtime; the setup app edits only this folder. |
-| D2 | Where does the setup app run? | ~~A separate local app, never deployed.~~ **Revised (§0A): a hosted web app with a landing page (propeller example / create your own / import a setup); the same code also runs locally.**  Hosted runs of imported setups: later, remote tools only (option C). |
+| D2 | Where does the setup app run? | ~~A separate local app, never deployed.~~ **Revised (§0A): a hosted web app with a landing page (propeller example / create your own / import a setup); the same code also runs locally.**  Hosted runs of imported setups: later, remote tools only (option C).  **Revised (§0C): one shared workspace online, behind an access code; Test tool works online.** |
 | D3 | Examples shipped | **Propeller only** (as the example pack). |
 | D4 | Branch | New branch **`MAS-blueprint` from `MAS-generalized-v2`**; `main` and `MAS-generalized-v2` untouched. |
 | D5 | User tool format | **Plain Python function + a manifest.** No LangChain in user code; generator tools return a structured result. |
@@ -564,8 +602,8 @@ for later.
 
 ### 5.6 Testing a tool in the Studio
 
-**Local mode only (§0A)** — the hosted Studio never runs pack code; there the button is
-disabled with "available after download: `python -m studio`".  "Test tool" runs the entrypoint **in a subprocess** with the parameter defaults (or a chosen
+**Online and local (§0C; §0A had it local only).**  Online, it sits behind the access code.
+"Test tool" runs the entrypoint **in a subprocess** with the parameter defaults (or a chosen
 example set), with the declared settings and secrets, and shows: import errors,
 missing dependencies, the timing, the returned summary, the images, the metrics, and any
 mismatch between the manifest and what was produced (e.g. a declared view missing).
@@ -659,9 +697,9 @@ timeout, and a **Test tool** button (§5.6).  Saving writes `dc_pack/tools/<name
 
 FastAPI + vanilla JS, the same stack as `web_app.py` (Streamlit was removed — F4).  Revised
 (§0A): deployed as its **own service** (landing page + Studio; no engine secrets), and also
-runnable locally with `python -m studio`; a mode flag (`STUDIO_MODE=hosted|local`) gates
-everything that executes pack code.  It stays out of the configurator's Docker image
-(`.dockerignore`).  The Studio imports the engine's assembler — it never re-implements prompt assembly (a replica drifts: see TODO F107,
+runnable locally with `python -m studio`; online, the access code gates it (§0C).  The
+configurator's own image still leaves it out (`.dockerignore`); the Studio service is built
+from that image with the Studio added.  The Studio imports the engine's assembler — it never re-implements prompt assembly (a replica drifts: see TODO F107,
 `measure_prompts.py`).
 
 ---
@@ -727,6 +765,9 @@ steps 1, 3 and 6 run on the user's machine.*
 
 ## 10. Implementation phases (each verifiable)
 
+**Order (revision 3, §0C):** P0–P6c, then P7 → P7b-lite → a short "Getting started" (the
+MVP), then P6d → P6e → P6f → P8.
+
 | Phase | Work | Acceptance |
 |---|---|---|
 | P0 | Branch `MAS-blueprint` from `MAS-generalized-v2`; commit the prompt-matrix harness (§11) under `extra_utilities/scripts/`; take the baseline snapshot. | Baseline of 357 prompts saved. |
@@ -740,8 +781,8 @@ steps 1, 3 and 6 run on the user's machine.*
 | P6e | The engine's tool backends (§0B-B/C; owner, 2026-10-18: §5.3's adapters become backends too, declared in `tool.yaml` and run by the engine, of any kind, with no code generated per tool): `backend: openscad | rhinocompute | node | http`; OpenSCAD: parameter set → OpenSCAD → STL → OBJ → the shared renderer (moved into the engine); `parts`, `fixed`, `detail`, `timeout`. | The hose adapter's sample configurations (`samples/*.stl`, e.g. `50mm_hose_to_30mm_hose`) rebuilt from parameters match the samples (bounding box and volume within tolerance); a missing OpenSCAD gives a clear error. |
 | P6f | "New tool from a CAD file" in the Studio (§0B-D): customizer reader, review table, generated tool / parameters / lists / `pack.yaml`, Test tool. | Dropping `combined/vacuum-hose-adapter.scad`, filling the ranges and pressing Test tool renders the default adapter; removing the tool again leaves the setup byte-identical. |
 | P7 | Validate; the two downloads (setup file, full package); local `prepare` command; `DEPLOY.md`. | Studio → propeller example → Validate green → download full package → `prepare` → deploys on Railway; the setup file re-imports byte-identically. |
-| P7b | Hosted Studio: landing page (3 buttons), `STUDIO_MODE=hosted`, own service, upload limits, browser autosave. | No code path in hosted mode imports pack Python (test: a pack whose tool raises on import validates and downloads fine). |
-| P8 | User docs ("Getting started", "Write a tool", "Adapters"); **acceptance test with a throw-away second DC** (not shipped, per D3) built only through the Studio. | The throw-away DC runs a full session. |
+| P7b-lite | Online Studio (§0C): its own Railway service built from the configurator's Docker image; one shared workspace; the access code remembered per browser; landing page (3 buttons); upload limits; Test tool online. | Without the code every Studio endpoint answers 401; with it, a tool is made and tested online and both downloads work. |
+| P8 | User docs ("Write a tool", "Adapters"; "Getting started" comes with the MVP, §0C); **acceptance test with a throw-away second DC** (not shipped, per D3) built only through the Studio. | The throw-away DC runs a full session. |
 
 ---
 
@@ -816,8 +857,9 @@ with the feature off — fixable once flags are generic, §4.5), F105 (rename
 * **Tool dependencies** may be heavy or OS-specific (OSMesa, Node, Rhino); the Test tool
   button must run in the same environment the Docker image will have, or say clearly that it
   does not.
-* **Hosted Studio abuse**: uploads are limited in size and type, nothing is kept server-side,
-  and no pack code runs there (§0A); the propeller demo keeps its invite code.
+* **Hosted Studio abuse**: uploads are limited in size and type; behind the access code, pack
+  code runs there (§0C), on a service that holds no secrets; the propeller demo keeps its
+  invite code.
 * **Licensing** of example assets (the Grasshopper file, images) before any public release.
 * **Third-party CAD runtimes** (OpenSCAD, §0B): render time at fine detail, differences
   between OpenSCAD versions, and an uploaded model is code — the hosted Studio must not run
