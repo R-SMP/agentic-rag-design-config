@@ -19,6 +19,8 @@
  * their tool-list entries, their settings' defaults and secrets; removes
  * them and puts them back; makes new ones (a template per kind, or a copy)
  * and test-runs them (engine/tool_test.py) (studio/tools_edit.py).
+ * P7 adds Validate: every check of the setup (studio/validate.py), run on
+ * the server while the page polls its progress.
  *
  * Screens are hash routes, so each one has an address:
  *   #/studio/<section>[?field=..]     the Studio: sections | fields | inspector
@@ -59,7 +61,6 @@
   // The texts of the screens that come later.
   var LATER = {
     settings: 'DC_PARAMS_PRIMER_ENABLED lives in workflow_settings/settings.py, outside the setup: read-only here.',
-    validate: 'Validate comes in P7.',
     downloads: 'Downloads come in P7.',
     prepare: 'Prepare for GitHub comes in P7.',
     landing: 'The landing page and Import come with the hosted Studio (P7b).'
@@ -219,7 +220,8 @@
       h('span', { 'class': 'pack', title: D.pack_dir }, ['setup: ', h('b', null, D.pack.name), ' · ' + D.pack_dir.split(/[\\/]/).pop() + '/']),
       pill('local', 'mode-local', 'python -m studio on this computer'),
       h('span', { 'class': 'grow' }),
-      laterButton('Validate', LATER.validate),
+      h('button', { title: 'Run every check of the setup.', onclick: function () { go('studio', 'validate'); startValidate(); } },
+        ['Validate ', h('span', { id: 'valTop' }, valBadge())]),
       laterButton('Download setup file', LATER.downloads),
       laterButton('Download full package', LATER.downloads, 'primary'),
       h('span', { 'class': 'sep' }),
@@ -265,7 +267,7 @@
     CHECK_PAGES.forEach(function (s) {
       add(nav, h('a', { 'class': R.section === s.id ? 'on' : '', href: link('studio', s.id) }, [
         h('span', { 'class': 'num' }, s.id === 'prompts' ? '▤' : '✔'), h('span', { 'class': 'lab' }, s.label),
-        s.id === 'validate' ? h('span', { 'class': 'later', title: LATER.validate }, 'P7') : null
+        s.id === 'validate' ? h('span', { 'class': 'cnt', id: 'valNav' }, valBadge()) : null
       ]));
     });
     return nav;
@@ -690,6 +692,7 @@
       D = r.data; GEN++;
       FILES = {}; FILE_LOADING = {};
       VIEWS = {}; VIEW_ERRORS = {}; VIEW_PENDING = {}; DIFFS = {}; DIFF_ERRORS = {}; DIFF_PENDING = {};
+      if (VAL.state && VAL.state.report) readValidate();     // is the last run still current?
     });
   }
   // One change: the call, then the setup re-read.  The inputs stay
@@ -2479,11 +2482,151 @@
   }
 
   /* ======================================================================
-   * Validate (comes in P7)
+   * Validate (P7): every check of the setup (studio/validate.py)
    * ==================================================================== */
+  var VAL = { state: null, polling: false };
+  var VAL_PARTS = [['A', 'The setup loads', 'parameters.json, pack.yaml, every tool.yaml and every text, as the engine reads them'],
+    ['B', 'The prompts', 'every agent of topologies 7, 5 and 3, with the setup’s defaults and with every feature on'],
+    ['C', 'The parameter lists', 'each agent’s list names the parameters in order, with their ranges'],
+    ['D', 'The tools', 'each one run on the parameters’ defaults, as Test tool runs it'],
+    ['E', 'A scripted turn', 'one turn per topology with a fake model: no API cost'],
+    ['X', 'Developer checks', 'the repository’s own checks that hold for any setup']];
+  var VAL_WORD = { pass: 'passed', warn: 'warning', fail: 'failed' };
+  var VAL_CLS = { pass: 'good', warn: 'warn', fail: 'bad' };
+
+  function valSummary(rep) {
+    var c = rep.counts, parts = [];
+    if (c.fail) parts.push(c.fail + ' failed');
+    if (c.warn) parts.push(c.warn + (c.warn === 1 ? ' warning' : ' warnings'));
+    parts.push(c.pass + ' passed');
+    return parts.join(', ');
+  }
+  function valBadge() {
+    var st = VAL.state;
+    if (!st) return null;
+    if (st.running) return pill(st.done + '/' + (st.total || '…'), 'warn', 'Validate is running.');
+    var rep = st.report;
+    if (!rep) return null;
+    if (!st.current) return pill('out of date', '', 'The setup changed since Validate ran.');
+    return pill(rep.status === 'pass' ? '✓' : rep.counts.fail ? rep.counts.fail + ' ✗' : rep.counts.warn + ' !',
+      VAL_CLS[rep.status], valSummary(rep));
+  }
+  function paintValidate() {
+    if (R.page === 'studio' && R.section === 'validate') { render(); return; }
+    ['valNav', 'valTop'].forEach(function (id) { var e = el(id); if (e) { e.innerHTML = ''; add(e, valBadge()); } });
+  }
+  function readValidate() {
+    VAL.readAt = Date.now();
+    return call('validate_state').then(function (r) {
+      if (r && r.ok) VAL.state = r.data;
+      if (VAL.state && VAL.state.running) pollValidate();
+      paintValidate();
+    });
+  }
+  function startValidate() {
+    call('validate_start').then(function (r) {
+      if (!r || !r.ok) { status((r && r.error) || 'Validate could not start.', 'err'); return; }
+      VAL.state = r.data;
+      status('Validate is running…', 'busy');
+      paintValidate();
+      pollValidate();
+    });
+  }
+  function pollValidate() {
+    if (VAL.polling) return;
+    VAL.polling = true;
+    (function tick() {
+      call('validate_state').then(function (r) {
+        if (r && r.ok) VAL.state = r.data;
+        if (VAL.state && VAL.state.running) { paintValidate(); setTimeout(tick, 1200); return; }
+        VAL.polling = false;
+        var rep = VAL.state && VAL.state.report;
+        if (VAL.state && VAL.state.error) status(VAL.state.error, 'err');
+        else if (rep) status('Validate: ' + (rep.counts.fail ? '' : 'no failures — ') + valSummary(rep) + '.',
+          rep.status === 'fail' ? 'err' : rep.status === 'warn' ? 'warn' : 'ok');
+        paintValidate();
+      }, function () { VAL.polling = false; });
+    }());
+  }
+  // A file a check names -> the field or tool it belongs to.
+  function pathTarget(path) {
+    var t = /(?:^|\/)([^\/]+)\.md$/.exec(path);
+    if (t && (/(^|\/)fragments\//.test(path) || /\/prompts\//.test(path))) {
+      var base = t[1].replace(/\.t\d+$/, ''), agent = null, at = base.indexOf('@');
+      if (at >= 0) { agent = base.slice(at + 1); base = base.slice(0, at); }
+      var s = slotByName(base);
+      if (s) return function () { go('studio', s.section, { field: base, agent: agent }); };
+    }
+    var m = /(?:^|\/)tools\/([a-z][a-z0-9_]*)\//.exec(path);
+    if (m) return function () { go('studio', 'tools', { tool: m[1] }); };
+    return null;
+  }
+  function valLine(ln) {
+    var out = [], last = 0, rx = /[\w.-]*\/?(?:fragments\/[\w\/@.-]+\.md|tools\/[a-z][a-z0-9_]*\/[\w\/@.-]*)/g, m;
+    while ((m = rx.exec(ln))) {
+      var target = pathTarget(m[0]);
+      if (!target) continue;
+      out.push(ln.slice(last, m.index));
+      out.push(h('span', { 'class': 'vlink', title: 'Open it', onclick: target }, m[0]));
+      last = m.index + m[0].length;
+    }
+    out.push(ln.slice(last));
+    return out;
+  }
+  function valGo(lk) {
+    if (lk.section === 'prompts') go('studio', 'prompts', { topo: lk.topology || null });
+    else if (lk.section === 'tools') go('studio', 'tools', { tool: lk.tool || null });
+    else go('studio', lk.section);
+  }
+  function valItem(i) {
+    var kids = [h('div', { 'class': 'vhead' }, [pill(VAL_WORD[i.status], VAL_CLS[i.status]), h('b', null, i.title),
+      i.about ? h('span', { 'class': 'muted' }, i.about) : null,
+      h('span', { 'class': 'grow' }),
+      i.seconds !== undefined && i.seconds !== null ? h('span', { 'class': 'muted vsec' }, i.seconds + ' s') : null,
+      i.link ? h('button', { 'class': 'mini', onclick: function () { valGo(i.link); } }, 'Open') : null])];
+    if (i.note) kids.push(h('p', { 'class': 'muted vnote' }, i.note));
+    if (i.lines.length) kids.push(h('ul', { 'class': 'checks vlines ' + VAL_CLS[i.status] },
+      i.lines.map(function (ln) { return h('li', null, valLine(ln)); })));
+    if (i.tokens && Object.keys(i.tokens).length) kids.push(h('p', { 'class': 'muted vtok' },
+      'Tokens with the setup’s defaults: ' + Object.keys(i.tokens).map(function (a) { return a + ' ' + fmt(i.tokens[a]); }).join(' · ')));
+    return h('div', { 'class': 'vitem ' + i.status }, kids);
+  }
   function renderValidate(center, right) {
-    add(center, head('Validate', LATER.validate));
-    add(right, h('div', { 'class': 'insp' }, h('p', { 'class': 'muted' }, LATER.validate)));
+    // is the last run still current? (asked again on each visit)
+    if (!VAL.polling && (!VAL.readAt || Date.now() - VAL.readAt > 5000)) readValidate();
+    var st = VAL.state || {}, rep = st.report, running = !!st.running;
+    add(center, head('Validate', 'Every check of the setup: does it load, do the prompts build, do the parameter lists match, does each tool run, does a turn go through — then the repository’s own checks that hold for any setup. ' +
+      'It runs on a copy of the setup taken when it starts (the tools on the setup itself, writing only into a throw-away folder), takes about a minute, and you can keep working meanwhile.',
+      [h('button', { 'class': 'primary', disabled: running, onclick: startValidate },
+        running ? 'Running… ' + st.done + ' of ' + (st.total || '…') + ' checks' : rep ? 'Run again' : 'Run Validate')]));
+    if (running) add(center, h('div', { 'class': 'progressline' }, h('div', { style: 'width:' + (st.total ? Math.round(100 * st.done / st.total) : 2) + '%' })));
+    if (st.error) add(center, h('div', { 'class': 'vbanner banner bad boxed' }, st.error));
+    if (!running && rep) {
+      add(center, h('div', { 'class': 'vbanner banner boxed ' + VAL_CLS[rep.status] },
+        (rep.status === 'fail' ? 'The setup has problems: ' : rep.status === 'warn' ? 'The setup works; look at the warnings: ' : 'Every check passed: ') + valSummary(rep) + '.'));
+      if (!st.current) add(center, h('div', { 'class': 'vbanner banner warn boxed' }, 'The setup changed after this run started: run Validate again.'));
+    }
+    var items = running ? st.items || [] : rep ? rep.items : [];
+    if (!running && !rep && !st.error) add(center, h('p', { 'class': 'muted', style: 'margin:14px 16px' }, 'Validate has not run since the Studio started.'));
+    VAL_PARTS.forEach(function (p) {
+      var mine = items.filter(function (i) { return i.part === p[0]; });
+      if (!mine.length) return;
+      add(center, h('h3', { 'class': 'vpart' }, [p[0] + '. ' + p[1], h('span', { 'class': 'muted' }, ' — ' + p[2])]));
+      mine.forEach(function (i) { add(center, valItem(i)); });
+    });
+    var ins = h('div', { 'class': 'insp' });
+    if (rep) {
+      add(ins, [h('div', { 'class': 'title' }, 'The last run'),
+        h('div', { 'class': 'pills' }, [pill(rep.counts.pass + ' passed', 'good'), rep.counts.warn ? pill(rep.counts.warn + (rep.counts.warn === 1 ? ' warning' : ' warnings'), 'warn') : null,
+          rep.counts.fail ? pill(rep.counts.fail + ' failed', 'bad') : null, kpill(rep.seconds + ' s')]),
+        h('p', null, 'Started ' + rep.started.replace('T', ' at ') + (st.current ? ', on the setup as it is now.' : '; the setup has changed since.'))]);
+    }
+    add(ins, h('div', { 'class': 'block' }, [h('h4', null, 'What counts'),
+      h('p', null, 'A failure is a problem in the setup: fix it before you download or deploy it.'),
+      h('p', { style: 'margin-top:6px' }, 'A warning does not stop the setup working: text left about a tool the setup no longer has (it reads as switched off), or something this computer lacks — a package, a program, a service, a secret. Where the setup is deployed (its Docker image), what the image installs is there.')]));
+    add(ins, h('div', { 'class': 'block' }, [h('h4', null, 'The checks'),
+      h('ul', { 'class': 'checks' }, VAL_PARTS.map(function (p) { return h('li', null, [h('b', null, p[0]), h('span', null, p[1] + ': ' + p[2] + '.')]); }))]));
+    add(right, ins);
   }
 
   /* ---------------- splitters (kit) ---------------- */
@@ -2545,6 +2688,7 @@
         if (unsavedKeys().length) { e.preventDefault(); e.returnValue = ''; }
       });
       render();
+      readValidate();
     }).catch(function (e) {
       el('app').innerHTML = '';
       el('app').appendChild(h('div', { 'class': 'page' }, [h('h1', null, 'MAS Studio'),

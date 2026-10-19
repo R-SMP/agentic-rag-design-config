@@ -25,7 +25,10 @@ the ``dc_params_list`` tool, or nothing.  The default lives in
    (``tool:…``, ``setting:…``, ``engine/pack_tools.py``) -- and is closed in
    the same file.  A misspelt flag would otherwise fail only when a session
    is built -- or, if it names no tool of the pack, read as a removed tool
-   and silently switch its text off.
+   and silently switch its text off: a name close to one of the pack's tools
+   is reported as a misspelling (``engine/pack_flags.near_tool``), any other
+   tool that is not in the pack as a NOTE (text left about a removed tool,
+   read as switched off), not a failure.
 
 Run from the repo root:
     py -3.13 extra_utilities/tests/smoke_test_parameter_access.py
@@ -56,6 +59,7 @@ from engine import pack_flags as PF     # noqa: E402
 from engine import parameter_access as PA  # noqa: E402
 
 FAILURES: list[str] = []
+NOTES: list[str] = []
 _IF_PARAM_LIST_RE = re.compile(r"<<IF:param_list>>(.*?)<</IF:param_list>>", re.DOTALL)
 _FLAG_OPEN_RE = re.compile(r"<<(IF|IFNOT):([^<>]+)>>")
 _FLAG_CLOSE_RE = re.compile(r"<</(IF|IFNOT):([^<>]+)>>")
@@ -64,6 +68,19 @@ _FLAG_CLOSE_RE = re.compile(r"<</(IF|IFNOT):([^<>]+)>>")
 def check(ok: bool, what: str) -> None:
     if not ok:
         FAILURES.append(what)
+
+
+def shown(p: Path) -> str:
+    """A path as the report shows it: from the repo root, or -- for a setup
+    kept elsewhere (the Studio's Validate runs on a copy) -- from the setup
+    folder's parent."""
+    p = p.resolve()
+    for base in (ROOT, pack.pack_dir().resolve().parent):
+        try:
+            return p.relative_to(base).as_posix()
+        except ValueError:
+            pass
+    return p.as_posix()
 
 
 def _agents(topology: int) -> list[str]:
@@ -88,7 +105,7 @@ def check_prompt_files() -> int:
             regions = _IF_PARAM_LIST_RE.findall(path.read_text(encoding="utf-8"))
             n += 1
             check(len(regions) == 1 and "$parameter_list" in regions[0],
-                  f"[PROMPT] {path.relative_to(ROOT).as_posix()}: needs exactly one "
+                  f"[PROMPT] {shown(path)}: needs exactly one "
                   f"<<IF:param_list>> region around $parameter_list "
                   f"(found {len(regions)})")
     return n
@@ -174,11 +191,19 @@ def check_flags() -> int:
     files = [f for f in files if f.name != "README.md"]
     for f in files:
         text = f.read_text(encoding="utf-8")
-        rel = f.relative_to(ROOT).as_posix()
+        rel = shown(f)
         opens = _FLAG_OPEN_RE.findall(text)
         closes = _FLAG_CLOSE_RE.findall(text)
         for kind, name in opens:
-            check(name in known, f"[FLAGS] {rel}: unknown flag <<{kind}:{name}>>")
+            if name in known:
+                continue
+            near = PF.near_tool(name)
+            if PF.absent(name) and near is None:
+                NOTES.append(f"[ABSENT] {rel}: <<{kind}:{name}>> names a tool the setup does "
+                             f"not have: read as switched off")
+                continue
+            check(False, f"[FLAGS] {rel}: unknown flag <<{kind}:{name}>>"
+                         + (f" (a misspelling of {near}?)" if near else ""))
         check(sorted(opens) == sorted(closes),
               f"[FLAGS] {rel}: opening and closing flag markers do not pair up")
     return len(files)
@@ -194,6 +219,10 @@ def main() -> int:
     print(f"{sum(len(r) for r in default.values())} cells; {n_files} prompt files; "
           f"{n_builds} prompts assembled across the four states; "
           f"{n_flag_files} files scanned for prompt flags")
+    if NOTES:
+        print(f"\nNOTE - {len(NOTES)} text condition(s) about a tool the setup does not have:")
+        for n in NOTES:
+            print("  " + n)
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:

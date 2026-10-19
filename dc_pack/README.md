@@ -97,7 +97,8 @@ index in `prompts.py` are derived from the registry.
   `_off` block while `mesh_checks` is off, else the one named after
   `render_library`.  A new backend is a new `render_library` value with its
   branch in `tool.py` plus its `render_check_library_<value>.md` (listed in
-  `prompt_slots` and the registry).
+  `prompt_slots` and the registry).  A setup none of whose tools declares
+  the block gives those agents none (the placeholder is filled with nothing).
 * `tool_entry_calculate` / `_read_attempts` / `_new_attempt_parameters` — the
   engine tools' entries in the tool runner's numbered tool list
   (`$tool_inventory`), which the engine builds around the pack tools'

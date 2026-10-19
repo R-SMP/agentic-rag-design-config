@@ -18,10 +18,14 @@ changes laid over the defaults.
 
 A flag naming a tool that is not in the pack -- its folder was removed --
 reads as switched off (:func:`absent`), so text marked for that tool leaves
-the prompts as it does when the tool is switched off.
+the prompts as it does when the tool is switched off.  One whose name is
+close to a tool that IS in the pack is more likely a misspelling
+(:func:`near_tool`): the checks report it as an error.
 """
 
 from __future__ import annotations
+
+import difflib
 
 from engine import pack_tools as _pack_tools
 
@@ -41,3 +45,14 @@ def values() -> dict[str, bool]:
 def absent(flag: str) -> bool:
     """True when *flag* names a tool that is not in the pack."""
     return _pack_tools.names_absent_tool(flag)
+
+
+def near_tool(flag: str) -> str | None:
+    """For a flag naming a tool that is not in the pack: the pack's tool
+    whose name is close to it (a likely misspelling), else None."""
+    m = _pack_tools._FLAG_TOOL_RE.match(flag)
+    if not m or not absent(flag):
+        return None
+    close = difflib.get_close_matches(m.group(1) or m.group(2),
+                                      list(_pack_tools.manifests()), n=1, cutoff=0.8)
+    return close[0] if close else None

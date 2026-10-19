@@ -222,10 +222,11 @@ class DesignEngineer(BaseChainAgent):
         # ``.format()`` runs AFTER apply_flag_filters -- a marker inside the
         # injected fragment would never be filtered -- and read here, per
         # session, because the Sessions Queue switches topology between runs
-        # inside one process.
-        render_check_block = read_pack_fragment(
-            pack_tools.runtime_block_slot(
-                "render_check_library_block", self.session.tool_settings))
+        # inside one process.  Empty when no tool of the setup declares it.
+        render_check_slot = pack_tools.runtime_block_slot(
+            "render_check_library_block", self.session.tool_settings)
+        render_check_block = (read_pack_fragment(render_check_slot)
+                              if render_check_slot else "")
         # Built fresh at construction time so live edits to .md fragments on
         # disk take effect on the NEXT session without a Python restart.
         self.system_prompt = _build_template(self.AGENT_KEY).format(

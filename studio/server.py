@@ -33,6 +33,10 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
   (one run, ``engine/tool_test.py``, in a process of its own).  A change that could stop the engine loading the tools is
   checked first by the engine's own check, on a throw-away copy of the
   setup (in the same engine process).
+* ``validate_start`` / ``validate_state`` -- Validate (P7,
+  ``studio/validate.py``): one run at a time, in a thread of its own, its
+  progress and its last report, and whether the setup is still as it was
+  when that run started.
 
 This process never imports the engine: the assembler stubs runtime
 packages (FastAPI among them) in the process that runs it.
@@ -60,6 +64,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from studio import editing, engine_view, params_edit, tools_edit
+from studio import validate as validation
 
 WEB = Path(__file__).resolve().parent / "web"
 
@@ -333,6 +338,55 @@ class ViewCache:
         fut.set_result(data)
 
 
+class Validation:
+    """Validate (``studio/validate.py``) in a thread of its own: one run at
+    a time, its progress, its last report."""
+
+    def __init__(self, pack_dir: Path, run=validation.run):
+        self.pack_dir = pack_dir
+        self._run_fn = run
+        self._lock = threading.Lock()
+        self.running = False
+        self.done = self.total = 0
+        self.items: list = []
+        self.report: dict | None = None
+        self.error: str | None = None
+
+    def start(self) -> dict:
+        with self._lock:
+            if not self.running:
+                self.running, self.done, self.total, self.items, self.error = True, 0, 0, [], None
+                threading.Thread(target=self._run, daemon=True).start()
+        return self.state()
+
+    def _progress(self, done: int, total: int, items: list) -> None:
+        with self._lock:
+            self.done, self.total, self.items = done, total, items
+
+    def _run(self) -> None:
+        try:
+            report = self._run_fn(self.pack_dir, progress=self._progress)
+            with self._lock:
+                self.report = report
+        except Exception as exc:  # noqa: BLE001 -- shown on the page
+            with self._lock:
+                self.error = f"Validate could not run: {type(exc).__name__}: {exc}"
+        finally:
+            with self._lock:
+                self.running = False
+
+    def state(self) -> dict:
+        """``running``, ``done`` / ``total`` checks, the ``items`` ended so
+        far, the last ``report`` and whether it is ``current`` (the setup's
+        files as they were when it started)."""
+        fp = fingerprint(self.pack_dir)
+        with self._lock:
+            return {"running": self.running, "done": self.done, "total": self.total,
+                    "items": list(self.items) if self.running else [],
+                    "report": self.report, "error": self.error,
+                    "current": bool(self.report) and self.report["fingerprint"] == fp}
+
+
 def _ok(**kw) -> JSONResponse:
     return JSONResponse(dict(kw, ok=True))
 
@@ -370,6 +424,7 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     params = params_edit.ParamsEditor(pack_dir, opened_dir, checker.check)
     tools = tools_edit.ToolsEditor(pack_dir, opened_dir, checker.check_tools, engine_view.REPO)
     changed_cache: dict = {}
+    validator = Validation(pack_dir)
 
     def changed(data: dict, fp: str) -> dict:
         """The changed fields and files, and the parameter editor's state."""
@@ -403,6 +458,7 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
     app.state.editor = editor
     app.state.params = params
     app.state.tools = tools
+    app.state.validator = validator
 
     @app.middleware("http")
     async def no_stale_page(request: Request, call_next):
@@ -479,6 +535,14 @@ def create_app(pack_dir: Path, workers: int = 2) -> FastAPI:
                      ("remove_tool_preview", tools.remove_preview), ("remove_tool", tools.remove_tool),
                      ("new_tool", tools.new_tool), ("test_tool", tools.test_tool)):
         app.add_api_route(f"/api/{name}", _edit(fn), methods=["POST"])
+
+    @app.post("/api/validate_start")
+    async def validate_start():
+        return _ok(data=await asyncio.to_thread(validator.start))
+
+    @app.post("/api/validate_state")
+    async def validate_state():
+        return _ok(data=await asyncio.to_thread(validator.state))
 
     @app.post("/api/diff")
     async def api_diff(request: Request):

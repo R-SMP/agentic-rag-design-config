@@ -426,7 +426,9 @@ class ToolsEditor:
         if (self.pack_dir / "tools" / tool / PROMPTS).is_dir() and \
                 list((self.pack_dir / "tools" / tool / PROMPTS).glob("tool_list_entry*.md")):
             texts.append("its entry in the tool runner's tool list")
-        flag = re.compile(rf"<<IF(?:NOT)?:tool:{re.escape(tool)}>>")
+        # Its switch, or one of its settings (``engine/pack_flags.py``).
+        flag = re.compile(rf"<<IF(?:NOT)?:(?:tool:{re.escape(tool)}"
+                          rf"|setting:{re.escape(tool)}\.[a-z0-9_]+)>>")
         marked = sorted({p.relative_to(self.pack_dir).as_posix() for p in self.pack_dir.rglob("*.md")
                          if "tools/" + tool + "/" not in p.relative_to(self.pack_dir).as_posix()
                          and flag.search(p.read_text(encoding="utf-8", errors="replace"))})
@@ -568,36 +570,46 @@ class ToolsEditor:
             timeout = max(5.0, min(600.0, float(timeout)))
         except (TypeError, ValueError):
             timeout = 180.0
-        tmp = Path(tempfile.mkdtemp(prefix="studio_tooltest_"))
+        return {"report": run_tool_test(self.repo, self.pack_dir, tool, params, settings, timeout),
+                "warnings": []}
+
+
+def run_tool_test(repo: Path, pack_dir: Path, tool: str, params: dict, settings=None,
+                  timeout: float = 180.0) -> dict:
+    """One run of *tool* of the setup in *pack_dir* on *params*, in a process
+    of its own (``engine/tool_test.py``) on a throw-away attempt folder: its
+    report, with the run's own output lines (the last 400).  Test tool and
+    Validate (``studio/validate.py``) both run a tool this way."""
+    tmp = Path(tempfile.mkdtemp(prefix="studio_tooltest_"))
+    try:
+        job, out = tmp / "job.json", tmp / "report.json"
+        job.write_text(json.dumps({"tool": tool, "params": params, "settings": settings or {},
+                                   "root": str(tmp / "attempts")}), encoding="utf-8")
+        env = dict(os.environ, PYTHONIOENCODING="utf-8", DC_PACK_DIR=str(pack_dir),
+                   DATABASE_URL="", DATABASE_PUBLIC_URL="")
         try:
-            job, out = tmp / "job.json", tmp / "report.json"
-            job.write_text(json.dumps({"tool": tool, "params": params, "settings": settings or {},
-                                       "root": str(tmp / "attempts")}), encoding="utf-8")
-            env = dict(os.environ, PYTHONIOENCODING="utf-8", DC_PACK_DIR=str(self.pack_dir),
-                       DATABASE_URL="", DATABASE_PUBLIC_URL="")
-            try:
-                proc = subprocess.run([sys.executable, "-m", "engine.tool_test", str(job), str(out)],
-                                      cwd=str(self.repo), env=env, capture_output=True, text=True,
-                                      encoding="utf-8", errors="replace", timeout=timeout)
-                output, code = (proc.stdout or "") + (proc.stderr or ""), proc.returncode
-            except subprocess.TimeoutExpired as exc:
-                output = "".join(x.decode("utf-8", "replace") if isinstance(x, bytes) else (x or "")
-                                 for x in (exc.stdout, exc.stderr))
-                report = {"tool": tool, "failed": True, "files": [], "pictures": [], "model": None,
-                          "mismatches": [], "seconds": timeout,
-                          "error": f"The run took longer than {timeout:g} s and was stopped."}
-                code = None
+            proc = subprocess.run([sys.executable, "-m", "engine.tool_test", str(job), str(out)],
+                                  cwd=str(repo), env=env, capture_output=True, text=True,
+                                  encoding="utf-8", errors="replace", timeout=timeout)
+            output, code = (proc.stdout or "") + (proc.stderr or ""), proc.returncode
+        except subprocess.TimeoutExpired as exc:
+            output = "".join(x.decode("utf-8", "replace") if isinstance(x, bytes) else (x or "")
+                             for x in (exc.stdout, exc.stderr))
+            report = {"tool": tool, "failed": True, "files": [], "pictures": [], "model": None,
+                      "mismatches": [], "seconds": timeout,
+                      "error": f"The run took longer than {timeout:g} s and was stopped."}
+            code = None
+        else:
+            if out.is_file():
+                report = json.loads(out.read_text(encoding="utf-8"))
             else:
-                if out.is_file():
-                    report = json.loads(out.read_text(encoding="utf-8"))
-                else:
-                    report = {"tool": tool, "failed": True, "files": [], "pictures": [], "model": None,
-                              "mismatches": [], "seconds": None,
-                              "error": f"The run ended without a report (exit code {code})."}
-            lines = output.splitlines()
-            report["output"] = lines[-400:]
-            report["output_cut"] = max(0, len(lines) - 400)
-            report["returncode"] = code
-            return {"report": report, "warnings": []}
-        finally:
-            shutil.rmtree(tmp, ignore_errors=True)
+                report = {"tool": tool, "failed": True, "files": [], "pictures": [], "model": None,
+                          "mismatches": [], "seconds": None,
+                          "error": f"The run ended without a report (exit code {code})."}
+        lines = output.splitlines()
+        report["output"] = lines[-400:]
+        report["output_cut"] = max(0, len(lines) - 400)
+        report["returncode"] = code
+        return report
+    finally:
+        shutil.rmtree(tmp, ignore_errors=True)

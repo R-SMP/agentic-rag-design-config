@@ -321,3 +321,20 @@ table.ptab.tvals td.num input { width:120px; text-align:right; font-family:var(-
 .tpics figure { margin:0; max-width:320px; }
 .tpics img { max-width:320px; max-height:240px; border:1px solid var(--line); border-radius:6px; background:#fff; }
 .tpics figcaption { font-size:11px; color:var(--muted); margin-top:3px; }
+
+/* Validate (P7) */
+.banner.good { background:#16301c; color:#8ce99a; }
+.banner.boxed.warn { border-color:#7a5a1a; } .banner.boxed.good { border-color:#2b6a37; }
+.vbanner { margin:10px 16px 0; }
+.vpart { margin:16px 16px 6px; font-size:13px; font-weight:600; }
+.vpart .muted { font-weight:400; font-size:12px; }
+.vitem { margin:0 16px 6px; padding:7px 10px; border:1px solid var(--line); border-radius:7px; background:#1b1c20; }
+.vitem.fail { border-color:#7a2a2a; } .vitem.warn { border-color:#7a5a1a; }
+.vitem .vhead { display:flex; gap:8px; align-items:center; flex-wrap:wrap; font-size:12.5px; }
+.vitem .vhead .muted { font-size:11.5px; }
+.vitem .vhead .grow { flex:1 1 auto; }
+.vitem .vsec { font-size:11px; }
+.vitem .vnote, .vitem .vtok { margin:5px 0 0; font-size:11.5px; line-height:1.45; }
+.vitem ul.vlines { margin-top:5px; font-family:var(--mono); font-size:11px; }
+.vitem ul.vlines li { display:block; white-space:pre-wrap; word-break:break-word; }
+.vitem .vlink { color:#a5c8ff; cursor:pointer; text-decoration:underline; }

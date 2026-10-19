@@ -66,14 +66,16 @@ def check_validation(spec: dict) -> None:
             dict(s["parameters"][0])),
         "must be smaller than max": lambda s: _param(s, first).update(min=10, max=5),
         "is outside": lambda s: _param(s, first).update(default=_param(s, first)["max"] + 1),
-        "whole-number": lambda s: _param(s, "bladeCount").update(step=0.5),
+        "whole-number": lambda s: _param(s, first).update(type="int", min=0, max=10,
+                                                         default=1, step=0.5),
         "step must be positive": lambda s: _param(s, first).update(step=0),
         'type must be "int" or "float"': lambda s: _param(s, first).update(type="bool"),
         "does not exist": lambda s: _param(s, first).update(group="nowhere"),
         "not listed in the order of its group": lambda s: s["groups"][0]["order"].remove(
             s["groups"][0]["order"][0]),
-        "listed in two groups": lambda s: s["groups"][1]["order"].append(
-            s["groups"][0]["order"][0]),
+        "listed in two groups": lambda s: s["groups"].append(
+            dict(s["groups"][0], id="second_group_of_the_check",
+                 order=[s["groups"][0]["order"][0]])),
         "which is not a parameter": lambda s: s["groups"][0]["order"].append("ghost"),
         'unknown field "colour"': lambda s: _param(s, first).update(colour="red"),
         'missing field "db_unit"': lambda s: _param(s, first).pop("db_unit"),

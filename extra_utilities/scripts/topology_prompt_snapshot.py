@@ -138,12 +138,13 @@ def _runtime_slots(agent: str, P, S) -> dict | None:
                     extraction_output_file=_EXTRACTION_FILE)
     if agent in ("tool_caller", "design_engineer"):
         # The block the tool that declares it picks from its settings
-        # (runtime_blocks in its tool.yaml), as the agents do.
+        # (runtime_blocks in its tool.yaml), as the agents do: empty when no
+        # tool of the setup declares it.
         from engine import pack_tools as PT
+        slot = PT.runtime_block_slot("render_check_library_block", PT.settings_snapshot())
         return dict(
             routing_instructions=routing(agent),
-            render_check_library_block=P.read_pack_fragment(PT.runtime_block_slot(
-                "render_check_library_block", PT.settings_snapshot())),
+            render_check_library_block=P.read_pack_fragment(slot) if slot else "",
         )
     if agent == "requirements_analyst":
         import agents.requirements_analyst.requirements_analyst as RA_M

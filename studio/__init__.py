@@ -1,9 +1,11 @@
 """The MAS Studio: set up a multi-agent system for a design configurator.
 
     python -m studio [--pack <folder>] [--port 8770]
+    python -m studio validate [--pack <folder>] [--json <report.json>]
 
 MAS-blueprint P5 shows the setup; P6a edits its text fields, P6b its
-parameters and agent access, P6c its tools.  ``engine_view.py`` computes
+parameters and agent access, P6c its tools; P7 validates it
+(``validate.py``: every check, each in a process of its own).  ``engine_view.py`` computes
 what the screens show (with the engine itself, in child processes),
 ``server.py`` serves the page in ``web/`` and keeps engine processes waiting
 for the prompt viewer, ``editing.py`` writes a text field's files,

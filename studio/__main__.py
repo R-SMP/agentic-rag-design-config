@@ -1,6 +1,8 @@
 """python -m studio [--pack <folder>] [--host 127.0.0.1] [--port 8770] [--workers 2]
+python -m studio validate [--pack <folder>] [--json <report.json>]
 
-Starts the Studio on this computer and prints its address.
+Starts the Studio on this computer and prints its address -- or validates a
+setup (``studio/validate.py``) and prints the report.
 """
 
 from __future__ import annotations
@@ -21,6 +23,10 @@ def default_pack() -> Path:
 
 
 def main(argv: list[str] | None = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] == ["validate"]:
+        from studio.validate import main as validate
+        return validate(argv[1:])
     ap = argparse.ArgumentParser(
         prog="python -m studio",
         description="The MAS Studio (MAS-blueprint P5-P6c): a setup's "

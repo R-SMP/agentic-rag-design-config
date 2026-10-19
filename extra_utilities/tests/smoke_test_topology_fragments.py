@@ -246,10 +246,16 @@ def fail(case: str, check: str, msg: str) -> None:
 
 
 def rel(p: Path) -> str:
-    try:
-        return p.resolve().relative_to(ROOT).as_posix()
-    except ValueError:
-        return str(p)
+    """A path as the report shows it: from the repo root, or -- for a setup
+    kept elsewhere (the Studio's Validate runs on a copy) -- from the setup
+    folder's parent."""
+    p = p.resolve()
+    for base in (ROOT, prompts._pack.pack_dir().resolve().parent):
+        try:
+            return p.relative_to(base).as_posix()
+        except ValueError:
+            pass
+    return str(p)
 
 
 # ---------------------------------------------------------------------------
@@ -791,25 +797,27 @@ except Exception as exc:  # noqa: BLE001
     )
 
 # --- RETIRED: Planner first (removed 2026-10-18) must stay gone ------------
+# The engine's tree and the setup (config.DC_PACK_DIR, wherever it is).
+_PACK_ROOT = prompts._pack.pack_dir()
 _retired_files = sorted(
-    p.relative_to(ROOT).as_posix()
-    for base in ("agents", "dc_pack")
-    for p in (ROOT / base).rglob("*")
+    rel(p)
+    for base in (ROOT / "agents", _PACK_ROOT)
+    for p in base.rglob("*")
     if p.is_file() and ("_planner_first" in p.name or "_uii_first" in p.name))
 if _retired_files:
     failures.append(f"[RETIRED] Planner-first files are back: {_retired_files}")
 _retired_names = []
-for _base, _pattern in (("agents", "*.md"), ("agents", "*.py"), ("engine", "*"),
-                        ("workflow_settings", "*.py"), ("studio", "*"),
-                        ("dc_pack", "*")):
-    for _p in (ROOT / _base).rglob(_pattern):
+for _base, _pattern in ((ROOT / "agents", "*.md"), (ROOT / "agents", "*.py"),
+                        (ROOT / "engine", "*"), (ROOT / "workflow_settings", "*.py"),
+                        (ROOT / "studio", "*"), (_PACK_ROOT, "*")):
+    for _p in _base.rglob(_pattern):
         if not _p.is_file() or "__pycache__" in _p.parts \
                 or _p.suffix not in (".md", ".py", ".yaml", ".js", ".json"):
             continue
         _text = _p.read_text(encoding="utf-8", errors="replace")
         for _needle in ("<<PF_ON>>", "<<PF_OFF>>", "PLANNER_FIRST", "planner_first"):
             if _needle in _text:
-                _retired_names.append(f"{_p.relative_to(ROOT).as_posix()}: {_needle}")
+                _retired_names.append(f"{rel(_p)}: {_needle}")
 for _p in (ROOT / "web_app.py",):
     if "PLANNER_FIRST" in _p.read_text(encoding="utf-8"):
         _retired_names.append(f"{_p.name}: PLANNER_FIRST")

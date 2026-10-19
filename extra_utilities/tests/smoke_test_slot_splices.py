@@ -58,6 +58,19 @@ TOOL_PROMPT_DIRS = tuple(sorted(p for p in (PACK_DIR / "tools").glob("*/prompts"
                                 if p.is_dir()))
 PACK_TEXT_DIRS = (PACK_FRAGMENTS_DIR, *TOOL_PROMPT_DIRS)
 GENERIC_FRAGMENTS_DIR = ROOT / "agents" / "shared" / "prompt_fragments"
+
+
+def shown(p: Path) -> str:
+    """A path as the report shows it: from the repo root, or -- for a setup
+    kept elsewhere (the Studio's Validate runs on a copy) -- from the setup
+    folder's parent."""
+    p = p.resolve()
+    for base in (ROOT, PACK_DIR.resolve().parent):
+        try:
+            return p.relative_to(base).as_posix()
+        except ValueError:
+            pass
+    return p.as_posix()
 FRAGMENT_DIRS = (*PACK_TEXT_DIRS, GENERIC_FRAGMENTS_DIR)
 
 SLOT_RE = re.compile(r"\$([a-z_][a-z0-9_]*)")
@@ -141,7 +154,7 @@ def main() -> int:
     checked = 0
 
     for p in prompts:
-        rel = p.relative_to(ROOT).as_posix()
+        rel = shown(p)
         for n, line in enumerate(p.read_text(encoding="utf-8").splitlines(), 1):
             for m in SLOT_RE.finditer(line):
                 slot = m.group(1)
