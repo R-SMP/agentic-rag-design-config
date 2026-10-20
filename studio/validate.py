@@ -9,10 +9,11 @@ What it checks (owner, 2026-10-19):
   checks: the setup's format; ``parameters.json``; ``pack.yaml`` (the
   agents' access to the parameter list, the Download buttons, the picture
   samples); every ``tool.yaml`` (with the texts each tool owns, the
-  geometry tools, the outputs); every text, in each topology.  Two
-  warnings: a text condition about a tool the setup does not have (it
-  reads as switched off), and a secret a tool needs that this computer
-  does not set.
+  geometry tools, the outputs); every text, in each topology.  Three
+  warnings: a range an import proposed and nobody has reviewed yet
+  (``"range": "proposed"``, MAS-blueprint P6f), a text condition about a
+  tool the setup does not have (it reads as switched off), and a secret a
+  tool needs that this computer does not set.
 * **B. The prompts** -- every agent of topologies 3 / 5 / 7, with the
   setup's defaults and with every feature on: built, and nothing left of a
   ``$name`` or a ``<<IF:...>>`` marker; the tokens of each.
@@ -165,6 +166,15 @@ def part_load() -> list[dict]:
     spec_ok = not lines
     out.append(item("A", "parameters.json", FAIL if lines else PASS, lines,
                     link={"section": "parameters"}))
+    # A. ranges an import proposed, not reviewed yet (shown only while there are some)
+    proposed = [p["name"] for p in spec["parameters"] if p.get("range") == "proposed"] if spec_ok else []
+    if proposed:
+        out.append(item("A", "Ranges to review", WARN,
+                        [f"{len(proposed)} parameter(s) still have the range an import proposed "
+                         f"(half to double the model's default): " + ", ".join(proposed[:12])
+                         + (f" and {len(proposed) - 12} more" if len(proposed) > 12 else "")],
+                        note="Set their min and max under Parameters (editing either one ends "
+                             "the proposal).", link={"section": "parameters"}))
     # A. pack.yaml: the agents' access to the parameter list
     lines = attempt(pa.default_table)
     out.append(item("A", "Agent access (pack.yaml)", FAIL if lines else PASS, lines,

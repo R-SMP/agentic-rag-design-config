@@ -698,7 +698,8 @@ def tools() -> list:
     from engine import pack_tools
     out = []
     for name, m in pack_tools.manifests().items():
-        ref = m.get("build") or m.get("entrypoint")
+        # its code -- or, for a tool the engine runs (backend: P6e), its model file
+        ref = m.get("build") or m.get("entrypoint") or m.get("model")
         out.append({"name": name, "display": m["display_name"], "kind": m["kind"],
                     "file": f"dc_pack/tools/{name}/{ref.split(':')[0]}",
                     "description": m["description"],

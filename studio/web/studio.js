@@ -1299,7 +1299,8 @@
       if (!isObj(p)) { problems.push(where + ': must be an object'); return; }
       var name = p.name;
       if (typeof name === 'string') where = name;
-      var keys = (TYPE_KEYS.hasOwnProperty(p.type) ? TYPE_KEYS[p.type] : P_KEYS).concat('used_when' in p ? ['used_when'] : []);
+      var keys = (TYPE_KEYS.hasOwnProperty(p.type) ? TYPE_KEYS[p.type] : P_KEYS)
+        .concat('used_when' in p ? ['used_when'] : []).concat('range' in p ? ['range'] : []);
       symDiff(keys, Object.keys(p)).forEach(function (k) {
         problems.push(where + ': ' + (k in p ? 'unknown' : 'missing') + ' field "' + k + '"');
       });
@@ -1313,7 +1314,11 @@
         ['label', 'unit', 'db_unit', 'db_description', 'group'].forEach(function (k) {
           if (k in p && typeof p[k] !== 'string') problems.push(name + ': ' + k + ' must be text');
         });
+        if ('range' in p) problems.push(name + ': only a number has a range ("range": "proposed")');
         return;
+      }
+      if ('range' in p && p.range !== 'proposed') {
+        problems.push(name + ': range is "proposed" (a range an import proposed, to review) or absent');
       }
       var lo = p.min, hi = p.max, step = p.step, def = p['default'];
       if (![lo, hi, step, def].every(isNum)) { problems.push(name + ': min, max, step and default must be numbers'); return; }

@@ -33,6 +33,12 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
   (one run, ``engine/tool_test.py``, in a process of its own).  A change that could stop the engine loading the tools is
   checked first by the engine's own check, on a throw-away copy of the
   setup (in the same engine process).
+* a tool from an OpenSCAD model (P6f, ``studio/scad_import.py``) --
+  ``scad_read`` (the model's settings and what each is proposed as),
+  ``scad_import`` (a new configurator, or one more tool; checked first by
+  the engine's check of a whole setup) and ``scad_undo``.  While an import
+  can be undone, ``undo_parameters`` is refused: the import's Undo puts
+  the parameters back together with its tools.
 * ``validate_start`` / ``validate_state`` -- Validate (P7,
   ``studio/validate.py``): one run at a time, in a thread of its own, its
   progress and its last report, and whether the setup is still as it was
@@ -82,7 +88,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 
-from studio import editing, engine_view, params_edit, tools_edit
+from studio import editing, engine_view, params_edit, scad_import, tools_edit
 from studio import package as packaging
 from studio import prepare as preparing
 from studio import validate as validation
@@ -511,6 +517,7 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
     checker = Checker(pack_dir)
     params = params_edit.ParamsEditor(pack_dir, opened_dir, checker.check)
     tools = tools_edit.ToolsEditor(pack_dir, opened_dir, checker.check_tools, engine_view.REPO)
+    importer = scad_import.Importer(pack_dir, opened_dir, checker.check_setup, params, tools)
     changed_cache: dict = {}
     validator = Validation(pack_dir)
     open_lock = threading.Lock()
@@ -528,7 +535,8 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                                  "tools_edit": tools.state(data),
                                  "prepare": {"available": prepare_why is None, "why": prepare_why},
                                  "online": online, "configurator": configurator,
-                                 "can_reset": example_dir is not None}
+                                 "can_reset": example_dir is not None,
+                                 "scad_import": importer.state()}
         return changed_cache[fp]
 
     def first_build() -> None:
@@ -545,6 +553,7 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
         yield
         pool.close()
         checker.close()
+        importer.close()
         shutil.rmtree(opened_root, ignore_errors=True)
 
     app = FastAPI(title="MAS Studio", lifespan=lifespan, docs_url=None, redoc_url=None)
@@ -554,6 +563,7 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
     app.state.editor = editor
     app.state.params = params
     app.state.tools = tools
+    app.state.importer = importer
     app.state.validator = validator
 
     def own_path(request: Request) -> str:
@@ -655,6 +665,12 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
             params.sync_lists(data)
         return warnings
 
+    def undo_parameters(data: dict):
+        if importer.state() is not None:
+            raise editing.EditError("An import put these parameters in: undo it with Undo the import "
+                                    "(it puts its tools back too).")
+        return params.undo_all(data)
+
     def csv_parameters(data: dict, text: str):
         _raw, spec = params._spec(pack_dir)
         new, problems = params_edit.from_csv(str(text), spec)
@@ -719,6 +735,7 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
             editing.copy_setup(pack_dir, opened_dir)
             opened_key = "opened:" + fingerprint(opened_dir)
             params.since_opened = {}
+            importer.forget()
             changed_cache.clear()
         warnings = []
         made, here = str((info or {}).get("engine") or ""), packaging.engine_version()
@@ -740,7 +757,7 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                      ("link_field", editor.link), ("own_copy", editor.own_copy),
                      ("remove_copy", editor.remove_copy), ("undo_field", undo_field),
                      ("preview_parameters", params.preview), ("save_parameters", params.save),
-                     ("undo_parameters", params.undo_all), ("csv_parameters", csv_parameters),
+                     ("undo_parameters", undo_parameters), ("csv_parameters", csv_parameters),
                      ("upload_picture", params.upload_picture),
                      ("drop_pictures", params.drop_unused_pictures),
                      ("set_access", params.set_access), ("undo_access", params.undo_access),
@@ -749,6 +766,8 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                      ("undo_tool_file", tools.undo_file), ("undo_tool", tools.undo_tool),
                      ("remove_tool_preview", tools.remove_preview), ("remove_tool", tools.remove_tool),
                      ("new_tool", tools.new_tool), ("test_tool", tools.test_tool),
+                     ("scad_read", importer.read), ("scad_import", importer.run),
+                     ("scad_undo", importer.undo),
                      ("download_preview", download_preview), ("open_setup", open_setup),
                      ("prepare_run", prepare_run), ("reset_to_example", reset_to_example)):
         app.add_api_route(f"/api/{name}", _edit(fn), methods=["POST"])

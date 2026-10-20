@@ -432,6 +432,10 @@ TYPED_SPEC = {
         _number("FlangeDia", 5.0, 20.0, 0.5, 10.0, used_when={"End1_Style": "mag"}),
     ]}
 
+# The same setup with a range an import proposed (MAS-blueprint P6f): valid.
+PROPOSED_SPEC = copy.deepcopy(TYPED_SPEC)
+PROPOSED_SPEC["parameters"][0]["range"] = "proposed"
+
 # The same setup without its choice and on/off parameters (and conditions).
 NUMBERS_SPEC = {
     "groups": [dict(TYPED_SPEC["groups"][0], order=["Length", "Count"])],
@@ -459,6 +463,8 @@ TYPED_BAD = {
     "default True is not one of its choices": lambda s: _param(s, "End1_Style").update(default=True),
     "End1_Style has no value True": lambda s: _param(s, "Barbs").update(used_when={"End1_Style": True}),
     'missing field "choices"': lambda s: _param(s, "End1_Style").pop("choices"),
+    'range is "proposed"': lambda s: _param(s, "Length").update(range="guess"),
+    "only a number has a range": lambda s: _param(s, "Barbs").update(range="proposed"),
 }
 
 
@@ -476,6 +482,8 @@ def check_types(spec: dict) -> None:
     T = TYPED_SPEC
     by = parameters.by_name(T)
     check(parameters.validate(T) == [], f"[TYPES] the typed setup has problems: {parameters.validate(T)}")
+    check(parameters.validate(PROPOSED_SPEC) == [],
+          f"[TYPES] a proposed range is refused: {parameters.validate(PROPOSED_SPEC)}")
     N = NUMBERS_SPEC
     check(parameters.validate(N) == [] and parameters.all_numbers(N) and not parameters.all_numbers(T),
           "[TYPES] all_numbers() is wrong for a setup of numbers or the typed setup")

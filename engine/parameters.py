@@ -34,6 +34,11 @@ values (the agents are told; the slider page hides it otherwise).  A
 record holds every parameter either way.  :func:`check_value` is the one
 check of a value against its parameter; :func:`all_numbers` tells the
 readers whose words say "a number" whether they still may.
+
+A number may carry ``"range": "proposed"`` (MAS-blueprint P6f): its min
+and max were proposed by the Studio's import of a CAD model, not chosen by
+the owner.  Nothing reads it but the Studio (which shows it, and drops it
+when min or max is edited) and Validate (which warns while one remains).
 """
 
 from __future__ import annotations
@@ -54,7 +59,7 @@ _CHOICE_KEYS = ("name", "type", "choices", "default", "group", "label", "unit",
 _BOOL_KEYS = ("name", "type", "default", "group", "label", "unit", "db_unit",
               "db_description")
 _KEYS = {"int": _PARAM_KEYS, "float": _PARAM_KEYS, "choice": _CHOICE_KEYS, "bool": _BOOL_KEYS}
-_OPTIONAL_KEYS = ("used_when",)
+_OPTIONAL_KEYS = ("used_when", "range")
 _GROUP_KEYS = ("id", "label", "image", "image_alt", "order")
 # What a choice's value and label may not hold: the agents' list writes
 # them as "value = label | value = label".
@@ -190,7 +195,12 @@ def validate(spec) -> list[str]:
             for k in ("label", "unit", "db_unit", "db_description", "group"):
                 if k in p and not isinstance(p[k], str):
                     problems.append(f"{name}: {k} must be text")
+            if "range" in p:
+                problems.append(f"{name}: only a number has a range (\"range\": \"proposed\")")
             continue
+        if "range" in p and p["range"] != "proposed":
+            problems.append(f"{name}: range is \"proposed\" (a range an import proposed, "
+                            f"to review) or absent")
         lo, hi, step, default = p.get("min"), p.get("max"), p.get("step"), p.get("default")
         if not all(_number(v) for v in (lo, hi, step, default)):
             problems.append(f"{name}: min, max, step and default must be numbers")

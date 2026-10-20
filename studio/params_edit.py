@@ -23,6 +23,8 @@ server's side, without the engine.
   so a change and its Undo leave the list byte for byte as it was.
 * The agent-access grid is a block of ``pack.yaml``; :func:`set_access`
   rewrites one agent's line in the block's own alignment.
+* A new configurator (an import, MAS-blueprint P6f) gets whole new lists
+  (:func:`fresh_list`): a heading per group, an entry per parameter.
 """
 
 from __future__ import annotations
@@ -38,8 +40,9 @@ from decimal import Decimal
 from pathlib import Path
 
 # A number's keys; a choice's and an on/off parameter's are the same less
-# min / max / step, a choice with "choices" (MAS-blueprint P6d).
-PARAM_KEYS = ("name", "type", "min", "max", "step", "choices", "default", "group",
+# min / max / step, a choice with "choices" (MAS-blueprint P6d).  A number's
+# "range": "proposed" marks a range an import proposed (P6f).
+PARAM_KEYS = ("name", "type", "min", "max", "step", "range", "choices", "default", "group",
               "label", "unit", "db_unit", "db_description", "used_when")
 GROUP_KEYS = ("id", "label", "image", "image_alt", "order")
 LIST_SLOT = "parameter_list"
@@ -277,13 +280,18 @@ def used_when_text(p: dict) -> str:
 _WHEN_RE = re.compile(r"\s*\(only when .*\)\s*$")
 
 
+def _paren(p: dict) -> str:
+    """An entry's parenthesis: ``(mm)``, ``(integer)``, ``(choice)``, ``(unitless)``."""
+    parts = (([p["unit"]] if p.get("unit") else [])
+             + (["integer"] if p["type"] == "int" else [_TYPE_WORDS[p["type"]]] if _typed(p) else []))
+    return "(" + (", ".join(parts) if parts else "unitless") + ")"
+
+
 def fresh_entry(p: dict, cols, desc: str | None = None) -> list[str]:
     """A new parameter's entry, in the list's own columns and shape
     (renumbered later); *desc* in place of its database description."""
     typed = _typed(p)
-    parts = (([p["unit"]] if p.get("unit") else [])
-             + (["integer"] if p["type"] == "int" else [_TYPE_WORDS[p["type"]]] if typed else []))
-    paren = "(" + (", ".join(parts) if parts else "unitless") + ")"
+    paren = _paren(p)
     desc = desc or p.get("db_description") or p.get("label") or p["name"]
     rng = values_text(p) if typed else f"[{num(p['min'])}; {num(p['max'])}]"
     sep = ": " if typed else " "
@@ -445,6 +453,30 @@ def update_list(text: str, new: dict, renames: dict | None = None,
         out.append(str(n).rjust(len(field)) + first[m.end(2):])
         out += it[2][1:]
     return "\n".join(out)
+
+
+def fresh_list(spec: dict, text: str) -> str:
+    """A whole new parameter list for *spec* (a new configurator, P6f), in
+    the shape of the list *text* (with or without a "— description"): a
+    ``### <group>`` heading where the group changes, an entry per
+    parameter in the file's order, numbered, its columns as wide as the
+    longest name and parenthesis need."""
+    lines = text.split("\n")
+    cols = _columns(lines, parse_entries(lines))
+    ps = spec["parameters"]
+    width = max(2, len(str(len(ps))))
+    c_name = width + 2
+    c_paren = c_name + max(len(p["name"]) for p in ps) + 2
+    c_next = c_paren + max(len(_paren(p)) for p in ps) + 2
+    labels = {g["id"]: g["label"] for g in spec["groups"]}
+    out, group = [], None
+    for n, p in enumerate(ps, start=1):
+        if p["group"] != group:
+            group = p["group"]
+            out += ([""] if out else []) + [f"### {labels.get(group, group)}"]
+        entry = fresh_entry(p, (c_name, c_paren, c_next, cols[3] if cols else True))
+        out += [str(n).rjust(width) + entry[0][width:]] + entry[1:]
+    return "\n".join(out) + ("\n" if text.endswith("\n") else "")
 
 
 def compose_renames(since_opened: dict, renames: dict) -> dict:
@@ -617,12 +649,14 @@ def from_csv(text: str, spec: dict) -> tuple[dict, list[str]]:
         if p is not None:
             old_group = p["group"]
             was_typed = _typed(p)
+            if any(k in vals and vals[k] != p.get(k) for k in ("min", "max")):
+                p.pop("range", None)        # the owner's range now, not a proposed one
             p.update(vals)
             if _typed(p) or was_typed:
                 # The keys of its type (a choice and an on/off parameter
                 # have no range; a number has no choices) and a default
                 # that fits it.
-                for k in (("min", "max", "step") if _typed(p) else ()) + (
+                for k in (("min", "max", "step", "range") if _typed(p) else ()) + (
                         ("choices",) if p["type"] != "choice" else ()):
                     p.pop(k, None)
                 if "default" not in vals:

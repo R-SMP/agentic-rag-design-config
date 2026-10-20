@@ -1196,9 +1196,9 @@ def check_params(st: Studio, copy: Path) -> str:
     _same("after the refused saves")
     # The page checks a file exactly as the engine does (Node runs the page's own code),
     # choice and on/off parameters too (MAS-blueprint P6d).
-    from smoke_test_parameters import TYPED_SPEC, typed_bad_specs
+    from smoke_test_parameters import PROPOSED_SPEC, TYPED_SPEC, typed_bad_specs
     odd = [{"groups": [], "parameters": []}, [], {"groups": [], "parameters": [{}], "x": 1}]
-    typed = [TYPED_SPEC] + typed_bad_specs()
+    typed = [TYPED_SPEC, PROPOSED_SPEC] + typed_bad_specs()
     js = _js_validate([spec] + bad_specs + odd + typed)
     if js is not None:
         check(len(js) == 1 + len(bad_specs) + len(odd) + len(typed), "[PARAMS] the page checked fewer files than it was given")
