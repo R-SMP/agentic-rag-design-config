@@ -11,7 +11,8 @@
    its sections, linked from the toolbar and the landing page) do not.  A wrong code sets no
    cookie; the right one does, and with it the Studio answers; a cookie with
    a changed signature, or older than 30 days, does not open it.
-4. ONLINE: the setup says so (the configurator's address, Start again
+4. ONLINE: the setup says so (the configurator's address and name -- the
+   example's -- also before the code, for the access-code page; Start again
    offered); Prepare for GitHub is unavailable with its online reason;
    Start again refuses without the word replace, and with it brings the
    example back byte for byte, nothing listed as changed.
@@ -164,6 +165,10 @@ def check_online(tmp: Path) -> str:
         check(status == 200 and body.get("online") is True, f"[GATE] the health answer: {status} {body}")
         _s, _h, body = st.req("/api/session", [])
         check(body.get("online") is True and body.get("authed") is False, f"[GATE] session: {body}")
+        check(body.get("configurator") == {"url": "https://example.invalid/app", "name": "propeller"},
+              f"[ONLINE] the configurator's link before the code: {body.get('configurator')}")
+        check("configuratorLink()" in js.split("function renderLogin", 1)[1].split("\n  function ", 1)[0],
+              "[ONLINE] the access-code page does not offer the configurator")
         status, headers, body = st.req("/api/auth", ["not the code"])
         check(status == 401 and "set-cookie" not in {k.lower() for k in headers},
               f"[GATE] a wrong code: {status} {headers.get('set-cookie')}")
@@ -187,9 +192,10 @@ def check_online(tmp: Path) -> str:
         check(st.req("/api/session", [], old.token())[2].get("authed") is True,
               "[GATE] a cookie signed with STUDIO_SECRET does not open it")
         # online
-        check(d.get("online") is True and d.get("configurator_url") == "https://example.invalid/app"
+        check(d.get("online") is True
+              and d.get("configurator") == {"url": "https://example.invalid/app", "name": "propeller"}
               and d.get("can_reset") is True, f"[ONLINE] the setup's data: {d.get('online')} "
-                                              f"{d.get('configurator_url')} {d.get('can_reset')}")
+                                              f"{d.get('configurator')} {d.get('can_reset')}")
         check(d.get("prepare", {}).get("available") is False and "Online" in (d["prepare"].get("why") or ""),
               f"[ONLINE] Prepare for GitHub: {d.get('prepare')}")
         status, _h, body = st.req("/download/package", None, cookie)
@@ -232,7 +238,8 @@ def check_local(tmp: Path) -> str:
     st = Studio(["--pack", str(copy)], _env(INVITE_CODE=CODE))
     try:
         _s, _h, body = st.req("/api/session", [])
-        check(body.get("online") is False and body.get("authed") is True, f"[LOCAL] session: {body}")
+        check(body.get("online") is False and body.get("authed") is True
+              and body.get("configurator") is None, f"[LOCAL] session: {body}")
         check(st.req("/api/config")[0] == 200, "[LOCAL] no health answer")
     finally:
         st.stop()

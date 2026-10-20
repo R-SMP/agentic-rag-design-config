@@ -20,7 +20,7 @@ the same Docker image as the configurator, as a service of its own.
    | Variable | Needed | What it is |
    |---|---|---|
    | `INVITE_CODE` | yes | The Studio's access code, its own (not the configurator's).  Without it the Studio does not start. |
-   | `CONFIGURATOR_URL` | no | The configurator's address, linked from the landing page. |
+   | `CONFIGURATOR_URL` | no | The configurator's address (e.g. the live propeller app), linked from the access-code page and the landing page. |
    | `STUDIO_SECRET` | no | Signs the browsers' access cookies; without it each start makes a new one and everyone types the code again. |
 
    No LLM, database or storage key: the Studio needs none, and must hold

@@ -468,15 +468,30 @@ def prompt_diff(before: str, after: str) -> list[list[str]]:
     return out
 
 
+def _configurator(url: str | None, example_dir: Path | None) -> dict | None:
+    """The configurator the Studio links to: ``{url, name}`` -- the name is
+    the example setup's (the live configurator runs it: "propeller"), None
+    when the example does not say it in one file -- or None without a URL."""
+    if not url:
+        return None
+    name = None
+    if example_dir is not None:
+        f = example_dir / "fragments" / "dc" / "dc_name.md"
+        if f.is_file():
+            name = f.read_text(encoding="utf-8").strip() or None
+    return {"url": url, "name": name}
+
+
 def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                access_code: str | None = None, example_dir: Path | None = None,
                configurator_url: str | None = None) -> FastAPI:
     """The Studio for the setup in *pack_dir*.  *online*: behind
     *access_code* (required), with ``reset_to_example`` from *example_dir*
     and a link to the configurator at *configurator_url* on the landing
-    page."""
+    page -- and on the access-code page, before the code."""
     if online and not access_code:
         raise ValueError("the online Studio needs an access code")
+    configurator = _configurator(configurator_url, example_dir)
     access = Access(access_code, (os.getenv("STUDIO_SECRET") or "").encode("utf-8") or None) if online else None
     view = PackView(pack_dir)
     pool = WorkerPool(pack_dir, size=workers)
@@ -509,7 +524,7 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                                  "params_edit": params.state(data),
                                  "tools_edit": tools.state(data),
                                  "prepare": {"available": prepare_why is None, "why": prepare_why},
-                                 "online": online, "configurator_url": configurator_url,
+                                 "online": online, "configurator": configurator,
                                  "can_reset": example_dir is not None}
         return changed_cache[fp]
 
@@ -568,8 +583,10 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
 
     @app.post("/api/session")
     async def session(request: Request):
+        # The configurator's link too: the access-code page offers it.
         return _ok(online=online, authed=access is None
-                   or access.valid(request.cookies.get(ACCESS_COOKIE)))
+                   or access.valid(request.cookies.get(ACCESS_COOKIE)),
+                   configurator=configurator)
 
     @app.post("/api/auth")
     async def auth(request: Request):

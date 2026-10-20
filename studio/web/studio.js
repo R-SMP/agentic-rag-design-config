@@ -214,13 +214,21 @@
         h('button', { 'class': 'primary', onclick: function () { go('studio', 'identity'); } }, 'Open the Studio →'),
         h('button', { onclick: askOpen }, 'Import a setup…'),
         D.can_reset ? h('button', { onclick: askReset }, 'Start again from the ' + D.pack.name + ' example…') : null,
-        D.configurator_url ? h('a', { 'class': 'btn', href: D.configurator_url, target: '_blank', rel: 'noopener' }, 'Use the ' + D.pack.name + ' configurator ↗') : null,
+        configuratorLink(),
         h('a', { 'class': 'btn', href: '/static/guide.html', target: '_blank', rel: 'noopener' }, 'Getting started (the guide) ↗')
       ]),
       SESSION.online ? h('p', { 'class': 'note' }, 'This is one shared setup: everyone with the access code sees and changes the same one. ' +
         'It is not kept when the Studio restarts or is deployed again — use Download setup file to keep your work, and Import a setup to bring it back.') : null
     ]);
     app.appendChild(p);
+  }
+  // The configurator the Studio is deployed beside (CONFIGURATOR_URL): its
+  // link on the landing page and on the access-code page.
+  function configuratorLink() {
+    var c = SESSION.configurator || (D && D.configurator);
+    if (!c || !c.url) return null;
+    return h('a', { 'class': 'btn', href: c.url, target: '_blank', rel: 'noopener' },
+      'Use the ' + (c.name ? c.name + ' ' : '') + 'configurator ↗');
   }
   function renderLogin(app, msg) {
     var input = h('input', { type: 'password', autocomplete: 'current-password', placeholder: 'access code' });
@@ -239,7 +247,8 @@
       h('h1', null, 'MAS Studio'),
       h('p', { 'class': 'sub' }, 'Type the access code to open the online Studio. This browser remembers it.'),
       h('div', { 'class': 'actions row' }, [input, h('button', { 'class': 'primary', onclick: send }, 'Open')]),
-      out]));
+      out,
+      configuratorLink() ? h('div', { 'class': 'actions' }, [h('span', { 'class': 'muted' }, 'Or, without the Studio:'), configuratorLink()]) : null]));
     input.focus();
   }
   function askReset() {
