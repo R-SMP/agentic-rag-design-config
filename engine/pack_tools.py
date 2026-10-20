@@ -108,7 +108,9 @@ _SECRET_KEYS = {"env", "required", "description"}
 _TOP_KEYS = {"name", "display_name", "kind", "roles", "description", "build",
              "render", "entrypoint", "args", "outputs", "switch", "settings",
              "list_order", "prompt_slots", "fill_on_save", "image_note",
-             "runtime_blocks", "secrets"}
+             "runtime_blocks", "secrets",
+             # a model the engine runs instead of code (engine/backends/)
+             "backend", "model", "parts", "fixed", "detail", "timeout"}
 _SETTING_KEYS = {"name", "type", "values", "default", "label", "description",
                  "tool_kind", "none"}
 _IMAGE_KEYS = {"view", "file", "order", "default_enabled", "label", "compression",
@@ -161,8 +163,12 @@ def _check_manifest(folder: Path, m) -> list[str]:
                      f"(the engine calls it, never an agent)")
     elif not isinstance(roles, list) or not roles or any(r not in ROLES for r in roles):
         p.append(f"{where}: roles must list some of {', '.join(ROLES)}")
+    backend = "backend" in m
+    if backend:
+        from engine import backends
+        p += backends.check(folder, m, where)
     if m.get("kind") == "generator":
-        for k in ("build", "render"):
+        for k in () if backend else ("build", "render"):
             if not _REF_RE.match(str(m.get(k, ""))):
                 p.append(f"{where}: {k} must be '<module>.py:<function>'")
         args = m.get("args") or {}
@@ -177,7 +183,7 @@ def _check_manifest(folder: Path, m) -> list[str]:
                      f"{', '.join(MODEL_FORMATS)}, the model file's extension")
         if out.get("up_axis", "y") not in UP_AXES:
             p.append(f"{where}: outputs.up_axis is one of {', '.join(UP_AXES)}")
-    elif m.get("kind") in ("helper", GEOMETRY):
+    elif m.get("kind") in ("helper", GEOMETRY) and not backend:
         if not _REF_RE.match(str(m.get("entrypoint", ""))):
             p.append(f"{where}: entrypoint must be '<module>.py:<function>'")
     outputs = m.get("outputs") or {}
@@ -383,6 +389,7 @@ def _read_manifests() -> dict[str, dict]:
     problems += _check_tool_texts(out)
     problems += _check_geometry(out)
     problems += _check_outputs(out)
+    problems += _check_backends(out)
     if problems:
         raise PackToolError("\n".join(problems))
     return out
@@ -450,6 +457,21 @@ def _check_outputs(found: dict[str, dict]) -> list[str]:
                 p.append(f"{name}/tool.yaml: the model file {f!r} is already {models[f]}'s")
             else:
                 models[f] = name
+    return p
+
+
+def _check_backends(found: dict[str, dict]) -> list[str]:
+    """A backend tool's ``parts`` name parameters of ``parameters.json``."""
+    from engine import backends
+    p: list[str] = []
+    try:
+        names = set(_parameters.names())
+    except _parameters.ParameterSpecError:
+        return p                     # the parameter check reports it
+    for name, m in found.items():
+        if isinstance(m, dict) and "backend" in m:
+            for x in sorted(backends.parameter_names(m) - names):
+                p.append(f"{name}/tool.yaml: parts names {x!r}, which is not a parameter")
     return p
 
 
@@ -928,6 +950,18 @@ def _model_word() -> str:
     return _pack.read("output_model", _pack.REFERENCE_TOPOLOGY)
 
 
+def _step(name: str, step: str):
+    """A generator's ``build`` / ``render``, or a geometry tool's
+    ``make_model``: its own code, or -- a ``backend`` tool -- the engine's
+    run of its model (engine/backends/)."""
+    m = manifest(name)
+    if "backend" in m:
+        from engine import backends
+        folder = tools_dir() / name
+        return lambda arg: getattr(backends, step)(folder, m, arg)
+    return plugin(name).function(m["entrypoint" if step == "make_model" else step])
+
+
 def make_model(params: dict, order: list[str]) -> MadeModel:
     """The model built from *params* by the first geometry tool of *order*
     that succeeds (each failure is logged).  Raises ToolError: one tool's
@@ -936,7 +970,7 @@ def make_model(params: dict, order: list[str]) -> MadeModel:
     for name in order:
         m = manifest(name)
         try:
-            result = plugin(name).function(m["entrypoint"])(dict(params))
+            result = _step(name, "make_model")(dict(params))
         except ToolError as exc:
             logger.warning("Geometry tool %r failed: %s", name, exc)
             errors.append(exc)
@@ -986,7 +1020,6 @@ def run_generator(name: str, parameters_path: str) -> str:
     inp, err = generator_input(name, parameters_path)
     if err is not None:
         return err
-    m, p = manifest(name), plugin(name)
     if inp.model_path.is_file():
         # Append-only: an attempt's model is never overwritten.
         summary = (
@@ -996,12 +1029,12 @@ def run_generator(name: str, parameters_path: str) -> str:
         )
     else:
         try:
-            summary = p.function(m["build"])(inp).summary
+            summary = _step(name, "build")(inp).summary
         except ToolError as exc:
             msg = str(exc)
             return msg if _ERROR_LABEL_RE.match(msg) else f"Error: {msg}"
     try:
-        report = p.function(m["render"])(inp).report
+        report = _step(name, "render")(inp).report
     except Exception as exc:  # noqa: BLE001 — a render error must not lose the model
         report = f"Render step failed: {exc}"
     return f"{summary}\n\n{report}"
@@ -1015,7 +1048,7 @@ def render_existing(name: str, attempt_dir) -> str:
     inp = GeneratorInput(params={}, attempt_dir=folder,
                          model_path=folder / manifest(name)["outputs"]["model_file"],
                          settings=settings(name))
-    return plugin(name).function(manifest(name)["render"])(inp).report
+    return _step(name, "render")(inp).report
 
 
 # ---------------------------------------------------------------------------

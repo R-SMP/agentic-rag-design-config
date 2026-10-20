@@ -82,8 +82,9 @@ deploys the new version.</p>
 
 <h2>6. What it cannot do yet</h2>
 <ul>
-<li>A tool is Python code.  The Studio does not yet connect an OpenSCAD model, a Grasshopper definition on a compute
-server, a Node script or a web service by itself, nor turn a CAD file into a tool.</li>
+<li>A tool is Python code, or an OpenSCAD model the engine runs (written into a tool's <code>tool.yaml</code> by hand:
+<code>backend: openscad</code>).  The Studio does not yet turn a CAD file into a tool, nor connect a Grasshopper
+definition on a compute server, a Node script or a web service by itself.</li>
 <li>Online, the shared setup is not kept across a restart.</li>
 </ul>
 </main>

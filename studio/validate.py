@@ -93,6 +93,7 @@ _MARKER_LEFT_RE = re.compile(r"<</?(?:IF|IFNOT):[^<>\n]*>>")
 _FLAG_RE = re.compile(r"<<(IF|IFNOT):([^<>]+)>>")
 # What a tool run that failed for want of something on this computer says.
 _LACKS = (
+    (re.compile(r"OpenSCAD was not found"), "the program OpenSCAD"),
     (re.compile(r"No module named '([A-Za-z0-9_]+)"), "the Python package {}"),
     (re.compile(r"Cannot find (?:module|package) '([^']+)'"), "the Node package {}"),
     (re.compile(r"ERR_MODULE_NOT_FOUND"), "a Node package (node_modules)"),

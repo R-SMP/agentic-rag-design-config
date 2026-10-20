@@ -3,7 +3,7 @@ shared pyrender pipeline for the visual renders.
 
 Exposes :func:`render_and_check_pv` — the render+check step that the merged
 ``generate_and_render_propeller`` tool runs after a successful geometry
-build.  Mirrors the contract of :func:`render_mesh.render_and_check`
+build.  Mirrors the contract of :func:`mesh_render.render_and_check`
 (the trimesh-metrics backend): same arguments, same three render filenames,
 same attempt-folder integrity rules, same ``set_mesh_checks`` toggle.  Only
 the deterministic-checks library differs here — the visual renders go through
@@ -21,7 +21,7 @@ import pyvista as pv
 import trimesh
 
 import config
-from .render_mesh import _render_mesh_views
+from engine.mesh_render import _render_mesh_views
 
 # Module-level toggle: when False the deterministic quality checks
 # (watertight, volume, degenerate faces) are skipped.  Visual rendering
@@ -110,7 +110,7 @@ def _load_polydata(mesh_path: Path) -> pv.PolyData:
 def _load_trimesh_for_render(mesh_path: Path) -> "trimesh.Trimesh":
     """Re-load *mesh_path* via trimesh so the shared pyrender pipeline
     can render it.  Mirrors the loader logic in
-    ``render_mesh.py`` (Scene → concatenated mesh)."""
+    ``mesh_render.py`` (Scene → concatenated mesh)."""
     loaded = trimesh.load(str(mesh_path))
     if isinstance(loaded, trimesh.Scene):
         geometries = list(loaded.geometry.values())

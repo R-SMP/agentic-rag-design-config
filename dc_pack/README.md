@@ -139,6 +139,18 @@ index in `prompts.py` are derived from the registry.
   `downloads.geometry_tool` in `pack.yaml` which one rebuilds a download.
   The propeller's are `feg_geometry` (FEG) and `rhino_geometry`
   (RhinoCompute).
+* **A model instead of code** — a generator or a geometry tool may say
+  `backend: openscad` and name an OpenSCAD file in its folder (`model:`);
+  the engine runs it (`engine/backends/openscad.py`): every parameter goes
+  to OpenSCAD as the model's own setting of that name, `parts` puts a
+  setting together from parameters (`End1_Diameter: [End1_Diameter_mm, 0]`),
+  `fixed` gives settings the agents never change, `detail` the settings of
+  an agent's run and of a download (a generator builds at `agent`, a
+  geometry tool at `download`), `timeout` its limit in seconds.  The STL
+  becomes the OBJ model file; a generator's pictures are the engine's
+  renderer's (`render_isometric` / `_top` / `_side`).  OpenSCAD is
+  `OPENSCAD_PATH`, else `openscad` on the PATH; a downloaded package
+  installs Debian's `openscad` in its image.
 * **Images** — `outputs.images`, one entry per view, under one contract that
   `engine/pack_tools.py` checks when the pack loads:
   * an image of view `V` is the PNG `render_<V>.png`, written into the

@@ -1,9 +1,11 @@
 """Visual rendering and mesh quality-checking core (trimesh backend).
 
-Exposes :func:`render_and_check` — the render+check step that the merged
-``generate_and_render_propeller`` tool runs after a successful geometry
-build.  ``tools/__init__`` wires it as the active backend when the trimesh
-render library is selected.
+Exposes :func:`render_and_check` — the render+check step a generator runs
+after a successful geometry build: the propeller's
+``generate_and_render_propeller`` (its ``render_library`` setting chooses
+this core or ``mesh_render_pyvista``) and every generator an engine backend
+runs (``engine/backends/``).  The engine's since MAS-blueprint P6e; it was
+the propeller tool's ``render_mesh.py``.
 """
 
 from pathlib import Path

@@ -6,8 +6,8 @@ Two render modes:
   * default (LOCAL, no Docker): a self-contained PIL software rasteriser —
     flat-shaded, depth-sorted, 3 views (isometric/top/side).  Approximate
     style; runs anywhere PIL + Node are available.  Files: preview_*.png
-  * --render-mesh (FAITHFUL): the REAL agent pipeline (the generator's
-    render_mesh.py, pyrender, 800x600, 3 views).  Run this INSIDE the app container (it needs
+  * --render-mesh (FAITHFUL): the REAL agent pipeline (the engine's
+    mesh_render.py, pyrender, 800x600, 3 views).  Run this INSIDE the app container (it needs
     pyrender + OSMesa).  Files: render_*.png
 
 Requires Node (host) for geometry generation unless you pass an existing --obj.
@@ -45,7 +45,7 @@ DEFAULT_PARAMS = {
     "outerChord": 20, "outerAngle": 15,
 }
 
-# (name, eye-direction-from-centre, up) — identical to the generator's render_mesh.py.
+# (name, eye-direction-from-centre, up) — identical to the engine's mesh_render.py.
 VIEWS = [
     ("isometric", (1.0, 1.0, 0.7), (0.0, 0.0, 1.0)),
     ("top",       (0.0, 0.0, 1.0), (0.0, 1.0, 0.0)),
@@ -129,16 +129,15 @@ def software_render(obj, out_dir, prefix="preview", W=800, H=600):
 
 
 def rendermesh_render(obj, out_dir):
-    """Faithful render via the real render_mesh pipeline (run in the container).
+    """Faithful render via the real render pipeline (run in the container).
 
-    render_mesh.py is the propeller generator's render core, in the pack
-    (dc_pack/tools/generate_and_render_propeller/).  The pack loader imports
-    just that module -- no agent stack -- with the repo root on sys.path for
+    engine/mesh_render.py is the generators' render core (the propeller
+    generator's render_mesh.py until MAS-blueprint P6e).  Only that module is
+    imported -- no agent stack -- with the repo root on sys.path for
     ``config``.  The render code itself is reused verbatim.
     """
     sys.path.insert(0, str(ROOT))
-    from engine import pack_tools
-    rm = pack_tools.plugin(pack_tools.generators()[0]).submodule("render_mesh")
+    from engine import mesh_render as rm
 
     import trimesh
     loaded = trimesh.load(str(obj))

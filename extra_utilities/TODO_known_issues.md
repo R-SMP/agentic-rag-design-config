@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F123**.
+branches (F36 is taken on a sibling branch).  Next free id: **F125**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -135,6 +135,8 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F120` | OPEN | The online Studio's shared setup does not survive a restart |
 | `F121` | OPEN | Agent prompts still say every parameter value is a number |
 | `F122` | OPEN | The Studio inside the configurator's deploy runs tool code beside the app's keys |
+| `F123` | OPEN | A deploy image with a newer OpenSCAD (Debian's 2021.01 cannot read the hose adapter) |
+| `F124` | OPEN | More engine backends: RhinoCompute, Node, HTTP |
 
 ---
 
@@ -4868,3 +4870,29 @@ keys removed from their environment (`studio/tools_edit.run_tool_test`,
 `DATABASE_URL`); (2) for real separation, run them as another user or in a
 sandbox, since a process can still read its parent's environment; or (3)
 deploy the Studio on its own (`python -m studio --online`, no keys).
+
+### F123. A deploy image with a newer OpenSCAD (Debian's 2021.01 cannot read the hose adapter)
+
+**Status.** OPEN — found 2026-10-20, during MAS-blueprint P6e.
+
+A setup whose tool says `backend: openscad` gets Debian's `openscad`
+package in its Docker image (`studio/package.py` `merge_apt`).  That is
+OpenSCAD 2021.01, and it cannot even read the vacuum hose adapter
+(`combined/vacuum-hose-adapter.scad`): "Parser error: syntax error ... line
+4957", a trailing comma in a call that newer OpenSCAD accepts.  The 2026
+development snapshot builds it in about two seconds.  The fix: install a
+newer OpenSCAD in the image -- the official AppImage or a nightly `.deb`
+(openscad.org/downloads.html) -- when a setup runs OpenSCAD, and check it
+with the setup's own model.  Until then such a setup runs on a computer
+with a newer OpenSCAD (`OPENSCAD_PATH`).
+
+### F124. More engine backends: RhinoCompute, Node, HTTP
+
+**Status.** OPEN — owner decision (2026-10-20): OpenSCAD first.
+
+P6e built the mechanism (`backend:` in a tool's `tool.yaml`,
+`engine/backends/`) with one backend, OpenSCAD.  The proposal also names
+`rhinocompute` (a Grasshopper definition on a compute server), `node` (a
+script) and `http` (a web service), declared the same way, with no code per
+tool.  The propeller's `rhino_geometry` and `feg_geometry` stay Python
+tools until then.

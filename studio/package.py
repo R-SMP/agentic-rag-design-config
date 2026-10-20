@@ -280,7 +280,8 @@ def merge_requirements(engine_text: str, setup: dict[str, Path]) -> tuple[str, l
 def merge_apt(dockerfile: str, setup: dict[str, Path]) -> tuple[str, list[str]]:
     """The ``Dockerfile`` with each tool's own ``tools/<tool>/apt.txt``
     packages added to its apt-get line, after :data:`APT_MARK` (a part merged
-    before is replaced)."""
+    before is replaced) -- and ``openscad`` for a tool the engine runs with
+    OpenSCAD (``backend: openscad``, MAS-blueprint P6e)."""
     eol = "\r\n" if "\r\n" in dockerfile else "\n"
     lines = dockerfile.split(eol)
     if APT_MARK in lines:
@@ -290,6 +291,18 @@ def merge_apt(dockerfile: str, setup: dict[str, Path]) -> tuple[str, list[str]]:
     want, notes = [], []
     for rel, path in sorted(setup.items()):
         parts = rel.split("/")
+        if len(parts) == 3 and parts[0] == "tools" and parts[2] == "tool.yaml":
+            try:
+                m = yaml.safe_load(path.read_bytes().decode("utf-8")) or {}
+            except (yaml.YAMLError, UnicodeDecodeError):
+                continue
+            if isinstance(m, dict) and m.get("backend") == "openscad":
+                if "openscad" not in want and not re.search(r"^\s+openscad \\$", dockerfile, re.M):
+                    want.append("openscad")
+                notes.append(f"{parts[1]}: runs OpenSCAD, so the image installs Debian's openscad "
+                             f"package (2021.01): a model written for a newer OpenSCAD does not "
+                             f"build there")
+            continue
         if len(parts) != 3 or parts[0] != "tools" or parts[2] != "apt.txt":
             continue
         for ln in _lines(path.read_bytes()):

@@ -100,10 +100,10 @@ def render_and_check(mesh_path: str, output_dir: str, settings: dict) -> str:
     """The render+check core chosen by the ``render_library`` setting, with
     the quality checks switched by ``mesh_checks``."""
     if settings["render_library"] == "pyvista":
-        from . import render_mesh_pyvista as core
+        from engine import mesh_render_pyvista as core
         run = core.render_and_check_pv
     else:
-        from . import render_mesh as core
+        from engine import mesh_render as core
         run = core.render_and_check
     core.set_mesh_checks(bool(settings["mesh_checks"]))
     return run(mesh_path, output_dir)

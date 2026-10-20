@@ -45,6 +45,11 @@ Three kinds of tool:
   model in the format its manifest declares (``outputs.model_format``, the
   generator's), and raises :class:`ToolError` when it cannot.
 
+A generator or a geometry tool may instead name a model file the engine
+runs, with no code of its own: ``backend: openscad`` (``engine/backends/``,
+MAS-blueprint P6e).  Its pictures come from the engine's renderer
+(``engine/mesh_render.py``).
+
 A tool that makes images of an attempt follows the image contract in
 ``dc_pack/README.md`` ("What the engine reads from a tool's outputs").
 
