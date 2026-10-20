@@ -14,7 +14,11 @@ server's side, without the engine.
   changed name or ``[min; max]`` is rewritten in place, a removed
   parameter's entry goes, a new one gets an entry in the list's own
   columns, the entries follow the file's order and are renumbered.  Each
-  list's own wording is kept.  An entry whose parameter is back as it was
+  list's own wording is kept.  A choice or on/off parameter's entry ends
+  with its values (``: hose = Hose connector | mag = Magnetic flange``,
+  ``: true | false``) and any parameter's with its ``(only when ...)``
+  (MAS-blueprint P6d); an entry whose values or type change is written
+  again in the list's shape, its own description kept.  An entry whose parameter is back as it was
   when the Studio opened gets its OPENED lines back, at its opened place,
   so a change and its Undo leave the list byte for byte as it was.
 * The agent-access grid is a block of ``pack.yaml``; :func:`set_access`
@@ -33,8 +37,10 @@ import threading
 from decimal import Decimal
 from pathlib import Path
 
-PARAM_KEYS = ("name", "type", "min", "max", "step", "default", "group",
-              "label", "unit", "db_unit", "db_description")
+# A number's keys; a choice's and an on/off parameter's are the same less
+# min / max / step, a choice with "choices" (MAS-blueprint P6d).
+PARAM_KEYS = ("name", "type", "min", "max", "step", "choices", "default", "group",
+              "label", "unit", "db_unit", "db_description", "used_when")
 GROUP_KEYS = ("id", "label", "image", "image_alt", "order")
 LIST_SLOT = "parameter_list"
 
@@ -147,8 +153,10 @@ def changes(cur: dict, new: dict, renames: dict) -> dict:
 
 
 def range_changes(cur: dict, new: dict, renames: dict) -> bool:
-    """Names, types or ranges changed: the database needs a new schema."""
-    key = (lambda s: [(p["name"], p["type"], p["min"], p["max"]) for p in s["parameters"]])
+    """Names, types, ranges or a choice's values changed: the database needs
+    a new schema."""
+    key = (lambda s: [(p["name"], p["type"], p.get("min"), p.get("max"),
+                       [c.get("value") for c in p.get("choices") or []]) for p in s["parameters"]])
     return key(cur) != key(new) or bool(renames)
 
 
@@ -233,20 +241,100 @@ def _columns(lines: list[str], entries) -> tuple[int, int, int, bool] | None:
     return None
 
 
-def fresh_entry(p: dict, cols) -> list[str]:
+# The words of a choice's or an on/off parameter's entry -- engine/parameters.py
+# values_text / used_when_text, word for word (smoke_test_studio compares
+# them); the Studio's server does not load the engine.
+_TYPE_WORDS = {"choice": "choice", "bool": "on/off"}
+
+
+def _typed(p: dict) -> bool:
+    return p.get("type") in _TYPE_WORDS
+
+
+def _shown(v) -> str:
+    return json.dumps(v) if isinstance(v, bool) else str(v)
+
+
+def values_text(p: dict) -> str:
+    """``hose = Hose connector | mag = Magnetic flange``, ``true | false``, or ""."""
+    if p.get("type") == "choice":
+        return " | ".join(f"{_shown(c['value'])} = {c['label']}" for c in p["choices"])
+    if p.get("type") == "bool":
+        return "true | false"
+    return ""
+
+
+def used_when_text(p: dict) -> str:
+    """`` (only when End1_Style = mag or flange, and Barbs = true)``, or ""."""
+    uw = p.get("used_when") or {}
+    if not uw:
+        return ""
+    parts = [f"{other} = " + " or ".join(_shown(w) for w in (want if isinstance(want, list) else [want]))
+             for other, want in uw.items()]
+    return " (only when " + ", and ".join(parts) + ")"
+
+
+_WHEN_RE = re.compile(r"\s*\(only when .*\)\s*$")
+
+
+def fresh_entry(p: dict, cols, desc: str | None = None) -> list[str]:
     """A new parameter's entry, in the list's own columns and shape
-    (renumbered later)."""
-    parts = ([p["unit"]] if p.get("unit") else []) + (["integer"] if p["type"] == "int" else [])
+    (renumbered later); *desc* in place of its database description."""
+    typed = _typed(p)
+    parts = (([p["unit"]] if p.get("unit") else [])
+             + (["integer"] if p["type"] == "int" else [_TYPE_WORDS[p["type"]]] if typed else []))
     paren = "(" + (", ".join(parts) if parts else "unitless") + ")"
-    desc = p.get("db_description") or p.get("label") or p["name"]
-    rng = f"[{num(p['min'])}; {num(p['max'])}]"
+    desc = desc or p.get("db_description") or p.get("label") or p["name"]
+    rng = values_text(p) if typed else f"[{num(p['min'])}; {num(p['max'])}]"
+    sep = ": " if typed else " "
+    when = used_when_text(p)
     if cols is None:
-        return [f" 1. {p['name']} {paren} — {desc} {rng}"]
+        return [f" 1. {p['name']} {paren} — {desc}{sep}{rng}{when}"]
     c_name, c_paren, c_next, described = cols
     head = " 1. ".rjust(c_name) if c_name >= 4 else " 1. "
     name = p["name"].ljust(c_paren - c_name) if len(p["name"]) < c_paren - c_name else p["name"] + " "
     paren = paren.ljust(c_next - c_paren) if len(paren) < c_next - c_paren else paren + " "
-    return [head + name + paren + (f"— {desc} {rng}" if described else rng)]
+    return [head + name + paren + (f"— {desc}{sep}{rng}" if described else rng) + when]
+
+
+def _description(lines: list[str]) -> str | None:
+    """The entry's own description: after its "—", before its range or its
+    values (and its "(only when ...)"); None in a list without them."""
+    flat = _WHEN_RE.sub("", " ".join(" ".join(lines).split()))
+    if "—" not in flat:
+        return None
+    desc = flat.split("—", 1)[1]
+    m = RANGE_RE.search(desc)
+    if m:
+        desc = desc[:m.start()]
+    elif " | " in desc:
+        desc = desc[:desc.index(" | ")].rpartition(": ")[0]
+    return desc.strip() or None
+
+
+def _set_when(lines: list[str], when: str) -> list[str]:
+    """The entry ending with *when* (``" (only when ...)"`` or nothing)."""
+    out = [_WHEN_RE.sub("", ln) for ln in lines]
+    if when:
+        out[-1] = out[-1].rstrip() + when
+    return out if out != lines else lines
+
+
+def fit(lines: list[str], p: dict, cols) -> list[str]:
+    """The entry *lines* made to say *p*.  A number keeps its lines, its
+    name and range rewritten in place (:func:`retarget`); a choice's or an
+    on/off parameter's keeps them while they hold its values, else it is
+    written again in the list's shape (:func:`fresh_entry`) with its own
+    description -- so is an entry whose parameter changes between a number
+    and a choice / on/off.  Either ends with its "(only when ...)"."""
+    flat = " ".join(" ".join(lines).split())
+    if _typed(p):
+        if RANGE_RE.search(_WHEN_RE.sub("", flat)) or " ".join(values_text(p).split()) not in flat:
+            return fresh_entry(p, cols, _description(lines))
+        return _set_when(retarget(lines, p["name"], None, None), used_when_text(p))
+    if not RANGE_RE.search(flat):
+        return fresh_entry(p, cols, _description(lines))
+    return _set_when(retarget(lines, p["name"], p["min"], p["max"]), used_when_text(p))
 
 
 def _lis(seq: list[int]) -> set[int]:
@@ -299,13 +387,13 @@ def update_list(text: str, new: dict, renames: dict | None = None,
         o = oblock.get(name)
         if o is not None:
             if cur is None:
-                return retarget(o, name, p["min"], p["max"])
+                return fit(o, p, cols)
             st = _entry_state(cur)
             if st[1] is not None and _plain(retarget(o, *st)) == _plain(cur):
-                return retarget(o, name, p["min"], p["max"])
+                return fit(o, p, cols)
         if cur is None:
             return fresh_entry(p, cols)
-        return retarget(cur, name, p["min"], p["max"])
+        return fit(cur, p, cols)
 
     # the list as items: a plain line, or an entry (by its NEW name)
     items: list = []
@@ -403,7 +491,11 @@ def list_diff(old: str, new: str) -> list[list[str]]:
 CSV_COLUMNS = {"name": "name", "type": "type", "min": "min", "max": "max", "step": "step",
                "default": "default", "unit": "unit", "label": "label", "group": "group",
                "description": "db_description", "db_description": "db_description",
-               "db_unit": "db_unit"}
+               "db_unit": "db_unit", "choices": "choices"}
+_CSV_TYPES = {"integer": "int", "int": "int", "float": "float", "number": "float",
+              "choice": "choice", "on/off": "bool", "onoff": "bool", "bool": "bool", "boolean": "bool"}
+_CSV_BOOLS = {"true": True, "on": True, "yes": True, "1": True,
+              "false": False, "off": False, "no": False, "0": False}
 
 
 def _csv_number(text: str):
@@ -411,12 +503,49 @@ def _csv_number(text: str):
     return int(v) if v.is_integer() else v
 
 
+def _csv_choices(text: str) -> list[dict]:
+    """``hose = Hose connector | mag = Magnetic flange`` (as the agents' lists
+    write them): ``[{value, label}]``; a value that reads as a number is one,
+    a choice without `` = `` is its own label."""
+    out = []
+    for item in (s.strip() for s in text.split("|")):
+        if not item:
+            continue
+        value, _sep, label = item.partition(" = ")
+        value = value.strip()
+        try:
+            value = _csv_number(value)
+        except ValueError:
+            pass
+        out.append({"value": value, "label": label.strip() or str(value)})
+    return out
+
+
+def _csv_default(text: str, kind: str, choices: list):
+    """(*text* as a default of a *kind* parameter, None) or (None, why not)."""
+    if kind == "bool":
+        b = _CSV_BOOLS.get(text.lower())
+        return (b, None) if b is not None else (None, "is not true or false")
+    if kind == "choice":
+        for c in choices:
+            if _shown(c["value"]) == text:
+                return c["value"], None
+        return None, "is not one of its choices"
+    try:
+        return _csv_number(text), None
+    except ValueError:
+        return None, "is not a number"
+
+
 def from_csv(text: str, spec: dict) -> tuple[dict, list[str]]:
     """*spec* with the CSV's rows laid over it, matched by name: the header
     names the columns (name, type, min, max, step, default, unit, label,
-    group, description -- and db_unit); only those columns change.  A new
-    name is added after the last parameter of its group.  Parameters the
-    CSV does not name stay.  Returns (new spec, problems)."""
+    group, description, choices -- and db_unit); only those columns change.
+    A choice's ``choices`` are written as the agents' lists write them
+    (``hose = Hose connector | mag = Magnetic flange``), its type ``choice``,
+    an on/off parameter's ``on/off``.  A new name is added after the last
+    parameter of its group.  Parameters the CSV does not name stay.
+    Returns (new spec, problems)."""
     problems: list[str] = []
     body = text.strip("﻿\r\n ")
     if not body:
@@ -428,7 +557,8 @@ def from_csv(text: str, spec: dict) -> tuple[dict, list[str]]:
     unknown = [h for h in header if h not in CSV_COLUMNS]
     if unknown:
         problems.append("Unknown column(s): " + ", ".join(unknown) + ".  The columns are: "
-                        "name, type, min, max, step, default, unit, label, group, description.")
+                        "name, type, min, max, step, default, unit, label, group, description, "
+                        "choices.")
     if "name" not in header:
         problems.append("The header has no \"name\" column.")
     if problems:
@@ -447,17 +577,22 @@ def from_csv(text: str, spec: dict) -> tuple[dict, list[str]]:
             problems.append(f"{where}: no name.")
             continue
         vals: dict = {}
+        default = None
         for k, v in cells.items():
             if v == "" and k not in ("unit", "db_unit"):
                 continue
-            if k in ("min", "max", "step", "default"):
+            if k in ("min", "max", "step"):
                 try:
                     vals[k] = _csv_number(v)
                 except ValueError:
                     problems.append(f"{where}: {k} {v!r} is not a number.")
+            elif k == "default":
+                default = v          # read below, by the parameter's type
             elif k == "type":
                 t = v.lower()
-                vals[k] = {"integer": "int", "int": "int", "float": "float", "number": "float"}.get(t, t)
+                vals[k] = _CSV_TYPES.get(t, t)
+            elif k == "choices":
+                vals[k] = _csv_choices(v)
             elif k == "group":
                 gid = v if v in groups else labels.get(v.lower())
                 if gid is None:
@@ -467,15 +602,54 @@ def from_csv(text: str, spec: dict) -> tuple[dict, list[str]]:
             else:
                 vals[k] = v
         p = by_name.get(name)
+        kind = vals.get("type", p["type"] if p is not None else "float")
+        choices = vals.get("choices") or (p or {}).get("choices") or []
+        if kind == "choice" and len(choices) < 2:
+            problems.append(f"{where}: a choice needs a \"choices\" column: "
+                            f"value = label | value = label.")
+            continue
+        if default is not None:
+            got, why = _csv_default(default, kind, choices)
+            if why:
+                problems.append(f"{where}: default {default!r} {why}.")
+            else:
+                vals["default"] = got
         if p is not None:
             old_group = p["group"]
+            was_typed = _typed(p)
             p.update(vals)
+            if _typed(p) or was_typed:
+                # The keys of its type (a choice and an on/off parameter
+                # have no range; a number has no choices) and a default
+                # that fits it.
+                for k in (("min", "max", "step") if _typed(p) else ()) + (
+                        ("choices",) if p["type"] != "choice" else ()):
+                    p.pop(k, None)
+                if "default" not in vals:
+                    p["default"] = (choices[0]["value"] if p["type"] == "choice" else False
+                                    if p["type"] == "bool" else p.get("min", 0))
+                if not _typed(p) and ("min" not in p or "max" not in p):
+                    problems.append(f"{where}: a number needs min and max.")
+                    continue
+                if not _typed(p):
+                    p.setdefault("step", 1)
             if p["group"] != old_group:
                 groups[old_group]["order"].remove(name)
                 groups[p["group"]]["order"].append(name)
             continue
         if "group" not in vals:
             problems.append(f"{where}: a new parameter needs a group.")
+            continue
+        if kind in ("choice", "bool"):
+            p = {"name": name, "type": kind, **({"choices": choices} if kind == "choice" else {}),
+                 "default": vals.get("default", choices[0]["value"] if kind == "choice" else False),
+                 "group": vals["group"], "label": vals.get("label", name), "unit": vals.get("unit", ""),
+                 "db_unit": vals.get("db_unit", vals.get("unit", "")),
+                 "db_description": vals.get("db_description", vals.get("label", name))}
+            last = max((i for i, q in enumerate(out["parameters"]) if q["group"] == p["group"]), default=None)
+            out["parameters"].insert(len(out["parameters"]) if last is None else last + 1, p)
+            groups[p["group"]]["order"].append(name)
+            by_name[name] = p
             continue
         if "min" not in vals or "max" not in vals:
             problems.append(f"{where}: a new parameter needs min and max.")

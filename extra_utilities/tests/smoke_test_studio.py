@@ -854,16 +854,23 @@ def check_edit(st: Studio, copy: Path) -> str:
 
 def _lists_agree(copy: Path, rels: list, spec: dict, what: str) -> bool:
     """Every parameter list names the file's parameters, in order, with its
-    ranges, numbered 1..n -- read by the drift check's own parser."""
-    from smoke_test_parameters import parse_parameter_list
-    want = [(p["name"], (float(p["min"]), float(p["max"]))) for p in spec["parameters"]]
+    ranges, numbered 1..n -- read by the drift check's own parser; a choice's
+    or an on/off parameter's entry holds its values, and any entry its
+    "(only when ...)" (engine/parameters.py entry_problem)."""
+    from engine import parameters as eparams
+    from smoke_test_parameters import parameter_entries, parse_parameter_list
+    want = [(p["name"], (float(p["min"]), float(p["max"])) if "min" in p else None) for p in spec["parameters"]]
+    by = {p["name"]: p for p in spec["parameters"]}
     ok = True
     for rel in rels:
-        got = parse_parameter_list((copy / rel).read_bytes().decode("utf-8"))
+        text = (copy / rel).read_bytes().decode("utf-8")
+        got = parse_parameter_list(text)
+        wrong = [(n, eparams.entry_problem(by[n], body)) for _, n, body in parameter_entries(text)
+                 if n in by and eparams.entry_problem(by[n], body)]
         good = ([n for n, _, _ in got] == list(range(1, len(got) + 1))
-                and [(nm, r) for _, nm, r in got] == want)
+                and [(nm, r) for _, nm, r in got] == want and not wrong)
         check(good, f"[PARAMS] {what}: {rel} is not in step with parameters.json "
-                    f"({[(nm, r) for _, nm, r in got][:3]}... vs {want[:3]}...)")
+                    f"({[(nm, r) for _, nm, r in got][:3]}... vs {want[:3]}...; {wrong[:2]})")
         ok = ok and good
     return ok
 
@@ -914,6 +921,11 @@ def check_params(st: Studio, copy: Path) -> str:
     raw = (copy / "parameters.json").read_bytes()
     check(PE.format_spec(json.loads(raw), PE.eol_of(raw)) == raw,
           "[PARAMS] the writer does not reproduce parameters.json byte for byte")
+    # A choice's / an on/off parameter's list words: the engine's, word for word.
+    from smoke_test_parameters import TYPED_SPEC
+    check(all(PE.values_text(p) == eparams.values_text(p) and PE.used_when_text(p) == eparams.used_when_text(p)
+              for p in TYPED_SPEC["parameters"]),
+          "[PARAMS] the Studio's list words for choice and on/off parameters are not the engine's")
     check(len(lists) >= 1 and all((copy / r).is_file() for r in lists),
           f"[PARAMS] the parameter lists: {lists}")
     names = [p["name"] for p in spec["parameters"]]
@@ -970,6 +982,73 @@ def check_params(st: Studio, copy: Path) -> str:
         sha = _save(st, f"order across {spec['groups'][gi]['id']}/{spec['groups'][gi + 1]['id']}", s, sha)
         _lists_agree(copy, lists, s, f"order across groups {gi}")
         back(f"order across groups {gi}")
+    # 1b. Choice and on/off parameters, "only when" (MAS-blueprint P6d):
+    # a number made on/off, a new choice used only with it, a number used only
+    # with it; the choices changed and moved; each back byte for byte.
+    s = copymod.deepcopy(spec)
+    onoff = s["parameters"][1]
+    for k in ("min", "max", "step"):
+        onoff.pop(k)
+    onoff.update(type="bool", default=True)
+    g0 = s["parameters"][0]["group"]
+    last = max(k for k, p in enumerate(s["parameters"]) if p["group"] == g0)
+    s["parameters"].insert(last + 1, {"name": "qzxFinish", "type": "choice",
+                                      "choices": [{"value": "raw", "label": "Raw wood"}, {"value": "oiled", "label": "Oiled"}],
+                                      "default": "raw", "group": g0, "label": "Finish", "unit": "", "db_unit": "choice",
+                                      "db_description": "Surface finish", "used_when": {onoff["name"]: True}})
+    next(x for x in s["groups"] if x["id"] == g0)["order"].append("qzxFinish")
+    s["parameters"][-1]["used_when"] = {onoff["name"]: [True, False]}
+    status, r = st.call("preview_parameters", s, sha, {})
+    check(r.get("ok") and r.get("database") is True, f"[PARAMS] typed: the preview: {str(r)[:200]}")
+    sha = _save(st, "typed", s, sha)
+    _lists_agree(copy, lists, s, "typed")
+    for rel in lists:
+        body = (copy / rel).read_bytes().decode("utf-8")
+        line = next((ln for ln in body.splitlines() if "qzxFinish" in ln), "")
+        described = any("— " in ln for ln in ref[rel].decode("utf-8").splitlines() if re.match(r"^\s*\d+\.", ln))
+        tail = ("raw = Raw wood | oiled = Oiled (only when " + onoff["name"] + " = true)")
+        check("(choice)" in line and (line.rstrip().endswith("— Surface finish: " + tail) if described
+                                      else line.rstrip().endswith(tail) and "—" not in line),
+              f"[PARAMS] typed: {rel} entry {line!r}")
+        # the entry made on/off keeps the list's own description
+        old = next((ln for ln in ref[rel].decode("utf-8").splitlines()
+                    if re.match(r"^\s*\d+\.\s+" + onoff["name"] + r"\b", ln)), "")
+        own = old.split("— ", 1)[1].rsplit(" [", 1)[0] if "— " in old else None
+        line = next((ln for ln in body.splitlines() if re.match(r"^\s*\d+\.\s+" + onoff["name"] + r"\b", ln)), "")
+        check(line.rstrip().endswith((f"— {own}: " if own else "") + "true | false") and "on/off" in line,
+              f"[PARAMS] typed: {rel} on/off entry {line!r} (its own description: {own!r})")
+    status, d = st.call("get_all")
+    info = {p["name"]: p for p in ((d.get("data") or {}).get("parameters") or {}).get("parameters", [])}
+    check(status == 200 and d.get("ok") and info.get("qzxFinish", {}).get("copies_agree") is True
+          and info.get(onoff["name"], {}).get("min") is None,
+          f"[PARAMS] typed: the Studio's own data: {status} {str(info.get('qzxFinish'))[:160]}")
+    s2 = copymod.deepcopy(s)
+    fin = next(p for p in s2["parameters"] if p["name"] == "qzxFinish")
+    fin["choices"] = [{"value": "oiled", "label": "Oiled"}, {"value": "raw", "label": "Raw wood"},
+                      {"value": "waxed", "label": "Waxed"}]
+    status, r = st.call("preview_parameters", s2, sha, {})
+    check(r.get("ok") and r.get("database") is True, f"[PARAMS] typed: choices moved, not a new schema: {str(r)[:200]}")
+    sha = _save(st, "typed choices", s2, sha)
+    _lists_agree(copy, lists, s2, "typed choices")
+    status, r = st.call("csv_parameters", "name,type,choices,default,group\n"
+                        f"qzxPick,choice,1 = One | 2 = Two,2,{g0}\nqzxFinish,on/off,yes,\n")
+    c = r.get("spec") or {}
+    got = {p["name"]: p for p in c.get("parameters", [])}
+    check(r.get("ok") and r.get("problems") == []
+          and got.get("qzxPick", {}).get("choices") == [{"value": 1, "label": "One"}, {"value": 2, "label": "Two"}]
+          and got.get("qzxPick", {}).get("default") == 2
+          and got.get("qzxFinish", {}).get("type") == "bool" and "choices" not in got.get("qzxFinish", {}),
+          f"[PARAMS] typed: CSV: {str(r)[:300]}")
+    if c:
+        sha = _save(st, "typed CSV", c, sha)
+        _lists_agree(copy, lists, c, "typed CSV")
+    sha = _save(st, "typed, back", spec, sha)
+    _same("typed, then back")
+    for text, words in (("name,type,group\nqzxC,choice," + g0 + "\n", 'needs a "choices" column'),
+                        ("name,type,default,group\nqzxB,on/off,maybe," + g0 + "\n", "is not true or false"),
+                        ("name,type,choices,default,group\nqzxC,choice,a | b,c," + g0 + "\n", "is not one of its choices")):
+        status, r = st.call("csv_parameters", text)
+        check(any(words in p for p in r.get("problems", [])), f"[PARAMS] typed CSV {text!r}: not refused ({words}): {r.get('problems')}")
     # 2. A new parameter at the end of each group, in each list's own shape.
     for g in spec["groups"]:
         s = copymod.deepcopy(spec)

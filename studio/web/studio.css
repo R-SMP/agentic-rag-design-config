@@ -270,6 +270,10 @@ label.pick .refval { max-height:120px; }
 table.pedit td { padding:3px 4px; }
 table.pedit td input, table.pedit td select { width:100%; font-size:12px; padding:2px 5px; }
 table.pedit td.num input { text-align:right; font-family:var(--mono); }
+/* choice and on/off parameters (MAS-blueprint P6d): the inspector's Choices and Only when */
+table.chs { width:100%; margin-top:4px; }
+table.chs td.mv { white-space:nowrap; width:1%; }
+.insp .whenrow { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:4px 0; font-size:12.5px; }
 table.pedit td.mv, table.pedit tr.grp .mv { white-space:nowrap; width:52px; }
 table.pedit tr.grp .mv { display:inline-flex; gap:2px; margin-right:8px; vertical-align:middle; }
 table.pedit tr.grp.sel td { background:#1d2230; }

@@ -555,11 +555,28 @@ def _topology_texts(pack, folder: Path, base: str, spec: dict) -> dict:
     return out
 
 
+def _entry_agrees(pack, p: dict) -> bool:
+    """A choice's or an on/off parameter's entry in the shared parameter
+    list holds its values and "only when" (engine/parameters.py)."""
+    from engine import parameters as ep
+    text = pack.shared_path("parameter_list", pack.REFERENCE_TOPOLOGY).read_text(encoding="utf-8")
+    entry = []
+    for line in text.splitlines():
+        if re.match(r"\s*\d+\.\s+" + re.escape(p["name"]) + r"\b", line):
+            entry = [line]
+        elif entry and line.strip() and not re.match(r"\s*\d+\.\s", line) and not line.lstrip().startswith("#"):
+            entry.append(line)
+        elif entry:
+            break
+    return bool(entry) and ep.entry_problem(p, " ".join(entry)) is None
+
+
 def parameters(pack) -> dict:
     """The parameter set from its single source, ``dc_pack/parameters.json``
     (``engine/parameters.py``), plus each parameter's unit and description
     as the agents' hand-written ``$parameter_list`` text words them.
-    ``copies_agree``: that text gives the same range as the file."""
+    ``copies_agree``: that text gives the same range as the file (a choice
+    or on/off parameter: its values and "only when", MAS-blueprint P6d)."""
     from engine import parameters as ep
     spec = ep.load()
     md = {}
@@ -576,8 +593,9 @@ def parameters(pack) -> dict:
             "name": p["name"], "type": p["type"], "group": p["group"],
             "label": p["label"], "unit": p["unit"],
             "unit_prompt": a.get("unit_prompt", ""), "description": a.get("description", ""),
-            "min": p["min"], "max": p["max"], "step": p["step"], "default": p["default"],
-            "copies_agree": (a.get("min"), a.get("max")) == (float(p["min"]), float(p["max"])),
+            "min": p.get("min"), "max": p.get("max"), "step": p.get("step"), "default": p["default"],
+            "copies_agree": (a.get("min"), a.get("max")) == (float(p["min"]), float(p["max"]))
+            if "min" in p else _entry_agrees(pack, p),
         })
     groups = [{"id": g["id"], "label": g["label"]} for g in spec["groups"]]
     return {"groups": groups, "parameters": params}

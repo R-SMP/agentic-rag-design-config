@@ -1006,9 +1006,7 @@
   }
   function rowFields(key) {
     if (PEDITS[key]) return PEDITS[key];
-    var p = savedParam(key), f = {};
-    P_KEYS.forEach(function (k) { f[k] = p[k]; });
-    return f;
+    return clone(savedParam(key));
   }
   function parseNum(v) {
     if (typeof v === 'number') return v;
@@ -1016,9 +1014,117 @@
     return s !== '' && isFinite(Number(s)) ? Number(s) : s;
   }
   function entryOf(f) {
-    var e = {};
-    P_KEYS.forEach(function (k) { e[k] = NUMERIC[k] ? parseNum(f[k]) : f[k]; });
+    // a number's fields, or a choice's / an on/off parameter's (TYPE_KEYS),
+    // then its "only when" (MAS-blueprint P6d)
+    var e = {}, typed = typedType(f.type);
+    (typed ? TYPE_KEYS[f.type] : P_KEYS).forEach(function (k) { e[k] = !typed && NUMERIC[k] ? parseNum(f[k]) : f[k]; });
+    if (f.used_when !== undefined) e.used_when = f.used_when;
     return e;
+  }
+  // -- choice and on/off parameters (MAS-blueprint P6d) --
+  var TYPE_CHOICES = [['int', 'int'], ['float', 'float'], ['choice', 'choice'], ['bool', 'on/off']];
+  function typedType(t) { return t === 'choice' || t === 'bool'; }
+  // A row switched between a number and a choice / on/off parameter: the
+  // fields of its new type (its saved ones when it goes back to them).
+  function retype(key, f, to) {
+    var saved = key.indexOf('new:') === 0 ? null : savedParam(key);
+    ['min', 'max', 'step', 'choices'].forEach(function (k) { delete f[k]; });
+    if (saved && saved.type === to) {
+      ['min', 'max', 'step', 'choices', 'default'].forEach(function (k) { if (k in saved) f[k] = clone(saved[k]); });
+    } else if (to === 'choice') {
+      f.choices = [{ value: 'option_1', label: 'Option 1' }, { value: 'option_2', label: 'Option 2' }];
+      f['default'] = 'option_1';
+    } else if (to === 'bool') {
+      f['default'] = false;
+    } else {
+      f.min = '0'; f.max = '1'; f.step = '1'; f['default'] = '0';
+    }
+  }
+  function typeSummary(f) { return f.type === 'choice' ? (f.choices || []).length + ' choices (inspector)' : 'true / false'; }
+  // A choice's or an on/off parameter's default: a dropdown of its values.
+  function defaultPick(key, f) {
+    var choice = f.type === 'choice', ch = f.choices || [];
+    var cur = choice ? String(ch.findIndex(function (c) { return same(c.value, f['default']); })) : String(f['default'] === true);
+    var opts = choice ? ch.map(function (c, i) { return [String(i), c.label]; }) : [['false', 'false'], ['true', 'true']];
+    return h('select', { 'data-fk': 'param|' + key, 'data-t': 'default', onfocus: function () { selectParam(key); },
+      onchange: function (e) { onParamInput(key, 'default', choice ? ch[Number(e.target.value)].value : e.target.value === 'true'); } },
+      opts.map(function (o) { return h('option', { value: o[0], selected: o[0] === cur }, o[1]); }));
+  }
+  // The inspector's Choices: value and label of each, in order.
+  function choicesBlock(key, f) {
+    var ch = f.choices || [];
+    function set(list) {
+      var d = f['default'];
+      onParamInput(key, 'choices', list);
+      if (list.length && !list.some(function (c) { return same(c.value, d); })) onParamInput(key, 'default', list[0].value);
+    }
+    function upd(i, k, text) {
+      var list = clone(ch);
+      list[i][k] = k === 'value' && /^-?\d+(\.\d+)?$/.test(text) ? Number(text) : text;
+      if (k === 'value' && same(ch[i].value, f['default'])) {
+        onParamInput(key, 'choices', list);        // the default follows its choice
+        onParamInput(key, 'default', list[i].value);
+        return;
+      }
+      set(list);
+    }
+    function move(i, d) { var list = clone(ch), a = list[i]; list[i] = list[i + d]; list[i + d] = a; set(list); }
+    function box(c, i, k) {
+      return h('input', { type: 'text', value: String(c[k]), spellcheck: 'false', 'data-fk': 'param|' + key, 'data-t': 'choice:' + i + ':' + k,
+        oninput: function (e) { upd(i, k, e.target.value); } });
+    }
+    return h('div', { 'class': 'block' }, [h('h4', null, 'Choices · ' + ch.length),
+      h('table', { 'class': 'ptab pedit chs' }, [h('thead', null, h('tr', null, ['Value', 'Label', ''].map(function (x) { return h('th', null, x); }))),
+        h('tbody', null, ch.map(function (c, i) {
+          return h('tr', null, [h('td', null, box(c, i, 'value')), h('td', null, box(c, i, 'label')), h('td', { 'class': 'mv' }, [
+            h('button', { 'class': 'mini', disabled: i === 0, title: 'Move up', onclick: function () { move(i, -1); } }, '↑'),
+            h('button', { 'class': 'mini', disabled: i === ch.length - 1, title: 'Move down', onclick: function () { move(i, 1); } }, '↓'),
+            h('button', { 'class': 'mini danger', title: 'Remove this choice', onclick: function () { set(ch.filter(function (_c, j) { return j !== i; })); } }, '×')])]);
+        }))]),
+      h('div', { style: 'margin-top:6px' }, h('button', { 'class': 'mini', onclick: function () {
+        var list = clone(ch), n = list.length + 1;
+        list.push({ value: 'option_' + n, label: 'Option ' + n });
+        set(list);
+      } }, '+ Add a choice')),
+      h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-top:4px' }, 'The agents and the database use the values; the slider page shows the labels. ' +
+        'A value is text or a number. The database stores a choice as its place in this order: changing the order needs a new parameter schema.')]);
+  }
+  // The inspector's Only when: each condition names a choice or on/off
+  // parameter and the values it must have (engine/parameters.py used_when).
+  function whenBlock(key, f) {
+    var uw = f.used_when || {}, names = Object.keys(uw);
+    var others = PE().spec.parameters.filter(function (p) { return typedType(p.type) && p.name !== f.name && names.indexOf(p.name) < 0; });
+    function valuesOf(q) { return !q ? [] : q.type === 'bool' ? [true, false] : (q.choices || []).map(function (c) { return c.value; }); }
+    function set(next) { onParamInput(key, 'used_when', Object.keys(next).length ? next : undefined); }
+    function toggle(other, v, on) {
+      var next = clone(uw), cur = next[other] instanceof Array ? next[other] : [next[other]];
+      cur = cur.filter(function (w) { return !same(w, v); });
+      if (on) cur.push(v);
+      next[other] = cur.length === 1 ? cur[0] : cur;
+      set(next);
+    }
+    var rows = names.map(function (other) {
+      var wants = uw[other] instanceof Array ? uw[other] : [uw[other]];
+      return h('div', { 'class': 'whenrow' }, [h('span', { 'class': 'mono' }, other + ' is'),
+        h('span', null, valuesOf(savedParam(other)).map(function (v) {
+          return h('label', { style: 'margin-right:8px;white-space:nowrap' }, [h('input', { type: 'checkbox',
+            checked: wants.some(function (w) { return same(w, v); }), onchange: function (e) { toggle(other, v, e.target.checked); } }), ' ' + String(v)]);
+        })),
+        h('button', { 'class': 'mini', title: 'Remove this condition', onclick: function () { var next = clone(uw); delete next[other]; set(next); } }, '×')]);
+    });
+    var pick = others.length ? h('select', { onchange: function (e) {
+      var q = savedParam(e.target.value);
+      if (!q) return;
+      var next = clone(uw);
+      next[q.name] = valuesOf(q)[0];
+      set(next);
+    } }, [h('option', { value: '' }, '+ Add a condition…')].concat(others.map(function (p) { return h('option', { value: p.name }, p.name); }))) : null;
+    return h('div', { 'class': 'block' }, [h('h4', null, 'Only when'),
+      names.length ? h('div', null, rows) : h('p', { 'class': 'muted' }, 'Always used.'),
+      pick ? h('div', { style: 'margin-top:6px' }, pick) : names.length ? null
+        : h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'A condition names a choice or on/off parameter; the setup has none yet.'),
+      h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-top:4px' },
+        'While a condition does not hold, the slider page hides the parameter and the agents read “(only when …)” in their lists.')]);
   }
   function removeFromOrders(spec, name) {
     spec.groups.forEach(function (g) { g.order = (g.order || []).filter(function (n) { return n !== name; }); });
@@ -1040,6 +1146,14 @@
     if (e.name !== old.name) {
       renames[old.name] = e.name;
       spec.groups.forEach(function (g) { g.order = g.order.map(function (n) { return n === old.name ? e.name : n; }); });
+      // the conditions that name it follow (MAS-blueprint P6d)
+      spec.parameters.forEach(function (p) {
+        if (p.used_when && old.name in p.used_when) {
+          var uw = {};
+          Object.keys(p.used_when).forEach(function (o) { uw[o === old.name ? e.name : o] = p.used_when[o]; });
+          p.used_when = uw;
+        }
+      });
     }
     if (e.group !== old.group) {
       removeFromOrders(spec, e.name);
@@ -1310,7 +1424,11 @@
     else add(right, inspectParam(R.q.param && (savedParam(R.q.param) || PEDITS[R.q.param]) ? R.q.param : (spec.parameters[0] || {}).name));
   }
   function databaseChanged() {
-    var key = function (s) { return JSON.stringify(s.parameters.map(function (p) { return [p.name, p.type, p.min, p.max]; })); };
+    var key = function (s) {
+      return JSON.stringify(s.parameters.map(function (p) {
+        return [p.name, p.type, p.min, p.max, (p.choices || []).map(function (c) { return c.value; })];
+      }));
+    };
     return key(PE().spec) !== key(PE().opened);
   }
   function groupRow(g, gi, n) {
@@ -1356,12 +1474,15 @@
         h('button', { 'class': 'mini', disabled: BUSY || dirty || pos < 0 || pos >= same.length - 1, title: 'Move down', onclick: function () { moveParam(key, 1); } }, '↓')]),
       cell('name', 'width:150px'), cell('label'),
       h('td', { style: 'width:72px' }, h('select', { 'data-fk': 'param|' + key, 'data-t': 'type', onchange: function (e) { onParamInput(key, 'type', e.target.value); },
-        onfocus: function () { selectParam(key); } }, ['int', 'float'].map(function (o) { return h('option', { selected: o === f.type }, o); }))),
-      cell('min', 'width:64px'), cell('max', 'width:64px'), cell('step', 'width:58px'), cell('default', 'width:64px'), cell('unit'),
+        onfocus: function () { selectParam(key); } }, TYPE_CHOICES.map(function (o) { return h('option', { value: o[0], selected: o[0] === f.type }, o[1]); })))]
+      .concat(typedType(f.type) ? [h('td', { colspan: 3, 'class': 'muted typesum', style: 'font-size:12px;padding-left:8px' }, typeSummary(f)),
+        h('td', { style: 'width:64px' }, defaultPick(key, f))]
+        : [cell('min', 'width:64px'), cell('max', 'width:64px'), cell('step', 'width:58px'), cell('default', 'width:64px')])
+      .concat([cell('unit'),
       h('td', { style: 'width:120px' }, h('select', { 'data-fk': 'param|' + key, 'data-t': 'group', onchange: function (e) { onParamInput(key, 'group', e.target.value); },
         onfocus: function () { selectParam(key); } }, groups.map(function (g) { return h('option', { value: g.id, selected: g.id === f.group }, g.label); }))),
       h('td', { 'class': 'racts', 'data-pacts': key }, paramActions(key))
-    ]);
+    ]));
   }
   function paramActions(key) {
     var isNew = key.indexOf('new:') === 0;
@@ -1379,7 +1500,15 @@
   function onParamInput(key, k, value) {
     if (!PEDITS[key]) PEDITS[key] = rowFields(key);
     PEDITS[key] = clone(PEDITS[key]);
+    var was = PEDITS[key].type;
     PEDITS[key][k] = value;
+    if (k === 'type' && value !== was && (typedType(was) || typedType(value))) {
+      // another kind of row: its cells change (MAS-blueprint P6d)
+      retype(key, PEDITS[key], value);
+      if (key.indexOf('new:') < 0 && JSON.stringify(entryOf(PEDITS[key])) === JSON.stringify(entryOf(rowFields2(key)))) delete PEDITS[key];
+      render();
+      return;
+    }
     if (key.indexOf('new:') < 0 && JSON.stringify(entryOf(PEDITS[key])) === JSON.stringify(entryOf(rowFields2(key)))) delete PEDITS[key];
     var a = doc.querySelector('[data-pacts="' + key + '"]');
     if (a) { a.innerHTML = ''; add(a, paramActions(key)); }
@@ -1387,9 +1516,28 @@
     if (tr) tr.classList.toggle('dirty', !!PEDITS[key]);
     var u = el('unsavedCount');
     if (u) { u.innerHTML = ''; add(u, unsavedPill()); }
-    if (R.q.param === key) { var right = el('colRight'); right.innerHTML = ''; add(right, inspectParam(key)); }
+    if (k === 'choices' || k === 'default') {
+      // the row's default and its choices' count follow the inspector
+      var f = PEDITS[key] || rowFields(key), pick = doc.querySelector('tr[data-pk="' + key + '"] select[data-t="default"]');
+      if (pick) pick.parentNode.replaceChild(defaultPick(key, f), pick);
+      var sum = doc.querySelector('tr[data-pk="' + key + '"] td.typesum');
+      if (sum) sum.textContent = typeSummary(f);
+    }
+    if (R.q.param === key) {
+      // the inspector drawn again, the box being typed in keeping the cursor
+      var act = doc.activeElement, ft = act && act.getAttribute ? act.getAttribute('data-t') : null;
+      var caret = ft ? [act.selectionStart, act.selectionEnd] : null;
+      var right = el('colRight');
+      right.innerHTML = '';
+      add(right, inspectParam(key));
+      var back = ft && !doc.body.contains(act) ? right.querySelector('[data-t="' + ft + '"]') : null;
+      if (back) {
+        back.focus();
+        try { back.setSelectionRange(caret[0], caret[1]); } catch (e) { /* not a text box */ }
+      }
+    }
   }
-  function rowFields2(key) { var p = savedParam(key), f = {}; P_KEYS.forEach(function (k) { f[k] = p[k]; }); return f; }
+  function rowFields2(key) { return clone(savedParam(key)); }
   function selectParam(key) {
     if (R.q.param === key && !R.q.group) return;
     root.history.replaceState(null, '', link('studio', 'parameters', { param: key }));
@@ -1707,20 +1855,24 @@
     }
     return h('div', { 'class': 'insp' }, [
       h('div', { 'class': 'title' }, isNew ? (f.name || 'New parameter') : key),
-      h('div', { 'class': 'pills' }, [kpill(f.type), kpill('[' + f.min + '; ' + f.max + ']'), kpill('default ' + f['default']),
+      h('div', { 'class': 'pills' }, [kpill(f.type === 'bool' ? 'on/off' : f.type),
+        kpill(f.type === 'choice' ? (f.choices || []).length + ' choices' : f.type === 'bool' ? 'true / false' : '[' + f.min + '; ' + f.max + ']'),
+        kpill('default ' + f['default']),
         dirty ? pill('unsaved', 'warn') : null, !isNew && paramChanged(key) ? pill(o ? 'changed since opened' : 'added since opened', 'warn') : null,
         o && o !== key ? kpill('was ' + o) : null]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Checks')].concat(
         !dirty ? [h('p', { 'class': 'muted' }, 'No unsaved change.')] :
           problems.length ? [h('ul', { 'class': 'checks bad' }, problems.map(function (p) { return h('li', null, ['✗', h('span', null, p)]); }))] :
           [h('ul', { 'class': 'checks good' }, [h('li', null, ['✓', h('span', null, 'No problems: it can be saved.')])])])),
+      f.type === 'choice' ? choicesBlock(key, f) : null,
+      whenBlock(key, f),
       h('div', { 'class': 'block' }, [h('h4', null, 'The database’s words'), h('div', { 'class': 'kv', style: 'grid-template-columns:90px 1fr;align-items:center' }, [
         h('div', { 'class': 'k' }, 'unit'), input('db_unit'), h('div', { 'class': 'k' }, 'description'), input('db_description')])]),
       bad ? h('div', { 'class': 'banner warn boxed' }, [h('b', null, 'Two texts disagree on the unit. '), 'The agents’ parameter list says “' + info.unit_prompt + '”; the slider page says “' +
         info.unit + '”. The agents’ lists are hand-written text ($parameter_list); the Studio keeps their names, order and ranges in step, not their units.']) : null,
       lines.length ? h('div', { 'class': 'block' }, [h('h4', null, 'In the agents’ parameter lists · ' + lines.length),
         h('div', { 'class': 'lentries' }, lines.map(function (x) { return h('div', null, [h('span', { 'class': 'muted' }, x.who), h('div', { 'class': 'mono' }, x.line || '(no entry)')]); })),
-        h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-top:4px' }, 'A Save changes its name and [min; max] in every list, or adds / removes its entry; the rest of each line is yours (Configurator description › parameter_list).')]) : null,
+        h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-top:4px' }, 'A Save changes its name and [min; max] — or its values — and its “(only when …)” in every list, or adds / removes its entry; the rest of each line is yours (Configurator description › parameter_list).')]) : null,
       h('div', { 'class': 'block' }, [h('h4', null, 'Named in code · ' + code.length),
         code.length ? h('ul', { 'class': 'checks' }, code.map(function (u) { return h('li', null, ['•', h('span', { 'class': 'mono' }, u[0] + (u[1] > 1 ? '  ×' + u[1] : ''))]); }))
           : h('p', { 'class': 'muted' }, 'No code or configuration file of the setup names it.'),
