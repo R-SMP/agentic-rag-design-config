@@ -377,3 +377,29 @@ body.guide-body { height:auto; min-height:100%; }
 .guide code { font-family:var(--mono); font-size:12px; background:#15161a; border:1px solid var(--line);
   border-radius:4px; padding:0 4px; }
 .guide a { color:#a5c8ff; }
+
+/* a tool from an OpenSCAD model (P6f): the drop area, the import dialog, its
+   banner, the ranges an import proposed */
+.dropzone.slim { margin:10px 16px 4px; padding:14px; display:flex; gap:10px; align-items:center;
+  justify-content:center; font-size:12.5px; }
+.dropzone.over { border-color:var(--accent); background:#172238; color:#a5c8ff; }
+.importban { margin:8px 16px 0; }
+.importban .row { display:flex; gap:10px; align-items:center; }
+.importban .grow { flex:1 1 auto; }
+.importban button { white-space:nowrap; }
+.importban .checks { margin-top:6px; }
+.scad .scadsum { margin:0 0 8px; font-size:12.5px; }
+.scad h4 { margin:12px 0 6px; }
+.scadfold { display:flex; gap:6px; margin:4px 0 6px; }
+table.scadtab td { vertical-align:top; font-size:11.5px; }
+table.scadtab td .mono { font-family:var(--mono); color:var(--txt); }
+table.scadtab td select { font-size:11.5px; }
+table.scadtab tr.off td { opacity:.6; }
+table.scadtab tr.grp td { font-size:12px; }
+table.scadtab .scadg { display:flex; gap:8px; align-items:center; }
+table.scadtab .scadg .grow { flex:1 1 auto; }
+table.scadtab .proposed, .scad .warn { color:#ffd8a0; }
+table.pedit td.proposed input { border-color:#7a5a1a; background:#33260f; color:#ffd8a0; }
+.insp .block.proposed { border:1px solid #7a5a1a; border-radius:7px; padding:8px 10px; background:#2a2114; }
+.insp .block.proposed p { margin:0 0 8px; font-size:12px; color:#ffd8a0; }
+table.pedit tr.grp .keepg { display:inline-flex; gap:6px; align-items:center; margin-left:10px; }

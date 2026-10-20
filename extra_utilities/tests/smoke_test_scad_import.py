@@ -31,8 +31,14 @@ tool -- with an Undo.  Five groups of checks:
    generator, the lists and the samples in step, Undo byte for byte; a file
    changed after an import makes Undo name it first (and undo it when
    asked); two imports undone, the last first.
-4. ENGINE.  ``"range": "proposed"`` is the engine's (the parameter tests
-   check its refusals): Validate warns while one is left.
+4. PAGE.  The Studio page's own functions, run by Node (P6f-2): a range an
+   import proposed is kept by every edit of its row but min or max (and by
+   a change of type and back), and dropped by Keep; the import dialog's
+   counts -- parameters, proposed ranges, "only when" -- and names equal
+   the server's for several picks (``apply_picks`` + ``assemble``), and a
+   tab's pick keeps only what differs from the proposal.  ``"range":
+   "proposed"`` itself is the engine's (the parameter tests check its
+   refusals): Validate warns while one is left, its Open showing them.
 5. THE REAL MODEL -- when the vacuum hose adapter (``HOSE_ADAPTER_DIR``,
    or ``DCs/vacuum-hose-adapter-openscad-main`` beside a folder above the
    repo) is on this computer, else SKIP; it stays outside the repository
@@ -43,7 +49,7 @@ tool -- with an Undo.  Five groups of checks:
    the defaults (Test tool).
 
 Run from the repo root:  py -3.13 extra_utilities/tests/smoke_test_scad_import.py
-[read] [files] [server] [real]  (the groups to run; all by default)
+[read] [files] [page] [server] [real]  (the groups to run; all by default)
 """
 from __future__ import annotations
 
@@ -370,6 +376,144 @@ def yaml_inline(v) -> str:
 
 
 # ---------------------------------------------------------------------------
+# 4. the page (Node)
+# ---------------------------------------------------------------------------
+
+STUDIO_JS = ROOT / "studio" / "web" / "studio.js"
+PAGE_PIECES = ("NUMERIC", "P_KEYS", "TYPE_KEYS", "clone", "parseNum", "typedType", "entryOf", "retype",
+               "withInput", "withoutRanges", "scadView", "scadSetPick", "scadParamText", "scadWhenText",
+               "andList", "importDid")
+
+
+def js_piece(js: str, name: str) -> str:
+    """The function or ``var`` statement *name* of studio.js, whole."""
+    import re
+    m = re.search(r"\n  (function " + name + r"\(|var " + name + r" = )", js)
+    i, depth = m.start() + 1, 0
+    if m.group(1).startswith("function"):
+        for k in range(js.index("{", i), len(js)):
+            depth += {"{": 1, "}": -1}.get(js[k], 0)
+            if depth == 0:
+                return js[i:k + 1]
+    for k in range(i, len(js)):
+        c = js[k]
+        depth += 1 if c in "{[(" else -1 if c in "}])" else 0
+        if c == ";" and depth == 0:
+            return js[i:k + 1]
+    raise ValueError(name)
+
+
+def run_page(program: str):
+    """*program* after the page's pieces, in Node; its JSON answer (None without Node)."""
+    import subprocess
+    node = shutil.which("node")
+    if not node:
+        return None
+    js = STUDIO_JS.read_text(encoding="utf-8")
+    head = "var SAVED = {};\nfunction savedParam(k) { return SAVED[k] || null; }\n"
+    src = head + "\n".join(js_piece(js, n) for n in PAGE_PIECES) + "\n" + program
+    p = subprocess.run([node], input=src, capture_output=True, text=True, encoding="utf-8", timeout=60)
+    if p.returncode != 0:
+        check(False, f"[PAGE] the page's functions do not run: {p.stderr[-400:]}")
+        return {}
+    return json.loads(p.stdout)
+
+
+def _server_view(found: dict, picks: dict, when: dict) -> dict:
+    params, _g, _p, _d = S.assemble(S.apply_picks(found, picks, when))
+    return {"parameters": len(params), "proposed": sum(1 for p in params if p.get("range") == "proposed"),
+            "when": sum(1 for p in params if "used_when" in p), "names": [p["name"] for p in params]}
+
+
+def check_page() -> str:
+    f = S.read(MODEL)
+    cases = [({}, {}), ({"End_Style": "model"}, {}), ({}, {"Magnets": False}),
+             ({"Debug": "parameter", "Wall": "model", "fa": "model"}, {"Barb_Count": False})]
+    hose = hose_dir()
+    sets = [("made-up", f, cases)]
+    if hose is not None:
+        h = S.read((hose / "combined" / "vacuum-hose-adapter.scad").read_text(encoding="utf-8"))
+        sets.append(("hose", h, [({}, {}), ({"End1_Style": "model"}, {"End2_Barbs_Count": False}),
+                                 ({"Transition_End2_Count": "model"}, {})]))
+    wall = {"name": "Wall", "type": "float", "min": "1", "max": "4", "step": "0.1", "range": "proposed", "default": "2",
+            "group": "body", "label": "Wall", "unit": "mm", "db_unit": "mm", "db_description": "Wall thickness"}
+    saved = dict(wall, min=1, max=4, step=0.1, default=2)
+    choice = {"name": "Style", "type": "choice", "choices": [{"value": "a", "label": "A"}, {"value": "b", "label": "B"}],
+              "range": "proposed", "default": "a", "group": "body", "label": "Style", "unit": "", "db_unit": "",
+              "db_description": "Style"}
+    spec = {"groups": [], "parameters": [saved, dict(saved, name="Other")]}
+    program = f"""
+var out = {{}};
+var f = {json.dumps(wall)};
+out.keys = Object.keys(entryOf(f));
+out.entry = entryOf(f);
+out.label = withInput(f, 'label', 'Wall X').range === 'proposed';
+out.unit = withInput(f, 'unit', 'cm').range === 'proposed';
+out.min = 'range' in withInput(f, 'min', '0.5');
+out.max = 'range' in withInput(f, 'max', '9');
+out.untouched = f.range === 'proposed';
+var g = clone(f);
+retype('Wall', g, 'choice');
+out.toChoice = 'range' in g || 'range' in entryOf(g);
+SAVED.Wall = {json.dumps(saved)};
+retype('Wall', g, 'float');
+out.back = g.range === 'proposed' && entryOf(g).range === 'proposed';
+out.typed = 'range' in entryOf({json.dumps(choice)});
+out.without = withoutRanges({json.dumps(spec)}, ['Wall']);
+out.views = {{}};
+var SETS = {json.dumps({name: {"rows": found["rows"], "cases": [[p, {k: False for k in w}] for p, w in cs]}
+                        for name, found, cs in sets})};
+Object.keys(SETS).forEach(function (n) {{
+  out.views[n] = SETS[n].cases.map(function (c) {{
+    var v = scadView(SETS[n].rows, c[0], c[1]);
+    return {{ parameters: v.parameters, proposed: v.proposed, when: v.when, names: v.names }};
+  }});
+}});
+var rows = SETS['made-up'].rows, tab = rows.filter(function (r) {{ return r.group === 'Body'; }});
+var picks = {{}};
+scadSetPick(picks, tab, 'model');
+out.tabModel = clone(picks);
+scadSetPick(picks, tab, 'parameter');
+out.tabBack = picks;
+out.texts = [scadParamText(rows[0].parameters[0]), scadParamText(rows[1].parameters[0]),
+             scadParamText(rows.filter(function (r) {{ return r.setting === 'Barbs'; }})[0].parameters[0]),
+             scadWhenText({{ End_Style: 'hose' }}), scadWhenText({{ Barbs: true }}),
+             importDid({{ mode: 'new', added: ['a', 'a_geometry'], removed: ['g', 'x', 'y'], parameters: 25 }}),
+             importDid({{ mode: 'add', added: ['b'], removed: [], parameters: 3 }})];
+process.stdout.write(JSON.stringify(out));
+"""
+    out = run_page(program)
+    if out is None:
+        return "SKIP (Node not found)"
+    check(out.get("keys") == ["name", "type", "min", "max", "step", "range", "default", "group", "label", "unit",
+                              "db_unit", "db_description"] and out.get("entry", {}).get("min") == 1,
+          f"[PAGE] a row's entry keeps the proposal, after its step: {out.get('keys')}")
+    check(out.get("label") and out.get("unit") and out.get("min") is False and out.get("max") is False
+          and out.get("untouched"), f"[PAGE] an input keeps the proposal unless it is min or max: {out}")
+    check(out.get("toChoice") is False and out.get("back") is True and out.get("typed") is False,
+          f"[PAGE] a change of type drops the proposal, and back brings it: {out}")
+    w = (out.get("without") or {}).get("parameters", [{}, {}])
+    check("range" not in w[0] and w[1].get("range") == "proposed", f"[PAGE] Keep for one parameter: {w}")
+    n = 0
+    for name, found, cs in sets:
+        for (p, wh), got in zip(cs, out.get("views", {}).get(name, [])):
+            want = _server_view(found, p, wh)
+            check(got == want, f"[PAGE] {name} {p} {wh}: the dialog's counts {dict(got, names=len(got['names']))} "
+                               f"are not the server's {dict(want, names=len(want['names']))}")
+            n += 1
+    body = [r for r in f["rows"] if r["group"] == "Body"]
+    want = {r["setting"]: "model" for r in body if r["pick"] == "parameter" and "model" in r["picks"]}
+    check(out.get("tabModel") == want and out.get("tabBack") == {},
+          f"[PAGE] a tab's pick: {out.get('tabModel')} / back: {out.get('tabBack')}")
+    check(out.get("texts") == ["Wall · float [1; 4]", "End_Style · choice (3)", "Barbs · on/off",
+                               "only when End_Style = hose", "only when Barbs = true",
+                               "as a new configurator: added a and a_geometry; removed g, x and y; 25 parameters.",
+                               "as one more tool: added b and its 3 parameters."],
+          f"[PAGE] the dialog's words: {out.get('texts')}")
+    return f"the proposal kept / dropped / kept again; {n} pick sets counted as the server counts them"
+
+
+# ---------------------------------------------------------------------------
 # 3. the server
 # ---------------------------------------------------------------------------
 
@@ -491,6 +635,8 @@ def check_server(tmp: Path) -> str:
         fails = {k: v for k, v in st_.items() if v[0] == V.FAIL}
         check(not fails and st_.get("Ranges to review", ("",))[0] == V.WARN
               and "16 parameter(s)" in st_["Ranges to review"][1][0]
+              and next(i for i in items if i["title"] == "Ranges to review")["link"] == {"section": "parameters",
+                                                                                       "filter": "ranges"}
               and st_.get("12 parameter list(s)", ("",))[0] == V.PASS
               and all(st_.get(f"Topology {n}", ("",))[0] == V.PASS for n in V.TOPOLOGIES),
               f"[SERVER] Validate on the new configurator: {fails or st_}")
@@ -636,20 +782,22 @@ def check_real(tmp: Path) -> str:
 
 def main() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="scad_import_smoke_"))
-    only = set(sys.argv[1:]) or {"read", "files", "server", "real"}
-    read = files = server = real = "not run"
+    only = set(sys.argv[1:]) or {"read", "files", "page", "server", "real"}
+    read = files = page = server = real = "not run"
     try:
         if "read" in only:
             read = _run(check_read, "[READ]")
         if "files" in only:
             files = _run(check_files, "[FILES]")
+        if "page" in only:
+            page = _run(check_page, "[PAGE]")
         if "server" in only:
             server = _run(lambda: check_server(tmp), "[SERVER]")
         if "real" in only:
             real = _run(lambda: check_real(tmp), "[REAL]")
     finally:
         shutil.rmtree(tmp, ignore_errors=True)
-    print(f"read: {read}; files: {files}; server: {server}; real: {real}")
+    print(f"read: {read}; files: {files}; page: {page}; server: {server}; real: {real}")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:

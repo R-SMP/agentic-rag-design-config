@@ -38,13 +38,18 @@ offers <i>Open the Studio</i>, <i>Import a setup</i> and <i>Start again from the
 <li><b>Identity</b>: the configurator's name and how the agents introduce it.</li>
 <li><b>Parameters</b>: each parameter's name, type (whole number or decimal), range, step, default, group, label and
 unit.  <i>Import JSON</i> and <i>Paste CSV</i> bring a whole list in.  The agents' parameter lists follow by
-themselves.</li>
+themselves.  A range in amber was proposed by an import from the model's default: edit its min or max, or
+<i>Keep</i> it as it is (one parameter, or a whole group); <i>Only ranges to review</i> shows just those.</li>
 <li><b>Configurator description</b>: what it builds, how its parameters behave, what it can and cannot do: the
 longer texts the agents read.</li>
 <li><b>Outputs &amp; vocabulary</b>: the words for what it produces (its model, its pictures).</li>
 <li><b>Tools</b>: how a design gets built.  <i>New tool</i> starts one from a template (a helper, a generator, a
 geometry tool) or as a copy of a tool; then change its code and its manifest (<code>tool.yaml</code>).
-<i>Test tool</i> runs it on the parameters' defaults and shows what it answers, its pictures and its model.</li>
+Drop an OpenSCAD model (<code>.scad</code>) on the Tools page, or use <i>Import a .scad file</i>: the Studio reads
+the settings its Customizer shows and shows what each one becomes (a parameter, the model's detail, or left to
+the model) before you import it, as a new configurator or as one more tool; <i>Undo the import</i> puts
+everything back.  <i>Test tool</i> runs a tool on the parameters' defaults and shows what it answers, its
+pictures and its model.</li>
 <li><b>Examples</b>: short phrases quoted inside the agents' instructions.  Keep each on one line, in its shape.</li>
 <li><b>User input types</b>: how the agents treat a sketch or a reference picture.</li>
 <li><b>Agent access</b>: which agent sees the parameter list, with or without the ranges.</li>
@@ -82,9 +87,8 @@ deploys the new version.</p>
 
 <h2>6. What it cannot do yet</h2>
 <ul>
-<li>A tool is Python code, or an OpenSCAD model the engine runs (written into a tool's <code>tool.yaml</code> by hand:
-<code>backend: openscad</code>).  The Studio does not yet turn a CAD file into a tool, nor connect a Grasshopper
-definition on a compute server, a Node script or a web service by itself.</li>
+<li>A tool is Python code, or an OpenSCAD model the engine runs.  The Studio imports OpenSCAD models only: it
+does not yet connect a Grasshopper definition on a compute server, a Node script or a web service by itself.</li>
 <li>Online, the shared setup is not kept across a restart.</li>
 </ul>
 </main>

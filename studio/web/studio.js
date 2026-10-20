@@ -1018,7 +1018,11 @@
     // a number's fields, or a choice's / an on/off parameter's (TYPE_KEYS),
     // then its "only when" (MAS-blueprint P6d)
     var e = {}, typed = typedType(f.type);
-    (typed ? TYPE_KEYS[f.type] : P_KEYS).forEach(function (k) { e[k] = !typed && NUMERIC[k] ? parseNum(f[k]) : f[k]; });
+    (typed ? TYPE_KEYS[f.type] : P_KEYS).forEach(function (k) {
+      e[k] = !typed && NUMERIC[k] ? parseNum(f[k]) : f[k];
+      // a range an import proposed, until min or max is edited (P6f)
+      if (k === 'step' && !typed && f.range !== undefined) e.range = f.range;
+    });
     if (f.used_when !== undefined) e.used_when = f.used_when;
     return e;
   }
@@ -1029,9 +1033,9 @@
   // fields of its new type (its saved ones when it goes back to them).
   function retype(key, f, to) {
     var saved = key.indexOf('new:') === 0 ? null : savedParam(key);
-    ['min', 'max', 'step', 'choices'].forEach(function (k) { delete f[k]; });
+    ['min', 'max', 'step', 'range', 'choices'].forEach(function (k) { delete f[k]; });
     if (saved && saved.type === to) {
-      ['min', 'max', 'step', 'choices', 'default'].forEach(function (k) { if (k in saved) f[k] = clone(saved[k]); });
+      ['min', 'max', 'step', 'range', 'choices', 'default'].forEach(function (k) { if (k in saved) f[k] = clone(saved[k]); });
     } else if (to === 'choice') {
       f.choices = [{ value: 'option_1', label: 'Option 1' }, { value: 'option_2', label: 'Option 2' }];
       f['default'] = 'option_1';
@@ -1406,8 +1410,12 @@
       h('button', { disabled: BUSY, onclick: askCsv }, 'Paste CSV…'),
       h('button', { disabled: BUSY, onclick: addParam }, '+ Add parameter'),
       h('button', { disabled: BUSY, onclick: addGroup }, '+ Add group'),
+      rangesToggle(),
       h('span', { 'class': 'grow' }),
-      h('button', { disabled: BUSY || !paramsChanged(), title: paramsChanged() ? null : 'Nothing has changed since the Studio opened.', onclick: askUndoAll }, 'Undo all parameter changes')]));
+      h('button', { disabled: BUSY || !paramsChanged() || !!D.scad_import,
+        title: D.scad_import ? 'An import put these parameters in: Undo the import (above) puts them back with its tools.'
+          : paramsChanged() ? null : 'Nothing has changed since the Studio opened.', onclick: askUndoAll }, 'Undo all parameter changes')]));
+    add(center, importBanner());
     if (databaseChanged()) {
       add(center, h('div', { 'class': 'banner info', style: 'margin:8px 16px 0;border:1px solid #2f4f86;border-radius:7px' },
         'Names, types or ranges differ from the setup as opened: once it is deployed, the database needs a new parameter schema (Workflow Settings › Upload).'));
@@ -1419,8 +1427,16 @@
     Object.keys(GEDITS).filter(function (k) { return k.indexOf('new:') === 0; }).forEach(function (k) {
       groups.push({ id: k, label: GEDITS[k].label, image: GEDITS[k].image, order: [], unsaved: true });
     });
-    groups.forEach(function (g, gi) { add(tb, groupRow(g, gi, groups.length)); paramRows(tb, g); });
-    removedGroups().forEach(function (g) {
+    // Only ranges to review: the groups and parameters with a proposed range (P6f)
+    var only = onlyRanges();
+    if (R.q.ranges && !only) add(center, h('div', { 'class': 'banner info boxed', style: 'margin:8px 16px 0' },
+      'No range is left to review: every range is your own.'));
+    groups.forEach(function (g, gi) {
+      if (only && !proposedOf(g.id).length) return;
+      add(tb, groupRow(g, gi, groups.length));
+      paramRows(tb, g, only);
+    });
+    if (!only) removedGroups().forEach(function (g) {
       add(tb, h('tr', { 'class': 'grp gone' }, h('td', { colspan: 11 }, [h('s', null, g.label), ' · group removed since the Studio opened ',
         h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { undoGroup(g.id); } }, 'Undo')])));
     });
@@ -1441,21 +1457,23 @@
     var img = g.image ? h('img', { 'class': 'thumb', src: own(g.image), alt: '' }) : null;
     var sel = R.q.group === g.id;
     return h('tr', { 'class': 'grp' + (sel ? ' sel' : '') + (GEDITS[g.id] ? ' dirty' : ''), 'data-gk': g.id, style: 'cursor:pointer',
-      onclick: function () { go('studio', 'parameters', { group: g.id }); } }, h('td', { colspan: 11 }, [
+      onclick: function () { pgo({ group: g.id }); } }, h('td', { colspan: 11 }, [
       h('span', { 'class': 'mv' }, [
         h('button', { 'class': 'mini', disabled: BUSY || g.unsaved || gi === 0, title: 'Move the group up (the slider page’s order)', onclick: stopped(function () { moveGroup(g.id, -1); }) }, '↑'),
         h('button', { 'class': 'mini', disabled: BUSY || g.unsaved || gi === n - 1, title: 'Move the group down', onclick: stopped(function () { moveGroup(g.id, 1); }) }, '↓')]),
       (GEDITS[g.id] || g).label, img, g.unsaved ? pill('unsaved', 'warn') : null,
-      !g.unsaved && groupChanged(g.id) ? pill('changed', 'warn', 'Changed since the Studio opened.') : null]));
+      !g.unsaved && groupChanged(g.id) ? pill('changed', 'warn', 'Changed since the Studio opened.') : null,
+      keepGroupButton(g)]));
   }
   function stopped(fn) { return function (ev) { ev.stopPropagation(); fn(); }; }
-  function paramRows(tb, g) {
+  function paramRows(tb, g, only) {
     var spec = PE().spec;
-    var keys = spec.parameters.filter(function (p) { return p.group === g.id; }).map(function (p) { return p.name; });
-    Object.keys(PEDITS).filter(function (k) { return k.indexOf('new:') === 0 && PEDITS[k].group === g.id; }).forEach(function (k) { keys.push(k); });
+    var keys = spec.parameters.filter(function (p) { return p.group === g.id && (!only || p.range === 'proposed'); })
+      .map(function (p) { return p.name; });
+    if (!only) Object.keys(PEDITS).filter(function (k) { return k.indexOf('new:') === 0 && PEDITS[k].group === g.id; }).forEach(function (k) { keys.push(k); });
     // a saved row whose unsaved group is another shows under its saved group
     keys.forEach(function (key, i) { add(tb, paramRow(key, i, keys)); });
-    removedParams().filter(function (p) { return p.group === g.id; }).forEach(function (p) {
+    if (!only) removedParams().filter(function (p) { return p.group === g.id; }).forEach(function (p) {
       add(tb, h('tr', { 'class': 'gone' }, [h('td'), h('td', { colspan: 9 }, [h('s', { 'class': 'pname' }, p.name), ' · removed since the Studio opened']),
         h('td', null, h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { undoRemoved(p.name); } }, 'Undo'))]));
     });
@@ -1465,8 +1483,12 @@
     var p = isNew ? null : savedParam(key), info = isNew ? null : (D.parameters.parameters.filter(function (x) { return x.name === key; })[0] || null);
     var bad = info && unitMismatch(info);
     var sel = R.q.param === key && !R.q.group;
+    // min and max of a range an import proposed: amber until reviewed (P6f)
+    var proposed = f.range === 'proposed' && !typedType(f.type);
     function cell(k, style) {
-      return h('td', { 'class': NUMERIC[k] ? 'num' : null, style: style || null }, h('input', {
+      var amber = proposed && (k === 'min' || k === 'max');
+      return h('td', { 'class': (NUMERIC[k] ? 'num' : '') + (amber ? ' proposed' : '') || null, style: style || null,
+        title: amber ? PROPOSED_TIP : null }, h('input', {
         type: 'text', value: f[k] === undefined || f[k] === null ? '' : String(f[k]), spellcheck: 'false', 'data-fk': 'param|' + key, 'data-t': k,
         'class': k === 'unit' && bad ? 'invalid' : null,
         oninput: function (e) { onParamInput(key, k, e.target.value); }, onfocus: function () { selectParam(key); } }));
@@ -1505,9 +1527,8 @@
   }
   function onParamInput(key, k, value) {
     if (!PEDITS[key]) PEDITS[key] = rowFields(key);
-    PEDITS[key] = clone(PEDITS[key]);
     var was = PEDITS[key].type;
-    PEDITS[key][k] = value;
+    PEDITS[key] = withInput(PEDITS[key], k, value);
     if (k === 'type' && value !== was && (typedType(was) || typedType(value))) {
       // another kind of row: its cells change (MAS-blueprint P6d)
       retype(key, PEDITS[key], value);
@@ -1520,6 +1541,9 @@
     if (a) { a.innerHTML = ''; add(a, paramActions(key)); }
     var tr = doc.querySelector('tr[data-pk="' + key + '"]');
     if (tr) tr.classList.toggle('dirty', !!PEDITS[key]);
+    if (tr && !(PEDITS[key] || rowFields(key)).range) {
+      Array.prototype.forEach.call(tr.querySelectorAll('td.proposed'), function (td) { td.classList.remove('proposed'); td.removeAttribute('title'); });
+    }
     var u = el('unsavedCount');
     if (u) { u.innerHTML = ''; add(u, unsavedPill()); }
     if (k === 'choices' || k === 'default') {
@@ -1544,9 +1568,17 @@
     }
   }
   function rowFields2(key) { return clone(savedParam(key)); }
+  // A row's fields after one input (a copy): min or max typed makes the range
+  // the owner's, not the one an import proposed (P6f).
+  function withInput(f, k, value) {
+    var out = clone(f);
+    out[k] = value;
+    if (k === 'min' || k === 'max') delete out.range;
+    return out;
+  }
   function selectParam(key) {
     if (R.q.param === key && !R.q.group) return;
-    root.history.replaceState(null, '', link('studio', 'parameters', { param: key }));
+    root.history.replaceState(null, '', plink({ param: key }));
     parse();
     Array.prototype.forEach.call(doc.querySelectorAll('tr.sel'), function (x) { x.classList.remove('sel'); });
     var tr = doc.querySelector('tr[data-pk="' + key + '"]');
@@ -1630,14 +1662,14 @@
     var r = specWithRow(key), f = entryOf(rowFields(key));
     applyParams(r.spec, r.renames, null, function () {
       delete PEDITS[key];
-      root.history.replaceState(null, '', link('studio', 'parameters', { param: f.name }));
+      root.history.replaceState(null, '', plink({ param: f.name }));
     });
   }
   function addParam() {
     var g = R.q.group && savedGroup(R.q.group) ? R.q.group : (PE().spec.groups[0] || {}).id;
     var key = 'new:' + (++NEWSEQ);
     PEDITS[key] = { name: '', type: 'float', min: '0', max: '1', step: '1', 'default': '0', group: g, label: '', unit: '', db_unit: '', db_description: '' };
-    root.history.replaceState(null, '', link('studio', 'parameters', { param: key }));
+    root.history.replaceState(null, '', plink({ param: key }));
     render();
     var n = doc.querySelector('[data-fk="param|' + key + '"][data-t="name"]');
     if (n) n.focus();
@@ -1653,7 +1685,7 @@
     var spec = clone(PE().spec);
     spec.parameters = spec.parameters.filter(function (p) { return p.name !== key; });
     removeFromOrders(spec, key);
-    applyParams(spec, {}, null, function () { root.history.replaceState(null, '', link('studio', 'parameters', {})); });
+    applyParams(spec, {}, null, function () { root.history.replaceState(null, '', plink({})); });
   }
   function undoParam(key) {
     var o = openedNameOf(key), spec = clone(PE().spec), renames = {};
@@ -1671,7 +1703,7 @@
       var at = (openedGroup(op.group).order || []).indexOf(o);
       og.order.splice(Math.min(at < 0 ? og.order.length : at, og.order.length), 0, o);
     }
-    applyParams(spec, renames, null, function () { root.history.replaceState(null, '', link('studio', 'parameters', { param: o })); });
+    applyParams(spec, renames, null, function () { root.history.replaceState(null, '', plink({ param: o })); });
   }
   function undoRemoved(name) {
     var spec = clone(PE().spec), op = clone(openedParam(name)), g = groupOf(spec, op.group);
@@ -1683,6 +1715,55 @@
     if (spec.retired) spec.retired = spec.retired.filter(function (n) { return n !== name; });
     applyParams(spec, {}, null);
   }
+  /* -- ranges an import proposed (P6f) ------------------------------------------ */
+  // A number may carry "range": "proposed": the import of a CAD model made its
+  // min and max from the model's default (studio/scad_import.py).  Its cells
+  // are amber until it is reviewed: min or max edited, or kept as it is (Keep,
+  // for a parameter or a group: a save without the marker).
+  var PROPOSED_TIP = 'Proposed by the import from the model’s default: review it (edit min or max, or keep it in the inspector).';
+  function proposedOf(group) {
+    return PE().spec.parameters.filter(function (p) { return p.range === 'proposed' && (!group || p.group === group); })
+      .map(function (p) { return p.name; });
+  }
+  function onlyRanges() { return !!R.q.ranges && proposedOf().length > 0; }
+  // An address in Parameters that keeps Only ranges to review as it is.
+  function plink(q) { return link('studio', 'parameters', Object.assign({ ranges: R.q.ranges || null }, q)); }
+  function pgo(q) { root.location.hash = plink(q); }
+  // *spec* (a copy) without the marker on the parameters *names*
+  function withoutRanges(spec, names) {
+    var out = clone(spec);
+    out.parameters.forEach(function (p) { if (names.indexOf(p.name) >= 0) delete p.range; });
+    return out;
+  }
+  function keepRanges(names) {
+    applyParams(withoutRanges(PE().spec, names), {}, null, function () {
+      names.forEach(function (n) { if (PEDITS[n]) delete PEDITS[n].range; });
+    });
+  }
+  function rangesToggle() {
+    var n = proposedOf().length;
+    if (!n && !R.q.ranges) return null;
+    return h('button', { 'class': R.q.ranges ? 'on' : null, title: 'Show only the parameters whose range an import proposed.',
+      onclick: function () { go('studio', 'parameters', withQ({ ranges: R.q.ranges ? null : '1' })); } },
+      (R.q.ranges ? '✓ ' : '') + 'Only ranges to review (' + n + ')');
+  }
+  function keepGroupButton(g) {
+    var names = g.unsaved ? [] : proposedOf(g.id);
+    if (!names.length) return null;
+    return h('span', { 'class': 'keepg' }, [pill(names.length + ' to review', 'warn', 'Ranges the import proposed in this group.'),
+      h('button', { 'class': 'mini', disabled: BUSY, title: 'Keep the proposed ranges of this group as they are.',
+        onclick: stopped(function () { keepRanges(names); }) },
+        'Keep all ' + names.length + (names.length === 1 ? ' range' : ' ranges') + ' in this group')]);
+  }
+  function rangeBlock(key, f, dirty, isNew) {
+    if (f.range !== 'proposed' || typedType(f.type)) return null;
+    return h('div', { 'class': 'block proposed' }, [h('h4', null, 'Range to review'),
+      h('p', null, 'The import proposed [' + f.min + '; ' + f.max + '] from the model’s default (' + f['default'] +
+        '). Check it against what the model can make: edit min or max, or keep it as it is.'),
+      h('button', { disabled: BUSY || dirty || isNew, title: dirty ? 'Save or discard this parameter’s changes first.' : null,
+        onclick: function () { keepRanges([key]); } }, 'Keep this range')]);
+  }
+
   function askUndoAll() {
     showModal('Undo all parameter changes', h('p', { style: 'margin:0;font-size:12.5px;line-height:1.5' },
       'parameters.json and the agents’ parameter lists go back to exactly how they were when the Studio opened; a picture uploaded since then that no group uses is removed. The agent-access grid is not touched.'), [
@@ -1698,7 +1779,7 @@
   function addGroup() {
     var key = 'new:' + (++NEWSEQ);
     GEDITS[key] = { id: '', label: 'New group', image: '', image_alt: '', order: [] };
-    go('studio', 'parameters', { group: key });
+    pgo({ group: key });
   }
   function groupFields(key) {
     if (GEDITS[key]) return GEDITS[key];
@@ -1731,9 +1812,9 @@
       return [problems.length ? h('div', { 'class': 'checks bad', style: 'margin-bottom:6px' }, problems.map(function (p) { return h('div', null, '✗ ' + p); })) : null,
         h('button', { 'class': 'primary', disabled: BUSY || problems.length > 0, onclick: function () {
           var spec = specWithGroup(key), id = GEDITS[key].id;
-          applyParams(spec, {}, null, function () { delete GEDITS[key]; root.history.replaceState(null, '', link('studio', 'parameters', { group: id })); });
+          applyParams(spec, {}, null, function () { delete GEDITS[key]; root.history.replaceState(null, '', plink({ group: id })); });
         } }, isNew ? 'Add the group' : 'Save'),
-        h('button', { onclick: function () { delete GEDITS[key]; if (isNew) go('studio', 'parameters', {}); else render(); } }, 'Discard')];
+        h('button', { onclick: function () { delete GEDITS[key]; if (isNew) pgo({}); else render(); } }, 'Discard')];
     }
     if (isNew) return [];
     var g = savedGroup(key), empty = g && !g.order.length && !PE().spec.parameters.some(function (p) { return p.group === key; });
@@ -1795,13 +1876,13 @@
   function deleteGroup(id) {
     var spec = clone(PE().spec);
     spec.groups = spec.groups.filter(function (g) { return g.id !== id; });
-    applyParams(spec, {}, null, function () { root.history.replaceState(null, '', link('studio', 'parameters', {})); });
+    applyParams(spec, {}, null, function () { root.history.replaceState(null, '', plink({})); });
   }
   function undoGroup(id) {
     var spec = clone(PE().spec), og = clone(openedGroup(id));
     if (!og) {
       spec.groups = spec.groups.filter(function (g) { return g.id !== id; });
-      applyParams(spec, {}, null, function () { root.history.replaceState(null, '', link('studio', 'parameters', {})); call('drop_pictures'); });
+      applyParams(spec, {}, null, function () { root.history.replaceState(null, '', plink({})); call('drop_pictures'); });
       return;
     }
     var g = groupOf(spec, id), mine = spec.parameters.filter(function (p) { return p.group === id; }).map(function (p) { return p.name; });
@@ -1870,6 +1951,7 @@
         !dirty ? [h('p', { 'class': 'muted' }, 'No unsaved change.')] :
           problems.length ? [h('ul', { 'class': 'checks bad' }, problems.map(function (p) { return h('li', null, ['✗', h('span', null, p)]); }))] :
           [h('ul', { 'class': 'checks good' }, [h('li', null, ['✓', h('span', null, 'No problems: it can be saved.')])])])),
+      rangeBlock(key, f, dirty, isNew),
       f.type === 'choice' ? choicesBlock(key, f) : null,
       whenBlock(key, f),
       h('div', { 'class': 'block' }, [h('h4', null, 'The database’s words'), h('div', { 'class': 'kv', style: 'grid-template-columns:90px 1fr;align-items:center' }, [
@@ -1935,8 +2017,11 @@
 
   function renderTools(center, right) {
     if (R.q.tool && toolState(R.q.tool)) { renderToolEditor(center, right, R.q.tool); return; }
-    add(center, head('Tools', 'The functions your agents call to build and look at a design. Each tool is a plain Python function plus a manifest: what it is, which role may call it, what it produces, and the text the agents read about it.', [
+    add(center, head('Tools', 'The functions your agents call to build and look at a design. Each tool is a plain Python function, or an OpenSCAD model the engine runs, plus a manifest: what it is, which role may call it, what it produces, and the text the agents read about it.', [
       h('button', { 'class': 'primary', disabled: BUSY, onclick: askNewTool }, '+ New tool')]));
+    add(center, importBanner());
+    add(center, scadDrop());
+    scadDragTarget(center);
     var wrap = h('div', { 'class': 'toolcards' });
     D.tools.forEach(function (t) {
       var info = D.tool_info[t.name] || { roles: [], images: [], settings: [] }, st = toolState(t.name) || {};
@@ -2234,6 +2319,10 @@
     var nameIn = h('input', { type: 'text', spellcheck: 'false', placeholder: 'my_tool' });
     var dispIn = h('input', { type: 'text', placeholder: 'My tool' });
     var msg = h('div');
+    var scadPicker = h('input', { type: 'file', accept: '.scad', style: 'display:none', onchange: function (e) {
+      var f = e.target.files[0]; e.target.value = '';
+      if (f) readScad(f, { name: nameIn.value.trim(), display: dispIn.value.trim() });
+    } });
     function radio(value, label, disabled, extra) {
       return h('label', { 'class': 'pick' + (disabled ? ' off' : '') }, [
         h('input', { type: 'radio', name: 'newfrom', value: value, checked: value === mode, disabled: !!disabled,
@@ -2251,12 +2340,13 @@
       radio('copy', 'A copy of a tool', !tools.length, [h('div', null, h('select', { onchange: function (e) { src = e.target.value; } },
         tools.map(function (t) { return h('option', { value: t }, t); }))),
         h('div', { 'class': 'muted hint' }, 'Its manifest and code under the new name. Its texts stay with the original, its pictures and model file get names of their own, a helper’s function is renamed after the copy.')]),
-      radio('adapter', 'An adapter (a Grasshopper definition on a compute server, a Node script, an HTTP endpoint)', true, [h('div', { 'class': 'muted hint' }, 'Comes in P6e.')]),
-      radio('cad', 'A CAD file (an OpenSCAD model)', true, [h('div', { 'class': 'muted hint' }, 'Comes in P6f.')]),
-      msg]);
+      radio('adapter', 'An adapter (a Grasshopper definition on a compute server, a Node script, an HTTP endpoint)', true, [h('div', { 'class': 'muted hint' }, 'Not yet: a later step (TODO F124).')]),
+      radio('cad', 'A CAD file (an OpenSCAD model, .scad)', false, [h('div', { 'class': 'muted hint' }, 'Choose the file next: the Studio reads its settings and shows what each one becomes, and how to import it, before anything is written.  You can also drop a .scad file on the Tools page.')]),
+      msg, scadPicker]);
     showModal('New tool', body, [h('button', { onclick: closeModal }, 'Cancel'),
       h('button', { 'class': 'primary', onclick: function () {
         var name = nameIn.value.trim();
+        if (mode === 'cad') { scadPicker.click(); return; }
         msg.innerHTML = '';
         add(msg, h('p', { 'class': 'muted' }, 'Checking with the engine…'));
         call('new_tool', name, dispIn.value, mode === 'template' ? kind : null, mode === 'copy' ? src : null).then(function (r) {
@@ -2277,6 +2367,275 @@
           }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
         });
       } }, 'Make the tool')]);
+  }
+
+  /* -- A tool from an OpenSCAD model (P6f) ---------------------------------------
+   * A .scad file dropped on the Tools page (or picked: Import a .scad file, or
+   * New tool › A CAD file) is read by the server (scad_read: the settings its
+   * Customizer shows, and what each is proposed as); the dialog shows them by
+   * tab with the way to import it -- a new configurator, or one more tool --
+   * and scad_import makes it (studio/scad_import.py).  Undo the import
+   * (scad_undo) puts back every file it touched. */
+  var SCAD = null;              // the import being prepared
+  var IMPORT_WARNINGS = null;   // the last import's warnings, for its banner
+  var PICK_WORDS = { parameter: 'Parameter', detail: 'Detail', model: 'Left to the model' };
+  var PICK_ALL = { parameter: 'All: parameters', detail: 'All: detail', model: 'All: left to the model' };
+  // The rows with the owner's picks laid over (the server's apply_picks, for
+  // what the dialog shows): each row's pick, its "only when" while it and the
+  // choice it names are parameters (on unless unticked), and the counts.
+  function scadView(rows, picks, when) {
+    var pickOf = {};
+    rows.forEach(function (r) { pickOf[r.setting] = picks[r.setting] || r.pick; });
+    var out = rows.map(function (r) {
+      var ctrl = r.when ? Object.keys(r.when)[0] : null;
+      var live = !!ctrl && pickOf[r.setting] === 'parameter' && pickOf[ctrl] === 'parameter';
+      return { row: r, pick: pickOf[r.setting], whenLive: live, whenOn: live && when[r.setting] !== false };
+    });
+    var made = [], when = 0;
+    out.forEach(function (v) {
+      if (v.pick !== 'parameter') return;
+      made = made.concat(v.row.parameters);
+      if (v.whenOn) when += v.row.parameters.length;
+    });
+    return { rows: out, parameters: made.length, names: made.map(function (p) { return p.name; }),
+             proposed: made.filter(function (p) { return p.range === 'proposed'; }).length, when: when };
+  }
+  // A pick for one row, or for every row of a tab that can take it (only the
+  // picks that differ from the proposal are kept).
+  function scadSetPick(picks, rows, pick) {
+    rows.forEach(function (r) {
+      if (r.picks.indexOf(pick) < 0) return;
+      if (r.pick === pick) delete picks[r.setting]; else picks[r.setting] = pick;
+    });
+  }
+  function andList(xs) { return xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]; }
+  function importDid(s) {
+    return (s.mode === 'new' ? 'as a new configurator: added ' + andList(s.added) +
+      (s.removed.length ? '; removed ' + andList(s.removed) : '') + '; ' + s.parameters + ' parameters'
+      : 'as one more tool: added ' + andList(s.added) + ' and its ' + s.parameters + ' parameters') + '.';
+  }
+  function scadShown(v) { return typeof v === 'string' || v instanceof Array ? JSON.stringify(v) : String(v); }
+  function scadParamText(p) {
+    if (p.type === 'choice') return p.name + ' · choice (' + p.choices.length + ')';
+    if (p.type === 'bool') return p.name + ' · on/off';
+    return p.name + ' · ' + p.type + ' [' + p.min + '; ' + p.max + ']';
+  }
+  function scadWhenText(when) {
+    return 'only when ' + Object.keys(when).map(function (k) { return k + ' = ' + String(when[k]); }).join(', and ');
+  }
+  function hasFiles(e) { return !!e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; }
+  function scadDrop() {
+    var picker = h('input', { type: 'file', accept: '.scad', style: 'display:none', onchange: function (e) {
+      var f = e.target.files[0]; e.target.value = '';
+      if (f) readScad(f);
+    } });
+    return h('div', { 'class': 'dropzone slim', id: 'scadDrop' }, [picker,
+      h('span', null, ['Drop an OpenSCAD model (', h('b', null, '.scad'), ') here to import it as a tool, or']),
+      h('button', { disabled: BUSY, onclick: function () { picker.click(); } }, 'Import a .scad file…')]);
+  }
+  // A file dragged over the Tools page lights the drop area; dropped there, it is read.
+  function scadDragTarget(center) {
+    function zone(on) { var z = el('scadDrop'); if (z) z.classList.toggle('over', on); }
+    center.addEventListener('dragover', function (e) { if (!hasFiles(e)) return; e.preventDefault(); zone(true); });
+    center.addEventListener('dragleave', function (e) { if (!center.contains(e.relatedTarget)) zone(false); });
+    center.addEventListener('drop', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      zone(false);
+      if (e.dataTransfer.files.length) readScad(e.dataTransfer.files[0]);
+    });
+  }
+  function readScad(file, preset) {
+    if (!file) return;
+    if (BUSY) { status('Wait for the change being written, then drop the file again.', 'warn'); return; }
+    if (!/\.scad$/i.test(file.name)) { status(file.name + ' is not an OpenSCAD model: import a .scad file.', 'err'); return; }
+    status('Reading ' + file.name + '…', 'busy');
+    var fr = new root.FileReader();
+    fr.onload = function () {
+      var b64 = String(fr.result).split(',')[1] || '';
+      call('scad_read', b64, file.name).then(function (r) {
+        if (!r || r.ok === false) {
+          status((r && r.error) || 'The file could not be read.', 'err');
+          showModal('The model cannot be imported', h('div', null, [h('p', { style: 'margin:0 0 8px' }, (r && r.error) || '')].concat(
+            ((r && r.problems) || []).map(function (p) { return h('div', { 'class': 'probline' }, '✗ ' + p); }))),
+            [h('button', { onclick: closeModal }, 'Close')]);
+          return;
+        }
+        status('Read ' + file.name + ': ' + r.counts.settings + ' settings.', 'ok');
+        SCAD = { file: file.name, b64: b64, found: r, mode: null, picks: {}, when: {}, open: {}, error: null,
+                 name: (preset && preset.name) || r.name, display: (preset && preset.display) || r.display };
+        SCAD.open[r.groups[0]] = true;
+        showModal('Import ' + file.name, h('div'), []);
+        el('modalBox').className = 'modal xwide';
+        drawScad();
+      }, function (e) { status(String(e && e.message ? e.message : e), 'err'); });
+    };
+    fr.readAsDataURL(file);
+  }
+  function drawScad() {
+    var S = SCAD;
+    if (!S) return;
+    var f = S.found, su = f.setup, v = scadView(f.rows, S.picks, S.when);
+    var gone = su.generators.concat(su.geometry);
+    var clash = S.mode === 'add' ? v.names.filter(function (n) { return su.parameters.indexOf(n) >= 0; }) : [];
+    var unsaved = Object.keys(PEDITS).length + Object.keys(GEDITS).length + Object.keys(TEDITS).length + Object.keys(FEDITS).length;
+    function radio(mode, label, hint) {
+      return h('label', { 'class': 'pick' }, [h('input', { type: 'radio', name: 'scadmode', checked: S.mode === mode,
+        onchange: function () { S.mode = mode; drawScad(); } }), h('span', null, [h('b', null, label), h('div', { 'class': 'muted hint' }, hint)])]);
+    }
+    var body = h('div', { 'class': 'scad' }, [
+      S.error,
+      h('p', { 'class': 'scadsum' }, [h('b', null, f.model), ' · ' + f.counts.settings + ' settings in ' + f.groups.length + ' tabs → ' +
+        v.parameters + ' parameters, ' + v.proposed + ' of them with a proposed range, ' + v.when + ' used only when a choice has a value.']),
+      f.notes.length || f.includes.length ? h('div', { 'class': 'banner warn boxed' }, (f.includes.length ? [h('div', null,
+        'The model uses other files (' + f.includes.join(', ') + '): only the model file is copied; add them to the tool’s folder afterwards (Files).')] : [])
+        .concat(f.notes.map(function (n) { return h('div', null, n); }))) : null,
+      h('h4', null, 'How to import it'),
+      radio('new', 'Start a new configurator', 'The model becomes the setup’s generator and its geometry tool for the Download buttons, each with a copy of the file.  Its parameters replace today’s ' +
+        su.parameters.length + ', the agents’ parameter lists are written new, and the picture samples become one, the defaults.' +
+        (gone.length ? '  These tools go: ' + gone.join(', ') + '.' : '') + (su.helpers.length ? '  These stay: ' + su.helpers.join(', ') + '.' : '') +
+        '  The texts stay as they are, for you to adapt.'),
+      radio('add', 'Add it as one more tool', (su.add_as === 'generator' ? 'It becomes the setup’s generator (the setup has none).'
+        : 'It becomes a geometry tool beside ' + su.generators.join(', ') + ': a generator’s geometry tool setting, or the Download buttons, can use it.') +
+        '  Its parameters join today’s ' + su.parameters.length + ', the agents’ lists and the picture samples get them too.'),
+      clash.length ? h('div', { 'class': 'banner bad boxed' }, 'The setup has parameters of these names already: ' + clash.join(', ') +
+        '.  Leave those settings to the model, or start a new configurator.') : null,
+      unsaved ? h('div', { 'class': 'banner warn boxed' }, 'Your ' + unsaved + ' unsaved change(s) to parameters, groups and tools are dropped.') : null,
+      h('div', { 'class': 'kv mform', style: 'margin-top:10px' }, [
+        h('div', { 'class': 'k' }, 'Tool name'), h('div', null, [h('input', { type: 'text', value: S.name, spellcheck: 'false',
+          oninput: function (e) { S.name = e.target.value; } }),
+          h('div', { 'class': 'muted hint' }, 'Lower case: letters, digits and _.  A new configurator also makes <name>_geometry.')]),
+        h('div', { 'class': 'k' }, 'Display name'), h('div', null, h('input', { type: 'text', value: S.display,
+          oninput: function (e) { S.display = e.target.value; } }))]),
+      h('h4', null, 'The model’s settings'),
+      h('p', { 'class': 'muted hint' }, 'Each setting becomes a parameter the agents set, the model’s detail (its own for the Download buttons, coarser for the agents’ runs), or is left to the model (its own value).  A range in amber was proposed from the model’s default: review it under Parameters after the import.'),
+      h('div', { 'class': 'scadfold' }, [
+        h('button', { 'class': 'mini', onclick: function () { f.groups.forEach(function (g) { S.open[g] = true; }); drawScad(); } }, 'Unfold every tab'),
+        h('button', { 'class': 'mini', onclick: function () { S.open = {}; drawScad(); } }, 'Fold every tab')]),
+      scadTable(v)]);
+    var b = el('modalBody'), top = b.scrollTop;
+    b.innerHTML = '';
+    b.appendChild(body);
+    b.scrollTop = top;
+    var why = !S.mode ? 'Choose how to import it first.' : !v.parameters ? 'Pick at least one setting as a parameter.'
+      : clash.length ? 'Some parameter names exist already (see above).' : null;
+    var foot = el('modalFoot');
+    foot.innerHTML = '';
+    add(foot, [h('button', { onclick: function () { SCAD = null; closeModal(); } }, 'Cancel'),
+      h('button', { 'class': 'primary', disabled: !!why || BUSY, title: why, onclick: runScad },
+        S.mode === 'new' ? 'Start the new configurator' : 'Import')]);
+  }
+  function scadTable(v) {
+    var tabs = [], by = {};
+    v.rows.forEach(function (x) {
+      var g = x.row.group;
+      if (!by[g]) { by[g] = []; tabs.push(g); }
+      by[g].push(x);
+    });
+    var tb = h('tbody');
+    tabs.forEach(function (g) {
+      var xs = by[g], open = !!SCAD.open[g];
+      var n = xs.reduce(function (a, x) { return a + (x.pick === 'parameter' ? x.row.parameters.length : 0); }, 0);
+      var picks = ['parameter', 'detail', 'model'].filter(function (p) { return xs.some(function (x) { return x.row.picks.indexOf(p) >= 0; }); });
+      add(tb, h('tr', { 'class': 'grp', style: 'cursor:pointer', onclick: function () { SCAD.open[g] = !open; drawScad(); } },
+        h('td', { colspan: 5 }, h('div', { 'class': 'scadg' }, [h('span', null, (open ? '▾ ' : '▸ ')), h('b', null, g),
+          h('span', { 'class': 'muted' }, xs.length + (xs.length === 1 ? ' setting · ' : ' settings · ') + n + (n === 1 ? ' parameter' : ' parameters')),
+          h('span', { 'class': 'grow' }),
+          picks.length > 1 ? h('select', { onclick: function (e) { e.stopPropagation(); }, onchange: function (e) {
+            if (e.target.value) { scadSetPick(SCAD.picks, xs.map(function (x) { return x.row; }), e.target.value); drawScad(); } } },
+            [h('option', { value: '' }, 'All: …')].concat(picks.map(function (p) { return h('option', { value: p }, PICK_ALL[p]); }))) : null]))));
+      if (open) xs.forEach(function (x) { add(tb, scadRow(x)); });
+    });
+    return h('table', { 'class': 'ptab scadtab' }, [h('thead', null, h('tr', null, ['Setting', 'Default', 'Becomes', 'Parameters', 'Only when']
+      .map(function (x) { return h('th', null, x); }))), tb]);
+  }
+  function scadRow(x) {
+    var r = x.row;
+    var made = x.pick === 'parameter' ? r.parameters.map(function (p) {
+      return h('div', { 'class': p.range === 'proposed' ? 'proposed' : null, title: p.range === 'proposed' ? 'A proposed range: review it under Parameters after the import.' : null },
+        scadParamText(p));
+    }) : h('span', { 'class': 'muted' }, x.pick === 'detail' ? 'the model’s detail: ' + scadShown(r['default']) + ' for downloads, coarser for the agents’ runs' : '—');
+    return h('tr', { 'class': x.pick === 'parameter' ? null : 'off' }, [
+      h('td', null, [h('div', { 'class': 'mono' }, r.setting), h('div', { 'class': 'muted' }, [r.kind, r.control].filter(function (s) { return s; }).join(' · ')),
+        r.description ? h('div', { 'class': 'muted' }, r.description) : null, r.note ? h('div', { 'class': 'warn' }, r.note) : null]),
+      h('td', { 'class': 'mono' }, scadShown(r['default'])),
+      h('td', null, r.picks.length > 1 ? h('select', { onchange: function (e) { scadSetPick(SCAD.picks, [r], e.target.value); drawScad(); } },
+        r.picks.map(function (p) { return h('option', { value: p, selected: p === x.pick }, PICK_WORDS[p]); })) : h('span', { 'class': 'muted' }, PICK_WORDS[r.picks[0]])),
+      h('td', null, made),
+      h('td', null, x.whenLive ? h('label', null, [h('input', { type: 'checkbox', checked: x.whenOn, onchange: function (e) {
+        if (e.target.checked) delete SCAD.when[r.setting]; else SCAD.when[r.setting] = false;
+        drawScad(); } }), ' ' + scadWhenText(r.when)]) : null)]);
+  }
+  function runScad() {
+    var S = SCAD;
+    if (!S || !S.mode || BUSY) return;
+    var when = {};
+    Object.keys(S.when).forEach(function (k) { when[k] = false; });
+    S.error = h('p', { 'class': 'muted' }, 'Checking it with the engine…');
+    BUSY = true;
+    drawScad();
+    status('Importing ' + S.file + '…', 'busy');
+    call('scad_import', S.b64, S.file, S.mode, S.picks, when, S.name.trim(), S.display.trim()).then(function (r) {
+      if (!r || r.ok === false) {
+        BUSY = false;
+        S.error = h('div', { 'class': 'banner bad boxed' }, [h('div', null, (r && r.error) || 'The model could not be imported.')].concat(
+          ((r && r.problems) || []).map(function (p) { return h('div', null, '• ' + p); })));
+        status((r && r.error) || 'The import failed.', 'err');
+        drawScad();
+        el('modalBody').scrollTop = 0;
+        return;
+      }
+      SCAD = null;
+      closeModal();
+      PEDITS = {}; GEDITS = {}; TEDITS = {}; FEDITS = {}; TESTS = {};
+      IMPORT_WARNINGS = r.warnings || [];
+      var done = 'Imported ' + S.file + ' ' + importDid(r);
+      status(done + ' Re-assembling every prompt…', 'busy');
+      root.history.replaceState(null, '', link('studio', 'tools', {}));
+      parse();
+      reload().then(function () {
+        BUSY = false;
+        status(done + (IMPORT_WARNINGS.length ? '  See its notes above the tools.' : ''), IMPORT_WARNINGS.length ? 'warn' : 'ok');
+        render();
+      }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+    }, function (e) { BUSY = false; S.error = null; status(String(e && e.message ? e.message : e), 'err'); drawScad(); });
+  }
+  // While an import can be undone: what it did, and its Undo.
+  function importBanner() {
+    var s = D.scad_import;
+    if (!s) return null;
+    return h('div', { 'class': 'banner warn boxed importban' }, [
+      h('div', { 'class': 'row' }, [h('div', { 'class': 'grow' }, [h('b', null, 'Imported ' + s.model), ' ' + importDid(s) +
+        '  Undo the import puts back every file it touched.']),
+        h('button', { disabled: BUSY, onclick: function () { undoImport(false); } }, 'Undo the import')]),
+      (IMPORT_WARNINGS || []).length ? h('ul', { 'class': 'checks warn' }, IMPORT_WARNINGS.map(function (w) {
+        return h('li', null, ['!', h('span', null, w)]); })) : null]);
+  }
+  function undoImport(force) {
+    if (BUSY) return;
+    BUSY = true;
+    status('Undoing the import…', 'busy');
+    render();
+    call('scad_undo', force === true).then(function (r) {
+      if (!r || r.ok === false) {
+        BUSY = false;
+        status((r && r.error) || 'The import could not be undone.', 'err');
+        render();
+        if (r && (r.problems || []).length) {
+          showModal('Undo the import', h('div', null, [h('p', { style: 'margin:0 0 8px' }, r.error)].concat(
+            r.problems.map(function (p) { return h('div', { 'class': 'probline' }, '• ' + p); }))), [
+            h('button', { onclick: closeModal }, 'Cancel'),
+            h('button', { 'class': 'danger', onclick: function () { closeModal(); undoImport(true); } }, 'Undo anyway')]);
+        }
+        return;
+      }
+      PEDITS = {}; GEDITS = {}; TEDITS = {}; FEDITS = {}; TESTS = {};
+      IMPORT_WARNINGS = null;
+      var done = 'Undid the import of ' + r.undone.model + ': every file it touched is back as it was.';
+      status(done + ' Re-assembling every prompt…', 'busy');
+      reload().then(function () { BUSY = false; status(done, 'ok'); render(); },
+        function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+    }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
   }
 
   /* -- Test tool (P6c-2) --------------------------------------------------------- */
@@ -3061,6 +3420,7 @@
   function valGo(lk) {
     if (lk.section === 'prompts') go('studio', 'prompts', { topo: lk.topology || null });
     else if (lk.section === 'tools') go('studio', 'tools', { tool: lk.tool || null });
+    else if (lk.section === 'parameters' && lk.filter === 'ranges') pgo({ ranges: '1' });
     else go('studio', lk.section);
   }
   function valItem(i) {

@@ -174,7 +174,8 @@ def part_load() -> list[dict]:
                          f"(half to double the model's default): " + ", ".join(proposed[:12])
                          + (f" and {len(proposed) - 12} more" if len(proposed) > 12 else "")],
                         note="Set their min and max under Parameters (editing either one ends "
-                             "the proposal).", link={"section": "parameters"}))
+                             "the proposal), or keep them as they are.",
+                        link={"section": "parameters", "filter": "ranges"}))
     # A. pack.yaml: the agents' access to the parameter list
     lines = attempt(pa.default_table)
     out.append(item("A", "Agent access (pack.yaml)", FAIL if lines else PASS, lines,
