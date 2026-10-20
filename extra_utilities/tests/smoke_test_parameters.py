@@ -671,6 +671,13 @@ def check_typed_readers() -> None:
                                      params={"Length": 40.0, "End1_Style": 1.0}, n=3)
             check(calls and calls[0]["cats"] == [False, True],
                   f"[TYPES] the ranking does not flag the choice as matched-or-not: {calls}")
+            from agents.database_handler.database_handler import _scalar_values
+            check(_scalar_values(dict(good, Length="long", Barbs="no"))
+                  == {"Count": 2.0, "End1_Style": "mag", "FlangeDia": 12.5},
+                  "[TYPES] the save step does not hand the search table a choice's value as it is")
+            check(_scalar_values({"End1_Style": "hose", "Barbs": True}) == {"End1_Style": "hose",
+                                                                           "Barbs": True},
+                  "[TYPES] the save step drops a choice or an on/off value")
             yml = folder / "pack.yaml"
             yml.write_text(json.dumps({"render_samples": {"small": good}}), encoding="utf-8")
             check(image_run.render_sample_sets(yml) == {"small": good},

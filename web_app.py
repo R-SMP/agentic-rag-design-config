@@ -4163,7 +4163,10 @@ async def api_manual_entry_create(
     _require_auth()
     _require_not_busy()
     try:
-        params = {k: float(v)
+        # A choice's value and true / false are kept as they are; the
+        # numbers as before (MAS-blueprint P6d).  manual_entry checks each.
+        kinds = {p["name"]: p["type"] for p in _parameters.load()["parameters"]}
+        params = {k: v if kinds.get(k) in ("choice", "bool") else float(v)
                   for k, v in json.loads(parameters_json).items()}
         notes = json.loads(notes_json)
         degrees = json.loads(degrees_json)

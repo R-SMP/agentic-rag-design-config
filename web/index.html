@@ -309,35 +309,17 @@
               pipeline with your next message.
             </p>
 
-            <!-- 4 section tabs.  Click to switch which section's
-                 sliders + profile image are visible.  Per the locked
-                 design, no Back/Next navigation. -->
-            <div class="params-tabs">
-              <button class="params-tab-btn active" type="button"
-                      data-paramtab="general">General Parameters</button>
-              <button class="params-tab-btn" type="button"
-                      data-paramtab="inner">Inner Profile</button>
-              <button class="params-tab-btn" type="button"
-                      data-paramtab="middle">Middle Profile</button>
-              <button class="params-tab-btn" type="button"
-                      data-paramtab="outer">Outer Profile</button>
-            </div>
+            <!-- One tab per group of the setup's parameters
+                 (dc_pack/parameters.json), made by app.js paramsBuildAll().
+                 Click to switch which group's rows + picture are visible.
+                 Per the locked design, no Back/Next navigation. -->
+            <div class="params-tabs"></div>
           </div>
 
-          <!-- Tab panes — populated by app.js paramsBuildAll().
-               Only the .active pane is visible at a time.  Each pane
-               contains the matching profile image followed by that
-               section's slider rows. -->
-          <div class="params-panes">
-            <div class="params-pane active" data-paramtab="general"
-                 id="params-pane-general"></div>
-            <div class="params-pane" data-paramtab="inner"
-                 id="params-pane-inner"></div>
-            <div class="params-pane" data-paramtab="middle"
-                 id="params-pane-middle"></div>
-            <div class="params-pane" data-paramtab="outer"
-                 id="params-pane-outer"></div>
-          </div>
+          <!-- Tab panes — made and filled by app.js paramsBuildAll(), one
+               per group.  Only the .active pane is visible at a time.  Each
+               pane holds the group's picture followed by its rows. -->
+          <div class="params-panes"></div>
 
           <!-- Bottom action row.  The "Use these parameters" button
                is the manual submit path until Step 8 wires the

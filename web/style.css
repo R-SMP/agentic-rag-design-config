@@ -2102,6 +2102,52 @@ button.danger:hover { background: #3a1d1d; }
 .param-row:last-child {
   border-bottom: none;
 }
+/* A row whose parameter does not matter for the current values (its
+   "only when" does not hold) is hidden (MAS-blueprint P6d). */
+.param-row[hidden] {
+  display: none;
+}
+
+/* A choice (dropdown) or an on/off parameter (checkbox) in place of the
+   slider (MAS-blueprint P6d); coloured by the row's state like a slider. */
+.param-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 26px;
+}
+.param-select {
+  background: #1a1a1a;
+  color: #ccc;
+  border: 1px solid #444;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font: inherit;
+  font-size: 13px;
+  min-width: 180px;
+  cursor: pointer;
+}
+.param-check {
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  accent-color: #888;
+  cursor: pointer;
+}
+.param-row[data-state="fixed"] .param-select {
+  border-color: #2d6a3a;
+  color: #4ade80;
+}
+.param-row[data-state="fixed"] .param-check {
+  accent-color: #4ade80;
+}
+.param-row[data-state="proposed"] .param-select {
+  border-color: #7a4a1c;
+  color: #fb923c;
+}
+.param-row[data-state="proposed"] .param-check {
+  accent-color: #fb923c;
+}
 
 /* State button (VARY / FIXED / PROPOSED).  Step 3 makes it
    interactive for VARY ↔ FIXED.  Step 10 adds PROPOSED (orange)
@@ -3123,6 +3169,7 @@ button.danger:hover:not(:disabled) { filter: brightness(1.1); }
 .udb-param { display: flex; align-items: center; justify-content: space-between;
              gap: 8px; font-size: 0.78rem; }
 .udb-param input { width: 92px; font: inherit; padding: 3px 5px; }
+.udb-param select { width: 104px; font: inherit; padding: 3px 5px; }
 .udb-actions { margin-top: 18px; display: flex; align-items: center; gap: 12px; }
 .udb-status { font-size: 0.82rem; opacity: 0.85; }
 .udb-busy { margin-bottom: 10px; padding: 8px; border-radius: 6px;

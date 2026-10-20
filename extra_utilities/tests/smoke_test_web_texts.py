@@ -32,6 +32,17 @@ are stubbed; no database):
    pack's own samples; and -- under Node, when ``three`` resolves -- the
    module exports the contract and builds the model, its extra view and
    its group figures from the default parameters.
+6. TYPES (MAS-blueprint P6d).  The slider page's tabs are not written into
+   ``index.html`` (the page makes one per group of parameters.json); and --
+   under Node -- the page's own code for choice and on/off parameters and
+   "only when" (cut out of ``web/app.js``, a stand-in for the rows): which
+   rows hide, what the FIXED block and Copy parameters say (a hidden
+   parameter is left out), what "Use these parameters" fixes, what a
+   proposal changes (a FIXED row keeps its value) and how it reads, which
+   values fit.  With that setup as the pack, the server: the page and its
+   parameters are served, the preview check, ``propose_attempt`` and a
+   manual database entry (a stand-in writer) take a choice's value and
+   true / false as they are and refuse one that does not fit.
 
 Run from the repo root:  py -3.13 extra_utilities/tests/smoke_test_web_texts.py
 """
@@ -317,22 +328,204 @@ def check_preview() -> str:
     return f"{got['meshes']} meshes, {got['lines']} section outlines"
 
 
+# The page's own functions, cut out of web/app.js (they end at a "}" in the
+# first column).
+_PAGE_FUNCTIONS = ("paramsFormatValue", "paramsFormatValueWithUnit", "paramsPicked", "paramsSame",
+                   "paramsFits", "paramsValueText", "paramsShownValue", "paramsIsUsed",
+                   "paramsApplyUsedWhen", "paramsBuildFixedParamsDict", "paramsBuildSubmitMessage",
+                   "paramsSetState", "paramsSetPick", "paramsFixAll", "paramsApplyProposal")
+
+_NODE_TYPES = r'''
+const groups = JSON.parse(process.env.GROUPS);
+var PARAM_GROUPS = groups;
+var PACK_PAGE = { words: { dc_name: "test configurator" } };
+var paramSpecByKey = {}, paramState = {}, paramRowState = {}, rows = {}, els = {};
+for (const g of groups) for (const p of g.params) {
+  paramSpecByKey[p.key] = p; paramState[p.key] = p.value; paramRowState[p.key] = "vary";
+}
+var document = {
+  querySelector: (sel) => {
+    const m = /data-param-key="([^"]+)"/.exec(sel);
+    return m ? (rows[m[1]] = rows[m[1]] || { hidden: false, dataset: {}, querySelector: () => null })
+             : null;
+  },
+  getElementById: (id) => (els[id] = els[id] || { textContent: "", value: "", checked: false }),
+};
+function paramsRequestFEG() {}
+FUNCTIONS
+const hidden = () => Object.keys(rows).filter((k) => rows[k].hidden).sort();
+const out = {};
+paramsApplyUsedWhen();
+out.hiddenAtStart = hidden();
+for (const k of Object.keys(paramRowState)) paramRowState[k] = "fixed";
+out.fixedAtStart = paramsBuildFixedParamsDict();
+paramState.End1_Style = "mag";
+paramsApplyUsedWhen();
+out.hiddenWithMag = hidden();
+out.fixedWithMag = paramsBuildFixedParamsDict();
+out.copyWithMag = paramsBuildSubmitMessage();
+for (const k of Object.keys(paramRowState)) paramRowState[k] = "vary";
+paramState.End1_Style = "hose";
+paramsApplyUsedWhen();
+paramsFixAll();
+out.fixAll = Object.keys(paramRowState).filter((k) => paramRowState[k] === "fixed").sort();
+for (const k of Object.keys(paramRowState)) paramRowState[k] = "vary";
+paramRowState.Count = "fixed";
+paramsApplyProposal({ End1_Style: "mag", Barbs: true, Length: "x", Count: 3, FlangeDia: 12,
+                      Ghost: 1 });
+out.proposal = {
+  state: paramState, rowState: paramRowState, hidden: hidden(),
+  text: els["param-proposed-End1_Style"].textContent, pick: els["param-End1_Style"].value,
+  check: els["param-Barbs"].checked, cur: els["param-cur-Barbs"].textContent,
+};
+paramsApplyProposal({ End1_Style: "ring", Barbs: 1 });
+out.badProposal = [paramState.End1_Style, paramState.Barbs];
+paramState.Barbs = true;
+const s = paramSpecByKey;
+out.shown = [paramsShownValue(s.End1_Style, "mag"), paramsShownValue(s.Barbs, true),
+             paramsShownValue(s.Barbs, false), paramsShownValue(s.Length, 42)];
+out.fits = [paramsFits(s.End1_Style, "mag"), paramsFits(s.End1_Style, "ring"),
+            paramsFits(s.Barbs, false), paramsFits(s.Barbs, 1)];
+s.Barbs.usedWhen = { End1_Style: ["hose", "mag"] };
+out.listWant = paramsIsUsed(s.Barbs);
+console.log(JSON.stringify(out));
+'''
+
+
+def _js_function(src: str, name: str) -> str:
+    start = src.index(f"\nfunction {name}(") + 1
+    return src[start:src.index("\n}\n", start) + 3]
+
+
+def check_types() -> str:
+    import subprocess
+
+    sys.path.insert(0, str(ROOT / "extra_utilities" / "tests"))
+    from smoke_test_parameters import TYPED_SPEC
+    html = (ROOT / "web" / "index.html").read_text(encoding="utf-8")
+    check('<div class="params-tabs"></div>' in html and "data-paramtab=" not in html
+          and '<div class="params-panes"></div>' in html,
+          "[TYPES] index.html writes the slider page's tabs itself (the page makes them "
+          "from parameters.json)")
+    src = (ROOT / "web" / "app.js").read_text(encoding="utf-8").replace("\r\n", "\n")
+    prog = _NODE_TYPES.replace("FUNCTIONS", "\n".join(_js_function(src, n) for n in _PAGE_FUNCTIONS))
+    env = dict(os.environ, GROUPS=json.dumps(parameters.slider_groups(TYPED_SPEC)))
+    try:
+        p = subprocess.run(["node", "--input-type=module", "-e", prog], capture_output=True,
+                           text=True, encoding="utf-8", cwd=str(ROOT), env=env, timeout=120)
+    except FileNotFoundError:
+        return "SKIP (no node)"
+    if p.returncode != 0:
+        check(False, f"[TYPES] the page's code failed under Node: {p.stderr.strip()[-300:]}")
+        return "failed"
+    got = json.loads(p.stdout.strip().splitlines()[-1])
+    check(got["hiddenAtStart"] == ["FlangeDia"] and got["hiddenWithMag"] == ["Barbs"],
+          f"[TYPES] the rows hidden by \"only when\": {got['hiddenAtStart']} / {got['hiddenWithMag']}")
+    check(got["fixedAtStart"] == {"Length": "50 mm", "Count": "2", "End1_Style": "hose",
+                                  "Barbs": "false"},
+          f"[TYPES] the FIXED block (FlangeDia hidden): {got['fixedAtStart']}")
+    check(got["fixedWithMag"] == {"Length": "50 mm", "Count": "2", "End1_Style": "mag",
+                                  "FlangeDia": "10.00 mm"},
+          f"[TYPES] the FIXED block (Barbs hidden): {got['fixedWithMag']}")
+    check("End1_Style: mag" in got["copyWithMag"] and "FlangeDia: 10.00 mm" in got["copyWithMag"]
+          and "Barbs" not in got["copyWithMag"],
+          f"[TYPES] Copy parameters: {got['copyWithMag']!r}")
+    check(got["shown"] == ["mag (Magnetic flange)", "on", "off", "42 mm"],
+          f"[TYPES] how a proposal reads: {got['shown']}")
+    check(got["fits"] == [True, False, True, False], f"[TYPES] which values fit: {got['fits']}")
+    check(got["listWant"] is True, "[TYPES] an \"only when\" with a list of values does not hold")
+    check(got["fixAll"] == ["Barbs", "Count", "End1_Style", "Length"],
+          f"[TYPES] \"Use these parameters\" fixed {got['fixAll']} (FlangeDia is hidden)")
+    p = got["proposal"]
+    check(p["state"] == {"Length": 50.0, "Count": 2, "End1_Style": "mag", "Barbs": True,
+                         "FlangeDia": 12}
+          and p["rowState"] == {"Length": "vary", "Count": "fixed", "End1_Style": "proposed",
+                                "Barbs": "proposed", "FlangeDia": "proposed"}
+          and p["hidden"] == ["Barbs"] and p["text"] == "PROPOSED VALUE: mag (Magnetic flange)"
+          and p["pick"] == "1" and p["check"] is True and p["cur"] == "on",
+          f"[TYPES] a proposal: {p}")
+    check(got["badProposal"] == ["mag", True],
+          f"[TYPES] a proposal with values that do not fit changed the page: {got['badProposal']}")
+    _check_typed_server(TYPED_SPEC)
+    return f"{len(_PAGE_FUNCTIONS)} page functions run"
+
+
+def _check_typed_server(spec: dict) -> None:
+    """The server with a copy of the pack holding *spec* (choice and on/off
+    parameters): the page, the preview check, propose_attempt, a manual entry."""
+    import types
+
+    from agents.receptionist import propose_attempt_tool as P
+    tmp = Path(tempfile.mkdtemp(prefix="web_types_"))
+    shutil.copytree(ROOT / "dc_pack", tmp / "dc_pack", ignore=shutil.ignore_patterns("__pycache__"))
+    (tmp / "dc_pack" / "parameters.json").write_text(json.dumps(spec), encoding="utf-8")
+    good = {"Length": 40, "Count": 2, "End1_Style": "mag", "Barbs": False, "FlangeDia": 12.5}
+    real = (config.DC_PACK_DIR, P.ATTEMPTS_DIR, P.publish, web_app.manual_entry.create_manual_entry,
+            web_app._busy_reason)
+    sent: list = []
+    seen: dict = {}
+
+    def fake_create(**kw):
+        seen.update(kw)
+        return types.SimpleNamespace(session_id="MANUAL_test", attempt_id=1)
+    try:
+        config.DC_PACK_DIR = tmp / "dc_pack"
+        check(CLIENT.get("/").status_code == 200, "[TYPES] the page is not served for a typed setup")
+        js = CLIENT.get("/pack/parameters.js").text
+        check('"usedWhen"' in js and '"type": "choice"' in js.replace('":"', '": "'),
+              "[TYPES] /pack/parameters.js does not carry the choices and \"only when\"")
+        check(web_app._coerce_preview_params(good) == good,
+              "[TYPES] the preview check changed a good typed record")
+        try:
+            web_app._coerce_preview_params(dict(good, End1_Style="ring"))
+            check(False, "[TYPES] the preview check took End1_Style='ring'")
+        except ValueError as exc:
+            check("must be one of: hose, mag" in str(exc), f"[TYPES] the preview check said: {exc}")
+        att = (tmp / "attempts").resolve()
+        P.ATTEMPTS_DIR, P.publish = att, sent.append
+        folder = att / "20260101_000000_001_x"
+        folder.mkdir(parents=True)
+        (folder / "parameters.json").write_text(json.dumps(good), encoding="utf-8")
+        answer = P.propose_attempt.invoke({"parameters_path": str(folder / "parameters.json")})
+        check(answer.startswith("Surfaced") and sent and sent[0]["values"] == dict(good, Length=40.0, Count=2.0)
+              and isinstance(sent[0]["values"]["Count"], float),
+              f"[TYPES] propose_attempt: {answer[:120]} {sent}")
+        (folder / "parameters.json").write_text(json.dumps(dict(good, Barbs="no")), encoding="utf-8")
+        answer = P.propose_attempt.invoke({"parameters_path": str(folder / "parameters.json")})
+        check("values that do not fit: Barbs must be true or false" in answer,
+              f"[TYPES] propose_attempt took Barbs='no': {answer[:160]}")
+        web_app.manual_entry.create_manual_entry = fake_create
+        web_app._busy_reason = lambda: None
+        r = CLIENT.post("/api/manual_entry", data={"text": "a typed entry", "parameters_json": json.dumps(
+            {"Length": 40, "End1_Style": "mag", "Barbs": True})})
+        check(r.status_code == 200 and seen.get("parameters") == {"Length": 40.0, "End1_Style": "mag",
+                                                                  "Barbs": True},
+              f"[TYPES] a manual entry: {r.status_code} {r.text[:120]} -> {seen.get('parameters')}")
+    finally:
+        (config.DC_PACK_DIR, P.ATTEMPTS_DIR, P.publish, web_app.manual_entry.create_manual_entry,
+         web_app._busy_reason) = real
+        shutil.rmtree(tmp, ignore_errors=True)
+
+
 def main() -> int:
     _run(check_page, "[PAGE]")
     n_words = _run(check_pack_words, "[PACK WORDS]")
     _run(check_tools, "[TOOLS]")
     _run(check_retired, "[RETIRED]")
     node = _run(check_preview, "[PREVIEW]")
+    types = _run(check_types, "[TYPES]")
     print(f"{len(PROPELLER_TEXTS)} page texts checked; {n_words} pack words swapped for "
           f"stand-ins; {len(pack_tools.page_tools())} pack tools + {len(STANDARD_TOOLS)} "
-          f"standard tools listed; the preview module under Node: {node}")
+          f"standard tools listed; the preview module under Node: {node}; choice and "
+          f"on/off parameters under Node: {types}")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
             print("  " + f)
         return 1
-    print("\nPASS - the page takes the configurator's words, tools and browser preview "
-          "from the pack, escaped, and a record's retired parameter names are dropped.")
+    print("\nPASS - the page takes the configurator's words, tools, browser preview and "
+          "parameter tabs from the pack, escaped, a record's retired parameter names are "
+          "dropped, and choice / on/off parameters and \"only when\" behave.")
     return 0
 
 

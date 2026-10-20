@@ -1209,16 +1209,46 @@ if (!window.PACK_PARAMETERS) {
 // and the retrieval layer reports it as partial="true" keys="N/16".
 // --------------------------------------------------------------------
 const UDB_PARAMS = PACK_PARAMETERS.names;
+// Each parameter's spec by name: a choice or on/off parameter gets a dropdown
+// instead of a number box (MAS-blueprint P6d).
+const UDB_SPECS = {};
+for (const g of PACK_PARAMETERS.groups) for (const p of g.params) UDB_SPECS[p.key] = p;
+const UDB_TYPED = Object.values(UDB_SPECS).some(udbPicked);
 const udbFiles = new Map();   // filename -> {file, note, degree}
 
 function udbRenderParams() {
   const box = document.getElementById("udb-params");
   if (!box || box.childElementCount) return;
-  box.innerHTML = UDB_PARAMS.map((p) => `
+  box.innerHTML = UDB_PARAMS.map((p) => udbPicked(UDB_SPECS[p]) ? udbPickBox(p) : `
     <label class="udb-param">
       <span>${p}</span>
       <input type="number" step="any" data-param="${p}" placeholder="—" />
     </label>`).join("");
+}
+
+function udbPicked(spec) {
+  return !!spec && (spec.type === "choice" || spec.type === "bool");
+}
+
+// A choice or on/off parameter's box: a dropdown; "—" = not given.
+function udbPickBox(p) {
+  const s = UDB_SPECS[p];
+  const opts = s.type === "choice"
+    ? s.choices.map((c, i) => `<option value="${i}">${sqEsc(c.label)}</option>`)
+    : ['<option value="true">true</option>', '<option value="false">false</option>'];
+  return `
+    <label class="udb-param">
+      <span>${p}</span>
+      <select data-param="${p}"><option value="">—</option>${opts.join("")}</select>
+    </label>`;
+}
+
+// What a box holds: a number, a choice's value, or true / false.
+function udbBoxValue(p, v) {
+  const s = UDB_SPECS[p];
+  if (s && s.type === "choice") return s.choices[Number(v)].value;
+  if (s && s.type === "bool") return v === "true";
+  return Number(v);
 }
 
 function udbRenderImages() {
@@ -1242,9 +1272,9 @@ function udbRenderImages() {
 
 function udbCollectParams() {
   const out = {};
-  for (const el of document.querySelectorAll("#udb-params input[data-param]")) {
+  for (const el of document.querySelectorAll("#udb-params [data-param]")) {
     const v = el.value.trim();
-    if (v !== "") out[el.dataset.param] = Number(v);
+    if (v !== "") out[el.dataset.param] = udbBoxValue(el.dataset.param, v);
   }
   return out;
 }
@@ -1278,7 +1308,7 @@ function udbApplyParamFile(text, fileName) {
     data = data.parameters;
   }
   if (!data || typeof data !== "object" || Array.isArray(data)) {
-    say(`${fileName}: expected a JSON object of parameter names to numbers.`,
+    say(`${fileName}: expected a JSON object of parameter names to ${UDB_TYPED ? "values" : "numbers"}.`,
         true);
     return;
   }
@@ -1290,6 +1320,14 @@ function udbApplyParamFile(text, fileName) {
   const values = new Map();
   for (const [k, v] of Object.entries(data)) {
     if (!known.has(k)) { unknown.push(k); continue; }
+    const s = UDB_SPECS[k];
+    if (udbPicked(s)) {
+      // One of its values / true or false, picked in its dropdown (MAS-blueprint P6d).
+      const i = s.type === "choice" ? s.choices.findIndex((c) => c.value === v) : -1;
+      if (s.type === "bool" ? typeof v !== "boolean" : i < 0) { bad.push(k); continue; }
+      values.set(k, s.type === "bool" ? String(v) : String(i));
+      continue;
+    }
     // typeof true === "boolean" and Number(true) === 1, so a boolean
     // would land as a silent 1.  The backend's validate_query rejects
     // booleans for the same reason; reject here too rather than let the
@@ -1300,7 +1338,7 @@ function udbApplyParamFile(text, fileName) {
     values.set(k, n);
   }
 
-  for (const el of document.querySelectorAll("#udb-params input[data-param]")) {
+  for (const el of document.querySelectorAll("#udb-params [data-param]")) {
     if (values.has(el.dataset.param)) {
       el.value = String(values.get(el.dataset.param));
       filled.push(el.dataset.param);
@@ -1311,7 +1349,7 @@ function udbApplyParamFile(text, fileName) {
 
   const bits = [`${fileName}: filled ${filled.length} of ${UDB_PARAMS.length}`];
   if (unknown.length) bits.push(`ignored ${unknown.length} unknown (${unknown.join(", ")})`);
-  if (bad.length) bits.push(`skipped ${bad.length} non-numeric (${bad.join(", ")})`);
+  if (bad.length) bits.push(`skipped ${bad.length} ${UDB_TYPED ? "that do not fit" : "non-numeric"} (${bad.join(", ")})`);
   say(bits.join("; "), bad.length > 0 || filled.length === 0);
 }
 
@@ -1337,7 +1375,7 @@ function udbWireParamFile() {
   });
   if (clear) {
     clear.addEventListener("click", () => {
-      for (const el of document.querySelectorAll("#udb-params input[data-param]")) {
+      for (const el of document.querySelectorAll("#udb-params [data-param]")) {
         el.value = "";
       }
       if (note) { note.textContent = ""; note.style.color = ""; }
@@ -1449,7 +1487,7 @@ async function udbSubmit() {
     udbRefreshBusy();
     document.getElementById("udb-text").value = "";
     udbFiles.clear(); udbRenderImages();
-    for (const el of document.querySelectorAll("#udb-params input[data-param]")) el.value = "";
+    for (const el of document.querySelectorAll("#udb-params [data-param]")) el.value = "";
     udbRefreshList();
   } catch (err) {
     status.textContent = `Failed: ${err}`;
@@ -6723,6 +6761,120 @@ function paramsSetState(key, newState) {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Choice and on/off parameters, and "only when" (MAS-blueprint P6d).  A
+// choice is a dropdown of its labels, an on/off parameter a checkbox;
+// changing one FIXES the row like moving a slider.  A parameter whose
+// usedWhen does not hold for the current values is hidden and not sent as
+// FIXED; its value stays in the record (engine/parameters.py is_used).
+// ---------------------------------------------------------------------------
+
+function paramsPicked(spec) {
+  return spec.type === "choice" || spec.type === "bool";
+}
+
+// Equal values, true / false never equal to 1 / 0 (engine/parameters.py _same).
+function paramsSame(a, b) {
+  return (typeof a === "boolean") === (typeof b === "boolean") && a === b;
+}
+
+function paramsFits(spec, value) {
+  if (spec.type === "bool") return typeof value === "boolean";
+  return spec.choices.some((c) => paramsSame(c.value, value));
+}
+
+// A value as the agents read it (the FIXED block, Copy parameters): a
+// number with its unit, a choice's value, true / false.
+function paramsValueText(spec, value) {
+  if (spec.type === "choice") return String(value);
+  if (spec.type === "bool") return value ? "true" : "false";
+  return paramsFormatValueWithUnit(spec, value);
+}
+
+// A value as the page shows it beside a proposal: a choice's value with its
+// label, on / off.
+function paramsShownValue(spec, value) {
+  if (spec.type === "choice") {
+    const c = spec.choices.find((x) => paramsSame(x.value, value));
+    return c && c.label !== String(value) ? `${value} (${c.label})` : String(value);
+  }
+  if (spec.type === "bool") return value ? "on" : "off";
+  return paramsFormatValueWithUnit(spec, value);
+}
+
+function paramsIsUsed(spec) {
+  const uw = spec.usedWhen;
+  if (!uw) return true;
+  return Object.keys(uw).every((other) => {
+    const wants = Array.isArray(uw[other]) ? uw[other] : [uw[other]];
+    return wants.some((w) => paramsSame(paramState[other], w));
+  });
+}
+
+// Hide each row whose parameter does not matter for the current values.
+function paramsApplyUsedWhen() {
+  for (const key of Object.keys(paramSpecByKey)) {
+    const spec = paramSpecByKey[key];
+    if (!spec.usedWhen) continue;
+    const row = document.querySelector(`.param-row[data-param-key="${key}"]`);
+    if (row) row.hidden = !paramsIsUsed(spec);
+  }
+}
+
+// Show *value* in a choice's dropdown or an on/off checkbox.
+function paramsSetPick(spec, value) {
+  const input = document.getElementById(`param-${spec.key}`);
+  const cur = document.getElementById(`param-cur-${spec.key}`);
+  if (input && spec.type === "choice") {
+    input.value = String(spec.choices.findIndex((c) => paramsSame(c.value, value)));
+  } else if (input) {
+    input.checked = value === true;
+  }
+  if (cur) cur.textContent = value ? "on" : "off";
+}
+
+function paramsBuildPick(spec) {
+  const wrap = document.createElement("div");
+  wrap.className = "param-pick";
+  let input;
+  let cur = null;
+  if (spec.type === "choice") {
+    input = document.createElement("select");
+    input.className = "param-select";
+    spec.choices.forEach((c, i) => {
+      const o = document.createElement("option");
+      o.value = String(i);
+      o.textContent = c.label;
+      input.appendChild(o);
+    });
+    input.value = String(spec.choices.findIndex((c) => paramsSame(c.value, spec.value)));
+  } else {
+    input = document.createElement("input");
+    input.type = "checkbox";
+    input.className = "param-check";
+    input.checked = spec.value === true;
+    cur = document.createElement("span");
+    cur.className = "param-current";
+    cur.id = `param-cur-${spec.key}`;
+    cur.textContent = spec.value ? "on" : "off";
+  }
+  input.id = `param-${spec.key}`;
+  input.dataset.paramKey = spec.key;
+  wrap.appendChild(input);
+  if (cur) wrap.appendChild(cur);
+  input.addEventListener("change", () => {
+    const v = spec.type === "choice" ? spec.choices[Number(input.value)].value : input.checked;
+    paramState[spec.key] = v;
+    if (cur) cur.textContent = v ? "on" : "off";
+    if (paramRowState[spec.key] !== "fixed") {
+      paramsSetState(spec.key, "fixed");
+    }
+    paramsApplyUsedWhen();
+    paramsRequestFEG();
+  });
+  return wrap;
+}
+
 function paramsBuildRow(spec) {
   paramState[spec.key] = spec.value;
   paramRowState[spec.key] = "vary";
@@ -6764,6 +6916,16 @@ function paramsBuildRow(spec) {
   proposedSpan.id = `param-proposed-${spec.key}`;
   labelRow.appendChild(proposedSpan);
   body.appendChild(labelRow);
+
+  if (paramsPicked(spec)) {
+    // A dropdown or a checkbox instead of the slider.
+    body.appendChild(paramsBuildPick(spec));
+    row.appendChild(body);
+    btn.addEventListener("click", () => {
+      paramsSetState(spec.key, paramRowState[spec.key] === "fixed" ? "vary" : "fixed");
+    });
+    return row;
+  }
 
   const range = document.createElement("input");
   range.type = "range";
@@ -6845,11 +7007,14 @@ function paramsBuildSectionHeader(group) {
   const media = document.createElement("div");
   media.className = "param-section-media";
 
-  const img = document.createElement("img");
-  img.className = "param-section-img";
-  img.src = group.image;
-  img.alt = group.imageAlt;
-  media.appendChild(img);
+  // A group may have no picture (a setup made in the Studio).
+  if (group.image) {
+    const img = document.createElement("img");
+    img.className = "param-section-img";
+    img.src = group.image;
+    img.alt = group.imageAlt;
+    media.appendChild(img);
+  }
 
   // The groups the pack's preview module draws (groupFigures) get a live
   // drawing beside the picture, added by paramsAddGroupFigures once the
@@ -6866,18 +7031,39 @@ function paramsBuildSectionHeader(group) {
 }
 
 function paramsBuildAll() {
-  // One pane per group (4 total).  Each pane is its own DOM container
-  // and gets the section image + slider rows for that group only.
-  // The .active pane is toggled by paramsSwitchTab().
-  for (const group of PARAM_GROUPS) {
-    const pane = document.getElementById(`params-pane-${group.key}`);
-    if (!pane) continue;
-    pane.innerHTML = "";
+  // One tab and one pane per group of the setup's parameters (made here
+  // since MAS-blueprint P6d, no longer written into index.html).  Each pane
+  // gets the group's picture + its rows; the .active pane is toggled by
+  // paramsSwitchTab().
+  const tabs = document.querySelector(".params-tabs");
+  const panes = document.querySelector(".params-panes");
+  if (tabs) tabs.innerHTML = "";
+  if (panes) panes.innerHTML = "";
+  PARAM_GROUPS.forEach((group, i) => {
+    if (tabs) {
+      const b = document.createElement("button");
+      b.className = "params-tab-btn" + (i === 0 ? " active" : "");
+      b.type = "button";
+      b.dataset.paramtab = group.key;
+      b.textContent = group.label;
+      tabs.appendChild(b);
+    }
+    const pane = document.createElement("div");
+    pane.className = "params-pane" + (i === 0 ? " active" : "");
+    pane.dataset.paramtab = group.key;
+    pane.id = `params-pane-${group.key}`;
     pane.appendChild(paramsBuildSectionHeader(group));
     for (const spec of group.params) {
       pane.appendChild(paramsBuildRow(spec));
     }
-  }
+    if (panes) panes.appendChild(pane);
+  });
+  paramsApplyUsedWhen();
+}
+
+// The first group's tab: where the page starts.
+function paramsFirstTab() {
+  return PARAM_GROUPS.length ? PARAM_GROUPS[0].key : "";
 }
 
 // Add a live-drawing canvas beside the picture of every group the pack's
@@ -7002,7 +7188,8 @@ function paramsBuildSubmitMessage() {
   for (const group of PARAM_GROUPS) {
     lines.push(`${group.label}:`);
     for (const p of group.params) {
-      const v = paramsFormatValueWithUnit(p, paramState[p.key]);
+      if (!paramsIsUsed(p)) continue;       // hidden by its "only when"
+      const v = paramsValueText(p, paramState[p.key]);
       lines.push(`  - ${p.key}: ${v}`);
     }
     lines.push("");
@@ -7031,8 +7218,9 @@ function paramsBuildFixedParamsDict() {
   const out = {};
   for (const group of PARAM_GROUPS) {
     for (const spec of group.params) {
-      if (paramRowState[spec.key] === "fixed") {
-        out[spec.key] = paramsFormatValueWithUnit(spec, paramState[spec.key]);
+      // A parameter hidden by its "only when" is not sent.
+      if (paramRowState[spec.key] === "fixed" && paramsIsUsed(spec)) {
+        out[spec.key] = paramsValueText(spec, paramState[spec.key]);
       }
     }
   }
@@ -7121,8 +7309,10 @@ function paramsApplyProposal(values) {
   for (const key of Object.keys(values)) {
     const spec = paramSpecByKey[key];
     if (!spec) continue;       // unknown key — silently skip
-    const proposedValue = Number(values[key]);
-    if (Number.isNaN(proposedValue)) continue;
+    // A choice's value or true / false is taken as it is.
+    const picked = paramsPicked(spec);
+    const proposedValue = picked ? values[key] : Number(values[key]);
+    if (picked ? !paramsFits(spec, proposedValue) : Number.isNaN(proposedValue)) continue;
 
     // Always update the proposed-text (visible on every row that has
     // ever received a proposal, regardless of current state).
@@ -7134,7 +7324,7 @@ function paramsApplyProposal(values) {
     const proposedSpan = document.getElementById(`param-proposed-${key}`);
     if (proposedSpan) {
       proposedSpan.textContent =
-        "PROPOSED VALUE: " + paramsFormatValueWithUnit(spec, proposedValue);
+        "PROPOSED VALUE: " + paramsShownValue(spec, proposedValue);
     }
 
     // FIXED rows: keep slider value untouched (§6.F.C3).
@@ -7144,19 +7334,30 @@ function paramsApplyProposal(values) {
     // paramState + visible current value.
     const range = document.getElementById(`param-${key}`);
     const curSpan = document.getElementById(`param-cur-${key}`);
-    if (range) {
+    if (range && !picked) {
       range.value = String(proposedValue);
     }
     paramState[key] = proposedValue;
-    if (curSpan) {
+    if (curSpan && !picked) {
       curSpan.textContent = paramsFormatValueWithUnit(spec, proposedValue);
     }
+    if (picked) paramsSetPick(spec, proposedValue);
     paramsSetState(key, "proposed");
   }
+  paramsApplyUsedWhen();
 
   // Rebuild the FEG preview so it reflects the proposed propeller the user
   // is now looking at (non-FIXED sliders moved to their proposed values).
   paramsRequestFEG();
+}
+
+// Every row FIXED -- but a parameter hidden by its "only when", which stays
+// as it is (MAS-blueprint P6d).
+function paramsFixAll() {
+  for (const key of Object.keys(paramState)) {
+    if (paramSpecByKey[key] && !paramsIsUsed(paramSpecByKey[key])) continue;
+    paramsSetState(key, "fixed");
+  }
 }
 
 async function paramsSubmit() {
@@ -7178,9 +7379,7 @@ async function paramsSubmit() {
   }
   // Step 1: lock every row to FIXED (visible BEFORE the view switch
   // so the user sees the transformation).
-  for (const key of Object.keys(paramState)) {
-    paramsSetState(key, "fixed");
-  }
+  paramsFixAll();
   // Step 2: short prompt — the FIXED auto-append from Step 8 carries
   // the actual values into user_query.txt.
   const message =
@@ -7244,11 +7443,15 @@ function paramsResetAll() {
         delete row.dataset.hasProposal;
         const btn = row.querySelector(".param-state-btn");
         if (btn) btn.textContent = "VARY";
-        const range = document.getElementById(`param-${spec.key}`);
-        if (range) range.value = String(spec.value);
-        const curSpan = document.getElementById(`param-cur-${spec.key}`);
-        if (curSpan) {
-          curSpan.textContent = paramsFormatValueWithUnit(spec, spec.value);
+        if (paramsPicked(spec)) {
+          paramsSetPick(spec, spec.value);
+        } else {
+          const range = document.getElementById(`param-${spec.key}`);
+          if (range) range.value = String(spec.value);
+          const curSpan = document.getElementById(`param-cur-${spec.key}`);
+          if (curSpan) {
+            curSpan.textContent = paramsFormatValueWithUnit(spec, spec.value);
+          }
         }
         const proposedSpan = document.getElementById(
           `param-proposed-${spec.key}`
@@ -7257,6 +7460,7 @@ function paramsResetAll() {
       }
     }
   }
+  paramsApplyUsedWhen();
   // Reset FIXED-dispatch dedup snapshot so the next session's first
   // chat send doesn't inherit the previous session's fingerprint.
   // (An empty FIXED list comparing equal to a prior empty list would
@@ -7277,9 +7481,9 @@ function paramsResetAll() {
   }
   const paramsDlBtn = document.getElementById("params-download-mesh");
   if (paramsDlBtn) paramsDlBtn.disabled = true;
-  // Reset the active tab to General so the next session starts there with
-  // all section outlines blue.
-  paramsSwitchTab("general");
+  // Reset the active tab to the first group (the propeller's General) so the
+  // next session starts there with all section outlines blue.
+  paramsSwitchTab(paramsFirstTab());
   // Return the left pane to 3D mode (refresh:false — don't rebuild into the
   // just-unloaded viewer; the next view-open auto-builds).
   paramsSetViewMode("3d", { refresh: false });
@@ -7319,8 +7523,9 @@ function paramsInit() {
       if (paramsExtraView(paramsViewMode)) paramsRedrawBladeSections();
     }).observe(sectionsEl);
   }
-  // Default to General Parameters on first render.
-  paramsSwitchTab("general");
+  // Default to the first group (the propeller's General Parameters) on first
+  // render.
+  paramsSwitchTab(paramsFirstTab());
   // The pack's preview module drives the rest of the pane once loaded.
   packPreviewReady.then(() => {
     if (packPreview) {

@@ -96,6 +96,7 @@ from engine import parameter_schema
 from workflow_settings import settings as workflow_settings
 from agents.shared.pack_text import fill
 from engine import pack_tools as _pack_tools
+from engine import parameters as _parameters
 
 # DH events go to a DEDICATED logger that writes to
 # ``logs/database_handler_<ts>.log`` and does NOT propagate to the
@@ -973,6 +974,26 @@ def _clean_semantic_body(body: str) -> str:
     body = re.sub(r"[ \t]+\n", "\n", body)
     body = re.sub(r"\n{3,}", "\n\n", body)
     return body.strip()
+
+
+def _scalar_values(parameters_json: dict) -> dict:
+    """The values of an attempt's record that go into dc_attempt_parameters:
+    each number as a float -- and, for a choice or on/off parameter, its
+    value / true or false as it is, which ``upsert_attempt_parameters``
+    stores as its position / 1 or 0 (MAS-blueprint P6d).  Anything else is
+    skipped; the whole record stays in dc_attempts.parameters_json."""
+    typed = {p["name"]: p for p in _parameters.load()["parameters"]
+             if p["type"] in ("choice", "bool")}
+    out: dict = {}
+    for k, v in parameters_json.items():
+        if k in typed and _parameters.check_value(typed[k], v) is None:
+            out[k] = v
+            continue
+        try:
+            out[k] = float(v)
+        except (TypeError, ValueError):
+            continue
+    return out
 
 
 class DatabaseHandler(BaseChainAgent):
@@ -3474,16 +3495,12 @@ class DatabaseHandler(BaseChainAgent):
                         has_renders  = any(folder.glob("render_*.png"))
                         # Long-format scalar mirror: numeric-only per
                         # v5 dc_attempt_parameters.raw_value DOUBLE
-                        # PRECISION NOT NULL.  Non-numeric values are
-                        # preserved verbatim on dc_attempts.
+                        # PRECISION NOT NULL (a choice or on/off value
+                        # stored as a number too: _scalar_values).  Other
+                        # values are preserved verbatim on dc_attempts.
                         # parameters_json (JSONB).  T19 covers the
                         # future text-param mirror in schema v6.
-                        long_params: dict[str, float] = {}
-                        for k, v in parameters_json.items():
-                            try:
-                                long_params[k] = float(v)
-                            except (TypeError, ValueError):
-                                continue
+                        long_params = _scalar_values(parameters_json)
                         bigserial_id = db_writer.upsert_attempt(
                             session_id=session_id,
                             attempt_label=attempt_label,
