@@ -1,10 +1,21 @@
 # The online Studio
 
-`python -m studio --online` serves the MAS Studio to everyone who has its
-access code, on **one shared setup** (MAS-blueprint P7b-lite).  It runs from
-the same Docker image as the configurator, as a service of its own.
+The MAS Studio runs online in one of two ways, on **one shared setup**
+(MAS-blueprint P7b-lite):
 
-## On Railway
+* **Inside the configurator's own deploy** (the usual way): the app's start
+  page (`/`) offers the configurator (`/configurator`) and the MAS Studio
+  (`/studio/`, `studio/embedded.py`).  Nothing to set up: the Studio comes
+  with every deploy of the app, asks for the app's own `INVITE_CODE`, and
+  works on a copy of the app's setup (`workspace/dc_pack`, or the folder in
+  `STUDIO_WORKSPACE`), so the running configurator never changes.  It is
+  made the first time someone opens it.  **The app's keys are in the same
+  server**: a tool's code run by Test tool or Validate could read them
+  (TODO F122) -- give the code only to people you trust.
+* **On its own**, `python -m studio --online`: a service of its own, with
+  no key at all.  The rest of this file is about that way.
+
+## On Railway, on its own
 
 1. In the project: **New → GitHub Repo**, this repository.  In the new
    service, **Settings → Source**, branch `MAS-studio-deploy`: it moves only
@@ -14,7 +25,7 @@ the same Docker image as the configurator, as a service of its own.
        python -m studio --online --host 0.0.0.0
 
    The port is Railway's `PORT`.  (Without this command the image starts the
-   configurator, as the Dockerfile says.)
+   configurator, with the Studio inside it, as the Dockerfile says.)
 3. **Variables**:
 
    | Variable | Needed | What it is |
@@ -31,7 +42,8 @@ the same Docker image as the configurator, as a service of its own.
 ## What to know
 
 * **One shared setup.**  Everyone with the code sees and changes the same
-  one; a change shows for the others when they reload.
+  one; a change shows for the others when they reload.  Inside the
+  configurator's deploy too.
 * **It is not kept** when the Studio restarts or is deployed again: it goes
   back to the propeller example.  Download setup file keeps the work, Import
   a setup brings it back.  A Railway volume mounted at `/app/workspace`

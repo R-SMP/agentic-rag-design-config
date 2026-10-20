@@ -218,7 +218,7 @@ class Studio:
 def check_server(st: Studio, D: dict) -> None:
     status, headers, body = st.get("/")
     page = body.decode("utf-8")
-    check(status == 200 and "/static/studio.js" in page and "/static/bridge.js" in page,
+    check(status == 200 and 'src="static/studio.js"' in page and 'src="static/bridge.js"' in page,
           f"[SERVER] GET /: {status} {page[:120]!r}")
     check(headers.get("cache-control") == "no-cache",
           f"[SERVER] the page is not revalidated: {headers.get('cache-control')}")

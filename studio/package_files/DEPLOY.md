@@ -41,7 +41,7 @@ In the service: **Variables**.  Railway sets `PORT` itself: leave it out.
 
 | Variable | Needed | What it is |
 |---|---|---|
-| `INVITE_CODE` | yes | The code people type to open the app.  **Without it there is no code at all: anyone with the address can use the app, and your API keys.**  Make one with `python -c "import secrets; print(secrets.token_urlsafe(24))"`. |
+| `INVITE_CODE` | yes | The code people type to open the app and its MAS Studio.  **Without it there is no code at all: anyone with the address can use the app, and your API keys, and run code in the Studio.**  Make one with `python -c "import secrets; print(secrets.token_urlsafe(24))"`. |
 | `OPENAI_API_KEY` | yes | The agents use OpenAI models unless you change them in Workflow Settings. |
 | `ANTHROPIC_API_KEY`, `GOOGLE_API_KEY`, `OPENROUTER_API_KEY` | for their models | Only for agents you switch to those providers in Workflow Settings. |
 
@@ -54,9 +54,10 @@ the app reads, with a note on each.
 
 ## 4. Check it
 
-Open the address, type the invite code and ask for a design.  The first
-answer takes a minute or two.  Railway shows the app's log under
-**Deployments → View logs**.
+Open the address: its start page offers the configurator and the MAS
+Studio (`/studio/`, on a copy of this setup).  Open the configurator, type
+the invite code and ask for a design.  The first answer takes a minute or
+two.  Railway shows the app's log under **Deployments → View logs**.
 
 ## Optional
 

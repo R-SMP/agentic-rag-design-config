@@ -59,6 +59,7 @@ from agents.loader import _archive_previous_session
 from agents.shared.agent_activity import STANDARD_TOOLS
 from agents.shared.attempts_tool import attempt_label_for_path
 from agents.shared.pack_text import fill as _fill
+from studio.embedded import STUDIO as _STUDIO
 from agents.shared.file_utils import pair_input_images
 from agents.shared.image_compression import (
     compress_for_model,
@@ -495,6 +496,12 @@ def _startup() -> None:
     logger.info("[WEB] startup; auth_required=%s", _auth_required())
 
 
+@app.on_event("shutdown")
+async def _shutdown() -> None:
+    # The Studio mounted at /studio, when it was opened (its helper processes).
+    await _STUDIO.close()
+
+
 class TurnIn(BaseModel):
     message: str
     # Optional dict of FIXED parameter values from the Parameters Inputs
@@ -547,12 +554,22 @@ class ImageCompressionIn(BaseModel):
 
 
 @app.get("/")
+def start_page() -> HTMLResponse:
+    """The start page (MAS-blueprint, one deploy): the configurator
+    (``/configurator``) or the MAS Studio (``/studio/``, mounted below), the
+    pack's words filled in as for the configurator's page."""
+    page = (WEB_DIR / "start.html").read_bytes().decode("utf-8")
+    return HTMLResponse(_fill(page, escape=html.escape))
+
+
+@app.get("/configurator")
 def index() -> HTMLResponse:
-    """The page, with the pack's words filled in as it is served
-    (``$app_title``, ``$dc_name`` ...; ``agents/shared/pack_text.py``),
+    """The configurator's page, with the pack's words filled in as it is
+    served (``$app_title``, ``$dc_name`` ...; ``agents/shared/pack_text.py``),
     HTML-escaped.  ``$$`` in the file is a literal dollar sign;
     ``$download_tool`` is the geometry tool the Parameters page's Download
-    button uses (:func:`_page_download_tool`)."""
+    button uses (:func:`_page_download_tool`).  Its calls and files keep
+    their addresses (``/api/...``, ``/static/...``, ``/pack/...``)."""
     page = (WEB_DIR / "index.html").read_bytes().decode("utf-8")
     download = (_pack_tools.manifest(_page_download_tool())["display_name"]
                 if _pack_tools.model_info() else "")
@@ -4979,3 +4996,6 @@ for _sub in ("preview", "assets"):
         app.mount(f"/pack/{_sub}", StaticFiles(directory=_pack.pack_dir() / _sub),
                   name=f"pack_{_sub}")
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
+# The MAS Studio, inside this server (studio/embedded.py): made when it is
+# first opened, on a copy of the setup, behind the same access code.
+app.mount("/studio", _STUDIO, name="studio")

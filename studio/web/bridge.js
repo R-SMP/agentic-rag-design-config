@@ -1,6 +1,7 @@
 /* bridge.js -- the page's calls to the Studio server.
  *
- * StudioBridge.call('<name>', args...) -> POST /api/<name> with
+ * StudioBridge.call('<name>', args...) -> POST api/<name> (relative: the
+ * Studio is at / on its own, at /studio/ inside the configurator) with
  * {"args": [...]}; the answer is the studio UI kit's {ok: true, ...} /
  * {ok: false, error: "<sentence>"}.  The Studio draft's mock_bridge.js
  * answered the same calls from a file.  Online, an answer 401 with
@@ -12,7 +13,7 @@
   root.StudioBridge = {
     call: function (name) {
       var args = Array.prototype.slice.call(arguments, 1);
-      return root.fetch('/api/' + encodeURIComponent(name), {
+      return root.fetch('api/' + encodeURIComponent(name), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ args: args })

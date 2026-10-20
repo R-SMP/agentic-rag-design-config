@@ -160,7 +160,7 @@ def check_online(tmp: Path) -> str:
             "4. Save your work", "5. Deploy it", "6. What it cannot do yet")),
               f"[GUIDE] the guide before the code: {status}, sections missing")
         js = (ROOT / "studio" / "web" / "studio.js").read_text(encoding="utf-8")
-        check(js.count("/static/guide.html") == 2, "[GUIDE] the toolbar and the landing page do not both link the guide")
+        check(js.count("'static/guide.html'") == 2, "[GUIDE] the toolbar and the landing page do not both link the guide")
         status, _h, body = st.req("/api/config")
         check(status == 200 and body.get("online") is True, f"[GATE] the health answer: {status} {body}")
         _s, _h, body = st.req("/api/session", [])

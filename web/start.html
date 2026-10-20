@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>$app_title</title>
+  <!-- The start page (MAS-blueprint, one deploy): the configurator at
+       /configurator, the MAS Studio at /studio/ (studio/embedded.py).
+       web_app.py fills the pack's words as it serves it. -->
+  <style>
+    :root { color-scheme: dark; }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0; min-height: 100vh; display: flex; align-items: center; justify-content: center;
+      padding: 32px 16px; background: #0f1116; color: #e4e6eb;
+      font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    }
+    main { width: 100%; max-width: 760px; }
+    h1 { margin: 0 0 6px; font-size: 26px; }
+    .sub { margin: 0 0 24px; color: #9aa0aa; }
+    .choices { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 16px; }
+    a.choice {
+      display: flex; flex-direction: column; gap: 10px; padding: 20px; border-radius: 10px;
+      border: 1px solid #2a2f3a; background: #161a22; color: inherit; text-decoration: none;
+      transition: border-color 120ms, background 120ms;
+    }
+    a.choice:hover, a.choice:focus-visible { border-color: #5b8def; background: #1a2030; outline: none; }
+    a.choice h2 { margin: 0; font-size: 18px; }
+    a.choice p { margin: 0; color: #b4b9c3; line-height: 1.45; flex: 1; }
+    a.choice span { color: #7aa7ff; font-weight: 600; }
+  </style>
+</head>
+<body>
+  <main>
+    <h1>$app_title</h1>
+    <p class="sub">Choose what to open.</p>
+    <div class="choices">
+      <a class="choice" href="/configurator">
+        <h2>The $dc_name configurator</h2>
+        <p>Design a $dc_name with the agents: describe it in the chat or set its parameters, and see what they make.</p>
+        <span>Open →</span>
+      </a>
+      <a class="choice" href="/studio/">
+        <h2>MAS Studio</h2>
+        <p>Build the multi-agent system of your own design configurator, starting from the $dc_name example: its parameters, texts and tools.</p>
+        <span>Open →</span>
+      </a>
+    </div>
+  </main>
+</body>
+</html>

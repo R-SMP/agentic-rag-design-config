@@ -5,11 +5,13 @@
 <title>MAS Studio</title>
 <!-- The MAS Studio (MAS-blueprint P5a-P6a), served by
      studio/server.py.  bridge.js sends the page's calls to the server
-     (POST /api/<name> -> {ok: true, ...} / {ok: false, error}); studio.js
-     draws the screens from the data it answers. -->
-<link rel="stylesheet" href="/static/base.css">
-<link rel="stylesheet" href="/static/studio.css">
-<script src="/static/bridge.js"></script>
+     (POST api/<name> -> {ok: true, ...} / {ok: false, error}); studio.js
+     draws the screens from the data it answers.  Every address is relative:
+     the Studio is served at / on its own and at /studio/ inside the
+     configurator's server (studio/embedded.py). -->
+<link rel="stylesheet" href="static/base.css">
+<link rel="stylesheet" href="static/studio.css">
+<script src="static/bridge.js"></script>
 </head>
 <body>
 <div id="app"></div>
@@ -20,6 +22,6 @@
     <footer id="modalFoot"></footer>
   </div>
 </div>
-<script src="/static/studio.js"></script>
+<script src="static/studio.js"></script>
 </body>
 </html>

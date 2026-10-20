@@ -19,7 +19,6 @@ from __future__ import annotations
 
 import argparse
 import os
-import shutil
 import sys
 from pathlib import Path
 
@@ -77,11 +76,8 @@ def main(argv: list[str] | None = None) -> int:
             return 2
         example = pack
         workspace = (args.workspace or REPO / "workspace").resolve()
-        pack = workspace / "dc_pack"
-        if not (pack / "pack.yaml").is_file():
-            shutil.rmtree(pack, ignore_errors=True)
-            shutil.copytree(example, pack, ignore=shutil.ignore_patterns("__pycache__", "node_modules"))
-            print(f"The shared setup starts from {example}.", flush=True)
+        from studio.embedded import shared_setup
+        pack = shared_setup(workspace, example)
 
     import uvicorn
     from studio.server import create_app

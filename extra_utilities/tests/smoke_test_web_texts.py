@@ -7,7 +7,9 @@ script the words and tools it needs in ``/pack/page.js``.  Four groups of
 checks, against the real FastAPI app (only packages that are not installed
 are stubbed; no database):
 
-1. PAGE.  With the propeller pack the page shows exactly the texts it carried
+1. PAGE.  The start page (``/``) offers the configurator and the MAS
+   Studio, in the pack's words.  With the propeller pack the configurator's
+   page (``/configurator``) shows exactly the texts it carried
    before (the title, the chat box, the empty viewer and its Download
    button, the database-entry example and checkbox), the Parameters page's
    Download button names the geometry tool chosen for downloads, the
@@ -43,6 +45,13 @@ are stubbed; no database):
    parameters are served, the preview check, ``propose_attempt`` and a
    manual database entry (a stand-in writer) take a choice's value and
    true / false as they are and refuse one that does not fit.
+7. ONE DEPLOY.  The MAS Studio inside this server, at ``/studio/``: nothing
+   of it is made until it is first opened; then its shared setup is a copy
+   of the pack (the pack itself untouched), it asks for the configurator's
+   own access code, its link to the configurator is ``/configurator``, and
+   its page, scripts, guide, pictures and downloads answer under
+   ``/studio/`` (its page names no address from the server's root).
+   Without an access code it is open, as the configurator is.
 
 Run from the repo root:  py -3.13 extra_utilities/tests/smoke_test_web_texts.py
 """
@@ -147,9 +156,17 @@ def _page_js() -> dict:
 
 def check_page() -> None:
     r = CLIENT.get("/")
+    start = r.text
+    check(r.status_code == 200 and "text/html" in r.headers.get("content-type", "")
+          and "<title>Propeller Design Configurator</title>" in start
+          and 'href="/configurator"' in start and 'href="/studio/"' in start
+          and "<h2>The propeller configurator</h2>" in start and "<h2>MAS Studio</h2>" in start
+          and not re.findall(r"\$[A-Za-z_]", start),
+          f"[PAGE] the start page (GET /): {r.status_code} {start[:120]!r}")
+    r = CLIENT.get("/configurator")
     page = r.text
     check(r.status_code == 200 and "text/html" in r.headers.get("content-type", ""),
-          f"[PAGE] GET / answered {r.status_code} {r.headers.get('content-type')}")
+          f"[PAGE] GET /configurator answered {r.status_code} {r.headers.get('content-type')}")
     for text in PROPELLER_TEXTS + PAGE_TEXTS_P4C:
         check(page.count(text) == 1, f"[PAGE] the page does not show {text!r} once")
     left = sorted(set(re.findall(r"\$[A-Za-z_][A-Za-z0-9_]*", page)))
@@ -164,10 +181,10 @@ def check_page() -> None:
     try:
         pack_tools.settings_override_for_tests({"downloads": {"geometry_tool": "feg_geometry"}})
         check('title="Generate and download the geometry made by FEG (.obj)"'
-              in CLIENT.get("/").text, "[PAGE] the Download choice does not reach the page")
+              in CLIENT.get("/configurator").text, "[PAGE] the Download choice does not reach the page")
         pack_tools.settings_override_for_tests({"downloads": {"geometry_tool": "saved"}})
         check('title="Generate and download the geometry made by FEG (.obj)"'
-              in CLIENT.get("/").text,
+              in CLIENT.get("/configurator").text,
               "[PAGE] with the saved file chosen, the page does not name the generator's tool")
     finally:
         pack_tools.settings_override_for_tests(None)
@@ -182,7 +199,9 @@ def check_pack_words() -> int:
     real = config.DC_PACK_DIR
     try:
         config.DC_PACK_DIR = tmp / "dc_pack"
-        page = CLIENT.get("/").text
+        check("<h2>The turbine configurator</h2>" in CLIENT.get("/").text,
+              "[PACK WORDS] the start page does not name the stand-in configurator")
+        page = CLIENT.get("/configurator").text
         for text in ("<title>Turbine &lt;Studio&gt; &amp; Co</title>",
                      "<h1>Turbine &lt;Studio&gt; &amp; Co</h1>",
                      'placeholder="Describe the turbine you want to design…"',
@@ -470,7 +489,7 @@ def _check_typed_server(spec: dict) -> None:
         return types.SimpleNamespace(session_id="MANUAL_test", attempt_id=1)
     try:
         config.DC_PACK_DIR = tmp / "dc_pack"
-        check(CLIENT.get("/").status_code == 200, "[TYPES] the page is not served for a typed setup")
+        check(CLIENT.get("/configurator").status_code == 200, "[TYPES] the page is not served for a typed setup")
         js = CLIENT.get("/pack/parameters.js").text
         check('"usedWhen"' in js and '"type": "choice"' in js.replace('":"', '": "'),
               "[TYPES] /pack/parameters.js does not carry the choices and \"only when\"")
@@ -507,6 +526,87 @@ def _check_typed_server(spec: dict) -> None:
         shutil.rmtree(tmp, ignore_errors=True)
 
 
+def check_one_deploy() -> str:
+    """The Studio mounted at /studio (studio/embedded.py), against a
+    workspace of its own; run last (it sets INVITE_CODE while it runs)."""
+    import anyio
+
+    tmp = Path(tempfile.mkdtemp(prefix="web_studio_"))
+    ws = tmp / "workspace"
+    saved = {k: os.environ.get(k) for k in ("STUDIO_WORKSPACE", "INVITE_CODE")}
+    before = {p.relative_to(ROOT).as_posix(): p.read_bytes()
+              for p in (ROOT / "dc_pack").rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+    try:
+        os.environ["STUDIO_WORKSPACE"], os.environ["INVITE_CODE"] = str(ws), "web-texts-code"
+        check(CLIENT.get("/").status_code == 200 and not ws.exists() and not web_app._STUDIO.started,
+              "[ONE DEPLOY] the Studio was made before anyone opened it")
+        r = CLIENT.get("/studio", follow_redirects=False)
+        check(r.status_code in (307, 308) and r.headers.get("location", "").endswith("/studio/"),
+              f"[ONE DEPLOY] /studio does not lead to /studio/: {r.status_code} {r.headers.get('location')}")
+        r = CLIENT.get("/studio/")
+        check(r.status_code == 200 and 'src="static/studio.js"' in r.text and web_app._STUDIO.started,
+              f"[ONE DEPLOY] the Studio's page: {r.status_code} {r.text[:120]!r}")
+        check((ws / "dc_pack" / "parameters.json").read_bytes()
+              == (ROOT / "dc_pack" / "parameters.json").read_bytes(),
+              "[ONE DEPLOY] the Studio's shared setup is not a copy of the pack")
+        for path in ("/studio/static/studio.js", "/studio/static/bridge.js", "/studio/static/guide.html",
+                     "/studio/static/base.css"):
+            check(CLIENT.get(path).status_code == 200, f"[ONE DEPLOY] {path} is not served")
+        s = CLIENT.post("/studio/api/session", json={"args": []}).json()
+        check(s.get("online") is True and s.get("authed") is False
+              and s.get("configurator") == {"url": "/configurator", "name": "propeller"},
+              f"[ONE DEPLOY] the Studio's session before the code: {s}")
+        r = CLIENT.post("/studio/api/get_all", json={"args": []})
+        check(r.status_code == 401, f"[ONE DEPLOY] the Studio answered without the code: {r.status_code}")
+        r = CLIENT.post("/studio/api/auth", json={"args": ["not the code"]})
+        check(r.status_code == 401, f"[ONE DEPLOY] a wrong code opened the Studio: {r.status_code}")
+        r = CLIENT.post("/studio/api/auth", json={"args": ["web-texts-code"]})
+        check(r.status_code == 200 and r.json().get("ok"), f"[ONE DEPLOY] the configurator's code: {r.text[:120]}")
+        r = CLIENT.get("/studio/pack/assets/general-profile.png")
+        check(r.status_code == 200 and r.content[:4] == b"\x89PNG",
+              f"[ONE DEPLOY] the setup's pictures under /studio/: {r.status_code}")
+        r = CLIENT.get("/studio/download/setup")
+        check(r.status_code == 200 and r.content[:2] == b"PK",
+              f"[ONE DEPLOY] Download setup file under /studio/: {r.status_code}")
+        check(CLIENT.get("/api/config").status_code == 200, "[ONE DEPLOY] the configurator stopped answering")
+        # The Studio's page reaches its server by relative addresses only, and
+        # shows the setup's pictures from its own copy.
+        for rel in ("bridge.js", "studio.js", "index.html", "guide.html"):
+            text = (ROOT / "studio" / "web" / rel).read_text(encoding="utf-8")
+            found = re.findall(r"""['"]/(?:api|static|download)/""", text)
+            check(not found, f"[ONE DEPLOY] studio/web/{rel} names an address from the root: {found}")
+        js = (ROOT / "studio" / "web" / "studio.js").read_text(encoding="utf-8")
+        check(js.count("src: own(") == 2, "[ONE DEPLOY] the Studio does not show the pictures from its own copy")
+        # Without an access code (a local run), the Studio is open.
+        from fastapi import FastAPI
+        from fastapi.testclient import TestClient
+
+        from studio.embedded import LazyStudio
+        os.environ.pop("INVITE_CODE", None)
+        os.environ["STUDIO_WORKSPACE"] = str(tmp / "open")
+        bare = LazyStudio()
+        host = FastAPI()
+        host.mount("/studio", bare)
+        try:
+            s = TestClient(host).post("/studio/api/session", json={"args": []}).json()
+            check(s.get("online") is True and s.get("authed") is True,
+                  f"[ONE DEPLOY] without a code the Studio is not open: {s}")
+        finally:
+            anyio.run(bare.close)
+    finally:
+        anyio.run(web_app._STUDIO.close)
+        for k, v in saved.items():
+            if v is None:
+                os.environ.pop(k, None)
+            else:
+                os.environ[k] = v
+        shutil.rmtree(tmp, ignore_errors=True)
+    after = {p.relative_to(ROOT).as_posix(): p.read_bytes()
+             for p in (ROOT / "dc_pack").rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+    check(after == before, "[ONE DEPLOY] the pack changed while the Studio ran")
+    return "the Studio at /studio/"
+
+
 def main() -> int:
     _run(check_page, "[PAGE]")
     n_words = _run(check_pack_words, "[PACK WORDS]")
@@ -514,10 +614,11 @@ def main() -> int:
     _run(check_retired, "[RETIRED]")
     node = _run(check_preview, "[PREVIEW]")
     types = _run(check_types, "[TYPES]")
+    one = _run(check_one_deploy, "[ONE DEPLOY]")
     print(f"{len(PROPELLER_TEXTS)} page texts checked; {n_words} pack words swapped for "
           f"stand-ins; {len(pack_tools.page_tools())} pack tools + {len(STANDARD_TOOLS)} "
           f"standard tools listed; the preview module under Node: {node}; choice and "
-          f"on/off parameters under Node: {types}")
+          f"on/off parameters under Node: {types}; one deploy: {one}")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:
@@ -525,7 +626,8 @@ def main() -> int:
         return 1
     print("\nPASS - the page takes the configurator's words, tools, browser preview and "
           "parameter tabs from the pack, escaped, a record's retired parameter names are "
-          "dropped, and choice / on/off parameters and \"only when\" behave.")
+          "dropped, choice / on/off parameters and \"only when\" behave, and the start page "
+          "offers the configurator and the MAS Studio, served from this server at /studio/.")
     return 0
 
 

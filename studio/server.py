@@ -484,15 +484,18 @@ def _configurator(url: str | None, example_dir: Path | None) -> dict | None:
 
 def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                access_code: str | None = None, example_dir: Path | None = None,
-               configurator_url: str | None = None) -> FastAPI:
+               configurator_url: str | None = None, require_code: bool = True) -> FastAPI:
     """The Studio for the setup in *pack_dir*.  *online*: behind
-    *access_code* (required), with ``reset_to_example`` from *example_dir*
-    and a link to the configurator at *configurator_url* on the landing
-    page -- and on the access-code page, before the code."""
-    if online and not access_code:
+    *access_code* (required unless *require_code* is false: the Studio
+    inside the configurator's server, ``studio/embedded.py``, is open when
+    the configurator is), with ``reset_to_example`` from *example_dir* and a
+    link to the configurator at *configurator_url* on the landing page --
+    and on the access-code page, before the code."""
+    if online and not access_code and require_code:
         raise ValueError("the online Studio needs an access code")
     configurator = _configurator(configurator_url, example_dir)
-    access = Access(access_code, (os.getenv("STUDIO_SECRET") or "").encode("utf-8") or None) if online else None
+    access = (Access(access_code, (os.getenv("STUDIO_SECRET") or "").encode("utf-8") or None)
+              if online and access_code else None)
     view = PackView(pack_dir)
     pool = WorkerPool(pack_dir, size=workers)
     views = ViewCache(pool)
@@ -553,11 +556,17 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
     app.state.tools = tools
     app.state.validator = validator
 
+    def own_path(request: Request) -> str:
+        # The path below where the Studio is served: inside the
+        # configurator's server it is mounted at /studio (studio/embedded.py).
+        path, root = request.url.path, request.scope.get("root_path") or ""
+        return (path[len(root):] or "/") if root and path.startswith(root) else path
+
     @app.middleware("http")
     async def access_gate(request: Request, call_next):
         # Online, every call but the page, its scripts and the way in needs
         # the access code's cookie.
-        path = request.url.path
+        path = own_path(request)
         if (access is not None and path not in OPEN_PATHS and not path.startswith("/static/")
                 and not access.valid(request.cookies.get(ACCESS_COOKIE))):
             return JSONResponse({"ok": False, "auth": True, "error": "Type the access code first."},
@@ -568,7 +577,7 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
     async def no_stale_page(request: Request, call_next):
         # The page and its scripts change with the Studio: always revalidate.
         response = await call_next(request)
-        if not request.url.path.startswith("/api/"):
+        if not own_path(request).startswith("/api/"):
             response.headers["Cache-Control"] = "no-cache"
         return response
 

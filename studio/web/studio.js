@@ -144,6 +144,9 @@
     var parts = path.replace(/^\//, '').split('/');
     R = { page: parts[0] || 'studio', section: parts[1] || 'identity', q: q };
   }
+  // A picture of the setup (parameters.json writes "/pack/assets/..."), from
+  // this Studio's own copy: relative, as the Studio may be at /studio/.
+  function own(url) { return String(url).charAt(0) === '/' ? String(url).slice(1) : url; }
   function link(page, section, q) {
     q = q || {};
     var qs = Object.keys(q).filter(function (k) { return q[k] !== null && q[k] !== undefined; })
@@ -215,7 +218,7 @@
         h('button', { onclick: askOpen }, 'Import a setup…'),
         D.can_reset ? h('button', { onclick: askReset }, 'Start again from the ' + D.pack.name + ' example…') : null,
         configuratorLink(),
-        h('a', { 'class': 'btn', href: '/static/guide.html', target: '_blank', rel: 'noopener' }, 'Getting started (the guide) ↗')
+        h('a', { 'class': 'btn', href: 'static/guide.html', target: '_blank', rel: 'noopener' }, 'Getting started (the guide) ↗')
       ]),
       SESSION.online ? h('p', { 'class': 'note' }, 'This is one shared setup: everyone with the access code sees and changes the same one. ' +
         'It is not kept when the Studio restarts or is deployed again — use Download setup file to keep your work, and Import a setup to bring it back.') : null
@@ -276,7 +279,7 @@
     });
     showModal('Start again from the example', h('div', null, [
       h('div', { 'class': 'banner warn boxed' }, 'This replaces the setup for everyone who uses this Studio: every text, parameter and tool goes back to the example.'),
-      h('p', { style: 'margin:8px 0' }, h('a', { href: '/download/setup', download: '' }, 'Download the current setup first')),
+      h('p', { style: 'margin:8px 0' }, h('a', { href: 'download/setup', download: '' }, 'Download the current setup first')),
       h('p', null, 'Type replace to confirm:'),
       h('div', { style: 'margin:6px 0' }, word), msg]),
       [h('button', { onclick: closeModal }, 'Cancel'), go_]);
@@ -293,7 +296,7 @@
       SESSION.online ? pill('online', 'mode-hosted', 'The online Studio: one shared setup for everyone with the access code')
         : pill('local', 'mode-local', 'python -m studio on this computer'),
       h('span', { 'class': 'grow' }),
-      h('a', { 'class': 'btn', href: '/static/guide.html', target: '_blank', rel: 'noopener', title: 'How to make the setup yours, check it and deploy it.' }, 'Guide'),
+      h('a', { 'class': 'btn', href: 'static/guide.html', target: '_blank', rel: 'noopener', title: 'How to make the setup yours, check it and deploy it.' }, 'Guide'),
       h('button', { title: 'Run every check of the setup.', onclick: function () { go('studio', 'validate'); startValidate(); } },
         ['Validate ', h('span', { id: 'valTop' }, valBadge())]),
       h('button', { title: 'Open a setup file made with the Studio: it replaces this setup.', onclick: askOpen }, 'Open setup file…'),
@@ -1311,7 +1314,7 @@
     return key(PE().spec) !== key(PE().opened);
   }
   function groupRow(g, gi, n) {
-    var img = g.image ? h('img', { 'class': 'thumb', src: g.image, alt: '' }) : null;
+    var img = g.image ? h('img', { 'class': 'thumb', src: own(g.image), alt: '' }) : null;
     var sel = R.q.group === g.id;
     return h('tr', { 'class': 'grp' + (sel ? ' sel' : '') + (GEDITS[g.id] ? ' dirty' : ''), 'data-gk': g.id, style: 'cursor:pointer',
       onclick: function () { go('studio', 'parameters', { group: g.id }); } }, h('td', { colspan: 11 }, [
@@ -1605,7 +1608,7 @@
             [h('option', { value: '', selected: !cur }, '(none)')].concat(assets.map(function (a) { return h('option', { value: a, selected: a === cur }, a); }))),
           picIn, h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { picIn.click(); } }, 'Upload PNG…')]),
         h('div', { 'class': 'k' }, 'Picture text'), h('input', { type: 'text', value: f.image_alt, 'data-fk': 'group|' + key, 'data-t': 'image_alt', oninput: function (e) { onGroupInput(key, 'image_alt', e.target.value); } })]),
-      f.image ? h('img', { 'class': 'gpic', src: f.image, alt: f.image_alt }) : null,
+      f.image ? h('img', { 'class': 'gpic', src: own(f.image), alt: f.image_alt }) : null,
       h('div', { 'class': 'block' }, [h('h4', null, 'Slider order · ' + f.order.length),
         h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, 'The order of this group’s sliders on the Parameters page of the web app. The agents’ lists and the database follow the table’s order instead.'),
         f.order.length ? orderBox : h('p', { 'class': 'muted' }, 'No parameter in this group yet.')]),
@@ -2706,7 +2709,7 @@
       ]);
       var foot = el('modalFoot'); foot.innerHTML = '';
       add(foot, [h('button', { onclick: closeModal }, 'Cancel'),
-        h('a', { 'class': 'btn ' + (found.length ? 'warnbtn' : 'primary'), href: '/download/' + kind, download: r.file,
+        h('a', { 'class': 'btn ' + (found.length ? 'warnbtn' : 'primary'), href: 'download/' + kind, download: r.file,
           onclick: function () { closeModal(); status('Downloading ' + r.file + '…', 'busy'); setTimeout(function () { status('Downloaded ' + r.file + '.', 'ok'); }, 2500); } },
           found.length ? 'Download anyway' : 'Download')]);
     });
@@ -2719,7 +2722,7 @@
     var body = h('div', null, [
       h('div', { 'class': 'banner warn boxed' }, 'Opening a setup file replaces the setup in ' + D.pack_dir + ': every file of it. Download it first to keep it.' +
         (unsavedKeys().length ? '  Your ' + unsavedKeys().length + ' unsaved change(s) are dropped too.' : '')),
-      h('p', { style: 'margin:8px 0' }, h('a', { href: '/download/setup', download: '' }, 'Download the current setup first')),
+      h('p', { style: 'margin:8px 0' }, h('a', { href: 'download/setup', download: '' }, 'Download the current setup first')),
       h('p', { 'class': 'muted' }, 'A setup file made with Download setup file — or a full package, whose dc_pack/ is taken. The engine checks it before anything is replaced; afterwards Undo and the prompt viewer’s changes start from it.'),
       h('div', { style: 'margin:10px 0' }, pick), msg]);
     showModal('Open setup file', body, [h('button', { onclick: closeModal }, 'Cancel'),

@@ -59,10 +59,10 @@ database/
 prompts_backup_*/
 
 # --- The Studio -------------------------------------------------------
-# The image carries the Studio: the online Studio is a service of its own
-# started from this image (python -m studio --online, studio/HOSTING.md);
-# the web app never serves it.  Its shared setup, workspace/, is never baked
-# in.
+# The image carries the Studio: the web app serves it at /studio/
+# (studio/embedded.py), or it runs as a service of its own (python -m studio
+# --online, studio/HOSTING.md).  Its shared setup, workspace/, is never
+# baked in.
 workspace/
 
 # --- Containerisation metadata ------------------------------------

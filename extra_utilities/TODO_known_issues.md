@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F122**.
+branches (F36 is taken on a sibling branch).  Next free id: **F123**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -134,6 +134,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F119` | OPEN | Generators that make no model file |
 | `F120` | OPEN | The online Studio's shared setup does not survive a restart |
 | `F121` | OPEN | Agent prompts still say every parameter value is a number |
+| `F122` | OPEN | The Studio inside the configurator's deploy runs tool code beside the app's keys |
 
 ---
 
@@ -4848,3 +4849,22 @@ parameter they are slightly wrong; the agents still get the true value list
 (`$parameter_list`, which names each choice) and the tools' error messages
 say what fits.  The fix: a `$slot`-style word (as `$parameter_value` does
 for the tool descriptions), each sentence approved one by one.
+
+### F122. The Studio inside the configurator's deploy runs tool code beside the app's keys
+
+**Status.** OPEN — owner decision (2026-10-20): leave it for now, change it later.
+
+Since the one-deploy change the configurator's server also serves the MAS
+Studio at `/studio/` (`studio/embedded.py`, `studio/HOSTING.md`).  The
+Studio never uses the app's keys (`OPENAI_API_KEY`, `DATABASE_URL`, `R2_*`,
+...), but its **Test tool** and **Validate** run the tool code people write
+in the Studio on that server, in child processes that inherit its
+environment -- so that code could read the keys.  Only people with the
+access code (`INVITE_CODE`, the app's own) can run tool code.
+
+The fix, in steps: (1) start the Studio's tool runs and Validate with the
+keys removed from their environment (`studio/tools_edit.run_tool_test`,
+`studio/validate.py` children; the prompt workers already drop
+`DATABASE_URL`); (2) for real separation, run them as another user or in a
+sandbox, since a process can still read its parent's environment; or (3)
+deploy the Studio on its own (`python -m studio --online`, no keys).
