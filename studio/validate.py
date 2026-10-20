@@ -13,7 +13,7 @@ What it checks (owner, 2026-10-19):
   warnings: a text condition about a tool the setup does not have (it
   reads as switched off), and a secret a tool needs that this computer
   does not set.
-* **B. The prompts** -- every agent of topologies 7 / 5 / 3, with the
+* **B. The prompts** -- every agent of topologies 3 / 5 / 7, with the
   setup's defaults and with every feature on: built, and nothing left of a
   ``$name`` or a ``<<IF:...>>`` marker; the tokens of each.
 * **C. The parameter lists** -- each agent's hand-written list names the
@@ -54,7 +54,7 @@ from pathlib import Path
 
 REPO = Path(__file__).resolve().parents[1]
 TESTS = REPO / "extra_utilities" / "tests"
-TOPOLOGIES = (7, 5, 3)
+TOPOLOGIES = (3, 5, 7)          # the order the report shows them in
 COMBOS = (("base", "with the setup's defaults"), ("all_on", "with every feature on"))
 PASS, WARN, FAIL = "pass", "warn", "fail"
 PARTS = {

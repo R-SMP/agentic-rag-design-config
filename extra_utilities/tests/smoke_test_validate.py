@@ -15,7 +15,7 @@
 2. THE PROPELLER, through the Studio (``validate_start`` /
    ``validate_state``): a second start joins the run, the progress counts
    up, no failure; every part is there (9 loading items, the prompts of
-   topologies 7 / 5 / 3, the 12 parameter lists, one item per tool, the
+   topologies 3 / 5 / 7, the 12 parameter lists, one item per tool, the
    turn, the seven developer checks); a tool that cannot run on this
    computer is a warning saying what it needs; the report is current, and
    out of date once a file of the setup changes.

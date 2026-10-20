@@ -3042,7 +3042,7 @@ def api_queue_conditions() -> dict:
     _require_auth()
     return {
         "conditions": sessions_queue.list_conditions(),
-        "topologies": list(sessions_queue.TOPOLOGIES),
+        "topologies": sorted(sessions_queue.TOPOLOGIES),      # shown 3, 5, 7
         "default_topology": sessions_queue.DEFAULT_TOPOLOGY,
         "agents_by_topology": {
             str(topo): [{"key": k, "label": lab,
@@ -4521,7 +4521,7 @@ def _parameter_access_payload() -> dict:
     current = pa.table()
     names = dict(agent_roles.DISPLAY, database_handler="Database Handler")
     return {
-        "topologies": list(pa.TOPOLOGIES),
+        "topologies": sorted(pa.TOPOLOGIES),      # the grid's columns: 3, 5, 7
         "states": [{"id": s, "label": pa.LABELS[s]} for s in pa.STATES],
         "no_tool": sorted(pa.NO_TOOL_AGENTS),
         "rows": [{"agent": a, "name": names.get(a, a),

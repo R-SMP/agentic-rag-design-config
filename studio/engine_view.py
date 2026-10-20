@@ -12,7 +12,7 @@ MAS-blueprint P5a.  The Studio's screens read one dict, :func:`build`:
   field of the pack with its three topology texts and its per-agent copies
   (read through the slot registry, ``engine/pack.py``), the role map, the
   tools and their settings, the parameter-access grid, the secrets' names;
-* **assembled** -- every agent's real system prompt, topologies 7 / 5 / 3,
+* **assembled** -- every agent's real system prompt, topologies 3 / 5 / 7,
   under two setting combinations of ``prompt_matrix.py``: ``base`` (the
   setup's defaults) and ``all_on`` (every feature on), with the exact place
   of every field's text inside them ("where it lands").

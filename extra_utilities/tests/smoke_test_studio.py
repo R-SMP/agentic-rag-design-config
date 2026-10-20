@@ -29,7 +29,7 @@ Since MAS-blueprint P5b the prompt viewer shows any choice of the settings
 that change what an agent sees (``POST /api/view``):
 
 7. VIEWER.  Every combination of ``prompt_matrix.py`` the viewer can
-   express, in topologies 7 / 5 / 3: the prompts
+   express, in topologies 3 / 5 / 7: the prompts
    are the matrix baseline's and each agent's tools are the tool
    baseline's (``tool_baseline.json``), byte for byte; the token counts
    are tiktoken cl100k's of the text shown; a choice the setup does not

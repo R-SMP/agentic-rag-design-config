@@ -560,7 +560,8 @@
   }
   function whereCard(r, s, live) {
     var who = Object.keys(r.agents).map(function (a) {
-      return h('span', null, [h('b', null, disp(a)), ' ', h('span', { 'class': 'topo' }, r.agents[a].join(' · '))]);
+      return h('span', null, [h('b', null, disp(a)), ' ', h('span', { 'class': 'topo' },
+        r.agents[a].slice().sort(function (x, y) { return x - y; }).join(' · '))]);
     });
     var before = r.before.length > 150 ? '…' + r.before.slice(-150) : r.before;
     var after = r.after.length > 140 ? r.after.slice(0, 140) + '…' : r.after;
@@ -848,8 +849,8 @@
   }
   function askLink(s, agent) {
     var st = stored(s, agent);
-    var keys = ['7', '5', '3'].filter(function (t) { return st.values[t] !== null && st.values[t] !== undefined && (!agent || inRoster(agent, t)); });
-    var choice = keys[0];
+    var keys = ['3', '5', '7'].filter(function (t) { return st.values[t] !== null && st.values[t] !== undefined && (!agent || inRoster(agent, t)); });
+    var choice = keys[keys.length - 1];
     var body = h('div', null, [
       h('p', { style: 'margin:0 0 10px;font-size:12.5px;line-height:1.5' }, 'Every topology will read ONE text. Which one do they keep? The other files are removed (Undo brings them back).'),
       h('div', null, keys.map(function (t) {
@@ -1377,7 +1378,7 @@
     var re = new RegExp('^\\s*\\d+\\.\\s+' + name + '\\b');
     [{ agent: null, values: s.values }].concat(s.variants || []).forEach(function (v) {
       var seen = {};
-      ['7', '5', '3'].forEach(function (t) {
+      ['3', '5', '7'].forEach(function (t) {
         var txt = v.values[t];
         if (txt === null || txt === undefined) return;
         var line = txt.split('\n').filter(function (l) { return re.test(l); })[0] || '';
@@ -2399,13 +2400,13 @@
     var PA = D.parameter_access, opened = PE().access_opened || {};
     add(center, head('Agent access', 'Who sees the parameter list, and how: one choice per agent and topology (a cell exists only where the agent does). Click a choice to save it: this is the setup’s default (pack.yaml); Workflow Settings can still change it for the next session.'));
     var t = h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, h('thead', null, h('tr', null,
-      ['Agent', '7-agent', '5-agent', '3-agent', ''].map(function (x) { return h('th', null, x); }))));
+      ['Agent', '3-agent', '5-agent', '7-agent', ''].map(function (x) { return h('th', null, x); }))));
     var tb = h('tbody');
     PA.rows.forEach(function (r) {
       var then = opened[r.agent] || {};
       var rowChanged = Object.keys(r.cells).some(function (k) { return then[k] !== r.cells[k]; });
       add(tb, h('tr', null, [h('td', null, [h('b', null, r.name), h('div', { 'class': 'muted mono', style: 'font-size:10.5px' }, r.agent)])].concat(
-        ['7', '5', '3'].map(function (k) {
+        ['3', '5', '7'].map(function (k) {
           var st = r.cells[k];
           if (!st) return h('td', null, h('span', { 'class': 'na' }, '—'));
           var chg = then[k] !== undefined && then[k] !== st;
@@ -2965,7 +2966,7 @@
    * ==================================================================== */
   var VAL = { state: null, polling: false };
   var VAL_PARTS = [['A', 'The setup loads', 'parameters.json, pack.yaml, every tool.yaml and every text, as the engine reads them'],
-    ['B', 'The prompts', 'every agent of topologies 7, 5 and 3, with the setup’s defaults and with every feature on'],
+    ['B', 'The prompts', 'every agent of topologies 3, 5 and 7, with the setup’s defaults and with every feature on'],
     ['C', 'The parameter lists', 'each agent’s list names the parameters in order, with their ranges'],
     ['D', 'The tools', 'each one run on the parameters’ defaults, as Test tool runs it'],
     ['E', 'A scripted turn', 'one turn per topology with a fake model: no API cost'],

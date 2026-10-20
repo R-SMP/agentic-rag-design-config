@@ -2538,7 +2538,7 @@ async function loadAgentRoles() {
       const role = document.createElement("td");
       role.textContent = r.abbr ? r.name + " (" + r.abbr + ")" : r.name;
       tr.appendChild(role);
-      for (const t of ["5", "3"]) {
+      for (const t of ["3", "5"]) {
         const td = document.createElement("td");
         const h = (r.holders || {})[t];
         td.textContent = h || "none";
@@ -5532,7 +5532,7 @@ let sqConditions = [{ id: "current", label: "Current settings (no change)" }];
 // here is exactly the thing that would drift.  If that fetch fails the tier
 // panel says so and refuses to guess, rather than rendering a stale roster
 // the operator would assign models to for nothing.
-let sqTopologies = [7, 5, 3];
+let sqTopologies = [3, 5, 7];
 let sqTiers = ["low", "mid", "high"];
 let sqAgentsByTopology = {};
 let sqTierDefaults = {
