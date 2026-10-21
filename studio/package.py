@@ -225,6 +225,36 @@ _REQ_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 # prepare runs it on a package whose tools may have changed).
 REQ_MARK = "# ---- this setup's tools ----"
 APT_MARK = "        # ---- this setup's tools (dc_pack/tools/<tool>/apt.txt) ----"
+# OpenSCAD for a tool the engine runs with it (backend: openscad, MAS-blueprint
+# P6e; TODO F123).  Debian's openscad is 2021.01, which cannot read newer
+# models: the image gets a pinned development snapshot -- the one the vacuum
+# hose adapter was built with -- checked against the sha256 files.openscad.org
+# publishes and unpacked (a container has no FUSE).  The libraries are what
+# the unpacked program loads from the system besides the engine image's own.
+OPENSCAD_VERSION = "2026.10.18"
+OPENSCAD_APPIMAGE = f"OpenSCAD-{OPENSCAD_VERSION}-x86_64.AppImage"
+OPENSCAD_SHA256 = "47ea00efc1e3bd522c47d190fad696f55ef15a6cee10abe45547f3f35215759d"
+OPENSCAD_LIBS = ("libegl1", "libfontconfig1", "libfreetype6", "libgpg-error0", "libharfbuzz0b",
+                 "libwayland-client0")
+OPENSCAD_MARK = "# ---- this setup's tools: OpenSCAD ----"
+OPENSCAD_END = "# ---- end of this setup's tools: OpenSCAD ----"
+OPENSCAD_BLOCK = [
+    OPENSCAD_MARK,
+    "# A tool of this setup runs OpenSCAD (backend: openscad).  Debian's openscad",
+    "# is 2021.01, which cannot read newer models: this is a pinned development",
+    "# snapshot, checked against the sha256 files.openscad.org publishes and",
+    "# unpacked (a container has no FUSE).  Its --version fails the build when the",
+    "# image lacks a library it needs.  x86-64, as on Railway.",
+    "RUN curl -fsSL -o /tmp/openscad.AppImage \\",
+    f"        https://files.openscad.org/snapshots/{OPENSCAD_APPIMAGE} \\",
+    f'    && echo "{OPENSCAD_SHA256}  /tmp/openscad.AppImage" | sha256sum -c - \\',
+    "    && chmod +x /tmp/openscad.AppImage \\",
+    "    && cd /opt && /tmp/openscad.AppImage --appimage-extract > /dev/null \\",
+    "    && mv /opt/squashfs-root /opt/openscad && rm /tmp/openscad.AppImage \\",
+    "    && /opt/openscad/AppRun --version",
+    "ENV OPENSCAD_PATH=/opt/openscad/AppRun",
+    OPENSCAD_END,
+]
 
 
 def _req_name(line: str) -> str | None:
@@ -280,15 +310,21 @@ def merge_requirements(engine_text: str, setup: dict[str, Path]) -> tuple[str, l
 def merge_apt(dockerfile: str, setup: dict[str, Path]) -> tuple[str, list[str]]:
     """The ``Dockerfile`` with each tool's own ``tools/<tool>/apt.txt``
     packages added to its apt-get line, after :data:`APT_MARK` (a part merged
-    before is replaced) -- and ``openscad`` for a tool the engine runs with
-    OpenSCAD (``backend: openscad``, MAS-blueprint P6e)."""
+    before is replaced) -- and, for a tool the engine runs with OpenSCAD
+    (``backend: openscad``, MAS-blueprint P6e), the libraries and the block
+    that installs the pinned OpenSCAD (:data:`OPENSCAD_BLOCK`, after the
+    apt-get line; a block merged before is replaced)."""
     eol = "\r\n" if "\r\n" in dockerfile else "\n"
     lines = dockerfile.split(eol)
+    if OPENSCAD_MARK in lines and OPENSCAD_END in lines:
+        i, j = lines.index(OPENSCAD_MARK), lines.index(OPENSCAD_END)
+        lines[i - (1 if i and not lines[i - 1] else 0):j + 1] = []
+        dockerfile = eol.join(lines)
     if APT_MARK in lines:
         i = lines.index(APT_MARK)
         j = next((k for k in range(i, len(lines)) if "rm -rf /var/lib/apt/lists/*" in lines[k]), len(lines))
         dockerfile = eol.join(lines[:i] + lines[j:])
-    want, notes = [], []
+    want, notes, scad = [], [], False
     for rel, path in sorted(setup.items()):
         parts = rel.split("/")
         if len(parts) == 3 and parts[0] == "tools" and parts[2] == "tool.yaml":
@@ -297,11 +333,13 @@ def merge_apt(dockerfile: str, setup: dict[str, Path]) -> tuple[str, list[str]]:
             except (yaml.YAMLError, UnicodeDecodeError):
                 continue
             if isinstance(m, dict) and m.get("backend") == "openscad":
-                if "openscad" not in want and not re.search(r"^\s+openscad \\$", dockerfile, re.M):
-                    want.append("openscad")
-                notes.append(f"{parts[1]}: runs OpenSCAD, so the image installs Debian's openscad "
-                             f"package (2021.01): a model written for a newer OpenSCAD does not "
-                             f"build there")
+                scad = True
+                for lib in OPENSCAD_LIBS:
+                    if lib not in want and not re.search(rf"^\s+{re.escape(lib)} \\$", dockerfile, re.M):
+                        want.append(lib)
+                notes.append(f"{parts[1]}: runs OpenSCAD, so the image installs OpenSCAD "
+                             f"{OPENSCAD_VERSION}, a development snapshot from files.openscad.org "
+                             f"checked against its sha256 (x86-64)")
             continue
         if len(parts) != 3 or parts[0] != "tools" or parts[2] != "apt.txt":
             continue
@@ -317,8 +355,13 @@ def merge_apt(dockerfile: str, setup: dict[str, Path]) -> tuple[str, list[str]]:
     at = next((i for i, ln in enumerate(lines) if "rm -rf /var/lib/apt/lists/*" in ln), None)
     if at is None:
         return dockerfile, notes + ["the Dockerfile has no apt-get line: the tools' apt.txt "
-                                    "packages were not added (" + ", ".join(want) + ")"]
+                                    "packages were not added (" + ", ".join(want) + ")"
+                                    + (", nor OpenSCAD" if scad else "")]
     lines[at:at] = [APT_MARK] + [f"        {p} \\" for p in want]
+    if scad:
+        # after the apt-get line, which ends with the lists' removal
+        end = next(i for i, ln in enumerate(lines) if "rm -rf /var/lib/apt/lists/*" in ln)
+        lines[end + 1:end + 1] = [""] + OPENSCAD_BLOCK
     return eol.join(lines), notes
 
 

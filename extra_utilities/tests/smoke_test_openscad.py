@@ -20,7 +20,9 @@ come from the engine's renderer.  Five groups of checks:
    downloads' detail; a run that fails, one that takes too long and a
    program that is not there each give their clear error -- Validate reads
    the last as "this computer lacks the program OpenSCAD" -- and a
-   downloaded package's image installs ``openscad``.
+   downloaded package's image installs the pinned OpenSCAD (its libraries
+   on the apt-get line, the snapshot checked against its sha256), once,
+   and goes back to the engine's Dockerfile without the tool.
 5. THE REAL ONE -- when OpenSCAD (``OPENSCAD_PATH`` or the PATH) and the
    vacuum hose adapter (``HOSE_ADAPTER_DIR``, or ``DCs/vacuum-hose-adapter-
    openscad-main`` beside a folder above the repo) are on this computer,
@@ -404,10 +406,19 @@ def check_stand_in(tmp: Path) -> str:
     y.write_text(yaml.safe_dump(manifests("adapter.scad")["hose_adapter"]), encoding="utf-8")
     dock = (ROOT / "Dockerfile").read_text(encoding="utf-8")
     merged, notes = package.merge_apt(dock, {"tools/hose_adapter/tool.yaml": y})
-    check(any(ln.strip() == "openscad \\" for ln in merged.splitlines())
-          and any("runs OpenSCAD" in n for n in notes)
-          and package.merge_apt(merged, {"tools/hose_adapter/tool.yaml": y})[0] == merged,
-          f"[STAND-IN] the package's image does not install openscad once: {notes}")
+    lines = merged.splitlines()
+    apt_end = next(i for i, ln in enumerate(lines) if "rm -rf /var/lib/apt/lists/*" in ln)
+    check(all(f"        {lib} \\" in lines[:apt_end] for lib in package.OPENSCAD_LIBS)
+          and lines.count(package.OPENSCAD_MARK) == 1 and lines.index(package.OPENSCAD_MARK) == apt_end + 2
+          and f"https://files.openscad.org/snapshots/{package.OPENSCAD_APPIMAGE} \\" in merged
+          and f'"{package.OPENSCAD_SHA256}  /tmp/openscad.AppImage" | sha256sum -c -' in merged
+          and "ENV OPENSCAD_PATH=/opt/openscad/AppRun" in lines
+          and not any(ln.strip() == "openscad \\" for ln in lines)
+          and any(f"installs OpenSCAD {package.OPENSCAD_VERSION}" in n for n in notes),
+          f"[STAND-IN] the package's image does not install the pinned OpenSCAD: {notes}")
+    check(package.merge_apt(merged, {"tools/hose_adapter/tool.yaml": y})[0] == merged
+          and package.merge_apt(merged, {})[0] == dock,
+          "[STAND-IN] merging again changes the Dockerfile, or the tool gone does not give the engine's back")
     return "generator, geometry tool, failure, timeout, no program, Validate's warning, the package"
 
 

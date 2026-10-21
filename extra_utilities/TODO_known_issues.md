@@ -135,7 +135,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F120` | OPEN | The online Studio's shared setup does not survive a restart |
 | `F121` | OPEN | Agent prompts still say every parameter value is a number |
 | `F122` | OPEN | The Studio inside the configurator's deploy runs tool code beside the app's keys |
-| `F123` | OPEN | A deploy image with a newer OpenSCAD (Debian's 2021.01 cannot read the hose adapter) |
+| `F123` | DONE | A deploy image with a newer OpenSCAD (Debian's 2021.01 cannot read the hose adapter) |
 | `F124` | OPEN | More engine backends: RhinoCompute, Node, HTTP |
 | `F125` | OPEN | Run the P8 acceptance (the hose adapter configurator) on Railway |
 | `F126` | DONE | The tool text of propose_attempt says "16-parameter" |
@@ -4876,7 +4876,18 @@ deploy the Studio on its own (`python -m studio --online`, no keys).
 
 ### F123. A deploy image with a newer OpenSCAD (Debian's 2021.01 cannot read the hose adapter)
 
-**Status.** OPEN — found 2026-10-20, during MAS-blueprint P6e.
+**Status.** DONE 2026-10-21 (owner: a pinned AppImage).  For a tool with
+`backend: openscad` the package's `Dockerfile` (`studio/package.py`
+`merge_apt`) now installs `OpenSCAD-2026.10.18-x86_64.AppImage` from
+files.openscad.org/snapshots (the snapshots are kept; no release is newer
+than 2021.01), checked against its published sha256, unpacked with
+`--appimage-extract` (a container has no FUSE), its `--version` run at build
+time, and `OPENSCAD_PATH=/opt/openscad/AppRun`; the six system libraries it
+loads (`libegl1 libfontconfig1 libfreetype6 libgpg-error0 libharfbuzz0b
+libwayland-client0`, found on Debian 13, the base image) go on the apt-get
+line.  Checked with Docker on this computer: the hose adapter builds in the
+container in about a second.  x86-64 only (Railway's).  Found 2026-10-20,
+during MAS-blueprint P6e.
 
 A setup whose tool says `backend: openscad` gets Debian's `openscad`
 package in its Docker image (`studio/package.py` `merge_apt`).  That is
@@ -4903,7 +4914,11 @@ tools until then.
 ### F125. Run the P8 acceptance (the hose adapter configurator) on Railway
 
 **Status.** OPEN — owner decision (2026-10-21): "for now, let's try here with
-renders installed; later on, we'll try to run this on Railway".
+renders installed; later on, we'll try to run this on Railway".  2026-10-21:
+F123 done; the model's author is asked first (the owner sends the request:
+the script's own header says the author does not approve of it being hosted
+or uploaded to any site), and the Railway part waits for the answer.  The
+package's image was built and checked on this computer meanwhile.
 
 MAS-blueprint P8 built a second configurator, the vacuum hose adapter, only
 through the Studio, downloaded its full package and ran one real session
