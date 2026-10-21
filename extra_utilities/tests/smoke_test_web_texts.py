@@ -576,7 +576,8 @@ def check_one_deploy() -> str:
             found = re.findall(r"""['"]/(?:api|static|download)/""", text)
             check(not found, f"[ONE DEPLOY] studio/web/{rel} names an address from the root: {found}")
         js = (ROOT / "studio" / "web" / "studio.js").read_text(encoding="utf-8")
-        check(js.count("src: own(") == 2, "[ONE DEPLOY] the Studio does not show the pictures from its own copy")
+        # a group's picture in the parameter table and in its inspector, and the primer's
+        check(js.count("src: own(") == 3, "[ONE DEPLOY] the Studio does not show the pictures from its own copy")
         # Without an access code (a local run), the Studio is open.
         from fastapi import FastAPI
         from fastapi.testclient import TestClient

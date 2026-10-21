@@ -445,11 +445,44 @@ def team_tools(topology: int) -> dict:
 
 def view(choice: dict) -> dict:
     """One view: *choice*'s topology assembled under it (prompts, spans,
-    align) and its team's tools."""
+    align), its team's tools, and the primer each agent is sent."""
     load_engine()
     apply_choice(choice)
     out = assemble_marked(choice["topology"])
     out["tools"] = team_tools(choice["topology"])
+    out["primer"] = primer_view(choice["topology"])
+    return out
+
+
+def primer_view(topology: int) -> dict:
+    """agent -> the primer it is sent in *topology*, before the
+    conversation (``engine/primer.py``): its text, whether that is the
+    agent's own copy, the picture (file, size, tokens) and ``enabled`` --
+    Workflow Settings' switch as set up.  Agents the setup gives none are
+    left out; so is everyone when its section cannot be read (Validate
+    says why)."""
+    import yaml
+
+    import workflow_settings.settings as S
+    from engine import pack
+    from engine import primer as pr
+    try:
+        agents = pr.agents_for(topology)
+        path = pr.image_path()
+    except (pr.PrimerError, yaml.YAMLError):
+        return {}
+    picture = None
+    if path is not None:
+        w, h = pr.png_size(path)
+        picture = {"file": path.name, "width": w, "height": h, "tokens": pr.image_tokens(w, h)}
+    out = {}
+    for agent in agents:
+        f = pack.fragment_path(pr.TEXT_SLOT, topology, agent)
+        text = f.read_text(encoding="utf-8").rstrip() if f is not None else ""
+        if text or picture:
+            out[agent] = {"text": text, "picture": picture,
+                          "own_copy": pack.agent_copy_path(pr.TEXT_SLOT, topology, agent) is not None,
+                          "enabled": bool(getattr(S, "DC_PARAMS_PRIMER_ENABLED", True))}
     return out
 
 
@@ -688,6 +721,51 @@ def parameter_access() -> dict:
     }
 
 
+def primer_data() -> dict:
+    """The setup's primer (``engine/primer.py``) for the Primer page: the
+    picture it names (``{file, width, height, bytes, tokens}``, or ``{file,
+    error}``), one row per agent that may get it -- its cell in each
+    topology it is in, and the topologies where it has its own text -- and
+    why ``pack.yaml``'s section cannot be read when it cannot."""
+    import yaml
+
+    from agents.shared import agent_roles
+    from engine import pack
+    from engine import primer as pr
+    try:
+        cur, problems = pr.read(), []
+    except (pr.PrimerError, yaml.YAMLError) as exc:
+        cur, problems = None, [ln for ln in str(exc).split("\n") if ln.strip()]
+    picture = None
+    if cur and cur["image"]:
+        path = pack.asset_path(cur["image"])
+        if not path.is_file():
+            picture = {"file": cur["image"], "error": "missing"}
+        else:
+            try:
+                w, h = pr.png_size(path)
+                picture = {"file": cur["image"], "width": w, "height": h,
+                           "bytes": path.stat().st_size, "tokens": pr.image_tokens(w, h)}
+            except ValueError:
+                picture = {"file": cur["image"], "error": "not a PNG"}
+    order = []                      # the 7-agent team first
+    for t in TOPOLOGIES:
+        order += [a for a in agent_roles.ROSTER[t] if a not in order]
+    rows = []
+    for agent in order:
+        if agent in pr.NO_PRIMER_AGENTS:
+            continue
+        rows.append({
+            "agent": agent, "name": agent_roles.DISPLAY.get(agent, agent),
+            "cells": {str(t): bool(cur) and agent in cur["agents"][t]
+                      for t in TOPOLOGIES if agent in agent_roles.ROSTER[t]},
+            "copies": [t for t in TOPOLOGIES if agent in agent_roles.ROSTER[t]
+                       and pack.agent_copy_path(pr.TEXT_SLOT, t, agent)]})
+    return {"declared": bool(cur and cur["declared"]), "image": cur["image"] if cur else None,
+            "picture": picture, "rows": rows, "problems": problems, "text_slot": pr.TEXT_SLOT,
+            "no_primer": sorted(pr.NO_PRIMER_AGENTS)}
+
+
 def settings_values(names) -> dict:
     """The on-disk defaults of the named settings (workflow_settings/
     settings.py), read as source: no override applies."""
@@ -912,6 +990,7 @@ def static_data() -> dict:
         "tool_settings": tool_settings(),
         "settings": settings_values({"DC_PARAMS_PRIMER_ENABLED"}),
         "parameter_access": parameter_access(),
+        "primer": primer_data(),
         "env_vars": env_names(),
         "env_sections": env_sections(),
         "viewer": viewer_controls(),

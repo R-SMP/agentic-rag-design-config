@@ -232,12 +232,12 @@ def check_second(tmp: Path, planter: Path) -> str:
                           encoding="utf-8", errors="replace", timeout=1200)
     check(proc.returncode == 0, f"[SECOND] python -m studio validate answered {proc.returncode}: "
                                 f"{proc.stdout[-1500:]}")
-    check("WARN: 23 passed, 1 warning(s), 0 failed" in proc.stdout,
+    check("WARN: 24 passed, 1 warning(s), 0 failed" in proc.stdout,
           f"[SECOND] the printed report's last line: {proc.stdout.strip().splitlines()[-1:]}")
     rep = json.loads(out.read_text(encoding="utf-8"))
     items = rep["items"]
     t = titles(items)
-    check(rep["status"] == "warn" and rep["counts"] == {"pass": 23, "warn": 1, "fail": 0},
+    check(rep["status"] == "warn" and rep["counts"] == {"pass": 24, "warn": 1, "fail": 0},
           f"[SECOND] status {rep['status']} {rep['counts']}: "
           f"{[(i['title'], i['lines'][:2]) for i in items if i['status'] != 'pass']}")
     dead = t.get("Text about a tool the setup does not have") or {"lines": [], "status": None}
@@ -247,7 +247,7 @@ def check_second(tmp: Path, planter: Path) -> str:
     check(any("render_blade_sections" in ln for ln in dead["lines"])
           and any("generate_and_render_propeller.mesh_checks" in ln for ln in dead["lines"]),
           "[SECOND] the conditions listed do not name the removed tools")
-    check([i["part"] for i in items] == ["A"] * 9 + ["B"] * 3 + ["C"] + ["D"] * 3 + ["E"] + ["X"] * 7,
+    check([i["part"] for i in items] == ["A"] * 10 + ["B"] * 3 + ["C"] + ["D"] * 3 + ["E"] + ["X"] * 7,
           f"[SECOND] the parts: {[i['part'] for i in items]}")
     for n, agents in ((7, ("Tool Caller",)), (5, ("Tool Caller",)), (3, ("Design Engineer",))):
         b = t.get(f"Topology {n}") or {}
@@ -297,7 +297,7 @@ def check_server(tmp: Path) -> str:
         tools = sorted(p.parent.name for p in (prop / "tools").glob("*/tool.yaml"))
         check(rep["status"] != "fail",
               f"[SERVER] the propeller fails: {[(i['title'], i['lines'][:2]) for i in items if i['status'] == 'fail']}")
-        check([i["part"] for i in items] == ["A"] * 9 + ["B"] * 3 + ["C"] + ["D"] * len(tools)
+        check([i["part"] for i in items] == ["A"] * 10 + ["B"] * 3 + ["C"] + ["D"] * len(tools)
               + ["E"] + ["X"] * 7, f"[SERVER] the parts: {[i['part'] for i in items]}")
         check([i["title"] for i in items if i["part"] == "D"] == tools,
               f"[SERVER] the tools: {[i['title'] for i in items if i['part'] == 'D']}")

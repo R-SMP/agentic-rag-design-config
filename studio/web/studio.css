@@ -383,6 +383,14 @@ body.guide-body { height:auto; min-height:100%; }
 .dropzone.slim { margin:10px 16px 4px; padding:14px; display:flex; gap:10px; align-items:center;
   justify-content:center; font-size:12.5px; }
 .dropzone.over { border-color:var(--accent); background:#172238; color:#a5c8ff; }
+/* the Primer page */
+.dropzone.primer-drop { margin:10px 16px 4px; padding:12px 14px; text-align:left; }
+.dropzone.primer-drop.chg { border-color:#b07a1e; }
+.primer-drop .phead, .phead { display:flex; gap:8px; align-items:center; }
+.primer-drop .phead { margin-bottom:8px; }
+.primer-drop .grow, .phead .grow { flex:1; }
+.primer-pic { display:block; max-width:100%; max-height:320px; margin:4px 0 6px; border-radius:6px; background:#fff;
+  border:1px solid var(--line); }
 .importban { margin:8px 16px 0; }
 .importban .row { display:flex; gap:10px; align-items:center; }
 .importban .grow { flex:1 1 auto; }

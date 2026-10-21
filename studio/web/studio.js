@@ -47,13 +47,14 @@
   var SECTIONS = [
     { id: 'identity', n: 1, label: 'Identity' },
     { id: 'parameters', n: 2, label: 'Parameters' },
-    { id: 'description', n: 3, label: 'Configurator description' },
-    { id: 'outputs', n: 4, label: 'Outputs & vocabulary' },
-    { id: 'tools', n: 5, label: 'Tools' },
-    { id: 'examples', n: 6, label: 'Examples' },
-    { id: 'inputs', n: 7, label: 'User input types' },
-    { id: 'access', n: 8, label: 'Agent access' },
-    { id: 'settings', n: 9, label: 'Settings & secrets' }
+    { id: 'primer', n: 3, label: 'Primer' },
+    { id: 'description', n: 4, label: 'Configurator description' },
+    { id: 'outputs', n: 5, label: 'Outputs & vocabulary' },
+    { id: 'tools', n: 6, label: 'Tools' },
+    { id: 'examples', n: 7, label: 'Examples' },
+    { id: 'inputs', n: 8, label: 'User input types' },
+    { id: 'access', n: 9, label: 'Agent access' },
+    { id: 'settings', n: 10, label: 'Settings & secrets' }
   ];
   var CHECK_PAGES = [
     { id: 'prompts', label: 'Prompt viewer' },
@@ -64,7 +65,8 @@
     description: 'What the configurator builds, how its parameters behave, what it can and cannot do. Long text blocks, mostly read by the agents that write and check parameters.',
     outputs: 'What the generator produces and the words the agents use for it.',
     examples: 'Short examples spliced INTO generic sentences. Each one is a phrase: keep it on one line and keep its shape (parentheses, quotes, a leading comma).',
-    inputs: 'How the agents treat a sketch or reference image the user uploads.'
+    inputs: 'How the agents treat a sketch or reference image the user uploads.',
+    primer: 'One picture and its text that show what the parameters mean, sent with every call to the agents you tick here, between their instructions and the conversation.'
   };
   // The texts of the screens that come later.
   var LATER = {
@@ -191,7 +193,8 @@
     if (id === 'parameters') return D.parameters.parameters.length;
     if (id === 'tools') return D.tools.length;
     if (id === 'access') return D.parameter_access.rows.length;
-    if (id === 'settings') return D.tool_settings.reduce(function (n, t) { return n + t.settings.length; }, 0) + Object.keys(D.settings).length;
+    if (id === 'primer') return primerCells();
+    if (id === 'settings') return D.tool_settings.reduce(function (n, t) { return n + t.settings.length; }, 0);
     return slotsOf(id).length;
   }
   function unitMismatch(p) {
@@ -327,6 +330,7 @@
     var sec = R.section;
     if (sec === 'parameters') renderParams(center, right);
     else if (sec === 'tools') renderTools(center, right);
+    else if (sec === 'primer') renderPrimer(center, right);
     else if (sec === 'access') renderAccess(center, right);
     else if (sec === 'settings') renderSettings(center, right);
     else if (sec === 'prompts') renderPrompts(center, right);
@@ -515,7 +519,7 @@
         empty ? [h('ul', { 'class': 'checks warn' }, [h('li', null, ['!', h('span', null, 'The text is empty: the agents that read this field get nothing here.')])])] : [])),
       h('div', { 'class': 'block' }, [h('h4', null, 'Shape'), h('ul', { 'class': 'checks' }, hints(s, cur).map(function (x) { return h('li', null, ['•', h('span', null, x)]); }))]),
       s.runtime ? h('div', { 'class': 'block' }, [h('h4', null, 'Where it is read'),
-        h('p', { 'class': 'muted' }, 'By the app’s code, not by a $name in a prompt text: in a tool’s description or answer, the tool runner’s list, the parameter primer or the web page — the description above says which.  So the sentences it lands in are not traced here.')]) :
+        h('p', { 'class': 'muted' }, s.slot === D.primer.text_slot ? PRIMER_WHERE : 'By the app’s code, not by a $name in a prompt text: in a tool’s description or answer, the tool runner’s list, the parameter primer or the web page — the description above says which.  So the sentences it lands in are not traced here.')]) :
       h('div', { 'class': 'block' }, [h('h4', null, 'Where it lands · ' + rows.length + ' sentence' + (rows.length === 1 ? '' : 's')),
         dirty ? h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, 'The unsaved text is shown as typed; after Save the engine assembles the exact sentences.') : null,
         rows.length ? null : h('p', { 'class': 'muted' }, 'Not in any prompt under the checked settings (base, all features on).')].concat(
@@ -2498,7 +2502,7 @@
       radio('new', 'Start a new configurator', 'The model becomes the setup’s generator and its geometry tool for the Download buttons, each with a copy of the file.  Its parameters replace today’s ' +
         su.parameters.length + ', the agents’ parameter lists are written new, and the picture samples become one, the defaults.' +
         (gone.length ? '  These tools go: ' + gone.join(', ') + '.' : '') + (su.helpers.length ? '  These stay: ' + su.helpers.join(', ') + '.' : '') +
-        '  The texts stay as they are, for you to adapt.'),
+        '  The texts stay as they are, for you to adapt, and no agent gets the primer until you give it this model’s picture and text.'),
       radio('add', 'Add it as one more tool', (su.add_as === 'generator' ? 'It becomes the setup’s generator (the setup has none).'
         : 'It becomes a geometry tool beside ' + su.generators.join(', ') + ': a generator’s geometry tool setting, or the Download buttons, can use it.') +
         '  Its parameters join today’s ' + su.parameters.length + ', the agents’ lists and the picture samples get them too.'),
@@ -2762,6 +2766,122 @@
   }
 
   /* ======================================================================
+   * Primer: one picture and its text, sent to the agents ticked here
+   * (studio/primer_edit.py; its text is a text field)
+   * ==================================================================== */
+  function PRE() { return D.primer_edit || { opened: { agents: {} } }; }
+  function primerCells() {
+    return D.primer.rows.reduce(function (n, r) {
+      return n + Object.keys(r.cells).filter(function (k) { return r.cells[k]; }).length; }, 0);
+  }
+  function renderPrimer(center, right) {
+    var P = D.primer, on = D.settings.DC_PARAMS_PRIMER_ENABLED !== false;
+    add(center, head('Primer', INTRO.primer));
+    if (P.problems.length) {
+      add(center, h('div', { 'class': 'banner warn', style: 'margin:10px 16px' }, [
+        h('div', null, 'pack.yaml’s primer section cannot be read, so no agent gets the primer. Fix it by hand:')].concat(
+        P.problems.map(function (p) { return h('div', { 'class': 'probline' }, '✗ ' + p); }))));
+    }
+    add(center, h('div', { 'class': 'banner ' + (on ? 'info' : 'warn'), style: 'margin:10px 16px' }, [
+      h('span', { 'class': 'seg ro', title: LATER.settings, style: 'margin-right:8px' }, [h('button', { 'class': on ? 'on' : '' }, 'on'),
+        h('button', { 'class': on ? '' : 'on' }, 'off')]),
+      on ? 'Workflow Settings › DC_PARAMS_PRIMER_ENABLED is on: the agents ticked below get the primer. Switch it off there for a model that cannot take pictures.'
+         : 'Workflow Settings › DC_PARAMS_PRIMER_ENABLED is off: no agent gets the primer until it is on again.']));
+    add(center, primerPicture(P));
+    add(center, primerGrid(P));
+    add(center, h('div', { style: 'padding:12px 16px 0' }, [h('h4', null, 'Its text'),
+      h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Sent before the picture. An agent can have its own copy (the ↳ rows): give it one in the field’s inspector.')]));
+    var list = slotsOf('primer');
+    add(center, grid(list));
+    var sel = R.q.field ? slotByName(R.q.field) : list[0];
+    add(right, sel ? inspectField(sel) : h('div', { 'class': 'insp empty' }, 'Select a field.'));
+    primerDragTarget(center);
+  }
+  function primerPicture(P) {
+    var E = PRE(), pic = P.picture, opened = E.opened || {};
+    var changed = (P.image || null) !== (opened.image || null) || ((E.picture || {}).sha || null) !== (opened.picture_sha || null);
+    var picker = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', style: 'display:none', onchange: function (e) {
+      var f = e.target.files[0]; e.target.value = '';
+      if (f) uploadPrimer(f);
+    } });
+    var body;
+    if (!P.image) body = h('p', { 'class': 'muted' }, 'No picture: the agents get the text alone.');
+    else if (!pic || pic.error) body = h('p', { 'class': 'muted' }, 'assets/' + P.image + ' is ' + (pic && pic.error === 'not a PNG' ? 'not a PNG' : 'missing') +
+      ': the agents get the text alone until it is replaced.');
+    else body = h('div', null, [
+      h('img', { 'class': 'primer-pic', src: own('/pack/assets/' + pic.file) + '?v=' + ((E.picture || {}).sha || '').slice(0, 12), alt: 'The primer’s picture' }),
+      h('div', { 'class': 'pills' }, [kpill(pic.width + ' × ' + pic.height + ' px'), kpill('~' + fmt(pic.tokens) + ' tokens per call'), kpill('assets/' + pic.file)]),
+      (E.picture || {}).large ? h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Larger than a model provider takes as it is (about 1568 px a side, 1.15 million pixels): it is shrunk before the model sees it, and small labels may blur.') : null]);
+    return h('div', { 'class': 'dropzone primer-drop' + (changed ? ' chg' : ''), id: 'primerDrop' }, [picker,
+      h('div', { 'class': 'phead' }, [h('b', null, 'Picture'), changed ? kpill('changed since the Studio opened') : null, h('span', { 'class': 'grow' }),
+        h('button', { disabled: BUSY || P.problems.length > 0, onclick: function () { picker.click(); } }, P.image ? 'Replace picture…' : 'Add a picture…'),
+        P.image ? h('button', { disabled: BUSY || P.problems.length > 0, title: 'The agents get the text alone.', onclick: function () {
+          change('remove_primer_picture', [PRE().pack_yaml_sha], 'primer', 'The primer has no picture now: the agents get its text alone.'); } }, 'Remove picture') : null,
+        changed ? h('button', { 'class': 'mini', disabled: BUSY, title: 'The picture as it was when the Studio opened.', onclick: function () {
+          change('undo_primer', ['picture'], 'primer', 'The primer’s picture is back as it was when the Studio opened.'); } }, 'Undo') : null]),
+      body,
+      h('p', { 'class': 'muted', style: 'font-size:11.5px;margin:6px 0 0' }, 'Drop a PNG, JPEG or WebP here, or pick one: it is stored as a PNG in assets/.')]);
+  }
+  function primerGrid(P) {
+    var opened = PRE().opened.agents || {}, changed = false;
+    var tb = h('tbody');
+    P.rows.forEach(function (r) {
+      add(tb, h('tr', null, [h('td', null, [h('b', null, r.name), h('div', { 'class': 'muted mono', style: 'font-size:10.5px' }, r.agent)])].concat(
+        ['3', '5', '7'].map(function (k) {
+          if (!(k in r.cells)) return h('td', null, h('span', { 'class': 'na' }, '—'));
+          var now = r.cells[k], then = (opened[k] || []).indexOf(r.agent) >= 0;
+          if (now !== then) changed = true;
+          return h('td', { 'class': now !== then ? 'chg' : null, title: now !== then ? (then ? 'Got it' : 'Did not get it') + ' when the Studio opened.' : null },
+            h('label', { 'class': 'vchk' }, [h('input', { type: 'checkbox', checked: now, disabled: BUSY || P.problems.length > 0, onchange: function (e) {
+              change('set_primer_agent', [r.agent, k, e.target.checked, PRE().pack_yaml_sha], 'primer',
+                r.name + ', ' + k + '-agent: ' + (e.target.checked ? 'gets the primer' : 'no primer') + ' (saved to pack.yaml).'); } })]));
+        }), [h('td', { 'class': 'muted', style: 'font-size:11.5px' }, r.copies.length ? 'its own copy (' + r.copies.slice().sort().join(', ') + '-agent)' : 'the shared text')])));
+    });
+    return h('div', null, [
+      h('div', { 'class': 'phead', style: 'padding:12px 16px 0' }, [h('h4', null, 'Who gets it'), h('span', { 'class': 'grow' }),
+        changed ? h('button', { 'class': 'mini', disabled: BUSY, title: 'Every agent back as it was when the Studio opened.', onclick: function () {
+          change('undo_primer', ['agents'], 'primer', 'Who gets the primer is back as it was when the Studio opened.'); } }, 'Undo') : null]),
+      h('table', { 'class': 'ptab', style: 'margin:6px 16px;width:calc(100% - 32px)' }, [h('thead', null, h('tr', null,
+        ['Agent', '3-agent', '5-agent', '7-agent', 'Its text'].map(function (x) { return h('th', null, x); }))), tb]),
+      h('p', { 'class': 'muted', style: 'font-size:11.5px;margin:0 16px' }, 'Any agent but the Database Handler, which only saves the session. Each agent pays the picture’s and the text’s tokens with every call (cached with its instructions).')]);
+  }
+  function uploadPrimer(file) {
+    if (BUSY) { status('Wait for the change being written, then drop the picture again.', 'warn'); return; }
+    if (!/\.(png|jpe?g|webp)$/i.test(file.name)) { status(file.name + ' is not a PNG, JPEG or WebP picture.', 'err'); return; }
+    var fr = new root.FileReader();
+    fr.onload = function () {
+      var b64 = String(fr.result).split(',')[1] || '';
+      change('primer_picture', [b64, file.name, PRE().pack_yaml_sha], 'primer', 'The primer’s picture is now ' + file.name + '.');
+    };
+    fr.readAsDataURL(file);
+  }
+  // A picture dragged over the Primer page lights the picture; dropped there, it is sent.
+  function primerDragTarget(center) {
+    function zone(on) { var z = el('primerDrop'); if (z) z.classList.toggle('over', on); }
+    center.addEventListener('dragover', function (e) { if (!hasFiles(e)) return; e.preventDefault(); zone(true); });
+    center.addEventListener('dragleave', function (e) { if (!center.contains(e.relatedTarget)) zone(false); });
+    center.addEventListener('drop', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      zone(false);
+      if (e.dataTransfer.files.length) uploadPrimer(e.dataTransfer.files[0]);
+    });
+  }
+  // The Prompt viewer: the primer an agent is sent before the conversation.
+  function primerBlock(view, agent) {
+    var p = (view.primer || {})[agent];
+    if (!p) return h('div', { 'class': 'block' }, [h('h4', null, 'Primer'),
+      h('p', { 'class': 'muted' }, ['None: this agent is not ticked on the ', h('a', { href: link('studio', 'primer') }, 'Primer page'), '.'])]);
+    var parts = [];
+    if (p.picture) parts.push('the picture, ' + p.picture.width + ' × ' + p.picture.height + ' px (~' + fmt(p.picture.tokens) + ' tokens)');
+    if (p.text) parts.push((p.own_copy ? 'its own copy of the text' : 'the text') + ' (' + fmt(p.text_tokens) + ' tokens)');
+    return h('div', { 'class': 'block' }, [h('h4', null, 'Primer · before the conversation'),
+      h('p', { style: 'font-size:11.5px' }, ['+ ', parts.join(' and '), ', with every call (', h('a', { href: link('studio', 'primer') }, 'Primer page'), ').']),
+      p.enabled ? null : h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Workflow Settings › DC_PARAMS_PRIMER_ENABLED is off: not sent while it is.'),
+      p.text ? h('details', { 'class': 'vtool' }, [h('summary', null, 'The text'), h('div', { 'class': 'd', style: 'white-space:pre-wrap' }, p.text)]) : null]);
+  }
+
+  /* ======================================================================
    * Agent access
    * ==================================================================== */
   function renderAccess(center, right) {
@@ -2819,7 +2939,7 @@
     VOYAGE_API_KEY: ['image search in the database', 'optional'], GOOGLE_CLOUD_VISION_API_KEY: ['reading text in images (OCR)', 'optional']
   };
   function renderSettings(center, right) {
-    var S = D.settings, rows = [];
+    var rows = [];
     add(center, head('Settings & secrets', 'Default values of the tools’ own settings, saved into each tool’s tool.yaml (users change them later in Workflow Settings), and the secrets your setup will need.'));
     Object.keys(TE().tools).forEach(function (name) {
       var st = toolState(name), m = st.manifest;
@@ -2856,11 +2976,6 @@
             onclick: function () { set(it.opened); } }, 'Undo') : null)]));
       });
     });
-    rows.push(h('tr', { 'class': 'grp' }, h('td', { colspan: 4 }, 'setup')));
-    rows.push(h('tr', null, [h('td', null, h('span', { 'class': 'pname' }, 'parameter_primer_image')),
-      h('td', null, h('span', { 'class': 'seg ro', title: LATER.settings }, [h('button', { 'class': S.DC_PARAMS_PRIMER_ENABLED ? 'on' : '' }, 'on'),
-        h('button', { 'class': S.DC_PARAMS_PRIMER_ENABLED ? '' : 'on' }, 'off')])),
-      h('td', { 'class': 'muted', style: 'font-size:11.5px' }, 'DC_PARAMS_PRIMER_ENABLED (workflow_settings/settings.py, outside the setup: read-only here)'), h('td')]));
     add(center, h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, [
       h('thead', null, h('tr', null, ['Setting', 'Default', 'What it is', ''].map(function (x) { return h('th', null, x); }))),
       h('tbody', null, rows)]));
@@ -2910,6 +3025,7 @@
                          KEEP_IMAGES_IN_CONTEXT: 'Keep images in context', CHAIN_ACCESS: 'Chain access', OCR_ENABLED: 'OCR' };
   var RAG_LABELS = { off: 'off', on: 'on', all: 'on, every database tool' };
   var TOKENS_NOTE = 'Counted with tiktoken cl100k_base, the engine’s own counter; other providers’ tokenizers differ by a few percent.';
+  var PRIMER_WHERE = 'With the primer’s picture, before the conversation, by the agents ticked on the Primer page — with every call; an agent with its own copy gets its copy.  Not by a $name in a prompt text, so the sentences it lands in are not traced here.';
   var VIEWS = {}, VIEW_ERRORS = {}, VIEW_PENDING = {};   // by choice
   // the same choice compared with the setup as the Studio opened it: by choice + agent
   var DIFFS = {}, DIFF_ERRORS = {}, DIFF_PENDING = {};
@@ -3075,6 +3191,7 @@
             h('div', { 'class': 'd' }, t.description),
             h('pre', { 'class': 'args' }, JSON.stringify(t.args, null, 1))]);
         }))),
+      primerBlock(view, agent),
       h('div', { 'class': 'block' }, [h('h4', null, 'Your fields in this prompt · ' + Object.keys(used).length),
         h('div', null, Object.keys(used).sort().map(function (n) {
           return h('a', { href: link('studio', (slotByName(n) || {}).section || 'tools', { field: n }), 'class': 'kpill ' + originOf(n), style: 'display:inline-block;margin:2px;text-decoration:none' }, n + (used[n] > 1 ? ' ×' + used[n] : ''));

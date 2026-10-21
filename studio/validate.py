@@ -7,8 +7,8 @@ What it checks (owner, 2026-10-19):
 
 * **A. The setup loads** -- what the engine reads, with the engine's own
   checks: the setup's format; ``parameters.json``; ``pack.yaml`` (the
-  agents' access to the parameter list, the Download buttons, the picture
-  samples); every ``tool.yaml`` (with the texts each tool owns, the
+  agents' access to the parameter list, the primer, the Download buttons,
+  the picture samples); every ``tool.yaml`` (with the texts each tool owns, the
   geometry tools, the outputs); every text, in each topology.  Three
   warnings: a range an import proposed and nobody has reviewed yet
   (``"range": "proposed"``, MAS-blueprint P6f), a text condition about a
@@ -132,7 +132,7 @@ def part_load() -> list[dict]:
     engine_view.load_engine()
     import yaml
 
-    from engine import image_run, pack, pack_flags, pack_tools
+    from engine import image_run, pack, pack_flags, pack_tools, primer
     from engine import parameter_access as pa
     from engine import parameters as ep
     from studio import params_edit
@@ -181,6 +181,31 @@ def part_load() -> list[dict]:
     lines = attempt(pa.default_table)
     out.append(item("A", "Agent access (pack.yaml)", FAIL if lines else PASS, lines,
                     link={"section": "access"}))
+    # A. the primer: its section, its picture, and something to send to
+    # each agent that gets it
+    lines, warn = attempt(primer.read), []
+    if not lines:
+        cur, size = primer.read(), None
+        if cur["image"]:
+            path = pack.asset_path(cur["image"])
+            if not path.is_file():
+                lines.append(f"assets/{cur['image']}, the primer's picture, is missing")
+            else:
+                try:
+                    size = primer.png_size(path)
+                except ValueError:
+                    lines.append(f"assets/{cur['image']}, the primer's picture, is not a PNG")
+        if size and (max(size) > 1568 or size[0] * size[1] > 1_150_000):
+            warn.append(f"assets/{cur['image']} is {size[0]} x {size[1]} px: a model provider shrinks "
+                        "it before the model sees it, and small labels may blur")
+        for n in TOPOLOGIES:
+            for agent in cur["agents"][n]:
+                f = pack.fragment_path(primer.TEXT_SLOT, n, agent)
+                if not size and not (f is not None and f.read_text(encoding="utf-8").strip()):
+                    lines.append(f"{agent} ({n}-agent) gets the primer, but it has no picture and no "
+                                 "text to send")
+    out.append(item("A", "The primer (pack.yaml)", FAIL if lines else WARN if warn else PASS,
+                    lines + warn, link={"section": "primer"}))
     # A. the tools
     lines = attempt(pack_tools._read_manifests)
     tools_ok = not lines

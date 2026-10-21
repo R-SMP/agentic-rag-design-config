@@ -33,6 +33,10 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
   (one run, ``engine/tool_test.py``, in a process of its own).  A change that could stop the engine loading the tools is
   checked first by the engine's own check, on a throw-away copy of the
   setup (in the same engine process).
+* the primer (``studio/primer_edit.py``) -- ``set_primer_agent`` (who
+  gets it, per topology), ``primer_picture`` (a PNG, JPEG or WebP, stored
+  as a PNG), ``remove_primer_picture`` and ``undo_primer``; its text is a
+  text field.
 * a tool from an OpenSCAD model (P6f, ``studio/scad_import.py``) --
   ``scad_read`` (the model's settings and what each is proposed as),
   ``scad_import`` (a new configurator, or one more tool; checked first by
@@ -88,7 +92,7 @@ from fastapi.responses import FileResponse, JSONResponse
 from starlette.background import BackgroundTask
 from fastapi.staticfiles import StaticFiles
 
-from studio import editing, engine_view, params_edit, scad_import, tools_edit
+from studio import editing, engine_view, params_edit, primer_edit, scad_import, tools_edit
 from studio import package as packaging
 from studio import prepare as preparing
 from studio import validate as validation
@@ -351,6 +355,8 @@ class ViewCache:
         try:
             data, pooled = self.pool.run(choice, pack_dir=pack_dir)
             data["tokens"] = {a: count_tokens(t) for a, t in data["prompts"].items()}
+            for p in (data.get("primer") or {}).values():
+                p["text_tokens"] = count_tokens(p["text"])
             for tools in data["tools"].values():
                 for t in tools:
                     t["tokens"] = count_tokens(tool_text(t))
@@ -517,6 +523,7 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
     checker = Checker(pack_dir)
     params = params_edit.ParamsEditor(pack_dir, opened_dir, checker.check)
     tools = tools_edit.ToolsEditor(pack_dir, opened_dir, checker.check_tools, engine_view.REPO)
+    primer = primer_edit.PrimerEditor(pack_dir, opened_dir)
     importer = scad_import.Importer(pack_dir, opened_dir, checker.check_setup, params, tools)
     changed_cache: dict = {}
     validator = Validation(pack_dir)
@@ -530,8 +537,10 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
         """The changed fields and files, and the parameter editor's state."""
         if fp not in changed_cache:
             changed_cache.clear()
-            changed_cache[fp] = {"changed": editor.changed(data) + params.changed() + tools.changed(),
+            changed_cache[fp] = {"changed": editor.changed(data) + params.changed() + tools.changed()
+                                 + primer.changed(),
                                  "params_edit": params.state(data),
+                                 "primer_edit": primer.state(data),
                                  "tools_edit": tools.state(data),
                                  "prepare": {"available": prepare_why is None, "why": prepare_why},
                                  "online": online, "configurator": configurator,
@@ -762,6 +771,8 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                      ("upload_picture", params.upload_picture),
                      ("drop_pictures", params.drop_unused_pictures),
                      ("set_access", params.set_access), ("undo_access", params.undo_access),
+                     ("set_primer_agent", primer.set_agent), ("primer_picture", primer.set_picture),
+                     ("remove_primer_picture", primer.remove_picture), ("undo_primer", primer.undo),
                      ("tool_file", tools.read_file), ("save_manifest", tools.save_manifest),
                      ("save_tool_file", tools.save_file), ("upload_tool_file", tools.upload_file),
                      ("undo_tool_file", tools.undo_file), ("undo_tool", tools.undo_tool),

@@ -139,7 +139,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F124` | OPEN | More engine backends: RhinoCompute, Node, HTTP |
 | `F125` | OPEN | Run the P8 acceptance (the hose adapter configurator) on Railway |
 | `F126` | DONE | The tool text of propose_attempt says "16-parameter" |
-| `F127` | OPEN | The parameter primer of a configurator that is not the propeller |
+| `F127` | DONE | The parameter primer of a configurator that is not the propeller |
 
 ---
 
@@ -4933,7 +4933,19 @@ the P8 setup got the first wording.
 
 ### F127. The parameter primer of a configurator that is not the propeller
 
-**Status.** OPEN — found 2026-10-21, during MAS-blueprint P8.
+**Status.** DONE 2026-10-21 (found the same day, during MAS-blueprint P8).
+Owner decision: the picture, its text and who gets it are the setup's.
+`pack.yaml` has a `primer` section -- its picture (a PNG in `assets/`, or
+none: the text alone) and, per topology, the agents that get it (any but
+the Database Handler; `engine/primer.py`), read on every call by
+`agents/shared/dc_primer.py`, whose step every agent's call now has.  The
+Studio's own Primer page edits it (`studio/primer_edit.py`: a PNG, JPEG or
+WebP dropped or picked, stored as a PNG; the grid; Undo), the Prompt viewer
+shows each agent's primer, Validate checks it, and an import that starts a
+new configurator gives the primer to no agent.  A setup without the section
+behaves as before; the propeller's says the same, so its agents get the
+same messages, byte for byte.  `DC_PARAMS_PRIMER_ENABLED` stays the master
+switch in Workflow Settings.
 
 `DC_PARAMS_PRIMER_ENABLED` (Workflow Settings, on by default) gives the six
 design agents the setup's `assets/dc_params_primer.png` and

@@ -398,7 +398,8 @@ Both first builds were replaced (§1, §2).  As built:
 * **The DC-parameter primer** (image + text, `agents/shared/dc_primer.py`) is
   injected at INVOKE time and bypasses every prompt-level filter.  Its text
   resolves through `_topology_override`; the image is shared deliberately (a
-  ~1k-token binary, identical everywhere).
+  ~1k-token binary, identical everywhere).  Which picture, and who gets it
+  per topology, is the setup's (`pack.yaml` `primer`, `engine/primer.py`).
 * **Who a hub really builds** is its class's `_agents_by_key` literal, read
   by `extra_utilities/scripts/hub_registry.py`.  Two other roster tables exist
   (`sessions_queue.AGENTS_BY_TOPOLOGY` and the one in

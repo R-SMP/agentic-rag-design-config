@@ -2,10 +2,10 @@
 
 The live assets are:
 
-* `dc_pack/assets/dc_params_primer.png` — the image the
-  four DC agents (and the 5/3-agent Creator / Designer) receive at invoke
-  time, injected by `agents/shared/dc_primer.py` behind
-  `DC_PARAMS_PRIMER_ENABLED`.
+* `dc_pack/assets/dc_params_primer.png` — the propeller's primer picture,
+  sent at invoke time to the agents `dc_pack/pack.yaml`'s `primer` names (by
+  default the four DC agents and the 3-agent Designer / Analyst), injected
+  by `agents/shared/dc_primer.py` behind `DC_PARAMS_PRIMER_ENABLED`.
 * `dc_pack/fragments/dc/dc_params_primer_text.md` — the paired text
   block, sent in the same `HumanMessage` BEFORE the image.
 

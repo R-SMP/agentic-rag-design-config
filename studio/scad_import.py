@@ -66,7 +66,7 @@ from pathlib import Path
 
 import yaml
 
-from studio import params_edit, yaml_patch
+from studio import params_edit, primer_edit, yaml_patch
 from studio.editing import EditError
 from studio.tools_edit import MANIFEST, TOOL_RE, UPLOAD_MAX, ToolsEditor
 
@@ -751,7 +751,8 @@ _SAMPLE_RE = re.compile(r"^(\s+)([^\s:#][^:#]*):\s*\{(.*)\}\s*$")
 def pack_yaml(text: str, mode: str, defaults: dict, geometry: str | None) -> str:
     """pack.yaml (LF) after the import: the picture samples -- one set, the
     defaults (new), or every set with the new parameters' defaults (add) --
-    and the Download buttons' geometry tool (new)."""
+    the Download buttons' geometry tool (new), and no agent given the
+    primer, which still shows the old configurator (new)."""
     data = yaml.safe_load(text) or {}
     want = copy.deepcopy(data)
     lines = text.split("\n")
@@ -776,6 +777,11 @@ def pack_yaml(text: str, mode: str, defaults: dict, geometry: str | None) -> str
                     close = lines[i].rindex("}")
                     lines[i] = lines[i][:close] + (", " if m.group(3).strip() else "") + add + lines[i][close:]
     out = "\n".join(lines)
+    if mode == "new":
+        sec = primer_edit.effective(out)
+        sec["agents"] = {t: [] for t in primer_edit.TOPOLOGIES}
+        out = primer_edit.write_section(out, sec, None)
+        want["primer"] = sec
     if geometry is not None:
         want.setdefault("downloads", {})
         if not isinstance(want["downloads"], dict):
@@ -1019,6 +1025,9 @@ class Importer:
                 out.append("These tools stay: " + ", ".join(helpers) + ".  If one belongs to the old "
                            "configurator, remove it under Tools.")
             out.append("The texts stay as they were: adapt them to the new model (Prompt texts).")
+            out.append("No agent gets the primer now: its picture and text still show the old "
+                       "configurator.  Give it this model's on the Primer page, then tick the agents "
+                       "that should get it.")
         if found["includes"]:
             out.append("The model uses other files (" + ", ".join(found["includes"]) + "): only the "
                        "model file was copied; add them to the tool's folder (Upload file).")

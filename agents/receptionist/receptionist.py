@@ -34,6 +34,7 @@ from agents.shared.llm_provider import (
     history_cache_control,
     make_system_message,
 )
+from agents.shared.dc_primer import primed_history
 from agents.shared.llm_retry import invoke_with_retry
 from agents.shared import token_usage
 from agents.shared.prompts import _build_template
@@ -156,7 +157,8 @@ class Receptionist(BaseChainAgent):
             response = invoke_with_retry(
                 self.llm,
                 [make_system_message(self.system_prompt, self.provider)]
-                + self.messages,
+                + primed_history(self.provider, self.AGENT_KEY,
+                                 self.messages),
                 "Receptionist",
                 cache_control=history_cache_control(self.provider),
             )

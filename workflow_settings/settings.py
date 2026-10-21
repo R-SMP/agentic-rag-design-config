@@ -559,22 +559,25 @@ OCR_WHOLE_IMAGE_DEFAULT: bool = True
 OCR_MAX_TEXT_CHARS: int = 2000
 
 
-# DC_PARAMS_PRIMER_ENABLED - the DC-parameter reference diagram.
+# DC_PARAMS_PRIMER_ENABLED - the primer (the DC-parameter reference diagram).
 #
-# When ON, the DC-side agents (UII, DCIC, DCII, DCOI - plus the 3-agent
-# Design Engineer and Requirements Analyst) receive a fixed reference at every
-# LLM call: one image showing how the parameters couple with the design
-# (top view + the camber / high-point section grid) with a paired text
-# block.  Injected at invoke time between the system prompt and the
-# history by agents/shared/dc_primer.py - it is never part of the
-# stored conversation, so the image stripper, the Context Pruner and
-# the session snapshot never see it.  Costs ~1k tokens per call
-# (~383 image + ~600 text), cached as part of the prompt prefix.
+# When ON, the agents the setup names (dc_pack/pack.yaml "primer", the
+# Studio's Primer page - by default the DC-side agents UII, DCIC, DCII,
+# DCOI, plus the 3-agent Design Engineer and Requirements Analyst) receive
+# a fixed reference at every LLM call: one image showing how the
+# parameters couple with the design (for the propeller: top view + the
+# camber / high-point section grid) with a paired text block.  Injected at
+# invoke time between the system prompt and the history by
+# agents/shared/dc_primer.py - it is never part of the stored
+# conversation, so the image stripper, the Context Pruner and the session
+# snapshot never see it.  Costs ~1k tokens per call (the propeller's: ~383
+# image + ~600 text), cached as part of the prompt prefix.
 #
-# CAUTION when OFF is needed: with this ON, DCIC and DCII become VISION
-# consumers.  Routing either to a text-only model (e.g. DeepSeek via
-# OpenRouter) fails while the primer is enabled - turn it OFF for such
-# runs.
+# CAUTION when OFF is needed: with this ON, every agent that gets the
+# picture is a VISION consumer (by default DCIC and DCII among them).
+# Routing one to a text-only model (e.g. DeepSeek via OpenRouter) fails
+# while the primer is enabled - turn it OFF for such runs, or give the
+# setup a primer without a picture.
 #
 # Valid values: True, False
 DC_PARAMS_PRIMER_ENABLED: bool = True

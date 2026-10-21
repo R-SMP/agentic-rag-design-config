@@ -29,6 +29,23 @@ parameter_access:
   requirements_analyst: {3: names}
   database_handler:     {7: none,  5: none,  3: none}
 
+# The primer: one picture and its text ($dc_params_primer_text -- an agent
+# may have its own copy), sent to the agents below with every call, between
+# their system prompt and the conversation (agents/shared/dc_primer.py).
+#
+#   image   a PNG in assets/; empty: the text alone
+#   agents  per topology, the agents that get it (any but the Database
+#           Handler); an empty list: none
+#
+# Workflow Settings > DC_PARAMS_PRIMER_ENABLED switches it off for every
+# agent (a text-only model cannot take the picture).  See engine/primer.py.
+primer:
+  image: dc_params_primer.png
+  agents:
+    7: [user_input_inspector, dc_input_creator, dc_input_inspector, dc_output_inspector]
+    5: [user_input_inspector, dc_input_creator, dc_output_inspector]
+    3: [design_engineer, requirements_analyst]
+
 # The web app's Download buttons: which geometry tool (dc_pack/tools/, kind:
 # geometry) rebuilds the model a user downloads -- from the attempt's
 # parameters.json, or from the Parameters page's sliders -- or "saved", the

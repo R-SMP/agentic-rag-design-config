@@ -69,7 +69,8 @@ slots:
     folder: dc
     kind: block
     use: runtime
-    section: parameters
+    section: primer
+    description: "The primer's text: sent with its picture, before the conversation, to the agents ticked on the Primer page (an agent with its own copy gets its copy)."
 
 # --- 3 Configurator description --------------------------------------------
   dc_structure:

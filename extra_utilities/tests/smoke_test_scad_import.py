@@ -323,10 +323,14 @@ def check_files() -> str:
     a, b = text.split("\n"), new.split("\n")
     changed = [ln for ln in b if ln not in a]
     got = yaml.safe_load(new)
+    # ... and no agent gets the primer, which still shows the propeller
     check(got["render_samples"] == {"default": defaults} and got["downloads"] == {"geometry_tool": "made_up_geometry"}
           and got["parameter_access"] == data["parameter_access"]
-          and changed == ["  geometry_tool: made_up_geometry", "  default: " + yaml_inline(defaults)]
-          and [ln for ln in a if ln not in b] == ["  geometry_tool: rhino_geometry"]
+          and got["primer"] == {"image": data["primer"]["image"], "agents": {7: [], 5: [], 3: []}}
+          and changed == ["    7: []", "    5: []", "    3: []", "  geometry_tool: made_up_geometry",
+                          "  default: " + yaml_inline(defaults)]
+          and [ln for ln in a if ln not in b] == [ln for ln in a if ln.startswith(("    7: [", "    5: [", "    3: ["))]
+          + ["  geometry_tool: rhino_geometry"]
           + [ln for ln in a if ln.startswith(("  small:", "  medium:", "  large:"))],
           f"[FILES] pack.yaml for a new configurator: + {changed[:3]}")
     # the samples are written in the file's own layout, never by the fallback

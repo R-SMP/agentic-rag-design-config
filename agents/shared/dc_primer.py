@@ -1,16 +1,23 @@
-"""DC-parameter primer — a fixed image + text reference injected at invoke time.
+"""The primer — one picture and its text, injected at invoke time.
 
-The primer explains how the DC parameters couple with the design (top view,
-section grid, camber / high-point / angle semantics).  It is delivered to the
-DC-side agents — UII, DCIC, DCII, DCOI, and the 3-agent Design Engineer
-and Requirements Analyst that merge them — as ONE ``HumanMessage``
-spliced between the system message and the live history:
+The primer explains how the configurator's parameters couple with the
+design (for the propeller: top view, section grid, camber / high-point /
+angle semantics).  The setup says what it is and who gets it
+(``engine/primer.py``: ``primer`` in ``dc_pack/pack.yaml``, edited on the
+Studio's Primer page): a picture in ``assets/``, the text field
+``$dc_params_primer_text``, and per topology the agents that receive it --
+by default the DC-side agents, UII, DCIC, DCII, DCOI, and the 3-agent
+Design Engineer and Requirements Analyst that merge them.  Every agent's
+call site splices it, as ONE ``HumanMessage`` between the system message
+and the live history:
 
     invoke_with_retry(
         self.llm,
         [make_system_message(self.system_prompt, self.provider)]
         + primed_history(self.provider, self.AGENT_KEY, self.messages),
         ...)
+
+and it is empty for an agent the setup does not name.
 
 Use ``primed_history``, not ``dc_primer_messages``, at a call site.  The
 Context Pruner replaces ``self.messages`` with one or two
@@ -39,26 +46,27 @@ tiny trailing TEXT block rather than on the image block itself:
 ``langchain_anthropic`` is only known to preserve ``cache_control`` on text
 blocks (``_format_text_block`` keeps it in its allow-list — the same
 guarantee ``make_system_message`` relies on), and a marker that silently
-vanished would re-bill ~1k tokens per turn with no error.  OpenAI caches
-prefixes automatically, so no marker is emitted and the trailing block is
-omitted entirely.
+vanished would re-bill ~1k tokens per turn with no error.  A primer without
+a picture carries the marker on its text block.  OpenAI caches prefixes
+automatically, so no marker is emitted and the trailing block is omitted
+entirely.
 
 COMPRESSION.  The image is read directly from disk and base64-encoded here —
-deliberately NOT through ``encode_image``/``compress_for_model``.  The PNG in
-the repo is already the owner-approved 85 % downscale (930x309, ~383 image
-tokens); a second, sidecar-driven downscale would blur the 9 pt labels.  See
-``extra_utilities/dc_params_primer/README.md``.
+deliberately NOT through ``encode_image``/``compress_for_model``.  The
+propeller's PNG is already the owner-approved 85 % downscale (930x309, ~383
+image tokens); a second, sidecar-driven downscale would blur the 9 pt
+labels.  See ``extra_utilities/dc_params_primer/README.md``.
 
-The assembled message is cached per provider for the process lifetime (the
-assets are fixed); the ``DC_PARAMS_PRIMER_ENABLED`` flag is read fresh per
-call, so a Workflow-Settings edit takes effect on the next invoke without a
-restart — same contract as every other flag.
+The assembled message is kept per provider, cache marker, text file and
+picture while their files are unchanged; the setup's ``primer`` section and the
+``DC_PARAMS_PRIMER_ENABLED`` flag are read fresh per call, so an edit
+takes effect on the next invoke without a restart — same contract as every
+other flag.
 """
 
 from __future__ import annotations
 
 import base64
-import struct
 from pathlib import Path
 
 from langchain_core.messages import HumanMessage, SystemMessage
@@ -66,8 +74,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from agents.shared.llm_provider import make_image_block, system_cache_control
 from agents.shared.topology import topology as _topology
 from engine import pack as _pack
-
-IMAGE_PATH = _pack.asset_path("dc_params_primer.png")
+from engine import primer as _primer
 
 # Agents that get a DIFFERENT primer text own a copy of the pack's
 # ``dc_params_primer_text`` (``dc_params_primer_text@<agent>...md``).  The
@@ -88,7 +95,7 @@ IMAGE_PATH = _pack.asset_path("dc_params_primer.png")
 # Input Creator receives the primer, and it takes the default text.
 
 
-def _text_path(agent_key: "str | None") -> Path:
+def _text_path(agent_key: "str | None") -> "Path | None":
     """The primer text this agent gets — its own copy, or the default.
 
     Resolved through the pack for the ACTIVE topology, so a topology can own
@@ -97,32 +104,35 @@ def _text_path(agent_key: "str | None") -> Path:
     injected at INVOKE time, not spliced into the system prompt, so it
     bypasses every prompt-level filter.
     """
-    return _pack.fragment_path("dc_params_primer_text", _topology(), agent_key)
+    return _pack.fragment_path(_primer.TEXT_SLOT, _topology(), agent_key)
 
-# The agents that receive the primer.  The injection sites are explicit in
-# each agent file; this set exists for the OTHER consumer — the Context
-# Pruner's token accounting (``primer_tokens_for``), which must know whether
-# an agent's real context carries the primer's ~1k tokens outside
-# ``self.messages``.
-PRIMER_AGENT_KEYS = frozenset({
-    "user_input_inspector",
-    "dc_input_creator",
-    "dc_input_inspector",
-    "dc_output_inspector",
-    # 3-agent: each merges at least one primer-receiving parent.
-    "design_engineer",
-    "requirements_analyst",
-})
 
-# Filled lazily; keys are (provider, text-file name), values the single
-# HumanMessage.  The text file is part of the key because agents with a
-# variant text must not share the default's cached message.
+def _receives(agent_key: "str | None") -> bool:
+    """Whether the setup gives *agent_key* the primer in the active topology."""
+    return bool(agent_key) and _primer.gets(agent_key, _topology())
+
+
+def _stamp(path: "Path | None") -> "tuple | None":
+    if path is None:
+        return None
+    try:
+        st = path.stat()
+    except OSError:
+        return None
+    return (str(path), st.st_size, st.st_mtime_ns)
+
+
+# Filled lazily; keys are (provider, its cache marker, the text file's
+# stamp, the picture's stamp), values the single HumanMessage.  The text
+# file is part of the key because agents with a variant text must not share
+# the default's cached message; the stamps, because the Studio may change
+# either file; the marker, because Workflow Settings may switch caching.
 # Safe to share one instance across agents and turns: nothing downstream
 # mutates message content (the strippers operate on ``self.messages`` only,
 # which never contains this object).
 _MESSAGE_CACHE: dict[tuple, HumanMessage] = {}
-# Keyed by text-file name, for the same reason as _MESSAGE_CACHE.
-_TOKEN_ESTIMATE: dict[str, int] = {}
+# Keyed by the same stamps, for the same reason as _MESSAGE_CACHE.
+_TOKEN_ESTIMATE: dict[tuple, int] = {}
 
 
 def _enabled() -> bool:
@@ -130,32 +140,36 @@ def _enabled() -> bool:
     return bool(getattr(_ws, "DC_PARAMS_PRIMER_ENABLED", True))
 
 
-def _png_size(path: Path) -> "tuple[int, int]":
-    """(width, height) from the PNG IHDR — no imaging library needed."""
-    with open(path, "rb") as fh:
-        head = fh.read(24)
-    if head[:8] != b"\x89PNG\r\n\x1a\n" or head[12:16] != b"IHDR":
-        raise ValueError(f"{path} is not a PNG")
-    w, h = struct.unpack(">II", head[16:24])
-    return int(w), int(h)
+def _read_text(text_path: "Path | None") -> str:
+    if text_path is None:
+        return ""
+    try:
+        return text_path.read_text(encoding="utf-8").rstrip()
+    except OSError:
+        return ""
 
 
-def _build(provider: str, text_path: Path) -> HumanMessage:
-    text = text_path.read_text(encoding="utf-8").rstrip()
-    b64 = base64.b64encode(IMAGE_PATH.read_bytes()).decode()
-    content: list[dict] = [
-        {"type": "text", "text": text},
-        make_image_block(b64, provider, media_type="image/png"),
-    ]
+def _build(provider: str, text: str, image: "Path | None") -> "HumanMessage | None":
+    content: list[dict] = []
+    if text:
+        content.append({"type": "text", "text": text})
+    if image is not None:
+        b64 = base64.b64encode(image.read_bytes()).decode()
+        content.append(make_image_block(b64, provider, media_type="image/png"))
+    if not content:
+        return None
     cc = system_cache_control(provider)
     if cc is not None:
         # Anthropic with caching on: extend the cached prefix through the
         # image.  The marker must sit on a text block (see module docstring).
-        content.append({
-            "type": "text",
-            "text": "END OF REFERENCE DIAGRAM.",
-            "cache_control": cc,
-        })
+        if image is not None:
+            content.append({
+                "type": "text",
+                "text": "END OF REFERENCE DIAGRAM.",
+                "cache_control": cc,
+            })
+        else:
+            content[-1] = {**content[-1], "cache_control": cc}
     return HumanMessage(content=content)
 
 
@@ -163,19 +177,25 @@ def dc_primer_messages(provider: str,
                        agent_key: "str | None" = None) -> "list[HumanMessage]":
     """The primer as a (possibly empty) message list, ready to splice.
 
-    Returns ``[]`` when ``DC_PARAMS_PRIMER_ENABLED`` is off or either asset
-    is missing — a missing file degrades to "no primer", never to a broken
-    invoke.  Splice the result directly after the system message.
+    Returns ``[]`` when ``DC_PARAMS_PRIMER_ENABLED`` is off, when the setup
+    does not give *agent_key* the primer in the active topology, or when it
+    has neither a picture nor a text -- a missing file degrades to "no
+    picture" (or "no text"), never to a broken invoke.  Splice the result
+    directly after the system message.
     """
-    if not _enabled():
+    if not _enabled() or not _receives(agent_key):
         return []
     text_path = _text_path(agent_key)
-    key = ((provider or "").strip().lower(), text_path.name)
+    image = _primer.image_path()
+    prov = (provider or "").strip().lower()
+    key = (prov, repr(system_cache_control(prov)), _stamp(text_path), _stamp(image))
     msg = _MESSAGE_CACHE.get(key)
     if msg is None:
         try:
-            msg = _build(key[0], text_path)
-        except (OSError, ValueError):
+            msg = _build(prov, _read_text(text_path), image)
+        except OSError:
+            return []
+        if msg is None:
             return []
         _MESSAGE_CACHE[key] = msg
     return [msg]
@@ -194,23 +214,27 @@ def primer_tokens_for(agent_key: str) -> int:
     bills tiles differently, but the pruner's whole count is an estimate and
     this is the conservative figure.
     """
-    if agent_key not in PRIMER_AGENT_KEYS or not _enabled():
+    if not _enabled() or not _receives(agent_key):
         return 0
     text_path = _text_path(agent_key)
-    cached = _TOKEN_ESTIMATE.get(text_path.name)
+    image = _primer.image_path()
+    key = (_stamp(text_path), _stamp(image))
+    cached = _TOKEN_ESTIMATE.get(key)
     if cached is None:
-        try:
-            w, h = _png_size(IMAGE_PATH)
-            image_tok = (w * h + 749) // 750
+        cached = 0
+        if image is not None:
+            try:
+                cached += _primer.image_tokens(*_primer.png_size(image))
+            except (OSError, ValueError):
+                pass
+        text = _read_text(text_path)
+        if text:
             try:
                 from agents.database_handler.token_utils import count_tokens
-                text_tok = count_tokens(text_path.read_text(encoding="utf-8"))
+                cached += count_tokens(text)
             except Exception:  # tokeniser unavailable — cheap fallback
-                text_tok = len(text_path.read_text(encoding="utf-8")) // 4
-            cached = image_tok + text_tok
-        except OSError:
-            return 0
-        _TOKEN_ESTIMATE[text_path.name] = cached
+                cached += len(text) // 4
+        _TOKEN_ESTIMATE[key] = cached
     return cached
 
 
