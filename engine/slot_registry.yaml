@@ -57,7 +57,7 @@ slots:
     kind: word
     strip: both
     section: parameters
-    description: "Total number of design parameters, e.g. `17`."
+    description: "Total number of design parameters, e.g. `16`."
   parameter_list:
     source: pack
     folder: dc

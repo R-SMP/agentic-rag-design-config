@@ -138,7 +138,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F123` | OPEN | A deploy image with a newer OpenSCAD (Debian's 2021.01 cannot read the hose adapter) |
 | `F124` | OPEN | More engine backends: RhinoCompute, Node, HTTP |
 | `F125` | OPEN | Run the P8 acceptance (the hose adapter configurator) on Railway |
-| `F126` | OPEN | The tool text of propose_attempt says "16-parameter" |
+| `F126` | DONE | The tool text of propose_attempt says "16-parameter" |
 | `F127` | OPEN | The parameter primer of a configurator that is not the propeller |
 
 ---
@@ -4917,7 +4917,12 @@ deploy uses a private repository made from the package.
 
 ### F126. The tool text of propose_attempt says "16-parameter"
 
-**Status.** OPEN — found 2026-10-21, during MAS-blueprint P8.
+**Status.** DONE 2026-10-21 (found the same day, during MAS-blueprint P8).
+The text now says "full `$parameter_count`-parameter record" -- the count
+from `parameters.json`, 16 for the propeller, so its prompts are byte for
+byte the same.  The same fix in `invalid_parameter_examples` (its three
+topology copies; no prompt splices it today, the Studio shows it), and the
+registry's example of `$parameter_count` says 16, not 17.
 
 `$propose_attempt_tool` (`dc_pack/fragments/tools/propose_attempt_tool.md`)
 says `propose_attempt` "pushes an attempt's full 16-parameter record".

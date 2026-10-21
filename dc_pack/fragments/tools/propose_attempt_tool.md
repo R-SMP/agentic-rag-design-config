@@ -1,6 +1,6 @@
 ### Surfacing a proposed solution — ``propose_attempt``
 
-``propose_attempt(parameters_path)`` pushes an attempt's full 16-parameter
+``propose_attempt(parameters_path)`` pushes an attempt's full $parameter_count-parameter
 record to the Parameters Inputs view as the system's PROPOSED SATISFYING
 SOLUTION.
 
