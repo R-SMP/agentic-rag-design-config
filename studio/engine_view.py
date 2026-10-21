@@ -8,7 +8,7 @@
 
 MAS-blueprint P5a.  The Studio's screens read one dict, :func:`build`:
 
-* **static** -- the parameters (``dc_pack/parameters.json``), every text
+* **static** -- the parameters (``setups/<setup>/parameters.json``), every text
   field of the pack with its three topology texts and its per-agent copies
   (read through the slot registry, ``engine/pack.py``), the role map, the
   tools and their settings, the parameter-access grid, the secrets' names;
@@ -605,7 +605,7 @@ def _entry_agrees(pack, p: dict) -> bool:
 
 
 def parameters(pack) -> dict:
-    """The parameter set from its single source, ``dc_pack/parameters.json``
+    """The parameter set from its single source, ``setups/<setup>/parameters.json``
     (``engine/parameters.py``), plus each parameter's unit and description
     as the agents' hand-written ``$parameter_list`` text words them.
     ``copies_agree``: that text gives the same range as the file (a choice
@@ -650,13 +650,13 @@ def text_fields(pack) -> dict:
     """The setup's text fields: the $slots spliced into prompts, and the ones
     the app's code reads (``use: runtime``: tool texts and answers, the tool
     runner's list, the parameter primer, the web page's words --
-    ``dc_pack/README.md``)."""
+    ``setups/<setup>/README.md``)."""
     return {**pack.slots(source="pack", use="prompt"), **pack.slots(source="pack", use="runtime")}
 
 
 def slots(P, pack_origin: dict, roles: dict, order: dict | None = None) -> list:
     """Every pack text field with its three topology texts and per-agent
-    copies, read from dc_pack/ through the registry (engine/pack.py naming).
+    copies, read from setups/<setup>/ through the registry (engine/pack.py naming).
     A field a tool owns is read from that tool's prompts/ folder and names
     its owner; ``runtime``: read by the app's code, not spliced into a prompt
     by a $name.  *order*: slot -> its place in its section (default: the
@@ -789,7 +789,7 @@ def tools() -> list:
         # its code -- or, for a tool the engine runs (backend: P6e), its model file
         ref = m.get("build") or m.get("entrypoint") or m.get("model")
         out.append({"name": name, "display": m["display_name"], "kind": m["kind"],
-                    "file": f"dc_pack/tools/{name}/{ref.split(':')[0]}",
+                    "file": f"tools/{name}/{ref.split(':')[0]}",
                     "description": m["description"],
                     "owns": list(m.get("prompt_slots") or []),
                     "list_order": m.get("list_order"),

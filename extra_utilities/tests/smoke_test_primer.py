@@ -77,7 +77,7 @@ FAILURES: list[str] = []
 SIX = {7: ["user_input_inspector", "dc_input_creator", "dc_input_inspector", "dc_output_inspector"],
        5: ["user_input_inspector", "dc_input_creator", "dc_output_inspector"],
        3: ["design_engineer", "requirements_analyst"]}
-FRAGS = ROOT / "dc_pack" / "fragments" / "dc"
+FRAGS = ROOT / "setups" / "propeller" / "fragments" / "dc"
 
 
 def check(ok: bool, what: str) -> None:
@@ -96,7 +96,7 @@ def _run(group, tag: str):
 
 def copy_setup() -> Path:
     tmp = Path(tempfile.mkdtemp(prefix="primer_smoke_"))
-    shutil.copytree(ROOT / "dc_pack", tmp / "dc_pack", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(ROOT / "setups" / "propeller", tmp / "dc_pack", ignore=shutil.ignore_patterns("__pycache__"))
     return tmp / "dc_pack"
 
 
@@ -219,7 +219,7 @@ def check_messages() -> None:
     from workflow_settings import settings as S
     real = config.DC_PACK_DIR
     saved = (S.DC_PARAMS_PRIMER_ENABLED, S.PROMPT_CACHE_SCOPE, S.SYSTEM_TOPOLOGY)
-    png = (ROOT / "dc_pack" / "assets" / "dc_params_primer.png").read_bytes()
+    png = (ROOT / "setups" / "propeller" / "assets" / "dc_params_primer.png").read_bytes()
     n = 0
     try:
         for flag in (True, False):
@@ -230,7 +230,7 @@ def check_messages() -> None:
                     S.SYSTEM_TOPOLOGY = topo
                     for agent in agent_roles.ROSTER[topo] + ("database_handler",):
                         gets = flag and agent in SIX[topo]
-                        text = text_file(agent, topo, ROOT / "dc_pack").read_text(encoding="utf-8").rstrip()
+                        text = text_file(agent, topo, ROOT / "setups" / "propeller").read_text(encoding="utf-8").rstrip()
                         for prov in ("openai", "anthropic", "google", "openrouter"):
                             got = [m.content for m in DP.dc_primer_messages(prov, agent)]
                             want = expected(prov, text, png, cache_on) if gets else []
@@ -393,7 +393,7 @@ def check_calls() -> str:
                         "agents": {t: list(agent_roles.ROSTER[t]) for t in (7, 5, 3)}})
     counted = 0
     try:
-        for name, d in (("every agent ticked", every), ("the propeller's setup", ROOT / "dc_pack")):
+        for name, d in (("every agent ticked", every), ("the propeller's setup", ROOT / "setups" / "propeller")):
             for topo in (7, 5, 3):
                 res = turn(topo, d)
                 if "fatal" in res:
@@ -424,7 +424,7 @@ def check_validate() -> str:
         items = V._child(["load"], d)
         return next((i for i in items if i["title"] == "The primer (pack.yaml)"), {})
 
-    it = primer_item(ROOT / "dc_pack")
+    it = primer_item(ROOT / "setups" / "propeller")
     check(it.get("status") == V.PASS and it.get("link") == {"section": "primer"},
           f"[VALIDATE] the propeller's primer: {it}")
     d = copy_setup()
@@ -513,7 +513,7 @@ def check_editor() -> None:
 
 def check_import() -> None:
     from studio import scad_import
-    text = (ROOT / "dc_pack" / "pack.yaml").read_text(encoding="utf-8").replace("\r\n", "\n")
+    text = (ROOT / "setups" / "propeller" / "pack.yaml").read_text(encoding="utf-8").replace("\r\n", "\n")
     new = yaml.safe_load(scad_import.pack_yaml(text, "new", {"a": 1}, "geo"))
     check(new["primer"] == {"image": "dc_params_primer.png", "agents": {7: [], 5: [], 3: []}},
           f"[IMPORT] a new configurator's primer: {new['primer']}")

@@ -3,7 +3,7 @@
 ``engine/parameter_access.py`` gives every agent, in every topology, one of
 four states -- full list in its prompt, names only (ranges removed), through
 the ``dc_params_list`` tool, or nothing.  The default lives in
-``dc_pack/pack.yaml``; Workflow Settings stores changed cells in
+``setups/propeller/pack.yaml``; Workflow Settings stores changed cells in
 ``workflow_settings/parameter_access.json``.  Five groups of checks:
 
 1. THE GRID.  ``pack.yaml`` has exactly one cell per agent the topology

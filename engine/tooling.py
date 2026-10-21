@@ -1,6 +1,6 @@
 """The plain-Python contract for a pack tool -- no LangChain in tool code.
 
-A tool lives in ``dc_pack/tools/<name>/``: a ``tool.yaml`` manifest plus its
+A tool lives in ``setups/<setup>/tools/<name>/``: a ``tool.yaml`` manifest plus its
 Python code.  The engine (``engine/pack_tools.py``) reads the manifest,
 imports the code, builds the LLM-facing tool from the manifest (name,
 description, argument texts) and binds it to the agents that hold the
@@ -17,7 +17,7 @@ Three kinds of tool:
   The engine owns everything around them: the LLM argument
   (``parameters_path``), checking that it points into an attempt folder,
   reading and validating the parameter record against
-  ``dc_pack/parameters.json``, reusing a model file that is already there
+  ``setups/<setup>/parameters.json``, reusing a model file that is already there
   (append-only: an attempt is never overwritten), turning a
   :class:`ToolError` into the text the agent gets, and joining the build
   summary and the render report into the tool's answer.  ``render`` is also
@@ -40,7 +40,7 @@ Three kinds of tool:
 
       make_model(params: dict) -> GeometryResult
 
-  ``params`` is already checked against ``dc_pack/parameters.json``
+  ``params`` is already checked against ``setups/<setup>/parameters.json``
   (complete, typed, canonical order).  It writes nothing: it returns the
   model in the format its manifest declares (``outputs.model_format``, the
   generator's), and raises :class:`ToolError` when it cannot.
@@ -51,7 +51,7 @@ MAS-blueprint P6e).  Its pictures come from the engine's renderer
 (``engine/mesh_render.py``).
 
 A tool that makes images of an attempt follows the image contract in
-``dc_pack/README.md`` ("What the engine reads from a tool's outputs").
+``setups/<setup>/README.md`` ("What the engine reads from a tool's outputs").
 
 ``inp.settings`` holds the tool's own settings (declared in its manifest,
 changed in Workflow Settings), read fresh for every call.

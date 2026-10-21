@@ -4685,7 +4685,7 @@ an unnumbered list): show it to the owner first, and compare the `base` and
 **Status.** OPEN — owner request (2026-10-15), when P2 chose this for now.
 
 Since MAS-blueprint P2 the Parameters view gets its groups and sliders from
-`dc_pack/parameters.json` through a small script the server builds
+the setup's `parameters.json` through a small script the server builds
 (`/pack/parameters.js`, setting `window.PACK_PARAMETERS`), loaded before
 `web/app.js`.  It is a stopgap: review it and change it to something easier
 to do and more flexible.
@@ -4707,7 +4707,7 @@ adds — into one Database window, as tabs.
 **Status.** OPEN (2026-10-15), found during MAS-blueprint P3c.
 
 The text the agents read about `generate_and_render_propeller` -- its
-`description` in `dc_pack/tools/generate_and_render_propeller/tool.yaml` --
+`description` in `setups/propeller/tools/generate_and_render_propeller/tool.yaml` --
 still says "Geometry backend: chosen by the ``GEOMETRY_BACKEND`` workflow
 setting".  P3c moved that setting into the tool; P4c (b) then replaced it
 with two geometry tools of their own (`feg_geometry`, `rhino_geometry`),
@@ -4733,7 +4733,7 @@ Six files the blade-sections tool owns write the generator's name by hand,
 ``generate_and_render_propeller``: `render_type_choice` (`.t7` / `.t5` /
 `.t3`) and the Planner's blade-sections note
 (`blade_sections_visualizer_per_agent@planner.t7` / `.t5` / `.t3`), all in
-`dc_pack/tools/render_blade_sections/prompts/`.  A renamed or swapped
+`setups/propeller/tools/render_blade_sections/prompts/`.  A renamed or swapped
 generator would leave a stale name there.  Write `$geometry_tool_name`
 instead (the generator's own slot, which fills in the same code-quoted
 name).  The words stay the same, but phrase slots are re-wrapped at 80
@@ -4844,7 +4844,7 @@ but 19 sentences in 16 prompt texts still describe the values as numbers:
 `value_states*` fragments, `agent_tools_overview_brief.t3/t5/t7`, the
 orchestrator, the User Input Inspector (7- and 5-agent) and the 3-agent
 Requirements Analyst prompts.  Find them with
-`grep -rniE "numeric (parameter|value|design)|to a number" agents dc_pack`.
+`grep -rniE "numeric (parameter|value|design)|to a number" agents setups`.
 The two record tools' descriptions (`new_attempt_parameters`, DC Input
 Creator and Design Engineer) also still end with "an error naming the
 missing / unexpected / non-numeric fields".

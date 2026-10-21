@@ -3,7 +3,7 @@
 ``visualize_3d_model``.
 
 The design configurator's tools -- the propeller generator and the
-blade-sections visualizer -- live in the pack, ``dc_pack/tools/<name>/``, and
+blade-sections visualizer -- live in the pack, ``setups/<setup>/tools/<name>/``, and
 are loaded and bound by role by ``engine/pack_tools.py`` (MAS-blueprint P3c).
 Their settings (geometry backend, render library, mesh checks, render views,
 the blade-sections switch) are tool settings: declared in each tool's

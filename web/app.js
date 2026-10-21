@@ -776,7 +776,7 @@ if (!window.PACK_PAGE) {
   console.error("/pack/page.js did not load: no tools or pack words to show.");
 }
 
-// The pack's browser preview for the Parameters page (dc_pack/preview/,
+// The pack's browser preview for the Parameters page (setups/<setup>/preview/,
 // served at /pack/preview/preview.js): what it exports drives the left
 // pane -- the 3D model, extra views, the highlight of the group being
 // edited -- and the drawings beside the group pictures.  Loaded once;
@@ -1192,7 +1192,7 @@ if (logClearBtn) logClearBtn.addEventListener("click", clearLogView);
 // Left side menu — switch between the interfaces
 // ---------------------------------------------------------------------------
 // --------------------------------------------------------------------
-// The design configurator's parameters, from dc_pack/parameters.json:
+// The design configurator's parameters, from setups/<setup>/parameters.json:
 // /pack/parameters.js (loaded by index.html before this file) sets
 // window.PACK_PARAMETERS = {names, groups}.  A stopgap (TODO F111).
 // --------------------------------------------------------------------
@@ -2286,7 +2286,7 @@ function mwFormatThreshold(window_) {
 // ---------------------------------------------------------------------------
 // Parameter list access — who sees the parameter list, per agent and
 // topology (engine/parameter_access.py).  One dropdown per cell; a cell that
-// differs from the setup's default (dc_pack/pack.yaml) is shown in bold.
+// differs from the setup's default (setups/<setup>/pack.yaml) is shown in bold.
 // Saved to workflow_settings/parameter_access.json; locked during a session
 // by the shared settings lock (the panel is an .rc-panel).
 // ---------------------------------------------------------------------------
@@ -2371,7 +2371,7 @@ function paCollect() {
     }
   });
   if (reset) reset.addEventListener("click", async () => {
-    if (!confirm("Reset every cell to the setup's default (dc_pack/pack.yaml)?")) return;
+    if (!confirm("Reset every cell to the setup's default (its pack.yaml)?")) return;
     try {
       paRender(await psFetch("/api/parameter_access/reset", { method: "POST" }));
       paSetStatus("Back to the setup's default.", "ok");
@@ -2383,7 +2383,7 @@ function paCollect() {
 
 // ---------------------------------------------------------------------------
 // Tools — every design-configurator tool's settings, grouped by tool, as
-// each tool declares them in dc_pack/tools/<tool>/tool.yaml
+// each tool declares them in setups/<setup>/tools/<tool>/tool.yaml
 // (engine/pack_tools.py).  Yes/no settings use the V/X toggle of the
 // settings list, choices a dropdown; a setting that differs from the tool's
 // default is shown in bold.  Saved to workflow_settings/tool_settings.json;
@@ -2563,7 +2563,7 @@ async function loadAgentRoles() {
 // Parameter schema — the Workflow Settings "Database: parameter schema"
 // panel (state + upload button) and the read-only "Database schema" view.
 // Both read /api/parameter_schema: this setup's parameters
-// (dc_pack/parameters.json) against the versions in dc_parameter_schemas
+// (setups/<setup>/parameters.json) against the versions in dc_parameter_schemas
 // (engine/parameter_schema.py).  The panel is NOT session-locked: it is
 // where an End Session refused with HTTP 412 is unblocked.
 // ---------------------------------------------------------------------------
@@ -6521,7 +6521,7 @@ startEventStream();
 // PROPOSED from the propose_attempt SSE event).
 //
 // The groups, their images and every slider (label, unit, range, step,
-// default) come from dc_pack/parameters.json -- PACK_PARAMETERS, near the
+// default) come from setups/<setup>/parameters.json -- PACK_PARAMETERS, near the
 // top of this file -- the SAME file the agents' validator and the database
 // schema are read from.  Units appear in the min / current / max display
 // and (Step 8) in the auto-appended FIXED block sent to the agents.

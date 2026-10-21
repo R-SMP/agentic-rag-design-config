@@ -1,10 +1,12 @@
 """The design-configurator pack and the slot registry.
 
-Everything specific to one design configurator lives in ONE folder, the
-pack: ``dc_pack/`` unless ``DC_PACK_DIR`` names another (``config.py``).  The
-engine reads it on every session build and never writes into it.
+Everything specific to one design configurator lives in ONE folder, its
+setup -- the pack: one folder per configurator in ``setups/``
+(``engine/setups.py``), ``setups/propeller/`` unless ``DC_PACK_DIR`` names
+another (``config.py``).  The engine reads it on every session build and
+never writes into it.
 
-    dc_pack/
+    setups/<setup>/
       parameters.json        the parameters: names, types, ranges, groups
                              (engine/parameters.py)
       assets/                images (the parameter primer)
@@ -21,7 +23,7 @@ supplies the text.  A slot marked ``filled_by: tool`` is text about one of
 the pack's tools: the tool that claims it holds its files, and with no tool
 claiming it -- the tool was removed -- it reads as empty.
 
-Fragment files in ``dc_pack/fragments/<folder>/`` (or a tool's ``prompts/``).
+Fragment files in ``setups/<setup>/fragments/<folder>/`` (or a tool's ``prompts/``).
 Which of them exist IS the link state -- the Studio's link icon -- and is
 stored nowhere else:
 
@@ -60,7 +62,7 @@ ENGINE_DIR = Path(__file__).resolve().parent
 REGISTRY_PATH = ENGINE_DIR / "slot_registry.yaml"
 REFERENCE_TOPOLOGY = 7
 FOLDERS = ("dc", "tools")
-TOOL_PROMPTS = "prompts"            # dc_pack/tools/<tool>/prompts/
+TOOL_PROMPTS = "prompts"            # setups/<setup>/tools/<tool>/prompts/
 TOOL_LIST_ENTRY = "tool_list_entry"  # its entry in the tool runner's list
 
 _TOPOLOGY_SUFFIX_RE = re.compile(r"\.t\d+$")

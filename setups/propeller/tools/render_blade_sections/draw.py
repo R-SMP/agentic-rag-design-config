@@ -2,7 +2,7 @@
 
 Kept separate from ``render_blade_sections.py`` (the ``@tool`` wrapper) so the
 rendering can be unit-tested without the langchain / agent dependencies.
-Produces the same look as the in-browser ``dc_pack/preview/feg/sections_view.js``: three
+Produces the same look as the in-browser ``setups/propeller/preview/feg/sections_view.js``: three
 airfoils stacked Inner -> Middle -> Outer, each rotated by its angle of
 attack, colour-coded with a name label (in a left gutter so it never overlaps
 the airfoils), translucent-filled + stroked, on an optional light 1 mm grid,
@@ -32,7 +32,7 @@ except AttributeError:  # pragma: no cover - older Pillow
     _LANCZOS = Image.LANCZOS
 
 
-# Top-to-bottom order + per-section colour (matches dc_pack/preview/feg/sections_view.js).
+# Top-to-bottom order + per-section colour (matches setups/propeller/preview/feg/sections_view.js).
 SECTIONS = (
     ("inner", "Inner", "innerAngle", (37, 99, 235)),    # blue
     ("middle", "Middle", "middleAngle", (22, 163, 74)),  # green

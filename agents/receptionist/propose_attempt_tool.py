@@ -22,7 +22,7 @@ caller passed a dict, it had to retype 16 values read from
 transcription slip was a prompt rule forbidding it.  Reading the record
 removes the step instead of policing it -- the same move
 ``generate_and_render_propeller`` already made (see the note at
-``dc_pack/tools/generate_and_render_propeller/generate_mesh.py:155``).
+``setups/propeller/tools/generate_and_render_propeller/generate_mesh.py:155``).
 
 What this tool does NOT do
 --------------------------

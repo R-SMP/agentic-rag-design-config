@@ -550,7 +550,8 @@ def main(argv: list[str]) -> int:
     failed, 1 otherwise."""
     import argparse
     ap = argparse.ArgumentParser(prog="python -m studio validate")
-    ap.add_argument("--pack", default=os.getenv("DC_PACK_DIR") or "dc_pack")
+    from engine.setups import resolve
+    ap.add_argument("--pack", default=str(resolve(REPO, os.getenv("DC_PACK_DIR"))))
     ap.add_argument("--json", help="also write the report here")
     args = ap.parse_args(argv)
     for stream in (sys.stdout, sys.stderr):        # a console's code page may lack a character

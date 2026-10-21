@@ -23,7 +23,7 @@ That asymmetry is why one flag governs all three rather than saving
 generously and fetching selectively.
 
 Which views exist, their files and their order are declared by the tools
-that produce them (``outputs.images`` in ``dc_pack/tools/<tool>/tool.yaml``);
+that produce them (``outputs.images`` in ``setups/<setup>/tools/<tool>/tool.yaml``);
 each view's flag is that tool's ``view_<view>`` setting, changed in Workflow
 Settings (MAS-blueprint P3c, ``engine/pack_tools.py``).
 

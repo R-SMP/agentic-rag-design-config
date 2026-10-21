@@ -16,11 +16,11 @@
 //                                     [{id, label, title, draw(canvas, params)}].
 //   groupFigures + drawGroupFigure(canvas, groupId, params)
 //                                  -> a live drawing beside those groups'
-//                                     pictures (dc_pack/parameters.json groups).
+//                                     pictures (setups/propeller/parameters.json groups).
 //   modelTitle                     -> the "3D view" button's tooltip.
 //
 // The propeller's is FEG -- the front-end geometry in ./feg/, also run by
-// Node for the agents (dc_pack/tools/feg_geometry/feg_export.mjs).
+// Node for the agents (setups/propeller/tools/feg_geometry/feg_export.mjs).
 
 import { buildPropellerGroup } from "./feg/propeller.js";
 import { drawProfile2D } from "./feg/curves.js";

@@ -22,7 +22,7 @@ to the prompt-fragment library** (rather than to any single
 **Configurator-agnostic.**  Nothing in this folder (or in an agent's prompt
 body) names the design configurator, its tools or their outputs.  Where a
 sentence needs such a word or example it names a `$slot` whose text lives in the pack,
-`dc_pack/fragments/` — see `dc_pack/README.md`, "Phrase slots".  The routing fragments loaded
+`setups/<setup>/fragments/` — see `setups/<setup>/README.md`, "Phrase slots".  The routing fragments loaded
 by `routing.py` get the same `$slot` substitution (and inline re-wrap) since
 2026-10.  The same holds for the text the engine writes for the agents in
 Python (tool descriptions, tool answers, runtime blocks) since MAS-blueprint
@@ -37,7 +37,7 @@ gate optional content:
 - `<<IF:flag>>…<</IF:flag>>` / `<<IFNOT:flag>>…<</IFNOT:flag>>` — kept when
   the flag is on (IF) or off (IFNOT); a line the removal leaves empty
   disappears with it.  The pack's flags, `tool:<tool>` and
-  `setting:<tool>.<name>`, are declared in `dc_pack/pack.yaml`
+  `setting:<tool>.<name>`, are declared in `setups/<setup>/pack.yaml`
   (`engine/pack_flags.py`) and live only in the pack's fragments; the
   per-agent `param_list` / `param_ranges` come from the parameter-access
   table.  The generic files carry no pack flag.
@@ -61,14 +61,14 @@ fragments are spliced into their `prompt.md` at import time via the
 
 **User-input-type fragments (e.g. how to handle sketches, photos,
 or 3D renderings) are DC-specific** — they live in the pack
-(`dc_pack/fragments/dc/sketch_*.md`), not here. This
+(`setups/<setup>/fragments/dc/sketch_*.md`), not here. This
 is because different DCs accept different reference types: a
 photo-based DC has no use for sketch-handling rules, and a
 sketch-based DC has no use for photo-handling rules.
 
 The DC-specific and tool-specific fragments (parameter list, structure,
 modelling notes, capabilities, tool inventory, …) live in the
-design-configurator pack, `dc_pack/fragments/`, split into `dc/` and
+design-configurator pack, `setups/<setup>/fragments/`, split into `dc/` and
 `tools/`. Edit those when retargeting the system at a different
 design configurator or swapping the bound tools.
 

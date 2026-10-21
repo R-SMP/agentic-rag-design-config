@@ -340,7 +340,7 @@ def create_manual_entry(
              is_user_input_image=is_user_input_image, is_render=is_render)
 
     # Like any saved session, the entry records which parameter set its
-    # values belong to: the database version matching dc_pack/parameters.json
+    # values belong to: the database version matching setups/<setup>/parameters.json
     # (engine/parameter_schema.py).  None -> refuse before writing anything.
     with postgres_pool.connection() as conn:
         schema_version = parameter_schema.matching_version(conn)

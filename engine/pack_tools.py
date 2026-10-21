@@ -1,4 +1,4 @@
-"""The pack's tools: ``dc_pack/tools/<name>/tool.yaml`` + its Python code.
+"""The pack's tools: ``setups/<setup>/tools/<name>/tool.yaml`` + its Python code.
 
 The engine side of the tool contract (``engine/tooling.py``):
 
@@ -29,7 +29,7 @@ The engine side of the tool contract (``engine/tooling.py``):
   parameters for a generator (its ``geometry_tool`` /
   ``fallback_geometry_tool`` settings, :func:`make_model`) and for the web
   app's Download buttons (the ``downloads`` choice, default in
-  ``dc_pack/pack.yaml``); no agent is given one;
+  ``setups/<setup>/pack.yaml``); no agent is given one;
 * **secrets** -- the environment variables a tool reads (``secrets``: the
   names, whether each is required, a sentence each).  Names only: the
   values live in ``.env`` or the hosting provider, never in the pack;
@@ -559,7 +559,7 @@ def _resolved(s: dict) -> dict:
 def download_specs() -> list[dict]:
     """The Download buttons' choice: which geometry tool rebuilds the model a
     user downloads, or the file the run saved.  Its default is
-    ``downloads.geometry_tool`` in ``dc_pack/pack.yaml``."""
+    ``downloads.geometry_tool`` in ``setups/<setup>/pack.yaml``."""
     values, labels = _choices(GEOMETRY, False, {SAVED: "the saved file"})
     try:
         data = yaml.safe_load((_pack.pack_dir() / "pack.yaml").read_text(encoding="utf-8")) or {}

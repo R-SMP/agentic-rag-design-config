@@ -1860,16 +1860,16 @@ back later:
 **Recorded 2026-08-21** during the documentation audit, after
 `extra_utilities/prompt_efficiency/PROMPT_SHRINK_PROPOSAL_7agent.md:707-708` *(removed 2026-10-10; in git history)*
 was found prescribing DELETE for three of them.  **That instruction is wrong.**
-**Updated 2026-10-15 for the `dc_pack/` layout** (MAS-blueprint P1): the files
-below are named as they are today; `find dc_pack -name '*.md' -size 0` lists
+**Updated 2026-10-15 for the `setups/<setup>/` layout** (MAS-blueprint P1): the files
+below are named as they are today; `find setups/<setup> -name '*.md' -size 0` lists
 all 28 empty ones (since P3d, 14 of them sit in the tools' `prompts/` folders).
 An empty file here is not an authoring accident — it is a decision, and in one
 of the two groups it is not even substitutable by absence.
 
 ### Group 1 — delete these and no session can run
 
-    dc_pack/fragments/tools/retrieve_attempt_tool.md
-    dc_pack/fragments/tools/tool_caller_instructions.md
+    setups/<setup>/fragments/tools/retrieve_attempt_tool.md
+    setups/<setup>/fragments/tools/tool_caller_instructions.md
 
 `_build_slots()` reads every slot in `engine/slot_registry.yaml` each time ANY
 agent is constructed, in every topology, through `engine/pack.py`'s `read()`,
@@ -1889,12 +1889,12 @@ Never the file alone.
 
 ### Group 2 — delete these and the prompt silently changes, with no error
 
-    dc_pack/fragments/dc/sketch_notes@dc_input_inspector.t7.md
-    dc_pack/fragments/dc/sketch_notes@dc_output_inspector.t5.md
-    dc_pack/fragments/dc/sketch_notes@dc_output_inspector.t7.md
-    dc_pack/fragments/dc/sketch_notes@requirements_analyst.t3.md
-    dc_pack/fragments/dc/hard_constraints_dc@user_input_inspector.t5.md
-    dc_pack/fragments/dc/hard_constraints_dc@user_input_inspector.t7.md
+    setups/<setup>/fragments/dc/sketch_notes@dc_input_inspector.t7.md
+    setups/<setup>/fragments/dc/sketch_notes@dc_output_inspector.t5.md
+    setups/<setup>/fragments/dc/sketch_notes@dc_output_inspector.t7.md
+    setups/<setup>/fragments/dc/sketch_notes@requirements_analyst.t3.md
+    setups/<setup>/fragments/dc/hard_constraints_dc@user_input_inspector.t5.md
+    setups/<setup>/fragments/dc/hard_constraints_dc@user_input_inspector.t7.md
 
 These are agents' OWN copies, and the lookup takes the most specific file that
 exists (`engine/pack.py`).  So **present-and-empty is NOT the same as
@@ -1912,8 +1912,8 @@ there `smoke_test_topology_fragments.py` (PACK-MIRROR) catches it.
 
 ### The one that is genuinely optional
 
-    dc_pack/tools/render_blade_sections/prompts/blade_sections_visualizer_per_agent@tool_caller.t5.md
-    dc_pack/tools/render_blade_sections/prompts/blade_sections_visualizer_per_agent@tool_caller.t7.md
+    setups/<setup>/tools/render_blade_sections/prompts/blade_sections_visualizer_per_agent@tool_caller.t5.md
+    setups/<setup>/tools/render_blade_sections/prompts/blade_sections_visualizer_per_agent@tool_caller.t7.md
 
 A per-agent-only slot (`missing: empty` in the registry), so missing and empty
 both yield `""` — deleting them changes no assembled prompt byte.  **But leave
@@ -1924,7 +1924,7 @@ Caller prompt declares its four-item tool list as exhaustive, and this
 overlay is where that would be patched.  Deleting the files deletes the
 reminder.
 
-**Rule of thumb.**  A 0-byte file in `dc_pack/fragments/`, in a tool's
+**Rule of thumb.**  A 0-byte file in `setups/<setup>/fragments/`, in a tool's
 `prompts/`, or under a topology tree (`agents/<N>agent/`) is a decision.  Before removing one, find out what
 it is: a slot's only file (missing = crash), an agent's or a topology's own
 copy (missing = the next text in line silently stands in), or a

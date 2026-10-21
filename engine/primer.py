@@ -2,7 +2,7 @@
 
 ``agents/shared/dc_primer.py`` sends it with every call of those agents,
 between their system prompt and the conversation.  What it is made of and
-who gets it is the setup's, in ``dc_pack/pack.yaml``::
+who gets it is the setup's, in ``setups/<setup>/pack.yaml``::
 
     primer:
       image: dc_params_primer.png      # a PNG in assets/; empty: the text alone

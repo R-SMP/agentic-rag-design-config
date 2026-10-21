@@ -10,7 +10,7 @@ is a ``$name`` filled from the pack here.  :func:`fill` accepts:
 * any slot of ``engine/slot_registry.yaml`` the pack fills (its shared text
   for the active topology): the vocabulary, ``$domain_description``,
   ``$dc_name``, ``$geometry_model_filename``, the small example slots;
-* ``$parameter_count`` (from ``dc_pack/parameters.json``);
+* ``$parameter_count`` (from ``setups/<setup>/parameters.json``);
 * the forms the engine derives from the vocabulary -- :data:`DERIVED`;
 * the words it derives from the tool manifests -- :data:`FROM_MANIFESTS`
   (the model's file name and extension).

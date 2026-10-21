@@ -10,7 +10,7 @@ configurator's tools is enabled, or while one of its boolean settings is on:
 other one is removed, and a line that the removal leaves empty disappears
 with it (``agents/shared/prompts.apply_if_flags``).
 
-The flags come from the tools themselves (``dc_pack/tools/<tool>/tool.yaml``,
+The flags come from the tools themselves (``setups/<setup>/tools/<tool>/tool.yaml``,
 ``engine/pack_tools.py``): ``tool:<name>`` is the tool's on/off switch (true
 for a tool without one), ``setting:<name>.<setting>`` each boolean tool
 setting.  Values are read fresh on every call, with the Workflow Settings

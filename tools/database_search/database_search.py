@@ -1813,7 +1813,7 @@ _N_DOC = (
     "expanded to all Q+A within it that you're allowed to see.  "
     "Typical value: 3-10."
 )
-# The examples are the pack's (dc_pack/fragments/dc/), filled at import.
+# The examples are the pack's (setups/<setup>/fragments/dc/), filled at import.
 _QUERY_DOC = fill(
     "Natural-language search query.  Describe what past Q+A "
     "you're looking for — e.g. $search_query_examples.  "

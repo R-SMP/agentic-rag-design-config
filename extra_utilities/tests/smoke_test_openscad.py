@@ -189,7 +189,7 @@ def make_setup(tmp: Path, model_src: Path | None, found: dict[str, dict],
     """A copy of the pack with its tools replaced by *found* (each with the
     model file, as *model_name*), its parameters by :data:`PARAMETERS`."""
     pack = tmp / "dc_pack"
-    shutil.copytree(ROOT / "dc_pack", pack, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(ROOT / "setups" / "propeller", pack, ignore=shutil.ignore_patterns("__pycache__"))
     for t in list((pack / "tools").iterdir()):
         shutil.rmtree(t)
     for name, m in found.items():

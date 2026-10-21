@@ -4,7 +4,7 @@ Each agent's per-agent template lives at ``agents/<agent>/prompt.md``.
 
 DC-specific and tool-specific fragments (parameter list, structure,
 modelling notes, capabilities, tool inventory, …) live in the design-
-configurator pack, ``dc_pack/fragments/`` (``dc/`` and ``tools/``), read
+configurator pack, ``setups/<setup>/fragments/`` (``dc/`` and ``tools/``), read
 through ``engine/pack.py``.  Every ``$slot`` -- pack, engine or setting --
 is listed in ``engine/slot_registry.yaml``; ``_build_slots``,
 ``INLINE_FRAGMENT_SLOTS``, ``SCOPED_FRAGMENTS`` and ``FRAGMENT_TO_SLOT``
@@ -67,7 +67,7 @@ GENERIC_FRAGMENTS_DIR = Path(__file__).resolve().parent / "prompt_fragments"
 #
 # A topology owns ``agents/<N>agent/``, holding its copies of the ENGINE's
 # files (the pack's per-topology texts are ``<slot>.t<N>.md`` files in
-# ``dc_pack/``, see ``engine/pack.py``).  Each is named with an
+# ``setups/<setup>/``, see ``engine/pack.py``).  Each is named with an
 # ``_<N>agents`` suffix and filed under a sub-folder mirroring its SOURCE
 # root:
 #
@@ -239,7 +239,7 @@ _DBA_TOOL_SLOTS: tuple[tuple[str, tuple[str, ...]], ...] = (
 #
 #   * the pack's, global: ``tool:<tool>`` (the tool is enabled) and
 #     ``setting:<tool>.<name>`` (a boolean tool setting), declared in
-#     dc_pack/pack.yaml (engine/pack_flags.py) and resolved in
+#     setups/<setup>/pack.yaml (engine/pack_flags.py) and resolved in
 #     apply_flag_filters, so routing fragments get them too;
 #   * per agent, from the parameter-access table
 #     (engine/parameter_access.py): ``param_list`` -- the agent sees the list
@@ -487,7 +487,7 @@ def _read_generic_fragment(rel_path: str) -> str:
 DC_NAME = read_pack_fragment("dc_name")
 
 
-# The design configurator's parameters, from dc_pack/parameters.json
+# The design configurator's parameters, from setups/<setup>/parameters.json
 # (engine/parameters.py): the canonical names in JSON order and their types,
 # used by the runtime validator.  DATA, not prompt text, and with no topology
 # dimension: the parameters do not depend on the topology, so there is
@@ -572,7 +572,7 @@ FRAGMENT_TO_SLOT: dict[str, str] = _fragment_to_slot()
 # its own text under the $slot its prompt already references.
 #
 #   * Pack slots: ANY of them, as ``<slot>@<agent>.md`` (or ``.t<N>.md``) in
-#     ``dc_pack/fragments/`` -- see engine/pack.py.
+#     ``setups/<setup>/fragments/`` -- see engine/pack.py.
 #   * Engine slots: those marked ``scoped: true`` in the registry, as
 #     ``<file stem>_<agent>.md`` beside the shared file in
 #     ``agents/shared/prompt_fragments/`` (or the topology's copy of it).
@@ -784,7 +784,7 @@ def _engine_fragment_file(spec: dict) -> str:
 # The registry's ``source: generated`` slots: computed from the pack's data on
 # every build, never written by hand.  Keyed by the entry's ``from``.
 _GENERATED_SLOTS = {
-    # $parameter_count: how many parameters dc_pack/parameters.json lists.
+    # $parameter_count: how many parameters setups/<setup>/parameters.json lists.
     "parameter_count": lambda: str(_parameters.count()),
 }
 
@@ -800,7 +800,7 @@ _GENERATED_PER_AGENT = {
 def _build_slots() -> dict[str, str]:
     """Re-read every fragment from disk and assemble the $-slot map.
 
-    One entry per registry slot: pack slots from ``dc_pack/`` for the active
+    One entry per registry slot: pack slots from ``setups/<setup>/`` for the active
     topology (a per-agent-only slot is "" here), engine slots from
     ``agents/shared/prompt_fragments/``, setting slots from the values
     captured at import, generated slots computed from the pack's data

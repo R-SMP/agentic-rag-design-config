@@ -2,11 +2,11 @@
 
 The live assets are:
 
-* `dc_pack/assets/dc_params_primer.png` — the propeller's primer picture,
-  sent at invoke time to the agents `dc_pack/pack.yaml`'s `primer` names (by
+* `setups/propeller/assets/dc_params_primer.png` — the propeller's primer picture,
+  sent at invoke time to the agents `setups/propeller/pack.yaml`'s `primer` names (by
   default the four DC agents and the 3-agent Designer / Analyst), injected
   by `agents/shared/dc_primer.py` behind `DC_PARAMS_PRIMER_ENABLED`.
-* `dc_pack/fragments/dc/dc_params_primer_text.md` — the paired text
+* `setups/propeller/fragments/dc/dc_params_primer_text.md` — the paired text
   block, sent in the same `HumanMessage` BEFORE the image.
 
 This folder holds what regenerates them:
@@ -27,7 +27,7 @@ regenerating, reproduce that step:
 from PIL import Image
 im = Image.open("dc_params_primer.png")          # 1094x364 generator output
 im.resize((930, 309), Image.LANCZOS).save(
-    "dc_pack/assets/dc_params_primer.png",
+    "setups/propeller/assets/dc_params_primer.png",
     optimize=True)
 ```
 
@@ -38,7 +38,7 @@ Two different radii:
 
 | | radius | where it comes from |
 |---|---|---|
-| hub cylinder | **8 mm** | `dc_pack/preview/feg/constants.js` `CONSTANTS.hub` |
+| hub cylinder | **8 mm** | `setups/propeller/preview/feg/constants.js` `CONSTANTS.hub` |
 | inner blade section | **4 mm** | `constants.js` `innerRadiusFixed` (`inner_profile.cs`) |
 
 The inner section sits **inside** the hub, and `r = 4 mm` — not the hub — is
@@ -65,5 +65,5 @@ Two rules the pipeline depends on:
    injection reads the file bytes directly, so the per-image compression
    sidecars do not apply.  Do not route it through `encode_image`.
 2. The high-point bullet in the text block quotes the canonical sentence
-   from `dc_pack/fragments/dc/parameter_list.md` **verbatim** — keep
+   from `setups/propeller/fragments/dc/parameter_list.md` **verbatim** — keep
    them in lockstep (guarded by `extra_utilities/smoke_test_dc_primer.py` *(removed 2026-10-10; in git history)*).

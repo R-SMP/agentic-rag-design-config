@@ -2,7 +2,7 @@
 two propeller tools answer.
 
 Since MAS-blueprint P3c the generator and the blade-sections tool live in
-``dc_pack/tools/<tool>/`` (a ``tool.yaml`` + plain Python) and the engine
+``setups/<setup>/tools/<tool>/`` (a ``tool.yaml`` + plain Python) and the engine
 (``engine/pack_tools.py``) loads them, builds their LLM tools, binds them by
 role and owns their settings.  Four groups of checks:
 
@@ -367,7 +367,7 @@ def check_save_step() -> int:
     folder = Path(tempfile.mkdtemp(prefix="save_step_")) / "20260101_000000_001_x"
     folder.mkdir()
     params = {p["name"]: p["default"] for p in json.loads(
-        (ROOT / "dc_pack" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
+        (ROOT / "setups" / "propeller" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
     (folder / "parameters.json").write_text(json.dumps(params), encoding="utf-8")
     calls: list = []
     real = (T.Plugin.function, T.run_generator, T.render_existing, config.DC_PACK_DIR)
@@ -586,7 +586,7 @@ def check_image_run() -> int:
     calls: list = []
     real = (T.Plugin.function, T.run_generator, config.ATTEMPTS_DIR, IR.run_in_child)
     params = {p["name"]: p["default"] for p in json.loads(
-        (ROOT / "dc_pack" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
+        (ROOT / "setups" / "propeller" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
 
     def fake_function(self, ref):
         def fn(parameters_path, *a, **k):
@@ -640,7 +640,7 @@ def check_image_run() -> int:
               and all(list(v) == list(params) for v in sets.values()),
               f"[IMAGE RUN] pack.yaml's sample sets: {list(sets)}")
         broken = Path(tempfile.mkdtemp(prefix="packyaml_")) / "pack.yaml"
-        text = (ROOT / "dc_pack" / "pack.yaml").read_text(encoding="utf-8")
+        text = (ROOT / "setups" / "propeller" / "pack.yaml").read_text(encoding="utf-8")
         broken.write_text(text.replace("  small: {bladeCount: 3, ", "  small: {"),
                           encoding="utf-8")
         try:
@@ -745,7 +745,7 @@ def check_golden() -> int:
     from engine.tooling import GeometryResult, MadeModel, ToolError
     shown = {"feg": "FEG", "rhino": "RhinoCompute"}
     params = {p["name"]: p["default"] for p in json.loads(
-        (ROOT / "dc_pack" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
+        (ROOT / "setups" / "propeller" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
     calls: list = []
 
     def norm(s):

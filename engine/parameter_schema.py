@@ -6,7 +6,7 @@ parameter set its values belong to.  A version is a numbered set of rows
 never changed.  The numbers are assigned here, automatically: nobody types
 a version.
 
-    the setup         dc_pack/parameters.json   (engine/parameters.py)
+    the setup         setups/<setup>/parameters.json   (engine/parameters.py)
     the database      every version ever uploaded
 
 A version MATCHES the setup when its rows are exactly the setup's rows (same

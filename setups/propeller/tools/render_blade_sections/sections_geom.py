@@ -1,6 +1,6 @@
 """Pure-Python port of the blade-section airfoil math.
 
-Faithful port of the in-browser ``dc_pack/preview/feg/naca.js`` + ``dc_pack/preview/feg/curves.js``
+Faithful port of the in-browser ``setups/propeller/preview/feg/naca.js`` + ``setups/propeller/preview/feg/curves.js``
 helpers so the server-side ``render_blade_sections`` tool draws the SAME
 cross-sections the browser's "Blade sections" view shows:
 

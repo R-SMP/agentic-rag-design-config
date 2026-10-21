@@ -1,5 +1,5 @@
 """The FEG geometry tool: the propeller built by the browser 3D preview's own
-code (``dc_pack/preview/feg/*``), run headless by Node through ``feg_export.mjs``.
+code (``setups/propeller/preview/feg/*``), run headless by Node through ``feg_export.mjs``.
 
 Local, fast, no server; a visually faithful sub-mm approximation of the
 Grasshopper geometry (``rhino_geometry``).  :func:`make_model` is memoised on

@@ -1326,7 +1326,7 @@ class DatabaseHandler(BaseChainAgent):
                 )
 
             # The parameter schema the rows record (engine/parameter_schema.py):
-            # the database version that matches dc_pack/parameters.json.
+            # the database version that matches setups/<setup>/parameters.json.
             # /api/end resolves it before the save starts and refuses the save
             # when there is none; this covers every other way in (the REPL).
             # Still none -> no Postgres writes, as with no database, rather
@@ -1343,7 +1343,7 @@ class DatabaseHandler(BaseChainAgent):
                 if self.session.schema_version is None:
                     logger.error(
                         f"[DH]  No parameter schema in the database matches "
-                        f"dc_pack/parameters.json.  "
+                        f"the setup's parameters.json.  "
                         f"{parameter_schema.UPLOAD_FIRST_MESSAGE}.  SKIPPING "
                         f"all Postgres-side writes for this save (R2 mirror "
                         f"unaffected)."

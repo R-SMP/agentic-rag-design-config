@@ -3,7 +3,7 @@
 The primer explains how the configurator's parameters couple with the
 design (for the propeller: top view, section grid, camber / high-point /
 angle semantics).  The setup says what it is and who gets it
-(``engine/primer.py``: ``primer`` in ``dc_pack/pack.yaml``, edited on the
+(``engine/primer.py``: ``primer`` in ``setups/<setup>/pack.yaml``, edited on the
 Studio's Primer page): a picture in ``assets/``, the text field
 ``$dc_params_primer_text``, and per topology the agents that receive it --
 by default the DC-side agents, UII, DCIC, DCII, DCOI, and the 3-agent

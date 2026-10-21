@@ -2,12 +2,12 @@
 #
 # Read by agents/shared/prompts.py (which file fills each slot, and how) and
 # by the Studio (which form field shows it).  Owned by the engine: a pack
-# never edits it.  The TEXT of a pack slot lives in dc_pack/fragments/<folder>/;
+# never edits it.  The TEXT of a pack slot lives in setups/<setup>/fragments/<folder>/;
 # whether a field is linked across topologies or has per-agent copies is read
 # from which files exist there (engine/pack.py), never stored here.
 #
 #   source  pack | engine | setting | generated
-#   folder  dc | tools                 (pack)  dc_pack/fragments/<folder>/
+#   folder  dc | tools                 (pack)  setups/<setup>/fragments/<folder>/
 #   filled_by tool                     (pack)  text about one of the pack's
 #                                      tools: it lives in the prompts/ folder
 #                                      of the tool that lists it in its

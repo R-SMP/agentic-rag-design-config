@@ -2,13 +2,13 @@
 
 The same as the panel's Generate samples button: every image tool of the
 pack is run on each of the pack's sample parameter sets (``render_samples``
-in ``dc_pack/pack.yaml``), in a process of its own, and per compression
+in ``setups/propeller/pack.yaml``), in a process of its own, and per compression
 kind the first picture of that kind is kept as
 ``web/render_samples/<cross|geo>_<size>.png`` (``engine/image_run.py``).
 
 The 3D pictures need what the generator needs (Node for FEG, the pyrender
 stack and OSMesa for the render), so run it INSIDE the app container; the
-pack ships its own cross-section samples (``dc_pack/assets/render_samples/``)
+pack ships its own cross-section samples (``setups/propeller/assets/render_samples/``)
 for when none were made.
 
 Usage:

@@ -365,8 +365,8 @@ Both first builds were replaced (§1, §2).  As built:
   ```
 
   Topology 7 has no folder, so it always reads the shared files.
-* **Pack fragments** (`dc_pack/fragments/{dc,tools}/` and each tool's
-  `dc_pack/tools/<tool>/prompts/`, `engine/pack.py`) — `<slot>.md` is one text
+* **Pack fragments** (`setups/<setup>/fragments/{dc,tools}/` and each tool's
+  `setups/<setup>/tools/<tool>/prompts/`, `engine/pack.py`) — `<slot>.md` is one text
   for every topology, `<slot>.t<N>.md` topology N's own; the lookup tries
   `.t<N>`, then the linked file, then `.t7`.
 * **Agent-scoped fragments** — `scoped_fragment_path(slot, agent)`.  Any pack
@@ -414,7 +414,7 @@ Both first builds were replaced (§1, §2).  As built:
 * **A topology-N change only touches files under `agents/<N>agent/`** (and
   `agents/topologyN/` for tool text) **and the pack's `.t<N>.md` files**.
   Every shared engine file is topology 7's live prompt, and a linked pack file
-  (`<slot>.md` in `dc_pack/fragments/<folder>/` or a tool's `prompts/`) is
+  (`<slot>.md` in `setups/<setup>/fragments/<folder>/` or a tool's `prompts/`) is
   every topology's: editing it moves all of them — unlink it first to change
   one topology only.
 * **Always assemble and compare.**  Snapshot before and after with
@@ -581,7 +581,7 @@ Decisions that shaped today's prompts:
   creates is the folder it writes into, so the two can never disagree.
 * **`dc_params_list()`** returns the parameter list on demand instead of every
   prompt carrying it (owner: retrieved "if it explicitly CALLS FOR IT").  It
-  reads the shared `$parameter_list` text (`dc_pack/fragments/dc/parameter_list.md`),
+  reads the shared `$parameter_list` text (`setups/<setup>/fragments/dc/parameter_list.md`),
   so an agent's own copy of that fragment is not what it returns.
 * **One `read_user_inputs`** replaced three text-file readers
   (`list_input_files`, `read_input_text`, `read_image_notes`) wherever they

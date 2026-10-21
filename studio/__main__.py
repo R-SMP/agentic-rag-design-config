@@ -26,10 +26,11 @@ REPO = Path(__file__).resolve().parents[1]
 
 
 def default_pack() -> Path:
-    """The engine's own choice (config.py): ``DC_PACK_DIR``, taken from the
-    project root when relative, else ``dc_pack/``."""
-    p = Path(os.getenv("DC_PACK_DIR") or "dc_pack")
-    return p if p.is_absolute() else REPO / p
+    """The engine's own choice (config.py, ``engine/setups.py``):
+    ``DC_PACK_DIR``, taken from the project root when relative, else
+    ``setups/propeller``."""
+    from engine.setups import resolve
+    return resolve(REPO, os.getenv("DC_PACK_DIR"))
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -50,7 +51,7 @@ def main(argv: list[str] | None = None) -> int:
                     "parameters, the agent access and the tools, in the "
                     "setup's own files.")
     ap.add_argument("--pack", type=Path, default=None,
-                    help="the setup folder (default: dc_pack/ of this repository, "
+                    help="the setup folder (default: setups/propeller/ of this repository, "
                          "or DC_PACK_DIR)")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=int(os.getenv("PORT") or 8770))

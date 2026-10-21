@@ -1,5 +1,5 @@
 """FEG render demo — build a propeller with the browser FEG geometry (headless
-Node, reusing dc_pack/preview/feg/*) and render it, so you can see how the agent-facing
+Node, reusing setups/propeller/preview/feg/*) and render it, so you can see how the agent-facing
 renders come out.
 
 Two render modes:
@@ -11,7 +11,7 @@ Two render modes:
     pyrender + OSMesa).  Files: render_*.png
 
 Requires Node (host) for geometry generation unless you pass an existing --obj.
-Reuses dc_pack/preview/feg/* verbatim, so the geometry matches the browser live preview.
+Reuses setups/propeller/preview/feg/* verbatim, so the geometry matches the browser live preview.
 
 Usage:
   python extra_utilities/scripts/feg_render_demo.py                     # local PIL preview
@@ -31,7 +31,7 @@ from pathlib import Path
 from PIL import Image, ImageDraw
 
 ROOT = Path(__file__).resolve().parents[2]
-EXPORTER = ROOT / "dc_pack" / "tools" / "feg_geometry" / "feg_export.mjs"
+EXPORTER = ROOT / "setups" / "propeller" / "tools" / "feg_geometry" / "feg_export.mjs"
 DEFAULT_OUT = ROOT / "extra_utilities" / "feg_render_examples"
 
 # A representative in-range sample (matches the Task-3 sketch's section dims).

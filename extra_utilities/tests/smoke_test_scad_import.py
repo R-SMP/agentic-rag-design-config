@@ -630,7 +630,7 @@ def check_server(tmp: Path) -> str:
                                        "removed": ["feg_geometry", "generate_and_render_propeller", "rhino_geometry"],
                                        "parameters": 25}
               and "parameters.json" in D.get("changed", []) and "tools/made_up/tool.yaml" in D.get("changed", [])
-              and made.get("made_up", {}).get("file") == "dc_pack/tools/made_up/made-up.scad"
+              and made.get("made_up", {}).get("file") == "tools/made_up/made-up.scad"
               and made.get("made_up_geometry", {}).get("kind") == "geometry",
               f"[SERVER] get_all after the import: {d.get('error', '')[-300:]} {D.get('scad_import')} "
               f"{D.get('changed', [])[:5]} {made.get('made_up')}")

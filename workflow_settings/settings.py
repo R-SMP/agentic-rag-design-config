@@ -17,7 +17,7 @@ what's active.
 The design configurator's TOOL settings -- the generator's geometry
 backend, render library, mesh checks and render views, and the
 blade-sections switch -- are not here: each tool declares its own in
-``dc_pack/tools/<tool>/tool.yaml`` and Workflow Settings > Tools changes
+``setups/<setup>/tools/<tool>/tool.yaml`` and Workflow Settings > Tools changes
 them (``workflow_settings/tool_settings.json``; MAS-blueprint P3c).
 """
 
@@ -561,7 +561,7 @@ OCR_MAX_TEXT_CHARS: int = 2000
 
 # DC_PARAMS_PRIMER_ENABLED - the primer (the DC-parameter reference diagram).
 #
-# When ON, the agents the setup names (dc_pack/pack.yaml "primer", the
+# When ON, the agents the setup names (setups/<setup>/pack.yaml "primer", the
 # Studio's Primer page - by default the DC-side agents UII, DCIC, DCII,
 # DCOI, plus the 3-agent Design Engineer and Requirements Analyst) receive
 # a fixed reference at every LLM call: one image showing how the

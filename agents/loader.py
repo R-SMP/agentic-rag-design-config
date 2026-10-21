@@ -548,7 +548,7 @@ def _end_session(
                 if (postgres_pool.is_enabled() and session is not None
                         and session.schema_version is None):
                     print("Postgres NOT written: no parameter schema in the "
-                          "database matches dc_pack/parameters.json.  "
+                          "database matches setups/<setup>/parameters.json.  "
                           f"{UPLOAD_FIRST_MESSAGE}.")
         except Exception as exc:
             try:

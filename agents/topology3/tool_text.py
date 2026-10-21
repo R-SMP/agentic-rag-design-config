@@ -29,7 +29,7 @@ The three shapes a value can take, and why:
 Not here, and why:
 
 * the DC-params PRIMER text — that is a FILE, so it forks through the pack
-  (``dc_pack/fragments/dc/dc_params_primer_text*.t3.md``) and
+  (``setups/propeller/fragments/dc/dc_params_primer_text*.t3.md``) and
   ``dc_primer._text_path`` resolves it through ``engine/pack.py``;
 * the step budgets — UI-tunable, so ``workflow_settings/settings.py`` §28;
 * the per-agent model defaults — ``workflow_settings/llm_defaults.py``, whose

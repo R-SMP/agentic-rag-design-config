@@ -1,11 +1,11 @@
-// Headless Node runner for the browser FEG geometry (dc_pack/preview/feg/*).
+// Headless Node runner for the browser FEG geometry (setups/propeller/preview/feg/*).
 //
-// Reuses the EXACT dc_pack/preview/feg modules the browser 3D preview uses, so the
+// Reuses the EXACT setups/propeller/preview/feg modules the browser 3D preview uses, so the
 // agent-facing geometry matches the preview with zero port-drift.  Outputs an
 // OBJ that the existing Python render pipeline (render_mesh.py) renders the
 // same way it renders a RhinoCompute OBJ.
 //
-// Usage:  node dc_pack/tools/feg_geometry/feg_export.mjs '<params-json>'
+// Usage:  node setups/propeller/tools/feg_geometry/feg_export.mjs '<params-json>'
 //         (17 canonical params) — OBJ text -> stdout, one-line stats -> stderr.
 //
 // The blade is an InstancedMesh (blade x bladeCount around Z); each instance is

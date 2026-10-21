@@ -7,7 +7,7 @@
 <!-- The Studio's guide pages (MAS-blueprint P8): static pages, served with
      the page's scripts (/static/), so they open before the access code
      online.  The contract they describe: engine/tooling.py,
-     engine/pack_tools.py, dc_pack/README.md. -->
+     engine/pack_tools.py, setups/<setup>/README.md. -->
 <link rel="stylesheet" href="base.css">
 <link rel="stylesheet" href="studio.css">
 </head>
@@ -20,7 +20,7 @@
 (or a model file) and the texts it owns.</p>
 
 <h2>What a tool is</h2>
-<p>A tool lives in <code>dc_pack/tools/&lt;name&gt;/</code>: its manifest <code>tool.yaml</code>, its Python code
+<p>A tool lives in <code>setups/&lt;setup&gt;/tools/&lt;name&gt;/</code>: its manifest <code>tool.yaml</code>, its Python code
 (or, for a generator or a geometry tool, an OpenSCAD model the engine runs), and in <code>prompts/</code> the texts
 the agents read about it.  The engine reads the manifest, builds the agents' tool from it and gives it to the
 agents that hold its <b>roles</b>; the code does only the configurator's own work.  There are three kinds:</p>

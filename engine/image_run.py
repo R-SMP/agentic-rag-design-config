@@ -4,10 +4,10 @@ Two callers in the web app need the tools' pictures of parameter values that
 are not an attempt:
 
 * the Parameters page's generic **Preview** button, for a pack without a
-  browser preview module (``dc_pack/preview/``);
+  browser preview module (``setups/<setup>/preview/``);
 * the render-compression panel's **Generate samples** button: the pictures
   of the pack's sample parameter sets (``render_samples`` in
-  ``dc_pack/pack.yaml``), one per compression kind and size.
+  ``setups/<setup>/pack.yaml``), one per compression kind and size.
 
 The tools write into attempt folders, and a helper may refuse any other
 place (blade sections does).  So each set gets an attempt folder in a
@@ -52,7 +52,7 @@ SAMPLE_NAMES = {"cross_sections": "cross", "3d_render": "geo"}
 
 
 def render_sample_sets(path: Path | None = None) -> dict[str, dict]:
-    """``render_samples`` from ``dc_pack/pack.yaml``: size name -> a full
+    """``render_samples`` from ``setups/<setup>/pack.yaml``: size name -> a full
     parameter set (every parameter, a number each -- or, for a choice or
     on/off parameter, one of its values / true or false; the values are
     pictures for the compression slider, so a range is not enforced).
@@ -169,7 +169,7 @@ def make_render_samples(out_dir: Path, timeout: float = 600) -> dict:
     sets = render_sample_sets()
     if not sets:
         return {"written": [], "errors": [{"tool": "", "message":
-                                           "dc_pack/pack.yaml names no render_samples"}]}
+                                           "the setup's pack.yaml names no render_samples"}]}
     result, root = run_in_child(sets, timeout=timeout)
     written, errors = [], []
     try:

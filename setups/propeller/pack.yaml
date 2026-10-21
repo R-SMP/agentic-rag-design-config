@@ -46,7 +46,7 @@ primer:
     5: [user_input_inspector, dc_input_creator, dc_output_inspector]
     3: [design_engineer, requirements_analyst]
 
-# The web app's Download buttons: which geometry tool (dc_pack/tools/, kind:
+# The web app's Download buttons: which geometry tool (setups/propeller/tools/, kind:
 # geometry) rebuilds the model a user downloads -- from the attempt's
 # parameters.json, or from the Parameters page's sliders -- or "saved", the
 # model file the run built.  If the tool fails, the saved file is downloaded.

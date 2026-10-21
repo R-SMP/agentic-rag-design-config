@@ -2054,7 +2054,7 @@
           h('div', { 'class': 'k' }, 'Secrets'), h('div', null, (t.secrets || []).length ? t.secrets.map(function (s) { return s.env + (s.required ? ' (required)' : ''); }).join(', ') : 'none'),
           h('div', { 'class': 'k' }, 'Prompt text'), h('div', null, t.kind === 'geometry' ? 'none (no agent reads about it)'
             : t.owns.length + ' fields it owns (they leave with it) + its entry in the tool runner’s numbered list, place ' + t.list_order),
-          h('div', { 'class': 'k' }, 'Code'), h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  manifest dc_pack/tools/' + t.name + '/tool.yaml')
+          h('div', { 'class': 'k' }, 'Code'), h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  manifest tools/' + t.name + '/tool.yaml')
         ])
       ]));
     });
@@ -2064,7 +2064,7 @@
     });
     add(center, wrap);
     add(center, h('div', { style: 'padding:6px 16px 4px' }, [h('h4', null, 'Tool text the agents read · ' + slotsOf('tools').length + ' fields'),
-      h('div', { 'class': 'muted', style: 'font-size:11.5px' }, 'A field owned by a tool lives in that tool’s folder (dc_pack/tools/<tool>/prompts/) and leaves with it; the others are shared by all tools.')]));
+      h('div', { 'class': 'muted', style: 'font-size:11.5px' }, 'A field owned by a tool lives in that tool’s folder (tools/<tool>/prompts/ in the setup) and leaves with it; the others are shared by all tools.')]));
     add(center, grid(slotsOf('tools')));
     if (R.q.field && slotByName(R.q.field)) { add(right, inspectField(slotByName(R.q.field))); return; }
     add(right, h('div', { 'class': 'insp' }, [
@@ -2918,7 +2918,7 @@
         h('div', { 'class': 'k' }, 'names'), h('div', null, 'the list in the prompt with every [min; max] range removed'),
         h('div', { 'class': 'k' }, 'tool'), h('div', null, 'nothing in the prompt; the agent calls dc_params_list when it needs the list'),
         h('div', { 'class': 'k' }, 'none'), h('div', null, 'neither')]),
-      h('div', { 'class': 'block' }, [h('h4', null, 'Stored in'), h('p', null, 'dc_pack/pack.yaml → parameter_access (the default). Workflow Settings › Parameter list access stores changed cells for the next session. The Database Handler cannot take “tool”.')]),
+      h('div', { 'class': 'block' }, [h('h4', null, 'Stored in'), h('p', null, 'The setup’s pack.yaml → parameter_access (the default). Workflow Settings › Parameter list access stores changed cells for the next session. The Database Handler cannot take “tool”.')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'See the effect'), h('p', null, 'The Prompt viewer’s “Changes since opened” shows each agent’s prompt against the setup as the Studio opened it.')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Later'), h('p', { 'class': 'muted' }, 'Editing the role map itself (which agent holds which role) is TODO F102, not in this version.')])
     ]));

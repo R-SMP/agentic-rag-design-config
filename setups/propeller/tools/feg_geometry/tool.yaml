@@ -1,5 +1,5 @@
 # The FEG geometry tool: builds the propeller's model from its parameters
-# with the browser 3D preview's own code (dc_pack/preview/feg), run by Node through
+# with the browser 3D preview's own code (setups/propeller/preview/feg), run by Node through
 # feg_export.mjs.  The engine calls it -- the generator's geometry_tool /
 # fallback_geometry_tool settings, the web app's Download buttons -- never an
 # agent (engine/tooling.py, kind: geometry).
@@ -10,7 +10,7 @@ entrypoint: feg_geometry.py:make_model
 
 description: >-
   Builds the propeller from its parameters with the browser 3D preview's
-  code (dc_pack/preview/feg), run by Node: local, fast, a visually faithful sub-mm
+  code (setups/propeller/preview/feg), run by Node: local, fast, a visually faithful sub-mm
   approximation of the Grasshopper geometry.
 
 outputs:

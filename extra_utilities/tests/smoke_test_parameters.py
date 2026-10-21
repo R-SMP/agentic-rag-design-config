@@ -1,6 +1,6 @@
 """The parameter file and the parameter schema, offline.
 
-``dc_pack/parameters.json`` is the ONE source of the parameter data (names,
+``setups/propeller/parameters.json`` is the ONE source of the parameter data (names,
 order, types, ranges, groups) since MAS-blueprint P2; ``engine/parameters.py``
 loads and checks it, ``engine/parameter_schema.py`` compares it with -- and
 uploads it to -- table ``dc_parameter_schemas``.  Five groups of checks:
@@ -8,7 +8,7 @@ uploads it to -- table ``dc_parameter_schemas``.  Five groups of checks:
 1. VALIDATION.  The real file passes, and each kind of broken file is caught
    with a message naming the parameter or group at fault.
 2. DRIFT.  The agents' parameter LISTS are hand-written text
-   (``dc_pack/fragments/dc/parameter_list*.md``), not generated.  Every one
+   (``setups/propeller/fragments/dc/parameter_list*.md``), not generated.  Every one
    must name the same parameters, in the same order, with the same
    ``[min; max]`` as the file.  This is the guard that keeps the two from
    drifting apart.

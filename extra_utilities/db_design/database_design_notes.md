@@ -205,7 +205,7 @@ it just stores the result.
   renormalised under today's ranges, so masked-RMSE queries can compare
   attempts across all schema versions on a common scale.
 - `param_name`, `min_value`, `max_value`, `unit` and `description` come
-  from `dc_pack/parameters.json` (the Grasshopper input names). A new
+  from `setups/propeller/parameters.json` (the Grasshopper input names). A new
   version is added only by the "Upload parameter schema" button (Workflow
   Settings) or its fallback `populate_dc_parameter_schemas.py`, and is
   numbered automatically. A session can be saved only when one version

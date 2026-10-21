@@ -15,8 +15,8 @@ Panel B : 3x3 grid  - camber across, high-point down.  Sections are drawn
                       centre cell names the chord line, the camber line and
                       the angle of attack (measured from the horizontal).
 
-The airfoil math is a port of dc_pack/preview/feg/naca.js (the same code path as the
-RhinoCompute geometry tool's ring_height.py and the blade-sections tool, in dc_pack/tools/),
+The airfoil math is a port of setups/propeller/preview/feg/naca.js (the same code path as the
+RhinoCompute geometry tool's ring_height.py and the blade-sections tool, in setups/propeller/tools/),
 so the shapes are the ones the DC actually builds.  Sections are drawn TE-left /
 LE-right to match the render_blade_sections output the agents already see.
 
@@ -31,7 +31,7 @@ import sys
 from PIL import Image, ImageDraw, ImageFont
 
 # ---------------------------------------------------------------------------
-# 1.  Airfoil math  (port of dc_pack/preview/feg/naca.js)
+# 1.  Airfoil math  (port of setups/propeller/preview/feg/naca.js)
 # ---------------------------------------------------------------------------
 
 
@@ -172,7 +172,7 @@ K = R_MID / 70.0                  # inches per mm
 RING_T = 5.0                      # impellerThickness, mm
 # TWO DIFFERENT RADII, and conflating them was a real defect in the first
 # version of this drawing:
-#   HUB_MM   the hub cylinder itself (dc_pack/preview/feg/constants.js CONSTANTS.hub).
+#   HUB_MM   the hub cylinder itself (setups/propeller/preview/feg/constants.js CONSTANTS.hub).
 #   ROOT_MM  the radial station of the INNER BLADE SECTION -- 4.0 mm, from
 #            inner_profile.cs (constants.js innerRadiusFixed).  It sits
 #            INSIDE the hub, and it is the origin middlePos measures from:

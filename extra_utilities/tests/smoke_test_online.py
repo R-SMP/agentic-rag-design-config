@@ -136,7 +136,7 @@ def check_no_code(tmp: Path) -> str:
 
 def check_online(tmp: Path) -> str:
     example = tmp / "example" / "dc_pack"
-    shutil.copytree(ROOT / "dc_pack", example, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(ROOT / "setups" / "propeller", example, ignore=shutil.ignore_patterns("__pycache__"))
     ws = tmp / "ws"
     env = _env(INVITE_CODE=CODE, STUDIO_SECRET=SECRET, CONFIGURATOR_URL="https://example.invalid/app")
     args = ["--online", "--workspace", str(ws), "--pack", str(example)]
@@ -242,7 +242,7 @@ def check_online(tmp: Path) -> str:
 
 def check_local(tmp: Path) -> str:
     copy = tmp / "local" / "dc_pack"
-    shutil.copytree(ROOT / "dc_pack", copy, ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(ROOT / "setups" / "propeller", copy, ignore=shutil.ignore_patterns("__pycache__"))
     st = Studio(["--pack", str(copy)], _env(INVITE_CODE=CODE))
     try:
         _s, _h, body = st.req("/api/session", [])

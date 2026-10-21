@@ -3,7 +3,7 @@
 MAS-blueprint P4a moved the propeller words in this text into the pack (its
 vocabulary -- ``$output_model``, ``$output_images_label`` ... -- and a few
 small slots), so the engine's own sentences are generic and the words come
-from ``dc_pack/``.  The prompts and the chain agents' tools are proven
+from ``setups/propeller/``.  The prompts and the chain agents' tools are proven
 identical by the prompt and tool matrices; this check covers the rest of
 what an agent reads, which neither matrix sees:
 
@@ -127,7 +127,7 @@ def _answers() -> dict:
     a3 = att / "20260101_000200_003_full"
     a3.mkdir()
     defaults = {p["name"]: p["default"] for p in json.loads(
-        (ROOT / "dc_pack" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
+        (ROOT / "setups" / "propeller" / "parameters.json").read_text(encoding="utf-8"))["parameters"]}
     (a3 / "parameters.json").write_text(json.dumps(defaults), encoding="utf-8")
     (a3 / "render_top.png").write_bytes(b"png")
     from agents.shared import user_inputs_tool
@@ -262,7 +262,7 @@ def check_pack_words() -> int:
     from tools.visualize_model.visualize_model import visualize_3d_model
 
     tmp = Path(tempfile.mkdtemp(prefix="pack_words_"))
-    shutil.copytree(ROOT / "dc_pack", tmp / "dc_pack",
+    shutil.copytree(ROOT / "setups" / "propeller", tmp / "dc_pack",
                     ignore=shutil.ignore_patterns("__pycache__"))
     for rel, text in _STAND_INS.items():
         (tmp / rel).write_text(text + "\n", encoding="utf-8")

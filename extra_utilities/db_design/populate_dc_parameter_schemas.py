@@ -2,7 +2,7 @@
 "Upload parameter schema" button (Workflow Settings > Database).
 
 Both run the same code, ``engine/parameter_schema.py``, on the same data,
-``dc_pack/parameters.json``; nothing is hard-coded here.  The upload adds the
+``setups/<setup>/parameters.json``; nothing is hard-coded here.  The upload adds the
 setup's parameters to table ``dc_parameter_schemas`` as the next version
 (1 in an empty table), or does nothing when the latest version already
 matches, and marks retired the latest version's parameters the new one no

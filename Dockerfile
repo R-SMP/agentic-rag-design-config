@@ -46,8 +46,8 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 #     blade-sections labels and the side-by-side label bars unreadable.
 #   * curl — used by the HEALTHCHECK below.
 #   * nodejs / npm — Node runtime for the headless FEG geometry backend
-#     (dc_pack/tools/feg_geometry/feg_export.mjs runs
-#     dc_pack/preview/feg/* via Node + three, when the generator's
+#     (setups/propeller/tools/feg_geometry/feg_export.mjs runs
+#     setups/propeller/preview/feg/* via Node + three, when the generator's
 #     geometry tool is FEG or as the RhinoCompute fallback).
 RUN apt-get update && apt-get install -y --no-install-recommends \
         libgl1 \

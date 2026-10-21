@@ -75,7 +75,7 @@ sys.path.insert(0, str(ROOT))
 from studio import package as K                  # noqa: E402
 
 FAILURES: list[str] = []
-PACK = ROOT / "dc_pack"
+PACK = ROOT / "setups" / "propeller"
 
 
 def check(ok: bool, what: str) -> None:

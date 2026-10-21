@@ -174,7 +174,7 @@ class Session:
     dc_name: str = field(default_factory=_pack_dc_name)
     # Which parameter set (table dc_parameter_schemas) this session's values
     # belong to.  None until the save resolves it: the database version that
-    # matches dc_pack/parameters.json (engine/parameter_schema.py).  A save
+    # matches setups/<setup>/parameters.json (engine/parameter_schema.py).  A save
     # with no matching version stops and asks for an upload.  Old sessions
     # keep the version they were saved with.
     schema_version: int | None = None

@@ -5,7 +5,7 @@
     tool   not in the prompt; the agent can call ``dc_params_list``
     none   neither
 
-The setup's DEFAULT is ``parameter_access`` in ``dc_pack/pack.yaml`` (the
+The setup's DEFAULT is ``parameter_access`` in ``setups/<setup>/pack.yaml`` (the
 Studio edits it).  Workflow Settings > "Parameter list access" changes cells
 for the next session; only the cells changed there are stored, in
 ``workflow_settings/parameter_access.json``, and every other cell keeps the
@@ -98,7 +98,7 @@ def _normalise(raw, where: str, problems: list[str]) -> dict[str, dict[int, str]
 
 
 def default_table(path: Path | None = None) -> dict[str, dict[int, str]]:
-    """``parameter_access`` from ``dc_pack/pack.yaml``.  Raises
+    """``parameter_access`` from ``setups/<setup>/pack.yaml``.  Raises
     ParameterAccessError."""
     path = path or pack_yaml_path()
     try:
@@ -139,7 +139,7 @@ def table() -> dict[str, dict[int, str]]:
             if t not in base.get(agent, {}):
                 raise ParameterAccessError(
                     f"{OVERRIDES_PATH.name}: {agent} has no cell in topology {t} "
-                    f"(dc_pack/pack.yaml)")
+                    f"(the setup's pack.yaml)")
             out[agent][t] = st
     return out
 
@@ -152,7 +152,7 @@ def state(agent: str, topology: int) -> str:
     row = table().get(agent)
     if row is None or t not in row:
         raise ParameterAccessError(
-            f"dc_pack/pack.yaml parameter_access has no cell for {agent} in "
+            f"the setup's pack.yaml: parameter_access has no cell for {agent} in "
             f"topology {t}")
     return row[t]
 

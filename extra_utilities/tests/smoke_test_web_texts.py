@@ -192,7 +192,7 @@ def check_page() -> None:
 
 def check_pack_words() -> int:
     tmp = Path(tempfile.mkdtemp(prefix="web_words_"))
-    shutil.copytree(ROOT / "dc_pack", tmp / "dc_pack",
+    shutil.copytree(ROOT / "setups" / "propeller", tmp / "dc_pack",
                     ignore=shutil.ignore_patterns("__pycache__"))
     for rel, text in _STAND_INS.items():
         (tmp / "dc_pack" / rel).write_text(text + "\n", encoding="utf-8")
@@ -326,7 +326,7 @@ def check_preview() -> str:
     # The module's contract, under Node (as feg_geometry's exporter runs it).
     params = {p["name"]: p["default"] for p in parameters.load()["parameters"]}
     # --eval resolves "three" from the working directory (the repo root).
-    env = dict(os.environ, PREVIEW_JS=str(ROOT / "dc_pack" / "preview" / "preview.js"),
+    env = dict(os.environ, PREVIEW_JS=str(ROOT / "setups" / "propeller" / "preview" / "preview.js"),
                PREVIEW_PARAMS=json.dumps(params))
     try:
         p = subprocess.run(["node", "--input-type=module", "-e", _NODE_CONTRACT],
@@ -476,7 +476,7 @@ def _check_typed_server(spec: dict) -> None:
 
     from agents.receptionist import propose_attempt_tool as P
     tmp = Path(tempfile.mkdtemp(prefix="web_types_"))
-    shutil.copytree(ROOT / "dc_pack", tmp / "dc_pack", ignore=shutil.ignore_patterns("__pycache__"))
+    shutil.copytree(ROOT / "setups" / "propeller", tmp / "dc_pack", ignore=shutil.ignore_patterns("__pycache__"))
     (tmp / "dc_pack" / "parameters.json").write_text(json.dumps(spec), encoding="utf-8")
     good = {"Length": 40, "Count": 2, "End1_Style": "mag", "Barbs": False, "FlangeDia": 12.5}
     real = (config.DC_PACK_DIR, P.ATTEMPTS_DIR, P.publish, web_app.manual_entry.create_manual_entry,
@@ -535,7 +535,7 @@ def check_one_deploy() -> str:
     ws = tmp / "workspace"
     saved = {k: os.environ.get(k) for k in ("STUDIO_WORKSPACE", "INVITE_CODE")}
     before = {p.relative_to(ROOT).as_posix(): p.read_bytes()
-              for p in (ROOT / "dc_pack").rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+              for p in (ROOT / "setups" / "propeller").rglob("*") if p.is_file() and "__pycache__" not in p.parts}
     try:
         os.environ["STUDIO_WORKSPACE"], os.environ["INVITE_CODE"] = str(ws), "web-texts-code"
         check(CLIENT.get("/").status_code == 200 and not ws.exists() and not web_app._STUDIO.started,
@@ -547,7 +547,7 @@ def check_one_deploy() -> str:
         check(r.status_code == 200 and 'src="static/studio.js"' in r.text and web_app._STUDIO.started,
               f"[ONE DEPLOY] the Studio's page: {r.status_code} {r.text[:120]!r}")
         check((ws / "dc_pack" / "parameters.json").read_bytes()
-              == (ROOT / "dc_pack" / "parameters.json").read_bytes(),
+              == (ROOT / "setups" / "propeller" / "parameters.json").read_bytes(),
               "[ONE DEPLOY] the Studio's shared setup is not a copy of the pack")
         for path in ("/studio/static/studio.js", "/studio/static/bridge.js", "/studio/static/guide.html",
                      "/studio/static/base.css"):
@@ -603,7 +603,7 @@ def check_one_deploy() -> str:
                 os.environ[k] = v
         shutil.rmtree(tmp, ignore_errors=True)
     after = {p.relative_to(ROOT).as_posix(): p.read_bytes()
-             for p in (ROOT / "dc_pack").rglob("*") if p.is_file() and "__pycache__" not in p.parts}
+             for p in (ROOT / "setups" / "propeller").rglob("*") if p.is_file() and "__pycache__" not in p.parts}
     check(after == before, "[ONE DEPLOY] the pack changed while the Studio ran")
     return "the Studio at /studio/"
 

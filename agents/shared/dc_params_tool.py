@@ -1,7 +1,7 @@
 """``dc_params_list`` — the design-parameter list as an on-demand tool.
 
 Which agents hold it is the parameter-access table
-(``engine/parameter_access.py``; default in ``dc_pack/pack.yaml``): an agent
+(``engine/parameter_access.py``; default in ``setups/<setup>/pack.yaml``): an agent
 whose cell says ``tool`` in the running topology gets it, through
 :func:`param_tools_for`, and nobody else does.  By default that is the
 Receptionist, the Planner and the Orchestrator, which do not carry the
@@ -10,7 +10,7 @@ see extra_utilities/extra_info.md §7.1 and §8) and retrieve it only when
 they need it.
 
 The tool returns exactly what the ``$parameter_list`` slot renders —
-``dc_pack/fragments/dc/parameter_list.md`` (or the active topology's
+``setups/<setup>/fragments/dc/parameter_list.md`` (or the active topology's
 ``parameter_list.t<N>.md``), read fresh from disk on every call.  Note this
 is the SHARED text: an agent's own copy (``parameter_list@<agent>.md``)
 changes that agent's PROMPT but not what this tool returns.

@@ -51,7 +51,7 @@ PACK_DIR = Path(os.getenv("DC_PACK_DIR") or "dc_pack")
 if not PACK_DIR.is_absolute():
     PACK_DIR = ROOT / PACK_DIR
 PACK_FRAGMENTS_DIR = PACK_DIR / "fragments"
-# The text a tool owns lives in its own folder (dc_pack/tools/<tool>/prompts/),
+# The text a tool owns lives in its own folder (setups/<setup>/tools/<tool>/prompts/),
 # named by the same rule; its tool_list_entry*.md is one entry of the
 # engine-built $tool_inventory.
 TOOL_PROMPT_DIRS = tuple(sorted(p for p in (PACK_DIR / "tools").glob("*/prompts")

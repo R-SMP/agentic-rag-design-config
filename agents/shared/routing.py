@@ -116,7 +116,7 @@ def _load_routing_fragment(fragment_name: str) -> str:
 
     ``$slot`` references are substituted first, from the same slot map
     the agent bodies use, so a routing fragment can splice in DC- or
-    tool-specific text kept in the pack, ``dc_pack/`` (e.g.
+    tool-specific text kept in the pack, ``setups/<setup>/`` (e.g.
     ``$routing_render_rerun_cases``).  Then the DCII conditional
     regions (``<<DCII_ONLY>>`` / ``<<DCII_OFF>>``) are resolved, as in
     ``_build_template``.

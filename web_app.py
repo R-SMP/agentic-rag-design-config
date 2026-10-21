@@ -579,7 +579,7 @@ def index() -> HTMLResponse:
 
 @app.get("/pack/parameters.js")
 def pack_parameters_js() -> Response:
-    """The Parameters view's groups and sliders, from dc_pack/parameters.json,
+    """The Parameters view's groups and sliders, from setups/<setup>/parameters.json,
     as a script ``web/index.html`` loads before ``app.js``: it sets
     ``window.PACK_PARAMETERS = {names, groups}``.  No auth -- the page needs
     it before sign-in, and it holds what the page's own script held before.
@@ -613,7 +613,7 @@ def pack_page_js() -> Response:
     tools, then the engine's standard ones; the generator's model
     (``engine/pack_tools.model_info``: file, extension, format, up axis),
     null when it makes none; and whether the pack has a browser preview
-    for the Parameters page (``dc_pack/preview/preview.js``, served at
+    for the Parameters page (``setups/<setup>/preview/preview.js``, served at
     /pack/preview/).  No auth, like
     ``/pack/parameters.js``: it holds what the page's own files held."""
     payload = json.dumps({
@@ -936,7 +936,7 @@ def api_parameters() -> dict:
     When no mesh has been visualised yet (cold start, or after End
     Session resets the cache), fall back to the canonical
     17-parameter REFERENCE list, the pack's ``$parameter_list`` text
-    (``dc_pack/fragments/dc/parameter_list.md``).
+    (``setups/<setup>/fragments/dc/parameter_list.md``).
 
     The "currently-visualised attempt" is tracked server-side via the
     viz_bus cache that ``visualize_3d_model`` writes every time it
@@ -971,7 +971,7 @@ def api_parameters() -> dict:
 
 # The range + type of every parameter, used by /api/preview_mesh and
 # /api/download_geometry to validate the request body BEFORE the geometry
-# round-trip: dc_pack/parameters.json, read fresh on every request
+# round-trip: setups/<setup>/parameters.json, read fresh on every request
 # (engine/parameters.preview_spec).
 
 
@@ -1074,7 +1074,7 @@ def api_preview_mesh(body: PreviewMeshIn) -> Response:
         (diagnostic).
       - **400 Bad Request** — the values are incomplete, unknown, out of
         range, or not whole numbers where the parameter is an integer
-        (``dc_pack/parameters.json``).  The detail names them.
+        (``setups/<setup>/parameters.json``).  The detail names them.
       - **404 Not Found** — the setup makes no model.
       - **502 Bad Gateway** — the geometry tool failed.  The detail
         carries its error.
@@ -1556,7 +1556,7 @@ async def api_end(body: EndIn | None = None) -> dict:
     feedback        = body.feedback if (body and save_requested) else None
 
     # A save records which parameter set the session's values belong to:
-    # the database version matching dc_pack/parameters.json
+    # the database version matching setups/<setup>/parameters.json
     # (engine/parameter_schema.py).  None -> refuse BEFORE anything starts,
     # with 412, not 409 -- the page reads 409 as "a save is already running"
     # and any other refusal as "end the session anyway".  On 412 it keeps
@@ -4369,8 +4369,8 @@ def api_images_compression_save(body: ImageCompressionIn) -> dict:
 # degrees are hidden settings, written via the editor's internal path; this
 # panel is their dedicated control surface.  A sample <kind>_<size>.png is
 # the one the Generate samples button made (web/render_samples/, made at
-# run time) or else the one the pack ships (dc_pack/assets/render_samples/);
-# the sizes are the pack's sample sets (render_samples in dc_pack/pack.yaml).
+# run time) or else the one the pack ships (setups/<setup>/assets/render_samples/);
+# the sizes are the pack's sample sets (render_samples in setups/<setup>/pack.yaml).
 # ---------------------------------------------------------------------------
 RENDER_SAMPLES_DIR = WEB_DIR / "render_samples"
 _RENDER_SAMPLE_KINDS = tuple(_image_run.SAMPLE_NAMES.values())     # cross, geo
@@ -4444,7 +4444,7 @@ _NO_DATABASE_MESSAGE = (
 
 @app.get("/api/parameter_schema")
 def api_parameter_schema_get() -> dict:
-    """The setup's parameters (dc_pack/parameters.json) against table
+    """The setup's parameters (setups/<setup>/parameters.json) against table
     dc_parameter_schemas, read-only: the Workflow Settings "Database" panel
     and the "Database schema" view.  ``state``: current | older | missing
     (engine/parameter_schema.status)."""
@@ -4562,7 +4562,7 @@ def api_parameter_access_save(body: ParameterAccessIn) -> dict:
 
 @app.post("/api/parameter_access/reset")
 def api_parameter_access_reset() -> dict:
-    """Back to the pack default (dc_pack/pack.yaml)."""
+    """Back to the pack default (setups/<setup>/pack.yaml)."""
     _require_auth()
     _require_no_session()
     from engine import parameter_access as pa
@@ -4629,7 +4629,7 @@ def api_tool_settings_save(body: ToolSettingsIn) -> dict:
 
 @app.post("/api/tool_settings/reset")
 def api_tool_settings_reset() -> dict:
-    """Back to every tool's defaults (dc_pack/tools/<tool>/tool.yaml)."""
+    """Back to every tool's defaults (setups/<setup>/tools/<tool>/tool.yaml)."""
     _require_auth()
     _require_no_session()
     _pack_tools.reset_overrides()

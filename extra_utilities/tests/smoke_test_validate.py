@@ -72,7 +72,7 @@ from studio import validate as V                 # noqa: E402
 from studio.tools_edit import run_tool_test      # noqa: E402
 
 FAILURES: list[str] = []
-PACK = ROOT / "dc_pack"
+PACK = ROOT / "setups" / "propeller"
 
 
 def check(ok: bool, what: str) -> None:

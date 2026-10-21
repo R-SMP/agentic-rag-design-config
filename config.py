@@ -5,20 +5,22 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
+from engine.setups import resolve as _resolve_setup
+
 # Load root .env for shared infrastructure config
 load_dotenv(Path(__file__).parent / ".env")
 
 PROJECT_ROOT = Path(__file__).parent
 
-# The design-configurator pack the engine runs: every file specific to one
-# configurator (prompt text, parameter keys, assets).  See engine/pack.py.
-# A relative DC_PACK_DIR is taken from the project root.
-DC_PACK_DIR = Path(os.getenv("DC_PACK_DIR") or "dc_pack")
-if not DC_PACK_DIR.is_absolute():
-    DC_PACK_DIR = PROJECT_ROOT / DC_PACK_DIR
+# The design-configurator setup the engine runs: every file specific to one
+# configurator (prompt text, parameter keys, tools, assets), one folder per
+# configurator in setups/ (setups/README.md, engine/setups.py).  DC_PACK_DIR
+# names it (a relative path is taken from the project root); without it,
+# setups/propeller.  See engine/pack.py.
+DC_PACK_DIR = _resolve_setup(PROJECT_ROOT, os.getenv("DC_PACK_DIR"))
 
-# The configurator's tools live in the pack (dc_pack/tools/<tool>/, with the
-# propeller's Grasshopper definition); each design generation owns an
+# The configurator's tools live in its setup (setups/<name>/tools/<tool>/,
+# with the propeller's Grasshopper definition); each design generation owns an
 # attempt folder under ATTEMPTS_DIR (see below), the canonical home for
 # parameters.json, the model file and the renders.
 

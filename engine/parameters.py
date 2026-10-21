@@ -1,4 +1,4 @@
-"""The design configurator's parameters: ``dc_pack/parameters.json``.
+"""The design configurator's parameters: ``setups/<setup>/parameters.json``.
 
 The ONE source of the parameter data -- names and their canonical order,
 types, ranges, steps, defaults, groups, and the wording each consumer shows:
@@ -12,7 +12,7 @@ check and slider page (``/pack/parameters.js``) and the parameter-schema
 upload (``engine/parameter_schema.py``).  Read fresh on every call: it is a
 small file and a local Studio may change it between sessions.
 
-The agents' parameter LISTS are hand-written text in ``dc_pack/fragments/``
+The agents' parameter LISTS are hand-written text in ``setups/<setup>/fragments/``
 (``$parameter_list`` and its per-agent copies), not generated from here;
 ``extra_utilities/tests/smoke_test_parameters.py`` checks they name the same
 parameters, in the same order, with the same ranges, and the Studio keeps

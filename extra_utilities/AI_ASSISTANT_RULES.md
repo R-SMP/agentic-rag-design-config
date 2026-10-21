@@ -57,7 +57,7 @@ the current conversation conflict, ask.
     Receptionist is an extra agent in every topology — not one of the "7", "5"
     or "3".  A change made for one topology must not move another topology's
     assembled prompts (`extra_info.md` §5 has the procedure).  The one
-    exception is a LINKED pack field — one `dc_pack/fragments/<folder>/<slot>.md`
+    exception is a LINKED pack field — one `setups/<setup>/fragments/<folder>/<slot>.md`
     for every topology (owner decision, 2026-10-14): editing it changes every
     topology that uses it, on purpose; to change one topology only, unlink it
     into `.t7` / `.t5` / `.t3` files first.

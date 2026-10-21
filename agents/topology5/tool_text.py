@@ -17,7 +17,7 @@ them up.
 Not here, and why:
 
 * the DC-params PRIMER text — that is a FILE, so it forks through the pack
-  instead (``dc_pack/fragments/dc/dc_params_primer_text*.t5.md``)
+  instead (``setups/propeller/fragments/dc/dc_params_primer_text*.t5.md``)
   and ``dc_primer._text_path`` resolves it through ``engine/pack.py``.  The
   primer IMAGE is deliberately still shared: it is a binary asset, identical
   in both topologies, and duplicating it would double a ~1k-token payload for

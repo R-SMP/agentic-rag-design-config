@@ -20,7 +20,7 @@ adding or removing an override needs no edit here.
 
 Two kinds of per-topology text are checked.  The ENGINE's (agents' prompts,
 ``prompt_fragments/``) are ``<name>_<N>agents.md`` copies under
-``agents/<N>agent/``.  The PACK's are files in ``dc_pack/fragments/``:
+``agents/<N>agent/``.  The PACK's are files in ``setups/propeller/fragments/``:
 ``<slot>.md`` is one text for every topology, ``<slot>.t<N>.md`` is topology
 N's own (``engine/pack.py``).  For the pack the rule is: topology N reads
 only ``<slot>.md`` or ``<slot>.t<N>.md`` -- reading another topology's
@@ -81,7 +81,7 @@ sys.modules["langchain_core.tools"] = _lct
 from agents.shared import prompts, routing, routing_tools, topology  # noqa: E402
 
 PACK_FRAGMENTS_DIR = prompts._pack.fragments_dir().resolve()
-# The text a tool owns (dc_pack/tools/<tool>/prompts/) is pack text too.
+# The text a tool owns (setups/<setup>/tools/<tool>/prompts/) is pack text too.
 PACK_TEXT_DIRS = [PACK_FRAGMENTS_DIR] + [
     d.resolve() for d in prompts._pack.text_dirs()
     if d.name == prompts._pack.TOOL_PROMPTS]

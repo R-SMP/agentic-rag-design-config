@@ -310,7 +310,7 @@
             </p>
 
             <!-- One tab per group of the setup's parameters
-                 (dc_pack/parameters.json), made by app.js paramsBuildAll().
+                 (setups/<setup>/parameters.json), made by app.js paramsBuildAll().
                  Click to switch which group's rows + picture are visible.
                  Per the locked design, no Back/Next navigation. -->
             <div class="params-tabs"></div>
@@ -917,7 +917,7 @@
             <span id="settings-status" class="settings-status" role="status"></span>
           </div>
 
-          <!-- Database: the parameter schema.  Compares dc_pack/parameters.json
+          <!-- Database: the parameter schema.  Compares setups/<setup>/parameters.json
                with table dc_parameter_schemas (/api/parameter_schema) and
                uploads it as the next version when the button is pressed --
                never automatically.  NOT locked while a session is active:
@@ -945,7 +945,7 @@
 
           <!-- Parameter list access: who sees the parameter list, per agent
                and topology (engine/parameter_access.py).  The pack default is
-               dc_pack/pack.yaml; changes here are stored in
+               setups/<setup>/pack.yaml; changes here are stored in
                workflow_settings/parameter_access.json.  Filled in by app.js
                (/api/parameter_access); locked while a session is active. -->
           <section class="rc-panel" id="parameter-access">
@@ -978,7 +978,7 @@
 
           <!-- Tools: every design-configurator tool's settings, grouped by
                tool, as each tool declares them in
-               dc_pack/tools/<tool>/tool.yaml (engine/pack_tools.py).
+               setups/<setup>/tools/<tool>/tool.yaml (engine/pack_tools.py).
                Changes are stored in workflow_settings/tool_settings.json
                (only the values that differ from the tool's defaults).
                Filled in by app.js (/api/tool_settings); locked while a
@@ -1562,7 +1562,7 @@
   </div>
 
   <script type="module" src="/static/viewer.js"></script>
-  <!-- window.PACK_PARAMETERS, from dc_pack/parameters.json: must load
+  <!-- window.PACK_PARAMETERS, from setups/<setup>/parameters.json: must load
        before app.js (TODO F111). -->
   <script src="/pack/parameters.js"></script>
   <script src="/pack/page.js"></script>
