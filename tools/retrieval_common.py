@@ -128,7 +128,7 @@ def r2_bucket_and_client() -> tuple[str | None, Any]:
     client = r2_uploader._client()  # noqa: SLF001 — single source of truth
     if client is None:
         return None, None
-    return r2_uploader._env("R2_BUCKET_NAME"), client  # noqa: SLF001
+    return r2_uploader.bucket_name(), client
 
 
 def _full_key(key: str) -> str:

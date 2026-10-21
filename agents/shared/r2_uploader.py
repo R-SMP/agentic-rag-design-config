@@ -1,18 +1,50 @@
-"""Cloudflare R2 mirror for the post-session database.
+"""Bucket mirror for the post-session database (Railway bucket or Cloudflare R2).
 
 The Database Handler writes per-field ``.txt`` files (plus sidecar
 ``.meta.json`` files) under ``database/<session_id>/<agent>/<field>.txt``
-inside the container.  Without an R2 mirror those files live only in
+inside the container.  Without a bucket mirror those files live only in
 the container's writable layer and disappear on the next image
-rebuild.  This module pushes them to a Cloudflare R2 bucket whose
-key layout mirrors the local filesystem one-for-one.
+rebuild.  This module pushes them to an S3-compatible bucket whose
+key layout mirrors the local filesystem one-for-one.  The module keeps
+its historical name (and its ``[R2]`` log tag): every bucket read and
+write in the app goes through :func:`_client`, whichever bucket it is.
 
-R2 is S3-compatible: the standard boto3 S3 client works once the
-``endpoint_url`` is pointed at
-``https://<account_id>.r2.cloudflarestorage.com``.
+Two buckets are supported; the first that is fully configured wins:
 
-Required environment
---------------------
+1. **A Railway bucket** (or any other S3-compatible bucket) — the
+   ``S3_*`` variables below.  This is the PRIMARY store.
+2. **Cloudflare R2** — the ``R2_*`` variables, kept as the fallback /
+   rollback path.  R2 is S3-compatible: the standard boto3 S3 client
+   works once the ``endpoint_url`` is pointed at
+   ``https://<account_id>.r2.cloudflarestorage.com``.
+
+A PARTIAL ``S3_*`` set (some of the four set, not all) disables the
+bucket entirely rather than falling back to R2: a typo in one Railway
+variable must not send the saves to the old bucket without anyone
+noticing.  :func:`config_problem` names what is missing.
+
+Railway bucket environment
+--------------------------
+On Railway, set each one as a reference to the bucket's own variable
+(service → Variables → ``${{<bucket>.ENDPOINT}}`` etc.):
+
+* ``S3_ENDPOINT_URL``       — ``${{<bucket>.ENDPOINT}}``
+                              (e.g. ``https://t3.storageapi.dev``).
+* ``S3_BUCKET``             — ``${{<bucket>.BUCKET}}``, the S3 name
+                              (display name + a short hash), NOT
+                              ``RAILWAY_BUCKET_NAME``.
+* ``S3_ACCESS_KEY_ID``      — ``${{<bucket>.ACCESS_KEY_ID}}``.
+* ``S3_SECRET_ACCESS_KEY``  — ``${{<bucket>.SECRET_ACCESS_KEY}}``.
+* ``S3_REGION``             — optional, ``${{<bucket>.REGION}}``;
+                              ``auto`` when unset.
+* ``S3_ADDRESSING_STYLE``   — optional, ``virtual`` (default) or
+                              ``path``.  The bucket's Credentials tab
+                              says which one it needs (buckets created
+                              before Railway's switch to virtual-hosted
+                              URLs need ``path``).
+
+Cloudflare R2 environment (fallback)
+------------------------------------
 * ``R2_ACCOUNT_ID``         — your Cloudflare account ID (e.g.
                               ``a1b2c3d4e5f6...``).  The endpoint
                               URL is derived from this.
@@ -20,19 +52,23 @@ Required environment
 * ``R2_SECRET_ACCESS_KEY``  — the R2 API token's secret.
 * ``R2_BUCKET_NAME``        — the destination bucket name.
 
-When ANY of the four is missing or empty, :func:`is_enabled` returns
-``False`` and every uploader call becomes a no-op (with a one-line
-log warning).  This is intentional: the DH save path must continue
-to work locally without R2 configured.
+When neither set is complete, :func:`is_enabled` returns ``False``
+and every uploader call becomes a no-op (with a one-line log
+warning).  This is intentional: the DH save path must continue to
+work locally without a bucket configured.
 
 Optional environment
 --------------------
 * ``R2_KEY_PREFIX``     — string prepended to every key written to the
                           bucket (no trailing slash needed; one is added
                           between the prefix and the per-session prefix).
-                          Useful when several environments share a single
-                          bucket — e.g. ``staging`` vs ``prod``.
-* ``R2_JURISDICTION``   — Cloudflare jurisdiction for the bucket.
+                          Applies to BOTH buckets: the keys stored in
+                          Postgres are session-rooted and the prefix is
+                          added here, so a bucket copied key-for-key from
+                          R2 needs the SAME prefix (``web-v1`` on
+                          Railway) for past sessions to resolve.
+* ``R2_JURISDICTION``   — Cloudflare jurisdiction for the R2 bucket
+                          (ignored for the ``S3_*`` bucket).
                           Empty / unset → standard endpoint
                           (``<account>.r2.cloudflarestorage.com``).
                           ``"eu"`` → EU endpoint
@@ -54,6 +90,13 @@ from typing import Iterable
 
 logger = logging.getLogger("propeller_agent")
 
+_S3_REQUIRED_ENV_VARS = (
+    "S3_ENDPOINT_URL",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+)
+
 _REQUIRED_ENV_VARS = (
     "R2_ACCOUNT_ID",
     "R2_ACCESS_KEY_ID",
@@ -61,28 +104,95 @@ _REQUIRED_ENV_VARS = (
     "R2_BUCKET_NAME",
 )
 
+# The two buckets :func:`backend` can answer.
+BACKEND_S3 = "s3"   # Railway bucket (any S3-compatible bucket)
+BACKEND_R2 = "r2"   # Cloudflare R2
+
 
 def _env(name: str) -> str:
     return (os.environ.get(name) or "").strip()
 
 
+def backend() -> str:
+    """Which bucket the app uses: ``"s3"``, ``"r2"`` or ``""`` (none).
+
+    The ``S3_*`` set wins when complete.  When it is PARTIAL the answer
+    is ``""`` even if R2 is complete — see the module docstring.
+    """
+    s3_set = [v for v in _S3_REQUIRED_ENV_VARS if _env(v)]
+    if len(s3_set) == len(_S3_REQUIRED_ENV_VARS):
+        return BACKEND_S3
+    if s3_set:
+        return ""
+    if all(_env(v) for v in _REQUIRED_ENV_VARS):
+        return BACKEND_R2
+    return ""
+
+
 def is_enabled() -> bool:
-    """Return True when every required env var is set and non-empty."""
-    return all(_env(v) for v in _REQUIRED_ENV_VARS)
+    """Return True when one bucket's required env vars are all set."""
+    return bool(backend())
+
+
+def config_problem() -> str:
+    """One sentence on why no bucket is in use, or ``""`` when one is.
+
+    Used by every "not configured" message so they all name the same
+    variables.
+    """
+    if is_enabled():
+        return ""
+    missing_s3 = [v for v in _S3_REQUIRED_ENV_VARS if not _env(v)]
+    if len(missing_s3) < len(_S3_REQUIRED_ENV_VARS):
+        return ("the Railway bucket is only partly configured (missing "
+                + " / ".join(missing_s3) + "); R2 is NOT used as a "
+                "fallback while any S3_* variable is set")
+    return ("no bucket is configured (set S3_ENDPOINT_URL / S3_BUCKET / "
+            "S3_ACCESS_KEY_ID / S3_SECRET_ACCESS_KEY for the Railway "
+            "bucket, or R2_ACCOUNT_ID / R2_ACCESS_KEY_ID / "
+            "R2_SECRET_ACCESS_KEY / R2_BUCKET_NAME for Cloudflare R2)")
+
+
+def bucket_name(which: str | None = None) -> str:
+    """The bucket name of *which* backend (default: the one in use)."""
+    which = backend() if which is None else which
+    if which == BACKEND_S3:
+        return _env("S3_BUCKET")
+    if which == BACKEND_R2:
+        return _env("R2_BUCKET_NAME")
+    return ""
+
+
+def describe() -> str:
+    """``"<backend> bucket <name> at <endpoint>"`` for logs — no secrets."""
+    which = backend()
+    if not which:
+        return "none (" + config_problem() + ")"
+    label = "Railway (S3)" if which == BACKEND_S3 else "Cloudflare R2"
+    endpoint = _endpoint_url(which)
+    if which == BACKEND_R2:
+        # The session banner reports R2_ACCOUNT_ID as presence-only.
+        endpoint = endpoint.replace(_env("R2_ACCOUNT_ID"), "<R2_ACCOUNT_ID>", 1)
+    return f"{label} bucket {bucket_name(which)} at {endpoint}"
 
 
 _VALID_JURISDICTIONS = ("", "eu", "fedramp")
 
 
-def _endpoint_url() -> str:
-    """Build the R2 S3 endpoint URL, honouring an optional jurisdiction.
+def _endpoint_url(which: str | None = None) -> str:
+    """The endpoint URL of *which* backend (default: the one in use).
 
+    For the ``S3_*`` bucket it is ``S3_ENDPOINT_URL`` as given.  For R2
+    it is built from the account id, honouring an optional jurisdiction:
     Cloudflare R2 buckets created in a jurisdiction (EU, FedRAMP) are
     NOT reachable through the standard endpoint — they require the
     jurisdiction-specific URL.  The R2 dashboard shows the bucket's
     jurisdiction next to the token's "Applied to" column
     (e.g. ``my-bucket | EU``).
     """
+    which = backend() if which is None else which
+    if which == BACKEND_S3:
+        return _env("S3_ENDPOINT_URL").rstrip("/")
     account = _env("R2_ACCOUNT_ID")
     jur = _env("R2_JURISDICTION").lower()
     if jur and jur not in _VALID_JURISDICTIONS:
@@ -105,15 +215,33 @@ def _key_prefix() -> str:
     return f"{raw}/" if raw else ""
 
 
+_VALID_ADDRESSING_STYLES = ("virtual", "path")
+
+
 def _client():
-    """Build a fresh boto3 S3 client pointed at the R2 endpoint.
+    """Build a fresh boto3 S3 client pointed at the bucket in use.
 
     Returns ``None`` (and logs once) when boto3 is not importable or
-    when the env vars are incomplete.  Built on demand so a Stage A
-    deployment without R2 configured does not pay for the client at
-    every startup.
+    when no bucket is configured.  Built on demand so a deployment
+    without a bucket does not pay for the client at every startup.
     """
-    if not is_enabled():
+    which = backend()
+    if not which:
+        return None
+    return client_for(which)
+
+
+def client_for(which: str):
+    """Build a boto3 S3 client for *which* backend, whichever is in use.
+
+    :func:`_client` is the app's entry point; this one also serves the
+    bucket-copy script, which needs BOTH buckets at once (R2 as the
+    source, the Railway bucket as the destination).  Returns ``None``
+    when that backend's variables are incomplete or boto3 is missing.
+    """
+    required = (_S3_REQUIRED_ENV_VARS if which == BACKEND_S3
+                else _REQUIRED_ENV_VARS)
+    if not all(_env(v) for v in required):
         return None
     try:
         import boto3  # type: ignore
@@ -124,9 +252,30 @@ def _client():
         )
         return None
 
+    if which == BACKEND_S3:
+        style = _env("S3_ADDRESSING_STYLE").lower() or "virtual"
+        if style not in _VALID_ADDRESSING_STYLES:
+            logger.warning(
+                f"[R2]  S3_ADDRESSING_STYLE={style!r} is not one of "
+                f"{_VALID_ADDRESSING_STYLES}; using 'virtual'."
+            )
+            style = "virtual"
+        return boto3.client(
+            "s3",
+            endpoint_url=_endpoint_url(BACKEND_S3),
+            aws_access_key_id=_env("S3_ACCESS_KEY_ID"),
+            aws_secret_access_key=_env("S3_SECRET_ACCESS_KEY"),
+            region_name=_env("S3_REGION") or "auto",
+            config=Config(
+                signature_version="s3v4",
+                s3={"addressing_style": style},
+                retries={"max_attempts": 4, "mode": "standard"},
+            ),
+        )
+
     return boto3.client(
         "s3",
-        endpoint_url=_endpoint_url(),
+        endpoint_url=_endpoint_url(BACKEND_R2),
         aws_access_key_id=_env("R2_ACCESS_KEY_ID"),
         aws_secret_access_key=_env("R2_SECRET_ACCESS_KEY"),
         region_name="auto",   # R2 ignores region but boto3 requires one
@@ -161,7 +310,7 @@ def upload_file(
     client = _client()
     if client is None:
         return False
-    bucket = _env("R2_BUCKET_NAME")
+    bucket = bucket_name()
     key = f"{_key_prefix()}{remote_key.lstrip('/')}"
     ct = content_type or _content_type_for(local_path)
     try:
@@ -218,7 +367,7 @@ def upload_bytes(
     client = _client()
     if client is None:
         return False
-    bucket = _env("R2_BUCKET_NAME")
+    bucket = bucket_name()
     key = f"{_key_prefix()}{remote_key.lstrip('/')}"
     try:
         client.put_object(
@@ -311,8 +460,8 @@ def upload_attempt_artefacts(
                  else attempt_artefact_whitelist())
     if not is_enabled():
         logger.warning(
-            "[R2]  not configured; skipping attempt-artefact upload "
-            "for " + str(attempt_folder.resolve())
+            "[R2]  not configured (" + config_problem() + "); skipping "
+            "attempt-artefact upload for " + str(attempt_folder.resolve())
         )
         return [], list(whitelist)
 
@@ -323,7 +472,7 @@ def upload_attempt_artefacts(
         )
         return [], list(whitelist)
 
-    bucket = _env("R2_BUCKET_NAME")
+    bucket = bucket_name()
     # NOTE: `base` is PREFIX-FREE.  ``upload_file`` is the single owner
     # of ``_key_prefix()`` — passing an already-prefixed key here would
     # double the prefix (e.g. ``web-v1/web-v1/<sid>/attempts/...``).
@@ -387,8 +536,7 @@ def upload_directory(
     """
     if not is_enabled():
         logger.warning(
-            "[R2]  not configured (missing one of R2_ACCOUNT_ID / "
-            "R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET_NAME); "
+            "[R2]  not configured (" + config_problem() + "); "
             "skipping upload of " + str(local_dir.resolve())
         )
         return 0
@@ -419,6 +567,6 @@ def upload_directory(
     logger.info(
         f"[R2]  uploaded {uploaded} file(s) from "
         f"{local_dir.resolve()} → "
-        f"s3://{_env('R2_BUCKET_NAME')}/{_key_prefix()}{prefix}"
+        f"s3://{bucket_name()}/{_key_prefix()}{prefix}"
     )
     return uploaded

@@ -1490,9 +1490,7 @@ def _snapshot_log_to_r2() -> "tuple[str, str]":
     from agents.shared import r2_uploader as _r2
     if not _r2.is_enabled():
         raise RuntimeError(
-            "R2 is not configured on this deploy (R2_ACCOUNT_ID / "
-            "R2_ACCESS_KEY_ID / R2_SECRET_ACCESS_KEY / R2_BUCKET_NAME "
-            "missing)."
+            "No bucket on this deploy: " + _r2.config_problem() + "."
         )
 
     # Force-resolve the canonical session_name so the snapshot lands in

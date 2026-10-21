@@ -66,7 +66,21 @@ services:
       # Compute via the Docker-internal host alias.
       RHINO_COMPUTE_URL:     "${RHINO_COMPUTE_URL:-http://host.docker.internal:6500/}"
       RHINO_COMPUTE_API_KEY: "${RHINO_COMPUTE_API_KEY:-}"
-      # Cloudflare R2 mirror for the post-session database.  When ALL
+      # Railway bucket (any S3-compatible bucket) — the PRIMARY store.
+      # When all four required ones are set it is used and the R2_*
+      # set below is ignored; a PARTIAL set disables the bucket (no
+      # silent fallback to R2).  On Railway each one references the
+      # bucket's variable, e.g. S3_BUCKET=${{<bucket>.BUCKET}}.
+      # R2_KEY_PREFIX (below) applies to this bucket too.
+      S3_ENDPOINT_URL:      "${S3_ENDPOINT_URL:-}"
+      S3_BUCKET:            "${S3_BUCKET:-}"
+      S3_ACCESS_KEY_ID:     "${S3_ACCESS_KEY_ID:-}"
+      S3_SECRET_ACCESS_KEY: "${S3_SECRET_ACCESS_KEY:-}"
+      S3_REGION:            "${S3_REGION:-}"
+      # Optional: ``virtual`` (default) / ``path`` — the bucket's
+      # Credentials tab on Railway says which.
+      S3_ADDRESSING_STYLE:  "${S3_ADDRESSING_STYLE:-}"
+      # Cloudflare R2 mirror (fallback) for the post-session database.  When ALL
       # four are set the DH uploads each saved .txt under
       # <bucket>/<session_id>/<agent>/<field>.txt; when any one is
       # missing the upload step is skipped (with a one-line log

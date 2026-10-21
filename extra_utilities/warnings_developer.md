@@ -585,7 +585,7 @@ artefacts.  The result depends on the key shape:
    artefact files locally too), pick ONE path to own that key
    prefix and skip it from the other (e.g. add a glob exclusion
    to ``upload_directory``'s suffix walk).
-4. Add the new path to the README's "Cloudflare R2 layout"
+4. Add the new path to the README's "Bucket layout"
    section AND update this warning so the invariant stays current.
 
 ### Why this matters

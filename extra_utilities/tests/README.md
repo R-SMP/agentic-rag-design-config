@@ -1,6 +1,6 @@
 # Offline checks
 
-Six hand-run scripts that need no network, no database and no API spend.
+Hand-run scripts that need no network, no database and no API spend.
 There is no CI and no pytest: run each one directly from the **repository
 root**.
 
@@ -18,7 +18,7 @@ These six were kept when the other ~50 test scripts were removed on
 2026-10-10.  `extra_utilities/extra_info.md` §13 lists every removed script,
 what it guarded and how to restore it from git.
 
-## The six checks
+## The checks
 
 | Script | Run it after… | What it proves |
 |---|---|---|
@@ -29,6 +29,7 @@ what it guarded and how to restore it from git.
 | `smoke_test_prompt_format.py` | any prompt edit | Formats every agent template of topologies 7, 5 and 3 (one subprocess per topology) with a stub mapping, under RAG off, RAG on, and RAG on with every database tool forced on, catching a literal `{` / `}` or an unmatched brace before it reaches agent construction (see `warnings_developer.md` W45; TODO F101). |
 | `smoke_test_agent_roles.py` | any change to `agents/shared/agent_roles.py`, a hub's roster, `database_search`'s ACL or the DH question loader | The agent role map across topologies: `ROSTER` matches what each hub builds and `DISPLAY` matches `routing_tools.AGENT_DISPLAY`; who may read which past answers per topology (both directions, the hub taking the Orchestrator's role, the `RAG_DCIC_READS_DCII` toggle); that the question table maps "Agent from" downward only and drops a skipped row's sub-rows; and that a real assembled `database_search` response carries the `<agent_roles>` legend once, right after `<search_meta>`, listing only the agents found.  Offline (stubbed imports). |
 | `smoke_test_ring_height.py` | any change to `web/feg/` or `tools/generate_mesh/ring_height.py` | The Python port of the outer-ring height fit must match the real `web/feg` JavaScript (run under Node) to within 1e-9 mm over 552 parameter sets.  **It is the only guard for that port — never remove it.**  Needs Node and `node_modules/three` (`npm install` in the repo root); without them it prints SKIP. |
+| `smoke_test_bucket.py` | any change to `agents/shared/r2_uploader.py` or `extra_utilities/scripts/copy_bucket.py`, and after setting a deploy's bucket variables | Offline: which bucket is used for every mix of `S3_*` / `R2_*` variables (a complete `S3_*` set = the Railway bucket wins; a PARTIAL one disables the bucket instead of falling back to R2), the client each builds, no secret in `describe()`; and the copy script against in-memory buckets (the R2 side refuses every write, only missing/different objects are copied with their headers, `verify` catches a missing or tampered object, the source is unchanged).  `--live --env-file <file>` (network, writes then deletes probe objects under `<R2_KEY_PREFIX>/_bucket_smoke_test/`): the app's real save and queue-log upload functions against the Railway bucket, read back with the retrieve tools' S3 calls, removed with `delete_objects`; `--read-session <sid>` also downloads one saved session read-only. |
 
 ## Things worth knowing before you trust a result
 

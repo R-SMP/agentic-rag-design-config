@@ -56,6 +56,12 @@ _SECRET_ENV_NAMES = (
     "GOOGLE_API_KEY",
     "INVITE_CODE",
     "PASSWORD_DATABASE_WEB_UI",
+    "S3_ENDPOINT_URL",
+    "S3_BUCKET",
+    "S3_ACCESS_KEY_ID",
+    "S3_SECRET_ACCESS_KEY",
+    "S3_REGION",
+    "S3_ADDRESSING_STYLE",
     "R2_ACCOUNT_ID",
     "R2_ACCESS_KEY_ID",
     "R2_SECRET_ACCESS_KEY",
@@ -201,6 +207,16 @@ def _scan_secrets_present() -> dict[str, bool]:
     }
 
 
+def _scan_bucket() -> str:
+    """``r2_uploader.describe()``: backend, bucket name and endpoint
+    (no credentials).  Never raises."""
+    try:
+        from agents.shared import r2_uploader
+        return r2_uploader.describe()
+    except Exception as exc:
+        return f"(could not resolve the bucket: {type(exc).__name__})"
+
+
 def build_banner_lines() -> list[str]:
     """Build the banner as a list of lines (no trailing newlines).
     Each line is intended to be passed to ``logger.info`` so the
@@ -213,8 +229,9 @@ def build_banner_lines() -> list[str]:
       4. ``[Database access]`` — per-agent DBa flag.
       5. ``[Database retrieval]`` — the model a search actually queries.
       6. ``[Secrets]`` — presence-only.
-      7. ``[Machine-readable]`` — a single JSON line for grep + jq.
-      8. End marker.
+      7. ``[Bucket]`` — which bucket is in use (no credentials).
+      8. ``[Machine-readable]`` — a single JSON line for grep + jq.
+      9. End marker.
     """
     lines: list[str] = []
 
@@ -297,6 +314,13 @@ def build_banner_lines() -> list[str]:
         lines.append(f"  {name:26}: {'set' if secrets.get(name) else 'unset'}")
     lines.append("")
 
+    # --- [Bucket] --- which bucket the saves and retrievals use (the
+    # S3_* Railway bucket wins over R2; a partial S3_* set means none).
+    bucket = _scan_bucket()
+    lines.append("[Bucket]")
+    lines.append(f"  in use           : {bucket}")
+    lines.append("")
+
     # --- [Machine-readable] ---
     payload: dict[str, Any] = {
         "captured_at":     datetime.now(timezone.utc).isoformat(),
@@ -306,6 +330,7 @@ def build_banner_lines() -> list[str]:
         "database_profile": dba_profile,
         "database_retrieval": retrieval,
         "secrets_present": secrets,
+        "bucket":          bucket,
     }
     lines.append("[Machine-readable]")
     lines.append(

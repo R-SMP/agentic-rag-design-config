@@ -442,7 +442,9 @@ The R2 upload step's suffix whitelist now covers `.txt`, `.png`, `.jpg`, and `.j
 
 The local `inputs/` folder is left untouched by this step — End Session's archival sweep moves it into `previous_sessions/<session_id>/inputs/` as before. The copy under `database/<session_id>/user_inputs/` is the database-layout duplicate, intended for the future RAG layer.
 
-## Cloudflare R2 layout — how the three upload paths combine
+## Bucket layout (Railway bucket or Cloudflare R2) — how the three upload paths combine
+
+**Which bucket.** Every bucket read and write goes through `agents/shared/r2_uploader.py:_client()`. A complete `S3_*` set (`S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`, `S3_SECRET_ACCESS_KEY`; optional `S3_REGION`, `S3_ADDRESSING_STYLE`) selects the **Railway bucket**, the primary store; otherwise a complete `R2_*` set selects **Cloudflare R2**, the fallback. A partial `S3_*` set disables the bucket rather than falling back to R2. `R2_KEY_PREFIX` applies to both: Postgres stores session-rooted keys and the prefix is added at run time, so a bucket copied key-for-key needs the same prefix. The session banner's `[Bucket]` line says which one is in use. "R2" below means whichever bucket is in use. `extra_utilities/scripts/copy_bucket.py` copies R2 into the Railway bucket (read-only on R2).
 
 The save flow writes to R2 via **three distinct upload paths** that run at different points and target **disjoint** parts of the per-session key space. Understanding which is which makes it easy to reason about what shows up in the bucket and why.
 
@@ -507,7 +509,7 @@ The local `database/<session_id>/` folder **does NOT contain an `attempts/` subt
 
 ### Behaviour when R2 is not configured
 
-Both paths gate on `r2_uploader.is_enabled()` (all four required env vars present: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`). When not configured, both paths log one warning and no-op cleanly. The DH save runs to completion locally; R2 stays untouched. Same shape on save=False (no DH run, no R2 fire either way).
+Both paths gate on `r2_uploader.is_enabled()` (one complete set: the four `S3_*` variables, or the four `R2_*` ones: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`). When not configured, both paths log one warning and no-op cleanly. The DH save runs to completion locally; R2 stays untouched. Same shape on save=False (no DH run, no R2 fire either way).
 
 ### Known small inconsistencies
 

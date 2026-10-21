@@ -87,7 +87,7 @@ once you know which path produced which key:
 The two paths target DISJOINT R2 key prefixes (`<sid>/attempts/`
 vs `<sid>/<agent>/` and `<sid>/user_inputs/`).  This is a
 load-bearing invariant — see `warnings_developer.md` W19.  The
-README "Cloudflare R2 layout" section has the full key matrix.
+README "Bucket layout" section has the full key matrix.
 
 **Known edges, all flagged for follow-up** (none affect
 correctness in the happy path):
