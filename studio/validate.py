@@ -171,7 +171,8 @@ def part_load() -> list[dict]:
     if proposed:
         out.append(item("A", "Ranges to review", WARN,
                         [f"{len(proposed)} parameter(s) still have the range an import proposed "
-                         f"(half to double the model's default): " + ", ".join(proposed[:12])
+                         f"(half to double the model's default, or 0 to ten steps when it is 0): "
+                         + ", ".join(proposed[:12])
                          + (f" and {len(proposed) - 12} more" if len(proposed) > 12 else "")],
                         note="Set their min and max under Parameters (editing either one ends "
                              "the proposal), or keep them as they are.",
