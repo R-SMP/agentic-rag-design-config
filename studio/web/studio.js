@@ -403,7 +403,7 @@
       h('span', { 'class': 'nm' }, agent ? '↳ ' + disp(agent) : s.slot),
       h('span', { 'class': 'meta' }, agent ? [kpill('own copy for this agent')] : [
         kpill(s.kind), kpill(s.origin === 'tool' ? 'tool' : 'DC', s.origin === 'tool' ? 'tool' : 'dc'),
-        s.owner ? kpill('owned by ' + ownerName(s.owner)) : null]),
+        s.owner ? kpill('owned by ' + ownerName(s.owner)) : null, s.runtime ? kpill('read by the app') : null]),
       h('span', { 'class': 'meta' }, [st.exists && multi ? linkButton(s, agent) : null]),
       h('div', { 'class': 'racts', 'data-racts': key }, rowActions(s, agent))
     ]);
@@ -500,7 +500,7 @@
     var box = h('div', { 'class': 'insp' }, [
       h('div', { 'class': 'title' }, s.slot + (agent ? '  @' + agent : '')),
       h('div', { 'class': 'pills' }, [kpill(s.kind), kpill(s.origin === 'tool' ? 'tool text' : 'DC text', s.origin === 'tool' ? 'tool' : 'dc'),
-        s.owner ? kpill('owned by ' + ownerName(s.owner)) : null,
+        s.owner ? kpill('owned by ' + ownerName(s.owner)) : null, s.runtime ? kpill('read by the app') : null,
         !st.exists ? kpill('no shared text') : st.linked ? kpill('linked 3·5·7') : kpill('per topology'),
         dirty ? pill('unsaved', 'warn') : null, isChanged(s.slot, agent) ? pill('changed since opened', 'warn') : null]),
       h('p', null, s.description || h('span', { 'class': 'muted' }, 'No description in the slot registry yet.')),
@@ -514,6 +514,8 @@
           [h('ul', { 'class': 'checks good' }, [h('li', null, ['✓', h('span', null, 'No problems: it can be saved.')])])],
         empty ? [h('ul', { 'class': 'checks warn' }, [h('li', null, ['!', h('span', null, 'The text is empty: the agents that read this field get nothing here.')])])] : [])),
       h('div', { 'class': 'block' }, [h('h4', null, 'Shape'), h('ul', { 'class': 'checks' }, hints(s, cur).map(function (x) { return h('li', null, ['•', h('span', null, x)]); }))]),
+      s.runtime ? h('div', { 'class': 'block' }, [h('h4', null, 'Where it is read'),
+        h('p', { 'class': 'muted' }, 'By the app’s code, not by a $name in a prompt text: in a tool’s description or answer, the tool runner’s list, the parameter primer or the web page — the description above says which.  So the sentences it lands in are not traced here.')]) :
       h('div', { 'class': 'block' }, [h('h4', null, 'Where it lands · ' + rows.length + ' sentence' + (rows.length === 1 ? '' : 's')),
         dirty ? h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, 'The unsaved text is shown as typed; after Save the engine assembles the exact sentences.') : null,
         rows.length ? null : h('p', { 'class': 'muted' }, 'Not in any prompt under the checked settings (base, all features on).')].concat(
@@ -2018,6 +2020,8 @@
   function renderTools(center, right) {
     if (R.q.tool && toolState(R.q.tool)) { renderToolEditor(center, right, R.q.tool); return; }
     add(center, head('Tools', 'The functions your agents call to build and look at a design. Each tool is a plain Python function, or an OpenSCAD model the engine runs, plus a manifest: what it is, which role may call it, what it produces, and the text the agents read about it.', [
+      h('a', { 'class': 'btn', href: 'static/write-a-tool.html', target: '_blank', rel: 'noopener',
+        title: 'How a tool is made: its kinds, its manifest, its code, its pictures and texts.' }, 'Write a tool ↗'),
       h('button', { 'class': 'primary', disabled: BUSY, onclick: askNewTool }, '+ New tool')]));
     add(center, importBanner());
     add(center, scadDrop());

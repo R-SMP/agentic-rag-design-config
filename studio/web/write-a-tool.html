@@ -1,0 +1,122 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Write a tool · MAS Studio</title>
+<!-- The Studio's guide pages (MAS-blueprint P8): static pages, served with
+     the page's scripts (/static/), so they open before the access code
+     online.  The contract they describe: engine/tooling.py,
+     engine/pack_tools.py, dc_pack/README.md. -->
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="studio.css">
+</head>
+<body class="guide-body">
+<main class="page guide">
+<p><a class="back" href="../">← Back to the Studio</a> · <a href="guide.html">Getting started</a> ·
+<a href="openscad-models.html">OpenSCAD models</a></p>
+<h1>Write a tool</h1>
+<p class="sub">How the agents build and look at a design: a tool is a folder of the setup with a manifest, its code
+(or a model file) and the texts it owns.</p>
+
+<h2>What a tool is</h2>
+<p>A tool lives in <code>dc_pack/tools/&lt;name&gt;/</code>: its manifest <code>tool.yaml</code>, its Python code
+(or, for a generator or a geometry tool, an OpenSCAD model the engine runs), and in <code>prompts/</code> the texts
+the agents read about it.  The engine reads the manifest, builds the agents' tool from it and gives it to the
+agents that hold its <b>roles</b>; the code does only the configurator's own work.  There are three kinds:</p>
+<ul>
+<li><b>Helper</b>: one plain Python function the agents call, for example to draw a diagram of an attempt.  It
+returns the text the agent reads.</li>
+<li><b>Generator</b>: builds the design from an attempt's <code>parameters.json</code> (its model file), then makes
+its pictures.  The agents' main tool; a setup has one.</li>
+<li><b>Geometry tool</b>: builds the model from the parameters for a generator (its <i>geometry tool</i> setting)
+and for the web app's Download buttons.  The engine calls it; an agent never does.</li>
+</ul>
+
+<h2>Start one</h2>
+<p>In the Studio, <b>Tools › New tool</b> starts a tool from a template of its kind (each a small working starter),
+as a copy of a tool, or from a CAD file (see <a href="openscad-models.html">OpenSCAD models</a>).  Then change its
+code in its <i>Files</i> tab, its manifest in <i>Manifest</i> (a form) or <i>tool.yaml</i>, and its texts in
+<i>Prompt texts</i>.  Every change to a manifest is checked by the engine before it is saved.</p>
+
+<h2>The code</h2>
+<p><b>A helper</b> is one function with type hints, named by the manifest's <code>entrypoint</code>
+(<code>file.py:function</code>).  The engine builds the agents' tool from its signature and the manifest's
+description.  The first argument is usually the path of an attempt's <code>parameters.json</code>:</p>
+<pre class="mono-inline" style="display:block;padding:8px 10px;white-space:pre">def my_tool(parameters_path: str) -&gt; str:
+    values = json.loads(Path(parameters_path).read_text(encoding="utf-8"))
+    ...
+    return "the text the agent reads"</pre>
+<p><b>A generator</b> provides two functions, named by <code>build</code> and <code>render</code>:</p>
+<ul>
+<li><code>build(inp) -&gt; BuildResult</code> writes the model file at <code>inp.model_path</code> and returns a
+summary for the agent;</li>
+<li><code>render(inp) -&gt; RenderResult</code> writes the pictures into <code>inp.attempt_dir</code> and returns a
+report.</li>
+</ul>
+<p><code>inp</code> holds <code>params</code> (the attempt's values, already checked against
+<code>parameters.json</code>), <code>attempt_dir</code>, <code>model_path</code> and <code>settings</code> (the
+tool's own settings).  The engine does the rest: it checks that the path the agent passed is an attempt's,
+reuses a model that is already there (an attempt is never overwritten), turns an error into the text the agent
+reads, and joins the summary and the report into the tool's answer.</p>
+<p><b>A geometry tool</b> is one function, <code>make_model(params) -&gt; GeometryResult</code>: it returns the
+model's content (<code>GeometryResult(model=..., vertex_count=...)</code>) and writes nothing.</p>
+<p>All of these come from <code>engine.tooling</code>.  For a failure the agent should read, raise
+<code>ToolError("what went wrong")</code> (or, in a helper, return a text starting with <code>Error:</code>).</p>
+
+<h2>The manifest: tool.yaml</h2>
+<ul>
+<li><code>name</code> (the folder's name: lower case, digits, _), <code>display_name</code>, <code>kind</code>
+(<code>helper</code>, <code>generator</code> or <code>geometry</code>).</li>
+<li><code>roles</code> (a helper or a generator): which agents get it, by what they do —
+<code>tool_runner</code>, <code>parameter_author</code>, <code>parameter_checker</code>,
+<code>output_inspector</code>, <code>input_extractor</code>, <code>planner</code>, <code>hub</code>,
+<code>receptionist</code>.  The engine gives it to whichever agent holds the role in the running team.</li>
+<li><code>description</code>: what the agents read about the tool — what it does, what to pass, what it returns.
+<code>args</code> (a generator: exactly <code>parameters_path</code>) describes its argument.</li>
+<li><code>entrypoint</code> (a helper, a geometry tool) or <code>build</code> / <code>render</code> (a generator):
+<code>file.py:function</code>.</li>
+<li><code>outputs</code>: a generator's <code>model_file</code> (e.g. <code>my_model.obj</code>),
+<code>model_format</code> (<code>obj</code>), <code>up_axis</code> (<code>y</code> or <code>z</code>) and
+<code>images</code>; a geometry tool's <code>model_format</code> only.</li>
+<li><code>list_order</code>: a tool-runner tool's place in the tool runner's numbered tool list.</li>
+<li><code>settings</code> (optional): values the user changes in Workflow Settings — <code>bool</code>,
+<code>enum</code> (with <code>values</code>) or <code>tool</code> (a geometry tool to use) — each with a
+<code>default</code>; a generator reads them in <code>inp.settings</code>.  <code>switch</code> (optional) turns
+the whole tool on or off.</li>
+<li><code>secrets</code> (optional): the environment variables it needs, by name only
+(<code>{env: MY_KEY, required: true, description: ...}</code>).  Their values go in <code>.env</code> or the
+deployment's variables, never in the setup.</li>
+<li><code>prompt_slots</code> (optional): the texts it owns (they live in its <code>prompts/</code> folder and
+leave with it).</li>
+<li><code>backend</code>, <code>model</code>, <code>parts</code>, <code>fixed</code>, <code>detail</code>,
+<code>timeout</code>: a model the engine runs instead of code (<a href="openscad-models.html">OpenSCAD
+models</a>).</li>
+</ul>
+
+<h2>Pictures</h2>
+<p>A picture of view <code>V</code> is the PNG <code>render_V.png</code>, written into the attempt folder the tool
+is given.  Each view is listed under <code>outputs.images</code> with its <code>view</code>, <code>file</code>,
+<code>order</code>, <code>default_enabled</code> (its switch in Workflow Settings) and <code>compression</code>
+(<code>3d_render</code> or <code>cross_sections</code>: how much it is shrunk before a model sees it).  A tool that
+makes pictures also says <code>fill_on_save</code>: whether the save step may ask it for a picture an attempt is
+missing.</p>
+
+<h2>The texts it owns</h2>
+<p>A tool-runner tool has an entry in the tool runner's numbered list, <code>prompts/tool_list_entry.md</code>:
+one paragraph saying what it does and when to call it.  The other texts it owns (<code>prompt_slots</code>) are
+edited in its <i>Prompt texts</i> tab, like every text field.  Elsewhere, a part of a text can be kept only while a
+tool is in the setup (<code>&lt;&lt;IF:tool:name&gt;&gt;…&lt;&lt;/IF:tool:name&gt;&gt;</code>).</p>
+
+<h2>Test it</h2>
+<ul>
+<li><b>Test tool</b> (on a tool's page) runs it the way the agents call it — on the parameters' defaults, a picture
+sample or values you type — in a throw-away attempt folder, and shows what it answers, how long it took, its
+pictures, its model, any error with its traceback, and every mismatch with its manifest.  Nothing in the setup
+changes.</li>
+<li><b>Validate</b> runs every tool once on the parameters' defaults, and says when this computer lacks a package
+or a program a tool needs (a warning: the deployment may have it).</li>
+</ul>
+</main>
+</body>
+</html>

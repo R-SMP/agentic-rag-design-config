@@ -689,7 +689,8 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
         return f"{name}_package.zip", files, notes, name, info
 
     def download_preview(data: dict, kind: str) -> dict:
-        fname, files, notes, _folder, info = _download(data, kind)
+        # the setup as it is now: its title ($app_title, P8) names the files
+        fname, files, notes, _folder, info = _download(view.get(), kind)
         return {"file": fname, "files": len(files), "bytes": sum(len(v) for v in files.values()),
                 "findings": packaging.scan(files), "notes": notes, "validate": info["validate"],
                 "engine": info["engine"]}
@@ -777,7 +778,9 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
         if kind not in ("setup", "package"):
             return _fail(f"There is no {kind} download.", 404)
         try:
-            data = await asyncio.to_thread(view.latest)
+            # the data of the setup as it is now, not the last built: a
+            # text field ($app_title) names the download (P8)
+            data = await asyncio.to_thread(view.get)
             fname, files, _notes, folder, _info = await asyncio.to_thread(_download, data, kind)
             tmp = Path(tempfile.mkdtemp(prefix="studio_download_"))
             path = await asyncio.to_thread(packaging.write_zip, files, tmp / fname, folder)

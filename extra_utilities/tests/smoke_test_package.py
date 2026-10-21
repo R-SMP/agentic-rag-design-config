@@ -176,6 +176,27 @@ def check_setup_file(st: Studio, copy: Path) -> str:
     check(info.get("configurator") == "Propeller Design Configurator" and info.get("pack_format") == 1
           and info.get("validate") == {"status": "not run"} and info.get("made_by") == "MAS Studio"
           and info.get("engine"), f"[SETUP] setup_info.json: {info}")
+    # The title is a text field the Studio edits (P8): a download right after
+    # it is saved -- no page re-read between -- carries the new title.  Each
+    # download is the first read after its own save: a read that builds the
+    # data anew would hand the other one fresh data either way.
+    d = st.call("get_all")["data"]
+    t = next(x for x in d["slots"] if x["slot"] == "app_title")
+    check(t.get("runtime") is True, f"[SETUP] $app_title is not shown as read by the app: {t.get('runtime')}")
+    check(st.call("save_field", "app_title", None, {"all": "Qzx Planter Configurator"},
+                  {"all": t["values"]["7"]})["ok"], "[SETUP] the title could not be saved")
+    status, headers, raw2 = st.get("/download/setup")
+    info2 = json.loads(zip_files(raw2).get("setup_info.json", b"{}"))
+    check("qzx_planter_configurator_setup.zip" in headers.get("content-disposition", "")
+          and info2.get("configurator") == "Qzx Planter Configurator",
+          f"[SETUP] a download right after the title changed: {headers.get('content-disposition')} {info2}")
+    check(st.call("save_field", "app_title", None, {"all": "Qzx Lamp Configurator"},
+                  {"all": "Qzx Planter Configurator"})["ok"], "[SETUP] the title could not be saved again")
+    preview = st.call("download_preview", "setup")
+    check(preview.get("file") == "qzx_lamp_configurator_setup.zip",
+          f"[SETUP] the download preview right after the title changed: {preview.get('file')}")
+    st.call("undo_field", "app_title", None)
+    check(snapshot(copy) == before, "[SETUP] the title's Undo did not put the setup back")
     # changed in the Studio, then opened again
     d = st.call("get_all")["data"]
     s = next(x for x in d["slots"] if x["slot"] == "dc_name")

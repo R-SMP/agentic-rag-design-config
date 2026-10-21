@@ -613,17 +613,27 @@ def registry_order(pack) -> dict[str, int]:
     return out
 
 
+def text_fields(pack) -> dict:
+    """The setup's text fields: the $slots spliced into prompts, and the ones
+    the app's code reads (``use: runtime``: tool texts and answers, the tool
+    runner's list, the parameter primer, the web page's words --
+    ``dc_pack/README.md``)."""
+    return {**pack.slots(source="pack", use="prompt"), **pack.slots(source="pack", use="runtime")}
+
+
 def slots(P, pack_origin: dict, roles: dict, order: dict | None = None) -> list:
-    """Every pack $slot with its three topology texts and per-agent copies,
-    read from dc_pack/ through the registry (engine/pack.py naming).  A slot a
-    tool owns is read from that tool's prompts/ folder and names its owner.
-    *order*: slot -> its place in its section (default: the registry's)."""
+    """Every pack text field with its three topology texts and per-agent
+    copies, read from dc_pack/ through the registry (engine/pack.py naming).
+    A field a tool owns is read from that tool's prompts/ folder and names
+    its owner; ``runtime``: read by the app's code, not spliced into a prompt
+    by a $name.  *order*: slot -> its place in its section (default: the
+    registry's)."""
     pack = P._pack
     claims = pack.tool_claims()
     order = registry_order(pack) if order is None else order
     agents = sorted({a for t in roles["roster"].values() for a in t} | {"database_handler"})
     out = []
-    for slot, spec in sorted(pack.slots(source="pack", use="prompt").items()):
+    for slot, spec in sorted(text_fields(pack).items()):
         folder = (pack.tool_prompts_dir(claims[slot]) if slot in claims
                   else pack.fragments_dir() / spec["folder"])
         overlay = spec.get("missing") == "empty"
@@ -638,7 +648,7 @@ def slots(P, pack_origin: dict, roles: dict, order: dict | None = None) -> list:
         out.append({
             "slot": slot, "origin": pack_origin.get(slot, "dc"),
             "owner": claims.get(slot),
-            "kind": spec["kind"],
+            "kind": spec["kind"], "runtime": spec.get("use") == "runtime",
             "section": spec.get("section", "other"), "order": order.get(slot, 999),
             "description": spec.get("description", "") or (
                 "Per-agent overlay: each agent's own text for this tool; "
@@ -840,7 +850,7 @@ def editing_data(P, slot_list: list) -> dict:
     root = pack.pack_dir()
     claims = pack.tool_claims()
     specs = {}
-    for name, spec in pack.slots(source="pack", use="prompt").items():
+    for name, spec in text_fields(pack).items():
         if name in claims:
             folder = pack.tool_prompts_dir(claims[name]).relative_to(root).as_posix()
         elif spec.get("filled_by") == "tool":

@@ -1011,7 +1011,8 @@ class Importer:
         proposed = sum(1 for p in params if p.get("range") == "proposed")
         if proposed:
             out.append(f"{proposed} of the {n} parameters have a proposed range (half to double the "
-                       "model's default): review them under Parameters; Validate warns until then.")
+                       "model's default, or 0 to ten steps when it is 0): review them under Parameters; "
+                       "Validate warns until then.")
         if mode == "new":
             helpers = sorted(t for t, m in ms.items() if t not in gone)
             if helpers:

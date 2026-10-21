@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F125**.
+branches (F36 is taken on a sibling branch).  Next free id: **F128**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -137,6 +137,9 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F122` | OPEN | The Studio inside the configurator's deploy runs tool code beside the app's keys |
 | `F123` | OPEN | A deploy image with a newer OpenSCAD (Debian's 2021.01 cannot read the hose adapter) |
 | `F124` | OPEN | More engine backends: RhinoCompute, Node, HTTP |
+| `F125` | OPEN | Run the P8 acceptance (the hose adapter configurator) on Railway |
+| `F126` | OPEN | The tool text of propose_attempt says "16-parameter" |
+| `F127` | OPEN | The parameter primer of a configurator that is not the propeller |
 
 ---
 
@@ -4896,3 +4899,43 @@ P6e built the mechanism (`backend:` in a tool's `tool.yaml`,
 script) and `http` (a web service), declared the same way, with no code per
 tool.  The propeller's `rhino_geometry` and `feg_geometry` stay Python
 tools until then.
+
+### F125. Run the P8 acceptance (the hose adapter configurator) on Railway
+
+**Status.** OPEN — owner decision (2026-10-21): "for now, let's try here with
+renders installed; later on, we'll try to run this on Railway".
+
+MAS-blueprint P8 built a second configurator, the vacuum hose adapter, only
+through the Studio, downloaded its full package and ran one real session
+on a local computer (`extra_utilities/docs/MAS_blueprint_P8_acceptance.md`).
+Railway next: it needs F123 first (the image's OpenSCAD cannot read the
+model), and a service whose database is not the live one -- none, or a
+database of its own: the hose setup has choice parameters, which need
+schema v10 (`extra_utilities/db_design/migrations/migrate_v9_to_v10.sql`).  The setup stays outside the
+repository (its model's author asks that the script not be hosted), so the
+deploy uses a private repository made from the package.
+
+### F126. The tool text of propose_attempt says "16-parameter"
+
+**Status.** OPEN — found 2026-10-21, during MAS-blueprint P8.
+
+`$propose_attempt_tool` (`dc_pack/fragments/tools/propose_attempt_tool.md`)
+says `propose_attempt` "pushes an attempt's full 16-parameter record".
+Right for the propeller, wrong for any other configurator (the hose
+adapter has 187 parameters).  The fix is a prompt-text edit -- "full
+parameter record", or `$parameter_count` -- shown and approved on its own;
+the P8 setup got the first wording.
+
+### F127. The parameter primer of a configurator that is not the propeller
+
+**Status.** OPEN — found 2026-10-21, during MAS-blueprint P8.
+
+`DC_PARAMS_PRIMER_ENABLED` (Workflow Settings, on by default) gives the six
+design agents the setup's `assets/dc_params_primer.png` and
+`$dc_params_primer_text` with every call.  A configurator made by the
+Studio's import keeps the propeller's diagram and text, so the agents would
+be shown a propeller; P8 switched the primer off by hand for its session.
+To decide: switch it off when an import starts a new configurator (the
+setting lives with the engine, not the setup), let a setup say it has no
+primer, and/or have Validate warn when the primer's text names parameters
+the setup does not have.

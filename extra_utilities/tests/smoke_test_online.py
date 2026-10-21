@@ -161,6 +161,14 @@ def check_online(tmp: Path) -> str:
               f"[GUIDE] the guide before the code: {status}, sections missing")
         js = (ROOT / "studio" / "web" / "studio.js").read_text(encoding="utf-8")
         check(js.count("'static/guide.html'") == 2, "[GUIDE] the toolbar and the landing page do not both link the guide")
+        # the guide's pages on tools (P8): served before the code too, and linked
+        for page, title in (("write-a-tool.html", "Write a tool"), ("openscad-models.html", "OpenSCAD models")):
+            status, _h, body = st.req(f"/static/{page}")
+            body = body.decode("utf-8") if isinstance(body, bytes) else ""
+            check(status == 200 and f"<h1>{title}</h1>" in body and 'href="guide.html"' in body,
+                  f"[GUIDE] {page} before the code: {status}")
+            check(f'href="{page}"' in text, f"[GUIDE] the guide does not link {page}")
+        check("'static/write-a-tool.html'" in js, "[GUIDE] the Tools page does not link Write a tool")
         status, _h, body = st.req("/api/config")
         check(status == 200 and body.get("online") is True, f"[GATE] the health answer: {status} {body}")
         _s, _h, body = st.req("/api/session", [])

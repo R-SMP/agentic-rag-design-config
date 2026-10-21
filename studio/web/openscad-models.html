@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>OpenSCAD models · MAS Studio</title>
+<!-- The Studio's guide pages (MAS-blueprint P8): what studio/scad_import.py
+     and engine/backends/openscad.py do, for the user. -->
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="studio.css">
+</head>
+<body class="guide-body">
+<main class="page guide">
+<p><a class="back" href="../">← Back to the Studio</a> · <a href="guide.html">Getting started</a> ·
+<a href="write-a-tool.html">Write a tool</a></p>
+<h1>OpenSCAD models</h1>
+<p class="sub">A parametric OpenSCAD model can be a configurator's tool: the engine runs the model, with no code
+written for it.</p>
+
+<h2>Import a model</h2>
+<p>Drop an OpenSCAD model (<code>.scad</code>) on the <b>Tools</b> page, or use <i>Import a .scad file</i> (or
+<i>New tool › A CAD file</i>).  The Studio reads the settings the model's own Customizer shows — the plain values
+set above its first <code>module</code> or <code>function</code>, in its <code>/* [Tab] */</code> tabs — and shows
+what each one becomes before anything is written:</p>
+<ul>
+<li><b>a parameter</b> the agents set: a number, a drop-down (a choice), an on/off setting.  A drop-down of evenly
+spaced numbers becomes a number; a pair written as <code>[mm, inch]</code> becomes one millimetre parameter; another
+list of numbers becomes one parameter per number (<code>_x</code>, <code>_y</code>, <code>_z</code>);</li>
+<li><b>the model's detail</b> (<code>fa</code>, <code>fs</code>, <code>fn</code>): its own values for the Download
+buttons, coarser ones for the agents' runs, which are quicker;</li>
+<li><b>left to the model</b>: text, colours and other lists, and the tab "other": the model keeps its own value.
+You can leave any setting to the model.</li>
+</ul>
+<p>A setting of a tab named like <i>Connector 1 - Flange</i> is proposed as used only when a choice of the tab
+<i>Connector 1</i> has the matching value (here: the flange style); untick it if that is wrong.</p>
+
+<h2>Two ways to import</h2>
+<ul>
+<li><b>Start a new configurator</b>: the model's parameters replace the setup's, every agent's parameter list is
+written new, the setup's generator and geometry tools are replaced by the model (a generator, and a geometry tool
+for the Download buttons), and the picture samples become one, the defaults.  The setup's texts stay as they
+were: rewrite them for the new model (its name, what it is, its examples).</li>
+<li><b>Add it as one more tool</b>: its parameters join the setup's (a name the setup already has is refused); it
+becomes the generator if the setup has none, otherwise a geometry tool.</li>
+</ul>
+<p><b>Undo the import</b> (in the banner on the Tools and Parameters pages) puts back every file it touched, as long
+as it can be undone; it names first anything you changed since.</p>
+
+<h2>Review the ranges</h2>
+<p>A model rarely says how far a number may go.  Where it does not, the import proposes a range from the model's
+default — half to double it, or 0 to ten steps from 0 — and shows it in amber under <b>Parameters</b>.  Set the
+real range (editing min or max ends the proposal), or keep it as it is (<i>Keep this range</i>, or <i>Keep all
+… in this group</i>).  <i>Only ranges to review</i> shows just those; Validate warns while any is left.</p>
+
+<h2>The manifest</h2>
+<p>An imported tool's <code>tool.yaml</code> names the model instead of code; you can also write one by hand:</p>
+<pre class="mono-inline" style="display:block;padding:8px 10px;white-space:pre">backend: openscad
+model: my-adapter.scad             # in the tool's folder
+parts:                             # one setting of the model made of parameters
+  End1_Diameter: [End1_Diameter_mm, 0]
+fixed: {Enable_Help: false}        # settings the agents never change
+detail:                            # per purpose
+  agent: {fa: 6, fs: 1}
+  download: {fa: 3, fs: 0.1}
+timeout: 120                       # seconds</pre>
+<p>Every parameter goes to the model's setting of the same name; every other setting keeps the model's own value.
+The model's STL becomes the attempt's model file, and a generator's pictures come from the engine's renderer.</p>
+
+<h2>OpenSCAD on your computer and on the deployment</h2>
+<ul>
+<li>Install OpenSCAD (openscad.org) and put it on the PATH, or set <code>OPENSCAD_PATH</code> to the program or its
+folder.  Without it, Test tool and Validate say so.</li>
+<li>Recent models may need a recent OpenSCAD: the 2021.01 release cannot read some of them.  A downloaded package's
+image installs the operating system's <code>openscad</code>, which may be that old one (TODO F123).</li>
+<li>A model has its own licence: check that it allows what you do with it — some authors ask that their script
+not be hosted or uploaded anywhere.</li>
+</ul>
+
+<h2>Other adapters</h2>
+<p>Only OpenSCAD models for now.  A Grasshopper definition on a compute server, a Node script or a web service as a
+tool is planned (TODO F124); until then, such a tool is written in Python (<a href="write-a-tool.html">Write a
+tool</a>).</p>
+</main>
+</body>
+</html>

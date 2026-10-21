@@ -247,8 +247,11 @@ def check_fields(D: dict, copy: Path) -> int:
     real = config.DC_PACK_DIR
     config.DC_PACK_DIR = copy
     try:
-        registry = pack.slots(source="pack", use="prompt")
+        # the $slots of the prompts and the fields the app's code reads (P8)
+        registry = {**pack.slots(source="pack", use="prompt"), **pack.slots(source="pack", use="runtime")}
         shown = {s["slot"]: s for s in D["slots"]}
+        check({n for n, s in shown.items() if s.get("runtime")} == set(pack.slots(source="pack", use="runtime")),
+              f"[FIELDS] the fields marked as read by the app: {sorted(n for n, s in shown.items() if s.get('runtime'))}")
         check(set(shown) == set(registry),
               f"[FIELDS] fields shown != the registry's: missing {sorted(set(registry) - set(shown))}, "
               f"extra {sorted(set(shown) - set(registry))}")
@@ -285,6 +288,11 @@ def check_where(D: dict) -> int:
     check(len(D["align"]) == 6 and not any(bad.values()), f"[WHERE] assemblies without spans: {bad}")
     checked = 0
     for s in D["slots"]:
+        if s.get("runtime"):
+            # placed by the app's code, not by a $name: the page says its
+            # sentences are not traced (P8), so it has none here
+            check(not D["where"].get(s["slot"]), f"[WHERE] {s['slot']} is read by the app but has landing sentences")
+            continue
         if s["kind"] == "word":
             continue
         for t in ("7", "5", "3"):
