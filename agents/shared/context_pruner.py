@@ -55,6 +55,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from agents.shared import token_usage
 from agents.shared.file_utils import ai_text
 from agents.shared.pack_text import fill
+from engine import switch as _switch
 
 logger = logging.getLogger("mas_agent")
 
@@ -64,8 +65,8 @@ logger = logging.getLogger("mas_agent")
 # base keeps the keep/drop philosophy DRY.
 # ---------------------------------------------------------------------------
 
-# The configurator's words come from the pack, filled at import.
-_PRUNER_BASE = fill("""\
+# The configurator's words come from the pack: _fill_prompts() below.
+_PRUNER_BASE_T = """\
 You are the Context Pruner for a $domain_description.
 Your output REPLACES the history you are given: whatever you leave out is
 gone for good, so anything the next decision needs must survive in it.
@@ -84,11 +85,11 @@ raw outputs (keep only key metrics + warnings), superseded attempts and
 their paths, and resolved exchanges.
 
 Output: keep chronological order; a numbered list of
-``<role>: <condensed content>`` works well.""")
+``<role>: <condensed content>`` works well."""
 
 # Tier 1 — broad-strokes summary of the older portion; the latest window
 # survives verbatim, so this pass can be aggressive.
-COARSE_SUMMARY_PROMPT = _PRUNER_BASE + """
+_COARSE_SUMMARY_PROMPT_T = """
 
 ## This pass — COARSE (tier 1)
 Summarise the OLDER portion — everything before the most-recent window,
@@ -97,7 +98,7 @@ strokes are fine (e.g. "attempted N fixes; the issue was X; resolution Y")."""
 
 # Tier 2 — fine summary of the most-recent window; fires when tier 1 was
 # not enough.  This window drives the imminent decision, so stay precise.
-FINE_SUMMARY_PROMPT = _PRUNER_BASE + """
+_FINE_SUMMARY_PROMPT_T = """
 
 ## This pass — FINE (tier 2)
 The older history is already coarsely summarised above your output; you
@@ -108,7 +109,7 @@ a value, KEEP it."""
 
 # Tier 3 — ultra-compact super-summary; fires when tiers 1+2 together
 # still overflow.  Input is the two prior summaries concatenated.
-ULTRA_COMPACT_SUMMARY_PROMPT = _PRUNER_BASE + """
+_ULTRA_COMPACT_SUMMARY_PROMPT_T = """
 
 ## This pass — ULTRA-COMPACT (tier 3, final)
 Your input is the coarse + fine summaries concatenated; they STILL
@@ -119,6 +120,20 @@ state, its current paths, and any standing directive, (2) the pending task
 most-recent unresolved issue.  Drop everything else — earlier attempts,
 resolved errors, superseded decisions, all narrative.  Output terse short
 paragraphs."""
+
+
+def _fill_prompts() -> None:
+    """Fill the pruning prompts with the setup's words, at import and again
+    when another setup is loaded (``engine/switch.py``)."""
+    global _PRUNER_BASE, COARSE_SUMMARY_PROMPT, FINE_SUMMARY_PROMPT, ULTRA_COMPACT_SUMMARY_PROMPT
+    _PRUNER_BASE = fill(_PRUNER_BASE_T)
+    COARSE_SUMMARY_PROMPT = _PRUNER_BASE + _COARSE_SUMMARY_PROMPT_T
+    FINE_SUMMARY_PROMPT = _PRUNER_BASE + _FINE_SUMMARY_PROMPT_T
+    ULTRA_COMPACT_SUMMARY_PROMPT = _PRUNER_BASE + _ULTRA_COMPACT_SUMMARY_PROMPT_T
+
+
+_fill_prompts()
+_switch.on_load(_fill_prompts)
 
 
 class ContextPruner:

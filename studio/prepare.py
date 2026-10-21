@@ -46,6 +46,7 @@ GIT_OUT = (
     ("inputs/extracted_inputs.txt", False, "inputs/extracted_inputs.txt"),
     ("workspace", True, "workspace/"),
     *((rel, False, rel) for rel in sorted(K.STATE_FILES)),
+    *((rel.rstrip("/"), True, rel) for rel in K.STATE_DIRS),
 )
 GIT_IN = ((".env.example", "!.env.example"),)
 DOCKER_OUT = (".env", ".git/", "logs/", "attempts/", "previous_sessions/", "database/",

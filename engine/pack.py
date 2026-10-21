@@ -103,6 +103,31 @@ def format_problem(root: Path | None = None) -> str | None:
     return None
 
 
+def uses_database(root: Path | None = None) -> bool:
+    """Whether the setup in *root* (default: the active one) may use the
+    database and its file store (R2): ``database: true`` in its
+    ``pack.yaml``.  A configurator without it runs with neither, whatever
+    the deployment's ``DATABASE_URL`` and ``R2_*`` say -- the database's
+    tables are one configurator's (MAS-blueprint setups)."""
+    try:
+        data = yaml.safe_load(((root or pack_dir()) / "pack.yaml").read_text(encoding="utf-8")) or {}
+    except (OSError, yaml.YAMLError):
+        return False
+    return isinstance(data, dict) and data.get("database") is True
+
+
+def read_in(root: Path, slot: str) -> str:
+    """The shared text of the ``dc`` word *slot* (``app_title``,
+    ``dc_name`` ...) in the setup at *root*, loaded or not -- the main
+    menu's list of configurators; "" when it has none."""
+    spec = slot_spec(slot)
+    folder = root / "fragments" / spec["folder"]
+    for name in _candidates(slot, REFERENCE_TOPOLOGY):
+        if (folder / name).is_file():
+            return _clean(spec, (folder / name).read_text(encoding="utf-8"))
+    return ""
+
+
 def fragments_dir() -> Path:
     return pack_dir() / "fragments"
 

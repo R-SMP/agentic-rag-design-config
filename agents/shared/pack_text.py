@@ -33,10 +33,12 @@ When the words are read:
   reaches them; a tool a factory builds per session takes :func:`filled`
   instead;
 * module constants (the Context Pruner's prompts, the inspectors' runtime
-  blocks, the Database Handler's reminder, ``database_search``'s argument
-  texts) -- once, at import.  The pack does not change within a process, and
-  the words they use are the same in every topology today; a word given a
-  per-topology copy would not reach them.
+  blocks, ``database_search``'s argument texts, the Sessions Queue
+  classifier's prompt) -- at import, and again when the main menu loads
+  another setup in place (``engine/switch.py`` ``on_load``).  The words they
+  use are the same in every topology today; a word given a per-topology copy
+  would not reach them.  The Database Handler's reminder is read per
+  question.
 """
 
 from __future__ import annotations

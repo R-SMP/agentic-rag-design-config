@@ -18,7 +18,7 @@ The engine side of the tool contract (``engine/tooling.py``):
 * **settings** -- each tool declares its own (and an on/off ``switch``, and
   one ``view_<view>`` switch per image it produces), with defaults; the
   values changed in Workflow Settings are stored in
-  ``workflow_settings/tool_settings.json`` (only the changed ones) and read
+  ``workflow_settings/setups/<setup>/tool_settings.json`` (only the changed ones) and read
   fresh on every call;
 * **prompt flags** -- ``tool:<name>`` (the tool is on) and
   ``setting:<name>.<setting>`` (a boolean setting), for the ``<<IF:…>>``
@@ -94,8 +94,19 @@ ROLES = {
     "tool_runner": "tool_caller",
     "output_inspector": "dc_output_inspector",
 }
-OVERRIDES_PATH = (Path(__file__).resolve().parents[1]
-                  / "workflow_settings" / "tool_settings.json")
+_REPO = Path(__file__).resolve().parents[1]
+
+
+def overrides_path() -> Path:
+    """This computer's Workflow Settings for the active setup's tools:
+    ``workflow_settings/setups/<setup>/tool_settings.json``
+    (``engine/setups.py``).  :data:`OVERRIDES_PATH` holds it; loading
+    another setup (``engine/switch.py``) sets it again."""
+    from engine import setups
+    return setups.settings_file(_REPO, _pack.pack_dir(), "tool_settings.json")
+
+
+OVERRIDES_PATH = overrides_path()
 _LOCK = threading.Lock()
 _PKG_PREFIX = "_dc_pack_tools"
 _ERROR_LABEL_RE = re.compile(r"^(?:[A-Za-z]+ )?[Ee]rror:")
@@ -693,6 +704,7 @@ def save_overrides(values: dict) -> dict[str, dict]:
         if not diff:
             OVERRIDES_PATH.unlink(missing_ok=True)
             return {}
+        OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=OVERRIDES_PATH.parent,
                                    prefix=".tool_settings.", suffix=".json")
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:

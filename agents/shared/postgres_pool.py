@@ -76,12 +76,18 @@ _pool_lock = threading.Lock()
 
 def _resolve_url() -> str:
     """Return the connection URL the pool should use, or ``""``
-    if Postgres is disabled.
+    if Postgres is disabled -- no URL, or the active setup may not use
+    the database (``database: true`` in its pack.yaml, ``engine/pack.py``).
 
     Prefers DATABASE_PUBLIC_URL when set (local dev / admin scripts),
     falls back to DATABASE_URL (Railway-internal in production).
     """
-    return (config.DATABASE_PUBLIC_URL or config.DATABASE_URL) or ""
+    url = (config.DATABASE_PUBLIC_URL or config.DATABASE_URL) or ""
+    if url:
+        from engine import pack
+        if not pack.uses_database():
+            return ""
+    return url
 
 
 def is_enabled() -> bool:
@@ -108,6 +114,10 @@ def get_pool() -> Optional[ConnectionPool]:
     rather than fail.
     """
     global _pool
+    # The active setup may have been loaded in place since the pool opened
+    # (engine/switch.py): one that may not use the database gets none.
+    if not _resolve_url():
+        return None
     if _pool is not None:
         return _pool
 

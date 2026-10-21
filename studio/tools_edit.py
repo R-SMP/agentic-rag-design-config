@@ -410,7 +410,8 @@ class ToolsEditor:
             blockers.append("pack.yaml: the Download buttons use it (downloads › geometry_tool) — "
                             "change that first.")
         if self.repo is not None:
-            f = self.repo / "workflow_settings" / "tool_settings.json"
+            from engine.setups import settings_file
+            f = settings_file(self.repo, self.pack_dir, "tool_settings.json")
             try:
                 overrides = json.loads(f.read_text(encoding="utf-8")) if f.is_file() else {}
             except (OSError, ValueError):

@@ -27,6 +27,9 @@ let busy = false;
 let endSessionState = null;
 let endSessionTimeoutId = null;
 const END_SESSION_HARD_TIMEOUT_MS = 25 * 60 * 1000;   // 25 minutes
+// Set by the Main menu button: go to the main menu once the session has
+// ended (finalizeEndSession).
+let menuAfterEnd = false;
 
 function showChat() {
   gate.hidden = true;
@@ -418,6 +421,12 @@ async function finalizeEndSession(evt) {
   else input.focus();
   // End Session cleared the in-process session — unlock the settings.
   applySettingsLock(!!cfg.session_active);
+  // Started by the Main menu button: on to the main menu, unless the end
+  // failed (its message stays in the chat).
+  if (menuAfterEnd) {
+    menuAfterEnd = false;
+    if (!(evt && evt.ok === false)) window.location.href = "/";
+  }
 }
 
 
@@ -489,6 +498,7 @@ if (endModalNo) {
 }
 if (endModalCancel) {
   endModalCancel.addEventListener("click", () => {
+    menuAfterEnd = false;
     closeEndModal();
   });
 }
@@ -584,6 +594,7 @@ async function performEndSession(wantSave, feedback) {
       endSessionTimeoutId = null;
     }
     endSessionState = null;
+    menuAfterEnd = false;
     endBtn.disabled = false;
     endBtn.textContent = originalEndText || "End Session";
     if (pendingBubble) pendingBubble.remove();
@@ -625,6 +636,7 @@ async function performEndSession(wantSave, feedback) {
       endSessionTimeoutId = null;
     }
     endSessionState = null;
+    menuAfterEnd = false;
     endBtn.disabled = false;
     endBtn.textContent = originalEndText || "End Session";
     if (pendingBubble) pendingBubble.remove();
@@ -672,6 +684,32 @@ endBtn.addEventListener("click", () => {
   if (endSessionState !== null) return;
   openEndModal();
 });
+
+
+// Main menu — back to the main menu (/), where another configurator can
+// be loaded.  An open session is ended first, with the End Session
+// choices; finalizeEndSession() then goes on to the menu.  While a turn
+// runs the session cannot end (as for End Session): the click is ignored.
+const menuBtn = $("menu-btn");
+
+if (menuBtn) {
+  menuBtn.addEventListener("click", async () => {
+    if (busy) return;
+    // An End Session already running: go when it has finished.
+    if (endSessionState !== null) {
+      menuAfterEnd = true;
+      return;
+    }
+    let cfg = {};
+    try { cfg = await (await fetch("/api/config")).json(); } catch (_) { /* go anyway */ }
+    if (cfg.session_active) {
+      menuAfterEnd = true;
+      openEndModal();
+      return;
+    }
+    window.location.href = "/";
+  });
+}
 
 
 // Save LOG — snapshot the current session log to R2 without ending
@@ -2287,7 +2325,7 @@ function mwFormatThreshold(window_) {
 // Parameter list access — who sees the parameter list, per agent and
 // topology (engine/parameter_access.py).  One dropdown per cell; a cell that
 // differs from the setup's default (setups/<setup>/pack.yaml) is shown in bold.
-// Saved to workflow_settings/parameter_access.json; locked during a session
+// Saved to workflow_settings/setups/<setup>/parameter_access.json; locked during a session
 // by the shared settings lock (the panel is an .rc-panel).
 // ---------------------------------------------------------------------------
 let paData = null;
@@ -2386,9 +2424,9 @@ function paCollect() {
 // each tool declares them in setups/<setup>/tools/<tool>/tool.yaml
 // (engine/pack_tools.py).  Yes/no settings use the V/X toggle of the
 // settings list, choices a dropdown; a setting that differs from the tool's
-// default is shown in bold.  Saved to workflow_settings/tool_settings.json;
-// locked during a session by the shared settings lock (the panel is an
-// .rc-panel).  Text nodes only (no innerHTML).
+// default is shown in bold.  Saved to
+// workflow_settings/setups/<setup>/tool_settings.json; locked during a
+// session by the shared settings lock (the panel is an .rc-panel).  Text nodes only (no innerHTML).
 // ---------------------------------------------------------------------------
 let tsValues = {};
 

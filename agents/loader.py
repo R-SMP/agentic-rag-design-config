@@ -7,6 +7,7 @@ agent's LLM via ``agents/<name>/.env`` → ``agents/.env``), and runs
 the interactive REPL.
 """
 
+import json
 import logging
 import re
 import shutil
@@ -165,6 +166,21 @@ def _resolve_session_timestamp() -> str:
     return _session_datetime_slug(log_files)
 
 
+def _write_configurator(dest: Path) -> None:
+    """``configurator.json`` in the session's folder: which configurator made
+    it -- its setup's folder, title and name -- as the app loads several,
+    one at a time (MAS-blueprint setups)."""
+    from engine import pack
+    words = {}
+    for slot in ("app_title", "dc_name"):
+        try:
+            words[slot] = pack.read(slot, topology())
+        except Exception:  # noqa: BLE001 -- a record, never a failed archive
+            words[slot] = ""
+    record = {"setup": pack.pack_dir().name, "title": words["app_title"], "dc_name": words["dc_name"]}
+    (dest / "configurator.json").write_text(json.dumps(record, indent=2) + "\n", encoding="utf-8")
+
+
 def _archive_previous_session(
     session_name: str | None = None,
     was_saved: bool = False,
@@ -250,6 +266,7 @@ def _archive_previous_session(
         session_name = _resolve_session_name()
     dest = PREVIOUS_SESSIONS_DIR / session_name
     dest.mkdir(parents=True, exist_ok=True)
+    _write_configurator(dest)
 
     # shutil.move instead of Path.rename: on Railway, PREVIOUS_SESSIONS_DIR
     # is a mounted volume on a separate filesystem from logs/attempts/inputs,

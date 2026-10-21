@@ -8,7 +8,7 @@
 The setup's DEFAULT is ``parameter_access`` in ``setups/<setup>/pack.yaml`` (the
 Studio edits it).  Workflow Settings > "Parameter list access" changes cells
 for the next session; only the cells changed there are stored, in
-``workflow_settings/parameter_access.json``, and every other cell keeps the
+``workflow_settings/setups/<setup>/parameter_access.json``, and every other cell keeps the
 pack default.  Read fresh on every call, like every other setting: a change
 takes effect when the next session's agents are built.
 
@@ -45,8 +45,19 @@ TOPOLOGIES = (7, 5, 3)
 # tool loop, so it cannot be given dc_params_list.
 NO_TOOL_AGENTS = frozenset({"database_handler"})
 
-OVERRIDES_PATH = (Path(__file__).resolve().parents[1]
-                  / "workflow_settings" / "parameter_access.json")
+_REPO = Path(__file__).resolve().parents[1]
+
+
+def overrides_path() -> Path:
+    """The cells changed in Workflow Settings for the active setup:
+    ``workflow_settings/setups/<setup>/parameter_access.json``
+    (``engine/setups.py``).  :data:`OVERRIDES_PATH` holds it; loading
+    another setup (``engine/switch.py``) sets it again."""
+    from engine import setups
+    return setups.settings_file(_REPO, _pack.pack_dir(), "parameter_access.json")
+
+
+OVERRIDES_PATH = overrides_path()
 _LOCK = threading.Lock()
 _NAME_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 # A range as the parameter lists write it: "[3; 6]", "[0.3; 0.7]".  The same
@@ -179,6 +190,7 @@ def save_overrides(cells: dict) -> dict[str, dict[int, str]]:
             return {}
         payload = {a: {str(t): st for t, st in sorted(row.items(), reverse=True)}
                    for a, row in sorted(diff.items())}
+        OVERRIDES_PATH.parent.mkdir(parents=True, exist_ok=True)
         fd, tmp = tempfile.mkstemp(dir=OVERRIDES_PATH.parent,
                                    prefix=".parameter_access.", suffix=".json")
         with os.fdopen(fd, "w", encoding="utf-8", newline="\n") as f:

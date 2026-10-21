@@ -154,6 +154,8 @@ docker compose up -d --build app
 
 Then open `http://localhost:8000` (uvicorn) or `http://localhost:8501` (compose).
 
+The address opens the **main menu**: a card per configurator of `setups/`, and the MAS Studio.  Clicking a configurator that is not loaded loads it in the running app, with no restart (`engine/switch.py`), and opens it at `/configurator`.  The app starts with the one loaded last, remembered on this computer (`workflow_settings/active_setup.json`; the propeller the first time, and `DC_PACK_DIR` names another).  Another configurator cannot be loaded while a session or the Sessions Queue runs; the configurator's **Main menu** button goes back to the menu, ending an open session first with the End Session choices.  Each configurator keeps its own tool settings and parameter-list access in `workflow_settings/setups/<setup>/`; the engine-wide settings are shared.  Only a configurator whose `pack.yaml` says `database: true` uses the database and its file store (R2), so far the propeller; the others run without either.  Past sessions stay in the shared folders, and each archive records its configurator (`configurator.json`).
+
 ### Side-menu interfaces
 
 The left rail switches between ten views:
@@ -534,7 +536,7 @@ Three minor edges flagged for follow-up — none affect correctness in the happy
 
 ## Configuration
 
-The engine's runtime flags live in [`workflow_settings/settings.py`](workflow_settings/settings.py).  The design configurator's tool settings — the geometry tool and its fallback, the render library, the mesh checks, which render views an attempt carries, and the blade-sections switch — are not there: each tool declares its own in `setups/<setup>/tools/<tool>/tool.yaml`, and Workflow Settings › Tools changes them for the next session (stored in `workflow_settings/tool_settings.json`, only the values that differ from the tool's defaults).
+The engine's runtime flags live in [`workflow_settings/settings.py`](workflow_settings/settings.py).  The design configurator's tool settings — the geometry tool and its fallback, the render library, the mesh checks, which render views an attempt carries, and the blade-sections switch — are not there: each tool declares its own in `setups/<setup>/tools/<tool>/tool.yaml`, and Workflow Settings › Tools changes them for the next session (stored in `workflow_settings/setups/<setup>/tool_settings.json`, only the values that differ from the tool's defaults; each configurator keeps its own).
 
 | Flag | Default | Notes |
 |---|---|---|

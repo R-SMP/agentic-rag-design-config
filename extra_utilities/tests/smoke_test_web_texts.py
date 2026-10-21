@@ -7,8 +7,8 @@ script the words and tools it needs in ``/pack/page.js``.  Four groups of
 checks, against the real FastAPI app (only packages that are not installed
 are stubbed; no database):
 
-1. PAGE.  The start page (``/``) offers the configurator and the MAS
-   Studio, in the pack's words.  With the propeller pack the configurator's
+1. PAGE.  The main menu (``/``) offers the configurators and the MAS
+   Studio, each configurator by its own title, escaped.  With the propeller pack the configurator's
    page (``/configurator``) shows exactly the texts it carried
    before (the title, the chat box, the empty viewer and its Download
    button, the database-entry example and checkbox), the Parameters page's
@@ -158,9 +158,10 @@ def check_page() -> None:
     r = CLIENT.get("/")
     start = r.text
     check(r.status_code == 200 and "text/html" in r.headers.get("content-type", "")
-          and "<title>Propeller Design Configurator</title>" in start
+          and "<title>Design configurators</title>" in start
           and 'href="/configurator"' in start and 'href="/studio/"' in start
-          and "<h2>The propeller configurator</h2>" in start and "<h2>MAS Studio</h2>" in start
+          and '<h2>Propeller Design Configurator <em class="badge">Loaded</em></h2>' in start
+          and "<h2>MAS Studio</h2>" in start
           and not re.findall(r"\$[A-Za-z_]", start),
           f"[PAGE] the start page (GET /): {r.status_code} {start[:120]!r}")
     r = CLIENT.get("/configurator")
@@ -199,8 +200,8 @@ def check_pack_words() -> int:
     real = config.DC_PACK_DIR
     try:
         config.DC_PACK_DIR = tmp / "dc_pack"
-        check("<h2>The turbine configurator</h2>" in CLIENT.get("/").text,
-              "[PACK WORDS] the start page does not name the stand-in configurator")
+        check('<h2>Turbine &lt;Studio&gt; &amp; Co <em class="badge">Loaded</em></h2>' in CLIENT.get("/").text,
+              "[PACK WORDS] the main menu does not name the stand-in configurator, escaped")
         page = CLIENT.get("/configurator").text
         for text in ("<title>Turbine &lt;Studio&gt; &amp; Co</title>",
                      "<h1>Turbine &lt;Studio&gt; &amp; Co</h1>",
@@ -627,8 +628,8 @@ def main() -> int:
         return 1
     print("\nPASS - the page takes the configurator's words, tools, browser preview and "
           "parameter tabs from the pack, escaped, a record's retired parameter names are "
-          "dropped, choice / on/off parameters and \"only when\" behave, and the start page "
-          "offers the configurator and the MAS Studio, served from this server at /studio/.")
+          "dropped, choice / on/off parameters and \"only when\" behave, and the main menu "
+          "offers the configurators and the MAS Studio, served from this server at /studio/.")
     return 0
 
 

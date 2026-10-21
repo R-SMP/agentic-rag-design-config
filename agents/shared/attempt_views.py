@@ -35,26 +35,33 @@ backend.
 from __future__ import annotations
 
 from engine import pack_tools as _pack_tools
+from engine import switch as _switch
 
 # (view name, "<tool>.<setting>" flag, render filename), in the order the
 # tools declare (isometric first: the single most informative view of the
-# design).  Read once at import: the manifests do not change while the
-# process runs; the flags are read fresh on every call below.
-VIEWS: tuple[tuple[str, str, str], ...] = tuple(
-    (r["view"], f"{r['tool']}.{r['setting']}", r["file"])
-    for r in _pack_tools.image_outputs()
-)
-
+# design).  Read at import, and again when another setup is loaded
+# (engine/switch.py); the flags are read fresh on every call below.
+VIEWS: tuple[tuple[str, str, str], ...] = ()
 # The views produced by a generator's render step.  It writes them all in
 # one call -- it is not per-view -- so ``attempt_renders`` generates the set
 # whenever ANY of them is enabled and missing, and the per-view flag then
 # governs upload and retrieval.
-MESH_VIEWS: frozenset[str] = frozenset(
-    r["view"] for r in _pack_tools.image_outputs()
-    if r["tool"] in _pack_tools.generators()
-)
+MESH_VIEWS: frozenset[str] = frozenset()
+VIEW_FILES: dict[str, str] = {}
 
-VIEW_FILES: dict[str, str] = {v: f for v, _flag, f in VIEWS}
+
+def _read_views() -> None:
+    """The views, from the active setup's tool manifests."""
+    global VIEWS, MESH_VIEWS, VIEW_FILES
+    VIEWS = tuple((r["view"], f"{r['tool']}.{r['setting']}", r["file"])
+                  for r in _pack_tools.image_outputs())
+    MESH_VIEWS = frozenset(r["view"] for r in _pack_tools.image_outputs()
+                           if r["tool"] in _pack_tools.generators())
+    VIEW_FILES = {v: f for v, _flag, f in VIEWS}
+
+
+_read_views()
+_switch.on_load(_read_views)
 
 
 def is_enabled(view: str) -> bool:

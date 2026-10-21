@@ -1,7 +1,7 @@
 """The Studio inside the configurator's own server: one deploy, one address.
 
 ``web_app.py`` mounts :data:`STUDIO` at ``/studio``, beside the configurator
-(``/configurator``) and the start page that offers both (``/``).  It is the
+(``/configurator``) and the main menu that offers both (``/``).  It is the
 online Studio (``python -m studio --online``, ``studio/HOSTING.md``) on ONE
 shared setup: a copy of the configurator's own setup in
 ``workspace/dc_pack`` (``STUDIO_WORKSPACE`` names another folder), so what

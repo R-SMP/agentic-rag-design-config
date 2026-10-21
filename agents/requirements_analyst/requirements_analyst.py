@@ -79,6 +79,7 @@ from agents.shared import token_usage
 from agents.step_caps import MAX_REQUIREMENTS_ANALYST_STEPS
 from tools.calculate.calculate import calculate
 from agents.shared.pack_text import fill
+from engine import switch as _switch
 
 logger = logging.getLogger("mas_agent")
 
@@ -86,20 +87,20 @@ logger = logging.getLogger("mas_agent")
 # Carried verbatim from the DC Output Inspector: which of the two blocks the
 # prompt's {image_persistence_block} slot receives depends on the session's
 # KEEP IMAGES IN CONTEXT setting.
-_IMAGE_PERSISTENCE_ON = fill("""\
+_IMAGE_PERSISTENCE_ON_T = """\
 $output_images_label loaded in earlier cycles remain in
 your message history as full image blocks AND paired
 ``Loaded image (path: …):`` text blocks (the path block sits
 immediately before each image block).  Those images describe PAST
-designs, not the current one.""")
+designs, not the current one."""
 
-_IMAGE_PERSISTENCE_OFF = fill("""\
+_IMAGE_PERSISTENCE_OFF_T = """\
 $output_images_label loaded in earlier cycles have their
 image bytes stripped from your history at every operation hand-off;
 only the paired ``Loaded image (path: …):`` text blocks survive as a
 path-only record of which images you had loaded.  To see those earlier
 $output_images again you must explicitly re-load them from those paths via
-``view_images``.""")
+``view_images``."""
 
 
 # The comparison-source block filled into the prompt's
@@ -115,7 +116,7 @@ $output_images again you must explicitly re-load them from those paths via
 # user's own material, always.  (Closes the rebuild plan's open item O2: the
 # question was what to do about grading an extraction it wrote itself, and
 # the answer is that there is no extraction.)
-_COMPARISON_MODE_1 = fill("""\
+_COMPARISON_MODE_1_T = """\
 Compare the generated design DIRECTLY against the USER INPUTS —
 the user's typed prompt (``user_query.txt``), the user-supplied
 reference image(s), and their paired ``_note.txt`` description(s).
@@ -126,7 +127,20 @@ reference image(s), and their paired ``_note.txt`` description(s).
     image(s) so you can compare them against the $output_images.
 
 The comparison source(s) in scope this session: ``user_query.txt``
-plus any paired image+note in ``inputs/input_images/``.""")
+plus any paired image+note in ``inputs/input_images/``."""
+
+
+def _fill_blocks() -> None:
+    """Fill the blocks with the setup's words, at import and again when another
+    setup is loaded (``engine/switch.py``)."""
+    global _IMAGE_PERSISTENCE_ON, _IMAGE_PERSISTENCE_OFF, _COMPARISON_MODE_1
+    _IMAGE_PERSISTENCE_ON = fill(_IMAGE_PERSISTENCE_ON_T)
+    _IMAGE_PERSISTENCE_OFF = fill(_IMAGE_PERSISTENCE_OFF_T)
+    _COMPARISON_MODE_1 = fill(_COMPARISON_MODE_1_T)
+
+
+_fill_blocks()
+_switch.on_load(_fill_blocks)
 
 # ---------------------------------------------------------------------------
 # Utility tool schemas (actual I/O handled by RequirementsAnalyst)

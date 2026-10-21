@@ -1035,7 +1035,9 @@ class Importer:
         if not (os.getenv("OPENSCAD_PATH") or "").strip() and not shutil.which("openscad"):
             out.append("OpenSCAD is not on this computer: Test tool and Validate will say so until it "
                        "is (install it, or set OPENSCAD_PATH).")
-        f = (self.tools.repo / "workflow_settings" / "tool_settings.json") if self.tools.repo else None
+        from engine.setups import settings_file
+        f = (settings_file(self.tools.repo, self.pack_dir, "tool_settings.json")
+             if self.tools.repo else None)
         try:
             overrides = json.loads(f.read_text(encoding="utf-8")) if f and f.is_file() else {}
         except (OSError, ValueError):

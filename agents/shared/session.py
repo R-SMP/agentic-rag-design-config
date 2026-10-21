@@ -61,6 +61,14 @@ def _pack_dc_name() -> str:
     return pack.read("dc_name", topology())
 
 
+def _pack_setup() -> str:
+    """The folder of the setup the session runs (``setups/<name>``), read
+    when a Session is created: the app loads several configurators, one at
+    a time (MAS-blueprint setups)."""
+    from engine import pack
+    return pack.pack_dir().name
+
+
 # Every chain agent + hub + DH gets one AgentState entry inside
 # Session.agent_states.  These are the legal keys (matches AGENT_DISPLAY in
 # routing_tools.py plus 'database_handler').
@@ -172,6 +180,8 @@ class Session:
     # DC-side identity (matches sessions table columns).  The design
     # configurator's short name, from the pack ($dc_name).
     dc_name: str = field(default_factory=_pack_dc_name)
+    # Its setup's folder (setups/<name>).
+    setup: str = field(default_factory=_pack_setup)
     # Which parameter set (table dc_parameter_schemas) this session's values
     # belong to.  None until the save resolves it: the database version that
     # matches setups/<setup>/parameters.json (engine/parameter_schema.py).  A save
@@ -277,6 +287,7 @@ class Session:
             "session_ts":             self.session_ts.isoformat(),
             "user_id":                self.user_id,
             "dc_name":                self.dc_name,
+            "setup":                  self.setup,
             "schema_version":         self.schema_version,
             "dc_inspector_enabled":   self.dc_inspector_enabled,
             "rag_enabled":            self.rag_enabled,

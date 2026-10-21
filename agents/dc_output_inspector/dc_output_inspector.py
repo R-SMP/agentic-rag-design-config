@@ -64,30 +64,31 @@ from tools.calculate.calculate import calculate
 from agents.shared.dba_tools import dba_tools_for
 from agents.shared.dc_params_tool import param_tools_for
 from agents.shared.pack_text import fill
+from engine import switch as _switch
 
 logger = logging.getLogger("mas_agent")
 
 
-_IMAGE_PERSISTENCE_ON = fill("""\
+_IMAGE_PERSISTENCE_ON_T = """\
 $output_images_label loaded in earlier cycles remain in
 your message history as full image blocks AND paired
 ``Loaded image (path: …):`` text blocks (the path block sits
 immediately before each image block).  Those images describe PAST
-designs, not the current one.""")
+designs, not the current one."""
 
-_IMAGE_PERSISTENCE_OFF = fill("""\
+_IMAGE_PERSISTENCE_OFF_T = """\
 $output_images_label loaded in earlier cycles have their
 image bytes stripped from your history at every operation hand-off;
 only the paired ``Loaded image (path: …):`` text blocks survive as a
 path-only record of which images you had loaded.  To see those earlier
 $output_images again you must explicitly re-load them from those paths via
-``view_images``.""")
+``view_images``."""
 
 
 # Comparison-source blocks — one per startup choice (1 / 2 / 3).
 # Filled into the {comparison_mode_block} placeholder of the DCOI's prompt.
 
-_COMPARISON_MODE_1 = fill("""\
+_COMPARISON_MODE_1_T = """\
 Compare the generated design DIRECTLY against the USER INPUTS —
 the user's typed prompt (``user_query.txt``), the user-supplied
 reference image(s), and their paired ``_note.txt`` description(s).
@@ -102,7 +103,20 @@ this mode; you compare against the user's own material.
 The comparison source(s) in scope this session: ``user_query.txt``
 plus any paired image+note in ``inputs/input_images/``.  Do NOT
 read ``extracted_inputs.txt`` in this mode — it is the UII's
-interpretation, not the user's own input.""")
+interpretation, not the user's own input."""
+
+
+def _fill_blocks() -> None:
+    """Fill the blocks with the setup's words, at import and again when another
+    setup is loaded (``engine/switch.py``)."""
+    global _IMAGE_PERSISTENCE_ON, _IMAGE_PERSISTENCE_OFF, _COMPARISON_MODE_1
+    _IMAGE_PERSISTENCE_ON = fill(_IMAGE_PERSISTENCE_ON_T)
+    _IMAGE_PERSISTENCE_OFF = fill(_IMAGE_PERSISTENCE_OFF_T)
+    _COMPARISON_MODE_1 = fill(_COMPARISON_MODE_1_T)
+
+
+_fill_blocks()
+_switch.on_load(_fill_blocks)
 
 _COMPARISON_MODE_2 = """\
 Compare the generated design against the UII's STRUCTURED

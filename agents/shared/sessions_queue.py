@@ -36,6 +36,7 @@ from typing import Any
 from agents.shared import token_usage
 from config import PREVIOUS_SESSIONS_DIR
 from agents.shared.pack_text import fill
+from engine import switch as _switch
 
 logger = logging.getLogger("mas_agent")
 
@@ -370,9 +371,8 @@ def classifier_key_present(provider: str) -> bool:
 # Intermediate-vs-final classifier
 # ---------------------------------------------------------------------------
 
-# The configurator's words come from the pack, filled at import.
-_CLASSIFIER_SYSTEM = fill(
-    "You are a strict classifier for an automated benchmark runner driving a "
+# The configurator's words come from the pack: _fill_classifier() below.
+_CLASSIFIER_SYSTEM_T = ("You are a strict classifier for an automated benchmark runner driving a "
     "multi-agent $dc_name-design assistant. Your ONLY job: decide whether the "
     "assistant's latest reply has DELIVERED what the user asked for in THIS "
     "run, or whether the assistant is still working — i.e. it paused, is asking "
@@ -410,8 +410,18 @@ _CLASSIFIER_SYSTEM = fill(
     "INTERMEDIATE.\n"
     "\n"
     "Answer with exactly ONE word — either FINAL or INTERMEDIATE — and nothing "
-    "else."
-)
+    "else.")
+
+
+def _fill_classifier() -> None:
+    """Fill the classifier's prompt with the setup's words, at import and again
+    when another setup is loaded (``engine/switch.py``)."""
+    global _CLASSIFIER_SYSTEM
+    _CLASSIFIER_SYSTEM = fill(_CLASSIFIER_SYSTEM_T)
+
+
+_fill_classifier()
+_switch.on_load(_fill_classifier)
 
 
 def _build_classifier_llm(provider: str, model: str):

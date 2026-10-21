@@ -67,7 +67,9 @@ SKIP_DIRS = {"__pycache__", "node_modules", ".git", "logs", "attempts", "databas
 STATE_FILES = {"workflow_settings/tool_settings.json", "workflow_settings/parameter_access.json",
                "workflow_settings/ocr_region_crops_access.json",
                "workflow_settings/dh_schedule.json", "workflow_settings/dh_schedule_5agents.json",
-               "workflow_settings/dh_schedule_3agents.json"}
+               "workflow_settings/dh_schedule_3agents.json", "workflow_settings/active_setup.json"}
+# ... and each configurator's own (engine/setups.py).
+STATE_DIRS = ("workflow_settings/setups/",)
 MAX_ZIP = 50 * 1024 * 1024
 MAX_UNPACKED = 200 * 1024 * 1024
 MAX_ENTRIES = 5000
@@ -102,7 +104,7 @@ class PackageError(ValueError):
 def _skipped(rel: str) -> bool:
     parts = rel.split("/")
     name = parts[-1]
-    return (bool(SKIP_DIRS & set(parts[:-1])) or rel in STATE_FILES
+    return (bool(SKIP_DIRS & set(parts[:-1])) or rel in STATE_FILES or rel.startswith(STATE_DIRS)
             or name.endswith((".pyc", ".pyo")) or name == ".DS_Store"
             or (name.endswith(".env") or name == ".env") and not name.endswith(".env.example"))
 

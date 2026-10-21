@@ -4,7 +4,7 @@
 four states -- full list in its prompt, names only (ranges removed), through
 the ``dc_params_list`` tool, or nothing.  The default lives in
 ``setups/propeller/pack.yaml``; Workflow Settings stores changed cells in
-``workflow_settings/parameter_access.json``.  Five groups of checks:
+``workflow_settings/setups/<setup>/parameter_access.json``.  Five groups of checks:
 
 1. THE GRID.  ``pack.yaml`` has exactly one cell per agent the topology
    builds (``agents/shared/agent_roles.ROSTER``), plus the Database Handler

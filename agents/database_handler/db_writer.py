@@ -52,6 +52,7 @@ from psycopg import errors as pg_errors
 from psycopg.types.json import Json
 
 from agents.shared import postgres_pool, r2_uploader
+from engine import switch as _switch
 from workflow_settings import settings as workflow_settings
 from workflow_settings.fixed_feedback_questions import (
     FIXED_FEEDBACK_QUESTIONS,
@@ -143,12 +144,23 @@ _stitching_prompt_cache: str | None = None
 _stitching_prompt_cache_lock = threading.Lock()
 
 
+def _forget_stitching_prompt() -> None:
+    """Another setup was loaded (``engine/switch.py``): the prompt is read
+    again, with its words."""
+    global _stitching_prompt_cache
+    _stitching_prompt_cache = None
+
+
+_switch.on_load(_forget_stitching_prompt)
+
+
 def _load_stitching_prompt() -> str:
     """Read ``agents/database_handler/stitching_prompt.md`` and
     return the system-prompt body with the YAML frontmatter stripped.
 
     Cached after first read — the prompt is load-bearing and a
-    server restart is the natural cache-invalidation point.
+    server restart is the natural cache-invalidation point, or another
+    setup loaded in place.
     """
     global _stitching_prompt_cache
     if _stitching_prompt_cache is not None:

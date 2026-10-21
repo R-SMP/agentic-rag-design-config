@@ -67,8 +67,10 @@ from agents.shared.llm_provider import (
     make_system_message,
 )
 from agents.shared.llm_retry import invoke_with_retry
+# The parameter names are read where they are used: another setup can be
+# loaded in place (engine/switch.py).
+from agents.shared import prompts as _prompts
 from agents.shared.prompts import (
-    PARAMETER_NAMES,
     _build_template,
     read_pack_fragment,
     routing_instructions,
@@ -428,8 +430,8 @@ class DesignEngineer(BaseChainAgent):
                 f"problem - 'parameters' is REQUIRED; 'slug' and "
                 f"'description' are optional.  RE-ISSUE the call with "
                 f"'parameters' set to a dict containing exactly these "
-                f"{len(PARAMETER_NAMES)} keys, each mapped to "
-                f"{_value_words()}: {list(PARAMETER_NAMES)}.  Do NOT "
+                f"{len(_prompts.PARAMETER_NAMES)} keys, each mapped to "
+                f"{_value_words()}: {list(_prompts.PARAMETER_NAMES)}.  Do NOT "
                 f"report this as a tool-interface bug; the omission "
                 f"is in your previous call's arguments."
             )
@@ -440,7 +442,7 @@ class DesignEngineer(BaseChainAgent):
             )
         else:
             provided = set(params.keys())
-            expected = set(PARAMETER_NAMES)
+            expected = set(_prompts.PARAMETER_NAMES)
             missing = sorted(expected - provided)
             extra = sorted(provided - expected)
             # Choice and on/off parameters (MAS-blueprint P6d): each value
@@ -448,7 +450,7 @@ class DesignEngineer(BaseChainAgent):
             typed = not _parameters.all_numbers()
             wrong = _parameters.wrong_values(params) if typed else []
             non_numeric = [k for k, _ in wrong] if typed else [
-                k for k in PARAMETER_NAMES
+                k for k in _prompts.PARAMETER_NAMES
                 if k in params and not isinstance(params[k], (int, float))
                 or isinstance(params.get(k), bool)
             ]
@@ -470,7 +472,7 @@ class DesignEngineer(BaseChainAgent):
                     )
                 summary = "  ".join(parts)
             else:
-                ordered = {k: params[k] for k in PARAMETER_NAMES}
+                ordered = {k: params[k] for k in _prompts.PARAMETER_NAMES}
                 try:
                     attempt_n, dest = create_attempt(slug, description)
                 except OSError as exc:

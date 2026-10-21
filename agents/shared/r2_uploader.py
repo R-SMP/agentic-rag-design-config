@@ -67,8 +67,13 @@ def _env(name: str) -> str:
 
 
 def is_enabled() -> bool:
-    """Return True when every required env var is set and non-empty."""
-    return all(_env(v) for v in _REQUIRED_ENV_VARS)
+    """Return True when every required env var is set and non-empty, and
+    the active setup may use the database and its file store
+    (``database: true`` in its pack.yaml, ``engine/pack.py``)."""
+    if not all(_env(v) for v in _REQUIRED_ENV_VARS):
+        return False
+    from engine import pack
+    return pack.uses_database()
 
 
 _VALID_JURISDICTIONS = ("", "eu", "fedramp")

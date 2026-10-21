@@ -80,10 +80,10 @@ _MAX_RESPONSE_TOKENS = int(workflow_settings.RETRIEVE_MAX_RESPONSE_TOKENS)
 # render_blade_sections.png was written by its tool but was in neither the
 # upload whitelist nor this map, so no archived attempt anywhere had one.
 
-# Maps view name → R2 filename.  Sourced from the shared registry, so
-# it cannot drift from what the uploader archives.  Filenames stay as the originals in Phase 5A
-# (no <sid>__<NNN>__ rename).
-_RENDER_FILES = dict(attempt_views.VIEW_FILES)
+# View name → R2 filename: ``attempt_views.VIEW_FILES``, the shared
+# registry, read where it is used (it follows the setup loaded), so it
+# cannot drift from what the uploader archives.  Filenames stay as the
+# originals in Phase 5A (no <sid>__<NNN>__ rename).
 
 
 # attempt_label format is ``<YYYYMMDD>_<HHMMSS>_<NNN>_<slug>``.  This
@@ -537,11 +537,11 @@ def _run_retrieve_attempt(
                 description_text = _read_local(dest, "description.txt")
                 parameters_text = _read_local(dest, "parameters.json")
                 for view in render_views_in_scope:
-                    if (dest / _RENDER_FILES[view]).is_file():
+                    if (dest / attempt_views.VIEW_FILES[view]).is_file():
                         render_refs.append(
-                            (view, str((dest / _RENDER_FILES[view]).resolve()))
+                            (view, str((dest / attempt_views.VIEW_FILES[view]).resolve()))
                         )
-                _canonical = set(_RENDER_FILES.values())
+                _canonical = set(attempt_views.VIEW_FILES.values())
                 for _f in sorted(dest.iterdir()):
                     if (_f.is_file() and _f.name not in _canonical
                             and _f.suffix.lower()
@@ -577,7 +577,7 @@ def _run_retrieve_attempt(
                     retrieval_common.MANUAL_SESSION_PREFIX)
                 if has_renders and render_views_in_scope and not _manual:
                     for view in render_views_in_scope:
-                        filename = _RENDER_FILES[view]
+                        filename = attempt_views.VIEW_FILES[view]
                         key = _r2_key(base, filename)
                         data = _r2_get_bytes(client, bucket, key)
                         if data is None:
@@ -599,7 +599,7 @@ def _run_retrieve_attempt(
                     # and why a NEW render type stays invisible until someone
                     # adds it to attempt_views.VIEWS.  List, and carry the
                     # rest.  Costs one LIST, and only when renders exist.
-                    _canonical = set(_RENDER_FILES.values())
+                    _canonical = set(attempt_views.VIEW_FILES.values())
                     for _name in retrieval_common.r2_list(
                             client, bucket, base + "/", tag=_TAG):
                         if _name in _canonical:

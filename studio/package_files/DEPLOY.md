@@ -54,7 +54,7 @@ the app reads, with a note on each.
 
 ## 4. Check it
 
-Open the address: its start page offers the configurator and the MAS
+Open the address: its main menu offers the configurator and the MAS
 Studio (`/studio/`, on a copy of this setup).  Open the configurator, type
 the invite code and ask for a design.  The first answer takes a minute or
 two.  Railway shows the app's log under **Deployments → View logs**.

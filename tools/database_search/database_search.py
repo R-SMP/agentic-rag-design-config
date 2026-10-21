@@ -66,6 +66,7 @@ from agents.shared import voyage_mm
 from workflow_settings import settings as workflow_settings
 from workflow_settings import db_options_config
 from agents.shared.pack_text import fill
+from engine import switch as _switch
 
 logger = logging.getLogger("mas_agent")
 
@@ -1813,25 +1814,32 @@ _N_DOC = (
     "expanded to all Q+A within it that you're allowed to see.  "
     "Typical value: 3-10."
 )
-# The examples are the pack's (setups/<setup>/fragments/dc/), filled at import.
-_QUERY_DOC = fill(
-    "Natural-language search query.  Describe what past Q+A "
+# The examples are the pack's (setups/<setup>/fragments/dc/): _fill_docs() below.
+_QUERY_DOC_T = ("Natural-language search query.  Describe what past Q+A "
     "you're looking for — e.g. $search_query_examples.  "
     "Embedded with the same model the corpus was indexed with "
-    "(see <search_meta embedding_model=.../> in the response)."
-)
+    "(see <search_meta embedding_model=.../> in the response).")
 # The same text plus the exclusivity rule.  Only the three agents that
 # hold ``parameters`` ever see this variant.
-_QUERY_DOC_EITHER = _QUERY_DOC + (
-    "  Pass \"\" when searching by ``parameters`` instead; supplying "
-    "both is an error."
-)
-_PARAMETERS_DOC = fill(
-    "Design parameters to find the CLOSEST saved attempts to, as "
+_QUERY_DOC_EITHER_T = ("  Pass \"\" when searching by ``parameters`` instead; supplying "
+    "both is an error.")
+_PARAMETERS_DOC_T = ("Design parameters to find the CLOSEST saved attempts to, as "
     "{name: number} — e.g. {$parameter_search_example}.  "
     "Any subset works; omitted ones are ignored, not zeroed.  "
-    "Mutually exclusive with ``query``."
-)
+    "Mutually exclusive with ``query``.")
+
+
+def _fill_docs() -> None:
+    """Fill the arguments' texts with the setup's words, at import and again
+    when another setup is loaded (``engine/switch.py``)."""
+    global _QUERY_DOC, _QUERY_DOC_EITHER, _PARAMETERS_DOC
+    _QUERY_DOC = fill(_QUERY_DOC_T)
+    _QUERY_DOC_EITHER = _QUERY_DOC + _QUERY_DOC_EITHER_T
+    _PARAMETERS_DOC = fill(_PARAMETERS_DOC_T)
+
+
+_fill_docs()
+_switch.on_load(_fill_docs)
 
 
 def make_database_search_tool(caller_agent: str):

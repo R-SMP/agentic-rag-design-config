@@ -125,14 +125,14 @@ reviewable and revertible by deleting one file.
 **⚠ Warning 7 — NEVER DELETE A SHARED FRAGMENT to build a variant.**  The
 shrink proposal removes fragments as well as shrinking them, and says so in
 its own §3 mechanics note: deleting one means stripping its
-`FRAGMENT_TO_SLOT` row and every `$slot` reference *in the same commit*, and
+`engine/slot_registry.yaml` entry and every `$slot` reference *in the same commit*, and
 it explicitly warns that `agents/5agent/` overrides six of the files it
 touches.  A deletion therefore breaks the 5- and 3-agent topologies, which
 read the same files.  In a variant, a "deleted" fragment is simply **no
 longer referenced** by that variant's prompts — the file stays for everyone
-else.  New fragments are added **additively** to `_build_slots()` and
-`FRAGMENT_TO_SLOT` (and, for a one-line phrase slot, `INLINE_FRAGMENT_SLOTS`)
-for the same reason.  `_build_slots()` is a superset by
+else.  New fragments are added **additively** to `engine/slot_registry.yaml`
+(`_build_slots()` and, for a one-line phrase slot, `INLINE_FRAGMENT_SLOTS`
+are derived from it) for the same reason.  `_build_slots()` is a superset by
 design; the cost is a few unused file reads per session, which is nothing
 next to breaking a working topology.
 

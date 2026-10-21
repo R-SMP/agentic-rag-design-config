@@ -22,6 +22,8 @@
       <span class="subtitle">Multi-agent design assistant — local JS UI</span>
     </div>
     <div class="header-actions">
+      <button id="menu-btn" class="ghost"
+              title="Back to the main menu, to open another configurator or the MAS Studio (an open session is ended first)">Main menu</button>
       <button id="stop-btn" class="danger" hidden
               title="Halt the running pipeline as soon as the current step finishes">Stop</button>
       <button id="save-log-btn" class="ghost" hidden
@@ -946,7 +948,8 @@
           <!-- Parameter list access: who sees the parameter list, per agent
                and topology (engine/parameter_access.py).  The pack default is
                setups/<setup>/pack.yaml; changes here are stored in
-               workflow_settings/parameter_access.json.  Filled in by app.js
+               workflow_settings/setups/<setup>/parameter_access.json.
+               Filled in by app.js
                (/api/parameter_access); locked while a session is active. -->
           <section class="rc-panel" id="parameter-access">
             <div class="rc-head">
@@ -979,7 +982,8 @@
           <!-- Tools: every design-configurator tool's settings, grouped by
                tool, as each tool declares them in
                setups/<setup>/tools/<tool>/tool.yaml (engine/pack_tools.py).
-               Changes are stored in workflow_settings/tool_settings.json
+               Changes are stored in
+               workflow_settings/setups/<setup>/tool_settings.json
                (only the values that differ from the tool's defaults).
                Filled in by app.js (/api/tool_settings); locked while a
                session is active. -->

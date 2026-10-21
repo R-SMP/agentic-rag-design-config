@@ -7,8 +7,7 @@ modelling notes, capabilities, tool inventory, …) live in the design-
 configurator pack, ``setups/<setup>/fragments/`` (``dc/`` and ``tools/``), read
 through ``engine/pack.py``.  Every ``$slot`` -- pack, engine or setting --
 is listed in ``engine/slot_registry.yaml``; ``_build_slots``,
-``INLINE_FRAGMENT_SLOTS``, ``SCOPED_FRAGMENTS`` and ``FRAGMENT_TO_SLOT``
-are all derived from it.
+``INLINE_FRAGMENT_SLOTS`` and ``SCOPED_FRAGMENTS`` are all derived from it.
 
 The engine's own fragments (the DOs / DON'Ts every agent inherits, the
 routing text, the pipeline flow) live in ``agents/shared/prompt_fragments/``.
@@ -55,10 +54,10 @@ from engine import pack_flags as _pack_flags
 from engine import pack_tools as _pack_tools
 from engine import parameter_access as _parameter_access
 from engine import parameters as _parameters
+from engine import switch as _switch
 from workflow_settings import settings as _workflow_settings
 
 AGENTS_DIR = Path(__file__).resolve().parent.parent
-REPO_ROOT = AGENTS_DIR.parent
 GENERIC_FRAGMENTS_DIR = Path(__file__).resolve().parent / "prompt_fragments"
 
 
@@ -498,6 +497,19 @@ PARAMETER_NAMES = _parameters.names(_PARAMETER_SPEC)
 PARAMETER_TYPES = _parameters.types(_PARAMETER_SPEC)
 
 
+def _read_setup_data() -> None:
+    """DC_NAME and the parameters again: another setup was loaded
+    (``engine/switch.py``)."""
+    global DC_NAME, _PARAMETER_SPEC, PARAMETER_NAMES, PARAMETER_TYPES
+    DC_NAME = read_pack_fragment("dc_name")
+    _PARAMETER_SPEC = _parameters.load()
+    PARAMETER_NAMES = _parameters.names(_PARAMETER_SPEC)
+    PARAMETER_TYPES = _parameters.types(_PARAMETER_SPEC)
+
+
+_switch.on_load(_read_setup_data)
+
+
 # ---------------------------------------------------------------------------
 # Tools-specific content
 # ---------------------------------------------------------------------------
@@ -535,32 +547,6 @@ _SETTING_SLOT_VALUES: dict[str, str] = {
     name: str(getattr(_workflow_settings, spec["setting"]))
     for name, spec in _pack.slots(source="setting").items()
 }
-
-
-# ---------------------------------------------------------------------------
-# Reverse index: fragment FILE -> the $slot it feeds
-#
-# Derived, not hand-kept: a pack file is named after its slot
-# (engine/pack.py) and an engine file is named in the registry.  Paths are
-# relative to the repo root (absolute for a pack outside it).
-# ---------------------------------------------------------------------------
-
-def _repo_rel(path: Path) -> str:
-    try:
-        return path.resolve().relative_to(REPO_ROOT).as_posix()
-    except ValueError:
-        return path.as_posix()
-
-
-def _fragment_to_slot() -> dict[str, str]:
-    out = {_repo_rel(p): _pack.slot_of_file(p.name) for p in _pack.fragment_files()}
-    for name, spec in _pack.slots(source="engine").items():
-        for f in ([spec["file"]] if "file" in spec else spec.get("files", [])):
-            out[_repo_rel(GENERIC_FRAGMENTS_DIR / f)] = name
-    return out
-
-
-FRAGMENT_TO_SLOT: dict[str, str] = _fragment_to_slot()
 
 
 # ---------------------------------------------------------------------------
@@ -927,6 +913,5 @@ __all__ = [
     "EMBEDDING_MODEL",
     "EMBEDDING_VECTOR_DIMS",
     "EMBEDDING_MAX_RESPONSE_TOKENS",
-    "FRAGMENT_TO_SLOT",
     "PROMPT_MD_RUNTIME_SLOTS",
 ]

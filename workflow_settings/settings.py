@@ -18,7 +18,7 @@ The design configurator's TOOL settings -- the generator's geometry
 backend, render library, mesh checks and render views, and the
 blade-sections switch -- are not here: each tool declares its own in
 ``setups/<setup>/tools/<tool>/tool.yaml`` and Workflow Settings > Tools changes
-them (``workflow_settings/tool_settings.json``; MAS-blueprint P3c).
+them (``workflow_settings/setups/<setup>/tool_settings.json``; MAS-blueprint P3c).
 """
 
 import os

@@ -90,9 +90,12 @@ from config import (
     INPUT_IMAGES_DIR,
     LOGS_DIR,
     PREVIOUS_SESSIONS_DIR,
+    PROJECT_ROOT,
     USER_INPUTS_DIR,
 )
 from engine import pack as _pack
+from engine import setups as _setups
+from engine import switch as _switch
 from engine import parameter_schema as _parameter_schema
 from engine import parameters as _parameters
 from agents.shared import sessions_queue
@@ -486,7 +489,7 @@ def _end_session(was_saved: bool = False) -> None:
 # App
 # --------------------------------------------------------------------------
 
-app = FastAPI(title=_fill("$app_title — JS web UI (local)"))
+app = FastAPI(title="Design configurators — JS web UI (local)")
 
 
 @app.on_event("startup")
@@ -553,13 +556,106 @@ class ImageCompressionIn(BaseModel):
     degree: int
 
 
+# --------------------------------------------------------------------------
+# The main menu: the configurators of setups/, one loaded at a time
+# --------------------------------------------------------------------------
+
+class SetupIn(BaseModel):
+    setup: str
+
+
+def _load_refusal() -> str | None:
+    """Why another configurator cannot be loaded now, or None.  The states
+    :func:`_busy_reason` refuses a manual upload in: until they end, the
+    loaded configurator owns the session on disk."""
+    if _QUEUE_IN_FLIGHT or _live_orphans():
+        return ("A Sessions Queue is running, or a prior pipeline is still "
+                "unwinding. Another configurator can be loaded when it finishes.")
+    if _TURN_IN_FLIGHT:
+        return ("A chat turn is running. Another configurator can be loaded "
+                "when it finishes.")
+    if _END_IN_FLIGHT:
+        return ("A session is being saved. Another configurator can be loaded "
+                "when the save completes.")
+    if _BOX.session is not None:
+        return ("A design session is open. End it in the configurator before "
+                "loading another one.")
+    return None
+
+
+def _setup_list() -> list[dict]:
+    """Every configurator of ``setups/`` -- its folder, title and name, and
+    whether it is the one loaded -- and the loaded one first when it lies
+    elsewhere (``DC_PACK_DIR``)."""
+    loaded = _pack.pack_dir().resolve()
+    roots = _setups.all_setups(PROJECT_ROOT)
+    if loaded not in [r.resolve() for r in roots]:
+        roots.insert(0, _pack.pack_dir())
+    return [{"setup": r.name,
+             "title": _pack.read_in(r, "app_title") or r.name,
+             "dc_name": _pack.read_in(r, "dc_name"),
+             "loaded": r.resolve() == loaded}
+            for r in roots]
+
+
+def _setup_card(item: dict) -> str:
+    e = html.escape
+    badge = ' <em class="badge">Loaded</em>' if item["loaded"] else ""
+    action = "Open →" if item["loaded"] else "Load and open →"
+    return (f'      <a class="choice" href="/configurator" data-setup="{e(item["setup"])}"'
+            f' data-loaded="{int(item["loaded"])}" data-title="{e(item["title"])}">\n'
+            f'        <h2>{e(item["title"])}{badge}</h2>\n'
+            f'        <p><code>setups/{e(item["setup"])}</code></p>\n'
+            f'        <span>{action}</span>\n'
+            f'      </a>\n')
+
+
 @app.get("/")
 def start_page() -> HTMLResponse:
-    """The start page (MAS-blueprint, one deploy): the configurator
-    (``/configurator``) or the MAS Studio (``/studio/``, mounted below), the
-    pack's words filled in as for the configurator's page."""
+    """The main menu (MAS-blueprint, one deploy): a card per configurator
+    (:func:`_setup_list`) -- clicking one loads it in place, see
+    :func:`api_setups_load`, and opens it at ``/configurator`` -- and the
+    MAS Studio (``/studio/``, mounted below).  Why another configurator
+    cannot be loaded now, when it cannot, is said above the cards."""
     page = (WEB_DIR / "start.html").read_bytes().decode("utf-8")
-    return HTMLResponse(_fill(page, escape=html.escape))
+    cards = "".join(_setup_card(i) for i in _setup_list()).rstrip("\n")
+    refusal = _load_refusal() or ""
+    page = page.replace("<!-- SETUP CARDS -->", cards)
+    page = page.replace("<!-- REFUSAL -->", html.escape(refusal))
+    return HTMLResponse(page, headers={"Cache-Control": "no-store"})
+
+
+@app.get("/api/setups")
+def api_setups() -> dict:
+    """The main menu's list (:func:`_setup_list`) and why another
+    configurator cannot be loaded now (None when it can).  No auth, like
+    the main menu: it names what the menu shows."""
+    return {"setups": _setup_list(), "refusal": _load_refusal()}
+
+
+@app.post("/api/setups/load")
+def api_setups_load(body: SetupIn) -> dict:
+    """Load the configurator *setup* -- a folder of ``setups/`` -- in place
+    of the one loaded, with no restart (``engine/switch.py``), and remember
+    it for the next start (``engine/setups.py``).  Refused while a session
+    or a queue runs (409, :func:`_load_refusal`); one that cannot run is not
+    loaded (422, with its problems) and the loaded one stays."""
+    _require_auth()
+    root = next((r for r in _setups.all_setups(PROJECT_ROOT) if r.name == body.setup), None)
+    if root is None:
+        raise HTTPException(status_code=404, detail=f"There is no configurator {body.setup!r} in setups/.")
+    if root.resolve() != _pack.pack_dir().resolve():
+        reason = _load_refusal()
+        if reason:
+            raise HTTPException(status_code=409, detail=reason)
+        try:
+            _switch.load(root)
+        except _switch.SetupError as exc:
+            logger.warning("[WEB] the configurator %s was not loaded: %s", root.name, exc.problems)
+            raise HTTPException(status_code=422, detail={"message": str(exc), "problems": exc.problems})
+        logger.info("[WEB] loaded the configurator %s", root.name)
+    _setups.remember(PROJECT_ROOT, root)
+    return {"ok": True, "setup": root.name}
 
 
 @app.get("/configurator")
@@ -919,11 +1015,6 @@ async def api_turn(body: TurnIn) -> dict:
     return {"ok": True, "status": "started", "turn_id": turn_id}
 
 
-# The pack's parameter list as the 7-agent system reads it (the reference
-# text every topology was forked from).
-_PARAMETERS_MD = _pack.shared_path("parameter_list", _pack.REFERENCE_TOPOLOGY)
-
-
 @app.get("/api/parameters")
 def api_parameters() -> dict:
     """Return parameters for the Copy parameters list button.
@@ -955,8 +1046,13 @@ def api_parameters() -> dict:
             # is missing for any reason (folder pruned, write error,
             # etc.).
             pass
+    # The setup's parameter list as the 7-agent system reads it (the
+    # reference text every topology was forked from).
+    path = _pack.shared_path("parameter_list", _pack.REFERENCE_TOPOLOGY)
     try:
-        text = _PARAMETERS_MD.read_text(encoding="utf-8")
+        if path is None:
+            raise OSError("the setup has no $parameter_list text")
+        text = path.read_text(encoding="utf-8")
     except OSError as exc:
         raise HTTPException(
             status_code=500,
@@ -4614,7 +4710,7 @@ def api_tool_settings_get() -> dict:
 @app.post("/api/tool_settings")
 def api_tool_settings_save(body: ToolSettingsIn) -> dict:
     """Store the tools' settings; only values that differ from the tools'
-    defaults are kept (workflow_settings/tool_settings.json).  Locked while
+    defaults are kept (workflow_settings/setups/<setup>/tool_settings.json).  Locked while
     a session is active, like every other settings write."""
     _require_auth()
     _require_no_session()
@@ -4987,14 +5083,27 @@ async def api_log_stream() -> StreamingResponse:
     return StreamingResponse(gen(), media_type="text/event-stream")
 
 
+# The setup's browser preview module and pictures (the group diagrams of
+# parameters.json, the render-compression samples it ships): served from the
+# setup loaded NOW -- a route, not a mounted folder, since another can be
+# loaded in place (engine/switch.py).
+_PACK_FOLDERS = ("preview", "assets")
+
+
+@app.api_route("/pack/{sub}/{path:path}", methods=["GET", "HEAD"])
+def pack_file(sub: str, path: str) -> FileResponse:
+    if sub not in _PACK_FOLDERS:
+        raise HTTPException(status_code=404, detail="Not Found")
+    folder = (_pack.pack_dir() / sub).resolve()
+    target = (folder / path).resolve()
+    if not target.is_relative_to(folder) or not target.is_file():
+        raise HTTPException(status_code=404, detail="Not Found")
+    # Asked again on every use: the same address serves another setup's
+    # file once another is loaded.
+    return FileResponse(target, headers={"Cache-Control": "no-cache"})
+
+
 # Mounted last so it does not shadow the explicit routes above.
-# The pack's browser preview module and pictures (the group diagrams of
-# parameters.json, the render-compression samples it ships).  Mounted only
-# when the pack has them.
-for _sub in ("preview", "assets"):
-    if (_pack.pack_dir() / _sub).is_dir():
-        app.mount(f"/pack/{_sub}", StaticFiles(directory=_pack.pack_dir() / _sub),
-                  name=f"pack_{_sub}")
 app.mount("/static", StaticFiles(directory=WEB_DIR), name="static")
 # The MAS Studio, inside this server (studio/embedded.py): made when it is
 # first opened, on a copy of the setup, behind the same access code.

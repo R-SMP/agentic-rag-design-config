@@ -3,9 +3,9 @@
 The MAS Studio runs online in one of two ways, on **one shared setup**
 (MAS-blueprint P7b-lite):
 
-* **Inside the configurator's own deploy** (the usual way): the app's start
-  page (`/`) offers the configurator (`/configurator`) and the MAS Studio
-  (`/studio/`, `studio/embedded.py`).  Nothing to set up: the Studio comes
+* **Inside the configurator's own deploy** (the usual way): the app's main
+  menu (`/`) offers its configurators (opened at `/configurator`) and the
+  MAS Studio (`/studio/`, `studio/embedded.py`).  Nothing to set up: the Studio comes
   with every deploy of the app, asks for the app's own `INVITE_CODE`, and
   works on a copy of the app's setup (`workspace/dc_pack`, or the folder in
   `STUDIO_WORKSPACE`), so the running configurator never changes.  It is

@@ -101,7 +101,7 @@ def setup_defaults(combo: str = "base"):
     defaults in this (child) process -- settings.py as written, each
     tool.yaml's defaults, pack.yaml's access table -- and nothing saved on
     this computer in Workflow Settings (``tool_settings.json``,
-    ``parameter_access.json``).  Before any agent code loads: some
+    ``parameter_access.json``, ``engine/setups.py``).  Before any agent code loads: some
     settings are read at import.  Returns the settings module."""
     import prompt_matrix as PM
     S = PM.apply_config(combo)

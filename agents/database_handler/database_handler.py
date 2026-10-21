@@ -88,7 +88,8 @@ from agents.shared.base_chain_agent import BaseChainAgent
 from agents.shared.file_utils import ai_text
 from agents.shared.llm_provider import history_cache_control, make_system_message
 from agents.shared.llm_retry import invoke_with_retry
-from agents.shared.prompts import PARAMETER_NAMES, _build_template
+from agents.shared import prompts as _prompts
+from agents.shared.prompts import _build_template
 from agents.shared.session import AgentState, Session
 from agents.step_caps import MAX_DH_TURNS_PER_FIELD
 from config import ATTEMPTS_DIR, INPUT_IMAGES_DIR, LOGS_DIR, USER_INPUTS_DIR
@@ -994,6 +995,24 @@ def _scalar_values(parameters_json: dict) -> dict:
         except (TypeError, ValueError):
             continue
     return out
+
+
+def agent_facing_tail() -> str:
+    """The clause appended to every question the Database Handler sends an
+    agent (see the notes in :class:`DatabaseHandler`), with the setup's
+    image word and parameter count."""
+    return fill(
+        "\n\n[Reminder for your reply, from the Database Handler:\n"
+        "Do not include file paths, directory names, or absolute "
+        "paths of any kind (no /app/... paths, no $output_image PNG paths, "
+        "no parameters.json references, no attempt-folder slugs).  "
+        f"Do not enumerate the {len(_prompts.PARAMETER_NAMES)} design parameters "
+        "as a value list — "
+        "instead, describe the REASONING you applied (which checks, "
+        "which heuristics, which trade-offs).  Do not address any "
+        "other agent or the user; the chain is over and your reply "
+        "is consumed only by me.]"
+    )
 
 
 class DatabaseHandler(BaseChainAgent):
@@ -2320,19 +2339,9 @@ class DatabaseHandler(BaseChainAgent):
     # appended to every question the DH sends every agent.  Deriving it
     # means the same drift cannot recur the next time the DC's
     # parameter list changes.
-    # The image word is the pack's.
-    _AGENT_FACING_TAIL = fill(
-        "\n\n[Reminder for your reply, from the Database Handler:\n"
-        "Do not include file paths, directory names, or absolute "
-        "paths of any kind (no /app/... paths, no $output_image PNG paths, "
-        "no parameters.json references, no attempt-folder slugs).  "
-        f"Do not enumerate the {len(PARAMETER_NAMES)} design parameters "
-        "as a value list — "
-        "instead, describe the REASONING you applied (which checks, "
-        "which heuristics, which trade-offs).  Do not address any "
-        "other agent or the user; the chain is over and your reply "
-        "is consumed only by me.]"
-    )
+    # The image word is the pack's.  It is agent_facing_tail(), above the
+    # class, read per question: a configurator loaded in place
+    # (engine/switch.py) reaches it.
 
     # ------------------------------------------------------------------
     # Batched interview
@@ -3652,7 +3661,7 @@ class DatabaseHandler(BaseChainAgent):
         the v4 code maintained on ``agent.messages`` — but without
         touching session.agent_states or any live agent.
 
-        The agent-facing tail clause :attr:`_AGENT_FACING_TAIL` is
+        The agent-facing tail clause :func:`agent_facing_tail` is
         appended to the question text before delivery; the DH's own
         running history records the question WITHOUT the tail so the
         DH's prompt does not see the boilerplate echoed back at every
@@ -3660,7 +3669,7 @@ class DatabaseHandler(BaseChainAgent):
         """
         dh_trace("DH", agent_key, note=f"asks ({field})")
         convo_buffer.append(
-            HumanMessage(content=question + self._AGENT_FACING_TAIL)
+            HumanMessage(content=question + agent_facing_tail())
         )
 
         # Use the agent's BASE llm (no tool bindings) so the model is
