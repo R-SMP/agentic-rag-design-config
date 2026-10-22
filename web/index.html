@@ -930,9 +930,10 @@
               <h2>Database: parameter schema</h2>
               <p class="rc-note">
                 Every saved session records which parameter set its values
-                belong to.  The database keeps each set as a numbered version,
-                and a session can be saved only when one version matches this
-                setup's parameters exactly.  Uploading adds this setup as the
+                belong to.  This configurator's section of the database keeps
+                each set as a numbered version, and a session can be saved
+                only when one version matches this setup's parameters
+                exactly.  Uploading adds this setup as the
                 next version, or does nothing when the latest version already
                 matches.  Every version is listed under
                 <em>Database schema</em> in the side menu.
@@ -1135,6 +1136,27 @@
             <p id="db-locked-status" class="db-status" role="status"></p>
           </div>
 
+          <!-- State 2s: this configurator's database section
+               (engine/db_sections.py), with its state; Create makes it.
+               Backed by GET /api/db_section and
+               POST /api/db_admin/create_section. -->
+          <div id="db-section-card" class="db-card" hidden>
+            <h2 class="db-title">This configurator's database section</h2>
+            <p class="db-blurb">
+              Each configurator keeps its sessions in a section of its own:
+              a part of the database named after its folder, holding the
+              same tables.  Saving, searching and the reset below use the
+              loaded configurator's section only; session numbers are
+              shared by all, so they never repeat.  A configurator with no
+              section runs without the database until it is made.
+            </p>
+            <p id="db-section-state" class="db-blurb">Checking…</p>
+            <div class="db-form-row">
+              <button id="db-section-create" class="primary" type="button" hidden>Create this section</button>
+            </div>
+            <p id="db-section-status" class="db-status" role="status"></p>
+          </div>
+
           <!-- States 2 + 2c: two destructive cards in a flex row.
                Red = reset Postgres tables (existing).  Blue = clear
                the local previous_sessions/ folder on the Railway
@@ -1148,7 +1170,9 @@
             <p class="db-blurb">
               Type the phrase <code>reset_database</code> in the box
               below and press <strong>Enter</strong> or click
-              <strong>Send</strong> to permanently delete:
+              <strong>Send</strong> to permanently delete, in this
+              configurator's section (<code id="db-reset-section">…</code>)
+              only:
             </p>
             <ul class="db-list">
               <li>All rows in <code>sessions</code>
@@ -1162,12 +1186,10 @@
             </p>
             <ul class="db-list">
               <li><code>dc_parameter_schemas</code>
-                  (the 17-parameter schema seed)</li>
-              <li>The <code>session_counter</code> SEQUENCE — the next
-                  session ID continues from the current count, not
-                  reset to 1.  Manually reset via psql
-                  (<code>ALTER SEQUENCE session_counter RESTART WITH 1;</code>)
-                  if you want IDNNN to restart.</li>
+                  (this configurator's parameter-schema versions)</li>
+              <li>The <code>session_counter</code> SEQUENCE, shared by
+                  every configurator — the next session ID continues
+                  from the current count.</li>
             </ul>
             <p class="db-warning">
               This action is <strong>irreversible</strong>.  Make

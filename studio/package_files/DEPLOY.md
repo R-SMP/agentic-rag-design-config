@@ -73,11 +73,17 @@ Volumes → New Volume**, mounted at `/app/previous_sessions`.
    (on Railway, a Postgres template with pgvector).
 2. In the app's **Variables**, add `DATABASE_URL` as a reference to the
    database's `DATABASE_URL`.
-3. Create the tables once, from your computer: put the database's
-   `DATABASE_PUBLIC_URL` (its **Variables** tab) in `.env`, then run
+3. Create the configurator's tables once, from your computer: put the
+   database's `DATABASE_PUBLIC_URL` (its **Variables** tab) in `.env`, then
+   run
 
        python extra_utilities/db_design/apply_schema.py extra_utilities/db_design/database_PostgreSQL_schema_v10.sql
 
+   They go in the configurator's own section of the database, a part named
+   after its folder (`{{SETUP}}/`), so one database can hold several
+   configurators.  With `PASSWORD_DATABASE_WEB_UI` set in the app's
+   Variables, **Database** (side menu) › **Create this section** does the
+   same from the browser.
 4. In the app: **Workflow Settings › Database › Upload parameter schema**.
 5. Search over past designs with their pictures needs `VOYAGE_API_KEY`;
    the pictures and models saved with a session go to a bucket. Either a

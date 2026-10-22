@@ -7,7 +7,9 @@ where).  The engine and the agents are the same for all of them.
 
 * `propeller/` — the propeller impeller configurator, the one the app loads
   the first time it starts.  It is the only one that uses the database and
-  its file store (`database: true` in its `pack.yaml`).
+  its file store (`database: true` in its `pack.yaml`); its sessions are in
+  the database's `propeller` section (each configurator has its own, named
+  after its folder: `engine/db_sections.py`).
 * `vacuum_hose_adapter/` — a configurator around an OpenSCAD model, built in
   the MAS Studio (MAS-blueprint P8).  Its tools run OpenSCAD, which the
   image installs (the `Dockerfile`'s OpenSCAD block, the one a package of it

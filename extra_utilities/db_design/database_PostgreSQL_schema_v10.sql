@@ -7,7 +7,8 @@
 -- Changes vs v9 (MAS-blueprint P6d, 2026-10-20).  Additive: two
 -- nullable columns, no data touched.  Upgrade an existing v9 database
 -- with ``migrations/migrate_v9_to_v10.sql`` (idempotent; run through
--- ``apply_schema.py``).
+-- ``apply_schema.py``: ``--section <name>`` for a configurator's section,
+-- ``--shared`` for a database made before sections).
 --   * dc_parameter_schemas — NEW columns ``param_type TEXT`` and
 --     ``choices JSONB``, both NULL for a number.  A setup's choice
 --     parameter has param_type 'choice' and its values in order in
@@ -199,7 +200,10 @@
 
 -- Required extensions:
 --   pgvector  -> for the vector(1024) column on chunks
-CREATE EXTENSION IF NOT EXISTS vector;
+-- In ``public``, shared by every configurator's section: the tables of
+-- this file are made in a section, a schema named after the configurator
+-- (engine/db_sections.py), with ``search_path`` = the section, public.
+CREATE EXTENSION IF NOT EXISTS vector WITH SCHEMA public;
 
 
 -- ------------------------------------------------------------
@@ -225,8 +229,13 @@ CREATE EXTENSION IF NOT EXISTS vector;
 -- extends to 4+ digits.  Lexicographic sort breaks at the
 -- ID999→ID1000 boundary; numeric sort is always correct.  Bump
 -- the padding (e.g. to ``:06d``) only if the breakage matters.
+--
+-- In ``public``: ONE counter for every configurator's section
+-- (engine/db_sections.py), so no two sessions share an ID -- the ID names
+-- the session's folder in the bucket.  ``nextval('session_counter')``
+-- finds it through the search_path.
 -- ------------------------------------------------------------
-CREATE SEQUENCE IF NOT EXISTS session_counter
+CREATE SEQUENCE IF NOT EXISTS public.session_counter
     INCREMENT 1
     START 1
     MINVALUE 1

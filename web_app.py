@@ -3791,10 +3791,16 @@ async def api_dh_schedule_upload(file: UploadFile = File(...)) -> dict:
 #   POST /api/db_admin/reset   body: {password, phrase}
 #       Re-validates the password AND the phrase, then TRUNCATEs
 #       the 5 data tables (chunks, dc_attempt_parameters,
-#       dc_attempts, rag_queries, sessions) in one transaction.
+#       dc_attempts, rag_queries, sessions) in one transaction --
+#       the loaded configurator's section's only (engine/db_sections.py).
 #       dc_parameter_schemas is preserved (intentionally not in
-#       RESET_TABLES) and the session_counter SEQUENCE is left
-#       alone.  Returns row counts that were deleted on success.
+#       RESET_TABLES) and the session_counter SEQUENCE, shared by
+#       every section, is left alone.  Returns row counts that were
+#       deleted on success.
+#
+#   POST /api/db_admin/create_section   body: {password}
+#       Makes the loaded configurator's section (the schema named after
+#       its folder, the v10 tables in it).  Refused when it is there.
 
 
 class _DbAuthBody(BaseModel):
@@ -3819,10 +3825,54 @@ async def api_db_admin_auth(body: _DbAuthBody) -> dict:
     return {"ok": _check_db_password(body.password)}
 
 
+@app.get("/api/db_section")
+def api_db_section() -> dict:
+    """The loaded configurator's database section (engine/db_sections.py):
+    its name, whether the database holds it (``ready``: None when there is
+    no database to ask), why the configurator has no database (``reason``,
+    "" when it has one), and whether the missing section is to be moved
+    from ``public`` rather than made (``move``).  Asks the database afresh."""
+    _require_auth()
+    from agents.shared import postgres_pool
+    from engine import db_sections
+    try:
+        name = postgres_pool.section()
+    except db_sections.SectionError:
+        name = None
+    ready = postgres_pool.section_ready(refresh=True)
+    return {"section": name, "ready": ready, "reason": postgres_pool.disabled_reason(),
+            "move": ready is False and postgres_pool.tables_still_shared()}
+
+
+class _DbSectionBody(BaseModel):
+    password: str
+
+
+@app.post("/api/db_admin/create_section")
+async def api_db_admin_create_section(body: _DbSectionBody) -> dict:
+    """Make the loaded configurator's database section: the schema named
+    after its folder and the v10 tables in it (engine/db_sections.py).  Not
+    destructive -- refused when the section is there -- but behind the
+    Database view's password like every write of the view."""
+    if not _check_db_password(body.password):
+        return {"ok": False, "error": "Password rejected."}
+    from agents.shared import postgres_pool
+    from engine import db_sections
+    try:
+        made = await run_in_threadpool(postgres_pool.create_section)
+    except (postgres_pool.PostgresDisabledError, db_sections.SectionError) as exc:
+        return {"ok": False, "error": str(exc)}
+    except Exception as exc:
+        logger.exception("[db_admin] making the database section failed")
+        return {"ok": False, "error": f"{type(exc).__name__}: {exc}"}
+    return {"ok": True, **made}
+
+
 @app.post("/api/db_admin/reset")
 async def api_db_admin_reset(body: _DbResetBody) -> dict:
-    """Destructive: TRUNCATE the 5 data tables (preserves
-    ``dc_parameter_schemas`` and the ``session_counter`` SEQUENCE).
+    """Destructive: TRUNCATE the 5 data tables of the loaded configurator's
+    section (preserves ``dc_parameter_schemas`` and the shared
+    ``session_counter`` SEQUENCE).
 
     Re-validates the password AND the literal reset phrase
     server-side so the endpoint cannot be invoked by anyone who
@@ -3842,12 +3892,9 @@ async def api_db_admin_reset(body: _DbResetBody) -> dict:
     from agents.shared import postgres_pool
 
     if not postgres_pool.is_enabled():
-        return {
-            "ok": False,
-            "error": ("Postgres pool is not enabled "
-                      "(DATABASE_URL / DATABASE_PUBLIC_URL not set)."),
-        }
+        return {"ok": False, "error": postgres_pool.disabled_reason()}
 
+    section = postgres_pool.section()
     before: dict[str, int] = {}
     try:
         with postgres_pool.connection() as conn:
@@ -3870,11 +3917,12 @@ async def api_db_admin_reset(body: _DbResetBody) -> dict:
 
     logger.warning(
         "[db_admin] DATABASE RESET via /api/db_admin/reset — "
-        "deleted rows: %s",
-        before,
+        "section %s, deleted rows: %s",
+        section, before,
     )
     return {
         "ok":            True,
+        "section":       section,
         "before_counts": before,
         "tables_wiped":  RESET_TABLES,
     }
@@ -4549,7 +4597,7 @@ def api_parameter_schema_get() -> dict:
     except _parameters.ParameterSpecError as exc:
         raise HTTPException(status_code=500, detail=str(exc))
     if not postgres_pool.is_enabled():
-        return {"database": False, "message": _NO_DATABASE_MESSAGE,
+        return {"database": False, "message": postgres_pool.disabled_reason() or _NO_DATABASE_MESSAGE,
                 "setup": _parameter_schema.shown_rows(
                     _parameter_schema.setup_rows(spec))}
     try:
@@ -4561,7 +4609,7 @@ def api_parameter_schema_get() -> dict:
             status_code=502,
             detail=f"Could not read the parameter schema: "
                    f"{type(exc).__name__}: {exc}")
-    return {"database": True, **state}
+    return {"database": True, "section": postgres_pool.section(), **state}
 
 
 @app.post("/api/parameter_schema/upload")
@@ -4574,7 +4622,8 @@ def api_parameter_schema_upload() -> dict:
     _require_auth()
     from agents.shared import postgres_pool
     if not postgres_pool.is_enabled():
-        raise HTTPException(status_code=503, detail=_NO_DATABASE_MESSAGE)
+        raise HTTPException(status_code=503,
+                            detail=postgres_pool.disabled_reason() or _NO_DATABASE_MESSAGE)
     try:
         spec = _parameters.load()
     except _parameters.ParameterSpecError as exc:

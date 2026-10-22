@@ -15,6 +15,11 @@ Usage (from the repo root):
 
 ``--dry-run`` reports what an upload would do and writes nothing.
 
+The upload goes to the configurator's SECTION of the database
+(``engine/db_sections.py``): the one ``config.py`` loads (``DC_PACK_DIR``,
+else the one loaded last, else the propeller).  A missing section is
+refused -- make it first (``apply_schema.py`` or the Database view).
+
 Reads DATABASE_PUBLIC_URL (preferred for local dev) or DATABASE_URL, which
 ``config.py`` loads from the repo-root .env.
 
@@ -35,7 +40,7 @@ sys.path.insert(0, str(REPO_ROOT))
 import psycopg  # noqa: E402
 
 import config  # noqa: E402
-from engine import parameter_schema, parameters  # noqa: E402
+from engine import db_sections, parameter_schema, parameters  # noqa: E402
 
 
 def _print_version(version: int, rows: list[dict]) -> None:
@@ -68,10 +73,17 @@ def main() -> int:
         return 2
     rows = parameter_schema.setup_rows(spec)
     host_db = url.split("@", 1)[1] if "@" in url else "<unparseable url>"
-    print(f"Using connection URL from {source}: {host_db}")
+    section = db_sections.name()
+    print(f"Using connection URL from {source}: {host_db}, section {section}")
     print(f"Setup: {len(rows)} parameters from {parameters.spec_path()}")
 
     with psycopg.connect(url) as conn:
+        if not db_sections.ready(conn, section):
+            print(f"The database has no section {section!r}: make it first "
+                  f"(apply_schema.py, or the Database view).", file=sys.stderr)
+            return 1
+        conn.execute(db_sections.search_path(section))
+        conn.commit()                 # kept by the dry run's rollback below
         if args.dry_run:
             plan = parameter_schema.plan_upload(
                 parameter_schema.read_versions(conn, parameter_schema.typed(rows)), rows)

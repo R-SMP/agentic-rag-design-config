@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F129**.
+branches (F36 is taken on a sibling branch).  Next free id: **F130**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -141,6 +141,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F126` | DONE | The tool text of propose_attempt says "16-parameter" |
 | `F127` | DONE | The parameter primer of a configurator that is not the propeller |
 | `F128` | DONE | A .scad import that starts a new configurator keeps the old one's browser preview |
+| `F129` | OPEN | The live database keeps its tables in `public`: move them into a section before the live app takes MAS-blueprint |
 
 ---
 
@@ -5005,3 +5006,22 @@ Left as they were: the old configurator's group pictures and picture
 samples in `assets/` (no file names them any more; nothing shows them), and
 the primer's picture, which the import keeps on purpose (F127).  The hose
 adapter's own copy was cleaned by hand the same day.
+
+### F129. The live database keeps its tables in `public`: move them into a section before the live app takes MAS-blueprint
+
+**Status.** OPEN — 2026-10-22.  MAS-blueprint gives each configurator its own
+section of the database (`engine/db_sections.py`: a PostgreSQL schema named
+after its folder; the app's connections use the loaded configurator's
+section, then `public`).  A configurator whose section is missing runs
+without the database -- nothing falls back to `public`.  The live database
+(production, `MT-web-deploy`) still has its seven tables in `public`: the
+day the live app runs MAS-blueprint's code, it would run the propeller with
+no database.  Before that deploy, run, against it:
+
+    py -3.13 extra_utilities/db_design/move_tables_to_section.py propeller --dry-run
+    py -3.13 extra_utilities/db_design/move_tables_to_section.py propeller
+
+(rows, indexes and the tables' own sequences move in one transaction;
+`session_counter` stays in `public`, so session IDs carry on).  The MAS
+database (streamlined) was moved the same way when sections came in.  The
+owner calls sections a momentary solution, to be revisited.

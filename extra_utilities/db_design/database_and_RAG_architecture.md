@@ -13,6 +13,18 @@ once decisions are locked).
 
 ---
 
+## 0. Sections: one per configurator (MAS-blueprint, 2026-10-22)
+
+The tables below live in a **section** per configurator: a PostgreSQL schema
+named after its folder (`propeller`, `vacuum_hose_adapter`), made from
+`database_PostgreSQL_schema_v10.sql`.  The app's connections have
+`search_path` = the loaded configurator's section, then `public`, which holds
+pgvector and the one `session_counter` every section shares.  A missing
+section means no database for that configurator; nothing falls back to
+`public`.  `engine/db_sections.py`, `agents/shared/postgres_pool.py`, the
+README's "Database sections" and TODO F129 (the live database, still in
+`public`).
+
 ## 1. Database schema (v2)
 
 Five tables; see `database_PostgreSQL_schema_v2.sql` *(removed 2026-10-10; in git history)* for the

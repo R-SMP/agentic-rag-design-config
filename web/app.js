@@ -2635,6 +2635,12 @@ function psStateText(d) {
     "upload; the upload adds version " + d.next_upload.version + ".";
 }
 
+// The loaded configurator's database section (engine/db_sections.py),
+// said before the schema's state: "" when there is no database at all.
+function psSectionText(d) {
+  return d.database && d.section ? "Database section: " + d.section + ".  " : "";
+}
+
 function psStateKind(d) {
   if (!d.database) return "";
   return d.state === "current" ? "ok" : (d.state === "missing" ? "err" : "");
@@ -2647,7 +2653,7 @@ async function loadParameterSchema() {
   st.className = "ps-state";
   try {
     const d = await psFetch("/api/parameter_schema");
-    st.textContent = psStateText(d);
+    st.textContent = psSectionText(d) + psStateText(d);
     st.className = "ps-state " + psStateKind(d);
     if (btn) btn.disabled = !d.database;
   } catch (e) {
@@ -7608,6 +7614,15 @@ const dbResetSendBtn = $("db-reset-send");
 const dbUnlockedStat = $("db-unlocked-status");
 const dbRelockBtn    = $("db-relock");
 
+// State 2s — this configurator's database section (GET /api/db_section,
+// POST /api/db_admin/create_section): shown on unlock with its state;
+// Create appears only when the section is missing.
+const dbSectionCard   = $("db-section-card");
+const dbSectionState  = $("db-section-state");
+const dbSectionCreate = $("db-section-create");
+const dbSectionStat   = $("db-section-status");
+let dbSectionName = null;
+
 // State 2c — clear previous_sessions folder (blue card, sits beside
 // the red reset card inside .db-action-row).  Same dbPassword unlock
 // as the red card.
@@ -7635,9 +7650,11 @@ function resetDbView() {
   _dbSetStatus(dbLockedStat,   "");
   _dbSetStatus(dbUnlockedStat, "");
   _dbSetStatus(dbClearStat,    "");
+  _dbSetStatus(dbSectionStat,  "");
   dbLocked.hidden   = false;
   dbUnlocked.hidden = true;
   if (dbClearCard) dbClearCard.hidden = true;
+  if (dbSectionCard) dbSectionCard.hidden = true;
   // Hide + clear the ignore-list card too (re-revealed on next unlock).
   const ignoreCard = $("db-ignore-card");
   if (ignoreCard) ignoreCard.hidden = true;
@@ -7668,6 +7685,8 @@ async function dbUnlock() {
       dbUnlocked.hidden = false;
       // Reveal the blue clear_previous_sessions card alongside the red one.
       if (dbClearCard) dbClearCard.hidden = false;
+      if (dbSectionCard) dbSectionCard.hidden = false;
+      loadDbSection();
       _dbSetStatus(dbUnlockedStat, "");
       _dbSetStatus(dbClearStat,    "");
       // Reveal the session-ignore-list card too and load its current state.
@@ -7688,6 +7707,65 @@ async function dbUnlock() {
 }
 
 
+async function loadDbSection() {
+  if (!dbSectionState) return;
+  dbSectionState.textContent = "Checking…";
+  if (dbSectionCreate) dbSectionCreate.hidden = true;
+  try {
+    const res = await fetch("/api/db_section");
+    if (res.status === 401) { showGate(); return; }
+    const d = await res.json();
+    dbSectionName = d.section;
+    const code = $("db-reset-section");
+    if (code) code.textContent = d.section || "none";
+    if (d.ready === true) {
+      dbSectionState.textContent = "Section " + d.section + ": ready.";
+    } else if (d.ready === false) {
+      dbSectionState.textContent = d.reason ||
+        ("The database has no section " + d.section + " yet.");
+      // A database made before sections: its tables are moved, not made.
+      if (dbSectionCreate && d.section && !d.move) dbSectionCreate.hidden = false;
+    } else {
+      dbSectionState.textContent = d.reason ||
+        "Could not ask the database about the section " + d.section + ".";
+    }
+  } catch (e) {
+    dbSectionState.textContent = "Could not read the database section: " + e.message;
+  }
+}
+
+
+async function dbSectionMake() {
+  if (!dbSectionName) return;
+  if (!window.confirm("Create the database section " + dbSectionName +
+        " (its tables, empty) for this configurator?")) return;
+  _dbSetStatus(dbSectionStat, "Creating…");
+  if (dbSectionCreate) dbSectionCreate.disabled = true;
+  try {
+    const res = await fetch("/api/db_admin/create_section", {
+      method:  "POST",
+      headers: { "Content-Type": "application/json" },
+      body:    JSON.stringify({ password: dbPassword }),
+    });
+    const body = await res.json().catch(() => ({}));
+    if (body.ok) {
+      _dbSetStatus(dbSectionStat, "Created the section " + body.section + " (" +
+        body.tables.length + " tables).  Upload the parameter schema next " +
+        "(Workflow Settings).", "success");
+      loadParameterSchema();
+    } else {
+      _dbSetStatus(dbSectionStat, body.error || "Creating the section failed.", "error");
+    }
+  } catch (e) {
+    _dbSetStatus(dbSectionStat, "Network error contacting the server.", "error");
+  } finally {
+    if (dbSectionCreate) dbSectionCreate.disabled = false;
+    loadDbSection();
+  }
+}
+if (dbSectionCreate) dbSectionCreate.addEventListener("click", dbSectionMake);
+
+
 async function dbResetSend() {
   if (!dbResetPhrase) return;
   const phrase = dbResetPhrase.value;
@@ -7699,8 +7777,8 @@ async function dbResetSend() {
   }
   if (!window.confirm(
         "This will TRUNCATE every data table except " +
-        "dc_parameter_schemas.  This action is IRREVERSIBLE.  " +
-        "Continue?")) {
+        "dc_parameter_schemas in the section " + (dbSectionName || "?") +
+        ".  This action is IRREVERSIBLE.  Continue?")) {
     _dbSetStatus(dbUnlockedStat, "Cancelled.");
     return;
   }
@@ -7718,7 +7796,7 @@ async function dbResetSend() {
         .map(([k, v]) => `${k}=${v}`)
         .join(", ");
       _dbSetStatus(dbUnlockedStat,
-        "Database reset successfully.  Deleted: " + counts +
+        "Section " + (body.section || "?") + " reset.  Deleted: " + counts +
         ".  Re-locking in 4 s…",
         "success");
       setTimeout(resetDbView, 4000);
