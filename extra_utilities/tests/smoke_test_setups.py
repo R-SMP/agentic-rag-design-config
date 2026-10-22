@@ -259,7 +259,8 @@ def _child_env(first: Path, active: Path) -> dict:
     env.update(PYTHONIOENCODING="utf-8", DATABASE_URL="", DATABASE_PUBLIC_URL="", INVITE_CODE="",
                OPENAI_API_KEY=env.get("OPENAI_API_KEY") or "sk-dummy", DC_PACK_DIR=str(first),
                ACTIVE_SETUP_FILE=str(active))
-    for v in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME"):
+    for v in ("R2_ACCOUNT_ID", "R2_ACCESS_KEY_ID", "R2_SECRET_ACCESS_KEY", "R2_BUCKET_NAME",
+              "S3_ENDPOINT_URL", "S3_BUCKET", "S3_ACCESS_KEY_ID", "S3_SECRET_ACCESS_KEY"):
         env.pop(v, None)
     return env
 

@@ -259,7 +259,7 @@ def _rollback(session_id: str) -> None:
         client = r2_uploader._client()               # noqa: SLF001
         if client is None:
             return
-        bucket = r2_uploader._env("R2_BUCKET_NAME")  # noqa: SLF001
+        bucket = r2_uploader.bucket_name()
         for sub in ("user_inputs/", "attempts/"):
             prefix = f"{r2_uploader._key_prefix()}{session_id}/{sub}"  # noqa: SLF001
             keys = []
@@ -297,7 +297,7 @@ def purge_r2(session_id: str) -> int:
     client = r2_uploader._client()                    # noqa: SLF001
     if client is None:
         return 0
-    bucket = r2_uploader._env("R2_BUCKET_NAME")       # noqa: SLF001
+    bucket = r2_uploader.bucket_name()
     prefix = f"{r2_uploader._key_prefix()}{session_id}/"  # noqa: SLF001
     keys = []
     for page in client.get_paginator("list_objects_v2").paginate(

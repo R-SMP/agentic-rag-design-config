@@ -116,7 +116,7 @@ def _r2_client() -> tuple[Optional[str], Any]:
     client = r2_uploader._client()  # noqa: SLF001 — shared single source
     if client is None:
         return None, None
-    return r2_uploader._env("R2_BUCKET_NAME"), client  # noqa: SLF001
+    return r2_uploader.bucket_name(), client
 
 
 def _full_key(session_rooted_key: str) -> str:

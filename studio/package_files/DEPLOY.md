@@ -80,9 +80,14 @@ Volumes → New Volume**, mounted at `/app/previous_sessions`.
 
 4. In the app: **Workflow Settings › Database › Upload parameter schema**.
 5. Search over past designs with their pictures needs `VOYAGE_API_KEY`;
-   the pictures and models saved with a session go to Cloudflare R2:
-   `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`,
-   `R2_BUCKET_NAME`.
+   the pictures and models saved with a session go to a bucket. Either a
+   Railway bucket (in the project: Create › Bucket): in the service's
+   Variables, add `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`,
+   `S3_SECRET_ACCESS_KEY` and `S3_REGION`, each with Add Reference to the
+   bucket's `ENDPOINT`, `BUCKET`, `ACCESS_KEY_ID`, `SECRET_ACCESS_KEY` and
+   `REGION`; or Cloudflare R2: `R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`,
+   `R2_SECRET_ACCESS_KEY`, `R2_BUCKET_NAME`.  When both are set the
+   Railway bucket is used.
 
 ### Reading text in pictures (OCR)
 
