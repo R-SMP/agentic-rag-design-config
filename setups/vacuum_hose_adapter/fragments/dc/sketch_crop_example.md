@@ -1,0 +1,2 @@
+      - side view (the whole adapter): [0.0, 0.0, 1.0, 0.6]
+      - end details (both connectors): [0.0, 0.6, 1.0, 1.0]

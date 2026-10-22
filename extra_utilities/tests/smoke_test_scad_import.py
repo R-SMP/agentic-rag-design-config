@@ -44,8 +44,9 @@ tool -- with an Undo.  Five groups of checks:
    refusals): Validate warns while one is left, its Open showing them.
 5. THE REAL MODEL -- when the vacuum hose adapter (``HOSE_ADAPTER_DIR``,
    or ``DCs/vacuum-hose-adapter-openscad-main`` beside a folder above the
-   repo) is on this computer, else SKIP; it stays outside the repository
-   (its author asks that the script not be hosted).  Its 194 settings in
+   repo) is on this computer, else SKIP (the download is not in the
+   repository; ``setups/vacuum_hose_adapter`` is the setup made from it).
+   Its 194 settings in
    23 tabs read as counted by hand; imported as a new configurator, the
    setup passes the engine's check and Validate's A and C; with OpenSCAD
    (``OPENSCAD_PATH`` or the PATH), the geometry tool builds the model of

@@ -247,7 +247,7 @@ OPENSCAD_MARK = "# ---- this setup's tools: OpenSCAD ----"
 OPENSCAD_END = "# ---- end of this setup's tools: OpenSCAD ----"
 OPENSCAD_BLOCK = [
     OPENSCAD_MARK,
-    "# A tool of this setup runs OpenSCAD (backend: openscad).  Debian's openscad",
+    "# A setup's tool runs OpenSCAD (backend: openscad).  Debian's openscad",
     "# is 2021.01, which cannot read newer models: this is a pinned development",
     "# snapshot, checked against the sha256 files.openscad.org publishes and",
     "# unpacked (a container has no FUSE).  Its --version fails the build when the",

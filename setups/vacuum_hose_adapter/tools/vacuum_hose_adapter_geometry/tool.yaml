@@ -1,0 +1,34 @@
+# Vacuum hose adapter geometry: a geometry tool made by the Studio from the OpenSCAD model
+# vacuum-hose-adapter.scad (MAS-blueprint P6f), with a copy of the model of its own.  It
+# builds the model from the parameters for the Download buttons (and a
+# generator's geometry tool setting); never for an agent.
+name: vacuum_hose_adapter_geometry
+display_name: Vacuum hose adapter geometry
+kind: geometry
+# The model the engine runs (engine/backends/openscad.py): each parameter
+# goes to the model's setting of the same name; parts puts several
+# parameters into one setting; every other setting keeps the model's own value.
+backend: openscad
+model: vacuum-hose-adapter.scad
+parts:
+  End1_Diameter: [End1_Diameter_mm, 0]
+  End1_Length: [End1_Length_mm, 0]
+  Transition_Offset: [Transition_Offset_x, Transition_Offset_y]
+  End2_Diameter: [End2_Diameter_mm, 0]
+  End2_Length: [End2_Length_mm, 0]
+  End2_Nozzle_Size: [End2_Nozzle_Size_x, End2_Nozzle_Size_y, End2_Nozzle_Size_z]
+  End2_Nozzle_Offset: [End2_Nozzle_Offset_x, End2_Nozzle_Offset_y]
+  End3_Diameter: [End3_Diameter_mm, 0]
+  End3_Length: [End3_Length_mm, 0]
+  End3_Nozzle_Size: [End3_Nozzle_Size_x, End3_Nozzle_Size_y, End3_Nozzle_Size_z]
+  End3_Nozzle_Offset: [End3_Nozzle_Offset_x, End3_Nozzle_Offset_y]
+# The model's detail: its own for the Download buttons, coarser for the
+# agents' runs (quicker).
+detail:
+  agent: {fa: 6, fs: 1, fn: 0}
+  download: {fa: 3, fs: 0.1, fn: 0}
+
+description: Builds the Vacuum hose adapter model from its parameters with OpenSCAD.
+
+outputs:
+  model_format: obj

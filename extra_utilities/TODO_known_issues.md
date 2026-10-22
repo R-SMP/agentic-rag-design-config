@@ -4914,7 +4914,17 @@ tools until then.
 
 ### F125. Run the P8 acceptance (the hose adapter configurator) on Railway
 
-**Status.** OPEN — owner decision (2026-10-21): "for now, let's try here with
+**Status.** OPEN — 2026-10-22: the hose adapter is committed in
+`setups/vacuum_hose_adapter/` and the repository's image installs the pinned
+OpenSCAD for it (the `Dockerfile`'s block is `studio/package.py`
+`merge_apt`'s for every setup of `setups/`; `smoke_test_setups.py` keeps them
+in step).  Owner: "the deploy is PRIVATE, the website is protected by a
+code. the git repo is private as well. it's safe to use".  Left: one session
+with it on the streamlined deploy (`MAS-studio-deploy`), no database -- its
+`pack.yaml` has no `database: true`; a database section per configurator
+comes next.
+
+Before: owner decision (2026-10-21): "for now, let's try here with
 renders installed; later on, we'll try to run this on Railway".  2026-10-21:
 F123 done; the model's author is asked first (the owner sends the request:
 the script's own header says the author does not approve of it being hosted
@@ -4927,9 +4937,9 @@ on a local computer (`extra_utilities/docs/MAS_blueprint_P8_acceptance.md`).
 Railway next: it needs F123 first (the image's OpenSCAD cannot read the
 model), and a service whose database is not the live one -- none, or a
 database of its own: the hose setup has choice parameters, which need
-schema v10 (`extra_utilities/db_design/migrations/migrate_v9_to_v10.sql`).  The setup stays outside the
-repository (its model's author asks that the script not be hosted), so the
-deploy uses a private repository made from the package.
+schema v10 (`extra_utilities/db_design/migrations/migrate_v9_to_v10.sql`).  The setup stayed outside the
+repository (its model's author asks that the script not be hosted) until the
+owner's decision above.
 
 ### F126. The tool text of propose_attempt says "16-parameter"
 

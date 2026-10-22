@@ -22,12 +22,13 @@ come from the engine's renderer.  Five groups of checks:
    the last as "this computer lacks the program OpenSCAD" -- and a
    downloaded package's image installs the pinned OpenSCAD (its libraries
    on the apt-get line, the snapshot checked against its sha256), once,
-   and goes back to the engine's Dockerfile without the tool.
+   and goes back to the engine's own Dockerfile without the tool (the
+   repository's has it for the hose adapter, setups/vacuum_hose_adapter).
 5. THE REAL ONE -- when OpenSCAD (``OPENSCAD_PATH`` or the PATH) and the
    vacuum hose adapter (``HOSE_ADAPTER_DIR``, or ``DCs/vacuum-hose-adapter-
    openscad-main`` beside a folder above the repo) are on this computer,
-   else SKIP.  The adapter stays outside the repository (its author asks
-   that the script not be hosted).  The engine's run of a set of settings
+   else SKIP.  The model's download, with its samples, is not in the
+   repository (the setup carries only its script).  The engine's run of a set of settings
    equals OpenSCAD's own run of them (``-D``), byte for byte after the
    conversion; the generator and the geometry tool of a setup made around
    the model build it; the 2023 sample configurations
@@ -404,7 +405,8 @@ def check_stand_in(tmp: Path) -> str:
           f"[STAND-IN] Validate reads a missing OpenSCAD as: {validate._lacks(O.NOT_FOUND)!r}")
     y = tmp / "tool.yaml"
     y.write_text(yaml.safe_dump(manifests("adapter.scad")["hose_adapter"]), encoding="utf-8")
-    dock = (ROOT / "Dockerfile").read_text(encoding="utf-8")
+    dock = package.merge_apt((ROOT / "Dockerfile").read_text(encoding="utf-8"), {})[0]   # the engine's own
+    check(package.OPENSCAD_MARK not in dock, "[STAND-IN] the engine's own Dockerfile keeps the OpenSCAD block")
     merged, notes = package.merge_apt(dock, {"tools/hose_adapter/tool.yaml": y})
     lines = merged.splitlines()
     apt_end = next(i for i, ln in enumerate(lines) if "rm -rf /var/lib/apt/lists/*" in ln)

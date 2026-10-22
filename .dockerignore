@@ -64,9 +64,6 @@ prompts_backup_*/
 # --online, studio/HOSTING.md).  Its shared setup, workspace/, is never
 # baked in.
 workspace/
-# A configurator kept out of the repository and the images: the vacuum hose
-# adapter's model asks not to be hosted or uploaded (setups/README.md).
-setups/vacuum_hose_adapter/
 
 # --- Containerisation metadata ------------------------------------
 # No need to recursively include the Dockerfile / compose file

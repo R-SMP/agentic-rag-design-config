@@ -8,8 +8,11 @@ same way (``engine/setups.py``, ``setups/README.md``).
    relative, as it is when absolute.
 2. THE REPOSITORY -- the propeller is committed in ``setups/propeller``, no
    ``dc_pack/`` is left; ``config.py`` and the Studio run it by default, and
-   both take ``DC_PACK_DIR`` alike; the vacuum hose adapter is left out of
-   git and of the images (its model's author asks that it not be uploaded).
+   both take ``DC_PACK_DIR`` alike; the vacuum hose adapter is committed
+   too (TODO F125) and no ignore file leaves a configurator out; the image
+   installs what every setup's tools need -- the ``Dockerfile`` is the
+   package builder's merge of all of them (``studio/package.py``
+   ``merge_apt``), for the hose adapter the pinned OpenSCAD.
 3. REMEMBERED AND SETTINGS -- the configurator loaded last is remembered
    (``ACTIVE_SETUP_FILE`` in the tests) and started with, while it is a
    folder of ``setups/`` -- by the engine and the local Studio, never by a
@@ -21,8 +24,7 @@ same way (``engine/setups.py``, ``setups/README.md``).
 4. SWITCH -- loading another configurator in place (``engine/switch.py``)
    equals a fresh start with it: a process that starts with the propeller
    and loads a stand-in configurator (other words, one more parameter, no
-   database), the vacuum hose adapter when this computer has it, and the
-   propeller again, has after each load what a process started with that
+   database), the vacuum hose adapter, and the propeller again, has after each load what a process started with that
    one has -- every agent's prompt and tools and primer in topologies 3, 5
    and 7, the texts modules keep (``on_load``), the database rule, the
    Workflow Settings files, the archive's record -- and the configurator's
@@ -124,13 +126,27 @@ def check_repo() -> None:
     check("setups/propeller/pack.yaml" in tracked and "setups/README.md" in tracked
           and not any(t.startswith("dc_pack/") for t in tracked),
           "[REPO] the propeller is not committed in setups/propeller, or dc_pack/ is left")
-    check(not any(t.startswith("setups/vacuum_hose_adapter/") for t in tracked),
-          "[REPO] the vacuum hose adapter is committed")
-    ignored = subprocess.run(["git", "check-ignore", "-q", "setups/vacuum_hose_adapter/pack.yaml"],
-                             cwd=str(ROOT)).returncode == 0
-    check(ignored, "[REPO] git does not leave out setups/vacuum_hose_adapter/")
-    docker = (ROOT / ".dockerignore").read_text(encoding="utf-8").splitlines()
-    check("setups/vacuum_hose_adapter/" in docker, "[REPO] the images do not leave out the vacuum hose adapter")
+    check("setups/vacuum_hose_adapter/pack.yaml" in tracked
+          and "setups/vacuum_hose_adapter/tools/vacuum_hose_adapter/vacuum-hose-adapter.scad" in tracked,
+          "[REPO] the vacuum hose adapter is not committed")
+    from studio import package as K
+    setups = [s for s in sorted((ROOT / "setups").iterdir()) if (s / "pack.yaml").is_file()]
+    ignored = [s.name for s in setups
+               if subprocess.run(["git", "check-ignore", "-q", f"setups/{s.name}/pack.yaml"],
+                                 cwd=str(ROOT)).returncode == 0]
+    check(not ignored, f"[REPO] git leaves out {ignored}")
+    docker = K.IgnoreRules((ROOT / ".dockerignore").read_text(encoding="utf-8"))
+    out = [s.name for s in setups if docker.ignored(f"setups/{s.name}", True)]
+    check(not out, f"[REPO] the images leave out {out}")
+    # the image: what every setup's tools need, as a package of each would have it
+    tools = {}
+    for s in setups:
+        tools.update(K.setup_files(s))
+    dock = (ROOT / "Dockerfile").read_bytes().decode("utf-8")
+    merged, _notes = K.merge_apt(dock, tools)
+    check(merged == dock, "[IMAGE] the Dockerfile lacks what a setup's tools need (studio/package.py merge_apt)")
+    check(dock.splitlines().count(K.OPENSCAD_MARK) == 1 and "ENV OPENSCAD_PATH=/opt/openscad/AppRun" in dock,
+          "[IMAGE] the image does not install the pinned OpenSCAD the hose adapter runs")
     check(not (ROOT / "dc_pack").exists(), "[REPO] a dc_pack/ folder is left")
     want = str(ROOT / "setups" / "propeller")
     got = _default_in_child(None)
@@ -195,9 +211,8 @@ def check_remembered() -> None:
             (b / "pack.yaml").write_text("pack_format: 1\n" + text, encoding="utf-8")
             check(pack.uses_database(b) is want, f"[DATABASE] {text!r} gives {pack.uses_database(b)}")
         check(pack.uses_database(ROOT / "setups" / "propeller"), "[DATABASE] the propeller may not use it")
-        hose = ROOT / "setups" / "vacuum_hose_adapter"
-        if hose.is_dir():
-            check(not pack.uses_database(hose), "[DATABASE] the vacuum hose adapter may use it")
+        check(not pack.uses_database(ROOT / "setups" / "vacuum_hose_adapter"),
+              "[DATABASE] the vacuum hose adapter may use it")
         from studio import package as K
         from studio import prepare as PR
         for rel in ("workflow_settings/active_setup.json", "workflow_settings/setups/propeller/tool_settings.json"):
@@ -647,7 +662,7 @@ def check_switch() -> None:
         prop = ROOT / "setups" / "propeller"
         turbine = stand_in(tmp)
         hose = ROOT / "setups" / "vacuum_hose_adapter"
-        others = [turbine] + ([hose] if (hose / "pack.yaml").is_file() else [])
+        others = [turbine, hose]
         active = tmp / "active.json"
         for mode, tag in (("--engine-child", "[SWITCH]"), ("--web-child", "[SWITCH PAGE]")):
             seq = [prop] + others + [prop]
@@ -706,11 +721,11 @@ def main() -> int:
         for f in FAILURES:
             print("  " + f)
         return 1
-    hose = "the vacuum hose adapter, " if (ROOT / "setups" / "vacuum_hose_adapter" / "pack.yaml").is_file() else ""
     print("PASS - every configurator is a folder of setups/, the propeller the default for the engine and "
-          "the Studio alike, DC_PACK_DIR taken from the root, and the vacuum hose adapter left out of git "
-          "and the images; the one loaded last is started with, each keeps its own Workflow Settings, only "
-          "database: true uses the database; loading the stand-in, " + hose + "then the propeller in place "
+          "the Studio alike, DC_PACK_DIR taken from the root, the vacuum hose adapter committed and in the "
+          "image with the OpenSCAD its tools need; the one loaded last is started with, each keeps its own "
+          "Workflow Settings, only database: true uses the database; loading the stand-in, the vacuum hose "
+          "adapter, then the propeller in place "
           "equals a fresh start with each (prompts, tools and primer in topologies 3/5/7, module texts, "
           "pages); the menu loads, refuses and remembers as it should.")
     return 0

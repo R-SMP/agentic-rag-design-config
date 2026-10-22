@@ -1,0 +1,59 @@
+# Vacuum hose adapter: a generator made by the Studio from the OpenSCAD model
+# vacuum-hose-adapter.scad (MAS-blueprint P6f).  It builds the model from an attempt's
+# parameters.json, then the engine's renderer makes its pictures.
+name: vacuum_hose_adapter
+display_name: Vacuum hose adapter
+kind: generator
+roles: [tool_runner]
+# The model the engine runs (engine/backends/openscad.py): each parameter
+# goes to the model's setting of the same name; parts puts several
+# parameters into one setting; every other setting keeps the model's own value.
+backend: openscad
+model: vacuum-hose-adapter.scad
+parts:
+  End1_Diameter: [End1_Diameter_mm, 0]
+  End1_Length: [End1_Length_mm, 0]
+  Transition_Offset: [Transition_Offset_x, Transition_Offset_y]
+  End2_Diameter: [End2_Diameter_mm, 0]
+  End2_Length: [End2_Length_mm, 0]
+  End2_Nozzle_Size: [End2_Nozzle_Size_x, End2_Nozzle_Size_y, End2_Nozzle_Size_z]
+  End2_Nozzle_Offset: [End2_Nozzle_Offset_x, End2_Nozzle_Offset_y]
+  End3_Diameter: [End3_Diameter_mm, 0]
+  End3_Length: [End3_Length_mm, 0]
+  End3_Nozzle_Size: [End3_Nozzle_Size_x, End3_Nozzle_Size_y, End3_Nozzle_Size_z]
+  End3_Nozzle_Offset: [End3_Nozzle_Offset_x, End3_Nozzle_Offset_y]
+# The model's detail: its own for the Download buttons, coarser for the
+# agents' runs (quicker).
+detail:
+  agent: {fa: 6, fs: 1, fn: 0}
+  download: {fa: 3, fs: 0.1, fn: 0}
+
+description: |-
+  Build the Vacuum hose adapter model from an attempt's own ``parameters.json``
+  with OpenSCAD, save it to that attempt's ``vacuum_hose_adapter.obj``, THEN render it
+  (three views: isometric, top, side) and check it, all in one call.
+  If the folder already holds ``vacuum_hose_adapter.obj``, that model is reused.
+  Returns the model's path and size and anything OpenSCAD said (its
+  ECHO, WARNING and ERROR lines), then the render report; if OpenSCAD
+  fails, an ``Error:`` message and no pictures.
+args:
+  parameters_path: |-
+    Absolute path of the attempt's ``parameters.json``: the model and its
+    pictures are written into that file's own attempt folder.
+
+outputs:
+  model_file: vacuum_hose_adapter.obj
+  model_format: obj
+  up_axis: z
+  images:
+    - {view: isometric, file: render_isometric.png, order: 10, default_enabled: true, compression: 3d_render, label: 'Render view: isometric'}
+    - {view: top, file: render_top.png, order: 20, default_enabled: true, compression: 3d_render, label: 'Render view: top'}
+    - {view: side, file: render_side.png, order: 40, default_enabled: false, compression: 3d_render, label: 'Render view: side'}
+
+# May the save step use this tool to add a missing picture to an attempt it
+# archives?
+fill_on_save: true
+
+# Its place in the tool runner's numbered tool list (its entry is
+# prompts/tool_list_entry.md).
+list_order: 20

@@ -1,0 +1,5 @@
+- "snug fit"                  → a small positive taper on that end
+- "long reach"                → that end's length toward the upper end
+- "gentle bend"               → a larger Transition_Bend_Radius
+- "won't get sucked in"       → a stop ring on that end (StopThickness / StopLength above 0)
+- "flat mount on the machine" → Transition_Style = flat

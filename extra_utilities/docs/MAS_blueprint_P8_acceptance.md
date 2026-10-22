@@ -11,6 +11,9 @@ developer's computer with no database; Railway later (TODO F125).
 
 The setup and the model stay outside this repository (the model's author asks
 that the script not be hosted): `C:\Users\vince\MT Coding\DCs\hose_dc\`.
+*(2026-10-22: the setup is now committed in `setups/vacuum_hose_adapter/`, by
+the owner's decision -- a private repository, a deploy behind an access code --
+and the repository's image installs OpenSCAD for it; TODO F125.)*
 
 ## 1. Built through the Studio
 

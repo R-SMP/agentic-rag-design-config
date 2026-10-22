@@ -1,0 +1,65 @@
+# The design-configurator pack's own settings.  Edited by the Studio; the
+# engine reads this file and never writes it.
+
+# The setup's format (engine/pack.py, PACK_FORMAT): an engine reads setups
+# up to its own format and refuses a newer one.
+pack_format: 1
+
+# Who sees the parameter list, per agent and per team size (the 3-, 5- and
+# 7-agent teams; a cell exists only where the agent does):
+#
+#   full   the list in the agent's system prompt, ranges included
+#   names  the list in the prompt with every [min; max] range removed
+#   tool   not in the prompt; the agent can call dc_params_list
+#   none   neither
+#
+# This is the setup's DEFAULT.  Workflow Settings > "Parameter list access"
+# changes cells for the next session (workflow_settings/setups/vacuum_hose_adapter/).
+# The Database Handler cannot take "tool".  See engine/parameter_access.py.
+parameter_access:
+  receptionist:         {7: tool,  5: tool,  3: tool}
+  orchestrator:         {7: tool}
+  planner:              {7: tool,  5: tool,  3: tool}
+  user_input_inspector: {7: none,  5: none}
+  dc_input_creator:     {7: full,  5: full}
+  dc_input_inspector:   {7: full}
+  tool_caller:          {7: full,  5: full}
+  dc_output_inspector:  {7: names, 5: names}
+  design_engineer:      {3: full}
+  requirements_analyst: {3: names}
+  database_handler:     {7: none,  5: none,  3: none}
+
+# The web app's Download buttons: which geometry tool (setups/vacuum_hose_adapter/tools/, kind:
+# geometry) rebuilds the model a user downloads -- from the attempt's
+# parameters.json, or from the Parameters page's sliders -- or "saved", the
+# model file the run built.  If the tool fails, the saved file is downloaded.
+# This is the DEFAULT; Workflow Settings > Tools > Downloads changes it for
+# the next session (workflow_settings/setups/vacuum_hose_adapter/tool_settings.json,
+# under "downloads").
+downloads:
+  geometry_tool: vacuum_hose_adapter_geometry
+
+# The render-compression panel's sample pictures (Workflow Settings > Render
+# compression): the image tools are run on these parameter sets -- here one,
+# the model's defaults -- and one picture per compression kind is kept per set
+# (engine/image_run.py).  They are pictures, not designs: a value may lie
+# outside its parameter's range.
+render_samples:
+  default: {End1_Wall_Thickness: 2, End1_Style: hose, End1_Specialised_Style: disabled, End1_Measurement: outer, End1_Diameter_mm: 100, End1_Length_mm: 40, End1_Rotation: 0, End1_Taper: 1, End1_Extension_Length: 0, End1_Extension_Exit_Diameter: 0, End1_Extension_GridSize: 0, End1_Extension_GridWallThickness: 0, End1_Extension_Text_Size: 0, End1_Extension_SlipRing: disabled, End1_Extension_SlipRing_Width: 5, End1_Extension_SlipRing_Support: disabled, End1_Extension_SlipRing_Support_Size: 0.2, End1_Extension_SlipRing_Support_Spacing: 5, End1_Extension_StopThickness: 0, End1_Extension_StopLength: 0, End1_Extension_Stop_Symmetrical: false, End1_Barbs_Count: 0, End1_Barbs_Thickness: 0, End1_Barbs_Symmetrical: false, End1_Hose_EndCap_Diameter: 0, End1_Hose_EndCap_Thickness: 0, End1_Hose_EndCap_GridSize: 0, End1_Hose_EndCap_GridWallThickness: 0, End1_Hose_Enable_Threads: disabled, End1_Hose_Threads_Pitch: 0, End1_Hose_Threads_Tooth_Angle: 30, End1_Hose_Threads_Tooth_Height: 0, End1_Flange_Width: 20, End1_Flange_Thickness: 5, End1_Flange_Screw_Position: 0, End1_Flange_Screw_Border: 5, End1_Flange_Screw_Count: 4, End1_Flange_Screw_Diameter: 5, End1_Magnets_Count: 8, End1_Magnet_Diameter: 10.5, End1_Magnet_Thickness: 2.5, End1_Magnet_Border: 2, End1_Magnet_ZOffset: 0, End1_Magnet_Flange_Thickness: 6, End1_Magnet_Flange_Roundover: true, End1_Ring: 'no', End1_Magnet_Twist_Lock_Size: '0', Transition_Style: bend+taper, Transition_Length: 0, Transition_Angle: 0, Transition_Bend_Radius: 0, Transition_Bend_Pipe_Diameter: larger, Transition_Custom_Bend_Pipe_Diameter: 40, Transition_Offset_x: 0, Transition_Offset_y: 0, Transition_End2_Count: 1, Transition_HullLength: 0, Transition_HullCenter: disabled, Transition_HullCenterLength: 0, Transition_HullyOffset: 0, Transition_HullCenterHeight: 0, Transition_End2_Angle: 0, Transition_Base_Type: none, Transition_Base_Thickness: 0, Transition_Base_Width: 0, Transition_Base_Length: 0, Transition_Base_Angle: 0, End2_Wall_Thickness: 2, End2_Style: hose, End2_Specialised_Style: disabled, End2_Measurement: outer, End2_Diameter_mm: 60, End2_Length_mm: 40, End2_Rotation: 0, End2_Taper: 1, End2_Extension_Length: 0, End2_Extension_Exit_Diameter: 0, End2_Extension_GridSize: 0, End2_Extension_GridWallThickness: 0, End2_Extension_Text_Size: 0, End2_Extension_SlipRing: disabled, End2_Extension_SlipRing_Width: 5, End2_Extension_SlipRing_Support: disabled, End2_Extension_SlipRing_Support_Size: 0.2, End2_Extension_SlipRing_Support_Spacing: 5, End2_Extension_StopThickness: 0, End2_Extension_StopLength: 0, End2_Extension_Stop_Symmetrical: false, End2_Barbs_Count: 0, End2_Barbs_Thickness: 0, End2_Barbs_Symmetrical: false, End2_Hose_EndCap_Thickness: 0, End2_Hose_EndCap_Diameter: 0, End2_Hose_EndCap_GridSize: 0, End2_Hose_EndCap_GridWallThickness: 0, End2_Hose_Enable_Threads: disabled, End2_Hose_Threads_Pitch: 0, End2_Hose_Threads_Tooth_Angle: 30, End2_Hose_Threads_Tooth_Height: 0, End2_Flange_Width: 20, End2_Flange_Thickness: 5, End2_Flange_Screw_Position: 0, End2_Flange_Screw_Border: 5, End2_Flange_Screw_Count: 4, End2_Flange_Screw_Diameter: 5, End2_Magnets_Count: 6, End2_Magnet_Diameter: 12, End2_Magnet_Thickness: 3, End2_Magnet_Border: 2, End2_Magnet_ZOffset: 0, End2_Magnet_Flange_Thickness: 10, End2_Magnet_Flange_Roundover: true, End2_Ring: 'no', End2_Magnet_Twist_Lock_Size: '0', End2_Nozzle_Shape: square, End2_Nozzle_Size_x: 10, End2_Nozzle_Size_y: 5, End2_Nozzle_Size_z: 10, End2_Nozzle_Tip_Wall_Thickness: 0, End2_Nozzle_Radius: 0, End2_Nozzle_Offset_x: 0, End2_Nozzle_Offset_y: 0, End2_Nozzle_Chamfer_Percentage: 0, End2_Nozzle_Chamfer_Angle: 0, End3_Wall_Thickness: 2, End3_Style: hose, End3_Specialised_Style: disabled, End3_Measurement: outer, End3_Diameter_mm: 40, End3_Length_mm: 40, End3_Rotation: 0, End3_Taper: 0, End3_Extension_Length: 0, End3_Extension_Exit_Diameter: 0, End3_Extension_GridSize: 0, End3_Extension_GridWallThickness: 0, End3_Extension_Text_Size: 0, End3_Extension_SlipRing: disabled, End3_Extension_SlipRing_Width: 5, End3_Extension_SlipRing_Support: disabled, End3_Extension_SlipRing_Support_Size: 0.2, End3_Extension_SlipRing_Support_Spacing: 5, End3_Extension_StopThickness: 0, End3_Extension_StopLength: 0, End3_Extension_Stop_Symmetrical: false, End3_Barbs_Count: 0, End3_Barbs_Thickness: 0, End3_Barbs_Symmetrical: false, End3_Hose_EndCap_Thickness: 0, End3_Hose_EndCap_Diameter: 0, End3_Hose_EndCap_GridSize: 0, End3_Hose_EndCap_GridWallThickness: 0, End3_Hose_Enable_Threads: disabled, End3_Hose_Threads_Pitch: 0, End3_Hose_Threads_Tooth_Angle: 30, End3_Hose_Threads_Tooth_Height: 0, End3_Flange_Width: 20, End3_Flange_Thickness: 5, End3_Flange_Screw_Position: 0, End3_Flange_Screw_Border: 5, End3_Flange_Screw_Count: 4, End3_Flange_Screw_Diameter: 5, End3_Magnets_Count: 6, End3_Magnet_Diameter: 12, End3_Magnet_Thickness: 3, End3_Magnet_Border: 2, End3_Magnet_ZOffset: 0, End3_Magnet_Flange_Thickness: 10, End3_Magnet_Flange_Roundover: true, End3_Ring: 'no', End3_Magnet_Twist_Lock_Size: '0', End3_Nozzle_Shape: square, End3_Nozzle_Size_x: 10, End3_Nozzle_Size_y: 5, End3_Nozzle_Size_z: 10, End3_Nozzle_Tip_Wall_Thickness: 0, End3_Nozzle_Radius: 0, End3_Nozzle_Offset_x: 0, End3_Nozzle_Offset_y: 0, End3_Nozzle_Chamfer_Percentage: 0, End3_Nozzle_Chamfer_Angle: 0, Draw_Alignment_Ring: 'no', Alignment_Depth: 2, Alignment_Upper_Width: 3, Alignment_Lower_Width: 0.5, Alignment_Side_Clearance: 0.25, Alignment_Depth_Clearance: 0.75}
+
+# The primer: one picture and its text ($dc_params_primer_text -- an agent
+# may have its own copy), sent to the agents below with every call, between
+# their system prompt and the conversation (agents/shared/dc_primer.py).
+#
+#   image   a PNG in assets/; empty: the text alone
+#   agents  per team size, the agents that get it (any but the Database
+#           Handler); an empty list: none
+#
+# Workflow Settings > DC_PARAMS_PRIMER_ENABLED switches it off for every
+# agent (a text-only model cannot take the picture).  See engine/primer.py.
+primer:
+  image: dc_params_primer.png
+  agents:
+    7: []
+    5: []
+    3: []

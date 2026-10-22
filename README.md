@@ -68,7 +68,7 @@ Each team size keeps its own prompt tree: the 7-agent prompts sit beside their a
 │   ├── database_handler/         # post-session interviewer (opt-in)
 │   ├── 5agent/  planner5/  topology5/                      # the 5-agent team: prompts, hub, overlays
 │   └── 3agent/  planner3/  topology3/  design_engineer/  requirements_analyst/  # the 3-agent team
-├── setups/                       # the design configurators, one folder each: propeller/ (setups/README.md)
+├── setups/                       # the design configurators, one folder each: propeller/, vacuum_hose_adapter/ (setups/README.md)
 │   ├── fragments/dc/             # parameters, structure, capabilities, constraints
 │   ├── fragments/tools/          # tool text no one tool owns: output words, engine-tool texts
 │   ├── tools/                    # the DC's tools, one folder each (tool.yaml + Python +

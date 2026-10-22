@@ -61,7 +61,30 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
         curl \
         nodejs \
         npm \
+        # ---- this setup's tools (setups/<setup>/tools/<tool>/apt.txt) ----
+        libegl1 \
+        libfontconfig1 \
+        libfreetype6 \
+        libgpg-error0 \
+        libharfbuzz0b \
+        libwayland-client0 \
     && rm -rf /var/lib/apt/lists/*
+
+# ---- this setup's tools: OpenSCAD ----
+# A setup's tool runs OpenSCAD (backend: openscad).  Debian's openscad
+# is 2021.01, which cannot read newer models: this is a pinned development
+# snapshot, checked against the sha256 files.openscad.org publishes and
+# unpacked (a container has no FUSE).  Its --version fails the build when the
+# image lacks a library it needs.  x86-64, as on Railway.
+RUN curl -fsSL -o /tmp/openscad.AppImage \
+        https://files.openscad.org/snapshots/OpenSCAD-2026.10.18-x86_64.AppImage \
+    && echo "47ea00efc1e3bd522c47d190fad696f55ef15a6cee10abe45547f3f35215759d  /tmp/openscad.AppImage" | sha256sum -c - \
+    && chmod +x /tmp/openscad.AppImage \
+    && cd /opt && /tmp/openscad.AppImage --appimage-extract > /dev/null \
+    && mv /opt/squashfs-root /opt/openscad && rm /tmp/openscad.AppImage \
+    && /opt/openscad/AppRun --version
+ENV OPENSCAD_PATH=/opt/openscad/AppRun
+# ---- end of this setup's tools: OpenSCAD ----
 
 WORKDIR /app
 

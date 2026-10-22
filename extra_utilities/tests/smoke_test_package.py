@@ -21,12 +21,14 @@
    ``setups/propeller/``, ``README.md`` and ``DEPLOY.md`` naming the
    configurator, its folder and its tools' variables, ``.env.example`` with
    them, ``setup_info.json``.  Its ``.gitignore`` and ``.dockerignore`` are
-   the repository's without the lines for the repository's own ``setups/``
-   (which leave the vacuum hose adapter out): neither leaves the package's
+   the repository's without any line about the repository's own ``setups/``
+   (one a computer keeps out of git): neither leaves the package's
    configurator out.
    A tool's own ``requirements.txt`` and ``apt.txt`` are merged into
    ``requirements.txt`` and the ``Dockerfile`` (a package the engine names
-   kept as the engine has it, with a note).  The engine's files are the same
+   kept as the engine has it, with a note); what the repository's image has
+   for its other setups' tools -- the hose adapter's OpenSCAD -- is not in
+   the propeller's.  The engine's files are the same
    found by git and by walking the folders.
 3. THE KEY SCAN: nothing in the engine or the propeller's setup; a planted
    key in a tool is listed by ``download_preview`` with its file, line and a
@@ -341,17 +343,17 @@ def check_package(st: Studio, copy: Path, tmp: Path) -> str:
                 break
         check(all(files.get(f"{SP}{r}") == b for r, b in setup.items()),
               f"[PACKAGE] {SP} is not the setup byte for byte")
-        # the ignore files: the repository's, without its own setups/ lines
+        # the ignore files: the repository's, without any line about its own setups/
         for rel in (".gitignore", ".dockerignore"):
             repo_text = (ROOT / rel).read_bytes().decode("utf-8")
             text = files[rel].decode("utf-8")
-            check(text == K.drop_ignore_lines(repo_text, K._repo_setups_line)[0]
-                  and len(text.splitlines()) < len(repo_text.splitlines())
-                  and "setups/vacuum_hose_adapter" not in text and "the vacuum hose" not in text,
+            check(text == K.drop_ignore_lines(repo_text, K._repo_setups_line)[0],
                   f"[PACKAGE] {rel} is not the repository's without its setups/ lines")
+            kept_out = repo_text + "# kept on one computer\nsetups/elsewhere/\n"
+            check(K.drop_ignore_lines(kept_out, K._repo_setups_line) == (repo_text, ["setups/elsewhere/"]),
+                  f"[PACKAGE] a line of the repository's {rel} leaving one of its setups/ out would stay")
             rules, repo_rules = K.IgnoreRules(text), K.IgnoreRules(repo_text)
             check(not rules.ignored("setups/propeller", True) and not rules.ignored("setups/vacuum_hose_adapter", True)
-                  and repo_rules.ignored("setups/vacuum_hose_adapter", True)
                   and rules.ignored("workspace", True) and rules.ignored("logs", True) == repo_rules.ignored("logs", True),
                   f"[PACKAGE] {rel} leaves a configurator out, or lost another line")
         for gone in ("extra_utilities/TODO_known_issues.md", "extra_utilities/docs/MAS_blueprint_proposal.md",
@@ -369,6 +371,8 @@ def check_package(st: Studio, copy: Path, tmp: Path) -> str:
         check("        libqzx-test \\" in dock
               and dock.index("libqzx-test") < dock.index("rm -rf /var/lib/apt/lists/*"),
               "[PACKAGE] the tool's apt.txt was not merged into the Dockerfile")
+        check(K.OPENSCAD_MARK not in dock and "openscad" not in dock.lower(),
+              "[PACKAGE] the propeller's image installs OpenSCAD, which only the hose adapter's tools need")
         env = files[".env.example"].decode("utf-8")
         check("QZX_TOOL_KEY=" in env and env.count("RHINO_COMPUTE_URL=") == 1,
               "[PACKAGE] .env.example lacks the tool's variable (or repeats one)")
@@ -380,7 +384,7 @@ def check_package(st: Studio, copy: Path, tmp: Path) -> str:
         no_tools = {r: q for r, q in setup_now.items() if not r.endswith(("/requirements.txt", "/apt.txt"))}
         back = K.merge_requirements(req, no_tools, SP[:-1])[0], K.merge_apt(dock, no_tools)[0]
         check(back == ((ROOT / "requirements.txt").read_bytes().decode("utf-8"),
-                       (ROOT / "Dockerfile").read_bytes().decode("utf-8")),
+                       K.merge_apt((ROOT / "Dockerfile").read_bytes().decode("utf-8"), {})[0]),
               "[PACKAGE] with the tools' files gone, the merge does not give the engine's files back")
         dep = files["DEPLOY.md"].decode("utf-8")
         check("# Deploying: Propeller Design Configurator" in dep and "`QZX_TOOL_KEY`" in dep

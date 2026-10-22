@@ -1,0 +1,34 @@
+REFERENCE DIAGRAM - design-configurator parameters (attached image).
+A fixed reference supplied with your instructions. It is NOT a user input: never
+describe it back to the user, and never count it among the user's uploaded images.
+
+LEFT - top view, looking along the rotation axis.
+  - hub            = the central cylinder, radius 8 mm.
+  - inner section  = blade root, at r = 4 mm.  This is NOT the hub radius:
+    the inner section sits INSIDE the hub, and r = 4 mm is where the blade
+    span starts.  The enlarged corner of the diagram dimensions both.
+  - middle section = anywhere in the green band. middlePos is a fraction of the
+    BLADE SPAN, not of the radius: radius = 4 + middlePos x (impellerRadius - 4) mm,
+    so 0 = the r = 4 mm root and 1 = tip. Its range 0.3-0.7 is the band shown.
+  - outer section  = blade tip, at impellerRadius.
+  - Diameter = 2 x impellerRadius, measured on the ring MID-WALL (orange dashes),
+    not on either wall face. Ring wall thickness = impellerThickness.
+  - One blade is drawn; bladeCount sets how many there actually are.
+
+RIGHT - nine blade sections, trailing edge LEFT and leading edge RIGHT (the same
+orientation the blade-section renders use). All nine share one chord and one
+thickness (18 % of chord); only camber and high-point change.
+  - camber = innerCamber / outerCamber, in % of chord, increasing left to right.
+  - high-point = innerMaxPos / outerMaxPos, in tenths of chord, increasing top to
+    bottom. ``innerMaxPos`` / ``outerMaxPos`` move the CAMBER crest only, and do
+    nothing at zero camber.
+  - thickness = innerThickness / outerThickness, in % of that section's own
+    chord. They set HOW THICK a section is, not WHERE it is thickest: the
+    chordwise position of maximum thickness is fixed at ~30% of chord and no
+    parameter changes it.
+  - angle of attack = innerAngle / middleAngle / outerAngle, measured from the
+    horizontal plane. The sections are drawn chord-horizontal so their shapes
+    compare directly; the centre cell shows the angle separately.
+  - The middle section has no shape parameters of its own: its thickness, camber
+    and high-point are interpolated from inner and outer. Only its chord, angle
+    and radial position are settable.
