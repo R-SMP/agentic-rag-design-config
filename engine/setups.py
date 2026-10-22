@@ -21,8 +21,6 @@ from pathlib import Path
 
 SETUPS = "setups"
 DEFAULT = "propeller"
-# A package in the layout from before setups/: its one setup in dc_pack/.
-OLD_LAYOUT = "dc_pack"
 # The configurator loaded last on this computer; ACTIVE_SETUP_FILE names
 # another file (the tests).
 ACTIVE_FILE = Path("workflow_settings") / "active_setup.json"
@@ -38,13 +36,14 @@ def all_setups(root: Path) -> list[Path]:
 
 def default_setup(root: Path) -> Path:
     """The setup run when nothing else names one: ``setups/propeller``,
-    else the first one in ``setups/`` (a package holds one), else
-    ``dc_pack/``."""
+    else the first one in ``setups/`` (a package holds one) -- with none,
+    ``setups/propeller`` all the same, which the engine then says it cannot
+    find."""
     own = root / SETUPS / DEFAULT
     if (own / "pack.yaml").is_file():
         return own
     found = all_setups(root)
-    return found[0] if found else root / OLD_LAYOUT
+    return found[0] if found else own
 
 
 def _active_file(root: Path) -> Path:
@@ -86,13 +85,11 @@ def resolve(root: Path, value: str | None) -> Path:
 
 def settings_file(root: Path, setup: Path, name: str) -> Path:
     """This computer's Workflow Settings file *name* for *setup*:
-    ``workflow_settings/setups/<setup>/<name>``.  Before setups/ existed the
-    one setup -- ``setups/propeller``, or a package's ``dc_pack/`` -- kept
-    its own in ``workflow_settings/`` itself: it is moved here the first
-    time."""
+    ``workflow_settings/setups/<setup>/<name>``.  The propeller's lay in
+    ``workflow_settings/`` itself before setups/ existed: it is moved here
+    the first time."""
     target = root / SETTINGS_DIR / setup.name / name
-    first = {(root / SETUPS / DEFAULT).resolve(), (root / OLD_LAYOUT).resolve()}
-    if not target.exists() and setup.resolve() in first:
+    if not target.exists() and setup.resolve() == (root / SETUPS / DEFAULT).resolve():
         old = root / "workflow_settings" / name
         if old.is_file():
             target.parent.mkdir(parents=True, exist_ok=True)

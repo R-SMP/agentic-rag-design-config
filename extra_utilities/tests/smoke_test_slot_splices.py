@@ -41,15 +41,18 @@ so markers and a leading list bullet are stripped before the aloneness test.
 """
 import os
 import re
+import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
-# The design-configurator pack (config.DC_PACK_DIR; a relative path is taken
-# from the repo root).  Read here without importing config, so the check
+# The design-configurator pack (config.DC_PACK_DIR, as engine/setups.py takes
+# it: from the repo root when relative, else the configurator loaded last,
+# else setups/propeller).  Read here without importing config, so the check
 # stays standard-library only.
-PACK_DIR = Path(os.getenv("DC_PACK_DIR") or "dc_pack")
-if not PACK_DIR.is_absolute():
-    PACK_DIR = ROOT / PACK_DIR
+sys.path.insert(0, str(ROOT))
+from engine.setups import resolve  # noqa: E402
+
+PACK_DIR = resolve(ROOT, os.getenv("DC_PACK_DIR"))
 PACK_FRAGMENTS_DIR = PACK_DIR / "fragments"
 # The text a tool owns lives in its own folder (setups/<setup>/tools/<tool>/prompts/),
 # named by the same rule; its tool_list_entry*.md is one entry of the
@@ -148,6 +151,9 @@ def _scan_targets() -> list:
 
 
 def main() -> int:
+    if not PACK_FRAGMENTS_DIR.is_dir():
+        print(f"FAIL - no setup to check: {PACK_FRAGMENTS_DIR} is not a folder.")
+        return 1
     shapes = _fragment_shapes()
     prompts = _scan_targets()
     failures = []

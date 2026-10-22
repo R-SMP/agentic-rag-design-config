@@ -7,10 +7,10 @@ it and explain it.  Made with the MAS Studio.
 * **Learn it**: the Studio's guide -- *Guide* in its toolbar, or
   `studio/web/guide.html`.
 * **Deploy it**: `DEPLOY.md`.
-* **Change it**: `python -m studio` opens the MAS Studio on `dc_pack/` (the
+* **Change it**: `python -m studio` opens the MAS Studio on `{{SETUP}}/` (the
   configurator: its parameters, texts and tools); **Validate** checks it.
   `python -m studio validate` runs the same checks on the command line.
-* **What is where**: `dc_pack/` is this configurator; everything else is the
+* **What is where**: `{{SETUP}}/` is this configurator; everything else is the
   engine that runs it (`agents/`, `engine/`, `tools/`, `web/`,
   `workflow_settings/`, `web_app.py`) and the Studio (`studio/`).
   `setup_info.json` says when and from what this folder was made.

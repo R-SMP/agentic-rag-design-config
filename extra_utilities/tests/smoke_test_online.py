@@ -12,12 +12,15 @@
    cookie; the right one does, and with it the Studio answers; a cookie with
    a changed signature, or older than 30 days, does not open it.
 4. ONLINE: the setup says so (the configurator's address and name -- the
-   example's -- also before the code, for the access-code page; Start again
-   offered); Prepare for GitHub is unavailable with its online reason;
-   Start again refuses without the word replace, and with it brings the
-   example back byte for byte, nothing listed as changed.
+   example's -- also before the code, for the access-code page); Start from
+   a configurator offers the example (``--pack``, outside ``setups/``)
+   first, then every configurator of ``setups/``; Prepare for GitHub is
+   unavailable with its online reason; Start from refuses without the word
+   replace and for a configurator it does not offer, and with it brings the
+   one chosen byte for byte -- ``setups/propeller``, then the example back --
+   nothing listed as changed.
 5. LOCAL STAYS OPEN: ``python -m studio`` without ``--online`` asks for no
-   code.  The image carries the Studio and never the workspace
+   code, and offers nothing to start from.  The image carries the Studio and never the workspace
    (``.dockerignore``); git leaves the workspace out (``.gitignore``).
    Outside git, the engine's version is the commit Railway built.
 
@@ -137,6 +140,8 @@ def check_no_code(tmp: Path) -> str:
 def check_online(tmp: Path) -> str:
     example = tmp / "example" / "dc_pack"
     shutil.copytree(ROOT / "setups" / "propeller", example, ignore=shutil.ignore_patterns("__pycache__"))
+    # it differs from setups/propeller, so starting from one or the other shows
+    (example / "fragments" / "dc" / "app_title.md").write_text("Example Configurator\n", encoding="utf-8")
     ws = tmp / "ws"
     env = _env(INVITE_CODE=CODE, STUDIO_SECRET=SECRET, CONFIGURATOR_URL="https://example.invalid/app")
     args = ["--online", "--workspace", str(ws), "--pack", str(example)]
@@ -200,10 +205,14 @@ def check_online(tmp: Path) -> str:
         check(st.req("/api/session", [], old.token())[2].get("authed") is True,
               "[GATE] a cookie signed with STUDIO_SECRET does not open it")
         # online
+        starts = [(s["key"], s["title"], s["folder"]) for s in d.get("starts") or []]
+        from engine.setups import all_setups
         check(d.get("online") is True
               and d.get("configurator") == {"url": "https://example.invalid/app", "name": "propeller"}
-              and d.get("can_reset") is True, f"[ONLINE] the setup's data: {d.get('online')} "
-                                              f"{d.get('configurator')} {d.get('can_reset')}")
+              and starts[:2] == [("--pack", "Example Configurator", "dc_pack"),
+                                 ("propeller", "Propeller Design Configurator", "setups/propeller")]
+              and [k for k, _t, _f in starts[1:]] == [p.name for p in all_setups(ROOT)],
+              f"[ONLINE] the setup's data: {d.get('online')} {d.get('configurator')} {starts}")
         check(d.get("prepare", {}).get("available") is False and "Online" in (d["prepare"].get("why") or ""),
               f"[ONLINE] Prepare for GitHub: {d.get('prepare')}")
         status, _h, body = st.req("/download/package", None, cookie)
@@ -213,14 +222,24 @@ def check_online(tmp: Path) -> str:
         _s, _h, body = st.req("/api/save_field", ["dc_name", None, {"all": "a shared change"},
                                                   {"all": s["values"]["7"]}], cookie)
         check(body.get("ok"), f"[ONLINE] an edit: {body}")
-        _s, _h, body = st.req("/api/reset_to_example", ["yes"], cookie)
+        changed_now = snapshot(shared)
+        _s, _h, body = st.req("/api/start_from", ["propeller", "yes"], cookie)
         check(body.get("ok") is False and "replace" in (body.get("error") or ""),
-              f"[ONLINE] Start again without the word: {body}")
-        _s, _h, body = st.req("/api/reset_to_example", ["replace"], cookie)
-        check(body.get("ok") and snapshot(shared) == snapshot(example),
-              f"[ONLINE] Start again: {str(body)[:300]}")
-        _s, _h, body = st.req("/api/get_all", [], cookie)
-        check(body["data"]["changed"] == [], f"[ONLINE] after Start again, changed: {body['data']['changed'][:4]}")
+              f"[ONLINE] Start from without the word: {body}")
+        for key in ("nowhere", "../setups/propeller", None):
+            _s, _h, body = st.req("/api/start_from", [key, "replace"], cookie)
+            check(body.get("ok") is False and "no such configurator" in (body.get("error") or ""),
+                  f"[ONLINE] Start from {key!r}: {body}")
+        check(snapshot(shared) == changed_now, "[ONLINE] a refused Start from changed the setup")
+        for key, source in (("propeller", ROOT / "setups" / "propeller"), ("--pack", example)):
+            _s, _h, body = st.req("/api/start_from", [key, "replace"], cookie)
+            check(body.get("ok") and snapshot(shared) == snapshot(source),
+                  f"[ONLINE] Start from {key}: {str(body)[:300]}")
+            _s, _h, body = st.req("/api/get_all", [], cookie)
+            check(body["data"]["changed"] == [],
+                  f"[ONLINE] after Start from {key}, changed: {body['data']['changed'][:4]}")
+        check(snapshot(ROOT / "setups" / "propeller") != snapshot(example),
+              "[ONLINE] the example is setups/propeller: Start from proves nothing")
         # an edit survives a restart (the workspace is not copied again)
         _s, _h, body = st.req("/api/save_field", ["dc_name", None, {"all": "kept across a restart"},
                                                   {"all": s["values"]["7"]}], cookie)
@@ -237,7 +256,7 @@ def check_online(tmp: Path) -> str:
         check(name == "kept across a restart", f"[SHARED] after a restart the setup is {name!r}")
     finally:
         st.stop()
-    return "online: gate, shared setup, Start again, restart"
+    return "online: gate, shared setup, Start from a configurator, restart"
 
 
 def check_local(tmp: Path) -> str:
@@ -248,6 +267,12 @@ def check_local(tmp: Path) -> str:
         _s, _h, body = st.req("/api/session", [])
         check(body.get("online") is False and body.get("authed") is True
               and body.get("configurator") is None, f"[LOCAL] session: {body}")
+        _s, _h, body = st.req("/api/get_all", [])
+        check(body.get("ok") and body["data"].get("starts") == [], f"[LOCAL] starts: {body['data'].get('starts')}")
+        _s, _h, body = st.req("/api/start_from", ["propeller", "replace"])
+        check(body.get("ok") is False and "no configurator to start from" in (body.get("error") or "")
+              and snapshot(copy) == snapshot(ROOT / "setups" / "propeller"),
+              f"[LOCAL] Start from: {body}")
         check(st.req("/api/config")[0] == 200, "[LOCAL] no health answer")
     finally:
         st.stop()
@@ -285,8 +310,9 @@ def main() -> int:
             print("  " + f)
         return 1
     print("\nPASS - online, the Studio needs its access code for every call, keeps one shared "
-          "setup that starts from the example and survives a restart, starts again only on "
-          "'replace', and leaves Prepare to the downloaded package; locally it stays open.")
+          "setup that starts from the example and survives a restart, starts from a configurator "
+          "it offers (the example, then setups/) only on 'replace', and leaves Prepare to the "
+          "downloaded package; locally it stays open and offers none.")
     return 0
 
 

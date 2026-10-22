@@ -47,8 +47,9 @@ are stubbed; no database):
    true / false as they are and refuse one that does not fit.
 7. ONE DEPLOY.  The MAS Studio inside this server, at ``/studio/``: nothing
    of it is made until it is first opened; then its shared setup is a copy
-   of the pack (the pack itself untouched), it asks for the configurator's
-   own access code, its link to the configurator is ``/configurator``, and
+   of ``setups/propeller`` (itself untouched), it asks for the
+   configurator's own access code, its link back is the app's main menu
+   (``/``), it offers every configurator of ``setups/`` to start from, and
    its page, scripts, guide, pictures and downloads answer under
    ``/studio/`` (its page names no address from the server's root).
    Without an access code it is open, as the configurator is.
@@ -555,7 +556,7 @@ def check_one_deploy() -> str:
             check(CLIENT.get(path).status_code == 200, f"[ONE DEPLOY] {path} is not served")
         s = CLIENT.post("/studio/api/session", json={"args": []}).json()
         check(s.get("online") is True and s.get("authed") is False
-              and s.get("configurator") == {"url": "/configurator", "name": "propeller"},
+              and s.get("configurator") == {"url": "/", "name": None, "menu": True},
               f"[ONE DEPLOY] the Studio's session before the code: {s}")
         r = CLIENT.post("/studio/api/get_all", json={"args": []})
         check(r.status_code == 401, f"[ONE DEPLOY] the Studio answered without the code: {r.status_code}")
@@ -563,6 +564,12 @@ def check_one_deploy() -> str:
         check(r.status_code == 401, f"[ONE DEPLOY] a wrong code opened the Studio: {r.status_code}")
         r = CLIENT.post("/studio/api/auth", json={"args": ["web-texts-code"]})
         check(r.status_code == 200 and r.json().get("ok"), f"[ONE DEPLOY] the configurator's code: {r.text[:120]}")
+        d = CLIENT.post("/studio/api/get_all", json={"args": []}).json().get("data") or {}
+        from engine.setups import all_setups
+        starts = d.get("starts") or []
+        check([s["key"] for s in starts] == [p.name for p in all_setups(ROOT)]
+              and starts[0]["folder"] == "setups/propeller",
+              f"[ONE DEPLOY] the configurators to start from: {starts}")
         r = CLIENT.get("/studio/pack/assets/general-profile.png")
         check(r.status_code == 200 and r.content[:4] == b"\x89PNG",
               f"[ONE DEPLOY] the setup's pictures under /studio/: {r.status_code}")

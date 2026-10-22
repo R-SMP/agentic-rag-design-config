@@ -59,8 +59,10 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
 **Online** (P7b-lite, ``python -m studio --online``): one shared setup for
 everyone who has the access code (:class:`Access`: ``INVITE_CODE``, asked
 once per browser and kept in a signed cookie; every call but the page, its
-scripts, ``session``, ``auth`` and ``config`` needs it), and
-``reset_to_example``: the setup replaced by the example it started from.
+scripts, ``session``, ``auth`` and ``config`` needs it), and ``start_from``:
+the setup replaced by one of the configurators -- every one of the
+repository's ``setups/``, and the example it started from when that lies
+elsewhere (``--pack``).
 
 This process never imports the engine: the assembler stubs runtime
 packages (FastAPI among them) in the process that runs it.
@@ -480,12 +482,16 @@ def prompt_diff(before: str, after: str) -> list[list[str]]:
     return out
 
 
-def _configurator(url: str | None, example_dir: Path | None) -> dict | None:
+def _configurator(url: str | None, example_dir: Path | None, menu: bool = False) -> dict | None:
     """The configurator the Studio links to: ``{url, name}`` -- the name is
     the example setup's (the live configurator runs it: "propeller"), None
-    when the example does not say it in one file -- or None without a URL."""
+    when the example does not say it in one file -- or, *menu*, the main
+    menu of the app the Studio is inside (``{url, name: None, menu: True}``);
+    None without a URL."""
     if not url:
         return None
+    if menu:
+        return {"url": url, "name": None, "menu": True}
     name = None
     if example_dir is not None:
         f = example_dir / "fragments" / "dc" / "dc_name.md"
@@ -494,18 +500,46 @@ def _configurator(url: str | None, example_dir: Path | None) -> dict | None:
     return {"url": url, "name": name}
 
 
+def _setup_title(folder: Path) -> str:
+    """A setup's title: its ``$app_title`` text, else ``$dc_name``, else its
+    folder's name."""
+    for slot in ("app_title", "dc_name"):
+        try:
+            text = " ".join((folder / "fragments" / "dc" / f"{slot}.md").read_text(encoding="utf-8").split())
+        except OSError:
+            continue
+        if text:
+            return text
+    return folder.name
+
+
+def _start_points(example_dir: Path | None) -> list[tuple[str, Path]]:
+    """What the shared setup can start from (online): every configurator of
+    the repository's ``setups/`` -- and first, the example it started from
+    when that lies elsewhere (``--pack``) -- as (key, folder)."""
+    if example_dir is None:
+        return []
+    from engine.setups import all_setups
+    found = [(p.name, p) for p in all_setups(engine_view.REPO)]
+    if example_dir.resolve() not in {p.resolve() for _key, p in found}:
+        found.insert(0, ("--pack", example_dir))
+    return found
+
+
 def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                access_code: str | None = None, example_dir: Path | None = None,
-               configurator_url: str | None = None, require_code: bool = True) -> FastAPI:
+               configurator_url: str | None = None, require_code: bool = True,
+               configurator_menu: bool = False) -> FastAPI:
     """The Studio for the setup in *pack_dir*.  *online*: behind
     *access_code* (required unless *require_code* is false: the Studio
     inside the configurator's server, ``studio/embedded.py``, is open when
-    the configurator is), with ``reset_to_example`` from *example_dir* and a
-    link to the configurator at *configurator_url* on the landing page --
-    and on the access-code page, before the code."""
+    the configurator is), with ``start_from`` (:func:`_start_points`, from
+    *example_dir*) and a link to the configurator at *configurator_url* --
+    the app's main menu when *configurator_menu* -- on the landing page and
+    on the access-code page, before the code."""
     if online and not access_code and require_code:
         raise ValueError("the online Studio needs an access code")
-    configurator = _configurator(configurator_url, example_dir)
+    configurator = _configurator(configurator_url, example_dir, configurator_menu)
     access = (Access(access_code, (os.getenv("STUDIO_SECRET") or "").encode("utf-8") or None)
               if online and access_code else None)
     view = PackView(pack_dir)
@@ -544,7 +578,10 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                                  "tools_edit": tools.state(data),
                                  "prepare": {"available": prepare_why is None, "why": prepare_why},
                                  "online": online, "configurator": configurator,
-                                 "can_reset": example_dir is not None,
+                                 "starts": [{"key": key, "title": _setup_title(p),
+                                             "folder": (p.name if key == "--pack"
+                                                        else f"setups/{p.name}")}
+                                            for key, p in _start_points(example_dir)],
                                  "scad_import": importer.state()}
         return changed_cache[fp]
 
@@ -691,10 +728,12 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
             raise editing.EditError(f"There is no {kind!r} download.")
         pk = data.get("pack") or {}
         name, title, dc = packaging.names(pack_dir, pk.get("title") or pk.get("name"))
+        folder = packaging.setup_folder(pk.get("name"))
         info = packaging.setup_info(pack_dir, dc, validator.state())
         if kind == "setup":
-            return f"{name}_setup.zip", packaging.setup_contents(pack_dir, info), [], None, info
-        files, notes = packaging.package_contents(pack_dir, name, title, dc, info, engine_view.REPO)
+            return f"{name}_setup.zip", packaging.setup_contents(pack_dir, info, folder), [], None, info
+        files, notes = packaging.package_contents(pack_dir, name, title, dc, info, engine_view.REPO,
+                                                  folder=folder)
         return f"{name}_package.zip", files, notes, name, info
 
     def download_preview(data: dict, kind: str) -> dict:
@@ -715,13 +754,16 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
             raise editing.EditError(str(exc), exc.problems) from None
         return _replace_with(files, info, filename)
 
-    def reset_to_example(data: dict, word=None) -> dict:
-        if example_dir is None:
-            raise editing.EditError("This Studio has no example to start again from.")
+    def start_from(data: dict, key=None, word=None) -> dict:
+        points = dict(_start_points(example_dir))
+        if not points:
+            raise editing.EditError("This Studio has no configurator to start from.")
+        if key not in points:
+            raise editing.EditError("There is no such configurator to start from.")
         if word != "replace":
             raise editing.EditError("Type replace to confirm: it replaces the setup for everyone.")
-        files = {rel: p.read_bytes() for rel, p in packaging.setup_files(example_dir).items()}
-        return _replace_with(files, None, "the propeller example")
+        files = {rel: p.read_bytes() for rel, p in packaging.setup_files(points[key]).items()}
+        return _replace_with(files, None, _setup_title(points[key]))
 
     def _replace_with(files: dict, info, filename) -> dict:
         """The setup becomes *files*, once the engine's check takes them,
@@ -781,7 +823,7 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                      ("scad_read", importer.read), ("scad_import", importer.run),
                      ("scad_undo", importer.undo),
                      ("download_preview", download_preview), ("open_setup", open_setup),
-                     ("prepare_run", prepare_run), ("reset_to_example", reset_to_example)):
+                     ("prepare_run", prepare_run), ("start_from", start_from)):
         app.add_api_route(f"/api/{name}", _edit(fn), methods=["POST"])
 
     @app.get("/download/{kind}")

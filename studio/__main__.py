@@ -10,9 +10,11 @@ commands (``studio/prepare.py``; it never runs git).
 
 ``--online`` (MAS-blueprint P7b-lite, ``studio/HOSTING.md``): the Studio for
 everyone with the access code in ``INVITE_CODE`` (required), on ONE shared
-setup in ``<workspace>/dc_pack`` -- a copy of ``--pack`` (the example) when
-the workspace has none.  ``CONFIGURATOR_URL`` links the landing page to the
-configurator.  The port is ``PORT`` when set (Railway sets it).
+setup in ``<workspace>/dc_pack`` -- a copy of ``--pack`` (the example; else
+:func:`example_pack`) when the workspace has none, and "Start from a
+configurator" replaces it with another of ``setups/``.  ``CONFIGURATOR_URL``
+links the landing page to the configurator.  The port is ``PORT`` when set
+(Railway sets it).
 """
 
 from __future__ import annotations
@@ -27,10 +29,19 @@ REPO = Path(__file__).resolve().parents[1]
 
 def default_pack() -> Path:
     """The engine's own choice (config.py, ``engine/setups.py``):
-    ``DC_PACK_DIR``, taken from the project root when relative, else
-    ``setups/propeller``."""
+    ``DC_PACK_DIR``, taken from the project root when relative, else the
+    configurator the app loaded last, else ``setups/propeller``."""
     from engine.setups import resolve
     return resolve(REPO, os.getenv("DC_PACK_DIR"))
+
+
+def example_pack() -> Path:
+    """What a shared setup starts from (online, and the Studio inside the
+    app): ``DC_PACK_DIR`` when set, else ``setups/propeller`` -- a package's
+    one configurator -- never the one the app loaded last."""
+    from engine.setups import default_setup, resolve
+    value = os.getenv("DC_PACK_DIR")
+    return resolve(REPO, value) if value else default_setup(REPO)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -51,8 +62,9 @@ def main(argv: list[str] | None = None) -> int:
                     "parameters, the agent access and the tools, in the "
                     "setup's own files.")
     ap.add_argument("--pack", type=Path, default=None,
-                    help="the setup folder (default: setups/propeller/ of this repository, "
-                         "or DC_PACK_DIR)")
+                    help="the setup folder (default: DC_PACK_DIR, else the configurator the app "
+                         "loaded last, else setups/propeller/ of this repository; online: "
+                         "DC_PACK_DIR, else setups/propeller/)")
     ap.add_argument("--host", default="127.0.0.1")
     ap.add_argument("--port", type=int, default=int(os.getenv("PORT") or 8770))
     ap.add_argument("--online", action="store_true",
@@ -64,7 +76,8 @@ def main(argv: list[str] | None = None) -> int:
                     help="engine processes kept waiting for the prompt viewer (default 2)")
     args = ap.parse_args(argv)
 
-    pack = (args.pack.resolve() if args.pack else default_pack().resolve())
+    pack = (args.pack.resolve() if args.pack
+            else (example_pack() if args.online else default_pack()).resolve())
     if not (pack / "pack.yaml").is_file():
         print(f"{pack} is not a setup folder: it has no pack.yaml.", file=sys.stderr)
         return 2

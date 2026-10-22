@@ -3,11 +3,13 @@
 ``web_app.py`` mounts :data:`STUDIO` at ``/studio``, beside the configurator
 (``/configurator``) and the main menu that offers both (``/``).  It is the
 online Studio (``python -m studio --online``, ``studio/HOSTING.md``) on ONE
-shared setup: a copy of the configurator's own setup in
-``workspace/dc_pack`` (``STUDIO_WORKSPACE`` names another folder), so what
-the Studio changes never reaches the running configurator.  It asks for the
-configurator's own access code (``INVITE_CODE``; without one it is open, as
-the configurator is), and its link to the configurator is ``/configurator``.
+shared setup in ``workspace/dc_pack`` (``STUDIO_WORKSPACE`` names another
+folder): a copy of ``setups/propeller`` -- of ``DC_PACK_DIR`` when set, of a
+package's one configurator -- and "Start from a configurator" replaces it
+with another of ``setups/``; what the Studio changes never reaches the
+running configurators.  It asks for the configurator's own access code
+(``INVITE_CODE``; without one it is open, as the configurator is), and its
+link back is the app's main menu, ``/``.
 
 Nothing is made before the Studio is first opened: then the workspace gets
 its copy (when it has none) and the Studio starts, its helper processes
@@ -42,7 +44,7 @@ class LazyStudio:
     hands every request to it.  :meth:`close` stops it (the server's
     shutdown); a mounted app is not told when the server starts or stops."""
 
-    def __init__(self, configurator_url: str = "/configurator", workers: int = 2):
+    def __init__(self, configurator_url: str = "/", workers: int = 2):
         self.configurator_url = configurator_url
         self.workers = workers
         self._app = None
@@ -69,15 +71,15 @@ class LazyStudio:
                 self._app = app
 
     def _make(self):
-        from studio.__main__ import default_pack
+        from studio.__main__ import example_pack
         from studio.server import create_app
-        example = default_pack().resolve()
+        example = example_pack().resolve()
         workspace = Path(os.getenv("STUDIO_WORKSPACE") or REPO / "workspace").resolve()
         pack = shared_setup(workspace, example)
         code = (os.getenv("INVITE_CODE") or "").strip() or None
         return create_app(pack, workers=self.workers, online=True, access_code=code,
                           example_dir=example, configurator_url=self.configurator_url,
-                          require_code=False)
+                          require_code=False, configurator_menu=True)
 
     async def close(self) -> None:
         if self._lifespan is not None:

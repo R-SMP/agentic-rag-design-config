@@ -214,12 +214,12 @@
     var p = h('div', { 'class': 'page landing' });
     add(p, [
       h('h1', null, 'MAS Studio'),
-      h('p', { 'class': 'sub' }, 'Build a multi-agent system for your own design configurator: start from the ' + D.pack.name +
-        ' example, change its parameters, texts and tools, check it with Validate, and download it to deploy.'),
+      h('p', { 'class': 'sub' }, 'Build a multi-agent system for your own design configurator: start from one of the ' +
+        'configurators, change its parameters, texts and tools, check it with Validate, and download it to deploy.'),
       h('div', { 'class': 'actions' }, [
         h('button', { 'class': 'primary', onclick: function () { go('studio', 'identity'); } }, 'Open the Studio →'),
         h('button', { onclick: askOpen }, 'Import a setup…'),
-        D.can_reset ? h('button', { onclick: askReset }, 'Start again from the ' + D.pack.name + ' example…') : null,
+        D.starts && D.starts.length ? h('button', { onclick: askStart }, 'Start from a configurator…') : null,
         configuratorLink(),
         h('a', { 'class': 'btn', href: 'static/guide.html', target: '_blank', rel: 'noopener' }, 'Getting started (the guide) ↗')
       ]),
@@ -228,13 +228,14 @@
     ]);
     app.appendChild(p);
   }
-  // The configurator the Studio is deployed beside (CONFIGURATOR_URL): its
-  // link on the landing page and on the access-code page.
+  // The configurator the Studio is deployed beside (CONFIGURATOR_URL) -- or,
+  // inside the app, the app's main menu: its link on the landing page and on
+  // the access-code page.
   function configuratorLink() {
     var c = SESSION.configurator || (D && D.configurator);
     if (!c || !c.url) return null;
     return h('a', { 'class': 'btn', href: c.url, target: '_blank', rel: 'noopener' },
-      'Use the ' + (c.name ? c.name + ' ' : '') + 'configurator ↗');
+      c.menu ? 'Main menu ↗' : 'Use the ' + (c.name ? c.name + ' ' : '') + 'configurator ↗');
   }
   function renderLogin(app, msg) {
     var input = h('input', { type: 'password', autocomplete: 'current-password', placeholder: 'access code' });
@@ -257,32 +258,45 @@
       configuratorLink() ? h('div', { 'class': 'actions' }, [h('span', { 'class': 'muted' }, 'Or, without the Studio:'), configuratorLink()]) : null]));
     input.focus();
   }
-  function askReset() {
+  // Start from a configurator (online): the shared setup replaced by one of
+  // the configurators the Studio lists (D.starts: every one of setups/).
+  function askStart() {
     if (BUSY) return;
+    var only = D.starts.length === 1 ? D.starts[0] : null;
+    var chosen = only;
     var word = h('input', { type: 'text', spellcheck: 'false', placeholder: 'replace' });
     var msg = h('div');
-    var go_ = h('button', { 'class': 'primary', disabled: true }, 'Start again');
-    word.addEventListener('input', function () { go_.disabled = word.value !== 'replace'; });
+    var go_ = h('button', { 'class': 'primary', disabled: true }, 'Start from it');
+    function ready() { go_.disabled = !(chosen && word.value === 'replace'); }
+    var list = h('div', null, D.starts.map(function (s) {
+      return h('label', { 'class': 'pick' }, [
+        h('input', { type: 'radio', name: 'startfrom', value: s.key, checked: s === only,
+          onchange: function () { chosen = s; ready(); } }),
+        h('span', null, [h('b', null, s.title), h('div', { 'class': 'muted', style: 'font-size:11.5px;margin-top:3px' }, s.folder)])]);
+    }));
+    word.addEventListener('input', ready);
     go_.addEventListener('click', function () {
       msg.innerHTML = '';
       add(msg, h('p', { 'class': 'muted' }, 'Checking it with the engine…'));
-      call('reset_to_example', word.value).then(function (r) {
+      var from = chosen;
+      call('start_from', from.key, word.value).then(function (r) {
         msg.innerHTML = '';
-        if (!r || r.ok === false) { add(msg, h('div', { 'class': 'banner bad boxed' }, (r && r.error) || 'It could not start again.')); return; }
+        if (!r || r.ok === false) { add(msg, h('div', { 'class': 'banner bad boxed' }, (r && r.error) || 'It could not start from it.')); return; }
         closeModal();
         BUSY = true; EDITS = {}; PEDITS = {}; GEDITS = {}; TEDITS = {}; FEDITS = {}; TESTS = {}; FIELD_ERRORS = {};
-        status('Starting again from the example. Re-assembling every prompt…', 'busy');
+        status('Starting from the ' + from.title + '. Re-assembling every prompt…', 'busy');
         reload().then(function () {
           BUSY = false;
-          status('The setup is the ' + D.pack.name + ' example again: Undo now goes back to it.', 'ok');
+          status('The setup is now the ' + from.title + ': Undo goes back to it.', 'ok');
           go('studio', 'identity');
           render();
         }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
       });
     });
-    showModal('Start again from the example', h('div', null, [
-      h('div', { 'class': 'banner warn boxed' }, 'This replaces the setup for everyone who uses this Studio: every text, parameter and tool goes back to the example.'),
+    showModal('Start from a configurator', h('div', null, [
+      h('div', { 'class': 'banner warn boxed' }, 'This replaces the setup for everyone who uses this Studio: its texts, parameters and tools become those of the configurator you choose.'),
       h('p', { style: 'margin:8px 0' }, h('a', { href: 'download/setup', download: '' }, 'Download the current setup first')),
+      list,
       h('p', null, 'Type replace to confirm:'),
       h('div', { style: 'margin:6px 0' }, word), msg]),
       [h('button', { onclick: closeModal }, 'Cancel'), go_]);
@@ -3311,10 +3325,10 @@
    * the downloads and Open setup file (P7-2, studio/package.py)
    * ==================================================================== */
   var DL_WHAT = {
-    setup: ['The setup alone: its parameters, texts, tools and pictures (dc_pack/), and setup_info.json. Open it again here with Open setup file.'],
+    setup: ['The setup alone: its parameters, texts, tools and pictures (in setups/<name>/), and setup_info.json. Open it again here with Open setup file.'],
     package: ['The engine and this setup, ready to put on GitHub and deploy:',
       'the app (agents/, engine/, tools/, web/, workflow_settings/, web_app.py, the Dockerfile), the Studio and the checks Validate runs;',
-      'this setup as dc_pack/;',
+      'this setup in setups/<name>/ (the app with one configurator in its main menu);',
       'DEPLOY.md (how to put it on Railway), README.md, .env.example with the variables its tools declare, setup_info.json.',
       'Not in it: .env, logs, attempts, past sessions, the Workflow Settings saved on this computer.']
   };
@@ -3361,7 +3375,7 @@
       h('div', { 'class': 'banner warn boxed' }, 'Opening a setup file replaces the setup in ' + D.pack_dir + ': every file of it. Download it first to keep it.' +
         (unsavedKeys().length ? '  Your ' + unsavedKeys().length + ' unsaved change(s) are dropped too.' : '')),
       h('p', { style: 'margin:8px 0' }, h('a', { href: 'download/setup', download: '' }, 'Download the current setup first')),
-      h('p', { 'class': 'muted' }, 'A setup file made with Download setup file — or a full package, whose dc_pack/ is taken. The engine checks it before anything is replaced; afterwards Undo and the prompt viewer’s changes start from it.'),
+      h('p', { 'class': 'muted' }, 'A setup file made with Download setup file — or a full package, whose setups/<name>/ is taken. The engine checks it before anything is replaced; afterwards Undo and the prompt viewer’s changes start from it.'),
       h('div', { style: 'margin:10px 0' }, pick), msg]);
     showModal('Open setup file', body, [h('button', { onclick: closeModal }, 'Cancel'),
       h('button', { 'class': 'primary', onclick: function () {
@@ -3437,7 +3451,7 @@
       var cmd = out.commands;
       add(body, h('div', { 'class': 'block' }, [
         h('h4', null, cmd.case === 'update' ? 'To commit and push (Railway then deploys it)' : 'To commit and create the private GitHub repository'),
-        h('p', { 'class': 'muted' }, 'Nothing was committed: prepare never runs git. In a terminal, in ' + D.pack_dir.replace(/[\\/]dc_pack$/, '') + ':'),
+        h('p', { 'class': 'muted' }, 'Nothing was committed: prepare never runs git. In a terminal, in ' + D.pack_dir.replace(/[\\/]setups[\\/][^\\/]+$/, '') + ':'),
         h('div', { 'class': 'cmds' }, cmd.steps.map(function (s) {
           return h('div', { 'class': 'cmd' }, [h('div', { 'class': 'muted' }, s[0]), h('div', { 'class': 'row2' }, [h('code', null, s[1]), copyButton(s[1])])]);
         })),

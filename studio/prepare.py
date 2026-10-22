@@ -7,12 +7,13 @@ Run in a folder made by **Download full package** (it has
 pushing are the user's): it checks and fixes the folder, then prints the
 commands to run.
 
-1. **Validate** (``studio/validate.py``) on ``dc_pack/`` as it is now -- or
+1. **Validate** (``studio/validate.py``) on ``setups/<setup>/`` as it is now -- or
    the report of ``python -m studio validate --json`` given with
    ``--report``, when the setup has not changed since; a failure stops it.
 2. **``.gitignore`` and ``.dockerignore``**: what must stay out of git
    (``.env``, logs, attempts, past sessions, the Workflow Settings saved on
-   this computer, ...) and out of the image is added where it is missing.
+   this computer, ...) and out of the image is added where it is missing; a
+   line that would leave the package's own configurator out is removed.
 3. **The tools' dependencies**: merged again into ``requirements.txt`` and
    the ``Dockerfile`` (``studio/package.py``; a part merged before is
    replaced).
@@ -33,6 +34,7 @@ import re
 import sys
 from pathlib import Path
 
+from engine import setups as _setups
 from studio import package as K
 
 # (a path, is it a folder, the line that keeps it out) -- what git must not take
@@ -58,21 +60,31 @@ class PrepareError(ValueError):
     pass
 
 
+def setup_dir(folder: Path) -> Path | None:
+    """The package's one configurator, ``setups/<setup>/``, or None."""
+    found = _setups.all_setups(folder)
+    return found[0] if len(found) == 1 else None
+
+
 def check_folder(folder: Path, pack_dir: Path | None = None) -> str | None:
     """Why prepare cannot run here, or None: it works in a folder made by
-    Download full package, on that folder's own ``dc_pack/`` -- never in the
-    MAS blueprint's own repository (it has ``extra_utilities/docs/``, which
-    no package holds)."""
+    Download full package, on that folder's one ``setups/<setup>/`` -- never
+    in the MAS blueprint's own repository (it has ``extra_utilities/docs/``,
+    which no package holds)."""
     if (folder / "extra_utilities" / "docs").is_dir():
         return ("This is the MAS blueprint's own repository: prepare works in a folder made by "
                 "Download full package.")
     if not (folder / K.INFO).is_file() or not (folder / "studio").is_dir():
         return ("Prepare works in a folder made by Download full package (it has setup_info.json); "
                 "this one was not.")
-    if not (folder / K.SETUP_DIR / "pack.yaml").is_file():
-        return "This folder has no dc_pack/ with a pack.yaml."
-    if pack_dir is not None and pack_dir.resolve() != (folder / K.SETUP_DIR).resolve():
-        return f"Prepare works on the package's own dc_pack/, not on {pack_dir}."
+    found = _setups.all_setups(folder)
+    if not found:
+        return "This folder has no setups/<name>/ with a pack.yaml."
+    if len(found) > 1:
+        return (f"A package holds one configurator; this folder has {len(found)} in setups/ ("
+                + ", ".join(p.name for p in found) + ").")
+    if pack_dir is not None and pack_dir.resolve() != found[0].resolve():
+        return f"Prepare works on the package's own setups/{found[0].name}/, not on {pack_dir}."
     return None
 
 
@@ -96,8 +108,23 @@ def _add_lines(path: Path, lines: list[str]) -> bool:
 
 def repair_ignores(folder: Path) -> list[str]:
     """What must stay out of git and out of the image, added where the
-    folder's ``.gitignore`` / ``.dockerignore`` miss it: the changes made."""
+    folder's ``.gitignore`` / ``.dockerignore`` miss it, and a line that
+    would leave the package's own configurator out removed: the changes
+    made."""
     changes = []
+    own = f"{K.SETUPS}/{setup_dir(folder).name}"
+
+    def leaves_it_out(line: str) -> bool:
+        rules = K.IgnoreRules(line)
+        return rules.ignored(own, True) or rules.ignored(K.SETUPS, True)
+
+    for rel in (".gitignore", ".dockerignore"):
+        f = folder / rel
+        if f.is_file():
+            text, gone = K.drop_ignore_lines(f.read_bytes().decode("utf-8"), leaves_it_out)
+            if gone:
+                f.write_bytes(text.encode("utf-8"))
+                changes.append(f"{rel}: removed " + ", ".join(gone) + f" (it left {own}/ out)")
     gi = folder / ".gitignore"
     rules = K.IgnoreRules(gi.read_text(encoding="utf-8") if gi.is_file() else "")
     add = [line for rel, is_dir, line in GIT_OUT if not rules.ignored(rel, is_dir)]
@@ -117,7 +144,7 @@ def _title(folder: Path) -> str:
     """The configurator's title: its ``$app_title`` text, else ``$dc_name``,
     else what setup_info.json says."""
     for name in ("app_title", "dc_name"):
-        f = folder / K.SETUP_DIR / "fragments" / "dc" / f"{name}.md"
+        f = setup_dir(folder) / "fragments" / "dc" / f"{name}.md"
         if f.is_file() and f.read_text(encoding="utf-8").strip():
             return " ".join(f.read_text(encoding="utf-8").split())
     try:
@@ -165,7 +192,8 @@ def run(folder: Path, report: dict | None = None, progress=None) -> dict:
     why = check_folder(folder)
     if why:
         raise PrepareError(why)
-    pack_dir = folder / K.SETUP_DIR
+    pack_dir = setup_dir(folder)
+    where = f"{K.SETUPS}/{pack_dir.name}"
     if report is None:
         report = V.run(pack_dir, progress=progress)
     out = {"ok": report["status"] != V.FAIL, "validate": {"status": report["status"],
@@ -177,8 +205,10 @@ def run(folder: Path, report: dict | None = None, progress=None) -> dict:
         return out
     out["changes"] += repair_ignores(folder)
     setup = K.setup_files(pack_dir)
-    for rel, merge in (("requirements.txt", K.merge_requirements), ("Dockerfile", K.merge_apt)):
-        text, notes = merge((folder / rel).read_bytes().decode("utf-8"), setup)
+    for rel, text_notes in (
+            ("requirements.txt", lambda t: K.merge_requirements(t, setup, where)),
+            ("Dockerfile", lambda t: K.merge_apt(t, setup))):
+        text, notes = text_notes((folder / rel).read_bytes().decode("utf-8"))
         out["notes"] += notes
         if _write_if(folder / rel, text):
             out["changes"].append(f"{rel}: the tools' dependencies merged again")
@@ -196,10 +226,10 @@ def run(folder: Path, report: dict | None = None, progress=None) -> dict:
     env_ex = folder / ".env.example"
     if env_ex.is_file() and _write_if(env_ex, K.env_example(env_ex.read_bytes().decode("utf-8"), secrets)):
         out["changes"].append(".env.example: the tools' variables added")
-    if _write_if(folder / "DEPLOY.md", K.deploy_md(title, title, name, secrets, info)):
+    if _write_if(folder / "DEPLOY.md", K.deploy_md(title, title, name, secrets, info, where)):
         out["changes"].append("DEPLOY.md: written again for the setup as it is now")
     if not (folder / "README.md").is_file():
-        (folder / "README.md").write_text(K.readme_md(title, title), encoding="utf-8")
+        (folder / "README.md").write_text(K.readme_md(title, title, where), encoding="utf-8")
         out["changes"].append("README.md: written")
     (folder / K.INFO).write_text(json.dumps(info, indent=2) + "\n", encoding="utf-8")
     files = {rel: (folder / rel).read_bytes() for rel in K.files_git_takes(folder)}
@@ -264,7 +294,7 @@ def main(argv: list[str]) -> int:
     if args.report:
         try:
             r = json.loads(Path(args.report).read_text(encoding="utf-8"))
-            if r.get("fingerprint") == fingerprint(folder / K.SETUP_DIR):
+            if r.get("fingerprint") == fingerprint(setup_dir(folder)):
                 report = r
                 print("Using the Validate report given (the setup has not changed since).", file=sys.stderr)
             else:

@@ -105,6 +105,6 @@ libraries the `Dockerfile` installs):
 
     python -m studio
 
-opens the MAS Studio on `dc_pack/` at http://127.0.0.1:8770/.  Change what
+opens the MAS Studio on `{{SETUP}}/` at http://127.0.0.1:8770/.  Change what
 you need, press **Validate**, then commit and push: Railway deploys the new
 version.

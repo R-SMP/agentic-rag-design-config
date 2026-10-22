@@ -79,7 +79,7 @@ agents/5agent/receptionist/prompt_5agents.md
 ```
 
 The pack's per-topology texts are not here: they are `<slot>.t<N>.md` files in
-`dc_pack/fragments/` (`dc_pack/README.md`).
+`setups/propeller/fragments/` (`setups/propeller/README.md`).
 
 Two rules that make this safe:
 

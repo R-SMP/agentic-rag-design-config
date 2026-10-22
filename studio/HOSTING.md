@@ -7,9 +7,10 @@ The MAS Studio runs online in one of two ways, on **one shared setup**
   menu (`/`) offers its configurators (opened at `/configurator`) and the
   MAS Studio (`/studio/`, `studio/embedded.py`).  Nothing to set up: the Studio comes
   with every deploy of the app, asks for the app's own `INVITE_CODE`, and
-  works on a copy of the app's setup (`workspace/dc_pack`, or the folder in
-  `STUDIO_WORKSPACE`), so the running configurator never changes.  It is
-  made the first time someone opens it.  **The app's keys are in the same
+  works on a copy of the propeller (`workspace/dc_pack`, or the folder in
+  `STUDIO_WORKSPACE`) -- **Start from a configurator** replaces it with
+  another of `setups/` -- so the running configurators never change.  It is
+  made the first time someone opens it; its link back is the main menu.  **The app's keys are in the same
   server**: a tool's code run by Test tool or Validate could read them
   (TODO F122) -- give the code only to people you trust.
 * **On its own**, `python -m studio --online`: a service of its own, with
@@ -45,7 +46,7 @@ The MAS Studio runs online in one of two ways, on **one shared setup**
   one; a change shows for the others when they reload.  Inside the
   configurator's deploy too.
 * **It is not kept** when the Studio restarts or is deployed again: it goes
-  back to the propeller example.  Download setup file keeps the work, Import
+  back to the propeller.  Download setup file keeps the work, Import
   a setup brings it back.  A Railway volume mounted at `/app/workspace`
   would keep it (TODO F120).
 * **Test tool and Validate run tool code on the server**: give the code only

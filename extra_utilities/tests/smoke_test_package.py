@@ -2,21 +2,28 @@
 ``studio/package.py``).
 
 1. THE SETUP FILE, from the Studio (``GET /download/setup``): the setup's
-   files under ``dc_pack/``, byte for byte, and ``setup_info.json`` (the
+   files under ``setups/propeller/`` (the folder named after the
+   configurator, as in the repository), byte for byte, and
+   ``setup_info.json`` (the
    configurator, the engine, ``pack_format``, Validate not run).  Changed in
    the Studio, then opened again (``open_setup``): the setup is back byte for
    byte, nothing is listed as changed, Undo starts from it; a different
    setup file opened is the new start (nothing listed as changed).  A full package
-   opens too (its ``dc_pack/`` is taken).  Refused, writing nothing: not a
-   zip, no ``dc_pack/``, a path out of the folder, a file name Windows
-   cannot hold, a setup in a newer
-   format, a parameter file the engine refuses.
+   opens too (its ``setups/propeller/`` is taken).  Refused, writing
+   nothing: not a zip, no ``setups/<name>/`` (the old ``dc_pack/`` layout
+   among them), two setups in one file, a path out of the folder, a file
+   name Windows cannot hold, a setup in a newer format, a parameter file the
+   engine refuses.
 2. THE FULL PACKAGE (``GET /download/package``): one folder holding the
    engine -- every file git has or would take in the engine's folders, and
    no other (no notes, docs, benchmarks or propeller-only checks, no
-   Workflow Settings saved on this computer, no ``.env``) --, this setup as
-   ``dc_pack/``, ``README.md`` and ``DEPLOY.md`` naming the configurator and
-   its tools' variables, ``.env.example`` with them, ``setup_info.json``.
+   Workflow Settings saved on this computer, no ``.env``) --, this setup in
+   ``setups/propeller/``, ``README.md`` and ``DEPLOY.md`` naming the
+   configurator, its folder and its tools' variables, ``.env.example`` with
+   them, ``setup_info.json``.  Its ``.gitignore`` and ``.dockerignore`` are
+   the repository's without the lines for the repository's own ``setups/``
+   (which leave the vacuum hose adapter out): neither leaves the package's
+   configurator out.
    A tool's own ``requirements.txt`` and ``apt.txt`` are merged into
    ``requirements.txt`` and the ``Dockerfile`` (a package the engine names
    kept as the engine has it, with a note).  The engine's files are the same
@@ -25,12 +32,16 @@
    key in a tool is listed by ``download_preview`` with its file, line and a
    masked value, and the download still works.
 4. INSIDE THE PACKAGE, unpacked into an empty folder: ``python -m studio
-   validate`` finds no failure -- the package holds all Validate needs.
+   validate`` finds no failure on its ``setups/propeller/`` -- the package
+   holds all Validate needs -- and the app's main menu lists that one
+   configurator, loaded.
 5. PREPARE FOR GITHUB (P7-3, ``studio/prepare.py``), in that folder: outside
-   a package, and in the blueprint's own repository, it refuses and changes
-   nothing; given the Validate report, it
+   a package, in the blueprint's own repository, and in a folder with two
+   configurators in ``setups/``, it refuses and changes nothing; given the
+   Validate report, it
    adds what ``.gitignore`` and ``.dockerignore`` miss (git then leaves logs
-   and the saved Workflow Settings out), lists a key and a ``.env`` value
+   and the saved Workflow Settings out), removes a line that leaves the
+   package's configurator out, lists a key and a ``.env`` value
    planted in a file (``.env`` itself is ignored), leaves
    ``requirements.txt``, the ``Dockerfile`` and an edited ``README.md`` as
    they are, writes ``DEPLOY.md`` and ``setup_info.json`` again, and prints
@@ -76,6 +87,8 @@ from studio import package as K                  # noqa: E402
 
 FAILURES: list[str] = []
 PACK = ROOT / "setups" / "propeller"
+# The setup's folder in the downloads (the configurator's name: propeller).
+SP = "setups/propeller/"
 
 
 def check(ok: bool, what: str) -> None:
@@ -167,11 +180,11 @@ def check_setup_file(st: Studio, copy: Path) -> str:
     check(status == 200 and "propeller_design_configurator_setup.zip" in headers.get("content-disposition", ""),
           f"[SETUP] GET /download/setup: {status} {headers.get('content-disposition')}")
     files = zip_files(raw)
-    inside = {k[len("dc_pack/"):]: v for k, v in files.items() if k.startswith("dc_pack/")}
+    inside = {k[len(SP):]: v for k, v in files.items() if k.startswith(SP)}
     check(inside == before, f"[SETUP] the setup file is not the setup byte for byte: "
                             f"{sorted(set(inside) ^ set(before))[:5]}")
-    check(set(files) == {"setup_info.json"} | {f"dc_pack/{r}" for r in before},
-          f"[SETUP] other files in the setup file: {sorted(set(files) - {'setup_info.json'} - {f'dc_pack/{r}' for r in before})[:5]}")
+    check(set(files) == {"setup_info.json"} | {f"{SP}{r}" for r in before},
+          f"[SETUP] other files in the setup file: {sorted(set(files) - {'setup_info.json'} - {f'{SP}{r}' for r in before})[:5]}")
     info = json.loads(files.get("setup_info.json", b"{}"))
     check(info.get("configurator") == "Propeller Design Configurator" and info.get("pack_format") == 1
           and info.get("validate") == {"status": "not run"} and info.get("made_by") == "MAS Studio"
@@ -217,8 +230,8 @@ def check_setup_file(st: Studio, copy: Path) -> str:
     st.call("undo_field", "dc_name", None)
     check(snapshot(copy) == before, "[SETUP] Undo after opening does not go back to the opened file")
     # a setup file that differs from the setup: once opened, it is the start
-    other = {f"dc_pack/{k}": v for k, v in inside.items()}
-    other["dc_pack/fragments/dc/dc_name.md"] = b"another name\n"
+    other = {f"{SP}{k}": v for k, v in inside.items()}
+    other[f"{SP}fragments/dc/dc_name.md"] = b"another name\n"
     r = st.call("open_setup", make_zip(other), "other.zip")
     d = st.call("get_all")["data"]
     check(r.get("ok") and d["changed"] == []
@@ -226,7 +239,7 @@ def check_setup_file(st: Studio, copy: Path) -> str:
           f"[SETUP] a different setup file opened: listed as changed {d['changed'][:4]}, {str(r)[:200]}")
     r = st.call("open_setup", base64.b64encode(raw).decode("ascii"), "setup.zip")
     check(r.get("ok") and snapshot(copy) == before, "[SETUP] the first setup file did not open again")
-    # a full package opens too (its dc_pack/)
+    # a full package opens too (its setups/propeller/)
     _st, _h, pkg = st.get("/download/package")
     r = st.call("open_setup", base64.b64encode(pkg).decode("ascii"), "package.zip")
     check(r.get("ok") and snapshot(copy) == before, f"[SETUP] a full package did not open: {str(r)[:300]}")
@@ -238,13 +251,18 @@ def check_setup_file(st: Studio, copy: Path) -> str:
     bad_spec["parameters.json"] = json.dumps(spec).encode("utf-8")
     cases = {
         "not a zip": (base64.b64encode(b"not a zip").decode("ascii"), "not a zip"),
-        "no dc_pack/": (make_zip({"something/else.txt": b"x"}), "no dc_pack/"),
-        "a path out of the folder": (make_zip({"dc_pack/pack.yaml": inside["pack.yaml"],
-                                               "dc_pack/../escape.txt": b"x"}), "not a path"),
-        "a newer format": (make_zip({f"dc_pack/{k}": v for k, v in newer.items()}), "newer engine"),
-        "a file name Windows cannot hold": (make_zip({"dc_pack/pack.yaml": inside["pack.yaml"],
-                                                      "dc_pack/fragments/x:y.md": b"x"}), "not a path"),
-        "a parameter file the engine refuses": (make_zip({f"dc_pack/{k}": v for k, v in bad_spec.items()}),
+        "no setups/<name>/": (make_zip({"something/else.txt": b"x"}), "no setups/<name>/"),
+        "the old dc_pack/ layout": (make_zip({f"dc_pack/{k}": v for k, v in inside.items()}),
+                                    "no setups/<name>/"),
+        "two setups in one file": (make_zip({f"{SP}pack.yaml": inside["pack.yaml"],
+                                             "setups/other/pack.yaml": inside["pack.yaml"]}),
+                                   "two setups in one file"),
+        "a path out of the folder": (make_zip({f"{SP}pack.yaml": inside["pack.yaml"],
+                                               f"{SP}../escape.txt": b"x"}), "not a path"),
+        "a newer format": (make_zip({f"{SP}{k}": v for k, v in newer.items()}), "newer engine"),
+        "a file name Windows cannot hold": (make_zip({f"{SP}pack.yaml": inside["pack.yaml"],
+                                                      f"{SP}fragments/x:y.md": b"x"}), "not a path"),
+        "a parameter file the engine refuses": (make_zip({f"{SP}{k}": v for k, v in bad_spec.items()}),
                                                 "must be smaller than max"),
     }
     for what, (b64, words) in cases.items():
@@ -313,15 +331,29 @@ def check_package(st: Studio, copy: Path, tmp: Path) -> str:
         setup = snapshot(copy)
         engine = set(K.engine_files())
         written = {"README.md", "DEPLOY.md", ".env.example", "setup_info.json"}
-        want = engine | {f"dc_pack/{r}" for r in setup} | written
+        want = engine | {f"{SP}{r}" for r in setup} | written
         check(set(files) == want, f"[PACKAGE] files: extra {sorted(set(files) - want)[:5]}, "
                                   f"missing {sorted(want - set(files))[:5]}")
-        for rel in engine - {"requirements.txt", "Dockerfile"}:
+        merged_or_filtered = {"requirements.txt", "Dockerfile", ".gitignore", ".dockerignore"}
+        for rel in engine - merged_or_filtered:
             if files.get(rel) != (ROOT / rel).read_bytes():
                 check(False, f"[PACKAGE] {rel} is not the engine's file")
                 break
-        check(all(files.get(f"dc_pack/{r}") == b for r, b in setup.items()),
-              "[PACKAGE] dc_pack/ is not the setup byte for byte")
+        check(all(files.get(f"{SP}{r}") == b for r, b in setup.items()),
+              f"[PACKAGE] {SP} is not the setup byte for byte")
+        # the ignore files: the repository's, without its own setups/ lines
+        for rel in (".gitignore", ".dockerignore"):
+            repo_text = (ROOT / rel).read_bytes().decode("utf-8")
+            text = files[rel].decode("utf-8")
+            check(text == K.drop_ignore_lines(repo_text, K._repo_setups_line)[0]
+                  and len(text.splitlines()) < len(repo_text.splitlines())
+                  and "setups/vacuum_hose_adapter" not in text and "the vacuum hose" not in text,
+                  f"[PACKAGE] {rel} is not the repository's without its setups/ lines")
+            rules, repo_rules = K.IgnoreRules(text), K.IgnoreRules(repo_text)
+            check(not rules.ignored("setups/propeller", True) and not rules.ignored("setups/vacuum_hose_adapter", True)
+                  and repo_rules.ignored("setups/vacuum_hose_adapter", True)
+                  and rules.ignored("workspace", True) and rules.ignored("logs", True) == repo_rules.ignored("logs", True),
+                  f"[PACKAGE] {rel} leaves a configurator out, or lost another line")
         for gone in ("extra_utilities/TODO_known_issues.md", "extra_utilities/docs/MAS_blueprint_proposal.md",
                      "extra_utilities/tests/smoke_test_pack_tools.py", "extra_utilities/tests/smoke_test_studio.py",
                      ".env", "workflow_settings/tool_settings.json", "CLAUDE.md"):
@@ -341,21 +373,25 @@ def check_package(st: Studio, copy: Path, tmp: Path) -> str:
         check("QZX_TOOL_KEY=" in env and env.count("RHINO_COMPUTE_URL=") == 1,
               "[PACKAGE] .env.example lacks the tool's variable (or repeats one)")
         setup_now = K.setup_files(copy)
-        again = K.merge_requirements(req, setup_now)[0], K.merge_apt(dock, setup_now)[0]
+        check("# for the tool render_blade_sections (setups/propeller/tools/render_blade_sections/"
+              "requirements.txt)" in req, "[PACKAGE] the merged requirements do not name the tool's folder")
+        again = K.merge_requirements(req, setup_now, SP[:-1])[0], K.merge_apt(dock, setup_now)[0]
         check(again == (req, dock), "[PACKAGE] merging the tools' dependencies again changes the files")
         no_tools = {r: q for r, q in setup_now.items() if not r.endswith(("/requirements.txt", "/apt.txt"))}
-        back = K.merge_requirements(req, no_tools)[0], K.merge_apt(dock, no_tools)[0]
+        back = K.merge_requirements(req, no_tools, SP[:-1])[0], K.merge_apt(dock, no_tools)[0]
         check(back == ((ROOT / "requirements.txt").read_bytes().decode("utf-8"),
                        (ROOT / "Dockerfile").read_bytes().decode("utf-8")),
               "[PACKAGE] with the tools' files gone, the merge does not give the engine's files back")
         dep = files["DEPLOY.md"].decode("utf-8")
         check("# Deploying: Propeller Design Configurator" in dep and "`QZX_TOOL_KEY`" in dep
               and "`RHINO_COMPUTE_URL`" in dep and "{{" not in dep and "INVITE_CODE" in dep
-              and "gh repo create propeller_design_configurator --private" in dep,
-              "[PACKAGE] DEPLOY.md does not name the setup and its tools' variables")
+              and "gh repo create propeller_design_configurator --private" in dep
+              and "opens the MAS Studio on `setups/propeller/`" in dep and "dc_pack" not in dep,
+              "[PACKAGE] DEPLOY.md does not name the setup, its folder and its tools' variables")
         rd = files["README.md"].decode("utf-8")
-        check(rd.startswith("# Propeller Design Configurator") and "{{" not in rd,
-              "[PACKAGE] README.md does not name the setup")
+        check(rd.startswith("# Propeller Design Configurator") and "{{" not in rd
+              and "`setups/propeller/` is this configurator" in rd and "dc_pack" not in rd,
+              "[PACKAGE] README.md does not name the setup and its folder")
         # 3. a planted key is listed, masked, and the download still works
         planted = "sk-proj-" + "A1b2C3d4" * 6
         f = tool / "render_blade_sections.py"
@@ -367,7 +403,7 @@ def check_package(st: Studio, copy: Path, tmp: Path) -> str:
               f"[SCAN] the planted key: {found}")
         status, _h, raw = st.get("/download/setup")
         check(status == 200 and planted.encode() in zip_files(raw)[
-            "dc_pack/tools/render_blade_sections/render_blade_sections.py"],
+            f"{SP}tools/render_blade_sections/render_blade_sections.py"],
               "[SCAN] the download is not possible once something looks like a key")
     finally:
         for p in (tool / "requirements.txt", tool / "apt.txt"):
@@ -395,8 +431,21 @@ def check_inside(st: Studio, tmp: Path) -> str:
     check(proc.returncode == 0, f"[INSIDE] Validate inside the package answered {proc.returncode}: "
                                 f"{proc.stdout[-1500:]} {proc.stderr[-800:]}")
     rep = json.loads((tmp / "inside.json").read_text(encoding="utf-8")) if (tmp / "inside.json").is_file() else {}
-    check(rep.get("pack_dir", "").replace("\\", "/").endswith("propeller_design_configurator/dc_pack"),
-          f"[INSIDE] Validate did not check the package's own dc_pack: {rep.get('pack_dir')}")
+    check(rep.get("pack_dir", "").replace("\\", "/").endswith("propeller_design_configurator/setups/propeller"),
+          f"[INSIDE] Validate did not check the package's own setups/propeller: {rep.get('pack_dir')}")
+    # the app's main menu in the package: its one configurator, loaded
+    code = ("import json, web_app; from fastapi.testclient import TestClient; "
+            "print(json.dumps(TestClient(web_app.app).get('/api/setups').json()))")
+    menu_env = dict(env, ACTIVE_SETUP_FILE=str(tmp / "inside_active.json"), INVITE_CODE="")
+    proc = subprocess.run([sys.executable, "-c", code], cwd=str(folder), env=menu_env, capture_output=True,
+                          text=True, encoding="utf-8", errors="replace", timeout=600)
+    last = (proc.stdout.strip().splitlines() or ["{}"])[-1]
+    try:
+        menu = json.loads(last)
+    except ValueError:
+        menu = {}
+    check([(s.get("setup"), s.get("loaded")) for s in menu.get("setups", [])] == [("propeller", True)],
+          f"[INSIDE] the package's main menu: {last[:300]} {proc.stderr[-600:]}")
     return f"inside the package: {rep.get('counts')}"
 
 
@@ -437,6 +486,14 @@ def check_prepare(st: Studio, tmp: Path) -> str:
     r = _prepare(outside)
     check(r.returncode == 2 and "blueprint's own repository" in r.stderr and snapshot(outside) == before,
           f"[PREPARE] the blueprint's own repository: {r.returncode} {r.stderr[-300:]}")
+    # ...and a folder with two configurators is not a package
+    shutil.rmtree(outside / "extra_utilities" / "docs")
+    shutil.copytree(outside / "setups" / "propeller", outside / "setups" / "another",
+                    ignore=shutil.ignore_patterns("__pycache__"))
+    before = snapshot(outside)
+    r = _prepare(outside)
+    check(r.returncode == 2 and "A package holds one configurator" in r.stderr and snapshot(outside) == before,
+          f"[PREPARE] two configurators: {r.returncode} {r.stderr[-300:]}")
     shutil.rmtree(outside.parent, ignore_errors=True)
     d = st.call("get_all")["data"]
     check(d.get("prepare", {}).get("available") is False and "Download full package" in (d["prepare"].get("why") or ""),
@@ -445,6 +502,10 @@ def check_prepare(st: Studio, tmp: Path) -> str:
     _drop_line(folder / ".gitignore", "logs/")
     _drop_line(folder / ".gitignore", "workflow_settings/tool_settings.json")
     _drop_line(folder / ".dockerignore", "workspace/")
+    # ...and the package's own configurator, left out by hand
+    for rel in (".gitignore", ".dockerignore"):
+        f = folder / rel
+        f.write_bytes(f.read_bytes() + b"# kept out by hand\nsetups/propeller/\n")
     value = "sk-qzx-planted-" + "9" * 24
     (folder / ".env").write_text(f"OPENAI_API_KEY={value}\n", encoding="utf-8")
     (folder / "notes.txt").write_text(f"the key: {value}\n", encoding="utf-8")
@@ -456,10 +517,16 @@ def check_prepare(st: Studio, tmp: Path) -> str:
           f"[PREPARE] prepare answered {r.returncode}: {out[-800:]} {r.stderr[-400:]}")
     check(".gitignore: added logs/, workflow_settings/tool_settings.json" in out
           and ".dockerignore: added workspace/" in out, f"[PREPARE] the ignore files were not repaired: {out[:600]}")
+    check(".gitignore: removed setups/propeller/ (it left setups/propeller/ out)" in out
+          and ".dockerignore: removed setups/propeller/ (it left setups/propeller/ out)" in out,
+          f"[PREPARE] the line leaving the configurator out was not removed: {out[:700]}")
     rules = K.IgnoreRules((folder / ".gitignore").read_text(encoding="utf-8"))
     check(rules.ignored("logs", True) and rules.ignored("workflow_settings/tool_settings.json")
-          and rules.ignored(".env") and not rules.ignored(".env.example"),
-          "[PREPARE] after the repair, git would still take logs/ or the saved settings")
+          and rules.ignored(".env") and not rules.ignored(".env.example")
+          and not rules.ignored("setups/propeller", True)
+          and "# kept out by hand" not in (folder / ".dockerignore").read_text(encoding="utf-8"),
+          "[PREPARE] after the repair, git would still take logs/ or the saved settings, or leave the "
+          "configurator out")
     check("notes.txt:1  an OpenAI, Anthropic or OpenRouter key" in out
           and "notes.txt:1  the value of OPENAI_API_KEY in .env" in out and value not in out
           and "\n  .env:" not in out, f"[PREPARE] the key scan: {out[out.find('looks like a key'):][:500]}")
@@ -475,7 +542,8 @@ def check_prepare(st: Studio, tmp: Path) -> str:
           f"[PREPARE] the first-time commands: {out[out.find('Nothing was committed'):][:600]}")
     # again: nothing to repair
     r = _prepare(folder, "--report", report)
-    check(r.returncode == 0 and "ignore: added" not in r.stdout, f"[PREPARE] a second run repaired again: {r.stdout[:400]}")
+    check(r.returncode == 0 and "ignore: added" not in r.stdout and "ignore: removed" not in r.stdout,
+          f"[PREPARE] a second run repaired again: {r.stdout[:400]}")
     # later: a repository with a remote
     (folder / ".git").mkdir()
     (folder / ".git" / "config").write_text('[core]\n\tbare = false\n[remote "origin"]\n\turl = https://example.invalid/x.git\n',
@@ -484,7 +552,7 @@ def check_prepare(st: Studio, tmp: Path) -> str:
     check(r.returncode == 0 and "git push" in r.stdout and "gh repo create" not in r.stdout
           and "git init" not in r.stdout, f"[PREPARE] once a remote exists: {r.stdout[-500:]}")
     # the Studio's button, in the package
-    pst = Studio(folder / "dc_pack", cwd=folder)
+    pst = Studio(folder / "setups" / "propeller", cwd=folder)
     try:
         pst.call("get_all")
         a = pst.call("prepare_run")
@@ -499,7 +567,7 @@ def check_prepare(st: Studio, tmp: Path) -> str:
               and any(s[1] == "git push" for s in res["commands"]["steps"]),
               f"[PREPARE] the button after Validate: {str(b)[:400]}")
         # a change to the setup makes that Validate out of date: asked for again
-        f = folder / "dc_pack" / "fragments" / "dc" / "dc_name.md"
+        f = folder / "setups" / "propeller" / "fragments" / "dc" / "dc_name.md"
         f.write_bytes(f.read_bytes() + b"\n")
         c = pst.call("prepare_run")
         check(c.get("ok") and c.get("needs_validate"),
@@ -509,9 +577,9 @@ def check_prepare(st: Studio, tmp: Path) -> str:
     # a Validate failure stops it before anything changes
     _drop_line(folder / ".gitignore", "logs/")
     gi = (folder / ".gitignore").read_bytes()
-    spec = json.loads((folder / "dc_pack" / "parameters.json").read_text(encoding="utf-8"))
+    spec = json.loads((folder / "setups" / "propeller" / "parameters.json").read_text(encoding="utf-8"))
     spec["parameters"][0].update(min=10, max=5)
-    (folder / "dc_pack" / "parameters.json").write_text(json.dumps(spec), encoding="utf-8")
+    (folder / "setups" / "propeller" / "parameters.json").write_text(json.dumps(spec), encoding="utf-8")
     r = _prepare(folder)
     check(r.returncode == 1 and "Validate found failures" in r.stdout and (folder / ".gitignore").read_bytes() == gi,
           f"[PREPARE] a Validate failure: {r.returncode} {r.stdout[-400:]}")
@@ -549,10 +617,11 @@ def main(argv: list[str]) -> int:
         for f in FAILURES:
             print("  " + f)
         return 1
-    print("\nPASS - the setup file is the setup and opens back byte for byte, a bad one is "
-          "refused, the full package holds the engine, this setup and what is written for it, "
-          "the key scan warns, Validate passes inside the package, and prepare readies it "
-          "for GitHub without running git.")
+    print("\nPASS - the setup file is the setup in setups/propeller/ and opens back byte for byte, a "
+          "bad one (the old dc_pack/ layout among them) is refused, the full package holds the engine, "
+          "this setup in setups/propeller/ -- kept in git and the image -- and what is written for it, "
+          "the key scan warns, Validate passes inside the package and its menu lists the configurator, "
+          "and prepare readies it for GitHub without running git.")
     return 0
 
 

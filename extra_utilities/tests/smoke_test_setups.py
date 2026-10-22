@@ -2,20 +2,21 @@
 same way (``engine/setups.py``, ``setups/README.md``).
 
 1. ENGINE -- a folder of ``setups/`` is a setup when it holds a
-   ``pack.yaml``; the default is ``setups/propeller``, else the first setup,
-   else ``dc_pack/`` (a package in the layout from before setups/);
-   ``DC_PACK_DIR`` is taken from the root when relative, as it is when
-   absolute.
+   ``pack.yaml``; the default is ``setups/propeller``, else the first setup
+   (a package holds one); with none, ``setups/propeller`` all the same --
+   no other layout is read; ``DC_PACK_DIR`` is taken from the root when
+   relative, as it is when absolute.
 2. THE REPOSITORY -- the propeller is committed in ``setups/propeller``, no
    ``dc_pack/`` is left; ``config.py`` and the Studio run it by default, and
    both take ``DC_PACK_DIR`` alike; the vacuum hose adapter is left out of
    git and of the images (its model's author asks that it not be uploaded).
 3. REMEMBERED AND SETTINGS -- the configurator loaded last is remembered
    (``ACTIVE_SETUP_FILE`` in the tests) and started with, while it is a
-   folder of ``setups/``; each one's Workflow Settings files are its own
-   (``workflow_settings/setups/<setup>/``), and the one setup of the layout
-   from before setups/ moves its own there once; only ``database: true`` in
-   a ``pack.yaml`` lets a setup use the database; packages leave the files
+   folder of ``setups/`` -- by the engine and the local Studio, never by a
+   shared Studio copy, which starts from the propeller; each one's Workflow
+   Settings files are its own (``workflow_settings/setups/<setup>/``), and
+   the propeller moves its old ones there once; only ``database: true`` in a
+   ``pack.yaml`` lets a setup use the database; packages leave the files
    this computer saves out.
 4. SWITCH -- loading another configurator in place (``engine/switch.py``)
    equals a fresh start with it: a process that starts with the propeller
@@ -84,8 +85,10 @@ def setup(root: Path, name: str, pack_yaml: bool = True) -> Path:
 def check_engine() -> None:
     tmp = Path(tempfile.mkdtemp(prefix="setups_smoke_"))
     try:
-        check(S.all_setups(tmp) == [] and S.default_setup(tmp) == tmp / "dc_pack",
-              f"[ENGINE] no setups/: {S.all_setups(tmp)} {S.default_setup(tmp)}")
+        (tmp / "dc_pack").mkdir()
+        (tmp / "dc_pack" / "pack.yaml").write_text("pack_format: 1\n", encoding="utf-8")
+        check(S.all_setups(tmp) == [] and S.default_setup(tmp) == tmp / "setups" / "propeller",
+              f"[ENGINE] no setups/ (an old dc_pack/ is not read): {S.all_setups(tmp)} {S.default_setup(tmp)}")
         b = setup(tmp, "bravo")
         a = setup(tmp, "alpha")
         setup(tmp, "notes", pack_yaml=False)
@@ -156,8 +159,25 @@ def check_remembered() -> None:
             (tmp / "state" / "active.json").write_text(text, encoding="utf-8")
             check(S.remembered(tmp) is None and S.resolve(tmp, "") == p,
                   f"[REMEMBERED] {text!r} is not a configurator to start with")
+        # The Studio: locally the one loaded last; a shared copy (online, or
+        # inside the app) starts from the propeller.
+        import studio.__main__ as SM
+        S.remember(tmp, b)
+        real_repo, real_env = SM.REPO, os.environ.pop("DC_PACK_DIR", None)
+        try:
+            SM.REPO = tmp
+            check(SM.default_pack() == b and SM.example_pack() == p,
+                  f"[REMEMBERED] the Studio: local {SM.default_pack()}, shared copy {SM.example_pack()}")
+            os.environ["DC_PACK_DIR"] = "setups/bravo"
+            check(SM.default_pack() == b and SM.example_pack() == b,
+                  "[REMEMBERED] DC_PACK_DIR does not name the Studio's setup")
+        finally:
+            SM.REPO = real_repo
+            os.environ.pop("DC_PACK_DIR", None)
+            if real_env is not None:
+                os.environ["DC_PACK_DIR"] = real_env
         # Workflow Settings: each setup's own; the old file moves once, for
-        # setups/propeller or a package's dc_pack/ only.
+        # setups/propeller only.
         ws = tmp / "workflow_settings"
         ws.mkdir()
         (ws / "tool_settings.json").write_text("{}\n", encoding="utf-8")
@@ -169,14 +189,6 @@ def check_remembered() -> None:
         (ws / "tool_settings.json").write_text('{"x": 1}\n', encoding="utf-8")
         check(S.settings_file(tmp, p, "tool_settings.json").read_text(encoding="utf-8") == "{}\n",
               "[SETTINGS] a file already in place was replaced")
-        pkg = Path(tempfile.mkdtemp(prefix="setups_pkg_"))
-        (pkg / "dc_pack").mkdir()
-        (pkg / "workflow_settings").mkdir()
-        (pkg / "workflow_settings" / "parameter_access.json").write_text("{}\n", encoding="utf-8")
-        f = S.settings_file(pkg, pkg / "dc_pack", "parameter_access.json")
-        check(f == pkg / "workflow_settings" / "setups" / "dc_pack" / "parameter_access.json" and f.is_file(),
-              "[SETTINGS] a package's dc_pack/ did not take its file")
-        shutil.rmtree(pkg, ignore_errors=True)
         # The database: only database: true.
         for text, want in (("database: true\n", True), ("", False), ("database: yes please\n", False),
                            ("database: 1\n", False), ("database: [\n", False)):

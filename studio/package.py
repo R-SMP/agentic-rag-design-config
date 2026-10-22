@@ -1,20 +1,25 @@
 """The two downloads (MAS-blueprint P7-2): the setup file and the full package.
 
 * **The setup file** -- ``<name>_setup.zip``: the setup's files under
-  ``dc_pack/`` and ``setup_info.json`` (the Studio that made it, when, the
-  engine's version, the setup's format, Validate's last result).  It holds
-  no secret: the Studio has none.  Open setup file reads it back
-  (:func:`read_setup_file`) and the Studio's setup is replaced by it.
+  ``setups/<setup>/`` (:func:`setup_folder`), as in the repository, and
+  ``setup_info.json`` (the Studio that made it, when, the engine's version,
+  the setup's format, Validate's last result).  It holds no secret: the
+  Studio has none.  Open setup file reads it back (:func:`read_setup_file`)
+  and the Studio's setup is replaced by it.
 * **The full package** -- ``<name>_package.zip``, one folder: the engine
   (:func:`engine_files`), the Studio with the checks Validate runs, this
-  setup as ``dc_pack/``, and files written for it: ``README.md`` and
+  setup in ``setups/<setup>/`` -- the app with one configurator in its main
+  menu -- and files written for it: ``README.md`` and
   ``DEPLOY.md`` (from ``package_files/``), ``.env.example`` with the
   variables its tools declare, a tool's own ``requirements.txt`` /
   ``apt.txt`` merged into ``requirements.txt`` and the ``Dockerfile``
   (:func:`merge_requirements`, :func:`merge_apt`), ``setup_info.json``.
   Not in it: the repository's notes, docs, benchmarks and the checks that
-  hold for the propeller only; logs, attempts, past sessions; ``.env`` and
-  the Workflow Settings saved on this computer.
+  hold for the propeller only, and its other configurators; logs, attempts,
+  past sessions; ``.env`` and the Workflow Settings saved on this computer.
+  Its ``.gitignore`` and ``.dockerignore`` are the repository's without the
+  lines for the repository's own ``setups/`` (:func:`drop_ignore_lines`):
+  the package's configurator goes to git and into the image.
 * **The key scan** (:func:`scan`) -- every text file of a download, for what
   looks like an API key or a private key: a warning with the value masked
   (owner, 2026-10-19: the download is still possible).
@@ -36,7 +41,7 @@ import yaml
 
 REPO = Path(__file__).resolve().parents[1]
 FILES = Path(__file__).resolve().parent / "package_files"
-SETUP_DIR = "dc_pack"
+SETUPS = "setups"
 INFO = "setup_info.json"
 # The engine: these folders and files of the repository.
 ENGINE_DIRS = ("agents", "engine", "tools", "web", "workflow_settings", "studio")
@@ -226,7 +231,7 @@ _REQ_NAME_RE = re.compile(r"^\s*([A-Za-z0-9][A-Za-z0-9._-]*)")
 # Where the merged part starts: a merge again replaces it (python -m studio
 # prepare runs it on a package whose tools may have changed).
 REQ_MARK = "# ---- this setup's tools ----"
-APT_MARK = "        # ---- this setup's tools (dc_pack/tools/<tool>/apt.txt) ----"
+APT_MARK = "        # ---- this setup's tools (setups/<setup>/tools/<tool>/apt.txt) ----"
 # OpenSCAD for a tool the engine runs with it (backend: openscad, MAS-blueprint
 # P6e; TODO F123).  Debian's openscad is 2021.01, which cannot read newer
 # models: the image gets a pinned development snapshot -- the one the vacuum
@@ -269,11 +274,13 @@ def _lines(raw: bytes) -> list[str]:
             if ln.strip() and not ln.strip().startswith("#")]
 
 
-def merge_requirements(engine_text: str, setup: dict[str, Path]) -> tuple[str, list[str]]:
+def merge_requirements(engine_text: str, setup: dict[str, Path],
+                       folder: str = "setups/<setup>") -> tuple[str, list[str]]:
     """The engine's ``requirements.txt`` with each tool's own
     ``tools/<tool>/requirements.txt`` added after :data:`REQ_MARK` (a part
     merged before is replaced); a package the engine already names is kept
-    as the engine has it (a different version is noted)."""
+    as the engine has it (a different version is noted).  *folder* is the
+    setup's in the package, named in each tool's line."""
     eol = "\r\n" if "\r\n" in engine_text else "\n"
     at = engine_text.find(eol + REQ_MARK)
     if at >= 0:
@@ -301,7 +308,7 @@ def merge_requirements(engine_text: str, setup: dict[str, Path]) -> tuple[str, l
                 have[n] = ln
                 new.append(ln)
         if new:
-            added.append(f"# for the tool {tool} (dc_pack/tools/{tool}/requirements.txt)")
+            added.append(f"# for the tool {tool} ({folder}/tools/{tool}/requirements.txt)")
             added += new
     if not added:
         return engine_text, notes
@@ -411,8 +418,9 @@ def _fill(template: str, values: dict[str, str]) -> str:
     return template
 
 
-def deploy_md(title: str, dc: str, name: str, secrets: list[dict], info: dict) -> str:
-    """``DEPLOY.md`` for this setup, from ``package_files/DEPLOY.md``."""
+def deploy_md(title: str, dc: str, name: str, secrets: list[dict], info: dict, folder: str) -> str:
+    """``DEPLOY.md`` for this setup, from ``package_files/DEPLOY.md``;
+    *folder* is the setup's (``setups/<setup>``)."""
     if secrets:
         rows = ["| Variable | Tool | Needed | What it is |", "|---|---|---|---|"]
         rows += [f"| `{s['env']}` | {s['tool']} | {'yes' if s['required'] else 'if you use it'} | "
@@ -426,11 +434,36 @@ def deploy_md(title: str, dc: str, name: str, secrets: list[dict], info: dict) -
                + (f", {v['when'].replace('T', ' ')}" if v.get("when") else ""))
     return _fill((FILES / "DEPLOY.md").read_text(encoding="utf-8"),
                  {"TITLE": title, "DC": dc, "NAME": name, "MADE": info["made"].replace("T", " "),
-                  "ENGINE": info["engine"], "VALIDATE": checked, "TOOL_VARIABLES": tools})
+                  "ENGINE": info["engine"], "VALIDATE": checked, "TOOL_VARIABLES": tools,
+                  "SETUP": folder})
 
 
-def readme_md(title: str, dc: str) -> str:
-    return _fill((FILES / "README.md").read_text(encoding="utf-8"), {"TITLE": title, "DC": dc})
+def readme_md(title: str, dc: str, folder: str) -> str:
+    return _fill((FILES / "README.md").read_text(encoding="utf-8"),
+                 {"TITLE": title, "DC": dc, "SETUP": folder})
+
+
+def drop_ignore_lines(text: str, drop) -> tuple[str, list[str]]:
+    """*text* -- a ``.gitignore`` or ``.dockerignore`` -- without the lines
+    ``drop(line)`` says yes to, each with the comment lines right above it;
+    and the lines dropped.  Each line keeps its own line ending (a file
+    edited on Windows may mix them)."""
+    out, gone = [], []
+    for ln in text.splitlines(keepends=True):
+        bare = ln.rstrip("\r\n")
+        if bare.strip() and not bare.lstrip().startswith("#") and drop(bare):
+            while out and out[-1].lstrip().startswith("#"):
+                out.pop()
+            gone.append(bare.strip())
+            continue
+        out.append(ln)
+    return "".join(out), gone
+
+
+def _repo_setups_line(line: str) -> bool:
+    """A line of the repository's ignore files about its own ``setups/``."""
+    p = line.strip().lstrip("/")
+    return p.startswith(SETUPS + "/") or p.rstrip("/") == SETUPS
 
 
 # ---------------------------------------------------------------------------
@@ -444,30 +477,41 @@ def names(pack_dir: Path, dc_name: str | None) -> tuple[str, str, str]:
     return slug(base), base[:1].upper() + base[1:], base
 
 
-def setup_contents(pack_dir: Path, info: dict) -> dict[str, bytes]:
-    out = {f"{SETUP_DIR}/{rel}": p.read_bytes() for rel, p in setup_files(pack_dir).items()}
+def setup_folder(dc_name: str | None) -> str:
+    """The setup's folder in a download: ``setups/<setup>``, named from the
+    configurator's name (``$dc_name``) as the folders of ``setups/`` are --
+    ``propeller``, ``vacuum_hose_adapter``."""
+    return f"{SETUPS}/{slug(dc_name or '')}"
+
+
+def setup_contents(pack_dir: Path, info: dict, folder: str) -> dict[str, bytes]:
+    """The setup file's files: the setup in *folder* (``setups/<setup>``)."""
+    out = {f"{folder}/{rel}": p.read_bytes() for rel, p in setup_files(pack_dir).items()}
     out[INFO] = (json.dumps(info, indent=2) + "\n").encode("utf-8")
     return out
 
 
 def package_contents(pack_dir: Path, name: str, title: str, dc: str, info: dict,
-                     repo: Path = REPO) -> tuple[dict[str, bytes], list[str]]:
-    """The full package's files (paths inside its folder) and the notes of
-    the dependency merge."""
+                     repo: Path = REPO, *, folder: str) -> tuple[dict[str, bytes], list[str]]:
+    """The full package's files (paths inside its folder), the setup in
+    *folder* (``setups/<setup>``), and the notes of the dependency merge."""
     setup = setup_files(pack_dir)
     out = {rel: (repo / rel).read_bytes() for rel in engine_files(repo)}
     for rel, p in setup.items():
-        out[f"{SETUP_DIR}/{rel}"] = p.read_bytes()
+        out[f"{folder}/{rel}"] = p.read_bytes()
     notes = []
-    req, n1 = merge_requirements(out["requirements.txt"].decode("utf-8"), setup)
+    req, n1 = merge_requirements(out["requirements.txt"].decode("utf-8"), setup, folder)
     dock, n2 = merge_apt(out["Dockerfile"].decode("utf-8"), setup)
     notes += n1 + n2
     out["requirements.txt"], out["Dockerfile"] = req.encode("utf-8"), dock.encode("utf-8")
+    for rel in (".gitignore", ".dockerignore"):
+        text, _gone = drop_ignore_lines(out[rel].decode("utf-8"), _repo_setups_line)
+        out[rel] = text.encode("utf-8")
     secrets = _secrets(setup)
     out[".env.example"] = env_example((repo / ".env.example").read_bytes().decode("utf-8"),
                                       secrets).encode("utf-8")
-    out["README.md"] = readme_md(title, dc).encode("utf-8")
-    out["DEPLOY.md"] = deploy_md(title, dc, name, secrets, info).encode("utf-8")
+    out["README.md"] = readme_md(title, dc, folder).encode("utf-8")
+    out["DEPLOY.md"] = deploy_md(title, dc, name, secrets, info, folder).encode("utf-8")
     out[INFO] = (json.dumps(info, indent=2) + "\n").encode("utf-8")
     return out, notes
 
@@ -488,8 +532,9 @@ _SAFE_PART_RE = re.compile(r"^[^<>:\"|?*\x00-\x1f]+$")
 
 def read_setup_file(raw: bytes) -> tuple[dict[str, bytes], dict | None]:
     """The setup's files (paths inside the setup) and its ``setup_info.json``
-    from a setup file -- or a full package: its ``dc_pack/`` is taken.
-    Raises :class:`PackageError` with every reason it cannot be opened."""
+    from a setup file -- or a full package: its ``setups/<setup>/`` is
+    taken.  Raises :class:`PackageError` with every reason it cannot be
+    opened."""
     if len(raw) > MAX_ZIP:
         raise PackageError(f"The file is {len(raw) / 1048576:.1f} MB; the limit is "
                            f"{MAX_ZIP // 1048576} MB.")
@@ -502,20 +547,23 @@ def read_setup_file(raw: bytes) -> tuple[dict[str, bytes], dict | None]:
         raise PackageError(f"The file holds {len(entries)} files; the limit is {MAX_ENTRIES}.")
     if sum(i.file_size for i in entries) > MAX_UNPACKED:
         raise PackageError(f"Unpacked, the file is larger than {MAX_UNPACKED // 1048576} MB.")
-    problems, prefix = [], None
+    # setups/<setup>/... at the top, or in the package's one folder
+    problems, prefix, top = [], None, ""
     for i in entries:
         parts = i.filename.split("/")
-        if SETUP_DIR in parts[:2]:
-            p = "/".join(parts[:parts.index(SETUP_DIR) + 1]) + "/"
-            prefix = prefix or p
-            if p != prefix:
+        at = next((k for k in (0, 1) if len(parts) > k + 2 and parts[k] == SETUPS and parts[k + 1]), None)
+        if at is not None:
+            p = "/".join(parts[:at + 2]) + "/"
+            if prefix is None:
+                prefix, top = p, "/".join(parts[:at]) + ("/" if at else "")
+            elif p != prefix:
                 problems.append(f"two setups in one file: {prefix} and {p}")
     if prefix is None:
-        raise PackageError("This is not a setup file: it has no dc_pack/ folder.")
+        raise PackageError("This is not a setup file: it has no setups/<name>/ folder.")
     files, info = {}, None
     for i in entries:
         name = i.filename
-        if name in (INFO, prefix[:-len(SETUP_DIR) - 1] + INFO):
+        if name == top + INFO:
             try:
                 info = json.loads(z.read(i).decode("utf-8"))
             except (ValueError, UnicodeDecodeError):
@@ -536,7 +584,7 @@ def read_setup_file(raw: bytes) -> tuple[dict[str, bytes], dict | None]:
             continue
         files[rel] = z.read(i)
     if "pack.yaml" not in files:
-        problems.append("dc_pack/pack.yaml is missing")
+        problems.append(f"{prefix[len(top):]}pack.yaml is missing")
     if problems:
         raise PackageError("This setup file cannot be opened.", problems)
     return files, info
