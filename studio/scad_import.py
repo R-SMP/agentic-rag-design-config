@@ -37,7 +37,9 @@ step.  Each setting becomes a row, proposed as:
   generators and geometry tools go, the model comes in as a generator and
   a geometry tool (each with its own copy of the model file), the Download
   buttons use the new geometry tool and the picture samples are one set,
-  the defaults (``pack.yaml``).  The texts stay, for the owner to adapt.
+  the defaults (``pack.yaml``); the setup's browser preview (``preview/``),
+  which draws the old model, goes, so the Parameters page offers its Preview
+  button.  The texts stay, for the owner to adapt.
 * **add** -- one more tool: its parameters are added (a name the setup has
   already is refused), each list gets their entries (as a parameter save
   does), every picture sample their defaults; the model comes in as the
@@ -45,8 +47,8 @@ step.  Each setting becomes a row, proposed as:
 
 All of it is checked first on a copy of the setup by the engine's check of
 a whole setup (its parameters, its tools); **Undo the import** puts every
-file it touched back, byte for byte (a removed tool's folder is kept aside
-whole until then).
+file it touched back, byte for byte (a removed tool's folder, and the
+preview, are kept aside whole until then).
 """
 
 from __future__ import annotations
@@ -87,6 +89,8 @@ MODEL_TABS_LEFT = ("other",)       # tabs left to the model by default
 _COARSE = {"fa": lambda v: max(v, 6), "fs": lambda v: max(v, 1), "fn": lambda v: v if v == 0 else min(v, 24)}
 PICKS = ("parameter", "detail", "model")
 MODES = ("new", "add")
+PREVIEW = "preview"                # the setup's browser preview (engine/pack.py)
+_PREVIEW_HELD = "_preview"         # its place in an import's hold (no tool name starts with _)
 
 
 def _sha(raw: bytes) -> str:
@@ -824,7 +828,7 @@ class Importer:
         if not self.records:
             return None
         r = self.records[-1]
-        return {k: r[k] for k in ("mode", "model", "added", "removed", "parameters")}
+        return {k: r[k] for k in ("mode", "model", "added", "removed", "preview", "parameters")}
 
     def forget(self) -> None:
         """The setup was replaced: no import can be undone any more."""
@@ -855,6 +859,7 @@ class Importer:
                 "helpers": sorted(t for t, k in kinds.items() if k not in ("generator", "geometry")),
                 "downloads": (pack.get("downloads") or {}).get("geometry_tool"),
                 "parameters": [p["name"] for p in spec["parameters"]],
+                "preview": (self.pack_dir / PREVIEW).is_dir(),
                 "add_as": "geometry" if "generator" in kinds.values() else "generator"}
 
     @staticmethod
@@ -902,7 +907,7 @@ class Importer:
                                 "Undo, or choose another name.")
         return name, display
 
-    def _stage_check(self, files: dict[str, bytes], gone: list[str]) -> list[str]:
+    def _stage_check(self, files: dict[str, bytes], gone: list[str], preview: bool) -> list[str]:
         tmp = Path(tempfile.mkdtemp(prefix="studio_importcheck_"))
         try:
             copy = tmp / self.pack_dir.name
@@ -910,6 +915,8 @@ class Importer:
                             ignore=shutil.ignore_patterns("__pycache__", "node_modules", "assets"))
             for t in gone:
                 shutil.rmtree(copy / "tools" / t, ignore_errors=True)
+            if preview:
+                shutil.rmtree(copy / PREVIEW, ignore_errors=True)
             for rel, raw in files.items():
                 p = copy / rel
                 p.parent.mkdir(parents=True, exist_ok=True)
@@ -937,6 +944,8 @@ class Importer:
             eol = params_edit.eol_of(raw)
             gone = sorted(t for t, m in ms.items() if m.get("kind") in ("generator", "geometry")) \
                 if mode == "new" else []
+            # the old model's browser preview: it would draw it from parameters that are gone
+            preview = mode == "new" and (self.pack_dir / PREVIEW).is_dir()
             name, display = self._names(mode, name, display, model, set(gone))
             params, groups, parts, detail = assemble(
                 rows, () if mode == "new" else [g["id"] for g in cur["groups"]])
@@ -986,7 +995,7 @@ class Importer:
             yraw = ypath.read_bytes()
             ytext = pack_yaml(yraw.decode("utf-8").replace("\r\n", "\n"), mode, defaults, download)
             files["pack.yaml"] = ytext.replace("\n", params_edit.eol_of(yraw)).encode("utf-8")
-            problems = self._stage_check(files, gone)
+            problems = self._stage_check(files, gone, preview)
             if problems:
                 raise EditError("The import cannot be made: the engine refuses the result.", problems)
             # write it, keeping what it replaces
@@ -997,17 +1006,20 @@ class Importer:
                       for rel in files if not rel.startswith("tools/")}
             for t in gone:
                 shutil.move(str(self.pack_dir / "tools" / t), str(hold / t))
+            if preview:
+                shutil.move(str(self.pack_dir / PREVIEW), str(hold / _PREVIEW_HELD))
             for rel, b in files.items():
                 p = self.pack_dir / rel
                 p.parent.mkdir(parents=True, exist_ok=True)
                 p.write_bytes(b)
-            record = {"mode": mode, "model": model, "added": added, "removed": gone, "hold": str(hold),
+            record = {"mode": mode, "model": model, "added": added, "removed": gone, "preview": preview,
+                      "hold": str(hold),
                       # the parameter editor's renames since opening: Undo puts them back
                       "before": before, "since_opened": dict(self.params.since_opened),
                       "parameters": len(params)}
             record["after"] = self._fingerprint(record)
             self.records.append(record)
-        return {"mode": mode, "added": added, "removed": gone, "parameters": len(params),
+        return {"mode": mode, "added": added, "removed": gone, "preview": preview, "parameters": len(params),
                 "proposed": sum(1 for p in params if p.get("range") == "proposed"),
                 "lists": lists, "database": True,
                 "warnings": self._warnings(mode, found, gone, ms, len(params), params)}
@@ -1053,7 +1065,8 @@ class Importer:
 
     def _fingerprint(self, record: dict) -> dict[str, str | None]:
         """What the import left: each file it wrote, each tool it added (its
-        files), each name of a tool it removed (absent)."""
+        files), each name of a tool it removed and the preview it put aside
+        (absent)."""
         out = {}
         for rel in record["before"]:
             p = self.pack_dir / rel
@@ -1065,19 +1078,23 @@ class Importer:
         for t in record["removed"]:
             if t not in record["added"]:
                 out[f"tools/{t}/"] = "there" if (self.pack_dir / "tools" / t).exists() else None
+        if record["preview"]:
+            out[f"{PREVIEW}/"] = "there" if (self.pack_dir / PREVIEW).exists() else None
         return out
 
     def undo(self, data: dict, force=False) -> dict:
         """The last import undone: every file it wrote back as it was, the
-        tools it added gone, the ones it removed back.  Anything changed
+        tools it added gone, the ones it removed back, the preview too.  Anything changed
         since the import is named first (*force* undoes it anyway)."""
         with self._lock, self.params._lock, self.tools._lock:
             if not self.records:
                 raise EditError("There is no import to undo.")
             rec = self.records[-1]
             lost = [t for t in rec["removed"] if not (Path(rec["hold"]) / t).is_dir()]
+            if rec["preview"] and not (Path(rec["hold"]) / _PREVIEW_HELD).is_dir():
+                lost.append(f"{PREVIEW}/")
             if lost:
-                raise EditError("The import cannot be undone: the tools it removed are no longer kept "
+                raise EditError("The import cannot be undone: what it removed is no longer kept "
                                 "(" + ", ".join(lost) + ").  Use each tool's Undo instead.")
             now = self._fingerprint(rec)
             changed = sorted(k for k, v in rec["after"].items() if now.get(k) != v)
@@ -1089,6 +1106,9 @@ class Importer:
             for t in rec["removed"]:
                 shutil.rmtree(self.pack_dir / "tools" / t, ignore_errors=True)
                 shutil.move(str(Path(rec["hold"]) / t), str(self.pack_dir / "tools" / t))
+            if rec["preview"]:
+                shutil.rmtree(self.pack_dir / PREVIEW, ignore_errors=True)
+                shutil.move(str(Path(rec["hold"]) / _PREVIEW_HELD), str(self.pack_dir / PREVIEW))
             for rel, raw in rec["before"].items():
                 p = self.pack_dir / rel
                 if raw is None:
@@ -1099,5 +1119,5 @@ class Importer:
             self.params.since_opened = rec["since_opened"]
             self.records.pop()
             shutil.rmtree(rec["hold"], ignore_errors=True)
-            return {"undone": {k: rec[k] for k in ("mode", "model", "added", "removed")},
+            return {"undone": {k: rec[k] for k in ("mode", "model", "added", "removed", "preview")},
                     "warnings": []}

@@ -2432,8 +2432,9 @@
   }
   function andList(xs) { return xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]; }
   function importDid(s) {
+    var gone = s.removed.concat(s.preview ? ['the browser preview'] : []);
     return (s.mode === 'new' ? 'as a new configurator: added ' + andList(s.added) +
-      (s.removed.length ? '; removed ' + andList(s.removed) : '') + '; ' + s.parameters + ' parameters'
+      (gone.length ? '; removed ' + andList(gone) : '') + '; ' + s.parameters + ' parameters'
       : 'as one more tool: added ' + andList(s.added) + ' and its ' + s.parameters + ' parameters') + '.';
   }
   function scadShown(v) { return typeof v === 'string' || v instanceof Array ? JSON.stringify(v) : String(v); }
@@ -2516,6 +2517,7 @@
       radio('new', 'Start a new configurator', 'The model becomes the setup’s generator and its geometry tool for the Download buttons, each with a copy of the file.  Its parameters replace today’s ' +
         su.parameters.length + ', the agents’ parameter lists are written new, and the picture samples become one, the defaults.' +
         (gone.length ? '  These tools go: ' + gone.join(', ') + '.' : '') + (su.helpers.length ? '  These stay: ' + su.helpers.join(', ') + '.' : '') +
+        (su.preview ? '  The browser preview (preview/) goes too: it draws today’s model; the Parameters page’s Preview button builds the new one on the server.' : '') +
         '  The texts stay as they are, for you to adapt, and no agent gets the primer until you give it this model’s picture and text.'),
       radio('add', 'Add it as one more tool', (su.add_as === 'generator' ? 'It becomes the setup’s generator (the setup has none).'
         : 'It becomes a geometry tool beside ' + su.generators.join(', ') + ': a generator’s geometry tool setting, or the Download buttons, can use it.') +

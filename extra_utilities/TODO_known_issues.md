@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F128**.
+branches (F36 is taken on a sibling branch).  Next free id: **F129**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -140,6 +140,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F125` | OPEN | Run the P8 acceptance (the hose adapter configurator) on Railway |
 | `F126` | DONE | The tool text of propose_attempt says "16-parameter" |
 | `F127` | DONE | The parameter primer of a configurator that is not the propeller |
+| `F128` | DONE | A .scad import that starts a new configurator keeps the old one's browser preview |
 
 ---
 
@@ -4971,3 +4972,26 @@ To decide: switch it off when an import starts a new configurator (the
 setting lives with the engine, not the setup), let a setup say it has no
 primer, and/or have Validate warn when the primer's text names parameters
 the setup does not have.
+
+### F128. A .scad import that starts a new configurator keeps the old one's browser preview
+
+**Status.** DONE 2026-10-22 (found the same day: the vacuum hose adapter's
+Parameters page, made by P8 from a copy of the propeller).  Owner: "fix it
+now".  The import that starts a new configurator puts the setup's
+`preview/` aside with the tools it replaces (`studio/scad_import.py`,
+`PREVIEW`); Undo the import puts it back, and names a preview made since
+first.  The dialog says the preview goes, and the note after the import
+lists it with the tools removed.  One more tool leaves it.
+
+The Parameters page loads `setups/<setup>/preview/preview.js` whenever the
+file is there (`web_app._pack_has_preview`).  The import replaced the
+parameters and the tools but left the propeller's preview, so the hose
+adapter's page drew a propeller from parameters it does not have: a blank
+3D view, a "Blade sections" button, 11 NaN errors in the browser console.
+Without `preview/` the page offers its Preview button, which builds the
+model with the setup's own image tools on the server.
+
+Left as they were: the old configurator's group pictures and picture
+samples in `assets/` (no file names them any more; nothing shows them), and
+the primer's picture, which the import keeps on purpose (F127).  The hose
+adapter's own copy was cleaned by hand the same day.

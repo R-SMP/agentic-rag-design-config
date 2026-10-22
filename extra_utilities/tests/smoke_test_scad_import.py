@@ -22,15 +22,18 @@ tool -- with an Undo.  Five groups of checks:
    ``scad_read`` (the rows, what each way would do here), the refusals (no
    way chosen, a pick a setting cannot take, a tool or parameter name the
    setup has) writing nothing; a NEW CONFIGURATOR -- the generators and
-   geometry tools replaced, the parameters, the lists, ``pack.yaml``;
+   geometry tools replaced, the browser preview put aside, the parameters,
+   the lists, ``pack.yaml``;
    Validate's own checks of the setup pass (A: it loads, with the "Ranges
    to review" warning; B: every agent's prompt of each topology builds;
    C: every list agrees), the parameter editor's Undo refused while the
    import can be undone, and Undo the import leaves the setup byte for
    byte as it was; ONE MORE TOOL -- a geometry tool beside the propeller's
-   generator, the lists and the samples in step, Undo byte for byte; a file
-   changed after an import makes Undo name it first (and undo it when
-   asked); two imports undone, the last first.
+   generator, the lists and the samples in step, the preview left, Undo
+   byte for byte; a file changed after an import makes Undo name it first
+   (and undo it when asked); three imports -- the second a new configurator
+   with no preview to put aside, a preview made after them named by the
+   first one's Undo -- undone, the last first.
 4. PAGE.  The Studio page's own functions, run by Node (P6f-2): a range an
    import proposed is kept by every edit of its row but min or max (and by
    a change of type and back), and dropped by Keep; the import dialog's
@@ -483,7 +486,9 @@ out.texts = [scadParamText(rows[0].parameters[0]), scadParamText(rows[1].paramet
              scadParamText(rows.filter(function (r) {{ return r.setting === 'Barbs'; }})[0].parameters[0]),
              scadWhenText({{ End_Style: 'hose' }}), scadWhenText({{ Barbs: true }}),
              importDid({{ mode: 'new', added: ['a', 'a_geometry'], removed: ['g', 'x', 'y'], parameters: 25 }}),
-             importDid({{ mode: 'add', added: ['b'], removed: [], parameters: 3 }})];
+             importDid({{ mode: 'add', added: ['b'], removed: [], parameters: 3 }}),
+             importDid({{ mode: 'new', added: ['a', 'a_geometry'], removed: ['g'], preview: true, parameters: 2 }}),
+             importDid({{ mode: 'new', added: ['a', 'a_geometry'], removed: [], preview: true, parameters: 2 }})];
 process.stdout.write(JSON.stringify(out));
 """
     out = run_page(program)
@@ -512,7 +517,11 @@ process.stdout.write(JSON.stringify(out));
     check(out.get("texts") == ["Wall · float [1; 4]", "End_Style · choice (3)", "Barbs · on/off",
                                "only when End_Style = hose", "only when Barbs = true",
                                "as a new configurator: added a and a_geometry; removed g, x and y; 25 parameters.",
-                               "as one more tool: added b and its 3 parameters."],
+                               "as one more tool: added b and its 3 parameters.",
+                               "as a new configurator: added a and a_geometry; removed g and the browser preview; "
+                               "2 parameters.",
+                               "as a new configurator: added a and a_geometry; removed the browser preview; "
+                               "2 parameters."],
           f"[PAGE] the dialog's words: {out.get('texts')}")
     return f"the proposal kept / dropped / kept again; {n} pick sets counted as the server counts them"
 
@@ -558,6 +567,7 @@ def check_server(tmp: Path) -> str:
               and r["setup"] == {"generators": ["generate_and_render_propeller"],
                                  "geometry": ["feg_geometry", "rhino_geometry"],
                                  "helpers": ["render_blade_sections"], "downloads": "rhino_geometry",
+                                 "preview": True,
                                  "parameters": [p["name"] for p in json.loads((pack / "parameters.json").read_text(
                                      encoding="utf-8"))["parameters"]], "add_as": "geometry"},
               f"[SERVER] scad_read: {str(r)[:400]}")
@@ -607,6 +617,7 @@ def check_server(tmp: Path) -> str:
         status, r = st.call("scad_import", _b64(MODEL), "made-up.scad", "new")
         check(r.get("ok") is True and r["added"] == ["made_up", "made_up_geometry"]
               and r["removed"] == ["feg_geometry", "generate_and_render_propeller", "rhino_geometry"]
+              and r["preview"] is True and not (pack / "preview").exists()
               and r["parameters"] == 25 and r["proposed"] == 16 and len(r["lists"]) == 12
               and any("These tools stay: render_blade_sections" in w for w in r["warnings"])
               and any("only the model file was copied" in w for w in r["warnings"]),
@@ -628,7 +639,7 @@ def check_server(tmp: Path) -> str:
         made = {t["name"]: t for t in D.get("tools", [])}
         check(D.get("scad_import") == {"mode": "new", "model": "made-up.scad", "added": ["made_up", "made_up_geometry"],
                                        "removed": ["feg_geometry", "generate_and_render_propeller", "rhino_geometry"],
-                                       "parameters": 25}
+                                       "preview": True, "parameters": 25}
               and "parameters.json" in D.get("changed", []) and "tools/made_up/tool.yaml" in D.get("changed", [])
               and made.get("made_up", {}).get("file") == "tools/made_up/made-up.scad"
               and made.get("made_up_geometry", {}).get("kind") == "geometry",
@@ -648,7 +659,8 @@ def check_server(tmp: Path) -> str:
         check(r.get("ok") is False and "Undo the import" in r.get("error", ""),
               f"[SERVER] the parameter editor's Undo during an import: {r}")
         status, r = st.call("scad_undo")
-        check(r.get("ok") is True and r["undone"]["mode"] == "new", f"[SERVER] Undo the import: {r}")
+        check(r.get("ok") is True and r["undone"]["mode"] == "new" and r["undone"]["preview"] is True,
+              f"[SERVER] Undo the import: {r}")
         same("a new configurator, then Undo the import")
         status, d = st.call("get_all")
         check((d.get("data") or {}).get("scad_import") is None and (d.get("data") or {}).get("changed") == [],
@@ -656,7 +668,8 @@ def check_server(tmp: Path) -> str:
 
         # one more tool
         status, r = st.call("scad_import", _b64(MODEL), "made-up.scad", "add", None, None, "hose_box", "Hose box")
-        check(r.get("ok") is True and r["added"] == ["hose_box"] and r["removed"] == [] and len(r["lists"]) == 12,
+        check(r.get("ok") is True and r["added"] == ["hose_box"] and r["removed"] == [] and len(r["lists"]) == 12
+              and r["preview"] is False and (pack / "preview/preview.js").is_file(),
               f"[SERVER] one more tool: {str(r)[:400]}")
         m = yaml.safe_load((pack / "tools/hose_box/tool.yaml").read_text(encoding="utf-8"))
         spec = json.loads((pack / "parameters.json").read_text(encoding="utf-8"))
@@ -683,17 +696,33 @@ def check_server(tmp: Path) -> str:
         check(r.get("ok") is True, f"[SERVER] Undo anyway: {r}")
         same("one more tool, a change, then Undo anyway")
 
-        # two imports, undone the last first
+        # three imports, undone the last first
+        moved = []
         for source, args in ((MODEL, ("made-up.scad", "new")),
+                             (MODEL, ("made-up.scad", "new")),
                              (SECOND, ("second.scad", "add", None, None, "second", "Second"))):
             status, r = st.call("scad_import", _b64(source), *args)
             check(r.get("ok") is True, f"[SERVER] import {args[1]}: {str(r)[:300]}")
+            moved.append(r.get("preview"))
+            if len(moved) == 1:
+                status, r = st.call("scad_read", _b64(MODEL), "made-up.scad")
+                check(r.get("ok") and r["setup"]["preview"] is False,
+                      f"[SERVER] scad_read once the preview is aside: {r.get('setup')}")
+        check(moved == [True, False, False], f"[SERVER] the preview put aside by the first import only: {moved}")
         m = yaml.safe_load((pack / "tools/second/tool.yaml").read_text(encoding="utf-8"))
         check(m["kind"] == "geometry", f"[SERVER] one more tool beside an imported generator: {m['kind']}")
         for _ in range(2):
             status, r = st.call("scad_undo")
-            check(r.get("ok") is True, f"[SERVER] Undo: {r}")
-        same("two imports, then two Undos")
+            check(r.get("ok") is True and r["undone"]["preview"] is False, f"[SERVER] Undo: {r}")
+        check(not (pack / "preview").exists(), "[SERVER] the preview came back before its own import's Undo")
+        # a preview made since: the first import's Undo names it, and puts the old one back when asked
+        (pack / "preview").mkdir()
+        (pack / "preview/preview.js").write_text("export function buildModel() { return null; }\n", encoding="utf-8")
+        status, r = st.call("scad_undo")
+        check(r.get("ok") is False and r.get("problems") == ["preview/"], f"[SERVER] Undo after a preview was made: {r}")
+        status, r = st.call("scad_undo", True)
+        check(r.get("ok") is True and r["undone"]["preview"] is True, f"[SERVER] Undo anyway: {r}")
+        same("three imports and a preview made since, then three Undos")
         # a setup file opened after an import: the import can no longer be undone
         status, r = st.call("scad_import", _b64(MODEL), "made-up.scad", "new")
         status, r = st.call("open_setup", base64.b64encode(setup_zip).decode("ascii"), "dc_setup.zip")
@@ -705,8 +734,8 @@ def check_server(tmp: Path) -> str:
         same("an import, then Open setup file")
     finally:
         st.stop()
-    return ("read, 10 refusals, a new configurator (Validate A-C) and one more tool, each undone byte for "
-            "byte; Open setup file ends an import's Undo")
+    return ("read, 10 refusals, a new configurator (Validate A-C, the preview put aside) and one more tool, "
+            "each undone byte for byte; Open setup file ends an import's Undo")
 
 
 # ---------------------------------------------------------------------------
@@ -757,8 +786,8 @@ def check_real(tmp: Path) -> str:
         imp = S.Importer(pack, opened, checker.check_setup, params, tools)
         data = {"slot_specs": {"parameter_list": {"dir": "fragments/dc"}}}
         r = imp.run(data, base64.b64encode(model.read_bytes()).decode(), model.name, "new")
-        check(r["added"] == ["vacuum_hose_adapter", "vacuum_hose_adapter_geometry"] and r["parameters"] == 187,
-              f"[REAL] the import: {r}")
+        check(r["added"] == ["vacuum_hose_adapter", "vacuum_hose_adapter_geometry"] and r["parameters"] == 187
+              and r["preview"] is True and not (pack / "preview").exists(), f"[REAL] the import: {r}")
         items = _validate(pack, prompts=False)
         st_ = _statuses(items)
         fails = {k: v for k, v in st_.items() if v[0] == V.FAIL}
