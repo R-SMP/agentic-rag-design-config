@@ -6,8 +6,9 @@
 pack_format: 1
 
 # Whether this configurator may use the database (past designs, search) and
-# its file store (R2), when the deployment has them: the database's tables
-# are this configurator's.  Without the line a configurator runs with
+# its file store (the bucket), when the deployment has them: its sessions go
+# in its own section of the database, named after its folder
+# (engine/db_sections.py).  Without the line a configurator runs with
 # neither (engine/pack.py uses_database).
 database: true
 

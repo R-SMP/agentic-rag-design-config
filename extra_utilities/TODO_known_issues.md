@@ -4921,9 +4921,10 @@ OpenSCAD for it (the `Dockerfile`'s block is `studio/package.py`
 `merge_apt`'s for every setup of `setups/`; `smoke_test_setups.py` keeps them
 in step).  Owner: "the deploy is PRIVATE, the website is protected by a
 code. the git repo is private as well. it's safe to use".  Left: one session
-with it on the streamlined deploy (`MAS-studio-deploy`), no database -- its
-`pack.yaml` has no `database: true`; a database section per configurator
-comes next.
+with it on the streamlined deploy (`MAS-studio-deploy`).  2026-10-23: it uses
+the database -- `database: true`, its own section `vacuum_hose_adapter` of
+the MAS database (`engine/db_sections.py`), its 187 parameters uploaded as
+that section's parameter-schema version 1.
 
 Before: owner decision (2026-10-21): "for now, let's try here with
 renders installed; later on, we'll try to run this on Railway".  2026-10-21:

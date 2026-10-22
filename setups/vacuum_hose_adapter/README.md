@@ -13,9 +13,10 @@ parameters in 21 groups.
   not be hosted or uploaded; it is in this private repository, and in its
   deploy behind an access code, by the owner's decision (TODO F125).
 * The image installs the OpenSCAD the tools need (the repository's
-  `Dockerfile`).  No database yet (no `database: true` in `pack.yaml`), and
-  the primer is off (its agent lists are empty; its picture and text are
-  still the propeller's).
+  `Dockerfile`).  It uses the database (`database: true` in `pack.yaml`):
+  its sessions go in the database's `vacuum_hose_adapter` section, its own
+  (`engine/db_sections.py`).  The primer is off (its agent lists are empty;
+  its picture and text are still the propeller's).
 * No browser preview: the Parameters page's Preview button builds the model
   on the server.
 

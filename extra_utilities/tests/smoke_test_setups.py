@@ -211,8 +211,8 @@ def check_remembered() -> None:
             (b / "pack.yaml").write_text("pack_format: 1\n" + text, encoding="utf-8")
             check(pack.uses_database(b) is want, f"[DATABASE] {text!r} gives {pack.uses_database(b)}")
         check(pack.uses_database(ROOT / "setups" / "propeller"), "[DATABASE] the propeller may not use it")
-        check(not pack.uses_database(ROOT / "setups" / "vacuum_hose_adapter"),
-              "[DATABASE] the vacuum hose adapter may use it")
+        check(pack.uses_database(ROOT / "setups" / "vacuum_hose_adapter"),
+              "[DATABASE] the vacuum hose adapter may not use it")
         from studio import package as K
         from studio import prepare as PR
         for rel in ("workflow_settings/active_setup.json", "workflow_settings/setups/propeller/tool_settings.json"):
