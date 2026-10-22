@@ -113,7 +113,7 @@ class Receptionist(BaseChainAgent):
         routing tool.
 
         NOT topology-branched, deliberately: one ``Receptionist`` class
-        serves the Orchestrator (7), Conductor (5) and Architect (3), so
+        serves every hub (the Orchestrator in 7, the Planner in 5 and 3), so
         the 5- and 3-agent Receptionists also gain ``dc_params_list``
         while their prompts still carry the list inline.  Owner accepted
         the overlap rather than add the first topology-conditional tool

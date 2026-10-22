@@ -251,7 +251,7 @@ def tools_html(agent, rec):
 # Front matter
 # ---------------------------------------------------------------------------
 CFG_ROWS = [
-    ("SYSTEM_TOPOLOGY", CFG["SYSTEM_TOPOLOGY"],
+    ("TEAM_SIZE", CFG["TEAM_SIZE"],
      _AGENT_WORD + " design-workflow agents"),
     ("database-access profile", '"' + CFG["dba_profile"] + '"',
      "which DB tools each agent gets when RAG is on"),
@@ -577,7 +577,7 @@ parts.append("""
   Text that appears <mark style="background:#fff6c2;padding:0 3px">only when
   RAG is switched on</mark> is highlighted.</div>
   <div class="meta">
-    <div><b>Configuration</b> &nbsp; SYSTEM_TOPOLOGY = {topology} &nbsp;&middot;&nbsp;
+    <div><b>Configuration</b> &nbsp; TEAM_SIZE = {topology} &nbsp;&middot;&nbsp;
          all settings at their committed defaults</div>
     <div><b>Source</b> &nbsp; commit {commit} &nbsp;&middot;&nbsp; {date}</div>
     <div><b>Agents</b> &nbsp; {n_agents} &nbsp;&middot;&nbsp; ~{chars} characters of
@@ -598,7 +598,7 @@ parts.append("""
   <p class="lead">Nothing here was transcribed by hand. Each prompt below is the
   output of the repository&rsquo;s own assembler
   (<span class="m">agents/shared/prompts.py</span>), executed against the working
-  tree at commit {commit} with <span class="m">SYSTEM_TOPOLOGY&nbsp;=&nbsp;{topology}</span>.
+  tree at commit {commit} with <span class="m">TEAM_SIZE&nbsp;=&nbsp;{topology}</span>.
   That means every layer a real session applies has been applied:</p>
   <ul>
     <li>each agent&rsquo;s own <span class="m">prompt.md</span>, plus any topology override that applies;</li>

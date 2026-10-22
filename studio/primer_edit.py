@@ -52,7 +52,7 @@ COMMENT = """# The primer: one picture and its text ($dc_params_primer_text -- a
 # their system prompt and the conversation (agents/shared/dc_primer.py).
 #
 #   image   a PNG in assets/; empty: the text alone
-#   agents  per topology, the agents that get it (any but the Database
+#   agents  per team size, the agents that get it (any but the Database
 #           Handler); an empty list: none
 #
 # Workflow Settings > DC_PARAMS_PRIMER_ENABLED switches it off for every
@@ -260,7 +260,7 @@ class PrimerEditor:
         if agent in NO_PRIMER_AGENTS:
             raise EditError(f"The {agent} cannot get the primer: it only saves the session.")
         if t not in TOPOLOGIES or agent not in roster:
-            raise EditError(f"{agent} is not an agent of the {topology}-agent topology.")
+            raise EditError(f"{agent} is not an agent of the {topology}-agent team.")
         if not isinstance(on, bool):
             raise EditError("Say true or false.")
         with self._lock:

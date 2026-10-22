@@ -6,7 +6,7 @@ who gets it is the setup's, in ``setups/<setup>/pack.yaml``::
 
     primer:
       image: dc_params_primer.png      # a PNG in assets/; empty: the text alone
-      agents:                          # per topology, the agents that get it
+      agents:                          # per team size, the agents that get it
         7: [user_input_inspector, dc_input_creator, dc_input_inspector, dc_output_inspector]
         5: [user_input_inspector, dc_input_creator, dc_output_inspector]
         3: [design_engineer, requirements_analyst]
@@ -77,10 +77,10 @@ def problems_of(raw, roster: dict | None = None) -> list[str]:
     if agents is None:
         return out
     if not isinstance(agents, dict):
-        return out + [f"{where}: agents must map each topology to a list of agents"]
+        return out + [f"{where}: agents must map each team size to a list of agents"]
     for topo, names in agents.items():
         if topo not in TOPOLOGIES:
-            out.append(f"{where}: {topo!r} is not a topology ({', '.join(map(str, TOPOLOGIES))})")
+            out.append(f"{where}: {topo!r} is not a team size ({', '.join(map(str, sorted(TOPOLOGIES)))})")
             continue
         if names is None:
             continue
@@ -94,7 +94,7 @@ def problems_of(raw, roster: dict | None = None) -> list[str]:
                            "(it only saves the session)")
             elif name not in roster.get(topo, ()):
                 out.append(f"{where}: agents {topo}: {name!r} is not an agent of the "
-                           f"{topo}-agent topology")
+                           f"{topo}-agent team")
             elif name in seen:
                 out.append(f"{where}: agents {topo}: {name} is listed twice")
             seen.add(name)

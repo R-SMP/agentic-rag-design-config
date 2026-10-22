@@ -37,7 +37,7 @@ and never routes, so the turn stalls.
 
 One subprocess per topology, for the same reason
 ``topology_prompt_snapshot.py`` uses one: ``prompts.py`` reads
-``SYSTEM_TOPOLOGY`` fresh on every call but captures ``DC_INSPECTOR_ENABLED``
+``TEAM_SIZE`` fresh on every call but captures ``DC_INSPECTOR_ENABLED``
 at IMPORT, so two topologies in one process would give the second the
 first's flag.
 
@@ -129,7 +129,7 @@ TOPO = int(sys.argv[1])
 SCRIPT = json.loads(sys.argv[2])
 
 from workflow_settings import settings as S
-S.SYSTEM_TOPOLOGY = TOPO
+S.TEAM_SIZE = TOPO
 # Determinism: the primer injects an IMAGE at invoke time, and RAG would bind
 # three more tools.  Neither is what this harness is testing.
 S.DC_PARAMS_PRIMER_ENABLED = False

@@ -7,8 +7,8 @@ user turn end-to-end:
   1. Saves the user's text to ``user_query.txt`` under the supplied
      ``inputs_dir``.
   2. Constructs (or reuses) the active topology's hub agent from the
-     Session (Orchestrator in the 7-agent system, Conductor in the
-     5-agent one).
+     Session (the Orchestrator in the 7-agent team, the Planner in the
+     5- and 3-agent teams).
   3. Runs ``Receptionist.validate_input`` against the inputs dir.
   4. If the Receptionist forwards into the pipeline, builds a kickoff
      message and runs the hub's ``dispatch``.

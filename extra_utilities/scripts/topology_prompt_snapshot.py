@@ -13,7 +13,7 @@ Usage
 ``save`` writes ``<dir>/<N>agent/<agent>.txt`` for every agent that
 assembles under topology ``N``, plus a ``manifest.json`` carrying the
 SHA-256 and character count of each.  With no ``--topology`` it snapshots
-EVERY topology in ``ENUM_OPTIONS["SYSTEM_TOPOLOGY"]``.
+EVERY topology in ``ENUM_OPTIONS["TEAM_SIZE"]``.
 
 ``diff`` compares two snapshot directories and reports, per topology and
 per agent, whether the prompt is byte-identical, moved (with a unified
@@ -22,7 +22,7 @@ this rebuild works to: never claim "unchanged" without it.
 
 Why a subprocess per topology
 -----------------------------
-``prompts.py`` reads ``SYSTEM_TOPOLOGY`` fresh on every call, but it
+``prompts.py`` reads ``TEAM_SIZE`` fresh on every call, but it
 captures ``DC_INSPECTOR_ENABLED`` at IMPORT.  Once that flag is forced per
 topology (plan D6), assembling two topologies in one process would give the
 second one the first one's flag.  One process
@@ -174,7 +174,7 @@ def _runtime_slots(agent: str, P, S) -> dict | None:
 def _assemble(topology: int) -> dict:
     """Assemble every agent's prompt under *topology*.
 
-    Imports happen INSIDE this function, after ``SYSTEM_TOPOLOGY`` is set,
+    Imports happen INSIDE this function, after ``TEAM_SIZE`` is set,
     so any import-time flag capture sees the right value.
     """
     sys.modules["simplejson"] = None          # type: ignore[assignment]
@@ -184,7 +184,7 @@ def _assemble(topology: int) -> dict:
     bootstrap.install()
 
     import workflow_settings.settings as settings   # noqa: E402
-    settings.SYSTEM_TOPOLOGY = topology
+    settings.TEAM_SIZE = topology
 
     from agents.shared import prompts as P          # noqa: E402
     from agents.shared import topology as T         # noqa: E402
@@ -268,7 +268,7 @@ def _run_child(topology: int) -> dict:
 def _topologies() -> list[int]:
     sys.path.insert(0, str(REPO))
     from workflow_settings.editor import ENUM_OPTIONS
-    return [int(v) for v in ENUM_OPTIONS["SYSTEM_TOPOLOGY"]]
+    return [int(v) for v in ENUM_OPTIONS["TEAM_SIZE"]]
 
 
 def cmd_save(outdir: Path, topology: int | None) -> int:

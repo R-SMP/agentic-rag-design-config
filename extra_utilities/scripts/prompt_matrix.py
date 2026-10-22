@@ -47,7 +47,7 @@ One child process per (combination, topology): ``prompts.py`` captures
 share that flag.  The children compile into a fresh,
 temporary bytecode cache (``PYTHONPYCACHEPREFIX``), so a stale ``.pyc`` in the
 tree can never serve old code (a size-preserving edit once served the wrong
-``SYSTEM_TOPOLOGY``; see extra_utilities/tests/README.md).
+``TEAM_SIZE``; see extra_utilities/tests/README.md).
 
 A combination may only set settings that exist: ``setattr`` on a missing name
 would silently create it, and the combination would go on "passing" while

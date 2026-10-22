@@ -393,8 +393,8 @@ def apply_chain_only_filter(text: str, agent_dir_name: str) -> str:
     escalate-to-the-hub, don't-bounce-permission-questions-backward,
     don't-retry-blindly, don't-script-the-user-facing-reply — only make
     sense for an agent that is a LINK in the forward chain.  Given to the
-    hub itself they are self-referential ("escalate to the Conductor",
-    addressed to the Conductor), so they are stripped for every agent in
+    hub itself they are self-referential ("escalate to the Planner",
+    addressed to the Planner), so they are stripped for every agent in
     ``_NON_CHAIN_AGENTS`` and unwrapped for the rest.  The Database
     Handler has no such regions, so unwrapping is a no-op there.
 
@@ -474,7 +474,7 @@ def _read_generic_fragment(rel_path: str) -> str:
 # DC-specific content (loaded once at import time)
 #
 # "Once at import time" is a REAL constraint, not a note about cost: these
-# constants are resolved against whatever SYSTEM_TOPOLOGY was on disk when
+# constants are resolved against whatever TEAM_SIZE was on disk when
 # this module was first imported, and the Sessions Queue switches topology
 # between runs inside one process (agents/shared/topology.py:11-15).  They
 # are safe only because they are OFF the prompt-assembly path -- see the
@@ -816,7 +816,9 @@ def _prompt_path(agent_dir_name: str) -> Path:
        tailored copy of an agent that ALSO exists in the 7-agent system
        (Receptionist, UII, Tool Caller, DCOI).
     2. ``agents/<agent>/prompt_<N>agents.md`` — an agent existing ONLY in
-       this topology (Conductor, Creator).  It has no 7-agent original to
+       this topology (none today: the retired Conductor and Creator were the
+       last; the 3-agent team's merged agents live under ``agents/3agent/``).
+       It has no 7-agent original to
        shadow, so it lives in a normal agent package rather than under the
        topology directory.
     3. ``agents/<agent>/prompt.md`` — the historic path.  Under topology 7

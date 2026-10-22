@@ -87,7 +87,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F53` | PARTLY DONE | Prompt caching: port conversation-history caching to the 3-agent system |
 | `F54` | OPEN | Verify save-phase prompt caching on a REAL session save |
 | `F55` | OPEN | The briefing anchor: cache the DH's re-seeded base history ACROSS fields |
-| `F56` | OPEN | `SYSTEM_TOPOLOGY` is read fresh mid-turn, so a run in flight is not pinned |
+| `F56` | OPEN | `TEAM_SIZE` is read fresh mid-turn, so a run in flight is not pinned |
 | `F57` | OPEN | The two hubs differ in chain access, which confounds a 7-vs-5 comparison |
 | `F59` | OPEN | Six verified defects in the DH save path (from the 2026-08-04 audit) |
 | `F83` | OPEN | The UII's categorisation rule says "two buckets" but there are three sections |
@@ -2866,7 +2866,7 @@ written — only the verdict changes.
 Mechanics: `extra_utilities/docs/design_prompt_caching.md` § "The session-save phase".
 Related: F54 (live verification on a real save).
 
-### F56. `SYSTEM_TOPOLOGY` is read fresh mid-turn, so a run in flight is not pinned
+### F56. `TEAM_SIZE` is read fresh mid-turn, so a run in flight is not pinned
 
 
 
@@ -2882,7 +2882,7 @@ Related: F54 (live verification on a real save).
 
 
 
-**What.** `topology.py` reads `SYSTEM_TOPOLOGY` FRESH on every call and
+**What.** `topology.py` reads `TEAM_SIZE` FRESH on every call and
 
 deliberately never captures it at import — correct for prompt assembly,
 
@@ -2904,7 +2904,7 @@ built once at session start.
 
 
 
-So if `SYSTEM_TOPOLOGY` changes on disk while a turn is in flight, that
+So if `TEAM_SIZE` changes on disk while a turn is in flight, that
 
 turn's routing starts resolving against the NEW topology while the agents
 
@@ -3316,7 +3316,7 @@ binding helper, the prompt-slot blanking and the admin UI are all already
 profile-agnostic.  A new key simply starts resolving.
 
 **The one thing to get right** is the key itself: it must match what
-`database_access.profile_key()` computes from `SYSTEM_TOPOLOGY` +
+`database_access.profile_key()` computes from `TEAM_SIZE` +
 `PROMPT_VARIANT`.  A typo'd key does NOT error — it silently falls back to the
 all-on default, which looks like "the setting did nothing".  If a distribution
 seems to be ignored, check the key spelling FIRST.
@@ -3887,7 +3887,7 @@ Both arms also correctly honoured an extraction-only task: no DCIC, Tool Caller
 or DCOI ran in either.
 
 **Where.** Runs `ID245` (standard) / `ID246` (reduced), 2026-08-20.
-Related: F56 (`SYSTEM_TOPOLOGY` read fresh mid-turn — the same
+Related: F56 (`TEAM_SIZE` read fresh mid-turn — the same
 settings-are-global problem, one axis over).
 
 ---
@@ -4568,7 +4568,7 @@ two: the topology-7 DCIC and DCII.  The topology-5 DCIC and the
 topology-3 Design Engineer went unseen.
 
 **What to build.**  Run the existing `TEMPLATES` loop once per topology,
-forcing `SYSTEM_TOPOLOGY` for each pass.  **Not in one process:**
+forcing `TEAM_SIZE` for each pass.  **Not in one process:**
 `prompts.py` captures `PLANNER_FIRST` and `DC_INSPECTOR_ENABLED` at
 IMPORT time, so the second topology in a single process inherits the
 first one's flags — which is exactly why

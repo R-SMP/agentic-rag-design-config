@@ -103,7 +103,7 @@ _VALID_PROVIDERS = {"openai", "anthropic", "google", "openrouter"}
 # ---------------------------------------------------------------------------
 # Topology + per-agent tiering
 # ---------------------------------------------------------------------------
-# Which agent rows a run shows, per ``SYSTEM_TOPOLOGY``.  Mirrors the
+# Which agent rows a run shows, per ``TEAM_SIZE``.  Mirrors the
 # ``_agents_by_key`` map each hub builds (orchestrator.py / planner5.py)
 # PLUS the two agents that are constructed but never routed to:
 #
@@ -197,7 +197,7 @@ TIER_DEFAULTS: "dict[str, dict[str, str]]" = {
 }
 
 
-def normalize_topology(value: Any, *, label: str = "topology") -> int:
+def normalize_topology(value: Any, *, label: str = "team size") -> int:
     """Coerce ``value`` to a supported topology.
 
     Missing / blank → :data:`DEFAULT_TOPOLOGY`, because a draft or bundle
@@ -211,10 +211,10 @@ def normalize_topology(value: Any, *, label: str = "topology") -> int:
         n = int(value)
     except (TypeError, ValueError):
         raise ValueError(
-            f"{label} must be one of {list(TOPOLOGIES)}, got {value!r}.")
+            f"{label} must be one of {sorted(TOPOLOGIES)}, got {value!r}.")
     if n not in TOPOLOGIES:
         raise ValueError(
-            f"{label} must be one of {list(TOPOLOGIES)}, got {value!r}.")
+            f"{label} must be one of {sorted(TOPOLOGIES)}, got {value!r}.")
     return n
 
 
@@ -256,7 +256,7 @@ def tier_payload(*, provider: str, low: str, mid: str, high: str,
         if tier not in TIERS:
             raise ValueError(
                 f"{label} has no tier selected — pick low, mid or high for "
-                f"every agent of the {topo}-agent topology.")
+                f"every agent of the {topo}-agent team.")
         if not models[tier]:
             raise ValueError(
                 f"{label} is set to the {tier} tier, but the {tier}-tier "
@@ -668,11 +668,11 @@ def build_manifest(*, runs: "list[dict]", defaults: dict) -> dict:
 
         # Topology is INDEPENDENT of the condition — every run carries one,
         # including ``current`` and ``single``, because the runner writes
-        # SYSTEM_TOPOLOGY before each build regardless of how that run's
-        # models are chosen.  (Raises with its own "Run #N topology …"
+        # TEAM_SIZE before each build regardless of how that run's
+        # models are chosen.  (Raises with its own "Run #N team size …"
         # message, so it is deliberately not re-wrapped.)
         topo = normalize_topology(r.get("topology"),
-                                  label=f"Run #{i + 1} topology")
+                                  label=f"Run #{i + 1} team size")
 
         tier_provider = (r.get("tier_provider") or "").strip().lower()
         tier_low = (r.get("tier_low") or "").strip()

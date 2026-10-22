@@ -21,8 +21,8 @@ caller passed a dict, it had to retype 16 values read from
 ``parameters.json`` a turn earlier, and the only defence against a
 transcription slip was a prompt rule forbidding it.  Reading the record
 removes the step instead of policing it -- the same move
-``generate_and_render_propeller`` already made (see the note at
-``setups/propeller/tools/generate_and_render_propeller/generate_mesh.py:155``).
+``generate_and_render_propeller`` already made (see the F75 note in
+``setups/propeller/tools/generate_and_render_propeller/mesh_provenance.py``).
 
 What this tool does NOT do
 --------------------------

@@ -449,9 +449,7 @@ def strip_turn_timestamps(text: str) -> str:
     all user turns, so they render as ``--- USER ---``.
 
     The file itself is never rewritten: timestamps stay on disk as
-    provenance for the Database Handler's archive, and
-    ``_parse_user_query_entries`` (the 5-agent Conductor / 3-agent
-    Architect) still splits on the original header.  This is a
+    provenance for the Database Handler's archive.  This is a
     presentation-time transform for one reader.
     """
     return _TURN_HEADER_RE.sub(

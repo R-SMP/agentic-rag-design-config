@@ -49,7 +49,7 @@ def dba_tools_for(agent_key: str) -> list:
     indexes the result; it never has to branch.
 
     Read fresh at bind time, like every other setting in this codebase: the
-    profile depends on ``SYSTEM_TOPOLOGY``, which the Sessions Queue changes
+    profile depends on ``TEAM_SIZE``, which the Sessions Queue changes
     between runs inside one process.
     """
     return [

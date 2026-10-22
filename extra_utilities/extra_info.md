@@ -45,7 +45,7 @@ git checkout f173e2d -- extra_utilities/smoke_test_dh_batching.py
 
 ## 1. Topology 3 — the 3-agent system
 
-`SYSTEM_TOPOLOGY = 3`.  Built 2026-09-05 → 2026-09-12 as a **fork of
+`TEAM_SIZE = 3`.  Built 2026-09-05 → 2026-09-12 as a **fork of
 topology 5, never of topology 7** (the owner's brief: start "almost identical
 to the current 5-agent system", then ablate).  Topology 5 had already diverged
 from 7 (its Planner template was ~3 000 characters longer), so forking from 7
@@ -148,7 +148,7 @@ The owner's three worked cases, which the Planner's flow text follows:
   tool stubs.  A docstring IS the tool description the model reads; importing
   a parent's stub would let a topology-3 wording edit move topologies 5 and 7.
 * **`render_check_block` is read at wiring time**, not from module-level
-  constants: those resolve at import under whatever `SYSTEM_TOPOLOGY` was on
+  constants: those resolve at import under whatever `TEAM_SIZE` was on
   disk, and the Sessions Queue switches topology between runs in one process.
 * **`mandatory_tail` asymmetry.**  The DE's routing gets
   `("fragment", "mandatory_tail")`, the RA's `("fragment",)` only — the RA's
@@ -194,7 +194,7 @@ Items the build left open, **not re-verified since**:
 
 ## 2. Topology 5 — the 5-agent system
 
-`SYSTEM_TOPOLOGY = 5`.  Rebuilt 2026-08-31 from the **current** 7-agent
+`TEAM_SIZE = 5`.  Rebuilt 2026-08-31 from the **current** 7-agent
 system (an earlier 5-agent build — Conductor + Creator — had been written
 against an older 7-agent system and was deleted; `conductor` / `creator` are
 in `RETIRED_AGENT_KEYS`).
@@ -440,7 +440,7 @@ Both first builds were replaced (§1, §2).  As built:
 
 ## 6. Traps that cost real time
 
-1. **A stale `.pyc` can serve the wrong `SYSTEM_TOPOLOGY`.**  Python checks
+1. **A stale `.pyc` can serve the wrong `TEAM_SIZE`.**  Python checks
    bytecode by (mtime, size), and flipping 7 → 5 → 3 is size-preserving.
    Symptom: the file reads `3`, `git diff` is clean, the import says otherwise.
    Delete every `__pycache__` folder.
@@ -476,7 +476,7 @@ Both first builds were replaced (§1, §2).  As built:
     per arrival at the inspector/critic, so `MAX_SECTIONS_REFINE_ROUNDS = 12`
     means 12 render-and-judge cycles in every topology.
 12. **`prompts.py` captures a flag at import.**  `DC_INSPECTOR_ENABLED` is
-    read once, when `agents.shared.prompts` is first imported, while `SYSTEM_TOPOLOGY` is read fresh on every call.  That is why
+    read once, when `agents.shared.prompts` is first imported, while `TEAM_SIZE` is read fresh on every call.  That is why
     the snapshot and dry-run scripts use one subprocess per topology.  (Until
     2026-10-10 the import also built every agent template under the on-disk
     topology — TODO F90, now archived.)

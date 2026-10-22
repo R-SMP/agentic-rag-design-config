@@ -39,7 +39,7 @@ Then render. Chrome is the only supported renderer:
 chrome --headless=new --disable-gpu --no-pdf-header-footer --generate-pdf-document-outline --print-to-pdf=out.pdf --virtual-time-budget=30000 "file:///<abs path>/extra_utilities/prompt_pdf/system_prompts.html"
 ```
 
-`dump.py` forces `SYSTEM_TOPOLOGY = 7` and reads every other workflow setting
+`dump.py` forces `TEAM_SIZE = 7` and reads every other workflow setting
 from disk. It assembles each agent **twice**, with `RAG_ENABLED` false and true,
 so `build_html.py` can diff the two and highlight what RAG adds. RAG is purely
 additive in this system — no text is present with RAG off and absent with it on

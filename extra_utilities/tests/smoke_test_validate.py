@@ -250,7 +250,7 @@ def check_second(tmp: Path, planter: Path) -> str:
     check([i["part"] for i in items] == ["A"] * 10 + ["B"] * 3 + ["C"] + ["D"] * 3 + ["E"] + ["X"] * 7,
           f"[SECOND] the parts: {[i['part'] for i in items]}")
     for n, agents in ((7, ("Tool Caller",)), (5, ("Tool Caller",)), (3, ("Design Engineer",))):
-        b = t.get(f"Topology {n}") or {}
+        b = t.get(f"{n}-agent team") or {}
         check(b.get("status") == "pass" and all(a in (b.get("tokens") or {}) for a in agents),
               f"[SECOND] topology {n}: {b.get('status')} {b.get('lines', [])[:3]}")
     for tool in ("build_planter", "planter_geometry", "planter_summary"):
@@ -259,7 +259,7 @@ def check_second(tmp: Path, planter: Path) -> str:
               f"[SECOND] the tool {tool}: {d.get('status')} {d.get('lines', [])[:3]}")
     check((t.get("12 parameter list(s)") or {}).get("status") == "pass",
           "[SECOND] the 12 parameter lists do not pass")
-    check((t.get("One turn per topology, a fake model") or {}).get("status") == "pass",
+    check((t.get("One turn per team size, a fake model") or {}).get("status") == "pass",
           "[SECOND] the scripted turn does not pass")
     pa = t.get("Parameter access") or {}
     check(pa.get("status") == "pass" and len(pa.get("notes") or []) == 18,

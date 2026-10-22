@@ -11,8 +11,8 @@ pack_format: 1
 # neither (engine/pack.py uses_database).
 database: true
 
-# Who sees the parameter list, per agent and per topology (the 7-, 5- and
-# 3-agent systems; a cell exists only where the agent does):
+# Who sees the parameter list, per agent and per team size (the 3-, 5- and
+# 7-agent teams; a cell exists only where the agent does):
 #
 #   full   the list in the agent's system prompt, ranges included
 #   names  the list in the prompt with every [min; max] range removed
@@ -40,7 +40,7 @@ parameter_access:
 # their system prompt and the conversation (agents/shared/dc_primer.py).
 #
 #   image   a PNG in assets/; empty: the text alone
-#   agents  per topology, the agents that get it (any but the Database
+#   agents  per team size, the agents that get it (any but the Database
 #           Handler); an empty list: none
 #
 # Workflow Settings > DC_PARAMS_PRIMER_ENABLED switches it off for every

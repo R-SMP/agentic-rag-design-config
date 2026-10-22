@@ -43,7 +43,7 @@ bottom.**  Verified 2026-08-01 by grep, not from memory.
 | 10 | `workflow_settings/ocr_access.py` | `DEFAULT_AGENTS` | Silent and easy to miss: the agent's `view_images` calls lose their OCR text. **Only for agents that bind image tools** — the wiring map got this wrong for the Conductor, which does bind `view_images` (inherited from the Planner). |
 | 11 | `workflow_settings/llm_defaults.py` | `DEFAULT_PER_AGENT_MODELS` | No default model for the agent. |
 | 12 | `workflow_settings/llm_routing.py` | `AGENT_SPEC` | Absent from LLM routing. Note the third field, `wired_into_dispatcher` — set it `False` until the agent is actually constructed, then flip it to `True` in the same commit that constructs it (`context_pruner` was left `False` for months after it was wired, and the session banner mislabelled it). |
-| 13 | `workflow_settings/settings.py` + `editor.py` | `SYSTEM_TOPOLOGY` + `ENUM_OPTIONS` | The topology cannot be selected from the UI. |
+| 13 | `workflow_settings/settings.py` + `editor.py` | `TEAM_SIZE` + `ENUM_OPTIONS` | The topology cannot be selected from the UI. |
 
 ## Rows 14–19 — touch-points added AFTER the original list (2026-08-04)
 
@@ -99,7 +99,7 @@ The suffix exists so every file is self-identifying: an editor tab reading
 
 ## §A2 — PROMPT_VARIANT: a second, orthogonal dimension
 
-`SYSTEM_TOPOLOGY` is the agent COUNT.  `PROMPT_VARIANT` is which set of
+`TEAM_SIZE` is the agent COUNT.  `PROMPT_VARIANT` is which set of
 PROMPTS that same agent set runs on.  They are deliberately independent: a
 "7-agent reduced" system is the SAME seven agents with the same hub, edges,
 step caps and identity rows — only the text differs — so **no agent-count
@@ -149,7 +149,7 @@ changes here**:
 
 | function | what it does |
 |---|---|
-| `topology()` | reads `SYSTEM_TOPOLOGY` **fresh per call**, never at import |
+| `topology()` | reads `TEAM_SIZE` **fresh per call**, never at import |
 | `_topology_override(rel)` | `agents/<N>agent/<rel-with-suffixed-basename>` or `None` |
 | `_read_dc_fragment` / `_read_generic_fragment` | override-then-fallback |
 | `_prompt_path(agent)` | 3 candidates: topology copy → topology-only agent → historic |
@@ -445,7 +445,7 @@ untouched):**
 2. **Step caps** — `MAX_CONDUCTOR_STEPS` / `MAX_CONDUCTOR_VISITS` /
    `MAX_CREATOR_STEPS`.  ⚠ do NOT copy the Orchestrator's 6 or the DCIC's 50:
    a merged agent both relays and deliberates.
-3. **The selector** — `SYSTEM_TOPOLOGY`, generic over N, defaulting to 7;
+3. **The selector** — `TEAM_SIZE`, generic over N, defaulting to 7;
    carried on `Session` (per T1/T2) the way `dcoi_comparison_mode` is.
 4. **The two agent classes** — `agents/conductor/conductor.py`,
    `agents/creator/creator.py`.  Nothing imports them yet.

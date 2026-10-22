@@ -46,10 +46,8 @@ _AGENT_DISPLAY_NAMES = frozenset({
     "Receptionist", "Orchestrator", "User Input Inspector", "Planner",
     "DC Input Creator", "DC Input Inspector", "Tool Caller",
     "DC Output Inspector", "Database Handler",
-    # 5-agent topology (superset — a topology that does not use them
-    # simply never emits their events).
-    "Conductor", "Creator",
-    # 3-agent topology (superset, same rationale).
+    # The 3-agent team's merged agents (a superset: a team that does not
+    # use them simply never emits their events).
     "Design Engineer", "Requirements Analyst",
 })
 _current_agent = None

@@ -999,7 +999,7 @@ class ParamsEditor:
             text = raw.decode("utf-8").replace("\r\n", "\n")
             rows = access_rows(text)
             if agent not in rows or topology not in rows[agent][1]:
-                raise EditError(f"{agent} has no cell for the {topology}-agent topology.")
+                raise EditError(f"{agent} has no cell for the {topology}-agent team.")
             if state not in states:
                 raise EditError(f"{state!r} is not a state: {', '.join(states)}.")
             if state == "tool" and agent in pa.get("no_tool", []):

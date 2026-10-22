@@ -86,7 +86,7 @@ def _child_main(repo: str, config: str, topology: int, full: bool) -> int:
 
     import prompt_matrix                      # noqa: E402
     S = prompt_matrix.apply_config(config)
-    S.SYSTEM_TOPOLOGY = topology
+    S.TEAM_SIZE = topology
 
     from unittest.mock import MagicMock       # noqa: E402
 

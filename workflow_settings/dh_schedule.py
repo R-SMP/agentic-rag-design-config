@@ -62,7 +62,7 @@ _PROJECT_ROOT = _THIS_DIR.parent
 # so the naive form would yield ``dh_schedule.default_5agents.json``.
 #
 # Resolved per CALL, never captured: the Sessions Queue switches
-# ``SYSTEM_TOPOLOGY`` between runs inside one process, so a module
+# ``TEAM_SIZE`` between runs inside one process, so a module
 # constant would pin whichever topology was active at import.  Topology 7
 # resolves to exactly the historic paths, so it needs no migration.
 # Topologies with a schedule file of their own.  A topology whose roster
@@ -92,8 +92,9 @@ def active_topology() -> int:
     module resolves its paths with, rather than a second opinion.
     """
     from workflow_settings import settings as _settings
+    from workflow_settings import team_size
 
-    return int(getattr(_settings, "SYSTEM_TOPOLOGY", 7))
+    return team_size.read(_settings)
 
 
 def _topology_infix() -> str:

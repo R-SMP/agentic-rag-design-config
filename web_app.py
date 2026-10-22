@@ -2482,7 +2482,7 @@ async def _run_queue_in_background(manifest: dict) -> None:
     # and the finally block restores it so the user's next normal chat is
     # unaffected by the last run's condition.
     baseline = manifest.get("baseline_routing")
-    # SYSTEM_TOPOLOGY captured at queue start, restored in the same finally
+    # TEAM_SIZE captured at queue start, restored in the same finally
     # block.  Topology is per-run and INDEPENDENT of the LLM condition: it
     # is written before every build, whatever that run's models come from.
     baseline_topology = manifest.get("baseline_topology")
@@ -2551,7 +2551,7 @@ async def _run_queue_in_background(manifest: dict) -> None:
 
             # 2a. Apply this run's TOPOLOGY.  Must precede step 3: the hub
             #     class, the prompt fragments and the routing tool-sets are
-            #     all chosen from SYSTEM_TOPOLOGY at build time, and
+            #     all chosen from TEAM_SIZE at build time, and
             #     ``_build_session`` reloads workflow_settings in place, so a
             #     value written here is the one that build sees.  Written for
             #     EVERY condition, including 'current' and 'single'.
@@ -2563,10 +2563,10 @@ async def _run_queue_in_background(manifest: dict) -> None:
             try:
                 await run_in_threadpool(
                     settings_editor.write_internal,
-                    {"SYSTEM_TOPOLOGY": run_topology})
+                    {"TEAM_SIZE": run_topology})
             except Exception as exc:
                 run["status"] = "failed"
-                run["note"] = f"topology write failed: {exc}"
+                run["note"] = f"could not set the team size: {exc}"
                 run["finished_at"] = _web_now_iso()
                 _emit_runner(
                     manifest,
@@ -2876,16 +2876,16 @@ async def _run_queue_in_background(manifest: dict) -> None:
         # live orphan: write_updates only rewrites the .env / settings files,
         # which a mid-flight dispatch_turn has already read and will not
         # re-read.  Best-effort — a failure is logged, not fatal.
-        # Same reasoning for SYSTEM_TOPOLOGY: a queue whose last run was
+        # Same reasoning for TEAM_SIZE: a queue whose last run was
         # 5-agent must not leave the operator's next normal chat on the
-        # Conductor.  Restored BEFORE the routing so that, if one of the two
-        # writes fails, the system is left on the operator's own topology
-        # rather than on the last run's.
+        # 5-agent team.  Restored BEFORE the routing so that, if one of the
+        # two writes fails, the system is left on the operator's own team
+        # size rather than on the last run's.
         if baseline_topology is not None:
             try:
                 await run_in_threadpool(
                     settings_editor.write_internal,
-                    {"SYSTEM_TOPOLOGY": int(baseline_topology)})
+                    {"TEAM_SIZE": int(baseline_topology)})
             except Exception:
                 logger.exception("[QUEUE] topology restore failed")
         if baseline is not None:
@@ -3115,7 +3115,7 @@ def _capture_routing_baseline() -> "dict | None":
 
 
 def _capture_topology_baseline() -> "int | None":
-    """Snapshot ``SYSTEM_TOPOLOGY`` so the runner can restore it when the
+    """Snapshot ``TEAM_SIZE`` so the runner can restore it when the
     queue ends.  Returns ``None`` if it cannot be read (topology is then
     left wherever the last run put it)."""
     try:
@@ -3708,7 +3708,7 @@ def api_dh_schedule_post(body: DhScheduleIn) -> dict:
             status_code=409,
             detail=(
                 f"These questions were loaded under the {body.topology}-agent "
-                f"topology, but the system is now on the {active}-agent one, "
+                f"team, but the system is now on the {active}-agent one, "
                 f"which keeps a separate schedule.  Reload the page and redo "
                 f"the edit so it is saved against the right schedule."
             ),

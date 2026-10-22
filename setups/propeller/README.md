@@ -12,9 +12,9 @@ chooses another pack; the default is this folder.
 | --- | --- |
 | `fragments/dc/` | Text about the configurator: parameter list, structure, modelling notes, capabilities, examples, … |
 | `fragments/tools/` | Tool text that no one tool owns: the output vocabulary, the texts about the engine's own tools (database search, retrieval, `calculate` …, with their entries in the tool runner's tool list), the tool rules every agent gets, … |
-| `tools/<tool>/` | One folder per tool: `tool.yaml` (its name, its kind — `generator`, `helper` or `geometry` —, the role that may call it (a geometry tool has none: the engine calls it, for the generator and the Download buttons), the text the agents read, its outputs, and its settings with their defaults) plus plain Python with no LangChain in it (the contract is `engine/tooling.py`).  The engine loads them, builds the agents' tools and gives each to whichever agent holds its role in the running topology (`engine/pack_tools.py`).  A tool's switch and settings are its `<<IF:tool:…>>` / `<<IF:setting:…>>` flags; Workflow Settings › Tools changes them for the next session (`workflow_settings/setups/<setup>/tool_settings.json`).  Its `prompts/` folder holds the prompt text it owns — the slots its `tool.yaml` lists under `prompt_slots`, named as in `fragments/` — and `tool_list_entry.md`, its entry in the tool runner's numbered tool list (placed by `list_order`).  Delete a tool's folder and its text goes with it: its slots read empty, and a marked passage about it elsewhere reads as switched off.  A tool lists the environment variables it reads under `secrets` (`{env: NAME, required: true|false, description: …}`): names only, never a value. |
+| `tools/<tool>/` | One folder per tool: `tool.yaml` (its name, its kind — `generator`, `helper` or `geometry` —, the role that may call it (a geometry tool has none: the engine calls it, for the generator and the Download buttons), the text the agents read, its outputs, and its settings with their defaults) plus plain Python with no LangChain in it (the contract is `engine/tooling.py`).  The engine loads them, builds the agents' tools and gives each to whichever agent holds its role in the running team (`engine/pack_tools.py`).  A tool's switch and settings are its `<<IF:tool:…>>` / `<<IF:setting:…>>` flags; Workflow Settings › Tools changes them for the next session (`workflow_settings/setups/<setup>/tool_settings.json`).  Its `prompts/` folder holds the prompt text it owns — the slots its `tool.yaml` lists under `prompt_slots`, named as in `fragments/` — and `tool_list_entry.md`, its entry in the tool runner's numbered tool list (placed by `list_order`).  Delete a tool's folder and its text goes with it: its slots read empty, and a marked passage about it elsewhere reads as switched off.  A tool lists the environment variables it reads under `secrets` (`{env: NAME, required: true|false, description: …}`): names only, never a value. |
 | `parameters.json` | The parameters: names in canonical (JSON) order, types, ranges, steps, defaults, groups, and each consumer's wording (slider label/unit, database unit/description).  The one source for the validator, `$parameter_count`, the slider page, the preview check and the database schema (`engine/parameters.py`).  The agents' parameter lists stay hand-written; `smoke_test_parameters.py` checks they agree.  Names under `retired` were parameters once: a record that still carries one is read without it (the web app's preview check, `propose_attempt`). |
-| `pack.yaml` | The pack's own settings.  `parameter_access`, who sees the parameter list for each agent and topology (full list / names only / through the `dc_params_list` tool / nothing).  It is the default; Workflow Settings › Parameter list access changes cells for the next session (`engine/parameter_access.py`).  `render_samples`, the parameter sets the render-compression panel's sample pictures are made from (its Generate samples button, `engine/image_run.py`).  `downloads.geometry_tool`, the geometry tool that rebuilds the model the web app's Download buttons give (or `saved`, the file the run built); Workflow Settings › Tools › Downloads changes it for the next session.  `primer`, the primer's picture (a PNG in `assets/`, or none: the text alone) and, per topology, the agents that get it (`engine/primer.py`, the Studio's Primer page); a setup without it gives the six design agents `assets/dc_params_primer.png`. |
+| `pack.yaml` | The pack's own settings.  `parameter_access`, who sees the parameter list for each agent and team size (full list / names only / through the `dc_params_list` tool / nothing).  It is the default; Workflow Settings › Parameter list access changes cells for the next session (`engine/parameter_access.py`).  `render_samples`, the parameter sets the render-compression panel's sample pictures are made from (its Generate samples button, `engine/image_run.py`).  `downloads.geometry_tool`, the geometry tool that rebuilds the model the web app's Download buttons give (or `saved`, the file the run built); Workflow Settings › Tools › Downloads changes it for the next session.  `primer`, the primer's picture (a PNG in `assets/`, or none: the text alone) and, per team size, the agents that get it (`engine/primer.py`, the Studio's Primer page); a setup without it gives the six design agents `assets/dc_params_primer.png`. |
 | `assets/` | Images, served at `/pack/assets/`: the primer's picture (`dc_params_primer.png`, named in `pack.yaml`'s `primer`), the Parameters page's group pictures (named in `parameters.json`), and `render_samples/`, the render-compression panel's samples until its Generate samples button makes newer ones. |
 | `preview/` | The Parameters page's browser preview, served at `/pack/preview/`: `preview.js` exports `buildModel(params, material)` (the live 3D model) and, optionally, `highlightGroup` (the part the group being edited shapes), `views` (more left-pane views — the propeller's Blade sections), `groupFigures` + `drawGroupFigure` (a live drawing beside a group's picture) and `modelTitle`.  The propeller's runs FEG (`preview/feg/`), which the `feg_geometry` tool also runs under Node.  Without `preview.js` the page offers a generic Preview button instead: the tools' pictures of the slider values, made on the server (`engine/image_run.py`). |
 
@@ -30,15 +30,15 @@ its name says where it applies (`engine/pack.py`):
 
 | File | Applies to |
 | --- | --- |
-| `<slot>.md` | every topology — one text ("linked") |
-| `<slot>.t<N>.md` | topology N only — `.t7`, `.t5`, `.t3` ("unlinked") |
-| `<slot>@<agent>.md` | that agent's own copy, in every topology |
-| `<slot>@<agent>.t<N>.md` | that agent's own copy, in topology N |
+| `<slot>.md` | every team size — one text ("linked") |
+| `<slot>.t<N>.md` | the N-agent team only — `.t7`, `.t5`, `.t3` ("unlinked") |
+| `<slot>@<agent>.md` | that agent's own copy, for every team size |
+| `<slot>@<agent>.t<N>.md` | that agent's own copy, in the N-agent team |
 
 The most specific file that exists wins: the agent's own copy if it has one,
-else the slot's text for the topology, else the linked text, else the 7-agent
-text.  **Editing a linked file changes every topology that uses it**; to
-change one topology only, replace `<slot>.md` by `.t7` / `.t5` / `.t3` files
+else the slot's text for the team size, else the linked text, else the 7-agent
+text.  **Editing a linked file changes every team size that uses it**; to
+change one team only, replace `<slot>.md` by `.t7` / `.t5` / `.t3` files
 first.
 
 A slot a tool owns (`filled_by: tool` in the registry, listed in the tool's
@@ -46,7 +46,7 @@ A slot a tool owns (`filled_by: tool` in the registry, listed in the tool's
 
 * **An empty file is a decision.**  It resolves to nothing and ends the
   search; deleting it can restore longer text or crash the session build
-  (`extra_utilities/warnings_developer.md` W42).  A topology that does not use
+  (`extra_utilities/warnings_developer.md` W42).  A team that does not use
   a slot keeps an empty `<slot>.t<N>.md`.
 * **No `{` or `}` in any fragment** (W45).
 * The loader strips trailing whitespace (both ends for `strip: both` slots).
@@ -80,7 +80,7 @@ a fragment holds:
 1. Add its entry to `engine/slot_registry.yaml` (`source: pack`, `folder`,
    `kind`, `section`, `description`).
 2. Create `fragments/<folder>/<slot>.md` — or `.t7` / `.t5` / `.t3` files when
-   the topologies need different text, with an empty file for a topology that
+   the team sizes need different text, with an empty file for a team that
    does not use it.
 3. Reference it as `$<slot>` in the template or fragment that needs it
    (routing fragments are substituted too).
@@ -92,7 +92,7 @@ index in `prompts.py` are derived from the registry.
 
 * `render_check_library_trimesh` / `_pyvista` / `_off` (in the generator's
   `prompts/`) — the render + mesh-check block the Tool Caller (Design Engineer
-  in topology 3) receives through its `{render_check_library_block}`
+  in the 3-agent team) receives through its `{render_check_library_block}`
   placeholder.  The generator's `tool.yaml` picks it (`runtime_blocks`): the
   `_off` block while `mesh_checks` is off, else the one named after
   `render_library`.  A new backend is a new `render_library` value with its

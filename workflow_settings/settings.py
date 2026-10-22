@@ -56,16 +56,16 @@ RAG_ENABLED: bool = False
 # ===========================================================
 # 3b. 5-agent DC Input Creator takes the DC Input Inspector's role
 # ===========================================================
-# TOPOLOGY 5 ONLY.  The 5-agent system has no DC Input Inspector:
+# 5-AGENT TEAM ONLY.  The 5-agent system has no DC Input Inspector:
 # its DC Input Creator validates its own parameters.  This decides
 # whether the DC Input Creator also holds the Inspector's role in
-# the agent role map (shown under "Agent roles across topologies"):
+# the agent role map (shown under "Agent roles across team sizes"):
 #
 #   True   it reads past DC Input Inspector answers in database_search,
 #          and question-table rows whose "Agent from" is the DC Input
 #          Inspector are asked to it at save time
-#   False  past DC Input Inspector answers stay unreadable in topology
-#          5, and those question rows are skipped at save time
+#   False  past DC Input Inspector answers stay unreadable in the
+#          5-agent team, and those question rows are skipped at save time
 #
 # To be retired once the role map is user-customizable (TODO F102 /
 # F103).  Takes effect on the next session.
@@ -94,8 +94,8 @@ DC_INSPECTOR_ENABLED: bool = True
 # 5.  Orchestrator chain access
 # ===========================================================
 # Whether the Orchestrator's LLM sees inter-agent messages
-# exchanged while it was waiting.  7-AGENT ONLY — the reduced
-# topologies' hubs have no such feed, so this flag does nothing
+# exchanged while it was waiting.  7-AGENT ONLY — the smaller
+# teams' hubs have no such feed, so this flag does nothing
 # there.
 #
 #   True   every chain message is prepended to the Orchestrator's
@@ -661,9 +661,11 @@ IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320
 
 
 # ===========================================================
-# 27. Agent topology
+# 27. Team size
 # ===========================================================
-# SYSTEM_TOPOLOGY — how many agents the design workflow runs with.
+# TEAM_SIZE — how many agents the design workflow runs with.
+# (Called SYSTEM_TOPOLOGY before 2026-10-22; a settings.py that still
+# says SYSTEM_TOPOLOGY is read the same way.)
 #
 # The same job can be done by more agents with narrower roles, or by
 # fewer agents each doing more.  The value IS the agent count, and the
@@ -672,7 +674,7 @@ IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320
 #
 #   7  Receptionist, Orchestrator, User Input Inspector, Planner,
 #      DC Input Creator, DC Input Inspector, Tool Caller,
-#      DC Output Inspector.  The original topology: every role is
+#      DC Output Inspector.  The original team: every role is
 #      separate, so each parameter set is authored by one agent and
 #      independently audited by another.
 #   5  Receptionist, PLANNER (the hub), User Input Inspector,
@@ -692,14 +694,14 @@ IMAGE_COMPRESSION_RENDER_MIN_LONG_EDGE: int = 320
 #      directly, and the hub is called at phase boundaries.
 #
 # Changing this takes effect on the NEXT session; a run already in
-# flight keeps the topology it started with.
+# flight keeps the team size it started with.
 #
 # Adding a further variant needs no code change here: create
 # ``agents/<N>agent/`` with that variant's prompts and fragments and
 # add N to the dropdown.
 #
-# Valid values: 7, 5, 3
-SYSTEM_TOPOLOGY: int = 7
+# Valid values: 3, 5, 7
+TEAM_SIZE: int = 7
 
 
 # ===========================================================
@@ -836,8 +838,8 @@ MAX_ORCH_INNER_STEPS: int = 15
 #
 # SEPARATE from MAX_PLANNER_STEPS on purpose.  That one is the 7-agent
 # chain Planner, which only plans; this one is the same agent key doing
-# both jobs in one loop under topology 5.  Two names so topology 5 can be
-# retuned without moving topology 7.
+# both jobs in one loop in the 5-agent team.  Two names so the 5-agent
+# team can be retuned without moving the 7-agent one.
 #
 # Above the Orchestrator's 15: the Orchestrator was kept tight because it
 # should "relay, not deliberate", but here the deliberating half is what
@@ -849,7 +851,7 @@ MAX_PLANNER5_STEPS: int = 40
 
 # MAX_PLANNER5_VISITS - how many times the dispatcher may RE-ENTER the
 # 5-agent hub during a single user turn.  The MAX_ORCHESTRATOR_STEPS
-# analogue for topology 5.
+# analogue for the 5-agent team.
 #
 # Higher than the Orchestrator's 120 because the hub ABSORBS the Planner:
 # in the 7-agent system a planning turn happened inside the Planner and
@@ -887,12 +889,12 @@ MAX_SECTIONS_REFINE_ROUNDS: int = 12
 
 # MAX_PLANNER3_STEPS - LLM turns inside ONE run of the 3-agent HUB.
 #
-# The 3-agent hub is the PLANNER, exactly as in topology 5, and it does
+# The 3-agent hub is the PLANNER, exactly as in the 5-agent team, and it does
 # the same job there, so it takes the same figure.  A separate name
 # rather than a shared one because the two must be retunable
 # independently: they are the same agent key doing the same job in two
 # different systems, and one number cannot serve both without a change
-# to topology 3 moving topology 5.
+# to the 3-agent team moving the 5-agent one.
 #
 # Valid values: positive int.
 MAX_PLANNER3_STEPS: int = 40
@@ -930,7 +932,7 @@ MAX_REQUIREMENTS_ANALYST_STEPS: int = 40
 # this agent's two jobs happen in the SAME invocation.  One turn reads
 # the user's inputs, authors the full parameter set, opens the attempt and
 # writes it, THEN generates and renders -- work that cost two agents and
-# a hand-off in topology 5.  Giving it only the author half's budget
+# a hand-off in the 5-agent team.  Giving it only the author half's budget
 # would cut it off mid-generation on a complex job.
 #
 # Valid values: positive int.
@@ -1362,7 +1364,7 @@ SAVE_LOGS_FOR_UNSAVED_SESSIONS: bool = False
 #   True   these payloads are written IN FULL, uncut:
 #            result  view_images, reread_text_regions
 #            args    write_extraction, new_attempt_parameters
-#                    (write_parameters in the 5-/3-agent topologies)
+#                    (write_parameters in the 3- and 5-agent teams)
 #          Every other tool, and the other half of these five, keeps
 #          the 800-char cap.
 #   False  every tool call keeps the 800-char cap on both halves.

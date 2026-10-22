@@ -73,14 +73,14 @@ DEV_CHECKS = (
      "every prompt template formats with RAG off, on, and on with every database tool"),
     ("smoke_test_slot_splices", "Slot splices",
      "a text of several lines stands alone on its line"),
-    ("smoke_test_topology_fragments", "Topology texts",
-     "each topology reads only its own texts, and an agent's own copy wins for it alone"),
+    ("smoke_test_topology_fragments", "Team-size texts",
+     "each team reads only its own texts, and an agent's own copy wins for it alone"),
     ("smoke_test_parameters", "Parameters",
      "the parameter file, the lists, what the pages and the database get from it"),
     ("smoke_test_parameter_access", "Parameter access",
      "the access grid, its four states, every text condition"),
     ("smoke_test_agent_roles", "Agent roles",
-     "the agents of each topology and whose past answers each may read"),
+     "the agents of each team and whose past answers each may read"),
     ("smoke_test_hub_attributes", "Hub attributes",
      "each hub calls only the agents it has"),
 )
@@ -225,7 +225,7 @@ def part_load() -> list[dict]:
         for slot in sorted(pack.slots(source="pack", use="prompt")):
             for n in TOPOLOGIES:
                 for problem in attempt(lambda: pack.read(slot, n)):
-                    lines.append(f"${slot} (topology {n}): {problem}")
+                    lines.append(f"${slot} ({n}-agent team): {problem}")
     out.append(item("A", "The texts", FAIL if lines else PASS, lines))
     # A. conditions about a tool the setup does not have (read as switched off)
     if tools_ok:
@@ -333,7 +333,7 @@ def _prompt_items(results: dict, names: dict) -> list[dict]:
                     lines.append(f"{label} · {who}: markers left: " + ", ".join(marks))
                 if combo == "base":
                     tokens[agent] = count_tokens(text)
-        out.append(item("B", f"Topology {n}", FAIL if lines else PASS, lines,
+        out.append(item("B", f"{n}-agent team", FAIL if lines else PASS, lines,
                         tokens={names.get(a, a): t for a, t in tokens.items()},
                         link={"section": "prompts", "topology": n}))
     return out
@@ -450,7 +450,7 @@ def run(pack_dir: Path, progress=None, workers: int | None = None) -> dict:
             from studio.tools_edit import run_tool_test
             jobs += [(("tool", t), (lambda t=t: tool_item(t, run_tool_test(
                 REPO, pack_dir, t, defaults, None, TOOL_TIMEOUT)))) for t in tools]
-        jobs.append(("E", lambda: _script_item("E", "One turn per topology, a fake model",
+        jobs.append(("E", lambda: _script_item("E", "One turn per team size, a fake model",
                                                "dry_run_topology", copy)))
         jobs += [(("X", s), (lambda s=s, t=t, a=a: _script_item("X", t, s, own.get(s, copy), a)))
                  for s, t, a in DEV_CHECKS]
@@ -520,7 +520,7 @@ def _items(results: dict, tools: list[str], defaults) -> list[dict]:
             out.append(item("D", t, FAIL, [r.get("fatal", "")]))
     if "E" in results:
         r = results["E"]
-        out.append(r if "part" in r else item("E", "One turn per topology", FAIL,
+        out.append(r if "part" in r else item("E", "One turn per team size", FAIL,
                                               [r.get("fatal", "")]))
     for s, t, _a in DEV_CHECKS:
         r = results.get(("X", s))

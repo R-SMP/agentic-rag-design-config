@@ -54,7 +54,7 @@ def feedback_envelope() -> str:
     Read fresh per call, never cached: the Sessions Queue switches settings
     between runs inside one process.
 
-    Defined here because all three hubs (Orchestrator, Conductor, Architect)
+    Defined here because all three hubs (Orchestrator, Planner5, Planner3)
     already import this module for the dispatch tool, and three copies of one
     sentence is how they drift apart.
     """
@@ -138,7 +138,7 @@ def build_submit_feedback_dispatch():
 
     Topology 7 and topology 3 keep importing ``submit_feedback_dispatch``
     directly and are untouched.  Resolved per call, never at import: the
-    Sessions Queue switches SYSTEM_TOPOLOGY between runs inside one process,
+    Sessions Queue switches TEAM_SIZE between runs inside one process,
     so a module-level binding would freeze whichever topology was active
     first (see ``agents/shared/topology.py``).
 

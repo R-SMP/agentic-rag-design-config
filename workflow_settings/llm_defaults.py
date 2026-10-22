@@ -23,6 +23,7 @@ better model ships), edit the dict below; users with their own
 from __future__ import annotations
 
 from workflow_settings import settings as _settings
+from workflow_settings import team_size as _team_size
 
 
 # Per-agent baked-in defaults.  Each entry is the model string
@@ -109,7 +110,7 @@ def model_for(agent_key: str) -> str:
     The ACTIVE topology's overlay wins; then
     :data:`DEFAULT_PER_AGENT_MODELS`; then :data:`FALLBACK_MODEL`.
 
-    ``SYSTEM_TOPOLOGY`` is read FRESH on every call, never captured at
+    ``TEAM_SIZE`` is read FRESH on every call, never captured at
     import: the Sessions Queue switches topology between runs inside one
     process, and ``web_app._build_session`` reloads the settings module in
     place without reloading its importers (see ``agents/shared/topology.py``
@@ -121,7 +122,7 @@ def model_for(agent_key: str) -> str:
     ``agents.shared.topology`` so this module does not import from
     ``agents`` -- that would invert the package dependency direction.
     """
-    topo = int(getattr(_settings, "SYSTEM_TOPOLOGY", 7))
+    topo = _team_size.read(_settings)
     overlay = DEFAULT_PER_AGENT_MODELS_BY_TOPOLOGY.get(topo)
     if overlay and agent_key in overlay:
         return overlay[agent_key]

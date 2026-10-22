@@ -696,10 +696,10 @@
               (gitignored).
             </p>
             <p class="questions-note">
-              <strong>Agent from / To across topologies.</strong>  Write rows
+              <strong>Agent from / To across team sizes.</strong>  Write rows
               with the 7-agent agents.  When a session runs with fewer agents,
               each row is asked to the agent that holds that role (see
-              <em>Agent roles across topologies</em> in Workflow Settings) &mdash;
+              <em>Agent roles across team sizes</em> in Workflow Settings) &mdash;
               e.g. an &ldquo;Agent from: DCOI&rdquo; row is answered by the
               Requirements Analyst in the 3-agent system.  A row whose Agent from
               is the Design Engineer or Requirements Analyst only applies to
@@ -790,7 +790,7 @@
                 <em>End Session</em>).
               </p>
             </div>
-            <!-- Agent-count toggle.  This IS the SYSTEM_TOPOLOGY setting,
+            <!-- Agent-count toggle.  This IS the TEAM_SIZE setting,
                  not a separate view state: clicking a button saves the
                  setting and redraws the chart, so the chart can never show
                  one topology while a different one actually runs.  Each
@@ -799,9 +799,9 @@
                  the merged agents have distinct keys — so switching back
                  and forth loses nothing. -->
             <div class="lr-topology">
-              <span class="lr-global-label">Agent count</span>
+              <span class="lr-global-label">Team size</span>
               <div id="lr-topology-toggle" class="lr-topo-toggle"
-                   role="group" aria-label="Agent-count topology">
+                   role="group" aria-label="Team size">
                 <button type="button" data-topo="3">3-agents</button>
                 <button type="button" data-topo="5">5-agents</button>
                 <button type="button" data-topo="7">7-agents</button>
@@ -1018,11 +1018,11 @@
                Handler's question mapping.  Customization is TODO F102. -->
           <section class="rc-panel" id="agent-roles">
             <div class="rc-head">
-              <h2>Agent roles across topologies <span class="ar-tag">read only</span></h2>
+              <h2>Agent roles across team sizes <span class="ar-tag">read only</span></h2>
               <p class="rc-note">
-                Which agent holds each role of the 7-agent system in the reduced
-                topologies.  Sessions saved under any topology stay retrievable
-                under the others through this table.
+                Which agent holds each role of the 7-agent team in the smaller
+                teams.  Sessions saved with any team size stay retrievable
+                from the others through this table.
               </p>
             </div>
             <div class="mw-table-wrap ar-table-wrap">

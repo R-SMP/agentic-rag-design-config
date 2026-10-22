@@ -3057,7 +3057,7 @@ const LR_BOXES_3 = [
 
 const LR_BOXES_BY_TOPOLOGY = { 7: LR_BOXES_7, 5: LR_BOXES_5, 3: LR_BOXES_3 };
 
-// Which topology the chart is showing.  This is SYSTEM_TOPOLOGY itself,
+// Which topology the chart is showing.  This is TEAM_SIZE itself,
 // not a separate view state: switching the toggle saves the setting, so
 // the chart can never show one topology while another is what runs.
 let lrTopology = 7;
@@ -3485,7 +3485,7 @@ function applyLrPreset(wf) {
 // ---------------------------------------------------------------------------
 // Agent-count toggle (7 / 5 / 3)
 //
-// This IS the SYSTEM_TOPOLOGY setting, not a separate view state.  Clicking
+// This IS the TEAM_SIZE setting, not a separate view state.  Clicking
 // a button saves the setting and redraws the chart, so the chart can never
 // show one topology while a different one is what actually runs.
 //
@@ -3506,7 +3506,7 @@ function renderLrTopology() {
   const note = lrEl("lr-topology-note");
   if (note) {
     note.textContent =
-      "The next session will run the " + lrTopology + "-agent system.";
+      "The next session will run the " + lrTopology + "-agent team.";
   }
 }
 
@@ -3517,13 +3517,13 @@ async function setLrTopology(topo) {
   renderLrTopology();
   buildLrChart();
   renderLrOverlay();
-  setLrStatus("Saving agent count\u2026", "");
+  setLrStatus("Saving team size\u2026", "");
   try {
     const res = await fetch("/api/settings", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        values: { SYSTEM_TOPOLOGY: topo },
+        values: { TEAM_SIZE: topo },
       }),
     });
     if (res.status === 401) { showGate(); return; }
@@ -3538,7 +3538,7 @@ async function setLrTopology(topo) {
     renderLrTopology();
     buildLrChart();
     renderLrOverlay();
-    setLrStatus("Could not save agent count: " + err.message, "err");
+    setLrStatus("Could not save team size: " + err.message, "err");
   }
 }
 
@@ -5676,7 +5676,7 @@ function sqTierPanel(run) {
     return `
       <div class="sq-run-tiers">
         <p class="sq-tier-warn">Could not load the agent list for the
-        ${sqEsc(String(run.topology || 7))}-agent topology — reload the page.
+        ${sqEsc(String(run.topology || 7))}-agent team — reload the page.
         Starting the queue with this condition would be rejected anyway.</p>
       </div>`;
   }
@@ -5772,7 +5772,7 @@ function sqRenderRuns() {
                data-k="run_id" placeholder="run id (optional)" />
         <select class="sq-run-cond" data-k="condition">${sqConditionOptions(run.condition)}</select>
         <select class="sq-run-topo" data-k="topology"
-                title="Agent topology for this run — applies whatever the condition is">${sqTopologyOptions(run.topology)}</select>
+                title="Team size for this run — applies whatever the condition is">${sqTopologyOptions(run.topology)}</select>
         <button class="sq-run-img" type="button" title="Manage this run's images">🖼 ${run._imgCount || 0}</button>
         <button class="sq-run-dup ghost" type="button" title="Duplicate run">⧉</button>
         <button class="sq-run-adv ghost" type="button" title="Per-run overrides">⚙</button>

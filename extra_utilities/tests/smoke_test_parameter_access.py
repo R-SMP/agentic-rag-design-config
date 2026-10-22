@@ -99,7 +99,7 @@ def check_grid(default: dict) -> None:
 def check_prompt_files() -> int:
     n = 0
     for t in PA.TOPOLOGIES:
-        P._workflow_settings.SYSTEM_TOPOLOGY = t
+        P._workflow_settings.TEAM_SIZE = t
         for agent in _agents(t):
             path = P._prompt_path(agent)
             regions = _IF_PARAM_LIST_RE.findall(path.read_text(encoding="utf-8"))
@@ -116,7 +116,7 @@ def check_states(default: dict) -> int:
     real_read = PA.read_overrides
     try:
         for t in PA.TOPOLOGIES:
-            P._workflow_settings.SYSTEM_TOPOLOGY = t
+            P._workflow_settings.TEAM_SIZE = t
             for agent in _agents(t):
                 if t not in default.get(agent, {}):
                     continue          # reported by check_grid

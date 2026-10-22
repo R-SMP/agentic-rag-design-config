@@ -121,12 +121,12 @@ rows = [row(1, "dc_output_inspector"), row(2, "design_engineer"),
 real_read_state = dh_schedule.read_state
 dh_schedule.read_state = lambda: {"questions": [dict(r) for r in rows]}
 try:
-    S.SYSTEM_TOPOLOGY = 3
+    S.TEAM_SIZE = 3
     got3 = [(e["id"], e["agent_key"]) for e in dh_schedule.read_for_dh()]
     check(got3 == [("r1", "requirements_analyst"), ("r2", "design_engineer"),
                    ("r3", "requirements_analyst"), ("r4", "planner"),
                    ("r5", "planner")], f"read_for_dh under t3: {got3}")
-    S.SYSTEM_TOPOLOGY = 7
+    S.TEAM_SIZE = 7
     got7 = [(e["id"], e["agent_key"]) for e in dh_schedule.read_for_dh()]
     check(got7 == [("r1", "dc_output_inspector"), ("r5", "orchestrator")],
           f"read_for_dh under t7 (DE/RA rows and the RA row's child skipped): {got7}")
@@ -135,7 +135,7 @@ try:
           "to_agents must be stored exactly as written")
 finally:
     dh_schedule.read_state = real_read_state
-    S.SYSTEM_TOPOLOGY = 7
+    S.TEAM_SIZE = 7
 
 # --- 4. the legend, in a real assembled response ----------------------------
 from tools.database_search import database_search as D  # noqa: E402
@@ -149,7 +149,7 @@ def chunk(cid, sid, frm, field, body):
 
 
 def respond(chunks_by_sid, topo):
-    S.SYSTEM_TOPOLOGY = topo
+    S.TEAM_SIZE = topo
     anchors = [D.AnchorHit(session_id=s, attempt_id=None, attempt_label=None,
                            dist=0.2, best_chunk_id=c[0].chunk_id)
                for s, c in chunks_by_sid.items()]
@@ -186,7 +186,7 @@ r5 = respond(three, 5)
 check(r5.count("<agent_roles>") == 1 and "Design Engineer → DC Input Creator and Tool Caller" in r5,
       f"t5 reverse legend: {r5.splitlines()[1]}")
 check('agent="User"' in r5, "User stays User")
-S.SYSTEM_TOPOLOGY = 7
+S.TEAM_SIZE = 7
 
 print("problems:", "none" if not problems else "")
 for p in problems:

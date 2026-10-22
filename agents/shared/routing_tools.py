@@ -329,7 +329,7 @@ def build_routing_tool(
         # emits ``_trace("Receptionist", hub_display(), "forwarded")`` for
         # whichever hub is active.  These two must move together: making
         # this hub-aware without that emitter would silently DELETE the
-        # Receptionist -> Conductor trace rather than de-duplicate it.
+        # Receptionist -> hub trace rather than de-duplicate it.
         if not (caller_key == "receptionist" and target_key == _hub_key()):
             _trace(caller_display, target_display)
         # Label the hand-off with its sender so the target agent can

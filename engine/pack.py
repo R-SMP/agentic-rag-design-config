@@ -399,7 +399,7 @@ def read(slot: str, topology: int, agent: str | None = None) -> str:
         if spec.get("missing") == "empty" or unclaimed_tool_slot(slot):
             return ""
         raise FileNotFoundError(
-            f"no file for ${slot} (topology {topology}) in {_folder(slot)}")
+            f"no file for ${slot} ({topology}-agent team) in {_folder(slot)}")
     return _clean(spec, path.read_text(encoding="utf-8"))
 
 

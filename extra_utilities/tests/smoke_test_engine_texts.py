@@ -266,7 +266,7 @@ def check_pack_words() -> int:
                     ignore=shutil.ignore_patterns("__pycache__"))
     for rel, text in _STAND_INS.items():
         (tmp / rel).write_text(text + "\n", encoding="utf-8")
-    real_pack, saved = config.DC_PACK_DIR, S.SYSTEM_TOPOLOGY
+    real_pack, saved = config.DC_PACK_DIR, S.TEAM_SIZE
     checks = 0
 
     def expect(text: str, present: list[str], absent: list[str], where: str) -> None:
@@ -281,7 +281,7 @@ def check_pack_words() -> int:
 
     try:
         config.DC_PACK_DIR = tmp / "dc_pack"
-        S.SYSTEM_TOPOLOGY = 7
+        S.TEAM_SIZE = 7
         refresh_tools()
         expect(attempts_tool.read_attempts.description,
                ["the generated widget (``turbine.step``)", "no widget was generated",
@@ -317,11 +317,11 @@ def check_pack_words() -> int:
         expect(db_writer._load_stitching_prompt(),
                ['"what worked for a thin turbine?"', "DC_NAME: turbine"], ["propeller"],
                "the stitching prompt")
-        S.SYSTEM_TOPOLOGY = 3
+        S.TEAM_SIZE = 3
         expect(build_submit_feedback_dispatch().description, ["whether the drawing met it"],
                ["the render met"], "submit_feedback_dispatch (topology 3)")
     finally:
-        config.DC_PACK_DIR, S.SYSTEM_TOPOLOGY = real_pack, saved
+        config.DC_PACK_DIR, S.TEAM_SIZE = real_pack, saved
         refresh_tools()
         db_writer._stitching_prompt_cache = None
         shutil.rmtree(tmp, ignore_errors=True)
@@ -330,17 +330,17 @@ def check_pack_words() -> int:
 
 def collect() -> dict:
     got: dict = {}
-    saved = S.SYSTEM_TOPOLOGY
+    saved = S.TEAM_SIZE
     try:
         for topo in (7, 5, 3):
-            S.SYSTEM_TOPOLOGY = topo
+            S.TEAM_SIZE = topo
             for name, t in _tools().items():
                 got[f"tools/{topo}/{name}"] = _describe(t)
-        S.SYSTEM_TOPOLOGY = 7
+        S.TEAM_SIZE = 7
         got.update({f"answers/{k}": v for k, v in _answers().items()})
         got.update({f"texts/{k}": v for k, v in _texts().items()})
     finally:
-        S.SYSTEM_TOPOLOGY = saved
+        S.TEAM_SIZE = saved
     return got
 
 

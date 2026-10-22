@@ -2,7 +2,7 @@
 
 Answers one question:
 
-    With ``SYSTEM_TOPOLOGY = 5``, does every assembled prompt read the
+    With ``TEAM_SIZE = 5``, does every assembled prompt read the
     5-agent copy of a fragment where one exists, and the shared original
     everywhere else — while topology 7 keeps reading exactly what it read
     before the topology indirection existed?
@@ -300,7 +300,7 @@ def assemble(topo: int, *, as_topology: int | None = None) -> tuple[set, dict]:
     which drives the 7-agent workload through a non-existent topology.
     """
     which = as_topology if as_topology is not None else topo
-    prompts._workflow_settings.SYSTEM_TOPOLOGY = topo
+    prompts._workflow_settings.TEAM_SIZE = topo
     seen: set = set()
     original = Path.read_text
 
@@ -573,7 +573,7 @@ CHAIN_BY_TOPOLOGY = {
 # ACTIVE topology does not build.  ABSENT_DISPLAYS carries that per topology.
 for _topo, _rows in CHAIN_BY_TOPOLOGY.items():
     _absent = ABSENT_DISPLAYS[_topo]
-    prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
+    prompts._workflow_settings.TEAM_SIZE = _topo
     _case = f"topology {_topo}"
     _hub_disp = topology.hub_display()
 
@@ -687,7 +687,7 @@ from agents.hub import build_hub  # noqa: E402
 # than silently run the 7-agent set.  The row returns when Planner3 lands.
 for _topo, _expect in ((7, "orchestrator"), (5, "planner"), (3, "planner"),
                        (99, "orchestrator")):
-    prompts._workflow_settings.SYSTEM_TOPOLOGY = _topo
+    prompts._workflow_settings.TEAM_SIZE = _topo
     got = build_hub(session=None).which
     if got != _expect:
         failures.append(
@@ -839,7 +839,7 @@ if _retired_names:
 # scoped copy; round 4 took the last free splicer of that slot, so the probe
 # moved slot as well as agent.  It must always target a (slot, agent) pair that
 # is still free on disk -- see the 'free pairs' census in the round-4 notes.)
-prompts._workflow_settings.SYSTEM_TOPOLOGY = 7
+prompts._workflow_settings.TEAM_SIZE = 7
 
 _SCOPE_AGENTS = [
     "receptionist", "orchestrator", "planner", "user_input_inspector",

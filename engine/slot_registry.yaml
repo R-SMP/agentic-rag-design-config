@@ -286,7 +286,7 @@ slots:
     filled_by: tool
     kind: phrase
     section: outputs
-    description: "The geometry outputs a VALUES ONLY directive excludes (list). (topology 3 only)"
+    description: "The geometry outputs a VALUES ONLY directive excludes (list). (3-agent team only)"
 
 # --- 5 Tools ---------------------------------------------------------------
   tool_inventory:
@@ -301,7 +301,7 @@ slots:
     kind: block
     use: runtime
     section: tools
-    description: "Tool-list entry for new_attempt_parameters, first in the list when the tool runner also writes the parameters (topology 3)."
+    description: "Tool-list entry for new_attempt_parameters, first in the list when the tool runner also writes the parameters (3-agent team)."
   tool_entry_calculate:
     source: pack
     folder: tools
@@ -504,7 +504,7 @@ slots:
     filled_by: tool
     kind: phrase
     section: tools
-    description: "Clause (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) adding the quality-check report to the no-render fallback. (topology 3 only)"
+    description: "Clause (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) adding the quality-check report to the no-render fallback. (3-agent team only)"
   visualize_3d_model_tool:
     source: pack
     folder: tools
@@ -624,7 +624,7 @@ slots:
     folder: dc
     kind: phrase
     section: examples
-    description: "A shorter SOFT TARGET marker example (Design Engineer value states). (topology 3 only)"
+    description: "A shorter SOFT TARGET marker example (Design Engineer value states). (3-agent team only)"
   parameter_level_entry_example:
     source: pack
     folder: dc

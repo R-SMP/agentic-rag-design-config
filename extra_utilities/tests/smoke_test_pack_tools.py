@@ -216,10 +216,10 @@ def check_binding() -> None:
     from agents.shared import agent_roles
     from workflow_settings import settings as S
     runner = {7: "tool_caller", 5: "tool_caller", 3: "design_engineer"}
-    saved = S.SYSTEM_TOPOLOGY
+    saved = S.TEAM_SIZE
     try:
         for topo in runner:
-            S.SYSTEM_TOPOLOGY = topo
+            S.TEAM_SIZE = topo
             keys = agent_roles.roster(topo)
             check(runner[topo] in keys, f"[BINDING] topology {topo}: roster {keys}")
             for key in keys:
@@ -233,7 +233,7 @@ def check_binding() -> None:
                   f"[BINDING] topology {topo}: blade sections bound while switched off")
             T.settings_override_for_tests(None)
     finally:
-        S.SYSTEM_TOPOLOGY = saved
+        S.TEAM_SIZE = saved
         T.settings_override_for_tests(None)
 
 
@@ -661,10 +661,10 @@ def check_tool_list() -> None:
     from agents.shared import agent_roles
     from workflow_settings import settings as S
     lists = json.loads(LISTS.read_text(encoding="utf-8"))["lists"]
-    saved = S.SYSTEM_TOPOLOGY
+    saved = S.TEAM_SIZE
     try:
         for topo, want in lists.items():
-            S.SYSTEM_TOPOLOGY = int(topo)
+            S.TEAM_SIZE = int(topo)
             for state in ("on", "off"):
                 T.settings_override_for_tests({SEC: {"enabled": state == "on"}})
                 got = T.tool_list(want["agent"])
@@ -678,7 +678,7 @@ def check_tool_list() -> None:
             check(all(T.tool_list(a) == "" for a in others),
                   f"[LIST] topology {topo}: an agent other than {want['agent']} got a list")
     finally:
-        S.SYSTEM_TOPOLOGY = saved
+        S.TEAM_SIZE = saved
         T.settings_override_for_tests(None)
 
 
@@ -689,7 +689,7 @@ def check_removal() -> int:
     sec_slots = list(T.manifest(SEC)["prompt_slots"])
     copy = _pack_copy()
     shutil.rmtree(copy / "tools" / SEC)
-    real_pack, real_topo, real_path = config.DC_PACK_DIR, S.SYSTEM_TOPOLOGY, T.OVERRIDES_PATH
+    real_pack, real_topo, real_path = config.DC_PACK_DIR, S.TEAM_SIZE, T.OVERRIDES_PATH
     T.OVERRIDES_PATH = copy.parent / "tool_settings.json"
     # A value saved in Workflow Settings before the folder was removed.
     T.OVERRIDES_PATH.write_text(json.dumps({SEC: {"enabled": False}}), encoding="utf-8")
@@ -703,7 +703,7 @@ def check_removal() -> int:
         check([r["view"] for r in T.image_outputs()] == ["isometric", "top", "side"],
               f"[REMOVAL] views: {[r['view'] for r in T.image_outputs()]}")
         for topo in (7, 5, 3):
-            S.SYSTEM_TOPOLOGY = topo
+            S.TEAM_SIZE = topo
             for agent in list(agent_roles.roster(topo)) + ["database_handler"]:
                 try:
                     text = P._build_template(agent)
@@ -726,7 +726,7 @@ def check_removal() -> int:
         check(False, f"[REMOVAL] the pack without {SEC}: "
                      f"{type(exc).__name__}: {str(exc)[:200]}")
     finally:
-        config.DC_PACK_DIR, S.SYSTEM_TOPOLOGY, T.OVERRIDES_PATH = real_pack, real_topo, real_path
+        config.DC_PACK_DIR, S.TEAM_SIZE, T.OVERRIDES_PATH = real_pack, real_topo, real_path
         shutil.rmtree(copy.parent, ignore_errors=True)
     return built
 

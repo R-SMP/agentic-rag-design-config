@@ -28,6 +28,8 @@ import tempfile
 from pathlib import Path
 from typing import Any
 
+from workflow_settings import team_size
+
 SETTINGS_PATH = Path(__file__).parent / "settings.py"
 
 # Fields whose value is constrained to a fixed set — rendered as
@@ -35,9 +37,9 @@ SETTINGS_PATH = Path(__file__).parent / "settings.py"
 # enforced up-front in agents/loader.py.
 ENUM_OPTIONS: dict[str, list[Any]] = {
     "DCOI_COMPARISON_MODE": [1, 2, 3],
-    # Agent topology — the value IS the agent count.  Adding a further
+    # Team size — the value IS the agent count.  Adding a further
     # variant needs only a new agents/<N>agent/ folder and N here.
-    "SYSTEM_TOPOLOGY": [7, 5, 3],
+    team_size.NAME: [3, 5, 7],
     "EMBEDDING_PROVIDER": ["OpenAI"],
     # Which LLM answers when the Database Handler interviews an agent.
     # "Original Agent" is a SENTINEL, not a provider: it means "each
@@ -124,26 +126,26 @@ _FENCE_RE = re.compile(r"^#+\s*=+\s*$")
 _INERT_UNDER_TOPOLOGY: dict[str, tuple[frozenset, str]] = {
     "RAG_DCIC_READS_DCII": (
         frozenset({7, 3}),
-        "Only meaningful in the 5-agent topology.  Topology 7 has its own DC "
-        "Input Inspector, and in topology 3 the Design Engineer always holds "
-        "that role (agents/shared/agent_roles.py).",
+        "Only meaningful in the 5-agent team.  The 7-agent team has its own "
+        "DC Input Inspector, and in the 3-agent team the Design Engineer "
+        "always holds that role (agents/shared/agent_roles.py).",
     ),
     "DC_INSPECTOR_ENABLED": (
         frozenset({5, 3}),
-        "Only meaningful in the 7-agent topology.  The DC Input Inspector "
-        "was merged away in the reduced topologies, so there is no agent "
+        "Only meaningful in the 7-agent team.  The DC Input Inspector "
+        "was merged away in the smaller teams, so there is no agent "
         "for this flag to switch on: prompts._dcii_effective() forces it "
-        "False whenever SYSTEM_TOPOLOGY is not 7.",
+        "False whenever TEAM_SIZE is not 7.",
     ),
     "DCOI_COMPARISON_MODE": (
         frozenset({3}),
-        "Only meaningful where an extraction file exists.  Modes 2 and 3 compare the render against extracted_inputs.txt, and in the 3-agent topology nothing writes that file: the Requirements Analyst states what it found in its hand-off instead.  It therefore always compares against the user's own material, which is mode 1, whatever this says.",
+        "Only meaningful where an extraction file exists.  Modes 2 and 3 compare the render against extracted_inputs.txt, and in the 3-agent team nothing writes that file: the Requirements Analyst states what it found in its hand-off instead.  It therefore always compares against the user's own material, which is mode 1, whatever this says.",
     ),
     "CHAIN_ACCESS": (
         frozenset({5, 3}),
-        "Only meaningful in the 7-agent topology.  Reading the other "
+        "Only meaningful in the 7-agent team.  Reading the other "
         "agents' traffic was the ORCHESTRATOR's power and left the system "
-        "with it: neither reduced topology's hub has a chain-access feed, "
+        "with it: neither smaller team's hub has a chain-access feed, "
         "so both see only the hand-off addressed to them, whatever this "
         "flag says.",
     ),
@@ -260,11 +262,11 @@ def read_schema() -> list[dict[str, Any]]:
     except Exception:  # pragma: no cover - settings import is required elsewhere
         _live = None
 
-    # The topology the file currently declares, for the inert-setting
-    # marking below.
+    # The team size the file currently declares (under either name), for
+    # the inert-setting marking below.
     _topology_literal = None
     for _n in nodes:
-        if _n.target.id == "SYSTEM_TOPOLOGY":
+        if _n.target.id in team_size.NAMES:
             _ok, _topology_literal = _literal(_n.value)
             break
 
@@ -321,7 +323,7 @@ def read_schema() -> list[dict[str, Any]]:
                 item["options"] = ENUM_OPTIONS[name]
 
         # Inert-under-this-topology marking.  Computed from the file's own
-        # SYSTEM_TOPOLOGY literal, not from the imported settings module,
+        # TEAM_SIZE literal, not from the imported settings module,
         # so it agrees with what a save would actually write.
         reason = _inert_reason(name, _topology_literal)
         if reason:
@@ -364,6 +366,9 @@ def _to_literal(type_str: str, value: Any) -> str:
         return repr(float(value))
     return json.dumps(str(value))  # double-quoted, escaped
 
+
+# A settings.py from before the rename still offers 3 / 5 / 7.
+ENUM_OPTIONS[team_size.OLD_NAME] = ENUM_OPTIONS[team_size.NAME]
 
 _LLM_ROUTING_MODES = {"individual", "openai", "anthropic", "google", "openrouter"}
 
@@ -425,6 +430,10 @@ def _do_write(updates: dict[str, Any], *, allow_hidden: bool) -> None:
 
     lines, nodes = _parse_nodes()
     by_name = {n.target.id: n for n in nodes}
+    # The team size lands on whichever of its two names this file holds,
+    # whichever one the caller used (workflow_settings/team_size.py).
+    size_name = team_size.in_file(by_name)
+    updates = {(size_name if k in team_size.NAMES else k): v for k, v in updates.items()}
 
     # Build the post-edit value map (current literals overlaid with the
     # coerced edits) for cross-field validation.
@@ -451,8 +460,7 @@ def _do_write(updates: dict[str, Any], *, allow_hidden: bool) -> None:
         # this the grey-out would be cosmetic only.  The topology CHECKED is
         # the one this same write produces, so switching to 7 and flipping
         # DC_INSPECTOR_ENABLED in a single save is still allowed.
-        effective_topology = updates.get(
-            "SYSTEM_TOPOLOGY", merged.get("SYSTEM_TOPOLOGY"))
+        effective_topology = updates.get(size_name, merged.get(size_name))
         reason = _inert_reason(name, effective_topology)
         if reason:
             raise SettingsError(f"{name} cannot be changed: {reason}")

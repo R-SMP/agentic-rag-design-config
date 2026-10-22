@@ -653,7 +653,7 @@ def check_server(tmp: Path) -> str:
               and next(i for i in items if i["title"] == "Ranges to review")["link"] == {"section": "parameters",
                                                                                        "filter": "ranges"}
               and st_.get("12 parameter list(s)", ("",))[0] == V.PASS
-              and all(st_.get(f"Topology {n}", ("",))[0] == V.PASS for n in V.TOPOLOGIES),
+              and all(st_.get(f"{n}-agent team", ("",))[0] == V.PASS for n in V.TOPOLOGIES),
               f"[SERVER] Validate on the new configurator: {fails or st_}")
         status, r = st.call("undo_parameters")
         check(r.get("ok") is False and "Undo the import" in r.get("error", ""),

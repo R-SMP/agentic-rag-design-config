@@ -335,7 +335,7 @@ def canonical_choice(raw: dict, data: dict) -> dict:
     v = data["viewer"]
     topo = raw.get("topology", 7)
     if topo not in TOPOLOGIES:
-        raise ChoiceError(f"topology is one of {', '.join(map(str, TOPOLOGIES))}")
+        raise ChoiceError(f"team size is one of {', '.join(map(str, sorted(TOPOLOGIES)))}")
     rag = raw.get("rag", v["rag_default"])
     if rag not in RAG_CHOICES:
         raise ChoiceError(f"rag is one of {', '.join(RAG_CHOICES)}")
@@ -377,7 +377,7 @@ def canonical_choice(raw: dict, data: dict) -> dict:
     for agent, state in dict(raw.get("access") or {}).items():
         cell = cells.get(agent, {}).get(str(topo))
         if cell is None:
-            raise ChoiceError(f"access: {agent} has no cell in topology {topo}")
+            raise ChoiceError(f"access: {agent} has no cell in the {topo}-agent team")
         if state not in states or (state == "tool" and agent in pa["no_tool"]):
             raise ChoiceError(f"access: {agent} cannot take {state!r}")
         if state != cell:
@@ -393,7 +393,7 @@ def apply_choice(choice: dict):
     for name, value in choice["settings"].items():
         setattr(S, name, value)
     S.RAG_ENABLED = choice["rag"] != "off"
-    S.SYSTEM_TOPOLOGY = choice["topology"]
+    S.TEAM_SIZE = choice["topology"]
     from engine import pack_tools as PT
     PT.settings_override_for_tests(choice["tools"])
     from engine import parameter_access as PA
@@ -420,7 +420,7 @@ def team_tools(topology: int) -> dict:
     from agents.shared import base_chain_agent, llm_provider
     from agents.shared.session import Session
 
-    S.SYSTEM_TOPOLOGY = topology
+    S.TEAM_SIZE = topology
     bound: dict[str, list] = {}
 
     class Recorder:

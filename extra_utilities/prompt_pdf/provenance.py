@@ -29,7 +29,7 @@ if "--topology" in sys.argv:
 SUFFIX = "" if TOPOLOGY == 7 else str(TOPOLOGY)
 
 import workflow_settings.settings as S
-S.SYSTEM_TOPOLOGY = TOPOLOGY
+S.TEAM_SIZE = TOPOLOGY
 S.RAG_ENABLED = True          # widest set of slots
 
 from agents.shared import prompts as P

@@ -30,6 +30,7 @@ from typing import Any
 from dotenv import dotenv_values, set_key, unset_key
 
 from workflow_settings import editor as _editor
+from workflow_settings import team_size as _team_size
 from workflow_settings.llm_defaults import (
     model_for as _default_model_for,
     PROPOSED_WORKFLOWS as _PROPOSED_WORKFLOWS,
@@ -79,10 +80,10 @@ AGENT_SPEC: list[tuple[str, str, bool]] = [
     # model that was genuinely in use.
     ("context_pruner",        "Context Pruner",        True),
     # 5-agent topology.  Constructed by ``agents/hub.py:build_hub`` when
-    # SYSTEM_TOPOLOGY is 5, so they are wired like any other agent —
+    # TEAM_SIZE is 5, so they are wired like any other agent —
     # a 5-agent run routes through them and nothing else.
     # 3-agent topology.  Constructed by ``agents/hub.py:build_hub`` when
-    # SYSTEM_TOPOLOGY is 3, so they are wired like any other agent —
+    # TEAM_SIZE is 3, so they are wired like any other agent —
     # a 3-agent run routes through them and nothing else.
     ("design_engineer",       "Design Engineer",       True),
     ("requirements_analyst",  "Requirements Analyst",  True),
@@ -162,7 +163,7 @@ def _shared_provider_model() -> tuple[str, str]:
 
 
 def _topology_now() -> int:
-    """SYSTEM_TOPOLOGY, parsed off disk.
+    """TEAM_SIZE, parsed off disk (or SYSTEM_TOPOLOGY, its old name).
 
     This module deliberately re-reads settings.py rather than
     importing the cached module (see the note on read_state), so the
@@ -172,7 +173,7 @@ def _topology_now() -> int:
     try:
         nodes = _editor._parse_nodes()[1]
         for node in nodes:
-            if getattr(node.target, "id", None) == "SYSTEM_TOPOLOGY":
+            if getattr(node.target, "id", None) in _team_size.NAMES:
                 return int(ast.literal_eval(node.value))
     except Exception:
         pass
@@ -182,7 +183,7 @@ def _topology_now() -> int:
 def current_topology() -> int:
     """Public alias for :func:`_topology_now`.
 
-    The Sessions Queue writes ``SYSTEM_TOPOLOGY`` per run and restores the
+    The Sessions Queue writes ``TEAM_SIZE`` per run and restores the
     operator's value when the queue ends, so it needs to read the same
     disk-fresh value the chart reports — without reaching into a private.
     """

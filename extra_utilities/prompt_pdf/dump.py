@@ -24,7 +24,7 @@ if "--topology" in sys.argv:
     TOPOLOGY = int(sys.argv[sys.argv.index("--topology") + 1])
 
 import workflow_settings.settings as S
-S.SYSTEM_TOPOLOGY = TOPOLOGY
+S.TEAM_SIZE = TOPOLOGY
 
 from workflow_settings import database_access, ocr_access
 
@@ -413,7 +413,7 @@ if TOPOLOGY == 3:
 
 out = {
     "config": {
-        "SYSTEM_TOPOLOGY": S.SYSTEM_TOPOLOGY,
+        "TEAM_SIZE": S.TEAM_SIZE,
         "dba_profile": database_access.profile_key(),
         "DC_INSPECTOR_ENABLED": bool(S.DC_INSPECTOR_ENABLED),
         # Tool settings since MAS-blueprint P3c; the keys stay for build_html.

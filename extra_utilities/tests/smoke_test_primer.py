@@ -168,7 +168,7 @@ def check_engine() -> None:
                           5: "planner"}}
         problems = primer.problems_of(bad)
         for word in ("'colour'", "x.jpg", "database_handler cannot get the primer", "'design_engineer' is not an agent",
-                     "planner is listed twice", "4 is not a topology", "agents 5 must be a list"):
+                     "planner is listed twice", "4 is not a team size (3, 5, 7)", "agents 5 must be a list"):
             check(any(word in p for p in problems), f"[ENGINE] no problem names {word}: {problems}")
         check(len(problems) == 7, f"[ENGINE] {len(problems)} problems, not 7: {problems}")
         check(primer.problems_of("x") and primer.problems_of({"agents": [1]}),
@@ -218,7 +218,7 @@ def check_messages() -> None:
     from agents.shared import dc_primer as DP
     from workflow_settings import settings as S
     real = config.DC_PACK_DIR
-    saved = (S.DC_PARAMS_PRIMER_ENABLED, S.PROMPT_CACHE_SCOPE, S.SYSTEM_TOPOLOGY)
+    saved = (S.DC_PARAMS_PRIMER_ENABLED, S.PROMPT_CACHE_SCOPE, S.TEAM_SIZE)
     png = (ROOT / "setups" / "propeller" / "assets" / "dc_params_primer.png").read_bytes()
     n = 0
     try:
@@ -227,7 +227,7 @@ def check_messages() -> None:
             for cache_on in (False, True):
                 S.PROMPT_CACHE_SCOPE = "system+history" if cache_on else "off"
                 for topo in (7, 5, 3):
-                    S.SYSTEM_TOPOLOGY = topo
+                    S.TEAM_SIZE = topo
                     for agent in agent_roles.ROSTER[topo] + ("database_handler",):
                         gets = flag and agent in SIX[topo]
                         text = text_file(agent, topo, ROOT / "setups" / "propeller").read_text(encoding="utf-8").rstrip()
@@ -241,7 +241,7 @@ def check_messages() -> None:
                         want_tokens = (primer.image_tokens(930, 309) + count_tokens(text)) if gets else 0
                         check(tokens == want_tokens, f"[MESSAGES] {agent} {topo}: {tokens} tokens, not {want_tokens}")
         check(n == 2 * 2 * 4 * (8 + 6 + 4 + 3), f"[MESSAGES] {n} cases")
-        S.DC_PARAMS_PRIMER_ENABLED, S.PROMPT_CACHE_SCOPE, S.SYSTEM_TOPOLOGY = True, "system+history", 7
+        S.DC_PARAMS_PRIMER_ENABLED, S.PROMPT_CACHE_SCOPE, S.TEAM_SIZE = True, "system+history", 7
         # primed_history: after the leading system messages
         hist = [SystemMessage(content="summary"), HumanMessage(content="hi")]
         out = DP.primed_history("openai", "dc_input_creator", hist)
@@ -282,7 +282,7 @@ def check_messages() -> None:
               "[MESSAGES] a picture replaced on disk is not sent at once")
         shutil.rmtree(d.parent, ignore_errors=True)
     finally:
-        S.DC_PARAMS_PRIMER_ENABLED, S.PROMPT_CACHE_SCOPE, S.SYSTEM_TOPOLOGY = saved
+        S.DC_PARAMS_PRIMER_ENABLED, S.PROMPT_CACHE_SCOPE, S.TEAM_SIZE = saved
         use(real)
 
 
@@ -321,7 +321,7 @@ bootstrap.install()
 TOPO = int(sys.argv[1])
 SCRIPT = json.loads(sys.argv[2])
 from workflow_settings import settings as S
-S.SYSTEM_TOPOLOGY = TOPO
+S.TEAM_SIZE = TOPO
 S.DC_PARAMS_PRIMER_ENABLED = True
 S.RAG_ENABLED = False
 from langchain_core.messages import AIMessage, HumanMessage
@@ -611,7 +611,7 @@ def check_studio() -> str:
         check(bad.get("ok") is False and bad.get("conflict"), f"[STUDIO] a stale page: {bad}")
         sha = r.get("pack_yaml_sha")
         for args, word in ((("database_handler", 7, True), "only saves the session"),
-                           (("design_engineer", 7, True), "not an agent of the 7-agent topology"),
+                           (("design_engineer", 7, True), "not an agent of the 7-agent team"),
                            (("planner", 4, True), "4-agent")):
             bad = st.call("set_primer_agent", *args, sha)
             check(bad.get("ok") is False and word in bad.get("error", ""), f"[STUDIO] {args}: {bad}")

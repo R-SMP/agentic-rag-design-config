@@ -16,6 +16,7 @@ the topology to whatever was on disk when the process started.
 """
 
 from workflow_settings import settings as _workflow_settings
+from workflow_settings import team_size as _team_size
 
 # Agent key -> display name, per topology.  The 7-agent hub is the
 # Orchestrator; the 5-agent hub is the PLANNER, which absorbs the
@@ -37,7 +38,7 @@ _HUB_BY_TOPOLOGY = {
     3: ("planner", "Planner"),
 }
 
-# Fallback for an unrecognised SYSTEM_TOPOLOGY: behave as the 7-agent
+# Fallback for an unrecognised TEAM_SIZE: behave as the 7-agent
 # system, which is the historic behaviour and the one whose files always
 # exist.
 _DEFAULT_HUB = _HUB_BY_TOPOLOGY[7]
@@ -45,7 +46,7 @@ _DEFAULT_HUB = _HUB_BY_TOPOLOGY[7]
 
 def topology() -> int:
     """The active agent topology (7, 5 or 3)."""
-    return int(getattr(_workflow_settings, "SYSTEM_TOPOLOGY", 7))
+    return _team_size.read(_workflow_settings)
 
 
 def hub_key() -> str:

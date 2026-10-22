@@ -84,7 +84,7 @@ def _authorisation_sources(hub: str) -> str:
 def natural_pipeline() -> str:
     """The canonical inter-agent flow string for the active topology.
 
-    A function rather than a constant: it depends on ``SYSTEM_TOPOLOGY``,
+    A function rather than a constant: it depends on ``TEAM_SIZE``,
     which the Sessions Queue switches between runs inside one process, and
     in the 7-agent case also on ``DC_INSPECTOR_ENABLED``.
     """

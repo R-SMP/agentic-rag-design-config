@@ -5,7 +5,7 @@ topology-5 hub was added: both hubs need them, and copying ~90 lines into a
 second hub would be a fork of live code -- the failure mode the reduced-agent
 build order warns about.  ``orchestrator.py`` re-imports them, so
 ``from agents.orchestrator.orchestrator import _first_line, ...`` keeps
-working for the Architect and any other existing caller.
+working for any existing caller.
 
 Nothing here touches an agent, a session or a setting: they are string
 formatters, which is why they are safe to share across topologies.

@@ -70,6 +70,7 @@ import threading
 from pathlib import Path
 
 from workflow_settings import settings as _workflow_settings
+from workflow_settings import team_size as _team_size
 
 
 # ---------------------------------------------------------------------------
@@ -120,14 +121,14 @@ _LEGACY_PROFILE: str = "7"
 def profile_key() -> str:
     """The active settings profile — the agent count, e.g. ``"7"``.
 
-    Reads ``SYSTEM_TOPOLOGY`` off the settings module DIRECTLY rather than
+    Reads ``TEAM_SIZE`` off the settings module DIRECTLY rather than
     importing ``agents.shared.topology``: this package sits below ``agents``
-    in the layering, and this is one ``getattr`` call.  It is read FRESH per
+    in the layering, and this is one call.  It is read FRESH per
     call for the same reason ``topology.topology()`` reads it fresh —
     ``web_app._build_session`` reloads the settings module in place, and the
     Sessions Queue switches settings between runs inside one process.
     """
-    return str(int(getattr(_workflow_settings, "SYSTEM_TOPOLOGY", 7)))
+    return str(_team_size.read(_workflow_settings))
 
 
 # ---------------------------------------------------------------------------

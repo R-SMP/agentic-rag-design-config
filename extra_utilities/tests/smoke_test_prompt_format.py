@@ -115,7 +115,7 @@ STATES = (("RAG off     ", False, False),
 
 def _child(topology: int) -> int:
     """Brace-check one topology; print one ``FAIL`` line per failure."""
-    workflow_settings.SYSTEM_TOPOLOGY = topology
+    workflow_settings.TEAM_SIZE = topology
     from agents.shared import agent_roles
     from workflow_settings import database_access
     real_enabled = database_access.is_enabled_for

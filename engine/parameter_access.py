@@ -76,14 +76,14 @@ def pack_yaml_path() -> Path:
 def _normalise(raw, where: str, problems: list[str]) -> dict[str, dict[int, str]]:
     table: dict[str, dict[int, str]] = {}
     if not isinstance(raw, dict):
-        problems.append(f"{where}: must be a mapping of agent -> {{topology: state}}")
+        problems.append(f"{where}: must be a mapping of agent -> {{team size: state}}")
         return table
     for agent, cells in raw.items():
         if not isinstance(agent, str) or not _NAME_RE.match(agent):
             problems.append(f"{where}: {agent!r} is not an agent name")
             continue
         if not isinstance(cells, dict):
-            problems.append(f"{where}: {agent} must map topologies to states")
+            problems.append(f"{where}: {agent} must map team sizes to states")
             continue
         row: dict[int, str] = {}
         for topo, st in cells.items():
@@ -92,8 +92,8 @@ def _normalise(raw, where: str, problems: list[str]) -> dict[str, dict[int, str]
             except (TypeError, ValueError):
                 t = None
             if t not in TOPOLOGIES:
-                problems.append(f"{where}: {agent}: {topo!r} is not a topology "
-                                f"({', '.join(map(str, TOPOLOGIES))})")
+                problems.append(f"{where}: {agent}: {topo!r} is not a team size "
+                                f"({', '.join(map(str, sorted(TOPOLOGIES)))})")
                 continue
             if st not in STATES:
                 problems.append(f"{where}: {agent} / {t}: {st!r} is not one of "
@@ -149,7 +149,7 @@ def table() -> dict[str, dict[int, str]]:
         for t, st in row.items():
             if t not in base.get(agent, {}):
                 raise ParameterAccessError(
-                    f"{OVERRIDES_PATH.name}: {agent} has no cell in topology {t} "
+                    f"{OVERRIDES_PATH.name}: {agent} has no cell in the {t}-agent team "
                     f"(the setup's pack.yaml)")
             out[agent][t] = st
     return out
@@ -164,7 +164,7 @@ def state(agent: str, topology: int) -> str:
     if row is None or t not in row:
         raise ParameterAccessError(
             f"the setup's pack.yaml: parameter_access has no cell for {agent} in "
-            f"topology {t}")
+            f"the {t}-agent team")
     return row[t]
 
 
@@ -178,7 +178,7 @@ def save_overrides(cells: dict) -> dict[str, dict[int, str]]:
     for agent, row in wanted.items():
         for t in row:
             if t not in base.get(agent, {}):
-                problems.append(f"request: {agent} has no cell in topology {t}")
+                problems.append(f"request: {agent} has no cell in the {t}-agent team")
     if problems:
         raise ParameterAccessError("\n".join(problems))
     diff = {a: {t: st for t, st in row.items() if base[a][t] != st}

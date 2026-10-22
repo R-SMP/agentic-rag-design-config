@@ -391,9 +391,9 @@
   }
   function legendGrid() {
     return h('div', { 'class': 'legend' }, [
-      h('span', null, [h('span', { 'class': 'link on' }, '🔗 linked'), ' one text for every topology that uses it']),
-      h('span', null, [h('span', { 'class': 'link off' }, '⛓ unlinked'), ' one text per topology (orange outline)']),
-      h('span', null, [h('span', { 'class': 'na', style: 'font-style:italic;color:#5f6470' }, 'not used'), ' the topology never reads this field'])
+      h('span', null, [h('span', { 'class': 'link on' }, '🔗 linked'), ' one text for every team size that uses it']),
+      h('span', null, [h('span', { 'class': 'link off' }, '⛓ unlinked'), ' one text per team size (orange outline)']),
+      h('span', null, [h('span', { 'class': 'na', style: 'font-style:italic;color:#5f6470' }, 'not used'), ' this team never reads this field'])
     ]);
   }
   function grid(list) {
@@ -428,7 +428,7 @@
     add(r, label);
     ['3', '5', '7'].forEach(function (t) {
       var c = h('div', { 'class': 'cell' });
-      if (agent && !inRoster(agent, t)) c.appendChild(h('div', { 'class': 'na' }, 'no ' + disp(agent) + ' in this topology'));
+      if (agent && !inRoster(agent, t)) c.appendChild(h('div', { 'class': 'na' }, 'no ' + disp(agent) + ' in this team'));
       else if (!st.exists) c.appendChild(h('div', { 'class': 'na' }, 'no shared text: an agent reads its own copy, or nothing'));
       else {
         var v = cellText(s, agent, t);
@@ -443,8 +443,8 @@
     var st = stored(s, agent), dirty = !!EDITS[fkey(s.slot, agent)];
     return h('button', { 'class': 'link ' + (st.linked ? 'on' : 'off'), disabled: dirty || BUSY,
       title: dirty ? 'Save or discard the change first.' : st.linked
-        ? 'Linked: one file for every topology. Click to unlink: each topology gets a file of its own, holding this text (no prompt changes).'
-        : 'Unlinked: one file per topology. Click to link: you choose which text every topology keeps.',
+        ? 'Linked: one file for every team size. Click to unlink: each team gets a file of its own, holding this text (no prompt changes).'
+        : 'Unlinked: one file per team size. Click to link: you choose which text every team keeps.',
       onclick: function (ev) { ev.stopPropagation(); if (st.linked) unlinkField(s, agent); else askLink(s, agent); } },
       st.linked ? '🔗 linked' : '⛓ unlinked');
   }
@@ -473,14 +473,14 @@
     return h('div', { 'class': 'inh' }, [
       h('div', { 'class': 'na' }, from.label),
       h('button', { 'class': 'mini', disabled: BUSY,
-        title: 'Give the ' + t + '-agent topology a file of its own, starting from the text it reads now.',
+        title: 'Give the ' + t + '-agent team a file of its own, starting from the text it reads now.',
         onclick: function (ev) { ev.stopPropagation(); giveOwnText(s, agent, t, from.text); } }, 'Give it its own text')]);
   }
   // a field's text, editable
   function field(s, agent, k, t, v) {
     var key = fkey(s.slot, agent), lines = (v || '').split('\n').length;
     var a = { spellcheck: 'false', 'data-fk': key, 'data-k': k, 'data-t': t,
-      placeholder: v === '' && !landsIn(s.slot, +t, agent) ? 'not used: this topology never reads this field' : null,
+      placeholder: v === '' && !landsIn(s.slot, +t, agent) ? 'not used: this team never reads this field' : null,
       oninput: function (e) { onEdit(s, agent, k, e.target.value, e.target); },
       onfocus: function () { selectField(s, agent); } };
     if (s.kind !== 'block') a.onkeydown = function (e) { if (e.key === 'Enter') e.preventDefault(); };
@@ -519,7 +519,7 @@
       h('div', { 'class': 'title' }, s.slot + (agent ? '  @' + agent : '')),
       h('div', { 'class': 'pills' }, [kpill(s.kind), kpill(s.origin === 'tool' ? 'tool text' : 'DC text', s.origin === 'tool' ? 'tool' : 'dc'),
         s.owner ? kpill('owned by ' + ownerName(s.owner)) : null, s.runtime ? kpill('read by the app') : null,
-        !st.exists ? kpill('no shared text') : st.linked ? kpill('linked 3·5·7') : kpill('per topology'),
+        !st.exists ? kpill('no shared text') : st.linked ? kpill('linked 3·5·7') : kpill('per team size'),
         dirty ? pill('unsaved', 'warn') : null, isChanged(s.slot, agent) ? pill('changed since opened', 'warn') : null]),
       h('p', null, s.description || h('span', { 'class': 'muted' }, 'No description in the slot registry yet.')),
       h('div', { 'class': 'block' }, [h('h4', null, 'Checks')].concat(
@@ -686,7 +686,7 @@
   // (the engine's rule, from D.resolve): label and text.
   function readsFrom(s, agent, t) {
     var path = (((D.resolve[s.slot] || {})[agent || '']) || {})[t];
-    if (!path) return { label: 'no text: this topology reads nothing here', text: '' };
+    if (!path) return { label: 'no text: this team reads nothing here', text: '' };
     var m = /^(.*?)(?:@([a-z0-9_]+))?(?:\.t(\d+))?\.md$/.exec(path.split('/').pop());
     var who = m[2] || null, n = m[3] || null;
     if (who === agent) return { label: 'uses the ' + (n ? n + '-agent' : 'linked') + ' text', text: stored(s, agent).values[n || t] || '' };
@@ -865,14 +865,14 @@
   }
   function unlinkField(s, agent) {
     change('unlink_field', [s.slot, agent], fkey(s.slot, agent),
-      'Unlinked ' + label(s, agent) + ': each topology has a file of its own now, holding the same text (no prompt changed).');
+      'Unlinked ' + label(s, agent) + ': each team has a file of its own now, holding the same text (no prompt changed).');
   }
   function askLink(s, agent) {
     var st = stored(s, agent);
     var keys = ['3', '5', '7'].filter(function (t) { return st.values[t] !== null && st.values[t] !== undefined && (!agent || inRoster(agent, t)); });
     var choice = keys[keys.length - 1];
     var body = h('div', null, [
-      h('p', { style: 'margin:0 0 10px;font-size:12.5px;line-height:1.5' }, 'Every topology will read ONE text. Which one do they keep? The other files are removed (Undo brings them back).'),
+      h('p', { style: 'margin:0 0 10px;font-size:12.5px;line-height:1.5' }, 'Every team will read ONE text. Which one do they keep? The other files are removed (Undo brings them back).'),
       h('div', null, keys.map(function (t) {
         return h('label', { 'class': 'pick' }, [
           h('input', { type: 'radio', name: 'keep', value: t, checked: t === choice, onchange: function () { choice = t; } }),
@@ -883,7 +883,7 @@
       h('button', { 'class': 'primary', onclick: function () {
         closeModal();
         change('link_field', [s.slot, agent, choice], fkey(s.slot, agent),
-          'Linked ' + label(s, agent) + ': every topology reads the ' + choice + '-agent text.');
+          'Linked ' + label(s, agent) + ': every team reads the ' + choice + '-agent text.');
       } }, 'Link')]);
   }
   function giveOwnText(s, agent, t, text) {
@@ -894,7 +894,7 @@
     render();
     var n = doc.querySelector('[data-fk="' + key + '"][data-t="' + t + '"]');
     if (n) n.focus();
-    status('The ' + t + '-agent topology gets a file of its own when you save ' + label(s, agent) + '.', '');
+    status('The ' + t + '-agent team gets a file of its own when you save ' + label(s, agent) + '.', '');
   }
   function giveCopy(s, agent) {
     change('own_copy', [s.slot, agent], fkey(s.slot, agent), 'Gave ' + disp(agent) + ' its own copy of $' + s.slot + '.');
@@ -974,7 +974,7 @@
     if (!s) return null;
     var st = stored(s, null);
     if (!st.linked) return h('input', { type: 'text', value: firstVal(st.values) || '', readonly: true, style: style || null,
-      title: 'One text per topology: edit it in the grid below.' });
+      title: 'One text per team size: edit it in the grid below.' });
     return h('input', { type: 'text', value: cellText(s, null, '7'), spellcheck: 'false', style: style || null,
       'data-fk': fkey(slot, null), 'data-k': 'all', 'data-t': where,
       onclick: function (e) { e.stopPropagation(); },
@@ -2083,7 +2083,7 @@
     if (R.q.field && slotByName(R.q.field)) { add(right, inspectField(slotByName(R.q.field))); return; }
     add(right, h('div', { 'class': 'insp' }, [
       h('h4', null, 'How tools reach the agents'),
-      h('p', null, 'A tool is bound to a ROLE, not to an agent. The engine gives it to whichever agent holds that role in the running topology.'),
+      h('p', null, 'A tool is bound to a ROLE, not to an agent. The engine gives it to whichever agent holds that role in the running team.'),
       h('div', { 'class': 'block' }, [h('h4', null, 'tool runner'), h('div', { 'class': 'kv', style: 'grid-template-columns:70px 1fr' },
         [3, 5, 7].reduce(function (acc, t) { var a = holder('tool_caller', t); return acc.concat([h('div', { 'class': 'k' }, t + '-agent'), h('div', null, a ? disp(a) : '—')]); }, []))]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Text the agents read about tools'), h('p', null, 'Each tool owns the text about it: ' +
@@ -2902,7 +2902,7 @@
    * ==================================================================== */
   function renderAccess(center, right) {
     var PA = D.parameter_access, opened = PE().access_opened || {};
-    add(center, head('Agent access', 'Who sees the parameter list, and how: one choice per agent and topology (a cell exists only where the agent does). Click a choice to save it: this is the setup’s default (pack.yaml); Workflow Settings can still change it for the next session.'));
+    add(center, head('Agent access', 'Who sees the parameter list, and how: one choice per agent and team size (a cell exists only where the agent does). Click a choice to save it: this is the setup’s default (pack.yaml); Workflow Settings can still change it for the next session.'));
     var t = h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, h('thead', null, h('tr', null,
       ['Agent', '3-agent', '5-agent', '7-agent', ''].map(function (x) { return h('th', null, x); }))));
     var tb = h('tbody');
@@ -3090,7 +3090,7 @@
     function group(label, kids, title) {
       return h('span', { 'class': 'vgrp', title: title || null }, [h('span', { 'class': 'vlab' }, label)].concat(kids));
     }
-    bar.push(group('Topology', h('span', { 'class': 'seg' }, [3, 5, 7].map(function (t) {
+    bar.push(group('Team size', h('span', { 'class': 'seg' }, [3, 5, 7].map(function (t) {
       return h('button', { 'class': t === topo ? 'on' : '', onclick: function () { go('studio', 'prompts', withQ({ topo: t, agent: null })); } }, String(t)); }))));
     bar.push(group('RAG', h('span', { 'class': 'seg' }, ['off', 'on', 'all'].map(function (r) {
       return h('button', { 'class': c.rag === r ? 'on' : '', onclick: function () { setChoice('rag', r, V.rag_default); } }, RAG_LABELS[r]); })), V.rag_help));
@@ -3112,7 +3112,7 @@
     bar.push(group('Settings', V.settings.map(function (s) {
       var value = c.settings[s.name] !== undefined ? c.settings[s.name] : s['default'];
       var inert = s.topologies.indexOf(topo) < 0;
-      var title = (inert ? 'Does nothing in the ' + topo + '-agent topology. ' : '') + s.help;
+      var title = (inert ? 'Does nothing in the ' + topo + '-agent team. ' : '') + s.help;
       var set = function (v) { setChoice('s.' + s.name, v, s['default']); };
       return s.type === 'bool' ? vcheck(SETTING_LABELS[s.name] || s.name, value, set, inert, title)
                                : vselect(SETTING_LABELS[s.name] || s.name, s.values, value, set, inert, title);
@@ -3190,7 +3190,7 @@
     var col = { gen: '#4a4d57', dc: 'var(--a)', tool: 'var(--b)', rt: 'var(--c)' };
     var toolTokens = tools.reduce(function (n, t) { return n + t.tokens; }, 0);
     add(right, h('div', { 'class': 'insp' }, [
-      h('div', { 'class': 'title' }, disp(agent) + ' · topology ' + topo),
+      h('div', { 'class': 'title' }, disp(agent) + ' · ' + topo + '-agent team'),
       h('div', { 'class': 'pills', title: TOKENS_NOTE }, [kpill(fmt(text.length) + ' characters'), kpill(fmt(view.tokens[agent]) + ' tokens (cl100k)'),
         kpill(tools.length + ' tools · ' + fmt(toolTokens) + ' tokens')]),
       h('h4', null, 'Where the text comes from'),
@@ -3467,10 +3467,10 @@
    * ==================================================================== */
   var VAL = { state: null, polling: false };
   var VAL_PARTS = [['A', 'The setup loads', 'parameters.json, pack.yaml, every tool.yaml and every text, as the engine reads them'],
-    ['B', 'The prompts', 'every agent of topologies 3, 5 and 7, with the setup’s defaults and with every feature on'],
+    ['B', 'The prompts', 'every agent of the 3-, 5- and 7-agent teams, with the setup’s defaults and with every feature on'],
     ['C', 'The parameter lists', 'each agent’s list names the parameters in order, with their ranges'],
     ['D', 'The tools', 'each one run on the parameters’ defaults, as Test tool runs it'],
-    ['E', 'A scripted turn', 'one turn per topology with a fake model: no API cost'],
+    ['E', 'A scripted turn', 'one turn per team size with a fake model: no API cost'],
     ['X', 'Developer checks', 'the repository’s own checks that hold for any setup']];
   var VAL_WORD = { pass: 'passed', warn: 'warning', fail: 'failed' };
   var VAL_CLS = { pass: 'good', warn: 'warn', fail: 'bad' };
