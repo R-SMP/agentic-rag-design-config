@@ -18,6 +18,6 @@ parameters in 21 groups.
   (`engine/db_sections.py`).  The primer is off (its agent lists are empty;
   its picture and text are still the propeller's).
 * No browser preview: the Parameters page's Preview button builds the model
-  on the server.
+  on the server and shows it in the page's 3D view.
 
 How a setup folder is laid out: `setups/propeller/README.md`.

@@ -3,8 +3,8 @@
 //
 // The page imports this module when the pack has one (served at
 // /pack/preview/preview.js) and calls what it exports.  Only buildModel is
-// required; without this file the page offers a generic Preview button that
-// runs the pack's image tools on the server instead.
+// required; without this file the page offers a Preview button instead: the
+// server builds the model of the values and the 3D view shows it.
 //
 //   buildModel(params, material)   -> THREE.Object3D: the live 3D preview,
 //                                     in the model's own axes (the

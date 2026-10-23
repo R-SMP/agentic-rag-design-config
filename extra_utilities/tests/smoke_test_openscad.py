@@ -20,6 +20,9 @@ come from the engine's renderer.  Five groups of checks:
    downloads' detail; a run that fails, one that takes too long and a
    program that is not there each give their clear error -- Validate reads
    the last as "this computer lacks the program OpenSCAD" -- and a
+   tool's ``openscad_engine`` setting reaches OpenSCAD as ``--backend``
+   (none without the setting), and the render step checks the mesh only
+   when the tool's ``mesh_checks`` setting is on (off without one); a
    downloaded package's image installs the pinned OpenSCAD (its libraries
    on the apt-get line, the snapshot checked against its sha256), once,
    and goes back to the engine's own Dockerfile without the tool (the
@@ -244,6 +247,7 @@ class StandInRenderer:
 
     def __init__(self, answer: str = "(stand-in render of {name})"):
         self.answer = answer
+        self.checks: list[bool] = []          # what set_mesh_checks was told, run by run
 
     def __enter__(self):
         import types
@@ -251,7 +255,7 @@ class StandInRenderer:
         import engine
         self.saved = (sys.modules.get("engine.mesh_render"), getattr(engine, "mesh_render", None))
         stub = types.ModuleType("engine.mesh_render")
-        stub.set_mesh_checks = lambda on: None
+        stub.set_mesh_checks = self.checks.append
         stub.render_and_check = lambda mesh, out: self.answer.format(name=Path(mesh).name)
         sys.modules["engine.mesh_render"] = stub
         engine.mesh_render = stub
@@ -330,6 +334,7 @@ if mode == "fail":
 if mode == "slow":
     time.sleep(20)
 print('ECHO: "given", ' + json.dumps({"set": vals, "defines": [a[i + 1] for i, x in enumerate(a) if x == "-D"],
+                                     "backend": [x for x in a if x.startswith("--backend")],
                                      "model": os.path.basename(a[-1]), "cwd": os.path.basename(os.getcwd())},
                                     sort_keys=True), file=sys.stderr)
 print("WARNING: a stand-in warning", file=sys.stderr)
@@ -350,8 +355,9 @@ def check_stand_in(tmp: Path) -> str:
     try:
         with Setup(make_setup(tmp / "fake", model, manifests("adapter.scad")), tmp / "fake" / "attempts") as s:
             params = dict(DEFAULTS, End1_Style="mag", End1_Diameter_mm=60)
-            with StandInRenderer():
+            with StandInRenderer() as rend:
                 answer = pack_tools.run_generator("hose_adapter", str(s.attempt(params)))
+            check(rend.checks == [False], f"[STAND-IN] mesh checks without the setting: {rend.checks}")
             folder = s.attempts / "20260101_000000_001_test"
             obj = folder / "adapter.obj"
             given = next((json.loads(ln.split('"given", ', 1)[1]) for ln in answer.splitlines()
@@ -363,8 +369,26 @@ def check_stand_in(tmp: Path) -> str:
             check(given.get("set") == {"End1_Style": "mag", "Transition_Length": "0", "End1_Diameter": "[60, 0]",
                                        "End2_Diameter": "[60, 0]", "Enable_Help": "false", "fa": "8", "fs": "2"}
                   and given.get("defines") == [] and given.get("model") == "adapter.scad"
-                  and given.get("cwd") == "hose_adapter",
+                  and given.get("cwd") == "hose_adapter" and given.get("backend") == [],
                   f"[STAND-IN] what OpenSCAD was given: {given}")
+            # the tools' settings: OpenSCAD's engine, the mesh checks
+            engines: list = []
+            real_run = O.run
+            O.run = lambda *a, **k: (engines.append(a[4] if len(a) > 4 else k.get("engine")), real_run(*a, **k))[1]
+            pack_tools.settings_override_for_tests({"hose_adapter": {"openscad_engine": "cgal", "mesh_checks": True},
+                                                    "hose_geometry": {"openscad_engine": "manifold"}})
+            try:
+                with StandInRenderer() as rend:
+                    answer2 = pack_tools.run_generator("hose_adapter", str(s.attempt(params, 3)))
+                made2 = pack_tools.make_model(params, ["hose_geometry"])
+            finally:
+                O.run = real_run
+                pack_tools.settings_override_for_tests(None)
+            given2 = next((json.loads(ln.split('"given", ', 1)[1]) for ln in answer2.splitlines()
+                           if '"given"' in ln), {})
+            check(given2.get("backend") == ["--backend=CGAL"] and rend.checks == [True]
+                  and engines == ["cgal", "manifold"] and made2.result.vertex_count == 8,
+                  f"[STAND-IN] the settings: {given2.get('backend')}, checks {rend.checks}, engines {engines}")
             again = pack_tools.run_generator("hose_adapter", str(folder / "parameters.json"))
             check(again.startswith("Reused existing"), f"[STAND-IN] a second run did not reuse the model: {again[:120]}")
             made = pack_tools.make_model(params, ["hose_geometry"])

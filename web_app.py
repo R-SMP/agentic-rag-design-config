@@ -1150,7 +1150,8 @@ def _coerce_preview_params(raw_params: dict) -> dict[str, int | float]:
 @app.post("/api/preview_mesh")
 def api_preview_mesh(body: PreviewMeshIn) -> Response:
     """Build the model from the Parameters page's slider values and return
-    it: the page's Download geometry button.
+    it: the page's Download geometry button, and -- a pack without a
+    browser preview -- its Preview, which shows it in the 3D view.
 
     The geometry tool is the Download buttons' choice (Workflow Settings >
     Tools > Downloads), or the generator's own when that choice is the saved
@@ -1196,38 +1197,6 @@ def api_preview_mesh(body: PreviewMeshIn) -> Response:
         media_type=model["media_type"],
         headers={"X-Vertex-Count": str(made.result.vertex_count)},
     )
-
-
-@app.post("/api/preview_images")
-async def api_preview_images(body: PreviewMeshIn) -> dict:
-    """The Parameters page's generic Preview (a pack without a browser
-    preview module): every switched-on tool that makes pictures, run on
-    the slider values -- the helpers first, then the generator, like the
-    save step -- in a process of its own with a throw-away attempts
-    folder (``engine/image_run.py``), so the session's attempts are never
-    touched.  Returns ``{images: [{tool, view, label, src}], errors:
-    [{tool, message}]}``, each picture as a data URL."""
-    _require_auth()
-    try:
-        coerced = _coerce_preview_params(body.params)
-    except ValueError as exc:
-        raise HTTPException(status_code=400, detail=str(exc))
-    try:
-        result, root = await run_in_threadpool(
-            _image_run.run_in_child, {"preview": coerced})
-    except RuntimeError as exc:
-        raise HTTPException(status_code=502, detail=f"Preview failed: {exc}")
-    try:
-        res = result.get("preview", {})
-        images = []
-        for img in res.get("images", []):
-            raw = Path(img["path"]).read_bytes()
-            images.append({"tool": img["tool"], "view": img["view"],
-                           "label": img["label"],
-                           "src": "data:image/png;base64," + base64.b64encode(raw).decode()})
-    finally:
-        shutil.rmtree(root, ignore_errors=True)
-    return {"images": images, "errors": res.get("errors", [])}
 
 
 @app.get("/api/artefact")

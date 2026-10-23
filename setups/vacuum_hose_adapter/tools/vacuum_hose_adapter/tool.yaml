@@ -31,7 +31,8 @@ detail:
 description: |-
   Build the Vacuum hose adapter model from an attempt's own ``parameters.json``
   with OpenSCAD, save it to that attempt's ``vacuum_hose_adapter.obj``, THEN render it
-  (three views: isometric, top, side) and check it, all in one call.
+  (three views: isometric, top, side) and, when Mesh quality checks is on, check
+  it, all in one call.
   If the folder already holds ``vacuum_hose_adapter.obj``, that model is reused.
   Returns the model's path and size and anything OpenSCAD said (its
   ECHO, WARNING and ERROR lines), then the render report; if OpenSCAD
@@ -57,3 +58,21 @@ fill_on_save: true
 # Its place in the tool runner's numbered tool list (its entry is
 # prompts/tool_list_entry.md).
 list_order: 20
+
+settings:
+  # OpenSCAD's engine for this tool's builds (engine/backends/openscad.py).
+  - name: openscad_engine
+    type: enum
+    values: [manifold, cgal]
+    default: manifold
+    label: OpenSCAD engine
+    description: >-
+      Manifold = OpenSCAD's newer engine, fast; CGAL = its original one, much
+      slower.  Neither removes the slivers a model's own shapes may leave.
+  - name: mesh_checks
+    type: bool
+    default: false
+    label: Mesh quality checks
+    description: >-
+      ON = the render step also reports watertightness, volume and degenerate
+      faces; OFF = only the renders, and the agents judge visually.

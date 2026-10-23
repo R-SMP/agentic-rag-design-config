@@ -76,7 +76,7 @@ the Download buttons' choice pick (``engine/pack_tools.make_model``):
    broken copies of the pack (a geometry tool with roles, without
    entrypoint or with another format, a setting naming a geometry tool
    the pack lacks, a tool folder called ``downloads``) are refused.
-13. IMAGE RUN.  ``engine/image_run.run`` (the generic Preview, the
+13. IMAGE RUN.  ``engine/image_run.run`` (the
    render-compression samples) with stand-in tools: the helpers first,
    called with the parameter file, then the generator; only switched-on
    views; the run's own attempts root (the session's restored after);

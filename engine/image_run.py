@@ -1,13 +1,9 @@
 """Run the pack's image tools on parameter sets -- in a process of its own.
 
-Two callers in the web app need the tools' pictures of parameter values that
-are not an attempt:
-
-* the Parameters page's generic **Preview** button, for a pack without a
-  browser preview module (``setups/<setup>/preview/``);
-* the render-compression panel's **Generate samples** button: the pictures
-  of the pack's sample parameter sets (``render_samples`` in
-  ``setups/<setup>/pack.yaml``), one per compression kind and size.
+The render-compression panel's **Generate samples** button needs the tools'
+pictures of parameter values that are not an attempt: the pack's sample
+parameter sets (``render_samples`` in ``setups/<setup>/pack.yaml``), one
+per compression kind and size.
 
 The tools write into attempt folders, and a helper may refuse any other
 place (blade sections does).  So each set gets an attempt folder in a

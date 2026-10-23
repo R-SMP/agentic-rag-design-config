@@ -661,6 +661,25 @@ def _backend_lines(model: str, parts: dict, detail: dict) -> list[str]:
     return out
 
 
+# The settings an imported tool gets (Workflow Settings > Tools): OpenSCAD's
+# engine, and -- a generator's -- the mesh checks, off (engine/backends/openscad.py).
+ENGINE_SETTING = {"name": "openscad_engine", "type": "enum", "values": ["manifold", "cgal"],
+                  "default": "manifold", "label": "OpenSCAD engine",
+                  "description": ("Manifold = OpenSCAD's newer engine, fast; CGAL = its original one, "
+                                  "much slower.  Neither removes the slivers a model's own shapes may leave.")}
+CHECKS_SETTING = {"name": "mesh_checks", "type": "bool", "default": False, "label": "Mesh quality checks",
+                  "description": ("ON = the render step also reports watertightness, volume and "
+                                  "degenerate faces; OFF = only the renders, and the agents judge visually.")}
+
+
+def _settings_lines(specs: list[dict]) -> list[str]:
+    out = ["", "settings:"]
+    for s in specs:
+        out.append(f"  - name: {s['name']}")
+        out += [f"    {k}: {_y(s[k])}" for k in ("type", "values", "default", "label", "description") if k in s]
+    return out
+
+
 def generator_files(name: str, display: str, model: str, source: bytes, parts: dict,
                     detail: dict, list_order: int) -> tuple[dict[str, bytes], dict]:
     """A generator's folder (its manifest, its model, its tool-list entry)."""
@@ -670,7 +689,8 @@ def generator_files(name: str, display: str, model: str, source: bytes, parts: d
             "description": (
                 f"Build the {display} model from an attempt's own ``parameters.json``\n"
                 f"with OpenSCAD, save it to that attempt's ``{name}.obj``, THEN render it\n"
-                "(three views: isometric, top, side) and check it, all in one call.\n"
+                "(three views: isometric, top, side) and, when Mesh quality checks is on, check\n"
+                "it, all in one call.\n"
                 f"If the folder already holds ``{name}.obj``, that model is reused.\n"
                 "Returns the model's path and size and anything OpenSCAD said (its\n"
                 "ECHO, WARNING and ERROR lines), then the render report; if OpenSCAD\n"
@@ -680,7 +700,8 @@ def generator_files(name: str, display: str, model: str, source: bytes, parts: d
                 "pictures are written into that file's own attempt folder.")},
             "outputs": {"model_file": f"{name}.obj", "model_format": "obj", "up_axis": "z",
                         "images": _IMAGES},
-            "fill_on_save": True, "list_order": list_order}
+            "fill_on_save": True, "list_order": list_order,
+            "settings": [ENGINE_SETTING, CHECKS_SETTING]}
     lines = [f"# {display}: a generator made by the Studio from the OpenSCAD model",
              f"# {model} (MAS-blueprint P6f).  It builds the model from an attempt's",
              "# parameters.json, then the engine's renderer makes its pictures.",
@@ -695,6 +716,7 @@ def generator_files(name: str, display: str, model: str, source: bytes, parts: d
               "# archives?", "fill_on_save: true", "",
               "# Its place in the tool runner's numbered tool list (its entry is",
               "# prompts/tool_list_entry.md).", f"list_order: {list_order}"]
+    lines += _settings_lines(want["settings"])
     entry = (f"**{name}** — build ``{name}.obj`` into an attempt\n"
              "   folder with OpenSCAD from that attempt's own ``parameters.json`` (pass\n"
              "   ONLY that file's path — the tool reads the values and writes beside\n"
@@ -712,7 +734,7 @@ def geometry_files(name: str, display: str, model: str, source: bytes, parts: di
     want = {"name": name, "display_name": display, "kind": "geometry", "backend": "openscad",
             "model": model, **({"parts": parts} if parts else {}), **({"detail": detail} if detail else {}),
             "description": f"Builds the {what or display} model from its parameters with OpenSCAD.",
-            "outputs": {"model_format": "obj"}}
+            "outputs": {"model_format": "obj"}, "settings": [ENGINE_SETTING]}
     lines = [f"# {display}: a geometry tool made by the Studio from the OpenSCAD model",
              f"# {model} (MAS-blueprint P6f), with a copy of the model of its own.  It",
              "# builds the model from the parameters for the Download buttons (and a",
@@ -720,6 +742,7 @@ def geometry_files(name: str, display: str, model: str, source: bytes, parts: di
              f"name: {name}", f"display_name: {_y(display)}", "kind: geometry"]
     lines += _backend_lines(model, parts, detail)
     lines += ["", "description: " + _y(want["description"]), "", "outputs:", "  model_format: obj"]
+    lines += _settings_lines(want["settings"])
     return {MANIFEST: _manifest(lines, want), model: source}, want
 
 

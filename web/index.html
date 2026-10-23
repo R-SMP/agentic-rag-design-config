@@ -273,17 +273,13 @@
               <canvas id="params-extra-view-canvas"></canvas>
             </div>
           </div>
-          <!-- The generic Preview, for a pack without a browser preview
-               module: the tools' pictures of the current values, made on
-               the server (POST /api/preview_images; paramsUseImagePreview). -->
-          <div id="params-image-preview" class="params-image-preview" hidden>
-            <div class="params-image-preview-bar">
-              <button id="params-preview-btn" class="primary" type="button">Preview</button>
-              <span id="params-preview-status" class="params-preview-status" role="status"></span>
-            </div>
-            <div id="params-preview-gallery" class="params-preview-gallery">
-              <p class="params-preview-empty">Press Preview to have the tools make their pictures of the current values.</p>
-            </div>
+          <!-- The model Preview, for a pack without a browser preview
+               module: the Download buttons' geometry tool builds the model
+               of the current values on the server (POST /api/preview_mesh)
+               and the 3D view above shows it (paramsUseServerPreview). -->
+          <div id="params-model-preview" class="params-model-preview" hidden>
+            <button id="params-preview-btn" class="primary" type="button">Preview</button>
+            <span id="params-preview-status" class="params-preview-status" role="status"></span>
           </div>
           <!--
             Footer mirroring the chat viewer's Download geometry button.
@@ -313,9 +309,16 @@
 
             <!-- One tab per group of the setup's parameters
                  (setups/<setup>/parameters.json), made by app.js paramsBuildAll().
-                 Click to switch which group's rows + picture are visible.
-                 Per the locked design, no Back/Next navigation. -->
-            <div class="params-tabs"></div>
+                 Click to switch which group's rows + picture are visible;
+                 the arrows go to the group before / after.  The tabs scroll
+                 inside the column, never past it (paramsSwitchTab). -->
+            <div class="params-tabs-bar">
+              <button type="button" class="params-tab-nav" id="params-tab-prev"
+                      aria-label="Previous group" title="Previous group">&#8249;</button>
+              <div class="params-tabs"></div>
+              <button type="button" class="params-tab-nav" id="params-tab-next"
+                      aria-label="Next group" title="Next group">&#8250;</button>
+            </div>
           </div>
 
           <!-- Tab panes — made and filled by app.js paramsBuildAll(), one

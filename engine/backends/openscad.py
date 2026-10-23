@@ -27,6 +27,16 @@ The program is ``OPENSCAD_PATH`` (the program, or its folder) or
 the same settings give the same file); a generator's pictures come from the
 engine's renderer (``engine/mesh_render.py``), as the propeller's do.
 OpenSCAD's ECHO / WARNING / ERROR lines reach the agent.
+
+A tool's settings (Workflow Settings > Tools) may hold
+``openscad_engine`` -- ``manifold`` (OpenSCAD's newer engine, fast) or
+``cgal`` (its original one, much slower), given as ``--backend``; without
+it OpenSCAD uses its own default -- and, a generator's, ``mesh_checks``:
+whether the render step also checks the mesh (watertight, volume,
+degenerate faces).  Off unless the tool turns it on: a model's own shapes
+can leave zero-volume slivers no parameter removes (the vacuum hose
+adapter's organic bend, with either engine), and the agents would chase
+them.
 """
 
 from __future__ import annotations
@@ -47,6 +57,9 @@ from engine.tooling import BuildResult, GeometryResult, RenderResult, ToolError
 PROGRAM_ENV = "OPENSCAD_PATH"
 SET_NAME = "engine"
 DEFAULT_TIMEOUT = 120
+# The tool setting that picks OpenSCAD's engine, and what --backend says for each.
+ENGINE_SETTING = "openscad_engine"
+ENGINES = {"manifold": "Manifold", "cgal": "CGAL"}
 PURPOSES = ("agent", "download")
 NOT_FOUND = ("OpenSCAD was not found on this computer: install it (openscad.org) and put "
              "it on the PATH, or set OPENSCAD_PATH to the program.")
@@ -149,11 +162,12 @@ def settings_for(m: dict, params: dict, purpose: str) -> tuple[dict, list[str]]:
     return out, defines
 
 
-def run(model: Path, settings: dict, defines: list[str] = (), timeout: float = DEFAULT_TIMEOUT
-        ) -> tuple[bytes, list[str]]:
+def run(model: Path, settings: dict, defines: list[str] = (), timeout: float = DEFAULT_TIMEOUT,
+        engine: "str | None" = None) -> tuple[bytes, list[str]]:
     """``(STL, said)``: the STL OpenSCAD makes of *model* with *settings*,
-    and its ECHO / WARNING / ERROR lines.  Raises ToolError."""
-    cmd = program()
+    and its ECHO / WARNING / ERROR lines; *engine* one of :data:`ENGINES`
+    (None: OpenSCAD's default).  Raises ToolError."""
+    cmd = program() + ([f"--backend={ENGINES[engine]}"] if engine in ENGINES else [])
     with tempfile.TemporaryDirectory(prefix="openscad_") as tmp:
         tmp = Path(tmp)
         sets = tmp / "set.json"
@@ -234,10 +248,11 @@ def _model(folder: Path, m: dict) -> Path:
     return folder / m["model"]
 
 
-def _built(folder: Path, m: dict, params: dict, purpose: str) -> tuple[str, int, dict, list[str]]:
+def _built(folder: Path, m: dict, params: dict, purpose: str, engine: "str | None" = None
+           ) -> tuple[str, int, dict, list[str]]:
     model = _model(folder, m)
     settings, defines = settings_for(m, params, purpose)
-    raw, said = run(model, settings, defines, float(m.get("timeout", DEFAULT_TIMEOUT)))
+    raw, said = run(model, settings, defines, float(m.get("timeout", DEFAULT_TIMEOUT)), engine)
     vertices, faces = read_stl(raw)
     obj = to_obj(vertices, faces, f"made by OpenSCAD from {model.name}")
     return obj, len(vertices), measures(vertices, faces), said
@@ -256,7 +271,7 @@ def _said_text(said: list[str]) -> str:
 
 def build(folder: Path, m: dict, inp) -> BuildResult:
     """The attempt's model file, made by OpenSCAD at the agents' detail."""
-    obj, n, size, said = _built(folder, m, inp.params, "agent")
+    obj, n, size, said = _built(folder, m, inp.params, "agent", (inp.settings or {}).get(ENGINE_SETTING))
     inp.model_path.write_text(obj, encoding="utf-8")
     sx, sy, sz = size["size"]
     return BuildResult(
@@ -269,7 +284,7 @@ def build(folder: Path, m: dict, inp) -> BuildResult:
 def render(folder: Path, m: dict, inp) -> RenderResult:
     """The attempt's pictures and checks, by the engine's renderer -- the
     library and the checks of the tool's own ``render_library`` /
-    ``mesh_checks`` settings when it has them."""
+    ``mesh_checks`` settings when it has them (no checks without one)."""
     s = inp.settings or {}
     if s.get("render_library") == "pyvista":
         from engine import mesh_render_pyvista as core
@@ -277,11 +292,14 @@ def render(folder: Path, m: dict, inp) -> RenderResult:
     else:
         from engine import mesh_render as core
         go = core.render_and_check
-    core.set_mesh_checks(bool(s.get("mesh_checks", True)))
+    core.set_mesh_checks(bool(s.get("mesh_checks", False)))
     return RenderResult(report=go(str(inp.model_path), str(inp.attempt_dir)))
 
 
 def make_model(folder: Path, m: dict, params: dict) -> GeometryResult:
-    """The model, made by OpenSCAD at the downloads' detail."""
-    obj, n, _size, _said = _built(folder, m, params, "download")
+    """The model, made by OpenSCAD at the downloads' detail, with the engine
+    of the tool's own settings."""
+    from engine import pack_tools
+    obj, n, _size, _said = _built(folder, m, params, "download",
+                                  pack_tools.settings(m["name"]).get(ENGINE_SETTING))
     return GeometryResult(model=obj, vertex_count=n)

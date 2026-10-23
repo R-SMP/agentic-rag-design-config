@@ -131,23 +131,22 @@ def _compute_framing_distance(center, bounds, eye_direction, up_hint, yfov, aspe
         [bmax[0], bmax[1], bmax[2]],
     ])
 
-    # Project onto the camera plane (relative to the look-at center)
+    # Project onto the camera plane (relative to the look-at center), with
+    # padding so the model doesn't touch the frame edges
     relative = corners - center
-    proj_right = relative @ cam_right
-    proj_up = relative @ cam_up
+    proj_right = np.abs(relative @ cam_right) * (1.0 + padding)
+    proj_up = np.abs(relative @ cam_up) * (1.0 + padding)
+    # How much nearer the camera each corner is than the center: a corner
+    # nearer the camera looks bigger, so a tall model seen from above (the
+    # vacuum hose adapter) needs the camera further back than a flat one.
+    depth = relative @ eye_direction
 
-    half_w = max(abs(proj_right.max()), abs(proj_right.min()))
-    half_h = max(abs(proj_up.max()), abs(proj_up.min()))
+    # Distance needed so that every corner fits within the perspective frustum
+    tan_v = np.tan(yfov / 2.0)
+    d_vert = depth + proj_up / tan_v
+    d_horiz = depth + proj_right / (tan_v * aspect)
 
-    # Add padding so the model doesn't touch the frame edges
-    half_w *= (1.0 + padding)
-    half_h *= (1.0 + padding)
-
-    # Distance needed so that half_h / half_w fit within the perspective frustum
-    d_vert = half_h / np.tan(yfov / 2.0)
-    d_horiz = half_w / (np.tan(yfov / 2.0) * aspect)
-
-    return max(d_vert, d_horiz)
+    return float(max(d_vert.max(), d_horiz.max()))
 
 
 def _render_mesh_views(mesh, output_dir):

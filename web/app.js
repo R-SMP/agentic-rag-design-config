@@ -818,8 +818,8 @@ if (!window.PACK_PAGE) {
 // served at /pack/preview/preview.js): what it exports drives the left
 // pane -- the 3D model, extra views, the highlight of the group being
 // edited -- and the drawings beside the group pictures.  Loaded once;
-// null for a pack without one, which gets the generic Preview button
-// instead (paramsUseImagePreview).
+// null for a pack without one, which gets the model Preview button
+// instead (paramsUseServerPreview).
 let packPreview = null;
 const packPreviewReady = PACK_PAGE.preview
   ? import("/pack/preview/preview.js")
@@ -6620,7 +6620,7 @@ let paramsFegRafId = null;          // pending rAF handle (null = none queued)
 function paramsBuildPreviewBody() {
   // Snapshot the current parameter values into a plain dict.  Reads
   // paramState (kept in sync by the slider input handler).  Used by the
-  // browser preview, the generic Preview and the download
+  // browser preview, and by the server-built Preview and the download
   // (/api/preview_mesh body).
   const out = {};
   for (const key of Object.keys(paramSpecByKey)) {
@@ -7147,58 +7147,55 @@ function paramsAddPreviewViews() {
   if (!(packPreview.views || []).length) toggle.style.display = "none";
 }
 
-// A pack without a browser preview module: the left pane offers the
-// generic Preview -- the tools' pictures of the current values, made on
-// the server in a process of its own (POST /api/preview_images).
-function paramsUseImagePreview() {
-  for (const sel of [".params-viewmode-toggle", "#params-viewer", "#params-extra-view",
-                     "#params-viewer-reset"]) {
+// A pack without a browser preview module: Preview builds the model of the
+// current values on the server -- the Download buttons' geometry tool, the
+// same POST /api/preview_mesh as Download geometry -- and the left pane's
+// 3D view shows it, as the chat's does an attempt's.
+function paramsUseServerPreview() {
+  for (const sel of [".params-viewmode-toggle", "#params-extra-view"]) {
     const el = document.querySelector(sel);
     if (el) el.style.display = "none";
   }
-  const pane = document.getElementById("params-image-preview");
-  if (pane) pane.hidden = false;
+  const placeholder = document.getElementById("params-viewer-placeholder");
+  if (placeholder) placeholder.textContent = "Press Preview to build the model of the current values.";
+  const bar = document.getElementById("params-model-preview");
+  if (bar) bar.hidden = !PACK_PAGE.model;
   const dlBtn = document.getElementById("params-download-mesh");
   if (dlBtn && PACK_PAGE.model) dlBtn.disabled = false;
   const btn = document.getElementById("params-preview-btn");
-  if (btn) btn.addEventListener("click", paramsRunImagePreview);
+  if (btn) btn.addEventListener("click", paramsRunServerPreview);
 }
 
-async function paramsRunImagePreview() {
+// The object URL of the model the 3D view shows (freed at the next Preview).
+let paramsPreviewUrl = null;
+
+async function paramsRunServerPreview() {
   const btn = document.getElementById("params-preview-btn");
   const status = document.getElementById("params-preview-status");
-  const gallery = document.getElementById("params-preview-gallery");
   const say = (msg, err) => {
     if (!status) return;
     status.textContent = msg;
     status.classList.toggle("error", !!err);
   };
   if (btn) btn.disabled = true;
-  say("Making the pictures…", false);
+  say("Building the model…", false);
   try {
-    const res = await fetch("/api/preview_images", {
+    const res = await fetch("/api/preview_mesh", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ params: paramsBuildPreviewBody() }),
     });
     if (res.status === 401) { showGate(); return; }
-    const d = await res.json().catch(() => ({}));
-    if (!res.ok) { say("Preview failed: " + (d.detail || res.status), true); return; }
-    gallery.textContent = "";
-    for (const img of d.images || []) {
-      const fig = document.createElement("figure");
-      fig.className = "params-preview-fig";
-      const el = document.createElement("img");
-      el.src = img.src;
-      el.alt = img.label;
-      const cap = document.createElement("figcaption");
-      cap.textContent = img.label;
-      fig.appendChild(el);
-      fig.appendChild(cap);
-      gallery.appendChild(fig);
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      say("Preview failed: " + (d.detail || res.status), true);
+      return;
     }
-    const errs = (d.errors || []).map((e) => e.message);
-    say(errs.length ? "Preview failed: " + errs.join(" | ") : "", errs.length > 0);
+    const blob = await res.blob();
+    if (paramsPreviewUrl) URL.revokeObjectURL(paramsPreviewUrl);
+    paramsPreviewUrl = URL.createObjectURL(blob);
+    if (window.paramsViewer) window.paramsViewer.load(paramsPreviewUrl, PACK_PAGE.model.file, null);
+    say("");
   } catch (e) {
     say("Preview failed: " + e, true);
   } finally {
@@ -7213,12 +7210,53 @@ function paramsSwitchTab(tabKey) {
   document.querySelectorAll(".params-pane").forEach((p) => {
     p.classList.toggle("active", p.dataset.paramtab === tabKey);
   });
+  paramsShowActiveTab();
   // Highlight the part this group shapes (the propeller's section outline,
   // green; instant, no rebuild).
   if (window.paramsViewer && window.paramsViewer.setActiveGroup) {
     window.paramsViewer.setActiveGroup(tabKey);
   }
 }
+
+// The group tabs a user can reach, in order (a tab may be hidden).
+function paramsVisibleTabs() {
+  return [...document.querySelectorAll(".params-tab-btn")].filter((b) => !b.hidden);
+}
+
+// Scroll the strip so the active tab shows, and grey out an arrow with no
+// group beyond it.
+function paramsShowActiveTab() {
+  const tabs = paramsVisibleTabs();
+  const i = tabs.findIndex((b) => b.classList.contains("active"));
+  const strip = document.querySelector(".params-tabs");
+  if (i >= 0 && strip) {
+    const b = tabs[i];
+    const left = b.offsetLeft;
+    if (left < strip.scrollLeft) strip.scrollLeft = left;
+    else if (left + b.offsetWidth > strip.scrollLeft + strip.clientWidth) {
+      strip.scrollLeft = left + b.offsetWidth - strip.clientWidth;
+    }
+  }
+  const prev = document.getElementById("params-tab-prev");
+  const next = document.getElementById("params-tab-next");
+  if (prev) prev.disabled = i <= 0;
+  if (next) next.disabled = i < 0 || i >= tabs.length - 1;
+}
+
+// The arrows: the group before / after the active one.
+function paramsStepTab(step) {
+  const tabs = paramsVisibleTabs();
+  const i = tabs.findIndex((b) => b.classList.contains("active"));
+  const to = tabs[i + step];
+  if (to) paramsSwitchTab(to.dataset.paramtab);
+}
+
+(function wireParamsTabArrows() {
+  const prev = document.getElementById("params-tab-prev");
+  const next = document.getElementById("params-tab-next");
+  if (prev) prev.addEventListener("click", () => paramsStepTab(-1));
+  if (next) next.addEventListener("click", () => paramsStepTab(1));
+})();
 
 function paramsBuildSubmitMessage() {
   // Long-form clipboard text — full 17-parameter list with units,
@@ -7576,7 +7614,7 @@ function paramsInit() {
       paramsAddPreviewViews();
       paramsAddGroupFigures();
     } else {
-      paramsUseImagePreview();
+      paramsUseServerPreview();
     }
     const view = document.querySelector('.view[data-view="params"]');
     if (view && !view.hidden) paramsUpdatePreview();

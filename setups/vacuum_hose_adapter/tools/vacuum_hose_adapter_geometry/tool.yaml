@@ -32,3 +32,14 @@ description: Builds the Vacuum hose adapter model from its parameters with OpenS
 
 outputs:
   model_format: obj
+
+settings:
+  # OpenSCAD's engine for this tool's builds (engine/backends/openscad.py).
+  - name: openscad_engine
+    type: enum
+    values: [manifold, cgal]
+    default: manifold
+    label: OpenSCAD engine
+    description: >-
+      Manifold = OpenSCAD's newer engine, fast; CGAL = its original one, much
+      slower.  Neither removes the slivers a model's own shapes may leave.
