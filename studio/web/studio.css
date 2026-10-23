@@ -76,26 +76,33 @@
 #center > * { flex-shrink:0; }
 .modal.xwide { width:1120px; max-width:94vw; }
 
-/* ---- the 3 / 5 / 7 topology grid (D6) ----------------------------------- */
-.tgrid { display:grid; grid-template-columns:210px 1fr 1fr 1fr; gap:0; padding:0 16px 24px; }
-.tgrid .gh { position:sticky; top:0; padding:8px 8px 6px; color:var(--muted); font-size:10.5px;
-             font-weight:600; text-transform:uppercase; letter-spacing:.05em;
-             border-bottom:1px solid var(--line); background:#15161a; z-index:2; }
-.trow { display:contents; }
-.trow > div { padding:8px; border-bottom:1px solid #2a2c33; }
-.trow .fl { display:flex; flex-direction:column; gap:4px; min-width:0; cursor:pointer; }
-.trow .fl .nm { font-family:var(--mono); font-size:11.5px; color:#dfe3ea; word-break:break-all; }
-.trow .fl .meta { display:flex; gap:4px; align-items:center; flex-wrap:wrap; }
-.trow.sel > div { background:#1d2230; }
-.trow.unlinked > div.cell { box-shadow:inset 0 0 0 1px rgba(240,162,74,.55); background:#211c16; }
-.trow.unlinked.sel > div.cell { background:#26201a; }
-.trow.sub .fl { padding-left:22px; }
-.trow.sub .fl .nm { color:#b9bec8; }
+/* ---- the text fields: one box per text, a column per team size where the
+   texts differ; every box as tall as its text (studio.js fitAll) ---------- */
+.tgrid { display:flex; flex-direction:column; padding:6px 16px 28px; }
+.trow { padding:12px 10px 14px; border-bottom:1px solid #2a2c33; border-radius:6px; }
+.trow .fl { display:flex; align-items:center; gap:6px 8px; flex-wrap:wrap; min-width:0; cursor:pointer; margin-bottom:7px; }
+.trow .fl .ttl { font-size:13.5px; font-weight:600; color:#e6e8ec; }
+.trow .fl .nm { font-family:var(--mono); font-size:10.5px; color:#7d8390; word-break:break-all; }
+.trow .fl .meta { display:inline-flex; gap:4px; align-items:center; flex-wrap:wrap; }
+.trow .fl .unread { font-size:11px; color:var(--muted); font-style:italic; }
+.trow .fl .grow { flex:1 1 auto; }
+.trow.sel { background:#1d2230; }
+.trow.sub { margin-left:26px; padding-top:8px; }
+.trow.sub .fl .ttl { font-size:12.5px; font-weight:500; color:#b9bec8; }
+.cells { display:grid; gap:10px; }
+.cells.one { grid-template-columns:minmax(0, 1fr); }
+.cells.two { grid-template-columns:repeat(2, minmax(0, 1fr)); }
+.cells.three { grid-template-columns:repeat(3, minmax(0, 1fr)); }
 .cell { min-width:0; }
+.cell .ch { font-size:10.5px; font-weight:600; text-transform:uppercase; letter-spacing:.05em; color:var(--muted);
+            margin:0 0 4px 2px; }
 .cell input, .cell textarea { width:100%; }
-.cell textarea.phrase { font-family:inherit; font-size:12px; resize:none; min-height:0; overflow:hidden; }
-.cell textarea { font-family:var(--mono); font-size:11.5px; line-height:1.45; resize:vertical;
-                 min-height:34px; white-space:pre-wrap; }
+.cell input { font-size:13px; padding:5px 9px; }
+.cell textarea { display:block; font-family:inherit; font-size:13px; line-height:1.55; padding:6px 9px; resize:none;
+                 overflow:hidden; white-space:pre-wrap; min-height:0; }
+.cell textarea.folded { -webkit-mask-image:linear-gradient(to bottom, #000 78%, transparent);
+                        mask-image:linear-gradient(to bottom, #000 78%, transparent); }
+.cell .more { margin-top:4px; }
 .cell .na { color:#5f6470; font-size:11px; font-style:italic; padding:6px 2px; }
 .cell .empty-ok { color:var(--muted); font-size:11px; padding:6px 2px; }
 .link { border:1px solid var(--line); background:#1b1c20; border-radius:5px; padding:1px 6px;
@@ -239,8 +246,7 @@ button.link:disabled { cursor:default; }
 .trow .racts, td .racts { display:flex; gap:5px; align-items:center; flex-wrap:wrap; }
 .trow .racts:empty, td .racts:empty { display:none; }
 td .racts { margin-top:4px; }
-.trow.dirty > div { background:#262016; }
-.trow.dirty > div.fl { box-shadow:inset 3px 0 0 var(--warn); }
+.trow.dirty { background:#262016; box-shadow:inset 3px 0 0 var(--warn); }
 table.ptab tr.dirty td:first-child { box-shadow:inset 3px 0 0 var(--warn); }
 .cell .inh { display:flex; flex-direction:column; gap:4px; align-items:flex-start; }
 .cell textarea::placeholder, .cell input::placeholder { color:#5f6470; font-style:italic; }
@@ -411,3 +417,32 @@ table.pedit td.proposed input { border-color:#7a5a1a; background:#33260f; color:
 .insp .block.proposed { border:1px solid #7a5a1a; border-radius:7px; padding:8px 10px; background:#2a2114; }
 .insp .block.proposed p { margin:0 0 8px; font-size:12px; color:#ffd8a0; }
 table.pedit tr.grp .keepg { display:inline-flex; gap:6px; align-items:center; margin-left:10px; }
+
+/* the side panel's head: a text's title and its close button */
+.insp .ihead { display:flex; gap:8px; align-items:flex-start; margin-bottom:4px; }
+.insp .ftitle { flex:1 1 auto; font-size:14px; font-weight:600; line-height:1.35; }
+
+/* the top bar's menus: the configurator, Export */
+.dd { position:relative; display:inline-flex; }
+.ddmenu { display:none; position:absolute; top:calc(100% + 4px); left:0; z-index:40; min-width:230px; flex-direction:column;
+          gap:1px; padding:5px; background:var(--panel); border:1px solid var(--line); border-radius:8px;
+          box-shadow:0 10px 30px rgba(0,0,0,.5); }
+.dd.right .ddmenu { left:auto; right:0; }
+.dd.open .ddmenu { display:flex; }
+.ddmenu button { text-align:left; border:0; background:transparent; padding:6px 10px; font-size:12.5px; border-radius:5px; }
+.ddmenu button:hover:not(:disabled) { background:#3d414a; }
+.ddmenu .ddnote { padding:7px 10px 4px; margin-top:3px; border-top:1px solid var(--line); font-size:11px; color:var(--muted);
+                  word-break:break-all; max-width:360px; }
+.toolbar .pill { font-size:11.5px; font-weight:500; cursor:pointer; }
+
+/* easier to see: a prompt's coloured parts open their text; a tool test's values */
+.legend .hintclick { color:#a5c8ff; }
+.prompt .o-dc:hover, .prompt .o-tool:hover { text-decoration:underline dotted; }
+details.vtool.editvals > summary { color:#a5c8ff; font-size:12px; }
+
+/* "Same for all team sizes" is a state, not a main action: outlined like its legend */
+button.link.on { background:#1b1c20; color:#a5c8ff; border-color:#2f4f86; }
+button.link:hover:not(:disabled) { background:#262a33; }
+.tcard .head { flex-wrap:wrap; }
+.tcard .head > * { white-space:nowrap; }
+.tcard .grid2 > div { min-width:0; overflow-wrap:anywhere; }

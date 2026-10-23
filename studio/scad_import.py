@@ -703,7 +703,7 @@ def generator_files(name: str, display: str, model: str, source: bytes, parts: d
             "fill_on_save": True, "list_order": list_order,
             "settings": [ENGINE_SETTING, CHECKS_SETTING]}
     lines = [f"# {display}: a generator made by the Studio from the OpenSCAD model",
-             f"# {model} (MAS-blueprint P6f).  It builds the model from an attempt's",
+             f"# {model}.  It builds the model from an attempt's",
              "# parameters.json, then the engine's renderer makes its pictures.",
              f"name: {name}", f"display_name: {_y(display)}", "kind: generator",
              "roles: [tool_runner]"]
@@ -736,7 +736,7 @@ def geometry_files(name: str, display: str, model: str, source: bytes, parts: di
             "description": f"Builds the {what or display} model from its parameters with OpenSCAD.",
             "outputs": {"model_format": "obj"}, "settings": [ENGINE_SETTING]}
     lines = [f"# {display}: a geometry tool made by the Studio from the OpenSCAD model",
-             f"# {model} (MAS-blueprint P6f), with a copy of the model of its own.  It",
+             f"# {model}, with a copy of the model of its own.  It",
              "# builds the model from the parameters for the Download buttons (and a",
              "# generator's geometry tool setting); never for an agent.",
              f"name: {name}", f"display_name: {_y(display)}", "kind: geometry"]

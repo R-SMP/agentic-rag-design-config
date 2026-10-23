@@ -20,7 +20,7 @@ while most of them were open).  When an entry is fully closed, move it to
 
 **Ids are never reused and never renumbered.**  ~19 F/O ids and 24 W ids are
 cited from live source, and the counter is a single space reserved across git
-branches (F36 is taken on a sibling branch).  Next free id: **F130**.
+branches (F36 is taken on a sibling branch).  Next free id: **F131**.
 
 **Do not `cat` this file.**  Read the index, then pull the one entry you need:
 `grep -n "^### F58" -A 40 extra_utilities/TODO_known_issues.md`.
@@ -142,6 +142,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F127` | DONE | The parameter primer of a configurator that is not the propeller |
 | `F128` | DONE | A .scad import that starts a new configurator keeps the old one's browser preview |
 | `F129` | OPEN | The live database keeps its tables in `public`: move them into a section before the live app takes MAS-blueprint |
+| `F130` | OPEN | Studio simplification: phases 2-4 (phase 1 done) |
 
 ---
 
@@ -5026,3 +5027,49 @@ no database.  Before that deploy, run, against it:
 `session_counter` stays in `public`, so session IDs carry on).  The MAS
 database (streamlined) was moved the same way when sections came in.  The
 owner calls sections a momentary solution, to be revisited.
+
+### F130. Studio simplification: phases 2-4 (phase 1 done)
+
+**Status.** OPEN — 2026-10-23, phase 1 done.  The owner chose 45 changes that
+make the Studio easier to use (an options page with mockups, then multiple
+choice).  Phase 1 shipped: one box per text and a column per team size where
+the texts differ, boxes as tall as their text that fold after 12 lines, a side
+panel that opens on a text, plain words in the Studio's screens and a plain
+title per text field (`title:` in `engine/slot_registry.yaml`), the top bar
+(configurator menu, Shared online chip, Validate, Export, Guide), empty states.
+
+Left, in the owner's order:
+
+- **Phase 2.**  Simple / Advanced: a switch in the top bar plus a fold on each
+  panel, Simple by default.  Advanced holds the team-size link/unlink, agent
+  versions, internal names and file paths, field badges, a tool's raw files,
+  picture and list order, the engine variables, the Agent access grid,
+  parameter step and database words, the primer's per-agent ticks, the Prompt
+  viewer's settings with an "As written / As the agent sees it" switch (as
+  written: every settings-specific part kept and labelled), and Validate's
+  developer checks.  The big editor (the page's layout, bigger, with where it
+  lands and help; the lines that differ marked; a "Differences only" view);
+  phrases as fill-in-the-blank inside their sentence; single words as a form;
+  formatted reading; texts grouped by purpose; tool cards with a test status, a
+  short summary when Test is pressed, a red/amber dot on Tools; access presets;
+  the Prompt viewer renamed "What each agent reads", its diagram first.
+- **Phase 3.**  An add-a-tool wizard (a display name only); one tool form with
+  its own texts (the role checkboxes stay visible in Simple); drop a new version
+  on a tool's card, a file list, a notice when code is uploaded online; a
+  five-stage menu with a status per page; the Parameters page (search, fold,
+  fewer columns, full labels, bulk changes, range errors in the row, one Import
+  menu); the Primer page (simple, its cost in words, a warning when the picture
+  is another configurator's); tool settings in each tool and only the tools'
+  keys; Validate's health in the top bar, quick checks after each change,
+  results by page with "Fix it", plain words.
+- **Phase 4.**  One "Aa" menu in the top bar (text size small / medium / large,
+  theme auto / light / dark, density); one accent colour, status colours only;
+  menu icons; "Saved", a count of changes and Undo in the status bar; Ctrl+K
+  search; an optional guided setup; text helpers (length, reset, find and
+  replace, a leftover check, compare with the propeller); a ? on each page, a
+  tour shown EVERY time the Studio loads (skipped each time), the guides linked
+  where they matter.
+
+Rule: renames only in the Studio's own screens, never in prompt fragments or
+tool descriptions ("DC" stays there).  Also open: the registry's help texts
+(`description:`) still say "DC", and some name the propeller.

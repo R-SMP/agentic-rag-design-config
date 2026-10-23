@@ -47,8 +47,8 @@ and the text's tokens on every call.</li>
 <li><b>Configurator description</b>: what it builds, how its parameters behave, what it can and cannot do: the
 longer texts the agents read.</li>
 <li><b>Outputs &amp; vocabulary</b>: the words for what it produces (its model, its pictures).</li>
-<li><b>Tools</b>: how a design gets built.  <i>New tool</i> starts one from a template (a helper, a generator, a
-geometry tool) or as a copy of a tool; then change its code and its manifest (<code>tool.yaml</code>).
+<li><b>Tools</b>: how a design gets built.  <i>New tool</i> starts one from a template (a helper, a model builder, a
+download builder) or as a copy of a tool; then change its code and its details (<code>tool.yaml</code>).
 Drop an OpenSCAD model (<code>.scad</code>) on the Tools page, or use <i>Import a .scad file</i>: the Studio reads
 the settings its Customizer shows and shows what each one becomes (a parameter, the model's detail, or left to
 the model) before you import it, as a new configurator or as one more tool; <i>Undo the import</i> puts
@@ -61,8 +61,10 @@ pictures and its model.  More: <a href="write-a-tool.html">Write a tool</a> and
 <li><b>Settings &amp; secrets</b>: the tools' settings, and the variables (keys) they need.  The values go in
 <code>.env</code> or in the deployment's variables, never in the setup.</li>
 </ol>
-<p>Each field saves on its own, and <i>Undo</i> puts it back as it was when the Studio opened.  A field shows its
-text for the 3-, 5- and 7-agent teams; the link icon makes it one text for all of them, or one per team.</p>
+<p>Each text saves on its own, and <i>Undo</i> puts it back as it was when the Studio opened.  A text the teams of
+3, 5 and 7 share is one box; one that differs per team size shows a column per team.  The button beside its title
+(<i>Same for all team sizes</i> / <i>Different per team size</i>) switches between the two.  Click a title for its
+help and the sentences it lands in.</p>
 <p>The <b>Prompt viewer</b> shows every agent's full instructions as the engine builds them, coloured by where each
 part comes from; <i>Changes since opened</i> shows what your edits changed.</p>
 
@@ -74,13 +76,13 @@ warning does not stop the setup working: text left about a tool you removed, or 
 (a package, a program) that the deployment has.</p>
 
 <h2>4. Save your work</h2>
-<p><b>Download setup file</b> gives the setup alone; <b>Open setup file</b> (online: <i>Import a setup</i>) brings
-it back, in place of the open setup.  Online, everyone with the access code shares one setup, and it goes back to
+<p><b>Export › Download setup file</b> gives the setup alone; <b>Open setup file</b>, in the menu under the
+configurator's name (on the start page: <i>Import a setup</i>), brings it back, in place of the open setup.  Online, everyone with the access code shares one setup, and it goes back to
 the example when the Studio restarts: download it to keep your work.</p>
 
 <h2>5. Deploy it</h2>
 <ol>
-<li><b>Download full package</b>: the engine and your setup, in one folder.</li>
+<li><b>Export › Download full package</b>: the engine and your setup, in one folder.</li>
 <li>On your computer, in that folder, run <code>python -m studio prepare</code>.  It checks the folder (Validate,
 what git must leave out, anything that looks like a key) and prints the git commands; it never runs them.</li>
 <li>Run those commands: they make a private GitHub repository with your system.</li>

@@ -679,7 +679,7 @@ def slots(P, pack_origin: dict, roles: dict, order: dict | None = None) -> list:
                 variants.append({"agent": ag, "values": v,
                                  "linked": (folder / f"{slot}@{ag}.md").is_file()})
         out.append({
-            "slot": slot, "origin": pack_origin.get(slot, "dc"),
+            "slot": slot, "title": spec.get("title", ""), "origin": pack_origin.get(slot, "dc"),
             "owner": claims.get(slot),
             "kind": spec["kind"], "runtime": spec.get("use") == "runtime",
             "section": spec.get("section", "other"), "order": order.get(slot, 999),

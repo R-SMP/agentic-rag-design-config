@@ -27,16 +27,16 @@ agents that hold its <b>roles</b>; the code does only the configurator's own wor
 <ul>
 <li><b>Helper</b>: one plain Python function the agents call, for example to draw a diagram of an attempt.  It
 returns the text the agent reads.</li>
-<li><b>Generator</b>: builds the design from an attempt's <code>parameters.json</code> (its model file), then makes
-its pictures.  The agents' main tool; a setup has one.</li>
-<li><b>Geometry tool</b>: builds the model from the parameters for a generator (its <i>geometry tool</i> setting)
-and for the web app's Download buttons.  The engine calls it; an agent never does.</li>
+<li><b>Generator</b> (the Studio's <i>model builder</i>): builds the design from an attempt's
+<code>parameters.json</code> (its model file), then makes its pictures.  The agents' main tool; a setup has one.</li>
+<li><b>Geometry tool</b> (the Studio's <i>download builder</i>): builds the model from the parameters for a
+generator (its <i>geometry tool</i> setting) and for the web app's Download buttons.  The engine calls it; an agent never does.</li>
 </ul>
 
 <h2>Start one</h2>
 <p>In the Studio, <b>Tools › New tool</b> starts a tool from a template of its kind (each a small working starter),
 as a copy of a tool, or from a CAD file (see <a href="openscad-models.html">OpenSCAD models</a>).  Then change its
-code in its <i>Files</i> tab, its manifest in <i>Manifest</i> (a form) or <i>tool.yaml</i>, and its texts in
+code in its <i>Files</i> tab, its manifest in <i>Tool details</i> (a form) or <i>tool.yaml</i>, and its texts in
 <i>Prompt texts</i>.  Every change to a manifest is checked by the engine before it is saved.</p>
 
 <h2>The code</h2>

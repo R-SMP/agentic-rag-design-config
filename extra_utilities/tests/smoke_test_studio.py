@@ -23,7 +23,8 @@ page and its one call (``POST /api/get_all``) are checked:
    not count as a change.
 6. GENERIC.  The page names no configurator (its words come from the
    setup), and the Studio draft's data builder uses the Studio's functions
-   instead of copies of them.
+   instead of copies of them.  Every text field the Studio shows has a plain
+   title in the slot registry, and no title names a configurator either.
 
 Since MAS-blueprint P5b the prompt viewer shows any choice of the settings
 that change what an agent sees (``POST /api/view``):
@@ -567,6 +568,12 @@ def check_generic() -> None:
              "_settings_values", "_tools", "_tool_settings", "_where", "_env_names"}
     check("from studio import engine_view" in src and not (defs & moved),
           f"[GENERIC] the draft builder keeps its own copies: {sorted(defs & moved)}")
+    shown = {k: v for k, v in pack.registry().items() if v.get("source") == "pack" and v.get("section")}
+    untitled = sorted(k for k, v in shown.items() if not str(v.get("title") or "").strip())
+    check(not untitled, f"[GENERIC] Studio text fields without a plain title (engine/slot_registry.yaml): {untitled}")
+    named = sorted(k for k, v in shown.items()
+                   if any(w in str(v.get("title") or "").lower() for w in ("propeller", "blade", "impeller", "hose", "airfoil")))
+    check(not named, f"[GENERIC] titles that name a configurator: {named}")
 
 
 # ---------------------------------------------------------------------------

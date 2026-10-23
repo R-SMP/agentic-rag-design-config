@@ -203,12 +203,12 @@ class Editor:
         with self._lock:
             spec, rel, folder, name = self._field(data, slot, agent)
             if agent is None and spec.get("missing") == "empty":
-                raise EditError(f"${slot} has no shared text: give an agent its own copy.")
+                raise EditError(f"${slot} has no shared text: give an agent its own version.")
             files = field_files(folder, name)
             linked = "md" in files or (not files and "all" in values)
             if set(values) - ({"all"} if linked else set(self._topologies_of(data, agent))):
-                raise Conflict("This field's files changed since the page read them "
-                               "(linked / unlinked).  Reload the page.")
+                raise Conflict("This text's files changed since the page read them (the same for all "
+                               "team sizes, or different per team size).  Reload the page.")
             targets = {k: (folder / f"{name}.md" if k == "all" else folder / f"{name}.t{k}.md")
                        for k in values}
             stale = [k for k, p in targets.items()
@@ -260,11 +260,11 @@ class Editor:
         """Give *agent* its own copy of *slot*, starting from the text it
         reads now (so no prompt changes); empty for a per-agent-only field."""
         if not agent:
-            raise EditError("Name the agent that gets its own copy.")
+            raise EditError("Name the agent that gets its own version.")
         with self._lock:
             spec, rel, folder, name = self._field(data, slot, agent)
             if field_files(folder, name):
-                raise Conflict(f"{agent} already has its own copy.  Reload the page.")
+                raise Conflict(f"{agent} already has its own version.  Reload the page.")
             shared = field_files(folder, slot)
             if spec.get("missing") == "empty" or not shared:
                 (folder / f"{name}.md").write_bytes(b"")
@@ -280,12 +280,12 @@ class Editor:
     def remove_copy(self, data: dict, slot: str, agent: str) -> None:
         """Remove *agent*'s own copy: it reads the shared text again."""
         if not agent:
-            raise EditError("Name the agent whose own copy goes.")
+            raise EditError("Name the agent whose own version goes.")
         with self._lock:
             spec, rel, folder, name = self._field(data, slot, agent)
             files = field_files(folder, name)
             if not files:
-                raise Conflict(f"{agent} has no own copy any more.  Reload the page.")
+                raise Conflict(f"{agent} has no own version any more.  Reload the page.")
             for path in files.values():
                 path.unlink()
 

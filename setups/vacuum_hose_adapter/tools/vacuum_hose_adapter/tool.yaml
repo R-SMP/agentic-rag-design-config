@@ -1,5 +1,5 @@
 # Vacuum hose adapter: a generator made by the Studio from the OpenSCAD model
-# vacuum-hose-adapter.scad (MAS-blueprint P6f).  It builds the model from an attempt's
+# vacuum-hose-adapter.scad.  It builds the model from an attempt's
 # parameters.json, then the engine's renderer makes its pictures.
 name: vacuum_hose_adapter
 display_name: Vacuum hose adapter

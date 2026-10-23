@@ -1,5 +1,5 @@
 # Vacuum hose adapter geometry: a geometry tool made by the Studio from the OpenSCAD model
-# vacuum-hose-adapter.scad (MAS-blueprint P6f), with a copy of the model of its own.  It
+# vacuum-hose-adapter.scad, with a copy of the model of its own.  It
 # builds the model from the parameters for the Download buttons (and a
 # generator's geometry tool setting); never for an agent.
 name: vacuum_hose_adapter_geometry

@@ -63,7 +63,7 @@
   var INTRO = {
     identity: 'What the configurator is called and how the agents introduce it.',
     description: 'What the configurator builds, how its parameters behave, what it can and cannot do. Long text blocks, mostly read by the agents that write and check parameters.',
-    outputs: 'What the generator produces and the words the agents use for it.',
+    outputs: 'What the model builder produces and the words the agents use for it.',
     examples: 'Short examples spliced INTO generic sentences. Each one is a phrase: keep it on one line and keep its shape (parentheses, quotes, a leading comma).',
     inputs: 'How the agents treat a sketch or reference image the user uploads.',
     primer: 'One picture and its text that show what the parameters mean, sent with every call to the agents you tick here, between their instructions and the conversation.'
@@ -306,29 +306,36 @@
   /* ======================================================================
    * the Studio shell: toolbar / banner / 3 columns / status bar
    * ==================================================================== */
+  // What the setup's chip says (it was a banner across the page).
+  function setupNote() {
+    return SESSION.online
+      ? 'Editing the shared online setup: everyone with the access code sees the same one. Each change saves on its own, and Undo puts it back as it was when the Studio started. ' +
+        'It is not kept when the Studio restarts: use Export › Download setup file to keep your work.'
+      : 'Editing the setup in ' + D.pack_dir + ': each text, parameter, group, access cell, tool and setting saves on its own, straight to its files, and Undo puts it back as it was when the Studio opened. ' +
+        'Test tool runs a tool on a throw-away folder: nothing in the setup changes.';
+  }
   function renderStudio(app) {
     var tb = h('div', { 'class': 'toolbar' }, [
       h('span', { 'class': 'title', style: 'cursor:pointer', onclick: function () { go('landing'); } }, 'MAS Studio'),
-      h('span', { 'class': 'pack', title: D.pack_dir }, ['setup: ', h('b', null, D.pack.name), ' · ' + D.pack_dir.split(/[\\/]/).pop() + '/']),
-      SESSION.online ? pill('online', 'mode-hosted', 'The online Studio: one shared setup for everyone with the access code')
-        : pill('local', 'mode-local', 'python -m studio on this computer'),
+      dropdown(['▣ ', h('b', null, D.pack.name), ' ▾'], [
+        { label: 'Open setup file…', title: 'Open a setup file made with the Studio: it replaces this setup.', run: askOpen },
+        D.starts && D.starts.length ? { label: 'Start from a configurator…', title: 'Replace this setup with one of the configurators.', run: askStart } : null,
+        { note: 'Folder: ' + D.pack_dir }], { title: 'The configurator you are editing.' }),
+      h('button', { 'class': 'pill ' + (SESSION.online ? 'mode-hosted' : 'mode-local'), title: setupNote(), onclick: function () {
+        showModal(SESSION.online ? 'Shared online setup' : 'A setup on this computer',
+          h('p', { style: 'margin:0;font-size:12.5px;line-height:1.55;max-width:640px' }, setupNote()), [h('button', { 'class': 'primary', onclick: closeModal }, 'OK')]);
+      } }, SESSION.online ? 'Shared online ⓘ' : 'On this computer ⓘ'),
       h('span', { 'class': 'grow' }),
-      h('a', { 'class': 'btn', href: 'static/guide.html', target: '_blank', rel: 'noopener', title: 'How to make the setup yours, check it and deploy it.' }, 'Guide'),
       h('button', { title: 'Run every check of the setup.', onclick: function () { go('studio', 'validate'); startValidate(); } },
         ['Validate ', h('span', { id: 'valTop' }, valBadge())]),
-      h('button', { title: 'Open a setup file made with the Studio: it replaces this setup.', onclick: askOpen }, 'Open setup file…'),
-      h('button', { title: 'The setup alone, to open again later.', onclick: function () { askDownload('setup'); } }, 'Download setup file'),
-      h('button', { 'class': 'primary', title: 'The engine and this setup, ready to deploy.', onclick: function () { askDownload('package'); } }, 'Download full package'),
-      h('span', { 'class': 'sep' }),
-      h('button', { disabled: !(D.prepare && D.prepare.available), onclick: askPrepare,
-        title: D.prepare && D.prepare.available ? 'Check this folder and get the commands that put it on GitHub. Nothing is committed.' : (D.prepare && D.prepare.why) || '' },
-        'Prepare for GitHub')
+      dropdown('Export ▾', [
+        { label: 'Download setup file', title: 'The setup alone, to open again later.', run: function () { askDownload('setup'); } },
+        { label: 'Download full package', title: 'The engine and this setup, ready to deploy.', run: function () { askDownload('package'); } },
+        { label: 'Prepare for GitHub…', disabled: !(D.prepare && D.prepare.available), run: askPrepare,
+          title: D.prepare && D.prepare.available ? 'Check this folder and get the commands that put it on GitHub. Nothing is committed.' : (D.prepare && D.prepare.why) || '' }],
+        { cls: 'primary', right: true, title: 'Download the setup or the full package, or prepare it for GitHub.' }),
+      h('a', { 'class': 'btn', href: 'static/guide.html', target: '_blank', rel: 'noopener', title: 'How to make the setup yours, check it and deploy it.' }, 'Guide')
     ]);
-    var banner = h('div', { 'class': 'banner info' }, SESSION.online
-      ? 'Editing the shared online setup: everyone with the access code sees the same one. Each change saves on its own, and Undo puts it back as it was when the Studio started. ' +
-        'It is not kept when the Studio restarts: use Download setup file to keep your work.'
-      : 'Editing the setup in ' + D.pack_dir + ': each text field, parameter, group, access cell, tool and setting saves on its own, straight to its files, and Undo puts it back as it was when the Studio opened. ' +
-        'Test tool runs a tool on a throw-away folder: nothing in the setup changes.');
     var left = h('div', { 'class': 'col side', id: 'colLeft', style: 'width:250px' }, renderNav());
     var center = h('div', { 'class': 'col center', id: 'center' });
     var right = h('div', { 'class': 'col side', id: 'colRight', style: 'width:380px' });
@@ -339,7 +346,7 @@
       h('span', { 'class': 'msg ' + STATUS.cls, id: 'statusMsg', title: STATUS.text }, STATUS.text),
       h('span', { id: 'unsavedCount' }, unsavedPill())
     ]);
-    add(app, h('div', { id: 'appShell', style: 'display:flex;flex-direction:column;height:100vh' }, [tb, banner, main, sb]));
+    add(app, h('div', { id: 'appShell', style: 'display:flex;flex-direction:column;height:100vh' }, [tb, main, sb]));
 
     var sec = R.section;
     if (sec === 'parameters') renderParams(center, right);
@@ -352,6 +359,37 @@
     else if (sec === 'outputs') renderOutputs(center, right);
     else renderGridSection(center, right, sec);
     initSplitters();
+    showRight(right.childNodes.length > 0);
+    fitAll();
+  }
+  // The right-hand column, hidden while it has nothing to show (a text page
+  // before a text is picked).  True when it changed.
+  function showRight(on) {
+    var r = el('colRight'), bar = doc.querySelector('.splitter[data-target="colRight"]');
+    if (!r || (r.style.display !== 'none') === on) return false;
+    r.style.display = on ? '' : 'none';
+    if (bar) bar.style.display = on ? '' : 'none';
+    return true;
+  }
+  function closeInspector() { go(R.page, R.section, withQ({ field: null, agent: null })); }
+  // A button that opens a short menu under it; a click anywhere else, or Esc, closes it.
+  function dropdown(label, items, o) {
+    o = o || {};
+    var wrap = h('span', { 'class': 'dd' + (o.right ? ' right' : '') });
+    add(wrap, [h('button', { 'class': o.cls || null, title: o.title || null, onclick: function (e) {
+        e.stopPropagation();
+        var open = !wrap.classList.contains('open');
+        closeMenus();
+        if (open) wrap.classList.add('open');
+      } }, label),
+      h('div', { 'class': 'ddmenu' }, items.filter(function (it) { return it; }).map(function (it) {
+        if (it.note) return h('div', { 'class': 'ddnote' }, it.note);
+        return h('button', { disabled: !!it.disabled, title: it.title || null, onclick: function (e) { e.stopPropagation(); closeMenus(); it.run(); } }, it.label);
+      }))]);
+    return wrap;
+  }
+  function closeMenus() {
+    Array.prototype.forEach.call(doc.querySelectorAll('.dd.open'), function (x) { x.classList.remove('open'); });
   }
 
   function renderNav() {
@@ -384,69 +422,86 @@
   function renderGridSection(center, right, sec) {
     var meta = SECTIONS.filter(function (s) { return s.id === sec; })[0] || { label: sec };
     add(center, head(meta.label, INTRO[sec], [legendGrid()]));
-    var list = slotsOf(sec);
-    add(center, grid(list));
-    var sel = R.q.field ? slotByName(R.q.field) : list[0];
-    add(right, sel ? inspectField(sel) : h('div', { 'class': 'insp empty' }, 'Select a field.'));
+    add(center, grid(slotsOf(sec)));
+    var sel = R.q.field ? slotByName(R.q.field) : null;
+    if (sel) add(right, inspectField(sel));
   }
   function legendGrid() {
     return h('div', { 'class': 'legend' }, [
-      h('span', null, [h('span', { 'class': 'link on' }, '🔗 linked'), ' one text for every team size that uses it']),
-      h('span', null, [h('span', { 'class': 'link off' }, '⛓ unlinked'), ' one text per team size (orange outline)']),
-      h('span', null, [h('span', { 'class': 'na', style: 'font-style:italic;color:#5f6470' }, 'not used'), ' this team never reads this field'])
+      h('span', null, [h('span', { 'class': 'link on' }, 'Same for all team sizes'), ' one text, one box']),
+      h('span', null, [h('span', { 'class': 'link off' }, 'Different per team size'), ' a text per team, side by side']),
+      h('span', null, 'Click a title for its help and the sentences it lands in.')
     ]);
   }
+  // The Studio's plain words for a field (the prompts keep their own).
+  var KIND_WORDS = { block: 'long text', phrase: 'phrase', word: 'word' };
+  function titleOf(s) { return s.title || s.slot; }
+  // ['5', '7'] -> 'teams of 5 and 7'
+  function teamsText(ts) {
+    ts = ts.slice().sort();
+    return ts.length === 1 ? 'team of ' + ts[0] : 'teams of ' + ts.slice(0, -1).join(', ') + ' and ' + ts[ts.length - 1];
+  }
   function grid(list) {
-    var g = h('div', { 'class': 'tgrid' }, [
-      h('div', { 'class': 'gh' }, 'Field'),
-      h('div', { 'class': 'gh' }, '3-agent · ' + D.roles.roster['3'].length + ' agents'),
-      h('div', { 'class': 'gh' }, '5-agent · ' + D.roles.roster['5'].length + ' agents'),
-      h('div', { 'class': 'gh' }, '7-agent · ' + D.roles.roster['7'].length + ' agents')
-    ]);
+    var g = h('div', { 'class': 'tgrid' });
     list.forEach(function (s) {
       add(g, row(s, null));
       (s.variants || []).forEach(function (v) { add(g, row(s, v.agent)); });
     });
     return g;
   }
-  // One field's row: the shared text (agent null) or an agent's own copy.
+  // One field's row: the shared text (agent null) or an agent's own version.
+  // One text for every team size is one box; a text per team size is a
+  // column per team, side by side.  No box scrolls: each is as tall as its
+  // text, and a long one folds until it is opened (fitAll).
   function row(s, agent) {
     var st = stored(s, agent), key = fkey(s.slot, agent);
-    var multi = topoKeys(agent).length > 1;
+    var teams = topoKeys(agent).slice().reverse();          // 3, 5, 7
+    var multi = teams.length > 1;
     var unlinked = st.exists && !st.linked && multi;
     var selected = R.q.field === s.slot && (R.q.agent || null) === agent;
+    var readers = teams.filter(function (t) { return landsIn(s.slot, +t, agent); });
+    var unread = s.runtime || !whereRows(s.slot).length ? [] : teams.filter(function (t) { return readers.indexOf(t) < 0; });
     var r = h('div', { 'class': 'trow' + (agent ? ' sub' : '') + (unlinked ? ' unlinked' : '') + (selected ? ' sel' : '') +
       (EDITS[key] ? ' dirty' : ''), 'data-fk': key });
-    var label = h('div', { 'class': 'fl', onclick: function () { go('studio', R.section, withQ({ field: s.slot, agent: agent })); } }, [
-      h('span', { 'class': 'nm' }, agent ? '↳ ' + disp(agent) : s.slot),
-      h('span', { 'class': 'meta' }, agent ? [kpill('own copy for this agent')] : [
-        kpill(s.kind), kpill(s.origin === 'tool' ? 'tool' : 'DC', s.origin === 'tool' ? 'tool' : 'dc'),
-        s.owner ? kpill('owned by ' + ownerName(s.owner)) : null, s.runtime ? kpill('read by the app') : null]),
-      h('span', { 'class': 'meta' }, [st.exists && multi ? linkButton(s, agent) : null]),
+    add(r, h('div', { 'class': 'fl', onclick: function () { go('studio', R.section, withQ({ field: s.slot, agent: agent })); } }, [
+      h('span', { 'class': 'ttl' }, agent ? '↳ Version for ' + disp(agent) + (multi ? '' : ' (' + teamsText(teams) + ')') : titleOf(s)),
+      agent || !s.title ? null : h('span', { 'class': 'nm' }, s.slot),
+      agent ? null : h('span', { 'class': 'meta' }, [kpill(KIND_WORDS[s.kind] || s.kind),
+        kpill(s.origin === 'tool' ? 'tool text' : 'configurator text', s.origin === 'tool' ? 'tool' : 'dc'),
+        s.owner ? kpill('belongs to ' + ownerName(s.owner)) : null, s.runtime ? kpill('read by the app') : null]),
+      st.exists && multi ? h('span', { 'class': 'meta' }, linkButton(s, agent)) : null,
+      !unlinked && unread.length && unread.length < teams.length ? h('span', { 'class': 'unread' }, 'not read by the ' + teamsText(unread)) : null,
+      h('span', { 'class': 'grow' }),
       h('div', { 'class': 'racts', 'data-racts': key }, rowActions(s, agent))
-    ]);
-    add(r, label);
-    ['3', '5', '7'].forEach(function (t) {
-      var c = h('div', { 'class': 'cell' });
-      if (agent && !inRoster(agent, t)) c.appendChild(h('div', { 'class': 'na' }, 'no ' + disp(agent) + ' in this team'));
-      else if (!st.exists) c.appendChild(h('div', { 'class': 'na' }, 'no shared text: an agent reads its own copy, or nothing'));
-      else {
-        var v = cellText(s, agent, t);
-        if (v === null || v === undefined) c.appendChild(inheritedCell(s, agent, t));
-        else c.appendChild(field(s, agent, st.linked ? 'all' : t, t, v));
-      }
-      add(r, c);
-    });
+    ]));
+    if (!st.exists) {
+      add(r, h('div', { 'class': 'cells one' }, h('div', { 'class': 'cell' },
+        h('div', { 'class': 'na' }, 'No text for every agent here: an agent reads its own version, or nothing.'))));
+      return r;
+    }
+    if (!unlinked) {
+      var t0 = teams[teams.length - 1], v0 = cellText(s, agent, t0);
+      add(r, h('div', { 'class': 'cells one' }, h('div', { 'class': 'cell' }, v0 === null || v0 === undefined
+        ? inheritedCell(s, agent, t0)
+        : field(s, agent, st.linked ? 'all' : t0, t0, v0, !s.runtime && !readers.length ? 'not used: no team reads this text' : null))));
+      return r;
+    }
+    add(r, h('div', { 'class': 'cells ' + (teams.length === 2 ? 'two' : 'three') }, teams.map(function (t) {
+      var v = cellText(s, agent, t), read = readers.indexOf(t) >= 0;
+      return h('div', { 'class': 'cell' }, [h('div', { 'class': 'ch' }, 'Team of ' + t + (unread.indexOf(t) >= 0 ? ' · not read' : '')),
+        v === null || v === undefined ? inheritedCell(s, agent, t)
+          : field(s, agent, t, t, v, !s.runtime && !read ? 'not used: this team never reads this text' : null)]);
+    })));
     return r;
   }
   function linkButton(s, agent) {
     var st = stored(s, agent), dirty = !!EDITS[fkey(s.slot, agent)];
     return h('button', { 'class': 'link ' + (st.linked ? 'on' : 'off'), disabled: dirty || BUSY,
       title: dirty ? 'Save or discard the change first.' : st.linked
-        ? 'Linked: one file for every team size. Click to unlink: each team gets a file of its own, holding this text (no prompt changes).'
-        : 'Unlinked: one file per team size. Click to link: you choose which text every team keeps.',
+        ? 'One text, one file, for every team size. Click to make it different per team size: each team gets a copy of this text to change on its own (no prompt changes).'
+        : 'A text per team size. Click to make it the same for all: you choose which text every team keeps.',
       onclick: function (ev) { ev.stopPropagation(); if (st.linked) unlinkField(s, agent); else askLink(s, agent); } },
-      st.linked ? '🔗 linked' : '⛓ unlinked');
+      st.linked ? 'Same for all team sizes' : 'Different per team size');
   }
   // Save / Discard while the field has an unsaved change; Undo once it differs from the opened setup.
   function rowActions(s, agent) {
@@ -456,42 +511,73 @@
       var problems = problemsOf(s, agent);
       return [problems.length ? pill(problems.length + (problems.length === 1 ? ' problem' : ' problems'), 'bad', problems.join('\n')) : null,
         h('button', { 'class': 'primary mini', disabled: BUSY || problems.length > 0,
-          title: problems.length ? 'Fix the problems first (see the inspector).' : 'Write this field to its files.',
+          title: problems.length ? 'Fix the problems first (see the side panel).' : 'Write this text to its files.',
           onclick: stop(function () { saveField(s, agent); }) }, 'Save'),
         h('button', { 'class': 'mini', title: 'Forget the unsaved change.', onclick: stop(function () { discardField(s, agent); }) }, 'Discard')];
     }
     if (isChanged(s.slot, agent)) {
       return [pill('changed', 'warn', 'Changed since the Studio opened.'),
-        h('button', { 'class': 'mini', disabled: BUSY, title: 'Put this field back as it was when the Studio opened.',
+        h('button', { 'class': 'mini', disabled: BUSY, title: 'Put this text back as it was when the Studio opened.',
           onclick: stop(function () { undoField(s, agent); }) }, 'Undo')];
     }
     return [];
   }
-  // A topology without a file of its own for this field: what it reads instead.
+  // A team without a file of its own for this field: what it reads instead.
   function inheritedCell(s, agent, t) {
     var from = readsFrom(s, agent, t);
     return h('div', { 'class': 'inh' }, [
       h('div', { 'class': 'na' }, from.label),
       h('button', { 'class': 'mini', disabled: BUSY,
-        title: 'Give the ' + t + '-agent team a file of its own, starting from the text it reads now.',
+        title: 'Give the team of ' + t + ' its own text, starting from the text it reads now.',
         onclick: function (ev) { ev.stopPropagation(); giveOwnText(s, agent, t, from.text); } }, 'Give it its own text')]);
   }
-  // a field's text, editable
-  function field(s, agent, k, t, v) {
-    var key = fkey(s.slot, agent), lines = (v || '').split('\n').length;
-    var a = { spellcheck: 'false', 'data-fk': key, 'data-k': k, 'data-t': t,
-      placeholder: v === '' && !landsIn(s.slot, +t, agent) ? 'not used: this team never reads this field' : null,
-      oninput: function (e) { onEdit(s, agent, k, e.target.value, e.target); },
-      onfocus: function () { selectField(s, agent); } };
+  // a field's text, editable; *ph*: what it says while empty
+  function field(s, agent, k, t, v, ph) {
+    var key = fkey(s.slot, agent);
+    var a = { spellcheck: 'false', 'data-fk': key, 'data-k': k, 'data-t': t, placeholder: v === '' ? ph || null : null,
+      oninput: function (e) { onEdit(s, agent, k, e.target.value, e.target); fitText(e.target); },
+      onfocus: function (e) { selectField(s, agent); openText(e.target); } };
     if (s.kind !== 'block') a.onkeydown = function (e) { if (e.key === 'Enter') e.preventDefault(); };
-    if (s.kind === 'block') { a.rows = Math.max(2, Math.min(6, lines)); return h('textarea', a, v); }
-    if (s.kind === 'phrase') {
-      a['class'] = 'phrase';
-      a.rows = Math.max(1, Math.min(4, Math.ceil((v || '').length / 34)));
-      return h('textarea', a, v);
-    }
-    a.type = 'text'; a.value = v;
-    return h('input', a);
+    if (s.kind === 'word') { a.type = 'text'; a.value = v; return h('input', a); }
+    a['class'] = 'grow ' + s.kind;
+    a.rows = 1;
+    return h('textarea', a, v);
+  }
+  // A text box is as tall as its text; a long one shows FOLD_LINES lines and
+  // a "Show all" until it is opened (OPENED) or focused.  fitAll writes every
+  // box, reads them all, then writes them: one layout for the page.
+  var FOLD_LINES = 12, OPENED = {};
+  function textId(ta) { return ta.getAttribute('data-fk') + '|' + ta.getAttribute('data-t'); }
+  function fitAll() {
+    var tas = Array.prototype.slice.call(doc.querySelectorAll('textarea.grow'));
+    tas.forEach(function (ta) { ta.style.height = 'auto'; });
+    var full = tas.map(function (ta) { return ta.scrollHeight; });
+    var lh = tas.length ? parseFloat(root.getComputedStyle(tas[0]).lineHeight) || 20 : 20;
+    tas.forEach(function (ta, i) { setHeight(ta, full[i], lh); });
+  }
+  function fitText(ta) {
+    if (!ta || !ta.classList || !ta.classList.contains('grow')) return;
+    ta.style.height = 'auto';
+    setHeight(ta, ta.scrollHeight, parseFloat(root.getComputedStyle(ta).lineHeight) || 20);
+  }
+  function setHeight(ta, full, lh) {
+    var cap = Math.round(lh * FOLD_LINES) + 14;
+    var fold = !OPENED[textId(ta)] && full > cap + 2 * lh;
+    ta.style.height = (fold ? cap : full + 2) + 'px';
+    ta.classList.toggle('folded', fold);
+    var next = ta.nextSibling, more = next && next.classList && next.classList.contains('more') ? next : null;
+    if (fold) {
+      if (!more) {
+        more = h('button', { 'class': 'more mini', onclick: function (ev) { ev.stopPropagation(); openText(ta); } });
+        ta.parentNode.insertBefore(more, ta.nextSibling);
+      }
+      more.textContent = 'Show all · ' + Math.round((full - 12) / lh) + ' lines';
+    } else if (more) more.parentNode.removeChild(more);
+  }
+  function openText(ta) {
+    if (!ta.classList.contains('grow') || OPENED[textId(ta)]) return;
+    OPENED[textId(ta)] = 1;
+    fitText(ta);
   }
 
   function hints(s, v) {
@@ -516,21 +602,23 @@
     var problems = dirty ? problemsOf(s, agent) : [];
     var empty = dirty && editTexts(s, agent).some(function (x) { return cleanText(s.slot, x) === ''; });
     var box = h('div', { 'class': 'insp' }, [
-      h('div', { 'class': 'title' }, s.slot + (agent ? '  @' + agent : '')),
-      h('div', { 'class': 'pills' }, [kpill(s.kind), kpill(s.origin === 'tool' ? 'tool text' : 'DC text', s.origin === 'tool' ? 'tool' : 'dc'),
-        s.owner ? kpill('owned by ' + ownerName(s.owner)) : null, s.runtime ? kpill('read by the app') : null,
-        !st.exists ? kpill('no shared text') : st.linked ? kpill('linked 3·5·7') : kpill('per team size'),
+      h('div', { 'class': 'ihead' }, [h('div', { 'class': 'ftitle' }, titleOf(s) + (agent ? ' · ' + disp(agent) + '’s version' : '')),
+        h('button', { 'class': 'mini', title: 'Close this panel.', onclick: closeInspector }, '✕')]),
+      h('div', { 'class': 'mono muted', style: 'font-size:11px;margin:-2px 0 8px;word-break:break-all' }, s.slot + (agent ? '  @' + agent : '')),
+      h('div', { 'class': 'pills' }, [kpill(KIND_WORDS[s.kind] || s.kind), kpill(s.origin === 'tool' ? 'tool text' : 'configurator text', s.origin === 'tool' ? 'tool' : 'dc'),
+        s.owner ? kpill('belongs to ' + ownerName(s.owner)) : null, s.runtime ? kpill('read by the app') : null,
+        !st.exists ? kpill('no shared text') : st.linked ? kpill('same for all team sizes') : kpill('different per team size'),
         dirty ? pill('unsaved', 'warn') : null, isChanged(s.slot, agent) ? pill('changed since opened', 'warn') : null]),
       h('p', null, s.description || h('span', { 'class': 'muted' }, 'No description in the slot registry yet.')),
       h('div', { 'class': 'block' }, [h('h4', null, 'Checks')].concat(
         err ? [h('div', { 'class': 'banner bad boxed' }, [h('div', null, err.error)].concat(
           err.problems.map(function (p) { return h('div', null, '• ' + p); }),
           err.conflict ? [h('div', { style: 'margin-top:6px' }, h('button', { 'class': 'mini', disabled: BUSY,
-            onclick: function () { reloadField(s, agent); } }, 'Reload this field'))] : []))] : [],
+            onclick: function () { reloadField(s, agent); } }, 'Reload this text'))] : []))] : [],
         !dirty ? [h('p', { 'class': 'muted' }, 'No unsaved change.')] :
           problems.length ? [h('ul', { 'class': 'checks bad' }, problems.map(function (p) { return h('li', null, ['✗', h('span', null, p)]); }))] :
           [h('ul', { 'class': 'checks good' }, [h('li', null, ['✓', h('span', null, 'No problems: it can be saved.')])])],
-        empty ? [h('ul', { 'class': 'checks warn' }, [h('li', null, ['!', h('span', null, 'The text is empty: the agents that read this field get nothing here.')])])] : [])),
+        empty ? [h('ul', { 'class': 'checks warn' }, [h('li', null, ['!', h('span', null, 'The text is empty: the agents that read it get nothing here.')])])] : [])),
       h('div', { 'class': 'block' }, [h('h4', null, 'Shape'), h('ul', { 'class': 'checks' }, hints(s, cur).map(function (x) { return h('li', null, ['•', h('span', null, x)]); }))]),
       s.runtime ? h('div', { 'class': 'block' }, [h('h4', null, 'Where it is read'),
         h('p', { 'class': 'muted' }, s.slot === D.primer.text_slot ? PRIMER_WHERE : 'By the app’s code, not by a $name in a prompt text: in a tool’s description or answer, the tool runner’s list, the parameter primer or the web page — the description above says which.  So the sentences it lands in are not traced here.')]) :
@@ -540,22 +628,22 @@
         rows.slice(0, 5).map(function (r) { return whereCard(r, s, liveValue(s, agent, r)); }),
         rows.length > 5 ? [h('div', { 'class': 'muted', style: 'font-size:11.5px' }, '+ ' + (rows.length - 5) + ' more')] : [])),
       h('div', { 'class': 'block' }, [h('h4', null, 'Stored as'), h('div', { 'class': 'mono', style: 'font-size:11.5px;color:#b9bec8;white-space:pre-line' },
-        files.length ? files.join('\n') : 'no file: ' + (agent ? 'this agent has no copy' : 'no shared text'))]),
+        files.length ? files.join('\n') : 'no file: ' + (agent ? 'this agent has no version' : 'no shared text'))]),
       ownCopies(s, agent),
       isChanged(s.slot, agent) && !dirty ? h('div', { 'class': 'block' }, [h('h4', null, 'Undo'),
-        h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, 'Puts this field’s files back exactly as they were when the Studio opened.'),
+        h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, 'Puts this text’s files back exactly as they were when the Studio opened.'),
         h('button', { disabled: BUSY, onclick: function () { undoField(s, agent); } }, 'Undo: back to as opened')]) : null
     ]);
     return box;
   }
-  // Own copies: from the shared text, give an agent one; from a copy, remove it.
+  // An agent's own version: from the shared text, give an agent one; from a version, remove it.
   function ownCopies(s, agent) {
     if (agent) {
-      return h('div', { 'class': 'block' }, [h('h4', null, 'Own copy'),
-        h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, disp(agent) + ' reads this copy instead of the shared text. Remove it and it reads the shared text again.'),
+      return h('div', { 'class': 'block' }, [h('h4', null, 'Version for this agent'),
+        h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, disp(agent) + ' reads this version instead of the shared text. Remove it and it reads the shared text again.'),
         h('button', { 'class': 'danger', disabled: BUSY || !!EDITS[fkey(s.slot, agent)],
           title: EDITS[fkey(s.slot, agent)] ? 'Save or discard the change first.' : null,
-          onclick: function () { askRemoveCopy(s, agent); } }, 'Remove own copy')]);
+          onclick: function () { askRemoveCopy(s, agent); } }, 'Remove this version')]);
     }
     var have = (s.variants || []).map(function (v) { return v.agent; });
     var readers = {};
@@ -566,16 +654,16 @@
     var free = Object.keys(all).filter(function (a) { return have.indexOf(a) < 0; })
       .sort(function (a, b) { return (readers[b] || 0) - (readers[a] || 0) || (disp(a) < disp(b) ? -1 : 1); });
     var btn = h('button', { disabled: BUSY || !free.length, onclick: function () { giveCopy(s, sel.value); } },
-      free.length ? 'Give ' + disp(free[0]) + ' its own copy' : 'Every agent has its own copy');
-    var sel = h('select', { disabled: BUSY || !free.length, onchange: function () { btn.textContent = 'Give ' + disp(sel.value) + ' its own copy'; } },
+      free.length ? 'Give ' + disp(free[0]) + ' its own version' : 'Every agent has its own version');
+    var sel = h('select', { disabled: BUSY || !free.length, onchange: function () { btn.textContent = 'Give ' + disp(sel.value) + ' its own version'; } },
       free.map(function (a) { return h('option', { value: a }, disp(a) + (readers[a] ? '' : ' · does not read it now')); }));
-    return h('div', { 'class': 'block' }, [h('h4', null, 'Own copies · ' + have.length),
+    return h('div', { 'class': 'block' }, [h('h4', null, 'Versions for one agent · ' + have.length),
       have.length ? h('div', { style: 'margin-bottom:6px' }, have.map(function (a) {
         return h('a', { 'class': 'kpill', style: 'display:inline-block;margin:2px;text-decoration:none', href: link('studio', R.section, withQ({ field: s.slot, agent: a })) }, disp(a));
       })) : null,
       h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, isOverlay(s)
-        ? 'This field has no shared text: an agent without a copy gets nothing here. A new copy starts empty.'
-        : 'An agent with its own copy reads it instead of the shared text. A new copy starts from the text the agent reads now, so no prompt changes until you edit it.'),
+        ? 'This text has no shared version: an agent without a version of its own gets nothing here. A new version starts empty.'
+        : 'An agent with its own version reads it instead of the shared text. A new version starts from the text the agent reads now, so no prompt changes until you edit it.'),
       h('div', { 'class': 'row2' }, [sel, btn])]);
   }
   function whereCard(r, s, live) {
@@ -689,8 +777,8 @@
     if (!path) return { label: 'no text: this team reads nothing here', text: '' };
     var m = /^(.*?)(?:@([a-z0-9_]+))?(?:\.t(\d+))?\.md$/.exec(path.split('/').pop());
     var who = m[2] || null, n = m[3] || null;
-    if (who === agent) return { label: 'uses the ' + (n ? n + '-agent' : 'linked') + ' text', text: stored(s, agent).values[n || t] || '' };
-    return { label: 'uses the shared text' + (n ? ' (its ' + n + '-agent file)' : ''), text: s.values[n || t] || '' };
+    if (who === agent) return { label: n ? 'uses the team-of-' + n + ' text' : 'uses the text for all team sizes', text: stored(s, agent).values[n || t] || '' };
+    return { label: 'uses the shared text' + (n ? ' (its team-of-' + n + ' text)' : ''), text: s.values[n || t] || '' };
   }
   // the agents (with their topologies) of a where-row that read the SHARED text there
   function sharedReaders(slot, r) {
@@ -735,7 +823,7 @@
     setEdit(s, agent, k, text);
     delete FIELD_ERRORS[key];
     // a linked field: every place that shows it shows the one text
-    if (k === 'all') Array.prototype.forEach.call(doc.querySelectorAll('[data-fk="' + key + '"][data-k="all"]'), function (x) { if (x !== src) x.value = text; });
+    if (k === 'all') Array.prototype.forEach.call(doc.querySelectorAll('[data-fk="' + key + '"][data-k="all"]'), function (x) { if (x !== src) { x.value = text; fitText(x); } });
     refreshField(s, agent);
   }
   // redraw what depends on a field's unsaved text without touching the inputs
@@ -768,13 +856,13 @@
     Array.prototype.forEach.call(doc.querySelectorAll('.trow[data-fk="' + fkey(s.slot, agent) + '"], tr[data-fk="' + fkey(s.slot, agent) + '"]'),
       function (x) { x.classList.add('sel'); });
     var right = el('colRight');
-    if (right) { right.innerHTML = ''; add(right, inspectField(s)); }
+    if (right) { right.innerHTML = ''; add(right, inspectField(s)); if (showRight(true)) fitAll(); }
   }
   function unsavedKeys() {
     return Object.keys(EDITS).map(function (k) { return k.replace('|', ' @').replace(/ @$/, ''); })
       .concat(Object.keys(PEDITS).map(function (k) { return 'parameter ' + (PEDITS[k].name || k); }))
       .concat(Object.keys(GEDITS).map(function (k) { return 'group ' + (GEDITS[k].label || k); }))
-      .concat(Object.keys(TEDITS).map(function (k) { return 'manifest of ' + k; }))
+      .concat(Object.keys(TEDITS).map(function (k) { return 'tool details of ' + k; }))
       .concat(Object.keys(FEDITS).map(function (k) { return 'file ' + k; }));
   }
   function unsavedPill() {
@@ -786,7 +874,7 @@
     var m = el('statusMsg');
     if (m) { m.textContent = text; m.title = text; m.className = 'msg ' + (cls || ''); }
   }
-  function label(s, agent) { return '$' + s.slot + (agent ? ' (' + disp(agent) + '’s copy)' : ''); }
+  function label(s, agent) { return '“' + titleOf(s) + '”' + (agent ? ' (' + disp(agent) + '’s version)' : ''); }
 
   /* -- the changes -------------------------------------------------------------- */
   // Re-read the setup (the engine re-assembles every prompt) and redraw.
@@ -865,7 +953,7 @@
   }
   function unlinkField(s, agent) {
     change('unlink_field', [s.slot, agent], fkey(s.slot, agent),
-      'Unlinked ' + label(s, agent) + ': each team has a file of its own now, holding the same text (no prompt changed).');
+      'Made ' + label(s, agent) + ' different per team size: each team now has its own text, all starting the same (no prompt changed).');
   }
   function askLink(s, agent) {
     var st = stored(s, agent);
@@ -876,15 +964,15 @@
       h('div', null, keys.map(function (t) {
         return h('label', { 'class': 'pick' }, [
           h('input', { type: 'radio', name: 'keep', value: t, checked: t === choice, onchange: function () { choice = t; } }),
-          h('span', null, [h('b', null, 'the ' + t + '-agent text'), h('div', { 'class': 'refval', style: 'margin-top:4px' }, st.values[t] || '(empty)')])]);
+          h('span', null, [h('b', null, 'the team-of-' + t + ' text'), h('div', { 'class': 'refval', style: 'margin-top:4px' }, st.values[t] || '(empty)')])]);
       }))]);
-    showModal('Link ' + label(s, agent), body, [
+    showModal('Make ' + label(s, agent) + ' the same for all team sizes', body, [
       h('button', { onclick: closeModal }, 'Cancel'),
       h('button', { 'class': 'primary', onclick: function () {
         closeModal();
         change('link_field', [s.slot, agent, choice], fkey(s.slot, agent),
-          'Linked ' + label(s, agent) + ': every team reads the ' + choice + '-agent text.');
-      } }, 'Link')]);
+          label(s, agent) + ' is the same for all team sizes now: every team reads the team-of-' + choice + ' text.');
+      } }, 'Make it the same')]);
   }
   function giveOwnText(s, agent, t, text) {
     var key = fkey(s.slot, agent), e = EDITS[key] || {};
@@ -894,21 +982,21 @@
     render();
     var n = doc.querySelector('[data-fk="' + key + '"][data-t="' + t + '"]');
     if (n) n.focus();
-    status('The ' + t + '-agent team gets a file of its own when you save ' + label(s, agent) + '.', '');
+    status('The team of ' + t + ' gets its own text when you save ' + label(s, agent) + '.', '');
   }
   function giveCopy(s, agent) {
-    change('own_copy', [s.slot, agent], fkey(s.slot, agent), 'Gave ' + disp(agent) + ' its own copy of $' + s.slot + '.');
+    change('own_copy', [s.slot, agent], fkey(s.slot, agent), 'Gave ' + disp(agent) + ' its own version of ' + label(s, null) + '.');
     root.history.replaceState(null, '', link(R.page, R.section, withQ({ field: s.slot, agent: agent })));
   }
   function askRemoveCopy(s, agent) {
-    showModal('Remove ' + disp(agent) + '’s own copy', h('p', { style: 'margin:0;font-size:12.5px;line-height:1.5' },
+    showModal('Remove ' + disp(agent) + '’s version', h('p', { style: 'margin:0;font-size:12.5px;line-height:1.5' },
       'Its file' + (((D.files[s.slot] || {})[agent] || []).length > 1 ? 's go' : ' goes') + ' and ' + disp(agent) +
-      (isOverlay(s) ? ' gets nothing here again.' : ' reads the shared text $' + s.slot + ' again.') + ' Undo puts the field back as it was when the Studio opened.'), [
+      (isOverlay(s) ? ' gets nothing here again.' : ' reads the shared text ' + label(s, null) + ' again.') + ' Undo puts the field back as it was when the Studio opened.'), [
       h('button', { onclick: closeModal }, 'Cancel'),
       h('button', { 'class': 'danger', onclick: function () {
         closeModal();
         root.history.replaceState(null, '', link(R.page, R.section, withQ({ field: s.slot, agent: null })));
-        change('remove_copy', [s.slot, agent], fkey(s.slot, agent), 'Removed ' + disp(agent) + '’s own copy of $' + s.slot + '.');
+        change('remove_copy', [s.slot, agent], fkey(s.slot, agent), 'Removed ' + disp(agent) + '’s version of ' + label(s, null) + '.');
       } }, 'Remove')]);
   }
 
@@ -926,7 +1014,7 @@
    * Outputs & vocabulary
    * ==================================================================== */
   var VOCAB_RULES = [
-    ['output_model', 'noun', 'the model the generator builds'], ['output_model_label', 'Model + " file"', 'hand-off label'],
+    ['output_model', 'noun', 'the model that is built'], ['output_model_label', 'Model + " file"', 'hand-off label'],
     ['output_image', 'noun', 'one output image'], ['output_images', 'plural', '+s'],
     ['output_image_caps', 'CAPITALS', 'emphasis'], ['output_produced', 'past participle', '+ed'],
     ['output_images_long', 'participle + "images"', 'long form'], ['output_image_files', 'participle + "PNGs"', 'files'],
@@ -950,7 +1038,7 @@
       var key = fkey(s.slot, null);
       add(tb, h('tr', { 'class': (R.q.field === s.slot && !R.q.agent ? 'sel' : '') + (EDITS[key] ? ' dirty' : ''), 'data-fk': key, style: 'cursor:pointer',
         onclick: function () { go('studio', 'outputs', withQ({ field: s.slot, agent: null })); } }, [
-        h('td', null, h('span', { 'class': 'pname' }, s.slot)),
+        h('td', null, [h('div', null, titleOf(s)), h('div', { 'class': 'pname', style: 'font-size:10.5px;color:#7d8390' }, s.slot)]),
         h('td', { style: 'width:190px' }, [vocabInput(s.slot, 'v'), h('div', { 'class': 'racts', 'data-racts': key }, rowActions(s, null))]),
         h('td', { 'class': 'muted', style: 'font-size:11.5px;width:160px' }, vr[1]),
         h('td', { style: 'font-size:11.5px;color:#b9bec8', html: sent })
@@ -965,7 +1053,7 @@
     var rest = slotsOf('outputs').filter(function (s) { return !inTable[s.slot] || !stored(s, null).linked || (s.variants || []).length; });
     add(center, h('div', { style: 'padding:14px 16px 4px' }, h('h4', null, 'What the inspector checks in the images')));
     add(center, grid(rest));
-    var sel = slotByName(R.q.field || 'output_images') || slotsOf('outputs')[0];
+    var sel = R.q.field ? slotByName(R.q.field) : null;
     if (sel) add(right, inspectField(sel));
   }
   // a vocabulary word, editable where it is one linked text
@@ -2002,7 +2090,7 @@
   var TEDITS = {};          // unsaved manifests from the form: tool -> manifest
   var FEDITS = {};          // unsaved file texts: tool/path -> text
   var FILES = {}, FILE_LOADING = {};   // files read from the server: tool/path -> {text, sha, size}
-  var TOOL_TABS = [['form', 'Manifest'], ['yaml', 'tool.yaml'], ['files', 'Files'], ['texts', 'Prompt texts'], ['test', 'Test']];
+  var TOOL_TABS = [['form', 'Tool details'], ['yaml', 'tool.yaml'], ['files', 'Files'], ['texts', 'Prompt texts'], ['test', 'Test']];
   function TE() { return D.tools_edit; }
   function toolState(name) { return (TE().tools || {})[name] || null; }
   function manifestOf(name) { return TEDITS[name] || toolState(name).manifest; }
@@ -2035,11 +2123,13 @@
     return parts.length ? parts.join(' · ') : 'nothing declared';
   }
 
+  // The Studio's words for a tool's kind (tool.yaml keeps generator / geometry / helper).
+  var KIND_LABEL = { generator: 'model builder', geometry: 'download builder', helper: 'helper' };
   function renderTools(center, right) {
     if (R.q.tool && toolState(R.q.tool)) { renderToolEditor(center, right, R.q.tool); return; }
-    add(center, head('Tools', 'The functions your agents call to build and look at a design. Each tool is a plain Python function, or an OpenSCAD model the engine runs, plus a manifest: what it is, which role may call it, what it produces, and the text the agents read about it.', [
+    add(center, head('Tools', 'The functions your agents call to build and look at a design. Each tool is a plain Python function, or an OpenSCAD model the engine runs, plus its tool details: what it is, who can call it, what it produces, and the text the agents read about it.', [
       h('a', { 'class': 'btn', href: 'static/write-a-tool.html', target: '_blank', rel: 'noopener',
-        title: 'How a tool is made: its kinds, its manifest, its code, its pictures and texts.' }, 'Write a tool ↗'),
+        title: 'How a tool is made: its kinds, its details, its code, its pictures and texts.' }, 'Write a tool ↗'),
       h('button', { 'class': 'primary', disabled: BUSY, onclick: askNewTool }, '+ New tool')]));
     add(center, importBanner());
     add(center, scadDrop());
@@ -2050,7 +2140,7 @@
       var first = t.description.split('\n\n')[0].replace(/\s+/g, ' ');
       var settings = info.settings.length ? info.settings.join(', ') : 'none';
       add(wrap, h('div', { 'class': 'tcard' }, [
-        h('div', { 'class': 'head' }, [h('span', { 'class': 'n' }, t.name), pill(t.display), kpill(t.kind === 'generator' ? 'generator · primary' : t.kind),
+        h('div', { 'class': 'head' }, [h('span', { 'class': 'n' }, t.name), pill(t.display), kpill(KIND_LABEL[t.kind] || t.kind),
           st.changed ? pill(st.opened ? 'changed' : 'added', 'warn', 'Changed since the Studio opened.') : null,
           h('span', { 'class': 'grow' }),
           st.changed ? h('button', { disabled: BUSY, title: st.opened ? 'Put this tool back as it was when the Studio opened.' : 'Remove this tool, made since the Studio opened.',
@@ -2061,17 +2151,19 @@
         h('div', { 'class': 'd' }, first),
         h('div', { 'class': 'grid2' }, [
           h('div', { 'class': 'k' }, 'Called by'), h('div', null, t.kind === 'geometry'
-            ? 'the engine, never an agent: the generator’s geometry tool setting, the Download buttons'
+            ? 'the engine, never an agent: the model builder and the Download buttons'
             : info.roles.map(function (r) { return roleLabel(r) + ': ' + rolesLine(r); }).join('; ') || 'no role'),
           h('div', { 'class': 'k' }, 'Produces'), h('div', null, produces(info)),
           h('div', { 'class': 'k' }, 'Settings'), h('div', null, (info['switch'] ? 'an on/off switch · ' : '') + settings),
           h('div', { 'class': 'k' }, 'Secrets'), h('div', null, (t.secrets || []).length ? t.secrets.map(function (s) { return s.env + (s.required ? ' (required)' : ''); }).join(', ') : 'none'),
           h('div', { 'class': 'k' }, 'Prompt text'), h('div', null, t.kind === 'geometry' ? 'none (no agent reads about it)'
             : t.owns.length + ' fields it owns (they leave with it) + its entry in the tool runner’s numbered list, place ' + t.list_order),
-          h('div', { 'class': 'k' }, 'Code'), h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  manifest tools/' + t.name + '/tool.yaml')
+          h('div', { 'class': 'k' }, 'Code'), h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  details tools/' + t.name + '/tool.yaml')
         ])
       ]));
     });
+    if (!D.tools.length && !(TE().removed || []).length) add(wrap, h('div', { 'class': 'empty' },
+      'No tools yet: drop an OpenSCAD model (.scad) above, or press + New tool.'));
     (TE().removed || []).forEach(function (name) {
       add(wrap, h('div', { 'class': 'tcard gone' }, h('div', { 'class': 'head' }, [h('s', { 'class': 'n' }, name), h('span', { 'class': 'muted' }, ' · removed since the Studio opened'),
         h('span', { 'class': 'grow' }), h('button', { disabled: BUSY, onclick: function () { undoTool(name); } }, 'Undo')])));
@@ -2085,7 +2177,7 @@
       h('h4', null, 'How tools reach the agents'),
       h('p', null, 'A tool is bound to a ROLE, not to an agent. The engine gives it to whichever agent holds that role in the running team.'),
       h('div', { 'class': 'block' }, [h('h4', null, 'tool runner'), h('div', { 'class': 'kv', style: 'grid-template-columns:70px 1fr' },
-        [3, 5, 7].reduce(function (acc, t) { var a = holder('tool_caller', t); return acc.concat([h('div', { 'class': 'k' }, t + '-agent'), h('div', null, a ? disp(a) : '—')]); }, []))]),
+        [3, 5, 7].reduce(function (acc, t) { var a = holder('tool_caller', t); return acc.concat([h('div', { 'class': 'k' }, 'Team of ' + t), h('div', null, a ? disp(a) : '—')]); }, []))]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Text the agents read about tools'), h('p', null, 'Each tool owns the text about it: ' +
         D.tools.reduce(function (n, t) { return n + t.owns.length; }, 0) + ' fields live in the tools’ own folders, and the tool runner’s numbered tool list is built from each tool’s entry. Removing a tool removes its text; a marked passage about it elsewhere reads as switched off.')])
     ]));
@@ -2094,14 +2186,14 @@
   /* -- one tool --------------------------------------------------------------- */
   function renderToolEditor(center, right, name) {
     var st = toolState(name), m = st.manifest || {}, tab = R.q.tab || 'form';
-    add(center, head('Tool · ' + (m.display_name || name), name + ' · ' + (m.kind || '?') + (st.opened ? '' : ' · added since the Studio opened'), [
+    add(center, head('Tool · ' + (m.display_name || name), name + ' · ' + (KIND_LABEL[m.kind] || m.kind || '?') + (st.opened ? '' : ' · added since the Studio opened'), [
       h('button', { onclick: function () { go('studio', 'tools', {}); } }, '← All tools'),
       h('span', { 'class': 'seg' }, TOOL_TABS.map(function (tb) {
         return h('button', { 'class': tb[0] === tab ? 'on' : '', onclick: function () { go('studio', 'tools', { tool: name, tab: tb[0] }); } }, tb[1]);
       }))]));
     var body = h('div', { 'class': 'teditor' });
     if (tab === 'yaml') add(body, fileEditor(name, 'tool.yaml', 28,
-      'The whole manifest as text. A Save is checked by the engine first: a manifest it would refuse is not written.'));
+      'The tool’s details as text (tool.yaml). A Save is checked by the engine first: details it would refuse are not written.'));
     else if (tab === 'files') add(body, filesTab(name));
     else if (tab === 'texts') add(body, textsTab(name));
     else if (tab === 'test') add(body, testTab(name));
@@ -2114,7 +2206,7 @@
     var changed = st.files.filter(function (f) { return f.changed && !f.prompts; });
     return h('div', { 'class': 'insp' }, [
       h('div', { 'class': 'title' }, name),
-      h('div', { 'class': 'pills' }, [kpill(m.kind || '?'), st.changed ? pill(st.opened ? 'changed since opened' : 'added since opened', 'warn') : null]),
+      h('div', { 'class': 'pills' }, [kpill(KIND_LABEL[m.kind] || m.kind || '?'), st.changed ? pill(st.opened ? 'changed since opened' : 'added since opened', 'warn') : null]),
       m.kind !== 'geometry' ? h('div', { 'class': 'block' }, [h('h4', null, 'Called by'), h('p', null,
         (m.roles || []).map(function (r) { return roleLabel(r) + ': ' + rolesLine(r); }).join('; ') || 'no role')]) : null,
       h('div', { 'class': 'block' }, [h('h4', null, 'Changed since the Studio opened · ' + (changed.length + st.gone_files.length)),
@@ -2161,14 +2253,14 @@
     }
     var rows = [];
     rows = rows.concat([h('div', { 'class': 'k' }, 'Name'), h('div', { 'class': 'mono' }, name + '  (the folder’s name)'),
-      h('div', { 'class': 'k' }, 'Kind'), h('div', null, m.kind)]);
+      h('div', { 'class': 'k' }, 'Kind'), h('div', null, KIND_LABEL[m.kind] || m.kind)]);
     rows = rows.concat(field('Display name', ['display_name'], 'line', 'The flowchart’s and the log’s label.'));
     rows = rows.concat(field('Description', ['description'], 'text', 'What the LLM reads about the tool (its schema description).'));
     Object.keys(m.args || {}).forEach(function (a) { rows = rows.concat(field('Argument · ' + a, ['args', a], 'text')); });
     var parts = [h('div', { 'class': 'kv mform' }, rows)];
     if (m.kind !== 'geometry') {
       var roles = m.roles || [];
-      parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'Roles that may call it'),
+      parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'Who can call it'),
         h('div', { 'class': 'rolechecks' }, toolRoles().map(function (r) {
           var on = roles.indexOf(r.role) >= 0;
           return h('label', { 'class': 'vchk' }, [h('input', { type: 'checkbox', checked: on, 'data-fk': key, 'data-t': 'roles.' + r.role, onchange: function (e) {
@@ -2217,7 +2309,7 @@
         }))]),
       h('button', { 'class': 'mini', onclick: function () {
         setv(['secrets'], (manifestOf(name).secrets || []).concat([{ env: '', required: false, description: '' }])); render(); } }, '+ Add a secret')]));
-    parts.push(h('p', { 'class': 'muted hint', style: 'margin:10px 0' }, 'Everything else (the code it runs, outputs, prompt slots, the fields revision 2 adds) is edited in the tool.yaml tab.'));
+    parts.push(h('p', { 'class': 'muted hint', style: 'margin:10px 0' }, 'Everything else (the code it runs, its outputs and its prompt texts) is edited in the tool.yaml tab.'));
     if (err) parts.push(h('div', { 'class': 'banner bad boxed' }, [h('div', null, err.error)].concat(err.problems.map(function (p) { return h('div', null, '• ' + p); }))));
     parts.push(h('div', { 'class': 'tacts', id: 'toolActs' }, formActions(name)));
     return h('div', { 'class': 'mformwrap' }, parts);
@@ -2226,7 +2318,7 @@
     if (!TEDITS[name]) return [h('span', { 'class': 'muted' }, 'No unsaved change.')];
     return [h('button', { 'class': 'primary', disabled: BUSY, onclick: function () {
         var desired = TEDITS[name];
-        change('save_manifest', [name, desired, toolState(name).sha], 'tool|' + name, 'Saved ' + name + '’s manifest.', function () {
+        change('save_manifest', [name, desired, toolState(name).sha], 'tool|' + name, 'Saved ' + name + '’s tool details.', function () {
           if (JSON.stringify(TEDITS[name]) === JSON.stringify(desired)) delete TEDITS[name];
         });
       } }, 'Save'),
@@ -2322,7 +2414,7 @@
     var owned = (m.prompt_slots || []).filter(function (s) { return slotByName(s); });
     return h('div', null, [
       h('div', { 'class': 'block', style: 'padding:0 16px' }, [h('h4', null, 'Its entry in the tool runner’s numbered tool list'),
-        entries.length ? null : h('p', { 'class': 'muted' }, m.kind === 'geometry' ? 'None: no agent is given a geometry tool.' : 'None: only a tool the tool runner calls has one.')]),
+        entries.length ? null : h('p', { 'class': 'muted' }, m.kind === 'geometry' ? 'None: no agent is given a download builder.' : 'None: only a tool the tool runner calls has one.')]),
     ].concat(entries.map(function (f) { return fileEditor(name, f.path, 6, 'Checked like a text field: no braces, only $names the engine knows, closed <<markers>>.'); }), [
       h('div', { 'class': 'block', style: 'padding:0 16px' }, [h('h4', null, 'The text fields it owns · ' + owned.length),
         h('p', { 'class': 'muted hint' }, 'They live in its prompts/ folder and leave with it; each is edited in its section, like every text field.'),
@@ -2333,8 +2425,8 @@
   /* -- New tool (P6c-2) ---------------------------------------------------------- */
   var NEW_KINDS = [
     ['helper', 'Helper', 'one function the tool runner calls with an attempt’s parameters.json; its answer is a text for the agent.'],
-    ['generator', 'Generator', 'builds the model from an attempt’s parameters.json, then makes its pictures.'],
-    ['geometry', 'Geometry tool', 'builds the model from the parameters, for a generator and the Download buttons; no agent calls it.']];
+    ['generator', 'Model builder', 'builds the model from an attempt’s parameters.json, then makes its pictures.'],
+    ['geometry', 'Download builder', 'builds the model from the parameters, for a model builder and the Download buttons; no agent calls it.']];
   function askNewTool() {
     if (BUSY) return;
     var tools = Object.keys(TE().tools), mode = 'template', kind = 'helper', src = tools[0];
@@ -2361,8 +2453,8 @@
         h('div', { 'class': 'muted hint' }, NEW_KINDS.map(function (k) { return k[1] + ': ' + k[2]; }).join(' '))]),
       radio('copy', 'A copy of a tool', !tools.length, [h('div', null, h('select', { onchange: function (e) { src = e.target.value; } },
         tools.map(function (t) { return h('option', { value: t }, t); }))),
-        h('div', { 'class': 'muted hint' }, 'Its manifest and code under the new name. Its texts stay with the original, its pictures and model file get names of their own, a helper’s function is renamed after the copy.')]),
-      radio('adapter', 'An adapter (a Grasshopper definition on a compute server, a Node script, an HTTP endpoint)', true, [h('div', { 'class': 'muted hint' }, 'Not yet: a later step (TODO F124).')]),
+        h('div', { 'class': 'muted hint' }, 'Its details and code under the new name. Its texts stay with the original, its pictures and model file get names of their own, a helper’s function is renamed after the copy.')]),
+      radio('adapter', 'An adapter (a Grasshopper definition on a compute server, a Node script, an HTTP endpoint)', true, [h('div', { 'class': 'muted hint' }, 'Not available yet.')]),
       radio('cad', 'A CAD file (an OpenSCAD model, .scad)', false, [h('div', { 'class': 'muted hint' }, 'Choose the file next: the Studio reads its settings and shows what each one becomes, and how to import it, before anything is written.  You can also drop a .scad file on the Tools page.')]),
       msg, scadPicker]);
     showModal('New tool', body, [h('button', { onclick: closeModal }, 'Cancel'),
@@ -2514,13 +2606,13 @@
         'The model uses other files (' + f.includes.join(', ') + '): only the model file is copied; add them to the tool’s folder afterwards (Files).')] : [])
         .concat(f.notes.map(function (n) { return h('div', null, n); }))) : null,
       h('h4', null, 'How to import it'),
-      radio('new', 'Start a new configurator', 'The model becomes the setup’s generator and its geometry tool for the Download buttons, each with a copy of the file.  Its parameters replace today’s ' +
+      radio('new', 'Start a new configurator', 'The model becomes the setup’s model builder and its download builder, each with a copy of the file.  Its parameters replace today’s ' +
         su.parameters.length + ', the agents’ parameter lists are written new, and the picture samples become one, the defaults.' +
         (gone.length ? '  These tools go: ' + gone.join(', ') + '.' : '') + (su.helpers.length ? '  These stay: ' + su.helpers.join(', ') + '.' : '') +
         (su.preview ? '  The browser preview (preview/) goes too: it draws today’s model; the Parameters page’s Preview button builds the new one on the server.' : '') +
         '  The texts stay as they are, for you to adapt, and no agent gets the primer until you give it this model’s picture and text.'),
-      radio('add', 'Add it as one more tool', (su.add_as === 'generator' ? 'It becomes the setup’s generator (the setup has none).'
-        : 'It becomes a geometry tool beside ' + su.generators.join(', ') + ': a generator’s geometry tool setting, or the Download buttons, can use it.') +
+      radio('add', 'Add it as one more tool', (su.add_as === 'generator' ? 'It becomes the setup’s model builder (the setup has none).'
+        : 'It becomes a download builder beside ' + su.generators.join(', ') + ': a model builder’s setting, or the Download buttons, can use it.') +
         '  Its parameters join today’s ' + su.parameters.length + ', the agents’ lists and the picture samples get them too.'),
       clash.length ? h('div', { 'class': 'banner bad boxed' }, 'The setup has parameters of these names already: ' + clash.join(', ') +
         '.  Leave those settings to the model, or start a new configurator.') : null,
@@ -2704,7 +2796,7 @@
       h('p', { 'class': 'muted hint' }, 'Runs the tool the way the system calls it — ' + (m.kind === 'geometry' ? 'as the engine builds a model' : 'as the tool runner calls it, with an attempt’s parameters.json') +
         ' — in a process of its own, on a throw-away attempt folder. Nothing in the setup changes. It stops after 180 s.'),
       h('div', { 'class': 'kv mform' }, [h('div', { 'class': 'k' }, 'Parameter values'), h('div', null, srcSel)]),
-      h('details', { 'class': 'vtool' }, [h('summary', null, 'The values (' + Object.keys(T.values).length + ')'), table]),
+      h('details', { 'class': 'vtool editvals' }, [h('summary', null, 'Edit the values (' + Object.keys(T.values).length + ')'), table]),
       settings.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Its settings for this run'), h('div', { 'class': 'kv mform' }, [].concat.apply([], settings))]) : null,
       h('div', { 'class': 'tacts' }, [h('button', { 'class': 'primary', disabled: T.running, onclick: function () { runTest(name); } }, T.running ? 'Running…' : 'Run the test'),
         T.report ? h('span', { 'class': 'muted' }, 'The last run is shown below.') : null])];
@@ -2732,7 +2824,7 @@
         mism.length ? pill(mism.length + (mism.length === 1 ? ' mismatch' : ' mismatches'), 'warn') : null]),
       rep.answer ? h('div', { 'class': 'block' }, [h('h4', null, rep.kind === 'geometry' ? 'What it made' : 'What the agent gets'), h('pre', { 'class': 'log' }, rep.answer)]) : null,
       rep.error ? h('div', { 'class': 'block' }, [h('h4', null, 'Error'), h('pre', { 'class': 'log err' }, rep.error)]) : null,
-      mism.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Mismatches with the manifest · ' + mism.length),
+      mism.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Mismatches with the tool details · ' + mism.length),
         h('ul', { 'class': 'checks warn' }, mism.map(function (x) { return h('li', null, ['!', h('span', null, x)]); }))]) : null,
       pics.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Pictures · ' + pics.length), h('div', { 'class': 'tpics' }, pics.map(function (p) {
         return h('figure', null, [p.png ? h('img', { src: 'data:image/png;base64,' + p.png, alt: p.label }) : h('div', { 'class': 'muted' }, 'too large to show'),
@@ -2806,11 +2898,11 @@
     add(center, primerPicture(P));
     add(center, primerGrid(P));
     add(center, h('div', { style: 'padding:12px 16px 0' }, [h('h4', null, 'Its text'),
-      h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Sent before the picture. An agent can have its own copy (the ↳ rows): give it one in the field’s inspector.')]));
+      h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Sent before the picture. An agent can have its own version (the ↳ rows): give it one in the text’s side panel.')]));
     var list = slotsOf('primer');
     add(center, grid(list));
-    var sel = R.q.field ? slotByName(R.q.field) : list[0];
-    add(right, sel ? inspectField(sel) : h('div', { 'class': 'insp empty' }, 'Select a field.'));
+    var sel = R.q.field ? slotByName(R.q.field) : null;
+    if (sel) add(right, inspectField(sel));
     primerDragTarget(center);
   }
   function primerPicture(P) {
@@ -2850,15 +2942,16 @@
           return h('td', { 'class': now !== then ? 'chg' : null, title: now !== then ? (then ? 'Got it' : 'Did not get it') + ' when the Studio opened.' : null },
             h('label', { 'class': 'vchk' }, [h('input', { type: 'checkbox', checked: now, disabled: BUSY || P.problems.length > 0, onchange: function (e) {
               change('set_primer_agent', [r.agent, k, e.target.checked, PRE().pack_yaml_sha], 'primer',
-                r.name + ', ' + k + '-agent: ' + (e.target.checked ? 'gets the primer' : 'no primer') + ' (saved to pack.yaml).'); } })]));
-        }), [h('td', { 'class': 'muted', style: 'font-size:11.5px' }, r.copies.length ? 'its own copy (' + r.copies.slice().sort().join(', ') + '-agent)' : 'the shared text')])));
+                r.name + ', team of ' + k + ': ' + (e.target.checked ? 'gets the primer' : 'no primer') + ' (saved to pack.yaml).'); } })]));
+        }), [h('td', { 'class': 'muted', style: 'font-size:11.5px' }, r.copies.length ? 'its own version (' + teamsText(r.copies) + ')' : 'the shared text')])));
     });
     return h('div', null, [
       h('div', { 'class': 'phead', style: 'padding:12px 16px 0' }, [h('h4', null, 'Who gets it'), h('span', { 'class': 'grow' }),
         changed ? h('button', { 'class': 'mini', disabled: BUSY, title: 'Every agent back as it was when the Studio opened.', onclick: function () {
           change('undo_primer', ['agents'], 'primer', 'Who gets the primer is back as it was when the Studio opened.'); } }, 'Undo') : null]),
+      primerCells() ? null : h('p', { 'class': 'muted', style: 'font-size:11.5px;margin:4px 16px 0' }, 'No agent gets the primer yet: tick the agents below.'),
       h('table', { 'class': 'ptab', style: 'margin:6px 16px;width:calc(100% - 32px)' }, [h('thead', null, h('tr', null,
-        ['Agent', '3-agent', '5-agent', '7-agent', 'Its text'].map(function (x) { return h('th', null, x); }))), tb]),
+        ['Agent', 'Team of 3', 'Team of 5', 'Team of 7', 'Its text'].map(function (x) { return h('th', null, x); }))), tb]),
       h('p', { 'class': 'muted', style: 'font-size:11.5px;margin:0 16px' }, 'Any agent but the Database Handler, which only saves the session. Each agent pays the picture’s and the text’s tokens with every call (cached with its instructions).')]);
   }
   function uploadPrimer(file) {
@@ -2890,7 +2983,7 @@
       h('p', { 'class': 'muted' }, ['None: this agent is not ticked on the ', h('a', { href: link('studio', 'primer') }, 'Primer page'), '.'])]);
     var parts = [];
     if (p.picture) parts.push('the picture, ' + p.picture.width + ' × ' + p.picture.height + ' px (~' + fmt(p.picture.tokens) + ' tokens)');
-    if (p.text) parts.push((p.own_copy ? 'its own copy of the text' : 'the text') + ' (' + fmt(p.text_tokens) + ' tokens)');
+    if (p.text) parts.push((p.own_copy ? 'its own version of the text' : 'the text') + ' (' + fmt(p.text_tokens) + ' tokens)');
     return h('div', { 'class': 'block' }, [h('h4', null, 'Primer · before the conversation'),
       h('p', { style: 'font-size:11.5px' }, ['+ ', parts.join(' and '), ', with every call (', h('a', { href: link('studio', 'primer') }, 'Primer page'), ').']),
       p.enabled ? null : h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Workflow Settings › DC_PARAMS_PRIMER_ENABLED is off: not sent while it is.'),
@@ -2904,7 +2997,7 @@
     var PA = D.parameter_access, opened = PE().access_opened || {};
     add(center, head('Agent access', 'Who sees the parameter list, and how: one choice per agent and team size (a cell exists only where the agent does). Click a choice to save it: this is the setup’s default (pack.yaml); Workflow Settings can still change it for the next session.'));
     var t = h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, h('thead', null, h('tr', null,
-      ['Agent', '3-agent', '5-agent', '7-agent', ''].map(function (x) { return h('th', null, x); }))));
+      ['Agent', 'Team of 3', 'Team of 5', 'Team of 7', ''].map(function (x) { return h('th', null, x); }))));
     var tb = h('tbody');
     PA.rows.forEach(function (r) {
       var then = opened[r.agent] || {};
@@ -2920,7 +3013,7 @@
               return h('button', { 'class': o.id === st ? 'on' : '', disabled: BUSY, title: o.label, onclick: function () {
                 if (o.id === st) return;
                 change('set_access', [r.agent, k, o.id, PE().pack_yaml_sha], 'access',
-                  r.name + ', ' + k + '-agent: ' + o.label.toLowerCase() + ' (saved to pack.yaml).');
+                  r.name + ', team of ' + k + ': ' + o.label.toLowerCase() + ' (saved to pack.yaml).');
               } }, o.short); })));
         }), [h('td', { 'class': 'racts' }, rowChanged ? h('button', { 'class': 'mini', disabled: BUSY, title: 'Put this row back as it was when the Studio opened.',
           onclick: function () { change('undo_access', [r.agent], 'access', r.name + '’s row is back as it was when the Studio opened.'); } }, 'Undo') : null)])));
@@ -2936,7 +3029,7 @@
         h('div', { 'class': 'k' }, 'none'), h('div', null, 'neither')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Stored in'), h('p', null, 'The setup’s pack.yaml → parameter_access (the default). Workflow Settings › Parameter list access stores changed cells for the next session. The Database Handler cannot take “tool”.')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'See the effect'), h('p', null, 'The Prompt viewer’s “Changes since opened” shows each agent’s prompt against the setup as the Studio opened it.')]),
-      h('div', { 'class': 'block' }, [h('h4', null, 'Later'), h('p', { 'class': 'muted' }, 'Editing the role map itself (which agent holds which role) is TODO F102, not in this version.')])
+      h('div', { 'class': 'block' }, [h('h4', null, 'Roles'), h('p', { 'class': 'muted' }, 'Which agent holds which role comes with the team size: the Studio does not change it.')])
     ]));
   }
 
@@ -2975,7 +3068,7 @@
         var changed = it.opened !== undefined && it.opened !== it.value;
         function set(v) {
           if (v === it.value || BUSY) return;
-          if (TEDITS[name]) { status('Save or discard the unsaved changes in ' + name + '’s manifest form first.', 'err'); return; }
+          if (TEDITS[name]) { status('Save or discard the unsaved changes in ' + name + '’s tool details first.', 'err'); return; }
           var w = clone(st.manifest);
           setPath(w, it.path, v);
           change('save_manifest', [name, w, st.sha], 'tool|' + name, name + ': ' + it.name + ' now defaults to ' + String(v) + ' (saved to its tool.yaml).');
@@ -2992,6 +3085,8 @@
             onclick: function () { set(it.opened); } }, 'Undo') : null)]));
       });
     });
+    if (!rows.length) rows.push(h('tr', null, h('td', { colspan: 4, 'class': 'muted' },
+      'No tool has settings yet: a tool’s settings show here once its details declare some (Tools › Edit).')));
     add(center, h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, [
       h('thead', null, h('tr', null, ['Setting', 'Default', 'What it is', ''].map(function (x) { return h('th', null, x); }))),
       h('tbody', null, rows)]));
@@ -3006,7 +3101,7 @@
         return h('tr', null, [h('td', null, h('span', { 'class': 'pname' }, x.s.env)),
           h('td', null, h('a', { href: link('studio', 'tools', { tool: x.tool }) }, x.tool)), h('td', null, x.s.description),
           h('td', { 'class': x.s.required ? 'warn' : 'muted' }, x.s.required ? 'required' : 'optional')]);
-      }) : [h('tr', null, h('td', { colspan: 4, 'class': 'muted' }, 'None: a tool declares the variables it reads in its manifest (Tools › Edit › Secrets).'))])]));
+      }) : [h('tr', null, h('td', { colspan: 4, 'class': 'muted' }, 'None: a tool declares the variables it reads in its details (Tools › Edit › Secrets).'))])]));
     add(center, h('div', { style: 'padding:8px 16px 0' }, h('h4', null, 'Read by the engine · ' + D.env_vars.length)));
     add(center, h('table', { 'class': 'ptab', style: 'margin:6px 16px 20px;width:calc(100% - 32px)' }, [
       h('thead', null, h('tr', null, ['Variable', 'Needed for', 'Required'].map(function (x) { return h('th', null, x); }))),
@@ -3041,7 +3136,7 @@
                          KEEP_IMAGES_IN_CONTEXT: 'Keep images in context', CHAIN_ACCESS: 'Chain access', OCR_ENABLED: 'OCR' };
   var RAG_LABELS = { off: 'off', on: 'on', all: 'on, every database tool' };
   var TOKENS_NOTE = 'Counted with tiktoken cl100k_base, the engine’s own counter; other providers’ tokenizers differ by a few percent.';
-  var PRIMER_WHERE = 'With the primer’s picture, before the conversation, by the agents ticked on the Primer page — with every call; an agent with its own copy gets its copy.  Not by a $name in a prompt text, so the sentences it lands in are not traced here.';
+  var PRIMER_WHERE = 'With the primer’s picture, before the conversation, by the agents ticked on the Primer page — with every call; an agent with its own version gets its version.  Not by a $name in a prompt text, so the sentences it lands in are not traced here.';
   var VIEWS = {}, VIEW_ERRORS = {}, VIEW_PENDING = {};   // by choice
   // the same choice compared with the setup as the Studio opened it: by choice + agent
   var DIFFS = {}, DIFF_ERRORS = {}, DIFF_PENDING = {};
@@ -3112,7 +3207,7 @@
     bar.push(group('Settings', V.settings.map(function (s) {
       var value = c.settings[s.name] !== undefined ? c.settings[s.name] : s['default'];
       var inert = s.topologies.indexOf(topo) < 0;
-      var title = (inert ? 'Does nothing in the ' + topo + '-agent team. ' : '') + s.help;
+      var title = (inert ? 'Does nothing in the team of ' + topo + '. ' : '') + s.help;
       var set = function (v) { setChoice('s.' + s.name, v, s['default']); };
       return s.type === 'bool' ? vcheck(SETTING_LABELS[s.name] || s.name, value, set, inert, title)
                                : vselect(SETTING_LABELS[s.name] || s.name, s.values, value, set, inert, title);
@@ -3161,8 +3256,9 @@
     var diff = diffOf(choice, key, agent);
     add(center, h('div', { 'class': 'flow' }, flowchart(topo, agent, view, diff ? diff.changed_agents : [])));
     add(center, h('div', { style: 'padding:0 16px' }, h('div', { 'class': 'legend' }, [
-      h('span', null, [h('span', { 'class': 'sw gen' }), 'engine text (generic)']), h('span', null, [h('span', { 'class': 'sw dc' }), 'your DC text']),
+      h('span', null, [h('span', { 'class': 'sw gen' }), 'engine text (generic)']), h('span', null, [h('span', { 'class': 'sw dc' }), 'your configurator text']),
       h('span', null, [h('span', { 'class': 'sw tool' }), 'your tool text']), h('span', null, [h('span', { 'class': 'sw rt' }), 'filled in per session']),
+      h('span', { 'class': 'hintclick' }, 'Click a coloured part to open the text it came from.'),
       diff && diff.changed_agents.length ? h('span', null, [h('span', { 'class': 'sw chg' }), 'prompt changed since the Studio opened']) : null])));
     var text = view.prompts[agent], spans = view.spans[agent] || [], tools = view.tools[agent] || [];
     var pre = h('div', { 'class': 'prompt' });
@@ -3190,14 +3286,14 @@
     var col = { gen: '#4a4d57', dc: 'var(--a)', tool: 'var(--b)', rt: 'var(--c)' };
     var toolTokens = tools.reduce(function (n, t) { return n + t.tokens; }, 0);
     add(right, h('div', { 'class': 'insp' }, [
-      h('div', { 'class': 'title' }, disp(agent) + ' · ' + topo + '-agent team'),
+      h('div', { 'class': 'title' }, disp(agent) + ' · team of ' + topo),
       h('div', { 'class': 'pills', title: TOKENS_NOTE }, [kpill(fmt(text.length) + ' characters'), kpill(fmt(view.tokens[agent]) + ' tokens (cl100k)'),
         kpill(tools.length + ' tools · ' + fmt(toolTokens) + ' tokens')]),
       h('h4', null, 'Where the text comes from'),
       h('div', { 'class': 'stack' }, ['gen', 'dc', 'tool', 'rt'].map(function (k) { return h('div', { style: 'width:' + (100 * cnt[k] / text.length) + '%;background:' + col[k] }); })),
       h('div', { 'class': 'kv', style: 'grid-template-columns:120px 1fr;font-size:11.5px' }, [
         h('div', { 'class': 'k' }, 'engine (generic)'), h('div', null, Math.round(100 * cnt.gen / text.length) + ' %'),
-        h('div', { 'class': 'k' }, 'your DC text'), h('div', null, Math.round(100 * cnt.dc / text.length) + ' %'),
+        h('div', { 'class': 'k' }, 'your configurator text'), h('div', null, Math.round(100 * cnt.dc / text.length) + ' %'),
         h('div', { 'class': 'k' }, 'your tool text'), h('div', null, Math.round(100 * cnt.tool / text.length) + ' %'),
         h('div', { 'class': 'k' }, 'per session'), h('div', null, Math.round(100 * cnt.rt / text.length) + ' %')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Tools this agent is given · ' + tools.length),
@@ -3467,7 +3563,7 @@
    * ==================================================================== */
   var VAL = { state: null, polling: false };
   var VAL_PARTS = [['A', 'The setup loads', 'parameters.json, pack.yaml, every tool.yaml and every text, as the engine reads them'],
-    ['B', 'The prompts', 'every agent of the 3-, 5- and 7-agent teams, with the setup’s defaults and with every feature on'],
+    ['B', 'The prompts', 'every agent of the teams of 3, 5 and 7, with the setup’s defaults and with every feature on'],
     ['C', 'The parameter lists', 'each agent’s list names the parameters in order, with their ranges'],
     ['D', 'The tools', 'each one run on the parameters’ defaults, as Test tool runs it'],
     ['E', 'A scripted turn', 'one turn per team size with a fake model: no API cost'],
@@ -3619,7 +3715,7 @@
         var startX = ev.clientX, startW = target.getBoundingClientRect().width;
         bar.classList.add('drag');
         function move(e) { var dx = e.clientX - startX; target.style.width = Math.max(180, Math.min(640, side === 'left' ? startW + dx : startW - dx)) + 'px'; }
-        function up() { bar.classList.remove('drag'); doc.removeEventListener('mousemove', move); doc.removeEventListener('mouseup', up); }
+        function up() { bar.classList.remove('drag'); doc.removeEventListener('mousemove', move); doc.removeEventListener('mouseup', up); fitAll(); }
         doc.addEventListener('mousemove', move); doc.addEventListener('mouseup', up); ev.preventDefault();
       });
     });
@@ -3676,6 +3772,10 @@
     req('get_all').then(function (r) {
       D = r.data;
       root.addEventListener('hashchange', render);
+      doc.addEventListener('click', closeMenus);
+      doc.addEventListener('keydown', function (e) { if (e.key === 'Escape') closeMenus(); });
+      var fitTimer = null;
+      root.addEventListener('resize', function () { root.clearTimeout(fitTimer); fitTimer = root.setTimeout(fitAll, 120); });
       // an unsaved change is lost with the page: ask first
       root.addEventListener('beforeunload', function (e) {
         if (unsavedKeys().length) { e.preventDefault(); e.returnValue = ''; }
