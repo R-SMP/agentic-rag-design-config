@@ -506,3 +506,12 @@ details.simfold .simbar { display:flex; gap:6px; flex-wrap:wrap; align-items:cen
 .merged .mln { padding:0 4px; display:flex; gap:10px; align-items:baseline; }
 .merged .mln > span:first-child { flex:1 1 auto; min-width:0; }
 .merged .tt { flex:0 0 auto; font-size:10.5px; color:#ffc078; white-space:nowrap; }
+
+/* Tool status (phase 2c): the menu's dot, the test's verdict */
+.ndot { display:inline-block; width:8px; height:8px; border-radius:50%; margin-right:6px; }
+.ndot.bad { background:var(--bad); } .ndot.warn { background:var(--warn); }
+.tsum { margin:0 0 10px; padding:9px 12px; border-radius:7px; border:1px solid var(--line); font-size:13px; }
+.tsum.good { background:#16301c; border-color:#2b6a37; color:#b2f2bb; }
+.tsum.warn { background:#33260f; border-color:#7a5a1a; color:#ffd8a0; }
+.tsum.bad { background:#331616; border-color:#7a2a2a; color:#ffc9c9; }
+.tsum .tsumerr { margin-top:5px; font-size:12.5px; line-height:1.5; color:#ffd5d5; }

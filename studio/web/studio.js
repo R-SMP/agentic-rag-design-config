@@ -337,7 +337,7 @@
       ? 'Editing the shared online setup: everyone with the access code sees the same one. Each change saves on its own, and Undo puts it back as it was when the Studio started. ' +
         'It is not kept when the Studio restarts: use Export › Download setup file to keep your work.'
       : 'Editing the setup in ' + D.pack_dir + ': each text, parameter, group, access cell, tool and setting saves on its own, straight to its files, and Undo puts it back as it was when the Studio opened. ' +
-        'Test tool runs a tool on a throw-away folder: nothing in the setup changes.';
+        'Test runs a tool on a throw-away folder: nothing in the setup changes.';
   }
   function renderStudio(app) {
     var tb = h('div', { 'class': 'toolbar' }, [
@@ -426,6 +426,7 @@
     SECTIONS.forEach(function (s) {
       add(nav, h('a', { 'class': R.section === s.id ? 'on' : '', href: link('studio', s.id) }, [
         h('span', { 'class': 'num' }, s.n), h('span', { 'class': 'lab' }, s.label),
+        s.id === 'tools' ? toolsDot() : null,
         h('span', { 'class': 'cnt' }, sectionCount(s.id))
       ]));
     });
@@ -2363,13 +2364,13 @@
       var settings = info.settings.length ? info.settings.join(', ') : 'none';
       add(wrap, h('div', { 'class': 'tcard' }, [
         h('div', { 'class': 'head' }, [ADV() ? h('span', { 'class': 'n' }, t.name) : null, ADV() ? pill(t.display) : h('span', { 'class': 'n dn' }, t.display),
-          kpill(KIND_LABEL[t.kind] || t.kind),
-          st.changed ? pill(st.opened ? 'changed' : 'added', 'warn', 'Changed since the Studio opened.') : null,
+          kpill(KIND_LABEL[t.kind] || t.kind), statusPill(t.name),
+          st.changed && toolStatus(t.name).k !== 'warn' ? pill(st.opened ? 'changed' : 'added', 'warn', 'Changed since the Studio opened.') : null,
           h('span', { 'class': 'grow' }),
           st.changed ? h('button', { disabled: BUSY, title: st.opened ? 'Put this tool back as it was when the Studio opened.' : 'Remove this tool, made since the Studio opened.',
             onclick: function () { undoTool(t.name); } }, 'Undo') : null,
           h('button', { 'class': 'primary', onclick: function () { go('studio', 'tools', { tool: t.name }); } }, 'Edit'),
-          h('button', { onclick: function () { go('studio', 'tools', { tool: t.name, tab: 'test' }); } }, 'Test tool'),
+          h('button', { title: 'Run it now on the parameters’ defaults (Test tab).', onclick: function () { testNow(t.name); } }, 'Test'),
           h('button', { 'class': 'danger', disabled: BUSY, onclick: function () { askRemoveTool(t.name); } }, 'Remove…')]),
         h('div', { 'class': 'd' }, first),
         h('div', { 'class': 'grid2' }, [
@@ -2979,7 +2980,47 @@
   }
 
   /* -- Test tool (P6c-2) --------------------------------------------------------- */
-  var TESTS = {};     // tool -> {source, values, settings, report, running}
+  var TESTS = {};     // tool -> {source, values, settings, report, running, sig: the tool's files at its run}
+  var AUTO_TEST = null;            // a tool whose Test tab runs its test as it opens (the card's Test)
+  // A tool's files that change what a test does (its texts in prompts/ do not).
+  function toolSig(name) {
+    var st = toolState(name);
+    return st ? st.files.filter(function (f) { return !f.prompts; }).map(function (f) { return f.path + ':' + f.sha; }).join(',') : '';
+  }
+  // Its test, as far as this page knows: tested since its last change, ran
+  // with mismatches, failed, changed since (or since the Studio opened), or
+  // not tested.  k: '' / good / warn / bad.
+  function toolStatus(name) {
+    var T = TESTS[name], st = toolState(name) || { files: [], gone_files: [] };
+    if (T && T.running) return { k: '', text: 'testing…', title: 'Its test is running.' };
+    if (T && T.report && T.sig === toolSig(name)) {
+      var r = T.report, mm = (r.mismatches || []).length;
+      if (r.failed) return { k: 'bad', text: '✗ test failed', title: 'Its last test failed: open Test for what went wrong.' };
+      if (mm) return { k: 'warn', text: '✓ ran · ' + mm + (mm === 1 ? ' mismatch' : ' mismatches'), title: 'It ran, but what it made differs from its details.' };
+      return { k: 'good', text: '✓ tested · ' + r.seconds + ' s', title: 'Tested since its last change.' };
+    }
+    var changed = !st.opened || (st.gone_files || []).length || st.files.some(function (f) { return f.changed && !f.prompts; });
+    if ((T && T.report) || changed) return { k: 'warn', text: '⚠ changed, not tested', title: 'Changed since its last test (or since the Studio opened): run Test.' };
+    return { k: '', text: 'not tested yet', title: 'Not tested since the Studio opened.' };
+  }
+  function statusPill(name) {
+    var s = toolStatus(name);
+    return s.k ? pill(s.text, s.k, s.title) : h('span', { 'class': 'kpill', title: s.title }, s.text);
+  }
+  // The menu's dot on Tools: red when a test failed, amber when a tool changed untested.
+  function toolsDot() {
+    var ks = D.tools.map(function (t) { return toolStatus(t.name).k; });
+    var k = ks.indexOf('bad') >= 0 ? 'bad' : ks.indexOf('warn') >= 0 ? 'warn' : '';
+    return h('span', { 'class': 'ndot ' + k, id: 'toolsDot', title: k === 'bad' ? 'A tool’s test failed.' : k === 'warn' ? 'A tool changed and was not tested again.' : null });
+  }
+  function refreshToolsDot() {
+    var d = el('toolsDot');
+    if (d) d.parentNode.replaceChild(toolsDot(), d);
+  }
+  function testNow(name) {
+    AUTO_TEST = name;
+    go('studio', 'tools', { tool: name, tab: 'test' });
+  }
   function testValues(source) {
     if (source === 'defaults') {
       var out = {};
@@ -2992,6 +3033,7 @@
     var st = toolState(name), m = st.manifest || {};
     var T = TESTS[name] || (TESTS[name] = { source: 'defaults', values: null, settings: {}, report: null, running: false });
     if (!T.values) T.values = testValues(T.source);
+    if (AUTO_TEST === name) { AUTO_TEST = null; root.setTimeout(function () { runTest(name); }, 0); }
     var sources = ['defaults'].concat(Object.keys(TE().samples || {}));
     var srcSel = h('select', { onchange: function (e) {
       T.source = e.target.value;
@@ -3031,22 +3073,48 @@
     var T = TESTS[name];
     if (!T || T.running) return;
     T.running = true;
+    var sig = toolSig(name);
     status('Running ' + name + '…', 'busy');
     render();
     call('test_tool', name, T.values, T.settings).then(function (r) {
       T.running = false;
+      T.sig = sig;
       T.report = r && r.ok ? r.report : { failed: true, error: (r && r.error) || 'The run could not start.', pictures: [], files: [], mismatches: [], output: [] };
-      status(T.report.failed ? name + ': the run failed (see the report).' : name + ' ran in ' + T.report.seconds + ' s.', T.report.failed ? 'err' : 'ok');
-      if (R.section === 'tools' && R.q.tool === name) render();
+      status(T.report.failed ? name + ': the test failed (see Test).' : name + ' works: tested in ' + T.report.seconds + ' s.', T.report.failed ? 'err' : 'ok');
+      if (R.section === 'tools') render(); else refreshToolsDot();
     }, function (e) { T.running = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+  }
+  // What went wrong, in a few words: the error's last line, and what usually causes it.
+  var ERROR_HINTS = [
+    [/openscad/i, /not found|no such file|cannot find|not installed|could not run/i, 'OpenSCAD was not found: install it, or set OPENSCAD_PATH to its program.'],
+    [/./, /time(d)? ?out|after 180 s|took longer/i, 'It ran longer than 180 s and was stopped.'],
+    [/./, /SyntaxError|IndentationError/, 'A syntax error in the tool’s code (Files).'],
+    [/./, /ModuleNotFoundError|ImportError/, 'The tool’s code needs a package this computer lacks.'],
+    [/./, /KeyError|missing parameter|unknown parameter/i, 'The tool and the parameters disagree on a name.']];
+  function plainError(rep) {
+    var lines = String(rep.error || '').split('\n').map(function (x) { return x.trim(); }).filter(function (x) { return x; });
+    var last = lines.length ? lines[lines.length - 1] : 'No message.';
+    var hint = ERROR_HINTS.filter(function (e) { return e[0].test(rep.error || '') && e[1].test(rep.error || ''); })[0];
+    return (hint ? hint[2] + '  ' : '') + (last.length > 300 ? last.slice(0, 300) + '…' : last);
+  }
+  function testSummary(rep) {
+    var pics = rep.pictures || [], mm = (rep.mismatches || []).length, bits = [];
+    if (rep.seconds !== null && rep.seconds !== undefined) bits.push(rep.seconds + ' s');
+    if (rep.model) bits.push('model ' + (rep.model.vertices !== null && rep.model.vertices !== undefined ? fmt(rep.model.vertices) + ' points, ' : '') + fmt(rep.model.bytes) + ' bytes');
+    if (pics.length) bits.push(pics.length + (pics.length === 1 ? ' picture' : ' pictures'));
+    if (mm) bits.push(mm + (mm === 1 ? ' mismatch with its details' : ' mismatches with its details'));
+    return h('div', { 'class': 'tsum ' + (rep.failed ? 'bad' : mm ? 'warn' : 'good') }, [
+      h('b', null, rep.failed ? '✗ It failed' : mm ? '✓ It ran, with mismatches' : '✓ It works'),
+      bits.length ? h('span', null, ' · ' + bits.join(' · ')) : null,
+      rep.failed ? h('div', { 'class': 'tsumerr' }, plainError(rep)) : null]);
   }
   function testReport(rep) {
     var pics = rep.pictures || [], files = rep.files || [], mism = rep.mismatches || [], out = rep.output || [];
+    var answerLines = rep.answer ? String(rep.answer).split('\n').length : 0;
     return h('div', { 'class': 'treport' }, [
-      h('div', { 'class': 'pills' }, [rep.failed ? pill('failed', 'bad') : pill('ran', 'good'),
-        rep.seconds !== null && rep.seconds !== undefined ? kpill(rep.seconds + ' s') : null,
-        mism.length ? pill(mism.length + (mism.length === 1 ? ' mismatch' : ' mismatches'), 'warn') : null]),
-      rep.answer ? h('div', { 'class': 'block' }, [h('h4', null, rep.kind === 'geometry' ? 'What it made' : 'What the agent gets'), h('pre', { 'class': 'log' }, rep.answer)]) : null,
+      testSummary(rep),
+      rep.answer ? h('details', { 'class': 'vtool' }, [h('summary', null, (rep.kind === 'geometry' ? 'What it made' : 'What the agent gets') + ' · ' + answerLines + (answerLines === 1 ? ' line' : ' lines')),
+        h('pre', { 'class': 'log' }, rep.answer)]) : null,
       rep.error ? h('div', { 'class': 'block' }, [h('h4', null, 'Error'), h('pre', { 'class': 'log err' }, rep.error)]) : null,
       mism.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Mismatches with the tool details · ' + mism.length),
         h('ul', { 'class': 'checks warn' }, mism.map(function (x) { return h('li', null, ['!', h('span', null, x)]); }))]) : null,
@@ -3056,7 +3124,7 @@
       }))]) : null,
       rep.model ? h('div', { 'class': 'block' }, [h('h4', null, 'Model'), h('p', { 'class': 'mono' },
         rep.model.file + ' · ' + fmt(rep.model.bytes) + ' bytes' + (rep.model.vertices !== null ? ' · ' + fmt(rep.model.vertices) + ' vertices' : ''))]) : null,
-      files.length ? h('div', { 'class': 'block' }, [h('h4', null, 'Files it wrote · ' + files.length),
+      files.length && ADV() ? h('div', { 'class': 'block' }, [h('h4', null, 'Files it wrote · ' + files.length),
         h('p', { 'class': 'mono', style: 'font-size:11px' }, files.map(function (f) { return f.file + ' (' + fmt(f.bytes) + ')'; }).join(', '))]) : null,
       rep.settings ? h('div', { 'class': 'block' }, [h('h4', null, 'Its settings in this run'),
         h('p', { 'class': 'mono', style: 'font-size:11px' }, Object.keys(rep.settings).map(function (k) { return k + ' = ' + rep.settings[k]; }).join(' · '))]) : null,
@@ -3087,7 +3155,7 @@
         h('p', { 'class': 'mono', style: 'font-size:11px;line-height:1.5' }, r.texts.join(', ') || 'none'),
         r.marked.length ? h('h4', null, 'Texts with a part about it, read as switched off from now on · ' + r.marked.length) : null,
         r.marked.length ? h('p', { 'class': 'mono', style: 'font-size:11px;line-height:1.5' }, r.marked.join(', ')) : null,
-        h('p', { 'class': 'muted', style: 'margin-top:8px' }, 'Undo puts the whole folder back as it was when the Studio opened. The Prompt viewer’s “Changes since opened” shows what the agents lose.')]);
+        h('p', { 'class': 'muted', style: 'margin-top:8px' }, 'Undo puts the whole folder back as it was when the Studio opened. What each agent reads › Simulate settings › “Changes since opened” shows what the agents lose.')]);
       showModal('Remove ' + name, body, [h('button', { onclick: closeModal }, 'Cancel'),
         h('button', { 'class': 'danger', disabled: stop.length > 0, onclick: function () {
           closeModal();
@@ -3833,7 +3901,7 @@
   var VAL_PARTS = [['A', 'The setup loads', 'parameters.json, pack.yaml, every tool.yaml and every text, as the engine reads them'],
     ['B', 'The prompts', 'every agent of the teams of 3, 5 and 7, with the setup’s defaults and with every feature on'],
     ['C', 'The parameter lists', 'each agent’s list names the parameters in order, with their ranges'],
-    ['D', 'The tools', 'each one run on the parameters’ defaults, as Test tool runs it'],
+    ['D', 'The tools', 'each one run on the parameters’ defaults, as its Test runs it'],
     ['E', 'A scripted turn', 'one turn per team size with a fake model: no API cost'],
     ['X', 'Developer checks', 'the repository’s own checks that hold for any setup']];
   var VAL_WORD = { pass: 'passed', warn: 'warning', fail: 'failed' };

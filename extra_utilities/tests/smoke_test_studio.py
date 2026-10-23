@@ -28,7 +28,8 @@ page and its one call (``POST /api/get_all``) are checked:
    groups are whole (each grouped field's group is listed for its section,
    each listed group has a field).  The page's own line functions -- the
    lines that differ per team size, "Differences only", the light
-   formatting -- give the expected answers (run by Node).
+   formatting, a tool's test status, the error in a few words -- give the
+   expected answers (run by Node).
 
 Since MAS-blueprint P5b the prompt viewer shows any choice of the settings
 that change what an agent sees (``POST /api/view``):
@@ -588,7 +589,15 @@ def check_generic() -> None:
 
 
 def _js_piece(js: str, name: str) -> str:
-    """The function *name* of studio.js, whole (its braces counted)."""
+    """The function or ``var`` statement *name* of studio.js, whole (its
+    brackets counted)."""
+    if f"\n  var {name} = " in js:
+        i, depth = js.index(f"\n  var {name} = ") + 1, 0
+        for k in range(i, len(js)):
+            depth += 1 if js[k] in "{[(" else -1 if js[k] in "}])" else 0
+            if js[k] == ";" and depth == 0:
+                return js[i:k + 1]
+        raise ValueError(name)
     i = js.index(f"\n  function {name}(") + 1
     depth = 0
     for k in range(js.index("{", i), len(js)):
@@ -607,7 +616,9 @@ def check_page_js() -> str:
     js = STUDIO_JS.read_text(encoding="utf-8")
     head = ("function esc(s) { return String(s).replace(/[&<>\"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', "
             "'>': '&gt;', '\"': '&quot;' }[c]; }); }\n")
-    prog = head + "\n".join(_js_piece(js, n) for n in ("lcsPairs", "diffMarks", "mergeTexts", "mdLine", "mdText")) + """
+    head += "var TESTS = {}, STATE = {};\nfunction toolState(n) { return STATE[n] || null; }\n"
+    prog = head + "\n".join(_js_piece(js, n) for n in ("lcsPairs", "diffMarks", "mergeTexts", "mdLine", "mdText", "toolSig",
+                                                        "toolStatus", "ERROR_HINTS", "plainError")) + """
 var out = {
   marks: diffMarks({'3': 'a\\nb\\nc', '5': 'a\\nB\\nc', '7': 'a\\nb\\nc'}),
   same: diffMarks({'5': 'x\\ny', '7': 'x\\ny'}),
@@ -615,6 +626,20 @@ var out = {
   line: mdLine('<b>x</b> **y** `z` $slot_name <<IF:tool:t>>'),
   text: mdText('# Head\\nplain\\n\\nmarked', {3: 1})
 };
+STATE.a = { opened: true, gone_files: [], files: [{ path: 'tool.yaml', sha: '1' }, { path: 'prompts/x.md', sha: '2', prompts: true }] };
+STATE.b = { opened: true, gone_files: [], files: [{ path: 'tool.yaml', sha: '3', changed: true }] };
+var st = [toolStatus('a').k + '|' + toolStatus('a').text, toolStatus('b').k];
+TESTS.a = { report: { seconds: 7, mismatches: [] }, sig: toolSig('a') };
+st.push(toolStatus('a').k);
+STATE.a.files[1].sha = '9';
+st.push(toolStatus('a').k);
+TESTS.a.report = { failed: true, mismatches: [] };
+st.push(toolStatus('a').k);
+STATE.a.files[0].sha = '8';
+st.push(toolStatus('a').k + '|' + toolStatus('a').text);
+out.status = st;
+out.errors = [plainError({ error: 'Traceback (most recent call last):\\n  ...\\nFileNotFoundError: openscad: not found' }),
+              plainError({ error: 'line 1\\nValueError: bad value\\n' })];
 process.stdout.write(JSON.stringify(out));
 """
     p = subprocess.run([node], input=prog, capture_output=True, text=True, encoding="utf-8", timeout=60)
@@ -631,7 +656,11 @@ process.stdout.write(JSON.stringify(out));
           f"[PAGE] the light formatting of a line: {r['line']}")
     check(r["text"] == '<div class="ln h">Head</div><div class="ln">plain</div><div class="ln">&nbsp;</div><div class="ln dif">marked</div>',
           f"[PAGE] the light formatting of a text: {r['text']}")
-    return "the lines that differ, Differences only, the formatting"
+    check(r["status"] == ["|not tested yet", "warn", "good", "good", "bad", "warn|⚠ changed, not tested"],
+          f"[PAGE] a tool's test status: {r['status']}")
+    check(r["errors"][0].startswith("OpenSCAD was not found") and r["errors"][0].endswith("FileNotFoundError: openscad: not found")
+          and r["errors"][1] == "ValueError: bad value", f"[PAGE] the error in a few words: {r['errors']}")
+    return "the lines that differ, Differences only, the formatting, a tool's test status, the error in a few words"
 
 
 # ---------------------------------------------------------------------------
