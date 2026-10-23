@@ -1255,6 +1255,31 @@ def check_params(st: Studio, copy: Path) -> str:
     status, r = st.call("set_access", "planner", "7", other, ysha)
     _call_ok(st, "undo access", "undo_access", "planner")
     check((copy / "pack.yaml").read_bytes() == yref, "[PARAMS] undo_access: pack.yaml not byte for byte")
+    # 8. The presets (the Studio's Simple mode): each writes the whole grid in
+    # one change, as the page was told; "opened" puts pack.yaml back byte for byte.
+    status, d = st.call("get_all")
+    presets, ysha = d["data"]["params_edit"]["access_presets"], d["data"]["params_edit"]["pack_yaml_sha"]
+    check(set(presets) == set(PE.ACCESS_PRESETS), f"[PARAMS] the access presets offered: {sorted(presets)}")
+
+    def grid_now():
+        return {a: c for a, (_i, c) in PE.access_rows((copy / "pack.yaml").read_bytes().decode("utf-8").replace("\r\n", "\n")).items()}
+    opened = grid_now()
+    refgrid = {a: c for a, (_i, c) in PE.access_rows(PE.reference_pack_yaml().read_text(encoding="utf-8").replace("\r\n", "\n")).items()}
+    check(all(s == "full" for c in presets["full"].values() for s in c.values()), "[PARAMS] the full preset is not full everywhere")
+    check(all(s == ("names" if a in pa["no_tool"] else "tool") for a, c in presets["lean"].items() for s in c.values()),
+          f"[PARAMS] the lean preset: {presets['lean']}")
+    check(all(presets["reference"][a][k] == refgrid.get(a, {}).get(k, opened[a][k]) for a in opened for k in opened[a]),
+          "[PARAMS] the reference preset is not the reference configurator's grid")
+    check(presets["opened"] == opened, "[PARAMS] the opened preset is not the grid as opened")
+    for name in ("full", "lean", "reference", "opened"):
+        r = _call_ok(st, f"access preset {name}", "set_access_preset", name, ysha)
+        ysha = r.get("pack_yaml_sha", ysha)
+        check(grid_now() == presets[name], f"[PARAMS] access preset {name}: pack.yaml holds {grid_now()}")
+    check((copy / "pack.yaml").read_bytes() == yref, "[PARAMS] the presets and back to opened: pack.yaml not byte for byte")
+    status, r = st.call("set_access_preset", "qzx", ysha)
+    check(r.get("ok") is False and "is not a preset" in r.get("error", ""), f"[PARAMS] preset qzx: {str(r)[:200]}")
+    status, r = st.call("set_access_preset", "full", "0" * 64)
+    check(r.get("ok") is False and r.get("conflict") is True, "[PARAMS] a preset with a stale page: not a conflict")
     _same("after the parameter editor")
     return (f"{cases} parameters each changed / renamed / removed / moved and back, a new one in each of "
             f"{len(spec['groups'])} groups, {len(lists)} lists kept in step, {shown} ranges seen in the "

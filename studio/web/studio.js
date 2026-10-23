@@ -57,7 +57,7 @@
     { id: 'settings', n: 10, label: 'Settings & secrets' }
   ];
   var CHECK_PAGES = [
-    { id: 'prompts', label: 'Prompt viewer' },
+    { id: 'prompts', label: 'What each agent reads' },
     { id: 'validate', label: 'Validate' }
   ];
   var INTRO = {
@@ -84,6 +84,31 @@
     { role: 'output_inspector', label: 'Output inspector', key: 'dc_output_inspector' },
     { role: 'database_handler', label: 'Database handler', key: 'database_handler' }
   ];
+  // Simple or Advanced: Simple hides what most edits never need (internal
+  // names and files, per-agent and per-team machinery, the engine's
+  // variables); this browser remembers the choice, Simple at first.
+  var MODE_KEY = 'masStudioMode';
+  var MODE = (function () {
+    try { return root.localStorage.getItem(MODE_KEY) === 'advanced' ? 'advanced' : 'simple'; } catch (e) { return 'simple'; }
+  }());
+  function ADV() { return MODE === 'advanced'; }
+  function setMode(m) {
+    MODE = m;
+    try { root.localStorage.setItem(MODE_KEY, m); } catch (e) { /* not kept: a private window */ }
+    render();
+  }
+  // An advanced part of a panel: shown as it is in Advanced; in Simple, folded
+  // under "Advanced · <label>" (a fold opened stays open while the page redraws).
+  var FOLDS = {};
+  function advFold(label, kids) {
+    if (ADV()) return h('div', { 'class': 'advpart' }, kids);
+    var d = h('details', { 'class': 'advfold', ontoggle: function () { FOLDS[label] = d.open; } },
+      [h('summary', null, 'Advanced · ' + label)].concat(kids));
+    if (FOLDS[label]) d.open = true;
+    return d;
+  }
+  // ['A', 'B', 'C'] -> 'A, B and C'
+  function listText(xs) { return xs.length < 2 ? xs.join('') : xs.slice(0, -1).join(', ') + ' and ' + xs[xs.length - 1]; }
   var RUNTIME = { routing_instructions: 1, render_check_library_block: 1, image_persistence_block: 1,
                   comparison_mode_block: 1, chain_access_block: 1, user_inputs_dir: 1,
                   input_images_subdir: 1, extraction_output_file: 1 };
@@ -320,7 +345,7 @@
       dropdown(['▣ ', h('b', null, D.pack.name), ' ▾'], [
         { label: 'Open setup file…', title: 'Open a setup file made with the Studio: it replaces this setup.', run: askOpen },
         D.starts && D.starts.length ? { label: 'Start from a configurator…', title: 'Replace this setup with one of the configurators.', run: askStart } : null,
-        { note: 'Folder: ' + D.pack_dir }], { title: 'The configurator you are editing.' }),
+        ADV() ? { note: 'Folder: ' + D.pack_dir } : null], { title: 'The configurator you are editing.' }),
       h('button', { 'class': 'pill ' + (SESSION.online ? 'mode-hosted' : 'mode-local'), title: setupNote(), onclick: function () {
         showModal(SESSION.online ? 'Shared online setup' : 'A setup on this computer',
           h('p', { style: 'margin:0;font-size:12.5px;line-height:1.55;max-width:640px' }, setupNote()), [h('button', { 'class': 'primary', onclick: closeModal }, 'OK')]);
@@ -334,6 +359,9 @@
         { label: 'Prepare for GitHub…', disabled: !(D.prepare && D.prepare.available), run: askPrepare,
           title: D.prepare && D.prepare.available ? 'Check this folder and get the commands that put it on GitHub. Nothing is committed.' : (D.prepare && D.prepare.why) || '' }],
         { cls: 'primary', right: true, title: 'Download the setup or the full package, or prepare it for GitHub.' }),
+      h('span', { 'class': 'seg modeseg', title: 'Simple hides what most edits never need; Advanced shows everything.' }, [
+        h('button', { 'class': ADV() ? '' : 'on', onclick: function () { if (ADV()) setMode('simple'); } }, 'Simple'),
+        h('button', { 'class': ADV() ? 'on' : '', onclick: function () { if (!ADV()) setMode('advanced'); } }, 'Advanced')]),
       h('a', { 'class': 'btn', href: 'static/guide.html', target: '_blank', rel: 'noopener', title: 'How to make the setup yours, check it and deploy it.' }, 'Guide')
     ]);
     var left = h('div', { 'class': 'col side', id: 'colLeft', style: 'width:250px' }, renderNav());
@@ -346,7 +374,7 @@
       h('span', { 'class': 'msg ' + STATUS.cls, id: 'statusMsg', title: STATUS.text }, STATUS.text),
       h('span', { id: 'unsavedCount' }, unsavedPill())
     ]);
-    add(app, h('div', { id: 'appShell', style: 'display:flex;flex-direction:column;height:100vh' }, [tb, main, sb]));
+    add(app, h('div', { id: 'appShell', 'class': 'mode-' + MODE, style: 'display:flex;flex-direction:column;height:100vh' }, [tb, main, sb]));
 
     var sec = R.section;
     if (sec === 'parameters') renderParams(center, right);
@@ -444,8 +472,12 @@
   function grid(list) {
     var g = h('div', { 'class': 'tgrid' });
     list.forEach(function (s) {
-      add(g, row(s, null));
-      (s.variants || []).forEach(function (v) { add(g, row(s, v.agent)); });
+      var r = row(s, null), vs = s.variants || [];
+      // Simple: no rows for the agents' own versions, a line that names them
+      if (!ADV() && vs.length) add(r, h('div', { 'class': 'vnote' }, 'Also a version of its own for ' +
+        listText(vs.map(function (v) { return disp(v.agent); })) + ': see it in Advanced.'));
+      add(g, r);
+      if (ADV()) vs.forEach(function (v) { add(g, row(s, v.agent)); });
     });
     return g;
   }
@@ -465,11 +497,12 @@
       (EDITS[key] ? ' dirty' : ''), 'data-fk': key });
     add(r, h('div', { 'class': 'fl', onclick: function () { go('studio', R.section, withQ({ field: s.slot, agent: agent })); } }, [
       h('span', { 'class': 'ttl' }, agent ? '↳ Version for ' + disp(agent) + (multi ? '' : ' (' + teamsText(teams) + ')') : titleOf(s)),
-      agent || !s.title ? null : h('span', { 'class': 'nm' }, s.slot),
-      agent ? null : h('span', { 'class': 'meta' }, [kpill(KIND_WORDS[s.kind] || s.kind),
+      agent || !s.title || !ADV() ? null : h('span', { 'class': 'nm' }, s.slot),
+      agent || !ADV() ? null : h('span', { 'class': 'meta' }, [kpill(KIND_WORDS[s.kind] || s.kind),
         kpill(s.origin === 'tool' ? 'tool text' : 'configurator text', s.origin === 'tool' ? 'tool' : 'dc'),
         s.owner ? kpill('belongs to ' + ownerName(s.owner)) : null, s.runtime ? kpill('read by the app') : null]),
-      st.exists && multi ? h('span', { 'class': 'meta' }, linkButton(s, agent)) : null,
+      st.exists && multi && ADV() ? h('span', { 'class': 'meta' }, linkButton(s, agent)) : null,
+      unlinked && !ADV() ? h('span', { 'class': 'tbadge' }, 'Different per team size') : null,
       !unlinked && unread.length && unread.length < teams.length ? h('span', { 'class': 'unread' }, 'not read by the ' + teamsText(unread)) : null,
       h('span', { 'class': 'grow' }),
       h('div', { 'class': 'racts', 'data-racts': key }, rowActions(s, agent))
@@ -604,10 +637,11 @@
     var box = h('div', { 'class': 'insp' }, [
       h('div', { 'class': 'ihead' }, [h('div', { 'class': 'ftitle' }, titleOf(s) + (agent ? ' · ' + disp(agent) + '’s version' : '')),
         h('button', { 'class': 'mini', title: 'Close this panel.', onclick: closeInspector }, '✕')]),
-      h('div', { 'class': 'mono muted', style: 'font-size:11px;margin:-2px 0 8px;word-break:break-all' }, s.slot + (agent ? '  @' + agent : '')),
-      h('div', { 'class': 'pills' }, [kpill(KIND_WORDS[s.kind] || s.kind), kpill(s.origin === 'tool' ? 'tool text' : 'configurator text', s.origin === 'tool' ? 'tool' : 'dc'),
+      ADV() ? h('div', { 'class': 'mono muted', style: 'font-size:11px;margin:-2px 0 8px;word-break:break-all' }, s.slot + (agent ? '  @' + agent : '')) : null,
+      h('div', { 'class': 'pills' }, [ADV() ? kpill(KIND_WORDS[s.kind] || s.kind) : null,
+        ADV() ? kpill(s.origin === 'tool' ? 'tool text' : 'configurator text', s.origin === 'tool' ? 'tool' : 'dc') : null,
         s.owner ? kpill('belongs to ' + ownerName(s.owner)) : null, s.runtime ? kpill('read by the app') : null,
-        !st.exists ? kpill('no shared text') : st.linked ? kpill('same for all team sizes') : kpill('different per team size'),
+        !st.exists ? kpill('no shared text') : st.linked ? (ADV() ? kpill('same for all team sizes') : null) : kpill('different per team size'),
         dirty ? pill('unsaved', 'warn') : null, isChanged(s.slot, agent) ? pill('changed since opened', 'warn') : null]),
       h('p', null, s.description || h('span', { 'class': 'muted' }, 'No description in the slot registry yet.')),
       h('div', { 'class': 'block' }, [h('h4', null, 'Checks')].concat(
@@ -627,9 +661,9 @@
         rows.length ? null : h('p', { 'class': 'muted' }, 'Not in any prompt under the checked settings (base, all features on).')].concat(
         rows.slice(0, 5).map(function (r) { return whereCard(r, s, liveValue(s, agent, r)); }),
         rows.length > 5 ? [h('div', { 'class': 'muted', style: 'font-size:11.5px' }, '+ ' + (rows.length - 5) + ' more')] : [])),
-      h('div', { 'class': 'block' }, [h('h4', null, 'Stored as'), h('div', { 'class': 'mono', style: 'font-size:11.5px;color:#b9bec8;white-space:pre-line' },
+      advFold('its files and the agents’ versions', [h('div', { 'class': 'block' }, [h('h4', null, 'Stored as'), h('div', { 'class': 'mono', style: 'font-size:11.5px;color:#b9bec8;white-space:pre-line' },
         files.length ? files.join('\n') : 'no file: ' + (agent ? 'this agent has no version' : 'no shared text'))]),
-      ownCopies(s, agent),
+        ownCopies(s, agent)]),
       isChanged(s.slot, agent) && !dirty ? h('div', { 'class': 'block' }, [h('h4', null, 'Undo'),
         h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, 'Puts this text’s files back exactly as they were when the Studio opened.'),
         h('button', { disabled: BUSY, onclick: function () { undoField(s, agent); } }, 'Undo: back to as opened')]) : null
@@ -1529,7 +1563,7 @@
         'Names, types or ranges differ from the setup as opened: once it is deployed, the database needs a new parameter schema (Workflow Settings › Upload).'));
     }
     var t = h('table', { 'class': 'ptab pedit' }, h('thead', null, h('tr', null,
-      ['', 'Name', 'Label', 'Type', 'Min', 'Max', 'Step', 'Default', 'Unit', 'Group', ''].map(function (x) { return h('th', null, x); }))));
+      ['', 'Name', 'Label', 'Type', 'Min', 'Max'].concat(ADV() ? ['Step'] : [], ['Default', 'Unit', 'Group', '']).map(function (x) { return h('th', null, x); }))));
     var tb = h('tbody');
     var groups = spec.groups.slice();
     Object.keys(GEDITS).filter(function (k) { return k.indexOf('new:') === 0; }).forEach(function (k) {
@@ -1545,7 +1579,7 @@
       paramRows(tb, g, only);
     });
     if (!only) removedGroups().forEach(function (g) {
-      add(tb, h('tr', { 'class': 'grp gone' }, h('td', { colspan: 11 }, [h('s', null, g.label), ' · group removed since the Studio opened ',
+      add(tb, h('tr', { 'class': 'grp gone' }, h('td', { colspan: ADV() ? 11 : 10 }, [h('s', null, g.label), ' · group removed since the Studio opened ',
         h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { undoGroup(g.id); } }, 'Undo')])));
     });
     t.appendChild(tb);
@@ -1565,7 +1599,7 @@
     var img = g.image ? h('img', { 'class': 'thumb', src: own(g.image), alt: '' }) : null;
     var sel = R.q.group === g.id;
     return h('tr', { 'class': 'grp' + (sel ? ' sel' : '') + (GEDITS[g.id] ? ' dirty' : ''), 'data-gk': g.id, style: 'cursor:pointer',
-      onclick: function () { pgo({ group: g.id }); } }, h('td', { colspan: 11 }, [
+      onclick: function () { pgo({ group: g.id }); } }, h('td', { colspan: ADV() ? 11 : 10 }, [
       h('span', { 'class': 'mv' }, [
         h('button', { 'class': 'mini', disabled: BUSY || g.unsaved || gi === 0, title: 'Move the group up (the slider page’s order)', onclick: stopped(function () { moveGroup(g.id, -1); }) }, '↑'),
         h('button', { 'class': 'mini', disabled: BUSY || g.unsaved || gi === n - 1, title: 'Move the group down', onclick: stopped(function () { moveGroup(g.id, 1); }) }, '↓')]),
@@ -1582,7 +1616,7 @@
     // a saved row whose unsaved group is another shows under its saved group
     keys.forEach(function (key, i) { add(tb, paramRow(key, i, keys)); });
     if (!only) removedParams().filter(function (p) { return p.group === g.id; }).forEach(function (p) {
-      add(tb, h('tr', { 'class': 'gone' }, [h('td'), h('td', { colspan: 9 }, [h('s', { 'class': 'pname' }, p.name), ' · removed since the Studio opened']),
+      add(tb, h('tr', { 'class': 'gone' }, [h('td'), h('td', { colspan: ADV() ? 9 : 8 }, [h('s', { 'class': 'pname' }, p.name), ' · removed since the Studio opened']),
         h('td', null, h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { undoRemoved(p.name); } }, 'Undo'))]));
     });
   }
@@ -1611,9 +1645,9 @@
       cell('name', 'width:150px'), cell('label'),
       h('td', { style: 'width:72px' }, h('select', { 'data-fk': 'param|' + key, 'data-t': 'type', onchange: function (e) { onParamInput(key, 'type', e.target.value); },
         onfocus: function () { selectParam(key); } }, TYPE_CHOICES.map(function (o) { return h('option', { value: o[0], selected: o[0] === f.type }, o[1]); })))]
-      .concat(typedType(f.type) ? [h('td', { colspan: 3, 'class': 'muted typesum', style: 'font-size:12px;padding-left:8px' }, typeSummary(f)),
+      .concat(typedType(f.type) ? [h('td', { colspan: ADV() ? 3 : 2, 'class': 'muted typesum', style: 'font-size:12px;padding-left:8px' }, typeSummary(f)),
         h('td', { style: 'width:64px' }, defaultPick(key, f))]
-        : [cell('min', 'width:64px'), cell('max', 'width:64px'), cell('step', 'width:58px'), cell('default', 'width:64px')])
+        : [cell('min', 'width:64px'), cell('max', 'width:64px'), ADV() ? cell('step', 'width:58px') : null, cell('default', 'width:64px')])
       .concat([cell('unit'),
       h('td', { style: 'width:120px' }, h('select', { 'data-fk': 'param|' + key, 'data-t': 'group', onchange: function (e) { onParamInput(key, 'group', e.target.value); },
         onfocus: function () { selectParam(key); } }, groups.map(function (g) { return h('option', { value: g.id, selected: g.id === f.group }, g.label); }))),
@@ -2062,8 +2096,8 @@
       rangeBlock(key, f, dirty, isNew),
       f.type === 'choice' ? choicesBlock(key, f) : null,
       whenBlock(key, f),
-      h('div', { 'class': 'block' }, [h('h4', null, 'The database’s words'), h('div', { 'class': 'kv', style: 'grid-template-columns:90px 1fr;align-items:center' }, [
-        h('div', { 'class': 'k' }, 'unit'), input('db_unit'), h('div', { 'class': 'k' }, 'description'), input('db_description')])]),
+      advFold('the database’s words', h('div', { 'class': 'block' }, [h('h4', null, 'The database’s words'), h('div', { 'class': 'kv', style: 'grid-template-columns:90px 1fr;align-items:center' }, [
+        h('div', { 'class': 'k' }, 'unit'), input('db_unit'), h('div', { 'class': 'k' }, 'description'), input('db_description')])])),
       bad ? h('div', { 'class': 'banner warn boxed' }, [h('b', null, 'Two texts disagree on the unit. '), 'The agents’ parameter list says “' + info.unit_prompt + '”; the slider page says “' +
         info.unit + '”. The agents’ lists are hand-written text ($parameter_list); the Studio keeps their names, order and ranges in step, not their units.']) : null,
       lines.length ? h('div', { 'class': 'block' }, [h('h4', null, 'In the agents’ parameter lists · ' + lines.length),
@@ -2140,7 +2174,8 @@
       var first = t.description.split('\n\n')[0].replace(/\s+/g, ' ');
       var settings = info.settings.length ? info.settings.join(', ') : 'none';
       add(wrap, h('div', { 'class': 'tcard' }, [
-        h('div', { 'class': 'head' }, [h('span', { 'class': 'n' }, t.name), pill(t.display), kpill(KIND_LABEL[t.kind] || t.kind),
+        h('div', { 'class': 'head' }, [ADV() ? h('span', { 'class': 'n' }, t.name) : null, ADV() ? pill(t.display) : h('span', { 'class': 'n dn' }, t.display),
+          kpill(KIND_LABEL[t.kind] || t.kind),
           st.changed ? pill(st.opened ? 'changed' : 'added', 'warn', 'Changed since the Studio opened.') : null,
           h('span', { 'class': 'grow' }),
           st.changed ? h('button', { disabled: BUSY, title: st.opened ? 'Put this tool back as it was when the Studio opened.' : 'Remove this tool, made since the Studio opened.',
@@ -2156,9 +2191,9 @@
           h('div', { 'class': 'k' }, 'Produces'), h('div', null, produces(info)),
           h('div', { 'class': 'k' }, 'Settings'), h('div', null, (info['switch'] ? 'an on/off switch · ' : '') + settings),
           h('div', { 'class': 'k' }, 'Secrets'), h('div', null, (t.secrets || []).length ? t.secrets.map(function (s) { return s.env + (s.required ? ' (required)' : ''); }).join(', ') : 'none'),
-          h('div', { 'class': 'k' }, 'Prompt text'), h('div', null, t.kind === 'geometry' ? 'none (no agent reads about it)'
-            : t.owns.length + ' fields it owns (they leave with it) + its entry in the tool runner’s numbered list, place ' + t.list_order),
-          h('div', { 'class': 'k' }, 'Code'), h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  details tools/' + t.name + '/tool.yaml')
+          ADV() ? h('div', { 'class': 'k' }, 'Prompt text') : null, ADV() ? h('div', null, t.kind === 'geometry' ? 'none (no agent reads about it)'
+            : t.owns.length + ' fields it owns (they leave with it) + its entry in the tool runner’s numbered list, place ' + t.list_order) : null,
+          ADV() ? h('div', { 'class': 'k' }, 'Code') : null, ADV() ? h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  details tools/' + t.name + '/tool.yaml') : null
         ])
       ]));
     });
@@ -2185,10 +2220,11 @@
 
   /* -- one tool --------------------------------------------------------------- */
   function renderToolEditor(center, right, name) {
-    var st = toolState(name), m = st.manifest || {}, tab = R.q.tab || 'form';
-    add(center, head('Tool · ' + (m.display_name || name), name + ' · ' + (KIND_LABEL[m.kind] || m.kind || '?') + (st.opened ? '' : ' · added since the Studio opened'), [
+    // Simple: no tool.yaml and Files tabs (the files themselves)
+    var st = toolState(name), m = st.manifest || {}, tab = R.q.tab && (ADV() || ['yaml', 'files'].indexOf(R.q.tab) < 0) ? R.q.tab : 'form';
+    add(center, head('Tool · ' + (m.display_name || name), (ADV() ? name + ' · ' : '') + (KIND_LABEL[m.kind] || m.kind || '?') + (st.opened ? '' : ' · added since the Studio opened'), [
       h('button', { onclick: function () { go('studio', 'tools', {}); } }, '← All tools'),
-      h('span', { 'class': 'seg' }, TOOL_TABS.map(function (tb) {
+      h('span', { 'class': 'seg' }, TOOL_TABS.filter(function (tb) { return ADV() || ['yaml', 'files'].indexOf(tb[0]) < 0; }).map(function (tb) {
         return h('button', { 'class': tb[0] === tab ? 'on' : '', onclick: function () { go('studio', 'tools', { tool: name, tab: tb[0] }); } }, tb[1]);
       }))]));
     var body = h('div', { 'class': 'teditor' });
@@ -2205,11 +2241,11 @@
     var st = toolState(name), m = st.manifest || {};
     var changed = st.files.filter(function (f) { return f.changed && !f.prompts; });
     return h('div', { 'class': 'insp' }, [
-      h('div', { 'class': 'title' }, name),
+      h('div', { 'class': ADV() ? 'title' : 'ftitle' }, ADV() ? name : m.display_name || name),
       h('div', { 'class': 'pills' }, [kpill(KIND_LABEL[m.kind] || m.kind || '?'), st.changed ? pill(st.opened ? 'changed since opened' : 'added since opened', 'warn') : null]),
       m.kind !== 'geometry' ? h('div', { 'class': 'block' }, [h('h4', null, 'Called by'), h('p', null,
         (m.roles || []).map(function (r) { return roleLabel(r) + ': ' + rolesLine(r); }).join('; ') || 'no role')]) : null,
-      h('div', { 'class': 'block' }, [h('h4', null, 'Changed since the Studio opened · ' + (changed.length + st.gone_files.length)),
+      !ADV() ? null : h('div', { 'class': 'block' }, [h('h4', null, 'Changed since the Studio opened · ' + (changed.length + st.gone_files.length)),
         changed.length || st.gone_files.length ? h('ul', { 'class': 'checks' }, changed.map(function (f) {
           return h('li', null, ['•', h('span', { 'class': 'mono' }, f.path + (f.added ? '  (added)' : ''))]); }).concat(
           st.gone_files.map(function (f) { return h('li', null, ['•', h('s', { 'class': 'mono' }, f)]); })))
@@ -2252,8 +2288,8 @@
       return [h('div', { 'class': 'k' }, label), h('div', null, [input, help ? h('div', { 'class': 'muted hint' }, help) : null])];
     }
     var rows = [];
-    rows = rows.concat([h('div', { 'class': 'k' }, 'Name'), h('div', { 'class': 'mono' }, name + '  (the folder’s name)'),
-      h('div', { 'class': 'k' }, 'Kind'), h('div', null, KIND_LABEL[m.kind] || m.kind)]);
+    if (ADV()) rows = rows.concat([h('div', { 'class': 'k' }, 'Name'), h('div', { 'class': 'mono' }, name + '  (the folder’s name)')]);
+    rows = rows.concat([h('div', { 'class': 'k' }, 'Kind'), h('div', null, KIND_LABEL[m.kind] || m.kind)]);
     rows = rows.concat(field('Display name', ['display_name'], 'line', 'The flowchart’s and the log’s label.'));
     rows = rows.concat(field('Description', ['description'], 'text', 'What the LLM reads about the tool (its schema description).'));
     Object.keys(m.args || {}).forEach(function (a) { rows = rows.concat(field('Argument · ' + a, ['args', a], 'text')); });
@@ -2287,11 +2323,11 @@
         ctl.concat(field('Label', ['settings', i, 'label'], 'line'), field('Description', ['settings', i, 'description'], 'text')))]));
     });
     ((m.outputs || {}).images || []).forEach(function (im, i) {
-      parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'Picture · ' + im.view + ' (' + im.file + ')'), h('div', { 'class': 'kv mform' },
-        field('Label', ['outputs', 'images', i, 'label'], 'line').concat(field('Order', ['outputs', 'images', i, 'order'], 'int'),
+      parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'Picture · ' + im.view + (ADV() ? ' (' + im.file + ')' : '')), h('div', { 'class': 'kv mform' },
+        field('Label', ['outputs', 'images', i, 'label'], 'line').concat(ADV() ? field('Order', ['outputs', 'images', i, 'order'], 'int') : [],
           field('On by default', ['outputs', 'images', i, 'default_enabled'], 'bool')))]));
     });
-    if ((m.roles || []).indexOf('tool_runner') >= 0) {
+    if (ADV() && (m.roles || []).indexOf('tool_runner') >= 0) {
       parts.push(h('div', { 'class': 'block' }, [h('h4', null, 'Place in the tool runner’s list'),
         h('div', { 'class': 'kv mform' }, field('List order', ['list_order'], 'int', 'Tools are listed by this number, lowest first.'))]));
     }
@@ -2309,7 +2345,7 @@
         }))]),
       h('button', { 'class': 'mini', onclick: function () {
         setv(['secrets'], (manifestOf(name).secrets || []).concat([{ env: '', required: false, description: '' }])); render(); } }, '+ Add a secret')]));
-    parts.push(h('p', { 'class': 'muted hint', style: 'margin:10px 0' }, 'Everything else (the code it runs, its outputs and its prompt texts) is edited in the tool.yaml tab.'));
+    if (ADV()) parts.push(h('p', { 'class': 'muted hint', style: 'margin:10px 0' }, 'Everything else (the code it runs, its outputs and its prompt texts) is edited in the tool.yaml tab.'));
     if (err) parts.push(h('div', { 'class': 'banner bad boxed' }, [h('div', null, err.error)].concat(err.problems.map(function (p) { return h('div', null, '• ' + p); }))));
     parts.push(h('div', { 'class': 'tacts', id: 'toolActs' }, formActions(name)));
     return h('div', { 'class': 'mformwrap' }, parts);
@@ -2896,9 +2932,9 @@
       on ? 'Workflow Settings › DC_PARAMS_PRIMER_ENABLED is on: the agents ticked below get the primer. Switch it off there for a model that cannot take pictures.'
          : 'Workflow Settings › DC_PARAMS_PRIMER_ENABLED is off: no agent gets the primer until it is on again.']));
     add(center, primerPicture(P));
-    add(center, primerGrid(P));
+    add(center, ADV() ? primerGrid(P) : [primerSummary(P), h('div', { style: 'margin:8px 16px 0' }, advFold('who gets it, per agent', primerGrid(P)))]);
     add(center, h('div', { style: 'padding:12px 16px 0' }, [h('h4', null, 'Its text'),
-      h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Sent before the picture. An agent can have its own version (the ↳ rows): give it one in the text’s side panel.')]));
+      h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Sent before the picture.' + (ADV() ? ' An agent can have its own version (the ↳ rows): give it one in the text’s side panel.' : ''))]));
     var list = slotsOf('primer');
     add(center, grid(list));
     var sel = R.q.field ? slotByName(R.q.field) : null;
@@ -2929,6 +2965,16 @@
           change('undo_primer', ['picture'], 'primer', 'The primer’s picture is back as it was when the Studio opened.'); } }, 'Undo') : null]),
       body,
       h('p', { 'class': 'muted', style: 'font-size:11.5px;margin:6px 0 0' }, 'Drop a PNG, JPEG or WebP here, or pick one: it is stored as a PNG in assets/.')]);
+  }
+  // Simple: who gets the primer, one team after the other
+  function primerSummary(P) {
+    var lines = ['3', '5', '7'].map(function (k) {
+      var who = P.rows.filter(function (r) { return r.cells[k]; }).map(function (r) { return r.name; });
+      return who.length ? 'team of ' + k + ': ' + listText(who) : null;
+    }).filter(function (x) { return x; });
+    return h('div', { style: 'padding:12px 16px 0' }, [h('h4', null, 'Who gets it'),
+      h('p', { style: 'margin:4px 0 0;font-size:12.5px' }, lines.length ? 'Sent to the ' + lines.join('; the ') + '.'
+        : 'No agent gets the primer yet: tick the agents under “who gets it, per agent” below.')]);
   }
   function primerGrid(P) {
     var opened = PRE().opened.agents || {}, changed = false;
@@ -2995,7 +3041,8 @@
    * ==================================================================== */
   function renderAccess(center, right) {
     var PA = D.parameter_access, opened = PE().access_opened || {};
-    add(center, head('Agent access', 'Who sees the parameter list, and how: one choice per agent and team size (a cell exists only where the agent does). Click a choice to save it: this is the setup’s default (pack.yaml); Workflow Settings can still change it for the next session.'));
+    add(center, head('Agent access', !ADV() ? 'Who sees the parameter list in its instructions: pick a preset (it is saved to pack.yaml). Advanced sets it per agent and team size.'
+      : 'Who sees the parameter list, and how: one choice per agent and team size (a cell exists only where the agent does). Click a choice to save it: this is the setup’s default (pack.yaml); Workflow Settings can still change it for the next session.'));
     var t = h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, h('thead', null, h('tr', null,
       ['Agent', 'Team of 3', 'Team of 5', 'Team of 7', ''].map(function (x) { return h('th', null, x); }))));
     var tb = h('tbody');
@@ -3019,7 +3066,8 @@
           onclick: function () { change('undo_access', [r.agent], 'access', r.name + '’s row is back as it was when the Studio opened.'); } }, 'Undo') : null)])));
     });
     t.appendChild(tb);
-    add(center, t);
+    if (!ADV()) add(center, accessPresets(PA));
+    add(center, ADV() ? t : h('div', { style: 'margin:4px 16px 20px' }, advFold('the choice per agent and team size', t)));
     add(right, h('div', { 'class': 'insp' }, [
       h('h4', null, 'The four choices'),
       h('div', { 'class': 'kv', style: 'grid-template-columns:90px 1fr;margin-top:6px' }, [
@@ -3028,9 +3076,32 @@
         h('div', { 'class': 'k' }, 'tool'), h('div', null, 'nothing in the prompt; the agent calls dc_params_list when it needs the list'),
         h('div', { 'class': 'k' }, 'none'), h('div', null, 'neither')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Stored in'), h('p', null, 'The setup’s pack.yaml → parameter_access (the default). Workflow Settings › Parameter list access stores changed cells for the next session. The Database Handler cannot take “tool”.')]),
-      h('div', { 'class': 'block' }, [h('h4', null, 'See the effect'), h('p', null, 'The Prompt viewer’s “Changes since opened” shows each agent’s prompt against the setup as the Studio opened it.')]),
+      h('div', { 'class': 'block' }, [h('h4', null, 'See the effect'), h('p', null, 'What each agent reads › Simulate settings › “Changes since opened” shows each agent’s prompt against the setup as the Studio opened it.')]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Roles'), h('p', { 'class': 'muted' }, 'Which agent holds which role comes with the team size: the Studio does not change it.')])
     ]));
+  }
+
+  // The presets (Simple): a whole grid in one change (studio/params_edit.py)
+  var ACCESS_PRESETS = [
+    ['reference', 'Recommended', 'As tuned for the reference configurator: the agents that write and check the parameters see the full list, the output inspectors the names, the others ask the parameter tool when they need it.'],
+    ['full', 'Everyone sees the full list', 'Every agent gets the list in its instructions, ranges included. The most tokens.'],
+    ['lean', 'Lean', 'No list in any instructions: every agent asks the parameter tool when it needs it (the Database Handler, which cannot, gets the names). The fewest tokens.'],
+    ['opened', 'Back to as opened', 'Every agent as it was when the Studio opened.']];
+  function accessPresets(PA) {
+    var presets = PE().access_presets || {}, now = {};
+    PA.rows.forEach(function (r) { now[r.agent] = r.cells; });
+    function same(tab) {
+      return !!tab && Object.keys(now).every(function (a) { return Object.keys(now[a]).every(function (k) { return (tab[a] || {})[k] === now[a][k]; }); });
+    }
+    var current = ACCESS_PRESETS.filter(function (p) { return p[0] !== 'opened' && same(presets[p[0]]); })[0];
+    return h('div', { 'class': 'presets' }, [
+      h('p', { 'class': 'muted', style: 'margin:0 0 8px;font-size:12px' }, current ? 'Now: ' + current[1] + '.' : 'Now: a choice of its own per agent (see it in Advanced).'),
+      h('div', { 'class': 'pgrid' }, ACCESS_PRESETS.map(function (p) {
+        var on = !!current && current[0] === p[0];
+        return h('button', { 'class': 'preset' + (on ? ' on' : ''), disabled: BUSY || !presets[p[0]] || (p[0] === 'opened' && same(presets.opened)),
+          onclick: function () { if (!on) change('set_access_preset', [p[0], PE().pack_yaml_sha], 'access', 'Agent access: ' + p[1].toLowerCase() + ' (saved to pack.yaml).'); } },
+          [h('b', null, p[1]), h('span', null, p[2])]);
+      }))]);
   }
 
   /* ======================================================================
@@ -3040,12 +3111,12 @@
   // shows its heading in .env.example.
   var ENV_USE = {
     OPENAI_API_KEY: ['LLM provider', 'at least one LLM key'], ANTHROPIC_API_KEY: ['LLM provider', 'at least one LLM key'],
-    GOOGLE_API_KEY: ['LLM provider', 'at least one LLM key'], OPENROUTER_API_KEY: ['LLM provider', 'at least one LLM key'],
+    GOOGLE_API_KEY: ['LLM provider', 'at least one LLM key'], OPENROUTER_API_KEY: ['LLM provider; image search in the database', 'at least one LLM key'],
     DATABASE_URL: ['database (saved sessions, RAG)', 'optional'], DATABASE_PUBLIC_URL: ['database, from outside Railway', 'optional'],
     R2_ACCESS_KEY_ID: ['cloud file storage', 'optional'], R2_ACCOUNT_ID: ['cloud file storage', 'optional'],
     R2_BUCKET_NAME: ['cloud file storage', 'optional'], R2_SECRET_ACCESS_KEY: ['cloud file storage', 'optional'],
     STORAGE_BACKEND: ['where files are stored', 'optional'], INVITE_CODE: ['login gate of your deployment', 'optional'],
-    VOYAGE_API_KEY: ['image search in the database', 'optional'], GOOGLE_CLOUD_VISION_API_KEY: ['reading text in images (OCR)', 'optional']
+    GOOGLE_CLOUD_VISION_API_KEY: ['reading text in images (OCR)', 'optional']
   };
   function renderSettings(center, right) {
     var rows = [];
@@ -3102,14 +3173,15 @@
           h('td', null, h('a', { href: link('studio', 'tools', { tool: x.tool }) }, x.tool)), h('td', null, x.s.description),
           h('td', { 'class': x.s.required ? 'warn' : 'muted' }, x.s.required ? 'required' : 'optional')]);
       }) : [h('tr', null, h('td', { colspan: 4, 'class': 'muted' }, 'None: a tool declares the variables it reads in its details (Tools › Edit › Secrets).'))])]));
-    add(center, h('div', { style: 'padding:8px 16px 0' }, h('h4', null, 'Read by the engine · ' + D.env_vars.length)));
-    add(center, h('table', { 'class': 'ptab', style: 'margin:6px 16px 20px;width:calc(100% - 32px)' }, [
+    add(center, h('div', { style: 'padding:8px 16px 20px' }, advFold('the engine’s own variables · ' + D.env_vars.length, [
+      h('h4', { style: 'margin-top:6px' }, 'Read by the engine · ' + D.env_vars.length),
+      h('table', { 'class': 'ptab', style: 'margin:6px 0 0;width:100%' }, [
       h('thead', null, h('tr', null, ['Variable', 'Needed for', 'Required'].map(function (x) { return h('th', null, x); }))),
       h('tbody', null, D.env_vars.map(function (n) {
         var u = ENV_USE[n] || [D.env_sections[n] || '', 'optional'];
         return h('tr', null, [h('td', null, h('span', { 'class': 'pname' }, n)), h('td', null, u[0]),
           h('td', { 'class': u[1] === 'optional' ? 'muted' : 'warn' }, u[1])]);
-      }))]));
+      }))])])));
     add(right, h('div', { 'class': 'insp' }, [h('h4', null, 'Where these come from'),
       h('p', null, 'Each tool’s settings and secrets are its own (its tool.yaml): a change here is saved there, checked by the engine first, and Undo puts the default back as the Studio opened it. The variables in the last table are the engine’s (.env.example). No value of a secret is read or shown.')]));
   }
@@ -3149,7 +3221,8 @@
   // a.<agent>= (its parameter-list access); a missing key is the default.
   function viewChoice() {
     var V = D.viewer;
-    var c = { topology: viewTopo(), rag: R.q.rag || V.rag_default, settings: {}, tools: {}, access: {} };
+    var c = { topology: viewTopo(), rag: ADV() && R.q.rag || V.rag_default, settings: {}, tools: {}, access: {} };
+    if (!ADV()) return c;                 // Simple: the setup's own settings
     V.settings.forEach(function (s) {
       if (R.q['s.' + s.name] !== undefined) c.settings[s.name] = fromQuery(s, R.q['s.' + s.name]);
     });
@@ -3225,14 +3298,21 @@
     var any = (D.changed || []).length > 0;
     bar.push(group('Compare', vcheck('Changes since opened', R.q.diff === '1' && any, function (v) { go('studio', 'prompts', withQ({ diff: v ? '1' : null })); },
       !any, any ? 'Show this agent’s prompt as a line diff against the setup as the Studio opened it, under the same settings.' : 'Nothing has changed since the Studio opened.')));
-    return bar;
+    // the team size stays in sight; the rest is Advanced, folded under "Simulate settings…"
+    var team = bar.shift();
+    if (!ADV()) return [team];
+    var fold = h('details', { 'class': 'simfold', ontoggle: function () { FOLDS.simulate = fold.open; } },
+      [h('summary', null, 'Simulate settings…'), h('div', { 'class': 'simbar' }, bar)]);
+    if (FOLDS.simulate) fold.open = true;
+    return [team, fold];
   }
   function renderPrompts(center, right) {
     var topo = viewTopo(), choice = viewChoice(), key = JSON.stringify(choice);
     var view = VIEWS[key];
     var agents = view ? Object.keys(view.prompts) : topoAgents(topo);
     var agent = R.q.agent && agents.indexOf(R.q.agent) >= 0 ? R.q.agent : 'receptionist';
-    add(center, head('Prompt viewer', 'The exact system prompt and tools each agent receives, assembled by the engine from this setup under the settings above. Click an agent.', viewerBar(topo, agent)));
+    add(center, head('What each agent reads', 'The exact instructions and tools each agent receives, assembled by the engine from this setup' +
+      (ADV() ? ' under the settings you simulate' : ' with its own settings') + '. Click an agent in the diagram.', viewerBar(topo, agent)));
     if (!view) {
       if (VIEW_ERRORS[key]) {
         add(center, h('div', { 'class': 'banner warn', style: 'margin:10px 16px;white-space:pre-wrap' }, VIEW_ERRORS[key]));
@@ -3262,7 +3342,7 @@
       diff && diff.changed_agents.length ? h('span', null, [h('span', { 'class': 'sw chg' }), 'prompt changed since the Studio opened']) : null])));
     var text = view.prompts[agent], spans = view.spans[agent] || [], tools = view.tools[agent] || [];
     var pre = h('div', { 'class': 'prompt' });
-    if (R.q.diff === '1' && (D.changed || []).length) {
+    if (ADV() && R.q.diff === '1' && (D.changed || []).length) {
       var dk = key + '|' + agent;
       if (DIFF_ERRORS[dk]) pre = h('div', { 'class': 'banner warn', style: 'margin:10px 16px;white-space:pre-wrap' }, DIFF_ERRORS[dk]);
       else if (!diff) pre = h('div', { 'class': 'insp muted' }, 'Assembling this combination as the Studio opened it…');
@@ -3689,8 +3769,12 @@
     VAL_PARTS.forEach(function (p) {
       var mine = items.filter(function (i) { return i.part === p[0]; });
       if (!mine.length) return;
-      add(center, h('h3', { 'class': 'vpart' }, [p[0] + '. ' + p[1], h('span', { 'class': 'muted' }, ' — ' + p[2])]));
-      mine.forEach(function (i) { add(center, valItem(i)); });
+      var part = [h('h3', { 'class': 'vpart' }, [p[0] + '. ' + p[1], h('span', { 'class': 'muted' }, ' — ' + p[2])])]
+        .concat(mine.map(function (i) { return valItem(i); }));
+      // Simple: the developer checks folded, their outcome in the fold's name
+      var bad = mine.filter(function (i) { return i.status === 'fail' || i.status === 'warn'; }).length;
+      add(center, p[0] !== 'X' || ADV() ? part : h('div', { style: 'margin:10px 16px 0' },
+        advFold('developer checks · ' + mine.length + (bad ? ', ' + bad + ' to look at' : ', all passed'), part)));
     });
     var ins = h('div', { 'class': 'insp' });
     if (rep) {

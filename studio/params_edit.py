@@ -773,6 +773,20 @@ def set_access(text: str, agent: str, topology: str, state: str) -> str:
     return "\n".join(lines)
 
 
+# The Agent access page's presets (the Studio's Simple mode): a whole grid in
+# one change.  reference = the reference configurator's grid (setups/propeller,
+# or a package's own setup when it holds no other); full = every agent sees
+# the list with its ranges; lean = every agent asks dc_params_list for it, but
+# the Database Handler, which has no tool loop, gets the names; opened = the
+# grid as the Studio opened it.
+ACCESS_PRESETS = ("reference", "full", "lean", "opened")
+
+
+def reference_pack_yaml() -> Path:
+    from engine import setups as _setups
+    return _setups.default_setup(Path(__file__).resolve().parents[1]) / "pack.yaml"
+
+
 # ---------------------------------------------------------------------------
 # the editor: files, checks, Undo
 # ---------------------------------------------------------------------------
@@ -844,6 +858,7 @@ class ParamsEditor:
             "assets": sorted(p.name for p in assets.glob("*.png")) if assets.is_dir() else [],
             "pack_yaml_sha": sha(yraw), "since_opened": dict(self.since_opened),
             "access_opened": {a: cells for a, (_i, cells) in access_rows(ytext).items()},
+            "access_presets": self.access_presets(data),
         }
 
     def changed(self) -> list[str]:
@@ -1005,6 +1020,39 @@ class ParamsEditor:
             if state == "tool" and agent in pa.get("no_tool", []):
                 raise EditError(f'{agent} cannot take "tool": it has no free tool loop.')
             self._write_text("pack.yaml", set_access(text, agent, topology, state))
+            return {"pack_yaml_sha": sha((self.pack_dir / "pack.yaml").read_bytes()), "warnings": []}
+
+    def access_presets(self, data: dict) -> dict:
+        """{preset: {agent: {topology: state}}} for the rows of this setup's
+        grid; a cell the preset's source lacks keeps its state."""
+        rows = access_rows(self._text(self.pack_dir / "pack.yaml") or "")
+        no_tool = set((data.get("parameter_access") or {}).get("no_tool", []))
+
+        def like(text):
+            other = {a: cells for a, (_i, cells) in access_rows(text or "").items()}
+            return {a: {t: other.get(a, {}).get(t, s) for t, s in cells.items()} for a, (_i, cells) in rows.items()}
+        return {
+            "reference": like(self._text(reference_pack_yaml())),
+            "full": {a: {t: "full" for t in cells} for a, (_i, cells) in rows.items()},
+            "lean": {a: {t: "names" if a in no_tool else "tool" for t in cells} for a, (_i, cells) in rows.items()},
+            "opened": like(self._text(self.opened_dir / "pack.yaml")),
+        }
+
+    def set_access_preset(self, data: dict, name: str, base: str) -> dict:
+        """Every cell of the grid as preset *name* has it (ACCESS_PRESETS)."""
+        from studio.editing import Conflict, EditError
+        if name not in ACCESS_PRESETS:
+            raise EditError(f"{name!r} is not a preset: {', '.join(ACCESS_PRESETS)}.")
+        with self._lock:
+            raw = (self.pack_dir / "pack.yaml").read_bytes()
+            if base != sha(raw):
+                raise Conflict("pack.yaml changed on disk since the page read it.  Reload the page.")
+            table = self.access_presets(data)[name]
+            text = raw.decode("utf-8").replace("\r\n", "\n")
+            lines = text.split("\n")
+            for agent, (i, cells) in access_rows(text).items():
+                lines[i] = access_line(lines[i], {**cells, **table.get(agent, {})})
+            self._write_text("pack.yaml", "\n".join(lines))
             return {"pack_yaml_sha": sha((self.pack_dir / "pack.yaml").read_bytes()), "warnings": []}
 
     def undo_access(self, data: dict, agent: str) -> dict:
