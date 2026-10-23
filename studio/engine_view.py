@@ -646,6 +646,13 @@ def registry_order(pack) -> dict[str, int]:
     return out
 
 
+def slot_groups(pack) -> dict:
+    """section -> its group titles in page order (``groups:`` of the slot
+    registry): the Studio shows a section's fields under them."""
+    import yaml
+    return yaml.safe_load(pack.REGISTRY_PATH.read_text(encoding="utf-8")).get("groups") or {}
+
+
 def text_fields(pack) -> dict:
     """The setup's text fields: the $slots spliced into prompts, and the ones
     the app's code reads (``use: runtime``: tool texts and answers, the tool
@@ -679,7 +686,8 @@ def slots(P, pack_origin: dict, roles: dict, order: dict | None = None) -> list:
                 variants.append({"agent": ag, "values": v,
                                  "linked": (folder / f"{slot}@{ag}.md").is_file()})
         out.append({
-            "slot": slot, "title": spec.get("title", ""), "origin": pack_origin.get(slot, "dc"),
+            "slot": slot, "title": spec.get("title", ""), "group": spec.get("group", ""),
+            "origin": pack_origin.get(slot, "dc"),
             "owner": claims.get(slot),
             "kind": spec["kind"], "runtime": spec.get("use") == "runtime",
             "section": spec.get("section", "other"), "order": order.get(slot, 999),
@@ -950,6 +958,7 @@ def editing_data(P, slot_list: list) -> dict:
         resolve[s["slot"]] = rows
     return {
         "slot_specs": specs,
+        "slot_groups": slot_groups(pack),
         "text_names": sorted(set(P._build_slots()) | set(pack.registry())),
         "text_flags": sorted(set(pack_flags.values()) | {"param_list", "param_ranges"}),
         "pack_tools": sorted(pack_tools.manifests()),

@@ -24,7 +24,11 @@ page and its one call (``POST /api/get_all``) are checked:
 6. GENERIC.  The page names no configurator (its words come from the
    setup), and the Studio draft's data builder uses the Studio's functions
    instead of copies of them.  Every text field the Studio shows has a plain
-   title in the slot registry, and no title names a configurator either.
+   title in the slot registry, and no title names a configurator either; its
+   groups are whole (each grouped field's group is listed for its section,
+   each listed group has a field).  The page's own line functions -- the
+   lines that differ per team size, "Differences only", the light
+   formatting -- give the expected answers (run by Node).
 
 Since MAS-blueprint P5b the prompt viewer shows any choice of the settings
 that change what an agent sees (``POST /api/view``):
@@ -574,6 +578,60 @@ def check_generic() -> None:
     named = sorted(k for k, v in shown.items()
                    if any(w in str(v.get("title") or "").lower() for w in ("propeller", "blade", "impeller", "hose", "airfoil")))
     check(not named, f"[GENERIC] titles that name a configurator: {named}")
+    import yaml
+    groups = yaml.safe_load(pack.REGISTRY_PATH.read_text(encoding="utf-8")).get("groups") or {}
+    stray = sorted(k for k, v in shown.items() if v.get("group") and v["group"] not in groups.get(v["section"], []))
+    check(not stray, f"[GENERIC] fields whose group is not listed for their section: {stray}")
+    empty = sorted(f"{sec}: {g}" for sec, gs in groups.items() for g in gs
+                   if not any(v.get("section") == sec and v.get("group") == g for v in shown.values()))
+    check(not empty, f"[GENERIC] groups without a field: {empty}")
+
+
+def _js_piece(js: str, name: str) -> str:
+    """The function *name* of studio.js, whole (its braces counted)."""
+    i = js.index(f"\n  function {name}(") + 1
+    depth = 0
+    for k in range(js.index("{", i), len(js)):
+        depth += {"{": 1, "}": -1}.get(js[k], 0)
+        if depth == 0:
+            return js[i:k + 1]
+    raise ValueError(name)
+
+
+def check_page_js() -> str:
+    """The page's line functions run by Node: the lines that differ per team
+    size, the merged "Differences only", the light formatting."""
+    node = shutil.which("node")
+    if not node:
+        return "Node not found: not run"
+    js = STUDIO_JS.read_text(encoding="utf-8")
+    head = ("function esc(s) { return String(s).replace(/[&<>\"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', "
+            "'>': '&gt;', '\"': '&quot;' }[c]; }); }\n")
+    prog = head + "\n".join(_js_piece(js, n) for n in ("lcsPairs", "diffMarks", "mergeTexts", "mdLine", "mdText")) + """
+var out = {
+  marks: diffMarks({'3': 'a\\nb\\nc', '5': 'a\\nB\\nc', '7': 'a\\nb\\nc'}),
+  same: diffMarks({'5': 'x\\ny', '7': 'x\\ny'}),
+  merged: mergeTexts({'3': 'a\\nb\\nc', '5': 'a\\nB\\nc', '7': 'a\\nb\\nc'}).lines,
+  line: mdLine('<b>x</b> **y** `z` $slot_name <<IF:tool:t>>'),
+  text: mdText('# Head\\nplain\\n\\nmarked', {3: 1})
+};
+process.stdout.write(JSON.stringify(out));
+"""
+    p = subprocess.run([node], input=prog, capture_output=True, text=True, encoding="utf-8", timeout=60)
+    if p.returncode != 0:
+        check(False, f"[PAGE] the page's line functions do not run: {p.stderr[-300:]}")
+        return "not run"
+    r = json.loads(p.stdout)
+    check(r["marks"] == {"3": {"1": 1}, "5": {"1": 1}, "7": {"1": 1}}, f"[PAGE] the lines that differ: {r['marks']}")
+    check(r["same"] == {"5": {}, "7": {}}, f"[PAGE] two equal texts have lines that differ: {r['same']}")
+    check([(x["line"], x["teams"]) for x in r["merged"]] == [("a", ["3", "5", "7"]), ("B", ["5"]), ("b", ["3", "7"]), ("c", ["3", "5", "7"])],
+          f"[PAGE] Differences only: {r['merged']}")
+    check("&lt;b&gt;x&lt;/b&gt;" in r["line"] and "<b>y</b>" in r["line"] and "<code>z</code>" in r["line"]
+          and '<span class="sv">$slot_name</span>' in r["line"] and '<span class="mk">&lt;&lt;IF:tool:t&gt;&gt;</span>' in r["line"],
+          f"[PAGE] the light formatting of a line: {r['line']}")
+    check(r["text"] == '<div class="ln h">Head</div><div class="ln">plain</div><div class="ln">&nbsp;</div><div class="ln dif">marked</div>',
+          f"[PAGE] the light formatting of a text: {r['text']}")
+    return "the lines that differ, Differences only, the formatting"
 
 
 # ---------------------------------------------------------------------------
@@ -1672,6 +1730,7 @@ def _sha_of(path: Path) -> str:
 def main() -> int:
     _run(check_cache_unit, "[CACHE]")
     _run(check_generic, "[GENERIC]")
+    page_js = _run(check_page_js, "[PAGE]")
     tmp = Path(tempfile.mkdtemp(prefix="studio_smoke_"))
     copy = tmp / "dc_pack"
     shutil.copytree(config.DC_PACK_DIR, copy, ignore=shutil.ignore_patterns("__pycache__"))
@@ -1708,7 +1767,7 @@ def main() -> int:
           f"prompt, each with its sentences there; {summary.get('prompts')} prompts = the prompt matrix's base; "
           f"{summary.get('cache')}; {summary.get('viewer')}; {summary.get('pool')}; "
           f"editing: {summary.get('edit')}; parameters: {summary.get('params')}; "
-          f"tools: {summary.get('tools')}; new tools: {summary.get('new_tools')}")
+          f"tools: {summary.get('tools')}; new tools: {summary.get('new_tools')}; the page's line functions: {page_js}")
     if FAILURES:
         print(f"\nFAIL - {len(FAILURES)} problem(s):")
         for f in FAILURES:

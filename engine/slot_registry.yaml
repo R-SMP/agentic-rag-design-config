@@ -23,8 +23,37 @@
 #   strip   right (default) | both
 #   section the Studio section that shows the field
 #   title   the Studio's plain title for the field (its name shows beside it)
+#   group   the Studio's group for the field on its section's page (groups: below)
 
 format: 1
+
+# The Studio's groups: for a section's page, its group titles in page order;
+# a field names its group (group:).  A section without groups shows its
+# fields in this file's order.
+groups:
+  description:
+    - "What it is"
+    - "How the parameters behave"
+    - "Rules"
+  outputs:
+    - "The outputs"
+    - "Checking the pictures"
+    - "Precision jobs"
+  tools:
+    - "The tool runner and the model tools"
+    - "What the model tools cannot do"
+    - "Quality checks"
+    - "Each agent's tools"
+    - "The tool list"
+    - "A second render tool"
+    - "Precision jobs"
+  examples:
+    - "Questions and requests"
+    - "Inputs"
+    - "Checking the pictures"
+    - "Tools"
+    - "The database's summary"
+
 slots:
 
 # --- 1 Identity ------------------------------------------------------------
@@ -81,6 +110,7 @@ slots:
 # --- 3 Configurator description --------------------------------------------
   dc_structure:
     title: "How the object is built"
+    group: "What it is"
     source: pack
     folder: dc
     kind: block
@@ -88,6 +118,7 @@ slots:
     description: "Anatomy of the object the DC produces (rings, blades, sections — for a different DC, replace with that DC's structure)."
   modelling_notes:
     title: "Modelling notes"
+    group: "What it is"
     source: pack
     folder: dc
     kind: block
@@ -95,6 +126,7 @@ slots:
     description: "Any DC-specific notes (e.g. NACA airfoils, integer vs float discipline)."
   lever_map:
     title: "Which parameter changes what"
+    group: "How the parameters behave"
     source: pack
     folder: dc
     kind: block
@@ -102,6 +134,7 @@ slots:
     description: "The 'Which lever moves what' section: which parameters change which aspect (block, with heading)."
   qualitative_examples:
     title: "From words to numbers: examples"
+    group: "How the parameters behave"
     source: pack
     folder: dc
     kind: block
@@ -109,6 +142,7 @@ slots:
     description: "Worked examples of \"qualitative phrase → numeric direction\"."
   invalid_parameter_examples:
     title: "Parameter names that do not exist"
+    group: "How the parameters behave"
     source: pack
     folder: dc
     kind: block
@@ -116,6 +150,7 @@ slots:
     description: "Examples of parameter names that DON'T exist (anti-hallucination)."
   capabilities_can:
     title: "What the system can do"
+    group: "What it is"
     source: pack
     folder: dc
     kind: block
@@ -123,6 +158,7 @@ slots:
     description: "What the system CAN do — bullet list (Receptionist + Orchestrator use this when offering follow-ups)."
   capabilities_cannot:
     title: "What the system cannot do"
+    group: "What it is"
     source: pack
     folder: dc
     kind: block
@@ -130,6 +166,7 @@ slots:
     description: "What the system CANNOT do — bullet list."
   hard_constraints_dc:
     title: "Rules for the configurator (do / don't)"
+    group: "Rules"
     source: pack
     folder: dc
     kind: block
@@ -137,6 +174,7 @@ slots:
     description: "DC-specific DOs and DON'Ts (positive + negative reinforcement)."
   geometry_modification_rule:
     title: "How the geometry may be changed"
+    group: "Rules"
     source: pack
     folder: dc
     kind: block
@@ -144,6 +182,7 @@ slots:
     description: "Hard rule on how the geometry may be modified."
   output_file_locations:
     title: "Where the outputs are saved"
+    group: "Rules"
     source: pack
     folder: dc
     kind: block
@@ -151,6 +190,7 @@ slots:
     description: "Where outputs land on disk."
   ratio_vs_absolute_feedback:
     title: "Ratios versus absolute sizes"
+    group: "How the parameters behave"
     source: pack
     folder: dc
     kind: block
@@ -167,6 +207,7 @@ slots:
     description: "The kind of geometry model the geometry tool generates."
   output_models:
     title: "The models (plural)"
+    group: "The outputs"
     source: pack
     folder: tools
     kind: word
@@ -259,6 +300,7 @@ slots:
     description: "Noun for the act of producing the output images."
   render_view_list:
     title: "The picture views"
+    group: "The outputs"
     source: pack
     folder: tools
     filled_by: tool
@@ -267,6 +309,7 @@ slots:
     description: "The fixed render views the geometry tool produces, in parentheses."
   geometry_model_filename:
     title: "Model file name"
+    group: "The outputs"
     source: pack
     folder: tools
     filled_by: tool
@@ -275,6 +318,7 @@ slots:
     description: "File name of the 3D model the geometry tool writes (code-quoted)."
   visual_inspection_guide:
     title: "What a correct picture looks like"
+    group: "Checking the pictures"
     source: pack
     folder: dc
     kind: block
@@ -282,6 +326,7 @@ slots:
     description: "What a correct rendered output looks like (used by the DC Output Inspector)."
   precision_match_subject:
     title: "What a precision job matches"
+    group: "Precision jobs"
     source: pack
     folder: tools
     filled_by: tool
@@ -290,6 +335,7 @@ slots:
     description: "What a precision job matches against, naming its possible targets."
   precision_gap_description:
     title: "What the fidelity verdict reports"
+    group: "Precision jobs"
     source: pack
     folder: tools
     kind: phrase
@@ -297,6 +343,7 @@ slots:
     description: "What the inspector's fidelity verdict reports, naming this DC's model ceiling."
   produced_outputs_examples:
     title: "What a run can produce"
+    group: "The outputs"
     source: pack
     folder: tools
     kind: phrase
@@ -305,6 +352,7 @@ slots:
     description: "What a run can produce, as a list (the Sessions Queue classifier: 'even if no ... were produced')."
   refine_cap_limits:
     title: "Limits named when refining stops"
+    group: "Precision jobs"
     source: pack
     folder: tools
     kind: phrase
@@ -313,6 +361,7 @@ slots:
     description: "The configurator's limits a capped precision job names as its remaining gap, per kind of match (the hubs' refine-cap message)."
   precision_match_targets:
     title: "Targets a precision request can name"
+    group: "Precision jobs"
     source: pack
     folder: tools
     filled_by: tool
@@ -321,6 +370,7 @@ slots:
     description: "What a precision directive can name as the target to match."
   values_only_excluded_outputs:
     title: "Outputs a \"values only\" request skips"
+    group: "Precision jobs"
     source: pack
     folder: tools
     filled_by: tool
@@ -337,6 +387,7 @@ slots:
     description: "Numbered list of the tools the tool runner is bound to, built by the engine from each tool's prompts/tool_list_entry.md and the tool_entry_* slots below."
   tool_entry_new_attempt_parameters:
     title: "Tool list: writing parameters"
+    group: "The tool list"
     source: pack
     folder: tools
     kind: block
@@ -345,6 +396,7 @@ slots:
     description: "Tool-list entry for new_attempt_parameters, first in the list when the tool runner also writes the parameters (3-agent team)."
   tool_entry_calculate:
     title: "Tool list: calculator"
+    group: "The tool list"
     source: pack
     folder: tools
     kind: block
@@ -353,6 +405,7 @@ slots:
     description: "Tool-list entry for calculate, after the configurator's own tools."
   tool_entry_read_attempts:
     title: "Tool list: reading attempts"
+    group: "The tool list"
     source: pack
     folder: tools
     kind: block
@@ -361,6 +414,7 @@ slots:
     description: "Tool-list entry for read_attempts, last in the list."
   tool_caller_instructions:
     title: "How the tool runner uses its tools"
+    group: "The tool runner and the model tools"
     source: pack
     folder: tools
     kind: block
@@ -368,6 +422,7 @@ slots:
     description: "How the Tool Caller should use its tools, including Tool-Caller-only DOs/DON'Ts (e.g. \"call generate_and_render_propeller once — it builds the mesh AND renders/checks it in one call\", \"call calculate for arithmetic\", \"do NOT call your utility tools to 'fix' a mesh — ESCALATE instead\")."
   tool_caller_capabilities:
     title: "What the tool runner can do"
+    group: "The tool runner and the model tools"
     source: pack
     folder: tools
     filled_by: tool
@@ -376,6 +431,7 @@ slots:
     description: "One-paragraph description of the Tool Caller's bounded capability — used by the Orchestrator's \"Agent Capabilities\" section."
   agent_tools_overview:
     title: "Each agent's tools at a glance"
+    group: "Each agent's tools"
     source: pack
     folder: tools
     kind: block
@@ -383,12 +439,14 @@ slots:
     description: "\"Agent tools at a glance\" — what each agent reads / writes via its bound tools (Orchestrator-facing)."
   agent_tools_overview_brief:
     title: "Each agent's tools, short"
+    group: "Each agent's tools"
     source: pack
     folder: tools
     kind: block
     section: tools
   hard_constraints_tools:
     title: "Tool rules for every agent"
+    group: "Each agent's tools"
     source: pack
     folder: tools
     kind: block
@@ -396,6 +454,7 @@ slots:
     description: "Tool-related DOs and DON'Ts that apply to **every** agent in the system (no inventing tools, no guessing paths, no calling read tools in a loop, copy paths verbatim).  Tool-Caller-specific tool rules live in `tool_caller_instructions.md`, not here."
   geometry_tool_name:
     title: "Name of the model tool"
+    group: "The tool runner and the model tools"
     source: pack
     folder: tools
     filled_by: tool
@@ -404,6 +463,7 @@ slots:
     description: "Name of the DC tool that generates the geometry and renders it (code-quoted)."
   geometry_tools_loading_rule:
     title: "How the model tools read the parameters"
+    group: "The tool runner and the model tools"
     source: pack
     folder: tools
     filled_by: tool
@@ -412,6 +472,7 @@ slots:
     description: "Tool-runner sentence: how the geometry tool(s) read the parameters file."
   render_type_choice:
     title: "Which tool for which output"
+    group: "The tool runner and the model tools"
     source: pack
     folder: tools
     filled_by: tool
@@ -420,6 +481,7 @@ slots:
     description: "Tool-runner paragraph: which DC tool to call for which output type (BSV only)."
   roster_sections_tool_sentence:
     title: "Team list: the second render tool"
+    group: "A second render tool"
     source: pack
     folder: tools
     filled_by: tool
@@ -428,6 +490,7 @@ slots:
     description: "Roster sentence (with its <<IF:tool:render_blade_sections>> regions) naming the extra sections-only tool; empty for a single-tool DC."
   roster_tools_clause:
     title: "Team list: the model tools"
+    group: "The tool runner and the model tools"
     source: pack
     folder: tools
     filled_by: tool
@@ -436,6 +499,7 @@ slots:
     description: "Roster clause naming the DC's geometry tools, ending with the main tool's name ('... Or it points <tool>')."
   routing_sections_alternative:
     title: "Routing: offer the second render"
+    group: "A second render tool"
     source: pack
     folder: tools
     filled_by: tool
@@ -444,6 +508,7 @@ slots:
     description: "Hub routing clause (with its <<IF:tool:render_blade_sections>> regions) offering the sections-only render; empty for a single-tool DC."
   sections_rerun_case:
     title: "Inspector: re-run for the second render"
+    group: "A second render tool"
     source: pack
     folder: tools
     filled_by: tool
@@ -452,6 +517,7 @@ slots:
     description: "Inspector routing: the extra no-design-change case only a sections render creates (leading ', or ...')."
   directive_output_choice:
     title: "Standing directive: output choice"
+    group: "Precision jobs"
     source: pack
     folder: tools
     filled_by: tool
@@ -460,6 +526,7 @@ slots:
     description: "What a standing directive imposes when geometry must be created, naming the alternative outputs."
   precision_multi_phase_rule:
     title: "Precision jobs with several phases"
+    group: "Precision jobs"
     source: pack
     folder: tools
     filled_by: tool
@@ -468,6 +535,7 @@ slots:
     description: "Planner rule for runs with more than one precision phase; empty when the DC has one output type."
   precision_continue_directive_example:
     title: "Example: moving a precision job on"
+    group: "Precision jobs"
     source: pack
     folder: tools
     filled_by: tool
@@ -476,6 +544,7 @@ slots:
     description: "Example STANDING DIRECTIVES body that moves a precision job to its next phase."
   sections_tool_block_full:
     title: "Second render tool, full text"
+    group: "A second render tool"
     source: pack
     folder: tools
     filled_by: tool
@@ -484,6 +553,7 @@ slots:
     description: "Sections-tool block (BSV markers + its fragments) for the Database Handler."
   sections_tool_block_overlay:
     title: "Second render tool, per agent (Planner)"
+    group: "A second render tool"
     source: pack
     folder: tools
     filled_by: tool
@@ -492,6 +562,7 @@ slots:
     description: "Sections-tool block (BSV markers + per-agent overlay) for the Planner."
   blade_sections_visualizer:
     title: "Second render tool: its entry"
+    group: "A second render tool"
     source: pack
     folder: tools
     filled_by: tool
@@ -499,6 +570,7 @@ slots:
     section: tools
   blade_sections_visualizer_off:
     title: "Second render tool: when off"
+    group: "A second render tool"
     source: pack
     folder: tools
     filled_by: tool
@@ -506,6 +578,7 @@ slots:
     section: tools
   blade_sections_visualizer_per_agent:
     title: "Second render tool: per agent"
+    group: "A second render tool"
     source: pack
     folder: tools
     filled_by: tool
@@ -514,6 +587,7 @@ slots:
     section: tools
   geometry_editing_ban:
     title: "Model edits that do not exist"
+    group: "What the model tools cannot do"
     source: pack
     folder: tools
     filled_by: tool
@@ -522,6 +596,7 @@ slots:
     description: "Sentence stating which geometry post-processing operations do NOT exist (Planner)."
   mesh_editing_operations_actions:
     title: "Model edits that do not exist, as verbs"
+    group: "What the model tools cannot do"
     source: pack
     folder: tools
     filled_by: tool
@@ -530,6 +605,7 @@ slots:
     description: "The same operations as verbs ('You cannot ...')."
   recommendation_exclusions:
     title: "What a revise advice must leave out"
+    group: "What the model tools cannot do"
     source: pack
     folder: tools
     filled_by: tool
@@ -538,6 +614,7 @@ slots:
     description: "What a REVISE recommendation must not contain."
   quality_check_numbers:
     title: "Quality-check figures"
+    group: "Quality checks"
     source: pack
     folder: tools
     filled_by: tool
@@ -546,6 +623,7 @@ slots:
     description: "The geometry tool's quality-check output, as 'the ... numbers'."
   quality_check_report:
     title: "Quality-check report name"
+    group: "Quality checks"
     source: pack
     folder: tools
     filled_by: tool
@@ -554,6 +632,7 @@ slots:
     description: "Name of the geometry tool's quality-check report."
   mesh_check_role_item:
     title: "Inspector: the quality-check report"
+    group: "Quality checks"
     source: pack
     folder: tools
     filled_by: tool
@@ -562,6 +641,7 @@ slots:
     description: "Inspector role-list item (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) for the quality-check report."
   qc_numerics_verdict_rule:
     title: "Verdict on quality-check figures alone"
+    group: "Quality checks"
     source: pack
     folder: tools
     filled_by: tool
@@ -570,6 +650,7 @@ slots:
     description: "Sentence (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) allowing a verdict on quality-check figures alone."
   no_render_fallback_qc:
     title: "No pictures: use the quality check"
+    group: "Quality checks"
     source: pack
     folder: tools
     filled_by: tool
@@ -578,24 +659,28 @@ slots:
     description: "Clause (with <<IF:setting:generate_and_render_propeller.mesh_checks>> regions) adding the quality-check report to the no-render fallback. (3-agent team only)"
   visualize_3d_model_tool:
     title: "3D model viewer tool"
+    group: "Each agent's tools"
     source: pack
     folder: tools
     kind: block
     section: tools
   propose_attempt_tool:
     title: "Propose-an-attempt tool"
+    group: "Each agent's tools"
     source: pack
     folder: tools
     kind: block
     section: tools
   database_search_tool:
     title: "Database search tool"
+    group: "Each agent's tools"
     source: pack
     folder: tools
     kind: block
     section: tools
   database_search_per_agent:
     title: "Database search, per agent"
+    group: "Each agent's tools"
     source: pack
     folder: tools
     kind: block
@@ -603,18 +688,21 @@ slots:
     section: tools
   retrieve_user_inputs_tool:
     title: "Fetch the user's inputs tool"
+    group: "Each agent's tools"
     source: pack
     folder: tools
     kind: block
     section: tools
   retrieve_attempt_tool:
     title: "Fetch an attempt tool"
+    group: "Each agent's tools"
     source: pack
     folder: tools
     kind: block
     section: tools
   render_check_library_off:
     title: "Render check: off"
+    group: "Quality checks"
     source: pack
     folder: tools
     filled_by: tool
@@ -623,6 +711,7 @@ slots:
     section: tools
   render_check_library_pyvista:
     title: "Render check: PyVista"
+    group: "Quality checks"
     source: pack
     folder: tools
     filled_by: tool
@@ -631,6 +720,7 @@ slots:
     section: tools
   render_check_library_trimesh:
     title: "Render check: trimesh"
+    group: "Quality checks"
     source: pack
     folder: tools
     filled_by: tool
@@ -641,6 +731,7 @@ slots:
 # --- 6 Examples ------------------------------------------------------------
   past_run_lookup_examples:
     title: "Questions about an earlier run"
+    group: "Questions and requests"
     source: pack
     folder: dc
     kind: phrase
@@ -648,6 +739,7 @@ slots:
     description: "Example factual questions about an earlier run, in parentheses."
   extraction_only_examples_user:
     title: "Requests for extraction only (from the user)"
+    group: "Questions and requests"
     source: pack
     folder: dc
     kind: phrase
@@ -655,6 +747,7 @@ slots:
     description: "Example user requests that ask only for extraction (Receptionist list)."
   extraction_only_examples:
     title: "Requests for extraction only (forwarded)"
+    group: "Questions and requests"
     source: pack
     folder: dc
     kind: phrase
@@ -662,6 +755,7 @@ slots:
     description: "Example forwarded requests that ask only for extraction (hub list)."
   observable_fact_questions:
     title: "Questions about what the system saw"
+    group: "Questions and requests"
     source: pack
     folder: tools
     kind: phrase
@@ -669,6 +763,7 @@ slots:
     description: "Example user questions about what the system observed or concluded."
   tool_run_history_contents:
     title: "What the tool history holds"
+    group: "Tools"
     source: pack
     folder: tools
     kind: phrase
@@ -676,6 +771,7 @@ slots:
     description: "What the tool runner's history holds about a run."
   non_consumable_input_examples:
     title: "Inputs the configurator cannot use"
+    group: "Inputs"
     source: pack
     folder: dc
     kind: phrase
@@ -683,6 +779,7 @@ slots:
     description: "Example inputs the configurator cannot consume (quoted list)."
   quantitative_input_example:
     title: "Two number inputs"
+    group: "Inputs"
     source: pack
     folder: dc
     kind: block
@@ -690,6 +787,7 @@ slots:
     description: "Two example QUANTITATIVE INPUTS lines (block)."
   countable_feature_example:
     title: "A countable feature"
+    group: "Inputs"
     source: pack
     folder: dc
     kind: phrase
@@ -697,6 +795,7 @@ slots:
     description: "A countable feature of this DC, as 'the ... for example'."
   stated_count_example:
     title: "A count written on a drawing"
+    group: "Inputs"
     source: pack
     folder: dc
     kind: phrase
@@ -704,6 +803,7 @@ slots:
     description: "A count written beside a drawing, quoted."
   soft_target_example:
     title: "A soft target line"
+    group: "Inputs"
     source: pack
     folder: dc
     kind: phrase
@@ -711,6 +811,7 @@ slots:
     description: "One example extraction line with a SOFT TARGET marker."
   soft_target_marker_example:
     title: "A short soft target"
+    group: "Inputs"
     source: pack
     folder: dc
     kind: phrase
@@ -718,6 +819,7 @@ slots:
     description: "A shorter SOFT TARGET marker example (Design Engineer value states). (3-agent team only)"
   parameter_level_entry_example:
     title: "A quantity that is one parameter"
+    group: "Inputs"
     source: pack
     folder: dc
     kind: phrase
@@ -725,6 +827,7 @@ slots:
     description: "Example of a user quantity that maps directly onto one parameter, in parentheses."
   non_applicable_input_examples:
     title: "Inputs that do not apply"
+    group: "Inputs"
     source: pack
     folder: dc
     kind: phrase
@@ -732,6 +835,7 @@ slots:
     description: "Example entries that do not apply to the configurator, in parentheses."
   visual_claim_examples:
     title: "Visual claims"
+    group: "Checking the pictures"
     source: pack
     folder: tools
     kind: phrase
@@ -739,6 +843,7 @@ slots:
     description: "Example phrases that count as visual claims, in parentheses."
   shape_gap_example:
     title: "A shape gap, described"
+    group: "Checking the pictures"
     source: pack
     folder: dc
     kind: phrase
@@ -746,6 +851,7 @@ slots:
     description: "Example free-form description of a visual shape gap (quoted)."
   unlocked_lever_examples:
     title: "Levers still free to change"
+    group: "Checking the pictures"
     source: pack
     folder: dc
     kind: phrase
@@ -753,6 +859,7 @@ slots:
     description: "Example unlocked levers that could improve a mismatch."
   sub_resolution_examples:
     title: "Sizes too small for the pictures"
+    group: "Checking the pictures"
     source: pack
     folder: dc
     kind: phrase
@@ -760,6 +867,7 @@ slots:
     description: "Example quantities the renders cannot resolve, in parentheses."
   prior_finding_citation_example:
     title: "Citing an earlier finding"
+    group: "Checking the pictures"
     source: pack
     folder: dc
     kind: phrase
@@ -767,6 +875,7 @@ slots:
     description: "Example of marking a prior-cycle finding, in parentheses."
   feature_feedback_examples:
     title: "Feedback on a feature"
+    group: "Questions and requests"
     source: pack
     folder: dc
     kind: phrase
@@ -774,6 +883,7 @@ slots:
     description: "Example feature / parameter direction feedback, in parentheses."
   relative_magnitude_examples:
     title: "Relative size requests"
+    group: "Questions and requests"
     source: pack
     folder: dc
     kind: phrase
@@ -781,6 +891,7 @@ slots:
     description: "Example relative-magnitude requests (quoted list)."
   dh_artefact_reference_examples:
     title: "Database: references to an archived file"
+    group: "The database's summary"
     source: pack
     folder: tools
     kind: phrase
@@ -788,6 +899,7 @@ slots:
     description: "Example generic references to an archived artefact, in parentheses."
   dh_parameter_dump_example:
     title: "Database: a list of parameter values"
+    group: "The database's summary"
     source: pack
     folder: dc
     kind: phrase
@@ -795,6 +907,7 @@ slots:
     description: "Example of how a parameter-value dump looks, in parentheses."
   dh_concrete_noun_examples:
     title: "Database: pronouns made concrete"
+    group: "The database's summary"
     source: pack
     folder: dc
     kind: phrase
@@ -802,6 +915,7 @@ slots:
     description: "Example pronoun-to-concrete-noun replacements, in parentheses."
   dh_parameter_name_example:
     title: "Database: parameter naming"
+    group: "The database's summary"
     source: pack
     folder: dc
     kind: phrase
@@ -809,6 +923,7 @@ slots:
     description: "This DC's parameter naming convention with one example name."
   dh_numeric_fact_example:
     title: "Database: a number spelled out"
+    group: "The database's summary"
     source: pack
     folder: dc
     kind: phrase
@@ -816,6 +931,7 @@ slots:
     description: "Example of spelling out a numeric fact, in parentheses."
   dh_structural_marker_examples:
     title: "Database: markers to keep"
+    group: "The database's summary"
     source: pack
     folder: dc
     kind: phrase
@@ -823,6 +939,7 @@ slots:
     description: "Structural markers in agents' answers to preserve, in parentheses."
   attempt_slug_example:
     title: "An attempt folder label"
+    group: "Tools"
     source: pack
     folder: dc
     kind: phrase
@@ -831,6 +948,7 @@ slots:
     description: "Example attempt-folder label (code-quoted), in new_attempt_parameters' description."
   crop_reuse_example:
     title: "Reusing a crop of a picture"
+    group: "Tools"
     source: pack
     folder: dc
     kind: phrase
@@ -839,6 +957,7 @@ slots:
     description: "Example of an agent reusing a recorded crop region, in view_images' description ('e.g. ...')."
   search_query_examples:
     title: "Database search queries"
+    group: "Tools"
     source: pack
     folder: dc
     kind: phrase
@@ -847,6 +966,7 @@ slots:
     description: "Example database_search queries, each single-quoted."
   parameter_search_example:
     title: "Database search by parameters"
+    group: "Tools"
     source: pack
     folder: dc
     kind: phrase
@@ -855,6 +975,7 @@ slots:
     description: "Example parameter set for database_search, as name: number pairs WITHOUT the braces (the engine writes them)."
   dh_stitching_example_answer:
     title: "Database summary: an agent's answer"
+    group: "The database's summary"
     source: pack
     folder: dc
     kind: phrase
@@ -863,6 +984,7 @@ slots:
     description: "The stitching prompt's worked example: an agent's ANSWER (one line)."
   dh_stitching_example_paragraph:
     title: "Database summary: the paragraph"
+    group: "The database's summary"
     source: pack
     folder: dc
     kind: phrase
@@ -871,6 +993,7 @@ slots:
     description: "The stitching prompt's worked example: the paragraph written from that answer (one line)."
   manual_entry_text_example:
     title: "A hand-made database entry"
+    group: "The database's summary"
     source: pack
     folder: dc
     kind: phrase

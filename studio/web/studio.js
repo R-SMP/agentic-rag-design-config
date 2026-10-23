@@ -450,7 +450,7 @@
   function renderGridSection(center, right, sec) {
     var meta = SECTIONS.filter(function (s) { return s.id === sec; })[0] || { label: sec };
     add(center, head(meta.label, INTRO[sec], [legendGrid()]));
-    add(center, grid(slotsOf(sec)));
+    add(center, grid(slotsOf(sec), sec));
     var sel = R.q.field ? slotByName(R.q.field) : null;
     if (sel) add(right, inspectField(sel));
   }
@@ -458,7 +458,7 @@
     return h('div', { 'class': 'legend' }, [
       h('span', null, [h('span', { 'class': 'link on' }, 'Same for all team sizes'), ' one text, one box']),
       h('span', null, [h('span', { 'class': 'link off' }, 'Different per team size'), ' a text per team, side by side']),
-      h('span', null, 'Click a title for its help and the sentences it lands in.')
+      h('span', null, 'Click a text to edit it, its title for its help; Expand ⤢ opens it large.')
     ]);
   }
   // The Studio's plain words for a field (the prompts keep their own).
@@ -469,23 +469,36 @@
     ts = ts.slice().sort();
     return ts.length === 1 ? 'team of ' + ts[0] : 'teams of ' + ts.slice(0, -1).join(', ') + ' and ' + ts[ts.length - 1];
   }
-  function grid(list) {
+  // A section's fields under the groups the registry gives it (slot_groups),
+  // in their order; a field without a group comes last.
+  function grid(list, sec) {
     var g = h('div', { 'class': 'tgrid' });
-    list.forEach(function (s) {
-      var r = row(s, null), vs = s.variants || [];
-      // Simple: no rows for the agents' own versions, a line that names them
-      if (!ADV() && vs.length) add(r, h('div', { 'class': 'vnote' }, 'Also a version of its own for ' +
-        listText(vs.map(function (v) { return disp(v.agent); })) + ': see it in Advanced.'));
-      add(g, r);
-      if (ADV()) vs.forEach(function (v) { add(g, row(s, v.agent)); });
+    function rows(items) {
+      items.forEach(function (s) {
+        var r = row(s, null), vs = s.variants || [];
+        // Simple: no rows for the agents' own versions, a line that names them
+        if (!ADV() && vs.length) add(r, h('div', { 'class': 'vnote' }, 'Also a version of its own for ' +
+          listText(vs.map(function (v) { return disp(v.agent); })) + ': see it in Advanced.'));
+        add(g, r);
+        if (ADV()) vs.forEach(function (v) { add(g, row(s, v.agent)); });
+      });
+    }
+    var titles = ((D.slot_groups || {})[sec] || []).filter(function (x) { return list.some(function (s) { return s.group === x; }); });
+    if (!titles.length) { rows(list); return g; }
+    titles.forEach(function (x) {
+      add(g, h('h3', { 'class': 'tgroup' }, x));
+      rows(list.filter(function (s) { return s.group === x; }));
     });
+    var rest = list.filter(function (s) { return titles.indexOf(s.group) < 0; });
+    if (rest.length) { add(g, h('h3', { 'class': 'tgroup' }, 'Other')); rows(rest); }
     return g;
   }
   // One field's row: the shared text (agent null) or an agent's own version.
   // One text for every team size is one box; a text per team size is a
-  // column per team, side by side.  No box scrolls: each is as tall as its
-  // text, and a long one folds until it is opened (fitAll).
-  function row(s, agent) {
+  // column per team, side by side, the lines that differ marked.  A long text
+  // reads formatted until it is clicked; a phrase is a blank in its sentence;
+  // a word is one line beside its title.  *big*: in the big editor.
+  function row(s, agent, big) {
     var st = stored(s, agent), key = fkey(s.slot, agent);
     var teams = topoKeys(agent).slice().reverse();          // 3, 5, 7
     var multi = teams.length > 1;
@@ -493,18 +506,22 @@
     var selected = R.q.field === s.slot && (R.q.agent || null) === agent;
     var readers = teams.filter(function (t) { return landsIn(s.slot, +t, agent); });
     var unread = s.runtime || !whereRows(s.slot).length ? [] : teams.filter(function (t) { return readers.indexOf(t) < 0; });
-    var r = h('div', { 'class': 'trow' + (agent ? ' sub' : '') + (unlinked ? ' unlinked' : '') + (selected ? ' sel' : '') +
-      (EDITS[key] ? ' dirty' : ''), 'data-fk': key });
-    add(r, h('div', { 'class': 'fl', onclick: function () { go('studio', R.section, withQ({ field: s.slot, agent: agent })); } }, [
+    // Simple: a text no team has is one line, not a column of "no text" per team
+    var none = unlinked && !ADV() && teams.every(function (t) { var v = cellText(s, agent, t); return v === null || v === undefined; });
+    var r = h('div', { 'class': 'trow' + (agent ? ' sub' : '') + (unlinked ? ' unlinked' : '') + (selected && !big ? ' sel' : '') +
+      (EDITS[key] ? ' dirty' : '') + (s.kind === 'word' ? ' word' : ''), 'data-fk': key });
+    add(r, h('div', { 'class': 'fl', onclick: function () { if (!big) go('studio', R.section, withQ({ field: s.slot, agent: agent })); } }, [
       h('span', { 'class': 'ttl' }, agent ? '↳ Version for ' + disp(agent) + (multi ? '' : ' (' + teamsText(teams) + ')') : titleOf(s)),
       agent || !s.title || !ADV() ? null : h('span', { 'class': 'nm' }, s.slot),
       agent || !ADV() ? null : h('span', { 'class': 'meta' }, [kpill(KIND_WORDS[s.kind] || s.kind),
         kpill(s.origin === 'tool' ? 'tool text' : 'configurator text', s.origin === 'tool' ? 'tool' : 'dc'),
         s.owner ? kpill('belongs to ' + ownerName(s.owner)) : null, s.runtime ? kpill('read by the app') : null]),
       st.exists && multi && ADV() ? h('span', { 'class': 'meta' }, linkButton(s, agent)) : null,
-      unlinked && !ADV() ? h('span', { 'class': 'tbadge' }, 'Different per team size') : null,
+      unlinked && !ADV() && !none ? h('span', { 'class': 'tbadge' }, 'Different per team size') : null,
       !unlinked && unread.length && unread.length < teams.length ? h('span', { 'class': 'unread' }, 'not read by the ' + teamsText(unread)) : null,
       h('span', { 'class': 'grow' }),
+      s.kind === 'word' || big || !st.exists || none ? null : h('button', { 'class': 'mini expand', title: 'Open it large, with its help and the sentences it lands in.',
+        onclick: function (ev) { ev.stopPropagation(); openEditor(s, agent); } }, 'Expand ⤢'),
       h('div', { 'class': 'racts', 'data-racts': key }, rowActions(s, agent))
     ]));
     if (!st.exists) {
@@ -512,18 +529,26 @@
         h('div', { 'class': 'na' }, 'No text for every agent here: an agent reads its own version, or nothing.'))));
       return r;
     }
+    if (none) {
+      add(r, h('div', { 'class': 'cells one' }, h('div', { 'class': 'cell' },
+        h('div', { 'class': 'na' }, 'No text: no team reads anything here (Advanced gives a team a text of its own).'))));
+      return r;
+    }
     if (!unlinked) {
       var t0 = teams[teams.length - 1], v0 = cellText(s, agent, t0);
       add(r, h('div', { 'class': 'cells one' }, h('div', { 'class': 'cell' }, v0 === null || v0 === undefined
         ? inheritedCell(s, agent, t0)
-        : field(s, agent, st.linked ? 'all' : t0, t0, v0, !s.runtime && !readers.length ? 'not used: no team reads this text' : null))));
+        : field(s, agent, st.linked ? 'all' : t0, t0, v0, !s.runtime && !readers.length ? 'not used: no team reads this text' : null, { big: big, single: true }))));
       return r;
     }
+    var vals = {};
+    teams.forEach(function (t) { var v = cellText(s, agent, t); if (v !== null && v !== undefined) vals[t] = v; });
+    var marks = s.kind === 'word' ? {} : diffMarks(vals);
     add(r, h('div', { 'class': 'cells ' + (teams.length === 2 ? 'two' : 'three') }, teams.map(function (t) {
       var v = cellText(s, agent, t), read = readers.indexOf(t) >= 0;
       return h('div', { 'class': 'cell' }, [h('div', { 'class': 'ch' }, 'Team of ' + t + (unread.indexOf(t) >= 0 ? ' · not read' : '')),
         v === null || v === undefined ? inheritedCell(s, agent, t)
-          : field(s, agent, t, t, v, !s.runtime && !read ? 'not used: this team never reads this text' : null)]);
+          : field(s, agent, t, t, v, !s.runtime && !read ? 'not used: this team never reads this text' : null, { big: big, marks: marks[t] })]);
     })));
     return r;
   }
@@ -564,53 +589,213 @@
         title: 'Give the team of ' + t + ' its own text, starting from the text it reads now.',
         onclick: function (ev) { ev.stopPropagation(); giveOwnText(s, agent, t, from.text); } }, 'Give it its own text')]);
   }
-  // a field's text, editable; *ph*: what it says while empty
-  function field(s, agent, k, t, v, ph) {
-    var key = fkey(s.slot, agent);
+  // A field's text, editable; *ph*: what it says while empty; *o*: big (in
+  // the big editor: typed in at once), single (one box for every team),
+  // marks (the lines that differ from the other teams').
+  var EDITING = null;      // the long text being typed in (data-fk|data-t): open through a redraw
+  function field(s, agent, k, t, v, ph, o) {
+    o = o || {};
+    var key = fkey(s.slot, agent), id = key + '|' + t;
     var a = { spellcheck: 'false', 'data-fk': key, 'data-k': k, 'data-t': t, placeholder: v === '' ? ph || null : null,
       oninput: function (e) { onEdit(s, agent, k, e.target.value, e.target); fitText(e.target); },
-      onfocus: function (e) { selectField(s, agent); openText(e.target); } };
+      onfocus: function () { selectField(s, agent); } };
     if (s.kind !== 'block') a.onkeydown = function (e) { if (e.key === 'Enter') e.preventDefault(); };
     if (s.kind === 'word') { a.type = 'text'; a.value = v; return h('input', a); }
+    if (s.kind === 'phrase') {
+      var w = sentenceOf(s, agent, o.single ? null : t);
+      if (w) return blank(s, agent, k, t, v, ph, w);
+    }
     a['class'] = 'grow ' + s.kind;
     a.rows = 1;
-    return h('textarea', a, v);
+    if (s.kind !== 'block' || o.big) return h('textarea', a, v);
+    // a long text: read formatted; a click (or Enter) types in it
+    var wrap = h('div', { 'class': 'txt' + (EDITING === id ? ' editing' : '') });
+    function shown(x) { return x === '' ? '<span class="ph">' + esc(ph || 'empty') + '</span>' : mdText(x, null); }
+    var read = h('div', { 'class': 'read', tabindex: '0', title: 'Click to edit', html: v === '' ? shown(v) : mdText(v, o.marks),
+      onclick: function () { edit(); }, onkeydown: function (e) { if (e.key === 'Enter') { e.preventDefault(); edit(); } } });
+    a.onblur = function (e) {
+      if (EDITING === id) EDITING = null;
+      wrap.classList.remove('editing');
+      read.innerHTML = shown(e.target.value);
+      fitRead(read);
+    };
+    var ta = h('textarea', a, v);
+    function edit() { EDITING = id; wrap.classList.add('editing'); fitText(ta); ta.focus(); }
+    add(wrap, [read, ta]);
+    return wrap;
   }
-  // A text box is as tall as its text; a long one shows FOLD_LINES lines and
-  // a "Show all" until it is opened (OPENED) or focused.  fitAll writes every
-  // box, reads them all, then writes them: one layout for the page.
+  // Light formatting, one source line per line (so a line can be marked):
+  // headings, **bold**, `code`, the engine's <<markers>> and $names.
+  function mdLine(x) {
+    return esc(x).replace(/``([^`]+)``|`([^`]+)`/g, function (m, p, q) { return '<code>' + (p || q) + '</code>'; })
+      .replace(/\*\*([^*]+)\*\*/g, '<b>$1</b>')
+      .replace(/&lt;&lt;\/?(IF|IFNOT)[^&]*&gt;&gt;/g, '<span class="mk">$&</span>')
+      .replace(/\$([a-z_][a-z0-9_]*)/g, '<span class="sv">$$$1</span>');
+  }
+  function mdText(text, marks) {
+    return String(text).split('\n').map(function (ln, i) {
+      var m = /^#{1,6}\s+(.*)$/.exec(ln), cls = 'ln' + (m ? ' h' : '') + (marks && marks[i] ? ' dif' : '');
+      return '<div class="' + cls + '">' + (mdLine(m ? m[1] : ln) || '&nbsp;') + '</div>';
+    }).join('');
+  }
+  // The lines two texts share, in order: [[i, j], ...] (a longest common subsequence).
+  function lcsPairs(a, b) {
+    var n = a.length, m = b.length, L = [], i, j;
+    for (i = 0; i <= n; i++) { L.push([]); for (j = 0; j <= m; j++) L[i].push(0); }
+    for (i = n - 1; i >= 0; i--) for (j = m - 1; j >= 0; j--) L[i][j] = a[i] === b[j] ? L[i + 1][j + 1] + 1 : Math.max(L[i + 1][j], L[i][j + 1]);
+    var out = [];
+    i = 0; j = 0;
+    while (i < n && j < m) {
+      if (a[i] === b[j]) { out.push([i, j]); i++; j++; } else if (L[i + 1][j] >= L[i][j + 1]) i++; else j++;
+    }
+    return out;
+  }
+  // Per team: the lines (by index) another team's text lacks.
+  function diffMarks(vals) {
+    var ts = Object.keys(vals), out = {};
+    if (ts.length < 2) return out;
+    ts.forEach(function (t) {
+      var a = vals[t].split('\n'), common = a.map(function () { return 0; });
+      ts.forEach(function (u) { if (u !== t) lcsPairs(a, vals[u].split('\n')).forEach(function (p) { common[p[0]]++; }); });
+      out[t] = {};
+      a.forEach(function (ln, i) { if (common[i] < ts.length - 1 && ln.trim()) out[t][i] = 1; });
+    });
+    return out;
+  }
+  // "Differences only": the lines every team shares once, a line some teams
+  // lack marked with the teams that have it (in the largest team's order).
+  function mergeTexts(vals) {
+    var ts = Object.keys(vals).sort(function (x, y) { return x - y; }), base = ts[ts.length - 1];
+    var A = vals[base].split('\n'), has = A.map(function () { return [base]; }), extra = {};
+    ts.forEach(function (t) {
+      if (t === base) return;
+      var B = vals[t].split('\n'), at = {}, anchor = -1;
+      lcsPairs(A, B).forEach(function (p) { has[p[0]].push(t); at[p[1]] = p[0]; });
+      B.forEach(function (ln, j) {
+        if (at[j] !== undefined) { anchor = at[j]; return; }
+        var list = extra[anchor] = extra[anchor] || [], same = list.filter(function (x) { return x.line === ln; })[0];
+        if (same) same.teams.push(t); else list.push({ line: ln, teams: [t] });
+      });
+    });
+    var out = (extra[-1] || []).slice();
+    A.forEach(function (ln, i) { out.push({ line: ln, teams: has[i] }); out = out.concat(extra[i] || []); });
+    out.forEach(function (x) { x.teams.sort(function (p, q) { return p - q; }); });
+    return { lines: out, teams: ts };
+  }
+  // The sentence a phrase lands in (for team t; null: any): the text around it.
+  function sentenceOf(s, agent, t) {
+    if (s.runtime) return null;
+    var rows = whereRows(s.slot).filter(function (r) {
+      var who = agent ? (r.agents[agent] ? [agent] : []) : sharedReaders(s.slot, r);
+      return who.some(function (x) { return !t || r.agents[x].indexOf(+t) >= 0; });
+    });
+    if (!rows.length) return null;
+    function squash(x) { return String(x).replace(/\s+/g, ' '); }
+    var b = squash(rows[0].before), af = squash(rows[0].after);
+    if (b.length > 120) b = '…' + b.slice(b.length - 120).replace(/^\S*\s/, '');
+    if (af.length > 100) af = af.slice(0, 100).replace(/\s\S*$/, '') + '…';
+    return { before: b, after: af, more: rows.length - 1 };
+  }
+  var PLAIN_EDIT = (function () {
+    try { var d = doc.createElement('span'); d.contentEditable = 'plaintext-only'; return d.contentEditable === 'plaintext-only'; } catch (e) { return false; }
+  }());
+  // A phrase as the blank of its sentence: typed in where the agents read it.
+  function blank(s, agent, k, t, v, ph, w) {
+    var key = fkey(s.slot, agent);
+    var span = h('span', { 'class': 'blank', contenteditable: PLAIN_EDIT ? 'plaintext-only' : 'true', spellcheck: 'false',
+      'data-fk': key, 'data-k': k, 'data-t': t, 'data-ph': ph || 'empty',
+      oninput: function (e) { onEdit(s, agent, k, e.target.textContent, e.target); },
+      onkeydown: function (e) { if (e.key === 'Enter') e.preventDefault(); },
+      onfocus: function () { selectField(s, agent); },
+      onpaste: function (e) {
+        e.preventDefault();
+        doc.execCommand('insertText', false, (e.clipboardData || root.clipboardData).getData('text').replace(/\s*\n\s*/g, ' '));
+      } }, v);
+    return h('div', { 'class': 'sent' }, [h('span', { 'class': 'ctx' }, w.before + ' '), span, h('span', { 'class': 'ctx' }, ' ' + w.after),
+      w.more ? h('span', { 'class': 'more-s' }, '  (+' + w.more + ' more sentence' + (w.more > 1 ? 's' : '') + ': side panel)') : null]);
+  }
+  // A box is as tall as its text.  A long text's reading folds after
+  // FOLD_LINES lines with "Show all" until it is opened (OPENED).  fitAll
+  // writes every box, reads them all, then writes them: one layout.
   var FOLD_LINES = 12, OPENED = {};
   function textId(ta) { return ta.getAttribute('data-fk') + '|' + ta.getAttribute('data-t'); }
   function fitAll() {
-    var tas = Array.prototype.slice.call(doc.querySelectorAll('textarea.grow'));
+    var tas = Array.prototype.slice.call(doc.querySelectorAll('textarea.grow')).filter(function (ta) { return ta.offsetParent !== null; });
+    var reads = Array.prototype.slice.call(doc.querySelectorAll('.txt .read'));
     tas.forEach(function (ta) { ta.style.height = 'auto'; });
-    var full = tas.map(function (ta) { return ta.scrollHeight; });
-    var lh = tas.length ? parseFloat(root.getComputedStyle(tas[0]).lineHeight) || 20 : 20;
-    tas.forEach(function (ta, i) { setHeight(ta, full[i], lh); });
+    reads.forEach(function (r) { r.classList.remove('folded'); r.style.maxHeight = ''; });
+    var full = tas.map(function (ta) { return ta.scrollHeight; }), rfull = reads.map(function (r) { return r.scrollHeight; });
+    var lh = reads.length ? parseFloat(root.getComputedStyle(reads[0]).lineHeight) || 20 : 20;
+    tas.forEach(function (ta, i) { ta.style.height = (full[i] + 2) + 'px'; });
+    reads.forEach(function (r, i) { setRead(r, rfull[i], lh); });
   }
   function fitText(ta) {
     if (!ta || !ta.classList || !ta.classList.contains('grow')) return;
     ta.style.height = 'auto';
-    setHeight(ta, ta.scrollHeight, parseFloat(root.getComputedStyle(ta).lineHeight) || 20);
+    ta.style.height = (ta.scrollHeight + 2) + 'px';
   }
-  function setHeight(ta, full, lh) {
-    var cap = Math.round(lh * FOLD_LINES) + 14;
-    var fold = !OPENED[textId(ta)] && full > cap + 2 * lh;
-    ta.style.height = (fold ? cap : full + 2) + 'px';
-    ta.classList.toggle('folded', fold);
-    var next = ta.nextSibling, more = next && next.classList && next.classList.contains('more') ? next : null;
+  function setRead(r, full, lh) {
+    var ta = r.parentNode.querySelector('textarea'), id = textId(ta), cap = Math.round(lh * FOLD_LINES) + 14;
+    var fold = !OPENED[id] && full > cap + 2 * lh;
+    r.classList.toggle('folded', fold);
+    r.style.maxHeight = fold ? cap + 'px' : '';
+    var next = r.nextSibling, more = next && next.classList && next.classList.contains('more') ? next : null;
     if (fold) {
       if (!more) {
-        more = h('button', { 'class': 'more mini', onclick: function (ev) { ev.stopPropagation(); openText(ta); } });
-        ta.parentNode.insertBefore(more, ta.nextSibling);
+        more = h('button', { 'class': 'more mini', onclick: function (ev) { ev.stopPropagation(); OPENED[id] = 1; fitRead(r); } });
+        r.parentNode.insertBefore(more, r.nextSibling);
       }
-      more.textContent = 'Show all · ' + Math.round((full - 12) / lh) + ' lines';
+      more.textContent = 'Show all · ' + ta.value.split('\n').length + ' lines';
     } else if (more) more.parentNode.removeChild(more);
   }
-  function openText(ta) {
-    if (!ta.classList.contains('grow') || OPENED[textId(ta)]) return;
-    OPENED[textId(ta)] = 1;
-    fitText(ta);
+  function fitRead(r) {
+    r.classList.remove('folded');
+    r.style.maxHeight = '';
+    setRead(r, r.scrollHeight, parseFloat(root.getComputedStyle(r).lineHeight) || 20);
+  }
+
+  // The big editor (Expand): the row as on the page, larger, every box
+  // whole and typed in at once; beside it the help and the sentences it lands
+  // in.  A text that differs per team size can show its differences only.
+  var BIG = null;           // the open big editor's redraw (after a save re-reads the setup)
+  function openEditor(s, agent) {
+    var st = stored(s, agent), unlinked = st.exists && !st.linked && topoKeys(agent).length > 1, merged = false;
+    var main = h('div', { 'class': 'bigmain' });
+    function draw() {
+      main.innerHTML = '';
+      add(main, merged ? mergedBox(s, agent) : row(s, agent, true));
+      fitAll();
+    }
+    var rows = whereRows(s.slot).filter(function (r) { return agent ? r.agents[agent] : sharedReaders(s.slot, r).length; });
+    var seg = unlinked ? h('span', { 'class': 'seg' }, ['Side by side', 'Differences only'].map(function (label, i) {
+      return h('button', { 'class': i === 0 ? 'on' : '', onclick: function (e) {
+        merged = i === 1;
+        Array.prototype.forEach.call(seg.children, function (b) { b.classList.toggle('on', b === e.target); });
+        draw();
+      } }, label);
+    })) : null;
+    var body = h('div', { 'class': 'bigwrap' }, [h('div', null, [seg ? h('div', { 'class': 'bigbar' }, seg) : null, main]),
+      h('div', { 'class': 'bigside' }, [h('h4', null, 'What it is'), h('p', null, s.description || '—'),
+        h('h4', { style: 'margin-top:14px' }, 'Where it lands · ' + rows.length)].concat(
+        rows.length ? rows.slice(0, 6).map(function (r) { return whereCard(r, s, liveValue(s, agent, r)); })
+          : [h('p', { 'class': 'muted' }, s.runtime ? 'Read by the app’s code, not spliced into a prompt.' : 'Not in any prompt under the checked settings.')]))]);
+    showModal(titleOf(s) + (agent ? ' · ' + disp(agent) + '’s version' : ''), body,
+      [h('button', { 'class': 'primary', onclick: function () { BIG = null; closeModal(); render(); } }, 'Close')]);
+    el('modalBox').className = 'modal xwide';
+    BIG = draw;
+    draw();
+  }
+  function mergedBox(s, agent) {
+    var vals = {};
+    topoKeys(agent).forEach(function (t) { var v = cellText(s, agent, t); if (v !== null && v !== undefined) vals[t] = v; });
+    var m = mergeTexts(vals);
+    return h('div', null, [h('p', { 'class': 'muted', style: 'margin:0 0 8px;font-size:12px' },
+      'The lines every team shares, once; a line only some teams have is marked with them.  To change a line, go back to Side by side.'),
+      h('div', { 'class': 'merged' }, m.lines.map(function (x) {
+        var some = x.teams.length < m.teams.length;
+        return h('div', { 'class': 'mln' + (some ? ' dif' : '') }, [h('span', { html: mdLine(x.line) || '&nbsp;' }),
+          some ? h('span', { 'class': 'tt' }, teamsText(x.teams) + ' only') : null]);
+      }))]);
   }
 
   function hints(s, v) {
@@ -857,7 +1042,10 @@
     setEdit(s, agent, k, text);
     delete FIELD_ERRORS[key];
     // a linked field: every place that shows it shows the one text
-    if (k === 'all') Array.prototype.forEach.call(doc.querySelectorAll('[data-fk="' + key + '"][data-k="all"]'), function (x) { if (x !== src) { x.value = text; fitText(x); } });
+    if (k === 'all') Array.prototype.forEach.call(doc.querySelectorAll('[data-fk="' + key + '"][data-k="all"]'), function (x) {
+      if (x === src) return;
+      if (x.isContentEditable) x.textContent = text; else { x.value = text; fitText(x); }
+    });
     refreshField(s, agent);
   }
   // redraw what depends on a field's unsaved text without touching the inputs
@@ -1086,7 +1274,7 @@
     VOCAB_RULES.forEach(function (vr) { inTable[vr[0]] = 1; });
     var rest = slotsOf('outputs').filter(function (s) { return !inTable[s.slot] || !stored(s, null).linked || (s.variants || []).length; });
     add(center, h('div', { style: 'padding:14px 16px 4px' }, h('h4', null, 'What the inspector checks in the images')));
-    add(center, grid(rest));
+    add(center, grid(rest, 'outputs'));
     var sel = R.q.field ? slotByName(R.q.field) : null;
     if (sel) add(right, inspectField(sel));
   }
@@ -2206,7 +2394,7 @@
     add(center, wrap);
     add(center, h('div', { style: 'padding:6px 16px 4px' }, [h('h4', null, 'Tool text the agents read · ' + slotsOf('tools').length + ' fields'),
       h('div', { 'class': 'muted', style: 'font-size:11.5px' }, 'A field owned by a tool lives in that tool’s folder (tools/<tool>/prompts/ in the setup) and leaves with it; the others are shared by all tools.')]));
-    add(center, grid(slotsOf('tools')));
+    add(center, grid(slotsOf('tools'), 'tools'));
     if (R.q.field && slotByName(R.q.field)) { add(right, inspectField(slotByName(R.q.field))); return; }
     add(right, h('div', { 'class': 'insp' }, [
       h('h4', null, 'How tools reach the agents'),
@@ -3837,6 +4025,8 @@
         try { back.setSelectionRange(caret[0], caret[1]); } catch (e) { /* not a text input */ }
       }
     }
+    // the big editor shows the texts as they are now
+    if (BIG && el('modal').className.indexOf(' on') >= 0) BIG(); else BIG = null;
   }
 
   function init() {
