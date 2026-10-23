@@ -169,9 +169,8 @@ def _scan_database_retrieval() -> dict[str, str] | None:
     restated, so the banner cannot drift from what the tool does.
 
     Importing ``voyage_mm`` here is safe: ``embedding_model_string`` is a
-    pure string formatter and the ``voyageai`` client is imported lazily
-    inside the embed call, so no key and no package are needed to report
-    the name.  Everything is wrapped anyway -- this runs at session start
+    pure string formatter and OpenRouter is only called inside the embed
+    call, so no key is needed to report the name.  Everything is wrapped anyway -- this runs at session start
     and must never be the reason a session fails to open.
     """
     try:

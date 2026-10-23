@@ -79,7 +79,7 @@ sys.path.insert(0, str(ROOT))
 # Heavy runtime packages the page never touches; stubbed only when they are
 # not installed (the finder runs last).
 _STUB_ROOTS = {"trimesh", "pyrender", "pyvista", "rhino3dm", "compute_rhino3d",
-               "voyageai", "manifold3d", "mapbox_earcut", "embreex", "vtk",
+               "manifold3d", "mapbox_earcut", "embreex", "vtk",
                "fast_simplification", "xatlas", "DracoPy", "collada", "pycollada"}
 
 

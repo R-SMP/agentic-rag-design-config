@@ -85,7 +85,7 @@ Volumes → New Volume**, mounted at `/app/previous_sessions`.
    Variables, **Database** (side menu) › **Create this section** does the
    same from the browser.
 4. In the app: **Workflow Settings › Database › Upload parameter schema**.
-5. Search over past designs with their pictures needs `VOYAGE_API_KEY`;
+5. Search over past designs with their pictures needs `OPENROUTER_API_KEY`;
    the pictures and models saved with a session go to a bucket. Either a
    Railway bucket (in the project: Create › Bucket): in the service's
    Variables, add `S3_ENDPOINT_URL`, `S3_BUCKET`, `S3_ACCESS_KEY_ID`,

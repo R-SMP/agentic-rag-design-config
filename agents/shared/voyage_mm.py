@@ -12,17 +12,27 @@ voyage-multimodal-3.5 vector.  All three live in the same embedding
 space, so cosine similarity is meaningful across them (CLIP-style
 cross-modal retrieval).
 
+The model is reached through OpenRouter's embeddings endpoint (since
+2026-10-23; before that, Voyage's own ``voyageai`` SDK).  Checked side
+by side on 2026-10-23: text, image and image+text, as document and as
+query, give the same vectors as Voyage directly (cosine >= 0.9996), so
+the rows already stored stay searchable and keep their
+``embedding_model`` string.
+
 Locked parameters (architecture doc §6.3; currently non-modifiable in
 the UI — see the Database options panel):
 
-  * model            = ``voyage-multimodal-3.5``
+  * model            = ``voyage-multimodal-3.5`` (OpenRouter's
+                       ``voyageai/voyage-multimodal-3.5``)
   * output_dimension = 2048  (Voyage's max; stored as ``vector(2048)``)
   * input_type       = ``document`` for stored corpus rows, and
                        ``query`` for a search's query vector -- wired
-                       via ``as_query=True`` at database_search.py:1392
+                       via ``as_query=True`` in database_search.py
   * max image side   = 1536 px (resize-before-send; preserves fine
                        sketch annotations better than the harness's
                        1024 while bounding pixel-token cost)
+  * image encoding   = lossless WebP data URI (what the ``voyageai``
+                       SDK sent, so the vectors match the stored ones)
   * call mode        = single-item (one input per request) — per-item
                        error isolation for the one-time backfill
   * embedding_model string = ``voyage/voyage-multimodal-3.5/2048``
@@ -33,21 +43,21 @@ fused with its ``_note.txt``; a render is fused with the attempt's
 falls back to image-only (``embed_image``).  See TODO_known_issues.md
 F37 for the rationale on NOT adding a VLM-generated caption.
 
-Requires ``VOYAGE_API_KEY`` in the environment.  ``voyageai`` is a
-``requirements-web.txt`` dependency (present on Railway; install it
-into the local interpreter for local testing).
+Requires ``OPENROUTER_API_KEY`` in the environment (the same key the
+OpenRouter LLM provider uses).
 """
 
 from __future__ import annotations
 
+import base64
 import io
 import logging
 import os
-import threading
 import time
 from pathlib import Path
 from typing import Any, Union
 
+import requests
 from PIL import Image
 
 logger = logging.getLogger(__name__)
@@ -65,6 +75,10 @@ _INPUT_TYPE_QUERY: str = "query"
 _DEFAULT_RETRIES: int = 3
 _BACKOFF_BASE_SECONDS: float = 2.0
 
+_OPENROUTER_URL: str = "https://openrouter.ai/api/v1/embeddings"
+_OPENROUTER_MODEL: str = f"voyageai/{VOYAGE_MM_MODEL}"
+_TIMEOUT_SECONDS: float = 60.0
+
 ImageSource = Union[Image.Image, bytes, bytearray, str, Path]
 
 
@@ -73,35 +87,15 @@ def embedding_model_string() -> str:
     return f"voyage/{VOYAGE_MM_MODEL}/{VOYAGE_MM_DIMS}"
 
 
-# --------------------------------------------------------------------------
-# Lazy singleton client
-# --------------------------------------------------------------------------
-_client: Any = None
-_client_lock = threading.Lock()
-
-
-def _get_client() -> Any:
-    """Return a process-wide singleton ``voyageai.Client``.
-
-    ``voyageai`` is imported lazily so merely importing this module does
-    not hard-require the package in environments that never embed.
-    """
-    global _client
-    if _client is not None:
-        return _client
-    with _client_lock:
-        if _client is None:
-            api_key = os.environ.get("VOYAGE_API_KEY")
-            if not api_key:
-                raise RuntimeError(
-                    "VOYAGE_API_KEY is not set — cannot embed with "
-                    "voyage-multimodal-3.5.  Set it locally in .env or "
-                    "in the Railway dashboard Variables."
-                )
-            import voyageai  # lazy — keeps the import optional
-
-            _client = voyageai.Client(api_key=api_key)
-    return _client
+def _api_key() -> str:
+    api_key = os.environ.get("OPENROUTER_API_KEY")
+    if not api_key:
+        raise RuntimeError(
+            "OPENROUTER_API_KEY is not set — cannot embed with "
+            "voyage-multimodal-3.5 (reached through OpenRouter).  Set it "
+            "locally in .env or in the Railway dashboard Variables."
+        )
+    return api_key
 
 
 # --------------------------------------------------------------------------
@@ -127,33 +121,64 @@ def _open_image(src: ImageSource) -> Image.Image:
     return im
 
 
+def _text_part(text: str) -> dict[str, Any]:
+    return {"type": "text", "text": text}
+
+
+def _image_part(im: Image.Image) -> dict[str, Any]:
+    """An image as OpenRouter's ``image_url`` part: a lossless WebP data URI."""
+    buf = io.BytesIO()
+    im.save(buf, format="WEBP", lossless=True)
+    uri = "data:image/webp;base64," + base64.b64encode(buf.getvalue()).decode("ascii")
+    return {"type": "image_url", "image_url": {"url": uri}}
+
+
 # --------------------------------------------------------------------------
 # Core embed call (single-item, with retry/backoff)
 # --------------------------------------------------------------------------
-def _embed_one(inputs: list[list[Any]], *, input_type: str) -> list[float]:
-    """Embed ONE document (`inputs` must hold exactly one inner list).
+def _embed_one(parts: list[dict[str, Any]], *, input_type: str) -> list[float]:
+    """Embed ONE document made of `parts` (text and image parts, in order).
 
     Retries transient failures with exponential backoff.  Validates the
-    returned vector length against ``VOYAGE_MM_DIMS`` so an SDK/model
-    mismatch fails loudly rather than silently storing a wrong-dim
-    vector.
+    returned vector length against ``VOYAGE_MM_DIMS`` so a model or
+    endpoint mismatch fails loudly rather than silently storing a
+    wrong-dim vector.
     """
-    client = _get_client()
+    api_key = _api_key()
+    body = {
+        "model": _OPENROUTER_MODEL,
+        "input": [{"content": parts}],
+        "dimensions": VOYAGE_MM_DIMS,
+        "input_type": input_type,
+        "encoding_format": "float",
+    }
     last_exc: Exception | None = None
     for attempt in range(_DEFAULT_RETRIES):
         try:
-            result = client.multimodal_embed(
-                inputs=inputs,
-                model=VOYAGE_MM_MODEL,
-                input_type=input_type,
-                output_dimension=VOYAGE_MM_DIMS,
+            response = requests.post(
+                _OPENROUTER_URL,
+                headers={"Authorization": f"Bearer {api_key}"},
+                json=body,
+                timeout=_TIMEOUT_SECONDS,
             )
-            vector = list(result.embeddings[0])
+            if response.status_code != 200:
+                raise RuntimeError(
+                    f"OpenRouter embeddings answered HTTP "
+                    f"{response.status_code}: {response.text[:300]}"
+                )
+            try:
+                vector = list(response.json()["data"][0]["embedding"])
+            except (ValueError, KeyError, IndexError, TypeError) as exc:
+                # not the dimension check's ValueError: this one is retried
+                raise RuntimeError(
+                    f"OpenRouter embeddings answered without a vector: "
+                    f"{response.text[:300]}"
+                ) from exc
             if len(vector) != VOYAGE_MM_DIMS:
                 raise ValueError(
                     f"voyage-multimodal-3.5 returned {len(vector)} dims, "
-                    f"expected {VOYAGE_MM_DIMS}.  Check the installed "
-                    f"voyageai SDK supports output_dimension for this model."
+                    f"expected {VOYAGE_MM_DIMS}.  Check that OpenRouter "
+                    f"still passes `dimensions` on to this model."
                 )
             return vector
         except ValueError:
@@ -184,7 +209,7 @@ def embed_text(text: str, *, as_query: bool = False) -> list[float]:
     Used to re-embed the stored stitched paragraph for text rows.
     """
     input_type = _INPUT_TYPE_QUERY if as_query else _INPUT_TYPE_DOCUMENT
-    return _embed_one([[text]], input_type=input_type)
+    return _embed_one([_text_part(text)], input_type=input_type)
 
 
 def embed_image(image: ImageSource, *, as_query: bool = False) -> list[float]:
@@ -194,7 +219,7 @@ def embed_image(image: ImageSource, *, as_query: bool = False) -> list[float]:
     """
     im = _open_image(image)
     input_type = _INPUT_TYPE_QUERY if as_query else _INPUT_TYPE_DOCUMENT
-    return _embed_one([[im]], input_type=input_type)
+    return _embed_one([_image_part(im)], input_type=input_type)
 
 
 def embed_fused(
@@ -209,4 +234,4 @@ def embed_fused(
     """
     im = _open_image(image)
     input_type = _INPUT_TYPE_QUERY if as_query else _INPUT_TYPE_DOCUMENT
-    return _embed_one([[text, im]], input_type=input_type)
+    return _embed_one([_text_part(text), _image_part(im)], input_type=input_type)

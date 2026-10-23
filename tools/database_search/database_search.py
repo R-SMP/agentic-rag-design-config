@@ -1414,7 +1414,7 @@ def _run_search_pipeline(
 
     # 2. Resolve the search backend from the (frozen-at-bind) mode, then
     #    embed the query with that backend's model.  On a multimodal
-    #    embed failure (missing VOYAGE_API_KEY / Voyage API error) fall
+    #    embed failure (missing OPENROUTER_API_KEY / embedding API error) fall
     #    back to the text-only 'chunks' backend AND log an ERROR so the
     #    degradation is never silent (operator requirement, §4.11).
     backend = _resolve_search_backend(db_mode)

@@ -790,7 +790,7 @@ When the "Database options" mode (§6.3 / `db_options.json`) is
   User images (attempt_id NULL) surface in session-level searches only
   (consistent with the existing attempt clause — no special-casing).
 - **Graceful fallback (LOGGED — operator requirement).**  If
-  `VOYAGE_API_KEY` is missing or the Voyage embed errors,
+  `OPENROUTER_API_KEY` is missing or the Voyage embed errors,
   `database_search` falls back to the text-only `chunks` path AND emits
   a `logger.error(...)` with the reason (the fallback is never silent),
   adds a fallback note to `<search_meta>`, and records the reason in
@@ -1906,6 +1906,12 @@ client (`embed_text` / `embed_image` / `embed_fused`), separate
 from the embedding-tests harness client.  Locked params (W38):
 model `voyage-multimodal-3.5`, 2048-dim, 1536 px max side,
 `input_type="document"`, single-item calls.  `voyageai>=0.4.0`.
+*(Since 2026-10-23 the model is reached through OpenRouter's embeddings
+endpoint with `OPENROUTER_API_KEY` -- `voyageai/voyage-multimodal-3.5`,
+`dimensions` 2048, images as lossless WebP data URIs, as the SDK sent
+them -- and `voyageai` is no longer a dependency.  Side by side the
+vectors equal Voyage's own (cosine >= 0.9996), so the stored rows keep
+`voyage/voyage-multimodal-3.5/2048` and nothing was re-embedded.)*
 
 **Mirror writer.**  `agents/database_handler/db_writer_mm.py` —
 `mirror_session_to_mm(...)` (the core, reused everywhere) +

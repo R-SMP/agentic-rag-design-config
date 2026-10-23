@@ -13,7 +13,7 @@ REPO = Path(__file__).resolve().parents[2]   # <repo>/extra_utilities/prompt_pdf
 # clients).  None of them contributes text to a prompt or a tool schema.
 STUB_ROOTS = {
     "psycopg", "tiktoken", "trimesh", "pyrender", "pyvista", "rhino3dm",
-    "compute_rhino3d", "boto3", "botocore", "voyageai",
+    "compute_rhino3d", "boto3", "botocore",
     "openai", "anthropic", "google", "matplotlib", "scipy", "shapely",
     "cv2", "vtk", "OpenGL", "pyglet", "manifold3d", "mapbox_earcut",
     "langchain_openai", "langchain_anthropic", "langchain_google_genai",
