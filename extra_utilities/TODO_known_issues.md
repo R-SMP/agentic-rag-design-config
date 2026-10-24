@@ -142,7 +142,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F127` | DONE | The parameter primer of a configurator that is not the propeller |
 | `F128` | DONE | A .scad import that starts a new configurator keeps the old one's browser preview |
 | `F129` | OPEN | The live database keeps its tables in `public`: move them into a section before the live app takes MAS-blueprint |
-| `F130` | OPEN | Studio simplification: phases 3c-4 (phases 1 to 3b done) |
+| `F130` | OPEN | Studio simplification: phases 3d-4 (phases 1 to 3c done) |
 
 ---
 
@@ -5028,9 +5028,9 @@ no database.  Before that deploy, run, against it:
 database (streamlined) was moved the same way when sections came in.  The
 owner calls sections a momentary solution, to be revisited.
 
-### F130. Studio simplification: phases 3c-4 (phases 1 to 3b done)
+### F130. Studio simplification: phases 3d-4 (phases 1 to 3c done)
 
-**Status.** OPEN — 2026-10-24, phases 1, 2, 3a and 3b done.  The owner chose 45
+**Status.** OPEN — 2026-10-24, phases 1, 2, 3a, 3b and 3c done.  The owner chose 45
 changes that make the Studio easier to use (an options page with mockups, then
 multiple choice).
 
@@ -5059,16 +5059,22 @@ Done:
   tool form with its own texts (the role checkboxes stay visible in Simple);
   drop a new version on a tool's card, a file list, a notice when code is
   uploaded online.
-- **Phase 3b** (2026-10-24).  A five-stage menu with a mark per page (⚠ a check
+- **Phase 3b** (`db9fa11`).  A five-stage menu with a mark per page (⚠ a check
   found a problem, ✓ changed since the Studio opened, • not changed); the
   wizard's "What it does" (the first paragraph of the tool's description).
+- **Phase 3c** (2026-10-24).  Parameters: one row per parameter with its label
+  (shown whole), name, range, default and unit; name, type, step, group, order
+  and Remove in the side panel; a search, three filters (ranges to review,
+  changed since opened, with a problem), groups folded past 40 parameters,
+  ticks with a bar to move, give a unit or remove, a range typed wrong red in
+  its cell with its reason in the row, one Import menu (JSON, CSV, .scad).
+  Primer: Send it On (the reference configurator's agents) / Off, the cost in
+  words, an amber warning when the picture or the text is another
+  configurator's.  Settings & secrets: the tools' settings read-only, each
+  linking to its tool; "Keys this configurator needs".
 
 Left, in the owner's order:
 
-- **Phase 3c.**  The Parameters page (search, fold, fewer columns, full labels,
-  bulk changes, range errors in the row, one Import menu); the Primer page
-  (simple, its cost in words, a warning when the picture is another
-  configurator's); tool settings in each tool and only the tools' keys.
 - **Phase 3d.**  Validate's health in the top bar, quick checks after each
   change, results by page with "Fix it", plain words.
 - **Phase 4.**  One "Aa" menu in the top bar (text size small / medium / large,

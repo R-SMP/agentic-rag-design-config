@@ -68,7 +68,7 @@
     outputs: 'What the model builder produces and the words the agents use for it.',
     examples: 'Short examples spliced INTO generic sentences. Each one is a phrase: keep it on one line and keep its shape (parentheses, quotes, a leading comma).',
     inputs: 'How the agents treat a sketch or reference image the user uploads.',
-    primer: 'One picture and its text that show what the parameters mean, sent with every call to the agents you tick here, between their instructions and the conversation.'
+    primer: 'One picture and its text that show what the parameters mean, sent with every call to the agents that get it, between their instructions and the conversation.'
   };
   // The texts of the screens that come later.
   var LATER = {
@@ -1367,7 +1367,7 @@
       f.min = '0'; f.max = '1'; f.step = '1'; f['default'] = '0';
     }
   }
-  function typeSummary(f) { return f.type === 'choice' ? (f.choices || []).length + ' choices (inspector)' : 'true / false'; }
+  function typeSummary(f) { return f.type === 'choice' ? (f.choices || []).length + ' choices (side panel)' : 'true / false'; }
   // A choice's or an on/off parameter's default: a dropdown of its values.
   function defaultPick(key, f) {
     var choice = f.type === 'choice', ch = f.choices || [];
@@ -1723,16 +1723,19 @@
   }
 
   function renderParams(center, right) {
-    var spec = PE().spec;
+    var spec = PE().spec, show = pshow(), q = pfindOf();
+    Object.keys(PSEL).forEach(function (n) { if (!savedParam(n)) delete PSEL[n]; });
     var fileIn = h('input', { type: 'file', accept: '.json,application/json', style: 'display:none', onchange: function (e) { importJson(e.target.files[0]); e.target.value = ''; } });
     add(center, head('Parameters', 'The one parameter file (parameters.json): the validator, the parameter sliders, the database and the agents’ parameter count read it, and the agents’ parameter lists are kept in step with it. ' +
       spec.parameters.length + ' parameters in ' + spec.groups.length + ' groups.', [
       fileIn,
-      h('button', { disabled: BUSY, onclick: function () { fileIn.click(); } }, 'Import JSON…'),
-      h('button', { disabled: BUSY, onclick: askCsv }, 'Paste CSV…'),
+      dropdown('Import ▾', [
+        { label: 'A parameters file (JSON)…', disabled: BUSY, run: function () { fileIn.click(); } },
+        { label: 'Paste a table (CSV)…', disabled: BUSY, run: askCsv },
+        { label: 'A CAD model’s settings (.scad)…', disabled: BUSY, title: 'A new configurator, or one more tool, from an OpenSCAD model (as Tools › Add a tool does).',
+          run: function () { openWizard('scad'); } }]),
       h('button', { disabled: BUSY, onclick: addParam }, '+ Add parameter'),
       h('button', { disabled: BUSY, onclick: addGroup }, '+ Add group'),
-      rangesToggle(),
       h('span', { 'class': 'grow' }),
       h('button', { disabled: BUSY || !paramsChanged() || !!D.scad_import,
         title: D.scad_import ? 'An import put these parameters in: Undo the import (above) puts them back with its tools.'
@@ -1742,24 +1745,29 @@
       add(center, h('div', { 'class': 'banner info', style: 'margin:8px 16px 0;border:1px solid #2f4f86;border-radius:7px' },
         'Names, types or ranges differ from the setup as opened: once it is deployed, the database needs a new parameter schema (Workflow Settings › Upload).'));
     }
-    var t = h('table', { 'class': 'ptab pedit' }, h('thead', null, h('tr', null,
-      ['', 'Name', 'Label', 'Type', 'Min', 'Max'].concat(ADV() ? ['Step'] : [], ['Default', 'Unit', 'Group', '']).map(function (x) { return h('th', null, x); }))));
-    var tb = h('tbody');
     var groups = spec.groups.slice();
     Object.keys(GEDITS).filter(function (k) { return k.indexOf('new:') === 0; }).forEach(function (k) {
       groups.push({ id: k, label: GEDITS[k].label, image: GEDITS[k].image, order: [], unsaved: true });
     });
-    // Only ranges to review: the groups and parameters with a proposed range (P6f)
-    var only = onlyRanges();
-    if (R.q.ranges && !only) add(center, h('div', { 'class': 'banner info boxed', style: 'margin:8px 16px 0' },
-      'No range is left to review: every range is your own.'));
-    groups.forEach(function (g, gi) {
-      if (only && !proposedOf(g.id).length) return;
-      add(tb, groupRow(g, gi, groups.length));
-      paramRows(tb, g, only);
+    add(center, pfindBar(groups));
+    add(center, bulkBar());
+    var t = h('table', { 'class': 'ptab pedit plist' }, [
+      h('colgroup', null, PCOLS.map(function (w) { return h('col', { style: w ? 'width:' + w : null }); })),
+      h('thead', null, h('tr', null, ['', 'Label', 'Name', 'Range', 'Default', 'Unit', ''].map(function (x) { return h('th', null, x); })))]);
+    var tb = h('tbody'), shown = 0, narrowed = !!(q || show);
+    // a search or a filter: the groups it finds, each saying how many of its rows it shows
+    groups.forEach(function (g) {
+      var all = groupKeys(g), label = (GEDITS[g.id] || g).label;
+      var keys = all.filter(function (k) { return pkeeps(show, k) && pmatches(rowFields(k), label, q); });
+      if (narrowed && !keys.length) return;
+      shown += keys.length;
+      var folded = pfolded(g, all);
+      add(tb, groupRow(g, keys, all, folded, narrowed));
+      if (!folded) paramRows(tb, g, keys, narrowed);
     });
-    if (!only) removedGroups().forEach(function (g) {
-      add(tb, h('tr', { 'class': 'grp gone' }, h('td', { colspan: ADV() ? 11 : 10 }, [h('s', null, g.label), ' · group removed since the Studio opened ',
+    if (narrowed && !shown) add(tb, h('tr', null, h('td', { colspan: 7, 'class': 'muted', style: 'padding:10px 8px' }, nothingShown(show, q))));
+    if (!narrowed) removedGroups().forEach(function (g) {
+      add(tb, h('tr', { 'class': 'grp gone' }, h('td', { colspan: 7 }, [h('s', null, g.label), ' · group removed since the Studio opened ',
         h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { undoGroup(g.id); } }, 'Undo')])));
     });
     t.appendChild(tb);
@@ -1775,77 +1783,228 @@
     };
     return key(PE().spec) !== key(PE().opened);
   }
-  function groupRow(g, gi, n) {
+
+  /* -- find, filter, fold, tick (simplification phase 3c) ---------------------- */
+  var PFIND = '';            // the search box's text
+  var PFIND_TIMER = null;
+  var PFOLD = {};            // group id -> true (folded) or false, as folded or unfolded by hand
+  var PSEL = {};             // the ticked parameters: name -> 1
+  var FOLD_FROM = 40;        // more parameters than this: the groups start folded
+  var PCOLS = ['26px', null, '120px', '128px', '72px', '68px', '104px'];
+  // The filters: one at a time (?show=), each keeping the rows it names.
+  var PSHOWS = [['ranges', 'Ranges to review'], ['changed', 'Changed since opened'], ['problems', 'With a problem']];
+  function pshow() { return PSHOWS.some(function (s) { return s[0] === R.q.show; }) ? R.q.show : null; }
+  function pfindOf() { return PFIND.trim().toLowerCase(); }
+  // a row the search finds: by its label, name or unit, or its group's label
+  function pmatches(f, glabel, q) {
+    return !q || [f.label, f.name, f.unit, glabel].some(function (x) { return String(x || '').toLowerCase().indexOf(q) >= 0; });
+  }
+  function pkeeps(show, key) {
+    if (!show) return true;
+    var isNew = key.indexOf('new:') === 0;
+    if (show === 'ranges') return !isNew && savedParam(key).range === 'proposed';
+    if (show === 'changed') return isNew || !!PEDITS[key] || paramChanged(key);
+    return paramProblems(key).length > 0;
+  }
+  // a row's problems: its unsaved fields' (the range's own words first), a unit two texts disagree on
+  function paramProblems(key) {
+    var out = [];
+    if (PEDITS[key]) {
+      var errs = rangeErrors(PEDITS[key]);
+      out = errs.length ? errs.map(function (x) { return x.text; }) : rowProblems(key);
+    }
+    var info = key.indexOf('new:') === 0 ? null : paramInfo(key);
+    if (info && unitMismatch(info)) out.push('the unit differs from the agents’ lists');
+    return out;
+  }
+  var PINFO = { of: null, map: {} };
+  function paramInfo(name) {
+    if (PINFO.of !== D.parameters) {
+      PINFO = { of: D.parameters, map: {} };
+      D.parameters.parameters.forEach(function (x) { PINFO.map[x.name] = x; });
+    }
+    return PINFO.map[name] || null;
+  }
+  // What is wrong with a number's range as typed: [{cells, text}] -- the
+  // cells at fault turn red, the row says why in a few words.
+  function rangeErrors(f) {
+    if (typedType(f.type)) return [];
+    var out = [], v = {};
+    ['min', 'max', 'default'].forEach(function (k) {
+      v[k] = parseNum(f[k]);
+      if (String(f[k] === undefined || f[k] === null ? '' : f[k]).trim() === '') out.push({ cells: [k], text: k + ' is empty' });
+      else if (!isNum(v[k])) out.push({ cells: [k], text: k + ' is not a number' });
+      else if (f.type === 'int' && v[k] % 1 !== 0) out.push({ cells: [k], text: k + ' is not a whole number' });
+    });
+    if (out.length) return out;
+    if (v.min > v.max) return [{ cells: ['min', 'max'], text: 'min above max' }];
+    if (v['default'] < v.min || v['default'] > v.max) return [{ cells: ['default'], text: 'default outside ' + v.min + ' – ' + v.max }];
+    return [];
+  }
+  function badCells(errs) {
+    var out = {};
+    errs.forEach(function (x) { x.cells.forEach(function (c) { out[c] = 1; }); });
+    return out;
+  }
+  // a group's rows: its saved parameters in the table's order, then the ones added and not saved yet
+  function groupKeys(g) {
+    var keys = PE().spec.parameters.filter(function (p) { return p.group === g.id; }).map(function (p) { return p.name; });
+    Object.keys(PEDITS).filter(function (k) { return k.indexOf('new:') === 0 && PEDITS[k].group === g.id; }).forEach(function (k) { keys.push(k); });
+    return keys;
+  }
+  // Many parameters: the groups start folded, but for the one of the
+  // parameter in the side panel and those with a row being edited.
+  function pfolded(g, keys) {
+    if (pfindOf() || pshow()) return false;
+    if (g.id in PFOLD) return PFOLD[g.id];
+    if (PE().spec.parameters.length <= FOLD_FROM) return false;
+    return !keys.some(function (k) { return k === R.q.param || PEDITS[k]; });
+  }
+  function foldAll(on) {
+    PE().spec.groups.forEach(function (g) { PFOLD[g.id] = on; });
+    render();
+  }
+  function countText(n) { return n + (n === 1 ? ' parameter' : ' parameters'); }
+  function nothingShown(show, q) {
+    if (q) return 'No parameter' + (show ? ' of this filter' : '') + ' matches “' + PFIND.trim() + '”.';
+    return { ranges: 'No range is left to review: every range is your own.', changed: 'No parameter has changed since the Studio opened.',
+      problems: 'No parameter has a problem.' }[show];
+  }
+  function pfindBar(groups) {
+    var keys = [];
+    groups.forEach(function (g) { keys = keys.concat(groupKeys(g)); });
+    var many = groups.length > 1 && !pfindOf() && !pshow();
+    return h('div', { 'class': 'pfind' }, [
+      h('input', { type: 'search', value: PFIND, placeholder: 'Find: a label, name, unit or group', spellcheck: 'false', 'data-fk': 'pfind', 'data-t': 'q',
+        oninput: function (e) {
+          PFIND = e.target.value;
+          if (PFIND_TIMER) root.clearTimeout(PFIND_TIMER);
+          PFIND_TIMER = root.setTimeout(function () { PFIND_TIMER = null; render(); }, 180);
+        } }),
+      h('span', { 'class': 'chips' }, PSHOWS.map(function (s) {
+        var on = pshow() === s[0], n = keys.filter(function (k) { return pkeeps(s[0], k); }).length;
+        return h('button', { 'class': 'chip' + (on ? ' on' : ''), disabled: !on && !n, title: on ? 'Show every parameter again.' : null,
+          onclick: function () { go('studio', 'parameters', withQ({ show: on ? null : s[0] })); } }, (on ? '✓ ' : '') + s[1] + ' · ' + n);
+      })),
+      h('span', { 'class': 'grow' }),
+      many ? h('button', { 'class': 'mini', onclick: function () { foldAll(true); } }, 'Fold all') : null,
+      many ? h('button', { 'class': 'mini', onclick: function () { foldAll(false); } }, 'Unfold all') : null]);
+  }
+  // The ticked rows: moved to a group, given a unit or removed together,
+  // each through the usual preview.
+  function bulkBar() {
+    var names = PE().spec.parameters.map(function (p) { return p.name; }).filter(function (n) { return PSEL[n]; });
+    if (!names.length) return null;
+    var dirty = names.filter(function (n) { return PEDITS[n]; });
+    function ok() {
+      if (dirty.length) status('Save or discard the unsaved changes of ' + listText(dirty) + ' first.', 'err');
+      return !dirty.length && !BUSY;
+    }
+    return h('div', { 'class': 'bulkbar' }, [h('b', null, countText(names.length) + ' ticked'),
+      dropdown('Move to group ▾', PE().spec.groups.map(function (g) {
+        return { label: g.label, run: function () { if (ok()) bulkMove(names, g.id); } };
+      })),
+      h('button', { disabled: BUSY, onclick: function () { if (ok()) askUnit(names); } }, 'Set unit…'),
+      h('button', { 'class': 'danger', disabled: BUSY, onclick: function () { if (ok()) bulkRemove(names); } }, 'Remove'),
+      h('span', { 'class': 'grow' }),
+      h('button', { 'class': 'mini', onclick: function () { PSEL = {}; render(); } }, 'Untick all')]);
+  }
+  function bulkMove(names, id) {
+    var spec = clone(PE().spec), g = groupOf(spec, id);
+    var moving = names.filter(function (n) { return savedParam(n).group !== id; });
+    if (!moving.length) { status((names.length === 1 ? 'It is' : 'They are') + ' in ' + g.label + ' already.', ''); return; }
+    spec.parameters.forEach(function (p) { if (moving.indexOf(p.name) >= 0) p.group = id; });
+    moving.forEach(function (n) { removeFromOrders(spec, n); g.order.push(n); });
+    applyParams(spec, {}, 'Move ' + countText(moving.length) + ' to ' + g.label, function () { PSEL = {}; });
+  }
+  function askUnit(names) {
+    var box = h('input', { type: 'text', spellcheck: 'false', style: 'width:100%' });
+    function apply() {
+      var spec = clone(PE().spec), u = box.value.trim();
+      spec.parameters.forEach(function (p) { if (names.indexOf(p.name) >= 0 && (p.unit || '') !== u) p.unit = u; });
+      closeModal();
+      applyParams(spec, {}, 'Set the unit of ' + countText(names.length), function () { PSEL = {}; });
+    }
+    showModal('Set the unit of ' + countText(names.length), h('div', null, [
+      h('p', { style: 'margin:0 0 8px;font-size:12.5px;line-height:1.5' }, 'The unit the slider page shows for ' + listText(names.slice(0, 6)) +
+        (names.length > 6 ? ' and ' + (names.length - 6) + ' more' : '') + '; empty: none. The agents’ parameter lists keep their own words.'),
+      box]), [h('button', { onclick: closeModal }, 'Cancel'), h('button', { 'class': 'primary', onclick: apply }, 'Preview')]);
+    box.focus();
+  }
+  function bulkRemove(names) {
+    var spec = clone(PE().spec);
+    spec.parameters = spec.parameters.filter(function (p) { return names.indexOf(p.name) < 0; });
+    names.forEach(function (n) { removeFromOrders(spec, n); });
+    applyParams(spec, {}, 'Remove ' + countText(names.length), function () { PSEL = {}; root.history.replaceState(null, '', plink({})); });
+  }
+
+  function groupRow(g, keys, all, folded, narrowed) {
     var img = g.image ? h('img', { 'class': 'thumb', src: own(g.image), alt: '' }) : null;
-    var sel = R.q.group === g.id;
+    var sel = R.q.group === g.id, names = keys.filter(function (k) { return k.indexOf('new:') < 0; });
+    var ticked = names.filter(function (n) { return PSEL[n]; }).length;
+    var box = names.length ? h('input', { type: 'checkbox', checked: ticked > 0 && ticked === names.length,
+      title: 'Tick every parameter of this group' + (narrowed ? ' shown' : ''), onclick: function (e) { e.stopPropagation(); },
+      onchange: function (e) { names.forEach(function (n) { if (e.target.checked) PSEL[n] = 1; else delete PSEL[n]; }); render(); } }) : null;
+    if (box) box.indeterminate = ticked > 0 && ticked < names.length;
     return h('tr', { 'class': 'grp' + (sel ? ' sel' : '') + (GEDITS[g.id] ? ' dirty' : ''), 'data-gk': g.id, style: 'cursor:pointer',
-      onclick: function () { pgo({ group: g.id }); } }, h('td', { colspan: ADV() ? 11 : 10 }, [
-      h('span', { 'class': 'mv' }, [
-        h('button', { 'class': 'mini', disabled: BUSY || g.unsaved || gi === 0, title: 'Move the group up (the slider page’s order)', onclick: stopped(function () { moveGroup(g.id, -1); }) }, '↑'),
-        h('button', { 'class': 'mini', disabled: BUSY || g.unsaved || gi === n - 1, title: 'Move the group down', onclick: stopped(function () { moveGroup(g.id, 1); }) }, '↓')]),
-      (GEDITS[g.id] || g).label, img, g.unsaved ? pill('unsaved', 'warn') : null,
+      onclick: function () { pgo({ group: g.id }); } }, [h('td', { 'class': 'tick' }, box), h('td', { colspan: 6 }, [
+      h('button', { 'class': 'mini fold', disabled: narrowed || !all.length, title: narrowed ? 'A search or a filter opens the groups it finds.' : folded ? 'Unfold the group' : 'Fold the group',
+        onclick: stopped(function () { PFOLD[g.id] = !folded; render(); }) }, folded ? '▸' : '▾'),
+      (GEDITS[g.id] || g).label,
+      h('span', { 'class': 'gcount' }, ' · ' + (narrowed ? keys.length + ' of ' + all.length + ' shown' : countText(all.length))),
+      img, g.unsaved ? pill('unsaved', 'warn') : null,
       !g.unsaved && groupChanged(g.id) ? pill('changed', 'warn', 'Changed since the Studio opened.') : null,
-      keepGroupButton(g)]));
+      keepGroupButton(g)])]);
   }
   function stopped(fn) { return function (ev) { ev.stopPropagation(); fn(); }; }
-  function paramRows(tb, g, only) {
-    var spec = PE().spec;
-    var keys = spec.parameters.filter(function (p) { return p.group === g.id && (!only || p.range === 'proposed'); })
-      .map(function (p) { return p.name; });
-    if (!only) Object.keys(PEDITS).filter(function (k) { return k.indexOf('new:') === 0 && PEDITS[k].group === g.id; }).forEach(function (k) { keys.push(k); });
+  function paramRows(tb, g, keys, narrowed) {
     // a saved row whose unsaved group is another shows under its saved group
-    keys.forEach(function (key, i) { add(tb, paramRow(key, i, keys)); });
-    if (!only) removedParams().filter(function (p) { return p.group === g.id; }).forEach(function (p) {
-      add(tb, h('tr', { 'class': 'gone' }, [h('td'), h('td', { colspan: ADV() ? 9 : 8 }, [h('s', { 'class': 'pname' }, p.name), ' · removed since the Studio opened']),
+    keys.forEach(function (key) { add(tb, paramRow(key)); });
+    if (!narrowed) removedParams().filter(function (p) { return p.group === g.id; }).forEach(function (p) {
+      add(tb, h('tr', { 'class': 'gone' }, [h('td'), h('td', { colspan: 5 }, [h('s', { 'class': 'pname' }, p.name), ' · removed since the Studio opened']),
         h('td', null, h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { undoRemoved(p.name); } }, 'Undo'))]));
     });
   }
-  function paramRow(key, i, keys) {
+  // One row: its label, range, default and unit typed in place; the rest in the side panel.
+  function paramRow(key) {
     var isNew = key.indexOf('new:') === 0, f = rowFields(key), dirty = !!PEDITS[key];
-    var p = isNew ? null : savedParam(key), info = isNew ? null : (D.parameters.parameters.filter(function (x) { return x.name === key; })[0] || null);
-    var bad = info && unitMismatch(info);
-    var sel = R.q.param === key && !R.q.group;
+    var info = isNew ? null : paramInfo(key), bad = info && unitMismatch(info);
+    var sel = R.q.param === key && !R.q.group, typed = typedType(f.type);
     // min and max of a range an import proposed: amber until reviewed (P6f)
-    var proposed = f.range === 'proposed' && !typedType(f.type);
-    function cell(k, style) {
-      var amber = proposed && (k === 'min' || k === 'max');
-      return h('td', { 'class': (NUMERIC[k] ? 'num' : '') + (amber ? ' proposed' : '') || null, style: style || null,
-        title: amber ? PROPOSED_TIP : null }, h('input', {
-        type: 'text', value: f[k] === undefined || f[k] === null ? '' : String(f[k]), spellcheck: 'false', 'data-fk': 'param|' + key, 'data-t': k,
-        'class': k === 'unit' && bad ? 'invalid' : null,
-        oninput: function (e) { onParamInput(key, k, e.target.value); }, onfocus: function () { selectParam(key); } }));
+    var proposed = f.range === 'proposed' && !typed;
+    var wrong = badCells(dirty ? rangeErrors(f) : []);
+    function box(k) {
+      return h('input', { type: 'text', value: f[k] === undefined || f[k] === null ? '' : String(f[k]), spellcheck: 'false', 'data-fk': 'param|' + key, 'data-t': k,
+        'class': (k === 'unit' && bad) || wrong[k] ? 'invalid' : null,
+        oninput: function (e) { onParamInput(key, k, e.target.value); }, onfocus: function () { selectParam(key); } });
     }
-    var groups = PE().spec.groups;
-    var same = keys.filter(function (k) { return k.indexOf('new:') < 0; });
-    var pos = same.indexOf(key);
-    return h('tr', { 'class': (sel ? 'sel ' : '') + (dirty ? 'dirty ' : '') + (bad ? 'warnrow' : ''), 'data-pk': key }, [
-      h('td', { 'class': 'mv' }, isNew ? null : [
-        h('button', { 'class': 'mini', disabled: BUSY || dirty || pos <= 0, title: 'Move up (the order of the agents’ lists and the database)', onclick: function () { moveParam(key, -1); } }, '↑'),
-        h('button', { 'class': 'mini', disabled: BUSY || dirty || pos < 0 || pos >= same.length - 1, title: 'Move down', onclick: function () { moveParam(key, 1); } }, '↓')]),
-      cell('name', 'width:150px'), cell('label'),
-      h('td', { style: 'width:72px' }, h('select', { 'data-fk': 'param|' + key, 'data-t': 'type', onchange: function (e) { onParamInput(key, 'type', e.target.value); },
-        onfocus: function () { selectParam(key); } }, TYPE_CHOICES.map(function (o) { return h('option', { value: o[0], selected: o[0] === f.type }, o[1]); })))]
-      .concat(typedType(f.type) ? [h('td', { colspan: ADV() ? 3 : 2, 'class': 'muted typesum', style: 'font-size:12px;padding-left:8px' }, typeSummary(f)),
-        h('td', { style: 'width:64px' }, defaultPick(key, f))]
-        : [cell('min', 'width:64px'), cell('max', 'width:64px'), ADV() ? cell('step', 'width:58px') : null, cell('default', 'width:64px')])
-      .concat([cell('unit'),
-      h('td', { style: 'width:120px' }, h('select', { 'data-fk': 'param|' + key, 'data-t': 'group', onchange: function (e) { onParamInput(key, 'group', e.target.value); },
-        onfocus: function () { selectParam(key); } }, groups.map(function (g) { return h('option', { value: g.id, selected: g.id === f.group }, g.label); }))),
-      h('td', { 'class': 'racts', 'data-pacts': key }, paramActions(key))
-    ]));
+    // the label: one line, wrapped where it is long, so it shows whole
+    var label = h('textarea', { 'class': 'plabel', rows: 1, spellcheck: 'false', text: f.label || '', 'data-fk': 'param|' + key, 'data-t': 'label',
+      onkeydown: function (e) { if (e.key === 'Enter') e.preventDefault(); },
+      oninput: function (e) { onParamInput(key, 'label', e.target.value.replace(/[\r\n]+/g, ' ')); }, onfocus: function () { selectParam(key); } });
+    return h('tr', { 'class': (sel ? 'sel ' : '') + (dirty ? 'dirty ' : '') + (bad ? 'warnrow' : ''), 'data-pk': key,
+      onclick: function (e) { if (!/^(INPUT|SELECT|OPTION|BUTTON)$/.test(e.target.tagName)) selectParam(key); } }, [
+      h('td', { 'class': 'tick' }, isNew ? null : h('input', { type: 'checkbox', checked: !!PSEL[key], title: 'Tick it to move, give a unit to or remove several together.',
+        onchange: function (e) { if (e.target.checked) PSEL[key] = 1; else delete PSEL[key]; render(); } })),
+      h('td', null, label),
+      h('td', { 'class': 'pnamecell', title: (f.name || 'No name yet') + ': rename it in the side panel.' },h('span', { 'class': 'pname', 'data-pname': key }, f.name || '(new)')),
+      typed ? h('td', { 'class': 'muted typesum' }, typeSummary(f))
+        : h('td', { 'class': 'rng num' + (proposed ? ' proposed' : ''), title: proposed ? PROPOSED_TIP : null }, [box('min'), h('span', { 'class': 'dash' }, '–'), box('max')]),
+      h('td', { 'class': typed ? null : 'num' }, typed ? defaultPick(key, f) : box('default')),
+      h('td', null, box('unit')),
+      h('td', { 'class': 'racts', 'data-pacts': key }, paramActions(key))]);
   }
   function paramActions(key) {
-    var isNew = key.indexOf('new:') === 0;
     if (PEDITS[key]) {
-      var problems = rowProblems(key);
-      return [problems.length ? pill(problems.length + (problems.length === 1 ? ' problem' : ' problems'), 'bad', problems.join('\n')) : null,
-        h('button', { 'class': 'primary mini', disabled: BUSY || problems.length > 0, title: problems.length ? 'Fix the problems first (see the inspector).' : null,
+      var errs = rangeErrors(PEDITS[key]), problems = errs.length ? [] : rowProblems(key);
+      return [errs.length ? h('span', { 'class': 'rerr' }, errs.map(function (x) { return x.text; }).join('; '))
+          : problems.length ? pill(problems.length + (problems.length === 1 ? ' problem' : ' problems'), 'bad', problems.join('\n')) : null,
+        h('button', { 'class': 'primary mini', disabled: BUSY || errs.length > 0 || problems.length > 0, title: errs.length || problems.length ? 'Fix the problems first (see the side panel).' : null,
           onclick: function () { saveParamRow(key); } }, 'Save'),
         h('button', { 'class': 'mini', onclick: function () { delete PEDITS[key]; render(); } }, 'Discard')];
     }
     return [paramChanged(key) ? h('button', { 'class': 'mini', disabled: BUSY, title: openedNameOf(key) ? 'Put this parameter back as it was when the Studio opened.' : 'Remove this parameter, added since the Studio opened.',
-        onclick: function () { undoParam(key); } }, 'Undo') : null,
-      isNew ? null : h('button', { 'class': 'mini danger', disabled: BUSY, title: 'Remove this parameter', onclick: function () { removeParam(key); } }, '×')];
+      onclick: function () { undoParam(key); } }, 'Undo') : null];
   }
   function onParamInput(key, k, value) {
     if (!PEDITS[key]) PEDITS[key] = rowFields(key);
@@ -1858,11 +2017,23 @@
       render();
       return;
     }
+    // a new row shows under the group it is given
+    if (k === 'group' && key.indexOf('new:') === 0) { render(); return; }
     if (key.indexOf('new:') < 0 && JSON.stringify(entryOf(PEDITS[key])) === JSON.stringify(entryOf(rowFields2(key)))) delete PEDITS[key];
     var a = doc.querySelector('[data-pacts="' + key + '"]');
     if (a) { a.innerHTML = ''; add(a, paramActions(key)); }
     var tr = doc.querySelector('tr[data-pk="' + key + '"]');
-    if (tr) tr.classList.toggle('dirty', !!PEDITS[key]);
+    if (tr) {
+      tr.classList.toggle('dirty', !!PEDITS[key]);
+      // the cells at fault red while typing; the name as typed in the side panel
+      var wrong = badCells(PEDITS[key] ? rangeErrors(PEDITS[key]) : []);
+      ['min', 'max', 'default'].forEach(function (c) {
+        var b = tr.querySelector('input[data-t="' + c + '"]');
+        if (b) b.classList.toggle('invalid', !!wrong[c]);
+      });
+      var nm = tr.querySelector('[data-pname]');
+      if (nm) nm.textContent = (PEDITS[key] || rowFields(key)).name || '(new)';
+    }
     if (tr && !(PEDITS[key] || rowFields(key)).range) {
       Array.prototype.forEach.call(tr.querySelectorAll('td.proposed'), function (td) { td.classList.remove('proposed'); td.removeAttribute('title'); });
     }
@@ -2047,9 +2218,8 @@
     return PE().spec.parameters.filter(function (p) { return p.range === 'proposed' && (!group || p.group === group); })
       .map(function (p) { return p.name; });
   }
-  function onlyRanges() { return !!R.q.ranges && proposedOf().length > 0; }
-  // An address in Parameters that keeps Only ranges to review as it is.
-  function plink(q) { return link('studio', 'parameters', Object.assign({ ranges: R.q.ranges || null }, q)); }
+  // An address in Parameters that keeps the filter as it is.
+  function plink(q) { return link('studio', 'parameters', Object.assign({ show: pshow() }, q)); }
   function pgo(q) { root.location.hash = plink(q); }
   // *spec* (a copy) without the marker on the parameters *names*
   function withoutRanges(spec, names) {
@@ -2061,13 +2231,6 @@
     applyParams(withoutRanges(PE().spec, names), {}, null, function () {
       names.forEach(function (n) { if (PEDITS[n]) delete PEDITS[n].range; });
     });
-  }
-  function rangesToggle() {
-    var n = proposedOf().length;
-    if (!n && !R.q.ranges) return null;
-    return h('button', { 'class': R.q.ranges ? 'on' : null, title: 'Show only the parameters whose range an import proposed.',
-      onclick: function () { go('studio', 'parameters', withQ({ ranges: R.q.ranges ? null : '1' })); } },
-      (R.q.ranges ? '✓ ' : '') + 'Only ranges to review (' + n + ')');
   }
   function keepGroupButton(g) {
     var names = g.unsaved ? [] : proposedOf(g.id);
@@ -2156,6 +2319,7 @@
         h('button', { 'class': 'mini', disabled: i === 0, onclick: function () { var o = f.order.slice(); o.splice(i - 1, 0, o.splice(i, 1)[0]); onGroupInput(key, 'order', o); render(); } }, '↑'),
         h('button', { 'class': 'mini', disabled: i === f.order.length - 1, onclick: function () { var o = f.order.slice(); o.splice(i + 1, 0, o.splice(i, 1)[0]); onGroupInput(key, 'order', o); render(); } }, '↓')]);
     }));
+    var gi = PE().spec.groups.map(function (g) { return g.id; }).indexOf(key), ng = PE().spec.groups.length;
     return h('div', { 'class': 'insp' }, [
       h('div', { 'class': 'title' }, key.indexOf('new:') === 0 ? 'New group' + (f.id ? ' · ' + f.id : '') : 'Group · ' + key),
       h('div', { 'class': 'kv', style: 'grid-template-columns:90px 1fr;align-items:center' }, [
@@ -2169,6 +2333,11 @@
       h('div', { 'class': 'block' }, [h('h4', null, 'Slider order · ' + f.order.length),
         h('p', { 'class': 'muted', style: 'font-size:11.5px;margin-bottom:6px' }, 'The order of this group’s sliders on the Parameters page of the web app. The agents’ lists and the database follow the table’s order instead.'),
         f.order.length ? orderBox : h('p', { 'class': 'muted' }, 'No parameter in this group yet.')]),
+      gi < 0 ? null : h('div', { 'class': 'block' }, [h('h4', null, 'Place among the groups'),
+        h('div', { 'class': 'row2' }, [
+          h('button', { 'class': 'mini', disabled: BUSY || !!GEDITS[key] || gi === 0, title: 'Move the group up (the slider page’s order)', onclick: function () { moveGroup(key, -1); } }, '↑'),
+          h('button', { 'class': 'mini', disabled: BUSY || !!GEDITS[key] || gi === ng - 1, title: 'Move the group down', onclick: function () { moveGroup(key, 1); } }, '↓'),
+          h('span', { 'class': 'muted', style: 'font-size:11.5px' }, (gi + 1) + ' of ' + ng)])]),
       h('div', { 'class': 'block', 'data-gacts': '1' }, groupActions(key))
     ]);
   }
@@ -2254,14 +2423,36 @@
   function inspectParam(key) {
     if (!key) return h('div', { 'class': 'insp empty' }, 'Select a parameter.');
     var f = rowFields(key), isNew = key.indexOf('new:') === 0, dirty = !!PEDITS[key];
-    var info = isNew ? null : D.parameters.parameters.filter(function (x) { return x.name === key; })[0];
-    var bad = info && unitMismatch(info), problems = dirty ? rowProblems(key) : [];
+    var info = isNew ? null : paramInfo(key);
+    var bad = info && unitMismatch(info), errs = dirty ? rangeErrors(f) : [], problems = dirty ? rowProblems(key) : [];
     var code = isNew ? [] : (PE().code_uses[key] || []), text = isNew ? [] : textMentions(key), lines = isNew ? [] : listEntries(key);
     var o = isNew ? null : openedNameOf(key);
     function input(k) {
-      return h('input', { type: 'text', value: f[k] || '', spellcheck: 'false', 'data-fk': 'param|' + key, 'data-t': k,
+      return h('input', { type: 'text', value: f[k] === undefined || f[k] === null ? '' : String(f[k]), spellcheck: 'false', 'data-fk': 'param|' + key, 'data-t': k,
         oninput: function (e) { onParamInput(key, k, e.target.value); } });
     }
+    function pick(k, opts) {
+      return h('select', { 'data-fk': 'param|' + key, 'data-t': k, onchange: function (e) { onParamInput(key, k, e.target.value); } },
+        opts.map(function (x) { return h('option', { value: x[0], selected: x[0] === f[k] }, x[1]); }));
+    }
+    var mates = isNew ? [] : PE().spec.parameters.filter(function (p) { return p.group === savedParam(key).group; }).map(function (p) { return p.name; });
+    var pos = mates.indexOf(key), step = ADV() && !typedType(f.type);
+    var details = h('div', { 'class': 'block' }, [h('h4', null, 'Details'),
+      h('div', { 'class': 'kv', style: 'grid-template-columns:90px 1fr;align-items:center' }, [
+        h('div', { 'class': 'k' }, 'Name'), input('name'),
+        h('div', { 'class': 'k' }, 'Type'), pick('type', TYPE_CHOICES),
+        step ? h('div', { 'class': 'k' }, 'Step') : null, step ? input('step') : null,
+        h('div', { 'class': 'k' }, 'Group'), pick('group', PE().spec.groups.map(function (g) { return [g.id, g.label]; })),
+        isNew ? null : h('div', { 'class': 'k' }, 'Order'),
+        isNew ? null : h('div', { 'class': 'row2' }, [
+          h('button', { 'class': 'mini', disabled: BUSY || dirty || pos <= 0, title: 'Move up (the order of the agents’ lists and the database)', onclick: function () { moveParam(key, -1); } }, '↑'),
+          h('button', { 'class': 'mini', disabled: BUSY || dirty || pos < 0 || pos >= mates.length - 1, title: 'Move down', onclick: function () { moveParam(key, 1); } }, '↓'),
+          h('span', { 'class': 'muted', style: 'font-size:11.5px' }, (pos + 1) + ' of ' + mates.length + ' in its group')])]),
+      h('div', { 'class': 'row2', style: 'margin-top:8px' }, [
+        dirty ? h('button', { 'class': 'primary', disabled: BUSY || errs.length > 0 || problems.length > 0, onclick: function () { saveParamRow(key); } }, 'Save') : null,
+        dirty ? h('button', { onclick: function () { delete PEDITS[key]; if (isNew) pgo({}); else render(); } }, 'Discard') : null,
+        h('span', { 'class': 'grow' }),
+        isNew ? null : h('button', { 'class': 'danger', disabled: BUSY, title: 'Remove this parameter (shown first, then saved).', onclick: function () { removeParam(key); } }, 'Remove')])]);
     return h('div', { 'class': 'insp' }, [
       h('div', { 'class': 'title' }, isNew ? (f.name || 'New parameter') : key),
       h('div', { 'class': 'pills' }, [kpill(f.type === 'bool' ? 'on/off' : f.type),
@@ -2269,6 +2460,7 @@
         kpill('default ' + f['default']),
         dirty ? pill('unsaved', 'warn') : null, !isNew && paramChanged(key) ? pill(o ? 'changed since opened' : 'added since opened', 'warn') : null,
         o && o !== key ? kpill('was ' + o) : null]),
+      details,
       h('div', { 'class': 'block' }, [h('h4', null, 'Checks')].concat(
         !dirty ? [h('p', { 'class': 'muted' }, 'No unsaved change.')] :
           problems.length ? [h('ul', { 'class': 'checks bad' }, problems.map(function (p) { return h('li', null, ['✗', h('span', null, p)]); }))] :
@@ -3285,6 +3477,7 @@
       if (s.k === 'bad' || s.k === 'warn') out.push({ k: s.k, text: (t.display || t.name) + ': ' + s.text.replace(/^[✓✗⚠] /, '') });
     });
     if (id === 'primer') (D.primer.problems || []).forEach(function (p) { out.push({ k: 'bad', text: p }); });
+    if (id === 'primer' && primerBorrowed(true)) out.push({ k: 'warn', text: primerBorrowed(true) });
     if (id === 'parameters') {
       var n = proposedOf().length, u = D.parameters.parameters.filter(unitMismatch).length;
       if (n) out.push({ k: 'warn', text: n + (n === 1 ? ' range' : ' ranges') + ' an import proposed, to review' });
@@ -3505,13 +3698,12 @@
         h('div', null, 'pack.yaml’s primer section cannot be read, so no agent gets the primer. Fix it by hand:')].concat(
         P.problems.map(function (p) { return h('div', { 'class': 'probline' }, '✗ ' + p); }))));
     }
-    add(center, h('div', { 'class': 'banner ' + (on ? 'info' : 'warn'), style: 'margin:10px 16px' }, [
-      h('span', { 'class': 'seg ro', title: LATER.settings, style: 'margin-right:8px' }, [h('button', { 'class': on ? 'on' : '' }, 'on'),
-        h('button', { 'class': on ? '' : 'on' }, 'off')]),
-      on ? 'Workflow Settings › DC_PARAMS_PRIMER_ENABLED is on: the agents ticked below get the primer. Switch it off there for a model that cannot take pictures.'
-         : 'Workflow Settings › DC_PARAMS_PRIMER_ENABLED is off: no agent gets the primer until it is on again.']));
+    var borrowed = primerBorrowed(false);
+    if (borrowed) add(center, h('div', { 'class': 'banner warn', style: 'margin:10px 16px' }, borrowed));
+    add(center, primerSend(P, on));
+    add(center, ADV() ? primerGrid(P) : h('div', { style: 'margin:8px 16px 0' }, advFold('who gets it, per agent', primerGrid(P))));
     add(center, primerPicture(P));
-    add(center, ADV() ? primerGrid(P) : [primerSummary(P), h('div', { style: 'margin:8px 16px 0' }, advFold('who gets it, per agent', primerGrid(P)))]);
+    add(center, primerCost(P));
     add(center, h('div', { style: 'padding:12px 16px 0' }, [h('h4', null, 'Its text'),
       h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Sent before the picture.' + (ADV() ? ' An agent can have its own version (the ↳ rows): give it one in the text’s side panel.' : ''))]));
     var list = slotsOf('primer');
@@ -3519,6 +3711,71 @@
     var sel = R.q.field ? slotByName(R.q.field) : null;
     if (sel) add(right, inspectField(sel));
     primerDragTarget(center);
+  }
+  // Which of the two choices the agents are now: off (none), recommended
+  // (the reference configurator's agents, studio/primer_edit.py), or null --
+  // a choice of one's own, made per agent.
+  function primerPreset() {
+    var pre = PRE().presets;
+    if (!pre) return null;
+    function key(list) { return list.slice().sort().join(','); }
+    var now = {};
+    ['3', '5', '7'].forEach(function (k) { now[k] = key(D.primer.rows.filter(function (r) { return r.cells[k]; }).map(function (r) { return r.agent; })); });
+    return ['off', 'recommended'].filter(function (n) {
+      return ['3', '5', '7'].every(function (k) { return key(pre[n][k] || []) === now[k]; });
+    })[0] || null;
+  }
+  // who gets it, one team after the other
+  function primerWho(P) {
+    return ['3', '5', '7'].map(function (k) {
+      var who = P.rows.filter(function (r) { return r.cells[k]; }).map(function (r) { return r.name; });
+      return who.length ? 'team of ' + k + ': ' + listText(who) : null;
+    }).filter(function (x) { return x; });
+  }
+  // Send it: On -- the recommended agents in every team --, or Off.
+  function primerSend(P, on) {
+    var cur = primerPreset(), rec = (PRE().presets || {}).recommended || {}, lines = primerWho(P);
+    var recN = ['3', '5', '7'].reduce(function (n, k) { return n + (rec[k] || []).length; }, 0);
+    function set(name) {
+      if (cur === name || BUSY) return;
+      change('set_primer_preset', [name, PRE().pack_yaml_sha], 'primer', name === 'off' ? 'No agent gets the primer now (saved to pack.yaml).'
+        : 'The recommended agents get the primer now (saved to pack.yaml).');
+    }
+    var who = cur === 'off' ? 'Off: no agent gets it.'
+      : cur === 'recommended' ? 'On: the recommended agents get it — the ' + lines.join('; the ') + '.'
+      : 'Your own choice (who gets it, per agent): the ' + lines.join('; the ') + '. On gives it to the recommended agents instead.';
+    return h('div', { style: 'padding:12px 16px 0' }, [
+      h('div', { 'class': 'phead' }, [h('b', null, 'Send it'),
+        h('span', { 'class': 'seg' }, [
+          h('button', { 'class': cur === 'recommended' ? 'on' : '', disabled: BUSY || P.problems.length > 0 || !recN,
+            title: recN ? 'To the agents that get it in the reference configurator, in every team.' : 'The reference configurator gives it to no agent.',
+            onclick: function () { set('recommended'); } }, 'On'),
+          h('button', { 'class': cur === 'off' ? 'on' : '', disabled: BUSY || P.problems.length > 0, title: 'To no agent.',
+            onclick: function () { set('off'); } }, 'Off')])]),
+      h('p', { style: 'margin:6px 0 0;font-size:12.5px' }, who),
+      h('p', { 'class': 'muted' + (on ? '' : ' warnline'), title: LATER.settings, style: 'font-size:11.5px;margin:4px 0 0' }, on
+        ? 'Workflow Settings › DC_PARAMS_PRIMER_ENABLED is on (a model that cannot take pictures needs it off).'
+        : 'Workflow Settings › DC_PARAMS_PRIMER_ENABLED is off: no agent gets the primer until it is on again.')]);
+  }
+  // What it costs, per agent and per call.
+  function primerCost(P) {
+    var pic = P.picture && !P.picture.error ? P.picture.tokens : 0, txt = PRE().text_tokens || 0;
+    var n = ['3', '5', '7'].map(function (k) { return P.rows.filter(function (r) { return r.cells[k]; }).length; });
+    return h('p', { 'class': 'muted', style: 'font-size:11.5px;margin:6px 16px 0' }, 'Each agent that gets it pays about ' + fmt(pic + txt) +
+      ' tokens on every call (picture ~' + fmt(pic) + ', text ~' + fmt(txt) + '). In a team of 3, ' + n[0] + (n[0] === 1 ? ' agent gets' : ' agents get') +
+      ' it; in a team of 5, ' + n[1] + '; in a team of 7, ' + n[2] + '.');
+  }
+  // The picture or the text of another configurator (one of setups/ with another
+  // $dc_name): the banner's words, or the menu mark's (*short*).
+  function primerBorrowed(short) {
+    var b = PRE().borrowed || {}, pic = b.picture || [], txt = b.text || [];
+    if (!pic.length && !txt.length) return null;
+    var seen = {}, who = pic.concat(txt).filter(function (x) { if (seen[x.folder]) return false; seen[x.folder] = 1; return true; })
+      .map(function (x) { return x.title + ' (' + x.folder + ')'; });
+    var what = pic.length && txt.length ? 'The picture and the text are' : pic.length ? 'The picture is' : 'The text is';
+    if (short) return what + ' another configurator’s: ' + listText(who);
+    return what + ' the same as the primer of ' + listText(who) + ': a primer shows its own configurator’s parameters, so give this one its own' +
+      (pic.length && txt.length ? ' picture and text.' : pic.length ? ' picture.' : ' text.');
   }
   function primerPictureChanged() {
     var P = D.primer, E = PRE(), opened = E.opened || {};
@@ -3549,16 +3806,6 @@
       body,
       h('p', { 'class': 'muted', style: 'font-size:11.5px;margin:6px 0 0' }, 'Drop a PNG, JPEG or WebP here, or pick one: it is stored as a PNG in assets/.')]);
   }
-  // Simple: who gets the primer, one team after the other
-  function primerSummary(P) {
-    var lines = ['3', '5', '7'].map(function (k) {
-      var who = P.rows.filter(function (r) { return r.cells[k]; }).map(function (r) { return r.name; });
-      return who.length ? 'team of ' + k + ': ' + listText(who) : null;
-    }).filter(function (x) { return x; });
-    return h('div', { style: 'padding:12px 16px 0' }, [h('h4', null, 'Who gets it'),
-      h('p', { style: 'margin:4px 0 0;font-size:12.5px' }, lines.length ? 'Sent to the ' + lines.join('; the ') + '.'
-        : 'No agent gets the primer yet: tick the agents under “who gets it, per agent” below.')]);
-  }
   function primerGrid(P) {
     var opened = PRE().opened.agents || {}, changed = false;
     var tb = h('tbody');
@@ -3578,7 +3825,7 @@
       h('div', { 'class': 'phead', style: 'padding:12px 16px 0' }, [h('h4', null, 'Who gets it'), h('span', { 'class': 'grow' }),
         changed ? h('button', { 'class': 'mini', disabled: BUSY, title: 'Every agent back as it was when the Studio opened.', onclick: function () {
           change('undo_primer', ['agents'], 'primer', 'Who gets the primer is back as it was when the Studio opened.'); } }, 'Undo') : null]),
-      primerCells() ? null : h('p', { 'class': 'muted', style: 'font-size:11.5px;margin:4px 16px 0' }, 'No agent gets the primer yet: tick the agents below.'),
+      primerCells() ? null : h('p', { 'class': 'muted', style: 'font-size:11.5px;margin:4px 16px 0' }, 'No agent gets the primer: tick the agents below, or Send it: On.'),
       h('table', { 'class': 'ptab', style: 'margin:6px 16px;width:calc(100% - 32px)' }, [h('thead', null, h('tr', null,
         ['Agent', 'Team of 3', 'Team of 5', 'Team of 7', 'Its text'].map(function (x) { return h('th', null, x); }))), tb]),
       h('p', { 'class': 'muted', style: 'font-size:11.5px;margin:0 16px' }, 'Any agent but the Database Handler, which only saves the session. Each agent pays the picture’s and the text’s tokens with every call (cached with its instructions).')]);
@@ -3718,42 +3965,34 @@
   }
   function renderSettings(center, right) {
     var rows = [];
-    add(center, head('Settings & secrets', 'Default values of the tools’ own settings, saved into each tool’s tool.yaml (users change them later in Workflow Settings), and the secrets your setup will need.'));
+    add(center, head('Settings & secrets', 'The tools’ own settings — each one’s default is edited in its tool’s details, and users change it later in Workflow Settings — and the keys your configurator needs.'));
     Object.keys(TE().tools).forEach(function (name) {
       var st = toolState(name), m = st.manifest, items = settingItems(st);
       if (!items.length) return;
-      rows.push(h('tr', { 'class': 'grp' }, h('td', { colspan: 4 }, (m.display_name || name) + ' · ' + name)));
+      var to = link('studio', 'tools', { tool: name });
+      rows.push(h('tr', { 'class': 'grp' }, h('td', { colspan: 4 }, [(m.display_name || name) + ' · ' + name + ' ',
+        h('a', { href: to, style: 'font-weight:400;margin-left:6px' }, 'Edit in its tool ›')])));
       items.forEach(function (it) {
         var changed = it.opened !== undefined && it.opened !== it.value;
-        function set(v) {
-          if (v === it.value || BUSY) return;
-          if (TEDITS[name]) { status('Save or discard the unsaved changes in ' + name + '’s tool details first.', 'err'); return; }
-          var w = clone(st.manifest);
-          setPath(w, it.path, v);
-          change('save_manifest', [name, w, st.sha], 'tool|' + name, name + ': ' + it.name + ' now defaults to ' + String(v) + ' (saved to its tool.yaml).');
-        }
-        var ctl = it.type === 'bool'
-          ? h('span', { 'class': 'seg' }, [h('button', { 'class': it.value ? 'on' : '', disabled: BUSY, onclick: function () { set(true); } }, 'on'),
-              h('button', { 'class': it.value ? '' : 'on', disabled: BUSY, onclick: function () { set(false); } }, 'off')])
-          : h('select', { disabled: BUSY, onchange: function (e) { set(e.target.value); } },
-              it.values.map(function (c) { return h('option', { value: c, selected: c === it.value }, String(c)); }));
+        var shown = it.type === 'bool' ? (it.value ? 'on' : 'off') : String(it.value);
         rows.push(h('tr', null, [h('td', null, h('span', { 'class': 'pname' }, it.name)),
-          h('td', { 'class': changed ? 'chg' : null, title: changed ? 'Was “' + it.opened + '” when the Studio opened.' : null }, ctl),
+          h('td', { 'class': changed ? 'chg' : null, title: changed ? 'Was “' + (it.type === 'bool' ? (it.opened ? 'on' : 'off') : it.opened) + '” when the Studio opened.' : null },
+            h('span', { 'class': 'mono' }, shown)),
           h('td', { 'class': 'muted', style: 'font-size:11.5px' }, it.label),
-          h('td', { 'class': 'racts' }, changed ? h('button', { 'class': 'mini', disabled: BUSY, title: 'Back to the default it had when the Studio opened.',
-            onclick: function () { set(it.opened); } }, 'Undo') : null)]));
+          h('td', null, h('a', { href: to, title: 'Its default is edited in ' + name + '’s Tool details.' }, 'Edit'))]));
       });
     });
     if (!rows.length) rows.push(h('tr', null, h('td', { colspan: 4, 'class': 'muted' },
       'No tool has settings yet: a tool’s settings show here once its details declare some (Tools › Edit).')));
-    add(center, h('table', { 'class': 'ptab', style: 'margin:10px 16px;width:calc(100% - 32px)' }, [
+    add(center, h('div', { style: 'padding:10px 16px 0' }, h('h4', null, 'The tools’ settings')));
+    add(center, h('table', { 'class': 'ptab', style: 'margin:6px 16px;width:calc(100% - 32px)' }, [
       h('thead', null, h('tr', null, ['Setting', 'Default', 'What it is', ''].map(function (x) { return h('th', null, x); }))),
       h('tbody', null, rows)]));
     add(center, h('div', { 'class': 'banner info', style: 'margin:6px 16px;border:1px solid #2f4f86;border-radius:7px' },
       'The Studio never asks for a secret value. These names go into .env.example in the full package, with empty values; you fill them on your own computer or in your hosting provider.'));
     var toolSecrets = [];
     D.tools.forEach(function (t) { (t.secrets || []).forEach(function (s) { toolSecrets.push({ tool: t.name, s: s }); }); });
-    add(center, h('div', { style: 'padding:8px 16px 0' }, h('h4', null, 'Declared by the tools · ' + toolSecrets.length)));
+    add(center, h('div', { style: 'padding:8px 16px 0' }, h('h4', null, 'Keys this configurator needs · ' + toolSecrets.length)));
     add(center, h('table', { 'class': 'ptab', style: 'margin:6px 16px;width:calc(100% - 32px)' }, [
       h('thead', null, h('tr', null, ['Variable', 'Tool', 'What it is', 'Required'].map(function (x) { return h('th', null, x); }))),
       h('tbody', null, toolSecrets.length ? toolSecrets.map(function (x) {
@@ -3771,7 +4010,7 @@
           h('td', { 'class': u[1] === 'optional' ? 'muted' : 'warn' }, u[1])]);
       }))])])));
     add(right, h('div', { 'class': 'insp' }, [h('h4', null, 'Where these come from'),
-      h('p', null, 'Each tool’s settings and secrets are its own (its tool.yaml): a change here is saved there, checked by the engine first, and Undo puts the default back as the Studio opened it. The variables in the last table are the engine’s (.env.example). No value of a secret is read or shown.')]));
+      h('p', null, 'Each tool’s settings and keys are its own (its tool.yaml): edit them in the tool’s details (Tools › the tool), where a change is checked by the engine first and Undo puts it back as the Studio opened it. The engine’s own variables (.env.example) are under the fold. No value of a secret is read or shown.')]));
   }
 
   /* ======================================================================
@@ -4340,7 +4579,7 @@
   function valGo(lk) {
     if (lk.section === 'prompts') go('studio', 'prompts', { topo: lk.topology || null });
     else if (lk.section === 'tools') go('studio', 'tools', { tool: lk.tool || null });
-    else if (lk.section === 'parameters' && lk.filter === 'ranges') pgo({ ranges: '1' });
+    else if (lk.section === 'parameters' && lk.filter === 'ranges') pgo({ show: 'ranges' });
     else go('studio', lk.section);
   }
   function valItem(i) {
@@ -4437,6 +4676,7 @@
     var shown = R.section === 'parameters' ? (R.q.group ? 'group|' + R.q.group : 'param|' + (R.q.param || ''))
       : fkey(R.q.field || '', R.q.agent || null);
     if (fk && R.section === 'tools' && R.q.tool && (fk === 'tool|' + R.q.tool || fk.indexOf('file|' + R.q.tool + '/') === 0)) shown = fk;
+    if (fk === 'pfind' && R.section === 'parameters') shown = fk;
     if (fk && fk === shown) {
       var back = doc.querySelector('[data-fk="' + fk + '"][data-t="' + ft + '"]');
       if (back) {

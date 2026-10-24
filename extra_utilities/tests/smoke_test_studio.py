@@ -661,12 +661,15 @@ def check_page_js() -> str:
             "'>': '&gt;', '\"': '&quot;' }[c]; }); }\n")
     head += "var TESTS = {}, STATE = {};\nfunction toolState(n) { return STATE[n] || null; }\n"
     head += "function TE() { return { tools: { qzx: 1, qzx_2: 1 }, removed: ['gone'] }; }\n"
+    head += "var PFIND = '', PFOLD = {}, FOLD_FROM = 40, PEDITS = {}, R = { q: {} };\n"
     prog = head + "\n".join(_js_piece(js, n) for n in ("lcsPairs", "diffMarks", "mergeTexts", "mdLine", "mdText", "toolSig",
                                                         "toolStatus", "ERROR_HINTS", "plainError",
                                                         "toolSlug", "pyFunctions", "slotByName", "pathPlace", "valPages",
                                                         "VAL_WORD", "proposedOf", "unitMismatch", "settingItems",
                                                         "primerPictureChanged", "textsChanged", "pageChanged",
-                                                        "pageProblems", "firstPara")) + """
+                                                        "pageProblems", "firstPara", "listText", "parseNum", "isNum",
+                                                        "typedType", "rangeErrors", "badCells", "PSHOWS", "pshow", "pfindOf",
+                                                        "pmatches", "pfolded", "primerPreset", "primerBorrowed")) + """
 var out = {
   marks: diffMarks({'3': 'a\\nb\\nc', '5': 'a\\nB\\nc', '7': 'a\\nb\\nc'}),
   same: diffMarks({'5': 'x\\ny', '7': 'x\\ny'}),
@@ -722,6 +725,36 @@ VAL.state = { current: false, report: { items: [
   { status: 'fail', title: 'The primer', lines: [], link: { section: 'primer' } }] } };
 out.marks3 = marks();
 out.marktext = (pageProblems('identity')[0] || {}).text;
+// the Parameters table (phase 3c): a range's words, the search, the folds
+out.range = [{ type: 'float', min: '1', max: '0', 'default': '0.5' }, { type: 'float', min: 0.8, max: 6, 'default': '9' },
+  { type: 'float', min: '', max: 'abc', 'default': 1 }, { type: 'int', min: '0.5', max: 3, 'default': 1 },
+  { type: 'choice', choices: [] }, { type: 'float', min: '0', max: '2', 'default': '2' }].map(function (f) {
+  var e = rangeErrors(f); return e.map(function (x) { return x.cells.join('+') + ':' + x.text; }).join(' | '); });
+out.cells = Object.keys(badCells(rangeErrors({ type: 'float', min: 5, max: 1, 'default': 3 }))).join(',');
+var pf = { label: 'Wall thickness', name: 'wallT', unit: 'mm' };
+out.find = ['thick', 'wallt', 'mm', 'ring', 'zz', ''].map(function (q) { return pmatches(pf, 'Outer ring', q); });
+var PE0 = PEDATA, many = []; for (var i = 0; i < 41; i++) many.push({ name: 'p' + i, group: 'g' });
+PEDATA = { spec: { parameters: many, groups: [{ id: 'g' }] } };
+var g = { id: 'g' }, keys = many.map(function (p) { return p.name; });
+out.fold = [pfolded(g, keys)];
+R.q.param = 'p3'; out.fold.push(pfolded(g, keys)); R.q.param = null;
+PFOLD.g = false; out.fold.push(pfolded(g, keys)); PFOLD.g = true; out.fold.push(pfolded(g, keys));
+PFIND = ' X '; out.fold.push(pfolded(g, keys), pfindOf()); PFIND = '';
+R.q.show = 'changed'; out.fold.push(pfolded(g, keys), pshow()); R.q.show = 'nonsense'; out.fold.push(pshow()); R.q.show = null;
+PEDATA = { spec: { parameters: many.slice(0, 40), groups: [{ id: 'g' }] } }; delete PFOLD.g; out.fold.push(pfolded(g, keys));
+PEDATA = PE0;
+VAL.state = null;
+// the primer: which choice the agents are, another configurator's picture and text
+PREDATA.presets = { recommended: { '7': ['planner'], '5': [], '3': [] }, off: { '7': [], '5': [], '3': [] } };
+D.primer.rows = [{ agent: 'planner', cells: { '7': true } }, { agent: 'receptionist', cells: { '7': false } }];
+out.preset = [primerPreset()];
+D.primer.rows[0].cells['7'] = false; out.preset.push(primerPreset());
+D.primer.rows[1].cells['7'] = true; out.preset.push(primerPreset());
+out.borrowed = [primerBorrowed(false), marks()];
+PREDATA.borrowed = { picture: [{ title: 'Prop', folder: 'setups/prop' }], text: [{ title: 'Prop', folder: 'setups/prop' }] };
+out.borrowed.push(primerBorrowed(false), primerBorrowed(true), marks());
+PREDATA.borrowed = { picture: [], text: [{ title: 'Hose', folder: 'setups/hose' }] };
+out.borrowed.push(primerBorrowed(false));
 out.para = [firstPara('One\\nline.\\n\\nArgs:\\n  x'), firstPara(''), firstPara('A  b\\n \\nc')];
 out.errors = [plainError({ error: 'Traceback (most recent call last):\\n  ...\\nFileNotFoundError: openscad: not found' }),
               plainError({ error: 'line 1\\nValueError: bad value\\n' })];
@@ -755,8 +788,23 @@ process.stdout.write(JSON.stringify(out));
     check(got == want, f"[PAGE] the menu's marks: {got}")
     check(r["marktext"] == "Validate › The texts: failed (before the last change: run Validate again)", f"[PAGE] a mark's line: {r['marktext']!r}")
     check(r["para"] == ["One line.", "", "A b"], f"[PAGE] a description's first paragraph: {r['para']}")
+    check(r["range"] == ["min+max:min above max", "default:default outside 0.8 – 6", "min:min is empty | max:max is not a number",
+                         "min:min is not a whole number", "", ""] and r["cells"] == "min,max",
+          f"[PAGE] a range's words: {r['range']} {r['cells']}")
+    check(r["find"] == [True, True, True, True, False, True], f"[PAGE] the search: {r['find']}")
+    check(r["fold"] == [True, False, False, True, False, "x", False, "changed", None, False],
+          f"[PAGE] the folds (many, the one shown, by hand, a search, a filter, few): {r['fold']}")
+    check(r["preset"] == ["recommended", "off", None], f"[PAGE] the primer's choice: {r['preset']}")
+    b = r["borrowed"]
+    check(b[0] is None and b[1].endswith("primer:good access:good")
+          and b[2] == ("The picture and the text are the same as the primer of Prop (setups/prop): a primer shows its own "
+                       "configurator’s parameters, so give this one its own picture and text.")
+          and b[3] == "The picture and the text are another configurator’s: Prop (setups/prop)"
+          and " primer:warn " in b[4] + " " and b[5].startswith("The text is the same as the primer of Hose (setups/hose)")
+          and b[5].endswith("its own text."), f"[PAGE] the primer of another configurator: {b}")
     return ("the lines that differ, Differences only, the formatting, a tool's test status, the error in a few words, "
-            "a tool's folder name, a script's functions, the menu's marks")
+            "a tool's folder name, a script's functions, the menu's marks, a range's words, the search, the folds, "
+            "the primer's choice and another configurator's primer")
 
 
 # ---------------------------------------------------------------------------

@@ -36,9 +36,10 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
   checked first by the engine's own check, on a throw-away copy of the
   setup (in the same engine process).
 * the primer (``studio/primer_edit.py``) -- ``set_primer_agent`` (who
-  gets it, per topology), ``primer_picture`` (a PNG, JPEG or WebP, stored
-  as a PNG), ``remove_primer_picture`` and ``undo_primer``; its text is a
-  text field.
+  gets it, per topology), ``set_primer_preset`` (every team at once: the
+  recommended agents, or none), ``primer_picture`` (a PNG, JPEG or WebP,
+  stored as a PNG), ``remove_primer_picture`` and ``undo_primer``; its
+  text is a text field.
 * a tool from an OpenSCAD model (P6f, ``studio/scad_import.py``) --
   ``scad_read`` (the model's settings and what each is proposed as),
   ``scad_import`` (a new configurator, or one more tool; checked first by
@@ -559,7 +560,7 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
     checker = Checker(pack_dir)
     params = params_edit.ParamsEditor(pack_dir, opened_dir, checker.check)
     tools = tools_edit.ToolsEditor(pack_dir, opened_dir, checker.check_tools, engine_view.REPO)
-    primer = primer_edit.PrimerEditor(pack_dir, opened_dir)
+    primer = primer_edit.PrimerEditor(pack_dir, opened_dir, engine_view.REPO)
     importer = scad_import.Importer(pack_dir, opened_dir, checker.check_setup, params, tools)
     changed_cache: dict = {}
     validator = Validation(pack_dir)
@@ -576,7 +577,8 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
             changed_cache[fp] = {"changed": editor.changed(data) + params.changed() + tools.changed()
                                  + primer.changed(),
                                  "params_edit": params.state(data),
-                                 "primer_edit": primer.state(data),
+                                 "primer_edit": dict(primer.state(data),
+                                                     text_tokens=count_tokens(primer.text())),
                                  "tools_edit": tools.state(data),
                                  "prepare": {"available": prepare_why is None, "why": prepare_why},
                                  "online": online, "configurator": configurator,
@@ -816,7 +818,8 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                      ("drop_pictures", params.drop_unused_pictures),
                      ("set_access", params.set_access), ("undo_access", params.undo_access),
                      ("set_access_preset", params.set_access_preset),
-                     ("set_primer_agent", primer.set_agent), ("primer_picture", primer.set_picture),
+                     ("set_primer_agent", primer.set_agent), ("set_primer_preset", primer.set_preset),
+                     ("primer_picture", primer.set_picture),
                      ("remove_primer_picture", primer.remove_picture), ("undo_primer", primer.undo),
                      ("tool_file", tools.read_file), ("save_manifest", tools.save_manifest),
                      ("save_tool_file", tools.save_file), ("upload_tool_file", tools.upload_file),

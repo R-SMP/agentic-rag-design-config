@@ -422,6 +422,34 @@ table.scadtab .scadg { display:flex; gap:8px; align-items:center; }
 table.scadtab .scadg .grow { flex:1 1 auto; }
 table.scadtab .proposed, .scad .warn { color:#ffd8a0; }
 table.pedit td.proposed input { border-color:#7a5a1a; background:#33260f; color:#ffd8a0; }
+/* the parameter table (simplification phase 3c): find, filter, fold, tick */
+.pfind { display:flex; gap:8px; align-items:center; flex-wrap:wrap; padding:10px 16px 0; }
+.pfind input[type=search] { width:240px; max-width:100%; }
+.pfind .chips { display:inline-flex; gap:6px; flex-wrap:wrap; }
+button.chip { border-radius:999px; padding:3px 10px; font-size:11.5px; }
+button.chip.on { background:#1d2a44; border-color:#3d6bd1; color:#cfe0ff; }
+.bulkbar { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin:8px 16px 0; padding:6px 10px;
+           border:1px solid #2f4f86; border-radius:7px; background:#16203a; font-size:12.5px; }
+.bulkbar .grow { flex:1 1 auto; }
+table.plist { table-layout:fixed; margin-top:8px; min-width:700px; }
+table.plist textarea.plabel { display:block; width:100%; resize:none; overflow:hidden; field-sizing:content; min-height:0;
+                              font-family:inherit; font-size:12px; line-height:1.35; padding:2px 5px; }
+table.plist td.tick { text-align:center; padding:3px 2px; }
+table.plist td.tick input { width:auto; margin:0; }
+table.plist td.rng { white-space:nowrap; }
+table.plist td.rng input { width:calc(50% - 7px); }
+table.plist td.rng .dash { display:inline-block; width:14px; text-align:center; color:var(--muted); }
+table.plist td.pnamecell { cursor:pointer; overflow:hidden; }
+table.plist td.pnamecell .pname { display:block; font-size:10.5px; color:#7d8390; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+table.plist tr.grp .fold { margin-right:6px; min-width:22px; }
+table.plist tr.grp .gcount { font-weight:400; }
+table.plist td.racts { white-space:normal; }
+table.pedit td input.invalid { background:#3a1d1d; }
+td .rerr { color:#ff9b9b; font-size:11.5px; }
+.warnline { color:var(--warn) !important; }
+table.ptab a { color:#a5c8ff; text-decoration:none; }
+table.ptab a:hover { text-decoration:underline; }
+table.ptab tr.grp a { text-transform:none; letter-spacing:0; font-weight:400; }
 .insp .block.proposed { border:1px solid #7a5a1a; border-radius:7px; padding:8px 10px; background:#2a2114; }
 .insp .block.proposed p { margin:0 0 8px; font-size:12px; color:#ffd8a0; }
 table.pedit tr.grp .keepg { display:inline-flex; gap:6px; align-items:center; margin-left:10px; }

@@ -511,6 +511,61 @@ def check_editor() -> None:
     shutil.rmtree(d.parent, ignore_errors=True)
 
 
+def check_presets() -> None:
+    """On / Off and another configurator's picture and text (phase 3c): a
+    repository of three setups beside the one edited."""
+    from studio.editing import EditError
+    data = {"roles": {"roster": ROSTER}}
+    d = copy_setup()
+    repo = d.parent / "repo"
+    for name, dc, pic, words in (("other", "other thing", None, None), ("twin", "propeller", None, None),
+                                 ("fresh", "fresh one", picture("PNG"), "Another primer, its own words."),
+                                 ("spaced", "spaced one", picture("PNG", (40, 20)), None)):
+        f = repo / "setups" / name
+        shutil.copytree(ROOT / "setups" / "propeller", f, ignore=shutil.ignore_patterns("__pycache__"))
+        (f / "fragments" / "dc" / "dc_name.md").write_text(dc + chr(10), encoding="utf-8")
+        if pic is not None:
+            (f / "assets" / "dc_params_primer.png").write_bytes(pic)
+        text = f / "fragments" / "dc" / "dc_params_primer_text.md"
+        if words is not None:
+            text.write_text(words, encoding="utf-8")
+        elif name == "spaced":       # the same words, other spaces and line breaks
+            text.write_text(chr(10).join(text.read_text(encoding="utf-8").split()) + "   ", encoding="utf-8")
+    opened = d.parent / "opened" / "dc_pack"
+    shutil.copytree(d, opened)
+    ed = primer_edit.PrimerEditor(d, opened, repo)
+    st = ed.state(data)
+    folders = {k: [x["folder"] for x in v] for k, v in st["borrowed"].items()}
+    check(folders == {"picture": ["setups/other"], "text": ["setups/other", "setups/spaced"]},
+          f"[PRESETS] another configurator's picture and text: {folders}")
+    check(st["borrowed"]["picture"][0]["name"] == "other thing"
+          and ed.text() == (d / "fragments" / "dc" / "dc_params_primer_text.md").read_text(encoding="utf-8").rstrip(),
+          f"[PRESETS] the name and the text: {st['borrowed']['picture']}")
+    check(st["presets"] == {"recommended": {str(t): SIX[t] for t in (7, 5, 3)}, "off": {"7": [], "5": [], "3": []}},
+          f"[PRESETS] the two choices: {st['presets']}")
+    check(primer_edit.PrimerEditor(d, opened).state(data)["borrowed"] == {"picture": [], "text": []},
+          "[PRESETS] without a repository nothing is another's")
+    small = {"roles": {"roster": dict(ROSTER, **{"7": [a for a in ROSTER["7"] if a != "dc_input_inspector"]})}}
+    check(ed.presets(small)["recommended"][7] == ["user_input_inspector", "dc_input_creator", "dc_output_inspector"],
+          f"[PRESETS] recommended, in a team without one of them: {ed.presets(small)['recommended'][7]}")
+    before = snapshot(d)
+    r = ed.set_preset(data, "off", st["pack_yaml_sha"])
+    y = yaml.safe_load((d / "pack.yaml").read_text(encoding="utf-8"))["primer"]["agents"]
+    check(y == {7: [], 5: [], 3: []}, f"[PRESETS] Off: {y}")
+    ed.set_preset(data, "recommended", r["pack_yaml_sha"])
+    check(snapshot(d) == before, "[PRESETS] Off then On is not byte for byte the setup as opened")
+    for bad in ("all", None, 7):
+        try:
+            ed.set_preset(data, bad, ed.state(data)["pack_yaml_sha"])
+            check(False, f"[PRESETS] {bad!r} was taken")
+        except EditError as exc:
+            check("recommended or off" in str(exc), f"[PRESETS] {bad!r}: {exc}")
+    # a picture removed: nothing is another's picture
+    ed.remove_picture(data, ed.state(data)["pack_yaml_sha"])
+    check(ed.state(data)["borrowed"]["picture"] == [], "[PRESETS] no picture is still another's")
+    shutil.rmtree(d.parent, ignore_errors=True)
+
+
 def check_import() -> None:
     from studio import scad_import
     text = (ROOT / "setups" / "propeller" / "pack.yaml").read_text(encoding="utf-8").replace("\r\n", "\n")
@@ -599,7 +654,17 @@ def check_studio() -> str:
         s = next(x for x in D["slots"] if x["slot"] == "dc_params_primer_text")
         check(s["section"] == "primer" and s["runtime"] and [v["agent"] for v in s["variants"]] ==
               ["requirements_analyst", "user_input_inspector"], f"[STUDIO] the text field: {s['section']} {s['variants']}")
-        sha = E["pack_yaml_sha"]
+        check(E["presets"]["recommended"] == {str(t): SIX[t] for t in (7, 5, 3)} and E["text_tokens"] > 100
+              and set(E["borrowed"]) == {"picture", "text"}, f"[STUDIO] presets and the text's tokens: {E.get('text_tokens')}")
+        r = st.call("set_primer_preset", "off", E["pack_yaml_sha"])
+        D2 = st.call("get_all")["data"]
+        check(r.get("ok") and not any(c for row in D2["primer"]["rows"] for c in row["cells"].values()),
+              f"[STUDIO] Send it: Off: {r}")
+        r = st.call("set_primer_preset", "recommended", r.get("pack_yaml_sha"))
+        check(r.get("ok") and snapshot(d) == before, f"[STUDIO] Off, then On: not the setup as opened {r}")
+        bad = st.call("set_primer_preset", "everyone", r.get("pack_yaml_sha"))
+        check(bad.get("ok") is False and "recommended or off" in bad.get("error", ""), f"[STUDIO] another choice: {bad}")
+        sha = r.get("pack_yaml_sha")
         r = st.call("set_primer_agent", "planner", "7", True, sha)
         check(r.get("ok"), f"[STUDIO] tick the planner: {r}")
         r = st.call("set_primer_agent", "receptionist", 7, True, r.get("pack_yaml_sha"))
@@ -661,7 +726,7 @@ def check_studio() -> str:
 def check_page() -> None:
     js = (ROOT / "studio" / "web" / "studio.js").read_text(encoding="utf-8")
     server = (ROOT / "studio" / "server.py").read_text(encoding="utf-8")
-    for name in ("set_primer_agent", "primer_picture", "remove_primer_picture", "undo_primer"):
+    for name in ("set_primer_agent", "set_primer_preset", "primer_picture", "remove_primer_picture", "undo_primer"):
         check(f"'{name}'" in js and f'("{name}", primer.' in server, f"[PAGE] {name}: page and server disagree")
     check("{ id: 'primer', stage: 4, label: 'Primer' }" in js, "[PAGE] the Primer page is not under 4 Agents")
 
@@ -671,6 +736,7 @@ def main() -> int:
     _run(check_engine, "[ENGINE]")
     _run(check_messages, "[MESSAGES]")
     _run(check_editor, "[EDITOR]")
+    _run(check_presets, "[PRESETS]")
     _run(check_import, "[IMPORT]")
     _run(check_page, "[PAGE]")
     summary["calls"] = _run(check_calls, "[CALLS]")

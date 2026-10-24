@@ -49,10 +49,15 @@ longer texts the agents read.</li>
 <li><b>Examples</b>: short phrases quoted inside the agents' instructions.  Keep each on one line, in its shape.</li>
 <li><b>User input types</b>: how the agents treat a sketch or a reference picture.</li>
 </ul></li>
-<li><b>Parameters</b>: each parameter's name, type (whole number or decimal), range, step, default, group, label and
-unit.  <i>Import JSON</i> and <i>Paste CSV</i> bring a whole list in.  The agents' parameter lists follow by
-themselves.  A range in amber was proposed by an import from the model's default: edit its min or max, or
-<i>Keep</i> it as it is (one parameter, or a whole group); <i>Only ranges to review</i> shows just those.</li>
+<li><b>Parameters</b>: one row per parameter, by group.  Its label, range, default and unit are typed in the row (a
+cell turns red while the range is wrong, and the row says why); click a row for its side panel: its name, type, step,
+group and place in the group, Remove, and the rest.  <i>Find</i> searches the labels, names, units and group names;
+the filters show the <i>Ranges to review</i>, the parameters <i>Changed since opened</i>, or those <i>With a
+problem</i>.  With more than 40 parameters the groups start folded (<i>Unfold all</i>).  Tick rows, or a whole group,
+to move them to another group, give them a unit or remove them together.  <i>Import</i> brings a whole list in: a
+parameters file (JSON), a pasted table (CSV), or a CAD model's settings (<code>.scad</code>).  The agents' parameter
+lists follow by themselves.  A range in amber was proposed by an import from the model's default: edit its min or
+max, or <i>Keep</i> it as it is (one parameter, or a whole group).</li>
 <li><b>Tools</b>: how a design gets built.  <i>Add a tool</i> walks you through it: what you have (a CAD model
 <code>.scad</code>, a Python script, a template of a helper, a model builder or a download builder, or a copy of a
 tool), your file, what the Studio found in it, its name, what it does (one line: the start of its description)
@@ -66,15 +71,18 @@ works, or what went wrong in a few words), then its pictures; the card then says
 change, and the mark on <b>Tools</b> in the menu warns of a failed test (red) or an untested change (amber).  More: <a href="write-a-tool.html">Write a tool</a> and
 <a href="openscad-models.html">OpenSCAD models</a>.
 <ul>
-<li><b>Settings &amp; secrets</b>: the tools' settings, and the variables (keys) they need.  The values go in
-<code>.env</code> or in the deployment's variables, never in the setup.</li>
+<li><b>Settings &amp; secrets</b>: the tools' settings, each linking to its tool (where its default is edited), and the
+keys this configurator needs.  The values go in <code>.env</code> or in the deployment's variables, never in the
+setup; the engine's own variables are under the fold.</li>
 </ul></li>
 <li><b>Agents</b>
 <ul>
-<li><b>Primer</b>: one picture and its text that show what the parameters mean, sent with every call to the agents you
-tick, between their instructions and the conversation.  Drop a PNG, JPEG or WebP on it to replace the picture, or
-remove it (the agents then get the text alone); tick the agents for each team size.  Each ticked agent pays the picture's
-and the text's tokens on every call.</li>
+<li><b>Primer</b>: one picture and its text that show what the parameters mean, sent with every call to the agents that
+get it, between their instructions and the conversation.  <i>Send it</i>: <i>On</i> gives it to the recommended
+agents (those that get it in the reference configurator), <i>Off</i> to none; one choice per agent and team size is
+under Advanced.  Drop a PNG, JPEG or WebP on it to replace the picture, or remove it (the agents then get the text
+alone).  Each agent that gets it pays the picture's and the text's tokens on every call: the page says how many.  An
+amber warning, and a mark in the menu, say when the picture or the text is another configurator's.</li>
 <li><b>Agent access</b>: which agent sees the parameter list, with or without the ranges: a preset (<i>Recommended</i>,
 <i>Everyone sees the full list</i>, <i>Lean</i>), or one choice per agent and team size in Advanced.</li>
 </ul></li>

@@ -11,6 +11,12 @@ own files:
 * the picture in ``assets/``: a PNG, JPEG or WebP is stored as a PNG (a PNG
   as it came).
 
+Two choices set every team at once: *recommended* -- the agents the
+reference configurator (``engine/setups.py``'s default setup) gives it, in
+each team this setup has -- and *off*, no agent.  The page also hears when
+the picture or the text is another configurator's (one of ``setups/`` with
+another ``$dc_name``): a primer shows its own configurator's parameters.
+
 Undo puts the agents, or the picture, back as the Studio opened them: the
 block and the file byte for byte when everything is back.  Like
 ``studio/params_edit.py`` this process never imports the engine: the
@@ -30,11 +36,14 @@ from pathlib import Path
 import yaml
 
 from studio.editing import Conflict, EditError
-from studio.params_edit import eol_of, sha
+from studio.params_edit import eol_of, reference_pack_yaml, sha
 
 TOPOLOGIES = (7, 5, 3)
 NO_PRIMER_AGENTS = ("database_handler",)
 DEFAULT_IMAGE = "dc_params_primer.png"
+TEXT_FILE = Path("fragments") / "dc" / "dc_params_primer_text.md"
+NAME_FILE = Path("fragments") / "dc" / "dc_name.md"
+PRESETS = ("recommended", "off")
 # A setup made before the section existed: what engine/primer.py reads then.
 DEFAULT = {"image": DEFAULT_IMAGE, "agents": {
     7: ["user_input_inspector", "dc_input_creator", "dc_input_inspector", "dc_output_inspector"],
@@ -178,13 +187,21 @@ def to_png(raw: bytes) -> tuple[bytes, str]:
                         "WebP.") from None
 
 
+def _words(path: Path) -> str:
+    """A file's words, one space between them ("" when it is not there)."""
+    try:
+        return " ".join(path.read_text(encoding="utf-8").split())
+    except (OSError, UnicodeDecodeError):
+        return ""
+
+
 class PrimerEditor:
     """Changes to the primer's picture and agents in the setup in
-    *pack_dir*; *opened_dir* is its copy as the Studio opened it.  One
-    change at a time."""
+    *pack_dir*; *opened_dir* is its copy as the Studio opened it; *repo*
+    holds the other configurators (``setups/``).  One change at a time."""
 
-    def __init__(self, pack_dir: Path, opened_dir: Path):
-        self.pack_dir, self.opened_dir = pack_dir, opened_dir
+    def __init__(self, pack_dir: Path, opened_dir: Path, repo: Path | None = None):
+        self.pack_dir, self.opened_dir, self.repo = pack_dir, opened_dir, repo
         self._lock = threading.Lock()
 
     @staticmethod
@@ -235,7 +252,59 @@ class PrimerEditor:
         return {"pack_yaml_sha": sha(raw),
                 "opened": {"image": then["image"], "agents": {str(t): a for t, a in then["agents"].items()},
                            "picture_sha": (opic or {}).get("sha")},
-                "picture": pic}
+                "picture": pic,
+                "presets": {k: {str(t): a for t, a in v.items()} for k, v in self.presets(data).items()},
+                "borrowed": self.borrowed(cur["image"])}
+
+    def text(self) -> str:
+        """The primer's text, as the agents without their own version get it."""
+        path = self.pack_dir / TEXT_FILE
+        return path.read_text(encoding="utf-8").rstrip() if path.is_file() else ""
+
+    def presets(self, data: dict) -> dict:
+        """``{"recommended": {topology: agents}, "off": ...}``: the reference
+        configurator's agents among each team's, in the team's order; none."""
+        roster = (data.get("roles") or {}).get("roster", {})
+        try:
+            ref = effective(reference_pack_yaml().read_bytes().decode("utf-8"))
+        except (OSError, UnicodeDecodeError, yaml.YAMLError):
+            ref = effective(None)
+        rec = {t: [a for a in roster.get(str(t), []) if a in ref["agents"][t] and a not in NO_PRIMER_AGENTS]
+               for t in TOPOLOGIES}
+        return {"recommended": rec, "off": {t: [] for t in TOPOLOGIES}}
+
+    def borrowed(self, image: str | None) -> dict:
+        """The other configurators -- ``setups/`` with another ``$dc_name`` --
+        whose primer picture has the same bytes as this one's, and those
+        whose text has the same words: ``{"picture": [...], "text": [...]}``,
+        each ``{"name", "title", "folder"}``."""
+        out = {"picture": [], "text": []}
+        if self.repo is None:
+            return out
+        from engine.setups import all_setups
+        mine = _words(self.pack_dir / NAME_FILE).casefold()
+        pic = self.pack_dir / "assets" / image if image else None
+        pic = pic.read_bytes() if pic is not None and pic.is_file() else None
+        words = _words(self.pack_dir / TEXT_FILE)
+        here = self.pack_dir.resolve()
+        for folder in all_setups(self.repo):
+            name = _words(folder / NAME_FILE)
+            if folder.resolve() == here or name.casefold() == mine:
+                continue
+            who = {"name": name or folder.name,
+                   "title": _words(folder / "fragments" / "dc" / "app_title.md") or name or folder.name,
+                   "folder": f"setups/{folder.name}"}
+            if pic is not None:
+                try:
+                    theirs = effective((folder / "pack.yaml").read_bytes().decode("utf-8"))["image"]
+                except (OSError, UnicodeDecodeError, yaml.YAMLError):
+                    theirs = None
+                path = folder / "assets" / theirs if theirs else None
+                if path is not None and path.is_file() and path.read_bytes() == pic:
+                    out["picture"].append(who)
+            if words and _words(folder / TEXT_FILE) == words:
+                out["text"].append(who)
+        return out
 
     def changed(self) -> list[str]:
         """The primer's picture when it is in the setup and as opened, under
@@ -269,6 +338,19 @@ class PrimerEditor:
             has = set(sec["agents"][t]) | {agent} if on else set(sec["agents"][t]) - {agent}
             # in the roster's order, so a list reads the same however it was ticked
             sec["agents"][t] = [a for a in roster if a in has] + sorted(has - set(roster))
+            self._save(raw, text, otext, sec)
+            return {"pack_yaml_sha": sha((self.pack_dir / "pack.yaml").read_bytes()), "warnings": []}
+
+    def set_preset(self, data: dict, name, base: str) -> dict:
+        """Every team at once: *name* ``recommended`` (:meth:`presets`) or
+        ``off`` (no agent)."""
+        if name not in PRESETS:
+            raise EditError("Say recommended or off.")
+        agents = self.presets(data)[name]
+        with self._lock:
+            raw, text, otext = self._check(base)
+            sec = effective(text)
+            sec["agents"] = {t: list(agents[t]) for t in TOPOLOGIES}
             self._save(raw, text, otext, sec)
             return {"pack_yaml_sha": sha((self.pack_dir / "pack.yaml").read_bytes()), "warnings": []}
 
