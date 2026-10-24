@@ -50,12 +50,14 @@ and the text's tokens on every call.</li>
 <li><b>Configurator description</b>: what it builds, how its parameters behave, what it can and cannot do: the
 longer texts the agents read.</li>
 <li><b>Outputs &amp; vocabulary</b>: the words for what it produces (its model, its pictures).</li>
-<li><b>Tools</b>: how a design gets built.  <i>New tool</i> starts one from a template (a helper, a model builder, a
-download builder) or as a copy of a tool; then change its code and its details (<code>tool.yaml</code>).
-Drop an OpenSCAD model (<code>.scad</code>) on the Tools page, or use <i>Import a .scad file</i>: the Studio reads
-the settings its Customizer shows and shows what each one becomes (a parameter, the model's detail, or left to
-the model) before you import it, as a new configurator or as one more tool; <i>Undo the import</i> puts
-everything back.  A tool card's <i>Test</i> runs it at once on the parameters' defaults: first a short verdict (it
+<li><b>Tools</b>: how a design gets built.  <i>Add a tool</i> walks you through it: what you have (a CAD model
+<code>.scad</code>, a Python script, a template of a helper, a model builder or a download builder, or a copy of a
+tool), your file, what the Studio found in it, its name and who calls it, then a test.  For a CAD model the Studio
+reads the settings its Customizer shows and shows what each one becomes (a parameter, the model's detail, or left to
+the model), as a new configurator or as one more tool; <i>Undo the import</i> puts everything back.  Dropping a
+<code>.scad</code> or <code>.py</code> file on the Tools page starts the same steps; dropping one on a tool's card makes
+it that tool's new version (a model: which settings came and went), then tests it.  <i>Edit</i> opens one form with
+its details and its own texts; the texts every tool shares are under Advanced.  A tool card's <i>Test</i> runs it at once on the parameters' defaults: first a short verdict (it
 works, or what went wrong in a few words), then its pictures; the card then says whether it was tested since its last
 change, and a dot on <b>Tools</b> in the menu warns of a failed test (red) or an untested change (amber).  More: <a href="write-a-tool.html">Write a tool</a> and
 <a href="openscad-models.html">OpenSCAD models</a>.</li>

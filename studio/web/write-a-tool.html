@@ -34,10 +34,12 @@ generator (its <i>geometry tool</i> setting) and for the web app's Download butt
 </ul>
 
 <h2>Start one</h2>
-<p>In the Studio, <b>Tools › New tool</b> starts a tool from a template of its kind (each a small working starter),
-as a copy of a tool, or from a CAD file (see <a href="openscad-models.html">OpenSCAD models</a>).  Then change its
-code in its <i>Files</i> tab, its manifest in <i>Tool details</i> (a form) or <i>tool.yaml</i>, and its texts in
-<i>Prompt texts</i>.  Every change to a manifest is checked by the engine before it is saved.</p>
+<p>In the Studio, <b>Tools › Add a tool</b> starts a tool from a template of its kind (each a small working starter),
+as a copy of a tool, from your Python script, or from a CAD file (see <a href="openscad-models.html">OpenSCAD
+models</a>).  A script's function is chosen in the wizard; a helper's function names the tool (the engine calls the
+helper by its function's name).  Then change its code in its <i>Files</i> tab (Advanced), its manifest and its texts
+in <i>Tool details</i> (a form) or <i>tool.yaml</i> (Advanced).  Every change to a manifest is checked by the engine
+before it is saved.</p>
 
 <h2>The code</h2>
 <p><b>A helper</b> is one function with type hints, named by the manifest's <code>entrypoint</code>
@@ -105,7 +107,7 @@ missing.</p>
 <h2>The texts it owns</h2>
 <p>A tool-runner tool has an entry in the tool runner's numbered list, <code>prompts/tool_list_entry.md</code>:
 one paragraph saying what it does and when to call it.  The other texts it owns (<code>prompt_slots</code>) are
-edited in its <i>Prompt texts</i> tab, like every text field.  Elsewhere, a part of a text can be kept only while a
+edited in its <i>Tool details</i>, like every text field.  Elsewhere, a part of a text can be kept only while a
 tool is in the setup (<code>&lt;&lt;IF:tool:name&gt;&gt;…&lt;&lt;/IF:tool:name&gt;&gt;</code>).</p>
 
 <h2>Test it</h2>

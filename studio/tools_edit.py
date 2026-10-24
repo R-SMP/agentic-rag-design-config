@@ -511,10 +511,8 @@ class ToolsEditor:
             files[rel] = files[rel].replace(source.encode(), name.encode())
         return files
 
-    def new_tool(self, data: dict, name: str, display: str, kind: str | None = None,
-                 copy_of: str | None = None) -> dict:
-        """A new tool folder: from the kind's template, or a copy of
-        *copy_of*; checked by the engine first."""
+    def _new_names(self, name, display) -> tuple[str, str]:
+        """A new tool's name and display name, checked."""
         name, display = str(name or "").strip(), str(display or "").strip()
         if not TOOL_RE.match(name):
             raise EditError("The name must be lower case: letters, digits and _, starting with a "
@@ -528,6 +526,32 @@ class ToolsEditor:
                             "its Undo, or choose another name.")
         if not display or len(display) > 60:
             raise EditError("Give it a display name (at most 60 characters).")
+        return name, display
+
+    @staticmethod
+    def _with_roles(files: dict[str, bytes], roles) -> dict[str, bytes]:
+        """*files* with the manifest's roles set to *roles* (None: as they are)."""
+        if roles is None:
+            return files
+        if not isinstance(roles, list) or not all(isinstance(r, str) and TOOL_RE.match(r) for r in roles):
+            raise EditError("roles is a list of role names.")
+        raw = files[MANIFEST]
+        m = yaml.safe_load(_decode(raw))
+        if m.get("kind") == "geometry":
+            if roles:
+                raise EditError("A download builder has no roles: the engine calls it, no agent does.")
+            return files
+        try:
+            text = yaml_patch.patch(_decode(raw), dict(m, roles=list(roles)))
+        except yaml_patch.PatchError as exc:
+            raise EditError(f"The roles could not be written ({exc}).") from None
+        return dict(files, **{MANIFEST: text.replace("\n", _eol(raw)).encode("utf-8")})
+
+    def new_tool(self, data: dict, name: str, display: str, kind: str | None = None,
+                 copy_of: str | None = None, roles=None) -> dict:
+        """A new tool folder: from the kind's template, or a copy of
+        *copy_of*, with *roles* when given; checked by the engine first."""
+        name, display = self._new_names(name, display)
         with self._lock:
             if copy_of:
                 self._tool(copy_of)
@@ -537,26 +561,77 @@ class ToolsEditor:
             else:
                 raise EditError("Start from a template (helper, generator or geometry) or from a "
                                 "copy of a tool.")
+            return self._make_tool(name, self._with_roles(files, roles))
 
-            def write(root: Path):
-                for rel, raw in files.items():
-                    p = root / "tools" / name / rel
-                    p.parent.mkdir(parents=True, exist_ok=True)
-                    p.write_bytes(raw)
-            problems = self._check(write)
-            if problems:
-                raise EditError("The new tool cannot be made.", problems)
-            write(self.pack_dir)
-            warnings = []
-            made = yaml.safe_load(_decode(files[MANIFEST]))
-            if made.get("kind") == "generator":
-                others = [t for t in self.tools(self.pack_dir) if t != name and
-                          (self._manifest_of(self.pack_dir, t)[0] or {}).get("kind") == "generator"]
-                if others:
-                    warnings.append(f"The setup now has {len(others) + 1} generators: the web app's "
-                                    f"3D viewer shows the model of the first by name "
-                                    f"({sorted(others + [name])[0]}); several generators come with P6e.")
-            return {"tool": name, "warnings": warnings}
+    def new_tool_from_code(self, data: dict, name: str, display: str, kind: str, filename: str,
+                           b64: str, entry: dict, roles=None) -> dict:
+        """A new tool whose code is an uploaded Python file (*filename*,
+        base64): the kind's template otherwise, its manifest naming the file's
+        function(s) -- *entry* ``{"entrypoint": fn}`` for a helper (named like
+        the tool, as the engine asks) or a download builder, ``{"build": fn,
+        "render": fn}`` for a model builder.  Checked by the engine first."""
+        name, display = self._new_names(name, display)
+        if kind not in ("helper", "generator", "geometry"):
+            raise EditError("The kind is helper, generator or geometry.")
+        filename = str(filename or "")
+        if not filename.endswith(".py"):
+            raise EditError("The script must be a Python file (.py).")
+        module = re.sub(r"[^A-Za-z0-9_]", "_", Path(filename).stem) or "tool"
+        module = ("m_" + module if module[0].isdigit() else module) + ".py"
+        try:
+            raw = base64.b64decode(str(b64 or ""), validate=True)
+        except (binascii.Error, ValueError):
+            raise EditError("The file did not arrive whole: upload it again.") from None
+        if len(raw) > TEXT_MAX:
+            raise EditError("The script is larger than 1 MB.")
+        try:
+            code = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            raise EditError("The script is not UTF-8 text.") from None
+        keys = ("build", "render") if kind == "generator" else ("entrypoint",)
+        entry = dict(entry or {})
+        for k in keys:
+            fn = str(entry.get(k, ""))
+            if not re.match(r"^[A-Za-z_][A-Za-z0-9_]*$", fn):
+                raise EditError(f"Choose the script's function for {k}.")
+            if not re.search(rf"^def {re.escape(fn)}\(", code, re.M):
+                raise EditError(f"{filename} has no function {fn} at its top level.")
+        if kind == "helper" and entry["entrypoint"] != name:
+            raise EditError(f"A helper's function is named like the tool: name the tool {entry['entrypoint']}, "
+                            f"or rename the function {name}.")
+        with self._lock:
+            files = self._template_files(kind, name, display)
+            files.pop(f"{name}.py", None)
+            files[module] = raw
+            m = yaml.safe_load(_decode(files[MANIFEST]))
+            try:
+                text = yaml_patch.patch(_decode(files[MANIFEST]), dict(m, **{k: f"{module}:{entry[k]}" for k in keys}))
+            except yaml_patch.PatchError as exc:
+                raise EditError(f"The manifest could not be written ({exc}).") from None
+            files[MANIFEST] = text.encode("utf-8")
+            return self._make_tool(name, self._with_roles(files, roles))
+
+    def _make_tool(self, name: str, files: dict[str, bytes]) -> dict:
+        """Write a new tool's *files* once the engine takes them (the lock held)."""
+        def write(root: Path):
+            for rel, raw in files.items():
+                p = root / "tools" / name / rel
+                p.parent.mkdir(parents=True, exist_ok=True)
+                p.write_bytes(raw)
+        problems = self._check(write)
+        if problems:
+            raise EditError("The new tool cannot be made.", problems)
+        write(self.pack_dir)
+        warnings = []
+        made = yaml.safe_load(_decode(files[MANIFEST]))
+        if made.get("kind") == "generator":
+            others = [t for t in self.tools(self.pack_dir) if t != name and
+                      (self._manifest_of(self.pack_dir, t)[0] or {}).get("kind") == "generator"]
+            if others:
+                warnings.append(f"The setup now has {len(others) + 1} model builders: the web app's "
+                                f"3D viewer shows the model of the first by name "
+                                f"({sorted(others + [name])[0]}).")
+        return {"tool": name, "warnings": warnings}
 
     # -- a test run (P6c-2) ---------------------------------------------------
 

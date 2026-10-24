@@ -660,8 +660,10 @@ def check_page_js() -> str:
     head = ("function esc(s) { return String(s).replace(/[&<>\"]/g, function (c) { return { '&': '&amp;', '<': '&lt;', "
             "'>': '&gt;', '\"': '&quot;' }[c]; }); }\n")
     head += "var TESTS = {}, STATE = {};\nfunction toolState(n) { return STATE[n] || null; }\n"
+    head += "function TE() { return { tools: { qzx: 1, qzx_2: 1 }, removed: ['gone'] }; }\n"
     prog = head + "\n".join(_js_piece(js, n) for n in ("lcsPairs", "diffMarks", "mergeTexts", "mdLine", "mdText", "toolSig",
-                                                        "toolStatus", "ERROR_HINTS", "plainError")) + """
+                                                        "toolStatus", "ERROR_HINTS", "plainError",
+                                                        "toolSlug", "pyFunctions")) + """
 var out = {
   marks: diffMarks({'3': 'a\\nb\\nc', '5': 'a\\nB\\nc', '7': 'a\\nb\\nc'}),
   same: diffMarks({'5': 'x\\ny', '7': 'x\\ny'}),
@@ -681,6 +683,8 @@ st.push(toolStatus('a').k);
 STATE.a.files[0].sha = '8';
 st.push(toolStatus('a').k + '|' + toolStatus('a').text);
 out.status = st;
+out.slugs = [toolSlug('Hose adapter (v2)!'), toolSlug('Qzx'), toolSlug('3D viewer'), toolSlug('Gone'), toolSlug('  ')];
+out.fns = pyFunctions('import x\\n\\ndef first(a):\\n    def inner():\\n        pass\\n\\nclass K:\\n    def method(self):\\n        pass\\n\\ndef second (b) :\\n    return b\\n');
 out.errors = [plainError({ error: 'Traceback (most recent call last):\\n  ...\\nFileNotFoundError: openscad: not found' }),
               plainError({ error: 'line 1\\nValueError: bad value\\n' })];
 process.stdout.write(JSON.stringify(out));
@@ -703,7 +707,10 @@ process.stdout.write(JSON.stringify(out));
           f"[PAGE] a tool's test status: {r['status']}")
     check(r["errors"][0].startswith("OpenSCAD was not found") and r["errors"][0].endswith("FileNotFoundError: openscad: not found")
           and r["errors"][1] == "ValueError: bad value", f"[PAGE] the error in a few words: {r['errors']}")
-    return "the lines that differ, Differences only, the formatting, a tool's test status, the error in a few words"
+    check(r["slugs"] == ["hose_adapter_v2", "qzx_3", "tool_3d_viewer", "gone_2", "tool"], f"[PAGE] a tool's folder name: {r['slugs']}")
+    check(r["fns"] == ["first", "second"], f"[PAGE] a script's top-level functions: {r['fns']}")
+    return ("the lines that differ, Differences only, the formatting, a tool's test status, the error in a few words, "
+            "a tool's folder name, a script's functions")
 
 
 # ---------------------------------------------------------------------------
@@ -1735,6 +1742,53 @@ def check_new_tools(st: Studio, copy: Path) -> str:
     for name in made + copies:
         ok(f"undo {name}", "undo_tool", name)
     same("the template tools and the copies, then Undo")
+    # 3b. Add a tool (the Studio's wizard): a tool made with the roles asked,
+    #     and a tool of each kind from an uploaded script -- its file as sent,
+    #     its manifest naming the script's function(s) -- that runs; the
+    #     refusals; Undo, byte for byte.
+    ok("a helper with two roles", "new_tool", "qzx_roles", "Qzx roles", "helper", None, ["tool_runner", "planner"])
+    m = _yaml.safe_load((copy / "tools" / "qzx_roles" / "tool.yaml").read_bytes().decode("utf-8"))
+    check(m.get("roles") == ["tool_runner", "planner"], f"[NEWTOOL] a new tool's roles: {m.get('roles')}")
+    templates = ROOT / "studio" / "tool_templates"
+
+    def code_of(kind, fn):
+        return (templates / kind / "__NAME__.py").read_text(encoding="utf-8").replace("__NAME__", fn).replace("__DISPLAY__", "Qzx")
+    scripts = [("helper", "qzx_script", "my-helper.py", code_of("helper", "qzx_script"), {"entrypoint": "qzx_script"}),
+               ("geometry", "qzx_geo", "geo.py", code_of("geometry", "x"), {"entrypoint": "make_model"}),
+               ("generator", "qzx_gen", "gen.py", code_of("generator", "qzx_gen"), {"build": "build", "render": "render"})]
+    from_code = ["qzx_roles"]
+    for kind, name, fname, code, entry in scripts:
+        b64 = base64.b64encode(code.encode("utf-8")).decode("ascii")
+        r = ok(f"a {kind} from a script", "new_tool_from_code", name, f"Qzx {kind} script", kind, fname, b64, entry, None)
+        if not r.get("ok"):
+            continue
+        from_code.append(name)
+        m = _yaml.safe_load((copy / "tools" / name / "tool.yaml").read_bytes().decode("utf-8"))
+        module = re.sub(r"[^A-Za-z0-9_]", "_", Path(fname).stem) + ".py"
+        check((copy / "tools" / name / module).read_bytes() == code.encode("utf-8")
+              and not (copy / "tools" / name / f"{name}.py").exists(),
+              f"[NEWTOOL] the {kind} from a script: {module} is not the script, or the template's code stayed")
+        keys = ("build", "render") if kind == "generator" else ("entrypoint",)
+        check(all(m.get(k) == f"{module}:{entry[k]}" for k in keys),
+              f"[NEWTOOL] the {kind} from a script names {[m.get(k) for k in keys]}")
+        status, r = st.call("test_tool", name, params, {})
+        rep = r.get("report") or {}
+        check(r.get("ok") and not rep.get("failed") and not rep.get("mismatches"),
+              f"[NEWTOOL] the {kind} from a script does not run cleanly: "
+              f"{str({k: rep.get(k) for k in ('failed', 'error', 'mismatches')})[:300]}")
+    ok_b64 = base64.b64encode(code_of("helper", "qzx_script").encode("utf-8")).decode("ascii")
+    for args, words in ((("qzx_bad", "x", "helper", "s.py", ok_b64, {"entrypoint": "qzx_script"}, None), "named like the tool"),
+                        (("qzx_bad", "x", "helper", "s.txt", ok_b64, {"entrypoint": "qzx_bad"}, None), "Python file"),
+                        (("qzx_bad", "x", "helper", "s.py", ok_b64, {"entrypoint": "qzx_bad"}, None), "has no function"),
+                        (("qzx_bad", "x", "generator", "s.py", ok_b64, {"build": "qzx_script"}, None), "function for render"),
+                        (("qzx_bad", "x", "helper", "s.py", "%%%", {"entrypoint": "qzx_bad"}, None), "did not arrive whole")):
+        status, r = st.call("new_tool_from_code", *args)
+        check(r.get("ok") is False and words in r.get("error", ""), f"[NEWTOOL] new_tool_from_code{args[:4]}: not refused ({words}): {r}")
+    status, r = st.call("new_tool", "qzx_bad", "x", "geometry", None, ["planner"])
+    check(r.get("ok") is False and "has no roles" in r.get("error", ""), f"[NEWTOOL] a download builder with roles: not refused: {r}")
+    for name in from_code:
+        ok(f"undo {name}", "undo_tool", name)
+    same("the tools with roles and from scripts, then Undo")
     # 4. The refusals.
     removable = "render_blade_sections" if "render_blade_sections" in tools0 else None
     cases = [(("Bad Name", "x", "helper"), "lower case"), ((tools0[0], "x", "helper"), "already has a tool"),

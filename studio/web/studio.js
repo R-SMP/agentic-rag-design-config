@@ -2313,7 +2313,7 @@
   var TEDITS = {};          // unsaved manifests from the form: tool -> manifest
   var FEDITS = {};          // unsaved file texts: tool/path -> text
   var FILES = {}, FILE_LOADING = {};   // files read from the server: tool/path -> {text, sha, size}
-  var TOOL_TABS = [['form', 'Tool details'], ['yaml', 'tool.yaml'], ['files', 'Files'], ['texts', 'Prompt texts'], ['test', 'Test']];
+  var TOOL_TABS = [['form', 'Tool details'], ['yaml', 'tool.yaml'], ['files', 'Files'], ['test', 'Test']];
   function TE() { return D.tools_edit; }
   function toolState(name) { return (TE().tools || {})[name] || null; }
   function manifestOf(name) { return TEDITS[name] || toolState(name).manifest; }
@@ -2353,7 +2353,7 @@
     add(center, head('Tools', 'The functions your agents call to build and look at a design. Each tool is a plain Python function, or an OpenSCAD model the engine runs, plus its tool details: what it is, who can call it, what it produces, and the text the agents read about it.', [
       h('a', { 'class': 'btn', href: 'static/write-a-tool.html', target: '_blank', rel: 'noopener',
         title: 'How a tool is made: its kinds, its details, its code, its pictures and texts.' }, 'Write a tool ↗'),
-      h('button', { 'class': 'primary', disabled: BUSY, onclick: askNewTool }, '+ New tool')]));
+      h('button', { 'class': 'primary', disabled: BUSY, onclick: function () { openWizard(); } }, '+ Add a tool')]));
     add(center, importBanner());
     add(center, scadDrop());
     scadDragTarget(center);
@@ -2362,7 +2362,7 @@
       var info = D.tool_info[t.name] || { roles: [], images: [], settings: [] }, st = toolState(t.name) || {};
       var first = t.description.split('\n\n')[0].replace(/\s+/g, ' ');
       var settings = info.settings.length ? info.settings.join(', ') : 'none';
-      add(wrap, h('div', { 'class': 'tcard' }, [
+      add(wrap, cardDrop(t.name, h('div', { 'class': 'tcard', title: 'Drop a new version of its model or code here.' }, [
         h('div', { 'class': 'head' }, [ADV() ? h('span', { 'class': 'n' }, t.name) : null, ADV() ? pill(t.display) : h('span', { 'class': 'n dn' }, t.display),
           kpill(KIND_LABEL[t.kind] || t.kind), statusPill(t.name),
           st.changed && toolStatus(t.name).k !== 'warn' ? pill(st.opened ? 'changed' : 'added', 'warn', 'Changed since the Studio opened.') : null,
@@ -2384,18 +2384,21 @@
             : t.owns.length + ' fields it owns (they leave with it) + its entry in the tool runner’s numbered list, place ' + t.list_order) : null,
           ADV() ? h('div', { 'class': 'k' }, 'Code') : null, ADV() ? h('div', { 'class': 'mono', style: 'font-size:11px' }, t.file + '  ·  details tools/' + t.name + '/tool.yaml') : null
         ])
-      ]));
+      ])));
     });
     if (!D.tools.length && !(TE().removed || []).length) add(wrap, h('div', { 'class': 'empty' },
-      'No tools yet: drop an OpenSCAD model (.scad) above, or press + New tool.'));
+      'No tools yet: drop a CAD model (.scad) or a Python script (.py) above, or press + Add a tool.'));
     (TE().removed || []).forEach(function (name) {
       add(wrap, h('div', { 'class': 'tcard gone' }, h('div', { 'class': 'head' }, [h('s', { 'class': 'n' }, name), h('span', { 'class': 'muted' }, ' · removed since the Studio opened'),
         h('span', { 'class': 'grow' }), h('button', { disabled: BUSY, onclick: function () { undoTool(name); } }, 'Undo')])));
     });
     add(center, wrap);
-    add(center, h('div', { style: 'padding:6px 16px 4px' }, [h('h4', null, 'Tool text the agents read · ' + slotsOf('tools').length + ' fields'),
-      h('div', { 'class': 'muted', style: 'font-size:11.5px' }, 'A field owned by a tool lives in that tool’s folder (tools/<tool>/prompts/ in the setup) and leaves with it; the others are shared by all tools.')]));
-    add(center, grid(slotsOf('tools'), 'tools'));
+    // the texts every tool shares (a tool's own texts are in its details)
+    var shared = slotsOf('tools').filter(function (s) { return !s.owner; });
+    var sharedPart = [h('div', { style: 'padding:6px 0 4px' }, [h('h4', null, 'Shared tool texts · ' + shared.length),
+      h('div', { 'class': 'muted', style: 'font-size:11.5px' }, 'Texts about tools that every tool shares. A tool’s own texts are in its details (Edit).')]),
+      grid(shared, 'tools')];
+    add(center, h('div', { style: 'margin:10px 16px 20px' }, ADV() ? sharedPart : advFold('shared tool texts · ' + shared.length, sharedPart)));
     if (R.q.field && slotByName(R.q.field)) { add(right, inspectField(slotByName(R.q.field))); return; }
     add(right, h('div', { 'class': 'insp' }, [
       h('h4', null, 'How tools reach the agents'),
@@ -2420,7 +2423,6 @@
     if (tab === 'yaml') add(body, fileEditor(name, 'tool.yaml', 28,
       'The tool’s details as text (tool.yaml). A Save is checked by the engine first: details it would refuse are not written.'));
     else if (tab === 'files') add(body, filesTab(name));
-    else if (tab === 'texts') add(body, textsTab(name));
     else if (tab === 'test') add(body, testTab(name));
     else add(body, manifestForm(name));
     add(center, body);
@@ -2534,7 +2536,8 @@
         }))]),
       h('button', { 'class': 'mini', onclick: function () {
         setv(['secrets'], (manifestOf(name).secrets || []).concat([{ env: '', required: false, description: '' }])); render(); } }, '+ Add a secret')]));
-    if (ADV()) parts.push(h('p', { 'class': 'muted hint', style: 'margin:10px 0' }, 'Everything else (the code it runs, its outputs and its prompt texts) is edited in the tool.yaml tab.'));
+    parts.push(toolTexts(name));
+    if (ADV()) parts.push(h('p', { 'class': 'muted hint', style: 'margin:10px 0' }, 'Everything else (the code it runs and its outputs) is edited in the tool.yaml tab.'));
     if (err) parts.push(h('div', { 'class': 'banner bad boxed' }, [h('div', null, err.error)].concat(err.problems.map(function (p) { return h('div', null, '• ' + p); }))));
     parts.push(h('div', { 'class': 'tacts', id: 'toolActs' }, formActions(name)));
     return h('div', { 'class': 'mformwrap' }, parts);
@@ -2612,6 +2615,11 @@
     };
     fr.readAsDataURL(file);
   }
+  // A file of a tool replaced by upload (the Files list): as on its card.
+  function newVersionOf(name, f, file) {
+    if (SESSION.online && /\.py$/i.test(f.path) && !root.confirm('Online, code you add runs on this shared server, with its keys. Replace ' + f.path + '?')) return;
+    uploadToolFile(name, f.path, file, f.sha);
+  }
   function filesTab(name) {
     var st = toolState(name);
     var list = st.files.filter(function (f) { return !f.prompts && !f.entry && f.path !== 'tool.yaml'; });
@@ -2620,11 +2628,19 @@
       var f = e.target.files[0]; e.target.value = '';
       if (f) uploadToolFile(name, f.name.replace(/[^A-Za-z0-9._-]+/g, '_'), f, null);
     } });
-    var table = h('table', { 'class': 'ptab files' }, [h('thead', null, h('tr', null, ['File', 'Size', 'Kind', ''].map(function (x) { return h('th', null, x); }))),
+    var m = st.manifest || {};
+    var code = [m.entrypoint, m.build, m.render].filter(function (x) { return x; }).map(function (x) { return String(x).split(':')[0]; });
+    function role(f) {
+      return f.path === m.model ? 'the model' : code.indexOf(f.path) >= 0 ? 'its code' : /\.py$/.test(f.path) ? 'code it uses'
+        : f.text ? 'a text file' : 'an asset';
+    }
+    var table = h('table', { 'class': 'ptab files' }, [h('thead', null, h('tr', null, ['File', 'What it is', 'Size', '', ''].map(function (x) { return h('th', null, x); }))),
       h('tbody', null, list.map(function (f) {
+        var rep = h('input', { type: 'file', style: 'display:none', onchange: function (e) { var x = e.target.files[0]; e.target.value = ''; if (x) newVersionOf(name, f, x); } });
         return h('tr', { 'class': f.path === sel ? 'sel' : '', style: 'cursor:pointer', onclick: function () { go('studio', 'tools', { tool: name, tab: 'files', file: f.path }); } }, [
-          h('td', null, h('span', { 'class': 'mono' }, f.path)), h('td', { 'class': 'num' }, fmt(f.size)), h('td', null, f.text ? 'text' : 'binary'),
-          h('td', null, f.changed ? pill(f.added ? 'added' : 'changed', 'warn') : null)]);
+          h('td', null, h('span', { 'class': 'mono' }, f.path)), h('td', null, role(f)), h('td', { 'class': 'num' }, fmt(f.size)),
+          h('td', null, f.changed ? pill(f.added ? 'added' : 'changed', 'warn') : null),
+          h('td', { 'class': 'racts' }, [rep, h('button', { 'class': 'mini', disabled: BUSY, onclick: function (ev) { ev.stopPropagation(); rep.click(); } }, 'Replace…')])]);
       }).concat(st.gone_files.filter(function (p) { return p.indexOf('prompts/') !== 0; }).map(function (p) {
         return h('tr', { 'class': 'gone' }, [h('td', null, h('s', { 'class': 'mono' }, p)), h('td', { colspan: 2 }, 'gone since the Studio opened'),
           h('td', null, h('button', { 'class': 'mini', disabled: BUSY, onclick: function (ev) { ev.stopPropagation(); change('undo_tool_file', [name, p], 'file|' + name + '/' + p, p + ' is back.'); } }, 'Undo'))]);
@@ -2633,79 +2649,357 @@
       h('button', { 'class': 'mini', disabled: BUSY, onclick: function () { adder.click(); } }, 'Add a file…')]), table,
       sel ? fileEditor(name, sel, 24) : null]);
   }
-  function textsTab(name) {
+  // A tool's own texts, in its details: its entry in the tool runner's list
+  // and the text fields it owns (they live in its prompts/ folder).
+  function toolTexts(name) {
     var st = toolState(name), m = st.manifest || {};
     var entries = st.files.filter(function (f) { return f.entry; });
-    var owned = (m.prompt_slots || []).filter(function (s) { return slotByName(s); });
-    return h('div', null, [
-      h('div', { 'class': 'block', style: 'padding:0 16px' }, [h('h4', null, 'Its entry in the tool runner’s numbered tool list'),
-        entries.length ? null : h('p', { 'class': 'muted' }, m.kind === 'geometry' ? 'None: no agent is given a download builder.' : 'None: only a tool the tool runner calls has one.')]),
-    ].concat(entries.map(function (f) { return fileEditor(name, f.path, 6, 'Checked like a text field: no braces, only $names the engine knows, closed <<markers>>.'); }), [
-      h('div', { 'class': 'block', style: 'padding:0 16px' }, [h('h4', null, 'The text fields it owns · ' + owned.length),
-        h('p', { 'class': 'muted hint' }, 'They live in its prompts/ folder and leave with it; each is edited in its section, like every text field.'),
-        h('div', null, owned.map(function (s) { var f = slotByName(s);
-          return h('a', { 'class': 'kpill tool', style: 'display:inline-block;margin:2px;text-decoration:none', href: link('studio', f.section, { field: s }) }, s); }))])]));
+    var owned = (m.prompt_slots || []).map(slotByName).filter(function (s) { return s; });
+    return h('div', { 'class': 'block' }, [h('h4', null, 'Its texts'),
+      entries.length ? null : h('p', { 'class': 'muted' }, m.kind === 'geometry' ? 'None: no agent is told about a download builder.' : 'No entry in the tool runner’s list: only a tool the tool runner calls has one.')]
+      .concat(entries.map(function (f) { return fileEditor(name, f.path, 6, 'Its entry in the tool runner’s numbered tool list.  Checked like a text: no braces, only $names the engine knows, closed <<markers>>.'); }),
+        owned.length ? [h('p', { 'class': 'muted hint', style: 'margin:10px 0 0' }, 'The text fields it owns: they leave with it.'), grid(owned)] : []));
   }
 
-  /* -- New tool (P6c-2) ---------------------------------------------------------- */
+  /* -- Add a tool: a wizard (simplification phase 3a) ----------------------------
+   * What you have -> your file (or which kind / which tool) -> what the
+   * Studio found -> its name and who uses it -> a test -> done.  A CAD model
+   * goes through the import (scad_read / scad_import), a Python script
+   * through new_tool_from_code, a template or a copy through new_tool. */
   var NEW_KINDS = [
     ['helper', 'Helper', 'one function the tool runner calls with an attempt’s parameters.json; its answer is a text for the agent.'],
     ['generator', 'Model builder', 'builds the model from an attempt’s parameters.json, then makes its pictures.'],
     ['geometry', 'Download builder', 'builds the model from the parameters, for a model builder and the Download buttons; no agent calls it.']];
-  function askNewTool() {
+  var WIZ_HAVE = [
+    ['scad', 'A CAD model', 'An OpenSCAD model (.scad): its settings become parameters, and it becomes a model builder.'],
+    ['python', 'A Python script', 'A .py file with the function the agents call, or the functions that build a model.'],
+    ['template', 'A template', 'A small working starter of each kind, to fill in.'],
+    ['copy', 'A copy of a tool', 'One of this setup’s tools, under a new name.']];
+  var WIZ = null;
+  function wizSeq(w) {
+    return w.have === 'template' || w.have === 'copy' ? ['have', 'file', 'name', 'test', 'done'] : ['have', 'file', 'found', 'name', 'test', 'done'];
+  }
+  function wizLabel(w, id) {
+    return { have: 'What you have', file: w.have === 'template' ? 'Which kind' : w.have === 'copy' ? 'Which tool' : 'Your file',
+             found: 'What the Studio found', name: 'Name and who uses it', test: 'Test', done: 'Done' }[id];
+  }
+  // A tool's folder name from its display name: lower case, letters, digits and _.
+  function toolSlug(display) {
+    var s = String(display || '').toLowerCase().replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '').slice(0, 36) || 'tool';
+    if (/^[0-9]/.test(s)) s = 'tool_' + s;
+    var taken = Object.keys(TE().tools).concat(TE().removed || []), n = s, i = 2;
+    while (taken.indexOf(n) >= 0 || n === 'downloads') n = s + '_' + i++;
+    return n;
+  }
+  // The top-level functions of a Python script, in order.
+  function pyFunctions(text) {
+    var out = [], re = /^def\s+([A-Za-z_][A-Za-z0-9_]*)\s*\(/gm, m;
+    while ((m = re.exec(text)) !== null) if (out.indexOf(m[1]) < 0) out.push(m[1]);
+    return out;
+  }
+  function onlineNote() {
+    return h('div', { 'class': 'banner warn boxed' }, 'Online, code you add runs on this shared server, with its keys: a test runs it in a process of its own, not in a sandbox.');
+  }
+  function openWizard(have) {
     if (BUSY) return;
-    var tools = Object.keys(TE().tools), mode = 'template', kind = 'helper', src = tools[0];
-    var nameIn = h('input', { type: 'text', spellcheck: 'false', placeholder: 'my_tool' });
-    var dispIn = h('input', { type: 'text', placeholder: 'My tool' });
-    var msg = h('div');
-    var scadPicker = h('input', { type: 'file', accept: '.scad', style: 'display:none', onchange: function (e) {
-      var f = e.target.files[0]; e.target.value = '';
-      if (f) readScad(f, { name: nameIn.value.trim(), display: dispIn.value.trim() });
-    } });
-    function radio(value, label, disabled, extra) {
-      return h('label', { 'class': 'pick' + (disabled ? ' off' : '') }, [
-        h('input', { type: 'radio', name: 'newfrom', value: value, checked: value === mode, disabled: !!disabled,
-          onchange: function () { mode = value; } }),
-        h('span', null, [h('b', null, label)].concat(extra || []))]);
+    WIZ = { step: have ? 'file' : 'have', have: have || null, kind: 'helper', copy: Object.keys(TE().tools)[0] || null,
+            display: '', name: '', roles: null, fns: [], entry: {}, error: null, made: [], testTool: null };
+    showModal('Add a tool', h('div'), []);
+    el('modalBox').className = 'modal xwide';
+    drawWizard();
+  }
+  function closeWizard() { WIZ = null; SCAD = null; closeModal(); render(); }
+  function wizGo(step) { WIZ.step = step; WIZ.error = null; drawWizard(); el('modalBody').scrollTop = 0; }
+  // The roles a new tool starts with: its kind's, or the copied tool's.
+  function wizRoles(w) {
+    if (w.roles) return w.roles;
+    if (w.have === 'copy') return ((toolState(w.copy) || {}).manifest || {}).roles || [];
+    return w.kind === 'geometry' ? [] : ['tool_runner'];
+  }
+  function wizKind(w) { return w.have === 'copy' ? ((toolState(w.copy) || {}).manifest || {}).kind : w.kind; }
+  function drawWizard() {
+    var w = WIZ;
+    if (!w) return;
+    var seq = wizSeq(w), at = seq.indexOf(w.step);
+    var body = h('div', { 'class': 'wiz' }, [
+      h('div', { 'class': 'wizbar' }, seq.map(function (id, i) {
+        return h('span', { 'class': i < at ? 'done' : i === at ? 'cur' : '' }, (i + 1) + ' ' + wizLabel(w, id)); })),
+      w.error ? h('div', { 'class': 'banner bad boxed' }, w.error) : null,
+      wizBody(w)]);
+    el('modalTitle').textContent = 'Add a tool';
+    var b = el('modalBody'), top = b.scrollTop;
+    b.innerHTML = '';
+    b.appendChild(body);
+    b.scrollTop = top;
+    var foot = el('modalFoot');
+    foot.innerHTML = '';
+    add(foot, wizFoot(w));
+  }
+  function wizCard(label, text, on, pick) {
+    return h('button', { 'class': 'preset' + (on ? ' on' : ''), onclick: pick }, [h('b', null, label), h('span', null, text)]);
+  }
+  function wizBody(w) {
+    if (w.step === 'have') {
+      return h('div', { 'class': 'pgrid' }, WIZ_HAVE.map(function (x) {
+        return wizCard(x[1], x[2], w.have === x[0], function () { w.have = x[0]; wizGo('file'); });
+      }));
     }
-    var body = h('div', null, [
-      h('div', { 'class': 'kv mform' }, [
-        h('div', { 'class': 'k' }, 'Name'), h('div', null, [nameIn, h('div', { 'class': 'muted hint' }, 'Lower case: letters, digits and _. It is the folder’s name and the agents’ tool name.')]),
-        h('div', { 'class': 'k' }, 'Display name'), h('div', null, [dispIn, h('div', { 'class': 'muted hint' }, 'The flowchart’s and the log’s label.')])]),
-      h('h4', { style: 'margin:12px 0 6px' }, 'Start from'),
-      radio('template', 'A template', false, [h('div', null, h('select', { onchange: function (e) { kind = e.target.value; } },
-        NEW_KINDS.map(function (k) { return h('option', { value: k[0] }, k[1]); }))),
-        h('div', { 'class': 'muted hint' }, NEW_KINDS.map(function (k) { return k[1] + ': ' + k[2]; }).join(' '))]),
-      radio('copy', 'A copy of a tool', !tools.length, [h('div', null, h('select', { onchange: function (e) { src = e.target.value; } },
-        tools.map(function (t) { return h('option', { value: t }, t); }))),
-        h('div', { 'class': 'muted hint' }, 'Its details and code under the new name. Its texts stay with the original, its pictures and model file get names of their own, a helper’s function is renamed after the copy.')]),
-      radio('adapter', 'An adapter (a Grasshopper definition on a compute server, a Node script, an HTTP endpoint)', true, [h('div', { 'class': 'muted hint' }, 'Not available yet.')]),
-      radio('cad', 'A CAD file (an OpenSCAD model, .scad)', false, [h('div', { 'class': 'muted hint' }, 'Choose the file next: the Studio reads its settings and shows what each one becomes, and how to import it, before anything is written.  You can also drop a .scad file on the Tools page.')]),
-      msg, scadPicker]);
-    showModal('New tool', body, [h('button', { onclick: closeModal }, 'Cancel'),
-      h('button', { 'class': 'primary', onclick: function () {
-        var name = nameIn.value.trim();
-        if (mode === 'cad') { scadPicker.click(); return; }
-        msg.innerHTML = '';
-        add(msg, h('p', { 'class': 'muted' }, 'Checking with the engine…'));
-        call('new_tool', name, dispIn.value, mode === 'template' ? kind : null, mode === 'copy' ? src : null).then(function (r) {
-          msg.innerHTML = '';
-          if (!r || r.ok === false) {
-            add(msg, h('div', { 'class': 'banner bad boxed' }, [h('div', null, (r && r.error) || 'The tool could not be made.')].concat(
-              ((r && r.problems) || []).map(function (p) { return h('div', null, '• ' + p); }))));
-            return;
-          }
-          closeModal();
-          BUSY = true;
-          status('Made ' + name + '. Re-assembling every prompt…', 'busy');
-          root.history.replaceState(null, '', link('studio', 'tools', { tool: name }));
-          reload().then(function () {
-            BUSY = false;
-            status('Made ' + name + '.' + ((r.warnings || []).length ? '  ' + r.warnings.join(' ') : ''), (r.warnings || []).length ? 'warn' : 'ok');
-            render();
-          }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
-        });
-      } }, 'Make the tool')]);
+    if (w.step === 'file' && w.have === 'template') {
+      return h('div', { 'class': 'pgrid' }, NEW_KINDS.map(function (k) {
+        return wizCard(k[1], k[2], w.kind === k[0], function () { w.kind = k[0]; w.roles = null; wizGo('name'); });
+      }));
+    }
+    if (w.step === 'file' && w.have === 'copy') {
+      return h('div', { 'class': 'pgrid' }, Object.keys(TE().tools).map(function (n) {
+        var m = toolState(n).manifest || {};
+        return wizCard(m.display_name || n, KIND_LABEL[m.kind] || m.kind || '', w.copy === n, function () {
+          w.copy = n; w.roles = null; w.display = 'Copy of ' + (m.display_name || n); wizGo('name'); });
+      }));
+    }
+    if (w.step === 'file') {
+      var accept = w.have === 'scad' ? '.scad' : '.py';
+      var picker = h('input', { type: 'file', accept: accept, style: 'display:none', onchange: function (e) {
+        var f = e.target.files[0]; e.target.value = '';
+        if (f) wizFile(f);
+      } });
+      var zone = h('div', { 'class': 'dropzone', id: 'wizDrop' }, [picker,
+        h('p', { style: 'margin:0 0 10px' }, ['Drop ', h('b', null, w.have === 'scad' ? 'the OpenSCAD model (.scad)' : 'the Python script (.py)'), ' here, or']),
+        h('button', { 'class': 'primary', onclick: function () { picker.click(); } }, 'Choose the file…')]);
+      zone.addEventListener('dragover', function (e) { if (!hasFiles(e)) return; e.preventDefault(); zone.classList.add('over'); });
+      zone.addEventListener('dragleave', function () { zone.classList.remove('over'); });
+      zone.addEventListener('drop', function (e) {
+        if (!hasFiles(e)) return;
+        e.preventDefault();
+        zone.classList.remove('over');
+        if (e.dataTransfer.files.length) wizFile(e.dataTransfer.files[0]);
+      });
+      return h('div', null, [zone, w.have === 'python' && SESSION.online ? onlineNote() : null]);
+    }
+    if (w.step === 'found' && w.have === 'scad') return scadBody();
+    if (w.step === 'found') {
+      var kind = w.kind, keys = kind === 'generator' ? ['build', 'render'] : ['entrypoint'];
+      var pick = function (k) {
+        return h('select', { onchange: function (e) { w.entry[k] = e.target.value; drawWizard(); } }, w.fns.map(function (f) {
+          return h('option', { value: f, selected: w.entry[k] === f }, f + '()'); }));
+      };
+      keys.forEach(function (k) { if (w.fns.indexOf(w.entry[k]) < 0) w.entry[k] = w.fns.indexOf(k) >= 0 ? k : w.fns[0]; });
+      return h('div', null, [
+        h('p', { 'class': 'scadsum' }, [h('b', null, w.file), ' · ' + w.fns.length + (w.fns.length === 1 ? ' function: ' : ' functions: ') + w.fns.join(', ')]),
+        h('h4', null, 'What it is'),
+        h('div', { 'class': 'pgrid' }, NEW_KINDS.map(function (k) {
+          return wizCard(k[1], k[2], kind === k[0], function () { w.kind = k[0]; w.roles = null; drawWizard(); });
+        })),
+        h('h4', { style: 'margin-top:12px' }, kind === 'generator' ? 'Its two functions' : 'Its function'),
+        h('div', { 'class': 'kv mform' }, [].concat.apply([], keys.map(function (k) {
+          return [h('div', { 'class': 'k' }, k === 'build' ? 'Builds the model' : k === 'render' ? 'Makes the pictures' : 'The one called'), h('div', null, pick(k))];
+        }))),
+        kind === 'helper' ? h('p', { 'class': 'muted hint' }, 'A helper’s function gives the tool its name: the agents call the tool ' + (w.entry.entrypoint || '…') + '.') : null,
+        SESSION.online ? onlineNote() : null]);
+    }
+    if (w.step === 'name') {
+      var helperPy = w.have === 'python' && w.kind === 'helper', scad = w.have === 'scad';
+      var name = scad ? SCAD.name : helperPy ? w.entry.entrypoint : w.name || toolSlug(w.display);
+      var nameIn = ADV() && !helperPy ? h('input', { type: 'text', value: name, spellcheck: 'false', oninput: function (e) {
+        if (scad) SCAD.name = e.target.value; else w.name = e.target.value; } }) : h('span', { 'class': 'mono muted' }, name);
+      var dispIn = h('input', { type: 'text', value: scad ? SCAD.display : w.display, placeholder: 'What the tool is called, e.g. Hose adapter',
+        oninput: function (e) {
+          if (scad) { SCAD.display = e.target.value; if (!ADV()) SCAD.name = toolSlug(e.target.value); }
+          else { w.display = e.target.value; if (!ADV()) w.name = ''; }
+          var nm = el('wizName');
+          if (nm && !ADV()) nm.textContent = scad ? SCAD.name : helperPy ? w.entry.entrypoint : toolSlug(w.display);
+        } });
+      var roles = wizRoles(w), kindNow = wizKind(w);
+      var rows = [h('div', { 'class': 'k' }, 'Display name'), h('div', null, [dispIn, h('div', { 'class': 'muted hint' }, 'The flowchart’s and the log’s label.')]),
+        h('div', { 'class': 'k' }, 'Its folder'), h('div', { id: ADV() ? null : 'wizName' }, ADV() && !helperPy ? nameIn : name)];
+      return h('div', null, [h('div', { 'class': 'kv mform' }, rows),
+        h('h4', { style: 'margin-top:14px' }, 'Who can call it'),
+        scad ? h('p', { 'class': 'muted' }, SCAD.mode === 'new'
+          ? 'It becomes the model builder, called by the tool runner; a download builder is made beside it, for the Download buttons.'
+          : 'As one more tool: the tool runner calls it if it becomes the model builder; a download builder is called by the engine.')
+        : kindNow === 'geometry' ? h('p', { 'class': 'muted' }, 'Nobody: a download builder is called by the engine (the Download buttons), never by an agent.')
+        : h('div', { 'class': 'rolechecks' }, toolRoles().map(function (r) {
+          return h('label', { 'class': 'vchk' }, [h('input', { type: 'checkbox', checked: roles.indexOf(r.role) >= 0, onchange: function (e) {
+            var cur = wizRoles(w).slice();
+            if (e.target.checked && cur.indexOf(r.role) < 0) cur.push(r.role);
+            if (!e.target.checked) cur = cur.filter(function (x) { return x !== r.role; });
+            w.roles = cur;
+          } }), h('span', null, [h('b', null, r.label), h('span', { 'class': 'muted' }, ' · ' + rolesLine(r.role))])]);
+        }))]);
+    }
+    if (w.step === 'test') {
+      var T = TESTS[w.testTool];
+      return h('div', null, [h('p', null, ['Made ', h('b', null, w.made.join(', ')), '.  ',
+        T && T.running ? 'Testing it on the parameters’ defaults…' : 'Its test on the parameters’ defaults:']),
+        T && T.report ? testReport(T.report) : h('div', { 'class': 'insp muted' }, 'Running…')]);
+    }
+    var tt = WIZ.testTool, st = toolStatus(tt);
+    return h('div', null, [h('p', { style: 'font-size:14px' }, [h('b', null, (toolState(tt) || {}).manifest ? toolState(tt).manifest.display_name : tt), ' is ready.']),
+      h('p', null, ['Its test: ', statusPill(tt), '  ', st.k === 'bad' ? 'open it to see what went wrong, and edit its code or details.' : '']),
+      h('p', { 'class': 'muted' }, 'Edit it on the Tools page: its details, its texts, its test.  Undo on its card removes it again.')]);
+  }
+  function wizFoot(w) {
+    var seq = wizSeq(w), at = seq.indexOf(w.step);
+    var back = at > 0 && w.step !== 'test' && w.step !== 'done' ? h('button', { onclick: function () { wizGo(seq[at - 1]); } }, '← Back') : null;
+    if (w.step === 'found') {
+      var why = w.have === 'scad' ? scadWhy() : !w.fns.length ? 'The script has no top-level function.' : null;
+      return [h('button', { onclick: closeWizard }, 'Cancel'), back,
+        h('button', { 'class': 'primary', disabled: !!why, title: why, onclick: function () { wizGo('name'); } }, 'Next: name and who uses it')];
+    }
+    if (w.step === 'name') {
+      return [h('button', { onclick: closeWizard }, 'Cancel'), back,
+        h('button', { 'class': 'primary', disabled: BUSY, onclick: wizMake }, w.have === 'scad' && SCAD.mode === 'new' ? 'Start the new configurator' : 'Make the tool')];
+    }
+    if (w.step === 'test') {
+      var T = TESTS[w.testTool] || {};
+      return [h('button', { disabled: !!T.running, onclick: function () { runTest(w.testTool); } }, 'Run it again'),
+        h('button', { 'class': 'primary', disabled: !!T.running, onclick: function () { wizGo('done'); } }, 'Next')];
+    }
+    if (w.step === 'done') {
+      return [h('button', { onclick: closeWizard }, 'Close'),
+        h('button', { 'class': 'primary', onclick: function () { var n = w.testTool; closeWizard(); go('studio', 'tools', { tool: n }); } }, 'Open it')];
+    }
+    return [h('button', { onclick: closeWizard }, 'Cancel'), back];
+  }
+  // A file for the wizard: a model is read by the server, a script by the page.
+  function wizFile(file) {
+    var w = WIZ;
+    if (!w) return;
+    if (w.have === 'scad' && !/\.scad$/i.test(file.name)) { w.error = file.name + ' is not an OpenSCAD model (.scad).'; drawWizard(); return; }
+    if (w.have === 'python' && !/\.py$/i.test(file.name)) { w.error = file.name + ' is not a Python script (.py).'; drawWizard(); return; }
+    var fr = new root.FileReader();
+    if (w.have === 'python') {
+      fr.onload = function () {
+        w.file = file.name;
+        w.text = String(fr.result);
+        w.b64 = root.btoa(unescape(encodeURIComponent(w.text)));
+        w.fns = pyFunctions(w.text);
+        w.entry = {};
+        w.display = w.display || file.name.replace(/\.py$/i, '').replace(/[_-]+/g, ' ').replace(/^\w/, function (c) { return c.toUpperCase(); });
+        wizGo('found');
+      };
+      fr.readAsText(file);
+      return;
+    }
+    status('Reading ' + file.name + '…', 'busy');
+    fr.onload = function () {
+      var b64 = String(fr.result).split(',')[1] || '';
+      call('scad_read', b64, file.name).then(function (r) {
+        if (!r || r.ok === false) {
+          status((r && r.error) || 'The file could not be read.', 'err');
+          w.error = [(r && r.error) || 'The model could not be read.'].concat((r && r.problems) || []).join('  ');
+          drawWizard();
+          return;
+        }
+        status('Read ' + file.name + ': ' + r.counts.settings + ' settings.', 'ok');
+        SCAD = { file: file.name, b64: b64, found: r, mode: null, picks: {}, when: {}, open: {}, error: null,
+                 name: r.name, display: r.display };
+        SCAD.open[r.groups[0]] = true;
+        wizGo('found');
+      }, function (e) { status(String(e && e.message ? e.message : e), 'err'); });
+    };
+    fr.readAsDataURL(file);
+  }
+  // Make it: the import, the script, the template or the copy; then its test.
+  function wizMake() {
+    var w = WIZ;
+    if (!w || BUSY) return;
+    var scad = w.have === 'scad', kindNow = wizKind(w);
+    var display = (scad ? SCAD.display : w.display).trim();
+    var name = scad ? SCAD.name.trim() : w.have === 'python' && w.kind === 'helper' ? w.entry.entrypoint : (w.name || toolSlug(display)).trim();
+    if (!display) { w.error = 'Give it a display name.'; drawWizard(); return; }
+    var roles = scad || kindNow === 'geometry' ? null : wizRoles(w);
+    var callArgs;
+    if (scad) {
+      var when = {};
+      Object.keys(SCAD.when).forEach(function (k) { when[k] = false; });
+      callArgs = ['scad_import', SCAD.b64, SCAD.file, SCAD.mode, SCAD.picks, when, name, display];
+    } else if (w.have === 'python') {
+      var keys = w.kind === 'generator' ? ['build', 'render'] : ['entrypoint'], entry = {};
+      keys.forEach(function (k) { entry[k] = w.entry[k]; });
+      callArgs = ['new_tool_from_code', name, display, w.kind, w.file, w.b64, entry, roles];
+    } else callArgs = ['new_tool', name, display, w.have === 'template' ? w.kind : null, w.have === 'copy' ? w.copy : null, roles];
+    BUSY = true;
+    w.error = null;
+    status('Making ' + display + '…', 'busy');
+    drawWizard();
+    call.apply(null, callArgs).then(function (r) {
+      if (!r || r.ok === false) {
+        BUSY = false;
+        w.error = [(r && r.error) || 'The tool could not be made.'].concat((r && r.problems) || []).join('  ');
+        status(w.error, 'err');
+        drawWizard();
+        return;
+      }
+      if (scad) { PEDITS = {}; GEDITS = {}; TEDITS = {}; FEDITS = {}; TESTS = {}; IMPORT_WARNINGS = r.warnings || []; }
+      w.made = scad ? r.added : [name];
+      w.testTool = scad ? r.added[0] : name;
+      status('Made ' + w.made.join(', ') + '. Re-assembling every prompt…', 'busy');
+      reload().then(function () {
+        BUSY = false;
+        status('Made ' + w.made.join(', ') + '.' + ((r.warnings || []).length ? '  ' + r.warnings.join(' ') : ''), (r.warnings || []).length ? 'warn' : 'ok');
+        render();
+        if (!WIZ) return;
+        TESTS[w.testTool] = { source: 'defaults', values: testValues('defaults'), settings: {}, report: null, running: false };
+        wizGo('test');
+        runTest(w.testTool);
+      }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
+    });
+  }
+
+  // A new version of a tool's model or code, dropped on its card: what it
+  // replaces (and, for a model, which settings came and went), then its test.
+  var PENDING_TEST = null;
+  function cardDrop(name, card) {
+    card.addEventListener('dragover', function (e) { if (!hasFiles(e)) return; e.preventDefault(); e.stopPropagation(); card.classList.add('over'); });
+    card.addEventListener('dragleave', function (e) { if (!card.contains(e.relatedTarget)) card.classList.remove('over'); });
+    card.addEventListener('drop', function (e) {
+      if (!hasFiles(e)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      card.classList.remove('over');
+      if (e.dataTransfer.files.length) newVersion(name, e.dataTransfer.files[0]);
+    });
+    return card;
+  }
+  function newVersion(name, file) {
+    if (BUSY) { status('Wait for the change being written, then drop the file again.', 'warn'); return; }
+    var st = toolState(name), m = st.manifest || {}, isModel = /\.scad$/i.test(file.name);
+    if (isModel && !m.model) { status((m.display_name || name) + ' runs no OpenSCAD model: add the file in Files (Advanced), or add the model as a new tool.', 'err'); return; }
+    var rel = isModel ? m.model : file.name.replace(/[^A-Za-z0-9._-]+/g, '_');
+    var info = st.files.filter(function (f) { return f.path === rel; })[0];
+    var fr = new root.FileReader();
+    fr.onload = function () {
+      var b64 = String(fr.result).split(',')[1] || '';
+      function ask(extra) {
+        showModal('A new version for ' + (m.display_name || name), h('div', null, [
+          h('p', { style: 'margin:0 0 8px;line-height:1.5' }, (info ? 'It replaces ' : 'It is added as ') + rel + ' (' + fmt(file.size) +
+            ' bytes); then the tool is tested on the parameters’ defaults.  Undo on its card puts back the tool as the Studio opened it.')]
+          .concat(extra || [], SESSION.online && /\.py$/i.test(rel) ? [onlineNote()] : [])), [
+          h('button', { onclick: closeModal }, 'Cancel'),
+          h('button', { 'class': 'primary', onclick: function () {
+            closeModal();
+            change('upload_tool_file', [name, rel, b64, info ? info.sha : null], 'file|' + name + '/' + rel,
+              (info ? 'Replaced ' : 'Added ') + name + '/' + rel + '.', function () { PENDING_TEST = name; });
+          } }, info ? 'Replace and test' : 'Add and test')]);
+      }
+      if (!isModel || !info) { ask(); return; }
+      status('Reading ' + file.name + '…', 'busy');
+      call('tool_file', name, rel).then(function (old) {
+        var oldB64 = old && old.ok && old.text !== null ? root.btoa(unescape(encodeURIComponent(old.text))) : null;
+        return Promise.all([call('scad_read', b64, file.name), oldB64 ? call('scad_read', oldB64, rel) : Promise.resolve(null)]);
+      }).then(function (rs) {
+        status('', '');
+        var now = rs[0], was = rs[1];
+        if (!now || now.ok === false) { ask([h('div', { 'class': 'banner warn boxed' }, 'The new model’s settings could not be read: ' + ((now && now.error) || '?'))]); return; }
+        var a = now.rows.map(function (x) { return x.setting; }), b = was && was.ok !== false ? was.rows.map(function (x) { return x.setting; }) : a;
+        var added = a.filter(function (x) { return b.indexOf(x) < 0; }), gone = b.filter(function (x) { return a.indexOf(x) < 0; });
+        ask([h('ul', { 'class': 'checks' }, [
+          h('li', null, ['•', h('span', null, a.length + ' settings' + (added.length || gone.length ? '' : ', the same ones as before.'))]),
+          added.length ? h('li', null, ['+', h('span', null, 'New: ' + andList(added) + '.  They keep the model’s own value: to make one a parameter, add it under Parameters.')]) : null,
+          gone.length ? h('li', null, ['−', h('span', null, 'Gone: ' + andList(gone) + '.  A parameter for one of them no longer reaches the model.')]) : null])]);
+      }, function (e) { status(String(e && e.message ? e.message : e), 'err'); });
+    };
+    fr.readAsDataURL(file);
   }
 
   /* -- A tool from an OpenSCAD model (P6f) ---------------------------------------
@@ -2765,13 +3059,9 @@
   }
   function hasFiles(e) { return !!e.dataTransfer && Array.prototype.indexOf.call(e.dataTransfer.types || [], 'Files') >= 0; }
   function scadDrop() {
-    var picker = h('input', { type: 'file', accept: '.scad', style: 'display:none', onchange: function (e) {
-      var f = e.target.files[0]; e.target.value = '';
-      if (f) readScad(f);
-    } });
-    return h('div', { 'class': 'dropzone slim', id: 'scadDrop' }, [picker,
-      h('span', null, ['Drop an OpenSCAD model (', h('b', null, '.scad'), ') here to import it as a tool, or']),
-      h('button', { disabled: BUSY, onclick: function () { picker.click(); } }, 'Import a .scad file…')]);
+    return h('div', { 'class': 'dropzone slim', id: 'scadDrop' }, [
+      h('span', null, ['Drop a CAD model (', h('b', null, '.scad'), ') or a Python script (', h('b', null, '.py'), ') here to add it as a tool, or']),
+      h('button', { disabled: BUSY, onclick: function () { openWizard(); } }, 'Add a tool…')]);
   }
   // A file dragged over the Tools page lights the drop area; dropped there, it is read.
   function scadDragTarget(center) {
@@ -2785,37 +3075,18 @@
       if (e.dataTransfer.files.length) readScad(e.dataTransfer.files[0]);
     });
   }
-  function readScad(file, preset) {
+  // A file dropped on the Tools page: the wizard, at its file.
+  function readScad(file) {
     if (!file) return;
     if (BUSY) { status('Wait for the change being written, then drop the file again.', 'warn'); return; }
-    if (!/\.scad$/i.test(file.name)) { status(file.name + ' is not an OpenSCAD model: import a .scad file.', 'err'); return; }
-    status('Reading ' + file.name + '…', 'busy');
-    var fr = new root.FileReader();
-    fr.onload = function () {
-      var b64 = String(fr.result).split(',')[1] || '';
-      call('scad_read', b64, file.name).then(function (r) {
-        if (!r || r.ok === false) {
-          status((r && r.error) || 'The file could not be read.', 'err');
-          showModal('The model cannot be imported', h('div', null, [h('p', { style: 'margin:0 0 8px' }, (r && r.error) || '')].concat(
-            ((r && r.problems) || []).map(function (p) { return h('div', { 'class': 'probline' }, '✗ ' + p); }))),
-            [h('button', { onclick: closeModal }, 'Close')]);
-          return;
-        }
-        status('Read ' + file.name + ': ' + r.counts.settings + ' settings.', 'ok');
-        SCAD = { file: file.name, b64: b64, found: r, mode: null, picks: {}, when: {}, open: {}, error: null,
-                 name: (preset && preset.name) || r.name, display: (preset && preset.display) || r.display };
-        SCAD.open[r.groups[0]] = true;
-        showModal('Import ' + file.name, h('div'), []);
-        el('modalBox').className = 'modal xwide';
-        drawScad();
-      }, function (e) { status(String(e && e.message ? e.message : e), 'err'); });
-    };
-    fr.readAsDataURL(file);
+    var have = /\.scad$/i.test(file.name) ? 'scad' : /\.py$/i.test(file.name) ? 'python' : null;
+    if (!have) { status(file.name + ' is neither a CAD model (.scad) nor a Python script (.py).', 'err'); return; }
+    openWizard(have);
+    wizFile(file);
   }
-  function drawScad() {
-    var S = SCAD;
-    if (!S) return;
-    var f = S.found, su = f.setup, v = scadView(f.rows, S.picks, S.when);
+  // What the Studio found in a model: how to import it, and each setting.
+  function scadBody() {
+    var S = SCAD, f = S.found, su = f.setup, v = scadView(f.rows, S.picks, S.when);
     var gone = su.generators.concat(su.geometry);
     var clash = S.mode === 'add' ? v.names.filter(function (n) { return su.parameters.indexOf(n) >= 0; }) : [];
     var unsaved = Object.keys(PEDITS).length + Object.keys(GEDITS).length + Object.keys(TEDITS).length + Object.keys(FEDITS).length;
@@ -2823,14 +3094,13 @@
       return h('label', { 'class': 'pick' }, [h('input', { type: 'radio', name: 'scadmode', checked: S.mode === mode,
         onchange: function () { S.mode = mode; drawScad(); } }), h('span', null, [h('b', null, label), h('div', { 'class': 'muted hint' }, hint)])]);
     }
-    var body = h('div', { 'class': 'scad' }, [
-      S.error,
+    return h('div', { 'class': 'scad' }, [
       h('p', { 'class': 'scadsum' }, [h('b', null, f.model), ' · ' + f.counts.settings + ' settings in ' + f.groups.length + ' tabs → ' +
         v.parameters + ' parameters, ' + v.proposed + ' of them with a proposed range, ' + v.when + ' used only when a choice has a value.']),
       f.notes.length || f.includes.length ? h('div', { 'class': 'banner warn boxed' }, (f.includes.length ? [h('div', null,
         'The model uses other files (' + f.includes.join(', ') + '): only the model file is copied; add them to the tool’s folder afterwards (Files).')] : [])
         .concat(f.notes.map(function (n) { return h('div', null, n); }))) : null,
-      h('h4', null, 'How to import it'),
+      h('h4', null, 'How to add it'),
       radio('new', 'Start a new configurator', 'The model becomes the setup’s model builder and its download builder, each with a copy of the file.  Its parameters replace today’s ' +
         su.parameters.length + ', the agents’ parameter lists are written new, and the picture samples become one, the defaults.' +
         (gone.length ? '  These tools go: ' + gone.join(', ') + '.' : '') + (su.helpers.length ? '  These stay: ' + su.helpers.join(', ') + '.' : '') +
@@ -2842,30 +3112,23 @@
       clash.length ? h('div', { 'class': 'banner bad boxed' }, 'The setup has parameters of these names already: ' + clash.join(', ') +
         '.  Leave those settings to the model, or start a new configurator.') : null,
       unsaved ? h('div', { 'class': 'banner warn boxed' }, 'Your ' + unsaved + ' unsaved change(s) to parameters, groups and tools are dropped.') : null,
-      h('div', { 'class': 'kv mform', style: 'margin-top:10px' }, [
-        h('div', { 'class': 'k' }, 'Tool name'), h('div', null, [h('input', { type: 'text', value: S.name, spellcheck: 'false',
-          oninput: function (e) { S.name = e.target.value; } }),
-          h('div', { 'class': 'muted hint' }, 'Lower case: letters, digits and _.  A new configurator also makes <name>_geometry.')]),
-        h('div', { 'class': 'k' }, 'Display name'), h('div', null, h('input', { type: 'text', value: S.display,
-          oninput: function (e) { S.display = e.target.value; } }))]),
       h('h4', null, 'The model’s settings'),
       h('p', { 'class': 'muted hint' }, 'Each setting becomes a parameter the agents set, the model’s detail (its own for the Download buttons, coarser for the agents’ runs), or is left to the model (its own value).  A range in amber was proposed from the model’s default: review it under Parameters after the import.'),
       h('div', { 'class': 'scadfold' }, [
         h('button', { 'class': 'mini', onclick: function () { f.groups.forEach(function (g) { S.open[g] = true; }); drawScad(); } }, 'Unfold every tab'),
         h('button', { 'class': 'mini', onclick: function () { S.open = {}; drawScad(); } }, 'Fold every tab')]),
       scadTable(v)]);
-    var b = el('modalBody'), top = b.scrollTop;
-    b.innerHTML = '';
-    b.appendChild(body);
-    b.scrollTop = top;
-    var why = !S.mode ? 'Choose how to import it first.' : !v.parameters ? 'Pick at least one setting as a parameter.'
-      : clash.length ? 'Some parameter names exist already (see above).' : null;
-    var foot = el('modalFoot');
-    foot.innerHTML = '';
-    add(foot, [h('button', { onclick: function () { SCAD = null; closeModal(); } }, 'Cancel'),
-      h('button', { 'class': 'primary', disabled: !!why || BUSY, title: why, onclick: runScad },
-        S.mode === 'new' ? 'Start the new configurator' : 'Import')]);
   }
+  // Why the import cannot go on yet, or null.
+  function scadWhy() {
+    var S = SCAD;
+    if (!S) return 'No model read.';
+    var su = S.found.setup, v = scadView(S.found.rows, S.picks, S.when);
+    var clash = S.mode === 'add' ? v.names.filter(function (n) { return su.parameters.indexOf(n) >= 0; }) : [];
+    return !S.mode ? 'Choose how to add it first.' : !v.parameters ? 'Pick at least one setting as a parameter.'
+      : clash.length ? 'Some parameter names exist already (see above).' : null;
+  }
+  function drawScad() { drawWizard(); }
   function scadTable(v) {
     var tabs = [], by = {};
     v.rows.forEach(function (x) {
@@ -2906,40 +3169,6 @@
       h('td', null, x.whenLive ? h('label', null, [h('input', { type: 'checkbox', checked: x.whenOn, onchange: function (e) {
         if (e.target.checked) delete SCAD.when[r.setting]; else SCAD.when[r.setting] = false;
         drawScad(); } }), ' ' + scadWhenText(r.when)]) : null)]);
-  }
-  function runScad() {
-    var S = SCAD;
-    if (!S || !S.mode || BUSY) return;
-    var when = {};
-    Object.keys(S.when).forEach(function (k) { when[k] = false; });
-    S.error = h('p', { 'class': 'muted' }, 'Checking it with the engine…');
-    BUSY = true;
-    drawScad();
-    status('Importing ' + S.file + '…', 'busy');
-    call('scad_import', S.b64, S.file, S.mode, S.picks, when, S.name.trim(), S.display.trim()).then(function (r) {
-      if (!r || r.ok === false) {
-        BUSY = false;
-        S.error = h('div', { 'class': 'banner bad boxed' }, [h('div', null, (r && r.error) || 'The model could not be imported.')].concat(
-          ((r && r.problems) || []).map(function (p) { return h('div', null, '• ' + p); })));
-        status((r && r.error) || 'The import failed.', 'err');
-        drawScad();
-        el('modalBody').scrollTop = 0;
-        return;
-      }
-      SCAD = null;
-      closeModal();
-      PEDITS = {}; GEDITS = {}; TEDITS = {}; FEDITS = {}; TESTS = {};
-      IMPORT_WARNINGS = r.warnings || [];
-      var done = 'Imported ' + S.file + ' ' + importDid(r);
-      status(done + ' Re-assembling every prompt…', 'busy');
-      root.history.replaceState(null, '', link('studio', 'tools', {}));
-      parse();
-      reload().then(function () {
-        BUSY = false;
-        status(done + (IMPORT_WARNINGS.length ? '  See its notes above the tools.' : ''), IMPORT_WARNINGS.length ? 'warn' : 'ok');
-        render();
-      }, function (e) { BUSY = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
-    }, function (e) { BUSY = false; S.error = null; status(String(e && e.message ? e.message : e), 'err'); drawScad(); });
   }
   // While an import can be undone: what it did, and its Undo.
   function importBanner() {
@@ -3076,12 +3305,14 @@
     var sig = toolSig(name);
     status('Running ' + name + '…', 'busy');
     render();
+    if (WIZ && WIZ.testTool === name) drawWizard();
     call('test_tool', name, T.values, T.settings).then(function (r) {
       T.running = false;
       T.sig = sig;
       T.report = r && r.ok ? r.report : { failed: true, error: (r && r.error) || 'The run could not start.', pictures: [], files: [], mismatches: [], output: [] };
       status(T.report.failed ? name + ': the test failed (see Test).' : name + ' works: tested in ' + T.report.seconds + ' s.', T.report.failed ? 'err' : 'ok');
       if (R.section === 'tools') render(); else refreshToolsDot();
+      if (WIZ && WIZ.testTool === name) drawWizard();
     }, function (e) { T.running = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
   }
   // What went wrong, in a few words: the error's last line, and what usually causes it.
@@ -4108,6 +4339,8 @@
     }
     // the big editor shows the texts as they are now
     if (BIG && el('modal').className.indexOf(' on') >= 0) BIG(); else BIG = null;
+    // a new version dropped on a tool's card: its test, once the setup is read again
+    if (PENDING_TEST && !BUSY) { var pt = PENDING_TEST; PENDING_TEST = null; testNow(pt); }
   }
 
   function init() {

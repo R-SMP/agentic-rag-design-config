@@ -29,7 +29,8 @@ studio UI kit's contract (the draft's mock bridge answered the same calls).
 * the tool editor (P6c, ``studio/tools_edit.py``) -- ``tool_file``,
   ``save_manifest``, ``save_tool_file``, ``upload_tool_file``,
   ``undo_tool_file``, ``undo_tool``, ``remove_tool_preview``,
-  ``remove_tool``, ``new_tool`` (a template or a copy) and ``test_tool``
+  ``remove_tool``, ``new_tool`` (a template or a copy, with its roles),
+  ``new_tool_from_code`` (an uploaded script) and ``test_tool``
   (one run, ``engine/tool_test.py``, in a process of its own).  A change that could stop the engine loading the tools is
   checked first by the engine's own check, on a throw-away copy of the
   setup (in the same engine process).
@@ -820,7 +821,8 @@ def create_app(pack_dir: Path, workers: int = 2, online: bool = False,
                      ("save_tool_file", tools.save_file), ("upload_tool_file", tools.upload_file),
                      ("undo_tool_file", tools.undo_file), ("undo_tool", tools.undo_tool),
                      ("remove_tool_preview", tools.remove_preview), ("remove_tool", tools.remove_tool),
-                     ("new_tool", tools.new_tool), ("test_tool", tools.test_tool),
+                     ("new_tool", tools.new_tool), ("new_tool_from_code", tools.new_tool_from_code),
+                     ("test_tool", tools.test_tool),
                      ("scad_read", importer.read), ("scad_import", importer.run),
                      ("scad_undo", importer.undo),
                      ("download_preview", download_preview), ("open_setup", open_setup),

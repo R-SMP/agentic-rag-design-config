@@ -520,3 +520,12 @@ details.simfold .simbar { display:flex; gap:6px; flex-wrap:wrap; align-items:cen
 .awl { display:inline-block; font-family:Segoe UI, system-ui, sans-serif; font-size:10.5px; line-height:1.4;
        color:#13233f; background:#a5c8ff; border-radius:4px; padding:0 6px; margin:1px 2px; white-space:nowrap; }
 .awe { font-family:Segoe UI, system-ui, sans-serif; font-size:10px; color:#a5c8ff; margin:0 2px; }
+
+/* Tools (phase 3a): the wizard, a card that takes a dropped file */
+.wizbar { display:flex; flex-wrap:wrap; gap:4px; margin-bottom:14px; }
+.wizbar span { font-size:11.5px; padding:3px 10px; border-radius:999px; border:1px solid var(--line); color:var(--muted); }
+.wizbar span.done { color:#8ce99a; border-color:#2b6a37; }
+.wizbar span.cur { background:var(--accent); border-color:var(--accent); color:#fff; }
+.wiz .pgrid { margin-bottom:6px; }
+.wiz .dropzone { margin-top:0; }
+.tcard.over { border-color:var(--accent); background:#1d2a44; }
