@@ -35,38 +35,51 @@ offers <i>Open the Studio</i>, <i>Import a setup</i> and <i>Start from a configu
 <h2>2. Make the setup yours</h2>
 <p><b>Simple</b> (the start) and <b>Advanced</b>, top right: Simple hides what most changes never need
 (internal names and files, the agents' own versions of a text, the engine's variables); Advanced shows everything,
-and in Simple a panel's <i>Advanced</i> fold opens just that part.  The left column lists the setup's sections in the
-order to work through them:</p>
+and in Simple a panel's <i>Advanced</i> fold opens just that part.  The left column lists the setup's pages in five
+stages, in the order to work through them.  Each page has a mark: <b>⚠</b> a check found a problem there (red: a
+failure, amber: a warning; point at it for what), <b>✓</b> changed since the Studio opened and no check found a
+problem, <b>•</b> not changed since the Studio opened.</p>
 <ol>
+<li><b>Describe</b>
+<ul>
 <li><b>Identity</b>: the configurator's name and how the agents introduce it.</li>
+<li><b>Configurator description</b>: what it builds, how its parameters behave, what it can and cannot do: the
+longer texts the agents read.</li>
+<li><b>Outputs &amp; vocabulary</b>: the words for what it produces (its model, its pictures).</li>
+<li><b>Examples</b>: short phrases quoted inside the agents' instructions.  Keep each on one line, in its shape.</li>
+<li><b>User input types</b>: how the agents treat a sketch or a reference picture.</li>
+</ul></li>
 <li><b>Parameters</b>: each parameter's name, type (whole number or decimal), range, step, default, group, label and
 unit.  <i>Import JSON</i> and <i>Paste CSV</i> bring a whole list in.  The agents' parameter lists follow by
 themselves.  A range in amber was proposed by an import from the model's default: edit its min or max, or
 <i>Keep</i> it as it is (one parameter, or a whole group); <i>Only ranges to review</i> shows just those.</li>
-<li><b>Primer</b>: one picture and its text that show what the parameters mean, sent with every call to the agents you
-tick, between their instructions and the conversation.  Drop a PNG, JPEG or WebP on it to replace the picture, or
-remove it (the agents then get the text alone); tick the agents for each team size.  Each ticked agent pays the picture's
-and the text's tokens on every call.</li>
-<li><b>Configurator description</b>: what it builds, how its parameters behave, what it can and cannot do: the
-longer texts the agents read.</li>
-<li><b>Outputs &amp; vocabulary</b>: the words for what it produces (its model, its pictures).</li>
 <li><b>Tools</b>: how a design gets built.  <i>Add a tool</i> walks you through it: what you have (a CAD model
 <code>.scad</code>, a Python script, a template of a helper, a model builder or a download builder, or a copy of a
-tool), your file, what the Studio found in it, its name and who calls it, then a test.  For a CAD model the Studio
+tool), your file, what the Studio found in it, its name, what it does (one line: the start of its description)
+and who calls it, then a test.  For a CAD model the Studio
 reads the settings its Customizer shows and shows what each one becomes (a parameter, the model's detail, or left to
 the model), as a new configurator or as one more tool; <i>Undo the import</i> puts everything back.  Dropping a
 <code>.scad</code> or <code>.py</code> file on the Tools page starts the same steps; dropping one on a tool's card makes
 it that tool's new version (a model: which settings came and went), then tests it.  <i>Edit</i> opens one form with
 its details and its own texts; the texts every tool shares are under Advanced.  A tool card's <i>Test</i> runs it at once on the parameters' defaults: first a short verdict (it
 works, or what went wrong in a few words), then its pictures; the card then says whether it was tested since its last
-change, and a dot on <b>Tools</b> in the menu warns of a failed test (red) or an untested change (amber).  More: <a href="write-a-tool.html">Write a tool</a> and
-<a href="openscad-models.html">OpenSCAD models</a>.</li>
-<li><b>Examples</b>: short phrases quoted inside the agents' instructions.  Keep each on one line, in its shape.</li>
-<li><b>User input types</b>: how the agents treat a sketch or a reference picture.</li>
-<li><b>Agent access</b>: which agent sees the parameter list, with or without the ranges: a preset (<i>Recommended</i>,
-<i>Everyone sees the full list</i>, <i>Lean</i>), or one choice per agent and team size in Advanced.</li>
+change, and the mark on <b>Tools</b> in the menu warns of a failed test (red) or an untested change (amber).  More: <a href="write-a-tool.html">Write a tool</a> and
+<a href="openscad-models.html">OpenSCAD models</a>.
+<ul>
 <li><b>Settings &amp; secrets</b>: the tools' settings, and the variables (keys) they need.  The values go in
 <code>.env</code> or in the deployment's variables, never in the setup.</li>
+</ul></li>
+<li><b>Agents</b>
+<ul>
+<li><b>Primer</b>: one picture and its text that show what the parameters mean, sent with every call to the agents you
+tick, between their instructions and the conversation.  Drop a PNG, JPEG or WebP on it to replace the picture, or
+remove it (the agents then get the text alone); tick the agents for each team size.  Each ticked agent pays the picture's
+and the text's tokens on every call.</li>
+<li><b>Agent access</b>: which agent sees the parameter list, with or without the ranges: a preset (<i>Recommended</i>,
+<i>Everyone sees the full list</i>, <i>Lean</i>), or one choice per agent and team size in Advanced.</li>
+</ul></li>
+<li><b>Check &amp; export</b>: <b>What each agent reads</b> and <b>Validate</b> (below); <b>Export</b>, top right,
+downloads the setup or the full package.</li>
 </ol>
 <p>Each text saves on its own, and <i>Undo</i> puts it back as it was when the Studio opened.  A text the teams of
 3, 5 and 7 share is one box; one that differs per team size shows a column per team, the lines that differ marked.
@@ -83,7 +96,8 @@ other settings, and <i>Changes since opened</i> shows what your edits changed.</
 <h2>3. Validate</h2>
 <p>Press <b>Validate</b> in the toolbar.  In about a minute it checks that the setup loads, that every agent's
 instructions build, that the parameter lists match, that each tool runs and makes what it declares, and that a
-turn goes through with a stand-in model (no cost).  Fix every failure: a line that names a file opens it.  A
+turn goes through with a stand-in model (no cost).  Fix every failure: a line that names a file opens it, and the
+menu marks each page a failure or a warning is about (until Validate runs again).  A
 warning does not stop the setup working: text left about a tool you removed, or something this computer lacks
 (a package, a program) that the deployment has.</p>
 

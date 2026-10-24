@@ -44,22 +44,24 @@
   var SESSION = { online: false, authed: true };   // online mode and the access code (session)
   var R = { page: 'studio', section: 'identity', q: {} };
 
+  // The menu's pages, in its five stages; a stage with a page of its own
+  // (Parameters, Tools) is that page.
   var SECTIONS = [
-    { id: 'identity', n: 1, label: 'Identity' },
-    { id: 'parameters', n: 2, label: 'Parameters' },
-    { id: 'primer', n: 3, label: 'Primer' },
-    { id: 'description', n: 4, label: 'Configurator description' },
-    { id: 'outputs', n: 5, label: 'Outputs & vocabulary' },
-    { id: 'tools', n: 6, label: 'Tools' },
-    { id: 'examples', n: 7, label: 'Examples' },
-    { id: 'inputs', n: 8, label: 'User input types' },
-    { id: 'access', n: 9, label: 'Agent access' },
-    { id: 'settings', n: 10, label: 'Settings & secrets' }
+    { id: 'identity', stage: 1, label: 'Identity' },
+    { id: 'description', stage: 1, label: 'Configurator description' },
+    { id: 'outputs', stage: 1, label: 'Outputs & vocabulary' },
+    { id: 'examples', stage: 1, label: 'Examples' },
+    { id: 'inputs', stage: 1, label: 'User input types' },
+    { id: 'parameters', stage: 2, label: 'Parameters' },
+    { id: 'tools', stage: 3, label: 'Tools' },
+    { id: 'settings', stage: 3, label: 'Settings & secrets' },
+    { id: 'primer', stage: 4, label: 'Primer' },
+    { id: 'access', stage: 4, label: 'Agent access' },
+    { id: 'prompts', stage: 5, label: 'What each agent reads' },
+    { id: 'validate', stage: 5, label: 'Validate' }
   ];
-  var CHECK_PAGES = [
-    { id: 'prompts', label: 'What each agent reads' },
-    { id: 'validate', label: 'Validate' }
-  ];
+  var STAGES = [{ n: 1, label: 'Describe' }, { n: 2, label: 'Parameters', page: 'parameters' },
+    { n: 3, label: 'Tools', page: 'tools' }, { n: 4, label: 'Agents' }, { n: 5, label: 'Check & export' }];
   var INTRO = {
     identity: 'What the configurator is called and how the agents introduce it.',
     description: 'What the configurator builds, how its parameters behave, what it can and cannot do. Long text blocks, mostly read by the agents that write and check parameters.',
@@ -213,14 +215,6 @@
     var hm = D.roles.holder[String(topo)] || {};
     if (hm[roleKey]) return hm[roleKey];
     return inRoster(roleKey, topo) ? roleKey : null;
-  }
-  function sectionCount(id) {
-    if (id === 'parameters') return D.parameters.parameters.length;
-    if (id === 'tools') return D.tools.length;
-    if (id === 'access') return D.parameter_access.rows.length;
-    if (id === 'primer') return primerCells();
-    if (id === 'settings') return D.tool_settings.reduce(function (n, t) { return n + t.settings.length; }, 0);
-    return slotsOf(id).length;
   }
   function unitMismatch(p) {
     if (!p.unit || !p.unit_prompt) return false;
@@ -422,22 +416,19 @@
 
   function renderNav() {
     var nav = h('div', { 'class': 'nav' });
-    add(nav, h('div', { 'class': 'grp' }, h('h4', null, 'Your setup')));
-    SECTIONS.forEach(function (s) {
-      add(nav, h('a', { 'class': R.section === s.id ? 'on' : '', href: link('studio', s.id) }, [
-        h('span', { 'class': 'num' }, s.n), h('span', { 'class': 'lab' }, s.label),
-        s.id === 'tools' ? toolsDot() : null,
-        h('span', { 'class': 'cnt' }, sectionCount(s.id))
-      ]));
-    });
-    add(nav, h('div', { 'class': 'grp', style: 'margin-top:8px' }, h('h4', null, 'Check')));
-    CHECK_PAGES.forEach(function (s) {
-      add(nav, h('a', { 'class': R.section === s.id ? 'on' : '', href: link('studio', s.id) }, [
-        h('span', { 'class': 'num' }, s.id === 'prompts' ? '▤' : '✔'), h('span', { 'class': 'lab' }, s.label),
-        s.id === 'validate' ? h('span', { 'class': 'cnt', id: 'valNav' }, valBadge()) : null
-      ]));
+    STAGES.forEach(function (st) {
+      add(nav, st.page ? navLink(st.page, st.n, st.label, 'stage')
+        : h('div', { 'class': 'stage' }, [h('span', { 'class': 'num' }, st.n), h('span', { 'class': 'lab' }, st.label)]));
+      SECTIONS.forEach(function (s) {
+        if (s.stage === st.n && s.id !== st.page) add(nav, navLink(s.id, '', s.label, 'sub'));
+      });
     });
     return nav;
+  }
+  function navLink(id, n, label, cls) {
+    return h('a', { 'class': cls + (R.section === id ? ' on' : ''), href: link('studio', id) }, [
+      h('span', { 'class': 'num' }, n), h('span', { 'class': 'lab' }, label),
+      h('span', { 'class': 'mk', id: 'mark-' + id }, pageMark(id))]);
   }
 
   function head(title, sub, tools) {
@@ -2703,7 +2694,7 @@
   function openWizard(have) {
     if (BUSY) return;
     WIZ = { step: have ? 'file' : 'have', have: have || null, kind: 'helper', copy: Object.keys(TE().tools)[0] || null,
-            display: '', name: '', roles: null, fns: [], entry: {}, error: null, made: [], testTool: null };
+            display: '', name: '', what: '', whatWas: '', roles: null, fns: [], entry: {}, error: null, made: [], testTool: null };
     showModal('Add a tool', h('div'), []);
     el('modalBox').className = 'modal xwide';
     drawWizard();
@@ -2717,6 +2708,8 @@
     return w.kind === 'geometry' ? [] : ['tool_runner'];
   }
   function wizKind(w) { return w.have === 'copy' ? ((toolState(w.copy) || {}).manifest || {}).kind : w.kind; }
+  // A description's first paragraph on one line: what 'What it does' replaces.
+  function firstPara(text) { return String(text || '').split(/\n[ \t]*\n/)[0].replace(/\s+/g, ' ').trim(); }
   function drawWizard() {
     var w = WIZ;
     if (!w) return;
@@ -2741,7 +2734,11 @@
   function wizBody(w) {
     if (w.step === 'have') {
       return h('div', { 'class': 'pgrid' }, WIZ_HAVE.map(function (x) {
-        return wizCard(x[1], x[2], w.have === x[0], function () { w.have = x[0]; wizGo('file'); });
+        return wizCard(x[1], x[2], w.have === x[0], function () {
+          if (w.what === w.whatWas) w.what = w.whatWas = '';
+          w.have = x[0];
+          wizGo('file');
+        });
       }));
     }
     if (w.step === 'file' && w.have === 'template') {
@@ -2753,7 +2750,10 @@
       return h('div', { 'class': 'pgrid' }, Object.keys(TE().tools).map(function (n) {
         var m = toolState(n).manifest || {};
         return wizCard(m.display_name || n, KIND_LABEL[m.kind] || m.kind || '', w.copy === n, function () {
-          w.copy = n; w.roles = null; w.display = 'Copy of ' + (m.display_name || n); wizGo('name'); });
+          w.copy = n; w.roles = null; w.display = 'Copy of ' + (m.display_name || n);
+          if (w.what === w.whatWas) w.what = w.whatWas = firstPara(m.description);
+          wizGo('name');
+        });
       }));
     }
     if (w.step === 'file') {
@@ -2811,6 +2811,13 @@
       var roles = wizRoles(w), kindNow = wizKind(w);
       var rows = [h('div', { 'class': 'k' }, 'Display name'), h('div', null, [dispIn, h('div', { 'class': 'muted hint' }, 'The flowchart’s and the log’s label.')]),
         h('div', { 'class': 'k' }, 'Its folder'), h('div', { id: ADV() ? null : 'wizName' }, ADV() && !helperPy ? nameIn : name)];
+      if (!scad) rows.push(h('div', { 'class': 'k' }, 'What it does'), h('div', null, [
+        h('input', { type: 'text', id: 'wizWhat', value: w.what, maxlength: 300,
+          placeholder: kindNow === 'geometry' ? 'e.g. Builds the model of the hose adapter for the Download buttons' : 'e.g. Says how heavy the part is, from an attempt’s parameters',
+          oninput: function (e) { w.what = e.target.value; } }),
+        h('div', { 'class': 'muted hint' }, (kindNow === 'geometry' ? 'One line: the start of its description (no agent reads it).'
+          : 'One line: the start of its description, which the agents read when they choose a tool.') +
+          (w.have === 'copy' ? ' It starts as the copied tool’s.' : ' Empty: the template’s sentence stays until you write it in Tool details.'))]));
       return h('div', null, [h('div', { 'class': 'kv mform' }, rows),
         h('h4', { style: 'margin-top:14px' }, 'Who can call it'),
         scad ? h('p', { 'class': 'muted' }, SCAD.mode === 'new'
@@ -2908,6 +2915,8 @@
     var name = scad ? SCAD.name.trim() : w.have === 'python' && w.kind === 'helper' ? w.entry.entrypoint : (w.name || toolSlug(display)).trim();
     if (!display) { w.error = 'Give it a display name.'; drawWizard(); return; }
     var roles = scad || kindNow === 'geometry' ? null : wizRoles(w);
+    var what = (w.what || '').trim();
+    if (!what || (w.have === 'copy' && what === w.whatWas)) what = null;
     var callArgs;
     if (scad) {
       var when = {};
@@ -2916,8 +2925,8 @@
     } else if (w.have === 'python') {
       var keys = w.kind === 'generator' ? ['build', 'render'] : ['entrypoint'], entry = {};
       keys.forEach(function (k) { entry[k] = w.entry[k]; });
-      callArgs = ['new_tool_from_code', name, display, w.kind, w.file, w.b64, entry, roles];
-    } else callArgs = ['new_tool', name, display, w.have === 'template' ? w.kind : null, w.have === 'copy' ? w.copy : null, roles];
+      callArgs = ['new_tool_from_code', name, display, w.kind, w.file, w.b64, entry, roles, what];
+    } else callArgs = ['new_tool', name, display, w.have === 'template' ? w.kind : null, w.have === 'copy' ? w.copy : null, roles, what];
     BUSY = true;
     w.error = null;
     status('Making ' + display + '…', 'busy');
@@ -3236,15 +3245,98 @@
     var s = toolStatus(name);
     return s.k ? pill(s.text, s.k, s.title) : h('span', { 'class': 'kpill', title: s.title }, s.text);
   }
-  // The menu's dot on Tools: red when a test failed, amber when a tool changed untested.
-  function toolsDot() {
-    var ks = D.tools.map(function (t) { return toolStatus(t.name).k; });
-    var k = ks.indexOf('bad') >= 0 ? 'bad' : ks.indexOf('warn') >= 0 ? 'warn' : '';
-    return h('span', { 'class': 'ndot ' + k, id: 'toolsDot', title: k === 'bad' ? 'A tool’s test failed.' : k === 'warn' ? 'A tool changed and was not tested again.' : null });
+  /* ----------------------------------------------------------------------
+   * the menu's mark per page: ⚠ a check found a problem there (red: failed,
+   * amber: a warning), ✓ changed since the Studio opened and no problem,
+   * • not changed since the Studio opened
+   * -------------------------------------------------------------------- */
+  function pageMark(id) {
+    var probs = pageProblems(id);
+    if (probs.length) {
+      var bad = probs.some(function (p) { return p.k === 'bad'; });
+      return h('span', { 'class': 'mark ' + (bad ? 'bad' : 'warn'), title: probs.map(function (p) { return '⚠ ' + p.text; }).join('\n') }, '⚠');
+    }
+    if (id === 'validate') return valBadge() || h('span', { 'class': 'mark none', title: 'Not run since the Studio opened.' }, '•');
+    if (id === 'prompts') return null;
+    return pageChanged(id) ? h('span', { 'class': 'mark good', title: 'Changed since the Studio opened; no check found a problem.' }, '✓')
+      : h('span', { 'class': 'mark none', title: 'Not changed since the Studio opened.' }, '•');
   }
-  function refreshToolsDot() {
-    var d = el('toolsDot');
-    if (d) d.parentNode.replaceChild(toolsDot(), d);
+  function refreshMarks() {
+    SECTIONS.forEach(function (s) {
+      var e = el('mark-' + s.id);
+      if (e) { e.innerHTML = ''; add(e, pageMark(s.id)); }
+    });
+  }
+  // What the checks found on a page: Validate's last run (its items about
+  // the page, by their link and by the texts and files their lines name),
+  // the tools' tests, and what the page itself checks.
+  function pageProblems(id) {
+    var out = [], st = VAL.state, rep = st && st.report;
+    if (id === 'validate') return out;
+    if (rep) {
+      var old = st.current ? '' : ' (before the last change: run Validate again)';
+      rep.items.forEach(function (i) {
+        if (i.status !== 'pass' && valPages(i).indexOf(id) >= 0)
+          out.push({ k: i.status === 'fail' ? 'bad' : 'warn', text: 'Validate › ' + i.title + ': ' + VAL_WORD[i.status] + old });
+      });
+    }
+    if (id === 'tools') D.tools.forEach(function (t) {
+      var s = toolStatus(t.name);
+      if (s.k === 'bad' || s.k === 'warn') out.push({ k: s.k, text: (t.display || t.name) + ': ' + s.text.replace(/^[✓✗⚠] /, '') });
+    });
+    if (id === 'primer') (D.primer.problems || []).forEach(function (p) { out.push({ k: 'bad', text: p }); });
+    if (id === 'parameters') {
+      var n = proposedOf().length, u = D.parameters.parameters.filter(unitMismatch).length;
+      if (n) out.push({ k: 'warn', text: n + (n === 1 ? ' range' : ' ranges') + ' an import proposed, to review' });
+      if (u) out.push({ k: 'warn', text: u + (u === 1 ? ' unit differs' : ' units differ') + ' from the unit the agents read' });
+    }
+    return out;
+  }
+  // The pages a Validate item is about.
+  function valPages(i) {
+    var out = i.link ? [i.link.section] : [];
+    function put(sec) { if (sec && out.indexOf(sec) < 0) out.push(sec); }
+    (i.lines || []).forEach(function (ln) {
+      var m, rx = /\$([a-z][a-z0-9_]*)/g, s, p;
+      while ((m = rx.exec(ln))) { s = slotByName(m[1]); if (s) put(s.section); }
+      rx = /[\w.-]*\/?(?:fragments\/[\w\/@.-]+\.md|tools\/[a-z][a-z0-9_]*\/[\w\/@.-]*)/g;
+      while ((m = rx.exec(ln))) { p = pathPlace(m[0]); if (p) put(p.section); }
+    });
+    return out;
+  }
+  // Changed since the Studio opened: the page's texts, files and choices.
+  function textsChanged(sec) {
+    return (D.changed || []).some(function (c) {
+      if (c.indexOf('/') >= 0 || /\.(json|yaml)$/.test(c)) return false;
+      var s = slotByName(c.split('@')[0]);
+      return !!s && s.section === sec;
+    });
+  }
+  function pageChanged(id) {
+    if (textsChanged(id)) return true;
+    var ch = D.changed || [];
+    if (id === 'parameters') {
+      var primerPics = [D.primer.image, (PRE().opened || {}).image];
+      return ch.some(function (c) { return c === 'parameters.json' || (c.indexOf('assets/') === 0 && primerPics.indexOf(c.slice(7)) < 0); });
+    }
+    if (id === 'tools') return (TE().removed || []).length > 0 || ch.some(function (c) { return c.indexOf('tools/') === 0; });
+    if (id === 'settings') return Object.keys(TE().tools).some(function (name) {
+      return settingItems(toolState(name)).some(function (it) { return it.opened !== undefined && it.opened !== it.value; });
+    });
+    if (id === 'primer') {
+      var then = PRE().opened.agents || {};
+      return primerPictureChanged() || D.primer.rows.some(function (r) {
+        return Object.keys(r.cells).some(function (k) { return r.cells[k] !== ((then[k] || []).indexOf(r.agent) >= 0); });
+      });
+    }
+    if (id === 'access') {
+      var opened = PE().access_opened || {};
+      return D.parameter_access.rows.some(function (r) {
+        var was = opened[r.agent] || {};
+        return Object.keys(r.cells).some(function (k) { return was[k] !== r.cells[k]; });
+      });
+    }
+    return false;
   }
   function testNow(name) {
     AUTO_TEST = name;
@@ -3311,7 +3403,7 @@
       T.sig = sig;
       T.report = r && r.ok ? r.report : { failed: true, error: (r && r.error) || 'The run could not start.', pictures: [], files: [], mismatches: [], output: [] };
       status(T.report.failed ? name + ': the test failed (see Test).' : name + ' works: tested in ' + T.report.seconds + ' s.', T.report.failed ? 'err' : 'ok');
-      if (R.section === 'tools') render(); else refreshToolsDot();
+      if (R.section === 'tools') render(); else refreshMarks();
       if (WIZ && WIZ.testTool === name) drawWizard();
     }, function (e) { T.running = false; status(String(e && e.message ? e.message : e), 'err'); render(); });
   }
@@ -3428,9 +3520,13 @@
     if (sel) add(right, inspectField(sel));
     primerDragTarget(center);
   }
+  function primerPictureChanged() {
+    var P = D.primer, E = PRE(), opened = E.opened || {};
+    return (P.image || null) !== (opened.image || null) || ((E.picture || {}).sha || null) !== (opened.picture_sha || null);
+  }
   function primerPicture(P) {
     var E = PRE(), pic = P.picture, opened = E.opened || {};
-    var changed = (P.image || null) !== (opened.image || null) || ((E.picture || {}).sha || null) !== (opened.picture_sha || null);
+    var changed = primerPictureChanged();
     var picker = h('input', { type: 'file', accept: 'image/png,image/jpeg,image/webp', style: 'display:none', onchange: function (e) {
       var f = e.target.files[0]; e.target.value = '';
       if (f) uploadPrimer(f);
@@ -3605,21 +3701,26 @@
     STORAGE_BACKEND: ['where files are stored', 'optional'], INVITE_CODE: ['login gate of your deployment', 'optional'],
     GOOGLE_CLOUD_VISION_API_KEY: ['reading text in images (OCR)', 'optional']
   };
+  // A tool's settings (its switch first): each one's default now and as the Studio opened it.
+  function settingItems(st) {
+    var m = st.manifest, items = [];
+    if (!m) return items;
+    var om = st.opened_manifest || {};
+    if (m['switch']) items.push({ path: ['switch', 'default'], name: 'enabled', label: (m['switch'].label || 'On / off') + ' — the tool itself',
+      type: 'bool', value: m['switch']['default'], opened: getPath(om, ['switch', 'default']) });
+    (m.settings || []).forEach(function (s, i) {
+      var o = (om.settings || [])[i];
+      items.push({ path: ['settings', i, 'default'], name: s.name, label: s.label || s.name, type: s.type, value: s['default'],
+        values: s.type === 'tool' ? geometryTools().concat(s.none ? ['none'] : []) : (s.values || []),
+        opened: o && o.name === s.name ? o['default'] : undefined });
+    });
+    return items;
+  }
   function renderSettings(center, right) {
     var rows = [];
     add(center, head('Settings & secrets', 'Default values of the tools’ own settings, saved into each tool’s tool.yaml (users change them later in Workflow Settings), and the secrets your setup will need.'));
     Object.keys(TE().tools).forEach(function (name) {
-      var st = toolState(name), m = st.manifest;
-      if (!m) return;
-      var om = st.opened_manifest || {}, items = [];
-      if (m['switch']) items.push({ path: ['switch', 'default'], name: 'enabled', label: (m['switch'].label || 'On / off') + ' — the tool itself',
-        type: 'bool', value: m['switch']['default'], opened: getPath(om, ['switch', 'default']) });
-      (m.settings || []).forEach(function (s, i) {
-        var o = (om.settings || [])[i];
-        items.push({ path: ['settings', i, 'default'], name: s.name, label: s.label || s.name, type: s.type, value: s['default'],
-          values: s.type === 'tool' ? geometryTools().concat(s.none ? ['none'] : []) : (s.values || []),
-          opened: o && o.name === s.name ? o['default'] : undefined });
-      });
+      var st = toolState(name), m = st.manifest, items = settingItems(st);
       if (!items.length) return;
       rows.push(h('tr', { 'class': 'grp' }, h('td', { colspan: 4 }, (m.display_name || name) + ' · ' + name)));
       items.forEach(function (it) {
@@ -4170,7 +4271,9 @@
   }
   function paintValidate() {
     if (R.page === 'studio' && R.section === 'validate') { render(); return; }
-    ['valNav', 'valTop'].forEach(function (id) { var e = el(id); if (e) { e.innerHTML = ''; add(e, valBadge()); } });
+    refreshMarks();
+    var e = el('valTop');
+    if (e) { e.innerHTML = ''; add(e, valBadge()); }
   }
   function readValidate() {
     VAL.readAt = Date.now();
@@ -4205,18 +4308,22 @@
       }, function () { VAL.polling = false; });
     }());
   }
-  // A file a check names -> the field or tool it belongs to.
-  function pathTarget(path) {
+  // A file a check names -> the page, and the field or tool, it belongs to.
+  function pathPlace(path) {
     var t = /(?:^|\/)([^\/]+)\.md$/.exec(path);
     if (t && (/(^|\/)fragments\//.test(path) || /\/prompts\//.test(path))) {
       var base = t[1].replace(/\.t\d+$/, ''), agent = null, at = base.indexOf('@');
       if (at >= 0) { agent = base.slice(at + 1); base = base.slice(0, at); }
       var s = slotByName(base);
-      if (s) return function () { go('studio', s.section, { field: base, agent: agent }); };
+      if (s) return { section: s.section, q: { field: base, agent: agent } };
     }
     var m = /(?:^|\/)tools\/([a-z][a-z0-9_]*)\//.exec(path);
-    if (m) return function () { go('studio', 'tools', { tool: m[1] }); };
+    if (m) return { section: 'tools', q: { tool: m[1] } };
     return null;
+  }
+  function pathTarget(path) {
+    var p = pathPlace(path);
+    return p ? function () { go('studio', p.section, p.q); } : null;
   }
   function valLine(ln) {
     var out = [], last = 0, rx = /[\w.-]*\/?(?:fragments\/[\w\/@.-]+\.md|tools\/[a-z][a-z0-9_]*\/[\w\/@.-]*)/g, m;

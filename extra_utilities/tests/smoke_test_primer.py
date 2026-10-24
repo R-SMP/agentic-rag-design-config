@@ -663,7 +663,7 @@ def check_page() -> None:
     server = (ROOT / "studio" / "server.py").read_text(encoding="utf-8")
     for name in ("set_primer_agent", "primer_picture", "remove_primer_picture", "undo_primer"):
         check(f"'{name}'" in js and f'("{name}", primer.' in server, f"[PAGE] {name}: page and server disagree")
-    check("{ id: 'primer', n: 3, label: 'Primer' }" in js, "[PAGE] the Primer section is not the third")
+    check("{ id: 'primer', stage: 4, label: 'Primer' }" in js, "[PAGE] the Primer page is not under 4 Agents")
 
 
 def main() -> int:

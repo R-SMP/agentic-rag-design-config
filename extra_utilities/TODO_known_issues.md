@@ -142,7 +142,7 @@ One row per entry in this file, in file order.  Closed entries live in
 | `F127` | DONE | The parameter primer of a configurator that is not the propeller |
 | `F128` | DONE | A .scad import that starts a new configurator keeps the old one's browser preview |
 | `F129` | OPEN | The live database keeps its tables in `public`: move them into a section before the live app takes MAS-blueprint |
-| `F130` | OPEN | Studio simplification: phases 2-4 (phase 1 done) |
+| `F130` | OPEN | Studio simplification: phases 3c-4 (phases 1 to 3b done) |
 
 ---
 
@@ -5028,19 +5028,21 @@ no database.  Before that deploy, run, against it:
 database (streamlined) was moved the same way when sections came in.  The
 owner calls sections a momentary solution, to be revisited.
 
-### F130. Studio simplification: phases 2-4 (phase 1 done)
+### F130. Studio simplification: phases 3c-4 (phases 1 to 3b done)
 
-**Status.** OPEN — 2026-10-23, phase 1 done.  The owner chose 45 changes that
-make the Studio easier to use (an options page with mockups, then multiple
-choice).  Phase 1 shipped: one box per text and a column per team size where
-the texts differ, boxes as tall as their text that fold after 12 lines, a side
-panel that opens on a text, plain words in the Studio's screens and a plain
-title per text field (`title:` in `engine/slot_registry.yaml`), the top bar
-(configurator menu, Shared online chip, Validate, Export, Guide), empty states.
+**Status.** OPEN — 2026-10-24, phases 1, 2, 3a and 3b done.  The owner chose 45
+changes that make the Studio easier to use (an options page with mockups, then
+multiple choice).
 
-Left, in the owner's order:
+Done:
 
-- **Phase 2.**  Simple / Advanced: a switch in the top bar plus a fold on each
+- **Phase 1** (`c0af070`).  One box per text and a column per team size where
+  the texts differ, boxes as tall as their text that fold after 12 lines, a side
+  panel that opens on a text, plain words in the Studio's screens and a plain
+  title per text field (`title:` in `engine/slot_registry.yaml`), the top bar
+  (configurator menu, Shared online chip, Validate, Export, Guide), empty states.
+- **Phase 2** (`085b0c6`, `d022a29`, `4d55b32`, `05009c5`).  Simple /
+  Advanced: a switch in the top bar plus a fold on each
   panel, Simple by default.  Advanced holds the team-size link/unlink, agent
   versions, internal names and file paths, field badges, a tool's raw files,
   picture and list order, the engine variables, the Agent access grid,
@@ -5053,15 +5055,22 @@ Left, in the owner's order:
   formatted reading; texts grouped by purpose; tool cards with a test status, a
   short summary when Test is pressed, a red/amber dot on Tools; access presets;
   the Prompt viewer renamed "What each agent reads", its diagram first.
-- **Phase 3.**  An add-a-tool wizard (a display name only); one tool form with
-  its own texts (the role checkboxes stay visible in Simple); drop a new version
-  on a tool's card, a file list, a notice when code is uploaded online; a
-  five-stage menu with a status per page; the Parameters page (search, fold,
-  fewer columns, full labels, bulk changes, range errors in the row, one Import
-  menu); the Primer page (simple, its cost in words, a warning when the picture
-  is another configurator's); tool settings in each tool and only the tools'
-  keys; Validate's health in the top bar, quick checks after each change,
-  results by page with "Fix it", plain words.
+- **Phase 3a** (`ba461fa`).  An add-a-tool wizard (a display name only); one
+  tool form with its own texts (the role checkboxes stay visible in Simple);
+  drop a new version on a tool's card, a file list, a notice when code is
+  uploaded online.
+- **Phase 3b** (2026-10-24).  A five-stage menu with a mark per page (⚠ a check
+  found a problem, ✓ changed since the Studio opened, • not changed); the
+  wizard's "What it does" (the first paragraph of the tool's description).
+
+Left, in the owner's order:
+
+- **Phase 3c.**  The Parameters page (search, fold, fewer columns, full labels,
+  bulk changes, range errors in the row, one Import menu); the Primer page
+  (simple, its cost in words, a warning when the picture is another
+  configurator's); tool settings in each tool and only the tools' keys.
+- **Phase 3d.**  Validate's health in the top bar, quick checks after each
+  change, results by page with "Fix it", plain words.
 - **Phase 4.**  One "Aa" menu in the top bar (text size small / medium / large,
   theme auto / light / dark, density); one accent colour, status colours only;
   menu icons; "Saved", a count of changes and Undo in the status bar; Ctrl+K

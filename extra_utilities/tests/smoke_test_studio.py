@@ -268,7 +268,7 @@ def check_fields(D: dict, copy: Path) -> int:
         check(set(shown) == set(registry),
               f"[FIELDS] fields shown != the registry's: missing {sorted(set(registry) - set(shown))}, "
               f"extra {sorted(set(shown) - set(registry))}")
-        sections = set(re.findall(r"\{ id: '(\w+)', n: \d+", STUDIO_JS.read_text(encoding="utf-8")))
+        sections = set(re.findall(r"\{ id: '(\w+)', stage: \d+", STUDIO_JS.read_text(encoding="utf-8")))
         for name, spec in registry.items():
             s = shown.get(name)
             if s is None:
@@ -663,7 +663,10 @@ def check_page_js() -> str:
     head += "function TE() { return { tools: { qzx: 1, qzx_2: 1 }, removed: ['gone'] }; }\n"
     prog = head + "\n".join(_js_piece(js, n) for n in ("lcsPairs", "diffMarks", "mergeTexts", "mdLine", "mdText", "toolSig",
                                                         "toolStatus", "ERROR_HINTS", "plainError",
-                                                        "toolSlug", "pyFunctions")) + """
+                                                        "toolSlug", "pyFunctions", "slotByName", "pathPlace", "valPages",
+                                                        "VAL_WORD", "proposedOf", "unitMismatch", "settingItems",
+                                                        "primerPictureChanged", "textsChanged", "pageChanged",
+                                                        "pageProblems", "firstPara")) + """
 var out = {
   marks: diffMarks({'3': 'a\\nb\\nc', '5': 'a\\nB\\nc', '7': 'a\\nb\\nc'}),
   same: diffMarks({'5': 'x\\ny', '7': 'x\\ny'}),
@@ -685,6 +688,41 @@ st.push(toolStatus('a').k + '|' + toolStatus('a').text);
 out.status = st;
 out.slugs = [toolSlug('Hose adapter (v2)!'), toolSlug('Qzx'), toolSlug('3D viewer'), toolSlug('Gone'), toolSlug('  ')];
 out.fns = pyFunctions('import x\\n\\ndef first(a):\\n    def inner():\\n        pass\\n\\nclass K:\\n    def method(self):\\n        pass\\n\\ndef second (b) :\\n    return b\\n');
+// the menu's marks
+var D = { slots: [{ slot: 'dc_name', section: 'identity' }, { slot: 'tool_entry_x', section: 'tools' }, { slot: 'parameter_list', section: 'parameters' }],
+  changed: [], tools: [], primer: { image: 'p.png', rows: [{ agent: 'planner', cells: { '7': true } }], problems: [] },
+  parameters: { parameters: [{ name: 'a', unit: 'mm', unit_prompt: 'millimetres' }] }, parameter_access: { rows: [{ agent: 'planner', cells: { '7': 'full' } }] } };
+var PEDATA = { spec: { parameters: [{ name: 'a' }] }, access_opened: { planner: { '7': 'full' } } };
+function PE() { return PEDATA; }
+var PREDATA = { opened: { image: 'p.png', agents: { '7': ['planner'] } }, picture: {} };
+function PRE() { return PREDATA; }
+var TEDATA = { tools: {}, removed: [] };
+TE = function () { return TEDATA; };
+function getPath(o, path) { return path.reduce(function (x, k) { return x == null ? undefined : x[k]; }, o); }
+function geometryTools() { return []; }
+var VAL = { state: null };
+function marks() { return ['identity', 'parameters', 'tools', 'settings', 'primer', 'access'].map(function (id) {
+  var p = pageProblems(id); return id + ':' + (p.length ? (p.some(function (x) { return x.k === 'bad'; }) ? 'bad' : 'warn') : pageChanged(id) ? 'good' : 'none'); }).join(' '); }
+out.marks0 = marks();
+D.parameters.parameters[0].unit_prompt = 'mm';
+PREDATA.picture.sha = 'b';
+PREDATA.opened.picture_sha = 'a';
+D.changed = ['dc_name@planner', 'tools/qzx/prompts/tool_list_entry.md', 'assets/p.png'];
+out.marks1 = marks();
+D.changed = ['parameters.json', 'pack.yaml'];
+D.parameter_access.rows[0].cells['7'] = 'names';
+PREDATA.opened.agents['7'] = [];
+STATE.qzx = { manifest: { settings: [{ name: 's', 'default': 2 }] }, opened_manifest: { settings: [{ name: 's', 'default': 1 }] } };
+TEDATA.tools = { qzx: 1 };
+out.marks2 = marks();
+VAL.state = { current: false, report: { items: [
+  { status: 'fail', title: 'The texts', lines: ['$dc_name (7-agent team): bad'] },
+  { status: 'warn', title: 'Text about a tool', lines: ['tools/qzx/prompts/tool_entry_x.md: <<IF:tool:y>>', 'fragments/dc/parameter_list.md: x'] },
+  { status: 'pass', title: 'Agent access', lines: [], link: { section: 'access' } },
+  { status: 'fail', title: 'The primer', lines: [], link: { section: 'primer' } }] } };
+out.marks3 = marks();
+out.marktext = (pageProblems('identity')[0] || {}).text;
+out.para = [firstPara('One\\nline.\\n\\nArgs:\\n  x'), firstPara(''), firstPara('A  b\\n \\nc')];
 out.errors = [plainError({ error: 'Traceback (most recent call last):\\n  ...\\nFileNotFoundError: openscad: not found' }),
               plainError({ error: 'line 1\\nValueError: bad value\\n' })];
 process.stdout.write(JSON.stringify(out));
@@ -709,8 +747,16 @@ process.stdout.write(JSON.stringify(out));
           and r["errors"][1] == "ValueError: bad value", f"[PAGE] the error in a few words: {r['errors']}")
     check(r["slugs"] == ["hose_adapter_v2", "qzx_3", "tool_3d_viewer", "gone_2", "tool"], f"[PAGE] a tool's folder name: {r['slugs']}")
     check(r["fns"] == ["first", "second"], f"[PAGE] a script's top-level functions: {r['fns']}")
+    want = ["identity:none parameters:warn tools:none settings:none primer:none access:none",
+            "identity:good parameters:none tools:good settings:none primer:good access:none",
+            "identity:none parameters:good tools:none settings:good primer:good access:good",
+            "identity:bad parameters:warn tools:warn settings:good primer:bad access:good"]
+    got = [r["marks0"], r["marks1"], r["marks2"], r["marks3"]]
+    check(got == want, f"[PAGE] the menu's marks: {got}")
+    check(r["marktext"] == "Validate › The texts: failed (before the last change: run Validate again)", f"[PAGE] a mark's line: {r['marktext']!r}")
+    check(r["para"] == ["One line.", "", "A b"], f"[PAGE] a description's first paragraph: {r['para']}")
     return ("the lines that differ, Differences only, the formatting, a tool's test status, the error in a few words, "
-            "a tool's folder name, a script's functions")
+            "a tool's folder name, a script's functions, the menu's marks")
 
 
 # ---------------------------------------------------------------------------
@@ -1749,6 +1795,24 @@ def check_new_tools(st: Studio, copy: Path) -> str:
     ok("a helper with two roles", "new_tool", "qzx_roles", "Qzx roles", "helper", None, ["tool_runner", "planner"])
     m = _yaml.safe_load((copy / "tools" / "qzx_roles" / "tool.yaml").read_bytes().decode("utf-8"))
     check(m.get("roles") == ["tool_runner", "planner"], f"[NEWTOOL] a new tool's roles: {m.get('roles')}")
+    # What it does: the description's first paragraph, the rest kept
+    what = "Says how heavy the part is, from an attempt's parameters, in grams and in a sentence the agent can quote."
+    tmpl = _yaml.safe_load((ROOT / "studio" / "tool_templates" / "helper" / "tool.yaml").read_text(encoding="utf-8"))["description"]
+    ok("a helper with what it does", "new_tool", "qzx_what", "Qzx what", "helper", None, None, "  " + what + "\n")
+    m = _yaml.safe_load((copy / "tools" / "qzx_what" / "tool.yaml").read_bytes().decode("utf-8"))
+    desc = str(m.get("description"))
+    check(" ".join(desc.split("\n\n")[0].split()) == what and desc.split("\n\n", 1)[1:] == tmpl.split("\n\n", 1)[1:]
+          and all(len(ln) <= 72 for ln in desc.split("\n\n")[0].split("\n")),
+          f"[NEWTOOL] a helper's what it does: {desc[:300]!r}")
+    src = sorted(D0["tools_edit"]["tools"])[0]
+    old = str(D0["tools_edit"]["tools"][src]["manifest"].get("description") or "")
+    ok("a copy with what it does", "new_tool", "qzx_cwhat", "Qzx cwhat", None, src, None, "Copied for the test.")
+    m = _yaml.safe_load((copy / "tools" / "qzx_cwhat" / "tool.yaml").read_bytes().decode("utf-8"))
+    desc = str(m.get("description"))
+    check(desc.split("\n\n")[0] == "Copied for the test." and desc.split("\n\n", 1)[1:] == old.split("\n\n", 1)[1:],
+          f"[NEWTOOL] a copy's what it does: {desc[:300]!r} (was {old[:200]!r})")
+    status, r = st.call("new_tool", "qzx_bad", "x", "helper", None, None, "x" * 301)
+    check(r.get("ok") is False and "at most 300 characters" in r.get("error", ""), f"[NEWTOOL] a what it does of 301 characters: not refused: {r}")
     templates = ROOT / "studio" / "tool_templates"
 
     def code_of(kind, fn):
@@ -1756,14 +1820,17 @@ def check_new_tools(st: Studio, copy: Path) -> str:
     scripts = [("helper", "qzx_script", "my-helper.py", code_of("helper", "qzx_script"), {"entrypoint": "qzx_script"}),
                ("geometry", "qzx_geo", "geo.py", code_of("geometry", "x"), {"entrypoint": "make_model"}),
                ("generator", "qzx_gen", "gen.py", code_of("generator", "qzx_gen"), {"build": "build", "render": "render"})]
-    from_code = ["qzx_roles"]
+    from_code = ["qzx_roles", "qzx_what", "qzx_cwhat"]
     for kind, name, fname, code, entry in scripts:
         b64 = base64.b64encode(code.encode("utf-8")).decode("ascii")
-        r = ok(f"a {kind} from a script", "new_tool_from_code", name, f"Qzx {kind} script", kind, fname, b64, entry, None)
+        what = "Builds the Qzx model." if kind == "geometry" else None
+        r = ok(f"a {kind} from a script", "new_tool_from_code", name, f"Qzx {kind} script", kind, fname, b64, entry, None, what)
         if not r.get("ok"):
             continue
         from_code.append(name)
         m = _yaml.safe_load((copy / "tools" / name / "tool.yaml").read_bytes().decode("utf-8"))
+        if what:
+            check(m.get("description") == what, f"[NEWTOOL] the {kind} from a script: its what it does {m.get('description')!r}")
         module = re.sub(r"[^A-Za-z0-9_]", "_", Path(fname).stem) + ".py"
         check((copy / "tools" / name / module).read_bytes() == code.encode("utf-8")
               and not (copy / "tools" / name / f"{name}.py").exists(),

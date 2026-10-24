@@ -42,6 +42,7 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import textwrap
 import threading
 from pathlib import Path
 
@@ -54,6 +55,7 @@ TOOL_RE = re.compile(r"^[a-z][a-z0-9_]*$")
 PART_RE = re.compile(r"^[A-Za-z0-9_][A-Za-z0-9._-]*$")
 SKIP = {"__pycache__", "node_modules"}
 TEXT_MAX = 1024 * 1024
+WHAT_MAX = 300
 UPLOAD_MAX = 20 * 1024 * 1024
 MANIFEST = "tool.yaml"
 PROMPTS = "prompts"
@@ -529,6 +531,31 @@ class ToolsEditor:
         return name, display
 
     @staticmethod
+    def _with_what(files: dict[str, bytes], what) -> dict[str, bytes]:
+        """*files* with the description's first paragraph -- a template's
+        placeholder, or the copied tool's own -- replaced by *what*, one line
+        (None or empty: as it is).  The paragraphs after it (a helper's Args
+        and Returns) stay."""
+        what = " ".join(str(what or "").split())
+        if not what:
+            return files
+        if len(what) > WHAT_MAX:
+            raise EditError(f"Say what it does in at most {WHAT_MAX} characters: write the rest in "
+                            "its details.")
+        raw = files[MANIFEST]
+        m = yaml.safe_load(_decode(raw))
+        old = str(m.get("description") or "")
+        rest = old.split("\n\n", 1)[1] if "\n\n" in old else ""
+        if "\n" in old:
+            # a block of short lines, as the templates write it
+            what = textwrap.fill(what, 72)
+        try:
+            text = yaml_patch.patch(_decode(raw), dict(m, description=what + ("\n\n" + rest if rest else "")))
+        except yaml_patch.PatchError as exc:
+            raise EditError(f"What it does could not be written ({exc}).") from None
+        return dict(files, **{MANIFEST: text.replace("\n", _eol(raw)).encode("utf-8")})
+
+    @staticmethod
     def _with_roles(files: dict[str, bytes], roles) -> dict[str, bytes]:
         """*files* with the manifest's roles set to *roles* (None: as they are)."""
         if roles is None:
@@ -548,9 +575,10 @@ class ToolsEditor:
         return dict(files, **{MANIFEST: text.replace("\n", _eol(raw)).encode("utf-8")})
 
     def new_tool(self, data: dict, name: str, display: str, kind: str | None = None,
-                 copy_of: str | None = None, roles=None) -> dict:
+                 copy_of: str | None = None, roles=None, what=None) -> dict:
         """A new tool folder: from the kind's template, or a copy of
-        *copy_of*, with *roles* when given; checked by the engine first."""
+        *copy_of*, with *roles* and what it does (*what*) when given; checked
+        by the engine first."""
         name, display = self._new_names(name, display)
         with self._lock:
             if copy_of:
@@ -561,15 +589,16 @@ class ToolsEditor:
             else:
                 raise EditError("Start from a template (helper, generator or geometry) or from a "
                                 "copy of a tool.")
-            return self._make_tool(name, self._with_roles(files, roles))
+            return self._make_tool(name, self._with_roles(self._with_what(files, what), roles))
 
     def new_tool_from_code(self, data: dict, name: str, display: str, kind: str, filename: str,
-                           b64: str, entry: dict, roles=None) -> dict:
+                           b64: str, entry: dict, roles=None, what=None) -> dict:
         """A new tool whose code is an uploaded Python file (*filename*,
         base64): the kind's template otherwise, its manifest naming the file's
         function(s) -- *entry* ``{"entrypoint": fn}`` for a helper (named like
         the tool, as the engine asks) or a download builder, ``{"build": fn,
-        "render": fn}`` for a model builder.  Checked by the engine first."""
+        "render": fn}`` for a model builder; *roles* and *what* as for
+        :meth:`new_tool`.  Checked by the engine first."""
         name, display = self._new_names(name, display)
         if kind not in ("helper", "generator", "geometry"):
             raise EditError("The kind is helper, generator or geometry.")
@@ -609,7 +638,7 @@ class ToolsEditor:
             except yaml_patch.PatchError as exc:
                 raise EditError(f"The manifest could not be written ({exc}).") from None
             files[MANIFEST] = text.encode("utf-8")
-            return self._make_tool(name, self._with_roles(files, roles))
+            return self._make_tool(name, self._with_roles(self._with_what(files, what), roles))
 
     def _make_tool(self, name: str, files: dict[str, bytes]) -> dict:
         """Write a new tool's *files* once the engine takes them (the lock held)."""
