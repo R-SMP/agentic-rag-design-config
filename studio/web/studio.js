@@ -3479,6 +3479,7 @@
     var V = D.viewer;
     var c = { topology: viewTopo(), rag: ADV() && R.q.rag || V.rag_default, settings: {}, tools: {}, access: {} };
     if (!ADV()) return c;                 // Simple: the setup's own settings
+    if (R.q.aw === '1') c.as_written = true;   // every settings-specific part kept and labelled
     V.settings.forEach(function (s) {
       if (R.q['s.' + s.name] !== undefined) c.settings[s.name] = fromQuery(s, R.q['s.' + s.name]);
     });
@@ -3557,10 +3558,15 @@
     // the team size stays in sight; the rest is Advanced, folded under "Simulate settings…"
     var team = bar.shift();
     if (!ADV()) return [team];
+    var written = h('span', { 'class': 'vgrp', title: 'As written: every part that depends on a setting, a tool or the agent kept, with when it applies.' }, [
+      h('span', { 'class': 'vlab' }, 'Show'),
+      h('span', { 'class': 'seg' }, [['', 'As the agent sees it'], ['1', 'As written']].map(function (o) {
+        return h('button', { 'class': (R.q.aw || '') === o[0] ? 'on' : '', onclick: function () { go('studio', 'prompts', withQ({ aw: o[0] || null })); } }, o[1]);
+      }))]);
     var fold = h('details', { 'class': 'simfold', ontoggle: function () { FOLDS.simulate = fold.open; } },
       [h('summary', null, 'Simulate settings…'), h('div', { 'class': 'simbar' }, bar)]);
     if (FOLDS.simulate) fold.open = true;
-    return [team, fold];
+    return [team, written, fold];
   }
   function renderPrompts(center, right) {
     var topo = viewTopo(), choice = viewChoice(), key = JSON.stringify(choice);
@@ -3595,6 +3601,7 @@
       h('span', null, [h('span', { 'class': 'sw gen' }), 'engine text (generic)']), h('span', null, [h('span', { 'class': 'sw dc' }), 'your configurator text']),
       h('span', null, [h('span', { 'class': 'sw tool' }), 'your tool text']), h('span', null, [h('span', { 'class': 'sw rt' }), 'filled in per session']),
       h('span', { 'class': 'hintclick' }, 'Click a coloured part to open the text it came from.'),
+      viewChoice().as_written ? h('span', null, [h('span', { 'class': 'awl' }, '▸ when'), ' a part that applies only sometimes']) : null,
       diff && diff.changed_agents.length ? h('span', null, [h('span', { 'class': 'sw chg' }), 'prompt changed since the Studio opened']) : null])));
     var text = view.prompts[agent], spans = view.spans[agent] || [], tools = view.tools[agent] || [];
     var pre = h('div', { 'class': 'prompt' });
@@ -3603,7 +3610,7 @@
       if (DIFF_ERRORS[dk]) pre = h('div', { 'class': 'banner warn', style: 'margin:10px 16px;white-space:pre-wrap' }, DIFF_ERRORS[dk]);
       else if (!diff) pre = h('div', { 'class': 'insp muted' }, 'Assembling this combination as the Studio opened it…');
       else pre.appendChild(diffView(diff.lines));
-    } else pre.innerHTML = colourise(text, spans);
+    } else pre.innerHTML = writtenLabels(colourise(text, spans));
     pre.addEventListener('click', function (ev) {
       var t = ev.target;
       if (t && t.getAttribute && t.getAttribute('data-slot')) {
@@ -3646,6 +3653,12 @@
         }))]),
       h('div', { 'class': 'block' }, [h('h4', null, 'Exact'), h('p', { 'class': 'muted', style: 'font-size:11.5px' }, 'Colours come from markers placed while the engine assembled this prompt, then checked against the real prompt (' + view.align[agent] + ').')])
     ]));
+  }
+  // As written: the engine's ⟦when it applies⟧ … ⟦end⟧ around each part that
+  // depends on a setting, a tool or the agent (agents/shared/prompts.py), as tags.
+  function writtenLabels(html) {
+    return html.replace(/⟦end⟧/g, '<span class="awe" title="The end of the part above.">end ◂</span>')
+      .replace(/⟦([^⟧]*)⟧/g, function (m, label) { return '<span class="awl">▸ ' + label.replace(/\u00a0/g, ' ') + '</span>'; });
   }
   function colourise(text, spans) {
     var own = new Array(text.length), nm = new Array(text.length);

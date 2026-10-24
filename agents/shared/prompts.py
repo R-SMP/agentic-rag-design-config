@@ -254,6 +254,50 @@ _REMOVED = "\x04"
 # delimiters: it goes, newline included, so no empty line is left behind.
 _EMPTIED_LINE_RE = re.compile(
     r"^[ \t\x02\x03]*\x04[ \t\x02\x03\x04]*(?:\n|\Z)", re.MULTILINE)
+# AS WRITTEN: the Studio's viewer (studio/engine_view.py, in a process of its
+# own) can ask for every settings-specific region KEPT, between labels that
+# say when it applies (``⟦only when RAG is on⟧ … ⟦end⟧``), instead of
+# resolved -- both versions of a pair shown.  Never set while a prompt for a
+# model is built: off, every filter below works as before.
+AS_WRITTEN = False
+
+
+def _written(label: str, body: str) -> str:
+    # no-break spaces: the 80-column re-wrap of spliced phrases keeps a label whole
+    return "⟦" + label.replace(" ", "\u00a0") + "⟧" + body + "⟦end⟧"
+
+
+def _all_written(text: str, *regions) -> str:
+    """*text* with each region of the ``(regex, label)`` pairs kept and labelled."""
+    for rx, label in regions:
+        text = rx.sub(lambda m, label=label: _written(label, m.group(1)), text)
+    return text
+
+
+def _if_label(kind: str, name: str) -> str:
+    """When an ``<<IF:…>>`` / ``<<IFNOT:…>>`` region applies, in plain words."""
+    state = "on" if kind == "IF" else "off"
+    family, _, rest = name.partition(":")
+    try:
+        man = _pack_tools.manifests()
+    except Exception:                                    # noqa: BLE001
+        man = {}
+    if family == "tool" and rest:
+        return f"only when the {man.get(rest, {}).get('display_name', rest)} tool is {state}"
+    if family == "setting" and rest:
+        tool, _, key = rest.partition(".")
+        spec = man.get(tool, {})
+        label = next((s.get("label") or key for s in spec.get("settings", []) if s.get("name") == key), key)
+        return f"only when {spec.get('display_name', tool)}'s “{label}” is {state}"
+    if name == "param_list":
+        return ("only when the agent gets the parameter list" if kind == "IF"
+                else "only when the agent does not get the parameter list")
+    if name == "param_ranges":
+        return ("only when its parameter list has the ranges" if kind == "IF"
+                else "only when its parameter list has no ranges")
+    return f"only when {name} is {state}"
+
+
 # Global RAG switch.  Unlike ``<<HAS_DBA>>``, which asks whether THIS agent
 # holds a database tool, ``<<RAG_ON>>`` asks only whether the RAG layer is on
 # at all.  The distinction is load-bearing: the Tool Caller holds no database
@@ -297,6 +341,9 @@ def apply_dcii_filter(text: str) -> str:
     On = strip the OFF blocks, unwrap the ONLY blocks.
     Off = strip the ONLY blocks, unwrap the OFF blocks.
     """
+    if AS_WRITTEN:
+        return _all_written(text, (_DCII_ONLY_RE, "only when the DC Input Inspector is on"),
+                            (_DCII_OFF_RE, "only when the DC Input Inspector is off"))
     if _dcii_effective():
         text = _DCII_OFF_RE.sub("", text)
         text = _DCII_ONLY_RE.sub(lambda m: m.group(1), text)
@@ -317,6 +364,8 @@ def apply_rag_on_filter(text: str) -> str:
     to the DC Output Inspector.  Read fresh, same contract as the filters
     above.
     """
+    if AS_WRITTEN:
+        return _all_written(text, (_RAG_ON_RE, "only when RAG is on"))
     if bool(getattr(_workflow_settings, "RAG_ENABLED", False)):
         return _RAG_ON_RE.sub(lambda m: m.group(1), text)
     return _RAG_ON_RE.sub("", text)
@@ -352,6 +401,9 @@ def apply_dba_filter(text: str, agent_dir_name: str) -> str:
     # the dependency direction obvious in `import` statements.
     from workflow_settings import database_access as _database_access
 
+    if AS_WRITTEN:
+        return _all_written(text, (_HAS_DBA_RE, "only for an agent with a database tool"),
+                            (_HAS_USER_INPUTS_RE, "only for an agent that can fetch saved user inputs"))
     if _database_access.is_enabled_for(agent_dir_name):
         text = _HAS_DBA_RE.sub(lambda m: m.group(1), text)
     else:
@@ -376,6 +428,9 @@ def apply_image_tools_filter(text: str, agent_dir_name: str) -> str:
     Exactly one of the two regions survives: the version that does not apply
     is stripped whole.
     """
+    if AS_WRITTEN:
+        return _all_written(text, (_CAN_SEE_RE, "only for an agent that can look at pictures"),
+                            (_CANNOT_SEE_RE, "only for an agent that cannot look at pictures"))
     can_see = agent_dir_name in _AGENTS_WITH_IMAGE_TOOLS
     if can_see:
         text = _CAN_SEE_RE.sub(lambda m: m.group(1), text)
@@ -401,6 +456,8 @@ def apply_chain_only_filter(text: str, agent_dir_name: str) -> str:
     Like :func:`apply_dba_filter`, this is per-agent and therefore runs in
     :func:`_build_template` rather than in :func:`apply_flag_filters`.
     """
+    if AS_WRITTEN:
+        return _all_written(text, (_CHAIN_ONLY_RE, "only for an agent in the forward chain (not the hub)"))
     if agent_dir_name in _NON_CHAIN_AGENTS:
         return _CHAIN_ONLY_RE.sub("", text)
     return _CHAIN_ONLY_RE.sub(lambda m: m.group(1), text)
@@ -439,6 +496,8 @@ def apply_if_flags(text: str, flags: dict[str, bool], *,
     """
     def keep(m: re.Match) -> str:
         kind, name, body = m.groups()
+        if AS_WRITTEN:
+            return _written(_if_label(kind, name), body)
         if name not in flags:
             if per_agent_later and ":" not in name:
                 return m.group(0)

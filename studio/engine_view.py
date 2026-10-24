@@ -329,7 +329,7 @@ def canonical_choice(raw: dict, data: dict) -> dict:
     equal to the setup's is dropped, so equal views have equal choices.
     Pure: the Studio's server calls it."""
     raw = dict(raw or {})
-    known = {"topology", "rag", "settings", "tools", "access"}
+    known = {"topology", "rag", "settings", "tools", "access", "as_written"}
     if set(raw) - known:
         raise ChoiceError(f"unknown parts: {', '.join(sorted(set(raw) - known))}")
     v = data["viewer"]
@@ -382,8 +382,17 @@ def canonical_choice(raw: dict, data: dict) -> dict:
             raise ChoiceError(f"access: {agent} cannot take {state!r}")
         if state != cell:
             access[agent] = state
-    return {"topology": topo, "rag": rag, "settings": settings, "tools": tools,
-            "access": access}
+    out = {"topology": topo, "rag": rag, "settings": settings, "tools": tools,
+           "access": access}
+    # As written (agents/shared/prompts.py AS_WRITTEN): every settings-specific
+    # region kept and labelled.  Only when asked, so the usual views keep
+    # their choices.
+    aw = raw.get("as_written", False)
+    if not isinstance(aw, bool):
+        raise ChoiceError("as_written is true or false")
+    if aw:
+        out["as_written"] = True
+    return out
 
 
 def apply_choice(choice: dict):
@@ -448,9 +457,14 @@ def view(choice: dict) -> dict:
     align), its team's tools, and the primer each agent is sent."""
     load_engine()
     apply_choice(choice)
-    out = assemble_marked(choice["topology"])
-    out["tools"] = team_tools(choice["topology"])
-    out["primer"] = primer_view(choice["topology"])
+    from agents.shared import prompts as P
+    P.AS_WRITTEN = bool(choice.get("as_written"))
+    try:
+        out = assemble_marked(choice["topology"])
+        out["tools"] = team_tools(choice["topology"])
+        out["primer"] = primer_view(choice["topology"])
+    finally:
+        P.AS_WRITTEN = False
     return out
 
 

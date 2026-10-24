@@ -34,6 +34,13 @@ page and its one call (``POST /api/get_all``) are checked:
 Since MAS-blueprint P5b the prompt viewer shows any choice of the settings
 that change what an agent sees (``POST /api/view``):
 
+7b. WRITTEN.  Asked "as written", the viewer keeps every settings-specific
+   region of every agent's prompt in the teams of 7, 5 and 3, between a label
+   in plain words and its end (agents/shared/prompts.py AS_WRITTEN; every
+   database tool on, so the database texts are in): every
+   kind of region is labelled, none is left as a raw marker; a view not asked
+   so shows no label, and a non-boolean ask is refused.
+
 7. VIEWER.  Every combination of ``prompt_matrix.py`` the viewer can
    express, in topologies 3 / 5 / 7: the prompts
    are the matrix baseline's and each agent's tools are the tool
@@ -453,6 +460,42 @@ def _tool_sha(tool: dict) -> str:
     d = {"name": tool["name"], "description": tool["description"], "args": tool["args"]}
     return hashlib.sha256(json.dumps(d, sort_keys=True, ensure_ascii=False)
                           .encode("utf-8")).hexdigest()
+
+
+# What the as-written view says for each kind of region (agents/shared/prompts.py).
+WRITTEN_LABELS = ("only when the DC Input Inspector is on", "only when the DC Input Inspector is off",
+                  "only when RAG is on", "only for an agent with a database tool",
+                  "only for an agent that can fetch saved user inputs", "only for an agent that can look at pictures",
+                  "only for an agent that cannot look at pictures", "only for an agent in the forward chain (not the hub)",
+                  "only when the agent gets the parameter list")
+
+
+def check_as_written(st: Studio) -> str:
+    seen, regions = set(), 0
+    raw = re.compile(r"<</?(?:DCII_ONLY|DCII_OFF|HAS_DBA|HAS_USER_INPUTS|CAN_SEE|CANNOT_SEE|RAG_ON|CHAIN_ONLY|IF|IFNOT)\b")
+    for n in (7, 5, 3):
+        # every database tool on, so the database texts (and their regions) are in
+        status, d = st.call("view", {"topology": n, "rag": "all", "as_written": True})
+        check(status == 200 and d.get("ok"), f"[WRITTEN] team of {n}: {str(d)[:300]}")
+        if not d.get("ok"):
+            continue
+        for agent, text in d["data"]["prompts"].items():
+            left = raw.findall(text)
+            check(not left, f"[WRITTEN] team of {n}, {agent}: regions left as raw markers: {left[:3]}")
+            labels = [x.replace("\u00a0", " ") for x in re.findall(r"⟦([^⟧]*)⟧", text)]
+            check(labels.count("end") * 2 == len(labels), f"[WRITTEN] team of {n}, {agent}: labels and ends do not pair")
+            seen.update(labels)
+            regions += labels.count("end")
+    missing = [x for x in WRITTEN_LABELS if x not in seen]
+    check(not missing, f"[WRITTEN] kinds never labelled: {missing}")
+    check(any(x.startswith("only when the ") and x.endswith(" tool is on") for x in seen),
+          f"[WRITTEN] no tool's region labelled: {sorted(seen)[:8]}")
+    status, d = st.call("view", {"topology": 7})
+    check(d.get("ok") and not any("⟦" in x for x in d["data"]["prompts"].values()),
+          "[WRITTEN] a view not asked as written shows labels")
+    status, d = st.call("view", {"topology": 7, "as_written": "yes"})
+    check(d.get("ok") is False, "[WRITTEN] as_written 'yes' was accepted")
+    return f"{regions} regions labelled over the teams of 7, 5 and 3"
 
 
 def check_viewer(st: Studio) -> str:
@@ -1779,6 +1822,7 @@ def main() -> int:
             summary["where"] = _run(lambda: check_where(D), "[WHERE]")
             summary["prompts"] = _run(lambda: check_prompts(D), "[PROMPTS]")
             summary["viewer"] = _run(lambda: check_viewer(st), "[VIEWER]")
+            summary["written"] = _run(lambda: check_as_written(st), "[WRITTEN]")
             _run(lambda: check_choices(D), "[VIEWER]")
             summary["pool"] = _run(lambda: check_pool(D, copy), "[VIEWER]")
             summary["cache"] = _run(lambda: check_cache(st, D, copy, first), "[CACHE]")
@@ -1794,7 +1838,7 @@ def main() -> int:
     print(f"first assembly {summary.get('first')}; {summary.get('fields')} fields shown as the "
           f"engine reads them; {summary.get('where')} field texts (per topology) found in a "
           f"prompt, each with its sentences there; {summary.get('prompts')} prompts = the prompt matrix's base; "
-          f"{summary.get('cache')}; {summary.get('viewer')}; {summary.get('pool')}; "
+          f"{summary.get('cache')}; {summary.get('viewer')}; as written: {summary.get('written')}; {summary.get('pool')}; "
           f"editing: {summary.get('edit')}; parameters: {summary.get('params')}; "
           f"tools: {summary.get('tools')}; new tools: {summary.get('new_tools')}; the page's line functions: {page_js}")
     if FAILURES:
